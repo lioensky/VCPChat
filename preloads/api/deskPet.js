@@ -1,11 +1,11 @@
 'use strict';
 
 // 桌宠：从当前 agent 打开/关闭桌宠窗口。
-// 主进程：modules/ipc/deskPetHandlers.js
+// 主进程：modules/deskpet/petHandlers.js
 const { invoke, on, send } = require('../core/define');
 
 module.exports = {
-    handlers: ['modules/ipc/deskPetHandlers.js'],
+    handlers: ['modules/deskpet/petHandlers.js'],
     roles: ['chat'],
     api: {
         toggleDeskPet: invoke('deskpet:toggle', 'agentId'),

@@ -62,7 +62,7 @@ function setup() {
         stop() { this.sessionId += 1; }
         speak(options, sender) { spoken.push({ options, sender, session: this.sessionId }); }
     }
-    const files = ['../modules/ipc/deskPetHandlers.js', '../modules/ipc/deskPetVoice.js', '../modules/ipc/sovitsHandlers.js'].map((f) => require.resolve(f));
+    const files = ['../modules/deskpet/index.js', '../modules/deskpet/petHandlers.js', '../modules/deskpet/petVoice.js', '../modules/ipc/sovitsHandlers.js', '../modules/hostHooks.js'].map((f) => require.resolve(f));
     for (const f of files) delete require.cache[f];
     const ttsFile = require.resolve('../modules/SovitsTTS.js');
     require.cache[ttsFile] = { id: ttsFile, filename: ttsFile, loaded: true, exports: FakeTTS };
@@ -75,7 +75,7 @@ function setup() {
     let sovits;
     try {
         deskPet = require(files[0]);
-        sovits = require(files[2]);
+        sovits = require(files[3]);
     } finally {
         Module._load = originalLoad;
     }
@@ -88,13 +88,14 @@ function setup() {
     }
     const mainWindow = new BrowserWindow({});
     sovits.initialize(mainWindow, null);
-    deskPet.initialize({ mainWindow, projectRoot: path.resolve('.'), appDataRoot: root, agentDir });
+    // 和 main.js 一样经 register 接上：朗读拦截走 hostHooks 的 tts:speak
+    const handle = deskPet.register({ hooks: require(files[4]).hostHooks, tts: sovits, mainWindow, projectRoot: path.resolve('.'), appDataRoot: root, agentDir });
     const open = async (agentId) => {
         await handlers.get('deskpet:toggle')({ sender: mainWindow.webContents }, agentId);
         return windows.at(-1);
     };
     const cleanup = () => {
-        deskPet.closeAll();
+        handle.dispose();
         delete require.cache[ttsFile];
     };
     return { handlers, listeners, mainWindow, open, spoken, root, menus, cleanup };
@@ -175,7 +176,7 @@ test('turning reading off in the menu silences the pet and is remembered per age
 
 test('a reply given up while its voice settings are still loading does not stay claimed', async () => {
     const { handlers, listeners, open, cleanup } = setup();
-    const claims = require('../modules/ipc/deskPetVoice.js')._claims;
+    const claims = require('../modules/deskpet/petVoice.js')._claims;
     const nova = await open('Nova');
     // 用户在读配置的那一下点了停：end 先到，begin 读完以后不能再占
     const pending = handlers.get('deskpet:voice-begin')(from(nova), 'n1');

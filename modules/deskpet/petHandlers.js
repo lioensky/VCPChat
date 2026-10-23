@@ -1,4 +1,4 @@
-// modules/ipc/deskPetHandlers.js
+// modules/deskpet/petHandlers.js
 // 桌宠（可选模块，默认关闭）：每个 agent 一个透明、无边框、置顶的小窗，
 // 显示该 agent 的 Live2D 模型或差分立绘。可以在桌宠上直接和这个 agent 说话（经主窗口发送，
 // 历史照常保存），回复以气泡显示，表情由页面里的情绪导演（modules/emotion）按回复流决定。
@@ -16,24 +16,24 @@ const path = require('path');
 const fs = require('fs-extra');
 const { pathToFileURL } = require('url');
 const crypto = require('crypto');
-const voice = require('./deskPetVoice');
-const petPrefs = require('../deskpet/petPrefs');
-const outfitStore = require('../deskpet/outfits');
-const { createPetAssets, isAgentId, outfitSummary, SCHEME } = require('../deskpet/petAssets');
-const { createPetStateStore, rememberFigure, savedAspect, hasSavedPosition } = require('../deskpet/petState');
-const petTray = require('../deskpet/petTray');
-const { createIdleRunner } = require('../deskpet/idleRunner');
-const { createPetControls } = require('../deskpet/petControls');
-const { createPetPreviews } = require('../deskpet/petPreviews');
-const { createSettingsPage } = require('../deskpet/settingsPage');
-const { createCoreInstaller } = require('../deskpet/cubismCore');
-const { createFullscreenWatch } = require('../deskpet/fullscreenWatch');
-const edgeSnap = require('../deskpet/edgeSnap');
-const throwMotion = require('../deskpet/throwMotion');
-const wander = require('../deskpet/wander');
-const idleChat = require('../deskpet/idleChat');
+const voice = require('./petVoice');
+const petPrefs = require('./petPrefs');
+const outfitStore = require('./outfits');
+const { createPetAssets, isAgentId, outfitSummary, SCHEME } = require('./petAssets');
+const { createPetStateStore, rememberFigure, savedAspect, hasSavedPosition } = require('./petState');
+const petTray = require('./petTray');
+const { createIdleRunner } = require('./idleRunner');
+const { createPetControls } = require('./petControls');
+const { createPetPreviews } = require('./petPreviews');
+const { createSettingsPage } = require('./settingsPage');
+const { createCoreInstaller } = require('./cubismCore');
+const { createFullscreenWatch } = require('./fullscreenWatch');
+const edgeSnap = require('./edgeSnap');
+const throwMotion = require('./throwMotion');
+const wander = require('./wander');
+const idleChat = require('./idleChat');
 const { getAgentMoodStore } = require('../agentMood');
-const { createSessionActivity } = require('../deskpet/sessionActivity');
+const { createSessionActivity } = require('./sessionActivity');
 
 // 窗口大小随每个桌宠自己的缩放和形象的长宽比走（modules/deskpet/petPrefs.js）；不知道比例时 1 倍是 360×580，
 // 上方留出气泡和输入框的位置。
@@ -1855,7 +1855,7 @@ function initialize(options) {
     });
     registerProtocol();
     registerIpc();
-    voice.initialize({ paths, findPet: petFromEvent });
+    voice.initialize({ paths, findPet: petFromEvent, tts: options.tts });
     controls = createPetControls({
         electron,
         appDataRoot: paths.appDataRoot,
@@ -2000,7 +2000,7 @@ module.exports = {
     registerSchemes,
     initialize,
     closeAll,
-    // 托盘：main.js 建菜单时取「桌宠」这一项，并在桌宠状态变了时重建菜单
+    // 托盘：建菜单时取「桌宠」这一项，并在桌宠状态变了时请托盘刷新（经 index.js 挂到 hostHooks）
     trayMenuItems: isolated('trayMenuItems', trayMenuItems, []),
     // 只是勾选、可用、显示变了：改现有菜单（见 modules/deskpet/petTray.js）
     applyTrayState: isolated('applyTrayState', (menu) => petTray.applyTrayState(menu, trayMenuItems()), false),

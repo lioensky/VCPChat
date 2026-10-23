@@ -136,7 +136,8 @@ Codex 桌宠可通过 `pet.json`、整个文件夹、ZIP 或标准命名的 `spr
 
 主进程（`modules/`）：
 
-- `ipc/deskPetHandlers.js`：窗口的一生（打开、摆放、拖动、甩、贴边藏起、溜达、换装、改大小、崩溃恢复、显示器变化）、IPC、右键和托盘菜单、把回复流转给桌宠、桌宠发言转给主窗口、工具审批和闹钟转给桌宠。
+- `deskpet/index.js`：唯一入口。`main.js` 只调 `registerSchemes()` 和 `register(host)`；桌宠要核心配合的地方（聊天请求和回复流、工具结果、删助手、朗读拦截、托盘菜单）都挂在 `modules/hostHooks.js` 上，删掉 `modules/deskpet/` 核心照常运行。主窗口这一侧的往来在 `modules/renderer/deskPetBridge.js`，只在 preload 暴露了桌宠接口时载入；工具审批经 `vcp:tool-approval-pending`/`settled` 事件转过来。
+- `deskpet/petHandlers.js`：窗口的一生（打开、摆放、拖动、甩、贴边藏起、溜达、换装、改大小、崩溃恢复、显示器变化）、IPC、右键和托盘菜单、把回复流转给桌宠、桌宠发言转给主窗口、工具审批和闹钟转给桌宠。
 - `deskpet/petAssets.js`：`vcp-deskpet://` 协议放行哪些文件，一个助手有哪几套形象、页面要的资源地址。
 - `deskpet/petState.js`：`AppData\deskpet\state.json`（每个桌宠的位置、大小、形象、长宽比、藏边），读改写串行、先写临时文件再改名。
 - `deskpet/petPrefs.js`：设置的默认值和校验、尺寸计算（按形象长宽比定窗口），纯函数。`petControls.js` 管设置文件和全局快捷键。
@@ -144,7 +145,7 @@ Codex 桌宠可通过 `pet.json`、整个文件夹、ZIP 或标准命名的 `spr
 - `deskpet/settingsPage.js`：设置页「桌宠」分区的主进程部分（卡片目录、换装、导入、表情映射，映射存在模型旁的 `deskpet.json`，读写在 `expressionProfile.js`）；`petPreviews.js` 在一个离屏窗口里给每套形象拍快照；`cubismCore.js` 下载、校验、安装 Cubism Core（试加载页面是 `DeskPetmodules/core-probe.html`）。设置页面板在 `modules/settings/schema/deskpet-panel.js`，样式在 `styles/ui-system/deskpet-settings.css`。
 - `deskpet/idleRunner.js`（时机和流程）、`idleChat.js`（说什么、能不能说）：闲时主动搭话。
 - `deskpet/edgeSnap.js`、`throwMotion.js`、`wander.js`：贴边和藏边、甩出去、溜达的路线（纯函数，主进程按帧挪窗口）。`fullscreenWatch.js`：别的程序全屏时让开。`petTray.js`：托盘菜单只在真变了时才改。
-- `ipc/deskPetVoice.js`：桌宠出声：按助手的 TTS 设置把句子交给 `SovitsTTS`，音频回到桌宠窗口；「朗读回复」开关；桌宠在念的回复不让主窗口再念。`sovitsHandlers.js` 保证同一时间只有一个窗口在出声。
+- `deskpet/petVoice.js`：桌宠出声：按助手的 TTS 设置把句子交给共用的朗读（`register` 时注入），音频回到桌宠窗口；「朗读回复」开关；桌宠在念的回复不让主窗口再念（挂在 `tts:speak` 上）。`sovitsHandlers.js` 保证同一时间只有一个窗口在出声。
 
 页面（`DeskPetmodules/`）：
 

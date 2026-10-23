@@ -14,7 +14,7 @@
 // 助手目录里给侧栏用的 portrait.*.png 也算一套「立绘」，排在最后，换回去就是平常的立绘。
 // 一个文件夹里同时有 Live2D 和网格立绘时还是一套：有 Cubism Core 用 Live2D，没有就用网格立绘。
 //
-// 这里只读目录、不碰窗口；返回的都是绝对路径，由 deskPetHandlers 换成 vcp-deskpet:// 地址。
+// 这里只读目录、不碰窗口；返回的都是绝对路径，由 petHandlers 换成 vcp-deskpet:// 地址。
 
 'use strict';
 

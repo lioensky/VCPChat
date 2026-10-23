@@ -6,7 +6,7 @@ import os from 'node:os';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const handlers = require('../modules/ipc/deskPetHandlers.js');
+const handlers = require('../modules/deskpet/petHandlers.js');
 const { createPetAssets } = require('../modules/deskpet/petAssets.js');
 
 const root = path.resolve('/vcp');

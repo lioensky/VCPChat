@@ -1,12 +1,11 @@
 const { ipcMain } = require('electron');
+const { hostHooks } = require('../hostHooks');
 
 let sovitsTTSInstance = null;
 let internalMainWindow = null; // 用于在 handler 内部可靠地访问 mainWindow
 let internalSettingsManager = null;
 // 同一时间只有一个声音：TTS 实例是共用的，新的朗读开始时，上一个出声的窗口（主窗口、语音聊天、桌宠）里还在放的也停掉。
 let lastSpeaker = null;
-// 可选的过滤：返回 false 的朗读请求直接忽略（桌宠正在念的那条，主窗口的自动朗读不再念一遍）。
-let speakGate = null;
 
 function getSovitsTTS() {
     if (!sovitsTTSInstance) {
@@ -61,10 +60,6 @@ function stopSpeechFrom(sender) {
     lastSpeaker = null;
 }
 
-function setSpeakGate(gate) {
-    speakGate = typeof gate === 'function' ? gate : null;
-}
-
 function initialize(mainWindow, settingsManager) {
     if (!mainWindow) {
         console.error("SovitsTTS needs the main window to initialize."); // Translated for clarity
@@ -80,11 +75,8 @@ function initialize(mainWindow, settingsManager) {
     });
 
     ipcMain.on('sovits-speak', (event, options) => {
-        try {
-            if (speakGate && speakGate(event.sender, options) === false) return;
-        } catch (error) {
-            console.warn('[TTS] speak gate failed:', error.message);
-        }
+        // 挂在 tts:speak 上的功能可以拦下这次朗读（例如这条已经在别的窗口里念着）
+        if (!hostHooks.every('tts:speak', event.sender, options)) return;
         startSpeech(event.sender, options);
     });
 
@@ -118,6 +110,5 @@ module.exports = {
     initialize,
     startSpeech,
     appendSpeech,
-    stopSpeechFrom,
-    setSpeakGate
+    stopSpeechFrom
 };

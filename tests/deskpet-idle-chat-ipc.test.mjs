@@ -60,7 +60,7 @@ async function loadHandlers(services) {
         if (request === 'electron') return fake.electron;
         return originalLoad.call(this, request, ...rest);
     };
-    const file = require.resolve('../modules/ipc/deskPetHandlers.js');
+    const file = require.resolve('../modules/deskpet/petHandlers.js');
     delete require.cache[file];
     let handlers;
     try {

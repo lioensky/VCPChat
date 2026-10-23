@@ -6,11 +6,7 @@ const { pathToFileURL } = require('url');
 const { clearTrajectoriesOfOwner } = require('../modelTrajectory');
 const { getAgentMoodStore } = require('../agentMood');
 const { resolvePortraitDisplayPath, forgetPortraitDisplayImages } = require('../services/agentPortraitImages');
-
-// 桌宠模块用时再取：它在主进程里是单例，测试替身的 electron 里不一定载得进来
-function deskPetHandlers() {
-    try { return require('./deskPetHandlers'); } catch { return null; }
-}
+const { hostHooks } = require('../hostHooks');
 
 let AGENT_DIR_CACHE; // Cache the agent directory path
 let USER_DATA_DIR_CACHE; // Cache the user data directory path
@@ -128,6 +124,13 @@ async function writePortraitFile(agentDir, key, ext, buffer) {
     await removePortraitFiles(agentDir, key, target);
 }
 
+// Agent id 只能是 Agents 下的一层目录名
+function resolveAgentDir(agentId) {
+    const id = typeof agentId === 'string' ? agentId : '';
+    if (!AGENT_DIR_CACHE || !id || id !== path.basename(id) || id === '.' || id === '..') return null;
+    return path.join(AGENT_DIR_CACHE, id);
+}
+
 async function getAgentConfigById(agentId) {
     if (!AGENT_DIR_CACHE) {
         console.error("agentHandlers not initialized with AGENT_DIR. Cannot get agent config.");
@@ -183,13 +186,6 @@ async function getAgentConfigById(agentId) {
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  * @param {object} context.settingsManager - The AppSettingsManager instance.
  */
-// Agent id 只能是 Agents 下的一层目录名
-function resolveAgentDir(agentId) {
-    const id = typeof agentId === 'string' ? agentId : '';
-    if (!AGENT_DIR_CACHE || !id || id !== path.basename(id) || id === '.' || id === '..') return null;
-    return path.join(AGENT_DIR_CACHE, id);
-}
-
 function initialize(context) {
     const { AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE, USER_AVATAR_FILE, settingsManager, agentConfigManager } = context;
     AGENT_DIR_CACHE = AGENT_DIR; // Cache the directory path
@@ -604,8 +600,8 @@ function initialize(context) {
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
             // 先让心情不再写、等正在写的 mood.json 写完，否则删目录时可能撞上写入
             await getAgentMoodStore()?.forget(agentId);
-            // 开着的桌宠先关掉，记下的位置、形象一起忘掉（不然重启后还想恢复一个已经没了的助手）
-            await deskPetHandlers()?.forgetAgent?.(agentId);
+            // 记着这个助手的功能（例如开着的桌宠）先收尾
+            await hostHooks.emitAsync('agent:removed', agentId);
             const portraitFiles = (await fs.readdir(agentDir).catch(() => []))
                 .filter(name => PORTRAIT_FILE_PATTERN.test(name))
                 .map(name => path.join(agentDir, name));

@@ -1,7 +1,7 @@
 // modules/deskpet/settingsPage.js
 // 主窗口「全局设置 → 桌宠」分区的主进程部分：列出某个助手的几套形象（带快照）、选一套就让桌宠换上、
 // 「无」就收起这个助手的桌宠、显示/隐藏、导入形象、打开形象文件夹、在预览里直接跟 TA 说话。
-// 全局开关和快捷键仍在 petControls.js；窗口本身仍归 deskPetHandlers.js，这里通过 pets 回调去动。
+// 全局开关和快捷键仍在 petControls.js；窗口本身仍归 petHandlers.js，这里通过 pets 回调去动。
 //
 // 只认主窗口发来的请求（controls.fromSettings）。
 

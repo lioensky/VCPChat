@@ -102,7 +102,7 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
 
 const handledToolApprovalRequestIds = new Set();
 const toolApprovalTimers = new Map();
-// 待批请求 → 应答函数（和卡片上点允许/拒绝走同一条路）；桌宠上点的允许/拒绝从这里进来
+// 待批请求 → 应答函数（和卡片上点允许/拒绝走同一条路）；别处（例如桌宠）点的允许/拒绝从这里进来
 const toolApprovalAnswerers = new Map();
 const TOOL_CHANGE_DIFF_MATRIX_LIMIT = 120000;
 const TOOL_APPROVAL_DIFF_PREVIEW_LINES = 8;
@@ -285,7 +285,7 @@ function clearPersistentNotifications({ container = document.getElementById('not
     return { success: true, removed };
 }
 
-// 桌宠上点了允许/拒绝：按主窗口卡片的流程应答（理由框里写了字也一起带上），已经答过、过期的不管
+// 别处点了允许/拒绝：按主窗口卡片的流程应答（理由框里写了字也一起带上），已经答过、过期的不管
 function answerToolApproval(requestId, approved) {
     const answer = toolApprovalAnswerers.get(String(requestId));
     return answer ? answer(approved === true) : false;
@@ -1126,7 +1126,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             toolApprovalTimers.delete(requestId);
         }
         toolApprovalAnswerers.delete(String(requestId));
-        notificationRendererApi?.deskPetApprovalSettled?.(String(requestId));
+        window.dispatchEvent(new CustomEvent('vcp:tool-approval-settled', { detail: { requestId: String(requestId) } }));
 
         const escapedRequestId = CSS.escape(String(requestId));
         const approvalElements = document.querySelectorAll(`.notification-tool-approval[data-tool-approval-request-id="${escapedRequestId}"]`);
@@ -1248,16 +1248,16 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 toolApprovalTimers.set(reqId, cancelTimer);
             }
         }
-        // 还在等人点头：桌宠开着的话让它也问一声
+        // 还在等人点头：广播出去，别的界面（例如桌宠）可以也问一声，再经 answerToolApproval 应答
         if (!handledToolApprovalRequestIds.has(reqId)) {
             const args = logData.data.args;
-            notificationRendererApi?.deskPetApprovalOffer?.({
+            window.dispatchEvent(new CustomEvent('vcp:tool-approval-pending', { detail: {
                 requestId: reqId,
                 toolName: logData.data.toolName || '',
                 maid: logData.data.maid || '',
                 command: args?.command || (args && typeof args === 'object' ? JSON.stringify(args) : String(args ?? '')),
                 expiresInMs: remainingMs,
-            });
+            } }));
         }
     }
 }

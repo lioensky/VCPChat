@@ -77,7 +77,7 @@ async function loadHandlers() {
         return originalLoad.call(this, request, ...rest);
     };
     Object.defineProperty(process, 'platform', { value: 'win32' });
-    const file = require.resolve('../modules/ipc/deskPetHandlers.js');
+    const file = require.resolve('../modules/deskpet/petHandlers.js');
     delete require.cache[file];
     let handlers;
     try {

@@ -110,8 +110,11 @@ const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 const translatorHandlers = require('./modules/ipc/translatorHandlers'); // Import translator handlers
 const voiceHandlers = require('./modules/ipc/voiceHandlers'); // Import voice chat handlers
 const localSttHandlers = require('./modules/ipc/localSttHandlers'); // 本地 SenseVoice 语音识别
-const deskPetHandlers = require('./modules/ipc/deskPetHandlers'); // 桌宠（可选，默认关闭）
-deskPetHandlers.registerSchemes(); // 自定义协议必须在 app ready 之前登记
+const { hostHooks } = require('./modules/hostHooks'); // 可选功能的挂钩点
+// 桌宠是可选模块：目录不在就当没有。自定义协议必须在 app ready 之前登记
+const deskPet = fs.existsSync(path.join(__dirname, 'modules', 'deskpet', 'index.js')) ? require('./modules/deskpet') : null;
+deskPet?.registerSchemes();
+let deskPetHandle = null;
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const chartHandlers = require('./modules/ipc/chartHandlers'); // Agent 图表工作台与持久化服务
@@ -551,8 +554,8 @@ function startDistributedServerAfterRenderer() {
                 gameService,
                 // 工作区只读门面：direct 插件据此动态获取写入白名单
                 workspaceService: workspaceHandlers.workspaceService,
-                // 桌宠：闹钟到点、AI 主动开的新话题，在开着的桌宠上说出来
-                onToolResult: deskPetHandlers.onDistributedToolResult
+                // 工具调用成功后通知挂钩的功能（例如桌宠播报闹钟、新话题）
+                onToolResult: (...args) => hostHooks.emit('tools:result', ...args)
             });
             distributedServer = server;
             await server.initialize();
@@ -723,7 +726,7 @@ async function performQuitCleanup() {
     appQuitCleanupPromise = (async () => {
         await historyWatcherLeases.dispose();
         await getAgentMoodStore()?.flush().catch(() => {});
-        await Promise.resolve().then(() => deskPetHandlers.closeAll()).catch(() => {});
+        await deskPetHandle?.dispose().catch(() => {});
 
         try {
             localSttHandlers.shutdown();
@@ -1031,7 +1034,7 @@ function createTray() {
         await toggleRagObserverVisibility();
     };
 
-    // 桌宠那一项会随桌宠开关、免打扰变化（见下面的 setTrayRefresher）
+    // 挂钩的菜单项（例如桌宠）会随功能状态变化：收到 tray:refresh 时刷新（见下面）
     const buildContextMenu = () => Menu.buildFromTemplate([
         {
             label: '显示/隐藏主窗口',
@@ -1051,7 +1054,7 @@ function createTray() {
                 desktopHandlers.openDesktopWindow();
             }
         },
-        ...deskPetHandlers.trayMenuItems(),
+        ...hostHooks.collect('tray:menu-items'),
         { type: 'separator' },
         {
             label: '退出',
@@ -1080,11 +1083,11 @@ function createTray() {
         // Windows/Linux: 默认行为。
         let trayMenu = buildContextMenu();
         tray.setContextMenu(trayMenu);
-        // 换下来的旧菜单 Electron 不释放：只是桌宠那几项的勾选、显示变了就改现有菜单再设回去（Linux 要重设才刷新），
+        // 换下来的旧菜单 Electron 不释放：挂钩的菜单项只是勾选、显示变了就改现有菜单再设回去（Linux 要重设才刷新），
         // 文字或快捷键变了才建新的
-        deskPetHandlers.setTrayRefresher((structureChanged) => {
+        hostHooks.on('tray:refresh', (structureChanged) => {
             if (!tray || tray.isDestroyed()) return;
-            if (structureChanged || !deskPetHandlers.applyTrayState(trayMenu)) trayMenu = buildContextMenu();
+            if (structureChanged || !hostHooks.every('tray:update-menu', trayMenu)) trayMenu = buildContextMenu();
             tray.setContextMenu(trayMenu);
         });
         tray.on('click', () => {
@@ -1958,7 +1961,9 @@ if (!gotTheLock) {
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
         localSttHandlers.initialize({ appDataRoot: APP_DATA_ROOT_IN_PROJECT });
-        deskPetHandlers.initialize({
+        deskPetHandle = deskPet?.register({
+            hooks: hostHooks,
+            tts: sovitsHandlers,
             mainWindow,
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,

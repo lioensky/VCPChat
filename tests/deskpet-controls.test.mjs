@@ -238,10 +238,10 @@ async function loadHandlers({ root = fs.mkdtempSync(path.join(os.tmpdir(), 'desk
         return originalLoad.call(this, request, ...rest);
     };
     Object.defineProperty(process, 'platform', { value: 'win32' });
-    for (const name of ['../modules/ipc/deskPetHandlers.js', '../modules/deskpet/petControls.js']) delete require.cache[require.resolve(name)];
+    for (const name of ['../modules/deskpet/petHandlers.js', '../modules/deskpet/petControls.js']) delete require.cache[require.resolve(name)];
     let handlers;
     try {
-        handlers = require('../modules/ipc/deskPetHandlers.js');
+        handlers = require('../modules/deskpet/petHandlers.js');
     } finally {
         Module._load = originalLoad;
         Object.defineProperty(process, 'platform', platform);

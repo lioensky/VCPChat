@@ -1,5 +1,5 @@
 // modules/deskpet/petControls.js
-// 桌宠的全局设置、全局快捷键和设置页的 IPC（主进程）。窗口本身由 modules/ipc/deskPetHandlers.js 管，
+// 桌宠的全局设置、全局快捷键和设置页的 IPC（主进程）。窗口本身由 petHandlers.js 管，
 // 这里只通过 actions 回调去动它们。设置页是主窗口「全局设置 → 桌宠」分区
 // （modules/settings/schema/deskpet-panel.js），只认主窗口发来的请求。
 //

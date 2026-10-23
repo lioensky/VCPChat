@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const outfits = require('../modules/deskpet/outfits.js');
-const handlers = require('../modules/ipc/deskPetHandlers.js');
+const handlers = require('../modules/deskpet/petHandlers.js');
 const { createPetAssets } = require('../modules/deskpet/petAssets.js');
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

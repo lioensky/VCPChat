@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { JSDOM } = require('jsdom');
 
-// 主窗口的工具审批：待批的转给桌宠一份，桌宠上点的允许/拒绝按主窗口卡片的流程应答，答完叫桌宠收起。
+// 主窗口的工具审批：待批的广播 vcp:tool-approval-pending（桌宠据此也问一声），别处点的允许/拒绝按主窗口卡片的流程应答，
+// 答完广播 vcp:tool-approval-settled。
 function createDom() {
     const dom = new JSDOM(`<!doctype html><html><body>
         <ul id="notificationsList"></ul>
@@ -13,11 +14,9 @@ function createDom() {
     </body></html>`, { url: 'https://vcpchat.local/main.html', runScripts: 'outside-only', pretendToBeVisual: true });
     const { window } = dom;
     const calls = { sent: [], offers: [], settled: [] };
-    window.chatAPI = {
-        sendVCPLogMessage: (message) => calls.sent.push(message),
-        deskPetApprovalOffer: (payload) => calls.offers.push(payload),
-        deskPetApprovalSettled: (requestId) => calls.settled.push(requestId),
-    };
+    window.chatAPI = { sendVCPLogMessage: (message) => calls.sent.push(message) };
+    window.addEventListener('vcp:tool-approval-pending', (event) => calls.offers.push(event.detail));
+    window.addEventListener('vcp:tool-approval-settled', (event) => calls.settled.push(event.detail.requestId));
     window.CSS ||= {};
     window.CSS.escape ||= (value) => String(value).replace(/["\\]/g, '\\$&');
     window.eval(fs.readFileSync('modules/ui-helpers.js', 'utf8'));
@@ -27,7 +26,7 @@ function createDom() {
     return { dom, window, calls, render };
 }
 
-test('a pending approval is offered to the desk pet and answered from it', (t) => {
+test('a pending approval is announced and can be answered from elsewhere', (t) => {
     const { dom, window, calls, render } = createDom();
     t.after(() => dom.window.close());
     render({ requestId: 'p1', toolName: 'PowerShellExecutor', maid: 'Nova', args: { command: 'Get-ChildItem' }, approvalTtlMs: 60000 });
@@ -44,7 +43,7 @@ test('a pending approval is offered to the desk pet and answered from it', (t) =
     assert.equal(calls.sent.length, 1);
 });
 
-test('answering in the main window tells the desk pet to put its card away', (t) => {
+test('answering in the main window announces that the approval is settled', (t) => {
     const { dom, window, calls, render } = createDom();
     t.after(() => dom.window.close());
     render({ requestId: 'p2', toolName: 'X', maid: 'Nova', args: { a: 1 } });
@@ -55,7 +54,7 @@ test('answering in the main window tells the desk pet to put its card away', (t)
     assert.deepEqual(calls.settled, ['p2']);
 });
 
-test('auto-approved requests never reach the desk pet', (t) => {
+test('auto-approved requests are never announced as pending', (t) => {
     const { dom, window, calls, render } = createDom();
     t.after(() => dom.window.close());
     window.filterManager = { checkToolAutoApproval: () => ({ action: 'approve', rule: { name: 'r' } }) };

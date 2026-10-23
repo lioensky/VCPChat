@@ -1,5 +1,5 @@
-// modules/ipc/deskPetVoice.js
-// 桌宠出声（deskPetHandlers 的一部分）：桌宠把回复按句送来，这里按该助手的 TTS 设置
+// modules/deskpet/petVoice.js
+// 桌宠出声（petHandlers 的一部分）：桌宠把回复按句送来，这里按该助手的 TTS 设置
 // （Agent 设置里的音色、语速、正则、导演提示词）交给 VCPChat 共用的 SovitsTTS 合成，音频直接回到桌宠窗口播放。
 //
 //   - 助手没设音色就不出声；右键菜单「朗读回复」可以单独让桌宠闭嘴（每个助手分开记，存在 AppData/deskpet/voice.json）。
@@ -9,13 +9,13 @@
 const { ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
-const sovits = require('./sovitsHandlers');
 
 const SENTENCE_MAX_CHARS = 1000;
 // 桌宠念完以后，这么久内主窗口对同一条的自动朗读仍然跳过（自动朗读在回复结束后才触发）。
 const CLAIM_GRACE_MS = 8000;
 
 let paths = null;
+let tts = null; // { startSpeech, appendSpeech, stopSpeechFrom }，主进程的 modules/ipc/sovitsHandlers.js
 let findPet = null; // event → pet
 let muted = null; // agentId → true，懒加载
 const claims = new Map(); // messageId → { contents, until }
@@ -101,7 +101,7 @@ function release(pet) {
     for (const [id, claim] of claims) if (claim.contents === contents) claims.delete(id);
     speeches.delete(pet);
     beginning.delete(pet);
-    sovits.stopSpeechFrom(contents);
+    tts?.stopSpeechFrom(contents);
 }
 
 function registerIpc() {
@@ -133,8 +133,8 @@ function registerIpc() {
         const contents = pet.win.webContents;
         const options = { ...speech.options, text, msgId: String(payload.key || speech.messageId) };
         if (payload.first || speech.session == null) {
-            speech.session = sovits.startSpeech(contents, options, { notifySender: false });
-        } else if (!sovits.appendSpeech(contents, options, speech.session)) {
+            speech.session = tts.startSpeech(contents, options, { notifySender: false });
+        } else if (!tts.appendSpeech(contents, options, speech.session)) {
             // 期间别的窗口开始朗读了，这条不再接着念
             speeches.delete(pet);
             releaseClaim(speech.messageId, contents);
@@ -150,7 +150,7 @@ function registerIpc() {
         if (payload?.messageId && beginning.get(pet)?.messageId === payload.messageId) beginning.delete(pet);
         if (payload?.messageId) releaseClaim(String(payload.messageId), contents);
         if (speech && speech.messageId === payload?.messageId) speeches.delete(pet);
-        if (payload?.stop) sovits.stopSpeechFrom(contents);
+        if (payload?.stop) tts.stopSpeechFrom(contents);
     });
 }
 
@@ -167,7 +167,7 @@ async function menuItem(pet) {
             setMuted(pet.agentId, nextMuted).catch((error) => console.warn('[DeskPet] save voice pref:', error.message));
             if (nextMuted && !pet.win.isDestroyed()) {
                 // 正在念就马上停
-                sovits.stopSpeechFrom(pet.win.webContents);
+                tts.stopSpeechFrom(pet.win.webContents);
                 pet.win.webContents.send('stop-tts-audio');
             }
         },
@@ -177,7 +177,7 @@ async function menuItem(pet) {
 function initialize(options) {
     paths = options.paths;
     findPet = options.findPet;
-    sovits.setSpeakGate(gate);
+    tts = options.tts;
     registerIpc();
 }
 
@@ -185,6 +185,8 @@ module.exports = {
     initialize,
     release,
     menuItem,
+    // 挂到 tts:speak：别的窗口要念的正是桌宠在念的那条就不念
+    allowSpeech: gate,
     // 测试用
     _gate: gate,
     _claims: claims,
