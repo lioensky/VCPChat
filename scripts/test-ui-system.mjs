@@ -672,7 +672,7 @@ assert.doesNotMatch(appearanceStyles, /(?:^|\n)\s*body\s*\{[^}]*font-(?:family|s
     'appearance must not leak an unscoped body typography rule');
 assert.match(messageRendererStyles, /\.maid-diary-bubble\s*\{[^}]*background:[^;]+!important;[^}]*border-radius:[^;]+!important;/s,
     'upstream diary component declarations must retain their cascade authority');
-assert.match(messageRendererStyles, /\.vcp-tool-result-bubble\s*\{[^}]*background:[^;]+!important;[^}]*border-radius:[^;]+!important;/s,
+assert.match(messageRendererStyles, /(?:\.vcp-tool-result-bubble|:is\([^)]*\.vcp-tool-result-bubble[^)]*\)(?::not\([^)]*\))?)\s*\{(?=[^}]*background:[^;]+!important;)(?=[^}]*border-radius:[^;]+!important;)/s,
     'upstream tool result declarations must retain their cascade authority');
 assert.doesNotMatch(mainChatCommandsSource, /function createAgentConfig/,
     'renderer commands must not duplicate the canonical Agent defaults');
