@@ -959,13 +959,13 @@ html body.chat-header-capsule .chat-agent-pill {
     margin: 0 auto;
     display: inline-flex;
     align-items: center;
-    gap: 9px;
+    gap: 10px;
     height: 40px;
-    padding: 4px 16px 4px 5px;
+    padding: 8px 14px 8px 8px;
     border-radius: 9999px;
-    background: var(--next-surface-card, rgba(255, 255, 255, 0.85));
-    border: 1px solid var(--next-border, rgba(0, 0, 0, 0.08));
-    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+    background: var(--next-surface-card, #fff);
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
     cursor: pointer;
@@ -985,22 +985,23 @@ html body.chat-header-capsule .chat-agent-pill {
 }
 
 html:not(.light-theme):not([data-vcp-theme="light"]) body.chat-header-capsule .chat-agent-pill {
-    background: rgba(30, 31, 35, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    /* 深色：胶囊比背景略亮一档（不是更暗），边框几乎看不见，阴影很轻 */
+    background: color-mix(in srgb, color-mix(in srgb, #fff 9%, var(--primary-bg, #1a1a1a)) 94%, transparent);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
 }
 
 html body.chat-header-capsule .chat-agent-pill:hover {
     background: var(--next-surface-hover, rgba(255, 255, 255, 0.96));
-    border-color: var(--next-border-hover, rgba(0, 0, 0, 0.15));
-    box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.10);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     transform: translateY(-0.5px);
 }
 
 html:not(.light-theme):not([data-vcp-theme="light"]) body.chat-header-capsule .chat-agent-pill:hover {
-    background: rgba(40, 42, 48, 0.95);
-    border-color: rgba(255, 255, 255, 0.18);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    background: color-mix(in srgb, color-mix(in srgb, #fff 11%, var(--primary-bg, #1a1a1a)) 96%, transparent);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
 }
 
 html body.chat-header-capsule .chat-agent-pill:active {
@@ -1008,12 +1009,11 @@ html body.chat-header-capsule .chat-agent-pill:active {
 }
 
 html body.chat-header-capsule .chat-agent-pill-avatar {
-    width: 30px;
-    height: 30px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 html body.chat-header-capsule .chat-agent-pill-name {
@@ -1034,7 +1034,7 @@ html body.chat-header-capsule .chat-agent-pill-name {
 html body.chat-header-capsule .chat-agent-pill-pane-btn {
     width: 0;
     height: 22px;
-    margin: 0 0 0 -9px;
+    margin: 0 0 0 -10px;
     padding: 0;
     border: 0;
     border-radius: 9999px;
@@ -1068,7 +1068,7 @@ html body.chat-header-capsule .chat-agent-pill:is(:hover, :focus-visible) .chat-
 
 html body.chat-header-capsule.vcp-side-pane-open .chat-header .chat-agent-pill .chat-agent-pill-pane-btn {
     width: 0;
-    margin: 0 0 0 -9px;
+    margin: 0 0 0 -10px;
     opacity: 0;
 }
 

@@ -107,7 +107,32 @@ export function createChatComposerInset({
         cleanups.push(() => doc.removeEventListener('load', syncBackdrop, true));
         const MutationObserverCtor = win.MutationObserver;
         if (typeof MutationObserverCtor === 'function') {
-            const appearanceObserver = new MutationObserverCtor(syncBackdrop);
+            // 明暗切换时 body 等背景在过渡：属性一变读到的是起点色。副本逐帧跟着源背景的
+            // 过渡走（和聊天区同步变色），过渡全部结束后再读一次终值；没有过渡的变量变化由兜底定时器补一次。
+            let settleTimer = 0;
+            let followRaf = 0;
+            const hasRunningTransition = () => sources.some(source =>
+                source.getAnimations?.().some(animation => animation.transitionProperty !== undefined
+                    && animation.playState === 'running'));
+            const followTransitions = () => {
+                win.cancelAnimationFrame(followRaf);
+                const startedAt = win.performance.now();
+                let idleFrames = 0;
+                const step = (now) => {
+                    syncBackdrop();
+                    idleFrames = hasRunningTransition() ? 0 : idleFrames + 1;
+                    if (idleFrames < 3 && now - startedAt < 1200) followRaf = win.requestAnimationFrame(step);
+                };
+                followRaf = win.requestAnimationFrame(step);
+            };
+            cleanups.push(() => win.cancelAnimationFrame(followRaf));
+            cleanups.push(() => win.clearTimeout(settleTimer));
+            const appearanceObserver = new MutationObserverCtor(() => {
+                syncBackdrop();
+                followTransitions();
+                win.clearTimeout(settleTimer);
+                settleTimer = win.setTimeout(syncBackdrop, 500);
+            });
             for (const source of [...sources, doc.documentElement]) {
                 appearanceObserver.observe(source, { attributes: true, attributeFilter: ['class', 'style', 'data-vcp-theme', 'data-vcp-wallpaper-scope', 'data-vcp-surface', 'data-vcp-surface-effect'] });
             }
