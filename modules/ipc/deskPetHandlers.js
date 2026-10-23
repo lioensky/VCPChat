@@ -119,7 +119,7 @@ function savePetPosition(agentId, position) {
 }
 
 function sizeOf(pet) {
-    return petPrefs.windowSizeForScale(pet.scale, pet.aspect);
+    return petPrefs.windowSizeForScale(pet.scale, pet.aspect, pet.kind);
 }
 
 // 没有记下位置的桌宠从屏幕右下角往左排：已经有桌宠站着的地方让开（窗口两边是透明的，按中间那段人物算），
@@ -194,7 +194,7 @@ function fitPetsToDisplays() {
         const b = pet.win.getBounds();
         const area = workAreaAt(b);
         const previous = { ...b, ...sizeOf(pet) };
-        const fitted = petPrefs.fitScale(pet.scale, area, pet.aspect);
+        const fitted = petPrefs.fitScale(pet.scale, area, pet.aspect, pet.kind);
         const scaleChanged = fitted !== pet.scale;
         pet.scale = fitted;
         const size = sizeOf(pet);
@@ -439,14 +439,15 @@ async function openPet(agentId, { anchor = null } = {}) {
     const outfit = outfitStore.pickOutfit(await listAgentOutfits(agentId).catch(() => []), saved?.outfit);
     if (pets.has(agentId)) return openPet(agentId);
     const outfitId = outfit?.id || null;
+    const kind = outfit?.kind;
     const aspect = outfitId ? savedAspect(saved, outfitId) : null;
     // 按桌宠所在的那块屏限制大小（getDisplayMatching 要完整的矩形，只给 x/y 会退回主屏）
     const savedSize = petPrefs.savedScale(saved);
-    const savedRect = hasSavedPosition(saved) ? { x: saved.x, y: saved.y, ...petPrefs.windowSizeForScale(savedSize, aspect) } : null;
-    const scale = petPrefs.fitScale(savedSize, workAreaAt(anchor || savedRect || screen.getPrimaryDisplay().workArea), aspect);
-    const size = petPrefs.windowSizeForScale(scale, aspect);
+    const savedRect = hasSavedPosition(saved) ? { x: saved.x, y: saved.y, ...petPrefs.windowSizeForScale(savedSize, aspect, kind) } : null;
+    const scale = petPrefs.fitScale(savedSize, workAreaAt(anchor || savedRect || screen.getPrimaryDisplay().workArea), aspect, kind);
+    const size = petPrefs.windowSizeForScale(scale, aspect, kind);
     // 旧版记的位置：按脚底对齐换到新尺寸，记下来以后就是新版的了
-    const legacy = anchor ? null : petPrefs.legacyPosition(saved, aspect, scale);
+    const legacy = anchor ? null : petPrefs.legacyPosition(saved, aspect, scale, kind);
     // 旧版记的大小也一起换成新版的记下来：之后记位置会标上新版，旧的大小就不能再留着
     const oldSize = saved?.scale != null && !(Number(saved.sizeVersion) >= petPrefs.SIZE_VERSION);
     if (legacy || oldSize) savePetState(agentId, { ...(legacy || {}), scale }).catch(() => {});
@@ -478,7 +479,7 @@ async function openPet(agentId, { anchor = null } = {}) {
         },
     });
     applyCaptureHiding(win);
-    const pet = { win, contents: win.webContents, agentId, scale, outfit: outfitId, aspect, ignoringMouse: true, interactive: false, hitPoll: null, drag: null, lastShape: '', wheel: 0, ready: false, pendingToggle: null, readyWaiters: [] };
+    const pet = { win, contents: win.webContents, agentId, scale, outfit: outfitId, kind, aspect, ignoringMouse: true, interactive: false, hitPoll: null, drag: null, lastShape: '', wheel: 0, ready: false, pendingToggle: null, readyWaiters: [] };
     // 上次藏在屏幕边里、位置没被挪过：接着藏，鼠标过来照样探出来
     const savedTuck = saved?.tuck;
     if (!anchor && savedTuck?.tucked && savedTuck?.outPos) {
@@ -966,12 +967,13 @@ function prefsFor(pet) {
  * 换了长宽比（换装、页面量出了形象的实际比例）后按新比例改窗口：脚底中点不动，大小档位不变，
  * 新比例在这块屏上放不下时缩到放得下。
  */
-function applyAspect(pet, aspect) {
+function applyAspect(pet, aspect, kind = pet?.kind) {
     if (!pet || pet.win.isDestroyed()) return false;
     const previous = { ...pet.win.getBounds(), ...sizeOf(pet) };
     const area = workAreaAt(previous);
     pet.aspect = aspect;
-    pet.scale = petPrefs.fitScale(pet.scale, area, aspect);
+    pet.kind = kind;
+    pet.scale = petPrefs.fitScale(pet.scale, area, aspect, kind);
     const size = sizeOf(pet);
     if (size.width === previous.width && size.height === previous.height) return false;
     const target = petPrefs.resizeAnchored(previous, size, area);
@@ -1012,7 +1014,7 @@ async function setPetOutfit(agentId, outfitId) {
     await savePetState(agentId, { outfit: outfitId });
     if (pet.win.isDestroyed() || pet.outfit !== outfitId) return false;
     // 没量过的形象先按默认比例开，页面量完会再报上来
-    applyAspect(pet, savedAspect(saved, outfitId));
+    applyAspect(pet, savedAspect(saved, outfitId), outfit.kind);
     pet.win.webContents.reload();
     controls?.refreshSettings();
     return true;
@@ -1030,7 +1032,7 @@ function setPetScale(agentId, scale) {
     if (!pet || pet.win.isDestroyed() || pet.drag) return null;
     const bounds = pet.win.getBounds();
     const area = workAreaAt(bounds);
-    const next = petPrefs.fitScale(scale, area, pet.aspect);
+    const next = petPrefs.fitScale(scale, area, pet.aspect, pet.kind);
     if (next === pet.scale) return pet.scale;
     // 脚底位置按算出来的旧宽高定，不用读回来的（系统可能多算了一两个像素）
     const previous = { ...bounds, ...sizeOf(pet) };
@@ -1185,7 +1187,7 @@ function listPetsForSettings() {
         agentId: pet.agentId,
         name: pet.name || pet.agentId,
         scale: pet.scale,
-        maxScale: petPrefs.maxScaleForWorkArea(workAreaAt(pet.win.getBounds()), pet.aspect),
+        maxScale: petPrefs.maxScaleForWorkArea(workAreaAt(pet.win.getBounds()), pet.aspect, pet.kind),
         visible: pet.win.isVisible(),
         outfit: pet.outfit,
         outfits: pet.outfits || [],
@@ -1214,7 +1216,7 @@ function opacityMenu() {
 
 function scaleMenu(pet) {
     const presets = [0.8, 1, 1.25, 1.5, 2, 2.5];
-    const max = petPrefs.maxScaleForWorkArea(workAreaAt(pet.win.getBounds()), pet.aspect);
+    const max = petPrefs.maxScaleForWorkArea(workAreaAt(pet.win.getBounds()), pet.aspect, pet.kind);
     const shortcut = process.platform === 'darwin' ? 'Cmd' : 'Ctrl';
     return [
         { label: `放大（${shortcut}+滚轮）`, enabled: pet.scale < max, click: () => stepPetScale(pet.agentId, 1) },
@@ -1523,7 +1525,10 @@ function registerIpc() {
         pet.name = assets.name;
         pet.outfits = assets.outfits;
         // 记着的那套已经删了：换成实际显示的这套。等待期间又换了装（连点卡片）就别把新选的盖回去
-        if (pet.outfit === wanted) pet.outfit = assets.outfit?.id || null;
+        if (pet.outfit === wanted) {
+            pet.outfit = assets.outfit?.id || null;
+            if (pet.kind !== assets.outfit?.kind) applyAspect(pet, null, assets.outfit?.kind);
+        }
         return { ...assets, session: sessions.get(pet.agentId) };
     });
     ipcMain.on('deskpet:preview-ready', (event, report) => {
@@ -1849,7 +1854,7 @@ function initialize(options) {
         preload: path.join(paths.projectRoot, 'preloads', 'deskpet.js'),
         pageUrl: (agentId) => assets.pageUrl(agentId, '&preview=1'),
         // 卡片快照按 2 倍画：比桌面上默认的大，缩进卡片里也清楚
-        windowSize: (aspect) => petPrefs.windowSizeForScale(2, aspect),
+        windowSize: (aspect, kind) => petPrefs.windowSizeForScale(2, aspect, kind),
     });
     coreInstaller = createCoreInstaller({ appDataRoot: paths.appDataRoot, fetch: (url, init) => net.fetch(url, init), probe: probeCore });
     createSettingsPage({

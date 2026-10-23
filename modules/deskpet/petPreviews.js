@@ -154,7 +154,7 @@ function createPetPreviews({ BrowserWindow, cacheRoot, pageUrl, preload, windowS
         current = next;
         next.id = String(++jobSeq);
         try {
-            const target = ensureWindow(windowSize(next.aspect));
+            const target = ensureWindow(windowSize(next.aspect, next.outfit.kind));
             next.timer = setTimeout(() => finish(null), RENDER_TIMEOUT_MS);
             target.webContents.loadURL(`${pageUrl(next.agentId, next.outfit.id)}&job=${next.id}`).catch(() => {});
         } catch (error) {

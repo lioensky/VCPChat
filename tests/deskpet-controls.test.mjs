@@ -512,6 +512,39 @@ test('picking a card opens the pet in that outfit, picking none closes it', asyn
     env.handlers.closeAll();
 });
 
+test('Codex outfits use a compact baseline through switching, scaling and reopening', async () => {
+    const env = await loadHandlers();
+    addOutfit(env, 'Nova', 'portrait', '立绘');
+    const dir = path.join(env.root, 'Agents', 'Nova', 'deskpet', 'sprite');
+    fs.mkdirSync(dir, { recursive: true });
+    await require('sharp')({ create: { width: 1536, height: 1872, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+        .png().toFile(path.join(dir, 'spritesheet.png'));
+    fs.writeFileSync(path.join(dir, 'pet.json'), JSON.stringify({ id: 'sprite', displayName: 'Sprite', spritesheetPath: 'spritesheet.png' }));
+    const choose = env.fake.handlers.get('deskpet-settings:choose');
+    await choose(fromMain(env), 'Nova', 'portrait');
+    const pet = env.petWindows()[0];
+    const original = pet.getBounds();
+    const reserve = prefs.UI_RESERVE + prefs.FOOT_RESERVE;
+    await choose(fromMain(env), 'Nova', 'sprite');
+    const compact = pet.getBounds();
+    assert.ok(Math.abs((compact.height - reserve) / (original.height - reserve) - 2 / 3) < 0.02);
+    assert.equal(compact.width, original.width, 'input and bubble width stays unchanged');
+    assert.deepEqual(bottomCenter(compact), bottomCenter(original), 'switching preserves the feet anchor');
+    await choose(fromMain(env), 'Nova', 'portrait');
+    assert.deepEqual(pet.getBounds(), original, 'other formats keep their original size');
+    await choose(fromMain(env), 'Nova', 'sprite');
+    await env.fake.handlers.get('deskpet-settings:set-scale')(fromMain(env), 'Nova', 1.5);
+    const larger = pet.getBounds();
+    assert.ok(Math.abs((larger.height - reserve) / (compact.height - reserve) - 1.5) < 0.03);
+    assert.deepEqual(bottomCenter(larger), bottomCenter(original));
+    await choose(fromMain(env), 'Nova', '');
+    const reopened = await choose(fromMain(env), 'Nova', 'sprite');
+    assert.equal(reopened.catalog.scale, 1.5, 'user scale survives reopening');
+    assert.deepEqual(env.petWindows()[0].getBounds(), larger, 'compact geometry and position survive reopening');
+    const area = { height: 500 };
+    assert.ok(prefs.maxScaleForWorkArea(area, 2, 'sprite') > prefs.maxScaleForWorkArea(area, 2, 'live2d'));
+});
+
 test('words typed in the settings preview wait until the pet page is ready, then the pet sends them', async () => {
     const env = await loadHandlers();
     const talk = env.fake.handlers.get('deskpet-settings:talk');

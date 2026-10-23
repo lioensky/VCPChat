@@ -14,6 +14,8 @@ const SIZE_FACTOR = 0.51;
 const PREVIOUS_SIZE_FACTOR = 0.6;
 const SIZE_VERSION = 3;
 const BASE_CHARACTER = Object.freeze({ width: 360 * SIZE_FACTOR, height: 430 * SIZE_FACTOR });
+// 精灵角色沿用 Codex 桌宠的小体量；气泡、输入框和胶囊仍按原来的尺寸排。
+const SPRITE_SIZE_FACTOR = 2 / 3;
 // 知道形象的长宽比（高 ÷ 宽，按不透明像素算）以后，角色区跟着比例走：
 // 半身立绘、Q 版（高宽比 1.6 以内）高度一致，宽度按比例收；竖长的全身像（2.6 以上）高约 275，
 // 中间平滑过渡。全身像的人比半身像小一截是自然的，但不至于高出半个屏幕。
@@ -96,14 +98,15 @@ function isAspect(aspect) {
 }
 
 /** 1 倍大小时角色区的宽高。aspect 是形象的高 ÷ 宽（页面量出来报给主进程），不知道时用默认的。 */
-function characterBox(aspect) {
-    if (!isAspect(aspect)) return BASE_CHARACTER;
+function characterBox(aspect, kind) {
+    const factor = kind === 'sprite' ? SPRITE_SIZE_FACTOR : 1;
+    if (!isAspect(aspect)) return { width: BASE_CHARACTER.width * factor, height: BASE_CHARACTER.height * factor };
     const a = Number(aspect);
     const tall = Math.min(1, Math.max(0, (a - FIGURE.tallFrom) / (FIGURE.tallTo - FIGURE.tallFrom)));
     const height = BASE_CHARACTER.height + (FIGURE.tallHeight - BASE_CHARACTER.height) * tall;
     // 两边留一点：Live2D 抬手、拖动时身子甩起来不碰窗口边
     const width = Math.min(FIGURE.maxWidth, (height / a) * FIGURE.sideRoom);
-    return { width, height };
+    return { width: width * factor, height: height * factor };
 }
 
 /**
@@ -111,7 +114,7 @@ function characterBox(aspect) {
  * 原样用左上角的话脚会离开原来站的地方（站在任务栏上的会悬空）。按角色脚底中点对齐算新的左上角。
  * scale 是换算后的新倍数；不是旧版记录、没有位置时返回 null。
  */
-function legacyPosition(saved, aspect, scale) {
+function legacyPosition(saved, aspect, scale, kind) {
     if (!saved || Number(saved.sizeVersion) >= SIZE_VERSION) return null;
     // 旧版量完形象就会记一次大小；没记过大小的是新版里还没改过大小的，不动
     if (!Number.isFinite(saved.x) || !Number.isFinite(saved.y) || saved.scale == null || !Number.isFinite(Number(saved.scale))) return null;
@@ -120,17 +123,17 @@ function legacyPosition(saved, aspect, scale) {
     const oldFactor = Number(saved.sizeVersion) >= 2 ? PREVIOUS_SIZE_FACTOR : 1;
     const oldWidth = Math.max(Number(saved.sizeVersion) >= 2 ? MIN_WIDTH : 280, roundToGrid((box.width / SIZE_FACTOR) * oldFactor * raw));
     const oldFeet = saved.y + UI_RESERVE + (box.height / SIZE_FACTOR) * oldFactor * raw;
-    const size = windowSizeForScale(scale, aspect);
+    const size = windowSizeForScale(scale, aspect, kind);
     return {
         x: Math.round(saved.x + (oldWidth - size.width) / 2),
-        y: Math.round(oldFeet - UI_RESERVE - box.height * clampScale(scale)),
+        y: Math.round(oldFeet - UI_RESERVE - characterBox(aspect, kind).height * clampScale(scale)),
     };
 }
 
 /** 某个大小对应的窗口宽高（DIP，4 的倍数）。 */
-function windowSizeForScale(scale, aspect) {
+function windowSizeForScale(scale, aspect, kind) {
     const s = clampScale(scale);
-    const box = characterBox(aspect);
+    const box = characterBox(aspect, kind);
     return {
         width: Math.max(MIN_WIDTH, roundToGrid(box.width * s)),
         height: roundToGrid(UI_RESERVE + box.height * s + FOOT_RESERVE),
@@ -138,9 +141,9 @@ function windowSizeForScale(scale, aspect) {
 }
 
 /** 这块工作区（显示器去掉任务栏）最多能放多大。 */
-function maxScaleForWorkArea(workArea, aspect) {
+function maxScaleForWorkArea(workArea, aspect, kind) {
     if (!workArea || !(workArea.height > 0)) return SCALE_MAX;
-    const fit = (workArea.height - UI_RESERVE - FOOT_RESERVE) / characterBox(aspect).height;
+    const fit = (workArea.height - UI_RESERVE - FOOT_RESERVE) / characterBox(aspect, kind).height;
     return Math.max(SCALE_MIN, Math.min(SCALE_MAX, Math.floor(fit * 20) / 20));
 }
 
@@ -157,8 +160,8 @@ function savedScale(saved) {
     return clampScale(raw * oldFactor / SIZE_FACTOR);
 }
 
-function fitScale(scale, workArea, aspect) {
-    return Math.min(clampScale(scale), maxScaleForWorkArea(workArea, aspect));
+function fitScale(scale, workArea, aspect, kind) {
+    return Math.min(clampScale(scale), maxScaleForWorkArea(workArea, aspect, kind));
 }
 
 /** 页面报上来的长宽比：不合理的值丢掉，其余保留两位小数（同一个形象每次量出来差一点点不算变了）。 */
