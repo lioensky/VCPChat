@@ -8,7 +8,6 @@ const files = [
     'styles/ui-next.css',
     'styles/ui-system/components.css',
     'styles/ui-system/tokens.css',
-    'styles/ui-system/appearance-studio.css',
     'styles/ui-system/ask-nova.css',
 ];
 const source = files.map(file => fs.readFileSync(file, 'utf8'));

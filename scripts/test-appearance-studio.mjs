@@ -123,20 +123,23 @@ window.uiManager = {
     }
 };
 window.uiHelperFunctions = { showToastNotification() {}, openModal() {} };
-const normalizePresentation = mode => ['bubble', 'panel', 'immersive'].includes(mode) ? mode : 'bubble';
+const normalizePresentation = mode => ['bubble', 'panel', 'immersive', 'messenger'].includes(mode) ? mode : 'bubble';
 let applyPresentation = async mode => {
     const normalized = normalizePresentation(mode);
     window.globalSettings.chatPresentationMode = normalized;
     window.document.body.classList.toggle('chat-presentation-bubble', normalized === 'bubble');
     window.document.body.classList.toggle('chat-presentation-panel', normalized === 'panel');
     window.document.body.classList.toggle('chat-presentation-immersive', normalized === 'immersive');
+    window.document.body.classList.toggle('chat-presentation-messenger', normalized === 'messenger');
     return { success: true, mode: normalized };
 };
 
+// The legacy flow below is the manual preview → apply mode; instant apply has its own block near the end.
+window.localStorage.setItem('vcp-appearance-studio-auto-apply', '0');
 window.eval(fs.readFileSync('modules/ui-system/lifecycle-scope.js', 'utf8'));
 window.eval(fs.readFileSync('modules/ui-system/appearance-engine.js', 'utf8'));
-window.eval(fs.readFileSync('modules/ui-system/appearance-studio.js', 'utf8'));
 window.eval(fs.readFileSync('modules/renderer/chat-header-style.js', 'utf8'));
+window.eval(fs.readFileSync('modules/ui-system/appearance-studio.js', 'utf8'));
 window.dispatchEvent(new CustomEvent('vcp-appearance-studio-configure', { detail: {
     settings: {
         get: () => structuredClone(window.globalSettings),
@@ -163,278 +166,327 @@ assert.equal(settingsAvatarSize.value, '32');
 
 const studio = window.VCPAppearanceStudio;
 assert.ok(studio);
-assert.equal(studio.PRESETS.focus.themeMode, undefined);
-assert.equal(studio.PRESETS.reading.themeMode, undefined);
-assert.equal(studio.open({ trigger: document.getElementById('nextUiAccountAppearanceStudioBtn') }), true);
-assert.equal(studio.isOpen(), true);
-await new Promise(resolve => setImmediate(resolve));
+const tick = () => new Promise(resolve => setImmediate(resolve));
+const closedModals = [];
+window.uiHelperFunctions.closeModal = id => { closedModals.push(id); };
 
-const drawer = document.getElementById('vcpAppearanceStudio');
-assert.ok(drawer);
-assert.equal(drawer.querySelector('.vcp-appearance-studio-header'), null);
-assert.ok(drawer.querySelector('.vcp-appearance-theme-section [data-studio-close]'));
-assert.ok(
-    [...drawer.querySelectorAll('.vcp-appearance-studio-section')].indexOf(drawer.querySelector('.vcp-appearance-studio-section-presets'))
-    < [...drawer.querySelectorAll('.vcp-appearance-studio-section')].indexOf(drawer.querySelector('[aria-labelledby="vcpAppearanceLayoutTitle"]')),
-    'quick presets should appear near the top, before detailed appearance controls'
-);
+// Stand-in for the side pane: one tab host, mounted while the "tab" is open.
+const host = document.createElement('div');
+document.body.append(host);
+let tabHandle = null;
+let openRequests = 0;
+const opener = {
+    async open() {
+        openRequests += 1;
+        if (!tabHandle) tabHandle = studio.mount(host, {});
+        return tabHandle;
+    },
+    async close() {
+        const handle = tabHandle;
+        tabHandle = null;
+        await handle?.dispose();
+    }
+};
+const view = () => host.querySelector('.side-appearance-root');
+const press = (key, value) => view()
+    .querySelector(`[data-appearance-key="${key}"][data-appearance-value="${value}"]`).click();
+const inputValue = (control, value) => {
+    control.value = String(value);
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+};
+const layoutVariables = () => document.getElementById('vcpAppearanceLayoutVariables').textContent;
+const rootData = () => document.documentElement.dataset;
+
 assert.deepEqual(
-    [...drawer.querySelectorAll('.vcp-appearance-studio-content > .vcp-appearance-studio-section[aria-labelledby]')]
-        .map(section => section.getAttribute('aria-labelledby')),
-    [
-        'vcpAppearanceThemeTitle',
-        'vcpAppearancePresetsTitle',
-        'vcpAppearanceLayoutTitle',
-        'vcpAppearanceGeometryTitle',
-        'vcpAppearanceReadingTitle',
-        'vcpAppearanceToolsTitle',
-        'vcpAppearanceMaterialTitle'
-    ],
-    'appearance settings remain one continuous panel with a predictable reading order'
+    Object.keys(studio.PRESETS),
+    ['balanced', 'minimal'],
+    'two presets only: the default look and the minimal capsule-header chat layout'
 );
-assert.match(drawer.textContent, /阅读区布局/);
-assert.match(drawer.textContent, /壁纸范围/);
-assert.equal(drawer.querySelectorAll('[data-appearance-key="wallpaperScope"]').length, 3);
-assert.match(drawer.textContent, /消息宽度/);
-assert.match(drawer.textContent, /主页视觉文字/);
-assert.match(drawer.textContent, /侧栏列表尺寸/);
-assert.equal(
-    drawer.querySelector('[data-studio-action="wallpaper"]'),
-    null,
-    'Appearance Studio must not add a Next-only entry for an upstream Classic plugin'
+assert.equal(studio.PRESETS.minimal.name, '极简');
+assert.equal(studio.PRESETS.minimal.presentation, 'messenger');
+assert.equal(studio.PRESETS.minimal.chatHeader, 'capsule');
+assert.equal(studio.PRESETS.balanced.chatHeader, 'classic');
+assert.equal(studio.PRESETS.minimal.themeMode, undefined);
+
+// Without an opener (a window with no side pane) the studio refuses instead of failing silently.
+assert.equal(studio.open(), false);
+assert.equal(studio.isOpen(), false);
+
+const unregisterOpener = studio.registerOpener(opener);
+assert.equal(studio.open({ trigger: document.getElementById('nextUiAccountAppearanceStudioBtn') }), true);
+await tick();
+assert.equal(studio.isOpen(), true);
+assert.equal(openRequests, 1);
+assert.ok(view(), 'the studio renders inside the side pane tab host');
+assert.equal(document.getElementById('vcpAppearanceStudio'), null, 'no full-window overlay is created any more');
+assert.equal(document.documentElement.classList.contains('vcp-appearance-studio-host'), false);
+assert.equal(host.classList.contains('side-appearance-view'), true);
+
+// Layout: presets first, then six accordion sections; only layout starts expanded.
+const sections = [...view().querySelectorAll('details.side-appearance-section')];
+assert.deepEqual(sections.map(section => section.dataset.section), ['layout', 'tools', 'shape', 'type', 'home', 'theme']);
+assert.deepEqual(sections.map(section => section.open), [true, false, false, false, false, false],
+    'theme and palette stay folded until asked for');
+assert.ok(
+    view().querySelector('.side-appearance-presets').compareDocumentPosition(sections[0])
+        & window.Node.DOCUMENT_POSITION_FOLLOWING,
+    'presets appear before the detailed sections'
 );
-assert.match(drawer.textContent, /头像大小/);
-assert.match(drawer.textContent, /侧栏列表圆角/);
-assert.match(drawer.textContent, /直角 · 0px/);
-assert.match(drawer.textContent, /圆润 · 14px/);
-assert.equal(drawer.querySelectorAll('[data-appearance-key="radius"]').length, 5);
-assert.ok(drawer.querySelector('[data-appearance-key="customRadius"]').classList.contains('vcp-ui-range'), 'studio ranges use the shared VCPUI design');
-assert.match(drawer.textContent, /控制整个聊天阅读区/);
-assert.match(drawer.textContent, /控制单条消息的最大宽度/);
-drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpHomeVisual, 'hidden');
-const studioTaglineInput = drawer.querySelector('[data-home-tagline-input]');
-assert.equal(studioTaglineInput.value, '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
-studioTaglineInput.value = '自定义首页寄语';
-studioTaglineInput.dispatchEvent(new Event('input', { bubbles: true }));
-drawer.querySelector('[data-appearance-key="homeTagline"][data-appearance-value="hidden"]').click();
-await new Promise(resolve => setImmediate(resolve));
+assert.equal(view().querySelectorAll('[data-appearance-preset]').length, 2);
+assert.equal(view().querySelectorAll('[data-appearance-key="wallpaperScope"]').length, 3);
+assert.equal(view().querySelectorAll('[data-appearance-key="radius"]').length, 5);
+assert.ok(
+    view().querySelector('[data-appearance-key="customRadius"]').classList.contains('vcp-ui-range'),
+    'studio ranges use the shared VCPUI design'
+);
+assert.equal(view().querySelector('[data-row="customRadius"]').hidden, true,
+    'the custom radius slider only shows when it matters');
+assert.ok(view().querySelector('[data-section-summary="layout"]').textContent.includes('气泡'));
+
+// Controls that never had a visible effect are gone.
+for (const key of [
+    'sidebarAvatarSize', 'surfaceBlur', 'surfaceOpacity', 'surfaceSaturation', 'surfaceBrightness',
+    'surfaceBorder', 'surfaceShadow', 'surfaceSheen', 'surfaceEffect'
+]) {
+    assert.equal(view().querySelector(`[data-appearance-key="${key}"]`), null, `${key} is no longer exposed`);
+}
+assert.equal(view().querySelector('[data-material-details]'), null);
+assert.doesNotMatch(view().textContent, /头像大小|磨砂|Acrylic|Liquid/);
+assert.equal(view().querySelector('[data-unsaved-confirm]'), null);
+assert.equal(view().querySelector('[data-studio-action="wallpaper"]'), null,
+    'Appearance Studio must not add a Next-only entry for an upstream Classic plugin');
+assert.equal(view().querySelector('[data-studio-save]').disabled, true);
+assert.equal(view().querySelector('[data-studio-status]').textContent, '已同步');
+
+// Section open state is remembered across tab reopen.
+sections[5].open = true;
+sections[5].dispatchEvent(new window.Event('toggle'));
+sections[0].open = false;
+sections[0].dispatchEvent(new window.Event('toggle'));
+
+// Presets.
+assert.equal(view().querySelector('[data-current-preset]').textContent, '默认');
+view().querySelector('[data-appearance-preset="minimal"]').click();
+await tick();
+assert.equal(document.body.classList.contains('chat-header-capsule'), true, 'minimal turns the chat header into a capsule');
+assert.equal(document.body.classList.contains('chat-presentation-messenger'), true, 'minimal uses the conversation layout');
+assert.equal(rootData().vcpRadius, 'medium', 'a preset never changes corner radius');
+assert.equal(view().querySelector('[data-current-preset]').textContent, '极简');
+assert.equal(view().querySelector('[data-appearance-preset="minimal"]').getAttribute('aria-pressed'), 'true');
+assert.equal(view().querySelector('[data-studio-status]').textContent, '预览中 · 未应用');
+assert.equal(view().querySelector('[data-studio-save]').disabled, false);
+press('chatHeader', 'classic');
+await tick();
+assert.equal(view().querySelector('[data-current-preset]').textContent, '自定义', 'tweaking a preset field leaves the preset');
+view().querySelector('[data-appearance-preset="balanced"]').click();
+await tick();
+assert.equal(document.body.classList.contains('chat-header-capsule'), false);
+assert.equal(view().querySelector('[data-studio-status]').textContent, '已同步',
+    'returning to the saved look leaves nothing to apply');
+assert.equal(view().querySelector('[data-studio-save]').disabled, true);
+
+// Direct controls.
+press('homeVisual', 'hidden');
+await tick();
+assert.equal(rootData().vcpHomeVisual, 'hidden');
+const taglineInput = view().querySelector('[data-home-tagline-input]');
+assert.equal(taglineInput.value, '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
+inputValue(taglineInput, '自定义首页寄语');
+press('homeTagline', 'hidden');
+await tick();
 assert.equal(document.getElementById('nextUiEmptyTagline').textContent, '自定义首页寄语');
 assert.equal(document.getElementById('nextUiEmptyTagline').hidden, true);
-const sidebarRowHeight = drawer.querySelector('[data-appearance-key="sidebarRowHeight"]');
-sidebarRowHeight.value = '58';
-sidebarRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
-await new Promise(resolve => setImmediate(resolve));
-assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:58px/);
-assert.equal(drawer.querySelector('[data-appearance-output="sidebarRowHeight"]').textContent, '58px');
-assert.equal(drawer.querySelector('[data-appearance-output="sidebarAvatarSize"]').textContent, '44px');
-const sidebarAvatarSize = drawer.querySelector('[data-appearance-key="sidebarAvatarSize"]');
-sidebarAvatarSize.value = '48';
-sidebarAvatarSize.dispatchEvent(new Event('input', { bubbles: true }));
-await new Promise(resolve => setImmediate(resolve));
-assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-avatar-size:48px/);
-const geometryRadius = drawer.querySelector('.vcp-appearance-geometry-radius [data-appearance-key="sidebarRadius"][data-appearance-value="round"]');
-geometryRadius.click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'round');
-const customRadius = drawer.querySelector('[data-appearance-key="customRadius"]');
-customRadius.value = '17';
-customRadius.dispatchEvent(new Event('input', { bubbles: true }));
-drawer.querySelector('[data-appearance-key="radius"][data-appearance-value="custom"]').click();
-drawer.querySelector('.vcp-appearance-geometry-radius [data-appearance-key="sidebarRadius"][data-appearance-value="custom"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpRadius, 'custom');
-assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'custom');
-assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-custom-radius:17px/);
-assert.doesNotMatch(drawer.textContent, /内容宽度/);
-drawer.querySelector('[data-appearance-key="wallpaperScope"][data-appearance-value="global"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpWallpaperScopePreference, 'global');
-assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'global');
-drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
-await new Promise(resolve => setImmediate(resolve));
+inputValue(view().querySelector('[data-appearance-key="sidebarRowHeight"]'), 58);
+await tick();
+assert.match(layoutVariables(), /--vcp-appearance-sidebar-row-height:58px/);
+assert.match(layoutVariables(), /--vcp-appearance-sidebar-avatar-size:44px/,
+    'avatar size follows the row height automatically');
+assert.equal(view().querySelector('[data-appearance-output="sidebarRowHeight"]').textContent, '58px');
+press('radius', 'custom');
+inputValue(view().querySelector('[data-appearance-key="customRadius"]'), 17);
+await tick();
+assert.equal(rootData().vcpRadius, 'custom');
+assert.match(layoutVariables(), /--vcp-appearance-custom-radius:17px/);
+press('wallpaperScope', 'global');
+await tick();
+assert.equal(rootData().vcpWallpaperScopePreference, 'global');
+assert.equal(rootData().vcpWallpaperScope, 'global');
+press('messageWidth', 'wide');
+await tick();
 assert.equal(document.body.classList.contains('chat-wide-layout'), true);
-assert.equal(drawer.querySelectorAll('[data-appearance-key="uiMode"]').length, 0);
+press('density', 'compact');
+assert.equal(rootData().vcpDensity, 'compact');
+press('presentation', 'panel');
+await tick();
+assert.equal(document.body.classList.contains('chat-presentation-panel'), true);
 assert.equal(document.documentElement.dataset.uiMode, 'next');
-assert.equal(drawer.querySelectorAll('[data-theme-file-name]').length, 2);
-assert.equal(drawer.querySelector('[data-theme-file-name="themes默认.css"]').classList.contains('active'), true);
-assert.equal(drawer.querySelectorAll('.vcp-appearance-theme-mode button').length, 3);
-assert.equal(drawer.querySelectorAll('.vcp-appearance-theme-preview-system').length, 0);
-drawer.querySelector('[data-theme-file-name="themes森林.css"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(drawer.querySelector('[data-theme-file-name="themes森林.css"]').classList.contains('active'), true);
-assert.ok(document.getElementById('vcpAppearanceThemePreview'));
-const detailMenu = drawer.querySelector('[data-radius-details]');
+assert.equal(view().querySelectorAll('[data-appearance-key="uiMode"]').length, 0);
+
+// Per-region radius lives behind a disclosure.
+const detailMenu = view().querySelector('[data-radius-details]');
 assert.ok(detailMenu);
-const materialMenu = drawer.querySelector('[data-material-details]');
-assert.ok(materialMenu);
-assert.equal(materialMenu.open, false, 'advanced material parameters are collapsed by default');
-assert.equal(materialMenu.querySelectorAll('input[type="range"]').length, 7);
-assert.equal(materialMenu.querySelectorAll('[data-material-effect]').length, 0, 'material recipes stay outside the advanced disclosure');
-assert.equal(drawer.querySelectorAll('.vcp-appearance-material-overview [data-material-effect]').length, 4);
-assert.equal(drawer.querySelectorAll('.vcp-appearance-material-overview [data-appearance-key="surface"]').length, 3);
-assert.equal(materialMenu.querySelector('[data-appearance-key="surfaceOpacity"]').style.getPropertyValue('--vcp-ui-range-progress'), '60%');
-assert.equal(materialMenu.querySelector('[data-appearance-key="surfaceShadow"]').style.getPropertyValue('--vcp-ui-range-progress'), '18%');
-materialMenu.open = true;
-const blurControl = materialMenu.querySelector('[data-appearance-key="surfaceBlur"]');
-blurControl.value = '32';
-blurControl.dispatchEvent(new Event('input', { bubbles: true }));
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpSurface, 'custom');
-assert.equal(drawer.querySelector('[data-material-details-status]').textContent, 'Vibrancy · 自定义');
-assert.equal(drawer.querySelector('[data-material-output="surfaceBlur"]').textContent, '32px');
-assert.equal(blurControl.style.getPropertyValue('--vcp-ui-range-progress'), '80%');
-assert.match(document.getElementById('vcpAppearanceMaterialVariables').textContent, /--vcp-material-blur:32px/);
-drawer.querySelector('[data-material-effect="acrylic"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpSurfaceEffect, 'acrylic');
-assert.equal(drawer.querySelector('[data-material-details-status]').textContent, 'Acrylic · 自定义');
-assert.equal(drawer.querySelector('[data-material-output="surfaceSaturation"]').textContent, '125%');
-drawer.querySelector('[data-material-effect="liquid"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpSurfaceEffect, 'liquid');
-assert.equal(drawer.querySelector('[data-material-details-status]').textContent, 'Liquid Glass · 自定义');
-assert.equal(drawer.querySelector('[data-material-output="surfaceSheen"]').textContent, '38%');
-materialMenu.querySelector('[data-reset-material]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpSurface, 'translucent');
-assert.equal(drawer.querySelector('[data-material-details-status]').textContent, '主题原样');
-assert.equal(drawer.querySelector('[data-material-output="surfaceBlur"]').textContent, '24px');
-assert.equal(blurControl.style.getPropertyValue('--vcp-ui-range-progress'), '60%');
-assert.equal(detailMenu.querySelector('[data-appearance-key="composerRadius"]').value, 'tuned');
+assert.equal(detailMenu.open, false);
+assert.equal(detailMenu.querySelectorAll('select[data-appearance-key]').length, 4);
 detailMenu.open = true;
-assert.equal(detailMenu.querySelector('[data-appearance-key="sidebarRadius"]'), null, 'sidebar radius is not duplicated inside detail radius controls');
 const shellRadius = detailMenu.querySelector('[data-appearance-key="shellRadius"]');
 shellRadius.value = 'round';
 shellRadius.dispatchEvent(new Event('change', { bubbles: true }));
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpShellRadius, 'round');
-assert.equal(drawer.querySelector('[data-radius-details-status]').textContent, '1 项自定义');
-drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
-assert.equal(document.documentElement.dataset.vcpDensity, 'compact');
-drawer.querySelector('[data-appearance-key="presentation"][data-appearance-value="panel"]').click();
-assert.equal(document.body.classList.contains('chat-presentation-panel'), true);
-drawer.querySelector('[data-appearance-key="themeMode"][data-appearance-value="light"]').click();
-assert.equal(document.body.classList.contains('light-theme'), true);
-drawer.querySelector('[data-appearance-preset="focus"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.body.classList.contains('light-theme'), true, 'presets must preserve the active theme mode');
-assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'global', 'presets must preserve the wallpaper scope');
+await tick();
+assert.equal(rootData().vcpShellRadius, 'round');
+assert.equal(view().querySelector('[data-radius-details-status]').textContent, '1 项独立');
 
-await studio.close({ rollback: true });
+// Theme section.
+assert.equal(view().querySelectorAll('[data-theme-file-name]').length, 2);
+assert.equal(view().querySelector('[data-theme-file-name="themes默认.css"]').classList.contains('active'), true);
+assert.equal(view().querySelectorAll('[data-appearance-key="themeMode"]').length, 3);
+view().querySelector('[data-theme-file-name="themes森林.css"]').click();
+await tick();
+assert.equal(view().querySelector('[data-theme-file-name="themes森林.css"]').classList.contains('active'), true);
+assert.ok(document.getElementById('vcpAppearanceThemePreview'));
+press('themeMode', 'light');
+await tick();
+assert.equal(document.body.classList.contains('light-theme'), true);
+view().querySelector('[data-appearance-preset="minimal"]').click();
+await tick();
+assert.equal(document.body.classList.contains('light-theme'), true, 'presets must preserve the active theme mode');
+assert.equal(rootData().vcpWallpaperScope, 'global', 'presets must preserve the wallpaper scope');
+assert.equal(view().querySelector('[data-theme-file-name="themes森林.css"]').classList.contains('active'), true,
+    'presets must preserve the colour theme');
+
+// Closing the tab rolls back anything that was only previewed.
+await studio.close();
 assert.equal(studio.isOpen(), false);
-assert.equal(document.documentElement.dataset.vcpDensity, 'comfortable');
-assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'tuned');
-assert.equal(document.documentElement.dataset.vcpWallpaperScopePreference, 'theme');
-assert.equal(document.documentElement.dataset.vcpWallpaperScope, 'panel');
+assert.equal(view(), null);
+assert.equal(host.classList.contains('side-appearance-view'), false);
+assert.equal(rootData().vcpDensity, 'comfortable');
+assert.equal(rootData().vcpRadius, 'medium');
+assert.equal(rootData().vcpShellRadius, 'tuned');
+assert.equal(rootData().vcpWallpaperScopePreference, 'theme');
+assert.equal(rootData().vcpWallpaperScope, 'panel');
 assert.equal(document.body.classList.contains('dark-theme'), true);
 assert.equal(document.body.classList.contains('chat-presentation-bubble'), true);
 assert.equal(document.body.classList.contains('chat-wide-layout'), false);
-assert.equal(document.documentElement.dataset.vcpHomeVisual, 'shown');
-assert.equal(document.documentElement.dataset.vcpHomeTagline, 'shown');
+assert.equal(rootData().vcpHomeVisual, 'shown');
+assert.equal(rootData().vcpHomeTagline, 'shown');
 assert.equal(document.getElementById('nextUiEmptyTagline').textContent, '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
-assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:46px/);
-assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-avatar-size:32px/);
+assert.match(layoutVariables(), /--vcp-appearance-sidebar-row-height:46px/);
+assert.match(layoutVariables(), /--vcp-appearance-sidebar-avatar-size:32px/);
 assert.equal(document.getElementById('vcpAppearanceThemePreview'), null);
 assert.deepEqual(window.chatAPI.appliedColorThemes, []);
+assert.deepEqual(window.chatAPI.saved, [], 'a discarded preview never reaches storage');
 
+// The folded sections stay as the user left them.
+studio.open();
+await tick();
+assert.deepEqual(
+    [...view().querySelectorAll('details.side-appearance-section')].map(section => section.open),
+    [false, false, false, false, false, true]
+);
+await studio.close();
+
+// Opening from the global settings card hands the form values to the tab and folds the modal away.
 document.getElementById('appearanceDensity').value = 'compact';
 document.querySelector('input[name="chatPresentationMode"][value="panel"]').checked = true;
 document.getElementById('appearanceDensity').dispatchEvent(new Event('change', { bubbles: true }));
 assert.equal(document.querySelector('[data-appearance-summary-density]').textContent, '紧凑');
 assert.equal(document.querySelector('[data-appearance-summary-presentation]').textContent, '面板');
 document.getElementById('openAppearanceStudioFromSettings').click();
-assert.equal(document.documentElement.dataset.vcpDensity, 'compact');
+await tick();
+assert.deepEqual(closedModals, ['globalSettingsModal']);
+assert.equal(studio.isOpen(), true);
+assert.equal(rootData().vcpDensity, 'compact');
 assert.equal(document.body.classList.contains('chat-presentation-panel'), true);
-await studio.close({ rollback: true });
-assert.equal(document.documentElement.dataset.vcpDensity, 'comfortable');
+// Triggering again while the tab is open merges the form values instead of resetting the session.
+document.getElementById('appearanceDensity').value = 'relaxed';
+document.getElementById('openAppearanceStudioFromSettings').click();
+await tick();
+assert.equal(openRequests >= 3, true);
+assert.equal(rootData().vcpDensity, 'relaxed');
+await studio.close();
+assert.equal(rootData().vcpDensity, 'comfortable');
+document.getElementById('appearanceDensity').value = 'comfortable';
+document.querySelector('input[name="chatPresentationMode"][value="bubble"]').checked = true;
+document.getElementById('appearanceDensity').dispatchEvent(new Event('change', { bubbles: true }));
 
+// Reset and revert.
 studio.open();
-await new Promise(resolve => setImmediate(resolve));
+await tick();
 studio.setThemeMode('dark', { persist: false, source: 'preset-theme-independence-test' });
-drawer.querySelector('[data-appearance-preset="reading"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.body.classList.contains('dark-theme'), true, 'reading preset must not force light mode');
-drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
-drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
-studioTaglineInput.value = '为想象力打开新的边界';
-studioTaglineInput.dispatchEvent(new Event('input', { bubbles: true }));
-drawer.querySelector('[data-appearance-key="homeTagline"][data-appearance-value="hidden"]').click();
-await new Promise(resolve => setImmediate(resolve));
-drawer.querySelector('[data-reset-section="layout"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.uiMode, 'next', 'layout reset must preserve the canonical presentation');
-assert.equal(document.documentElement.dataset.vcpContentWidth, 'full');
+view().querySelector('[data-appearance-preset="minimal"]').click();
+await tick();
+assert.equal(document.body.classList.contains('dark-theme'), true, 'preset must not force light mode');
+press('messageWidth', 'wide');
+view().querySelector('[data-reset-all]').click();
+await tick();
+assert.equal(rootData().vcpTypography, 'humanist');
+assert.equal(rootData().vcpContentWidth, 'full');
 assert.equal(document.body.classList.contains('chat-wide-layout'), false);
-assert.equal(document.documentElement.dataset.vcpHomeVisual, 'shown');
-assert.equal(document.documentElement.dataset.vcpDensity, 'relaxed', 'layout reset must not reset component geometry');
-drawer.querySelector('[data-reset-section="geometry"]').click();
-assert.equal(document.documentElement.dataset.vcpDensity, 'comfortable');
-assert.equal(document.documentElement.dataset.vcpRadius, 'medium');
-drawer.querySelector('[data-reset-all]').click();
-assert.equal(document.documentElement.dataset.vcpTypography, 'humanist');
 assert.equal(document.body.classList.contains('chat-presentation-bubble'), true);
-drawer.querySelector('[data-appearance-preset="reading"]').click();
-await new Promise(resolve => setImmediate(resolve));
-drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
-drawer.querySelector('[data-appearance-key="wallpaperScope"][data-appearance-value="global"]').click();
-sidebarRowHeight.value = '54';
-sidebarRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
-sidebarAvatarSize.value = '40';
-sidebarAvatarSize.dispatchEvent(new Event('input', { bubbles: true }));
-drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
-studioTaglineInput.value = '为想象力打开新的边界';
-studioTaglineInput.dispatchEvent(new Event('input', { bubbles: true }));
-drawer.querySelector('[data-appearance-key="homeTagline"][data-appearance-value="hidden"]').click();
-drawer.querySelector('[data-appearance-key="chatHeader"][data-appearance-value="capsule"]').click();
-await new Promise(resolve => setImmediate(resolve));
+press('density', 'compact');
+assert.equal(rootData().vcpDensity, 'compact');
+view().querySelector('[data-studio-revert]').click();
+await tick();
+assert.equal(rootData().vcpDensity, 'comfortable', 'revert returns to the saved look');
+assert.equal(view().querySelector('[data-studio-save]').disabled, true);
+
+// Saving.
+view().querySelector('[data-appearance-preset="minimal"]').click();
+press('presentation', 'immersive');
+press('typography', 'serif');
+press('radius', 'round');
+press('messageWidth', 'wide');
+press('chatHeader', 'capsule');
 assert.equal(document.body.classList.contains('chat-header-capsule'), true, 'header style previews immediately');
-drawer.querySelector('[data-theme-file-name="themes森林.css"]').click();
-drawer.querySelector('[data-appearance-key="toolPresentation"][data-appearance-value="grouped"]').click();
-drawer.querySelector('[data-appearance-key="toolExpansion"][data-appearance-value="none"]').click();
-assert.equal(drawer.querySelector('[data-appearance-key="toolBubbleMotion"]'), null);
-await new Promise(resolve => setImmediate(resolve));
+press('toolPresentation', 'grouped');
+press('toolExpansion', 'none');
 assert.equal(window.VCPAppearance.getCurrent().toolPresentation, 'grouped', 'tool mode previews immediately');
-assert.equal(document.documentElement.dataset.vcpToolBubbleMotion, undefined);
-drawer.querySelector('[data-studio-save]').click();
-await new Promise(resolve => setImmediate(resolve));
+press('wallpaperScope', 'global');
+inputValue(view().querySelector('[data-appearance-key="sidebarRowHeight"]'), 54);
+press('homeVisual', 'hidden');
+inputValue(view().querySelector('[data-home-tagline-input]'), '为想象力打开新的边界');
+press('homeTagline', 'hidden');
+await tick();
+view().querySelector('[data-theme-file-name="themes森林.css"]').click();
+await tick();
+view().querySelector('[data-studio-save]').click();
+await tick();
+await tick();
 assert.equal(window.chatAPI.saved.length, 1);
-assert.equal(Object.hasOwn(window.chatAPI.saved[0], 'uiMode'), false,
+const saved = window.chatAPI.saved[0];
+assert.equal(Object.hasOwn(saved, 'uiMode'), false,
     'Appearance Studio must not write the retired main-window presentation field');
-assert.equal(window.chatAPI.saved[0].appearanceProfile.typography, 'serif');
-assert.equal(window.chatAPI.saved[0].appearanceProfile.toolPresentation, 'grouped');
-assert.equal(window.chatAPI.saved[0].appearanceProfile.toolExpansion, 'none');
-assert.equal(Object.hasOwn(window.chatAPI.saved[0].appearanceProfile, 'toolBubbleMotion'), false);
-assert.equal(window.chatAPI.saved[0].chatPresentationMode, 'immersive');
-assert.equal(window.chatAPI.saved[0].enableWideChatLayout, true);
-assert.equal(window.chatAPI.saved[0].chatHeaderStyle, 'capsule');
-assert.equal(window.chatAPI.saved[0].showHomeVisualBrand, false);
-assert.equal(window.chatAPI.saved[0].showHomeVisualTagline, false);
-assert.equal(window.chatAPI.saved[0].homeVisualTagline, '为想象力打开新的边界');
-assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarRowHeight, 54);
-assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarAvatarSize, 40);
-assert.equal(window.chatAPI.saved[0].appearanceProfile.wallpaperScope, 'global');
-assert.equal(window.globalSettings.enableWideChatLayout, true);
+assert.equal(saved.appearanceProfile.typography, 'serif');
+assert.equal(saved.chatPresentationMode, 'immersive');
+assert.equal(saved.enableWideChatLayout, true);
+assert.equal(saved.showHomeVisualBrand, false);
+assert.equal(saved.showHomeVisualTagline, false);
+assert.equal(saved.homeVisualTagline, '为想象力打开新的边界');
+assert.equal(saved.appearanceProfile.sidebarRowHeight, 54);
+assert.equal(saved.appearanceProfile.wallpaperScope, 'global');
+assert.equal(saved.appearanceProfile.toolPresentation, 'grouped');
+assert.equal(saved.appearanceProfile.toolExpansion, 'none');
+assert.equal(saved.chatHeaderStyle, 'capsule');
 assert.equal(window.globalSettings.chatHeaderStyle, 'capsule');
+assert.equal(window.globalSettings.enableWideChatLayout, true);
 assert.equal(window.globalSettings.showHomeVisualBrand, false);
-assert.equal(window.globalSettings.showHomeVisualTagline, false);
 assert.equal(window.globalSettings.homeVisualTagline, '为想象力打开新的边界');
+assert.equal(window.globalSettings.appearanceProfile.radius, 'round');
 assert.equal(document.getElementById('showHomeVisualBrand').checked, false);
 assert.equal(document.getElementById('appearanceSidebarRowHeightValue').value, '54px');
-assert.equal(document.getElementById('appearanceSidebarAvatarSizeValue').value, '40px');
 assert.equal(document.getElementById('appearanceWallpaperScope').value, 'global');
-assert.equal(document.getElementById('appearanceSidebarRadius').value, 'tuned');
-assert.equal(document.getElementById('appearanceCustomRadiusValue').value, '14px');
 assert.equal(document.getElementById('chatLayoutModeWide').checked, true);
-assert.equal(window.globalSettings.appearanceProfile.radius, 'round');
 assert.deepEqual(window.chatAPI.appliedColorThemes, ['themes森林.css']);
-assert.equal(studio.isOpen(), false);
+assert.equal(studio.isOpen(), true, 'applying keeps the tab open');
+assert.equal(view().querySelector('[data-studio-status]').textContent, '已同步');
+assert.equal(view().querySelector('[data-studio-save]').disabled, true);
+await studio.close();
+assert.equal(rootData().vcpTypography, 'serif', 'closing after applying keeps the applied look');
 
+// A stale snapshot must not roll back a newer committed revision.
 studio.open();
-await new Promise(resolve => setImmediate(resolve));
-drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
-await new Promise(resolve => setImmediate(resolve));
+await tick();
+press('density', 'compact');
+await tick();
 window.globalSettings.appearanceProfile = {
     ...window.globalSettings.appearanceProfile,
     density: 'relaxed',
@@ -443,50 +495,31 @@ window.VCPAppearance.commit(window.globalSettings.appearanceProfile, {
     uiMode: 'next',
     source: 'concurrent-settings-save',
 });
-await studio.close({ rollback: true });
-assert.equal(document.documentElement.dataset.vcpDensity, 'relaxed', 'a stale studio snapshot must not roll back a newer committed revision');
+await studio.close();
+assert.equal(rootData().vcpDensity, 'relaxed',
+    'a stale studio snapshot must not roll back a newer committed revision');
 
 assert.equal(studio.setThemeMode('dark', { source: 'test-theme-toggle' }), true);
 assert.equal(window.globalSettings.currentThemeMode, 'dark');
 assert.equal(document.body.classList.contains('dark-theme'), true);
 assert.equal(window.chatAPI.themes.at(-1), 'dark');
 
-assert.equal(studio.open({ trigger: document.getElementById('openAppearanceStudioFromSettings') }), true);
-assert.equal(studio.isOpen(), true, 'canonical layout must reopen the same appearance drawer');
-await studio.close({ rollback: true });
-assert.equal(document.documentElement.dataset.uiMode, 'next');
-assert.equal(document.documentElement.classList.contains('vcp-appearance-studio-host'), false);
-
+// An external settings change is followed while nothing is being previewed.
 studio.open();
-drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
-await new Promise(resolve => setImmediate(resolve));
-drawer.querySelector('[data-studio-close]').click();
-await Promise.resolve();
-const unsavedPrompt = drawer.querySelector('[data-unsaved-confirm]');
-assert.equal(unsavedPrompt.hidden, false, 'closing a dirty drawer must show the unsaved-changes prompt');
-assert.equal(studio.isOpen(), true, 'the drawer stays open while the user decides');
-assert.equal(drawer.querySelector('.vcp-appearance-studio').inert, true, 'background controls are inert while confirming');
-drawer.querySelector('[data-unsaved-action="continue"]').click();
-assert.equal(unsavedPrompt.hidden, true);
-assert.equal(studio.isOpen(), true, 'continue editing dismisses only the prompt');
-drawer.querySelector('[data-studio-close]').click();
-await Promise.resolve();
-drawer.querySelector('[data-unsaved-action="discard"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(studio.isOpen(), false, 'discard closes the drawer');
-assert.equal(document.documentElement.dataset.vcpDensity, 'relaxed', 'discard restores the saved snapshot');
+await tick();
+window.globalSettings.appearanceProfile = { ...window.globalSettings.appearanceProfile, density: 'compact' };
+window.dispatchEvent(new CustomEvent('global-settings-updated', {
+    detail: { settings: window.globalSettings, source: 'external-test' }
+}));
+await tick();
+assert.equal(
+    view().querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').getAttribute('aria-pressed'),
+    'true'
+);
+assert.equal(view().querySelector('[data-studio-save]').disabled, true, 'following an external change leaves nothing dirty');
+await studio.close();
 
-studio.open();
-drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
-await new Promise(resolve => setImmediate(resolve));
-drawer.querySelector('[data-studio-cancel]').click();
-await Promise.resolve();
-drawer.querySelector('[data-unsaved-action="save"]').click();
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(studio.isOpen(), false, 'save and close persists changes before closing');
-assert.equal(window.globalSettings.appearanceProfile.density, 'compact');
-assert.equal(window.chatAPI.saved.length, 2);
-
+// Failed save: persisted settings and the live preview are both restored.
 const savedBeforeFailedApply = window.chatAPI.saved.length;
 const persistedBeforeFailedApply = {
     appearanceProfile: structuredClone(window.globalSettings.appearanceProfile),
@@ -508,69 +541,118 @@ applyPresentation = async (...args) => {
     return originalApplyPresentation(...args);
 };
 studio.open();
-drawer.querySelector('[data-appearance-key="density"][data-appearance-value="comfortable"]').click();
-await new Promise(resolve => setImmediate(resolve));
+await tick();
+press('density', 'comfortable');
+await tick();
 failCommittedPresentationApply = true;
-drawer.querySelector('[data-studio-save]').click();
-await new Promise(resolve => setImmediate(resolve));
-await new Promise(resolve => setImmediate(resolve));
+view().querySelector('[data-studio-save]').click();
+await tick();
+await tick();
 assert.equal(window.chatAPI.saved.length, savedBeforeFailedApply + 2,
     'a local apply failure after persistence must issue a compensating settings write');
-assert.equal(JSON.stringify(window.chatAPI.saved.at(-1)), JSON.stringify(persistedBeforeFailedApply),
+assert.deepEqual(window.chatAPI.saved.at(-1), persistedBeforeFailedApply,
     'the compensating write must restore the complete persisted appearance snapshot');
-assert.equal(document.documentElement.dataset.vcpDensity, 'compact',
+assert.equal(rootData().vcpDensity, 'compact',
     'failed local apply must restore the in-memory appearance snapshot');
-assert.equal(studio.isOpen(), true, 'failed save keeps the studio open for correction');
-await studio.close({ rollback: true });
+assert.equal(studio.isOpen(), true, 'failed save keeps the tab open for correction');
+await studio.close();
 applyPresentation = originalApplyPresentation;
 
-const originalTopTabManager = window.topTabManager;
-let rejectFirstOverlay;
-const overlayOwners = [];
-const releasedOverlayOwners = [];
-window.topTabManager = {
-    acquireOverlay: owner => {
-        overlayOwners.push(owner);
-        if (overlayOwners.length === 1) {
-            return new Promise((_, reject) => { rejectFirstOverlay = reject; });
-        }
-        return Promise.resolve(owner);
-    },
-    releaseOverlay: owner => { releasedOverlayOwners.push(owner); },
-};
+// Close racing a reopen leaves exactly one live view and no leaked scope.
 studio.open();
-await new Promise(resolve => setImmediate(resolve));
-await studio.close({ rollback: true });
+const closing = studio.close();
 studio.open();
-await new Promise(resolve => setImmediate(resolve));
-rejectFirstOverlay(new Error('simulated stale overlay acquisition failure'));
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(studio.isOpen(), true, 'a stale overlay failure must not invalidate a newer open');
-await studio.close({ rollback: true });
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(overlayOwners.length, 2);
-assert.notStrictEqual(overlayOwners[0], overlayOwners[1], 'each Appearance open needs an isolated overlay identity');
-assert.deepEqual(releasedOverlayOwners, overlayOwners, 'both old and current overlay leases must be released exactly once');
+await closing;
+await tick();
+await tick();
+assert.equal(host.querySelectorAll('.side-appearance-root').length, 1, 'close-then-open never stacks views');
+await studio.close();
 assert.equal(
-    window.VCPLifecycle.diagnostics.find('next:appearance-studio-open').length,
+    window.VCPLifecycle.diagnostics.find('next:appearance-studio-view').length,
     0,
-    'failed overlay acquisition must not retain the per-open Appearance Studio scope'
+    'a closed tab must not retain the per-view Appearance Studio scope'
 );
-window.topTabManager = originalTopTabManager;
 
-studio.open();
-const closeBeforeReopen = studio.close({ rollback: true });
-assert.equal(studio.open(), true, 'an open requested during teardown should be queued');
-await closeBeforeReopen;
-await new Promise(resolve => setImmediate(resolve));
-assert.equal(studio.isOpen(), true, 'queued open should mount only after prior teardown completes');
-await studio.close({ rollback: true });
+// Instant apply: edits land on their own after a short pause; manual mode keeps the two-step flow.
+{
+    const AUTO_KEY = 'vcp-appearance-studio-auto-apply';
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    studio.open();
+    await tick();
+    const autoButton = () => view().querySelector('[data-studio-auto]');
+    const statusText = () => view().querySelector('[data-studio-status]').textContent;
+    assert.equal(autoButton().getAttribute('aria-pressed'), 'false', 'a stored opt-out keeps manual mode');
+    press('density', rootData().vcpDensity === 'compact' ? 'comfortable' : 'compact');
+    await tick();
+    await wait(600);
+    assert.equal(statusText(), '预览中 · 未应用', 'manual mode never saves on its own');
+    await studio.close();
+
+    studio.open();
+    await tick();
+    autoButton().click();
+    assert.equal(autoButton().getAttribute('aria-pressed'), 'true');
+    assert.equal(window.localStorage.getItem(AUTO_KEY), '1', 'the preference survives a reopen');
+    const savedBefore = window.chatAPI.saved.length;
+    press('density', 'comfortable');
+    press('messageWidth', 'wide');
+    await tick();
+    assert.equal(statusText(), '即将应用…');
+    assert.equal(window.chatAPI.saved.length, savedBefore, 'saving waits for the pause so a burst of edits is one write');
+    await wait(700);
+    assert.equal(window.chatAPI.saved.length, savedBefore + 1, 'the burst is saved once');
+    assert.equal(statusText(), '已同步');
+    assert.equal(view().querySelector('[data-studio-save]').disabled, true);
+
+    // Closing with a save still pending flushes it instead of rolling the preview back.
+    press('density', 'compact');
+    await tick();
+    assert.equal(statusText(), '即将应用…');
+    await studio.close();
+    assert.equal(window.chatAPI.saved.length, savedBefore + 2, 'close flushes the pending save');
+    assert.equal(rootData().vcpDensity, 'compact', 'the flushed edit stays applied');
+
+    // 还原 returns to the look the tab opened with, and that is saved too.
+    studio.open();
+    await tick();
+    press('density', 'comfortable');
+    await wait(700);
+    assert.equal(rootData().vcpDensity, 'comfortable');
+    const savedMid = window.chatAPI.saved.length;
+    view().querySelector('[data-studio-revert]').click();
+    await tick();
+    await wait(50);
+    assert.equal(rootData().vcpDensity, 'compact', 'revert goes back to the opening look, not the last auto-saved one');
+    assert.equal(window.chatAPI.saved.length, savedMid + 1);
+
+    // Switching back to manual cancels a pending save.
+    press('density', 'comfortable');
+    await tick();
+    assert.equal(statusText(), '即将应用…');
+    autoButton().click();
+    assert.equal(autoButton().getAttribute('aria-pressed'), 'false');
+    assert.equal(window.localStorage.getItem(AUTO_KEY), '0');
+    await wait(700);
+    assert.equal(window.chatAPI.saved.length, savedMid + 1, 'manual mode drops the pending save');
+    await studio.close();
+    assert.equal(
+        window.VCPLifecycle.diagnostics.find('next:appearance-studio-view').length,
+        0,
+        'instant apply leaves no timer or scope behind'
+    );
+}
 
 const source = fs.readFileSync('main.html', 'utf8');
 assert.match(source, /nextUiAccountAppearanceStudioBtn/);
 assert.match(source, /nextUiAccountThemeStoreBtn/);
 assert.match(source, />主题管理器</);
 assert.match(source, /nextUiAccountThemeToggleBtn/);
+assert.match(source, /styles\/ui-system\/side-pane-appearance\.css/);
+assert.match(
+    fs.readFileSync('modules/ui-system/side-pane/tab-types/appearance.js', 'utf8'),
+    /entry:[^]*?id: 'appearance'/
+);
+assert.match(fs.readFileSync('modules/renderer/sidePaneWiring.js', 'utf8'), /defineAppearanceTabType/);
 assert.doesNotMatch(source, /nextUiAccountPresentationBtn/);
 assert.doesNotMatch(source, />使用新版 UI</);
 assert.doesNotMatch(
@@ -578,6 +660,7 @@ assert.doesNotMatch(
     /vchatDynamicWallpaperMenuButton|data-studio-action="wallpaper"/,
     'Next Appearance Studio must not depend on a plugin-specific wallpaper adapter'
 );
+unregisterOpener();
 const disposeReceipt = { promise: Promise.resolve() };
 window.dispatchEvent(new CustomEvent('vcp-appearance-studio-dispose', { detail: disposeReceipt }));
 await disposeReceipt.promise;

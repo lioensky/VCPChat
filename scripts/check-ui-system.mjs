@@ -10,12 +10,10 @@ const styleDir = path.join(root, 'styles', 'ui-system');
 const moduleDir = path.join(root, 'modules', 'ui-system');
 const failures = [];
 const crossModeAppearanceFiles = new Set([
-    path.join(styleDir, 'appearance-studio.css'),
     path.join(styleDir, 'fonts.css'),
     path.join(styleDir, 'tokens.css'),
 ]);
 const crossModeGlobalSettingsFiles = new Set([
-    path.join(styleDir, 'appearance-studio.css'),
     path.join(styleDir, 'business-modals.css'),
     path.join(styleDir, 'components.css'),
     path.join(styleDir, 'fonts.css'),
@@ -31,7 +29,6 @@ const portalSelectorFiles = new Set([
     path.join(styleDir, 'settings-portal.css'),
 ]);
 const importantFiles = new Set([
-    path.join(styleDir, 'appearance-studio.css'),
     path.join(styleDir, 'settings-portal.css'),
     path.join(styleDir, 'settings-shell.css'),
     path.join(styleDir, 'settings-template.css'),
@@ -40,7 +37,6 @@ const importantFiles = new Set([
 const literalColorFiles = new Set([
     path.join(styleDir, 'side-pane-plan.css'), // Existing light/dark fallbacks for plan cards retain the original presentation.
     path.join(styleDir, 'music-capsule.css'), // Upstream music capsule keeps its glass rgba() fallbacks for both themes.
-    path.join(styleDir, 'appearance-studio.css'),
     path.join(styleDir, 'settings-primitives.css'),
     path.join(styleDir, 'settings-shell.css'),
     path.join(styleDir, 'settings-template.css'),

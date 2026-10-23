@@ -1563,6 +1563,57 @@ body.light-theme .grid-cell[data-function="none"]:hover {
 }
 
 
+/* 群头像：没有自定义头像的群组用前 4 位成员的头像拼成，圆形、带底色描边，错开叠放 */
+.sidebar #agentList .group-avatar-collage {
+    --group-collage-size: 26px;
+    --group-cell-size: 56%;
+    position: relative;
+    flex: 0 0 var(--group-collage-size);
+    width: var(--group-collage-size);
+    height: var(--group-collage-size);
+    margin-right: 8px;
+    line-height: 1;
+}
+
+.sidebar.avatar-only #agentList .group-avatar-collage {
+    --group-collage-size: var(--compact-sidebar-avatar-size, 42px);
+    margin-right: 0;
+}
+
+.sidebar #agentList .group-avatar-cell {
+    position: absolute;
+    width: var(--group-cell-size);
+    height: var(--group-cell-size);
+    box-sizing: border-box;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 0 0 1.5px var(--secondary-bg);
+}
+
+.sidebar #agentList .group-avatar-initials {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: var(--secondary-text);
+    background: var(--accent-bg);
+    font-size: calc(var(--group-collage-size) * 0.2);
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+.sidebar #agentList .group-avatar-collage[data-count="1"] { --group-cell-size: 100%; }
+.sidebar #agentList .group-avatar-collage[data-count="1"] .group-avatar-cell { inset: 0; }
+.sidebar #agentList .group-avatar-collage[data-count="2"] .group-avatar-cell:nth-child(1),
+.sidebar #agentList .group-avatar-collage[data-count="4"] .group-avatar-cell:nth-child(1) { top: 0; left: 0; }
+.sidebar #agentList .group-avatar-collage[data-count="3"] .group-avatar-cell:nth-child(1) { top: 0; left: 22%; }
+.sidebar #agentList .group-avatar-collage[data-count="2"] .group-avatar-cell:nth-child(2) { right: 0; bottom: 0; }
+.sidebar #agentList .group-avatar-collage[data-count="3"] .group-avatar-cell:nth-child(2) { bottom: 0; left: 0; }
+.sidebar #agentList .group-avatar-collage[data-count="4"] .group-avatar-cell:nth-child(2) { top: 0; right: 0; }
+.sidebar #agentList .group-avatar-collage[data-count="3"] .group-avatar-cell:nth-child(3) { bottom: 0; right: 0; }
+.sidebar #agentList .group-avatar-collage[data-count="4"] .group-avatar-cell:nth-child(3) { bottom: 0; left: 0; }
+.sidebar #agentList .group-avatar-collage[data-count="4"] .group-avatar-cell:nth-child(4) { bottom: 0; right: 0; }
+
 /* Unread Topic Badge */
 /* 为头像创建一个定位包装器 */
 .sidebar #agentList > li {
