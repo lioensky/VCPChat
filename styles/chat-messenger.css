@@ -6,7 +6,7 @@
  *   - 960px 居中消息列；助手气泡最宽 560px，浅灰底，四角同为 15px 圆角；
  *   - 单行气泡高约 34px：14px 字号、22px 行高、6px × 12px 内边距；
  *   - 连续气泡间距 5px，换人发言间距 16px；
- *   - 用户：无头像、无名字，右侧全圆角胶囊，底色沿用普通气泡模式的磨砂色；
+ *   - 用户：无头像、无名字，右侧全圆角胶囊，纯色（主题强调色淡染，无渐变）；
  *   - 助手头像平时不显示。只在助手工作中时，于最底部显示"头像 + 名字 正在工作"，
  *     发送后立刻出现（回复气泡还没出现时也在），完成后消失；
  *   - 悬停时气泡外侧出现一排无底色的灰色图标（复制 / 更多），垂直居中。
@@ -24,26 +24,18 @@ body.chat-presentation-messenger {
     --messenger-gap-group: 5px;
     --messenger-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
-    /* 深色是默认主题 */
-    --messenger-agent-bg: #262626;
-    --messenger-agent-text: #ececec;
-    --messenger-agent-code-bg: rgba(255, 255, 255, 0.08);
-    --messenger-agent-code-text: rgba(236, 236, 236, 0.72);
-    --messenger-status: rgba(236, 236, 236, 0.4);
-    --messenger-status-hi: rgba(255, 255, 255, 0.92);
-    --messenger-action: rgba(236, 236, 236, 0.5);
-    --messenger-action-hover: rgba(255, 255, 255, 0.92);
-}
-
-body.light-theme.chat-presentation-messenger {
-    --messenger-agent-bg: #efefef;
-    --messenger-agent-text: #111111;
-    --messenger-agent-code-bg: rgba(0, 0, 0, 0.05);
-    --messenger-agent-code-text: rgba(17, 17, 17, 0.62);
-    --messenger-status: rgba(17, 17, 17, 0.38);
-    --messenger-status-hi: rgba(17, 17, 17, 0.88);
-    --messenger-action: rgba(17, 17, 17, 0.42);
-    --messenger-action-hover: rgba(17, 17, 17, 0.86);
+    /* 气泡、状态、操作图标的颜色全部由当前主题派生，明暗主题共用一套规则；
+       不用渐变：用户气泡是主题强调色在面板底上的纯色淡染，助手气泡是文字色的淡灰染。 */
+    --messenger-agent-bg: color-mix(in srgb, var(--primary-text) 7%, var(--secondary-bg));
+    --messenger-agent-text: var(--primary-text);
+    --messenger-user-bg: color-mix(in srgb, var(--highlight-text) 20%, var(--secondary-bg));
+    --messenger-user-text: var(--primary-text);
+    --messenger-agent-code-bg: color-mix(in srgb, var(--primary-text) 8%, transparent);
+    --messenger-agent-code-text: color-mix(in srgb, var(--primary-text) 68%, transparent);
+    --messenger-status: color-mix(in srgb, var(--primary-text) 40%, transparent);
+    --messenger-status-hi: color-mix(in srgb, var(--primary-text) 92%, transparent);
+    --messenger-action: color-mix(in srgb, var(--primary-text) 48%, transparent);
+    --messenger-action-hover: color-mix(in srgb, var(--primary-text) 88%, transparent);
 }
 
 /* --- 消息列 --- */
@@ -146,9 +138,12 @@ body.chat-presentation-messenger #chatMessages .message-item.user .md-content {
     max-width: min(80%, var(--messenger-agent-max));
     padding: 7px 14px;
     border-radius: 18px !important;
-    /* 底色和文字色交给主题的普通用户气泡（磨砂渐变），这里只改形状 */
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    /* 纯色、无渐变、无磨砂：覆盖主题的普通用户气泡 */
+    background: var(--messenger-user-bg) !important;
+    background-image: none !important;
+    color: var(--messenger-user-text) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     transform-origin: bottom right;
 }
 

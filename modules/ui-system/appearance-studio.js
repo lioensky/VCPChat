@@ -14,7 +14,7 @@
         }
         destroyed = true;
         destroyPromise = (async () => {
-            await close({ rollback: true });
+            await disposeView({ rollback: true });
             await moduleScope?.dispose('appearance-controller-destroyed');
         })();
         event.detail.promise = destroyPromise;
@@ -30,6 +30,7 @@
     const DEFAULT_HOME_TAGLINE = '语义级打穿 AI、UI/UX、APP 与人类想象力的边界';
     const CANONICAL_UI_MODE = 'next';
 
+    // 材质（磨砂）字段只为已保存数据的兼容而保留在引擎里；工作台不再暴露它们。
     const MATERIAL_FIELDS = Object.freeze([
         'surfaceOpacity',
         'surfaceBlur',
@@ -48,38 +49,10 @@
         surfaceShadow: 18,
         surfaceSheen: 18
     });
-    const MATERIAL_EFFECTS = Object.freeze({
-        vibrancy: Object.freeze({
-            name: 'Vibrancy', description: 'macOS 侧栏', icon: 'blur_on',
-            values: Object.freeze({ ...MATERIAL_DEFAULTS })
-        }),
-        mica: Object.freeze({
-            name: 'Mica', description: 'Windows 云母', icon: 'wallpaper',
-            values: Object.freeze({ surfaceOpacity: 94, surfaceBlur: 0, surfaceSaturation: 100, surfaceBrightness: 100, surfaceBorder: 18, surfaceShadow: 8, surfaceSheen: 5 })
-        }),
-        acrylic: Object.freeze({
-            name: 'Acrylic', description: 'Fluent 亚克力', icon: 'texture',
-            values: Object.freeze({ surfaceOpacity: 76, surfaceBlur: 28, surfaceSaturation: 125, surfaceBrightness: 100, surfaceBorder: 28, surfaceShadow: 20, surfaceSheen: 12 })
-        }),
-        liquid: Object.freeze({
-            name: 'Liquid Glass', description: '边缘折射', icon: 'water_drop',
-            values: Object.freeze({ surfaceOpacity: 52, surfaceBlur: 18, surfaceSaturation: 132, surfaceBrightness: 104, surfaceBorder: 62, surfaceShadow: 24, surfaceSheen: 38 })
-        })
-    });
-    const MATERIAL_CONTROLS = Object.freeze({
-        surfaceOpacity: Object.freeze({ label: '表面浓度', description: '控制侧栏与顶栏的主题色浓度', min: 20, max: 100, unit: '%' }),
-        surfaceBlur: Object.freeze({ label: '磨砂模糊', description: '柔化导航外壳后方的壁纸与视频', min: 0, max: 40, unit: 'px' }),
-        surfaceSaturation: Object.freeze({ label: '背景饱和度', description: '增强或压低透过材质的颜色', min: 50, max: 180, unit: '%' }),
-        surfaceBrightness: Object.freeze({ label: '背景亮度', description: '调整材质后方内容的明暗', min: 80, max: 120, unit: '%' }),
-        surfaceBorder: Object.freeze({ label: '边缘清晰度', description: '控制导航外壳与内容区的分界', min: 0, max: 100, unit: '%' }),
-        surfaceShadow: Object.freeze({ label: '悬浮阴影', description: '调整侧栏与顶栏的层次深度', min: 0, max: 100, unit: '%' }),
-        surfaceSheen: Object.freeze({ label: '材质高光', description: '增加玻璃表面的色彩反光', min: 0, max: 100, unit: '%' })
-    });
     const PROFILE_FIELDS = Object.freeze([
         'density',
         'toolPresentation',
         'toolExpansion',
-
         'radius',
         'typography',
         'fontScale',
@@ -97,83 +70,41 @@
         'cardRadius'
     ]);
     const THEME_MODES = new Set(['light', 'dark', 'system']);
-    const UI_MODES = new Set(['next']);
+
+    const BASE_PROFILE = Object.freeze({
+        density: 'comfortable',
+        radius: 'medium',
+        typography: 'humanist',
+        fontScale: 'normal',
+        contentWidth: 'full',
+        wallpaperScope: 'theme',
+        toolPresentation: 'legacy',
+        toolExpansion: 'attention',
+        sidebarRowHeight: 46,
+        sidebarAvatarSize: 32,
+        customRadius: 10,
+        surface: 'translucent',
+        surfaceEffect: 'vibrancy',
+        ...MATERIAL_DEFAULTS,
+        shellRadius: 'tuned',
+        composerRadius: 'tuned',
+        sidebarRadius: 'tuned',
+        cardRadius: 'tuned'
+    });
+    // 只留两套：默认（原版气泡 + 经典标题栏）与极简（胶囊标题栏 + 对话布局）。
+    // 预设只切换结构（消息样式、标题栏），圆角、字体、密度等细节留给下面的分区自行调整。
+    const makePreset = (name, icon, description, presentation, chatHeader) => Object.freeze({
+        name,
+        icon,
+        description,
+        presentation,
+        messageWidth: 'normal',
+        chatHeader,
+        profile: BASE_PROFILE
+    });
     const PRESETS = Object.freeze({
-        balanced: Object.freeze({
-            name: '平衡默认',
-            icon: 'layout_dashboard',
-            presentation: 'bubble',
-            profile: Object.freeze({
-                density: 'comfortable',
-                radius: 'medium',
-                typography: 'humanist',
-                fontScale: 'normal',
-                contentWidth: 'full',
-                wallpaperScope: 'theme',
-                toolPresentation: 'legacy', toolExpansion: 'attention',
-
-            sidebarRowHeight: 46,
-                sidebarAvatarSize: 32,
-                customRadius: 10,
-                surface: 'translucent',
-                surfaceEffect: 'vibrancy',
-                ...MATERIAL_DEFAULTS,
-                shellRadius: 'tuned',
-                composerRadius: 'tuned',
-                sidebarRadius: 'tuned',
-                cardRadius: 'tuned'
-            })
-        }),
-        focus: Object.freeze({
-            name: '紧凑专注',
-            icon: 'center_focus_strong',
-            presentation: 'panel',
-            profile: Object.freeze({
-                density: 'compact',
-                radius: 'small',
-                typography: 'system',
-                fontScale: 'small',
-                contentWidth: 'centered',
-                wallpaperScope: 'theme',
-                toolPresentation: 'legacy', toolExpansion: 'attention',
-
-                sidebarRowHeight: 40,
-                sidebarAvatarSize: 26,
-                customRadius: 6,
-                surface: 'solid',
-                surfaceEffect: 'vibrancy',
-                ...MATERIAL_DEFAULTS,
-                shellRadius: 'tuned',
-                composerRadius: 'tuned',
-                sidebarRadius: 'tuned',
-                cardRadius: 'tuned'
-            })
-        }),
-        reading: Object.freeze({
-            name: '沉浸阅读',
-            icon: 'auto_stories',
-            presentation: 'immersive',
-            profile: Object.freeze({
-                density: 'relaxed',
-                radius: 'round',
-                typography: 'serif',
-                fontScale: 'large',
-                contentWidth: 'centered',
-                wallpaperScope: 'theme',
-                toolPresentation: 'legacy', toolExpansion: 'attention',
-
-                sidebarRowHeight: 52,
-                sidebarAvatarSize: 38,
-                customRadius: 14,
-                surface: 'solid',
-                surfaceEffect: 'vibrancy',
-                ...MATERIAL_DEFAULTS,
-                shellRadius: 'tuned',
-                composerRadius: 'tuned',
-                sidebarRadius: 'tuned',
-                cardRadius: 'tuned'
-            })
-        })
+        balanced: makePreset('默认', 'layout_dashboard', '气泡消息 · 原版标题栏', 'bubble', 'classic'),
+        minimal: makePreset('极简', 'pill', '对话布局 · 胶囊标题栏', 'messenger', 'capsule')
     });
 
     const DEFAULT_STATE = Object.freeze({
@@ -185,26 +116,7 @@
         homeVisual: 'shown',
         homeTagline: 'shown',
         homeTaglineText: DEFAULT_HOME_TAGLINE,
-        profile: Object.freeze({
-            density: 'comfortable',
-            radius: 'medium',
-            typography: 'humanist',
-            fontScale: 'normal',
-            contentWidth: 'full',
-            wallpaperScope: 'theme',
-            toolPresentation: 'legacy', toolExpansion: 'attention',
-
-                sidebarRowHeight: 46,
-            sidebarAvatarSize: 32,
-            customRadius: 10,
-            surface: 'translucent',
-            surfaceEffect: 'vibrancy',
-            ...MATERIAL_DEFAULTS,
-            shellRadius: 'tuned',
-            composerRadius: 'tuned',
-            sidebarRadius: 'tuned',
-            cardRadius: 'tuned'
-        })
+        profile: BASE_PROFILE
     });
     const PROFILE_CONTROL_IDS = Object.freeze({
         density: 'appearanceDensity',
@@ -223,52 +135,66 @@
     });
     const SUMMARY_LABELS = Object.freeze({
         density: Object.freeze({ compact: '紧凑', comfortable: '舒适', relaxed: '宽松' }),
-        radius: Object.freeze({ square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 10px', round: '大圆角 · 14px', custom: '自定义圆角' }),
+        radius: Object.freeze({ square: '直角', small: '小圆角', medium: '中圆角', round: '大圆角', custom: '自定义圆角' }),
         typography: Object.freeze({ system: '系统字体', humanist: '人文字体', serif: '衬线字体' }),
-        contentWidth: Object.freeze({ full: '全宽阅读区', centered: '居中阅读区' }),
+        fontScale: Object.freeze({ small: '小字号', normal: '标准字号', large: '大字号' }),
+        contentWidth: Object.freeze({ full: '全宽', centered: '居中' }),
         wallpaperScope: Object.freeze({ theme: '壁纸跟随主题', panel: '内容区壁纸', global: '全局壁纸' }),
         messageWidth: Object.freeze({ normal: '标准消息宽度', wide: '宽屏消息宽度' }),
-        homeVisual: Object.freeze({ shown: '显示主页视觉文字', hidden: '隐藏主页视觉文字' }),
         surface: Object.freeze({ solid: '纯色表面', translucent: '主题材质', custom: '自定义磨砂' }),
-        detailRadius: Object.freeze({
-            tuned: '原设计', follow: '跟随全局', square: '直角',
-            small: '小圆角', medium: '中圆角', round: '大圆角', custom: '自定义'
-        }),
+        toolPresentation: Object.freeze({ legacy: '原有卡片', compact: '紧凑单行', grouped: '分组折叠', inline: '单行合并', process: '整轮折叠' }),
+        toolExpansion: Object.freeze({ attention: '仅异常', none: '全收起', all: '全展开' }),
         presentation: Object.freeze({ bubble: '气泡', panel: '面板', immersive: '沉浸', messenger: '对话' }),
         themeMode: Object.freeze({ light: '浅色', dark: '深色', system: '跟随系统' })
     });
     const DETAIL_RADIUS_FIELDS = Object.freeze([
+        'sidebarRadius',
         'shellRadius',
         'composerRadius',
         'cardRadius'
     ]);
     const DETAIL_RADIUS_LABELS = Object.freeze({
-        shellRadius: Object.freeze({ tuned: '原设计 · 14px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 8px', medium: '中圆角 · 12px', round: '大圆角 · 18px', custom: '自定义' }),
-        composerRadius: Object.freeze({ tuned: '原设计 · 24px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 12px', medium: '中圆角 · 18px', round: '大圆角 · 24px', custom: '自定义' }),
-        sidebarRadius: Object.freeze({ tuned: '原设计 · 10px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 10px', round: '大圆角 · 14px', custom: '自定义' }),
-        cardRadius: Object.freeze({ tuned: '原设计 · 8px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 8px', round: '大圆角 · 14px', custom: '自定义' })
+        shellRadius: Object.freeze({ tuned: '原设计 · 14px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 8px', medium: '中圆角 · 12px', round: '大圆角 · 18px', custom: '自定义值' }),
+        composerRadius: Object.freeze({ tuned: '原设计 · 24px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 12px', medium: '中圆角 · 18px', round: '大圆角 · 24px', custom: '自定义值' }),
+        sidebarRadius: Object.freeze({ tuned: '原设计 · 10px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 10px', round: '大圆角 · 14px', custom: '自定义值' }),
+        cardRadius: Object.freeze({ tuned: '原设计 · 8px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 8px', round: '大圆角 · 14px', custom: '自定义值' })
     });
+    const DETAIL_RADIUS_NAMES = Object.freeze({
+        sidebarRadius: '侧栏列表',
+        shellRadius: '主面板',
+        composerRadius: '输入框',
+        cardRadius: '卡片与弹窗'
+    });
+    const SECTION_IDS = Object.freeze(['layout', 'tools', 'shape', 'type', 'home', 'theme']);
 
-    let surface = null;
+    let view = null;
+    let viewScope = null;
+    let viewScopeTeardown = Promise.resolve();
     let snapshot = null;
     let snapshotRevision = 0;
     let draft = null;
-    let sourceTrigger = null;
     let saving = false;
     let previewGeneration = 0;
-    let closePromptPromise = null;
-    let resolveClosePrompt = null;
-    let closePromptFocus = null;
     let installedThemes = [];
     let themesLoading = false;
     let themesLoadError = null;
     let themesLoadSequence = 0;
-    let surfaceScope = null;
-    let openScope = null;
     let destroyed = false;
     let destroyPromise = null;
-    let closePromise = null;
-    let queuedOpenOptions = null;
+    let disposePromise = null;
+    let pendingInitialState = null;
+    let opener = null;
+    // 展开状态在标签页重新打开之间保留；主题与配色默认折叠，布局默认展开。
+    const openSections = new Set(['layout']);
+    // 与 ZCode / DSH 一致：改动默认即时落盘；关掉后回到“预览 → 应用”两步。偏好只属于当前查看者。
+    const AUTO_APPLY_KEY = 'vcp-appearance-studio-auto-apply';
+    const AUTO_APPLY_DELAY_MS = 450;
+    const readAutoApply = () => {
+        try { return window.localStorage.getItem(AUTO_APPLY_KEY) !== '0'; } catch (_error) { return true; }
+    };
+    let autoApply = readAutoApply();
+    let autoSaveTimer = null;
+    let sessionStart = null;
 
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
@@ -297,27 +223,9 @@
         }
         return { visibility: visible ? 'shown' : 'hidden', text };
     }
-    const radiusDetailOptions = field => Object.entries(DETAIL_RADIUS_LABELS[field] || DETAIL_RADIUS_LABELS.sidebarRadius)
+    const radiusDetailOptions = field => Object.entries(DETAIL_RADIUS_LABELS[field])
         .map(([value, label]) => `<option value="${value}">${label}</option>`)
         .join('');
-    const materialControlRows = () => Object.entries(MATERIAL_CONTROLS).map(([key, control]) => `
-        <label class="vcp-appearance-material-row">
-            <span class="vcp-appearance-material-copy">
-                <strong>${control.label}</strong><small>${control.description}</small>
-            </span>
-            <span class="vcp-appearance-material-control">
-                <input type="range" min="${control.min}" max="${control.max}" step="1"
-                    data-appearance-key="${key}" aria-label="${control.label}">
-                <output data-material-output="${key}">${MATERIAL_DEFAULTS[key]}${control.unit}</output>
-            </span>
-        </label>`).join('');
-    const materialEffectTiles = () => Object.entries(MATERIAL_EFFECTS).map(([id, effect]) => `
-        <button type="button" class="vcp-appearance-material-effect vcp-appearance-material-effect-${id}"
-            data-material-effect="${id}" title="${effect.name} · ${effect.description}">
-            <span class="vcp-appearance-material-effect-icon" aria-hidden="true"><span class="vcp-ui-icon">${effect.icon}</span></span>
-            <span><strong>${effect.name}</strong><small>${effect.description}</small></span>
-            <span class="vcp-ui-icon vcp-appearance-material-effect-check" aria-hidden="true">check</span>
-        </button>`).join('');
 
     function readEffectiveTheme() {
         return document.body.classList.contains('light-theme') ? 'light' : 'dark';
@@ -422,16 +330,22 @@
         }, base);
     }
 
+    // 预设、引擎归一化与表单读出的字段顺序各不相同，比较时按键排序。
+    const stableStringify = value => JSON.stringify(value, (_key, next) => (
+        next && typeof next === 'object' && !Array.isArray(next)
+            ? Object.fromEntries(Object.entries(next).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+            : next
+    ));
+
     function statesEqual(left, right) {
-        return Boolean(left && right && JSON.stringify(left) === JSON.stringify(right));
+        return Boolean(left && right && stableStringify(left) === stableStringify(right));
     }
 
     function matchingPreset(state) {
         if (!state) return null;
-        return Object.entries(PRESETS).find(([, preset]) => (
-            preset.presentation === state.presentation
-            && PROFILE_FIELDS.every(field => preset.profile[field] === state.profile[field])
-        ))?.[0] || null;
+        return Object.entries(PRESETS).find(([, preset]) => {
+            return preset.presentation === state.presentation && preset.chatHeader === state.chatHeader;
+        })?.[0] || null;
     }
 
     function syncAccountMenuValue(state = readState()) {
@@ -474,6 +388,7 @@
         }
     }
 
+    // 侧栏头像不再有工作台控件：它跟随列表项高度自动取值，保证始终留有安全内边距。
     function automaticSidebarAvatarSize(rowHeight) {
         return Math.min(44, Math.max(24, rowHeight - 14));
     }
@@ -545,7 +460,7 @@
                     syncSettingsSummary();
                 }
             }, true);
-        bindSummary(form, 'input', event => {
+            bindSummary(form, 'input', event => {
                 if (event.target.id === 'appearanceCustomRadius') {
                     const output = document.getElementById('appearanceCustomRadiusValue');
                     if (output) output.value = `${event.target.value}px`;
@@ -555,7 +470,10 @@
                 syncSettingsGeometryControls(event.target.id);
             });
             bindSummary(trigger, 'click', () => {
-                open({ trigger, initialState: readSettingsFormState() });
+                // 工作台现在是侧栏标签页：先收起盖在最上层的设置弹窗，再把表单里的当前值带过去预览。
+                const initialState = readSettingsFormState();
+                service('uiHelper', () => window.uiHelperFunctions)?.closeModal?.('globalSettingsModal');
+                open({ trigger, initialState });
             });
             card.dataset.appearanceSummaryBound = 'true';
             moduleScope?.own(() => {
@@ -566,277 +484,154 @@
         syncSettingsSummary();
     }
 
-    function createSurface() {
-        if (surface?.root?.isConnected) return surface;
+    // ------------------------------------------------------------------
+    // 视图（侧栏标签页内的工作台）
+    // ------------------------------------------------------------------
 
-        surfaceScope = moduleScope?.child('next:appearance-studio-surface') || null;
+    const segmented = (key, label, options, extra = '') => `
+        <div class="side-appearance-row" data-row="${key}">
+            <span class="side-appearance-row-label">${label}</span>
+            <div class="side-appearance-seg" role="group" aria-label="${label}">
+                ${options.map(([value, text]) => `<button type="button" data-appearance-key="${key}" data-appearance-value="${value}">${text}</button>`).join('')}
+            </div>
+            ${extra}
+        </div>`;
+    // 工具呈现：每种样式画一个小示意（行 = 一次工具调用），让人直接看到效果而不是只读名字。
+    const TOOL_STYLE_CHOICES = Object.freeze([
+        ['legacy', '原有卡片', '每次调用一张卡片', '<b class="tm-card"><i></i><s></s><s></s></b><b class="tm-card"><i></i><s></s></b>'],
+        ['compact', '紧凑单行', '每次调用压成一行', '<b class="tm-row"><i></i><s></s><em></em></b><b class="tm-row"><i></i><s></s><em></em></b><b class="tm-row"><i></i><s></s><em></em></b>'],
+        ['grouped', '分组折叠', '同批调用收进分组', '<b class="tm-group"><i></i><s></s><em></em></b><b class="tm-row tm-nest"><i></i><s></s></b><b class="tm-row tm-nest"><i></i><s></s></b>'],
+        ['inline', '单行合并', '多次调用并排一行', '<b class="tm-chips"><u></u><u></u><u></u><u></u></b>'],
+        ['process', '整轮折叠', '整轮工具只留一行', '<b class="tm-group"><i></i><s></s><em></em></b>']
+    ]);
+    const toolStyleCards = () => `
+        <div class="side-appearance-choices" role="group" aria-label="展示样式" data-row="toolPresentation">
+            ${TOOL_STYLE_CHOICES.map(([value, title, desc, mock]) => `
+                <button type="button" class="side-appearance-choice" data-appearance-key="toolPresentation" data-appearance-value="${value}">
+                    <span class="side-appearance-choice-mock" data-tool-kind="${value}" aria-hidden="true">${mock}</span>
+                    <span class="side-appearance-choice-name">${title}</span>
+                    <span class="side-appearance-choice-desc">${desc}</span>
+                </button>`).join('')}
+        </div>`;
+    const rangeRow = (key, label, min, max, unit) => `
+        <label class="side-appearance-row side-appearance-range-row" data-row="${key}">
+            <span class="side-appearance-row-label">${label}</span>
+            <span class="side-appearance-range">
+                <input type="range" min="${min}" max="${max}" step="1" data-appearance-key="${key}" aria-label="${label}">
+                <output data-appearance-output="${key}" data-unit="${unit}"></output>
+            </span>
+        </label>`;
+    const section = (id, icon, title, bodyHtml) => `
+        <details class="side-appearance-section" data-section="${id}">
+            <summary>
+                <span class="vcp-ui-icon side-appearance-section-icon" aria-hidden="true">${icon}</span>
+                <span class="side-appearance-section-title">${title}</span>
+                <span class="side-appearance-section-summary" data-section-summary="${id}"></span>
+                <span class="vcp-ui-icon side-appearance-section-chevron" aria-hidden="true">expand_more</span>
+            </summary>
+            <div class="side-appearance-section-body">${bodyHtml}</div>
+        </details>`;
 
-        const root = document.createElement('div');
-        root.id = 'vcpAppearanceStudio';
-        root.className = 'vcp-ui-scope vcp-appearance-studio-overlay';
-        root.hidden = true;
-        root.innerHTML = `
-            <section class="vcp-appearance-studio" role="dialog" aria-modal="true"
-                aria-label="外观与布局" tabindex="-1">
-                <div class="vcp-appearance-studio-content">
-                    <section class="vcp-appearance-studio-section vcp-appearance-theme-section" aria-labelledby="vcpAppearanceThemeTitle">
-                        <div class="vcp-appearance-studio-section-heading">
-                            <div><h3 id="vcpAppearanceThemeTitle">主题与配色</h3><p>明暗模式与配色主题相互独立</p></div>
-                            <div class="vcp-appearance-studio-header-actions">
-                                <span class="vcp-appearance-studio-state" data-studio-status>已同步</span>
-                                <button type="button" class="vcp-appearance-studio-reset" data-reset-section="theme" aria-label="重置主题模式" title="重置本节">
-                                    <span class="vcp-ui-icon" aria-hidden="true">refresh</span>
-                                </button>
-                                <button type="button" class="vcp-appearance-studio-icon-button" data-studio-close
-                                    aria-label="关闭外观与布局" title="关闭">
-                                    <span class="vcp-ui-icon" aria-hidden="true">close</span>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="vcp-appearance-theme-mode-row">
-                            <h4>显示模式</h4>
-                            <div class="vcp-appearance-theme-mode" role="group" aria-label="主题模式">
-                            <button type="button" data-appearance-key="themeMode" data-appearance-value="system" title="跟随系统">
-                                <span class="vcp-ui-icon" aria-hidden="true">computer</span><span>系统</span>
-                            </button>
-                            <button type="button" data-appearance-key="themeMode" data-appearance-value="light" title="浅色模式">
-                                <span class="vcp-ui-icon" aria-hidden="true">light_mode</span><span>浅色</span>
-                            </button>
-                            <button type="button" data-appearance-key="themeMode" data-appearance-value="dark" title="深色模式">
-                                <span class="vcp-ui-icon" aria-hidden="true">dark_mode</span><span>深色</span>
-                            </button>
-                            </div>
-                        </div>
-                        <div class="vcp-appearance-theme-palette-heading">
-                            <div><h4>配色主题</h4><span data-theme-load-state>正在读取主题…</span></div>
-                            <button type="button" class="vcp-appearance-studio-link" data-studio-action="themes">
-                                <span class="vcp-ui-icon" aria-hidden="true">palette</span><span>管理</span>
-                            </button>
-                        </div>
-                        <div class="vcp-appearance-theme-palette-grid" data-theme-palette-grid aria-live="polite"></div>
-                    </section>
-                    <section class="vcp-appearance-studio-section vcp-appearance-studio-section-presets" aria-labelledby="vcpAppearancePresetsTitle">
-                        <div class="vcp-appearance-studio-section-heading">
-                            <div>
-                                <h3 id="vcpAppearancePresetsTitle">快速预设</h3>
-                                <p>一键组合常用布局与阅读参数，不改变当前明暗主题</p>
-                            </div>
-                        </div>
-                        <div class="vcp-appearance-preset-grid">
-                            ${Object.entries(PRESETS).map(([id, preset]) => `
-                                <button type="button" class="vcp-appearance-preset vcp-appearance-tile" data-appearance-preset="${id}">
-                                    <span class="vcp-appearance-preset-preview vcp-appearance-preset-preview-${id}" aria-hidden="true">
-                                        <span></span><span></span><span></span>
-                                    </span>
-                                    <span class="vcp-appearance-tile-label">${preset.name}</span>
-                                    <span class="vcp-appearance-tile-description">${id === 'focus' ? '高效工作' : id === 'reading' ? '长文阅读' : '日常对话'}</span>
-                                    <span class="vcp-appearance-tile-check" aria-hidden="true"><span class="vcp-ui-icon">check</span></span>
-                                </button>`).join('')}
-                        </div>
-                    </section>
-                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceLayoutTitle">
-                        <div class="vcp-appearance-studio-section-heading">
-                            <div><h3 id="vcpAppearanceLayoutTitle">页面布局</h3><p>选择主页结构与聊天内容的占用方式</p></div>
-                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="layout" aria-label="重置页面布局" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
-                        </div>
-                        <div class="vcp-appearance-mini-options" role="group" aria-label="阅读区、壁纸范围、消息宽度和主页视觉文字">
-                            <div class="vcp-appearance-mini-item"><h4>阅读区布局</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="contentWidth" data-appearance-value="full">全宽画布</button><button type="button" data-appearance-key="contentWidth" data-appearance-value="centered">居中阅读</button></div><p class="vcp-appearance-mini-helper">控制整个聊天阅读区</p></div>
-                            <div class="vcp-appearance-mini-item"><h4>壁纸范围</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="theme">主题</button><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="panel">内容区</button><button type="button" data-appearance-key="wallpaperScope" data-appearance-value="global">全局</button></div><p class="vcp-appearance-mini-helper">主题可声明建议范围，用户也可强制覆盖</p></div>
-                            <div class="vcp-appearance-mini-item"><h4>消息宽度</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="messageWidth" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="messageWidth" data-appearance-value="wide">宽屏</button></div><p class="vcp-appearance-mini-helper">控制单条消息的最大宽度</p></div>
-                            <div class="vcp-appearance-mini-item"><h4>标题栏</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="chatHeader" data-appearance-value="classic">原版</button><button type="button" data-appearance-key="chatHeader" data-appearance-value="capsule">胶囊</button></div><p class="vcp-appearance-mini-helper">胶囊样式居中显示头像与名字，不显示语音通话和新建话题</p></div>
-                            <div class="vcp-appearance-mini-item vcp-appearance-mini-item-wide"><h4>主页视觉文字</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="homeVisual" data-appearance-value="shown">显示</button><button type="button" data-appearance-key="homeVisual" data-appearance-value="hidden">隐藏</button></div><p class="vcp-appearance-mini-helper">控制空会话中的 VCPCHAT 标识</p></div>
-                        </div>
-                        <div class="vcp-appearance-tagline-editor">
-                            <div class="vcp-appearance-tagline-heading">
-                                <div><h4>首页寄语</h4><p>显示在 VCPCHAT 视觉文字下方</p></div>
-                                <div class="vcp-appearance-segmented" role="group" aria-label="首页寄语显示状态"><button type="button" data-appearance-key="homeTagline" data-appearance-value="shown">显示</button><button type="button" data-appearance-key="homeTagline" data-appearance-value="hidden">隐藏</button></div>
-                            </div>
-                            <input type="text" maxlength="120" data-home-tagline-input aria-label="首页寄语内容" value="${DEFAULT_HOME_TAGLINE}">
-                        </div>
-                    </section>
-                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceGeometryTitle">
-                        <div class="vcp-appearance-studio-section-heading">
-                            <div><h3 id="vcpAppearanceGeometryTitle">组件尺寸与形状</h3><p>统一界面密度、侧栏列表和圆角尺度</p></div>
-                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="geometry" aria-label="重置组件尺寸与形状" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
-                        </div>
-                        <div class="vcp-appearance-subsection"><h4>界面密度</h4><div class="vcp-appearance-option-grid vcp-appearance-density-grid" role="group" aria-label="界面密度">
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="density" data-appearance-value="compact"><span class="vcp-appearance-option-preview vcp-appearance-density-preview compact"><i></i><i></i><i></i><i></i></span><span class="vcp-appearance-tile-label">紧凑</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="density" data-appearance-value="comfortable"><span class="vcp-appearance-option-preview vcp-appearance-density-preview comfortable"><i></i><i></i><i></i></span><span class="vcp-appearance-tile-label">舒适</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="density" data-appearance-value="relaxed"><span class="vcp-appearance-option-preview vcp-appearance-density-preview relaxed"><i></i><i></i></span><span class="vcp-appearance-tile-label">宽松</span></button>
-                        </div></div>
-                        <div class="vcp-appearance-sidebar-geometry">
-                            <div class="vcp-appearance-sidebar-geometry-heading"><h4>侧栏列表尺寸</h4><p>同步助手、话题、创建入口与左下角账户区域</p></div>
-                            <label class="vcp-appearance-geometry-row"><span>列表项高度</span><span class="vcp-appearance-inline-range"><input type="range" min="38" max="64" step="1" data-appearance-key="sidebarRowHeight" aria-label="列表项高度"><output data-appearance-output="sidebarRowHeight">46px</output></span></label>
-                            <label class="vcp-appearance-geometry-row"><span>头像大小</span><span class="vcp-appearance-inline-range"><input type="range" min="20" max="52" step="1" data-appearance-key="sidebarAvatarSize" aria-label="头像大小"><output data-appearance-output="sidebarAvatarSize">32px</output></span></label>
-                            <p class="vcp-appearance-sidebar-geometry-note">头像大小会受列表项高度约束，始终保留安全内边距。</p>
-                        </div>
-                        <div class="vcp-appearance-subsection vcp-appearance-radius-subsection"><h4>全局圆角</h4><div class="vcp-appearance-option-grid vcp-appearance-radius-grid" role="group" aria-label="圆角">
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="square"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview square"><i></i></span><span class="vcp-appearance-tile-label">直角 · 0px</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="small"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview small"><i></i></span><span class="vcp-appearance-tile-label">小 · 6px</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="medium"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview medium"><i></i></span><span class="vcp-appearance-tile-label">中 · 10px</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="round"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview round"><i></i></span><span class="vcp-appearance-tile-label">圆润 · 14px</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="custom"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview custom"><i></i></span><span class="vcp-appearance-tile-label">自定义</span></button>
-                        </div></div>
-                        <label class="vcp-appearance-custom-radius-row"><span>自定义圆角值</span><span class="vcp-appearance-inline-range"><input type="range" min="0" max="32" step="1" data-appearance-key="customRadius" aria-label="自定义圆角值"><output data-appearance-output="customRadius">10px</output></span></label>
-                        <div class="vcp-appearance-geometry-radius"><span>侧栏列表圆角</span><div class="vcp-appearance-radius-choice-grid" role="group" aria-label="列表项圆角"><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="tuned">原设计<small>10px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="follow">跟随全局<small>自动</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="square">直角<small>0px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="small">小圆角<small>6px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="medium">中圆角<small>10px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="round">大圆角<small>14px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="custom">自定义<small>使用全局自定义值</small></button></div></div>
-                        <details class="vcp-appearance-detail-menu" data-radius-details>
-                            <summary>
-                                <span class="vcp-ui-icon" aria-hidden="true">tune</span>
-                                <span class="vcp-appearance-detail-summary-copy">
-                                    <strong>细节圆角</strong>
-                                    <small>主面板、输入框和卡片可独立调整</small>
-                                </span>
-                                <span class="vcp-appearance-detail-status" data-radius-details-status>使用原设计</span>
-                                <span class="vcp-ui-icon vcp-appearance-detail-chevron" aria-hidden="true">expand_more</span>
-                            </summary>
-                            <div class="vcp-appearance-detail-body">
-                                <label class="vcp-appearance-detail-row"><span><strong>主面板</strong><small>主聊天内容区左上角</small></span><select data-appearance-key="shellRadius" aria-label="主面板圆角">${radiusDetailOptions('shellRadius')}</select></label>
-                                <label class="vcp-appearance-detail-row"><span><strong>消息输入框</strong><small>主聊天输入卡片</small></span><select data-appearance-key="composerRadius" aria-label="消息输入框圆角">${radiusDetailOptions('composerRadius')}</select></label>
-                                <label class="vcp-appearance-detail-row"><span><strong>卡片与弹窗</strong><small>设置、通知及内容卡片</small></span><select data-appearance-key="cardRadius" aria-label="卡片与弹窗圆角">${radiusDetailOptions('cardRadius')}</select></label>
-                            </div>
-                        </details>
-                    </section>
-                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceReadingTitle">
-                        <div class="vcp-appearance-studio-section-heading">
-                            <div><h3 id="vcpAppearanceReadingTitle">字体与聊天呈现</h3><p>调整字形、字号以及消息的组织方式</p></div>
-                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="reading" aria-label="重置字体与聊天呈现" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
-                        </div>
-                        <div class="vcp-appearance-option-grid vcp-appearance-font-grid" role="group" aria-label="界面字形">
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="typography" data-appearance-value="system"><span class="vcp-appearance-font-preview system">Aa</span><span class="vcp-appearance-tile-label">系统</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="typography" data-appearance-value="humanist"><span class="vcp-appearance-font-preview humanist">Aa</span><span class="vcp-appearance-tile-label">人文</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="typography" data-appearance-value="serif"><span class="vcp-appearance-font-preview serif">Aa</span><span class="vcp-appearance-tile-label">衬线</span></button>
-                        </div>
-                        <div class="vcp-appearance-font-scale"><h4>字号</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="fontScale" data-appearance-value="small">小</button><button type="button" data-appearance-key="fontScale" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="fontScale" data-appearance-value="large">大</button></div></div>
-                        <div class="vcp-appearance-subsection vcp-appearance-chat-subsection"><h4>消息样式</h4>
-                        <div class="vcp-appearance-mode-grid" role="group" aria-label="聊天呈现">
-                            <button type="button" data-appearance-key="presentation" data-appearance-value="bubble">
-                                <span class="vcp-appearance-chat-preview bubble" aria-hidden="true"><i></i><i></i></span><span class="vcp-appearance-tile-label">气泡</span>
-                            </button>
-                            <button type="button" data-appearance-key="presentation" data-appearance-value="panel">
-                                <span class="vcp-appearance-chat-preview panel" aria-hidden="true"><i></i><i></i><i></i></span><span class="vcp-appearance-tile-label">面板</span>
-                            </button>
-                            <button type="button" data-appearance-key="presentation" data-appearance-value="immersive">
-                                <span class="vcp-appearance-chat-preview immersive" aria-hidden="true"><i></i></span><span class="vcp-appearance-tile-label">沉浸</span>
-                            </button>
-                            <button type="button" data-appearance-key="presentation" data-appearance-value="messenger">
-                                <span class="vcp-appearance-chat-preview messenger" aria-hidden="true"><i></i><i></i><i></i></span><span class="vcp-appearance-tile-label">对话</span>
-                            </button>
-                        </div>
-                        </div>
-                    </section>
-                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceToolsTitle">
-                        <div class="vcp-appearance-studio-section-heading"><div><h3 id="vcpAppearanceToolsTitle">工具呈现</h3><p>独立调整工具过程，保留完整参数、结果和上下文</p></div><button type="button" class="vcp-appearance-studio-reset" data-reset-section="tools" aria-label="重置工具呈现" title="重置本节"><span class="vcp-ui-icon">refresh</span></button></div>
-                        <div class="vcp-appearance-segmented" role="group" aria-label="工具展示样式">
-                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="legacy">原有卡片</button>
-                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="compact">紧凑单行</button>
-                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="grouped">分组折叠</button>
-                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="inline">单行合并</button>
-                            <button type="button" data-appearance-key="toolPresentation" data-appearance-value="process">整轮折叠</button>
-                        </div>
-                        <div class="vcp-appearance-subsection"><h4>默认展开</h4><div class="vcp-appearance-segmented" role="group" aria-label="工具默认展开规则">
-                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="attention">失败与待确认</button>
-                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="none">全部收起</button>
-                            <button type="button" data-appearance-key="toolExpansion" data-appearance-value="all">全部展开</button>
-                        </div><p class="vcp-appearance-mini-helper">使用当前界面密度和工具字体。请求与结果各自保留；单行合并与整轮折叠只把紧跟在请求后的同名结果显示在同一行；图片与媒体结果保留查看入口。</p></div>
-                    </section>
-                    <section class="vcp-appearance-studio-section vcp-appearance-material-section" aria-labelledby="vcpAppearanceMaterialTitle">
-                        <div class="vcp-appearance-studio-section-heading">
-                            <div><h3 id="vcpAppearanceMaterialTitle">导航材质</h3><p>控制左侧栏与顶栏的表面效果</p></div>
-                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="material" aria-label="重置导航材质" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
-                        </div>
-                        <div class="vcp-appearance-material-overview">
-                            <div class="vcp-appearance-segmented vcp-appearance-material-segmented" role="group" aria-label="导航材质模式"><button type="button" data-appearance-key="surface" data-appearance-value="translucent">主题</button><button type="button" data-appearance-key="surface" data-appearance-value="solid">纯色</button><button type="button" data-appearance-key="surface" data-appearance-value="custom">自定义</button></div>
-                            <div class="vcp-appearance-material-effect-grid" role="group" aria-label="磨砂效果配方">${materialEffectTiles()}</div>
-                            <div class="vcp-appearance-material-preview" data-material-preview aria-hidden="true">
-                                <span class="vcp-appearance-material-preview-scene"></span><span class="vcp-appearance-material-preview-topbar"></span><span class="vcp-appearance-material-preview-sidebar"><i></i><i></i><i></i></span><span class="vcp-appearance-material-preview-content"><i></i><i></i><i></i></span>
-                            </div>
-                        </div>
-                        <details class="vcp-appearance-material-menu" data-material-details>
-                            <summary><span class="vcp-ui-icon" aria-hidden="true">tune</span><span class="vcp-appearance-detail-summary-copy"><strong>高级材质参数</strong><small>浓度、模糊、饱和度与边缘细节</small></span><span class="vcp-appearance-detail-status" data-material-details-status>主题原样</span><span class="vcp-ui-icon vcp-appearance-detail-chevron" aria-hidden="true">expand_more</span></summary>
-                            <div class="vcp-appearance-material-body">
-                                <div class="vcp-appearance-material-toolbar"><span>精确微调当前材质</span><button type="button" data-reset-material><span class="vcp-ui-icon" aria-hidden="true">restart_alt</span><span>恢复主题默认</span></button></div>
-                                <div class="vcp-appearance-material-controls">${materialControlRows()}</div>
-                            </div>
-                        </details>
-                    </section>
-                    <section class="vcp-appearance-studio-section vcp-appearance-studio-actions" aria-label="更多外观设置">
-                        <button type="button" data-studio-action="settings">
-                            <span class="vcp-ui-icon" aria-hidden="true">settings</span><span>完整设置</span>
-                            <span class="vcp-ui-icon" aria-hidden="true">chevron_right</span>
-                        </button>
-                    </section>
+    function presetTile(id, preset) {
+        return `
+            <button type="button" class="side-appearance-preset" data-appearance-preset="${id}" aria-pressed="false">
+                <span class="side-appearance-preset-mock" data-presentation="${preset.presentation}" data-header="${preset.chatHeader}" aria-hidden="true">
+                    <u></u><i></i><i></i><b></b>
+                </span>
+                <span class="side-appearance-preset-name">${preset.name}</span>
+                <span class="side-appearance-preset-desc">${preset.description}</span>
+                <span class="vcp-ui-icon side-appearance-preset-check" aria-hidden="true">check</span>
+            </button>`;
+    }
+
+    function buildViewHtml() {
+        const layoutBody = [
+            segmented('presentation', '消息样式', [['bubble', '气泡'], ['panel', '面板'], ['immersive', '沉浸'], ['messenger', '对话']]),
+            segmented('contentWidth', '阅读区', [['full', '全宽'], ['centered', '居中']]),
+            segmented('messageWidth', '消息宽度', [['normal', '标准'], ['wide', '宽屏']]),
+            segmented('chatHeader', '标题栏', [['classic', '原版'], ['capsule', '胶囊']]),
+            segmented('density', '界面密度', [['compact', '紧凑'], ['comfortable', '舒适'], ['relaxed', '宽松']])
+        ].join('');
+        const toolsBody = [
+            toolStyleCards(),
+            segmented('toolExpansion', '默认展开', [['attention', '仅异常'], ['none', '全收起'], ['all', '全展开']]),
+            '<p class="side-appearance-hint">仅异常：失败或等待确认的调用自动展开，其余收起。</p>'
+        ].join('');
+        const shapeBody = [
+            segmented('radius', '全局圆角', [['square', '直角'], ['small', '小'], ['medium', '中'], ['round', '大'], ['custom', '自定义']]),
+            rangeRow('customRadius', '自定义圆角', 0, 32, 'px'),
+            rangeRow('sidebarRowHeight', '侧栏行高', 38, 64, 'px'),
+            segmented('surface', '导航表面', [['translucent', '主题'], ['solid', '纯色']]),
+            `<details class="side-appearance-subdetails" data-radius-details>
+                <summary><span>分别设置圆角</span><span class="side-appearance-section-summary" data-radius-details-status>使用全局</span></summary>
+                <div class="side-appearance-subdetails-body">
+                    ${DETAIL_RADIUS_FIELDS.map(field => `
+                        <label class="side-appearance-row">
+                            <span class="side-appearance-row-label">${DETAIL_RADIUS_NAMES[field]}</span>
+                            <select data-appearance-key="${field}" aria-label="${DETAIL_RADIUS_NAMES[field]}圆角">${radiusDetailOptions(field)}</select>
+                        </label>`).join('')}
                 </div>
-                <footer class="vcp-appearance-studio-footer">
-                    <button type="button" class="vcp-appearance-studio-reset-all" data-reset-all><span class="vcp-ui-icon">restore</span><span>恢复默认</span></button>
-                    <button type="button" class="vcp-appearance-studio-secondary" data-studio-cancel>取消</button>
-                    <button type="button" class="vcp-appearance-studio-primary" data-studio-save>
-                        <span class="vcp-ui-icon" aria-hidden="true">check</span><span>应用</span>
-                    </button>
-                </footer>
-            </section>
-            <div class="vcp-appearance-unsaved-backdrop" data-unsaved-confirm hidden>
-                <section class="vcp-appearance-unsaved-dialog" role="alertdialog" aria-modal="true"
-                    aria-labelledby="vcpAppearanceUnsavedTitle" aria-describedby="vcpAppearanceUnsavedDescription" tabindex="-1">
-                    <span class="vcp-appearance-unsaved-icon vcp-ui-icon" aria-hidden="true">save</span>
-                    <div class="vcp-appearance-unsaved-copy">
-                        <h3 id="vcpAppearanceUnsavedTitle">保存外观更改？</h3>
-                        <p id="vcpAppearanceUnsavedDescription">关闭面板前保存刚才的调整，避免丢失当前外观方案。</p>
+            </details>`
+        ].join('');
+        const typeBody = [
+            segmented('typography', '字形', [['system', '系统'], ['humanist', '人文'], ['serif', '衬线']]),
+            segmented('fontScale', '字号', [['small', '小'], ['normal', '标准'], ['large', '大']])
+        ].join('');
+        const homeBody = [
+            segmented('wallpaperScope', '壁纸范围', [['theme', '跟随主题'], ['panel', '内容区'], ['global', '全局']]),
+            segmented('homeVisual', '首页标识', [['shown', '显示'], ['hidden', '隐藏']]),
+            segmented('homeTagline', '首页寄语', [['shown', '显示'], ['hidden', '隐藏']]),
+            `<input class="side-appearance-text" type="text" maxlength="120" data-home-tagline-input
+                aria-label="首页寄语内容" value="${DEFAULT_HOME_TAGLINE}">`
+        ].join('');
+        const themeBody = `
+            ${segmented('themeMode', '显示模式', [['system', '系统'], ['light', '浅色'], ['dark', '深色']])}
+            <div class="side-appearance-palette-head">
+                <span class="side-appearance-row-label">配色主题 <small data-theme-load-state>正在读取主题…</small></span>
+                <button type="button" class="side-appearance-link" data-studio-action="themes">
+                    <span class="vcp-ui-icon" aria-hidden="true">palette</span><span>管理</span>
+                </button>
+            </div>
+            <div class="side-appearance-palette" data-theme-palette-grid aria-live="polite"></div>`;
+
+        return `
+            <div class="side-appearance-scroll">
+                <header class="side-appearance-head">
+                    <div class="side-appearance-head-copy">
+                        <h2>外观与布局</h2>
+                        <p data-current-preset>自定义</p>
                     </div>
-                    <div class="vcp-appearance-unsaved-actions">
-                        <button type="button" class="vcp-appearance-unsaved-continue" data-unsaved-action="continue">继续编辑</button>
-                        <button type="button" class="vcp-appearance-unsaved-discard" data-unsaved-action="discard">放弃更改</button>
-                        <button type="button" class="vcp-appearance-unsaved-save" data-unsaved-action="save">
-                            <span class="vcp-ui-icon" aria-hidden="true">check</span><span>保存并关闭</span>
-                        </button>
+                    <span class="side-appearance-state" data-studio-status>已同步</span>
+                </header>
+                <section class="side-appearance-presets" aria-label="快速预设">
+                    <div class="side-appearance-preset-grid">
+                        ${Object.entries(PRESETS).map(([id, preset]) => presetTile(id, preset)).join('')}
                     </div>
                 </section>
-            </div>`;
-
-        root.querySelectorAll('.vcp-appearance-option, .vcp-appearance-mode-grid button').forEach(button => {
-            const check = document.createElement('span');
-            check.className = 'vcp-appearance-option-check';
-            check.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">check</span>';
-            button.append(check);
-        });
-
-        document.body.append(root);
-        surfaceScope?.own(() => root.remove(), 'appearance-root', 'dom');
-        root.querySelectorAll('input[type="range"]').forEach(control => {
-            if (window.VCPUI?.getController?.(control)) return;
-            const controller = window.VCPUI?.enhance?.('Range', control);
-            if (controller && surfaceScope) surfaceScope.own(() => controller.destroy(), 'appearance-range', 'ui-registration');
-        });
-        const themePreviewStyle = document.createElement('style');
-        themePreviewStyle.dataset.appearanceThemeSwatches = 'true';
-        root.append(themePreviewStyle);
-        const dialog = root.querySelector('.vcp-appearance-studio');
-        const status = root.querySelector('[data-studio-status]');
-        const saveButton = root.querySelector('[data-studio-save]');
-        const closePrompt = root.querySelector('[data-unsaved-confirm]');
-        const closePromptDialog = root.querySelector('.vcp-appearance-unsaved-dialog');
-
-        const listenSurface = (type, handler) => surfaceScope
-            ? surfaceScope.listen(root, type, handler, undefined, `appearance:${type}`)
-            : root.addEventListener(type, handler);
-        listenSurface('click', handleClick);
-        listenSurface('change', handleChange);
-        listenSurface('input', handleInput);
-        listenSurface('keydown', handleKeydown);
-        listenSurface('pointerdown', event => {
-            if (event.target === root && closePrompt.hidden) void requestClose();
-        });
-        surface = {
-            root,
-            dialog,
-            status,
-            saveButton,
-            closePrompt,
-            closePromptDialog,
-            themePreviewStyle,
-            themeGrid: root.querySelector('[data-theme-palette-grid]'),
-            themeLoadState: root.querySelector('[data-theme-load-state]')
-        };
-        return surface;
+                ${section('layout', 'view_agenda', '布局', layoutBody)}
+                ${section('tools', 'build', '工具呈现', toolsBody)}
+                ${section('shape', 'rounded_corner', '形状与尺寸', shapeBody)}
+                ${section('type', 'text_fields', '字体', typeBody)}
+                ${section('home', 'home', '首页与壁纸', homeBody)}
+                ${section('theme', 'palette', '主题与配色', themeBody)}
+                <button type="button" class="side-appearance-more" data-studio-action="settings">
+                    <span class="vcp-ui-icon" aria-hidden="true">settings</span><span>完整设置</span>
+                    <span class="vcp-ui-icon" aria-hidden="true">chevron_right</span>
+                </button>
+            </div>
+            <footer class="side-appearance-footer">
+                <button type="button" class="side-appearance-btn side-appearance-btn-ghost" data-reset-all title="恢复默认外观">
+                    <span class="vcp-ui-icon" aria-hidden="true">restore</span><span>恢复默认</span>
+                </button>
+                <button type="button" class="side-appearance-btn side-appearance-btn-ghost side-appearance-auto" data-studio-auto aria-pressed="true" title="改动后自动应用">
+                    <span class="vcp-ui-icon" aria-hidden="true">bolt</span><span>实时</span>
+                </button>
+                <span class="side-appearance-footer-spacer"></span>
+                <button type="button" class="side-appearance-btn" data-studio-revert>还原</button>
+                <button type="button" class="side-appearance-btn side-appearance-btn-primary" data-studio-save>
+                    <span class="vcp-ui-icon" aria-hidden="true">check</span><span>应用</span>
+                </button>
+            </footer>`;
     }
 
     function themePreviewColors(theme) {
@@ -867,17 +662,17 @@
     }
 
     function renderThemePalette() {
-        if (!surface) return;
-        const grid = surface.themeGrid;
+        if (!view) return;
+        const grid = view.themeGrid;
         grid.replaceChildren();
-        surface.themeLoadState.textContent = themesLoading
+        view.themeLoadState.textContent = themesLoading
             ? '正在读取主题…'
             : themesLoadError || (installedThemes.length ? `${installedThemes.length} 款已安装` : '暂无可用主题');
         if (themesLoading) {
-            surface.themePreviewStyle.textContent = '';
-            for (let index = 0; index < 8; index += 1) {
+            view.themePreviewStyle.textContent = '';
+            for (let index = 0; index < 6; index += 1) {
                 const skeleton = document.createElement('span');
-                skeleton.className = 'vcp-appearance-theme-skeleton';
+                skeleton.className = 'side-appearance-theme-skeleton';
                 skeleton.setAttribute('aria-hidden', 'true');
                 grid.append(skeleton);
             }
@@ -886,17 +681,17 @@
         installedThemes.forEach((theme, index) => {
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'vcp-appearance-theme-swatch';
+            button.className = 'side-appearance-theme';
             button.dataset.themeFileName = theme.fileName;
             button.dataset.themePreviewIndex = String(index);
             button.title = theme.name;
             button.innerHTML = `
-                <span class="vcp-appearance-theme-swatch-preview" aria-hidden="true">
+                <span class="side-appearance-theme-preview" aria-hidden="true">
                     <i></i><i></i><i></i>
                     <span class="vcp-ui-icon">check</span>
                 </span>
-                <span class="vcp-appearance-theme-swatch-name"></span>`;
-            button.querySelector('.vcp-appearance-theme-swatch-name').textContent = theme.name;
+                <span class="side-appearance-theme-name"></span>`;
+            button.querySelector('.side-appearance-theme-name').textContent = theme.name;
             grid.append(button);
         });
         syncThemePaletteColors();
@@ -904,16 +699,16 @@
     }
 
     function syncThemePaletteColors() {
-        if (!surface) return;
-        surface.themePreviewStyle.textContent = installedThemes.map((theme, index) => {
+        if (!view) return;
+        view.themePreviewStyle.textContent = installedThemes.map((theme, index) => {
             const [primary, accent, secondary] = themePreviewColors(theme);
             return `[data-theme-preview-index="${index}"]{--theme-preview-primary:${primary};--theme-preview-accent:${accent};--theme-preview-secondary:${secondary}}`;
         }).join('');
     }
 
     function syncThemePaletteSelection() {
-        if (!surface || !draft) return;
-        surface.themeGrid.querySelectorAll('[data-theme-file-name]').forEach(button => {
+        if (!view || !draft) return;
+        view.themeGrid.querySelectorAll('[data-theme-file-name]').forEach(button => {
             const active = button.dataset.themeFileName === draft.themeFileName;
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', String(active));
@@ -947,14 +742,14 @@
     }
 
     async function loadThemes() {
-        if (!surface) return;
+        if (!view) return;
         const sequence = ++themesLoadSequence;
         themesLoading = true;
         themesLoadError = null;
         renderThemePalette();
         try {
             const tasks = window.VCPTasks;
-            const ownerScope = openScope;
+            const ownerScope = viewScope;
             const themeTask = api()?.getThemes && tasks?.createTask?.({
                 id: tasks.createTaskId?.('appearance-themes') || `appearance-themes:${Date.now()}`,
                 start: () => api().getThemes(),
@@ -962,7 +757,7 @@
             const themes = themeTask && ownerScope
                 ? await themeTask.own(ownerScope, 'appearance-theme-list')
                 : await api()?.getThemes?.();
-            if (sequence !== themesLoadSequence || !surface || surface.root.hidden) return;
+            if (sequence !== themesLoadSequence || !view) return;
             installedThemes = Array.isArray(themes)
                 ? themes.slice().sort((left, right) => Number(right.isActive) - Number(left.isActive)
                     || String(left.name).localeCompare(String(right.name), 'zh-CN'))
@@ -977,7 +772,7 @@
             themesLoadError = '主题读取失败';
             console.error('[AppearanceStudio] Failed to load installed themes:', error);
         } finally {
-            if (sequence === themesLoadSequence) {
+            if (sequence === themesLoadSequence && view) {
                 themesLoading = false;
                 renderThemePalette();
                 syncControls();
@@ -987,107 +782,92 @@
 
     function setBusy(nextBusy) {
         saving = nextBusy;
-        if (!surface) return;
-        surface.root.toggleAttribute('data-saving', nextBusy);
-        surface.root.querySelectorAll('button, input, select').forEach(control => {
-            control.disabled = nextBusy || (control === surface.saveButton && statesEqual(snapshot, draft));
+        if (!view) return;
+        view.root.toggleAttribute('data-saving', nextBusy);
+        view.root.querySelectorAll('button, input, select').forEach(control => {
+            control.disabled = nextBusy || (control === view.saveButton && statesEqual(snapshot, draft));
         });
     }
 
+    function sectionSummary(id) {
+        const profile = draft.profile;
+        const activeTheme = installedThemes.find(theme => theme.fileName === draft.themeFileName)?.name;
+        switch (id) {
+            case 'layout':
+                return `${SUMMARY_LABELS.presentation[draft.presentation]} · ${SUMMARY_LABELS.contentWidth[profile.contentWidth]}`;
+            case 'tools':
+                return `${SUMMARY_LABELS.toolPresentation[profile.toolPresentation] || '原有卡片'} · ${SUMMARY_LABELS.toolExpansion[profile.toolExpansion] || '仅异常'}`;
+            case 'shape':
+                return `${SUMMARY_LABELS.radius[profile.radius]} · ${SUMMARY_LABELS.density[profile.density]}`;
+            case 'type':
+                return `${SUMMARY_LABELS.typography[profile.typography]} · ${SUMMARY_LABELS.fontScale[profile.fontScale]}`;
+            case 'home':
+                return draft.homeVisual === 'hidden' ? '首页标识已隐藏' : SUMMARY_LABELS.wallpaperScope[profile.wallpaperScope];
+            case 'theme':
+                return [SUMMARY_LABELS.themeMode[draft.themeMode], activeTheme].filter(Boolean).join(' · ');
+            default:
+                return '';
+        }
+    }
+
     function syncControls() {
-        if (!surface || !draft) return;
-        const taglineInput = surface.root.querySelector('[data-home-tagline-input]');
-        if (taglineInput && taglineInput.value !== draft.homeTaglineText) {
+        if (!view || !draft) return;
+        const taglineInput = view.root.querySelector('[data-home-tagline-input]');
+        if (taglineInput && taglineInput.value !== draft.homeTaglineText && document.activeElement !== taglineInput) {
             taglineInput.value = draft.homeTaglineText;
         }
-        surface.root.querySelectorAll('[data-appearance-key]').forEach(button => {
-            const { appearanceKey: key, appearanceValue: value } = button.dataset;
+        view.root.querySelectorAll('[data-appearance-key]').forEach(control => {
+            const { appearanceKey: key, appearanceValue: value } = control.dataset;
             const current = PROFILE_FIELDS.includes(key) ? draft.profile[key] : draft[key];
-            if (button.matches('select')) {
-                button.value = current;
+            if (control.matches('select')) {
+                control.value = current;
                 return;
             }
-            if (button.matches('input[type="range"]')) {
-                button.value = String(current);
-                window.VCPUI?.getController?.(button)?.update({ value: current });
-                const output = surface.root.querySelector(
-                    `[data-material-output="${key}"], [data-appearance-output="${key}"]`
-                );
-                if (output) output.textContent = `${current}${['sidebarRowHeight', 'sidebarAvatarSize', 'customRadius'].includes(key) ? 'px' : (MATERIAL_CONTROLS[key]?.unit || '')}`;
+            if (control.matches('input[type="range"]')) {
+                control.value = String(current);
+                window.VCPUI?.getController?.(control)?.update({ value: current });
+                const output = view.root.querySelector(`[data-appearance-output="${key}"]`);
+                if (output) output.textContent = `${current}${output.dataset.unit || ''}`;
                 return;
             }
             const active = current === value;
-            button.classList.toggle('active', active);
-            button.setAttribute('aria-pressed', String(active));
+            control.classList.toggle('active', active);
+            control.setAttribute('aria-pressed', String(active));
         });
+        // 自定义圆角滑块只在选中“自定义”或有细节项取自定义值时才有意义。
+        const customRadiusVisible = draft.profile.radius === 'custom'
+            || DETAIL_RADIUS_FIELDS.some(field => draft.profile[field] === 'custom');
+        const customRadiusRow = view.root.querySelector('[data-row="customRadius"]');
+        if (customRadiusRow) customRadiusRow.hidden = !customRadiusVisible;
         syncThemePaletteSelection();
         syncThemePaletteColors();
         const activePreset = matchingPreset(draft);
-        surface.root.querySelectorAll('[data-appearance-preset]').forEach(button => {
+        view.root.querySelectorAll('[data-appearance-preset]').forEach(button => {
             const active = button.dataset.appearancePreset === activePreset;
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', String(active));
         });
+        view.currentPreset.textContent = activePreset ? PRESETS[activePreset].name : '自定义';
         const changed = !statesEqual(snapshot, draft);
-        surface.status.textContent = changed ? '预览中' : '已同步';
-        surface.status.classList.toggle('is-dirty', changed);
-        surface.saveButton.disabled = saving || !changed;
-        const customDetailCount = DETAIL_RADIUS_FIELDS.filter(field => draft.profile[field] !== 'tuned').length;
-        const detailStatus = surface.root.querySelector('[data-radius-details-status]');
+        view.status.textContent = autoSaveTimer ? '即将应用…' : (changed ? '预览中 · 未应用' : '已同步');
+        view.status.classList.toggle('is-dirty', changed);
+        view.saveButton.disabled = saving || !changed;
+        view.revertButton.disabled = saving || statesEqual(revertTarget(), draft);
+        view.revertButton.title = autoApply ? '还原到打开时的外观' : '放弃未应用的预览';
+        view.autoButton.classList.toggle('active', autoApply);
+        view.autoButton.setAttribute('aria-pressed', String(autoApply));
+        SECTION_IDS.forEach(id => {
+            const target = view.root.querySelector(`[data-section-summary="${id}"]`);
+            if (target) target.textContent = sectionSummary(id);
+        });
+        const customDetailCount = DETAIL_RADIUS_FIELDS.filter(field => !['tuned', 'follow'].includes(draft.profile[field])).length;
+        const followCount = DETAIL_RADIUS_FIELDS.filter(field => draft.profile[field] === 'follow').length;
+        const detailStatus = view.root.querySelector('[data-radius-details-status]');
         if (detailStatus) {
             detailStatus.textContent = customDetailCount
-                ? `${customDetailCount} 项自定义`
-                : '使用原设计';
+                ? `${customDetailCount} 项独立`
+                : (followCount === DETAIL_RADIUS_FIELDS.length ? '全部跟随全局' : '使用原设计');
         }
-        const materialStatus = surface.root.querySelector('[data-material-details-status]');
-        if (materialStatus) {
-            materialStatus.textContent = draft.profile.surface === 'custom'
-                ? `${MATERIAL_EFFECTS[draft.profile.surfaceEffect]?.name || 'Vibrancy'} · 自定义`
-                : draft.profile.surface === 'solid' ? '纯色' : '主题原样';
-        }
-        surface.root.querySelectorAll('[data-material-effect]').forEach(button => {
-            const active = draft.profile.surface === 'custom'
-                && button.dataset.materialEffect === draft.profile.surfaceEffect;
-            button.classList.toggle('active', active);
-            button.setAttribute('aria-pressed', String(active));
-        });
-        const materialPreview = surface.root.querySelector('[data-material-preview]');
-        if (materialPreview) {
-            materialPreview.dataset.surface = draft.profile.surface;
-            materialPreview.dataset.effect = draft.profile.surfaceEffect;
-        }
-    }
-
-    async function resetSection(section) {
-        if (!draft) return;
-        const defaults = DEFAULT_STATE;
-        if (section === 'theme') {
-            draft.themeMode = defaults.themeMode;
-        } else if (section === 'layout') {
-            draft.profile.contentWidth = defaults.profile.contentWidth;
-            draft.profile.wallpaperScope = defaults.profile.wallpaperScope;
-            draft.messageWidth = defaults.messageWidth;
-            draft.chatHeader = defaults.chatHeader;
-            draft.homeVisual = defaults.homeVisual;
-            draft.homeTagline = defaults.homeTagline;
-            draft.homeTaglineText = defaults.homeTaglineText;
-        } else if (section === 'geometry') {
-            ['density', 'radius', 'sidebarRowHeight', 'sidebarAvatarSize', 'customRadius', 'sidebarRadius', ...DETAIL_RADIUS_FIELDS].forEach(field => {
-                draft.profile[field] = defaults.profile[field];
-            });
-        } else if (section === 'reading') {
-            ['typography', 'fontScale'].forEach(field => {
-                draft.profile[field] = defaults.profile[field];
-            });
-            draft.presentation = defaults.presentation;
-        } else if (section === 'tools') {
-            ['toolPresentation', 'toolExpansion'].forEach(field => { draft.profile[field] = defaults.profile[field]; });
-        } else if (section === 'material') {
-            ['surface', 'surfaceEffect', ...MATERIAL_FIELDS].forEach(field => {
-                draft.profile[field] = defaults.profile[field];
-            });
-        }
-        await preview();
     }
 
     async function preview(options = {}) {
@@ -1245,7 +1025,6 @@
                 detail: { settings: getSettings(), source: 'appearance-studio' }
             }));
             service('uiHelper', () => window.uiHelperFunctions)?.showToastNotification?.('外观与布局已应用。', 'success');
-            await close({ rollback: false });
         } catch (error) {
             if (settingsPersisted && persistedSnapshot) {
                 try {
@@ -1264,238 +1043,262 @@
                 });
             }
             await restoreSnapshot();
-            draft = clone(snapshot);
+            if (snapshot) draft = clone(snapshot);
             syncControls();
             service('uiHelper', () => window.uiHelperFunctions)?.showToastNotification?.(`外观与布局保存失败：${error.message}`, 'error');
         } finally {
             setBusy(false);
+            syncControls();
         }
     }
 
-    function settleClosePrompt(shouldClose, { defer = false } = {}) {
-        if (!surface?.closePrompt || surface.closePrompt.hidden) return;
-        surface.closePrompt.hidden = true;
-        surface.dialog.inert = false;
-        surface.root.classList.remove('is-confirming-close');
-        const resolve = resolveClosePrompt;
-        resolveClosePrompt = null;
-        closePromptPromise = null;
-        const nextFocus = closePromptFocus?.isConnected ? closePromptFocus : surface.dialog;
-        closePromptFocus = null;
-        if (!shouldClose) nextFocus?.focus?.();
-        if (!defer) resolve?.(shouldClose);
-        return resolve;
+    // 即时应用时已保存的外观几乎总是最新的，“还原”要回到本次打开时的外观才有意义。
+    function revertTarget() {
+        return (autoApply && sessionStart) || snapshot;
     }
 
-    function requestClose() {
-        if (!surface || surface.root.hidden || saving) return Promise.resolve(false);
-        if (!draft || !snapshot || statesEqual(snapshot, draft)) {
-            return close({ rollback: true }).then(() => true);
+    function cancelAutoSave() {
+        if (autoSaveTimer === null) return false;
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+        return true;
+    }
+
+    function scheduleAutoSave({ immediate = false } = {}) {
+        cancelAutoSave();
+        if (!autoApply || !view || !draft || statesEqual(snapshot, draft)) {
+            syncControls();
+            return;
         }
-        if (closePromptPromise) return closePromptPromise;
-        closePromptFocus = document.activeElement;
-        surface.closePrompt.hidden = false;
-        surface.dialog.inert = true;
-        surface.root.classList.add('is-confirming-close');
-        closePromptPromise = new Promise(resolve => { resolveClosePrompt = resolve; });
-        if (openScope) openScope.animationFrame(() => surface.closePromptDialog.focus(), 'focus-close-prompt');
-        else requestAnimationFrame(() => surface.closePromptDialog.focus());
-        return closePromptPromise;
+        autoSaveTimer = setTimeout(() => {
+            autoSaveTimer = null;
+            void save();
+        }, immediate ? 0 : AUTO_APPLY_DELAY_MS);
+        syncControls();
     }
 
-    let activeOverlayOwner = null;
+    function setAutoApply(next) {
+        autoApply = next;
+        try { window.localStorage.setItem(AUTO_APPLY_KEY, next ? '1' : '0'); } catch (_error) { /* 偏好无法落盘时只在本次有效 */ }
+        if (next) scheduleAutoSave({ immediate: true });
+        else cancelAutoSave();
+        syncControls();
+    }
 
-    function acquireStudioOverlay() {
-        if (activeOverlayOwner) return;
-        const owner = Symbol('appearance-studio-overlay');
-        activeOverlayOwner = owner;
-        if (!openScope && moduleScope) openScope = moduleScope.child('next:appearance-studio-open');
-        openScope?.own(() => {
-            if (activeOverlayOwner !== owner) return;
-            activeOverlayOwner = null;
-            window.topTabManager?.releaseOverlay?.(owner);
-        }, 'appearance-overlay-lease', 'overlay');
-        Promise.resolve(window.topTabManager?.acquireOverlay?.(owner)).catch(error => {
-            if (activeOverlayOwner === owner) activeOverlayOwner = null;
-            console.warn('[AppearanceStudio] Failed to hide embedded app:', error);
+    async function revertDraft() {
+        const target = revertTarget();
+        if (!draft || !target || saving) return;
+        cancelAutoSave();
+        draft = clone(target);
+        await preview();
+        scheduleAutoSave({ immediate: true });
+    }
+
+    // 开始一次编辑会话：以当前已保存的外观为快照，可选地带入外部给定的初始草稿。
+    function beginSession() {
+        autoApply = readAutoApply();
+        snapshot = readState();
+        sessionStart = clone(snapshot);
+        snapshotRevision = getAppearance()?.getRevision?.() || 0;
+        draft = normalizeState(pendingInitialState, snapshot);
+        pendingInitialState = null;
+        if (statesEqual(snapshot, draft)) syncControls();
+        else void preview();
+        void loadThemes();
+    }
+
+    function mount(host, options = {}) {
+        if (destroyed || !host) return null;
+        if (view) disposeViewSync();
+        viewScope = moduleScope?.child('next:appearance-studio-view') || null;
+
+        const root = document.createElement('div');
+        root.className = 'zc-scope vcp-ui-scope side-appearance-root';
+        root.innerHTML = buildViewHtml();
+        host.classList.add('side-appearance-view');
+        host.append(root);
+        viewScope?.own(() => {
+            root.remove();
+            host.classList.remove('side-appearance-view');
+        }, 'appearance-root', 'dom');
+
+        root.querySelectorAll('details.side-appearance-section').forEach(details => {
+            details.open = openSections.has(details.dataset.section);
         });
+        root.querySelectorAll('input[type="range"]').forEach(control => {
+            if (window.VCPUI?.getController?.(control)) return;
+            const controller = window.VCPUI?.enhance?.('Range', control);
+            if (controller && viewScope) viewScope.own(() => controller.destroy(), 'appearance-range', 'ui-registration');
+        });
+        const themePreviewStyle = document.createElement('style');
+        themePreviewStyle.dataset.appearanceThemeSwatches = 'true';
+        root.append(themePreviewStyle);
+
+        view = {
+            root,
+            host,
+            onRequestClose: options.onRequestClose || null,
+            status: root.querySelector('[data-studio-status]'),
+            currentPreset: root.querySelector('[data-current-preset]'),
+            saveButton: root.querySelector('[data-studio-save]'),
+            revertButton: root.querySelector('[data-studio-revert]'),
+            autoButton: root.querySelector('[data-studio-auto]'),
+            themePreviewStyle,
+            themeGrid: root.querySelector('[data-theme-palette-grid]'),
+            themeLoadState: root.querySelector('[data-theme-load-state]')
+        };
+
+        const listen = (type, handler, capture) => viewScope
+            ? viewScope.listen(root, type, handler, capture, `appearance:${type}`)
+            : root.addEventListener(type, handler, capture);
+        listen('click', handleClick);
+        listen('change', handleChange);
+        listen('input', handleInput);
+        // details 的 toggle 事件不冒泡，用捕获记住各分组的展开状态。
+        listen('toggle', event => {
+            const details = event.target.closest?.('details.side-appearance-section');
+            if (!details) return;
+            if (details.open) openSections.add(details.dataset.section);
+            else openSections.delete(details.dataset.section);
+        }, true);
+
+        beginSession();
+        return {
+            focus() { view?.root.querySelector('.side-appearance-scroll')?.focus?.({ preventScroll: true }); },
+            dispose: () => disposeView({ rollback: true })
+        };
     }
 
-    async function releaseStudioOverlay() {
-        if (openScope) {
-            const scope = openScope;
-            openScope = null;
-            try {
-                await scope.dispose('appearance-closed');
-            } catch (error) {
-                console.error('[AppearanceStudio] Failed to dispose open resources:', error);
-            }
-        } else if (activeOverlayOwner) {
-            const owner = activeOverlayOwner;
-            activeOverlayOwner = null;
-            window.topTabManager?.releaseOverlay?.(owner);
-        }
+    function disposeViewSync() {
+        const scope = viewScope;
+        viewScope = null;
+        const hadView = Boolean(view);
+        view = null;
+        themesLoadSequence += 1;
+        themesLoading = false;
+        viewScopeTeardown = scope ? scope.dispose('appearance-view-disposed') : Promise.resolve();
+        return hadView;
     }
 
-    function close({ rollback = true } = {}) {
-        if (closePromise) return closePromise;
-        if (!surface || surface.root.hidden || (saving && rollback)) return Promise.resolve();
-        closePromise = (async () => {
-            if (surface.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
-            surface.root.hidden = true;
-            surface.root.classList.remove('active');
-            document.body.classList.remove('vcp-appearance-studio-open');
-            const nextFocus = sourceTrigger?.isConnected ? sourceTrigger : null;
+    // 关闭标签页时把还没“应用”的预览回滚到已保存的外观，避免预览态泄漏到整个界面。
+    function disposeView({ rollback = true } = {}) {
+        if (disposePromise) return disposePromise;
+        if (!view) return Promise.resolve();
+        disposePromise = (async () => {
+            // 关闭时还在等待即时应用的改动属于用户，先落盘而不是当作未应用预览回滚。
+            if (cancelAutoSave() && !saving) await save();
+            const dirty = !statesEqual(snapshot, draft);
             try {
-                if (rollback) await restoreSnapshot();
+                if (rollback && dirty) await restoreSnapshot();
             } finally {
-                sourceTrigger = null;
+                removeThemePreview();
                 snapshot = null;
+                sessionStart = null;
                 snapshotRevision = 0;
                 draft = null;
-                themesLoadSequence += 1;
-                document.documentElement.classList.remove('vcp-appearance-studio-host');
-                await releaseStudioOverlay();
-                nextFocus?.focus?.();
+                disposeViewSync();
+                // 视图作用域的清理是异步的：等它移除 DOM 后标签页才算真正关闭。
+                await viewScopeTeardown;
             }
-        })().finally(() => {
-            closePromise = null;
-            const pendingOptions = queuedOpenOptions;
-            queuedOpenOptions = null;
-            if (pendingOptions && !destroyed) queueMicrotask(() => open(pendingOptions));
-        });
-        return closePromise;
+        })().finally(() => { disposePromise = null; });
+        return disposePromise;
+    }
+
+    function registerOpener(next) {
+        opener = next && typeof next.open === 'function' ? next : null;
+        return () => { if (opener === next) opener = null; };
     }
 
     function open(options = {}) {
         if (destroyed) return false;
-        if (closePromise) {
-            queuedOpenOptions = options;
-            return true;
+        if (options.initialState) pendingInitialState = options.initialState;
+        if (!opener) {
+            service('uiHelper', () => window.uiHelperFunctions)?.showToastNotification?.('当前窗口不支持外观配置工作台', 'info');
+            return false;
         }
-        document.documentElement.classList.add('vcp-appearance-studio-host');
-        const currentSurface = createSurface();
-        if (!currentSurface.root.hidden) {
-            currentSurface.dialog.focus();
-            return true;
-        }
-        sourceTrigger = options.trigger || document.activeElement;
-        if (!openScope && moduleScope) openScope = moduleScope.child('next:appearance-studio-open');
-        acquireStudioOverlay();
-        snapshot = readState();
-        snapshotRevision = getAppearance()?.getRevision?.() || 0;
-        draft = normalizeState(options.initialState, snapshot);
-        currentSurface.root.hidden = false;
-        document.body.classList.add('vcp-appearance-studio-open');
-        if (statesEqual(snapshot, draft)) syncControls();
-        else void preview();
-        void loadThemes();
-        const reveal = () => {
-            currentSurface.root.classList.add('active');
-            currentSurface.dialog.focus();
+        const applyPendingToLiveView = () => {
+            // 标签页已经在编辑：把设置表单带来的当前值并入草稿即可，不重置会话。
+            if (!view || !draft || !pendingInitialState) return;
+            draft = normalizeState(pendingInitialState, draft);
+            pendingInitialState = null;
+            void preview();
         };
-        if (openScope) openScope.animationFrame(reveal, 'appearance-reveal');
-        else requestAnimationFrame(reveal);
+        Promise.resolve(opener.open(options)).then(applyPendingToLiveView).catch(error => {
+            console.error('[AppearanceStudio] Failed to open the side pane tab:', error);
+        });
         return true;
+    }
+
+    function close() {
+        if (opener?.close) return Promise.resolve(opener.close());
+        return disposeView({ rollback: true });
+    }
+
+    function applyPreset(presetId) {
+        const preset = PRESETS[presetId];
+        if (!preset || !draft) return Promise.resolve();
+        draft = {
+            // 预设不碰圆角、字体、密度与工具呈现等细节设置。
+            profile: clone(draft.profile),
+            presentation: preset.presentation,
+            messageWidth: draft.messageWidth,
+            chatHeader: preset.chatHeader,
+            homeVisual: draft.homeVisual,
+            homeTagline: draft.homeTagline,
+            homeTaglineText: draft.homeTaglineText,
+            themeMode: draft.themeMode,
+            themeFileName: draft.themeFileName
+        };
+        return preview();
     }
 
     async function handleClick(event) {
         const target = event.target.closest('button');
-        if (!target || saving) return;
-        const unsavedAction = target.dataset.unsavedAction;
-        if (unsavedAction === 'continue') {
-            settleClosePrompt(false);
-            return;
-        }
-        if (unsavedAction === 'discard') {
-            const resolve = settleClosePrompt(true, { defer: true });
-            await close({ rollback: true });
-            resolve?.(true);
-            return;
-        }
-        if (unsavedAction === 'save') {
-            const resolve = settleClosePrompt(true, { defer: true });
-            await save();
-            resolve?.(Boolean(surface?.root?.hidden));
-            return;
-        }
-        if (target.matches('[data-studio-close], [data-studio-cancel]')) {
-            await requestClose();
-            return;
-        }
+        if (!target || saving || !draft) return;
         if (target.matches('[data-studio-save]')) {
             await save();
             return;
         }
-        if (target.matches('[data-reset-section]')) {
-            await resetSection(target.dataset.resetSection);
+        if (target.matches('[data-studio-revert]')) {
+            await revertDraft();
             return;
         }
-        if (target.matches('[data-reset-material]')) {
-            draft.profile.surface = 'translucent';
-            draft.profile.surfaceEffect = 'vibrancy';
-            MATERIAL_FIELDS.forEach(field => {
-                draft.profile[field] = MATERIAL_DEFAULTS[field];
-            });
-            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing sidebar height:', error); }
-            return;
-        }
-        const materialEffect = target.dataset.materialEffect;
-        if (materialEffect && MATERIAL_EFFECTS[materialEffect]) {
-            draft.profile.surface = 'custom';
-            draft.profile.surfaceEffect = materialEffect;
-            Object.assign(draft.profile, MATERIAL_EFFECTS[materialEffect].values);
-            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing avatar size:', error); }
+        if (target.matches('[data-studio-auto]')) {
+            setAutoApply(!autoApply);
             return;
         }
         if (target.matches('[data-reset-all]')) {
             const themeFileName = draft.themeFileName;
             draft = { ...clone(DEFAULT_STATE), themeFileName };
             await preview();
+            scheduleAutoSave();
             return;
         }
         const presetId = target.dataset.appearancePreset;
         if (presetId && PRESETS[presetId]) {
-            const preset = PRESETS[presetId];
-            draft = {
-                profile: {
-                    ...clone(preset.profile),
-                    toolPresentation: draft.profile.toolPresentation,
-                    toolExpansion: draft.profile.toolExpansion,
-
-                    wallpaperScope: draft.profile.wallpaperScope
-                },
-                presentation: preset.presentation,
-                messageWidth: draft.messageWidth,
-                chatHeader: draft.chatHeader,
-                homeVisual: draft.homeVisual,
-                homeTagline: draft.homeTagline,
-                homeTaglineText: draft.homeTaglineText,
-                themeMode: draft.themeMode,
-                themeFileName: draft.themeFileName
-            };
-            await preview();
+            await applyPreset(presetId);
+            scheduleAutoSave();
             return;
         }
         const key = target.dataset.appearanceKey;
         const value = target.dataset.appearanceValue;
-        if (key && value && draft) {
+        if (key && value) {
             if (PROFILE_FIELDS.includes(key)) draft.profile[key] = value;
             else draft[key] = value;
             await preview();
+            scheduleAutoSave();
             return;
         }
         const themeFileName = target.dataset.themeFileName;
-        if (themeFileName && draft && installedThemes.some(theme => theme.fileName === themeFileName)) {
+        if (themeFileName && installedThemes.some(theme => theme.fileName === themeFileName)) {
             draft.themeFileName = themeFileName;
             await preview();
+            scheduleAutoSave();
             return;
         }
         if (target.dataset.studioAction === 'themes') {
-            if (!await requestClose()) return;
             api()?.openThemesWindow?.();
         } else if (target.dataset.studioAction === 'settings') {
-            if (!await requestClose()) return;
             service('uiHelper', () => window.uiHelperFunctions)?.openModal?.('globalSettingsModal');
         }
     }
@@ -1507,6 +1310,7 @@
         if (!PROFILE_FIELDS.includes(key)) return;
         draft.profile[key] = control.value;
         await preview({ appearanceOnly: true });
+        scheduleAutoSave();
     }
 
     async function handleInput(event) {
@@ -1515,6 +1319,7 @@
             draft.homeTaglineText = normalizeHomeTaglineText(taglineInput.value, DEFAULT_HOME_TAGLINE);
             applyHomeTagline(draft.homeTagline, draft.homeTaglineText);
             syncControls();
+            scheduleAutoSave();
             return;
         }
         const control = event.target.closest('input[data-appearance-key]');
@@ -1523,73 +1328,42 @@
         if (key === 'sidebarRowHeight') {
             const previousRowHeight = draft.profile.sidebarRowHeight;
             const nextRowHeight = Math.min(64, Math.max(38, Math.round(Number(control.value) || 46)));
-            const previousAutoAvatar = Math.min(44, Math.max(24, previousRowHeight - 14));
-            const nextAutoAvatar = Math.min(44, Math.max(24, nextRowHeight - 14));
+            const previousAutoAvatar = automaticSidebarAvatarSize(previousRowHeight);
             draft.profile.sidebarRowHeight = nextRowHeight;
+            // 头像大小不再单独调节：沿用自动值，用户在完整设置里自定义过的值则只做安全裁剪。
             if (draft.profile.sidebarAvatarSize === previousAutoAvatar) {
-                draft.profile.sidebarAvatarSize = nextAutoAvatar;
+                draft.profile.sidebarAvatarSize = automaticSidebarAvatarSize(nextRowHeight);
             }
             draft.profile.sidebarAvatarSize = Math.min(draft.profile.sidebarAvatarSize, nextRowHeight - 4);
-            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing radius:', error); }
-            return;
-        }
-        if (key === 'sidebarAvatarSize') {
-            draft.profile.sidebarAvatarSize = Math.min(
-                52,
-                draft.profile.sidebarRowHeight - 4,
-                Math.max(20, Math.round(Number(control.value) || 32))
-            );
-            await preview({ appearanceOnly: true });
+            try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing sidebar row height:', error); }
+            scheduleAutoSave();
             return;
         }
         if (key === 'customRadius') {
             draft.profile.customRadius = Math.min(32, Math.max(0, Math.round(Number(control.value) || 0)));
             await preview({ appearanceOnly: true });
-            return;
-        }
-        if (!MATERIAL_FIELDS.includes(key)) return;
-        const config = MATERIAL_CONTROLS[key];
-        const value = Math.min(config.max, Math.max(config.min, Number(control.value)));
-        draft.profile[key] = value;
-        draft.profile.surface = 'custom';
-        try { await preview({ appearanceOnly: true }); } catch (error) { console.error('[AppearanceStudio] Preview failed while editing appearance value:', error); }
-    }
-
-    function handleKeydown(event) {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            event.stopPropagation();
-            if (surface?.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
-            else void requestClose();
-            return;
-        }
-        if (event.key !== 'Tab' || !surface) return;
-        const focusRoot = surface.closePrompt.hidden ? surface.dialog : surface.closePromptDialog;
-        const focusable = Array.from(focusRoot.querySelectorAll(
-            'button:not([disabled]):not([hidden]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )).filter(element => element.getClientRects().length || element === document.activeElement);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
+            scheduleAutoSave();
         }
     }
 
     const listenModule = (target, type, handler, options) => moduleScope
         ? moduleScope.listen(target, type, handler, options, `appearance-controller:${type}`)
         : target.addEventListener(type, handler, options);
-    listenModule(window, 'global-settings-updated', () => {
+    listenModule(window, 'global-settings-updated', event => {
         if (!draft) {
             const state = readState();
             applyHomeVisual(state.homeVisual);
             applyHomeTagline(state.homeTagline, state.homeTaglineText);
+        } else if (view && !saving && event.detail?.source !== 'appearance-studio' && statesEqual(snapshot, draft)) {
+            // 没有未应用的预览时，工作台跟随外部（账户菜单、完整设置）对外观的修改。
+            const themeFileName = snapshot.themeFileName;
+            snapshot = { ...readState(), themeFileName };
+            snapshotRevision = getAppearance()?.getRevision?.() || snapshotRevision;
+            sessionStart = clone(snapshot);
+            draft = clone(snapshot);
+            syncControls();
         }
-        if (!surface || surface.root.hidden) syncAccountMenuValue();
+        if (!view) syncAccountMenuValue();
         syncSettingsSummary();
     });
     listenModule(document, 'DOMContentLoaded', () => {
@@ -1609,8 +1383,9 @@
         PRESETS,
         open,
         close,
-        requestClose,
-        isOpen: () => Boolean(surface && !surface.root.hidden),
+        mount,
+        registerOpener,
+        isOpen: () => Boolean(view),
         readState,
         syncAccountMenuValue,
         syncSettingsSummary,

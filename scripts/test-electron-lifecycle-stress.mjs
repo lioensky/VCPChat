@@ -608,35 +608,28 @@ async function cycleOverlayOwnership(page, browser, app, label) {
     await page.waitForFunction(() => !document.getElementById('nextUiNotificationMenu')?.hidden, { timeout: timeoutMs });
     await page.evaluate(() => window.topTabManager.openAccountMenu());
     await page.waitForFunction(() => !document.getElementById('nextUiAccountMenu')?.hidden, { timeout: timeoutMs });
+    // Appearance Studio is a side pane tab, not an overlay: it must not take the embedded app's activation.
+    // Manual mode keeps this probe from persisting the nudged row height when the tab closes.
+    await page.evaluate(() => { try { window.localStorage.setItem('vcp-appearance-studio-auto-apply', '0'); } catch (_error) { /* default mode */ } });
     await page.evaluate(() => window.VCPAppearanceStudio.open());
-    await page.waitForFunction(() => window.VCPAppearanceStudio.isOpen(), { timeout: timeoutMs });
-    const transientMenus = await page.evaluate(() => ({
-        notificationsHidden: document.getElementById('nextUiNotificationMenu')?.hidden,
-        accountHidden: document.getElementById('nextUiAccountMenu')?.hidden,
-    }));
-    assert.deepEqual(transientMenus, { notificationsHidden: true, accountHidden: true },
-        `${label}: opening an overlay retained a lower transient menu`);
-    await waitForEmbeddedActivation(page, null, `${label}: Appearance Studio overlay`);
+    await page.waitForFunction(
+        () => window.VCPAppearanceStudio.isOpen() && document.querySelector('.side-appearance-root input[data-appearance-key="sidebarRowHeight"]'),
+        { timeout: timeoutMs }
+    );
+    await waitForEmbeddedActivation(page, app.action, `${label}: Appearance Studio side pane tab`);
     await page.evaluate(() => {
-        const range = document.querySelector('.vcp-appearance-studio-overlay input[data-appearance-key="sidebarRowHeight"]');
+        const range = document.querySelector('.side-appearance-root input[data-appearance-key="sidebarRowHeight"]');
         range.value = String(Math.min(Number(range.max), Number(range.value) + 1));
         range.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await page.evaluate(() => {
-        const root = document.querySelector('.vcp-appearance-studio-overlay');
-        const target = root?.contains(document.activeElement) ? document.activeElement : root;
-        target?.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Escape', code: 'Escape', bubbles: true, cancelable: true,
-        }));
-    });
-    await page.waitForFunction(() => {
-        const prompt = document.querySelector('.vcp-appearance-unsaved-backdrop');
-        return window.VCPAppearanceStudio.isOpen() && prompt && !prompt.hidden;
-    }, { timeout: timeoutMs });
-    await waitForEmbeddedActivation(page, null, `${label}: Appearance unsaved prompt`);
-    await page.click('[data-unsaved-action="discard"]');
-    await page.waitForFunction(() => !window.VCPAppearanceStudio.isOpen(), { timeout: timeoutMs });
+    // Closing the tab discards the un-applied preview.
+    await page.evaluate(() => window.VCPAppearanceStudio.close());
+    await page.waitForFunction(
+        () => !window.VCPAppearanceStudio.isOpen() && !document.querySelector('.side-appearance-root'),
+        { timeout: timeoutMs }
+    );
     await waitForEmbeddedActivation(page, app.action, `${label}: Appearance Studio close`);
+    await page.keyboard.press('Escape');
 
     await page.evaluate(viewId => window.topTabManager.closeView(viewId), `app:${catalogApp.id}`);
     await waitForPageGone(browser, isEmbedded, `${label}: overlay fixture ${app.name}`);

@@ -886,6 +886,38 @@ window.itemListManager = (() => {
         return indicator;
     }
 
+    const GROUP_COLLAGE_MAX = 4;
+
+    // 没有自定义头像的群组，用前 4 位成员的头像拼成一枚群头像；
+    // 没头像的成员用名字首字母占位。
+    function createGroupCollage(memberPreview) {
+        const collage = document.createElement('div');
+        collage.className = 'group-avatar-collage';
+        collage.dataset.count = String(memberPreview.length);
+        memberPreview.forEach(member => {
+            if (member.avatarUrl) {
+                const img = document.createElement('img');
+                img.className = 'group-avatar-cell';
+                img.src = member.avatarUrl;
+                img.alt = '';
+                img.addEventListener('error', () => {
+                    img.replaceWith(createGroupCollageInitials(member.name));
+                });
+                collage.appendChild(img);
+            } else {
+                collage.appendChild(createGroupCollageInitials(member.name));
+            }
+        });
+        return collage;
+    }
+
+    function createGroupCollageInitials(name) {
+        const cell = document.createElement('span');
+        cell.className = 'group-avatar-cell group-avatar-initials';
+        cell.textContent = String(name || '?').trim().slice(0, 2).toUpperCase();
+        return cell;
+    }
+
     function createItemElement(item) {
         const li = document.createElement('li');
         li.dataset.itemId = item.id;
@@ -906,7 +938,11 @@ window.itemListManager = (() => {
         avatarImg.onerror = () => { avatarImg.src = (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
 
         // 将头像和顶层说话频谱添加到包装器中。
-        avatarWrapper.appendChild(avatarImg);
+        if (item.type === 'group' && item.memberPreview && item.memberPreview.length > 0) {
+            avatarWrapper.appendChild(createGroupCollage(item.memberPreview));
+        } else {
+            avatarWrapper.appendChild(avatarImg);
+        }
         avatarWrapper.appendChild(createSpeakingIndicator());
 
         const nameSpan = document.createElement('span');
@@ -1105,9 +1141,20 @@ window.itemListManager = (() => {
         }
 
         if (groupsResult && !groupsResult.error) {
+            const agentById = new Map(Array.isArray(agentsResult) ? agentsResult.map(a => [a.id, a]) : []);
             items.push(...groupsResult
                 .filter(g => g.mode !== 'game')
-                .map(g => ({ ...g, type: 'group', id: g.id, avatarUrl: g.avatarUrl || 'assets/default_group_avatar.png' })));
+                .map(g => ({
+                    ...g,
+                    type: 'group',
+                    id: g.id,
+                    avatarUrl: g.avatarUrl || 'assets/default_group_avatar.png',
+                    memberPreview: g.avatarUrl ? null : (Array.isArray(g.members) ? g.members : [])
+                        .map(memberId => agentById.get(memberId))
+                        .filter(Boolean)
+                        .slice(0, GROUP_COLLAGE_MAX)
+                        .map(a => ({ name: a.name, avatarUrl: a.avatarUrl || '' }))
+                })));
         } else if (groupsResult && groupsResult.error) {
             errors.push(`加载群组失败: ${groupsResult.error}`);
         }
