@@ -379,6 +379,14 @@
   font-size: var(--vcp-ui-text-caption);
 }
 
+/* 这些原生下拉不走全局下拉投影，控件和弹出的选项须使用同一套主题色。
+   不把半透明的 --dps-fill 带进系统菜单，避免深色菜单出现黑底黑字。 */
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.dps-agent, .dps-map-select),
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(.dps-agent, .dps-map-select) option {
+  background: var(--vcp-ui-bg-1);
+  color: var(--vcp-ui-text-0);
+}
+
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-spacer {
   flex: 1 1 auto;
 }
@@ -708,8 +716,8 @@
   padding: 0 8px;
   border: 1px solid var(--dps-line);
   border-radius: 8px;
-  background: var(--dps-fill);
-  color: var(--dps-ink);
+  background: var(--vcp-ui-bg-1);
+  color: var(--vcp-ui-text-0);
   font-size: var(--vcp-ui-text-caption);
 }
 
