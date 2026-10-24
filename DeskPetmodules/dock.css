@@ -72,7 +72,7 @@
 
 .pet-dock[data-mode="bar"] {
   --dock-w: var(--dock-bar-w, 360px);
-  --dock-h: var(--dock-bar-h, 52px);
+  --dock-h: var(--dock-bar-h, 48px);
   border-radius: 24px;
 }
 
@@ -167,22 +167,22 @@
   left: 50%;
   width: var(--dock-bar-w, 360px);
   margin-left: calc(var(--dock-bar-w, 360px) / -2);
+  /* 圆钮四周留一样的 8px：单行时上下居中，多行时停在最后一行旁边 */
   gap: 6px;
-  padding: 0 6px;
+  padding: 0 8px 8px;
   align-items: flex-end;
-  padding-bottom: 6px;
 }
 
-/* 输入条高一些，里面的加号、发送箭头跟着大一号 */
+/* 输入条里的加号、发送箭头 */
 .pet-dock .dock-bar svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   stroke-width: 2;
 }
 
 .pet-dock .dock-round {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: #f1f2f4;
 }
@@ -209,9 +209,9 @@
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
-  height: 40px;
+  height: 32px;
   max-height: 96px;
-  padding: 10px 2px;
+  padding: 6px 2px;
   border: none;
   outline: none;
   resize: none;
@@ -233,8 +233,8 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: none;
   border-radius: 50%;
