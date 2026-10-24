@@ -1,6 +1,6 @@
 import { measureSilhouette, silhouetteAspect, fitSilhouette } from './figure.js';
 import { TOP_RESERVE, FOOT_RESERVE, HIT_ALPHA } from './petStage.js';
-import { CELL, SPRITE_ROWS, animationCell, lookCell, spriteState } from './spriteAnimation.js';
+import { CELL, SPRITE_ROWS, animationCell, lookCell, spriteFps, spriteState } from './spriteAnimation.js';
 
 // Canvas2D keeps sprite pets independent of Cubism Core and WebGL availability.
 export async function createSpriteBackend(assets, env) {
@@ -43,7 +43,7 @@ export async function createSpriteBackend(assets, env) {
     const canvas = env.canvas;
     const context = canvas.getContext('2d');
     let fit, timer = 0, paused = false, disposed = false, frame = {}, action = '', actionUntil = 0;
-    let held = false, velocity = 0, velocityAt = 0, phase = 'awake', fps = 8, state = '', stateAt = 0;
+    let held = false, velocity = 0, velocityAt = 0, phase = 'awake', level = 'idle', speed = 'normal', fps = spriteFps(level), state = '', stateAt = 0;
     let gaze = { x: 0, y: 0 }, gazeAt = 0, cell = { row: 0, column: 0 }, lastKey = '';
     canvas.hidden = false;
     const layout = () => {
@@ -60,7 +60,7 @@ export async function createSpriteBackend(assets, env) {
             walk: env.activity?.().walk, action: now < actionUntil ? action : '', sleeping: phase === 'asleep' });
         if (next !== state) { state = next; stateAt = now; }
         const look = state === 'idle' && phase === 'awake' && now - gazeAt < 1300 ? lookCell(gaze.x, gaze.y, version) : null;
-        cell = look || animationCell(state, now - stateAt, phase === 'asleep' ? 2 : fps);
+        cell = look || animationCell(state, now - stateAt, phase === 'asleep' ? spriteFps('sleep', speed) : fps);
         const key = `${cell.row}:${cell.column}`;
         if (key === lastKey) return;
         lastKey = key;
@@ -74,7 +74,7 @@ export async function createSpriteBackend(assets, env) {
         timer = 0;
         if (paused || disposed) return;
         draw();
-        timer = setTimeout(tick, 1000 / (phase === 'asleep' ? 2 : fps));
+        timer = setTimeout(tick, 1000 / (phase === 'asleep' ? spriteFps('sleep', speed) : fps));
     };
     const restart = () => { clearTimeout(timer); if (!paused && !disposed) tick(); };
     const resize = () => { layout(); draw(); };
@@ -110,7 +110,8 @@ export async function createSpriteBackend(assets, env) {
         tap() { act('jumping', 1100); },
         canShow: () => true,
         setMouth() {},
-        setActive(level) { fps = level === 'sleep' ? 2 : level === 'idle' ? 6 : 10; restart(); },
+        setActive(value) { level = value; fps = spriteFps(level, speed); restart(); },
+        setSpeed(value) { speed = value; fps = spriteFps(level, speed); restart(); },
         setPaused(value) { paused = Boolean(value); restart(); },
         life: {
             phase(value) { phase = value; restart(); }, act,

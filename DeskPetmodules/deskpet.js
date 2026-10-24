@@ -203,6 +203,10 @@ async function start() {
     ctx.applyFrame(ctx.director.frame);
     document.body.dataset.lifePhase = life.phase;
     backend.life?.phase(life.phase);
+    // 设置里的「动作速度」：只有精灵形象（Codex 宠物）按帧播放，有 setSpeed
+    const syncSpeed = () => backend.setSpeed?.(ctx.prefs.animationSpeed || 'normal');
+    syncSpeed();
+    window.addEventListener('deskpet:prefs', syncSpeed);
     window.__deskPetReady = { backend: backend.kind, info: backend.info || null };
     // 调试和录屏：__deskPetLife.force('asleep') 直接睡着，__deskPetLife.perform('yawn') 演一个动作
     window.__deskPetLife = life;

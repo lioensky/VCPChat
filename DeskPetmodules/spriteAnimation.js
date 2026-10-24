@@ -20,6 +20,13 @@ export function spriteState({ frame = {}, approval = false, held = false, veloci
     return 'idle';
 }
 
+// 帧率：说话、干活时最快，闲着慢一点，睡着最慢；再乘设置里的「动作速度」
+export const ANIMATION_SPEEDS = Object.freeze({ slow: 0.6, normal: 1, fast: 1.6 });
+export function spriteFps(level, speed = 'normal') {
+    const base = level === 'sleep' ? 2 : level === 'idle' ? 4 : 6;
+    return Math.max(1, base * (ANIMATION_SPEEDS[speed] || 1));
+}
+
 export function animationCell(state, elapsedMs, fps = 8) {
     const [row, frames] = SPRITE_ROWS[state] || SPRITE_ROWS.idle;
     return { row, column: Math.floor(Math.max(0, elapsedMs) * fps / 1000) % frames };

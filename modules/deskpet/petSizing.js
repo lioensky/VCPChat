@@ -8,7 +8,7 @@ const { isAgentId } = require('./petAssets');
 const { rememberFigure, savedAspect } = require('./petState');
 
 // 页面要的设置（prefsFor）和托盘上显示的设置：这些变了才推给页面、才刷新托盘
-const PAGE_PREF_KEYS = ['doNotDisturb', 'clickThrough', 'shortcuts', 'opacity', 'wander', 'followCursor'];
+const PAGE_PREF_KEYS = ['doNotDisturb', 'clickThrough', 'shortcuts', 'opacity', 'wander', 'followCursor', 'animationSpeed'];
 const TRAY_KEYS = ['doNotDisturb', 'clickThrough', 'shortcuts', 'openAgents', 'lastAgent'];
 
 function createPetSizing(ctx) {
@@ -29,6 +29,7 @@ function createPetSizing(ctx) {
             opacity: settings.opacity ?? 1,
             wander: settings.wander === true,
             followCursor: settings.followCursor !== false,
+            animationSpeed: settings.animationSpeed || 'normal',
             // 页面提示里写怎么关：按平台写成 Ctrl / Cmd
             clickThroughKey: key.replace('CommandOrControl', process.platform === 'darwin' ? 'Cmd' : 'Ctrl'),
         };

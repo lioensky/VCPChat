@@ -1,4 +1,4 @@
-// 选项：免打扰、主动搭话、只看不点、视线跟随、溜达、不透明度、截图隐藏、启动恢复、全屏让开。
+// 选项：免打扰、主动搭话、只看不点、视线跟随、溜达、动作速度、不透明度、截图隐藏、启动恢复、全屏让开。
 // 改一下就存一下（主进程 deskpet-settings:update），不进设置表单的 collect/自动保存。
 
 import { el, buildSwitchRow } from './dom.js';
@@ -44,14 +44,27 @@ export function buildOptions(doc) {
         idleSelect.append(option);
     }
     idleRow.append(idleCopy, idleSelect);
-    options.append(dnd.row, idleRow, through.row, follow.row, wander.row, opacityRow, hideCapture.row, restore.row, yieldFs.row);
-    return { optionsTitle, options, dnd, restore, yieldFs, through, follow, wander, hideCapture, opacitySlider, opacityValue, idleSelect };
+    const speedRow = el(doc, 'div', 'dps-row');
+    const speedCopy = el(doc, 'span', 'dps-row-copy');
+    speedCopy.append(el(doc, 'span', 'dps-row-title', '动作速度'), el(doc, 'span', 'dps-row-hint', 'Codex 宠物这类逐帧动画的形象动得多快。'));
+    const speedSelect = el(doc, 'select', 'dps-agent');
+    speedSelect.id = 'deskPetAnimationSpeed';
+    speedSelect.setAttribute('aria-label', '动作速度');
+    speedSelect.dataset.vcpTypedPrimitiveMounted = 'true';
+    for (const [value, label] of [['slow', '慢'], ['normal', '标准'], ['fast', '快']]) {
+        const option = el(doc, 'option', '', label);
+        option.value = value;
+        speedSelect.append(option);
+    }
+    speedRow.append(speedCopy, speedSelect);
+    options.append(dnd.row, idleRow, through.row, follow.row, wander.row, speedRow, opacityRow, hideCapture.row, restore.row, yieldFs.row);
+    return { optionsTitle, options, dnd, restore, yieldFs, through, follow, wander, hideCapture, opacitySlider, opacityValue, idleSelect, speedSelect };
 }
 
 // ctx：{ doc, api, state, applySnapshot }
 export function wireOptions(ctx, parts) {
     const { doc, api, state } = ctx;
-    const { dnd, restore, yieldFs, through, follow, wander, hideCapture, opacitySlider, opacityValue, idleSelect } = parts;
+    const { dnd, restore, yieldFs, through, follow, wander, hideCapture, opacitySlider, opacityValue, idleSelect, speedSelect } = parts;
 
     function renderSwitches() {
         const settings = state.snapshot?.settings;
@@ -67,6 +80,7 @@ export function wireOptions(ctx, parts) {
         // Linux 上 Electron 做不到「截图时不出现」
         hideCapture.row.hidden = state.snapshot.platform !== 'win32' && state.snapshot.platform !== 'darwin';
         idleSelect.value = settings.idleChat === true ? String(settings.idleChatMinutes || 30) : 'off';
+        speedSelect.value = settings.animationSpeed || 'normal';
         const opacity = Number(settings.opacity ?? 1);
         if (doc.activeElement !== opacitySlider) opacitySlider.value = String(opacity);
         opacityValue.textContent = `${Math.round(Number(opacitySlider.value) * 100)}%`;
@@ -85,6 +99,7 @@ export function wireOptions(ctx, parts) {
         const value = idleSelect.value;
         update(value === 'off' ? { idleChat: false } : { idleChat: true, idleChatMinutes: Number(value) });
     });
+    speedSelect.addEventListener('change', () => update({ animationSpeed: speedSelect.value }));
     wander.input.addEventListener('change', () => update({ wander: wander.input.checked }));
     hideCapture.input.addEventListener('change', () => update({ hideFromCapture: hideCapture.input.checked }));
     // 拖动时先只改数字，松手再存（拖的过程中桌宠不跟着一下下闪）

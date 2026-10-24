@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { animationCell, lookCell, spriteState } from '../DeskPetmodules/spriteAnimation.js';
+import { ANIMATION_SPEEDS, animationCell, lookCell, spriteFps, spriteState } from '../DeskPetmodules/spriteAnimation.js';
 
 const require = createRequire(import.meta.url);
 const sharp = require('sharp');
@@ -106,4 +106,14 @@ test('v2 gaze follows sixteen clockwise directions, with an idle deadzone and no
         const angle = i * Math.PI / 8;
         assert.deepEqual(lookCell(Math.sin(angle), Math.cos(angle), 2), { row: 9 + Math.floor(i / 8), column: i % 8 });
     }
+});
+
+test('sprite frame rate is calm by default and follows the animation speed setting', () => {
+    // 待机 6 帧一圈至少 1.5 秒，不再像以前 0.6 秒转一圈
+    assert.ok(6 * 1000 / spriteFps('idle') >= 1500);
+    assert.ok(spriteFps(true) <= 6 && spriteFps('idle') < spriteFps(true) && spriteFps('sleep') < spriteFps('idle'));
+    assert.ok(spriteFps(true, 'slow') < spriteFps(true) && spriteFps(true) < spriteFps(true, 'fast'));
+    assert.equal(spriteFps(true, 'warp'), spriteFps(true));
+    assert.ok(spriteFps('sleep', 'slow') >= 1);
+    assert.deepEqual(require('../modules/deskpet/petPrefs.js').ANIMATION_SPEEDS, Object.keys(ANIMATION_SPEEDS));
 });

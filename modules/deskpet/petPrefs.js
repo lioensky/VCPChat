@@ -67,6 +67,8 @@ const DEFAULT_SETTINGS = Object.freeze({
     wander: false,
     // 视线跟着光标走；关掉后只自己四处看（光标在屏幕上来回动时不会一直盯着）
     followCursor: true,
+    // 精灵形象（Codex 宠物）帧动画的快慢：slow / normal / fast
+    animationSpeed: 'normal',
     // 截图、录屏、共享屏幕时桌宠不出现在画面里（Windows、macOS 有效）
     hideFromCapture: false,
     // 闲时主动搭话：人在电脑前、这么久（分钟）没和助手说话时让 TA 说一句（会调用模型，默认关）
@@ -257,6 +259,8 @@ function isAgentIdLike(value) {
 const OPACITY_MIN = 0.3;
 // 闲时主动搭话的间隔可选项（分钟），与 modules/deskpet/idleChat.js 一致
 const IDLE_CHAT_MINUTES = Object.freeze([10, 30, 60]);
+// 动作速度可选项，与 DeskPetmodules/spriteAnimation.js 的 ANIMATION_SPEEDS 一致
+const ANIMATION_SPEEDS = Object.freeze(['slow', 'normal', 'fast']);
 
 /** 不透明度：0.3–1，按 0.05 取整；不是数就当 1 */
 function normalizeOpacity(value) {
@@ -300,6 +304,7 @@ function normalizeSettings(raw) {
         opacity: normalizeOpacity(input.opacity),
         wander: input.wander === true,
         followCursor: input.followCursor !== false,
+        animationSpeed: ANIMATION_SPEEDS.includes(input.animationSpeed) ? input.animationSpeed : 'normal',
         hideFromCapture: input.hideFromCapture === true,
         idleChat: input.idleChat === true,
         idleChatMinutes: IDLE_CHAT_MINUTES.includes(Number(input.idleChatMinutes)) ? Number(input.idleChatMinutes) : 30,
@@ -313,6 +318,7 @@ module.exports = {
     normalizeOpacity,
     OPACITY_MIN,
     IDLE_CHAT_MINUTES,
+    ANIMATION_SPEEDS,
     BASE_CHARACTER,
     SIZE_VERSION,
     UI_RESERVE,

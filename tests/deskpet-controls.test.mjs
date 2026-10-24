@@ -91,7 +91,7 @@ test('shortcuts need real modifiers and never take what VCPChat already uses', (
 
 test('a hand-edited or broken settings file falls back to safe defaults', () => {
     assert.deepEqual(prefs.normalizeSettings(null), {
-        version: prefs.SETTINGS_VERSION, doNotDisturb: false, restoreOnLaunch: true, yieldToFullscreen: false, clickThrough: false, opacity: 1, wander: false, followCursor: true, hideFromCapture: false, idleChat: false, idleChatMinutes: 30, shortcuts: { ...prefs.DEFAULT_SETTINGS.shortcuts }, openAgents: [], lastAgent: null,
+        version: prefs.SETTINGS_VERSION, doNotDisturb: false, restoreOnLaunch: true, yieldToFullscreen: false, clickThrough: false, opacity: 1, wander: false, followCursor: true, animationSpeed: 'normal', hideFromCapture: false, idleChat: false, idleChatMinutes: 30, shortcuts: { ...prefs.DEFAULT_SETTINGS.shortcuts }, openAgents: [], lastAgent: null,
     });
     const odd = prefs.normalizeSettings({
         doNotDisturb: 'yes',
@@ -137,6 +137,8 @@ test('pet opacity stays between 30% and fully opaque', () => {
 test('cursor following defaults on and capture hiding defaults off', () => {
     assert.equal(prefs.normalizeSettings({ followCursor: false }).followCursor, false);
     assert.equal(prefs.normalizeSettings({ followCursor: 'no' }).followCursor, true);
+    assert.equal(prefs.normalizeSettings({ animationSpeed: 'slow' }).animationSpeed, 'slow');
+    assert.equal(prefs.normalizeSettings({ animationSpeed: 'warp' }).animationSpeed, 'normal');
     assert.equal(prefs.normalizeSettings({ hideFromCapture: true }).hideFromCapture, true);
     assert.equal(prefs.normalizeSettings({ hideFromCapture: 1 }).hideFromCapture, false);
 });
