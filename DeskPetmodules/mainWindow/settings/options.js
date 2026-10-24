@@ -13,6 +13,7 @@ export function buildOptions(doc) {
     const through = buildSwitchRow(doc, '只看不点', '鼠标直接穿过桌宠，点不到也拖不动，适合专心工作时。用托盘菜单或快捷键关掉；「和桌宠说话」的快捷键照常能用。');
     const follow = buildSwitchRow(doc, '视线跟随光标', '光标在屏幕上移动时 TA 跟着看过去。关掉后只自己四处看看，不会一直盯着光标。');
     const wander = buildSwitchRow(doc, '在桌面上溜达', '站在任务栏上闲了一阵，会沿着任务栏走一小段。');
+    const musicDance = buildSwitchRow(doc, '听歌时跟着晃', 'V 音乐播放时随节拍轻轻律动，有合适动作的 Live2D 偶尔做手势。免打扰、睡着或互动时暂停，朗读时收小幅度。');
     const hideCapture = buildSwitchRow(doc, '截图、录屏时隐藏', '截图、录屏、开会共享屏幕时画面里不出现桌宠，自己屏幕上照常看得到。');
     hideCapture.row.hidden = true;
     const opacityRow = el(doc, 'div', 'dps-row');
@@ -57,14 +58,14 @@ export function buildOptions(doc) {
         speedSelect.append(option);
     }
     speedRow.append(speedCopy, speedSelect);
-    options.append(dnd.row, idleRow, through.row, follow.row, wander.row, speedRow, opacityRow, hideCapture.row, restore.row, yieldFs.row);
-    return { optionsTitle, options, dnd, restore, yieldFs, through, follow, wander, hideCapture, opacitySlider, opacityValue, idleSelect, speedSelect };
+    options.append(dnd.row, idleRow, through.row, follow.row, musicDance.row, wander.row, speedRow, opacityRow, hideCapture.row, restore.row, yieldFs.row);
+    return { optionsTitle, options, dnd, restore, yieldFs, through, follow, musicDance, wander, hideCapture, opacitySlider, opacityValue, idleSelect, speedSelect };
 }
 
 // ctx：{ doc, api, state, applySnapshot }
 export function wireOptions(ctx, parts) {
     const { doc, api, state } = ctx;
-    const { dnd, restore, yieldFs, through, follow, wander, hideCapture, opacitySlider, opacityValue, idleSelect, speedSelect } = parts;
+    const { dnd, restore, yieldFs, through, follow, musicDance, wander, hideCapture, opacitySlider, opacityValue, idleSelect, speedSelect } = parts;
 
     function renderSwitches() {
         const settings = state.snapshot?.settings;
@@ -76,6 +77,7 @@ export function wireOptions(ctx, parts) {
         through.input.checked = settings.clickThrough === true;
         follow.input.checked = settings.followCursor !== false;
         wander.input.checked = settings.wander === true;
+        musicDance.input.checked = settings.musicDance !== false;
         hideCapture.input.checked = settings.hideFromCapture === true;
         // Linux 上 Electron 做不到「截图时不出现」
         hideCapture.row.hidden = state.snapshot.platform !== 'win32' && state.snapshot.platform !== 'darwin';
@@ -95,6 +97,7 @@ export function wireOptions(ctx, parts) {
     yieldFs.input.addEventListener('change', () => update({ yieldToFullscreen: yieldFs.input.checked }));
     through.input.addEventListener('change', () => update({ clickThrough: through.input.checked }));
     follow.input.addEventListener('change', () => update({ followCursor: follow.input.checked }));
+    musicDance.input.addEventListener('change', () => update({ musicDance: musicDance.input.checked }));
     idleSelect.addEventListener('change', () => {
         const value = idleSelect.value;
         update(value === 'off' ? { idleChat: false } : { idleChat: true, idleChatMinutes: Number(value) });

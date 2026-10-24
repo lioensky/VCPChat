@@ -45,6 +45,7 @@ const { createPetMenus } = require('./petMenus');
 const { createPetCommands } = require('./petCommands');
 const { registerIpc } = require('./petIpc');
 const { voiceChatSessions } = require('../voice/voiceChatSessions');
+const musicGrooveBus = require('../services/musicGrooveBus');
 
 // 启动时恢复上次的桌宠：等主窗口载完再开，不和首屏抢。
 const RESTORE_DELAY_MS = 1500;
@@ -248,6 +249,14 @@ function initialize(options) {
     };
     disposeHostEvents = () => { for (const dispose of hostEvents.splice(0)) dispose(); };
     hostEvents.push(() => mainContents?.removeListener?.('did-finish-load', scheduleRestore));
+    hostEvents.push(musicGrooveBus.subscribe(payload => {
+        if (ctx.shuttingDown || ctx.controls?.get().musicDance === false) return;
+        for (const pet of ctx.pets.values()) {
+            if (!pet.ready || pet.win.isDestroyed() || !pet.win.isVisible()) continue;
+            try { pet.win.webContents.send('deskpet:music-groove', payload); }
+            catch (error) { console.warn('[DeskPet] 音乐律动转发失败：', error.message); }
+        }
+    }));
     hostEvents.push(voiceChatSessions.subscribe((agentId, route) => {
         const pet = ctx.pets.get(agentId);
         if (pet && !pet.win.isDestroyed()) {

@@ -229,7 +229,7 @@ export function createPetLife({
             const had = holds.has(reason);
             if (on) holds.add(reason);
             else holds.delete(reason);
-            if (on && !had && reason !== 'hidden') {
+            if (on && !had && reason !== 'hidden' && reason !== 'music') {
                 // 有人找它说话或拖它：困了、睡着了都要醒（被拖、来回复都算被吵醒）
                 // 免打扰时主窗口那边的回复不该把它吓一跳：慢慢醒
                 const quietReply = reason === 'reply' && quiet;

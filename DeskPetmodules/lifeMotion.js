@@ -3,6 +3,7 @@
 // 纯计算，不碰 Pixi：Live2D 后端每帧把 params 叠到模型上，立绘和头像只用 swing / hop。
 
 import { ACTION_MS } from './petLife.js';
+import { groovePose } from './musicGroove.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // 0 → 1 → 0 的包络：attack 比例内升起，release 比例内落下
@@ -142,9 +143,27 @@ export function createLifeMotion({ random = Math.random } = {}) {
     let swingV = 0;
     let dragVx = 0;
     let clock = 0;       // 犯困时眼皮起伏、睡着时呼吸用
+    let groove = null;
+    let grooveAge = Infinity;
+    let danceWeight = 0;
+    let danceStrength = 1;
+    let lastGroove = null;
+    let danceBeat = 0;
+    let danceBpm = 120;
+    let danceEnergy = 0;
+    let smoothStrength = 1;
 
     return {
         setPhase(next) { phase = next; },
+        setGroove(next, strength = 1) {
+            groove = next?.playing ? { ...next } : null;
+            if (groove) {
+                if (!lastGroove || danceWeight === 0) danceBeat = Number.isFinite(groove.beat) ? groove.beat : 0;
+                lastGroove = groove;
+            }
+            grooveAge = 0;
+            danceStrength = Number.isFinite(strength) ? strength : 1;
+        },
         // weight：模型自己有这个动作文件时调小，参数曲线只轻轻叠一点
         play(name, ms = ACTION_MS[name] || 1000, { weight = 1 } = {}) {
             action = { name, t: 0, ms, weight, side: random() < 0.5 ? -1 : 1 };
@@ -156,7 +175,7 @@ export function createLifeMotion({ random = Math.random } = {}) {
         // 拖动中窗口的横向速度（像素/秒）
         dragVelocity(vx) { dragVx = vx; },
         get settled() {
-            return !action && !held && lifted < 0.01 && Math.abs(swing) < 0.05 && Math.abs(swingV) < 0.05
+            return !action && !held && danceWeight < 0.001 && !groove && lifted < 0.01 && Math.abs(swing) < 0.05 && Math.abs(swingV) < 0.05
                 && weights[phase] > 0.99;
         },
 
@@ -210,7 +229,28 @@ export function createLifeMotion({ random = Math.random } = {}) {
                 params.ParamAngleZ = (params.ParamAngleZ || 0) + swing;
                 params.ParamBodyAngleZ = (params.ParamBodyAngleZ || 0) + swing * 0.6;
             }
-            return { params, swing, hop, weights: { ...weights } };
+            grooveAge += dt;
+            if (grooveAge > 0.8) groove = null;
+            const dancing = groove && phase === 'awake' && !held && !action;
+            const goal = dancing ? 1 : 0;
+            danceWeight += (goal - danceWeight) * (1 - Math.exp(-8 * dt));
+            if (!goal && danceWeight < 0.001) danceWeight = 0;
+            if (lastGroove) {
+                danceBpm += (clamp(lastGroove.bpm || 120, 60, 180) - danceBpm) * (1 - Math.exp(-dt * 1.5));
+                danceEnergy += ((lastGroove.energy || 0) - danceEnergy) * (1 - Math.exp(-dt * 3));
+                smoothStrength += (danceStrength - smoothStrength) * (1 - Math.exp(-dt * 4));
+                // 连续积分；收包时不跳相位。仅在有限速的范围内缓慢跟拍。
+                const targetBeat = (groove?.beat ?? danceBeat) + (groove ? grooveAge * danceBpm / 60 : 0);
+                const error = clamp(targetBeat - danceBeat, -0.15, 0.15);
+                danceBeat += dt * (danceBpm / 60 + (groove ? error * 0.6 : 0));
+            }
+            const pose = groovePose(lastGroove ? {
+                ...lastGroove,
+                energy: danceEnergy,
+                beat: danceBeat,
+            } : null, smoothStrength * danceWeight);
+            add(pose.params, 1);
+            return { params, swing: swing + pose.swing, hop: hop + pose.hop, bounce: pose.bounce, weights: { ...weights } };
         },
     };
 }

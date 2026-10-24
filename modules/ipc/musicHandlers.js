@@ -10,6 +10,7 @@ const windowService = require('../services/windowService');
 const WINDOW_APP_IDS = require('../services/windowAppIds');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 const AUDIO_ENGINE_URL = 'http://127.0.0.1:63789';
+const musicGrooveBus = require('../services/musicGrooveBus');
 let fetch;
 
 let musicWindow = null;
@@ -177,6 +178,7 @@ function createOrFocusMusicWindow() {
             currentSongInfo = null; // 清理歌曲信息
             musicCapsuleState = { open: false, title: '', trackKey: '', playing: false };
             publishMusicCapsule();
+            musicGrooveBus.publish({ playing: false });
             pendingPlaybackForNewWindow = null; // 清理未消费的待播放请求
         });
 
@@ -353,6 +355,10 @@ function initialize(options) {
 
         // --- 前端初始化时拉取待播放请求（解决新窗口点歌竞态问题）---
         ipcMain.handle('music-capsule-get-state', () => musicCapsuleState);
+        ipcMain.on('music-groove-publish', (event, payload) => {
+            if (!musicWindow || musicWindow.isDestroyed() || event.sender !== musicWindow.webContents) return;
+            musicGrooveBus.publish(payload);
+        });
         ipcMain.on('music-capsule-publish', (event, state) => {
             if (!musicWindow || musicWindow.isDestroyed() || event.sender !== musicWindow.webContents) return;
             musicCapsuleState = {
@@ -362,6 +368,7 @@ function initialize(options) {
                 playing: state?.playing === true
             };
             publishMusicCapsule();
+            if (!musicCapsuleState.playing) musicGrooveBus.publish({ playing: false });
         });
         ipcMain.on('music-capsule-command', (event, command) => {
             if (!mainWindow || event.sender !== mainWindow.webContents) return;

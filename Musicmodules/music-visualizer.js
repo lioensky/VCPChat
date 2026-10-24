@@ -131,6 +131,11 @@ function setupVisualizer(app) {
             try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'spectrum_data') {
+                    app.api?.publishMusicGroove?.({
+                        playing: app.isPlaying === true && !app.isTrackLoading,
+                        trackKey: app.playlist?.[app.currentTrackIndex]?.path || '',
+                        data: message.data
+                    });
                     if (app.isPlaying) {
                         app.targetVisualizerData = message.data;
                         if (app.currentVisualizerData.length === 0) {
@@ -180,7 +185,10 @@ function setupVisualizer(app) {
         };
 
         socket.onclose = () => {
-            if (app.ws === socket) app.ws = null;
+            if (app.ws === socket) {
+                app.ws = null;
+                app.api?.publishMusicGroove?.({ playing: false });
+            }
             if (app.visualizerDestroyed || app.visualizerReconnectTimer) return;
             app.visualizerReconnectTimer = setTimeout(() => {
                 app.visualizerReconnectTimer = null;
@@ -197,6 +205,7 @@ function setupVisualizer(app) {
     app.destroyVisualizer = () => {
         if (app.visualizerDestroyed) return;
         app.visualizerDestroyed = true;
+        app.api?.publishMusicGroove?.({ playing: false });
         if (app.visualizerReconnectTimer) {
             clearTimeout(app.visualizerReconnectTimer);
             app.visualizerReconnectTimer = null;

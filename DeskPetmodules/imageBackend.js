@@ -58,6 +58,7 @@ function createCssLife() {
     };
     const kick = () => { if (!raf && !paused) raf = requestAnimationFrame(loop); };
     return {
+        groove(frame, strength) { motion.setGroove(frame, strength); kick(); },
         phase(p) {
             body.dataset.lifePhase = p;
             motion.setPhase(p);

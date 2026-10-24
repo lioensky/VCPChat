@@ -143,6 +143,7 @@ function mountPuppet(app, puppet, env, { webgl, fps }) {
         ...tickerControls(app, fps),
         destroy: () => figure.dispose(),
         life: {
+            groove(frame, strength) { life.setGroove(frame, strength); },
             phase(p) { life.setPhase(p); },
             act(name, ms) { life.play(name, ms); },
             held(on) { life.setHeld(on); },

@@ -58,7 +58,10 @@ async function readCapabilities(modelPath) {
             // 每个文件独立组，指令始终精确选择一个动画，不随机挑组内动作。
             const group = `deskpet_${id}`;
             motions[group] = [{ File: candidate.file }];
-            if (!system) items.push({ id, name: candidate.name, kind: 'motion', group, index: 0, duration: Math.min(30, data.Meta.Duration) });
+            if (!system) items.push({
+                id, name: candidate.name, kind: 'motion', group, index: 0, duration: Math.min(30, data.Meta.Duration),
+                parameterIds: [...new Set(data.Curves.filter(c => c?.Target === 'Parameter' && typeof c.Id === 'string').map(c => c.Id))].slice(0, 500),
+            });
         }
     }
     return { items, expressions, motions };

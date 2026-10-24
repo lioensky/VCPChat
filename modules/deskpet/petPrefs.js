@@ -69,6 +69,8 @@ const DEFAULT_SETTINGS = Object.freeze({
     wander: false,
     // 视线跟着光标走；关掉后只自己四处看（光标在屏幕上来回动时不会一直盯着）
     followCursor: true,
+    // 音乐播放器播放时轻轻律动，免打扰和睡眠优先。
+    musicDance: true,
     // 精灵形象（Codex 宠物）帧动画的快慢：slow / normal / fast
     animationSpeed: 'normal',
     // 截图、录屏、共享屏幕时桌宠不出现在画面里（Windows、macOS 有效）
@@ -310,6 +312,7 @@ function normalizeSettings(raw) {
         opacity: normalizeOpacity(input.opacity),
         wander: input.wander === true,
         followCursor: input.followCursor !== false,
+        musicDance: input.musicDance !== false,
         animationSpeed: ANIMATION_SPEEDS.includes(input.animationSpeed) ? input.animationSpeed : 'normal',
         hideFromCapture: input.hideFromCapture === true,
         idleChat: input.idleChat === true,

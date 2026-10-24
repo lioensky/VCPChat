@@ -95,7 +95,7 @@ test('shortcuts need real modifiers and never take what VCPChat already uses', (
 
 test('a hand-edited or broken settings file falls back to safe defaults', () => {
     assert.deepEqual(prefs.normalizeSettings(null), {
-        version: prefs.SETTINGS_VERSION, doNotDisturb: false, restoreOnLaunch: true, yieldToFullscreen: false, clickThrough: false, opacity: 1, wander: false, followCursor: true, animationSpeed: 'normal', hideFromCapture: false, idleChat: false, idleChatMinutes: 30, shortcuts: { ...prefs.DEFAULT_SETTINGS.shortcuts }, openAgents: [], lastAgent: null,
+        version: prefs.SETTINGS_VERSION, doNotDisturb: false, restoreOnLaunch: true, yieldToFullscreen: false, clickThrough: false, opacity: 1, wander: false, followCursor: true, musicDance: true, animationSpeed: 'normal', hideFromCapture: false, idleChat: false, idleChatMinutes: 30, shortcuts: { ...prefs.DEFAULT_SETTINGS.shortcuts }, openAgents: [], lastAgent: null,
     });
     const odd = prefs.normalizeSettings({
         doNotDisturb: 'yes',
@@ -388,6 +388,25 @@ test('opacity from the settings page reaches every pet and is saved', async () =
     await sleep(300);
     assert.equal(env.readJson(env.settingsFile).opacity, 0.6);
     env.handlers.closeAll();
+});
+
+test('music dance switch persists, broadcasts and gates spectrum delivery', async () => {
+    const env = await loadHandlers();
+    const pet = await env.open('Nova');
+    const bus = require('../modules/services/musicGrooveBus');
+    bus.publish({ playing: true, data: [0.5], trackKey: 'a' }, 10000);
+    assert.ok(pet.sent.some(m => m.channel === 'deskpet:music-groove'));
+    const update = env.fake.handlers.get('deskpet-settings:update');
+    await update(fromMain(env), { musicDance: false });
+    assert.equal(pet.sent.filter(m => m.channel === 'deskpet:prefs').at(-1).payload.musicDance, false);
+    const count = pet.sent.filter(m => m.channel === 'deskpet:music-groove').length;
+    bus.publish({ playing: true, data: [0.6] }, 10100);
+    assert.equal(pet.sent.filter(m => m.channel === 'deskpet:music-groove').length, count);
+    await env.handlers._controls().flush();
+    assert.equal(env.readJson(env.settingsFile).musicDance, false);
+    await env.handlers.closeAll();
+    bus.publish({ playing: false }, 10200);
+    assert.equal(pet.sent.filter(m => m.channel === 'deskpet:music-groove').length, count);
 });
 
 test('global shortcuts hide and bring back the pets and open the input box', async () => {

@@ -15,6 +15,7 @@ module.exports = {
         onMusicCapsuleState: on('music-capsule-state').roles('chat'),
         sendMusicCapsuleCommand: send('music-capsule-command', 'command').roles('chat'),
         publishMusicCapsuleState: send('music-capsule-publish', 'state'),
+        publishMusicGroove: send('music-groove-publish', 'payload'),
         getMusicPendingTrack: invoke('music-get-pending-track'),
 
         // 播放列表
