@@ -4,13 +4,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 获取所有需要的 DOM 元素
     const sourceTextarea = document.getElementById('sourceText');
     const translatedTextarea = document.getElementById('translatedText');
-    const targetLanguageSelect = document.getElementById('targetLanguageSelect');
-    const modelSelect = document.getElementById('modelSelect');
+    const targetLanguageList = document.getElementById('targetLanguageList');
+    const modelModeList = document.getElementById('modelModeList');
     const customPromptVarInput = document.getElementById('customPromptVar');
     const translateBtn = document.getElementById('translateBtn');
     const copyBtn = document.getElementById('copyBtn');
+    const pageTitle = document.getElementById('pageTitle');
+    const translatorSummary = document.getElementById('translatorSummary');
+    const translatorNotice = document.getElementById('translatorNotice');
+    const sourceCount = document.getElementById('sourceCount');
 
-    // --- Custom Title Bar Elements ---
+    // --- Window Control Elements ---
     const settingsTranslatorBtn = document.getElementById('translator-settings-btn');
     const minimizeTranslatorBtn = document.getElementById('minimize-translator-btn');
     const maximizeTranslatorBtn = document.getElementById('maximize-translator-btn');
@@ -37,12 +41,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         stream: false
     };
 
+    const MODE_LABELS = {
+        fast: '快速',
+        balanced: '均衡',
+        quality: '质量'
+    };
+
+    const PROMPT_PLACEHOLDERS = {
+        extra: '附加要求（可选），例如：保留专有名词、语气口语化',
+        custom: '目标语言，例如：文言文、粤语、正式商务英语'
+    };
+
+    const COPIED_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
     // 配置和状态变量
     let vcpServerUrl = '';
     let vcpApiKey = '';
     let currentTheme = 'dark'; // 默认是暗色主题
     let abortController = null; // 用于中止 fetch 请求
     let translatorSettings = structuredClone(DEFAULT_TRANSLATOR_SETTINGS);
+    let activeLanguage = 'en';
+    let activeMode = 'fast';
 
     // 保存复制按钮原始的 SVG 图标
     const originalCopyBtnIcon = copyBtn.innerHTML;
@@ -57,24 +76,100 @@ document.addEventListener('DOMContentLoaded', async () => {
         stream: Boolean(settings.stream)
     });
 
-    const getSelectedModelConfig = () => {
-        const selectedMode = modelSelect.value;
-        const model = translatorSettings.models[selectedMode] || DEFAULT_TRANSLATOR_SETTINGS.models[selectedMode] || DEFAULT_TRANSLATOR_SETTINGS.models.balanced;
-        return { model, temperature: 0.7, stream: translatorSettings.stream };
+    const getModelName = (mode) => translatorSettings.models[mode] || DEFAULT_TRANSLATOR_SETTINGS.models[mode] || DEFAULT_TRANSLATOR_SETTINGS.models.balanced;
+
+    const getSelectedModelConfig = () => ({ model: getModelName(activeMode), temperature: 0.7, stream: translatorSettings.stream });
+
+    const getLanguageLabel = (language) => {
+        const item = targetLanguageList.querySelector(`[data-language="${language}"] .nav-label`);
+        return item ? item.textContent.trim() : language;
     };
 
-    const refreshModelSelectLabels = () => {
-        const labels = {
-            fast: '快速',
-            balanced: '均衡',
-            quality: '质量'
-        };
+    const showNotice = (message, type = 'error') => {
+        translatorNotice.textContent = message;
+        translatorNotice.dataset.type = type;
+        translatorNotice.hidden = !message;
+    };
 
-        Array.from(modelSelect.options).forEach((option) => {
-            const modelName = translatorSettings.models[option.value] || DEFAULT_TRANSLATOR_SETTINGS.models[option.value] || '';
-            option.textContent = `${labels[option.value] || option.value} · ${modelName}`;
-            option.title = modelName;
+    const clearNotice = () => showNotice('');
+
+    const setResultState = (state) => {
+        if (state) {
+            translatedTextarea.dataset.state = state;
+        } else {
+            delete translatedTextarea.dataset.state;
+        }
+    };
+
+    const renderHeader = () => {
+        if (activeLanguage === 'custom') {
+            const customLanguage = customPromptVarInput.value.trim();
+            pageTitle.textContent = customLanguage ? `翻译为${customLanguage}` : '翻译为自定义语言';
+        } else {
+            pageTitle.textContent = `翻译为${getLanguageLabel(activeLanguage)}`;
+        }
+
+        translatorSummary.replaceChildren(...[
+            MODE_LABELS[activeMode],
+            getModelName(activeMode),
+            translatorSettings.stream ? '流式输出' : '完整返回'
+        ].map((text) => {
+            const item = document.createElement('span');
+            item.className = 'intro-item';
+            item.textContent = text;
+            return item;
+        }));
+    };
+
+    const updateSourceCount = () => {
+        sourceCount.textContent = String(sourceTextarea.value.length);
+    };
+
+    const syncRadioGroup = (group, attribute, value) => {
+        group.querySelectorAll('.nav-item').forEach((item) => {
+            const checked = item.dataset[attribute] === value;
+            item.setAttribute('aria-checked', String(checked));
+            item.tabIndex = checked ? 0 : -1;
         });
+    };
+
+    const selectLanguage = (language) => {
+        activeLanguage = language;
+        syncRadioGroup(targetLanguageList, 'language', language);
+        customPromptVarInput.placeholder = language === 'custom' ? PROMPT_PLACEHOLDERS.custom : PROMPT_PLACEHOLDERS.extra;
+        customPromptVarInput.setAttribute('aria-label', language === 'custom' ? '目标语言' : '附加要求');
+        renderHeader();
+    };
+
+    const selectMode = (mode) => {
+        activeMode = mode;
+        syncRadioGroup(modelModeList, 'mode', mode);
+        renderHeader();
+    };
+
+    const refreshModelModeLabels = () => {
+        modelModeList.querySelectorAll('.nav-item').forEach((item) => {
+            const mode = item.dataset.mode;
+            item.title = `${MODE_LABELS[mode] || mode} · ${getModelName(mode)}`;
+        });
+        renderHeader();
+    };
+
+    // 方向键在单选组内移动并选中
+    const handleRadioKeydown = (group, onSelect) => (event) => {
+        const keys = ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'];
+        if (!keys.includes(event.key)) return;
+        const items = Array.from(group.querySelectorAll('.nav-item'));
+        const index = items.indexOf(document.activeElement);
+        if (index < 0) return;
+        event.preventDefault();
+        let nextIndex = index;
+        if (event.key === 'Home') nextIndex = 0;
+        else if (event.key === 'End') nextIndex = items.length - 1;
+        else if (event.key === 'ArrowDown' || event.key === 'ArrowRight') nextIndex = (index + 1) % items.length;
+        else nextIndex = (index - 1 + items.length) % items.length;
+        items[nextIndex].focus();
+        onSelect(items[nextIndex]);
     };
 
     const fillSettingsForm = () => {
@@ -125,11 +220,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.log('Translator config loaded successfully:', { vcpServerUrl, vcpApiKey });
             } else {
                 console.error('Failed to load VCP config from settings.');
-                alert('无法从主程序加载翻译配置。');
+                showNotice('无法从主程序加载翻译配置。');
             }
         } catch (error) {
             console.error('Error loading settings via IPC:', error);
-            alert('加载配置时出错。');
+            showNotice('加载配置时出错。');
         }
     }
 
@@ -152,7 +247,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('Error loading translator settings:', error);
             translatorSettings = cloneDefaultSettings();
         } finally {
-            refreshModelSelectLabels();
+            refreshModelModeLabels();
         }
     }
 
@@ -172,7 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             translatorSettings = normalizeTranslatorSettings(result.settings || nextSettings);
-            refreshModelSelectLabels();
+            refreshModelModeLabels();
             fillSettingsForm();
             setSettingsStatus('已保存到 AppData/translatorsetting.json', 'success');
             setTimeout(closeSettingsModal, 500);
@@ -272,6 +367,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         translatedTextarea.value = modelConfig.stream ? '正在连接流式翻译...' : '翻译中...';
         translatedTextarea.classList.add('streaming');
+        setResultState('');
 
         try {
             const response = await fetch(vcpServerUrl, {
@@ -315,6 +411,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 console.error('Error during direct translation fetch:', error);
                 translatedTextarea.value = `翻译请求失败: ${error.message}`;
+                setResultState('error');
             }
         } finally {
             translatedTextarea.classList.remove('streaming');
@@ -326,28 +423,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     translateBtn.addEventListener('click', () => {
         const sourceText = sourceTextarea.value.trim();
         if (!sourceText) {
-            alert('请输入要翻译的文本。');
+            showNotice('请输入要翻译的文本。', 'warning');
+            sourceTextarea.focus();
             return;
         }
         if (!vcpServerUrl || !vcpApiKey) {
-            alert('VCP 服务器 URL 或 API Key 未配置，请检查主程序设置。');
+            showNotice('VCP 服务器 URL 或 API Key 未配置，请检查主程序设置。');
             return;
         }
 
-        const targetLanguageValue = targetLanguageSelect.value;
+        const targetLanguageValue = activeLanguage;
         const customPromptVar = customPromptVarInput.value.trim();
         let targetLanguageText = '';
 
         if (targetLanguageValue === 'custom') {
             targetLanguageText = customPromptVar;
             if (!targetLanguageText) {
-                alert('请在“自定义提示词”框中输入您想翻译的目标语言。');
+                showNotice('请在上方输入框中填写您想翻译的目标语言。', 'warning');
+                customPromptVarInput.focus();
                 return;
             }
             // 当使用自定义语言时，我们将自定义提示词框的内容作为目标语言。
         } else {
-            targetLanguageText = targetLanguageSelect.options[targetLanguageSelect.selectedIndex].text;
+            targetLanguageText = getLanguageLabel(targetLanguageValue);
         }
+
+        clearNotice();
 
         let systemPrompt = `你是一个专业的翻译助手。请将用户提供的文本翻译成${targetLanguageText}。`;
         // 如果不是自定义模式，并且自定义提示词有内容，则添加为额外要求
@@ -360,6 +461,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         const modelConfig = getSelectedModelConfig();
 
         performDirectTranslation(messages, modelConfig);
+    });
+
+    // --- Sidebar Listeners ---
+    targetLanguageList.addEventListener('click', (event) => {
+        const item = event.target.closest('.nav-item');
+        if (item) selectLanguage(item.dataset.language);
+    });
+    targetLanguageList.addEventListener('keydown', handleRadioKeydown(targetLanguageList, (item) => selectLanguage(item.dataset.language)));
+
+    modelModeList.addEventListener('click', (event) => {
+        const item = event.target.closest('.nav-item');
+        if (item) selectMode(item.dataset.mode);
+    });
+    modelModeList.addEventListener('keydown', handleRadioKeydown(modelModeList, (item) => selectMode(item.dataset.mode)));
+
+    // --- Input Listeners ---
+    sourceTextarea.addEventListener('input', updateSourceCount);
+    customPromptVarInput.addEventListener('input', () => {
+        if (activeLanguage === 'custom') renderHeader();
+    });
+
+    [sourceTextarea, customPromptVarInput].forEach((field) => {
+        field.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                translateBtn.click();
+            }
+        });
     });
 
     // --- Settings Modal Listeners ---
@@ -381,6 +510,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Initialization and Theme Handling ---
     async function initialize() {
+        selectLanguage(activeLanguage);
+        selectMode(activeMode);
+        updateSourceCount();
+
         await loadConfig(); // Load VCP settings first
         await loadTranslatorSettings();
 
@@ -399,7 +532,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn('utilityAPI not found. Theme updates will not work.');
         }
 
-        // --- Custom Title Bar Listeners ---
+        // --- Window Control Listeners ---
         minimizeTranslatorBtn.addEventListener('click', () => {
             if (api) api.minimizeWindow();
         });
@@ -418,20 +551,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- 为复制按钮添加点击事件 ---
+    const restoreCopyBtn = () => {
+        copyBtn.innerHTML = originalCopyBtnIcon;
+        copyBtn.classList.remove('is-copied');
+        copyBtn.title = '复制译文';
+    };
+
     copyBtn.addEventListener('click', () => {
         const textToCopy = translatedTextarea.value;
         if (textToCopy && !translatedTextarea.classList.contains('streaming')) {
             navigator.clipboard.writeText(textToCopy).then(() => {
-                copyBtn.innerHTML = '<span class="copy-feedback">已复制!</span>';
-                setTimeout(() => {
-                    copyBtn.innerHTML = originalCopyBtnIcon;
-                }, 2000);
+                copyBtn.innerHTML = COPIED_ICON;
+                copyBtn.classList.add('is-copied');
+                copyBtn.title = '已复制';
+                setTimeout(restoreCopyBtn, 2000);
             }).catch(err => {
                 console.error('Could not copy text: ', err);
-                copyBtn.innerHTML = '<span class="copy-feedback">失败</span>';
-                 setTimeout(() => {
-                    copyBtn.innerHTML = originalCopyBtnIcon;
-                }, 2000);
+                showNotice('复制失败，请手动选择译文复制。');
             });
         }
     });
