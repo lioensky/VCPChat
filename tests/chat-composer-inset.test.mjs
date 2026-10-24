@@ -7,7 +7,7 @@ function makeShell({ following = true } = {}) {
     const dom = new JSDOM(`<!doctype html><body><main class="main-content">
         <div class="chat-messages-container vcp-ui-scope"><div id="chatMessages"></div></div>
         <footer class="chat-input-area vcp-ui-scope"></footer>
-    </main></body>`);
+    </main></body>`, { pretendToBeVisual: true });
     const { window } = dom;
     const doc = window.document;
     const observers = [];
