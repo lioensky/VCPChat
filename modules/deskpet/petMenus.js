@@ -18,7 +18,30 @@ async function readMood(agentId) {
 
 function createPetMenus(ctx) {
     const { pets } = ctx;
-    const { Menu } = ctx.electron;
+    const { Menu, nativeImage } = ctx.electron;
+    let nameIcon;
+
+    // 原生菜单图标位与勾选标记共用左侧栏；透明位图绘制四角星，不依赖字体或 SVG 解码。
+    function getNameIcon() {
+        if (nameIcon) return nameIcon;
+        const size = 16;
+        const pixels = Buffer.alloc(size * size * 4);
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                const dx = Math.abs(x - 7.5);
+                const dy = Math.abs(y - 7.5);
+                const alpha = Math.max(0, Math.min(1, 7.5 - dx - dy - 2 * Math.min(dx, dy)));
+                const offset = (y * size + x) * 4;
+                // BGRA，暖金色；预乘透明度，避免边缘产生暗边。
+                pixels[offset] = Math.round(55 * alpha);
+                pixels[offset + 1] = Math.round(163 * alpha);
+                pixels[offset + 2] = Math.round(224 * alpha);
+                pixels[offset + 3] = Math.round(255 * alpha);
+            }
+        }
+        nameIcon = nativeImage.createFromBitmap(pixels, { width: size, height: size, scaleFactor: 1 });
+        return nameIcon;
+    }
 
     function outfitMenu(pet, outfits) {
         return outfits.map((outfit) => ({
@@ -59,11 +82,18 @@ function createPetMenus(ctx) {
      */
     async function showContextMenu(pet) {
         ctx.motion.stopWalk(pet);
-        const [voiceItem, outfits] = await Promise.all([ctx.voice.menuItem(pet), ctx.listAgentOutfits(pet.agentId).catch(() => [])]);
+        const [voiceItem, outfits, agents] = await Promise.all([
+            ctx.voice.menuItem(pet),
+            ctx.listAgentOutfits(pet.agentId).catch(() => []),
+            ctx.listAgents().catch(() => []),
+        ]);
+        const agent = agents.find((item) => item.id === pet.agentId);
         // 读换装列表期间桌宠可能已经被关掉了。
         if (pet.win.isDestroyed()) return;
         pet.outfits = outfits.map(outfitSummary);
         Menu.buildFromTemplate([
+            { label: agent?.name || '未知助手', icon: getNameIcon(), enabled: true, click: () => {} },
+            { type: 'separator' },
             { label: '换装', enabled: outfits.length > 1, submenu: outfitMenu(pet, outfits) },
             voiceItem,
             {
