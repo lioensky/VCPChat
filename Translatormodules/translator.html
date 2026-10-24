@@ -21,7 +21,7 @@
     </div>
 
     <div class="shell translator-container">
-        <aside class="sidebar" aria-label="翻译选项">
+        <aside class="sidebar" aria-label="目标语言">
             <div class="sidebar-title">翻译</div>
             <div class="nav-group">
                 <div id="language-group-label" class="nav-group-label">目标语言</div>
@@ -39,23 +39,6 @@
                     </button>
                 </div>
             </div>
-            <div class="nav-group">
-                <div id="mode-group-label" class="nav-group-label">模型</div>
-                <div id="modelModeList" class="nav-list" role="radiogroup" aria-labelledby="mode-group-label">
-                    <button type="button" class="nav-item" role="radio" data-mode="fast" aria-checked="true" tabindex="0" title="快速">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
-                        <span class="nav-label">快速</span>
-                    </button>
-                    <button type="button" class="nav-item" role="radio" data-mode="balanced" aria-checked="false" tabindex="-1" title="均衡">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
-                        <span class="nav-label">均衡</span>
-                    </button>
-                    <button type="button" class="nav-item" role="radio" data-mode="quality" aria-checked="false" tabindex="-1" title="质量">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg>
-                        <span class="nav-label">质量</span>
-                    </button>
-                </div>
-            </div>
         </aside>
 
         <section class="panel-frame">
@@ -63,39 +46,78 @@
                 <div class="translator-page">
                     <header class="page-head page-head-row">
                         <div class="page-head-copy">
-                            <h1 id="pageTitle" class="page-title">翻译为英语</h1>
+                            <div class="page-title-row">
+                                <h1 id="pageTitle" class="page-title">翻译为英语</h1>
+                                <input type="text" id="customLanguageInput" class="title-input" placeholder="目标语言，例如：文言文、粤语" aria-label="目标语言" hidden>
+                            </div>
                             <div id="translatorSummary" class="page-intro"></div>
                         </div>
-                        <button id="translator-settings-btn" class="nav-icon-btn" title="翻译设置" aria-label="翻译设置">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
+                        <div class="page-actions">
+                            <div class="menu-anchor">
+                                <button id="translator-settings-btn" class="nav-icon-btn" title="模型" aria-label="模型" aria-haspopup="menu" aria-expanded="false" aria-controls="modelModeList">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>
+                                </button>
+                                <div id="modelModeList" class="menu" role="menu" aria-label="模型" hidden>
+                                    <div class="menu-label" aria-hidden="true">模型</div>
+                                    <button type="button" class="menu-item" role="menuitemradio" data-mode="fast" aria-checked="true" tabindex="-1">
+                                        <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+                                        <span class="menu-copy"><span class="menu-name">快速</span><span class="menu-meta" data-model-name></span></span>
+                                        <svg class="menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                    </button>
+                                    <button type="button" class="menu-item" role="menuitemradio" data-mode="balanced" aria-checked="false" tabindex="-1">
+                                        <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
+                                        <span class="menu-copy"><span class="menu-name">均衡</span><span class="menu-meta" data-model-name></span></span>
+                                        <svg class="menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                    </button>
+                                    <button type="button" class="menu-item" role="menuitemradio" data-mode="quality" aria-checked="false" tabindex="-1">
+                                        <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg>
+                                        <span class="menu-copy"><span class="menu-name">质量</span><span class="menu-meta" data-model-name></span></span>
+                                        <svg class="menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                    </button>
+                                    <div class="menu-separator" role="separator"></div>
+                                    <button type="button" id="openSettingsBtn" class="menu-item" role="menuitem" tabindex="-1">
+                                        <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                                        <span class="menu-copy"><span class="menu-name">编辑模型与输出…</span></span>
+                                    </button>
+                                </div>
+                            </div>
+                            <button id="translateBtn" class="translator-button translator-button-primary" title="翻译（Ctrl + Enter）">翻译</button>
+                        </div>
                     </header>
 
                     <p id="translatorNotice" class="translator-notice" role="status" aria-live="polite" hidden></p>
 
-                    <input type="text" id="customPromptVar" class="translator-input" placeholder="附加要求（可选），例如：保留专有名词、语气口语化" aria-label="附加要求">
+                    <div class="translate-surface">
+                        <section class="text-pane source-pane" aria-labelledby="sourceHeading">
+                            <div class="pane-header">
+                                <h2 id="sourceHeading">原文<span id="sourceCount" class="pane-count" hidden></span></h2>
+                                <div class="pane-tools">
+                                    <button id="extraPromptBtn" class="nav-icon-btn" title="附加要求" aria-label="附加要求" aria-expanded="false" aria-controls="extraPromptRow">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M13 8H7"/><path d="M17 12H7"/></svg>
+                                    </button>
+                                    <button id="clearSourceBtn" class="nav-icon-btn" title="清空" aria-label="清空" hidden>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea id="sourceText" class="text-well" placeholder="输入或粘贴要翻译的文本，Ctrl + Enter 翻译" aria-labelledby="sourceHeading"></textarea>
+                            <div id="extraPromptRow" class="pane-footer" hidden>
+                                <input type="text" id="customPromptVar" class="footer-input" placeholder="附加要求，例如：保留专有名词、语气口语化" aria-label="附加要求">
+                            </div>
+                        </section>
 
-                    <section class="text-pane" aria-labelledby="sourceHeading">
-                        <div class="pane-header">
-                            <h2 id="sourceHeading">原文<span id="sourceCount" class="pane-count">0</span></h2>
-                        </div>
-                        <textarea id="sourceText" class="text-well" placeholder="输入或粘贴要翻译的文本…" rows="8" aria-labelledby="sourceHeading"></textarea>
-                    </section>
-
-                    <div class="action-row">
-                        <span class="action-hint">Ctrl + Enter 翻译</span>
-                        <button id="translateBtn" class="translator-button translator-button-primary">翻译</button>
+                        <section class="text-pane output-area" aria-labelledby="resultHeading">
+                            <div class="pane-header">
+                                <h2 id="resultHeading">译文</h2>
+                                <div class="pane-tools">
+                                    <button id="copyBtn" class="nav-icon-btn" title="复制译文" aria-label="复制译文" disabled>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea id="translatedText" class="text-well" placeholder="译文会显示在这里" readonly aria-labelledby="resultHeading"></textarea>
+                        </section>
                     </div>
-
-                    <section class="text-pane output-area" aria-labelledby="resultHeading">
-                        <div class="pane-header">
-                            <h2 id="resultHeading">译文</h2>
-                            <button id="copyBtn" class="nav-icon-btn" title="复制译文" aria-label="复制译文">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                            </button>
-                        </div>
-                        <textarea id="translatedText" class="text-well" placeholder="翻译结果将显示在这里" rows="8" readonly aria-labelledby="resultHeading"></textarea>
-                    </section>
                 </div>
             </main>
         </section>

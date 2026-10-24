@@ -7,12 +7,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const targetLanguageList = document.getElementById('targetLanguageList');
     const modelModeList = document.getElementById('modelModeList');
     const customPromptVarInput = document.getElementById('customPromptVar');
+    const customLanguageInput = document.getElementById('customLanguageInput');
+    const extraPromptBtn = document.getElementById('extraPromptBtn');
+    const extraPromptRow = document.getElementById('extraPromptRow');
+    const clearSourceBtn = document.getElementById('clearSourceBtn');
     const translateBtn = document.getElementById('translateBtn');
     const copyBtn = document.getElementById('copyBtn');
     const pageTitle = document.getElementById('pageTitle');
     const translatorSummary = document.getElementById('translatorSummary');
     const translatorNotice = document.getElementById('translatorNotice');
     const sourceCount = document.getElementById('sourceCount');
+    const openSettingsBtn = document.getElementById('openSettingsBtn');
 
     // --- Window Control Elements ---
     const settingsTranslatorBtn = document.getElementById('translator-settings-btn');
@@ -45,11 +50,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         fast: '快速',
         balanced: '均衡',
         quality: '质量'
-    };
-
-    const PROMPT_PLACEHOLDERS = {
-        extra: '附加要求（可选），例如：保留专有名词、语气口语化',
-        custom: '目标语言，例如：文言文、粤语、正式商务英语'
     };
 
     const COPIED_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -101,13 +101,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
+    // 自定义语言时，标题后面直接接一个输入框，读起来就是“翻译为 ____”
     const renderHeader = () => {
-        if (activeLanguage === 'custom') {
-            const customLanguage = customPromptVarInput.value.trim();
-            pageTitle.textContent = customLanguage ? `翻译为${customLanguage}` : '翻译为自定义语言';
-        } else {
-            pageTitle.textContent = `翻译为${getLanguageLabel(activeLanguage)}`;
-        }
+        const isCustom = activeLanguage === 'custom';
+        pageTitle.textContent = isCustom ? '翻译为' : `翻译为${getLanguageLabel(activeLanguage)}`;
+        customLanguageInput.hidden = !isCustom;
 
         translatorSummary.replaceChildren(...[
             MODE_LABELS[activeMode],
@@ -122,7 +120,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const updateSourceCount = () => {
-        sourceCount.textContent = String(sourceTextarea.value.length);
+        const length = sourceTextarea.value.length;
+        sourceCount.textContent = String(length);
+        sourceCount.hidden = length === 0;
+        clearSourceBtn.hidden = length === 0;
+    };
+
+    // 只有真正的译文才能复制：空白、进行中和失败提示都不算
+    const updateCopyState = () => {
+        copyBtn.disabled = !translatedTextarea.value
+            || translatedTextarea.classList.contains('streaming')
+            || translatedTextarea.dataset.state === 'error';
+    };
+
+    const setExtraPromptOpen = (open) => {
+        extraPromptRow.hidden = !open;
+        extraPromptBtn.setAttribute('aria-expanded', String(open));
+    };
+
+    const updateExtraPromptIndicator = () => {
+        extraPromptBtn.classList.toggle('has-value', Boolean(customPromptVarInput.value.trim()));
     };
 
     const syncRadioGroup = (group, attribute, value) => {
@@ -136,23 +153,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectLanguage = (language) => {
         activeLanguage = language;
         syncRadioGroup(targetLanguageList, 'language', language);
-        customPromptVarInput.placeholder = language === 'custom' ? PROMPT_PLACEHOLDERS.custom : PROMPT_PLACEHOLDERS.extra;
-        customPromptVarInput.setAttribute('aria-label', language === 'custom' ? '目标语言' : '附加要求');
         renderHeader();
     };
 
+    const modeItems = () => Array.from(modelModeList.querySelectorAll('.menu-item'));
+
     const selectMode = (mode) => {
         activeMode = mode;
-        syncRadioGroup(modelModeList, 'mode', mode);
+        modelModeList.querySelectorAll('[data-mode]').forEach((item) => {
+            item.setAttribute('aria-checked', String(item.dataset.mode === mode));
+        });
+        const label = `模型：${MODE_LABELS[mode] || mode}`;
+        settingsTranslatorBtn.title = label;
+        settingsTranslatorBtn.setAttribute('aria-label', label);
         renderHeader();
     };
 
     const refreshModelModeLabels = () => {
-        modelModeList.querySelectorAll('.nav-item').forEach((item) => {
-            const mode = item.dataset.mode;
-            item.title = `${MODE_LABELS[mode] || mode} · ${getModelName(mode)}`;
+        modelModeList.querySelectorAll('[data-mode]').forEach((item) => {
+            item.querySelector('[data-model-name]').textContent = getModelName(item.dataset.mode);
         });
         renderHeader();
+    };
+
+    const isModeMenuOpen = () => !modelModeList.hidden;
+
+    const openModeMenu = () => {
+        modelModeList.hidden = false;
+        settingsTranslatorBtn.setAttribute('aria-expanded', 'true');
+        const checked = modelModeList.querySelector('[aria-checked="true"]') || modeItems()[0];
+        checked.focus();
+    };
+
+    const closeModeMenu = ({ restoreFocus = false } = {}) => {
+        if (!isModeMenuOpen()) return;
+        modelModeList.hidden = true;
+        settingsTranslatorBtn.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) settingsTranslatorBtn.focus();
     };
 
     // 方向键在单选组内移动并选中
@@ -364,10 +401,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         abortController = new AbortController();
         const signal = abortController.signal;
+        // 被新请求取代或被清空的旧请求不再改动界面
+        const isCurrent = () => abortController?.signal === signal;
 
         translatedTextarea.value = modelConfig.stream ? '正在连接流式翻译...' : '翻译中...';
         translatedTextarea.classList.add('streaming');
         setResultState('');
+        updateCopyState();
 
         try {
             const response = await fetch(vcpServerUrl, {
@@ -405,17 +445,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error('API 返回的响应中没有有效的翻译内容。');
             }
         } catch (error) {
-            if (error.name === 'AbortError') {
+            if (signal.aborted) {
                 console.log('Translation request was aborted.');
-                translatedTextarea.value = '翻译已取消。';
-            } else {
+                if (isCurrent()) translatedTextarea.value = '翻译已取消。';
+            } else if (isCurrent()) {
                 console.error('Error during direct translation fetch:', error);
                 translatedTextarea.value = `翻译请求失败: ${error.message}`;
                 setResultState('error');
             }
         } finally {
-            translatedTextarea.classList.remove('streaming');
-            abortController = null;
+            if (isCurrent()) {
+                translatedTextarea.classList.remove('streaming');
+                abortController = null;
+                updateCopyState();
+            }
         }
     }
 
@@ -437,13 +480,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         let targetLanguageText = '';
 
         if (targetLanguageValue === 'custom') {
-            targetLanguageText = customPromptVar;
+            targetLanguageText = customLanguageInput.value.trim();
             if (!targetLanguageText) {
-                showNotice('请在上方输入框中填写您想翻译的目标语言。', 'warning');
-                customPromptVarInput.focus();
+                showNotice('请先填写目标语言。', 'warning');
+                customLanguageInput.focus();
                 return;
             }
-            // 当使用自定义语言时，我们将自定义提示词框的内容作为目标语言。
         } else {
             targetLanguageText = getLanguageLabel(targetLanguageValue);
         }
@@ -451,8 +493,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         clearNotice();
 
         let systemPrompt = `你是一个专业的翻译助手。请将用户提供的文本翻译成${targetLanguageText}。`;
-        // 如果不是自定义模式，并且自定义提示词有内容，则添加为额外要求
-        if (targetLanguageValue !== 'custom' && customPromptVar) {
+        // 附加要求有内容时，作为额外要求加入提示词
+        if (customPromptVar) {
             systemPrompt += ` 额外要求: ${customPromptVar}。`;
         }
         systemPrompt += ` 仅返回翻译结果，不要包含任何解释或额外信息。`;
@@ -466,23 +508,82 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Sidebar Listeners ---
     targetLanguageList.addEventListener('click', (event) => {
         const item = event.target.closest('.nav-item');
-        if (item) selectLanguage(item.dataset.language);
+        if (!item) return;
+        selectLanguage(item.dataset.language);
+        if (item.dataset.language === 'custom' && !customLanguageInput.value.trim()) customLanguageInput.focus();
     });
     targetLanguageList.addEventListener('keydown', handleRadioKeydown(targetLanguageList, (item) => selectLanguage(item.dataset.language)));
 
-    modelModeList.addEventListener('click', (event) => {
-        const item = event.target.closest('.nav-item');
-        if (item) selectMode(item.dataset.mode);
+    // --- Model Menu ---
+    settingsTranslatorBtn.addEventListener('click', () => {
+        if (isModeMenuOpen()) closeModeMenu();
+        else openModeMenu();
     });
-    modelModeList.addEventListener('keydown', handleRadioKeydown(modelModeList, (item) => selectMode(item.dataset.mode)));
+
+    settingsTranslatorBtn.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown' && !isModeMenuOpen()) {
+            event.preventDefault();
+            openModeMenu();
+        }
+    });
+
+    modelModeList.addEventListener('click', (event) => {
+        const item = event.target.closest('[data-mode]');
+        if (!item) return;
+        selectMode(item.dataset.mode);
+        closeModeMenu({ restoreFocus: true });
+    });
+
+    modelModeList.addEventListener('keydown', (event) => {
+        const items = modeItems();
+        const index = items.indexOf(document.activeElement);
+        let nextIndex = null;
+        if (event.key === 'ArrowDown') nextIndex = (index + 1) % items.length;
+        else if (event.key === 'ArrowUp') nextIndex = (index - 1 + items.length) % items.length;
+        else if (event.key === 'Home') nextIndex = 0;
+        else if (event.key === 'End') nextIndex = items.length - 1;
+        else if (event.key === 'Tab') closeModeMenu();
+        if (nextIndex === null) return;
+        event.preventDefault();
+        items[nextIndex].focus();
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+        if (isModeMenuOpen() && !event.target.closest('.menu-anchor')) closeModeMenu();
+    });
+
+    openSettingsBtn.addEventListener('click', () => {
+        closeModeMenu();
+        openSettingsModal();
+    });
 
     // --- Input Listeners ---
     sourceTextarea.addEventListener('input', updateSourceCount);
-    customPromptVarInput.addEventListener('input', () => {
-        if (activeLanguage === 'custom') renderHeader();
+    customLanguageInput.addEventListener('input', clearNotice);
+    customPromptVarInput.addEventListener('input', updateExtraPromptIndicator);
+
+    extraPromptBtn.addEventListener('click', () => {
+        const open = extraPromptRow.hidden;
+        setExtraPromptOpen(open);
+        if (open) customPromptVarInput.focus();
     });
 
-    [sourceTextarea, customPromptVarInput].forEach((field) => {
+    clearSourceBtn.addEventListener('click', () => {
+        if (abortController) {
+            abortController.abort();
+            abortController = null;
+        }
+        sourceTextarea.value = '';
+        translatedTextarea.value = '';
+        translatedTextarea.classList.remove('streaming');
+        setResultState('');
+        clearNotice();
+        updateSourceCount();
+        updateCopyState();
+        sourceTextarea.focus();
+    });
+
+    [sourceTextarea, customPromptVarInput, customLanguageInput].forEach((field) => {
         field.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault();
@@ -492,7 +593,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // --- Settings Modal Listeners ---
-    settingsTranslatorBtn.addEventListener('click', openSettingsModal);
     closeSettingsModalBtn.addEventListener('click', closeSettingsModal);
     settingsModalBackdrop.addEventListener('click', closeSettingsModal);
     saveSettingsBtn.addEventListener('click', saveTranslatorSettingsFromForm);
@@ -503,7 +603,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !settingsModal.classList.contains('hidden')) {
+        if (event.key !== 'Escape') return;
+        if (isModeMenuOpen()) {
+            closeModeMenu({ restoreFocus: true });
+        } else if (!settingsModal.classList.contains('hidden')) {
             closeSettingsModal();
         }
     });
@@ -513,6 +616,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         selectLanguage(activeLanguage);
         selectMode(activeMode);
         updateSourceCount();
+        updateCopyState();
 
         await loadConfig(); // Load VCP settings first
         await loadTranslatorSettings();
@@ -559,7 +663,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     copyBtn.addEventListener('click', () => {
         const textToCopy = translatedTextarea.value;
-        if (textToCopy && !translatedTextarea.classList.contains('streaming')) {
+        if (textToCopy && !copyBtn.disabled) {
             navigator.clipboard.writeText(textToCopy).then(() => {
                 copyBtn.innerHTML = COPIED_ICON;
                 copyBtn.classList.add('is-copied');

@@ -1,9 +1,9 @@
 /* Translator: a full-window shell with a navigation column and a framed
-   content panel. The sidebar holds the two choices that shape a translation,
-   the target language and the model mode; the panel follows the settings
-   rhythm: an 18px page title, a 36px field and two text wells. Every color
-   comes from the theme variables in styles/themes.css, so the light and dark
-   themes both follow without per-theme overrides. */
+   content panel. The sidebar picks the target language; the panel has an
+   18px title row with the one primary action and a model menu, then a single
+   card holding source and result. Every color comes from the theme variables
+   in styles/themes.css, so the light and dark themes both follow without
+   per-theme overrides. */
 body {
     --tr-ink: var(--primary-text);
     --tr-ink-2: var(--secondary-text);
@@ -283,9 +283,11 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 /* ---- Page ----
-   One 760px reading column, the same measure as the settings pages, with a
-   16px beat between the header, the field and the two wells. The wells share
-   whatever height is left, so a tall window gives the text more room. */
+   The header carries the one primary action, 翻译, next to the model menu.
+   Below it, source and result share one card: side by side while the page
+   is wide enough for two readable columns, stacked once it is not. The card
+   takes whatever height the window has, so the text never sits below the
+   fold. */
 .app-container {
     display: flex;
     flex: 1;
@@ -301,9 +303,10 @@ html[data-vcp-embedded-app="true"] .shell {
     flex-direction: column;
     gap: 16px;
     width: 100%;
-    max-width: 808px;
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 24px 24px 40px;
+    padding: 24px;
+    container-type: inline-size;
 }
 
 .page-head,
@@ -314,14 +317,25 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 .page-head-row {
-    flex-direction: row;
+    flex-flow: row wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    gap: 12px 16px;
 }
 
 .page-head-copy {
+    flex: 1 1 260px;
     min-width: 0;
+}
+
+/* Sized for the custom-language field, so picking 自定义 does not shift the
+   page down. */
+.page-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 30px;
 }
 
 .page-title {
@@ -332,6 +346,23 @@ html[data-vcp-embedded-app="true"] .shell {
     font-size: 18px;
     line-height: 26px;
     font-weight: 600;
+}
+
+/* With 自定义 picked, the title reads "翻译为 [field]", so the language is
+   typed where it is shown instead of in a second field below. */
+.title-input {
+    flex: 0 1 240px;
+    min-width: 0;
+    height: 30px;
+    padding: 0 10px;
+    border: 0.5px solid var(--tr-line-3);
+    border-radius: var(--tr-radius-sm);
+    background: var(--tr-surface);
+    outline: none;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .page-intro {
@@ -354,6 +385,29 @@ html[data-vcp-embedded-app="true"] .shell {
     color: var(--tr-ink-4);
 }
 
+.page-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.page-actions .nav-icon-btn {
+    width: 30px;
+    height: 30px;
+}
+
+.nav-icon-btn[aria-expanded="true"] {
+    background: var(--tr-active);
+    color: var(--tr-ink);
+}
+
+/* A filled 附加要求 stays visible as an accent icon while its row is shut. */
+.nav-icon-btn.has-value {
+    color: var(--tr-accent);
+}
+
 .translator-notice {
     margin: 0;
     padding: 8px 12px;
@@ -365,10 +419,6 @@ html[data-vcp-embedded-app="true"] .shell {
     overflow-wrap: anywhere;
 }
 
-.translator-notice[hidden] {
-    display: none;
-}
-
 .translator-notice[data-type="error"] {
     background: color-mix(in srgb, var(--tr-danger) 8%, transparent);
     color: var(--tr-danger);
@@ -377,6 +427,120 @@ html[data-vcp-embedded-app="true"] .shell {
 .translator-notice[data-type="warning"] {
     background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
     color: var(--tr-warning);
+}
+
+/* ---- Model menu ----
+   The three modes are a choice made now and then, so they live in a menu
+   on the sliders button. Each row shows the model it maps to; the active
+   one is named again only in the intro line. */
+.menu-anchor {
+    position: relative;
+    display: flex;
+}
+
+.menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: max-content;
+    min-width: 248px;
+    max-width: 320px;
+    padding: 6px;
+    border: 0.5px solid var(--tr-line-3);
+    border-radius: var(--tr-radius-md);
+    background: var(--tr-panel);
+    box-shadow: 0 12px 32px var(--tr-shadow);
+}
+
+.menu-label {
+    padding: 4px 10px 2px;
+    color: var(--tr-ink-4);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 40px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: var(--tr-radius-sm);
+    background: transparent;
+    color: var(--tr-ink);
+    text-align: left;
+}
+
+.menu-item:not([data-mode]) {
+    min-height: 34px;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+    background: var(--tr-hover);
+    outline: none;
+}
+
+.menu-icon,
+.menu-check {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.menu-icon {
+    color: var(--tr-ink-3);
+}
+
+.menu-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.menu-name {
+    font-size: 13px;
+    line-height: 18px;
+}
+
+.menu-meta {
+    overflow: hidden;
+    color: var(--tr-ink-4);
+    font-size: 12px;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.menu-meta:empty {
+    display: none;
+}
+
+.menu-check {
+    color: var(--tr-accent);
+    visibility: hidden;
+}
+
+.menu-item[aria-checked="true"] .menu-name {
+    font-weight: 500;
+}
+
+.menu-item[aria-checked="true"] .menu-check {
+    visibility: visible;
+}
+
+.menu-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--tr-line-2);
 }
 
 /* ---- Fields ---- */
@@ -394,36 +558,69 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 .translator-input::placeholder,
+.title-input::placeholder,
+.footer-input::placeholder,
 .text-well::placeholder {
     color: var(--tr-ink-4);
+    font-weight: 400;
 }
 
 .translator-input:focus,
-.text-well:focus {
+.title-input:focus {
     border-color: var(--tr-accent);
     box-shadow: 0 0 0 2px var(--tr-focus-ring);
 }
 
 .translator-input:focus-visible,
+.title-input:focus-visible,
+.footer-input:focus-visible,
 .text-well:focus-visible {
     outline: none;
 }
 
+/* ---- Translate surface ---- */
+.translate-surface {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 360px;
+    border: 0.5px solid var(--tr-line-3);
+    border-radius: var(--tr-radius-lg);
+    overflow: hidden;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.translate-surface:has(#sourceText:focus, .footer-input:focus) {
+    border-color: var(--tr-accent);
+    box-shadow: 0 0 0 2px var(--tr-focus-ring);
+}
+
 .text-pane {
     display: flex;
-    flex: 1 1 200px;
     flex-direction: column;
-    gap: 8px;
+    min-width: 0;
     min-height: 0;
+}
+
+/* The result side sits on a faint tint, so the two halves read as input
+   and output at a glance. */
+.output-area {
+    border-left: 0.5px solid var(--tr-line-2);
+    background: var(--tr-surface);
+}
+
+.output-area:has(#translatedText[data-state="error"]) {
+    background: color-mix(in srgb, var(--tr-danger) 6%, transparent);
 }
 
 .pane-header {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    min-height: 28px;
-    padding: 0 2px;
+    min-height: 44px;
+    padding: 8px 8px 0 14px;
 }
 
 .pane-header h2 {
@@ -431,8 +628,9 @@ html[data-vcp-embedded-app="true"] .shell {
     align-items: baseline;
     gap: 8px;
     margin: 0;
-    font-size: 14px;
-    line-height: 22px;
+    color: var(--tr-ink-2);
+    font-size: 13px;
+    line-height: 20px;
     font-weight: 500;
 }
 
@@ -444,8 +642,10 @@ html[data-vcp-embedded-app="true"] .shell {
     font-variant-numeric: tabular-nums;
 }
 
-.pane-header .nav-icon-btn {
-    margin-right: -4px;
+.pane-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
 }
 
 .nav-icon-btn.is-copied {
@@ -456,22 +656,21 @@ html[data-vcp-embedded-app="true"] .shell {
     display: block;
     flex: 1;
     width: 100%;
-    min-height: 160px;
-    padding: 12px 14px;
-    border: 0.5px solid var(--tr-line-3);
-    border-radius: var(--tr-radius-md);
-    background: var(--tr-surface);
+    min-height: 0;
+    padding: 6px 14px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     outline: none;
     resize: none;
-    font-size: 14px;
-    line-height: 22px;
-    transition: border-color 120ms ease, box-shadow 120ms ease;
+    font-size: 15px;
+    line-height: 24px;
 }
 
 #translatedText[data-state="error"] {
-    border-color: color-mix(in srgb, var(--tr-danger) 40%, transparent);
-    background: color-mix(in srgb, var(--tr-danger) 6%, transparent);
     color: var(--tr-danger);
+    font-size: 13px;
+    line-height: 20px;
 }
 
 /* While a request is open the result well carries a slow sheen, so waiting
@@ -498,17 +697,47 @@ html[data-vcp-embedded-app="true"] .shell {
     }
 }
 
-.action-row {
+/* 附加要求 is optional, so it opens as a quiet line under the source text
+   rather than standing above it like a second main field. */
+.pane-footer {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
+    border-top: 0.5px solid var(--tr-line-2);
 }
 
-.action-hint {
-    color: var(--tr-ink-4);
-    font-size: 12px;
-    line-height: 18px;
+.footer-input {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+    padding: 0 14px;
+    border: 0;
+    background: transparent;
+    outline: none;
+    font-size: 13px;
+    line-height: 20px;
+}
+
+.translator-notice[hidden],
+.title-input[hidden],
+.pane-count[hidden],
+.nav-icon-btn[hidden],
+.menu[hidden],
+.pane-footer[hidden] {
+    display: none;
+}
+
+@container (max-width: 720px) {
+    .translate-surface {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(200px, 1fr) minmax(200px, 1fr);
+        min-height: 440px;
+    }
+
+    .output-area {
+        border-top: 0.5px solid var(--tr-line-2);
+        border-left: 0;
+    }
 }
 
 /* ---- Buttons ---- */
@@ -761,7 +990,8 @@ html[data-vcp-embedded-app="true"] .shell {
 
 @media (prefers-reduced-motion: reduce) {
     .translator-input,
-    .text-well,
+    .title-input,
+    .translate-surface,
     .translator-button,
     .toggle-slider,
     .toggle-slider::after {
@@ -804,11 +1034,7 @@ html[data-vcp-embedded-app="true"] .shell {
 
 @media (max-width: 640px) {
     .translator-page {
-        padding: 20px 16px 32px;
-    }
-
-    .action-hint {
-        display: none;
+        padding: 20px 16px;
     }
 
     .settings-modal {
