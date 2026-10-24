@@ -105,9 +105,10 @@ function loadRegistry({ skipFeatures = [] } = {}) {
  * 以纯数据形式列出全部 API，供测试、文档和函数地图等工具使用。
  */
 function describeApis() {
-    return [...loadRegistry()].map(([name, { entry, domain, roles }]) => ({
+    return [...loadRegistry()].map(([name, { entry, domain, where, roles }]) => ({
         name,
         domain,
+        where,
         kind: entry.kind,
         channel: entry.channel,
         roles,

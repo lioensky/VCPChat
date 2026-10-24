@@ -258,7 +258,7 @@ test('every real preload channel has a source declaration in its own API domain'
     const apis = createRequire(import.meta.url)('../preloads/core/registry.js').describeApis();
     const g = buildChatEventGraph();
     const missing = apis.filter(api => typeof api.channel === 'string' && !g.events.some(event => event.name === api.channel
-        && event.evidence.some(site => site.file === 'preloads/api/' + api.domain + '.js' && site.kind === 'preload-channel-definition')));
+        && event.evidence.some(site => site.file === api.where && site.kind === 'preload-channel-definition')));
     assert.deepEqual(missing.map(api => ({ name: api.name, channel: api.channel, domain: api.domain })), []);
 });
 

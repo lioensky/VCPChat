@@ -343,7 +343,7 @@
     "dynamicSites": [
       {
         "file": "modules/deskpet/petHandlers.js",
-        "line": 246,
+        "line": 240,
         "kind": "event-listener",
         "match": "target?.on?.(event"
       }
@@ -362,7 +362,7 @@
     "dynamicSites": [
       {
         "file": "modules/event-listeners.js",
-        "line": 38,
+        "line": 39,
         "kind": "custom-event-listener",
         "match": "target?.addEventListener?.(type"
       }
