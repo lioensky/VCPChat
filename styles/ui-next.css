@@ -413,6 +413,34 @@ html .next-ui-embedded-app-view {
     background: var(--next-surface);
 }
 
+/* Integrated pages paint their own content panel; any surface here would
+   tint their rail and split it from the top bar. */
+html #nextUiInternalAppHost:is(
+    [data-active-app-id="vchat-app-notes"],
+    [data-active-app-id="vchat-app-translator"],
+    [data-active-app-id="vchat-app-memo"],
+    [data-active-app-id="vchat-app-log"],
+    [data-active-app-id="vchat-app-plugin-manager"],
+    [data-active-app-id="vchat-app-task"],
+    [data-active-app-id="vchat-app-forum"],
+    [data-active-app-id="vchat-app-note-mini"]
+) .next-ui-embedded-app-view {
+    background: transparent;
+}
+
+html[data-vcp-wallpaper-scope="global"] body.next-ui-internal-app-open:has(#nextUiInternalAppHost:is(
+    [data-active-app-id="vchat-app-notes"],
+    [data-active-app-id="vchat-app-translator"],
+    [data-active-app-id="vchat-app-memo"],
+    [data-active-app-id="vchat-app-log"],
+    [data-active-app-id="vchat-app-plugin-manager"],
+    [data-active-app-id="vchat-app-task"],
+    [data-active-app-id="vchat-app-forum"],
+    [data-active-app-id="vchat-app-note-mini"]
+)) .next-ui-topbar {
+    background-attachment: fixed;
+}
+
 html .next-ui-embedded-app-status {
     position: absolute;
     inset: 0;
