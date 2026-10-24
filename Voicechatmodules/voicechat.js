@@ -9,24 +9,7 @@ import { createStreamProjection } from '../modules/renderer/streamManager.js';
 import { createStreamTransientHistory } from '../modules/chat/streamTransientHistory.js';
 import { createTtsSurfaceOwner } from '../modules/renderer/ttsSurfaceOwner.js';
 import { createSingleChatRequestOrchestrator } from '../modules/chat/singleChatRequestOrchestrator.js';
-import { collectClosedToolResultRanges } from '../modules/renderer/toolResultRegions.js';
-
-/**
- * 嵌套感知地剥离完整工具结果块（与主渲染器同一配对规则）。
- * 工具结果内部成对出现的字面量起止标记被整体包含在外层块中，不会在第一个内层结束标记处截断。
- */
-function stripToolResultsNested(text) {
-    const ranges = collectClosedToolResultRanges(text);
-    if (ranges.length === 0) return text;
-
-    let result = '';
-    let cursor = 0;
-    for (const range of ranges) {
-        result += text.slice(cursor, range.start);
-        cursor = range.end;
-    }
-    return result + text.slice(cursor);
-}
+import { createStreamSpeechOwner } from '../modules/renderer/streamSpeechOwner.js';
 
 const streamManager = createStreamProjection();
 const messageRenderer = createMessageRenderer({ streamManager });
@@ -273,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.electronAPI.onVoiceChatData(async (data) => {
         console.log('Received voice chat data:', data);
         const { agentId: receivedAgentId, theme } = data;
-        
+
         agentId = receivedAgentId;
         globalSettings = await window.electronAPI.loadSettings();
         globalSettings = {
@@ -425,7 +408,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             ttsSurfaceOwner.mount();
 
+            const speech = createStreamSpeechOwner({
+                document,
+                render: source => markedInstance.parse(source),
+                speak: (text, messageId, options) => playTTS(text, messageId, options),
+                stop: () => window.electronAPI.sovitsStop?.(),
+                resetPlayback: () => ttsSurfaceOwner?.stopPlayback(),
+                subscribeStop: callback => window.electronAPI.onStopTtsAudio(callback),
+            });
             streamRuntime = createWindowStreamRuntime({
+                speech,
                 root: chatMessagesDiv,
                 streamProjection: streamManager,
                 historyPersistence,
@@ -437,10 +429,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }),
                 contextFilter: context => !!context && context.topicId === getVoiceTopicId() && context.agentId === agentId,
                 dispatchTerminal: detail => window.dispatchEvent(new CustomEvent('vcp-chat-stream-terminal', { detail })),
-                afterPersist: ({ terminal, finalized }) => {
-                    if (terminal.kind !== 'completed') return;
-                    if (finalized?.messageId) setTimeout(() => extractTextAndPlayTTS(finalized.messageId, 0), 100);
-                },
                 onSettled: restoreComposerAfterStream,
             });
             console.log('[VoiceChat] Shared messageRenderer initialized.');
@@ -721,91 +709,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!streamRuntime || !isEventForCurrentVoiceSession(eventData)) return;
         streamRuntime.accept(eventData);
     });
-    
-    function extractSpeakableTextFallback(contentElement) {
-        if (!contentElement) return '';
 
-        const contentClone = contentElement.cloneNode(true);
-        contentClone.querySelectorAll(
-            '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .highlighted-tag, .highlighted-alert-tag, style, script'
-        ).forEach(el => el.remove());
-
-        // 最终 DOM 理论上已将完整工具协议转换为气泡；以下规则覆盖异常
-        // 历史 DOM 或边界粘连后仍残留为纯文本的完整协议块。
-        // 工具结果优先级最高且嵌套感知，最先整体剥离，其内部的工具请求字面量随之移除。
-        return stripToolResultsNested(contentClone.innerText || contentClone.textContent || '')
-            .replace(/<<<\[TOOL_REQUEST\]>>>[\s\S]*?<{2,4}\[END_TOOL_REQUEST\]>{2,4}/gi, '')
-            .replace(/\[本轮工具调用摘要:\][\s\S]*?\[本轮工具调用摘要结束\]/gi, '')
-            .replace(/<<<\[(?:END_)?ROLE_DIVIDE_(?:SYSTEM|ASSISTANT|USER)\]>>>/gi, '')
-            .replace(/@!?[\u4e00-\u9fa5A-Za-z0-9_]+/g, '')
-            .replace(/[ \t]+\n/g, '\n')
-            .replace(/[ \t]{2,}/g, ' ')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
-    }
-
-    // 新增：智能文本提取和TTS触发函数，包含重试机制
-    function extractTextAndPlayTTS(messageId, retryCount = 0) {
-        const maxRetries = 10;
-        const retryDelay = 100;
-
-        const messageElement = document.getElementById(`message-item-${messageId}`);
-        let textToSpeak = '';
-
-        if (messageElement) {
-            const contentElement = messageElement.querySelector('.md-content');
-            if (contentElement && messageRenderer?.extractSpeakableTextFromContentElement) {
-                textToSpeak = messageRenderer.extractSpeakableTextFromContentElement(contentElement);
-            } else if (contentElement) {
-                textToSpeak = extractSpeakableTextFallback(contentElement);
-            } else {
-                textToSpeak = messageElement.textContent || messageElement.innerText;
-            }
-            console.log(`[VoiceChat] 提取到文本长度: ${textToSpeak.length}`);
-            console.log(`[VoiceChat] 文本内容: ${textToSpeak.substring(0, 50)}...`);
-
-            // 如果提取到文本，调用TTS
-            if (textToSpeak.trim().length > 0) {
-                console.log(`[VoiceChat] 调用playTTS，文本长度: ${textToSpeak.trim().length}`);
-                playTTS(textToSpeak.trim(), messageId);
-            } else {
-                console.warn(`[VoiceChat] 警告：消息内容为空，跳过TTS`);
-            }
-        } else {
-            if (retryCount < maxRetries) {
-                console.log(`[VoiceChat] 消息元素未找到，${retryDelay}ms后重试 (${retryCount + 1}/${maxRetries}): message-item-${messageId}`);
-                setTimeout(() => {
-                    extractTextAndPlayTTS(messageId, retryCount + 1);
-                }, retryDelay);
-            } else {
-                console.error(`[VoiceChat] 错误：${maxRetries}次重试后仍未找到消息元素 message-item-${messageId}`);
-
-                // 最后尝试：直接从DOM中查找
-                const allMessageItems = document.querySelectorAll('.message-item');
-                console.log(`[VoiceChat] 找到 ${allMessageItems.length} 个消息元素，尝试匹配...`);
-
-                allMessageItems.forEach(item => {
-                    const idAttr = item.getAttribute('data-message-id');
-                    if (idAttr && idAttr.includes(messageId)) {
-                        console.log(`[VoiceChat] 找到备用匹配元素: ${idAttr}`);
-                        const contentElement = item.querySelector('.md-content');
-                        if (contentElement) {
-                            const backupText = messageRenderer?.extractSpeakableTextFromContentElement
-                                ? messageRenderer.extractSpeakableTextFromContentElement(contentElement)
-                                : extractSpeakableTextFallback(contentElement);
-                            if (backupText.trim().length > 0) {
-                                console.log(`[VoiceChat] 使用备用元素提取到文本长度: ${backupText.trim().length}`);
-                                playTTS(backupText.trim(), messageId);
-                                return;
-                            }
-                        }
-                    }
-                });
-            }
-        }
-    }
-
-    function playTTS(text, msgId) {
+    function playTTS(text, msgId, streamOptions = {}) {
         if (!text) return;
 
         if (!agentConfig.ttsVoicePrimary || agentConfig.ttsVoicePrimary === "") {
@@ -819,6 +724,7 @@ document.addEventListener('DOMContentLoaded', () => {
             localSovitsUrl: globalSettings.voiceLocalSettings?.sovitsUrl || ''
         });
         window.electronAPI.sovitsSpeak({
+            ...streamOptions,
             text: text,
             voice: agentConfig.ttsVoicePrimary,
             speed: agentConfig.ttsSpeed,

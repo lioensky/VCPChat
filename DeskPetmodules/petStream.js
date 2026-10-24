@@ -4,6 +4,7 @@
 import { createEmotionTagScanner } from 'vcp-deskpet://pet/emotion/emotionTags.js';
 import { createMoodOrder } from 'vcp-deskpet://pet/app/moodOrder.js';
 import { gestureOf } from 'vcp-deskpet://pet/app/gestures.js';
+import { createStableSpeechStream } from 'vcp-deskpet://pet/renderer/streamSpeech.js';
 
 // 免打扰时只有「在回桌宠上说的话」的回复还显示气泡：发出后这么久内开始的回复，
 // 以及紧接着这种回复（工具调用后的续写）开始的回复
@@ -46,6 +47,15 @@ export function createPetStream(ctx) {
         const bubble = ctx.bubble;
         const composer = ctx.composer;
         let scanner = null;
+        let stableSpeech = null;
+        const consumeStable = (blocks) => {
+            for (const block of blocks) {
+                for (const item of scanner.push(block.source)) {
+                    if (item.type === 'text') bubble.reply += item.text;
+                    else if (item.type === 'tag') bubble.tags.push({ at: bubble.reply.length, emotion: item.emotion, intensity: item.intensity, gesture: gestureOf(item.variant) });
+                }
+            }
+        };
         const startReply = (messageId) => {
             clearTimeout(bubble.hideTimer);
             bubble.own = Date.now() - composer.lastSentAt < OWN_REPLY_WINDOW_MS
@@ -58,6 +68,8 @@ export function createPetStream(ctx) {
             bubble.startedAt = Date.now();
             ctx.clearMissed();
             scanner = createEmotionTagScanner();
+            stableSpeech?.cancel();
+            stableSpeech = createStableSpeechStream({ document });
             // 免打扰时主窗口里聊天的回复不念；在桌宠上说的话照常念
             ctx.speech.begin(messageId, { silent: ctx.isQuiet() && !bubble.own });
         };
@@ -74,12 +86,8 @@ export function createPetStream(ctx) {
                 if (!bubble.replyId) startReply(event.messageId);
                 ctx.life?.hold('reply', true);
                 director.append(event.messageId, event.text);
-                // 气泡只显示正文：情绪标签、思维链、工具调用和结果都不显示，代码块写成 [代码]。
-                for (const item of scanner.push(event.text)) {
-                    if (item.type === 'text') bubble.reply += item.text;
-                    else if (item.type === 'enter' && item.region === 'code') bubble.reply += '\n[代码]\n';
-                    else if (item.type === 'tag') bubble.tags.push({ at: bubble.reply.length, emotion: item.emotion, intensity: item.intensity, gesture: gestureOf(item.variant) });
-                }
+                // 完整稳定块先净化，再进入气泡和语音；两者共用同一坐标系。
+                consumeStable(stableSpeech.push(event.text));
                 bubble.region = scanner.region;
                 ctx.speech.update(bubble.reply, sentenceFrame);
                 ctx.queueRenderBubble();
@@ -90,8 +98,10 @@ export function createPetStream(ctx) {
                 // 别的那条结束了：不动正在显示的这条
                 if (bubble.replyId && bubble.replyId !== event.messageId) return;
                 if (scanner && bubble.replyId === event.messageId) {
+                    if (event.type === 'end' && !event.aborted) consumeStable(stableSpeech.finish());
+                    else stableSpeech.cancel();
                     for (const item of scanner.finish()) if (item.type === 'text') bubble.reply += item.text;
-                    if (event.type === 'end') ctx.speech.finish(bubble.reply, sentenceFrame);
+                    if (event.type === 'end' && !event.aborted) ctx.speech.finish(bubble.reply, sentenceFrame);
                     else ctx.speech.fail();
                 }
                 // 没回上来（断网、超时、服务器报错）：把原因说出来，免打扰时只说在桌宠上问的那条

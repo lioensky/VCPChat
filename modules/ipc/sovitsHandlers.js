@@ -6,6 +6,7 @@ let internalMainWindow = null; // 用于在 handler 内部可靠地访问 mainWi
 let internalSettingsManager = null;
 // 同一时间只有一个声音：TTS 实例是共用的，新的朗读开始时，上一个出声的窗口（主窗口、语音聊天或功能模块的窗口）里还在放的也停掉。
 let lastSpeaker = null;
+const streamSpeeches = new WeakMap();
 
 function getSovitsTTS() {
     if (!sovitsTTSInstance) {
@@ -77,10 +78,23 @@ function initialize(mainWindow, settingsManager) {
     ipcMain.on('sovits-speak', (event, options) => {
         // 挂在 tts:speak 上的功能可以拦下这次朗读（例如这条已经在别的窗口里念着）
         if (!hostHooks.every('tts:speak', event.sender, options)) return;
+        if (options?.speechStreamId) {
+            const key = String(options.speechStreamId);
+            if (options.speechStreamFirst === true) {
+                const session = startSpeech(event.sender, options, { notifySender: false });
+                streamSpeeches.set(event.sender, { key, session });
+            } else {
+                const speech = streamSpeeches.get(event.sender);
+                if (speech?.key === key) appendSpeech(event.sender, options, speech.session);
+            }
+            return;
+        }
+        streamSpeeches.delete(event.sender);
         startSpeech(event.sender, options);
     });
 
     ipcMain.on('sovits-stop', (event) => {
+        streamSpeeches.delete(event.sender);
         // 首先，让 SovitsTTS 实例清理其内部状态（如队列）
         if (sovitsTTSInstance) {
             sovitsTTSInstance.stop();

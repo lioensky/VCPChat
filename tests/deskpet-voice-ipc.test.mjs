@@ -191,3 +191,24 @@ test('a reply given up while its voice settings are still loading does not stay 
     assert.deepEqual(await newer, { speaking: true, ttsRegex: '', ttsRegexSecondary: '' });
     assert.deepEqual([...claims.keys()], ['n3']);
 });
+
+
+test('stable speech IPC appends one session and rejects stale segments after stop or takeover', async (t) => {
+    const { listeners, mainWindow, spoken, open } = setup(t);
+    const say = options => listeners.get('sovits-speak')(from(mainWindow), {
+        voice: 'nova-voice', msgId: 'stable', speechStreamId: 'op-1', ...options,
+    });
+    say({ text: '第一段', speechStreamFirst: true });
+    say({ text: '第二段', speechStreamFirst: false });
+    assert.equal(spoken.length, 2);
+    assert.equal(spoken[0].session, spoken[1].session);
+    assert.equal(mainWindow.sent.some(item => item.channel === 'stop-tts-audio'), false);
+    listeners.get('sovits-stop')(from(mainWindow));
+    say({ text: '迟到段落', speechStreamFirst: false });
+    assert.equal(spoken.length, 2);
+    say({ text: '新生成', speechStreamId: 'op-2', speechStreamFirst: true });
+    const nova = await open('Nova');
+    listeners.get('sovits-speak')(from(nova), { voice: 'nova-voice', msgId: 'other', text: '接管' });
+    say({ text: '不能插队', speechStreamId: 'op-2', speechStreamFirst: false });
+    assert.equal(spoken.length, 4);
+});

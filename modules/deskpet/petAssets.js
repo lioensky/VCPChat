@@ -73,6 +73,11 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
         if (root === 'app') return guard(path.join(paths.projectRoot, 'DeskPetmodules'), segments);
         if (root === 'vendor') return guard(path.join(paths.projectRoot, 'vendor'), segments);
         if (root === 'emotion') return guard(path.join(paths.projectRoot, 'modules', 'emotion'), segments);
+        // 只放行朗读管线及其纯解析依赖，不暴露整个 modules 目录。
+        if (root === 'renderer' && segments.length === 1 && [
+            'streamSpeech.js', 'streamStableBoundary.js', 'toolResultRegions.js',
+            'toolRequestScanner.js', 'markdownCodeDomainScanner.js',
+        ].includes(segments[0])) return guard(path.join(paths.projectRoot, 'modules', 'renderer'), segments);
         // 助手自己没放头像时用应用的默认头像（和主窗口侧栏里显示的一样）
         if (root === 'default-avatar.png' && !segments.length) return defaultAvatarPath();
         if (root === 'builtin') {
@@ -106,7 +111,8 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
         const file = resolveServedFile(urlString);
         if (!file) return null;
         const roots = [path.join(paths.projectRoot, 'DeskPetmodules'), path.join(paths.projectRoot, 'vendor'),
-            path.join(paths.projectRoot, 'modules', 'emotion'), builtInDirectory(), builtInSpriteDirectory()];
+            path.join(paths.projectRoot, 'modules', 'emotion'), path.join(paths.projectRoot, 'modules', 'renderer'),
+            builtInDirectory(), builtInSpriteDirectory()];
         let base = roots.find(root => isInside(root, file));
         let anchor = paths.projectRoot;
         let exact = false;

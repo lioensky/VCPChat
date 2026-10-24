@@ -199,5 +199,5 @@ export function createTtsSurfaceOwner({
         audioContext = null;
     };
 
-    return Object.freeze({ mount, ensureAudioContext, dispose });
+    return Object.freeze({ mount, ensureAudioContext, stopPlayback, dispose });
 }

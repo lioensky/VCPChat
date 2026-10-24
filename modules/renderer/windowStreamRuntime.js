@@ -14,6 +14,7 @@ export function createWindowStreamRuntime({
     afterPersist,
     onSettled,
     reportError,
+    speech,
 } = {}) {
     if (!streamProjection || !historyPersistence || !root || typeof contextFilter !== 'function') {
         throw new TypeError('window stream runtime requires projection, persistence and context filter');
@@ -25,11 +26,19 @@ export function createWindowStreamRuntime({
             context: { ...getMessageContext(), ...(initialEvent.context || {}) },
         }, {
             getSurfaceGeneration: () => 0,
-            start: message => streamProjection.startStreamingMessage(message),
-            append: (messageId, chunk, context, operationId) => (
-                streamProjection.appendStreamChunk(messageId, chunk, context, operationId)
-            ),
-            projectTerminal: (messageId, finishReason, context, payload) => streamProjection.projectStreamTerminal(messageId, finishReason, context, payload),
+            start: message => {
+                speech?.begin(message);
+                return streamProjection.startStreamingMessage(message);
+            },
+            append: (messageId, chunk, context, operationId) => {
+                const accepted = streamProjection.appendStreamChunk(messageId, chunk, context, operationId);
+                if (accepted !== false) speech?.append(messageId, chunk, operationId);
+                return accepted;
+            },
+            projectTerminal: (messageId, finishReason, context, payload) => {
+                speech?.finish(messageId, finishReason, payload);
+                return streamProjection.projectStreamTerminal(messageId, finishReason, context, payload);
+            },
             persistTerminal: projected => historyPersistence.commit(projected),
             dispatchTerminal,
             reportError,
@@ -52,9 +61,10 @@ export function createWindowStreamRuntime({
             return bridge.accept(event);
         },
         cancel(messageId, reason = 'window-close') {
+            speech?.cancel(messageId);
             return bridge.cancelOperation(messageId, reason);
         },
-        dispose() { return bridge.dispose(); },
+        dispose() { speech?.dispose(); return bridge.dispose(); },
         getSelection,
         getTopicId,
     });
