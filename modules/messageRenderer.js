@@ -827,12 +827,9 @@ function enhanceMermaidDiagram(mermaidElement) {
         resetView();
     });
 
-    const ownerWindow = ownerDocument.defaultView;
-    const requestFrame = ownerWindow?.requestAnimationFrame?.bind(ownerWindow) || ((callback) => ownerWindow?.setTimeout?.(() => callback(Date.now()), 0));
-    wrapper._vcpFitRaf = requestFrame?.(() => {
-        delete wrapper._vcpFitRaf;
-        if (wrapper.isConnected) fitToWidth();
-    });
+    // 初始视图固定为 100%，仅在用户点击“适应”时按视口宽度缩放。
+    // 历史加载期间容器可能尚未完成布局，不应据此覆盖默认缩放。
+    resetView();
 }
 
 function cleanupMermaidViewers(contentDiv) {
@@ -840,12 +837,6 @@ function cleanupMermaidViewers(contentDiv) {
         wrapper._vcpDisposers?.splice(0).forEach(dispose => {
             try { dispose(); } catch { /* listener already removed */ }
         });
-        if (wrapper._vcpFitRaf) {
-            const ownerWindow = wrapper.ownerDocument?.defaultView;
-            if (typeof ownerWindow?.cancelAnimationFrame === 'function') ownerWindow.cancelAnimationFrame(wrapper._vcpFitRaf);
-            else ownerWindow?.clearTimeout?.(wrapper._vcpFitRaf);
-            delete wrapper._vcpFitRaf;
-        }
         const viewport = wrapper.querySelector('.mermaid-viewer-viewport');
         const pointerId = wrapper._vcpPointerId;
         if (pointerId !== undefined && viewport?.hasPointerCapture?.(pointerId)) {
