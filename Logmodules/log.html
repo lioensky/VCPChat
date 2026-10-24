@@ -79,6 +79,7 @@
                             <h1 id="log-page-title" class="page-title">全部日志</h1>
                             <div class="page-intro" aria-live="polite">
                                 <span id="log-status" class="intro-item log-status">初始化中...</span>
+                                <span id="log-path" class="intro-item log-path"></span>
                                 <span id="log-meta" class="intro-item log-meta"></span>
                             </div>
                         </div>
@@ -86,55 +87,56 @@
                             <button id="refresh-log-btn" class="nav-icon-btn" title="刷新日志" aria-label="刷新日志">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
                             </button>
+                            <div class="settings-anchor">
+                                <button id="log-settings-btn" class="nav-icon-btn" title="日志设置" aria-label="日志设置" aria-haspopup="dialog" aria-expanded="false" aria-controls="log-settings-popover">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                </button>
+                                <div id="log-settings-popover" class="settings-popover" role="dialog" aria-label="日志设置" hidden>
+                                    <label class="settings-row" for="line-limit-input">
+                                        <span class="settings-copy">
+                                            <strong class="settings-title">保留行数</strong>
+                                            <span class="settings-description">只保留最近的这么多行，超出的旧行会被丢弃（50–20000）</span>
+                                        </span>
+                                        <input id="line-limit-input" type="number" min="50" max="20000" step="50" value="500" class="log-input">
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <section class="log-toolbar" aria-label="日志工具">
+                        <div class="search-box">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                            <input id="log-filter-input" type="search" placeholder="筛选日志行" title="不区分大小写，匹配行内任意位置" aria-label="筛选日志行">
+                        </div>
+                        <div class="toolbar-actions">
+                            <button id="order-toggle-btn" class="nav-icon-btn" aria-pressed="false" title="最新的行在上" aria-label="最新的行在上">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 16 4 4 4-4"></path><path d="M7 20V4"></path><path d="m21 8-4-4-4 4"></path><path d="M17 4v16"></path></svg>
+                            </button>
+                            <span class="toolbar-divider" aria-hidden="true"></span>
+                            <button id="copy-visible-btn" class="nav-icon-btn" title="复制可见日志行" aria-label="复制可见日志行">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            </button>
+                            <button id="scroll-top-btn" class="nav-icon-btn" title="滚动到顶部" aria-label="滚动到顶部">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h14"></path><path d="m18 13-6-6-6 6"></path><path d="M12 7v14"></path></svg>
+                            </button>
+                            <button id="scroll-bottom-btn" class="nav-icon-btn" title="滚动到底部" aria-label="滚动到底部">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17V3"></path><path d="m6 11 6 6 6-6"></path><path d="M19 21H5"></path></svg>
+                            </button>
+                            <span class="toolbar-divider" aria-hidden="true"></span>
                             <button id="clear-log-btn" class="nav-icon-btn danger-btn" title="清空后端日志" aria-label="清空后端日志">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path></svg>
                             </button>
                         </div>
-                    </header>
-
-                    <section class="filters" aria-label="筛选日志">
-                        <div class="search-box">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
-                            <input id="log-filter-input" type="search" placeholder="筛选当前日志（不区分大小写）..." aria-label="筛选日志">
-                        </div>
-                        <div id="log-order-filter" class="segmented" role="radiogroup" aria-label="显示顺序">
-                            <button type="button" role="radio" data-order="asc" aria-checked="true" title="最早的行在上，新日志追加到底部">正序</button>
-                            <button type="button" role="radio" data-order="desc" aria-checked="false" title="最新的行在上">倒序</button>
-                        </div>
                     </section>
 
-                    <section class="log-group" aria-labelledby="log-group-title">
-                        <div class="log-group-header">
-                            <h2 id="log-group-title">日志内容</h2>
-                            <span id="log-visible-count">0 行</span>
-                            <button id="copy-visible-btn" class="log-button" title="复制当前可见的日志行">复制可见</button>
-                        </div>
-                        <div class="log-card">
-                            <label class="log-card-row" for="line-limit-input">
-                                <span class="log-card-copy">
-                                    <strong class="log-card-title">保留行数</strong>
-                                    <span class="log-card-description">只保留最近的这么多行，超出的旧行会被丢弃（50–20000）</span>
-                                </span>
-                                <input id="line-limit-input" type="number" min="50" max="20000" step="50" value="500" class="log-input">
-                            </label>
-                            <div class="log-shell">
-                                <div id="log-lines" class="log-lines" aria-live="polite"></div>
-                                <div id="empty-state" class="empty-state">暂无日志内容</div>
-                            </div>
-                        </div>
-                    </section>
+                    <div class="log-shell">
+                        <div id="log-lines" class="log-lines" aria-live="polite"></div>
+                        <div id="empty-state" class="empty-state">暂无日志内容</div>
+                    </div>
                 </div>
             </main>
         </section>
-    </div>
-
-    <div class="floating-actions">
-        <button id="scroll-top-btn" class="float-btn" title="滚动到顶部" aria-label="滚动到顶部">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 10 4-4 4 4"></path></svg>
-        </button>
-        <button id="scroll-bottom-btn" class="float-btn" title="滚动到底部" aria-label="滚动到底部">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"></path></svg>
-        </button>
     </div>
 
     <div id="confirm-modal" class="confirm-modal" aria-hidden="true">

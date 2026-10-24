@@ -1,8 +1,9 @@
 /* Log center: the same full-window shell as the main chat window, with the
    preset filters in the navigation column and a framed content panel. Inside
-   the panel the page follows the settings rhythm: an 18px page title, underline
-   tabs, a 36px search field and one card holding the line limit row and the
-   log itself in an inset well. Every color comes from the theme variables in
+   the panel the page is a reader: an 18px title with a one-line summary, one
+   toolbar row (filter field plus icon buttons) and the log well taking the
+   rest of the height. Settings live in a popover behind the gear in the title
+   row. Every color comes from the theme variables in
    styles/themes.css, so the light and dark themes both follow without
    per-theme overrides. */
 body {
@@ -287,10 +288,13 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 /* ---- Page ----
-   One 808px reading column, the same measure as the settings pages, with a
-   16px beat between the header, the tabs, the search field and the log card.
-   The column fills the panel height so the log well can take the rest of it
-   and scroll on its own, which keeps "stick to the newest line" working. */
+   Log lines are long single-line records, so unlike the 808px settings
+   column the page uses the full panel width: at 808px most lines wrap, which
+   doubles the row count and breaks the timestamp column for scanning. The
+   padding, the title and the 16px beat stay the same as the settings pages,
+   and the title, toolbar and well share one left edge. The column fills the
+   panel height so the well can take the rest of it and scroll on its own,
+   which keeps "stick to the newest line" working. */
 .app-container {
     flex: 1;
     min-height: 0;
@@ -303,7 +307,6 @@ html[data-vcp-embedded-app="true"] .shell {
     flex-direction: column;
     gap: 16px;
     width: 100%;
-    max-width: 808px;
     height: 100%;
     min-height: 520px;
     margin: 0 auto;
@@ -342,25 +345,31 @@ html[data-vcp-embedded-app="true"] .shell {
     font-weight: 600;
 }
 
-/* The summary is one quiet line: what is being watched, then the counters.
-   Only a failure is colored. */
+/* The summary is one quiet line that never wraps: a transient status, the
+   watched file, then the counters and the display order. A long path gives
+   way first: its folder ellipsizes while the file name stays readable, and
+   the full path is in the tooltip. Only a failure is colored. */
 .page-intro {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     min-width: 0;
+    overflow: hidden;
     color: var(--log-ink-3);
     font-size: 13px;
     line-height: 20px;
     font-variant-numeric: tabular-nums;
-}
-
-.intro-item {
     white-space: nowrap;
 }
 
-.intro-item + .intro-item::before {
+.intro-item {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+/* A separator goes before every shown item that follows another shown one. */
+.intro-item:not(:empty) ~ .intro-item:not(:empty)::before {
     content: '·';
+    flex: 0 0 auto;
     padding: 0 6px;
     color: var(--log-ink-4);
 }
@@ -374,9 +383,24 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 .log-status {
-    max-width: 100%;
+    flex-shrink: 1;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.log-path {
+    display: flex;
+    flex: 0 1 auto;
+}
+
+.log-path-dir {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.log-path-file {
+    flex: 0 0 auto;
 }
 
 /* ---- Buttons ---- */
@@ -410,63 +434,116 @@ html[data-vcp-embedded-app="true"] .shell {
     background: color-mix(in srgb, var(--log-danger) 86%, var(--log-panel));
 }
 
-/* ---- Filters ----
-   The display order reads as underline tabs on a hairline, above the search
-   field, so the page scans heading, tabs, search, log. */
-.filters {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.segmented {
-    order: -1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 22px;
-    border-bottom: 0.5px solid var(--log-line-3);
-}
-
-.segmented button {
+/* ---- Settings popover ----
+   The line limit is a setting, not content, so it sits behind the gear. */
+.settings-anchor {
     position: relative;
-    padding: 7px 1px 9px;
-    border: 0;
-    background: transparent;
-    color: var(--log-ink-3);
-    font-size: 13px;
-    line-height: 20px;
-    white-space: nowrap;
-    transition: color 120ms ease;
+    display: flex;
 }
 
-.segmented button:hover {
-    color: var(--log-ink);
+.settings-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 50;
+    width: 320px;
+    max-width: calc(100vw - 32px);
+    padding: 14px 16px;
+    border-radius: var(--log-radius-md);
+    background: var(--log-panel);
+    box-shadow:
+        0 0 0 0.5px var(--log-line-3),
+        0 12px 36px var(--log-shadow);
 }
 
-.segmented button[aria-checked="true"] {
-    color: var(--log-ink);
+.settings-popover[hidden] {
+    display: none;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.settings-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.settings-title {
+    font-size: 14px;
+    line-height: 22px;
     font-weight: 500;
 }
 
-.segmented button[aria-checked="true"]::after {
-    content: '';
-    position: absolute;
-    inset: auto 0 -0.5px;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--log-ink);
+.settings-description {
+    color: var(--log-ink-3);
+    font-size: 12px;
+    line-height: 18px;
 }
 
-.segmented button:focus-visible {
-    outline-offset: -2px;
-    border-radius: var(--log-radius-xs);
+.log-input {
+    flex: 0 0 88px;
+    width: 88px;
+    height: 30px;
+    padding: 0 10px;
+    border: 0.5px solid var(--log-line-3);
+    border-radius: var(--log-radius-sm);
+    background: var(--log-surface);
+    outline: none;
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+/* ---- Toolbar ----
+   One row: the filter field, then 16px icons in 30px buttons grouped by
+   hairlines (order | copy and scroll | clear). The row wraps on narrow
+   windows, with the icons keeping to the right. */
+.log-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+.toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.toolbar-actions .nav-icon-btn {
+    width: 30px;
+    height: 30px;
+}
+
+.nav-icon-btn[aria-pressed="true"] {
+    background: var(--log-active);
+    color: var(--log-ink);
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 6px;
+    background: var(--log-line-3);
 }
 
 .search-box {
     position: relative;
     display: flex;
+    flex: 1 1 220px;
     align-items: center;
     min-width: 0;
+    max-width: 360px;
 }
 
 .search-box svg {
@@ -478,7 +555,7 @@ html[data-vcp-embedded-app="true"] .shell {
 
 .search-box input {
     width: 100%;
-    height: 36px;
+    height: 32px;
     padding: 0 12px 0 36px;
     border: 0.5px solid var(--log-line-3);
     border-radius: var(--log-radius-md);
@@ -504,110 +581,16 @@ html[data-vcp-embedded-app="true"] .shell {
     outline: none;
 }
 
-/* ---- Log card ----
-   One card like the settings groups: the line limit is a row, and the log
-   sits in an inset well under it that takes the remaining height. */
-.log-group {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 0;
-    padding-top: 4px;
-}
-
-.log-group-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 30px;
-    padding: 0 2px;
-}
-
-.log-group-header h2 {
-    margin: 0;
-    font-size: 14px;
-    line-height: 22px;
-    font-weight: 500;
-}
-
-.log-group-header span {
-    color: var(--log-ink-4);
-    font-size: 12px;
-    line-height: 18px;
-    font-variant-numeric: tabular-nums;
-}
-
-.log-group-header .log-button {
-    margin-left: auto;
-}
-
-.log-card {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-    padding: 0 20px;
-    border: 1px solid var(--log-line-1);
-    border-radius: var(--log-radius-md);
-    background: var(--log-card);
-    overflow: hidden;
-}
-
-.log-card-row {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 14px 0;
-}
-
-.log-card-copy {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-}
-
-.log-card-title {
-    font-size: 14px;
-    line-height: 22px;
-    font-weight: 500;
-}
-
-.log-card-description {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--log-ink-3);
-    font-size: 12px;
-    line-height: 18px;
-}
-
-.log-input {
-    flex: 0 0 96px;
-    width: 96px;
-    height: 30px;
-    padding: 0 10px;
-    border: 0.5px solid var(--log-line-3);
-    border-radius: var(--log-radius-sm);
-    background: var(--log-surface);
-    outline: none;
-    font-size: 13px;
-    line-height: 20px;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-
+/* ---- Log well ----
+   The log itself is the page's one card: a hairline-bordered well that takes
+   the remaining height and scrolls on its own. */
 .log-shell {
     position: relative;
     flex: 1;
     min-height: 220px;
-    margin: -2px 0 16px;
+    border: 1px solid var(--log-line-1);
     border-radius: var(--log-radius-md);
-    background: var(--log-surface);
+    background: var(--log-card);
     overflow: hidden;
 }
 
@@ -706,49 +689,8 @@ body.light-theme .level-fatal {
 }
 
 .log-shell:has(.empty-state.active) {
+    border-color: transparent;
     background: transparent;
-}
-
-/* ---- Scroll shortcuts ---- */
-.floating-actions {
-    position: fixed;
-    right: 24px;
-    bottom: 24px;
-    z-index: 60;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    opacity: 0;
-    transform: translateY(6px);
-    pointer-events: none;
-    transition: opacity 160ms ease, transform 160ms ease;
-}
-
-.floating-actions.visible {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-}
-
-.float-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--log-radius-sm);
-    background: var(--log-panel);
-    color: var(--log-ink-2);
-    box-shadow:
-        0 0 0 0.5px var(--log-line-3),
-        0 8px 28px var(--log-shadow);
-}
-
-.float-btn:hover {
-    color: var(--log-ink);
-    background: color-mix(in srgb, var(--log-panel) 90%, var(--log-ink));
 }
 
 /* ---- Confirm dialog ---- */
@@ -818,8 +760,7 @@ body.light-theme .level-fatal {
 /* ---- Toast ---- */
 .toast {
     position: fixed;
-    /* Clear of the 32px scroll buttons at right: 24px. */
-    right: 64px;
+    right: 24px;
     bottom: 24px;
     z-index: 3000;
     max-width: 380px;
@@ -863,10 +804,8 @@ body.light-theme .level-fatal {
 
 @media (prefers-reduced-motion: reduce) {
     .log-button,
-    .segmented button,
     .search-box input,
     .log-input,
-    .floating-actions,
     .confirm-modal,
     .toast {
         transition: none;
@@ -912,12 +851,23 @@ body.light-theme .level-fatal {
         padding: 20px 16px 32px;
     }
 
-    .log-card {
-        padding: 0 14px;
+    /* Narrow panels show only the log file name; the counters need the room. */
+    .log-path-dir {
+        display: none;
     }
 
-    .log-card-row {
-        padding: 12px 0;
+    .log-path {
+        flex-shrink: 0;
+    }
+
+    .log-meta {
+        flex-shrink: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .search-box {
+        max-width: none;
     }
 
     .log-row {

@@ -21,11 +21,13 @@ let isLoading = false;
 // '' is "all logs", a preset name selects that sidebar item, null is free text typed into the filter.
 let activePreset = '';
 let currentFilter = '';
-let scrollHideTimer = null;
-let suppressScrollReveal = false;
+// The file part of the summary line, e.g. "文件 5.9 KB"; empty until the first read.
+let fileSizeText = '';
+let visibleLineCount = 0;
 
 const elements = {
     status: document.getElementById('log-status'),
+    path: document.getElementById('log-path'),
     meta: document.getElementById('log-meta'),
     lines: document.getElementById('log-lines'),
     empty: document.getElementById('empty-state'),
@@ -36,10 +38,11 @@ const elements = {
     confirmCancelBtn: document.getElementById('confirm-cancel-btn'),
     refreshBtn: document.getElementById('refresh-log-btn'),
     clearBtn: document.getElementById('clear-log-btn'),
-    orderFilter: document.getElementById('log-order-filter'),
+    orderToggle: document.getElementById('order-toggle-btn'),
     copyBtn: document.getElementById('copy-visible-btn'),
+    settingsBtn: document.getElementById('log-settings-btn'),
+    settingsPopover: document.getElementById('log-settings-popover'),
     pageTitle: document.getElementById('log-page-title'),
-    visibleCount: document.getElementById('log-visible-count'),
     lineLimitInput: document.getElementById('line-limit-input'),
     filterInput: document.getElementById('log-filter-input'),
     scrollTopBtn: document.getElementById('scroll-top-btn'),
@@ -111,18 +114,30 @@ function setupEvents() {
 
     elements.clearBtn?.addEventListener('click', openClearConfirmModal);
 
-    elements.orderFilter?.addEventListener('click', (event) => {
-        const option = event.target.closest('[data-order]');
-        if (!option) return;
-        const reverse = option.dataset.order === 'desc';
-        if (reverse === isReverseOrder) return;
-        isReverseOrder = reverse;
+    elements.orderToggle?.addEventListener('click', () => {
+        isReverseOrder = !isReverseOrder;
         localStorage.setItem(STORAGE_KEYS.reverseOrder, String(isReverseOrder));
         updateOrderButton();
         render();
     });
 
     elements.copyBtn?.addEventListener('click', copyVisibleLogs);
+
+    elements.settingsBtn?.addEventListener('click', () => {
+        setSettingsOpen(elements.settingsPopover.hidden);
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+        if (elements.settingsPopover.hidden) return;
+        if (event.target.closest('.settings-anchor')) return;
+        setSettingsOpen(false);
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || elements.settingsPopover.hidden) return;
+        setSettingsOpen(false);
+        elements.settingsBtn.focus();
+    });
 
     elements.lineLimitInput?.addEventListener('change', () => {
         lineLimit = normalizeLineLimit(parseInt(elements.lineLimitInput.value || '500', 10));
@@ -155,29 +170,12 @@ function setupEvents() {
     });
 
     elements.scrollTopBtn?.addEventListener('click', () => {
-        revealFloatingActions();
-        scheduleFloatingActionsHide();
-        suppressScrollReveal = true;
         elements.lines.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
     elements.scrollBottomBtn?.addEventListener('click', () => {
-        revealFloatingActions();
-        scheduleFloatingActionsHide();
-        suppressScrollReveal = true;
         elements.lines.scrollTo({ top: elements.lines.scrollHeight, behavior: 'smooth' });
     });
-
-    elements.lines?.addEventListener('scroll', () => {
-        if (suppressScrollReveal) {
-            suppressScrollReveal = false;
-            return;
-        }
-        revealFloatingActions();
-        scheduleFloatingActionsHide();
-    }, { passive: true });
-
-    hideFloatingActions();
 }
 
 async function initAuthAndServer() {
@@ -203,7 +201,7 @@ async function initAuthAndServer() {
         }
 
         apiAuthHeader = `Basic ${btoa(`${forumConfig.username}:${forumConfig.password}`)}`;
-        setStatus('已连接配置，准备读取日志');
+        setStatus('正在连接服务器...');
     } catch (error) {
         console.error('[LogCenter] Init failed:', error);
         setStatus('初始化失败', 'error');
@@ -263,13 +261,12 @@ async function fetchLog({ incremental, silent }) {
             allLines.push(...splitLogLines(data.content));
         }
 
+        fileSizeText = `文件 ${data.fileSize ? formatBytes(data.fileSize) : '--'}`;
         trimLines();
         baseEmptyMessage = '暂无日志内容';
+        setStatus('');
+        setLogPath(currentLogPath);
         render();
-
-        const sizeText = data.fileSize ? formatBytes(data.fileSize) : '--';
-        setStatus(currentLogPath ? `监听: ${currentLogPath}` : '日志已载入');
-        setMeta(`总行 ${allLines.length} · 偏移 ${currentOffset} · 文件 ${sizeText}`);
     } catch (error) {
         console.error('[LogCenter] Fetch log failed:', error);
         setStatus(`读取失败: ${error.message}`, 'error');
@@ -321,9 +318,9 @@ async function clearServerLog() {
 
         allLines = [];
         currentOffset = 0;
+        fileSizeText = '文件已清空';
+        setStatus('');
         render();
-        setMeta('总行 0 · 偏移 0 · 文件已清空');
-        setStatus('日志已清空');
         showToast(data.message || '日志已清空');
     } catch (error) {
         console.error('[LogCenter] Clear failed:', error);
@@ -357,11 +354,12 @@ function render() {
         elements.empty.textContent = allLines.length > 0 ? '没有匹配的日志行' : baseEmptyMessage;
     }
     elements.empty.classList.toggle('active', visibleLines.length === 0);
-    renderCounts(visibleLines.length);
+    visibleLineCount = visibleLines.length;
+    renderCounts();
+    renderMeta();
 
     if (!isReverseOrder && shouldStickBottom) {
         requestAnimationFrame(() => {
-            suppressScrollReveal = true;
             elements.lines.scrollTop = elements.lines.scrollHeight;
         });
     }
@@ -453,9 +451,15 @@ function fallbackCopy(text) {
 }
 
 function updateOrderButton() {
-    elements.orderFilter?.querySelectorAll('[data-order]').forEach((option) => {
-        option.setAttribute('aria-checked', String((option.dataset.order === 'desc') === isReverseOrder));
-    });
+    if (!elements.orderToggle) return;
+    elements.orderToggle.setAttribute('aria-pressed', String(isReverseOrder));
+    elements.orderToggle.title = isReverseOrder ? '最新的行在上（再点一次改回最早在上）' : '最新的行在上';
+}
+
+function setSettingsOpen(open) {
+    elements.settingsPopover.hidden = !open;
+    elements.settingsBtn.setAttribute('aria-expanded', String(open));
+    if (open) elements.lineLimitInput.focus();
 }
 
 function updatePresetButtons() {
@@ -471,15 +475,41 @@ function updatePresetButtons() {
 }
 
 // Sidebar counts are lines matching each preset among the retained lines.
-function renderCounts(visibleCount) {
+function renderCounts() {
     const lowered = allLines.map((line) => line.toLowerCase());
     document.querySelectorAll('[data-count-for]').forEach((count) => {
         const term = count.dataset.countFor.toLowerCase();
         count.textContent = String(term ? lowered.filter((line) => line.includes(term)).length : lowered.length);
     });
-    if (elements.visibleCount) {
-        elements.visibleCount.textContent = visibleCount === allLines.length ? `${allLines.length} 行` : `${visibleCount} / ${allLines.length} 行`;
+}
+
+// The counters and the display order, as one "·"-separated run after the path.
+function renderMeta() {
+    if (!fileSizeText) {
+        elements.meta.textContent = '';
+        return;
     }
+    const lineText = visibleLineCount === allLines.length
+        ? `${allLines.length} 行`
+        : `${visibleLineCount} / ${allLines.length} 行`;
+    const parts = [lineText, `偏移 ${currentOffset}`, fileSizeText];
+    if (isReverseOrder) parts.push('最新在上');
+    elements.meta.textContent = parts.join(' · ');
+}
+
+// The folder part can ellipsize on its own so the file name stays readable.
+function setLogPath(fullPath) {
+    elements.path.replaceChildren();
+    elements.path.title = fullPath || '';
+    if (!fullPath) return;
+    const cut = Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/')) + 1;
+    const dir = document.createElement('span');
+    dir.className = 'log-path-dir';
+    dir.textContent = fullPath.slice(0, cut);
+    const file = document.createElement('span');
+    file.className = 'log-path-file';
+    file.textContent = fullPath.slice(cut);
+    elements.path.append(dir, file);
 }
 
 function setStatus(message, tone = '') {
@@ -495,10 +525,6 @@ function setEmptyMessage(message) {
     }
 }
 
-function setMeta(message) {
-    elements.meta.textContent = message;
-}
-
 function showToast(message) {
     elements.toast.textContent = message;
     elements.toast.classList.add('active');
@@ -506,21 +532,6 @@ function showToast(message) {
     showToast.timer = setTimeout(() => {
         elements.toast.classList.remove('active');
     }, 2200);
-}
-
-function revealFloatingActions() {
-    elements.scrollTopBtn?.closest('.floating-actions')?.classList.add('visible');
-}
-
-function hideFloatingActions() {
-    elements.scrollTopBtn?.closest('.floating-actions')?.classList.remove('visible');
-}
-
-function scheduleFloatingActionsHide() {
-    clearTimeout(scrollHideTimer);
-    scrollHideTimer = setTimeout(() => {
-        hideFloatingActions();
-    }, 2000);
 }
 
 elements.confirmOkBtn?.addEventListener('click', clearServerLog);
