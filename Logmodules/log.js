@@ -12,11 +12,13 @@ let serverBaseUrl = '';
 let apiAuthHeader = '';
 let allLines = [];
 let currentOffset = 0;
+let baseEmptyMessage = '暂无日志内容';
 let currentLogPath = '';
 let isReverseOrder = false;
 let lineLimit = 500;
 let pollTimer = null;
 let isLoading = false;
+// '' is "all logs", a preset name selects that sidebar item, null is free text typed into the filter.
 let activePreset = '';
 let currentFilter = '';
 let scrollHideTimer = null;
@@ -34,8 +36,10 @@ const elements = {
     confirmCancelBtn: document.getElementById('confirm-cancel-btn'),
     refreshBtn: document.getElementById('refresh-log-btn'),
     clearBtn: document.getElementById('clear-log-btn'),
-    orderBtn: document.getElementById('order-toggle-btn'),
+    orderFilter: document.getElementById('log-order-filter'),
     copyBtn: document.getElementById('copy-visible-btn'),
+    pageTitle: document.getElementById('log-page-title'),
+    visibleCount: document.getElementById('log-visible-count'),
     lineLimitInput: document.getElementById('line-limit-input'),
     filterInput: document.getElementById('log-filter-input'),
     scrollTopBtn: document.getElementById('scroll-top-btn'),
@@ -107,8 +111,12 @@ function setupEvents() {
 
     elements.clearBtn?.addEventListener('click', openClearConfirmModal);
 
-    elements.orderBtn?.addEventListener('click', () => {
-        isReverseOrder = !isReverseOrder;
+    elements.orderFilter?.addEventListener('click', (event) => {
+        const option = event.target.closest('[data-order]');
+        if (!option) return;
+        const reverse = option.dataset.order === 'desc';
+        if (reverse === isReverseOrder) return;
+        isReverseOrder = reverse;
         localStorage.setItem(STORAGE_KEYS.reverseOrder, String(isReverseOrder));
         updateOrderButton();
         render();
@@ -126,6 +134,8 @@ function setupEvents() {
 
     elements.filterInput?.addEventListener('input', debounce(() => {
         currentFilter = elements.filterInput.value.trim();
+        activePreset = currentFilter === '' || PRESET_FILTERS.includes(currentFilter) ? currentFilter : null;
+        updatePresetButtons();
         render();
     }, 120));
 
@@ -175,8 +185,9 @@ async function initAuthAndServer() {
     try {
         const settings = await api?.loadSettings?.();
         if (!settings?.vcpServerUrl) {
-            setStatus('未配置 VCP 服务器 URL');
-            showToast('请先在主设置中配置 VCP 服务器 URL');
+            setStatus('未配置服务器', 'error');
+            setEmptyMessage('未配置 VCP 服务器地址：请在全局设置中配置后点击刷新');
+            showToast('请先在全局设置中配置 VCP 服务器地址');
             return;
         }
 
@@ -185,8 +196,9 @@ async function initAuthAndServer() {
 
         const forumConfig = await api?.loadForumConfig?.();
         if (!forumConfig?.username || !forumConfig?.password) {
-            setStatus('缺少论坛管理员凭据');
-            showToast('未找到论坛模块登录配置，请先在论坛模块登录并保存凭据');
+            setStatus('未登录论坛', 'error');
+            setEmptyMessage('未找到论坛登录凭据：请先在「论坛」应用中登录后点击刷新');
+            showToast('请先在「论坛」应用中登录，日志中心使用同一凭据');
             return;
         }
 
@@ -194,7 +206,8 @@ async function initAuthAndServer() {
         setStatus('已连接配置，准备读取日志');
     } catch (error) {
         console.error('[LogCenter] Init failed:', error);
-        setStatus(`初始化失败: ${error.message}`);
+        setStatus('初始化失败', 'error');
+        setEmptyMessage(`初始化失败：${error.message}`);
         showToast(`初始化失败: ${error.message}`);
     }
 }
@@ -251,6 +264,7 @@ async function fetchLog({ incremental, silent }) {
         }
 
         trimLines();
+        baseEmptyMessage = '暂无日志内容';
         render();
 
         const sizeText = data.fileSize ? formatBytes(data.fileSize) : '--';
@@ -258,8 +272,11 @@ async function fetchLog({ incremental, silent }) {
         setMeta(`总行 ${allLines.length} · 偏移 ${currentOffset} · 文件 ${sizeText}`);
     } catch (error) {
         console.error('[LogCenter] Fetch log failed:', error);
-        setStatus(`读取失败: ${error.message}`);
-        if (!silent) showToast(`读取日志失败: ${error.message}`);
+        setStatus(`读取失败: ${error.message}`, 'error');
+        if (!silent) {
+            if (allLines.length === 0) setEmptyMessage(`读取日志失败：${error.message}`);
+            showToast(`读取日志失败: ${error.message}`);
+        }
     } finally {
         isLoading = false;
         elements.refreshBtn?.classList.remove('spinning');
@@ -310,7 +327,7 @@ async function clearServerLog() {
         showToast(data.message || '日志已清空');
     } catch (error) {
         console.error('[LogCenter] Clear failed:', error);
-        setStatus(`清空失败: ${error.message}`);
+        setStatus(`清空失败: ${error.message}`, 'error');
         showToast(`清空失败: ${error.message}`);
     } finally {
         closeClearConfirmModal();
@@ -336,7 +353,11 @@ function render() {
 
     elements.lines.innerHTML = '';
     elements.lines.appendChild(fragment);
+    if (visibleLines.length === 0) {
+        elements.empty.textContent = allLines.length > 0 ? '没有匹配的日志行' : baseEmptyMessage;
+    }
     elements.empty.classList.toggle('active', visibleLines.length === 0);
+    renderCounts(visibleLines.length);
 
     if (!isReverseOrder && shouldStickBottom) {
         requestAnimationFrame(() => {
@@ -432,18 +453,46 @@ function fallbackCopy(text) {
 }
 
 function updateOrderButton() {
-    elements.orderBtn.textContent = isReverseOrder ? '正序显示' : '倒序显示';
-    elements.orderBtn.title = isReverseOrder ? '当前为倒序，点击切换为正序' : '当前为正序，点击切换为倒序';
+    elements.orderFilter?.querySelectorAll('[data-order]').forEach((option) => {
+        option.setAttribute('aria-checked', String((option.dataset.order === 'desc') === isReverseOrder));
+    });
 }
 
 function updatePresetButtons() {
     document.querySelectorAll('.preset-chip').forEach((button) => {
-        button.classList.toggle('active', (button.dataset.filter || '') === activePreset);
+        const selected = (button.dataset.filter || '') === activePreset;
+        button.classList.toggle('active', selected);
+        if (selected) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
     });
+    if (elements.pageTitle) {
+        elements.pageTitle.textContent = activePreset === '' ? '全部日志' : (activePreset ? `${activePreset} 日志` : '筛选结果');
+    }
 }
 
-function setStatus(message) {
+// Sidebar counts are lines matching each preset among the retained lines.
+function renderCounts(visibleCount) {
+    const lowered = allLines.map((line) => line.toLowerCase());
+    document.querySelectorAll('[data-count-for]').forEach((count) => {
+        const term = count.dataset.countFor.toLowerCase();
+        count.textContent = String(term ? lowered.filter((line) => line.includes(term)).length : lowered.length);
+    });
+    if (elements.visibleCount) {
+        elements.visibleCount.textContent = visibleCount === allLines.length ? `${allLines.length} 行` : `${visibleCount} / ${allLines.length} 行`;
+    }
+}
+
+function setStatus(message, tone = '') {
     elements.status.textContent = message;
+    elements.status.dataset.tone = tone;
+}
+
+function setEmptyMessage(message) {
+    baseEmptyMessage = message;
+    if (elements.empty) {
+        elements.empty.textContent = message;
+        elements.empty.classList.add('active');
+    }
 }
 
 function setMeta(message) {
