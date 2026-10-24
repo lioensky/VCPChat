@@ -2,10 +2,12 @@
 // 主聊天那边的回复流原样转给桌宠页面（表情和气泡由页面里的情绪导演决定），
 // 外加桌宠开着时要追加到 system prompt 的情绪标记和动作说明。
 
+const { capabilityPrompt } = require('./live2dCapabilities');
+
 // 桌宠能演的动作写在情绪标记的斜杠后面（DeskPetmodules/gestures.js），标记本身哪里都会去掉。
 const GESTURE_PROMPT = [
     '【桌宠动作】桌面上的你还会做动作：想配合动作时，把动作名写在情绪标记的斜杠后面，例如 <!--emo:happy/nod 0.8-->。',
-    '动作只能是：nod（点头）shake（摇头）tilt（歪头）cheer（开心地跳一下）bow（鞠躬）。只在真的有这个动作时写，不要每句都写。',
+    '通用动作：nod（点头）shake（摇头）tilt（歪头）cheer（开心地跳一下）bow（鞠躬）；如提供模型能力编号也可调用。只按需使用，不要每句都写。',
 ].join('\n');
 
 function createPetStream(ctx) {
@@ -18,6 +20,12 @@ function createPetStream(ctx) {
         const parts = [];
         if (ctx.emotionPrompt.shouldAddEmotionTagPrompt({ systemPrompt, hasDisplay: true })) parts.push(ctx.emotionPrompt.EMOTION_TAG_PROMPT);
         if (!/【桌宠动作】|<!--\s*emo\s*[:：][^>]*\/(?:nod|shake|tilt|cheer|bow)\b/i.test(String(systemPrompt || ''))) parts.push(GESTURE_PROMPT);
+        const pet = pets.get(agentId);
+        if (pet.ready && pet.backendKind === 'live2d' && pet.capabilitiesOutfit === pet.outfit
+            && !String(systemPrompt).includes('【模型能力】')) {
+            const prompt = capabilityPrompt(pet.capabilities);
+            if (prompt) parts.push(prompt);
+        }
         return parts.join('\n');
     }
 

@@ -227,7 +227,7 @@ async function start() {
         followHead();
     }).catch(() => {});
     console.log('[DeskPet] ready', JSON.stringify(window.__deskPetReady));
-    api.pageReady?.();
+    api.pageReady?.(backend.kind);
 }
 
 start().catch((error) => {

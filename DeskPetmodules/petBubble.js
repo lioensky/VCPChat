@@ -3,7 +3,8 @@
 // 气泡只显示正文，完整回复在主窗口；文字整理交给 bubbleText.js。
 import { toBubbleText } from 'vcp-deskpet://pet/app/bubbleText.js';
 import { isMissed } from 'vcp-deskpet://pet/app/missedReply.js';
-import { dueGestures } from 'vcp-deskpet://pet/app/gestures.js';
+import { gestureOf } from 'vcp-deskpet://pet/app/gestures.js';
+import { dueModelControls, controlTokens } from 'vcp-deskpet://pet/app/modelControls.js';
 import { EMOTION_LABEL, EMOTION_EMOJI } from 'vcp-deskpet://pet/app/emotionLook.js';
 
 // 回复结束后气泡停留多久：按字数给时间读完，鼠标停在气泡上时不收
@@ -62,7 +63,11 @@ export function createPetBubble(ctx) {
         const waiting = revealEnd != null && !source.trim() && speech.active();
         const reply = muted ? '' : source.trim() ? toBubbleText(source) : (waiting ? '…' : '');
         // 回复里写了动作：显示（念）到那句时演出来；免打扰下不冒气泡的回复也不动
-        if (!muted && ctx.life) for (const gesture of dueGestures(bubble.tags, revealEnd)) ctx.life.perform(gesture);
+        if (!muted && ctx.life) for (const control of dueModelControls(bubble.tags, revealEnd)) {
+            const gesture = controlTokens(control.variant).map(gestureOf).filter(Boolean).pop();
+            if (gesture) ctx.life.perform(gesture);
+            ctx.backend.playControl?.(control.variant, control.intensity);
+        }
         if (bubble.notice) {
             content = bubble.notice.text;
             mode = bubble.notice.error ? 'is-error' : 'is-notice';

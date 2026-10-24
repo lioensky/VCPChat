@@ -18,6 +18,7 @@ const fs = require('fs-extra');
 const outfitStore = require('./outfits');
 const { bundledCorePath } = require('./cubismCore');
 const { readWardrobe } = require('./live2dWardrobe');
+const { readCapabilities } = require('./live2dCapabilities');
 
 const SCHEME = 'vcp-deskpet';
 const IMAGE_EXTENSIONS = outfitStore.IMAGE_EXTENSIONS;
@@ -191,7 +192,7 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
             name,
             outfit: outfit ? outfitSummary(outfit) : null,
             outfits: outfits.map(outfitSummary),
-            live2d: outfit?.live2d ? { modelUrl: agentUrl(agentId, outfit.live2d), wardrobe: await readWardrobe(outfit.live2d) } : null,
+            live2d: outfit?.live2d ? { modelUrl: agentUrl(agentId, outfit.live2d), wardrobe: await readWardrobe(outfit.live2d), capabilities: await readCapabilities(outfit.live2d) } : null,
             puppet: outfit?.puppet ? { rigUrl: agentUrl(agentId, outfit.puppet) } : null,
             sprite: outfit?.sprite ? { sheetUrl: agentUrl(agentId, outfit.sprite.sheet), version: outfit.sprite.version } : null,
             coreUrl: hasCore ? `${SCHEME}://pet/core/live2dcubismcore.min.js?v=${Math.round(coreStat.mtimeMs)}` : null,

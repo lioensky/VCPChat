@@ -44,6 +44,8 @@ function registerIpc(ctx) {
         // 记着的那套已经删了：换成实际显示的这套。等待期间又换了装（连点卡片）就别把新选的盖回去
         if (pet.outfit === wanted) {
             pet.outfit = assets.outfit?.id || null;
+            pet.capabilities = assets.live2d?.capabilities || null;
+            pet.capabilitiesOutfit = pet.outfit;
             if (pet.kind !== assets.outfit?.kind) ctx.sizing.applyAspect(pet, null, assets.outfit?.kind);
         }
         const saved = (await ctx.readPetState())[pet.agentId];
@@ -53,10 +55,11 @@ function registerIpc(ctx) {
         ctx.previews?.ready(event.sender, report && typeof report === 'object' ? report : null);
     });
     // 页面准备好了（形象载完、输入框能用了）：补上等着的输入框
-    ipcMain.on('deskpet:page-ready', (event) => {
+    ipcMain.on('deskpet:page-ready', (event, backendKind) => {
         const pet = ctx.petFromEvent(event);
         if (!pet) return;
         pet.ready = true;
+        pet.backendKind = backendKind === 'live2d' ? 'live2d' : null;
         ctx.menus.pushWardrobe(pet).catch((error) => console.warn('[DeskPet] wardrobe restore failed:', error.message));
         // 藏着的时候重载（换装、崩溃恢复）：新页面默认在跑，告诉它停下
         if (!pet.win.isDestroyed() && !pet.win.isVisible()) pet.win.webContents.send('deskpet:visibility', false);

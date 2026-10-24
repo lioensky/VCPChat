@@ -8,6 +8,7 @@ import { createHeadPoseLimiter } from './headPoseLimits.js';
 import { createLifeMotion } from './lifeMotion.js';
 import { createWardrobeLayer } from './live2dWardrobe.js';
 import { zoneOf, hasZones } from './hitAreas.js';
+import { createModelControlLayer, controlTokens } from './modelControls.js';
 import { pickExpression as mapExpression, pickMotion as mapMotion, pickTap, modelNameOf } from './expressionMap.js';
 import { paramTargets } from './emotionLook.js';
 import { createPixiStage, createFigureFit, createAlphaProbe, tickerControls, loadScript, fetchJson, userFacing } from './petStage.js';
@@ -83,7 +84,19 @@ export function createLive2DBackend(assets, env) {
 }
 
 async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, webgl, fps }) {
-    const model = await Live2DModel.from(assets.live2d.modelUrl, {
+    const catalog = assets.live2d.capabilities;
+    let source = assets.live2d.modelUrl;
+    if (catalog) {
+        const definition = await fetchJson(source);
+        if (!definition) throw new Error('model3.json unavailable');
+        const refs = definition.FileReferences || {};
+        const expressions = [...(refs.Expressions || [])];
+        for (const entry of catalog.expressions || []) if (!expressions.some(e => e.File === entry.File)) expressions.push(entry);
+        source = { ...definition, url: assets.live2d.modelUrl, FileReferences: {
+            ...refs, Expressions: expressions, Motions: { ...refs.Motions, ...catalog.motions },
+        } };
+    }
+    const model = await Live2DModel.from(source, {
         ticker: app.ticker,
         autoHitTest: false,
         autoFocus: false,
@@ -113,6 +126,8 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
     const wardrobeGroups = assets.live2d.wardrobe || [];
     const wardrobe = createWardrobeLayer(coreModel, id => internal.getIdSafe(id), wardrobeGroups, assets.wardrobeSelection);
     const wardrobeNames = new Set(wardrobeGroups.flatMap(group => group.items.map(item => item.id.split('/').pop().replace(/\.exp3\.json$/i, ''))));
+    const controls = createModelControlLayer(coreModel, id => internal.getIdSafe(id), catalog?.items);
+    let explicitMotionMs = 0;
     const limitHeadPose = createHeadPoseLimiter(coreModel, (id) => internal.getIdSafe(id));
     const paramIds = new Set(coreModel?._model?.parameters?.ids || coreModel?.getModel?.()?.parameters?.ids || []);
     const expressionNames = (internal.motionManager?.expressionManager?.definitions || [])
@@ -146,7 +161,9 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
     const naturalMovements = internal.updateNaturalMovements.bind(internal);
     internal.updateNaturalMovements = (now, dt) => {
         naturalMovements(now, dt);
+        explicitMotionMs = Math.max(0, explicitMotionMs - app.ticker.deltaMS);
         addLifeAndEmotion();
+        controls.apply(app.ticker.deltaMS / 1000);
         wardrobe.apply();
         // 动作、表情和光标方向合成后统一收小，物理也只接收小角度的头部运动。
         limitHeadPose(profile.headPoseLimits);
@@ -197,6 +214,17 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
         kind: 'live2d',
         probe: alphaProbe.probe,
         setWardrobe: wardrobe.setSelection,
+        playControl(variant, intensity) {
+            const tokens = controlTokens(variant);
+            controls.play(tokens, intensity);
+            const motion = catalog?.items?.find(item => item.kind === 'motion' && tokens.includes(item.id));
+            if (motion && motionGroups.includes(motion.group)) {
+                explicitMotionMs = (motion.duration || 4) * 1000;
+                internal.motionManager?.stopAllMotions?.();
+                Promise.resolve(model.motion(motion.group, motion.index, PIXI.live2d.MotionPriority?.FORCE ?? 3, { loop: false, resetExpression: false }))
+                    .catch(error => console.warn('[DeskPet] 模型动作播放失败：', error));
+            }
+        },
         // 视线跟光标：不用模型自带的 focus（它只取方向，光标在上面就仰到最大），按离头多远、往哪边转多少
         focus(x, y) {
             const h = figure.head();
@@ -242,7 +270,7 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
                 internal.motionManager?.expressionManager?.resetExpression?.();
                 lastExpression = null;
             }
-            if (!f.state && motion) {
+            if (!f.state && motion && !controls.active && !explicitMotionMs) {
                 const group = pickMotion(f.emotion);
                 if (group) model.motion(group);
             }
@@ -253,6 +281,7 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
         life: {
             phase(p) { life.setPhase(p); },
             act(name, ms) {
+                if (explicitMotionMs && ['lookAround', 'tilt', 'stretch', 'hum', 'yawn', 'nod'].includes(name)) return;
                 const group = pickLifeMotion(name);
                 life.play(name, ms, { weight: group ? LIFE_MOTION_WEIGHT : 1 });
                 if (group) forceMotion(group);

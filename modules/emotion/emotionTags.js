@@ -5,15 +5,15 @@
 import { normalizeEmotion, clampIntensity } from './emotionVocabulary.js';
 
 // <!--emo:happy-->、<!--emo:happy 0.8-->、<!--emo:happy/bright_smile 0.8-->、<!-- emo: 开心 -->
-const TAG_BODY = /^\s*emo\s*[:：]\s*([^\s/>]+?)(?:\/([A-Za-z0-9_-]+))?(?:\s+([01](?:\.\d+)?|\.\d+))?\s*$/i;
+const TAG_BODY = /^\s*emo\s*[:：]\s*([^\s/>]+?)(?:\/([A-Za-z0-9_+,\uFF0C-]+))?(?:\s+([^\s<>]{1,24}))?\s*$/i;
 const TAG_OPEN = /<!--\s*emo\s*[:：]/iy;
 const TAG_OPEN_ANYWHERE = /<!--\s*emo\s*[:：]/gi;
 // 标签的结尾：同一行、80 个字符以内的第一个 >。模型偶尔把 --> 写成 >、->、--!>，也当结尾，
 // 不然浏览器会把它当成没闭合的注释，把后面整段回复都藏掉；也不会一路找到很远处正文里的 "A --> B"
-const TAG_MAX_BODY = 80;
-const TAG_REST_CLOSED = /([^<>\r\n]{0,80}?)(?:--!?|-)?>/y;
+const TAG_MAX_BODY = 192;
+const TAG_REST_CLOSED = /([^<>\r\n]{0,192}?)(?:--!?|-)?>/y;
 // 没写结尾的标签：只认到情绪词、子表情和强度为止，后面的正文留着
-const TAG_REST_BARE = /\s*([^\s/<>!-]{1,24})(?:\/([A-Za-z0-9_-]+))?(?:\s+(?:[01](?:\.\d+)?|\.\d+))?/y;
+const TAG_REST_BARE = /\s*([^\s/<>!-]{1,24})(?:\/([A-Za-z0-9_+,\uFF0C-]+))?(?:\s+(?:[+-]?(?:\d+(?:\.\d+)?|\.\d+)))?/y;
 // 流式尾巴上还没写完的标签：<!-、<!--、<!--em、<!--emo:hap…（同一行、最多 64 个字符，避免吞掉普通长注释）
 const PARTIAL_TAIL = /<!(?:-(?:-(?:\s*e(?:m(?:o(?:\s*[:：][^>\r\n]{0,64})?)?)?)?)?)?$/i;
 // 代码围栏（``` 或 ~~~）和行内代码里的标签是在讲这个格式，不是在用它

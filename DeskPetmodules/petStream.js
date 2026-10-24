@@ -52,7 +52,7 @@ export function createPetStream(ctx) {
             for (const block of blocks) {
                 for (const item of scanner.push(block.source)) {
                     if (item.type === 'text') bubble.reply += item.text;
-                    else if (item.type === 'tag') bubble.tags.push({ at: bubble.reply.length, emotion: item.emotion, intensity: item.intensity, gesture: gestureOf(item.variant) });
+                    else if (item.type === 'tag') bubble.tags.push({ at: bubble.reply.length, emotion: item.emotion, intensity: item.intensity, variant: item.variant, gesture: gestureOf(item.variant) });
                 }
             }
         };
