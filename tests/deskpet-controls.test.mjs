@@ -46,6 +46,10 @@ test('the default size is smaller now; a size someone picked before looks the sa
     assert.ok(Math.abs(prefs.characterBox().height * prefs.savedScale({ scale: 1.5, sizeVersion: 2 }) - 258 * 1.5) < 6, '第二版自定义大小保持实际高度');
     assert.equal(prefs.savedScale({ scale: 2 }), prefs.SCALE_MAX, '换算后超出上限就到上限');
     assert.equal(prefs.savedScale({ scale: 1.5, sizeVersion: prefs.SIZE_VERSION }), 1.5, '新版记的原样用');
+    assert.equal(prefs.savedScale(null, 'sprite'), 0.8, 'Codex 宠物开箱 80%');
+    assert.equal(prefs.savedScale({ scale: 1 }, 'sprite'), 0.8);
+    assert.equal(prefs.savedScale({ scale: 1, sizeVersion: prefs.SIZE_VERSION }, 'sprite'), 1, '自己调到 100% 的照旧');
+    assert.equal(prefs.savedScale(null, 'live2d'), 1);
     // 旧版记的位置：换算后脚还站在原来的地方（站在任务栏上的不会悬空）
     const feet = (saved, aspect, scale) => {
         const pos = prefs.legacyPosition(saved, aspect, scale);

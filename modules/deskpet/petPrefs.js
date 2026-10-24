@@ -16,6 +16,8 @@ const SIZE_VERSION = 3;
 const BASE_CHARACTER = Object.freeze({ width: 360 * SIZE_FACTOR, height: 430 * SIZE_FACTOR });
 // 精灵角色沿用 Codex 桌宠的小体量；气泡、输入框和胶囊仍按原来的尺寸排。
 const SPRITE_SIZE_FACTOR = 2 / 3;
+// 没调过大小时的倍数：精灵角色（Codex 宠物）开箱小一档
+const SPRITE_DEFAULT_SCALE = 0.8;
 // 知道形象的长宽比（高 ÷ 宽，按不透明像素算）以后，角色区跟着比例走：
 // 半身立绘、Q 版（高宽比 1.6 以内）高度一致，宽度按比例收；竖长的全身像（2.6 以上）高约 275，
 // 中间平滑过渡。全身像的人比半身像小一截是自然的，但不至于高出半个屏幕。
@@ -153,11 +155,15 @@ function maxScaleForWorkArea(workArea, aspect, kind) {
  * state.json 里记的大小换成现在的倍数。第一版记的倍数是按大的那套 1 倍算的：
  * 没调过（1 倍）的直接用新的默认；调过的换算成同样的实际大小，看起来不变。
  */
-function savedScale(saved) {
+function defaultScale(kind) {
+    return kind === 'sprite' ? SPRITE_DEFAULT_SCALE : 1;
+}
+
+function savedScale(saved, kind) {
     const raw = Number(saved?.scale);
-    if (!Number.isFinite(raw)) return 1;
+    if (!Number.isFinite(raw)) return defaultScale(kind);
     if (Number(saved.sizeVersion) >= SIZE_VERSION) return clampScale(raw);
-    if (Math.abs(raw - 1) < 0.001) return 1;
+    if (Math.abs(raw - 1) < 0.001) return defaultScale(kind);
     const oldFactor = Number(saved.sizeVersion) >= 2 ? PREVIOUS_SIZE_FACTOR : 1;
     return clampScale(raw * oldFactor / SIZE_FACTOR);
 }
@@ -330,6 +336,7 @@ module.exports = {
     RESERVED_ACCELERATORS,
     DEFAULT_SETTINGS,
     clampScale,
+    defaultScale,
     savedScale,
     characterBox,
     normalizeAspect,

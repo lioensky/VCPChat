@@ -128,7 +128,7 @@ function createSettingsPage({ electron, paths, controls, previews, pets, core })
             }).catch(() => {});
         }
         previews.prune(agentId, outfits.map((o) => o.id)).catch(() => {});
-        const scale = live?.scale ?? petPrefs.savedScale(saved);
+        const scale = live?.scale ?? petPrefs.savedScale(saved, outfits.find((o) => o.id === chosen)?.kind);
         return {
             agents,
             agentId,

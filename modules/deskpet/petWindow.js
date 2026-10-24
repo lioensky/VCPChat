@@ -174,7 +174,7 @@ function createPetWindow(ctx) {
         const kind = outfit?.kind;
         const aspect = outfitId ? savedAspect(saved, outfitId) : null;
         // 按桌宠所在的那块屏限制大小（getDisplayMatching 要完整的矩形，只给 x/y 会退回主屏）
-        const savedSize = petPrefs.savedScale(saved);
+        const savedSize = petPrefs.savedScale(saved, kind);
         const savedRect = hasSavedPosition(saved) ? { x: saved.x, y: saved.y, ...petPrefs.windowSizeForScale(savedSize, aspect, kind) } : null;
         const scale = petPrefs.fitScale(savedSize, geometry.workAreaAt(anchor || savedRect || screen.getPrimaryDisplay().workArea), aspect, kind);
         const size = petPrefs.windowSizeForScale(scale, aspect, kind);
