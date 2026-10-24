@@ -478,11 +478,23 @@ class ChatVoiceComposer {
 					this.syncConfigFromSettings();
 				}
 			};
+			const onTypedCommitted = (event) => {
+				const patch = event?.detail?.patch;
+				if (!patch || typeof patch !== "object") return;
+				if ("voiceInputMode" in patch || "localSttLanguage" in patch || "voiceInputShortcut" in patch) {
+					onSettingsChanged(event);
+				}
+			};
 			window.addEventListener("global-settings-updated", onSettingsChanged);
+			window.addEventListener("vcp-typed-settings-committed", onTypedCommitted);
 			this.own(() => {
 				window.removeEventListener(
 					"global-settings-updated",
 					onSettingsChanged,
+				);
+				window.removeEventListener(
+					"vcp-typed-settings-committed",
+					onTypedCommitted,
 				);
 			});
 		}

@@ -677,8 +677,18 @@ mainChatSettingsPresentationOwner.configureStartup({
     };
     syncConversationTurnNavigator();
     window.addEventListener('global-settings-updated', syncConversationTurnNavigator);
+    const handleTypedSettingsCommitted = event => {
+        const committedPatch = event?.detail?.patch;
+        if (!committedPatch || typeof committedPatch !== 'object' || Object.keys(committedPatch).length === 0) return;
+        mainChatSettingsOwner.merge(committedPatch);
+        if ('enableTurnNavigator' in committedPatch) {
+            syncConversationTurnNavigator();
+        }
+    };
+    window.addEventListener('vcp-typed-settings-committed', handleTypedSettingsCommitted);
     ownedRendererSubscriptions.add({ dispose: () => {
         window.removeEventListener('global-settings-updated', syncConversationTurnNavigator);
+        window.removeEventListener('vcp-typed-settings-committed', handleTypedSettingsCommitted);
         conversationTurnNavigator?.dispose();
         conversationTurnNavigator = null;
     } });

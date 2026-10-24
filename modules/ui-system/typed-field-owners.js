@@ -264,6 +264,27 @@ function ensureTypedSettingsService() {
                         : { ...typedSettingsBase, ...(patch || {}) });
                     typedSettingsConflict = null;
                     getSaveCoordinator(document.getElementById('globalSettingsForm'))?.recordCommit?.(result, patch, patchToPathOps(patch));
+                    const committedSource = (result?.settings && typeof result.settings === 'object')
+                        ? result.settings
+                        : typedSettingsBase;
+                    const committedPatch = {};
+                    for (const key of Object.keys(patch || {})) {
+                        committedPatch[key] = key in committedSource ? committedSource[key] : patch[key];
+                    }
+                    const formElement = document.getElementById('globalSettingsForm');
+                    const targetView = formElement?.ownerDocument?.defaultView || window;
+                    try {
+                        targetView.dispatchEvent(new targetView.CustomEvent('vcp-typed-settings-committed', {
+                            detail: {
+                                settings: typedSettingsBase,
+                                patch: Object.freeze(committedPatch),
+                                source: 'typed-autosave',
+                                revision: typedSettingsRevision,
+                            }
+                        }));
+                    } catch (dispatchError) {
+                        console.error('[TypedSettings] Failed to dispatch typed-autosave committed update:', dispatchError);
+                    }
                     if (generation !== typedSettingsSaveGeneration) {
                         return { success: false, status: 'stale', operationId, currentRevision: typedSettingsRevision };
                     }
