@@ -2,6 +2,12 @@
 
 const { BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
+const { randomUUID } = require('node:crypto');
+const { createApplicationSenderGuard, resolveWindowWebContents } = require('./applicationSender');
+let getMainWindow = () => null;
+let embedSenderAllowed = () => false;
+let disposeEmbedListeners = () => {};
+const embedLeases = new Map();
 const { ChartService } = require('../services/chartService');
 const { ChartDataSourceService } = require('../services/chartDataSourceService');
 const windowService = require('../services/windowService');
@@ -438,9 +444,66 @@ function broadcastChange(change) {
     for (const win of floatingWindows.values()) safeSend(win, 'chart:changed', change);
     safeSend(workbenchWindow, 'chart:changed', change);
     for (const win of previewWindows) safeSend(win, 'chart:changed', change);
+    if ([...embedLeases.values()].some(lease => lease.chartId === change?.chartId)) {
+        safeSend(getMainWindow(), 'chart:embed-changed', change);
+    }
+    if (change?.type === 'deleted') {
+        for (const [token, lease] of embedLeases) {
+            if (lease.chartId === change.chartId) embedLeases.delete(token);
+        }
+    }
 }
 
 function registerIpcHandlers() {
+    const authorizeEmbed = event => {
+        if (!embedSenderAllowed(event)) throw new Error('未授权的消息图表请求。');
+    };
+    const leaseFor = (event, request) => {
+        authorizeEmbed(event);
+        const lease = embedLeases.get(request?.token);
+        if (!lease || lease.sender !== event.sender || lease.chartId !== request.chartId) {
+            throw new Error('消息图表实例已失效。');
+        }
+        return lease;
+    };
+    for (const channel of ['chart:embed-acquire', 'chart:embed-snapshot',
+        'chart:embed-release', 'chart:embed-read-data-source', 'chart:embed-open']) {
+        ipcMain.removeHandler(channel);
+    }
+    ipcMain.handle('chart:embed-acquire', async (event, chartId) => {
+        authorizeEmbed(event);
+        if (embedLeases.size >= 32) throw new Error('消息图表实例数量超过限制。');
+        const snapshot = await getChartSnapshot(chartId);
+        authorizeEmbed(event);
+        if (embedLeases.size >= 32) throw new Error('消息图表实例数量超过限制。');
+        const token = randomUUID();
+        embedLeases.set(token, { sender: event.sender, chartId: snapshot.manifest.id });
+        return { token, snapshot };
+    });
+    ipcMain.handle('chart:embed-snapshot', (event, request) => {
+        const lease = leaseFor(event, request);
+        return getChartSnapshot(lease.chartId);
+    });
+    ipcMain.handle('chart:embed-release', (event, request) => {
+        leaseFor(event, request);
+        embedLeases.delete(request.token);
+        return true;
+    });
+    ipcMain.handle('chart:embed-read-data-source', (event, request) => {
+        leaseFor(event, request);
+        const source = request.request || {};
+        const allowed = {};
+        for (const key of ['type', 'source', 'path', 'url', 'sql', 'params',
+            'headers', 'timeoutMs', 'encoding', 'delimiter', 'header']) {
+            if (Object.hasOwn(source, key)) allowed[key] = source[key];
+        }
+        return chartDataSourceService.read(allowed);
+    });
+    ipcMain.handle('chart:embed-open', async (event, chartId) => {
+        authorizeEmbed(event);
+        await openWorkbench(chartId);
+        return true;
+    });
     [
         'chart:floating-state',
         'chart:detach',
@@ -625,6 +688,21 @@ function registerIpcHandlers() {
 async function initialize(options = {}) {
     projectRoot = options.projectRoot || path.join(__dirname, '..', '..');
     openChildWindows = options.openChildWindows || [];
+    getMainWindow = options.getMainWindow || (() => options.mainWindow || null);
+    embedSenderAllowed = createApplicationSenderGuard({
+        projectRoot,
+        getWebContents: () => resolveWindowWebContents(getMainWindow),
+    });
+    disposeEmbedListeners();
+    embedLeases.clear();
+    const mainContents = resolveWindowWebContents(getMainWindow);
+    const clearEmbedLeases = () => embedLeases.clear();
+    mainContents?.on('destroyed', clearEmbedLeases);
+    mainContents?.on('did-navigate', clearEmbedLeases);
+    disposeEmbedListeners = () => {
+        mainContents?.removeListener('destroyed', clearEmbedLeases);
+        mainContents?.removeListener('did-navigate', clearEmbedLeases);
+    };
     chartService = options.chartService || new ChartService({
         appDataRoot: options.appDataRoot,
         logger: options.logger || console,
@@ -684,6 +762,9 @@ async function initialize(options = {}) {
 }
 
 async function shutdown() {
+    disposeEmbedListeners();
+    embedLeases.clear();
+    embedSenderAllowed = () => false;
     if (chartService && serviceChangeListener) {
         chartService.off('change', serviceChangeListener);
     }

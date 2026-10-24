@@ -22,7 +22,48 @@
     let status = 'idle';
     let lastDiagnostics = null;
 
+    let paused = false;
+    const deferredCallbacks = [];
+    const sourceRequests = new Map();
+    let sourceSequence = 0;
     const loadedScripts = new Map();
+
+    function runVisible(callback) {
+        if (destroyed) return;
+        if (paused) deferredCallbacks.push(callback);
+        else callback();
+    }
+
+    function readDataSource(request) {
+        if (destroyed) return Promise.reject(new Error('图表实例已销毁。'));
+        const requestId = `${generation}:${++sourceSequence}`;
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                sourceRequests.delete(requestId);
+                reject(new Error('图表数据源请求超时。'));
+            }, 65000);
+            sourceRequests.set(requestId, { resolve, reject, timer });
+            send('data-source-request', { requestId, request });
+        });
+    }
+
+    async function setPaused(value) {
+        if (paused === value) return;
+        paused = value;
+        root.style.animationPlayState = value ? 'paused' : '';
+        root.getAnimations?.({ subtree: true }).forEach(animation => {
+            if (value && animation.playState === 'running') {
+                animation.__chartWasRunning = true;
+                animation.pause();
+            } else if (!value && animation.__chartWasRunning) {
+                delete animation.__chartWasRunning;
+                animation.play();
+            }
+        });
+        resources?.setPaused?.(value);
+        await instance?.[value ? 'pause' : 'resume']?.(createContext());
+        if (!value) deferredCallbacks.splice(0).forEach(callback => callback());
+    }
 
     function send(type, payload = {}) {
         parent.postMessage({
@@ -200,8 +241,9 @@
             },
             setTimeout(callback, delay, ...args) {
                 const id = window.setTimeout(() => {
-                    timers.delete(id);
-                    if (!destroyed) callback(...args);
+                    runVisible(() => {
+                        if (timers.delete(id)) callback(...args);
+                    });
                 }, delay);
                 timers.add(id);
                 return id;
@@ -212,7 +254,7 @@
             },
             setInterval(callback, delay, ...args) {
                 const id = window.setInterval(() => {
-                    if (!destroyed) callback(...args);
+                    if (!destroyed && !paused) callback(...args);
                 }, delay);
                 intervals.add(id);
                 return id;
@@ -223,8 +265,9 @@
             },
             requestAnimationFrame(callback) {
                 const id = window.requestAnimationFrame(timestamp => {
-                    frames.delete(id);
-                    if (!destroyed) callback(timestamp);
+                    runVisible(() => {
+                        if (frames.delete(id)) callback(timestamp);
+                    });
                 });
                 frames.add(id);
                 return id;
@@ -244,6 +287,26 @@
             registerPixiApplication(app) {
                 if (app) pixiApps.add(app);
                 return app;
+            },
+            setPaused(value) {
+                animeInstances.forEach(animation => {
+                    if (value && !animation.paused) {
+                        animation.__chartWasRunning = true;
+                        animation.pause?.();
+                    } else if (!value && animation.__chartWasRunning) {
+                        delete animation.__chartWasRunning;
+                        animation.play?.();
+                    }
+                });
+                pixiApps.forEach(application => {
+                    if (value && application.ticker?.started) {
+                        application.__chartWasRunning = true;
+                        application.stop?.();
+                    } else if (!value && application.__chartWasRunning) {
+                        delete application.__chartWasRunning;
+                        application.start?.();
+                    }
+                });
             },
             async destroy() {
                 timers.forEach(id => clearTimeout(id));
@@ -418,6 +481,15 @@
             manifest,
             libraries,
             resources,
+            dataSources: Object.freeze({
+                read: readDataSource,
+                fetchJson: url => readDataSource({ type: 'http-json', url }),
+                readJson: source => readDataSource({ type: 'json', source }),
+                readText: source => readDataSource({ type: 'text', source }),
+                readCsv: source => readDataSource({ type: 'csv', source }),
+                querySqlite: (source, sql, params = []) =>
+                    readDataSource({ type: 'sqlite', source, sql, params }),
+            }),
             signal: controller.signal,
             get data() { return data; },
             requestRender(reason = 'runtime-request') {
@@ -444,6 +516,13 @@
     async function destroyRuntime({ announce = true } = {}) {
         if (destroyed) return;
         destroyed = true;
+        paused = false;
+        deferredCallbacks.length = 0;
+        for (const pending of sourceRequests.values()) {
+            clearTimeout(pending.timer);
+            pending.reject(new Error('图表实例已销毁。'));
+        }
+        sourceRequests.clear();
         if (stableTimer) clearTimeout(stableTimer);
         stableTimer = null;
         mutationObserver?.disconnect();
@@ -508,17 +587,7 @@
         ) || {};
         await instance.mount?.(context);
 
-        mutationObserver = new MutationObserver(() => {
-            if (status === 'stable' || status === 'ready') {
-                markBusy('DOM changed');
-            }
-        });
-        mutationObserver.observe(root, {
-            subtree: true,
-            childList: true,
-            attributes: true,
-            characterData: true,
-        });
+        // 动画逐帧修改 DOM 不代表业务更新；稳定状态由 mount/update/resize 驱动。
 
         setStatus('ready', '图表已挂载');
         send('ready');
@@ -533,7 +602,22 @@
             return;
         }
 
-        if (!chartId || message.chartId !== chartId) return;
+        if (!chartId || message.chartId !== chartId
+            || message.generation !== generation) return;
+
+        if (message.type === 'data-source-response') {
+            const pending = sourceRequests.get(message.requestId);
+            if (!pending) return;
+            clearTimeout(pending.timer);
+            sourceRequests.delete(message.requestId);
+            if (message.error) pending.reject(new Error(message.error));
+            else pending.resolve(message.result);
+            return;
+        }
+        if (message.type === 'pause' || message.type === 'resume') {
+            await setPaused(message.type === 'pause');
+            return;
+        }
 
         const context = createContext();
         if (message.type === 'data-change') {
@@ -564,8 +648,15 @@
         }
     }
 
+    let messageQueue = Promise.resolve();
     window.addEventListener('message', event => {
-        handleMessage(event.data).catch(reportError);
+        if (event.source !== parent) return;
+        // Responses must bypass the queue: mount may itself await a data source.
+        if (event.data?.type === 'data-source-response') {
+            handleMessage(event.data).catch(reportError);
+            return;
+        }
+        messageQueue = messageQueue.then(() => handleMessage(event.data)).catch(reportError);
     });
     window.addEventListener('error', event =>
         reportError(event.error || event.message)

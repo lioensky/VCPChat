@@ -11,6 +11,8 @@ import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
 import { createContentRuntime } from './chat/contentRuntime.js';
 import { createMermaidPlaceholderTransform } from './chat/contentTransforms.js';
+import { transformChartReferences } from './chat/chartEmbedTransform.js';
+import { createChartEmbedHost } from './renderer/chartEmbedHost.js';
 import { createChatDomRenderer } from './chat/chatDomRenderer.js';
 import { createRenderDependencies } from './renderer/renderDependencies.js';
 import { createRenderSessionAuthority } from './renderer/renderSessionAuthority.js';
@@ -2699,7 +2701,10 @@ let contentPipeline = null;
 let contentRuntime = null;
 let rendererListenerDisposers = [];
 let toolPresentation = null;
+let chartEmbedHost = null;
 function disposeRendererListeners() {
+    chartEmbedHost?.dispose();
+    chartEmbedHost = null;
     toolPresentation?.dispose();
     toolPresentation = null;
     rendererListenerDisposers.splice(0).reverse().forEach(dispose => { try { dispose(); } catch (error) { console.warn('[MessageRenderer] listener dispose failed:', error); } });
@@ -2789,6 +2794,7 @@ function cleanupMessageDomResources(messageItem, messageId = null) {
     cleanupToolResultFullContentForRoot(messageItem);
     const contentDiv = messageItem.querySelector('.md-content');
     if (contentDiv) {
+        chartEmbedHost?.beforeReplace(contentDiv);
         imageHandler.cleanupContent?.(contentDiv);
         if (contentDiv._vcpDeferredHighlightTimer) {
             clearTimeout(contentDiv._vcpDeferredHighlightTimer);
@@ -2852,6 +2858,7 @@ function removeMessageById(messageId, saveHistory = false, root = mainRendererRe
 function clearChat(root = mainRendererReferences.chatMessagesDiv) {
     projectForgeTopicSurface.clear(root);
     invalidateRenderSession(root);
+    chartEmbedHost?.clear();
     mainRendererReferences.uiHelper.resetChatScrollFollow?.();
 
     // 清空聊天通常意味着用户希望释放当前渲染上下文占用；HTML 字符串缓存不持有 DOM，但这里主动释放更保守。
@@ -2880,6 +2887,10 @@ function clearChat(root = mainRendererReferences.chatMessagesDiv) {
 function initializeMessageRenderer(refs) {
     disposeRendererListeners();
     mainRendererReferences = createRenderDependencies(refs);
+    chartEmbedHost = createChartEmbedHost({
+        root: mainRendererReferences.chatMessagesDiv,
+        api: mainRendererReferences.electronAPI,
+    });
     mainRendererReferences.chatMessagesDiv.setAttribute('data-vcp-projectforge-root', '');
     projectForgeTopicSurface.replaceHistory(mainRendererReferences.chatMessagesDiv, mainRendererReferences.currentChatHistoryRef.get());
 
@@ -2900,7 +2911,8 @@ function initializeMessageRenderer(refs) {
             }
             return mainRendererReferences.flowlockProtocol.transformForRender(text);
         },
-        transformMermaidPlaceholders: createMermaidPlaceholderTransform({ escapeHtml }),
+        transformMermaidPlaceholders: text =>
+            createMermaidPlaceholderTransform({ escapeHtml })(transformChartReferences(text)),
         getToolResultRegex: () => TOOL_RESULT_REGEX,
         getToolRequestRegex: () => TOOL_REGEX,
         replaceToolRequestBlocks,
@@ -3728,6 +3740,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     };
 
     if (typeof rawHtml === 'string') {
+        chartEmbedHost?.beforeReplace(contentDiv);
         toolPresentation?.capture(contentDiv);
         // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器、
         // 动画/WebGL 资源及大工具结果完整文本。
@@ -3765,6 +3778,8 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     // 原生 audio 负责媒体播放，自定义控件层负责一致的主题与交互。
     // 放在附件渲染之后，可同时覆盖 Markdown HTML 音频和消息附件音频。
     enhanceAudioPlayers(contentDiv);
+
+    chartEmbedHost?.scan(contentDiv, { auto: processScripts });
 
     if (!runHeavy) {
         if (messageItem) {

@@ -58,6 +58,8 @@ require = function (id) {
 };
 
 const { app, BrowserWindow, webContents, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
+const { registerChartEmbedScheme, installChartEmbedProtocol } = require('./modules/services/chartEmbedProtocol');
+registerChartEmbedScheme(protocol);
 
 // 不再对整个应用关闭 Chromium 的后台节流（background-timer-throttling / renderer-backgrounding /
 // backgrounding-occluded-windows）和挂起监视器：那组开关让所有窗口、所有 <webview> 和 GPU 进程在后台
@@ -1769,10 +1771,12 @@ if (!gotTheLock) {
         emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
         emoticonHandlers.setupEmoticonHandlers();
         canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
+        await installChartEmbedProtocol({ protocol, net: require('electron').net, projectRoot: PROJECT_ROOT });
         chartService = await chartHandlers.initialize({
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,
             mainWindow,
+            getMainWindow: () => mainWindow,
             openChildWindows,
             logger: console,
         });

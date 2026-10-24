@@ -3012,3 +3012,100 @@ body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-prompt .vcp-flowlock-ico
 .vcp-context-checkpoint-audit-line + .vcp-context-checkpoint-audit-line {
     margin-top: 4px;
 }
+
+
+/* Chart references: stable geometry, one isolated live frame per chart id. */
+.vcp-chart-embed {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    margin: 12px 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 10px;
+    color: inherit;
+    background: color-mix(in srgb, currentColor 4%, transparent);
+    contain: layout paint;
+}
+
+.vcp-chart-header {
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 42px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    font: 12px/1.4 system-ui, sans-serif;
+}
+
+.vcp-chart-header strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vcp-chart-header > div {
+    display: flex;
+    flex-shrink: 0;
+    gap: 5px;
+}
+
+.vcp-chart-header button {
+    padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-radius: 5px;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+
+.vcp-chart-header button:hover,
+.vcp-chart-header button:focus-visible {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.vcp-chart-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.vcp-chart-poster {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+    text-align: center;
+}
+
+.vcp-chart-status {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    opacity: .75;
+    font: 12px/1.5 system-ui, sans-serif;
+}
+
+.vcp-chart-embed-frame {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: transparent;
+}
+
+.vcp-chart-embed.is-playing .vcp-chart-poster {
+    visibility: hidden;
+}

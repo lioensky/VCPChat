@@ -2,7 +2,7 @@
   "name": "ChartController",
   "displayName": "VCP 图表控制器",
   "version": "1.0.0",
-  "description": "供 Agent 创建、查询、打开、关闭、删除、恢复和编辑持久图表，并通过 chartId + JSON Pointer 增量更新外置数据。支持标准 CSS、Canvas、anime.js、Three.js、Pixi.js、本地沙箱渲染和多模态截图观察。",
+  "description": "供 Agent 创建、查询、打开、关闭、删除、恢复和编辑持久图表，并通过 chartId + JSON Pointer 增量更新外置数据。支持标准 CSS、Canvas、anime.js、Three.js、Pixi.js、本地沙箱渲染和多模态截图观察。主聊天正文可引用已有图表：输出独立围栏 ```vcp-chart\\nid: cpu-monitor\\nheight: 360\\ntitle: CPU 监控\\n```（实际输出换行，不要输出字面量反斜杠 n）。id 必填，height 可选默认360且范围180-900，title可选。先创建或查询确认图表存在，再输出引用；无需重复输出源码。同 ID 默认只在最新的已完成引用处自动播放，旧引用点击播放会转移同一个运行实例。引用显示图表最新数据，并非历史快照。只需消息内展示时，CreateChart 可设置 open=false。",
   "pluginType": "hybridservice",
   "communication": {
     "protocol": "direct",
