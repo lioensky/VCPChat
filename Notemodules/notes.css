@@ -193,6 +193,14 @@ html[data-vcp-embedded-app="true"] .shell {
   background: transparent;
 }
 
+/* themes.css gives every .sidebar a side shadow (body.light-theme .sidebar
+   in light). Here the sidebar sits on the host ground and must paint
+   nothing of its own; this selector matches that specificity and loads
+   later. */
+.shell > aside.sidebar {
+  box-shadow: none;
+}
+
 .sidebar-header {
   display: flex;
   flex-direction: column;
@@ -200,6 +208,7 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 .sidebar-title {
+  position: relative;
   flex: 0 0 30px;
   display: flex;
   align-items: center;
@@ -252,66 +261,179 @@ html[data-vcp-embedded-app="true"] .shell {
 
 .search-box input:focus,
 #editorFindInput:focus,
-#noteTitle:focus,
-.inline-edit-input,
-.notes-filter-row select:focus,
-.template-toolbar select:focus {
+.inline-edit-input {
   border-color: var(--nt-accent);
   box-shadow: 0 0 0 2px var(--nt-focus-ring);
 }
 
 .search-box input:focus-visible,
 #editorFindInput:focus-visible,
-#noteTitle:focus-visible,
-.notes-filter-row select:focus-visible,
-.template-toolbar select:focus-visible {
+#noteTitle:focus-visible {
   outline: none;
 }
 
-.sidebar-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+/* ---- Title-row actions and their popovers ----
+   Filter, help and "+" sit at the end of the title row. "+" opens the menu
+   of new kinds; the filter icon opens radio rows for source, tag and sort.
+   Both popovers hang from the title row's right edge. */
+.sidebar-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.sidebar-actions .button {
-  padding: 0 6px;
+.nav-icon-btn[aria-expanded="true"] {
+  background: var(--nt-active);
+  color: var(--nt-ink);
 }
 
-.notes-filter-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+/* The filter icon carries a dot while any filter differs from the default. */
+#noteFilterBtn {
+  position: relative;
 }
 
-.notes-filter-row #noteSortSelect {
-  grid-column: 1 / -1;
+#noteFilterBtn.has-active-filter::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nt-accent);
 }
 
-.notes-filter-row select,
-.template-toolbar select {
-  min-width: 0;
-  height: 30px;
-  padding: 0 8px;
+.notes-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 1px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: 232px;
+  max-height: min(70vh, 520px);
+  padding: 4px;
+  overflow-y: auto;
   border: 0.5px solid var(--nt-line-3);
+  border-radius: var(--nt-radius-md);
+  background: var(--nt-panel);
+  box-shadow: 0 12px 32px var(--nt-shadow);
+  color: var(--nt-ink);
+}
+
+.notes-popover[hidden] {
+  display: none;
+}
+
+.popover-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
   border-radius: var(--nt-radius-sm);
-  background: var(--nt-surface);
-  color: var(--nt-ink-2);
+  background: transparent;
+  color: var(--nt-ink);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+}
+
+.popover-item svg {
+  flex: 0 0 auto;
+  color: var(--nt-ink-3);
+}
+
+.popover-item:hover,
+.popover-item:focus-visible {
+  background: var(--nt-hover);
+  outline: none;
+}
+
+/* Template rows carry no icon; indent them to the label column above. */
+.popover-item[data-note-template] {
+  padding-left: 36px;
+}
+
+.popover-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-item-hint {
+  flex: 0 0 auto;
+  color: var(--nt-ink-4);
+  font-family: var(--nt-mono);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+/* Radio rows: the check sits at the end and only shows on the chosen row. */
+.popover-item .popover-check {
+  visibility: hidden;
+  color: var(--nt-accent);
+}
+
+.popover-item[aria-checked="true"] .popover-check {
+  visibility: visible;
+}
+
+.popover-label {
+  padding: 6px 10px 2px;
+  color: var(--nt-ink-4);
   font-size: 12px;
   line-height: 18px;
-  cursor: pointer;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.notes-filter-row select:hover,
-.template-toolbar select:hover {
-  color: var(--nt-ink);
+.popover-separator {
+  height: 0;
+  margin: 4px 6px;
+  border-top: 0.5px solid var(--nt-line-2);
 }
 
-.notes-filter-row option,
-.template-toolbar option {
-  background: var(--nt-panel);
-  color: var(--nt-ink);
+.popover-empty {
+  padding: 4px 10px 6px;
+  color: var(--nt-ink-4);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Active filters, said once and quietly under the search box. */
+.note-filter-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  margin-top: -4px;
+  padding: 0 1px 0 10px;
+  color: var(--nt-ink-3);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.note-filter-summary[hidden],
+.note-filter-state[hidden] {
+  display: none;
+}
+
+.note-filter-summary-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-filter-summary .note-filter-clear {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
 }
 
 .resizer {
@@ -505,15 +627,6 @@ html[data-vcp-embedded-app="true"] .shell {
   line-height: 18px;
 }
 
-.note-list-panel li .note-timestamp-display {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  color: var(--nt-ink-4);
-  font-size: 12px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
 /* The core memory folder carries a faint accent tint and an accent icon. */
 .note-list-panel .dailynote-folder {
   background: color-mix(in srgb, var(--nt-accent) 10%, transparent);
@@ -597,8 +710,8 @@ html[data-vcp-embedded-app="true"] .shell {
   gap: 2px;
 }
 
-/* The title field reads as the page title and only shows a field on hover
-   and focus. */
+/* The title field is the page title and the file name at once; it only
+   shows a field on hover and focus. */
 #noteTitle {
   width: calc(100% + 8px);
   height: 34px;
@@ -620,21 +733,24 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 #noteTitle:focus {
+  border-color: var(--nt-accent);
   background: var(--nt-surface);
+  box-shadow: 0 0 0 2px var(--nt-focus-ring);
 }
 
-.markdown-hint {
+/* What the open note is: folder · updated time · length. */
+.note-meta {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  min-width: 0;
+  min-height: 20px;
   margin: 0;
+  overflow: hidden;
   color: var(--nt-ink-3);
   font-size: 13px;
   line-height: 20px;
-}
-
-.markdown-hint code {
-  color: var(--nt-ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .intro-item {
@@ -651,17 +767,18 @@ html[data-vcp-embedded-app="true"] .shell {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding-top: 2px;
 }
 
-.preview-toggle-btn svg {
-  transform-origin: center;
-  transition: transform 0.32s var(--nt-ease);
+.note-delete-btn {
+  width: 30px;
+  height: 30px;
 }
 
-.preview-toggle-btn.is-collapsed svg {
-  transform: rotate(180deg);
+.note-delete-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--nt-danger) 10%, transparent);
+  color: var(--nt-danger);
 }
 
 /* ---- Buttons ---- */
@@ -726,69 +843,53 @@ html[data-vcp-embedded-app="true"] .shell {
   cursor: default;
 }
 
-/* ---- Toolbar ----
-   The view switch reads as underline tabs on a hairline; the Markdown tools
-   and the template picker sit quietly on the same line. */
+/* Icon buttons have no label to swap, so their feedback is a tint and a
+   tooltip for the same moment. */
+:is(.nav-icon-btn, .toolbar-button).button-success {
+  background: color-mix(in srgb, var(--nt-success) 14%, transparent);
+  color: var(--nt-success);
+}
+
+:is(.nav-icon-btn, .toolbar-button).button-error {
+  background: color-mix(in srgb, var(--nt-danger) 12%, transparent);
+  color: var(--nt-danger);
+}
+
+:is(.nav-icon-btn, .toolbar-button):is(.button-success, .button-error):disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+/* ---- Writing surface ----
+   One 12px-radius surface holds the toolbar and the editor and preview,
+   which a hairline resizer splits. The toolbar carries the Markdown tools
+   as icon groups and the view switch as a segmented control. */
+.note-surface {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 0.5px solid var(--nt-line-3);
+  border-radius: var(--nt-radius-md);
+  background: var(--nt-surface);
+}
+
 .note-workspace-toolbar {
+  flex: 0 0 40px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
-  border-bottom: 0.5px solid var(--nt-line-3);
-}
-
-.view-mode-group {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 0 22px;
-  align-self: stretch;
-}
-
-.view-mode-group .toolbar-button {
-  position: relative;
-  height: auto;
-  padding: 7px 1px 9px;
-  border-radius: 0;
-  background: transparent;
-  color: var(--nt-ink-3);
-}
-
-.view-mode-group .toolbar-button:hover:not(:disabled) {
-  background: transparent;
-  color: var(--nt-ink);
-}
-
-.view-mode-group .toolbar-button.is-active {
-  color: var(--nt-ink);
-  font-weight: 500;
-}
-
-.view-mode-group .toolbar-button.is-active::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 -0.5px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--nt-ink);
-}
-
-.view-mode-group .toolbar-button:focus-visible {
-  border-radius: var(--nt-radius-xs);
-  outline-offset: -2px;
-}
-
-.toolbar-divider {
-  flex: 0 0 1px;
-  width: 1px;
-  height: 16px;
-  background: var(--nt-line-2);
+  padding: 0 6px;
+  border-bottom: 0.5px solid var(--nt-line-2);
 }
 
 .formatting-toolbar {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -798,22 +899,44 @@ html[data-vcp-embedded-app="true"] .shell {
   display: none;
 }
 
+/* Preview mode has nothing to format; the tools step aside but keep their
+   place so the view switch does not move. */
+body[data-note-view-mode="preview"] .formatting-toolbar {
+  visibility: hidden;
+}
+
+.toolbar-group {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-divider {
+  flex: 0 0 auto;
+  width: 0;
+  height: 16px;
+  border-left: 0.5px solid var(--nt-line-3);
+}
+
 .toolbar-button {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
+  width: 28px;
   height: 28px;
-  padding: 0 8px;
+  padding: 0;
   border: 0;
   border-radius: var(--nt-radius-sm);
   background: transparent;
   color: var(--nt-ink-3);
-  font-size: 13px;
-  line-height: 20px;
-  white-space: nowrap;
+  line-height: 0;
   transition: background 120ms ease, color 120ms ease;
+}
+
+.toolbar-button svg {
+  display: block;
 }
 
 .toolbar-button:hover:not(:disabled) {
@@ -821,24 +944,48 @@ html[data-vcp-embedded-app="true"] .shell {
   color: var(--nt-ink);
 }
 
-.template-toolbar {
+/* Segmented view switch: a recessed track with the chosen view raised. */
+.view-mode-group {
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 2px;
   margin-left: auto;
+  padding: 2px;
+  border-radius: var(--nt-radius-sm);
+  background: var(--nt-hover);
+}
+
+.view-mode-group .toolbar-button {
+  width: auto;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
   color: var(--nt-ink-3);
   font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
 }
 
-.template-toolbar select {
-  height: 28px;
+.view-mode-group .toolbar-button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--nt-ink);
 }
 
-/* ---- Editor and preview ----
-   Two 12px-radius wells side by side. initEditorPreviewResizer() sets the
-   split as custom properties on .note-body, so the collapsed and single-pane
-   states below override it by plain specificity. */
+.view-mode-group .toolbar-button.is-active,
+.view-mode-group .toolbar-button.is-active:hover:not(:disabled) {
+  background: var(--nt-panel);
+  box-shadow: 0 0 0 0.5px var(--nt-line-3);
+  color: var(--nt-ink);
+  font-weight: 500;
+}
+
+.view-mode-group .toolbar-button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* initEditorPreviewResizer() sets the split as custom properties on
+   .note-body, so the single-pane modes below override it by plain
+   specificity. */
 .note-body {
   flex: 1;
   display: flex;
@@ -853,50 +1000,40 @@ html[data-vcp-embedded-app="true"] .shell {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  border: 0.5px solid var(--nt-line-3);
-  border-radius: var(--nt-radius-md);
-  background: var(--nt-surface);
-  transition: flex-basis 0.32s var(--nt-ease), width 0.32s var(--nt-ease),
-    max-width 0.32s var(--nt-ease), opacity 0.22s ease,
-    transform 0.32s var(--nt-ease), border-width 0.22s ease,
-    visibility 0s linear;
 }
 
 .editor-container {
-  flex: 0 0 var(--nt-editor-basis, calc(50% - 14px));
+  flex: 0 0 var(--nt-editor-basis, calc(50% - 4.5px));
 }
 
 .preview-container {
-  flex: 0 0 var(--nt-preview-basis, calc(50% - 14px));
+  flex: 0 0 var(--nt-preview-basis, calc(50% - 4.5px));
 }
 
+/* A 9px grab area around a 1px line that brightens while dragging. */
 .editor-preview-resizer {
   position: relative;
   z-index: 3;
-  flex: 0 0 28px;
+  flex: 0 0 9px;
   align-self: stretch;
   cursor: col-resize;
-  transition: flex-basis 0.32s var(--nt-ease), width 0.32s var(--nt-ease),
-    min-width 0.32s var(--nt-ease), max-width 0.32s var(--nt-ease),
-    opacity 0.2s ease;
 }
 
 .editor-preview-resizer::before {
   content: '';
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 4px;
-  height: 32px;
-  border-radius: 999px;
-  background: var(--nt-line-3);
-  transform: translate(-50%, -50%);
-  transition: background 120ms ease, height 160ms ease;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--nt-line-2);
+  transition: background 120ms ease, left 120ms ease, width 120ms ease;
 }
 
 .editor-preview-resizer:hover::before,
 .note-body.is-resizing .editor-preview-resizer::before {
-  height: 48px;
+  left: 3.5px;
+  width: 2px;
   background: var(--nt-accent);
 }
 
@@ -908,42 +1045,6 @@ html[data-vcp-embedded-app="true"] .shell {
 
 .note-body.is-resizing #previewContent,
 .note-body.is-resizing #noteContent {
-  pointer-events: none;
-}
-
-body.preview-collapsed .editor-container {
-  flex: 1 1 100%;
-  width: 100%;
-  max-width: none;
-}
-
-body.preview-collapsed .preview-container {
-  flex: 0 0 0;
-  width: 0;
-  min-width: 0;
-  max-width: 0;
-  border-width: 0;
-  opacity: 0;
-  transform: translateX(16px) scaleX(0.98);
-  visibility: hidden;
-  pointer-events: none;
-  transition: flex-basis 0.32s var(--nt-ease), width 0.32s var(--nt-ease),
-    max-width 0.32s var(--nt-ease), opacity 0.22s ease,
-    transform 0.32s var(--nt-ease), border-width 0.22s ease,
-    visibility 0s linear 0.32s;
-}
-
-body.preview-collapsed .preview-container > * {
-  visibility: hidden;
-  transition: visibility 0s linear 0.32s;
-}
-
-body.preview-collapsed .editor-preview-resizer {
-  flex: 0 0 0;
-  width: 0;
-  min-width: 0;
-  max-width: 0;
-  opacity: 0;
   pointer-events: none;
 }
 
@@ -1473,12 +1574,6 @@ body[data-note-view-mode="preview"] .preview-container {
   .note-list-panel .folder-header-row,
   .note-list-panel .note-item,
   .folder-toggle,
-  .preview-toggle-btn svg,
-  .editor-container,
-  .preview-container,
-  body.preview-collapsed .preview-container,
-  body.preview-collapsed .preview-container > *,
-  .editor-preview-resizer,
   .editor-preview-resizer::before,
   .resizer::after,
   .markdown-preview pre .copy-button {
@@ -1490,14 +1585,17 @@ body[data-note-view-mode="preview"] .preview-container {
   }
 }
 
-/* Narrow windows: a slimmer column and a quieter toolbar. */
+/* Narrow windows: a slimmer column and a tighter toolbar. */
 @media (max-width: 860px) {
   .sidebar {
     max-width: 220px;
   }
 
-  .toolbar-divider,
-  .template-toolbar label {
+  .formatting-toolbar {
+    gap: 2px;
+  }
+
+  .toolbar-divider {
     display: none;
   }
 }
