@@ -636,9 +636,6 @@ async function selectGraphNode(node) {
         if (!showAll) {
             const moreBtn = document.createElement('span');
             moreBtn.className = 'tag-item more-tags-btn';
-            moreBtn.style.cursor = 'pointer';
-            moreBtn.style.background = 'var(--accent-color)';
-            moreBtn.style.color = '#fff';
             moreBtn.textContent = `+ 展开更多 (${node.tags.length - maxVisibleTags})`;
             moreBtn.onclick = () => {
                 tagList.querySelectorAll('.hidden-tag').forEach(el => el.style.display = 'inline-block');

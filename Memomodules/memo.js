@@ -26,6 +26,7 @@ let memoStartupBlocked = false;
 const folderListEl = document.getElementById('folder-list');
 const memoGridEl = document.getElementById('memo-grid');
 const currentFolderNameEl = document.getElementById('current-folder-name');
+const memoIntroEl = document.getElementById('memo-intro');
 const searchInput = document.getElementById('search-memos');
 const contextMenuEl = document.getElementById('context-menu');
 
@@ -49,16 +50,26 @@ function blockStartup(message) {
     memoStartupBlocked = true;
     currentFolder = '';
     currentFolderNameEl.textContent = '初始化未完成';
+    setMemoIntro([]);
     folderListEl.innerHTML = `
-        <div class="folder-item" style="cursor: default; opacity: 0.8;">
-            <span>${escapeHtml(message)}</span>
+        <div class="folder-item folder-item-static">
+            <span class="nav-label">初始化未完成</span>
         </div>
     `;
-    memoGridEl.innerHTML = `
-        <div style="padding: 20px; color: var(--danger-color); line-height: 1.7;">
-            ${escapeHtml(message)}
-        </div>
-    `;
+    memoGridEl.innerHTML = renderEmptyState(message, 'error');
+}
+
+function renderEmptyState(message, tone = '') {
+    const toneAttr = tone ? ` data-tone="${tone}"` : '';
+    return `<div class="empty-state"${toneAttr}>${escapeHtml(message)}</div>`;
+}
+
+function setMemoIntro(items) {
+    if (!memoIntroEl) return;
+    memoIntroEl.innerHTML = items
+        .filter(Boolean)
+        .map(item => `<span class="intro-item">${escapeHtml(item)}</span>`)
+        .join('');
 }
 
 window.alert = (message) => {
@@ -178,31 +189,24 @@ function setupEventListeners() {
     };
 
     // 搜索范围切换
-    const searchScopeBtn = document.getElementById('search-scope-btn');
-    searchScopeBtn.onclick = () => {
-        if (searchScope === 'folder') {
-            searchScope = 'global';
-        } else if (searchScope === 'global') {
-            searchScope = 'semantic';
-        } else {
-            searchScope = 'folder';
-        }
-        
-        // 更新按钮 UI
-        searchScopeBtn.classList.toggle('active', searchScope !== 'folder');
-        
-        // 切换图标和标题
-        if (searchScope === 'global') {
-            searchScopeBtn.title = '当前范围：全局搜索';
-            searchScopeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`;
-        } else if (searchScope === 'semantic') {
-            searchScopeBtn.title = '当前范围：语义级全局检索';
-            searchScopeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>`;
-        } else {
-            searchScopeBtn.title = '当前范围：文件夹内';
-            searchScopeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`;
-        }
+    const searchScopeTabs = Array.from(document.querySelectorAll('#search-scope-tabs .memo-tab'));
+    const searchPlaceholders = {
+        folder: '在当前文件夹中搜索，回车确认',
+        global: '在全部日记中搜索，回车确认',
+        semantic: '描述想找的内容，回车进行语义检索'
     };
+    searchScopeTabs.forEach(tab => {
+        tab.onclick = () => {
+            if (searchScope === tab.dataset.scope) return;
+            searchScope = tab.dataset.scope;
+            searchScopeTabs.forEach(t => t.setAttribute('aria-selected', String(t === tab)));
+            searchInput.placeholder = searchPlaceholders[searchScope];
+
+            // 已有搜索词时按新范围重新搜索
+            const term = searchInput.value.trim();
+            if (term) debouncedSearch(term);
+        };
+    });
 
     // 搜索 (增加防抖保护)
     const debouncedSearch = debounce((term) => {
@@ -533,7 +537,8 @@ async function loadFolders() {
                 // 如果所有文件夹都被隐藏了或暂无文件夹
                 currentFolder = '';
                 currentFolderNameEl.textContent = '暂无可用文件夹';
-                memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">所有文件夹均已隐藏或暂无文件夹</div>';
+                setMemoIntro([]);
+                memoGridEl.innerHTML = renderEmptyState('所有文件夹均已隐藏或暂无文件夹');
             }
         }
     } catch (error) {
@@ -580,11 +585,19 @@ function renderFolders(folders) {
 
         const header = document.createElement('div');
         header.className = 'category-header';
+        header.setAttribute('role', 'button');
+        header.tabIndex = 0;
         header.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             <span>${cat.name}</span>
+            <svg class="category-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
         `;
         header.onclick = () => toggleCategory(cat.id);
+        header.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleCategory(cat.id);
+            }
+        };
 
         const content = document.createElement('div');
         content.className = 'category-content';
@@ -594,8 +607,8 @@ function renderFolders(folders) {
             item.className = `folder-item ${folder === currentFolder ? 'active' : ''}`;
             item.setAttribute('draggable', 'true');
             item.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                <span>${escapeHtml(folder)}</span>
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span class="nav-label">${escapeHtml(folder)}</span>
             `;
             item.onclick = () => selectFolder(folder);
 
@@ -699,23 +712,26 @@ async function selectFolder(folderName) {
 
 async function loadMemos(folderName) {
     try {
-        memoGridEl.innerHTML = '<div style="padding: 20px;">加载中...</div>';
+        memoGridEl.innerHTML = renderEmptyState('加载中...');
         const data = await apiFetch(`/folder/${encodeURIComponent(folderName)}`);
         const memos = data.memos || data.notes || [];
         console.log('[MemoCenter] Raw data from folder API:', memos);
         allMemos = memos; // 更新全局变量，修复批量管理模式显示为空的问题
         renderMemos(memos);
     } catch (error) {
-        memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">加载失败: ${error.message}</div>`;
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState(`加载失败: ${error.message}`, 'error');
     }
 }
 
 function renderMemos(memos) {
     memoGridEl.innerHTML = '';
     if (memos.length === 0) {
-        memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">该文件夹下暂无日记</div>';
+        setMemoIntro(['0 篇日记']);
+        memoGridEl.innerHTML = renderEmptyState('该文件夹下暂无日记');
         return;
     }
+    setMemoIntro([`${memos.length} 篇日记`, isBatchMode ? '点击行选择或取消选择' : '']);
 
     const gridWidth = memoGridEl.offsetWidth;
     const columns = window.innerWidth > 1200 ? 3 : (window.innerWidth > 800 ? 2 : 1);
@@ -726,7 +742,7 @@ function renderMemos(memos) {
         const memoFolder = memo.folderName || currentFolder;
         const memoId = `${memoFolder}:::${memo.name}`;
         const isSelected = selectedMemos.has(memoId);
-        card.className = `memo-card glass glass-hover ${isBatchMode ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`;
+        card.className = `memo-card ${isBatchMode ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`;
 
         const dateStr = new Date(memo.lastModified).toLocaleString();
 
@@ -747,20 +763,18 @@ function renderMemos(memos) {
             : `<h3 title="${escapeHtml(memo.name)}">${escapeHtml(memo.name)}</h3>`;
 
         card.innerHTML = `
-            <div>
+            <div class="memo-card-copy">
                 ${titleHtml}
                 <p class="preview">${escapeHtml(previewText)}</p>
-            </div>
-            <div class="meta">
-                <span>📅 ${dateStr}</span>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    ${memo.folderName && memo.folderName !== currentFolder ? `<span style="opacity:0.6; font-size:0.7rem;">📁 ${escapeHtml(memo.folderName)}</span>` : ''}
-                    <button class="association-btn" title="记忆联想">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
-                    联想
-                </button>
+                <div class="meta">
+                    <span class="memo-date">${dateStr}</span>
+                    ${memo.folderName && memo.folderName !== currentFolder ? `<span class="memo-folder-chip">${escapeHtml(memo.folderName)}</span>` : ''}
                 </div>
             </div>
+            <button class="association-btn" title="记忆联想">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
+                    联想
+            </button>
         `;
 
         card.onclick = (e) => {
@@ -838,7 +852,7 @@ function updateBatchUI() {
             item.className = 'batch-item-tag';
             item.innerHTML = `
                 <div class="item-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-                <div class="item-folder">📁 ${escapeHtml(folder)}</div>
+                <div class="item-folder">${escapeHtml(folder)}</div>
                 <div class="batch-item-remove" title="移除">×</div>
             `;
             item.querySelector('.batch-item-remove').onclick = (e) => {
@@ -1098,7 +1112,7 @@ Date:「始」${date}「末」,`;
         alert('发布失败: ' + error.message);
     } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = '🚀 发布';
+        submitBtn.textContent = '发布';
     }
 }
 
@@ -1110,7 +1124,7 @@ async function searchMemos(term) {
     searchAbortController = new AbortController();
 
     try {
-        memoGridEl.innerHTML = '<div style="padding: 20px;">搜索中...</div>';
+        memoGridEl.innerHTML = renderEmptyState('搜索中...');
 
         if (searchScope === 'semantic') {
             await performSemanticSearch(term);
@@ -1140,7 +1154,8 @@ async function searchMemos(term) {
             console.log('搜索请求已取消:', term);
             return;
         }
-        memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">搜索失败: ${error.message}</div>`;
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState(`搜索失败: ${error.message}`, 'error');
     } finally {
         // 如果当前 controller 还是自己，则清空
         if (searchAbortController && !searchAbortController.signal.aborted) {
@@ -1197,14 +1212,16 @@ search_all_knowledge_bases:「始」true「末」
         if (output) {
             processSemanticSearchResults(output, query);
         } else {
-            memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">语义搜索未返回结果</div>';
+            setMemoIntro([]);
+            memoGridEl.innerHTML = renderEmptyState('语义搜索未返回结果');
         }
     } catch (err) {
         if (err.name === 'AbortError') return;
         // 竞态检查：如果已被新搜索取代，静默退出
         if (myAbortController !== searchAbortController) return;
         console.error('[Memo] Semantic search error:', err);
-        memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">语义搜索失败: ${err.message}</div>`;
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState(`语义搜索失败: ${err.message}`, 'error');
     }
 }
 
@@ -1327,7 +1344,8 @@ function processSemanticSearchResults(output, query) {
     currentFolderNameEl.textContent = `语义级全局检索: ${query}`;
 
     if (results.length === 0) {
-        memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">语义搜索返回了内容，但未识别到可打开的日记路径</div>';
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState('语义搜索返回了内容，但未识别到可打开的日记路径');
         return;
     }
 
@@ -1457,18 +1475,15 @@ function openHiddenFoldersModal() {
     listEl.innerHTML = '';
 
     if (hiddenFolders.size === 0) {
-        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">暂无隐藏的文件夹</div>';
+        listEl.innerHTML = renderEmptyState('暂无隐藏的文件夹');
     } else {
         hiddenFolders.forEach(folder => {
             const item = document.createElement('div');
-            item.className = 'folder-item';
-            item.style.justifyContent = 'space-between';
+            item.className = 'hidden-folder-row';
             item.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                    <span>${escapeHtml(folder)}</span>
-                </div>
-                <button class="glass-btn" style="padding: 4px 10px; font-size: 0.8rem;">取消隐藏</button>
+                <svg class="hidden-folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span class="hidden-folder-name">${escapeHtml(folder)}</span>
+                <button class="memo-button memo-button-small">取消隐藏</button>
             `;
             item.querySelector('button').onclick = async () => {
                 hiddenFolders.delete(folder);

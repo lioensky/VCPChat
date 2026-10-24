@@ -113,10 +113,10 @@ const DiaryWorkbench = {
             
             card.innerHTML = `
                 <div class="card-header">
-                    <span class="folder-tag">📁 ${escapeHtmlWb(memo.folder)}</span>
+                    <span class="folder-tag">${escapeHtmlWb(memo.folder)}</span>
                     <div class="card-actions">
-                        <button class="icon-btn edit-ref-btn" title="编辑此日记">✏️</button>
-                        <button class="icon-btn remove-ref-btn" title="从工作台移除">×</button>
+                        <button class="icon-btn edit-ref-btn" title="编辑此日记" aria-label="编辑此日记"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>
+                        <button class="icon-btn remove-ref-btn" title="从工作台移除" aria-label="从工作台移除">×</button>
                     </div>
                 </div>
                 <div class="card-body">
@@ -124,7 +124,7 @@ const DiaryWorkbench = {
                     <p class="preview">${escapeHtmlWb(memo.preview || '加载中...')}</p>
                 </div>
                 <div class="card-footer">
-                    <span>📅 ${dateStr}</span>
+                    <span>${dateStr}</span>
                 </div>
             `;
 
