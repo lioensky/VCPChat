@@ -2,6 +2,28 @@
 // 歌词获取、解析、渲染、动画
 
 function setupLyrics(app) {
+    app.disposeCurrentLyricsQuery = app.api?.onMusicCurrentLyricsRequest?.(({ requestId }) => {
+        const track = app.pendingTrackPath
+            ? app.playlist.find(candidate => candidate.path === app.pendingTrackPath)
+            : null;
+        // 只选取正文，避免把逐字词元、音源路径或凭据带入工具结果。
+        app.api?.sendMusicCurrentLyricsResponse?.({
+            requestId,
+            snapshot: {
+                track: track ? {
+                    title: app.stripAudioExtension?.(track.title) || track.title || '',
+                    artist: track.artist || '',
+                    album: track.album || ''
+                } : null,
+                lines: track ? app.currentLyrics.map(line => ({
+                    original: line.original || line.fullText || '',
+                    translation: line.translation || '',
+                    romanization: line.romanization || ''
+                })) : []
+            }
+        });
+    });
+
     app.fetchAndDisplayLyrics = async (artist, title, options = {}) => {
         app.resetLyrics();
         const requestToken = app.lyricsRequestToken;

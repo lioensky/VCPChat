@@ -714,20 +714,25 @@ class DistributedServer {
                     throw new Error(resultFromMain.message);
                 }
                 
-                // For AI, we want a simple, natural language response.
-                let naturalResponse = `指令 '${commandPayload.command}' 已成功执行。`;
-                if (commandPayload.command === 'play' && commandPayload.target) {
-                    naturalResponse = `已为您播放歌曲: ${commandPayload.target}`;
-                } else if (commandPayload.command === 'play') {
-                    naturalResponse = `已恢复播放。`;
-                } else if (commandPayload.command === 'pause') {
-                    naturalResponse = `已暂停播放。`;
-                } else if (commandPayload.command === 'next') {
-                    naturalResponse = `已切换到下一首。`;
-                } else if (commandPayload.command === 'prev') {
-                    naturalResponse = `已切换到上一首。`;
+                if (commandPayload.command === 'getCurrentLyrics') {
+                    // 与 FileOperator 一致，保留标准 result.content 文本块。
+                    finalResult = resultFromMain.result;
+                } else {
+                    // For AI, we want a simple, natural language response.
+                    let naturalResponse = `指令 '${commandPayload.command}' 已成功执行。`;
+                    if (commandPayload.command === 'play' && commandPayload.target) {
+                        naturalResponse = `已为您播放歌曲: ${commandPayload.target}`;
+                    } else if (commandPayload.command === 'play') {
+                        naturalResponse = `已恢复播放。`;
+                    } else if (commandPayload.command === 'pause') {
+                        naturalResponse = `已暂停播放。`;
+                    } else if (commandPayload.command === 'next') {
+                        naturalResponse = `已切换到下一首。`;
+                    } else if (commandPayload.command === 'prev') {
+                        naturalResponse = `已切换到上一首。`;
+                    }
+                    finalResult = { message: naturalResponse };
                 }
-                finalResult = { message: naturalResponse };
 
             } else if (toolName === 'SuperDice') {
                 if (typeof this.handleDiceControl !== 'function') {

@@ -240,6 +240,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (app.destroyed) return;
         app.destroyed = true;
         app.lyricsRequestToken++;
+        app.disposeCurrentLyricsQuery?.();
+        app.disposeCurrentLyricsQuery = null;
 
         app.stageHost?.destroy?.();
         app.destroyAmbientPixi?.();

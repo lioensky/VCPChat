@@ -18,6 +18,13 @@ process.stdin.on('end', () => {
         // The input from the plugin manager is already a JSON string of arguments
         const args = JSON.parse(inputBuffer);
 
+        // Lyrics queries do not require a song name or alter playback.
+        const command = typeof args.command === 'string' ? args.command.trim().toLowerCase() : '';
+        if (['getcurrentlyrics', 'getlyrics', 'get_current_lyrics'].includes(command)) {
+            console.log(JSON.stringify({ command: 'getCurrentLyrics' }));
+            return;
+        }
+
         // The core logic is just to format the command for the main process.
         // Be flexible with parameter names from the AI.
         // Accept 'songName' (camelCase), 'songname' (lowercase), or 'song_name' (snake_case).

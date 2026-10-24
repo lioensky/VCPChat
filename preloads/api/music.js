@@ -75,6 +75,8 @@ module.exports = {
         saveMusicSettings: invoke('music-save-settings', 'settings'),
 
         // 歌词
+        onMusicCurrentLyricsRequest: on('music-current-lyrics-request'),
+        sendMusicCurrentLyricsResponse: send('music-current-lyrics-response', 'payload'),
         getMusicLyrics: invoke('music-get-lyrics', 'options'),
         fetchMusicLyrics: invoke('music-fetch-lyrics', 'options'),
         searchMusicLyricsCandidates: invoke('music-search-lyrics-candidates', 'options'),
