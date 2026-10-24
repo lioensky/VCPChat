@@ -1,18 +1,12 @@
 // modules/deskpet/petMenus.js
-// 两个菜单：在桌宠身上右键的那个（心情、说话、切换助手、换装、大小、透明度…）
-// 和托盘里的「桌宠」那一项，外加菜单上显示的持续心情那行字。
+// 两个菜单：在桌宠身上右键的那个（换装、朗读、免打扰、设置、隐藏）和托盘里的「桌宠」那一项；
+// 外加读持续心情（页面要用）。
 
-const petPrefs = require('./petPrefs');
 const outfitStore = require('./outfits');
 const { outfitSummary } = require('./petAssets');
 const { getAgentMoodStore } = require('../agentMood');
 
 // ---- 持续心情 ----------------------------------------------------------------
-
-const MOOD_LABEL = {
-    neutral: '🙂 平静', calm: '😌 放松', happy: '😊 开心', excited: '🤩 兴奋', shy: '😳 害羞', affectionate: '🥰 温柔',
-    curious: '🤔 好奇', surprised: '😮 惊讶', concerned: '😟 担心', sad: '😢 难过', tired: '😪 疲惫', angry: '😠 生气',
-};
 
 async function readMood(agentId) {
     try {
@@ -20,13 +14,6 @@ async function readMood(agentId) {
     } catch (_error) {
         return null;
     }
-}
-
-function moodMenuLabel(mood) {
-    const label = MOOD_LABEL[mood?.emotion] || MOOD_LABEL.neutral;
-    if (!mood || mood.emotion === 'neutral') return `现在的心情：${label}`;
-    const degree = mood.intensity >= 0.6 ? '很' : mood.intensity >= 0.35 ? '' : '有点';
-    return `现在的心情：${label.replace(' ', ` ${degree}`)}`;
 }
 
 function createPetMenus(ctx) {
@@ -40,35 +27,6 @@ function createPetMenus(ctx) {
             checked: outfit.id === pet.outfit,
             click: () => ctx.sizing.setPetOutfit(pet.agentId, outfit.id).catch((error) => console.warn('[DeskPet] outfit switch failed:', error.message)),
         }));
-    }
-
-    // 角色淡一点，后面的字能透出来；气泡和输入框不变
-    function opacityMenu() {
-        const current = ctx.controls?.get().opacity ?? 1;
-        return [1, 0.8, 0.6, 0.4].map((value) => ({
-            label: value === 1 ? '不透明' : `${Math.round(value * 100)}%`,
-            type: 'radio',
-            checked: Math.abs(current - value) < 0.001,
-            click: () => ctx.controls?.update({ opacity: value }),
-        }));
-    }
-
-    function scaleMenu(pet) {
-        const presets = [0.8, 1, 1.25, 1.5, 2, 2.5];
-        const max = petPrefs.maxScaleForWorkArea(ctx.geometry.workAreaAt(pet.win.getBounds()), pet.aspect, pet.kind);
-        const shortcut = process.platform === 'darwin' ? 'Cmd' : 'Ctrl';
-        return [
-            { label: `放大（${shortcut}+滚轮）`, enabled: pet.scale < max, click: () => ctx.sizing.stepPetScale(pet.agentId, 1) },
-            { label: '缩小', enabled: pet.scale > petPrefs.SCALE_MIN, click: () => ctx.sizing.stepPetScale(pet.agentId, -1) },
-            { type: 'separator' },
-            ...presets.map((value) => ({
-                label: `${Math.round(value * 100)}%`,
-                type: 'radio',
-                checked: Math.abs(pet.scale - value) < 0.001,
-                enabled: value <= max,
-                click: () => ctx.sizing.setPetScale(pet.agentId, value),
-            })),
-        ];
     }
 
     /** 托盘菜单里的「桌宠」一项（main.js 建托盘菜单时调用）。 */
@@ -95,51 +53,27 @@ function createPetMenus(ctx) {
         }];
     }
 
-    /** 在桌宠身上右键：菜单里的助手列表、心情、朗读和换装都要先读一遍。 */
+    /**
+     * 在桌宠身上右键：只放常用的几项。说话、语音在胶囊上；切换助手、大小、透明度、溜达、只看不点在设置里
+     * （大小还有 Ctrl+滚轮，只看不点还有托盘），心情看脸上。
+     */
     async function showContextMenu(pet) {
         ctx.motion.stopWalk(pet);
-        const [agents, mood, voiceItem, outfits] = await Promise.all([
-            ctx.listAgents().catch(() => []), readMood(pet.agentId), ctx.voice.menuItem(pet), ctx.listAgentOutfits(pet.agentId).catch(() => []),
-        ]);
-        // 读助手列表期间桌宠可能已经被关掉了。
+        const [voiceItem, outfits] = await Promise.all([ctx.voice.menuItem(pet), ctx.listAgentOutfits(pet.agentId).catch(() => [])]);
+        // 读换装列表期间桌宠可能已经被关掉了。
         if (pet.win.isDestroyed()) return;
         pet.outfits = outfits.map(outfitSummary);
         Menu.buildFromTemplate([
-            { label: moodMenuLabel(mood), enabled: false },
-            { type: 'separator' },
-            { label: '和 TA 说话', click: () => ctx.commands.openInput(pet, {}) },
-            {
-                label: '切换助手',
-                enabled: agents.length > 1,
-                submenu: agents.map((agent) => ({
-                    label: agent.label,
-                    type: 'radio',
-                    checked: agent.id === pet.agentId,
-                    click: () => ctx.commands.switchPet(pet.agentId, agent.id).catch((error) => console.warn('[DeskPet] switch failed:', error.message)),
-                })),
-            },
             { label: '换装', enabled: outfits.length > 1, submenu: outfitMenu(pet, outfits) },
             voiceItem,
-            { label: '打开主窗口', click: ctx.bridge.openMainWindow },
-            { type: 'separator' },
-            { label: '大小', submenu: scaleMenu(pet) },
-            { label: '透明度', submenu: opacityMenu() },
             {
                 label: '免打扰',
                 type: 'checkbox',
                 checked: ctx.controls?.get().doNotDisturb === true,
                 click: (item) => ctx.sizing.setDoNotDisturb(item.checked),
             },
-            {
-                label: '在桌面上溜达',
-                type: 'checkbox',
-                checked: ctx.controls?.get().wander === true,
-                click: (item) => ctx.controls?.update({ wander: item.checked }),
-            },
-            // 打开后点不到桌宠了：从托盘或快捷键关
-            { label: '只看不点（鼠标穿透）', click: () => ctx.windows.setClickThrough(true) },
-            { label: '桌宠设置…', click: () => ctx.controls?.openSettings() },
             { type: 'separator' },
+            { label: '设置…', click: () => ctx.controls?.openSettings() },
             {
                 label: '隐藏桌宠',
                 click: () => {
@@ -150,11 +84,10 @@ function createPetMenus(ctx) {
                     ctx.refreshTray();
                 },
             },
-            { label: '关闭桌宠', click: () => ctx.windows.closePet(pet.agentId) },
         ]).popup({ window: pet.win });
     }
 
-    return { outfitMenu, opacityMenu, scaleMenu, trayMenuItems, showContextMenu, readMood };
+    return { outfitMenu, trayMenuItems, showContextMenu, readMood };
 }
 
-module.exports = { createPetMenus, MOOD_LABEL, moodMenuLabel, readMood };
+module.exports = { createPetMenus, readMood };
