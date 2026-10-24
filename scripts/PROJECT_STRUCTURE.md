@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-10-23 00:44:36  
+> 自动生成于：2026-10-24 21:51:04  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,18 +10,18 @@
 
 ## 文件统计
 
-- **总目录数**：218
-- **总文件数**：1436
+- **总目录数**：232
+- **总文件数**：1618
 - **文件类型数**：21
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 875 |
-| CSS | `.css` | 151 |
+| JavaScript | `.js` | 993 |
+| CSS | `.css` | 155 |
+| JSON | `.json` | 149 |
 | Rust | `.rs` | 116 |
-| JSON | `.json` | 94 |
-| Markdown | `.md` | 60 |
-| HTML | `.html` | 44 |
+| Markdown | `.md` | 63 |
+| HTML | `.html` | 46 |
 | Python | `.py` | 26 |
 | TOML | `.toml` | 9 |
 | Batch Script | `.bat` | 9 |
@@ -37,7 +37,7 @@
 | Shell Script | `.sh` | 2 |
 | C# | `.cs` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1436** |
+| **合计** | - | **1618** |
 
 ## 目录结构树
 
@@ -88,6 +88,71 @@ VCPChat/
 │       ├── tsconfig.node.json
 │       └── vite.config.ts
 ├── assets/
+│   ├── deskpet/
+│   │   ├── codex/
+│   │   │   ├── keqing/
+│   │   │   │   ├── outfit.json
+│   │   │   │   └── pet.json
+│   │   │   ├── rana/
+│   │   │   │   ├── outfit.json
+│   │   │   │   └── pet.json
+│   │   │   └── README.md
+│   │   └── nova/
+│   │       ├── chibi/
+│   │       │   ├── expressions/
+│   │       │   │   ├── Angry.exp3.json
+│   │       │   │   ├── Happy.exp3.json
+│   │       │   │   ├── Neutral.exp3.json
+│   │       │   │   ├── Sad.exp3.json
+│   │       │   │   ├── Shy.exp3.json
+│   │       │   │   ├── Smug.exp3.json
+│   │       │   │   ├── Speechless.exp3.json
+│   │       │   │   ├── Stars.exp3.json
+│   │       │   │   ├── Surprised.exp3.json
+│   │       │   │   ├── Tired.exp3.json
+│   │       │   │   └── Wink.exp3.json
+│   │       │   ├── deskpet.json
+│   │       │   ├── NovaChibi.akimbo.motion3.json
+│   │       │   ├── NovaChibi.blink.motion3.json
+│   │       │   ├── NovaChibi.cdi3.json
+│   │       │   ├── NovaChibi.cheer.motion3.json
+│   │       │   ├── NovaChibi.heart.motion3.json
+│   │       │   ├── NovaChibi.idle.motion3.json
+│   │       │   ├── NovaChibi.model3.json
+│   │       │   ├── NovaChibi.nod.motion3.json
+│   │       │   ├── NovaChibi.physics3.json
+│   │       │   ├── NovaChibi.salute.motion3.json
+│   │       │   ├── NovaChibi.shake.motion3.json
+│   │       │   ├── NovaChibi.shrug.motion3.json
+│   │       │   ├── NovaChibi.tea.motion3.json
+│   │       │   ├── NovaChibi.typing.motion3.json
+│   │       │   ├── NovaChibi.wave.motion3.json
+│   │       │   └── outfit.json
+│   │       ├── maid/
+│   │       │   ├── expressions/
+│   │       │   │   ├── Affectionate.exp3.json
+│   │       │   │   ├── Angry.exp3.json
+│   │       │   │   ├── Calm.exp3.json
+│   │       │   │   ├── Concerned.exp3.json
+│   │       │   │   ├── Curious.exp3.json
+│   │       │   │   ├── Excited.exp3.json
+│   │       │   │   ├── Happy.exp3.json
+│   │       │   │   ├── Neutral.exp3.json
+│   │       │   │   ├── Sad.exp3.json
+│   │       │   │   ├── Shy.exp3.json
+│   │       │   │   ├── Surprised.exp3.json
+│   │       │   │   └── Tired.exp3.json
+│   │       │   ├── deskpet.json
+│   │       │   ├── native-source-map.json
+│   │       │   ├── nova_maid.blink.motion3.json
+│   │       │   ├── nova_maid.cdi3.json
+│   │       │   ├── nova_maid.idle.motion3.json
+│   │       │   ├── nova_maid.nod.motion3.json
+│   │       │   ├── nova_maid.physics3.json
+│   │       │   ├── nova_maid.shake.motion3.json
+│   │       │   ├── NovaMaid.model3.json
+│   │       │   └── outfit.json
+│   │       └── README.md
 │   ├── font/
 │   │   └── vcp-ui/
 │   │       └── noto-sans-sc.css
@@ -116,6 +181,74 @@ VCPChat/
 │   ├── chart.html
 │   ├── chart.js
 │   └── README.md
+├── DeskPetmodules/
+│   ├── mainWindow/
+│   │   ├── settings/
+│   │   │   ├── accelerators.js
+│   │   │   ├── catalog.js
+│   │   │   ├── cubismCore.js
+│   │   │   ├── dock.js
+│   │   │   ├── dom.js
+│   │   │   ├── expressionMapping.js
+│   │   │   ├── options.js
+│   │   │   ├── shortcuts.js
+│   │   │   └── stage.js
+│   │   ├── bridge.js
+│   │   ├── index.js
+│   │   ├── sendBridge.js
+│   │   ├── settings.css
+│   │   ├── settingsPanel.js
+│   │   └── settingsSection.js
+│   ├── approvals.js
+│   ├── attachments.js
+│   ├── bubbleText.js
+│   ├── core-probe.html
+│   ├── core-probe.js
+│   ├── deskpet.css
+│   ├── deskpet.html
+│   ├── deskpet.js
+│   ├── dictation.js
+│   ├── dock.css
+│   ├── dockHitArea.js
+│   ├── dockVisibility.js
+│   ├── emotionLook.js
+│   ├── expressionMap.js
+│   ├── figure.js
+│   ├── gaze.js
+│   ├── gestures.js
+│   ├── headPoseLimits.js
+│   ├── hitAreas.js
+│   ├── imageBackend.js
+│   ├── lifeFx.js
+│   ├── lifeMotion.js
+│   ├── live2dBackend.js
+│   ├── missedReply.js
+│   ├── moodOrder.js
+│   ├── petApprovals.js
+│   ├── petBackendPick.js
+│   ├── petBubble.js
+│   ├── petComposer.js
+│   ├── petFiles.js
+│   ├── petHit.js
+│   ├── petLife.js
+│   ├── petPrefs.js
+│   ├── petReactions.js
+│   ├── petSpeech.js
+│   ├── petStage.js
+│   ├── petStream.js
+│   ├── petWander.js
+│   ├── pointerGestures.js
+│   ├── preload.js
+│   ├── puppet.js
+│   ├── puppetBackend.js
+│   ├── README.md
+│   ├── sessionCard.js
+│   ├── speechText.js
+│   ├── spriteAnimation.js
+│   ├── spriteBackend.js
+│   ├── toolActivity.js
+│   ├── toolCard.js
+│   └── voice.js
 ├── Desktopmodules/
 │   ├── api/
 │   │   ├── desktopMetrics.js
@@ -327,6 +460,7 @@ VCPChat/
 │   │   ├── update-downloader.js
 │   │   └── update-manager.js
 │   ├── chat/
+│   │   ├── chartEmbedTransform.js
 │   │   ├── chatContext.js
 │   │   ├── chatDomRenderer.js
 │   │   ├── chatEventContract.js
@@ -358,6 +492,51 @@ VCPChat/
 │   │   ├── streamTransientHistory.js
 │   │   ├── surfaceConversation.js
 │   │   └── vcpStreamBridge.js
+│   ├── deskpet/
+│   │   ├── codexPet.js
+│   │   ├── cubismCore.js
+│   │   ├── edgeSnap.js
+│   │   ├── expressionProfile.js
+│   │   ├── feature.json
+│   │   ├── fullscreenWatch.js
+│   │   ├── idleChat.js
+│   │   ├── idleRunner.js
+│   │   ├── index.js
+│   │   ├── outfits.js
+│   │   ├── petAssets.js
+│   │   ├── petCommands.js
+│   │   ├── petContext.js
+│   │   ├── petControls.js
+│   │   ├── petDisplays.js
+│   │   ├── petGeometry.js
+│   │   ├── petHandlers.js
+│   │   ├── petIpc.js
+│   │   ├── petMainBridge.js
+│   │   ├── petMenus.js
+│   │   ├── petMotion.js
+│   │   ├── petPrefs.js
+│   │   ├── petPreviews.js
+│   │   ├── petProactive.js
+│   │   ├── petSizing.js
+│   │   ├── petState.js
+│   │   ├── petStream.js
+│   │   ├── petTray.js
+│   │   ├── petVoice.js
+│   │   ├── petWindow.js
+│   │   ├── preloadApi.js
+│   │   ├── sessionActivity.js
+│   │   ├── settingsPage.js
+│   │   ├── throwMotion.js
+│   │   ├── wander.js
+│   │   └── zipImport.js
+│   ├── emotion/
+│   │   ├── emotionDirector.js
+│   │   ├── emotionPrompt.js
+│   │   ├── emotionRules.js
+│   │   ├── emotionTags.js
+│   │   ├── emotionVocabulary.js
+│   │   ├── moodState.js
+│   │   └── portraitVariants.js
 │   ├── game/
 │   │   ├── doudizhu/
 │   │   │   ├── cards.js
@@ -455,7 +634,10 @@ VCPChat/
 │   │   │   ├── scrolling.js
 │   │   │   ├── shell.js
 │   │   │   └── thought-map-modal.js
+│   │   ├── agentEmotionFeed.js
 │   │   ├── animation.js
+│   │   ├── appFeatures.js
+│   │   ├── chartEmbedHost.js
 │   │   ├── chat-header-style.js
 │   │   ├── colorUtils.js
 │   │   ├── composerCommands.js
@@ -506,6 +688,9 @@ VCPChat/
 │   │   ├── sidePaneWorkspaceServices.js
 │   │   ├── streamManager.js
 │   │   ├── streamProjectionRuntime.js
+│   │   ├── streamSpeech.js
+│   │   ├── streamSpeechOwner.js
+│   │   ├── streamStableBoundary.js
 │   │   ├── surfaceTaskOwner.js
 │   │   ├── toolPresentation.js
 │   │   ├── toolRequestMarkers.js
@@ -523,6 +708,7 @@ VCPChat/
 │   │   ├── agentPortraitImages.js
 │   │   ├── attachmentDialogState.js
 │   │   ├── chartDataSourceService.js
+│   │   ├── chartEmbedProtocol.js
 │   │   ├── chartService.js
 │   │   ├── deepWikiService.js
 │   │   ├── dotGitPath.js
@@ -571,6 +757,7 @@ VCPChat/
 │   │   │   ├── user-identity.js
 │   │   │   ├── voice-settings.js
 │   │   │   └── workspace-management.js
+│   │   ├── extensions.js
 │   │   ├── schema-surface.js
 │   │   ├── store.js
 │   │   └── value-semantics.js
@@ -644,6 +831,7 @@ VCPChat/
 │   │   │   │   ├── project-picker.js
 │   │   │   │   └── topic-activity.js
 │   │   │   ├── tab-types/
+│   │   │   │   ├── appearance.js
 │   │   │   │   ├── browser.js
 │   │   │   │   ├── chat.js
 │   │   │   │   ├── code-viewer.js
@@ -653,6 +841,7 @@ VCPChat/
 │   │   │   │   ├── plan-detail.js
 │   │   │   │   ├── terminal.js
 │   │   │   │   └── tool-output.js
+│   │   │   ├── appearanceSideProvider.js
 │   │   │   ├── browserSideProvider.js
 │   │   │   ├── codeViewerSideProvider.js
 │   │   │   ├── menu-position.js
@@ -660,6 +849,7 @@ VCPChat/
 │   │   │   ├── modelTrajectorySideProvider.js
 │   │   │   ├── planDetailSideProvider.js
 │   │   │   ├── portrait-display.js
+│   │   │   ├── portrait-features.js
 │   │   │   ├── portrait-media.js
 │   │   │   ├── selection-reference.js
 │   │   │   ├── side-pane-controller.js
@@ -807,6 +997,8 @@ VCPChat/
 │   │   ├── voiceComposerView.js
 │   │   ├── voiceWaveform.js
 │   │   └── wavAudioEncoder.js
+│   ├── agentMood.js
+│   ├── appFeatures.js
 │   ├── chatManager.js
 │   ├── contextSanitizer.js
 │   ├── DASP.txt
@@ -816,6 +1008,7 @@ VCPChat/
 │   ├── fileManager.js
 │   ├── filterManager.js
 │   ├── global-settings-manager.js
+│   ├── hostHooks.js
 │   ├── image-viewer.html
 │   ├── image-viewer.js
 │   ├── inputEnhancer.js
@@ -923,11 +1116,13 @@ VCPChat/
 │   │   ├── assistant.js
 │   │   ├── browser.js
 │   │   ├── canvas.js
+│   │   ├── chartEmbed.js
 │   │   ├── chat.js
 │   │   ├── desktop.js
 │   │   ├── dice.js
 │   │   ├── embeddedApps.js
 │   │   ├── emoticons.js
+│   │   ├── features.js
 │   │   ├── files.js
 │   │   ├── flowlock.js
 │   │   ├── forum.js
@@ -1250,7 +1445,7 @@ VCPChat/
 │   │   ├── uiux-theme/
 │   │   │   ├── semantic.css
 │   │   │   └── static-scale.css
-│   │   ├── appearance-studio.css
+│   │   ├── appearance-settings.css
 │   │   ├── ask-nova.css
 │   │   ├── business-modals.css
 │   │   ├── chat-back-to-bottom.css
@@ -1278,6 +1473,7 @@ VCPChat/
 │   │   ├── settings.css
 │   │   ├── shell.css
 │   │   ├── showcase.css
+│   │   ├── side-pane-appearance.css
 │   │   ├── side-pane-branch-rail.css
 │   │   ├── side-pane-browser.css
 │   │   ├── side-pane-code-viewer.css
@@ -1708,5 +1904,5 @@ VCPChat/
   `.astro`, `.cache`, `.docusaurus`, `.git`, `.gradle`, `.hg`, `.hypothesis`, `.idea`, `.ipynb_checkpoints`, `.m2`, `.mypy_cache`, `.next`, `.nox`, `.nuxt`, `.output`, `.parcel-cache`, `.pnpm-store`, `.pyre`, `.pytest_cache`, `.ruff_cache`, `.svelte-kit`, `.svn`, `.temp`, `.tmp`, `.tox`, `.turbo`, `.venv`, `.virtualenv`, `.vite`, `.vs`, `.vscode`, `.webpack`, `.yarn`, `__pycache__`, `__tests__`, `appdata`, `arm64`, `artifacts`, `bin`, `bower_components`, `build`, `carthage`, `checkpoints`, `coverage`, `data_cache`, `debug`, `dist`, `doc`, `docs`, `documentation`, `env`, `example`, `examples`, `htmlcov`, `indexeddb`, `jspm_packages`, `local_storage`, `logs`, `models`, `node_modules`, `obj`, `out`, `output`, `packages`, `pip-wheel-metadata`, `pkg`, `pods`, `pretrained_models`, `project_structure.md`, `python_embedded`, `python_embeded`, `release`, `reports`, `screenshots`, `scripts`, `sessions`, `site-packages`, `storybook-static`, `target`, `temp`, `test`, `test-results`, `tests`, `tmp`, `user_data`, `userdata`, `vendor`, `venv`, `wheelhouse`, `x64`, `x86`, `开发文档`
 - **默认通配符排除**：
   `cmake-build-*`, `*.egg-info`, `*.dist-info`, `*.tmp`, `.DS_Store`, `Thumbs.db`, `desktop.ini`, `*.pyc`, `*.pyo`, `*.pyd`, `*.o`, `*.obj`, `*.class`, `*.tsbuildinfo`, `*.log`, `*.tmp`, `*.temp`, `*.swp`, `*.swo`, `*.bak`, `*~`, `*.suo`, `*.user`, `scripts`, `开发文档`, `doc`, `docs`, `documentation`, `test`, `tests`, `__tests__`, `example`, `examples`, `artifacts`, `screenshots`, `test-results`, `reports`, `models`, `checkpoints`, `pretrained_models`, `site-packages`, `python_embedded`, `python_embeded`, `PROJECT_STRUCTURE.md`
-- **.gitignore 生效规则**：共 56 条规则已并入跳过逻辑
+- **.gitignore 生效规则**：共 58 条规则已并入跳过逻辑
 </details>
