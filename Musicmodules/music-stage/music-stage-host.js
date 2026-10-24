@@ -1095,7 +1095,8 @@
         updateTransportControls();
 
         scope.listen(toggleButton, 'click', toggle);
-        scope.listen(elements.settingsToggle, 'click', () => setSettingsOpen(!state.settingsOpen));
+        // 面板仅通过 Esc 或关闭按钮关闭，避免再次点击入口时误关闭。
+        scope.listen(elements.settingsToggle, 'click', () => setSettingsOpen(true));
         scope.listen(elements.settingsClose, 'click', () => setSettingsOpen(false));
         scope.listen(elements.settingsReset, 'click', () => Config.reset());
         scope.listen(elements.modeOptions, 'change', (event) => {
@@ -1103,12 +1104,7 @@
             if (!checkbox) return;
             Config.toggleMode(checkbox.dataset.stageConfigMode, checkbox.checked);
         });
-        scope.listen(document, 'pointerdown', (event) => {
-            if (!state.settingsOpen) return;
-            const clickedCard = elements.settingsCard?.contains(event.target);
-            const clickedToggle = elements.settingsToggle?.contains(event.target);
-            if (!clickedCard && !clickedToggle) setSettingsOpen(false);
-        });
+        // 点击面板外部不关闭，避免调节控件时误触。
         scope.add(Config.subscribe(handleConfigChange));
         scope.listen(elements.play, 'click', () => app.isPlaying ? app.pauseTrack() : app.playTrack());
         scope.listen(elements.prev, 'click', () => app.prevTrack());

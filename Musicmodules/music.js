@@ -616,9 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         app.lyricsFetchSearchBtn.onclick = searchLyricsCandidates;
         app.lyricsFetchClose.onclick = closeLyricsFetchModal;
-        app.lyricsFetchModal.onclick = (event) => {
-            if (event.target === app.lyricsFetchModal) closeLyricsFetchModal();
-        };
+        // 点击遮罩不关闭；仅允许通过 Esc 或 × 主动关闭窗口。
         app.lyricsFetchTitle.onkeydown = app.lyricsFetchArtist.onkeydown = (event) => {
             if (event.key === 'Enter') searchLyricsCandidates();
         };
@@ -652,9 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     app.currentLyricIndex = -1;
                     app.renderLyrics();
                 }
-                setTimeout(() => {
-                    if (requestToken === app.lyricsFetchRequestToken) closeLyricsFetchModal();
-                }, 650);
+                // 获取成功后保留窗口及结果，由用户主动关闭。
             } catch (error) {
                 if (requestToken !== app.lyricsFetchRequestToken) return;
                 setLyricsFetchStatus(error?.message || '覆盖歌词失败', 'error');
