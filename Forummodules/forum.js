@@ -34,6 +34,13 @@ const rememberMeCheckbox = document.getElementById('remember-me');
 const searchInput = document.getElementById('search-posts');
 const boardFilter = document.getElementById('board-filter');
 const refreshBtn = document.getElementById('refresh-posts');
+const boardNav = document.getElementById('board-nav');
+const forumPageTitle = document.getElementById('forum-page-title');
+const forumSummary = document.getElementById('forum-summary');
+const forumNotice = document.getElementById('forum-notice');
+const forumEmpty = document.getElementById('forum-empty');
+let lastLoadError = '';
+let postsLoaded = false;
 
 // Modals
 const createPostModal = document.getElementById('create-post-modal');
@@ -127,6 +134,7 @@ async function loadForumConfig() {
 
 function switchView(viewName) {
     document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
+    document.body.dataset.forumView = viewName;
     if (viewName === 'login') loginView.classList.add('active');
     if (viewName === 'forum') {
         forumView.classList.add('active');
@@ -172,9 +180,9 @@ async function apiFetch(endpoint, options = {}) {
 async function handleLogin() {
     const user = usernameInput.value.trim();
     const pass = passwordInput.value.trim();
-    if (!user || !pass) return showError(loginError, 'Please enter username and password');
+    if (!user || !pass) return showError(loginError, '请输入用户名和密码');
 
-    loginButton.textContent = 'Verifying...';
+    loginButton.textContent = '验证中…';
     loginButton.disabled = true;
     loginError.textContent = '';
 
@@ -193,11 +201,23 @@ async function handleLogin() {
         loadPosts();
     } catch (error) {
         apiAuthHeader = null;
-        showError(loginError, error.message);
+        showError(loginError, describeRequestError(error));
     } finally {
-        loginButton.textContent = 'Enter Forum';
+        loginButton.textContent = '进入论坛';
         loginButton.disabled = false;
     }
+}
+
+// Turns the raw fetch/auth errors into a sentence; the original text stays in
+// parentheses so nothing is lost when reporting a problem.
+function describeRequestError(error) {
+    const message = error?.message || String(error || '');
+    if (message === 'VCP Server URL not configured') return '尚未配置 VCP 服务器地址，请先在主程序设置中填写。';
+    if (message === 'Authentication failed') return '用户名或密码错误。';
+    if (error instanceof TypeError || /Failed to fetch|NetworkError/i.test(message)) {
+        return `无法连接到 VCP 服务器，请检查服务器地址与网络（${message}）。`;
+    }
+    return message || '请求失败';
 }
 
 loginButton.addEventListener('click', handleLogin);
@@ -539,7 +559,7 @@ async function saveSettings() {
     } catch (error) {
         showError(settingsError, '保存失败: ' + error.message);
     } finally {
-        saveSettingsBtn.textContent = '💾 保存';
+        saveSettingsBtn.textContent = '保存';
         saveSettingsBtn.disabled = false;
     }
 }
@@ -562,6 +582,9 @@ async function loadPosts() {
         .then(data => {
             // This block executes immediately when data is fetched, updating the UI without delay.
             allPosts = data.posts || [];
+            postsLoaded = true;
+            lastLoadError = '';
+            setForumNotice('');
             updateBoardFilter(allPosts);
             updateBoardDatalist(allPosts);
             renderCurrentFilteredPosts({ force: true });
@@ -569,6 +592,9 @@ async function loadPosts() {
         .catch(error => {
             // Log errors immediately as well.
             console.error('Load posts failed:', error);
+            lastLoadError = describeRequestError(error);
+            setForumNotice(`帖子加载失败：${lastLoadError}`, 'error');
+            renderCurrentFilteredPosts({ force: true });
             // We re-throw the error to ensure Promise.all can catch it if needed,
             // but the main goal is immediate logging.
             throw error;
@@ -588,15 +614,95 @@ async function loadPosts() {
 function updateBoardFilter(posts) {
     const currentVal = boardFilter.value;
     const boards = [...new Set(posts.map(p => p.board).filter(Boolean))].sort();
-    boardFilter.innerHTML = '<option value="all">✨ 全部板块</option>';
+    boardFilter.innerHTML = '<option value="all">全部板块</option>';
     boards.forEach(b => {
         const opt = document.createElement('option');
         opt.value = b;
-        opt.textContent = `📂 ${b}`;
+        opt.textContent = b;
         boardFilter.appendChild(opt);
     });
     boardFilter.value = currentVal;
     if (boardFilter.value === '') boardFilter.value = 'all';
+    renderBoardNav();
+}
+
+// ========== Board Navigation ==========
+// The hidden #board-filter select stays the filter state; the sidebar list
+// mirrors its options and writes back through a change event.
+const BOARD_ICON_ALL = '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"></rect><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"></rect><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"></rect><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"></rect>';
+const BOARD_ICON = '<path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"></path>';
+
+function renderBoardNav() {
+    if (!boardNav) return;
+    const counts = new Map();
+    allPosts.forEach(p => { if (p.board) counts.set(p.board, (counts.get(p.board) || 0) + 1); });
+    const active = boardFilter.value || 'all';
+
+    boardNav.innerHTML = [...boardFilter.options].map(opt => {
+        const value = opt.value;
+        const label = value === 'all' ? '全部板块' : value;
+        const count = value === 'all' ? allPosts.length : (counts.get(value) || 0);
+        const selected = value === active;
+        return `
+        <button type="button" class="nav-item" role="tab" data-board="${escapeHtml(value)}" aria-selected="${selected}" tabindex="${selected ? 0 : -1}" title="${escapeHtml(label)}">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${value === 'all' ? BOARD_ICON_ALL : BOARD_ICON}</svg>
+            <span class="nav-label">${escapeHtml(label)}</span>
+            <span class="nav-count">${count}</span>
+        </button>`;
+    }).join('');
+}
+
+function selectBoard(value) {
+    if (boardFilter.value === value) return;
+    boardFilter.value = value;
+    boardFilter.dispatchEvent(new Event('change'));
+}
+
+function syncBoardNav() {
+    const active = boardFilter.value || 'all';
+    boardNav?.querySelectorAll('[data-board]').forEach(item => {
+        const selected = item.dataset.board === active;
+        item.setAttribute('aria-selected', String(selected));
+        item.tabIndex = selected ? 0 : -1;
+    });
+    if (forumPageTitle) forumPageTitle.textContent = active === 'all' ? '全部板块' : active;
+}
+
+boardNav?.addEventListener('click', e => {
+    const item = e.target.closest('[data-board]');
+    if (item) selectBoard(item.dataset.board);
+});
+
+boardNav?.addEventListener('keydown', e => {
+    const keys = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, Home: 'first', End: 'last' };
+    if (!(e.key in keys)) return;
+    const items = [...boardNav.querySelectorAll('[data-board]')];
+    if (!items.length) return;
+    const index = items.findIndex(item => item.dataset.board === boardFilter.value);
+    const step = keys[e.key];
+    const next = step === 'first' ? 0 : step === 'last' ? items.length - 1 : (index + step + items.length) % items.length;
+    e.preventDefault();
+    selectBoard(items[next].dataset.board);
+    items[next].focus();
+});
+
+function setForumNotice(message, tone = '') {
+    if (!forumNotice) return;
+    forumNotice.textContent = message;
+    if (tone) forumNotice.dataset.tone = tone;
+    else delete forumNotice.dataset.tone;
+}
+
+function renderForumSummary(filtered) {
+    if (!forumSummary) return;
+    if (!postsLoaded) {
+        forumSummary.innerHTML = `<span class="intro-item">${lastLoadError ? '未能读取帖子' : '正在加载…'}</span>`;
+        return;
+    }
+    const boards = new Set(allPosts.map(p => p.board).filter(Boolean)).size;
+    const items = [`共 ${allPosts.length} 篇帖子`, `${boards} 个板块`];
+    if (boardFilter.value !== 'all' || searchInput.value.trim()) items.push(`显示 ${filtered.length} 篇`);
+    forumSummary.innerHTML = items.map(text => `<span class="intro-item">${escapeHtml(text)}</span>`).join('');
 }
 
 function updateBoardDatalist(posts) {
@@ -639,6 +745,8 @@ function getPostRenderKey(postsToRender) {
 function renderCurrentFilteredPosts({ force = false } = {}) {
     const filtered = getFilteredPosts();
     const renderKey = getPostRenderKey(filtered);
+    syncBoardNav();
+    renderForumSummary(filtered);
 
     if (!force && renderKey === lastRenderedPostKeys) {
         return;
@@ -652,8 +760,16 @@ function renderWaterfall(postsToRender) {
 
     if (!postsToRender || postsToRender.length === 0) {
         lastRenderedPostKeys = '';
+        if (forumEmpty) {
+            forumEmpty.textContent = allPosts.length
+                ? '没有匹配的帖子'
+                : lastLoadError ? '暂时无法读取帖子，请稍后刷新重试'
+                : postsLoaded ? '这里还没有帖子' : '正在加载帖子…';
+            forumEmpty.hidden = false;
+        }
         return;
     }
+    if (forumEmpty) forumEmpty.hidden = true;
 
     const sorted = getSortedPosts(postsToRender);
     lastRenderedPostKeys = getPostRenderKey(postsToRender);
@@ -669,7 +785,7 @@ function renderWaterfall(postsToRender) {
 
 function createPostCard(post, index) {
     const el = document.createElement('div');
-    el.className = 'post-card glass glass-hover';
+    el.className = 'post-card';
     // Limit staggered animation to first 20 items to avoid massive delays on large lists
     const delay = index < 20 ? index * 0.05 : 0;
     el.style.animationDelay = `${delay}s`;
@@ -682,84 +798,44 @@ function createPostCard(post, index) {
     const lastReplier = post.lastReplyBy;
     const hasNewReplier = hasReply && lastReplier && lastReplier !== post.author;
 
-    let metaHTML = '';
+    const avatarHTML = (name) => {
+        const hue = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+        return `<div class="author-avatar loading-avatar" style="background: hsl(${hue}, 70%, 60%)" data-author="${escapeHtml(name)}">${name.slice(0,1).toUpperCase()}</div>`;
+    };
 
-    if (hasNewReplier) {
-        const authorHue = post.author.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-        const authorAvatarColor = `hsl(${authorHue}, 70%, 60%)`;
-        const replierHue = lastReplier.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-        const replierAvatarColor = `hsl(${replierHue}, 70%, 60%)`;
-
-        metaHTML = `
-            <div class="author-info-with-time">
-                <div class="author-avatar loading-avatar" style="background: ${authorAvatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
-                <div class="time-info">
-                    <div style="font-size: 0.8em; opacity: 0.7;">发帖于</div>
-                    <div>${formatDate(post.timestamp)}</div>
-                </div>
-            </div>
-            <div class="meta-separator"></div>
-            <div class="author-info-with-time">
-                <div class="author-avatar loading-avatar" style="background: ${replierAvatarColor}" data-author="${escapeHtml(lastReplier)}">${lastReplier.slice(0,1).toUpperCase()}</div>
-                <div class="time-info">
-                    <div style="font-size: 0.8em; opacity: 0.7;">最后回复</div>
-                    <div>${formatDate(displayDate)}</div>
-                </div>
-            </div>
-        `;
-    } else if (hasReply) {
-        // Same person posted and last replied
-        const authorHue = post.author.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-        const authorAvatarColor = `hsl(${authorHue}, 70%, 60%)`;
-
-        metaHTML = `
-            <div class="author-info-with-time">
-                <div class="author-avatar loading-avatar" style="background: ${authorAvatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
-                <div class="time-info">
-                    <div style="font-size: 0.8em; opacity: 0.7;">发帖于</div>
-                    <div>${formatDate(post.timestamp)}</div>
-                </div>
-            </div>
-            <div class="meta-separator"></div>
-            <div class="author-info-with-time">
-                <div class="author-avatar loading-avatar" style="background: ${authorAvatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
-                <div class="time-info">
-                    <div style="font-size: 0.8em; opacity: 0.7;">最后回复</div>
-                    <div>${formatDate(displayDate)}</div>
-                </div>
-            </div>
-        `;
-    } else {
-        // No replies yet, just show author
-        const authorHue = post.author.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-        const authorAvatarColor = `hsl(${authorHue}, 70%, 60%)`;
-
-        metaHTML = `
-            <div class="meta-left">
-                <div class="author-avatar loading-avatar" style="background: ${authorAvatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
-                <span>${escapeHtml(post.author)}</span>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-size: 0.8em; opacity: 0.7;">发帖于</div>
-                <div>${formatDate(displayDate)}</div>
-            </div>
-        `;
+    // One quiet line: author, when it was posted and, if anyone replied, who replied last.
+    const metaItems = [
+        `<span class="post-meta-item post-author">${escapeHtml(post.author)}</span>`,
+        `<span class="post-meta-item">发帖于 ${formatDate(hasReply ? post.timestamp : displayDate)}</span>`
+    ];
+    if (hasReply) {
+        const replier = hasNewReplier ? `${escapeHtml(lastReplier)} ` : '';
+        metaItems.push(`<span class="post-meta-item">${replier}最后回复于 ${formatDate(displayDate)}</span>`);
     }
 
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
     el.innerHTML = `
         <div class="post-card-header">
-            <h3 class="post-title">${escapeHtml(post.title)}</h3>
-            ${post.board ? `<span class="post-badge">${escapeHtml(post.board)}</span>` : ''}
+            ${avatarHTML(post.author)}
+            <div class="post-card-copy">
+                <div class="post-title-row">
+                    <h3 class="post-title">${escapeHtml(post.title)}</h3>
+                    ${post.board ? `<span class="post-badge">${escapeHtml(post.board)}</span>` : ''}
+                </div>
+                <div class="post-meta">${metaItems.join('')}</div>
+            </div>
         </div>
-        <div class="post-preview" style="font-style: italic; opacity: 0.6;">
-            点击展开查看详情...
-        </div>
-        <div class="post-meta">
-            ${metaHTML}
-        </div>
+        <div class="post-preview">点击展开查看详情...</div>
     `;
 
     el.addEventListener('click', (e) => expandPost(post, el));
+    el.addEventListener('keydown', (e) => {
+        if (e.target === el && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            expandPost(post, el);
+        }
+    });
     
     // Async load avatar(s)
     const avatars = el.querySelectorAll('.author-avatar');
@@ -796,7 +872,9 @@ async function expandPost(post, originalCard) {
 
     const rect = originalCard.getBoundingClientRect();
     const expanded = originalCard.cloneNode(true);
-    expanded.className = 'post-card glass expanded-card';
+    expanded.className = 'post-card expanded-card';
+    expanded.removeAttribute('role');
+    expanded.removeAttribute('tabindex');
     expanded.style.position = 'fixed';
     expanded.style.top = `${rect.top}px`;
     expanded.style.left = `${rect.left}px`;
@@ -804,7 +882,7 @@ async function expandPost(post, originalCard) {
     expanded.style.height = `${rect.height}px`;
     expanded.style.margin = '0';
     expanded.style.zIndex = '2001';
-    expanded.style.transition = 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    expanded.style.transition = 'opacity 160ms ease, transform 160ms ease';
 
     activePostOverlay.innerHTML = '';
     activePostOverlay.appendChild(expanded);
@@ -815,22 +893,23 @@ async function expandPost(post, originalCard) {
     expanded.style.position = 'relative';
     expanded.style.top = 'auto';
     expanded.style.left = 'auto';
-    expanded.style.width = '90%';
-    expanded.style.maxWidth = '1000px';
+    expanded.style.width = '100%';
+    expanded.style.maxWidth = '808px';
     expanded.style.height = 'auto';
     expanded.style.margin = '0 auto';
-    expanded.style.borderRadius = '30px';
     expanded.style.cursor = 'default';
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'expanded-close-btn';
+    closeBtn.title = '返回列表';
+    closeBtn.setAttribute('aria-label', '返回列表');
     closeBtn.innerHTML = '&times;';
     closeBtn.onclick = closeExpandedPost;
     expanded.appendChild(closeBtn);
 
     try {
         const previewEl = expanded.querySelector('.post-preview');
-        previewEl.innerHTML = '<div style="text-align:center; padding: 20px;">Loading content...</div>';
+        previewEl.innerHTML = '<div class="post-loading">正在加载正文…</div>';
         previewEl.style.maskImage = 'none';
         previewEl.style.maxHeight = 'none';
         previewEl.style.fontStyle = 'normal'; // <-- 修正：移除内联斜体
@@ -839,7 +918,7 @@ async function expandPost(post, originalCard) {
         const data = await apiFetch(`/post/${post.uid}`);
         renderFullContent(expanded, data.content, post.uid);
     } catch (error) {
-        expanded.querySelector('.post-preview').innerHTML = `<div style="color: var(--danger-color)">Failed to load: ${error.message}</div>`;
+        expanded.querySelector('.post-preview').innerHTML = `<div class="post-loading" data-tone="error">正文加载失败：${escapeHtml(describeRequestError(error))}</div>`;
     }
 }
 
@@ -848,7 +927,7 @@ function closeExpandedPost() {
     if (expanded) {
         activePostOverlay.classList.remove('active');
         expanded.style.opacity = '0';
-        expanded.style.transform = 'scale(0.9)';
+        expanded.style.transform = 'translateY(6px)';
     }
     setTimeout(() => {
         activePostOverlay.innerHTML = '';
@@ -1310,7 +1389,7 @@ function renderFullContent(container, markdown, uid) {
     if (metaItems.length > 0) {
         const metaHeaderEl = document.createElement('div');
         metaHeaderEl.className = 'post-meta-header';
-        metaHeaderEl.innerHTML = metaItems.join('&nbsp;&nbsp;');
+        metaHeaderEl.innerHTML = metaItems.join('');
         container.insertBefore(metaHeaderEl, previewEl);
     }
 
@@ -1345,8 +1424,8 @@ function renderFullContent(container, markdown, uid) {
     const postActions = document.createElement('div');
     postActions.className = 'post-actions';
     postActions.innerHTML = `
-        <button class="jelly-btn delete-post-btn">🗑️ 删除帖子</button>
-        <button class="edit-btn">✏️ 编辑正文</button>
+        <button class="jelly-btn edit-btn">编辑正文</button>
+        <button class="jelly-btn delete-post-btn">删除帖子</button>
     `;
     postActions.querySelector('.delete-post-btn').addEventListener('click', () => handleDeletePost(uid));
     postActions.querySelector('.edit-btn').addEventListener('click', (e) => toggleEditMode(e.currentTarget.closest('.expanded-card'), previewEl, uid));
@@ -1356,7 +1435,8 @@ function renderFullContent(container, markdown, uid) {
     if (repliesMd.trim()) {
         const replyList = document.createElement('div');
         replyList.className = 'reply-list';
-        replyList.innerHTML = '<h3>💬 评论</h3>';
+        replyList.innerHTML = '<div class="group-header"><h2>评论</h2><span class="reply-count"></span></div><div class="reply-rows"></div>';
+        const replyRows = replyList.querySelector('.reply-rows');
         
         // 修复：正确解析楼层，使用 '---\n### 楼层' 作为分隔标记
         // 先移除开头的 '---' 分隔符（如果存在）
@@ -1389,19 +1469,18 @@ function renderFullContent(container, markdown, uid) {
             const avatarColor = `hsl(${hue}, 70%, 60%)`;
             
             const replyItem = document.createElement('div');
-            replyItem.className = 'reply-item glass';
-            replyItem.style.animationDelay = `${i * 0.1}s`;
+            replyItem.className = 'reply-item';
 
             const metadataEndIndex = replyMd.indexOf('\n\n');
             const replyRawContent = metadataEndIndex !== -1 ? replyMd.substring(metadataEndIndex + 2) : replyMd;
 
             replyItem.innerHTML = `
                 <div class="reply-header">
-                    <div style="display: flex; align-items: center; gap: 10px;">
+                    <div class="reply-who">
                         <div class="reply-avatar loading-avatar" style="background: ${avatarColor}" data-author="${escapeHtml(replyUsername)}">${replyUsername ? replyUsername.slice(0,1).toUpperCase() : '#'}</div>
-                        <span>#${floor}</span>
+                        <span class="reply-floor">#${floor}</span>
                     </div>
-                    <div>
+                    <div class="reply-actions">
                         <button class="delete-floor-btn" data-uid="${uid}" data-floor="${floor}">删除</button>
                         <button class="edit-btn" data-uid="${uid}" data-floor="${floor}">编辑</button>
                     </div>
@@ -1409,7 +1488,7 @@ function renderFullContent(container, markdown, uid) {
                 <div class="reply-content">${renderMarkdownWithProtectedMath(replyMd.trim())}</div>
             `;
             replyItem.querySelector('.reply-content').dataset.rawContent = replyRawContent; // Store raw content
-            replyList.appendChild(replyItem);
+            replyRows.appendChild(replyItem);
             
             // Load avatar for reply
             if (replyUsername) {
@@ -1444,18 +1523,19 @@ function renderFullContent(container, markdown, uid) {
             replyItem.querySelector('.delete-floor-btn').addEventListener('click', (e) => handleDeleteFloor(uid, floor, container));
             replyItem.querySelector('.edit-btn').addEventListener('click', (e) => toggleEditMode(e.currentTarget.closest('.expanded-card'), replyContentEl, uid, floor));
         });
+        replyList.querySelector('.reply-count').textContent = `${replyRows.children.length} 条`;
         container.appendChild(replyList);
     }
 
     const replyBox = document.createElement('div');
     replyBox.className = 'reply-area-fixed';
     replyBox.innerHTML = `
-        <input type="text" id="quick-reply-name" class="glass-input" placeholder="昵称" style="width: 120px; margin-bottom:0;">
-        <div class="textarea-container" style="position: relative; flex-grow: 1;">
-            <textarea id="quick-reply-text" class="glass-input reply-input" placeholder="写下你的评论... (Ctrl+Enter 发送)" style="margin-bottom:0; height: 50px; resize: vertical; width: 100%;"></textarea>
-            <button class="emoticon-btn" id="reply-emoticon-btn" style="position: absolute; bottom: 10px; right: 10px; z-index: 10;">😀</button>
+        <input type="text" id="quick-reply-name" class="glass-input" placeholder="昵称" aria-label="回复署名">
+        <div class="textarea-container">
+            <textarea id="quick-reply-text" class="glass-input reply-input" placeholder="写下你的评论... (Ctrl+Enter 发送)" aria-label="评论内容"></textarea>
+            <button class="emoticon-btn" id="reply-emoticon-btn" title="表情" aria-label="插入表情"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><path d="M9 9h.01M15 9h.01"></path></svg></button>
         </div>
-        <button id="quick-reply-btn" class="jelly-btn" style="width: auto; padding: 15px 25px;">发送</button>
+        <button id="quick-reply-btn" class="jelly-btn jelly-btn-primary">发送</button>
     `;
     container.appendChild(replyBox);
     const nameInput = container.querySelector('#quick-reply-name');
@@ -1497,8 +1577,8 @@ function toggleEditMode(card, contentEl, uid, floor = null) {
     contentEl.innerHTML = `
         <textarea class="edit-textarea">${escapeHtml(rawContent)}</textarea>
         <div class="edit-controls">
-            <button class="jelly-btn cancel-edit-btn" style="width: auto; padding: 8px 20px; background: var(--glass-bg);">取消</button>
-            <button class="jelly-btn save-edit-btn" style="width: auto; padding: 8px 20px;">确认</button>
+            <button class="jelly-btn cancel-edit-btn">取消</button>
+            <button class="jelly-btn jelly-btn-primary save-edit-btn">确认</button>
         </div>
     `;
 
@@ -1544,10 +1624,10 @@ async function handleSaveEdit(uid, content, floor, card) {
         const data = await apiFetch(`/post/${uid}`);
         card.querySelectorAll('.reply-list, .reply-area-fixed').forEach(e => e.remove());
         renderFullContent(card, data.content, uid);
-        await customAlert('内容已成功更新', '✅ 编辑成功');
+        await customAlert('内容已成功更新', '编辑成功');
 
     } catch (error) {
-        await customAlert('保存失败: ' + error.message, '❌ 编辑失败');
+        await customAlert('保存失败: ' + error.message, '编辑失败');
         // Re-enable button on failure
         const btn = card.querySelector('.save-edit-btn');
         if (btn) {
@@ -1559,7 +1639,7 @@ async function handleSaveEdit(uid, content, floor, card) {
 
 
 async function handleDeletePost(uid) {
-    const confirmed = await customConfirm('您确定要删除整个帖子吗？此操作无法撤销！', '⚠️ 删除帖子');
+    const confirmed = await customConfirm('您确定要删除整个帖子吗？此操作无法撤销！', '删除帖子');
     if (!confirmed) return;
     
     try {
@@ -1569,14 +1649,14 @@ async function handleDeletePost(uid) {
         });
         closeExpandedPost();
         loadPosts(); // Refresh the post list
-        await customAlert('帖子已成功删除', '✅ 删除成功');
+        await customAlert('帖子已成功删除', '删除成功');
     } catch (error) {
-        await customAlert('删除失败: ' + error.message, '❌ 删除失败');
+        await customAlert('删除失败: ' + error.message, '删除失败');
     }
 }
 
 async function handleDeleteFloor(uid, floor, container) {
-    const confirmed = await customConfirm(`您确定要删除第 ${floor} 楼吗？此操作无法撤销！`, '⚠️ 删除楼层');
+    const confirmed = await customConfirm(`您确定要删除第 ${floor} 楼吗？此操作无法撤销！`, '删除楼层');
     if (!confirmed) return;
     
     try {
@@ -1588,9 +1668,9 @@ async function handleDeleteFloor(uid, floor, container) {
         const data = await apiFetch(`/post/${uid}`);
         container.querySelectorAll('.reply-list, .reply-area-fixed').forEach(e => e.remove());
         renderFullContent(container, data.content, uid);
-        await customAlert('楼层已成功删除', '✅ 删除成功');
+        await customAlert('楼层已成功删除', '删除成功');
     } catch (error) {
-        await customAlert('删除失败: ' + error.message, '❌ 删除失败');
+        await customAlert('删除失败: ' + error.message, '删除失败');
     }
 }
 
@@ -1614,7 +1694,7 @@ async function handleQuickReply(uid, container) {
         container.querySelectorAll('.reply-list, .reply-area-fixed').forEach(e => e.remove());
         renderFullContent(container, data.content, uid);
     } catch (error) {
-        alert('Reply failed: ' + error.message);
+        alert('回复失败: ' + error.message);
         btn.disabled = false;
         btn.textContent = '发送';
     }
@@ -1687,7 +1767,7 @@ content:「始」${content}「末」
         showError(errEl, error.message || '发布失败');
     } finally {
         submitPostBtn.disabled = false;
-        submitPostBtn.textContent = '🚀 发布';
+        submitPostBtn.textContent = '发布';
     }
 });
 
