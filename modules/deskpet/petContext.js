@@ -25,8 +25,6 @@ function createPetContext({ electron, voice }) {
             // X11 上整窗穿透后 Chromium 收不到指针，getCursorScreenPoint() 会停在旧坐标，
             // 光标轮询就再也发现不了宠物；Linux 改为把窗口输入区裁到内容包围盒。
             USE_SHAPE: process.platform === 'linux',
-            // 窗口平时是否可聚焦（见 openPet）；输入框关上或页面重载后回到它。
-            PET_FOCUSABLE: process.platform !== 'win32',
             // Windows 上别的置顶程序（任务管理器、置顶播放器、部分全屏切窗口）弹到前面后，
             // 桌宠会被压在下面且不会自己回来；低频补一次置顶层级（见 petWindow.js）。
             USE_TOPMOST_GUARD: process.platform === 'win32',

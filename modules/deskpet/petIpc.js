@@ -8,7 +8,7 @@ const WHEEL_NOTCH = 100;
 function registerIpc(ctx) {
     const { ipcMain } = ctx.electron;
     const { pets } = ctx;
-    const { USE_SHAPE, PET_FOCUSABLE } = ctx.platform;
+    const { USE_SHAPE } = ctx.platform;
 
     ipcMain.handle('deskpet:toggle', async (event, agentId) => {
         if (!ctx.fromMain(event)) return { success: false, error: 'forbidden' };
@@ -112,7 +112,7 @@ function registerIpc(ctx) {
         ctx.motion.stopWalk(pet);
         return ctx.bridge.sendFromPet(pet.agentId, message.slice(0, 8000), { files: attached, newTopic: options?.newTopic === true });
     });
-    // 输入框打开时整窗可点、可聚焦；关上后回到按像素穿透。
+    // 输入框打开时整窗可点并拿到键盘焦点；关上后回到按像素穿透。
     ipcMain.on('deskpet:set-interactive', (event, on) => {
         const pet = ctx.petFromEvent(event);
         if (!pet || pet.win.isDestroyed()) return;
@@ -120,7 +120,6 @@ function registerIpc(ctx) {
         ctx.windows.applyClickThrough(pet);
         if (on) {
             if (!USE_SHAPE) ctx.windows.setIgnoreMouse(pet, false);
-            pet.win.setFocusable(true);
             pet.win.focus();
         } else {
             // 输入框收起：先回到整窗穿透，页面下一次命中会重新报上来（光标不在角色上时不会再报，
@@ -130,8 +129,6 @@ function registerIpc(ctx) {
                 ctx.windows.setIgnoreMouse(pet, true);
             }
             ctx.windows.applyClickThrough(pet);
-            // 回到不抢焦点的状态，之后点宠物也不会把正在打字的程序挤到后面
-            if (!PET_FOCUSABLE) pet.win.setFocusable(false);
         }
     });
     ipcMain.on('deskpet:open-main', () => ctx.bridge.openMainWindow());

@@ -18,7 +18,7 @@ const PAGE_READY_TIMEOUT_MS = 20000;
 function createPetWindow(ctx) {
     const { pets } = ctx;
     const { BrowserWindow, screen } = ctx.electron;
-    const { TOPMOST_LEVEL, USE_SHAPE, PET_FOCUSABLE, USE_TOPMOST_GUARD } = ctx.platform;
+    const { TOPMOST_LEVEL, USE_SHAPE, USE_TOPMOST_GUARD } = ctx.platform;
 
     function showPet(pet) {
         pet.yielded = false;
@@ -119,7 +119,6 @@ function createPetWindow(ctx) {
         pet.interactive = false;
         pet.lastShape = '';
         if (pet.win.isDestroyed()) return;
-        pet.win.setFocusable(PET_FOCUSABLE);
         if (pet.ignoringMouse === 'through') {
             // 页面重载后输入区要重新报；穿透本身保持
             return;
@@ -195,10 +194,11 @@ function createPetWindow(ctx) {
             fullscreenable: false,
             skipTaskbar: true,
             alwaysOnTop: true,
-            // Windows：点宠物不抢走正在输入的程序的焦点，只在输入框打开时临时变成可聚焦。
-            // macOS 不可聚焦的窗口收不到点击，Linux 窗口管理器对不可聚焦窗口的处理不一
-            // （有的直接丢输入），这两处保持可聚焦。
-            focusable: PET_FOCUSABLE,
+            // 窗口必须可聚焦：Windows 上不可聚焦的窗口（WS_EX_NOACTIVATE）被点时，Chromium 回
+            // MA_NOACTIVATEANDEAT，按下被吞掉、只收到松开，拖动、单击和胶囊按钮全都失灵（窗口碰巧
+            // 还是前台时又正常，所以时好时坏）。macOS 不可聚焦的窗口也收不到点击，Linux 有的窗口管理器直接丢输入。
+            // Windows 上用工具窗口：不进任务栏和 Alt+Tab。
+            ...(process.platform === 'win32' ? { type: 'toolbar' } : {}),
             show: false,
             title: 'VCPChat 桌宠',
             webPreferences: {

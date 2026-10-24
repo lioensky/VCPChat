@@ -162,7 +162,7 @@ test('hiding a pet keeps it alive and the header toggle brings it back', async (
     handlers.closeAll();
 });
 
-test('on Windows the pet only takes focus while its input box is open', async () => {
+test('on Windows the pet is a focusable tool window, so the first press reaches the page', async () => {
     const platform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
     let loaded;
@@ -174,11 +174,12 @@ test('on Windows the pet only takes focus while its input box is open', async ()
     const { handlers, fake } = loaded;
     await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
     const pet = fake.windows.at(-1);
-    assert.equal(pet.options.focusable, false);
+    // 不可聚焦的窗口被点时 Chromium 吞掉按下（MA_NOACTIVATEANDEAT），拖动和单击都收不到
+    assert.notEqual(pet.options.focusable, false);
+    assert.equal(pet.options.type, 'toolbar', '工具窗口不进任务栏和 Alt+Tab');
     const fromPet = { sender: pet.webContents };
     fake.listeners.get('deskpet:set-interactive')(fromPet, true);
-    assert.equal(pet.focusable, true);
     fake.listeners.get('deskpet:set-interactive')(fromPet, false);
-    assert.equal(pet.focusable, false);
+    assert.notEqual(pet.focusable, false, '输入框关上后也不能变回不可聚焦');
     handlers.closeAll();
 });

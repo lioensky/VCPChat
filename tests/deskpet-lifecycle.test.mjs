@@ -164,7 +164,6 @@ test('a renderer reload or crash puts the window back to click-through and ends 
     assert.equal(pet.ignoreMouse.at(-1), false);
     pet.webContents.emit('render-process-gone', {}, { reason: 'crashed' });
     assert.equal(pet.ignoreMouse.at(-1), true, '重载后的页面从「没命中」开始，窗口必须回到穿透');
-    assert.equal(pet.focusable, false, 'Windows 上输入框没开时窗口回到不可聚焦');
     const parked = pet.getPosition();
     fake.screen.cursor = { x: 900, y: 700 };
     await sleep(60);
