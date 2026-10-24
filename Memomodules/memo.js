@@ -19,6 +19,7 @@ let selectedMemos = new Set(); // Set of "folder:::name" strings
 let hiddenFolders = new Set(); // Set of hidden folder names
 let collapsedCategories = new Set(); // Set of collapsed category IDs
 let folderOrder = []; // Array of folder names for UI sorting
+let visibleFolderNames = []; // 批量移动菜单的候选文件夹
 let draggedFolder = null; // Currently dragged folder name
 let memoStartupBlocked = false;
 
@@ -70,6 +71,69 @@ function setMemoIntro(items) {
         .filter(Boolean)
         .map(item => `<span class="intro-item">${escapeHtml(item)}</span>`)
         .join('');
+}
+
+// ========== 弹出层（菜单 / 参数面板） ==========
+const openPopovers = new Set();
+const popoverTriggers = new WeakMap();
+
+function openPopover(trigger, popover) {
+    openPopovers.forEach(p => { if (p !== popover) closePopover(p); });
+    popover.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    popoverTriggers.set(popover, trigger);
+    openPopovers.add(popover);
+}
+
+function closePopover(popover) {
+    if (!popover || popover.hidden) return;
+    popover.hidden = true;
+    popoverTriggers.get(popover)?.setAttribute('aria-expanded', 'false');
+    openPopovers.delete(popover);
+}
+
+function closeAllPopovers() {
+    Array.from(openPopovers).forEach(closePopover);
+}
+
+function bindPopover(trigger, popover, { onOpen } = {}) {
+    if (!trigger || !popover) return;
+    trigger.setAttribute('aria-expanded', 'false');
+    popoverTriggers.set(popover, trigger);
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!popover.hidden) {
+            closePopover(popover);
+            return;
+        }
+        onOpen?.();
+        openPopover(trigger, popover);
+        popover.querySelector('input, button:not([disabled]), [role="menuitem"]')?.focus();
+    });
+}
+
+document.addEventListener('click', (e) => {
+    const path = e.composedPath();
+    Array.from(openPopovers).forEach(popover => {
+        const trigger = popoverTriggers.get(popover);
+        if (!path.includes(popover) && !path.includes(trigger)) closePopover(popover);
+    });
+});
+
+// Esc 先关闭最上层的弹出层；返回 true 表示已处理
+function closeTopPopover() {
+    const last = Array.from(openPopovers).pop();
+    if (!last) return false;
+    closePopover(last);
+    popoverTriggers.get(last)?.focus();
+    return true;
+}
+
+function formatMemoTime(ts) {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 window.alert = (message) => {
@@ -226,29 +290,32 @@ function setupEventListeners() {
 
     // 批量管理
     const batchEditBtn = document.getElementById('batch-edit-btn');
-    const batchActions = document.getElementById('batch-actions');
     const cancelBatchBtn = document.getElementById('cancel-batch-btn');
 
-    batchEditBtn.onclick = () => {
-        isBatchMode = true;
-        batchEditBtn.style.display = 'none';
-        batchActions.style.display = 'flex';
+    // 批量模式下工具条替换页头按钮，由 body 类切换显示
+    const setBatchMode = (enabled) => {
+        isBatchMode = enabled;
+        document.body.classList.toggle('memo-batch-mode', enabled);
+        closeAllPopovers();
         selectedMemos.clear();
         updateBatchUI();
         renderMemos(allMemos); // 重新渲染以显示选择状态
+        (enabled ? cancelBatchBtn : batchEditBtn).focus();
     };
 
-    cancelBatchBtn.onclick = () => {
-        isBatchMode = false;
-        batchEditBtn.style.display = 'flex';
-        batchActions.style.display = 'none';
-        selectedMemos.clear();
-        updateBatchUI();
-        renderMemos(allMemos);
-    };
+    batchEditBtn.onclick = () => setBatchMode(true);
+    cancelBatchBtn.onclick = () => setBatchMode(false);
 
     document.getElementById('batch-delete-btn').onclick = handleBatchDelete;
-    document.getElementById('batch-move-select').onchange = handleBatchMove;
+    bindPopover(
+        document.getElementById('batch-move-btn'),
+        document.getElementById('batch-move-menu'),
+        { onOpen: renderBatchMoveMenu }
+    );
+    bindPopover(
+        document.getElementById('selected-count'),
+        document.getElementById('batch-selection-popover')
+    );
     document.getElementById('batch-workbench-btn').onclick = () => {
         const selected = allMemos.filter(m => {
             const memoId = `${m.folderName || currentFolder}:::${m.name}`;
@@ -259,26 +326,43 @@ function setupEventListeners() {
         }
     };
 
-    // 悬浮条清空
+    // 已选列表中的清空
     document.getElementById('batch-bar-clear').onclick = () => {
         selectedMemos.clear();
+        closeAllPopovers();
         updateBatchUI();
         renderMemos(allMemos);
     };
 
-    // 新建日记弹窗
+    // 新建日记弹窗：署名、日期、文件名收进参数面板，标题下只显示摘要
     document.getElementById('create-memo-btn').onclick = () => {
         const now = new Date();
         newMemoDateInput.value = now.toISOString().split('T')[0];
         newMemoMaidInput.value = forumConfig.replyUsername || forumConfig.username || '';
+        setCreateNotice('');
+        closeAllPopovers();
+        updateCreateSummary();
         createModal.style.display = 'flex';
     };
 
     document.getElementById('close-create-modal-btn').onclick = () => {
+        closeAllPopovers();
         createModal.style.display = 'none';
     };
 
-    document.getElementById('submit-new-memo-btn').onclick = handleCreateMemo;
+    bindPopover(
+        document.getElementById('create-options-btn'),
+        document.getElementById('create-options-popover')
+    );
+    [newMemoMaidInput, newMemoDateInput, newMemoFilenameInput].forEach(input => {
+        input.addEventListener('input', updateCreateSummary);
+    });
+
+    // 校验失败时需要打开参数面板，阻止冒泡以免被外部点击立即关闭
+    document.getElementById('submit-new-memo-btn').onclick = (e) => {
+        e.stopPropagation();
+        handleCreateMemo();
+    };
 
     // 隐藏文件夹管理
     document.getElementById('manage-hidden-btn').onclick = openHiddenFoldersModal;
@@ -293,9 +377,21 @@ function setupEventListeners() {
     const kInput = document.getElementById('input-assoc-k');
     const kValueLabel = document.getElementById('label-k-value');
 
-    if (kInput) kInput.oninput = () => kValueLabel.textContent = kInput.value;
+    if (kInput) {
+        kInput.oninput = () => {
+            kValueLabel.textContent = kInput.value;
+            updateAssocSummary();
+        };
+    }
+    document.getElementById('input-assoc-boost')?.addEventListener('input', updateAssocSummary);
+
+    bindPopover(
+        document.getElementById('assoc-options-btn'),
+        document.getElementById('assoc-options-popover')
+    );
 
     document.getElementById('close-assoc-config-btn').onclick = () => {
+        closeAllPopovers();
         document.getElementById('assoc-config-modal').style.display = 'none';
     };
 
@@ -372,10 +468,22 @@ function setupEventListeners() {
         editorOverlay.classList.remove('active');
     };
 
-    document.getElementById('toggle-preview-btn').onclick = () => {
-        const isCollapsed = editorContainer.classList.toggle('preview-collapsed');
-        updateEditorPreviewToggle(isCollapsed);
-    };
+    // 编辑 / 分栏 / 预览 分段切换
+    const viewSwitch = document.getElementById('editor-view-switch');
+    const viewSegments = Array.from(viewSwitch.querySelectorAll('.memo-segment'));
+    viewSegments.forEach(segment => {
+        segment.onclick = () => setEditorView(segment.dataset.view);
+    });
+    viewSwitch.addEventListener('keydown', (e) => {
+        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+        if (!step) return;
+        e.preventDefault();
+        const index = viewSegments.findIndex(s => s.getAttribute('aria-checked') === 'true');
+        const next = viewSegments[(index + step + viewSegments.length) % viewSegments.length];
+        setEditorView(next.dataset.view);
+        next.focus();
+    });
+    setEditorView('split');
 
     editorTextarea.oninput = () => {
         renderPreview(editorTextarea.value);
@@ -435,11 +543,13 @@ function setupEventListeners() {
     // 全局 Esc 键监听
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            // 优先级：确认弹窗 > 编辑器 > 新建弹窗
+            // 优先级：弹出层 > 确认弹窗 > 编辑器 > 新建弹窗
             const confirmModal = document.getElementById('custom-confirm-modal');
             const alertModal = document.getElementById('custom-alert-modal');
 
-            if (confirmModal && confirmModal.style.display === 'flex') {
+            if (closeTopPopover()) {
+                return;
+            } else if (confirmModal && confirmModal.style.display === 'flex') {
                 document.getElementById('confirm-cancel-btn').click();
             } else if (alertModal && alertModal.style.display === 'flex') {
                 document.getElementById('alert-ok-btn').click();
@@ -548,8 +658,6 @@ async function loadFolders() {
 
 function renderFolders(folders) {
     folderListEl.innerHTML = '';
-    const moveSelect = document.getElementById('batch-move-select');
-    moveSelect.innerHTML = '<option value="">-- 移动到文件夹 --</option>';
 
     // 过滤掉 MusicDiary 和隐藏文件夹
     const visibleFolders = folders.filter(f => f !== 'MusicDiary' && !hiddenFolders.has(f));
@@ -566,6 +674,7 @@ function renderFolders(folders) {
 
     // 更新 folderOrder 以包含新发现的文件夹
     folderOrder = visibleFolders;
+    visibleFolderNames = visibleFolders;
 
     // 分类逻辑
     const clusters = visibleFolders.filter(f => f.endsWith('簇'));
@@ -668,14 +777,6 @@ function renderFolders(folders) {
             };
 
             content.appendChild(item);
-
-            // 批量移动下拉框
-            if (folder !== currentFolder) {
-                const opt = document.createElement('option');
-                opt.value = folder;
-                opt.textContent = folder;
-                moveSelect.appendChild(opt);
-            }
         });
 
         catEl.appendChild(header);
@@ -744,36 +845,28 @@ function renderMemos(memos) {
         const isSelected = selectedMemos.has(memoId);
         card.className = `memo-card ${isBatchMode ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`;
 
-        const dateStr = new Date(memo.lastModified).toLocaleString();
-
         const previewText = memo.preview || '无预览内容';
 
         card.dataset.memoId = memoId;
         card.dataset.pretextWidth = String(Math.max(estimatedCardWidth, 240));
 
+        // 每行只显示一次时间：文件名里的时间优先，否则用修改时间
         const titleParts = parseStructuredMemoName(memo.name);
-        const titleHtml = titleParts
-            ? `
-                <h3 class="memo-title structured" title="${escapeHtml(memo.name)}">
-                    <span class="memo-format-tag">${escapeHtml(titleParts.format)}</span>
-                    <span class="memo-readable-title">${escapeHtml(titleParts.title)}</span>
-                    <span class="memo-readable-time">${escapeHtml(titleParts.readableTime)}</span>
-                </h3>
-            `
-            : `<h3 title="${escapeHtml(memo.name)}">${escapeHtml(memo.name)}</h3>`;
+        const timeText = titleParts?.readableTime || formatMemoTime(memo.lastModified);
+        const crossFolder = memo.folderName && memo.folderName !== currentFolder;
+        const metaText = [crossFolder ? memo.folderName : '', timeText].filter(Boolean).join(' · ');
+        const modifiedText = formatMemoTime(memo.lastModified);
 
         card.innerHTML = `
             <div class="memo-card-copy">
-                ${titleHtml}
-                <p class="preview">${escapeHtml(previewText)}</p>
-                <div class="meta">
-                    <span class="memo-date">${dateStr}</span>
-                    ${memo.folderName && memo.folderName !== currentFolder ? `<span class="memo-folder-chip">${escapeHtml(memo.folderName)}</span>` : ''}
+                <div class="memo-card-head">
+                    <h3 class="memo-title" title="${escapeHtml(memo.name)}">${escapeHtml(getMemoDisplayTitle(memo.name))}</h3>
+                    <span class="memo-card-meta"${modifiedText ? ` title="修改于 ${modifiedText}"` : ''}>${escapeHtml(metaText)}</span>
                 </div>
+                <p class="preview">${escapeHtml(previewText)}</p>
             </div>
-            <button class="association-btn" title="记忆联想">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
-                    联想
+            <button type="button" class="memo-icon-btn association-btn" title="记忆联想" aria-label="记忆联想">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
             </button>
         `;
 
@@ -832,40 +925,66 @@ function scheduleVisibleMemoPretextEstimation() {
     }
 }
 
+// 选择数只在工具条上显示一次；点开计数按钮查看或移除已选项
 function updateBatchUI() {
     const count = selectedMemos.size;
-    document.getElementById('selected-count').textContent = `已选 ${count} 项`;
-
-    const floatingBar = document.getElementById('batch-floating-bar');
-    const barCount = document.getElementById('batch-bar-count');
-    const barItems = document.getElementById('batch-bar-items');
-
-    if (count > 0 && isBatchMode) {
-        floatingBar.style.display = 'flex';
-        barCount.textContent = `已选择 ${count} 项`;
-
-        // 渲染选中项列表
-        barItems.innerHTML = '';
-        selectedMemos.forEach(memoId => {
-            const [folder, name] = memoId.split(':::');
-            const item = document.createElement('div');
-            item.className = 'batch-item-tag';
-            item.innerHTML = `
-                <div class="item-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-                <div class="item-folder">${escapeHtml(folder)}</div>
-                <div class="batch-item-remove" title="移除">×</div>
-            `;
-            item.querySelector('.batch-item-remove').onclick = (e) => {
-                e.stopPropagation();
-                selectedMemos.delete(memoId);
-                updateBatchUI();
-                renderMemos(allMemos);
-            };
-            barItems.appendChild(item);
-        });
-    } else {
-        floatingBar.style.display = 'none';
+    document.getElementById('selected-count-label').textContent = `已选 ${count} 项`;
+    ['selected-count', 'batch-move-btn', 'batch-delete-btn', 'batch-workbench-btn'].forEach(id => {
+        document.getElementById(id).disabled = count === 0;
+    });
+    if (count === 0) {
+        closePopover(document.getElementById('batch-selection-popover'));
+        closePopover(document.getElementById('batch-move-menu'));
     }
+
+    const barItems = document.getElementById('batch-bar-items');
+    barItems.innerHTML = '';
+    selectedMemos.forEach(memoId => {
+        const [folder, name] = memoId.split(':::');
+        const item = document.createElement('div');
+        item.className = 'batch-item-row';
+        item.innerHTML = `
+            <div class="batch-item-copy">
+                <div class="item-name" title="${escapeHtml(name)}">${escapeHtml(getMemoDisplayTitle(name))}</div>
+                <div class="item-folder">${escapeHtml(folder)}</div>
+            </div>
+            <button type="button" class="memo-icon-btn memo-icon-btn-sm batch-item-remove" title="移出选择" aria-label="移出选择">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        `;
+        item.querySelector('.batch-item-remove').onclick = () => {
+            selectedMemos.delete(memoId);
+            updateBatchUI();
+            renderMemos(allMemos);
+        };
+        barItems.appendChild(item);
+    });
+}
+
+function renderBatchMoveMenu() {
+    const menu = document.getElementById('batch-move-menu');
+    const targets = visibleFolderNames.filter(folder => folder !== currentFolder);
+    menu.innerHTML = '<div class="memo-menu-label">移动到</div>';
+    if (targets.length === 0) {
+        menu.insertAdjacentHTML('beforeend', '<div class="memo-menu-empty">没有可移动到的文件夹</div>');
+        return;
+    }
+    targets.forEach(folder => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'memo-menu-item';
+        item.setAttribute('role', 'menuitem');
+        item.textContent = folder;
+        item.onclick = () => {
+            closeAllPopovers();
+            handleBatchMove(folder);
+        };
+        menu.appendChild(item);
+    });
+}
+
+function getMemoDisplayTitle(name) {
+    return parseStructuredMemoName(name)?.title || String(name).replace(/\.[^.]+$/, '');
 }
 
 async function openMemo(memo) {
@@ -902,20 +1021,22 @@ async function openMemo(memo) {
 
         editorTextarea.value = data.content;
         renderPreview(data.content);
-        editorStatus.textContent = `最后修改: ${new Date(memo.lastModified).toLocaleString()}`;
+        editorStatus.textContent = memo.lastModified ? `修改于 ${formatMemoTime(memo.lastModified)}` : '';
     } catch (error) {
         alert('读取日记失败: ' + error.message);
         editorOverlay.classList.remove('active');
     }
 }
 
-function updateEditorPreviewToggle(isCollapsed = editorContainer.classList.contains('preview-collapsed')) {
-    const togglePreviewBtn = document.getElementById('toggle-preview-btn');
-    if (!togglePreviewBtn) return;
-
-    togglePreviewBtn.title = isCollapsed ? '展开渲染区' : '收纳渲染区';
-    togglePreviewBtn.setAttribute('aria-label', togglePreviewBtn.title);
-    togglePreviewBtn.setAttribute('aria-expanded', String(!isCollapsed));
+// view: 'edit' 只看源码，'split' 分栏，'preview' 只看渲染
+function setEditorView(view) {
+    editorContainer.classList.toggle('preview-collapsed', view === 'edit');
+    editorContainer.classList.toggle('preview-only', view === 'preview');
+    document.querySelectorAll('#editor-view-switch .memo-segment').forEach(segment => {
+        const checked = segment.dataset.view === view;
+        segment.setAttribute('aria-checked', String(checked));
+        segment.tabIndex = checked ? 0 : -1;
+    });
 }
 
 function renderPreview(content) {
@@ -1052,10 +1173,22 @@ async function handleCreateMemo() {
     const tags = newMemoTagsInput.value.trim();
     const content = newMemoContentInput.value.trim();
 
-    if (!date || !maid || !content) {
-        alert('请填写完整信息');
+    // 缺项时就地提示；署名和日期在参数面板里，需要先打开面板
+    const optionsBtn = document.getElementById('create-options-btn');
+    const optionsPopover = document.getElementById('create-options-popover');
+    if (!maid || !date) {
+        setCreateNotice(!maid ? '请填写署名' : '请选择日期', 'error');
+        openPopover(optionsBtn, optionsPopover);
+        (!maid ? newMemoMaidInput : newMemoDateInput).focus();
         return;
     }
+    if (!content) {
+        setCreateNotice('请填写内容', 'error');
+        newMemoContentInput.focus();
+        return;
+    }
+    setCreateNotice('');
+    closeAllPopovers();
 
     const submitBtn = document.getElementById('submit-new-memo-btn');
     submitBtn.disabled = true;
@@ -1109,11 +1242,32 @@ Date:「始」${date}「末」,`;
         }, 1000);
 
     } catch (error) {
-        alert('发布失败: ' + error.message);
+        setCreateNotice('发布失败: ' + error.message, 'error');
     } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = '发布';
     }
+}
+
+function setCreateNotice(message, tone = '') {
+    const notice = document.getElementById('create-form-notice');
+    if (!notice) return;
+    notice.textContent = message;
+    if (tone) notice.dataset.tone = tone;
+    else delete notice.dataset.tone;
+}
+
+// 参数面板收起时，标题下的摘要说明当前署名、日期和文件名
+function updateCreateSummary() {
+    const summary = document.getElementById('create-summary');
+    if (!summary) return;
+    const maid = newMemoMaidInput.value.trim();
+    const fileName = newMemoFilenameInput.value.trim();
+    summary.textContent = [
+        maid ? `署名 ${maid}` : '未署名',
+        newMemoDateInput.value || '未选日期',
+        fileName ? `文件名 ${fileName}` : '文件名自动生成'
+    ].join(' · ');
 }
 
 async function searchMemos(term) {
@@ -1407,15 +1561,11 @@ async function handleBatchDelete() {
     }
 }
 
-async function handleBatchMove(e) {
-    const targetFolder = e.target.value;
+async function handleBatchMove(targetFolder) {
     if (!targetFolder || selectedMemos.size === 0) return;
 
     const confirmed = await customConfirm(`确定要将选中的 ${selectedMemos.size} 项日记移动到 "${targetFolder}" 吗？`, '📦 批量移动确认');
-    if (!confirmed) {
-        e.target.value = ''; // 重置下拉框
-        return;
-    }
+    if (!confirmed) return;
 
     try {
         const sourceNotes = Array.from(selectedMemos).map(memoId => {
@@ -1437,8 +1587,6 @@ async function handleBatchMove(e) {
         await loadFolders();
     } catch (error) {
         alert('批量移动失败: ' + error.message);
-    } finally {
-        e.target.value = ''; // 重置下拉框
     }
 }
 
@@ -1483,7 +1631,9 @@ function openHiddenFoldersModal() {
             item.innerHTML = `
                 <svg class="hidden-folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 <span class="hidden-folder-name">${escapeHtml(folder)}</span>
-                <button class="memo-button memo-button-small">取消隐藏</button>
+                <button type="button" class="memo-icon-btn" title="取消隐藏「${escapeHtml(folder)}」" aria-label="取消隐藏「${escapeHtml(folder)}」">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
             `;
             item.querySelector('button').onclick = async () => {
                 hiddenFolders.delete(folder);
@@ -1614,6 +1764,9 @@ function parseStructuredMemoName(fileName) {
     if (titleTailMatch && !formatFromExt) {
         rawTitle = titleTailMatch[1];
         format = titleTailMatch[2];
+    } else if (titleTailMatch && /^(md|txt|markdown)$/i.test(titleTailMatch[2])) {
+        // 旧命名“标题-md.txt”：尾缀只是格式标记，不进标题
+        rawTitle = titleTailMatch[1];
     }
 
     if (!format) return null;

@@ -64,26 +64,44 @@
                             <div id="memo-intro" class="page-intro" aria-live="polite"></div>
                         </div>
                         <div class="header-actions">
-                            <button id="batch-edit-btn" class="memo-button">批量管理</button>
-                            <button id="create-memo-btn" class="memo-button memo-button-primary">新建日记</button>
+                            <button type="button" id="batch-edit-btn" class="memo-icon-btn" title="批量管理" aria-label="批量管理">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 2 2 4-4"></path><path d="m3 17 2 2 4-4"></path><path d="M13 6h8"></path><path d="M13 12h8"></path><path d="M13 18h8"></path></svg>
+                            </button>
+                            <button type="button" id="create-memo-btn" class="memo-button memo-button-primary">新建日记</button>
+                        </div>
+
+                        <!-- 批量模式下替换 header-actions：同一行只保留一个主操作 -->
+                        <div id="batch-actions" class="batch-actions" role="toolbar" aria-label="批量操作">
+                            <div class="memo-popover-anchor">
+                                <button type="button" id="selected-count" class="batch-count-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="batch-selection-popover" title="查看已选日记">
+                                    <span id="selected-count-label">已选 0 项</span>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                                </button>
+                                <div id="batch-selection-popover" class="memo-popover batch-selection-popover" role="dialog" aria-label="已选日记" hidden>
+                                    <div class="memo-popover-head">
+                                        <span>已选日记</span>
+                                        <button type="button" id="batch-bar-clear" class="memo-link-btn">清空选择</button>
+                                    </div>
+                                    <div id="batch-bar-items" class="batch-bar-items"></div>
+                                </div>
+                            </div>
+                            <span class="toolbar-divider" aria-hidden="true"></span>
+                            <div class="memo-popover-anchor">
+                                <button type="button" id="batch-move-btn" class="memo-icon-btn" title="移动到文件夹" aria-label="移动到文件夹" aria-haspopup="menu" aria-expanded="false" aria-controls="batch-move-menu">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"></path><path d="M2 13h10"></path><path d="m9 16 3-3-3-3"></path></svg>
+                                </button>
+                                <div id="batch-move-menu" class="memo-popover memo-menu" role="menu" aria-label="移动到文件夹" hidden></div>
+                            </div>
+                            <button type="button" id="batch-delete-btn" class="memo-icon-btn memo-icon-btn-danger" title="删除所选" aria-label="删除所选">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                            <span class="toolbar-divider" aria-hidden="true"></span>
+                            <button type="button" id="batch-workbench-btn" class="memo-button memo-button-primary">进入工作台</button>
+                            <button type="button" id="cancel-batch-btn" class="memo-icon-btn" title="退出批量管理" aria-label="退出批量管理">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
                         </div>
                     </header>
-
-                    <div id="batch-actions" class="batch-actions" style="display: none;">
-                        <span id="selected-count" class="batch-count">已选 0 项</span>
-                        <label class="batch-move">
-                            <span>移动到</span>
-                            <select id="batch-move-select" class="memo-select">
-                                <option value="">-- 选择文件夹 --</option>
-                            </select>
-                        </label>
-                        <span class="batch-actions-spacer"></span>
-                        <button id="batch-delete-btn" class="memo-button memo-button-danger-text">删除</button>
-                        <button id="batch-workbench-btn" class="memo-button">进入工作台</button>
-                        <button id="cancel-batch-btn" class="nav-icon-btn" title="退出批量管理" aria-label="退出批量管理">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        </button>
-                    </div>
 
                     <section class="filters" aria-label="搜索日记">
                         <div id="search-scope-tabs" class="memo-tabs" role="tablist" aria-label="搜索范围">
@@ -111,17 +129,16 @@
             <div class="editor-header">
                 <input type="text" id="editor-title" class="editor-title-input" placeholder="日记标题..." aria-label="日记标题">
                 <div class="editor-header-actions">
-                    <button id="toggle-preview-btn" class="nav-icon-btn editor-toggle-preview-btn" title="收纳渲染区" aria-label="收纳渲染区" aria-expanded="true">
-                        <svg class="toggle-preview-icon collapse-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="15 18 9 12 15 6"></polyline>
-                            <line x1="20" y1="6" x2="20" y2="18"></line>
-                        </svg>
-                        <svg class="toggle-preview-icon expand-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <polyline points="9 18 15 12 9 6"></polyline>
-                            <line x1="4" y1="6" x2="4" y2="18"></line>
-                        </svg>
+                    <div id="editor-view-switch" class="memo-segmented" role="radiogroup" aria-label="编辑器视图">
+                        <button type="button" class="memo-segment" role="radio" data-view="edit" aria-checked="false">编辑</button>
+                        <button type="button" class="memo-segment" role="radio" data-view="split" aria-checked="true">分栏</button>
+                        <button type="button" class="memo-segment" role="radio" data-view="preview" aria-checked="false">预览</button>
+                    </div>
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+                    <button type="button" id="delete-memo-btn" class="memo-icon-btn memo-icon-btn-danger" title="删除这篇日记" aria-label="删除这篇日记">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                     </button>
-                    <button id="close-editor-btn" class="modal-close-btn" title="关闭" aria-label="关闭">&times;</button>
+                    <button type="button" id="close-editor-btn" class="modal-close-btn" title="关闭" aria-label="关闭">&times;</button>
                 </div>
             </div>
             <div class="editor-body">
@@ -131,8 +148,7 @@
             <div class="editor-footer">
                 <p id="editor-status" class="editor-status"></p>
                 <div class="modal-right-actions">
-                    <button id="delete-memo-btn" class="memo-button memo-button-danger-text">删除</button>
-                    <button id="save-memo-btn" class="memo-button memo-button-primary">保存修改</button>
+                    <button type="button" id="save-memo-btn" class="memo-button memo-button-primary">保存修改</button>
                 </div>
             </div>
         </div>
@@ -142,33 +158,42 @@
     <div id="create-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content modal-content-form" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
             <div class="modal-header">
-                <div>
+                <div class="modal-head-copy">
                     <h3 id="create-modal-title">新建日记</h3>
-                    <p class="modal-subtitle">发布后写入目标文件夹；文件夹留空时写入默认日记本。</p>
+                    <p id="create-summary" class="modal-subtitle" aria-live="polite"></p>
                 </div>
-                <button id="close-create-modal-btn" class="modal-close-btn" title="关闭" aria-label="关闭">&times;</button>
+                <div class="modal-head-actions">
+                    <div class="memo-popover-anchor">
+                        <button type="button" id="create-options-btn" class="memo-icon-btn" title="署名、日期与文件名" aria-label="署名、日期与文件名" aria-haspopup="dialog" aria-expanded="false" aria-controls="create-options-popover">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M20 7h-9"></path><path d="M14 17H4"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+                        </button>
+                        <div id="create-options-popover" class="memo-popover memo-popover-form" role="dialog" aria-label="发布选项" hidden>
+                            <label class="field">
+                                <span class="field-label">署名 <span class="field-hint">maid</span></span>
+                                <input type="text" id="new-memo-maid" class="memo-input" placeholder="如：Nova">
+                            </label>
+                            <label class="field">
+                                <span class="field-label">日期</span>
+                                <input type="date" id="new-memo-date" class="memo-input">
+                            </label>
+                            <label class="field">
+                                <span class="field-label">文件名 <span class="field-hint">留空自动生成</span></span>
+                                <input type="text" id="new-memo-filename" class="memo-input" placeholder="如：日记提示词哲学">
+                            </label>
+                        </div>
+                    </div>
+                    <button type="button" id="close-create-modal-btn" class="modal-close-btn" title="关闭" aria-label="关闭">&times;</button>
+                </div>
             </div>
             <div class="modal-body">
                 <div class="form-grid">
-                    <label class="field">
-                        <span class="field-label">日期</span>
-                        <input type="date" id="new-memo-date" class="memo-input">
-                    </label>
-                    <label class="field">
-                        <span class="field-label">署名 <span class="field-hint">maid</span></span>
-                        <input type="text" id="new-memo-maid" class="memo-input" placeholder="如：Nova">
-                    </label>
-                    <label class="field">
-                        <span class="field-label">目标文件夹 <span class="field-hint">可选</span></span>
+                    <label class="field field-wide">
+                        <span class="field-label">目标文件夹 <span class="field-hint">可选，留空写入默认日记本</span></span>
                         <input type="text" id="new-memo-folder" class="memo-input" placeholder="如：Nova的知识">
-                    </label>
-                    <label class="field">
-                        <span class="field-label">文件名 <span class="field-hint">可选，留空自动生成</span></span>
-                        <input type="text" id="new-memo-filename" class="memo-input" placeholder="如：日记提示词哲学">
                     </label>
                     <label class="field field-wide">
                         <span class="field-label">标签 <span class="field-hint">必填，逗号分隔</span></span>
-                        <input type="text" id="new-memo-tags" class="memo-input" placeholder="如：日记系统重构, RAG语义检索, 提示词工程">
+                        <input type="text" id="new-memo-tags" class="memo-input" placeholder="如：日记系统重构, 语义检索">
                     </label>
                     <label class="field field-wide">
                         <span class="field-label">内容</span>
@@ -177,9 +202,9 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <div class="modal-left-actions"></div>
+                <p id="create-form-notice" class="modal-footer-note" aria-live="polite"></p>
                 <div class="modal-right-actions">
-                    <button id="submit-new-memo-btn" class="memo-button memo-button-primary">发布</button>
+                    <button type="button" id="submit-new-memo-btn" class="memo-button memo-button-primary">发布</button>
                 </div>
             </div>
         </div>
@@ -277,17 +302,6 @@
         <!-- 菜单项将由 JS 动态生成 -->
     </div>
 
-    <!-- 批量操作悬浮条 -->
-    <div id="batch-floating-bar" class="batch-floating-bar">
-        <div class="batch-bar-header">
-            <span id="batch-bar-count">已选择 0 项</span>
-            <button id="batch-bar-clear" class="memo-button memo-button-small">清空</button>
-        </div>
-        <div id="batch-bar-items" class="batch-bar-items">
-            <!-- 选中项将在这里显示 -->
-        </div>
-    </div>
-
     <!-- 日记工作台 (Diary Workbench) 顶格模态框 -->
     <div id="workbench-overlay" class="workbench-overlay" style="display: none;">
         <div class="workbench-container" role="dialog" aria-modal="true" aria-labelledby="workbench-title">
@@ -297,7 +311,9 @@
                     <span id="workbench-count-tag" class="workbench-count-tag">共引用 0 篇日记</span>
                 </div>
                 <div class="header-right">
-                    <button id="workbench-fullread-btn" class="memo-button" title="在独立阅读窗口中查看所有引用日记的完整内容">完整阅读</button>
+                    <button type="button" id="workbench-fullread-btn" class="memo-icon-btn" title="完整阅读：在独立窗口中查看所有引用日记" aria-label="完整阅读">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path></svg>
+                    </button>
                     <button id="close-workbench-btn" class="modal-close-btn" title="关闭" aria-label="关闭">&times;</button>
                 </div>
             </div>
@@ -363,41 +379,50 @@
     <div id="assoc-config-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content modal-content-form" role="dialog" aria-modal="true" aria-labelledby="assoc-config-title">
             <div class="modal-header">
-                <div>
-                    <h3 id="assoc-config-title">联想参数</h3>
-                    <p class="modal-subtitle">从这篇日记出发，在选定的文件夹里查找相关记忆。</p>
+                <div class="modal-head-copy">
+                    <h3 id="assoc-config-title">联想</h3>
+                    <p id="assoc-source-name" class="modal-subtitle"></p>
                 </div>
-                <button id="close-assoc-config-btn" class="modal-close-btn" title="关闭" aria-label="关闭">&times;</button>
+                <div class="modal-head-actions">
+                    <div class="memo-popover-anchor">
+                        <button type="button" id="assoc-options-btn" class="memo-icon-btn" title="联想参数" aria-label="联想参数" aria-haspopup="dialog" aria-expanded="false" aria-controls="assoc-options-popover">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M20 7h-9"></path><path d="M14 17H4"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+                        </button>
+                        <div id="assoc-options-popover" class="memo-popover memo-popover-form" role="dialog" aria-label="联想参数" hidden>
+                            <div class="field">
+                                <div class="field-label-row">
+                                    <label class="field-label" for="input-assoc-k">联想深度</label>
+                                    <span id="label-k-value" class="field-value">10</span>
+                                </div>
+                                <input type="range" id="input-assoc-k" min="1" max="100" value="10" class="memo-range">
+                                <p class="field-help">返回的关联日记数量上限</p>
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="input-assoc-boost">联想强度</label>
+                                <input type="text" id="input-assoc-boost" value="0.6+" class="memo-input" placeholder="0.6 或 0.6+">
+                                <p class="field-help">输入数值如 0.6；加 + 号启用浪潮V8测地线深度追忆引擎</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" id="close-assoc-config-btn" class="modal-close-btn" title="关闭" aria-label="关闭">&times;</button>
+                </div>
             </div>
             <div class="modal-body">
-                <div class="form-grid">
-                    <div class="field">
-                        <div class="field-label-row">
-                            <label class="field-label" for="input-assoc-k">联想深度 <span class="field-hint">Recall Count</span></label>
-                            <span id="label-k-value" class="field-value">10</span>
-                        </div>
-                        <input type="range" id="input-assoc-k" min="1" max="100" value="10" class="memo-range">
-                        <p class="field-help">返回的关联日记数量上限</p>
+                <div class="field">
+                    <div class="field-label-row">
+                        <span class="field-label">文件夹范围</span>
+                        <input type="text" id="assoc-folder-search" placeholder="筛选文件夹" class="memo-input memo-input-compact" aria-label="筛选文件夹">
                     </div>
-                    <div class="field">
-                        <label class="field-label" for="input-assoc-boost">联想强度 <span class="field-hint">Tag Boost</span></label>
-                        <input type="text" id="input-assoc-boost" value="0.6+" class="memo-input" placeholder="0.6 或 0.6+">
-                        <p class="field-help">输入数值如 0.6；加 + 号启用浪潮V8测地线深度追忆引擎</p>
+                    <div id="assoc-folder-tags" class="folder-tag-cloud">
+                        <!-- 动态生成 -->
                     </div>
-                    <div class="field field-wide">
-                        <div class="field-label-row">
-                            <span class="field-label">文件夹范围</span>
-                            <input type="text" id="assoc-folder-search" placeholder="筛选文件夹" class="memo-input memo-input-compact" aria-label="筛选文件夹">
-                        </div>
-                        <div id="assoc-folder-tags" class="folder-tag-cloud">
-                            <!-- 动态生成 -->
-                        </div>
-                    </div>
+                    <p id="assoc-scope-hint" class="field-help"></p>
                 </div>
             </div>
-            <div class="modal-footer modal-footer-end">
+            <div class="modal-footer">
+                <p id="assoc-summary" class="modal-footer-note"></p>
                 <div class="modal-right-actions">
-                    <button id="start-assoc-btn" class="memo-button memo-button-primary">开始联想</button>
+                    <button type="button" id="start-assoc-btn" class="memo-button memo-button-primary">开始联想</button>
                 </div>
             </div>
         </div>
@@ -466,10 +491,18 @@
                 </div>
             </div>
             <div class="panel-footer">
-                <button id="node-edit-btn" class="memo-button">编辑内容</button>
-                <button id="node-relink-btn" class="memo-button">继续联想</button>
-                <button id="node-add-workbench-btn" class="memo-button">加入工作台</button>
-                <button id="node-delete-btn" class="memo-button memo-button-danger-text">删除</button>
+                <button type="button" id="node-edit-btn" class="memo-icon-btn" title="编辑内容" aria-label="编辑内容">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path><path d="m15 5 4 4"></path></svg>
+                </button>
+                <button type="button" id="node-add-workbench-btn" class="memo-icon-btn" title="加入工作台" aria-label="加入工作台">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M12 8v8"></path><path d="M8 12h8"></path></svg>
+                    <span id="node-add-workbench-count" class="memo-icon-badge" hidden></span>
+                </button>
+                <button type="button" id="node-delete-btn" class="memo-icon-btn memo-icon-btn-danger" title="删除" aria-label="删除">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+                <span class="panel-footer-spacer"></span>
+                <button type="button" id="node-relink-btn" class="memo-button memo-button-primary">继续联想</button>
             </div>
         </div>
 

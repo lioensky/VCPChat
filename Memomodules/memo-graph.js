@@ -33,19 +33,26 @@ async function openAssociationConfig(memo, isAppend = false) {
     const tagCloud = document.getElementById('assoc-folder-tags');
     const searchInput = document.getElementById('assoc-folder-search');
     tagCloud.innerHTML = '';
+    closeAllPopovers();
 
     if (searchInput) searchInput.value = '';
+    const sourceTitle = getMemoDisplayTitle(memo.name);
+    document.getElementById('assoc-source-name').textContent = `从「${sourceTitle}」出发`;
 
     try {
         const data = await apiFetch('/folders');
         const folders = data.folders.filter(f => f !== 'MusicDiary' && !hiddenFolders.has(f));
 
         const folderTags = folders.map(folder => {
-            const tag = document.createElement('div');
+            const tag = document.createElement('button');
+            tag.type = 'button';
             tag.className = 'folder-tag';
             tag.textContent = folder;
+            tag.setAttribute('aria-pressed', 'false');
             tag.onclick = () => {
-                tag.classList.toggle('active');
+                const active = tag.classList.toggle('active');
+                tag.setAttribute('aria-pressed', String(active));
+                updateAssocScopeHint();
             };
             tagCloud.appendChild(tag);
             return tag;
@@ -57,21 +64,42 @@ async function openAssociationConfig(memo, isAppend = false) {
                 const term = e.target.value.toLowerCase().trim();
                 folderTags.forEach(tag => {
                     const visible = tag.textContent.toLowerCase().includes(term);
-                    tag.style.display = visible ? 'block' : 'none';
+                    tag.style.display = visible ? '' : 'none';
                 });
             };
         }
 
+        updateAssocSummary();
+        updateAssocScopeHint();
         modal.style.display = 'flex';
     } catch (e) {
         alert('加载文件夹列表失败: ' + e.message);
     }
 }
 
+// 参数面板收起时，底部摘要显示当前深度和强度
+function updateAssocSummary() {
+    const summary = document.getElementById('assoc-summary');
+    if (!summary) return;
+    const k = document.getElementById('input-assoc-k').value;
+    const boost = document.getElementById('input-assoc-boost').value.trim() || '默认';
+    summary.textContent = `深度 ${k} · 强度 ${boost}`;
+}
+
+function updateAssocScopeHint() {
+    const hint = document.getElementById('assoc-scope-hint');
+    if (!hint) return;
+    const count = document.querySelectorAll('#assoc-folder-tags .folder-tag.active').length;
+    const sourceFolder = graphState.sourceMemo?.folderName || currentFolder;
+    hint.textContent = count > 0
+        ? `在 ${count} 个文件夹中联想`
+        : `未选择时只在「${sourceFolder}」中联想`;
+}
+
 async function startAssociation() {
     const k = parseInt(document.getElementById('input-assoc-k').value);
     const boost = document.getElementById('input-assoc-boost').value.trim();
-    let selectedTags = Array.from(document.querySelectorAll('.folder-tag.active')).map(t => t.textContent);
+    let selectedTags = Array.from(document.querySelectorAll('#assoc-folder-tags .folder-tag.active')).map(t => t.textContent);
     
     // 保底逻辑：如果用户没有选择任何文件夹，则默认使用当前日记所在的文件夹
     if (selectedTags.length === 0 && graphState.sourceMemo) {
@@ -82,6 +110,7 @@ async function startAssociation() {
         }
     }
     
+    closeAllPopovers();
     document.getElementById('assoc-config-modal').style.display = 'none';
     
     // 显示视图并初始化 Canvas
@@ -593,10 +622,17 @@ function updateGraphStats() {
     }
     document.getElementById('node-count-stat').textContent = statText;
 
-    // 更新详情面板中的“加入工作台”按钮文本
+    // 更新详情面板中“加入工作台”图标的提示与数量角标
     const addBtn = document.getElementById('node-add-workbench-btn');
     if (addBtn) {
-        addBtn.textContent = selectedCount > 1 ? `🛠️ 批量加入工作台 (${selectedCount})` : `🛠️ 加入工作台`;
+        const label = selectedCount > 1 ? `批量加入工作台（${selectedCount}）` : '加入工作台';
+        addBtn.title = label;
+        addBtn.setAttribute('aria-label', label);
+        const badge = document.getElementById('node-add-workbench-count');
+        if (badge) {
+            badge.textContent = String(selectedCount);
+            badge.hidden = selectedCount <= 1;
+        }
         addBtn.onclick = async () => {
             if (window.DiaryWorkbench) {
                 const nodesToAdd = selectedCount > 0 ? Array.from(graphState.selectedNodes) : [graphState.selectedNode];
@@ -612,8 +648,11 @@ async function selectGraphNode(node) {
     graphState.selectedNode = node;
     updateGraphStats();
     
-    document.getElementById('detail-title').textContent = node.name;
-    document.getElementById('detail-path').textContent = node.path;
+    // 标题只显示日记名，完整路径放进提示；副标题只写所在文件夹，避免把文件名再显示一遍
+    const detailTitle = document.getElementById('detail-title');
+    detailTitle.textContent = getMemoDisplayTitle(node.name);
+    detailTitle.title = node.path;
+    document.getElementById('detail-path').textContent = node.folder || '';
     document.getElementById('detail-score').textContent = node.isSource ? "1.000 (源)" : node.score.toFixed(3);
     
     const tagList = document.getElementById('detail-tags');

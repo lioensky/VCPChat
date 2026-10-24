@@ -289,9 +289,8 @@ Date:「始」${date}「末」,`;
         }
 
         const fullReadBtn = document.getElementById('workbench-fullread-btn');
-        const originalText = fullReadBtn.textContent;
         fullReadBtn.disabled = true;
-        fullReadBtn.textContent = '📖 加载中...';
+        fullReadBtn.setAttribute('aria-busy', 'true');
 
         try {
             const sections = [];
@@ -327,7 +326,7 @@ Date:「始」${date}「末」,`;
             alert('完整阅读失败: ' + error.message);
         } finally {
             fullReadBtn.disabled = false;
-            fullReadBtn.textContent = originalText;
+            fullReadBtn.removeAttribute('aria-busy');
         }
     },
 

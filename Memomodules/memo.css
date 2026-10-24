@@ -479,45 +479,300 @@ html[data-vcp-embedded-app="true"] .shell {
     font-size: 12px;
 }
 
+/* 图标按钮：16px 线性图标，30px 点击区，文字说明放在 title / aria-label */
+.memo-icon-btn {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--memo-radius-sm);
+    background: transparent;
+    color: var(--memo-ink-3);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.memo-icon-btn:hover:not(:disabled),
+.memo-icon-btn[aria-expanded="true"] {
+    background: var(--memo-hover);
+    color: var(--memo-ink);
+}
+
+.memo-icon-btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--memo-danger) 10%, transparent);
+    color: var(--memo-danger);
+}
+
+.memo-icon-btn-sm {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--memo-radius-xs);
+}
+
+.memo-icon-badge {
+    position: absolute;
+    top: 1px;
+    right: 0;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 7px;
+    background: var(--memo-ink);
+    color: var(--memo-panel);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 14px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.memo-icon-badge[hidden] {
+    display: none;
+}
+
+.toolbar-divider {
+    flex: 0 0 auto;
+    width: 0.5px;
+    height: 16px;
+    margin: 0 4px;
+    background: var(--memo-line-3);
+}
+
+.memo-link-btn {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--memo-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.memo-link-btn:hover {
+    color: var(--memo-ink);
+}
+
+/* ---------- 弹出层：菜单与参数面板 ---------- */
+
+.memo-popover-anchor {
+    position: relative;
+    display: inline-flex;
+}
+
+.memo-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    max-height: min(360px, 60vh);
+    padding: 6px;
+    border: 0.5px solid var(--memo-line-3);
+    border-radius: var(--memo-radius-md);
+    background: var(--memo-panel);
+    box-shadow: 0 12px 32px var(--memo-shadow);
+    overflow-y: auto;
+    text-align: left;
+}
+
+.memo-popover[hidden] {
+    display: none;
+}
+
+.memo-popover-form {
+    gap: 14px;
+    width: min(300px, calc(100vw - 48px));
+    padding: 14px;
+}
+
+.memo-popover-form .field {
+    gap: 6px;
+}
+
+.memo-popover-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px 8px;
+    color: var(--memo-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.memo-menu-label {
+    padding: 4px 8px;
+    color: var(--memo-ink-4);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.memo-menu-item {
+    display: block;
+    width: 100%;
+    height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--memo-radius-sm);
+    background: transparent;
+    color: var(--memo-ink);
+    font-size: 13px;
+    line-height: 32px;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.memo-menu-item:hover,
+.memo-menu-item:focus-visible {
+    background: var(--memo-hover);
+}
+
+.memo-menu-empty {
+    padding: 8px;
+    color: var(--memo-ink-3);
+    font-size: 13px;
+    line-height: 20px;
+}
+
 /* ---------- 批量操作 ---------- */
 
+/* 批量模式下工具条替换页头按钮，选择数只在这里显示一次 */
 .batch-actions {
-    display: flex;
-    flex-wrap: wrap;
+    display: none;
+    flex: 0 0 auto;
     align-items: center;
-    gap: 8px;
-    padding: 8px 8px 8px 14px;
-    border-radius: var(--memo-radius-md);
-    background: var(--memo-surface);
+    gap: 2px;
 }
 
-.batch-count {
-    color: var(--memo-ink);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
+body.memo-batch-mode .batch-actions {
+    display: flex;
 }
 
-.batch-move {
+body.memo-batch-mode .header-actions {
+    display: none;
+}
+
+.batch-actions .memo-button-primary {
+    margin-left: 4px;
+}
+
+.batch-count-btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    margin-left: 8px;
+    gap: 4px;
+    height: 30px;
+    padding: 0 8px 0 10px;
+    border: 0;
+    border-radius: var(--memo-radius-sm);
+    background: transparent;
+    color: var(--memo-ink);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.batch-count-btn svg {
+    color: var(--memo-ink-4);
+    transition: transform 0.15s ease;
+}
+
+.batch-count-btn:hover:not(:disabled),
+.batch-count-btn[aria-expanded="true"] {
+    background: var(--memo-hover);
+}
+
+.batch-count-btn[aria-expanded="true"] svg {
+    transform: rotate(180deg);
+}
+
+.batch-count-btn:disabled {
     color: var(--memo-ink-3);
 }
 
-.batch-actions-spacer {
-    flex: 1 1 auto;
+.batch-selection-popover {
+    width: min(300px, calc(100vw - 48px));
 }
 
-.memo-select {
-    max-width: 220px;
-    height: 30px;
-    padding: 0 10px;
-    border: 0.5px solid var(--memo-line-3);
-    border-radius: var(--memo-radius-sm);
-    background: var(--memo-panel);
+.batch-bar-items {
+    display: flex;
+    flex-direction: column;
+}
+
+.batch-item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px 6px 8px;
+}
+
+.batch-item-row + .batch-item-row {
+    border-top: 0.5px solid var(--memo-line-2);
+}
+
+.batch-item-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.batch-item-row .item-name {
     color: var(--memo-ink);
     font-size: 13px;
+    line-height: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.batch-item-row .item-folder {
+    color: var(--memo-ink-4);
+    font-size: 12px;
+    line-height: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---------- 分段切换 ---------- */
+
+.memo-segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--memo-radius-sm);
+    background: var(--memo-hover);
+}
+
+.memo-segment {
+    height: 26px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--memo-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.memo-segment:hover {
+    color: var(--memo-ink);
+}
+
+.memo-segment[aria-checked="true"] {
+    background: var(--memo-panel);
+    box-shadow: 0 0 0 0.5px var(--memo-line-3);
+    color: var(--memo-ink);
+    font-weight: 500;
 }
 
 /* ---------- 搜索范围与搜索框 ---------- */
@@ -590,8 +845,7 @@ html[data-vcp-embedded-app="true"] .shell {
 
 .search-box input:focus,
 .folder-search-input:focus,
-.memo-input:focus,
-.memo-select:focus {
+.memo-input:focus {
     border-color: var(--memo-accent);
     box-shadow: 0 0 0 2px var(--memo-focus-ring);
     outline: none;
@@ -628,7 +882,17 @@ html[data-vcp-embedded-app="true"] .shell {
     min-width: 0;
 }
 
+/* 标题行：标题在左，时间（跨文件夹时带文件夹名）在右，每行只出现一次 */
+.memo-card-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    min-width: 0;
+}
+
 .memo-card h3 {
+    flex: 1 1 auto;
+    min-width: 0;
     margin: 0;
     color: var(--memo-ink);
     font-size: 14px;
@@ -639,40 +903,16 @@ html[data-vcp-embedded-app="true"] .shell {
     white-space: nowrap;
 }
 
-.memo-card h3.structured {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-.memo-format-tag {
-    flex: 0 0 auto;
-    height: 18px;
-    padding: 0 6px;
-    border-radius: var(--memo-radius-xs);
-    background: var(--memo-hover);
-    color: var(--memo-ink-2);
-    font-family: var(--memo-mono);
-    font-size: 11px;
-    font-weight: 400;
-    line-height: 18px;
-}
-
-.memo-readable-title {
+.memo-card-meta {
     flex: 0 1 auto;
-    min-width: 0;
+    max-width: 50%;
+    color: var(--memo-ink-4);
+    font-size: 12px;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.memo-readable-time {
-    flex: 0 0 auto;
-    color: var(--memo-ink-4);
-    font-size: 12px;
-    font-weight: 400;
-    font-variant-numeric: tabular-nums;
 }
 
 .memo-card .preview {
@@ -687,19 +927,6 @@ html[data-vcp-embedded-app="true"] .shell {
     -webkit-line-clamp: 2;
 }
 
-.memo-card .meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    margin-top: 2px;
-    color: var(--memo-ink-4);
-    font-size: 12px;
-    line-height: 18px;
-    font-variant-numeric: tabular-nums;
-}
-
-.memo-folder-chip,
 .workbench-memo-card .folder-tag,
 .tag-item {
     display: inline-flex;
@@ -718,25 +945,10 @@ html[data-vcp-embedded-app="true"] .shell {
     white-space: nowrap;
 }
 
-.association-btn {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 4px;
-    height: 26px;
-    margin-top: 2px;
-    padding: 0 10px;
-    border: 0.5px solid var(--memo-line-3);
-    border-radius: var(--memo-radius-sm);
-    background: transparent;
-    color: var(--memo-ink-3);
-    font-size: 12px;
-    transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.association-btn:hover {
-    background: var(--memo-hover);
-    color: var(--memo-ink);
+/* 行尾联想图标：与标题行居中对齐 */
+.memo-card .association-btn {
+    margin: -4px 0 0;
+    color: var(--memo-ink-4);
 }
 
 /* 批量模式：行首选择框 */
@@ -940,6 +1152,34 @@ html[data-vcp-embedded-app="true"] .shell {
     justify-content: flex-end;
 }
 
+.modal-head-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.modal-head-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 页脚左侧的一行摘要或校验提示 */
+.modal-footer-note {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    color: var(--memo-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.modal-footer-note[data-tone="error"] {
+    color: var(--memo-danger);
+}
+
 .modal-left-actions,
 .modal-right-actions {
     display: flex;
@@ -1066,6 +1306,7 @@ input[type="date"].memo-input {
     padding: 0 10px;
     border: 0.5px solid var(--memo-line-3);
     border-radius: var(--memo-radius-sm);
+    background: transparent;
     color: var(--memo-ink-2);
     font-size: 12px;
     line-height: 25px;
@@ -1208,15 +1449,6 @@ input[type="date"].memo-input {
     gap: 4px;
 }
 
-.editor-toggle-preview-btn .expand-icon,
-.editor-container.preview-collapsed .editor-toggle-preview-btn .collapse-icon {
-    display: none;
-}
-
-.editor-container.preview-collapsed .editor-toggle-preview-btn .expand-icon {
-    display: block;
-}
-
 .editor-body {
     display: flex;
     flex: 1 1 auto;
@@ -1252,6 +1484,15 @@ input[type="date"].memo-input {
     opacity: 0;
     overflow: hidden;
     pointer-events: none;
+}
+
+/* 预览视图：隐藏源码，渲染区占满 */
+.editor-container.preview-only .editor-textarea {
+    display: none;
+}
+
+.editor-container.preview-only .editor-preview {
+    border-left: 0;
 }
 
 .editor-footer {
@@ -1414,88 +1655,6 @@ input[type="date"].memo-input {
 
 .context-menu-item.danger:hover {
     background: color-mix(in srgb, var(--memo-danger) 10%, transparent);
-}
-
-/* ---------- 跨文件夹选择浮层 ---------- */
-
-.batch-floating-bar {
-    position: fixed;
-    right: 20px;
-    bottom: 20px;
-    z-index: 9500;
-    display: none;
-    flex-direction: column;
-    width: 260px;
-    max-height: 300px;
-    border-radius: var(--memo-radius-lg);
-    background: var(--memo-panel);
-    box-shadow: 0 0 0 0.5px var(--memo-line-3), 0 8px 28px var(--memo-shadow);
-    overflow: hidden;
-}
-
-.batch-bar-header {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 10px 10px 10px 14px;
-    border-bottom: 0.5px solid var(--memo-line-2);
-    font-weight: 500;
-}
-
-.batch-bar-items {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 6px;
-    overflow-y: auto;
-}
-
-.batch-item-tag {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    padding: 6px 30px 6px 8px;
-    border-radius: var(--memo-radius-sm);
-}
-
-.batch-item-tag .item-name {
-    font-size: 13px;
-    line-height: 20px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.batch-item-tag .item-folder {
-    color: var(--memo-ink-4);
-    font-size: 11px;
-    line-height: 16px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.batch-item-remove {
-    position: absolute;
-    top: 50%;
-    right: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: var(--memo-radius-xs);
-    color: var(--memo-ink-3);
-    font-size: 15px;
-    transform: translateY(-50%);
-    cursor: pointer;
-}
-
-.batch-item-remove:hover {
-    background: var(--memo-hover);
-    color: var(--memo-ink);
 }
 
 /* ---------- 工作台 ---------- */
@@ -2046,17 +2205,18 @@ input[type="date"].memo-input {
     font-size: 12px;
 }
 
+/* 节点操作：图标在左，继续联想是唯一主按钮 */
 .panel-footer {
-    display: grid;
+    display: flex;
     flex: 0 0 auto;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    padding: 12px 18px 16px;
+    align-items: center;
+    gap: 2px;
+    padding: 12px 18px 16px 14px;
     border-top: 0.5px solid var(--memo-line-2);
 }
 
-.panel-footer .memo-button {
-    padding: 0 8px;
+.panel-footer-spacer {
+    flex: 1 1 auto;
 }
 
 /* ---------- 滚动条 ---------- */
@@ -2142,6 +2302,12 @@ input[type="date"].memo-input {
 
     .page-head-row {
         flex-direction: column;
+    }
+
+    /* 窄屏下工具栏贴左，已选项弹层改为向右展开 */
+    .batch-selection-popover {
+        right: auto;
+        left: 0;
     }
 
     .memo-grid:has(.memo-card) {
