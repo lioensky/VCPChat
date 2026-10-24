@@ -45,7 +45,8 @@ function registerIpc(ctx) {
             pet.outfit = assets.outfit?.id || null;
             if (pet.kind !== assets.outfit?.kind) ctx.sizing.applyAspect(pet, null, assets.outfit?.kind);
         }
-        return { ...assets, session: ctx.sessions.get(pet.agentId) };
+        const saved = (await ctx.readPetState())[pet.agentId];
+        return { ...assets, wardrobeSelection: saved?.wardrobes?.[assets.outfit?.id] || {}, session: ctx.sessions.get(pet.agentId) };
     });
     ipcMain.on('deskpet:preview-ready', (event, report) => {
         ctx.previews?.ready(event.sender, report && typeof report === 'object' ? report : null);
@@ -55,6 +56,7 @@ function registerIpc(ctx) {
         const pet = ctx.petFromEvent(event);
         if (!pet) return;
         pet.ready = true;
+        ctx.menus.pushWardrobe(pet).catch((error) => console.warn('[DeskPet] wardrobe restore failed:', error.message));
         // 藏着的时候重载（换装、崩溃恢复）：新页面默认在跑，告诉它停下
         if (!pet.win.isDestroyed() && !pet.win.isVisible()) pet.win.webContents.send('deskpet:visibility', false);
         const pending = pet.pendingToggle;

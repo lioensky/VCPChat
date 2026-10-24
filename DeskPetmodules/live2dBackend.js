@@ -6,6 +6,7 @@ import { VOWELS } from './voice.js';
 import { shapeGaze, limitGaze } from './gaze.js';
 import { createHeadPoseLimiter } from './headPoseLimits.js';
 import { createLifeMotion } from './lifeMotion.js';
+import { createWardrobeLayer } from './live2dWardrobe.js';
 import { zoneOf, hasZones } from './hitAreas.js';
 import { pickExpression as mapExpression, pickMotion as mapMotion, pickTap, modelNameOf } from './expressionMap.js';
 import { paramTargets } from './emotionLook.js';
@@ -109,10 +110,13 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
     const modelName = modelNameOf(assets.live2d.modelUrl);
     const internal = model.internalModel;
     const coreModel = internal.coreModel;
+    const wardrobeGroups = assets.live2d.wardrobe || [];
+    const wardrobe = createWardrobeLayer(coreModel, id => internal.getIdSafe(id), wardrobeGroups, assets.wardrobeSelection);
+    const wardrobeNames = new Set(wardrobeGroups.flatMap(group => group.items.map(item => item.id.split('/').pop().replace(/\.exp3\.json$/i, ''))));
     const limitHeadPose = createHeadPoseLimiter(coreModel, (id) => internal.getIdSafe(id));
     const paramIds = new Set(coreModel?._model?.parameters?.ids || coreModel?.getModel?.()?.parameters?.ids || []);
     const expressionNames = (internal.motionManager?.expressionManager?.definitions || [])
-        .map((d) => d.Name || d.name).filter(Boolean);
+        .map((d) => d.Name || d.name).filter(name => name && !wardrobeNames.has(name));
     const motionGroups = Object.keys(internal.motionManager?.definitions || {});
     // 模型标了头的点击区就按它判断点在哪（DeskPetmodules/hitAreas.js）
     const useZones = hasZones(Object.keys(internal.hitAreas || {}));
@@ -143,6 +147,7 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
     internal.updateNaturalMovements = (now, dt) => {
         naturalMovements(now, dt);
         addLifeAndEmotion();
+        wardrobe.apply();
         // 动作、表情和光标方向合成后统一收小，物理也只接收小角度的头部运动。
         limitHeadPose(profile.headPoseLimits);
     };
@@ -191,6 +196,7 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
     return {
         kind: 'live2d',
         probe: alphaProbe.probe,
+        setWardrobe: wardrobe.setSelection,
         // 视线跟光标：不用模型自带的 focus（它只取方向，光标在上面就仰到最大），按离头多远、往哪边转多少
         focus(x, y) {
             const h = figure.head();

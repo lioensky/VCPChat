@@ -110,6 +110,13 @@ async function start() {
     }
     const backend = ctx.backend;
 
+    const disposeWardrobe = api.onWardrobe?.((payload) => {
+        if (payload?.outfitId !== assets.outfit?.id) return;
+        backend.setWardrobe?.(payload.selection);
+        backend.setActive(true);
+    });
+    window.addEventListener('pagehide', () => disposeWardrobe?.(), { once: true });
+
     // 朗读时表情跟着念到的句子换（见 speech），导演的新帧先不上脸
     ctx.director = createEmotionDirector({ onFrame: (next) => { if (!ctx.speech.holdsFrames()) ctx.applyFrame(next); } });
     ctx.startReactions();

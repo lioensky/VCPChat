@@ -21,6 +21,7 @@
 const path = require('path');
 const fs = require('fs-extra');
 const { readCodexPet } = require('./codexPet');
+const { modelInfo, fallbackName } = require('./live2dWardrobe');
 
 const ROOT_ID = ':root';
 const PORTRAIT_ID = ':portrait';
@@ -105,20 +106,26 @@ function collectPortraits(dir, files, { strict }) {
     return portraits.default ? portraits : null;
 }
 
-async function readOutfitInfo(dir) {
+async function readOutfitInfo(dir, live2d = null) {
+    const modelName = live2d ? (await modelInfo(live2d)).name : '';
     for (const name of ['outfit.json', 'deskpet.json', 'pet.json']) {
         try {
             const info = await fs.readJson(path.join(dir, name));
             if (info && typeof info === 'object') {
                 return {
-                    name: typeof (info.displayName || info.name) === 'string' ? (info.displayName || info.name).trim().slice(0, 40) : null,
+                    name: (() => {
+                        const configured = typeof (info.displayName || info.name) === 'string' ? (info.displayName || info.name).trim() : '';
+                        // 旧导入器自动写的是目录名；这种不是用户命名，优先用模型配置。
+                        if (!configured || configured === path.basename(dir)) return modelName || (configured ? fallbackName(configured) : null);
+                        return configured.slice(0, 80);
+                    })(),
                     order: Number.isFinite(info.order) ? info.order : null,
                     description: typeof info.description === 'string' && info.description.trim() ? info.description.trim().slice(0, 120) : null,
                 };
             }
         } catch { /* 没有或写坏了就当没有 */ }
     }
-    return { name: null, order: null, description: null };
+    return { name: modelName || null, order: null, description: null };
 }
 
 function kindOf(outfit, hasCore) {
@@ -153,7 +160,7 @@ async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, buil
     const outfits = [];
     const root = await scanFolder(deskpetDir, { root: true });
     if (root) {
-        const info = await readOutfitInfo(deskpetDir);
+        const info = await readOutfitInfo(deskpetDir, root.live2d);
         outfits.push({ id: ROOT_ID, name: info.name || '默认', description: info.description, ...root });
     }
     const folders = (await readDir(deskpetDir)).filter((e) => e.isDirectory() && !e.name.startsWith('.'));
@@ -162,8 +169,8 @@ async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, buil
         const dir = path.join(deskpetDir, entry.name);
         const scanned = await scanFolder(dir);
         if (!scanned) continue;
-        const info = await readOutfitInfo(dir);
-        found.push({ id: entry.name, name: info.name || entry.name, order: info.order, description: info.description, ...scanned });
+        const info = await readOutfitInfo(dir, scanned.live2d);
+        found.push({ id: entry.name, name: info.name || fallbackName(entry.name), order: info.order, description: info.description, ...scanned });
     }
     found.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name, 'zh') || a.id.localeCompare(b.id));
     for (const { order: _order, ...outfit } of found.slice(0, MAX_OUTFITS)) outfits.push(outfit);
@@ -180,7 +187,7 @@ async function listOutfits(agentRoot, { hasCore = false, builtInDir = null, buil
     for (const preset of bundled) {
         const scanned = await scanFolder(preset.dir);
         if (!scanned) continue;
-        const info = await readOutfitInfo(preset.dir);
+        const info = await readOutfitInfo(preset.dir, scanned.live2d);
         outfits.push({
             id: preset.id,
             name: info.name || preset.name,
@@ -263,4 +270,5 @@ module.exports = {
     isOutfitId,
     collectPortraits,
     findBySuffix,
+    readOutfitInfo,
 };

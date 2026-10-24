@@ -230,7 +230,10 @@ function createSettingsPage({ electron, paths, controls, previews, pets, core })
             }
             if (!(await fs.pathExists(path.join(target, 'outfit.json')))) {
                 const pet = await require('./codexPet').readCodexPet(target);
-                await fs.writeJson(path.join(target, 'outfit.json'), { name: pet?.name || name, ...(pet?.description ? { description: pet.description } : {}) }, { spaces: 2 });
+                const model = await outfitStore.findBySuffix(target, '.model3.json');
+                const info = await outfitStore.readOutfitInfo(target, model);
+                const { fallbackName } = require('./live2dWardrobe');
+                await fs.writeJson(path.join(target, 'outfit.json'), { name: pet?.name || info.name || fallbackName(plan.name || name), ...(pet?.description ? { description: pet.description } : {}) }, { spaces: 2 });
             }
             if (!(await outfitStore.inspectFolder(target))) {
                 await fs.remove(target);

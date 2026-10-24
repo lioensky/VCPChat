@@ -356,7 +356,7 @@ class SovitsTTS {
                 {
                     id: MIMO_NATURAL_CONTROL_VOICE,
                     voice: MIMO_NATURAL_CONTROL_VOICE,
-                    displayName: '自然语言控制 · 不发送预置 voice',
+                    displayName: '自然语言导演模式控制',
                     type: 'voicedesign'
                 },
                 ...cloneFiles.map(filename => ({

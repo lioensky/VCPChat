@@ -5,6 +5,7 @@
 const outfitStore = require('./outfits');
 const { outfitSummary } = require('./petAssets');
 const { getAgentMoodStore } = require('../agentMood');
+const { readWardrobe, normalizeSelection } = require('./live2dWardrobe');
 
 // ---- 持续心情 ----------------------------------------------------------------
 
@@ -52,6 +53,52 @@ function createPetMenus(ctx) {
         }));
     }
 
+    let wardrobeWrites = Promise.resolve();
+
+    async function pushWardrobe(pet) {
+        const outfitId = pet.outfit;
+        const saved = (await ctx.readPetState())[pet.agentId];
+        if (pet.outfit !== outfitId || pet.win.isDestroyed() || !pet.ready) return;
+        pet.win.webContents.send('deskpet:wardrobe', { outfitId, selection: saved?.wardrobes?.[outfitId] || {} });
+    }
+
+    function choosePart(pet, outfit, groupId, itemId, enabled = true) {
+        wardrobeWrites = wardrobeWrites.then(async () => {
+            if (pet.win.isDestroyed() || pet.outfit !== outfit.id) return;
+            const groups = await readWardrobe(outfit.live2d);
+            const group = groups.find(g => g.id === groupId);
+            if (!group || (itemId !== null && !group.items.some(item => item.id === itemId))) return;
+            const saved = (await ctx.readPetState())[pet.agentId] || {};
+            const selection = normalizeSelection(groups, saved.wardrobes?.[outfit.id]);
+            if (itemId === null) selection[groupId] = [];
+            else if (group.multiple) selection[groupId] = enabled
+                ? [...new Set([...selection[groupId], itemId])]
+                : selection[groupId].filter(id => id !== itemId);
+            else selection[groupId] = [itemId];
+            const wardrobes = Object.fromEntries(Object.entries(saved.wardrobes || {}).filter(([id]) => id !== outfit.id).slice(-39));
+            wardrobes[outfit.id] = selection;
+            await ctx.savePetState(pet.agentId, { wardrobes });
+            await pushWardrobe(pet);
+        }).catch(error => console.warn('[DeskPet] wardrobe switch failed:', error.message));
+        return wardrobeWrites;
+    }
+
+    function wardrobeMenu(pet, outfit, groups, saved) {
+        const selection = normalizeSelection(groups, saved);
+        return groups.map(group => ({
+            label: group.name,
+            submenu: [
+                { label: '默认', type: group.multiple ? 'checkbox' : 'radio', checked: selection[group.id].length === 0,
+                    click: () => choosePart(pet, outfit, group.id, null) },
+                ...group.items.map(item => ({
+                    label: item.name, type: group.multiple ? 'checkbox' : 'radio',
+                    checked: selection[group.id].includes(item.id),
+                    click: menuItem => choosePart(pet, outfit, group.id, item.id, menuItem.checked),
+                })),
+            ],
+        }));
+    }
+
     /** 托盘菜单里的「桌宠」一项（main.js 建托盘菜单时调用）。 */
     function trayMenuItems() {
         if (!ctx.controls) return [];
@@ -91,10 +138,19 @@ function createPetMenus(ctx) {
         // 读换装列表期间桌宠可能已经被关掉了。
         if (pet.win.isDestroyed()) return;
         pet.outfits = outfits.map(outfitSummary);
+        const current = outfits.find(outfit => outfit.id === pet.outfit);
+        const groups = current?.live2d ? await readWardrobe(current.live2d) : [];
+        const saved = groups.length ? (await ctx.readPetState())[pet.agentId] : null;
+        if (pet.win.isDestroyed()) return;
+        const submenu = groups.length ? [
+            { label: '形象', submenu: outfitMenu(pet, outfits) },
+            { type: 'separator' },
+            ...wardrobeMenu(pet, current, groups, saved?.wardrobes?.[current.id]),
+        ] : outfitMenu(pet, outfits);
         Menu.buildFromTemplate([
             { label: agent?.name || '未知助手', icon: getNameIcon(), enabled: true, click: () => {} },
             { type: 'separator' },
-            { label: '换装', enabled: outfits.length > 1, submenu: outfitMenu(pet, outfits) },
+            { label: '换装', enabled: groups.length > 0 || outfits.length > 1, submenu },
             voiceItem,
             {
                 label: '免打扰',
@@ -117,7 +173,7 @@ function createPetMenus(ctx) {
         ]).popup({ window: pet.win });
     }
 
-    return { outfitMenu, trayMenuItems, showContextMenu, readMood };
+    return { outfitMenu, wardrobeMenu, choosePart, pushWardrobe, trayMenuItems, showContextMenu, readMood };
 }
 
 module.exports = { createPetMenus, readMood };

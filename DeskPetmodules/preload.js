@@ -67,6 +67,13 @@ function onProfile(callback) {
     return () => ipcRenderer.removeListener('deskpet:profile', listener);
 }
 
+function onWardrobe(callback) {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('deskpet:wardrobe', listener);
+    return () => ipcRenderer.removeListener('deskpet:wardrobe', listener);
+}
+
 function onVisibility(callback) {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, visible) => callback(!!visible);
@@ -166,6 +173,7 @@ contextBridge.exposeInMainWorld('deskPetAPI', Object.freeze({
     onOpenInput,
     onVisibility,
     onProfile,
+    onWardrobe,
     onPlayTtsAudio,
     onStopTtsAudio,
     voiceBegin: messageId => ipcRenderer.invoke('deskpet:voice-begin', String(messageId || '')),
