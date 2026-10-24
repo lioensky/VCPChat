@@ -86,9 +86,9 @@ export function createPetComposer(ctx) {
     function fitComposerInput() {
         const input = $('composerInput');
         input.style.height = 'auto';
-        const height = Math.min(96, Math.max(32, input.scrollHeight));
+        const height = Math.min(96, Math.max(28, input.scrollHeight));
         input.style.height = `${height}px`;
-        $('dock').style.setProperty('--dock-bar-h', `${height + 16}px`);
+        $('dock').style.setProperty('--dock-bar-h', `${height + 10}px`);
         $('composerSend').classList.toggle('is-empty', !input.value.trim() && !composer.files.length);
     }
 

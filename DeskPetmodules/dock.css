@@ -8,7 +8,7 @@
 
 .pet-dock {
   --dock-h: 40px;
-  --dock-w: 124px;
+  --dock-w: 118px;
   --dock-ease: cubic-bezier(.34, 1.32, .5, 1);
   position: relative;
   box-sizing: border-box;
@@ -51,7 +51,7 @@
 }
 
 .pet-dock[hidden] { display: none !important; }
-.pet-dock[data-mode="pill"][data-sessions="false"] { --dock-w: 85px; }
+.pet-dock[data-mode="pill"][data-sessions="false"] { --dock-w: 79px; }
 .pet-dock .dock-btn[hidden], .pet-dock .dock-sep[hidden] { display: none; }
 .pet-dock[data-mode="hidden"][data-notifications="true"] {
   background: #3979e8;
@@ -72,8 +72,8 @@
 
 .pet-dock[data-mode="bar"] {
   --dock-w: var(--dock-bar-w, 360px);
-  --dock-h: var(--dock-bar-h, 48px);
-  border-radius: 24px;
+  --dock-h: var(--dock-bar-h, 38px);
+  border-radius: 19px;
 }
 
 .pet-dock[data-mode="rec"] {
@@ -134,8 +134,8 @@
   transform: scale(0.92);
 }
 
-/* 三个正圆按钮，外侧留白与分隔线两侧间距分别固定，避免背景贴边或变成椭圆。 */
-.pet-dock .dock-pill { padding: 4px 7px; }
+/* 正圆按钮四周都留 4px：两头的圆角和按钮同心，不会左右两侧显得更宽。 */
+.pet-dock .dock-pill { padding: 4px; }
 .pet-dock .dock-pill .dock-sep { margin: 0 3px; }
 .pet-dock .dock-btn:focus-visible {
   outline: 2px solid currentColor;
@@ -167,22 +167,22 @@
   left: 50%;
   width: var(--dock-bar-w, 360px);
   margin-left: calc(var(--dock-bar-w, 360px) / -2);
-  /* 圆钮四周留一样的 8px：单行时上下居中，多行时停在最后一行旁边 */
+  /* 圆钮四周留一样的 5px：单行时上下居中，多行时停在最后一行旁边 */
   gap: 6px;
-  padding: 0 8px 8px;
+  padding: 0 5px 5px;
   align-items: flex-end;
 }
 
 /* 输入条里的加号、发送箭头 */
 .pet-dock .dock-bar svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   stroke-width: 2;
 }
 
 .pet-dock .dock-round {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: #f1f2f4;
 }
@@ -209,17 +209,17 @@
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
-  height: 32px;
+  height: 28px;
   max-height: 96px;
-  padding: 6px 2px;
+  padding: 5px 2px;
   border: none;
   outline: none;
   resize: none;
   background: transparent;
   color: #1f2328;
   font: inherit;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
   user-select: text;
   scrollbar-width: thin;
 }
@@ -233,8 +233,8 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   border-radius: 50%;

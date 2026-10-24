@@ -567,7 +567,7 @@ body.is-drop-target #stage {
 
 /* 脚边的小胶囊和输入条（样式在 dock.css，和设置页预览共用）：贴着窗口底边，压在小腿上，不挡脸 */
 #dock {
-  --dock-bar-w: min(440px, calc(100vw - 24px));
+  --dock-bar-w: min(300px, calc(100vw - 24px));
   position: absolute;
   left: 0;
   right: 0;
