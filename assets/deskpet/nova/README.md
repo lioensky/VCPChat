@@ -1,6 +1,6 @@
 # 内置 Nova
 
-两套 Nova 形象通过桌宠「换装」选择，ID 分别为 `builtin:nova-maid`、`builtin:nova-chibi`。新建 Nova 默认用女仆。科技服已从内置资源移除。仅从应用目录读取。用户模型继续放在自己的 `Agents/<id>/deskpet/`，选择记录仍由现有 `deskpet/state.json` 管理。
+两套 Nova 形象通过桌宠「换装」选择，ID 分别为 `builtin:nova-maid`、`builtin:nova-chibi`。新建 Nova 默认用女仆。科技服已从内置资源移除；另附的 Codex 精灵刻晴、乐奈在 `../codex/`。仅从应用目录读取。用户模型继续放在自己的 `Agents/<id>/deskpet/`，选择记录仍由现有 `deskpet/state.json` 管理。
 
 每套包含 Cubism `.moc3`、`model3.json`、贴图、物理配置和动作。女仆有十二套独立参数表情，对应系统十二个情绪；Q 版的十一套表情和手势见下文。口型、呼吸、视线和互动使用现有桌宠运行时。Q 版另附十二情绪和状态立绘，作为无 Core 时的回退。
 
