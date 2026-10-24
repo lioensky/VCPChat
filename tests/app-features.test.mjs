@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { createAppFeatures } = require('../modules/appFeatures.js');
+const { createAppFeatures, readFeatureManifests } = require('../modules/appFeatures.js');
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const quiet = { warn() {}, error() {}, log() {} };
@@ -37,15 +37,31 @@ test('only folders with a valid feature.json are features, and invalid ones are 
         escape: { name: 'Escape', main: '../../outside.js' },
         badRenderer: { name: 'BadRenderer', main: 'index.js', renderer: '../outside.js' },
         badScheme: { name: 'BadScheme', main: 'index.js', schemes: [{ scheme: 'Has Space' }] },
+        badScript: { name: 'BadScript', main: 'index.js', scripts: { install: ['../outside.cjs'] } },
+        badScriptType: { name: 'BadScriptType', main: 'index.js', scripts: { install: ['setup.sh'] } },
+        badTests: { name: 'BadTests', main: 'index.js', tests: ['../outside.test.mjs'] },
         broken: '{ not json',
         dup: { name: 'Good', main: 'index.js' },
     });
     const features = loader(paths);
     const list = features.list();
-    assert.deepEqual(list.map((f) => f.folder), ['badRenderer', 'badScheme', 'broken', 'dup', 'escape', 'good']);
+    assert.deepEqual(list.map((f) => f.folder), ['badRenderer', 'badScheme', 'badScript', 'badScriptType', 'badTests', 'broken', 'dup', 'escape', 'good']);
     assert.deepEqual(list.filter((f) => !f.error).map((f) => f.name), ['Good']);
     assert.ok(list.filter((f) => f.error).every((f) => f.enabled === false));
     assert.equal(list.find((f) => f.folder === 'good').relativePath, 'modules/good');
+});
+
+test('build scripts and tests are normalized project paths and are read regardless of the enable state', (t) => {
+    const paths = fixture(t, {
+        a: { name: 'A', main: 'index.js', scripts: { install: ['./scripts/a/setup.cjs'], package: ['scripts/a/setup.cjs', '--strict'] }, tests: ['tests/../tests/a.test.mjs'], defaultEnabled: false },
+        b: { name: 'B', main: 'index.js' },
+    });
+    const [a, b] = readFeatureManifests({ projectRoot: paths.root, modulesDir: paths.modulesDir });
+    assert.equal(a.error, null);
+    assert.deepEqual(a.scripts, { install: ['scripts/a/setup.cjs'], package: ['scripts/a/setup.cjs', '--strict'] });
+    assert.deepEqual(a.tests, ['tests/a.test.mjs']);
+    assert.equal('enabled' in a, false);
+    assert.deepEqual([b.scripts, b.tests], [{}, []]);
 });
 
 test('schemes of enabled features are registered in one call, and disabled features register nothing', (t) => {
@@ -92,8 +108,12 @@ test('registerAll hands every feature the host, isolates failures, and disposes 
     assert.deepEqual(disposed, ['C', 'A']);
 
     const handlers = new Map();
-    features.installIpc({ handle: (channel, fn) => handlers.set(channel, fn) });
+    const listeners = new Map();
+    features.installIpc({ handle: (channel, fn) => handlers.set(channel, fn), on: (channel, fn) => listeners.set(channel, fn) });
     assert.deepEqual([...handlers.keys()], ['app-features:renderer-entries']);
+    const event = {};
+    listeners.get('app-features:inactive-folders')(event);
+    assert.deepEqual(event.returnValue, ['off'], 'the preload learns which feature folders to leave out');
 });
 
 test('setEnabled writes the state file and reports when a restart is needed', (t) => {
@@ -122,6 +142,25 @@ test('the desk pet is a feature whose manifest matches its own scheme and entry 
     assert.match(renderer, /export function install\(/);
 });
 
+test('the preload registry leaves out the APIs of inactive feature folders', () => {
+    const { loadRegistry } = require('../preloads/core/registry.js');
+    const all = [...loadRegistry().values()];
+    assert.ok(all.some((item) => item.domain === 'deskpet'), 'every feature API loads by default');
+    const without = [...loadRegistry({ skipFeatures: ['deskpet'] }).values()];
+    assert.equal(without.some((item) => item.domain === 'deskpet'), false);
+    assert.equal(without.length, all.filter((item) => item.domain !== 'deskpet').length);
+    assert.equal(loadRegistry(), loadRegistry(), 'each variant is cached');
+});
+
+test('every declared build script and test of the bundled features exists', () => {
+    for (const feature of readFeatureManifests({ projectRoot })) {
+        assert.equal(feature.error, null, feature.folder);
+        for (const file of [...Object.values(feature.scripts).map((args) => args[0]), ...feature.tests]) {
+            assert.ok(fs.existsSync(path.join(projectRoot, file)), `${feature.name}: ${file}`);
+        }
+    }
+});
+
 test('core code does not reference the desk pet; it only reaches it through the feature loader', () => {
     const owned = ['modules/deskpet/', 'DeskPetmodules/', 'assets/deskpet/', 'scripts/deskpet', 'tests/', 'docs/', 'vendor/', 'VCPDistributedServer/Plugin/'];
     let matches = '';
@@ -132,4 +171,8 @@ test('core code does not reference the desk pet; it only reaches it through the 
     }
     const offenders = matches.split('\n').filter(Boolean).filter((file) => !owned.some((prefix) => file.startsWith(prefix)));
     assert.deepEqual(offenders, []);
+
+    // npm scripts 只经 scripts/app-features.cjs 走功能清单
+    const { scripts } = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+    assert.deepEqual(Object.entries(scripts).filter(([name, command]) => /deskpet|桌宠/i.test(name + command)), []);
 });

@@ -48,7 +48,7 @@ musicSetSpeed: invoke('music-set-speed', 'speed'),
 
 在 `api/` 下新建文件，格式照抄任意现有文件。registry 会自动扫描加载，不需要登记。
 
-可选功能（删掉目录也不影响其他部分的，见 `modules/appFeatures.js`）把领域文件放在自己目录里：`modules/<功能>/preloadApi.js`，领域名就是目录名。registry 同样自动加载，删掉目录 API 就跟着没了。
+可选功能（删掉目录也不影响其他部分的，见 `modules/appFeatures.js`）把领域文件放在自己目录里：`modules/<功能>/preloadApi.js`，领域名就是目录名。registry 同样自动加载，删掉目录 API 就跟着没了；带 feature.json 的功能被停用时，主窗口的 preload 也不加载它（见 docs/app-features.md）。
 
 ## 约束
 

@@ -2,7 +2,8 @@
 
 /**
  * 读取 preloads/api/*.js，以及可选功能模块自带的 modules/<功能>/preloadApi.js，
- * 合并成一张 "API 名 → 条目" 表。功能目录删掉，它的 API 就跟着消失，不用改这里。
+ * 合并成一张 "API 名 → 条目" 表。功能目录删掉，它的 API 就跟着消失，不用改这里；
+ * 带 feature.json 的功能被停用时，preload 把它的目录名放进 skipFeatures，效果一样。
  *
  * 本文件不依赖 electron，测试和工具脚本可以直接在 Node 里 require 它，
  * 用来查询某个 API 属于哪个领域、走哪个通道、对哪些角色可见。
@@ -36,7 +37,7 @@ const FEATURE_DIR = path.join(__dirname, '..', '..', 'modules');
 const FEATURE_API_FILE = 'preloadApi.js';
 
 // [{ domain, file, where }]：api/ 下按文件名排序，再接可选功能模块（领域名取目录名）
-function listDomainFiles() {
+function listDomainFiles(skipFeatures = []) {
     const files = fs.readdirSync(API_DIR).filter((name) => name.endsWith('.js')).sort()
         .map((name) => ({ domain: path.basename(name, '.js'), file: path.join(API_DIR, name), where: `preloads/api/${name}` }));
     let features = [];
@@ -46,6 +47,7 @@ function listDomainFiles() {
         // 测试或工具在没有 modules/ 的环境里加载时，只有 api/
     }
     for (const name of features) {
+        if (skipFeatures.includes(name)) continue;
         const file = path.join(FEATURE_DIR, name, FEATURE_API_FILE);
         if (fs.existsSync(file)) files.push({ domain: name, file, where: `modules/${name}/${FEATURE_API_FILE}` });
     }
@@ -63,16 +65,18 @@ function assertRoles(roleNames, where) {
     }
 }
 
-let cachedRegistry = null;
+const cachedRegistries = new Map();
 
 /**
+ * @param {{ skipFeatures?: string[] }} [options] 不加载这些 modules/<目录>/preloadApi.js
  * @returns {Map<string, { entry: ApiEntry, domain: string, roles: string[] }>}
  */
-function loadRegistry() {
-    if (cachedRegistry) return cachedRegistry;
+function loadRegistry({ skipFeatures = [] } = {}) {
+    const cacheKey = [...skipFeatures].sort().join('/');
+    if (cachedRegistries.has(cacheKey)) return cachedRegistries.get(cacheKey);
 
     const registry = new Map();
-    for (const { domain, file, where } of listDomainFiles()) {
+    for (const { domain, file, where } of listDomainFiles(skipFeatures)) {
         const definition = require(file);
 
         if (!definition || typeof definition.api !== 'object') {
@@ -93,7 +97,7 @@ function loadRegistry() {
         }
     }
 
-    cachedRegistry = registry;
+    cachedRegistries.set(cacheKey, registry);
     return registry;
 }
 

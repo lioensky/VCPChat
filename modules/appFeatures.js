@@ -9,11 +9,15 @@
 //     "main": "index.js",              主进程入口（相对功能目录），导出 register(host) → { dispose() }
 //     "renderer": "Some/entry.js",     可选：主窗口一侧的入口（相对项目根目录），导出 install(context)
 //     "schemes": [{ "scheme", "privileges" }],  可选：要在 app ready 之前登记的自定义协议
+//     "scripts": { "install": ["x.cjs"], "package": ["x.cjs", "--strict"] },
+//                                      可选：npm install / 打包前由 scripts/app-features.cjs 用 node 运行（相对项目根目录）
+//     "tests": ["tests/x.test.mjs"],   可选：npm run test:features 跑的测试（相对项目根目录）
 //     "defaultEnabled": true
 //   }
 //
-// 停用或删掉的功能不会被 require，也不登记协议和主窗口入口。启停记在 <AppData>/features.json
-// （{ "disabled": [name] }），在插件管理器里切换，重启后生效。
+// 停用或删掉的功能不会被 require，也不登记协议、主窗口入口和 modules/<目录>/preloadApi.js。
+// 启停记在 <AppData>/features.json（{ "disabled": [name] }），在插件管理器里切换，重启后生效。
+// 完整说明见 docs/app-features.md。
 
 const fs = require('fs');
 const path = require('path');
@@ -27,6 +31,15 @@ function isInside(root, target) {
     const relative = path.relative(root, target);
     return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
+
+// 相对项目根目录的文件 → 规整的 posix 相对路径；越界返回 null
+function projectPath(projectRoot, value) {
+    if (typeof value !== 'string' || !value) return null;
+    const file = path.resolve(projectRoot, value);
+    return isInside(projectRoot, file) ? path.relative(projectRoot, file).split(path.sep).join('/') : null;
+}
+
+const SCRIPT_PATTERN = /\.(c|m)?js$/;
 
 // 清单 → 规整后的功能描述；不合格的带 error，列出来但不加载
 function readFeature(dir, projectRoot) {
@@ -47,13 +60,45 @@ function readFeature(dir, projectRoot) {
     let renderer = null;
     if (manifest.renderer != null) {
         if (typeof manifest.renderer !== 'string' || !manifest.renderer.endsWith('.js')) return fail('renderer 必须是 .js 文件');
-        const file = path.resolve(projectRoot, manifest.renderer);
-        if (!isInside(projectRoot, file)) return fail('renderer 必须在项目目录里');
-        renderer = path.relative(projectRoot, file).split(path.sep).join('/');
+        renderer = projectPath(projectRoot, manifest.renderer);
+        if (!renderer) return fail('renderer 必须在项目目录里');
     }
     const schemes = manifest.schemes ?? [];
     if (!Array.isArray(schemes) || schemes.some((item) => !SCHEME_PATTERN.test(String(item?.scheme || '')))) return fail('schemes 不合法');
-    return { ...feature, main, renderer, schemes, defaultEnabled: manifest.defaultEnabled !== false };
+    const declaredScripts = manifest.scripts ?? {};
+    if (!declaredScripts || typeof declaredScripts !== 'object' || Array.isArray(declaredScripts)) return fail('scripts 必须是对象');
+    const scripts = {};
+    for (const [hook, args] of Object.entries(declaredScripts)) {
+        if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string')) return fail(`scripts.${hook} 必须是字符串数组`);
+        const script = SCRIPT_PATTERN.test(args[0] || '') ? projectPath(projectRoot, args[0]) : null;
+        if (!script) return fail(`scripts.${hook} 的第一项必须是项目里的 .js/.cjs/.mjs 文件`);
+        scripts[hook] = [script, ...args.slice(1)];
+    }
+    if (!Array.isArray(manifest.tests ?? [])) return fail('tests 必须是数组');
+    const tests = (manifest.tests ?? []).map((file) => projectPath(projectRoot, file));
+    if (tests.some((file) => !file)) return fail('tests 必须是项目里的文件');
+    return { ...feature, main, renderer, schemes, scripts, tests, defaultEnabled: manifest.defaultEnabled !== false };
+}
+
+/** 只读清单，不看启停状态：构建脚本（安装、打包、测试）也用它 */
+function readFeatureManifests({ projectRoot, modulesDir = path.join(projectRoot, 'modules') }) {
+    let folders = [];
+    try {
+        folders = fs.readdirSync(modulesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    } catch {
+        return [];
+    }
+    const seen = new Set();
+    const features = [];
+    for (const folder of folders) {
+        const dir = path.join(modulesDir, folder);
+        if (!fs.existsSync(path.join(dir, MANIFEST_FILE))) continue;
+        let feature = readFeature(dir, projectRoot);
+        if (!feature.error && seen.has(feature.name)) feature = { ...feature, error: `功能名重复：${feature.name}` };
+        seen.add(feature.name);
+        features.push(feature);
+    }
+    return features;
 }
 
 /**
@@ -75,25 +120,11 @@ function createAppFeatures({ projectRoot, appDataRoot, modulesDir = path.join(pr
     }
 
     function discover() {
-        let folders = [];
-        try {
-            folders = fs.readdirSync(modulesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-        } catch {
-            return [];
-        }
         const disabled = readDisabled();
-        const seen = new Set();
-        const features = [];
-        for (const folder of folders) {
-            const dir = path.join(modulesDir, folder);
-            if (!fs.existsSync(path.join(dir, MANIFEST_FILE))) continue;
-            let feature = readFeature(dir, projectRoot);
-            if (!feature.error && seen.has(feature.name)) feature = { ...feature, error: `功能名重复：${feature.name}` };
-            seen.add(feature.name);
-            const enabled = !feature.error && (disabled.has(feature.name) ? false : feature.defaultEnabled);
-            features.push({ ...feature, enabled });
-        }
-        return features;
+        return readFeatureManifests({ projectRoot, modulesDir }).map((feature) => ({
+            ...feature,
+            enabled: !feature.error && (disabled.has(feature.name) ? false : feature.defaultEnabled),
+        }));
     }
 
     // 本次运行按启动时的状态加载；中途切换只改状态文件
@@ -188,11 +219,23 @@ function createAppFeatures({ projectRoot, appDataRoot, modulesDir = path.join(pr
                 .map((feature) => ({ name: feature.name, renderer: feature.renderer }));
         },
 
+        /**
+         * 带 feature.json、但这次没启用的目录名。preload 据此不暴露它们的 preloadApi.js
+         * （没有 feature.json 的目录不归这里管）。
+         */
+        inactiveFolders() {
+            return startup.filter((feature) => !feature.enabled).map((feature) => feature.folder);
+        },
+
+        /** 要在任何窗口创建之前调用：preload 启动时会同步来问 */
         installIpc(ipcMain) {
             ipcMain.handle('app-features:renderer-entries', () => api.rendererEntries());
+            ipcMain.on('app-features:inactive-folders', (event) => {
+                event.returnValue = api.inactiveFolders();
+            });
         },
     };
     return api;
 }
 
-module.exports = { createAppFeatures, MANIFEST_FILE, STATE_FILE };
+module.exports = { createAppFeatures, readFeatureManifests, MANIFEST_FILE, STATE_FILE };

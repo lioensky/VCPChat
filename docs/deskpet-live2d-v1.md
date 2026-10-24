@@ -13,7 +13,7 @@
 
 ## 安装 Cubism Core（Live2D 必需）
 
-Live2D Cubism Core 是 Live2D 的专有组件，按其许可**不随应用分发**。没有 Core 时女仆和 Q 版自动显示各自的立绘；刻晴、乐奈和导入的精灵形象无需 Core。
+Live2D Cubism Core 是 Live2D 的专有组件，**不进 git 仓库**：安装依赖和打包时从 Live2D 官网下载，发布的安装包随应用附带（见 `vendor/live2d-cubism-core/README.md`）。没有 Core 时女仆和 Q 版自动显示各自的立绘；刻晴、乐奈和导入的精灵形象无需 Core。
 
 1. 打开全局设置 →「桌宠」→「Live2D 支持」。
 2. 点「同意并下载」：从 Live2D 官网下载 Cubism SDK for Web 5-r.4，只取出 Core 装好，正在用立绘代替的桌宠自动换回 Live2D。
@@ -37,7 +37,7 @@ Live2D Cubism Core 是 Live2D 的专有组件，按其许可**不随应用分发
 
 - Nova 女仆与 Q 版的美术和两套 Live2D 模型是本项目自有素材，随应用分发。模型由开源工具 PSD2Live（GPL-3.0）在本地导出，仓库不含该工具的代码。
 - 刻晴、乐奈精灵由用户提供的 Codex 桌宠包收录，保持原始精灵图及 `pet.json`。
-- Cubism Core 不随应用分发（见上）。渲染引擎的许可见 `vendor/live2d/untitled-pixi-live2d-engine.LICENSE`。
+- Cubism Core 不进 git 仓库（见上）。渲染引擎的许可见 `vendor/live2d/untitled-pixi-live2d-engine.LICENSE`。
 
 ## 已知问题
 

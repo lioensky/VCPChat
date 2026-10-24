@@ -318,6 +318,7 @@ const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
 // 应用功能模块：停用的不加载；它们声明的自定义协议必须在 app ready 之前登记
 const appFeatures = createAppFeatures({ projectRoot: PROJECT_ROOT, appDataRoot: APP_DATA_ROOT_IN_PROJECT });
 appFeatures.registerSchemes(protocol);
+appFeatures.installIpc(ipcMain);
 const NATIVE_SPLASH_READY_FILE = app.isPackaged
     ? path.join(APP_DATA_ROOT_IN_PROJECT, '.vcp_ready')
     : path.join(__dirname, '.vcp_ready');
@@ -1963,7 +1964,6 @@ if (!gotTheLock) {
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
         localSttHandlers.initialize({ appDataRoot: APP_DATA_ROOT_IN_PROJECT });
         // 应用功能模块拿到的宿主能力（modules/appFeatures.js 的 register(host)）
-        appFeatures.installIpc(ipcMain);
         appFeatures.registerAll({
             hooks: hostHooks,
             tts: sovitsHandlers,

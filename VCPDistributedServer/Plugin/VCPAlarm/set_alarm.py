@@ -79,7 +79,7 @@ def main():
         success_message = f"好的，您的闹钟已经设定成功。时间：{time_description}"
         if reminder_text:
             success_message += f"，提醒事项：{reminder_text}"
-        # 到点时间（毫秒时间戳），给 VCPChat 桌宠到点提醒用；解析方式与 run_alarm.py 相同，算不出就不带
+        # 到点时间（毫秒时间戳），给客户端做到点提醒用；解析方式与 run_alarm.py 相同，算不出就不带
         print_json_output(status="success", result=success_message, extra=alarm_due_info(time_description, reminder_text))
         sys.stdout.flush()
 

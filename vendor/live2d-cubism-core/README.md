@@ -2,8 +2,8 @@
 
 桌宠的 Live2D 形象需要 Live2D 官方的 Cubism Core（`live2dcubismcore.min.js`，必须是 5.x）。它是 Live2D Inc. 的专有组件，不进入本仓库：
 
-- `npm install` 时 `postinstall` 运行 `scripts/deskpet/fetch-cubism-core.cjs`，从 Live2D 官网下载到这个目录；
-- `npm run pack` / `npm run dist` 打包前再运行一次（`--strict`，下载不到就停止打包），发布的安装包随应用附带它；
+- 桌宠在 `modules/deskpet/feature.json` 的 `scripts` 里声明了 `scripts/deskpet/fetch-cubism-core.cjs`：`npm install` 时由 `scripts/app-features.cjs install` 运行，从 Live2D 官网下载到这个目录；
+- `npm run pack` / `npm run dist` 打包前由 `scripts/app-features.cjs package` 再运行一次（`--strict`，下载不到就停止打包），发布的安装包随应用附带它；
 - 离线安装或设置了 `VCPCHAT_SKIP_CUBISM_CORE=1` 时这里是空的，Live2D 桌宠先用立绘，可以之后在设置「桌宠 → Live2D 支持」里一键启用。
 
 用户在设置页装的 Core（数据目录 `AppData/deskpet/`）优先于这里的。
