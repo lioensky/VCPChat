@@ -1,0 +1,74 @@
+[
+  {
+    "id": "ArtMeshEyewhiteL",
+    "beforePoints": 22,
+    "afterPoints": 22,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshEyewhiteR",
+    "beforePoints": 26,
+    "afterPoints": 26,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshEyelashL",
+    "beforePoints": 38,
+    "afterPoints": 38,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshEyelashR",
+    "beforePoints": 36,
+    "afterPoints": 36,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshNose",
+    "beforePoints": 14,
+    "afterPoints": 14,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshEyebrowL",
+    "beforePoints": 18,
+    "afterPoints": 18,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshEyebrowR",
+    "beforePoints": 12,
+    "afterPoints": 12,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshMouthClose",
+    "beforePoints": 50,
+    "afterPoints": 50,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshMouthOpen",
+    "beforePoints": 150,
+    "afterPoints": 150,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshMouthOpen_lip_0",
+    "beforePoints": 196,
+    "afterPoints": 196,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshMouthOpen_lip_1",
+    "beforePoints": 196,
+    "afterPoints": 196,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshFace2",
+    "beforePoints": 244,
+    "afterPoints": 244,
+    "maxDifference": 0.007525265216827393
+  }
+]

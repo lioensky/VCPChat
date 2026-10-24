@@ -394,7 +394,7 @@ test('Agent sections are schema-owned collapsible containers with manager toggle
 
     const expectedSections = ['identity', 'prompt', 'model', 'params', 'tts', 'regex'];
     assert.deepEqual([...settingsSidebarSchema.agent.sections], expectedSections,
-        'Agent schema must declare all 6 canonical sections');
+        'Agent schema must declare all 7 canonical sections');
 
     const dom = new JSDOM('<!doctype html><html><body><div id="host"></div></body></html>');
     const form = renderAgentSettingsSurface(dom.window.document.getElementById('host'), dom.window.document);

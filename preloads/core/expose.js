@@ -16,6 +16,16 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const { ROLE_GLOBALS, loadRegistry } = require('./registry');
 
+// 这次没启用的功能目录（modules/appFeatures.js 的 inactiveFolders）。问不到就全部加载，跟以前一样
+function inactiveFeatureFolders() {
+    try {
+        const folders = ipcRenderer.sendSync('app-features:inactive-folders');
+        return Array.isArray(folders) ? folders.map(String) : [];
+    } catch {
+        return [];
+    }
+}
+
 function createIsolationStub(name, kind) {
     const message = `权限已隔离: ${name}`;
     if (kind === 'subscription') {
@@ -73,7 +83,7 @@ function exposeRole(role) {
     const roleApi = {};
     const compatApi = {};
 
-    for (const [name, { entry, roles }] of loadRegistry()) {
+    for (const [name, { entry, roles }] of loadRegistry({ skipFeatures: inactiveFeatureFolders() })) {
         if (roles.includes(role)) {
             const fn = entry.build(ctx);
             roleApi[name] = fn;

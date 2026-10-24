@@ -1,0 +1,62 @@
+{
+  "Type": "Live2D Expression",
+  "FadeInTime": 0.2,
+  "FadeOutTime": 0.25,
+  "Parameters": [
+    {
+      "Id": "ParamCuteShy",
+      "Value": 0,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamCuteStars",
+      "Value": 0,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamCuteTears",
+      "Value": 0,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamCutePout",
+      "Value": 0,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamCuteHearts",
+      "Value": 0,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamCuteSleep",
+      "Value": 1,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamEyeLOpen",
+      "Value": 0.12,
+      "Blend": "Multiply"
+    },
+    {
+      "Id": "ParamEyeROpen",
+      "Value": 0.12,
+      "Blend": "Multiply"
+    },
+    {
+      "Id": "ParamBrowLY",
+      "Value": -0.3,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamBrowRY",
+      "Value": -0.3,
+      "Blend": "Overwrite"
+    },
+    {
+      "Id": "ParamAngleZ",
+      "Value": 5,
+      "Blend": "Overwrite"
+    }
+  ]
+}

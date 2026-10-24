@@ -48,17 +48,17 @@ test('a failed write keeps the portrait that was there and leaves no temp file',
 test('a new image replaces the other extensions and case spellings of the same version', async () => {
     const dir = path.join(agentDir, 'Coco');
     fs.mkdirSync(dir);
-    fs.writeFileSync(path.join(dir, 'portrait.light.webp'), 'old webp');
-    fs.writeFileSync(path.join(dir, 'Portrait.Light.PNG'), 'old upper');
+    fs.writeFileSync(path.join(dir, 'portrait.happy.webp'), 'old webp');
+    fs.writeFileSync(path.join(dir, 'Portrait.Happy.PNG'), 'old upper');
     fs.writeFileSync(path.join(dir, 'portrait.png'), 'default stays');
 
-    const result = await save('Coco', 'light', 'image/png', 'new light');
+    const result = await save('Coco', 'happy', 'image/png', 'new happy');
     assert.equal(result.success, true);
     const names = fs.readdirSync(dir).sort();
-    const light = names.filter(name => /^portrait\.light\./i.test(name));
-    assert.equal(light.length, 1, names.join(', '));
-    assert.equal(fs.readFileSync(path.join(dir, light[0]), 'utf8'), 'new light');
+    const happy = names.filter(name => /^portrait\.happy\./i.test(name));
+    assert.equal(happy.length, 1, names.join(', '));
+    assert.equal(fs.readFileSync(path.join(dir, happy[0]), 'utf8'), 'new happy');
     assert.equal(fs.readFileSync(path.join(dir, 'portrait.png'), 'utf8'), 'default stays');
     assert.ok(!names.some(name => name.endsWith('.tmp')));
-    assert.match(result.portraits.light, /portrait\.light\.png\?v=\d+$/i);
+    assert.match(result.portraits.happy, /portrait\.happy\.png\?v=\d+$/i);
 });

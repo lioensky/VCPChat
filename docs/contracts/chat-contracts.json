@@ -334,6 +334,25 @@
     ]
   },
   {
+    "id": "source.dynamic.modules.deskpet.pethandlers",
+    "kind": "source-review",
+    "owner": "modules/deskpet/petHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Host listener adapter for the optional desk pet: event names come from the literal listenHost(...) calls in the same function (main window, screen, powerMonitor and app events); every listener is pushed onto hostEvents and removed by disposeHostEvents when the desk pet closes.",
+    "dynamicSites": [
+      {
+        "file": "modules/deskpet/petHandlers.js",
+        "line": 240,
+        "kind": "event-listener",
+        "match": "target?.on?.(event"
+      }
+    ],
+    "evidence": [
+      "Source review of the desk pet split; exact operation match below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
     "id": "source.dynamic.modules.event-listeners",
     "kind": "source-review",
     "owner": "modules/event-listeners.js",
@@ -343,7 +362,7 @@
     "dynamicSites": [
       {
         "file": "modules/event-listeners.js",
-        "line": 36,
+        "line": 39,
         "kind": "custom-event-listener",
         "match": "target?.addEventListener?.(type"
       }
@@ -450,7 +469,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/musicHandlers.js",
-        "line": 647,
+        "line": 674,
         "kind": "event-send",
         "match": "event.sender.send(channel"
       }
@@ -545,7 +564,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/terminalHandlers.js",
-        "line": 70,
+        "line": 79,
         "kind": "event-send",
         "match": "sender.send(channel"
       }
@@ -607,19 +626,19 @@
     "dynamicSites": [
       {
         "file": "modules/messageRenderer.js",
-        "line": 685,
+        "line": 686,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 2694,
+        "line": 2729,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/messageRenderer.js",
-        "line": 3444,
+        "line": 3478,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
@@ -795,19 +814,19 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/appearance-studio.js",
-        "line": 529,
+        "line": 444,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/ui-system/appearance-studio.js",
-        "line": 825,
+        "line": 1153,
         "kind": "custom-event-listener",
         "match": "root.addEventListener(type"
       },
       {
         "file": "modules/ui-system/appearance-studio.js",
-        "line": 1590,
+        "line": 1351,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
@@ -1060,7 +1079,7 @@
       },
       {
         "file": "modules/ui-system/next-shell/next-shell-controller.js",
-        "line": 280,
+        "line": 283,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
@@ -1098,13 +1117,13 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/settings-bridge.js",
-        "line": 490,
+        "line": 491,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       },
       {
         "file": "modules/ui-system/settings-bridge.js",
-        "line": 774,
+        "line": 783,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
@@ -1123,7 +1142,7 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/settings/autosave.js",
-        "line": 187,
+        "line": 193,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
       }
@@ -1210,7 +1229,7 @@
     "dynamicSites": [
       {
         "file": "modules/ui-system/typed-field-owners.js",
-        "line": 440,
+        "line": 441,
         "kind": "custom-event-listener",
         "match": "form.addEventListener(type"
       }
@@ -1486,6 +1505,50 @@
     ],
     "evidence": [
       "Source review at upstream main d89cb793; exact operation matches below; new or changed dynamic sites still fail the contract gate."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.notificationrenderer",
+    "kind": "source-review",
+    "owner": "modules/notificationRenderer.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "Notification collapse uses a module-local DOM listener adapter and forwards fixed pointer, key and blur events; cleanup is registered through the notification lifecycle owner. The notification-collapse listener adapter forwards module-local DOM event names and registers removal with notificationLifecycleOwner.",
+    "dynamicSites": [
+      {
+        "file": "modules/notificationRenderer.js",
+        "line": 1282,
+        "kind": "custom-event-listener",
+        "match": "target.addEventListener(type"
+      }
+    ],
+    "evidence": [
+      "Source review during desktop-pet rebase onto upstream d068f8d33."
+    ]
+  },
+  {
+    "id": "source.dynamic.modules.ipc.gamehandlers",
+    "kind": "source-review",
+    "owner": "modules/ipc/gameHandlers.js",
+    "status": "reviewed",
+    "dynamic": true,
+    "review": "The upstream game table and hall adapters register module-local vcp-game channel constants. Table requests verify isTableSender before accessing the runtime; resource and record operations verify isHallSender. Registration is owned by initialize and registerTableHandlers, rather than accepting channel names from a renderer. This records source review, not runtime game validation.",
+    "dynamicSites": [
+      {
+        "file": "modules/ipc/gameHandlers.js",
+        "line": 134,
+        "kind": "event-listener",
+        "match": "ipcMain.handle(channel"
+      },
+      {
+        "file": "modules/ipc/gameHandlers.js",
+        "line": 192,
+        "kind": "event-listener",
+        "match": "ipcMain.handle(channel"
+      }
+    ],
+    "evidence": [
+      "Source review during desktop-pet rebase onto upstream d068f8d33."
     ]
   }
 ]

@@ -96,6 +96,7 @@ const browserHandlers = require('./modules/ipc/browserHandlers'); // 侧栏浏�
 const { createDomainActivator, channelsForDomain } = require('./modules/ipc/domainActivator');
 const { describeApis } = require('./preloads/core/registry');
 const { configureSharedRecorder } = require('./modules/modelTrajectory');
+const { configureAgentMood, getAgentMoodStore } = require('./modules/agentMood');
 const domainActivator = createDomainActivator({ ipcMain });
 // 主进程推送按窗口订阅：只发给订阅了某个主题的窗口（V工程窗口、主窗口的状态面板和侧栏）
 const { createStateSubscriptions } = require('./modules/ipc/stateSubscriptions');
@@ -111,6 +112,8 @@ const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 const translatorHandlers = require('./modules/ipc/translatorHandlers'); // Import translator handlers
 const voiceHandlers = require('./modules/ipc/voiceHandlers'); // Import voice chat handlers
 const localSttHandlers = require('./modules/ipc/localSttHandlers'); // 本地 SenseVoice 语音识别
+const { hostHooks } = require('./modules/hostHooks'); // 可选功能的挂钩点
+const { createAppFeatures } = require('./modules/appFeatures'); // 应用功能模块（modules/*/feature.json）
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const chartHandlers = require('./modules/ipc/chartHandlers'); // Agent 图表工作台与持久化服务
@@ -314,6 +317,10 @@ if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoo
 const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
     ? path.resolve(isolatedAppDataRoot)
     : path.join(PROJECT_ROOT, 'AppData');
+// 应用功能模块：停用的不加载；它们声明的自定义协议必须在 app ready 之前登记
+const appFeatures = createAppFeatures({ projectRoot: PROJECT_ROOT, appDataRoot: APP_DATA_ROOT_IN_PROJECT });
+appFeatures.registerSchemes(protocol);
+appFeatures.installIpc(ipcMain);
 const NATIVE_SPLASH_READY_FILE = app.isPackaged
     ? path.join(APP_DATA_ROOT_IN_PROJECT, '.vcp_ready')
     : path.join(__dirname, '.vcp_ready');
@@ -549,7 +556,9 @@ function startDistributedServerAfterRenderer() {
                 chartService,
                 gameService,
                 // 工作区只读门面：direct 插件据此动态获取写入白名单
-                workspaceService: workspaceHandlers.workspaceService
+                workspaceService: workspaceHandlers.workspaceService,
+                // 工具调用成功后通知挂钩的功能（例如播报闹钟、新话题）
+                onToolResult: (...args) => hostHooks.emit('tools:result', ...args)
             });
             distributedServer = server;
             await server.initialize();
@@ -719,6 +728,8 @@ async function performQuitCleanup() {
 
     appQuitCleanupPromise = (async () => {
         await historyWatcherLeases.dispose();
+        await getAgentMoodStore()?.flush().catch(() => {});
+        await appFeatures.disposeAll();
 
         try {
             localSttHandlers.shutdown();
@@ -1026,7 +1037,8 @@ function createTray() {
         await toggleRagObserverVisibility();
     };
 
-    const contextMenu = Menu.buildFromTemplate([
+    // 挂钩的菜单项会随功能状态变化：收到 tray:refresh 时刷新（见下面）
+    const buildContextMenu = () => Menu.buildFromTemplate([
         {
             label: '显示/隐藏主窗口',
             click: () => {
@@ -1045,6 +1057,7 @@ function createTray() {
                 desktopHandlers.openDesktopWindow();
             }
         },
+        ...hostHooks.collect('tray:menu-items'),
         { type: 'separator' },
         {
             label: '退出',
@@ -1065,13 +1078,21 @@ function createTray() {
 
         // macOS: 右键点击 (tray.on('right-click')) 负责显示菜单
         tray.on('right-click', () => {
-            tray.popUpContextMenu(contextMenu);
+            tray.popUpContextMenu(buildContextMenu());
         });
 
         // 注意：在 macOS 上，不调用 tray.setContextMenu()，以确保左键点击不弹出菜单。
     } else {
         // Windows/Linux: 默认行为。
-        tray.setContextMenu(contextMenu);
+        let trayMenu = buildContextMenu();
+        tray.setContextMenu(trayMenu);
+        // 换下来的旧菜单 Electron 不释放：挂钩的菜单项只是勾选、显示变了就改现有菜单再设回去（Linux 要重设才刷新），
+        // 文字或快捷键变了才建新的
+        hostHooks.on('tray:refresh', (structureChanged) => {
+            if (!tray || tray.isDestroyed()) return;
+            if (structureChanged || !hostHooks.every('tray:update-menu', trayMenu)) trayMenu = buildContextMenu();
+            tray.setContextMenu(trayMenu);
+        });
         tray.on('click', () => {
             void handleTrayPrimaryAction();
         });
@@ -1614,6 +1635,13 @@ if (!gotTheLock) {
         });
         // 记录器必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器；查看轨迹的 IPC 才按需激活
         configureSharedRecorder({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory') });
+        // 助手的长期心情（Agents/<id>/mood.json）：聊天请求经 chatHandlers 喂进来，变化广播给所有窗口（侧栏立绘和其他显示助手形象的界面）
+        configureAgentMood({
+            agentDir: AGENT_DIR,
+            broadcast: payload => BrowserWindow.getAllWindows().forEach((win) => {
+                if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('agent-mood-changed', payload);
+            }),
+        });
         domainActivator.register('modelTrajectory', {
             allowSender: sidePaneGuard('modelTrajectory'),
             channels: channelsForDomain(preloadApis, 'modelTrajectory'),
@@ -1796,6 +1824,7 @@ if (!gotTheLock) {
             openChildWindows,
             settingsManager: appSettingsManager,
             APP_DATA_ROOT_IN_PROJECT,
+            appFeatures,
         });
         await embeddedAppSessions?.closeAll();
         embeddedAppTasks?.dispose('main-window-reinitialized');
@@ -1938,6 +1967,19 @@ if (!gotTheLock) {
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
         localSttHandlers.initialize({ appDataRoot: APP_DATA_ROOT_IN_PROJECT });
+        // 应用功能模块拿到的宿主能力（modules/appFeatures.js 的 register(host)）
+        appFeatures.registerAll({
+            hooks: hostHooks,
+            tts: sovitsHandlers,
+            mainWindow,
+            projectRoot: PROJECT_ROOT,
+            appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+            agentDir: AGENT_DIR,
+            // 读服务器设置；写话题时与其他写入串行、用插件建话题的同一套助手操作
+            readSettings: () => appSettingsManager.readSettings(),
+            historyQueue: () => historyMutationQueue,
+            agentOps: () => pluginAgentOperationService,
+        });
 
         ipcMain.on('minimize-to-tray', () => {
             if (mainWindow) {

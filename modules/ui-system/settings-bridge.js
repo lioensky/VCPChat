@@ -25,6 +25,7 @@ import { mountGlobalLanguageRows } from './settings/global-language-rows.js';
 import { mountGlobalChoices, mountGlobalSteppers, mountVoiceShortcutInput, mountGlobalTextInputs } from './settings/global-input-upgrades.js';
 import { mountForumCredentialInputs } from './settings/forum-controls.js';
 import { applySchemaSurface } from '../settings/schema-surface.js';
+import { settingsSectionExtensions, takeRequestedSettingsSection, onSettingsExtensionChange } from '../settings/extensions.js';
 import { renderAgentSettingsSurface } from '../settings/schema/sidebar-surfaces.js';
 import { ensureSettingsSidebarSurface } from './settings/settings-sidebar-surface.js';
 import { mountSettingsSidebarForm } from './settings/settings-sidebar-runtime.js';
@@ -547,12 +548,19 @@ function mountSettingsShell(root) {
     try {
         const sourceMeta = JSON.parse(nav.dataset.settingsSections || '[]');
         meta = sourceMeta.map(item => ({ ...item, icon: GLOBAL_CATEGORY_ICONS[item.value] || 'circle', selected: item.value === 'user-identity' }));
+        // 可选功能注册进来的分区排在核心分区后面（分区壳已由 applySchemaSurface 补好）
+        for (const extension of settingsSectionExtensions()) {
+            if (!meta.some(item => item.value === extension.key)) meta.push({ value: extension.key, label: extension.label, icon: extension.icon, selected: false });
+        }
     } catch (error) {
         console.error('[VCPUI SettingsBridge] Invalid settings section metadata', error);
         return;
     }
     if (!meta.length) return;
-    const initial = meta.find(item => item.selected)?.value || meta[0]?.value;
+    // 设置还没打开时就有人要求切到某个分区（requestSettingsSection），挂载时直接切过去
+    const requested = takeRequestedSettingsSection();
+    const initial = (requested && meta.some(item => item.value === requested) ? requested : null)
+        || meta.find(item => item.selected)?.value || meta[0]?.value;
     if (!initial || !document.getElementById(`section-${initial}`)) {
         return;
     }
@@ -705,7 +713,7 @@ function mountSettingsShell(root) {
     // business nodes can be restored atomically by teardown.
     panel.replaceChildren(nav, content);
 
-    const rows = state.meta.map(item => {
+    const createRow = item => {
         const row = document.createElement('button');
         row.type = 'button';
         row.className = 'vcp-uiux-settings-nav-cell';
@@ -740,7 +748,8 @@ function mountSettingsShell(root) {
         }
         state.listHost.append(row);
         return row;
-    });
+    };
+    const rows = state.meta.map(createRow);
     const renderList = () => {
         state.listHost.setAttribute('aria-label', '全局设置分类');
         rows.forEach(row => {
@@ -798,9 +807,39 @@ function mountSettingsShell(root) {
         }
         renderList();
     };
+    state.activate = activateSection;
+    // 壳挂载以后才注册进来的分区：分区壳收进 bank，导航补一行
+    state.addExtension = extension => {
+        if (state.meta.some(item => item.value === extension.key)) return;
+        const section = form.querySelector(`#section-${extension.key}`);
+        if (!section) return;
+        const item = { value: extension.key, label: extension.label, icon: extension.icon, selected: false };
+        state.meta.push(item);
+        state.sections.set(item.value, section);
+        section.classList.remove('active');
+        sectionBank.append(section);
+        rows.push(createRow(item));
+        renderList();
+    };
 
     renderList();
 }
+
+// 可选功能的分区和「切到某分区」请求（modules/settings/extensions.js）接到已挂载的设置壳上；
+// 没挂载的等 mountSettingsShell 自己读
+const offSettingsExtensions = onSettingsExtensionChange(change => {
+    for (const root of shellRoots) {
+        const state = shellState.get(root);
+        if (!state?.form) continue;
+        if (change.type === 'section') {
+            applySchemaSurface(state.form);
+            state.addExtension?.(change.extension);
+        } else if (change.type === 'request' && state.meta.some(item => item.value === change.key)) {
+            takeRequestedSettingsSection();
+            state.activate?.(change.key);
+        }
+    }
+});
 
 // Reconcile a previously mounted shell after modal reopen or section-bank
 // churn.  The form remains canonical; this only restores the active section's
@@ -1001,6 +1040,7 @@ window.VCPUISettingsBridge = Object.freeze({
             }
             markPresentationDestroyed();
             disposeTypedSettings();
+            offSettingsExtensions();
             if (!bridgeScope) {
                 document.removeEventListener('modal-visibility-changed', handleModalVisibility);
                 document.removeEventListener('modal-ready', handleModalVisibility);

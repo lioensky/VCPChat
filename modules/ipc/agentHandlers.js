@@ -4,7 +4,9 @@ const fs = require('fs-extra');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { clearTrajectoriesOfOwner } = require('../modelTrajectory');
+const { getAgentMoodStore } = require('../agentMood');
 const { resolvePortraitDisplayPath, forgetPortraitDisplayImages } = require('../services/agentPortraitImages');
+const { hostHooks } = require('../hostHooks');
 
 let AGENT_DIR_CACHE; // Cache the agent directory path
 let USER_DATA_DIR_CACHE; // Cache the user data directory path
@@ -36,9 +38,10 @@ async function findAvatarUrl(agentDir, cacheBust = false) {
     return null;
 }
 
-// 立绘：Agent 目录下的 portrait.<ext> 是默认立绘，portrait.light.<ext> 是浅色主题用的版本。
+// 立绘：Agent 目录下的 portrait.<ext> 是默认立绘，portrait.<key>.<ext> 是同一角色的其他版本
+// （light 给浅色主题用；以后的差分立绘也按这个规则取名，不用改读取逻辑）。
 // 立绘可以是图片、动图或静音循环播放的短视频（mp4、webm）。
-const PORTRAIT_FILE_PATTERN = /^portrait(?:\.(light))?(\.(?:png|jpe?g|gif|webp|avif|mp4|webm))$/i;
+const PORTRAIT_FILE_PATTERN = /^portrait(?:\.([a-z0-9_-]{1,32}))?(\.(?:png|jpe?g|gif|webp|avif|mp4|webm))$/i;
 
 function portraitCacheDir() {
     return AGENT_DIR_CACHE ? path.join(path.dirname(AGENT_DIR_CACHE), 'PortraitCache') : null;
@@ -81,7 +84,7 @@ const PORTRAIT_VIDEO_MAX_BYTES = 64 * 1024 * 1024;
 
 function normalizePortraitVariant(variant) {
     const key = typeof variant === 'string' ? variant.trim().toLowerCase() : '';
-    return key === 'default' || key === 'light' ? key : null;
+    return /^[a-z0-9_-]{1,32}$/.test(key) ? key : null;
 }
 
 function portraitBaseName(key) {
@@ -350,7 +353,17 @@ function initialize(context) {
         return agentDir ? findPortraitUrls(agentDir) : null;
     });
 
-    // 设置页上传立绘：variant 为 default 写 portrait.<ext>，light 写 portrait.light.<ext>；
+    // 助手的长期心情（modules/agentMood.js）：侧栏立绘等助手形象在回复的情绪过去以后回到它；读不到时为 null
+    ipcMain.handle('get-agent-mood', async (event, agentId) => {
+        try {
+            return (await getAgentMoodStore()?.get(agentId)) ?? null;
+        } catch (error) {
+            console.warn(`读取 Agent ${agentId} 心情失败:`, error.message);
+            return null;
+        }
+    });
+
+    // 设置页上传立绘：variant 为 default 写 portrait.<ext>，其他键写 portrait.<key>.<ext>；
     // 新图换上以后删掉同一个版本的旧文件（不同扩展名），保证每个版本只有一张图
     ipcMain.handle('save-agent-portrait', async (event, agentId, variant, imageData) => {
         const agentDir = resolveAgentDir(agentId);
@@ -585,6 +598,10 @@ function initialize(context) {
         try {
             const agentDir = path.join(AGENT_DIR, agentId);
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
+            // 先让心情不再写、等正在写的 mood.json 写完，否则删目录时可能撞上写入
+            await getAgentMoodStore()?.forget(agentId);
+            // 记着这个助手的功能（例如开着的窗口）先收尾
+            await hostHooks.emitAsync('agent:removed', agentId);
             const portraitFiles = (await fs.readdir(agentDir).catch(() => []))
                 .filter(name => PORTRAIT_FILE_PATTERN.test(name))
                 .map(name => path.join(agentDir, name));

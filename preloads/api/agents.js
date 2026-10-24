@@ -18,6 +18,9 @@ module.exports = {
         getAgentPortraits: invoke('get-agent-portraits', 'agentId'),
         saveAgentPortrait: invoke('save-agent-portrait', 'agentId', 'variant', 'imageData'),
         removeAgentPortrait: invoke('remove-agent-portrait', 'agentId', 'variant'),
+        // 长期心情：{ agentId, emotion, intensity, vad, updatedAt, last }，变化时推 agent-mood-changed
+        getAgentMood: invoke('get-agent-mood', 'agentId'),
+        onAgentMoodChanged: on('agent-mood-changed'),
         onReloadAgentSettings: on('reload-agent-settings'),
         getAgentsMetadata: invoke('get-agents-metadata').roles('utility'),
 

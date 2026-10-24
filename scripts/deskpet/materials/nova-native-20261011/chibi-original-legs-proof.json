@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ArtMeshLegwearL",
+    "beforePoints": 168,
+    "afterPoints": 168,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshLegwearR",
+    "beforePoints": 172,
+    "afterPoints": 172,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshFootwearL",
+    "beforePoints": 70,
+    "afterPoints": 70,
+    "maxDifference": 0
+  },
+  {
+    "id": "ArtMeshFootwearR",
+    "beforePoints": 72,
+    "afterPoints": 72,
+    "maxDifference": 0
+  }
+]

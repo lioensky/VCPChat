@@ -13,6 +13,8 @@ const memberName = node => {
     return null;
 };
 const isMember = node => node?.type === 'MemberExpression' || node?.type === 'OptionalMemberExpression';
+// preloads/api/*.js and an app feature's own modules/<feature>/preloadApi.js (see preloads/core/registry.js)
+const isPreloadApiFile = file => /^preloads\/api\//.test(file) || /^modules\/[^/]+\/preloadApi\.js$/.test(file);
 const isIpcReceiver = node => /^(?:ipcMain|ipcRenderer)(?:Ref)?$/.test(memberName(node) || '') || ['webContents', 'sender'].includes(memberName(node));
 
 function patternNames(pattern) {
@@ -191,7 +193,7 @@ export function scanChatEventSource({ file, source, dynamicRegistrations = [], s
             for (const operation of operations) record(node, node.arguments[operation.index], operation.role, operation.kind, 'dynamic local IPC wrapper channel');
             continue;
         }
-        if (/^preloads\/api\//.test(file) && !isMember(node.callee) && ['on', 'onArgs', 'onSignal', 'send', 'invoke', 'custom'].includes(name)) {
+        if (isPreloadApiFile(file) && !isMember(node.callee) && ['on', 'onArgs', 'onSignal', 'send', 'invoke', 'custom'].includes(name)) {
             const customKind = name === 'custom' ? stringValue(node.arguments[0], scopes.get(node)) : null;
             const argument = node.arguments[name === 'custom' ? 1 : 0];
             // custom(..., null, ...) declares an API without an IPC channel.

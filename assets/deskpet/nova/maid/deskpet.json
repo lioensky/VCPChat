@@ -1,0 +1,24 @@
+{
+  "name": "Nova \u00b7 \u5973\u4ec6",
+  "expressions": {
+    "neutral": "Neutral",
+    "calm": "Calm",
+    "happy": "Happy",
+    "excited": "Excited",
+    "affectionate": "Affectionate",
+    "shy": "Shy",
+    "curious": "Curious",
+    "concerned": "Concerned",
+    "sad": "Sad",
+    "angry": "Angry",
+    "surprised": "Surprised",
+    "tired": "Tired"
+  },
+  "headPoseLimits": { "x": 8, "y": 5, "z": 4 },
+  "motions": {
+    "happy": "Nod",
+    "excited": "Nod",
+    "curious": "Nod",
+    "angry": "Shake"
+  }
+}

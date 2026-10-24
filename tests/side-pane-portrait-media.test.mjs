@@ -12,8 +12,14 @@ function setup({ reducedMotion = false } = {}) {
     const dom = new JSDOM(`<!doctype html><html><body>
         <section id="sidePaneViewLauncher">
             <div class="side-pane-launcher-portrait" aria-hidden="true" hidden>
-                <img class="side-pane-launcher-portrait-image" data-portrait-theme="default" alt="" draggable="false" hidden>
-                <img class="side-pane-launcher-portrait-image" data-portrait-theme="light" alt="" draggable="false" hidden>
+                <div class="side-pane-launcher-portrait-layer" data-portrait-active>
+                    <img class="side-pane-launcher-portrait-image" data-portrait-theme="default" alt="" draggable="false">
+                    <img class="side-pane-launcher-portrait-image" data-portrait-theme="light" alt="" draggable="false" hidden>
+                </div>
+                <div class="side-pane-launcher-portrait-layer">
+                    <img class="side-pane-launcher-portrait-image" data-portrait-theme="default" alt="" draggable="false" hidden>
+                    <img class="side-pane-launcher-portrait-image" data-portrait-theme="light" alt="" draggable="false" hidden>
+                </div>
             </div>
         </section></body></html>`);
     const win = dom.window;
@@ -26,7 +32,7 @@ function setup({ reducedMotion = false } = {}) {
     win.matchMedia = () => ({ matches: reducedMotion, addEventListener() {}, removeEventListener() {} });
     const view = win.document.getElementById('sidePaneViewLauncher');
     const owner = createLauncherPortrait({ view });
-    const slot = () => view.querySelector('[data-portrait-theme="default"]');
+    const slot = () => view.querySelector('[data-portrait-active] [data-portrait-theme="default"]');
     // 新建的 video 还没挂上页面，从 createElement 里拿到它再发 loadeddata / error
     const created = [];
     const createElement = win.document.createElement.bind(win.document);

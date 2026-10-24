@@ -22,8 +22,9 @@ test('content pipeline keeps thought, tool, request and code protocols ordered a
     assert.equal(result.state.toolResultMap.size, 1);
     assert.equal(result.state.toolRequestMap.size, 1);
     assert.equal(result.state.codeBlockMap.size, 1);
-    assert.deepEqual(result.meta.stepsApplied.slice(0, 5), [
+    assert.deepEqual(result.meta.stepsApplied.slice(0, 6), [
         'strip-persona-backfill-tail',
+        'strip-emotion-tags',
         'normalize-emoticon-urls',
         'protect-thought-chains',
         'protect-tool-results',
@@ -46,6 +47,7 @@ test('stream-fast protocol path is intentionally lightweight and does not create
     assert.equal(result.state.codeBlockMap, null);
     assert.deepEqual(result.meta.stepsApplied, [
         'strip-persona-backfill-tail',
+        'strip-emotion-tags',
         'normalize-emoticon-urls',
         'protect-code-blocks',
         'deindent-misinterpreted-code-blocks',
@@ -53,4 +55,23 @@ test('stream-fast protocol path is intentionally lightweight and does not create
         'normalize-adjacent-bold-boundaries',
         'restore-code-blocks'
     ]);
+});
+
+test('emotion tags never reach the rendered text, while tool results and code keep them as data', () => {
+    const pipeline = createContentPipeline({
+        getToolResultRegex: () => /\[\[VCP调用结果信息汇总:[\s\S]*?VCP调用结果结束\]\]/g,
+        getCodeFenceRegex: () => /```[\s\S]*?```/g
+    });
+    const reply = '<!--emo:happy 0.8-->你好！\n```\n<!--emo:sad-->\n```\n'
+        + '[[VCP调用结果信息汇总:\n内容: <!--emo:angry-->\nVCP调用结果结束]]\n<!--emo:shy-->再见';
+    const full = pipeline.process(reply, { mode: PIPELINE_MODES.FULL_RENDER });
+    assert.ok(!full.text.includes('emo:happy'));
+    assert.ok(!full.text.includes('emo:shy'));
+    assert.ok(full.text.includes('你好！'));
+    const [, toolResult] = full.state.toolResultMap.entries().next().value;
+    assert.match(toolResult, /emo:angry/);
+    assert.ok(full.text.includes('<!--emo:sad-->'), 'code keeps the tag');
+
+    const stream = pipeline.process('好的呀<!--emo:exc', { mode: PIPELINE_MODES.STREAM_FAST });
+    assert.equal(stream.text, '好的呀');
 });

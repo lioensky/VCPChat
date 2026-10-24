@@ -6,6 +6,7 @@ import { handleSaveGlobalSettings } from './global-settings-manager.js';
 import { syncDependentRows } from './ui-system/settings/dependent-rows.js';
 import { effectiveContextHistory, isContextCheckpoint } from './chat/contextCompactionState.js';
 import { shouldCompactContext } from './chat/contextCompactionService.js';
+import { installAppFeatures } from './renderer/appFeatures.js';
 
 let eventListenersBound = false;
 
@@ -1425,6 +1426,9 @@ export function setupEventListeners(deps) {
             toggleSidebarModeBtn.addEventListener('contextmenu', e => e.preventDefault());
         }
     }
+
+    // 应用功能模块在主窗口这一侧的入口（feature.json 的 renderer）
+    installAppFeatures({ chatAPI, refs, itemListManager, chatManager, sendMessageBtn, globalSettingsBtn });
 
     // 语音聊天按钮事件处理
     const voiceChatBtn = document.getElementById('voiceChatBtn');
