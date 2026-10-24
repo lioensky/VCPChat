@@ -52,6 +52,7 @@ function setup(t) {
         ipcMain: { handle: (c, fn) => handlers.set(c, fn), on: (c, fn) => listeners.set(c, fn) },
         protocol: { handle() {}, registerSchemesAsPrivileged() {} },
         net: {},
+        nativeImage: { createFromBitmap: () => ({}) },
         Menu: { buildFromTemplate: (template) => { menus.push(template); return { popup() {} }; } },
         screen,
     };
@@ -99,7 +100,8 @@ function setup(t) {
         delete require.cache[ttsFile];
     };
     t.after(cleanup);
-    return { handlers, listeners, mainWindow, open, spoken, root, menus };
+    return { handlers, listeners, mainWindow, open, spoken, root, menus,
+        petHandlers: require('../modules/deskpet/petHandlers.js') };
 }
 
 const from = (win) => ({ sender: win.webContents });
@@ -192,6 +194,14 @@ test('a reply given up while its voice settings are still loading does not stay 
     assert.deepEqual([...claims.keys()], ['n3']);
 });
 
+
+test('voice chat replies are never claimed or spoken a second time by the pet', async (t) => {
+    const { handlers, open, petHandlers } = setup(t);
+    const nova = await open('Nova');
+    petHandlers.onRequestStart('voice-reply', { agentId: 'Nova', topicId: 'voicechat_Nova' });
+    assert.deepEqual(await handlers.get('deskpet:voice-begin')(from(nova), 'voice-reply'), { speaking: false });
+    assert.equal(require('../modules/deskpet/petVoice.js')._claims.has('voice-reply'), false);
+});
 
 test('stable speech IPC appends one session and rejects stale segments after stop or takeover', async (t) => {
     const { listeners, mainWindow, spoken, open } = setup(t);

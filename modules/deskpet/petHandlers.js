@@ -44,6 +44,7 @@ const { createPetProactive } = require('./petProactive');
 const { createPetMenus } = require('./petMenus');
 const { createPetCommands } = require('./petCommands');
 const { registerIpc } = require('./petIpc');
+const { voiceChatSessions } = require('../voice/voiceChatSessions');
 
 // 启动时恢复上次的桌宠：等主窗口载完再开，不和首屏抢。
 const RESTORE_DELAY_MS = 1500;
@@ -149,7 +150,12 @@ function initialize(options) {
     });
     registerProtocol();
     registerIpc(ctx);
-    voice.initialize({ paths, findPet: (event) => ctx.petFromEvent(event), tts: options.tts });
+    voice.initialize({
+        paths, findPet: (event) => ctx.petFromEvent(event), tts: options.tts,
+        isExternalSpeech: (agentId, messageId) => ctx.sessions.get(agentId)?.sessions?.some(
+            row => row.messageId === messageId && row.topicId === `voicechat_${agentId}`
+        ) === true,
+    });
     ctx.controls = createPetControls({
         electron,
         appDataRoot: paths.appDataRoot,
@@ -242,6 +248,13 @@ function initialize(options) {
     };
     disposeHostEvents = () => { for (const dispose of hostEvents.splice(0)) dispose(); };
     hostEvents.push(() => mainContents?.removeListener?.('did-finish-load', scheduleRestore));
+    hostEvents.push(voiceChatSessions.subscribe((agentId, route) => {
+        const pet = ctx.pets.get(agentId);
+        if (pet && !pet.win.isDestroyed()) {
+            try { pet.win.webContents.send('deskpet:chat-route', route); }
+            catch (error) { console.warn('[DeskPet] route update failed:', error.message); }
+        }
+    }));
     // 主窗口刷新时设置页没了：录快捷键录到一半暂停的全局快捷键要恢复
     listenHost(mainContents, 'did-start-loading', () => ctx.controls?.pauseShortcuts(false));
     listenHost(screen, 'display-removed', ctx.displays.onDisplaysChanged);

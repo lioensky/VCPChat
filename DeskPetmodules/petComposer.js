@@ -159,22 +159,58 @@ export function createPetComposer(ctx) {
 
     // 输入条左边的「+」：下一句开个新话题再发（和主窗口的「新话题」一样），再按一下取消
     let petName = 'TA';
+    let chatRoute = { mode: 'main', ready: false };
+    let routeReceived = false;
+    function setChatRoute(route) {
+        const previous = chatRoute.mode;
+        chatRoute = route?.mode === 'voice' ? { mode: 'voice', ready: route.ready === true } : { mode: 'main', ready: false };
+        const voice = chatRoute.mode === 'voice';
+        $('dock').dataset.chatRoute = chatRoute.mode;
+        $('composerNew').disabled = voice;
+        setFresh(voice ? false : composer.fresh);
+        if (previous !== chatRoute.mode && composer.queued) {
+            const input = $('composerInput');
+            input.value = input.value.trim() ? `${composer.queued}\n${input.value}` : composer.queued;
+            composer.queued = null;
+            composer.queuedFresh = false;
+            fitComposerInput();
+            ctx.renderBubble();
+            ctx.notice('会话已切换，待发送内容已放回输入框，请确认后发送', { ms: 5000 });
+        }
+    }
+    const offRoute = api.onChatRoute?.(route => { routeReceived = true; setChatRoute(route); });
+    window.addEventListener('pagehide', () => offRoute?.(), { once: true });
+    function initializeChatRoute(route) {
+        if (!routeReceived) setChatRoute(route);
+    }
     function setFresh(on) {
         composer.fresh = on;
         const button = $('composerNew');
         button.setAttribute('aria-pressed', String(on));
-        button.title = on ? '取消，接着原来的话题说' : '开新话题';
-        $('composerInput').placeholder = on ? '开始新聊天' : `和 ${petName} 说点什么…`;
+        const voice = chatRoute.mode === 'voice';
+        button.title = voice ? '语音会话中不能新建普通话题' : on ? '取消，接着原来的话题说' : '开新话题';
+        $('composerInput').placeholder = voice
+            ? (chatRoute.ready ? '发送到语音会话…' : '语音会话尚未就绪…')
+            : on ? '开始新聊天' : `和 ${petName} 说点什么…`;
+        $('composerInput').title = voice
+            ? '当前发送到同助手的语音会话；暂不支持附件和新话题'
+            : 'Enter 发送，Shift+Enter 换行，Esc 收起';
+        $('composerSend').title = voice ? '发送到语音会话' : '发送';
     }
 
     // 占位只写一句：窄窗口里也不折行；按键提示放在悬停说明里
     function setPetName(name) {
         petName = name;
-        $('composerInput').placeholder = `和 ${petName} 说点什么…`;
-        $('composerInput').title = 'Enter 发送，Shift+Enter 换行，Esc 收起';
+        setFresh(composer.fresh);
     }
 
     async function sendText(text, { fresh = false, files = [] } = {}) {
+        if (chatRoute.mode === 'voice' && (fresh || files.length || !chatRoute.ready)) {
+            ctx.notice(!chatRoute.ready ? '语音会话尚未就绪，请稍后再试'
+                : files.length ? '语音会话暂不支持附件，请关闭语音窗口后发送'
+                : '语音会话中不能新建普通话题', { error: true });
+            return false;
+        }
         composer.sending = true;
         $('composerSend').disabled = true;
         fitComposerInput();
@@ -203,6 +239,12 @@ export function createPetComposer(ctx) {
         const text = input.value.trim();
         const files = composer.files;
         if ((!text && !files.length) || composer.sending) return;
+        if (chatRoute.mode === 'voice' && (files.length || !chatRoute.ready || ctx.bubble.replyId)) {
+            ctx.notice(files.length ? '语音会话暂不支持附件，请关闭语音窗口后发送'
+                : !chatRoute.ready ? '语音会话尚未就绪，请稍后再试'
+                : 'TA 还在回复，文字已保留，请稍后发送', { ms: 4000 });
+            return;
+        }
         // 带着文件的等 TA 说完再发（排队的那句只记文字）
         if (ctx.bubble.replyId && files.length) {
             ctx.notice('TA 说完再发带文件的这条', { ms: 3000 });
@@ -311,7 +353,7 @@ export function createPetComposer(ctx) {
 
     return {
         composer, dock, dockVisibility, syncDockLayers, setDock, dockHover, restingDock,
-        openComposer, closeComposer, hasDraft, transcribing, fitComposerInput, setFresh, setPetName,
+        openComposer, closeComposer, hasDraft, transcribing, fitComposerInput, setFresh, setPetName, initializeChatRoute,
         startVoice, finishVoice, sendText, submitComposer, flushQueued, bindComposer,
     };
 }

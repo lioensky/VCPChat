@@ -16,6 +16,7 @@
   },
   "tests": [
     "tests/deskpet-session-card.test.mjs",
+    "tests/deskpet-voice-session.test.mjs",
     "tests/deskpet-assets.test.mjs",
     "tests/deskpet-stream.test.mjs",
     "tests/deskpet-bubble-text.test.mjs",

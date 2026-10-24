@@ -158,7 +158,15 @@ function onWalk(callback) {
     return () => ipcRenderer.removeListener('deskpet:walk', listener);
 }
 
+function onChatRoute(callback) {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, route) => callback(route);
+    ipcRenderer.on('deskpet:chat-route', listener);
+    return () => ipcRenderer.removeListener('deskpet:chat-route', listener);
+}
+
 contextBridge.exposeInMainWorld('deskPetAPI', Object.freeze({
+    onChatRoute,
     getAssets: () => ipcRenderer.invoke('deskpet:get-assets'),
     getPrefs: () => ipcRenderer.invoke('deskpet:get-prefs'),
     onPrefs,

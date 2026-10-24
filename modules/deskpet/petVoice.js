@@ -18,6 +18,7 @@ let paths = null;
 let tts = null; // { startSpeech, appendSpeech, stopSpeechFrom }，主进程的 modules/ipc/sovitsHandlers.js
 let findPet = null; // event → pet
 let muted = null; // agentId → true，懒加载
+let isExternalSpeech = () => false; // 语音会话由语音窗口独占朗读，桌宠只显示表情和文字。
 const claims = new Map(); // messageId → { contents, until }
 const speeches = new WeakMap(); // pet → { messageId, session, options }
 // 还在读配置的 voice-begin：期间又来了新的 begin 或这条已经 end，读完就不再占
@@ -109,7 +110,7 @@ function registerIpc() {
     ipcMain.handle('deskpet:voice-begin', async (event, messageId) => {
         const pet = findPet(event);
         const id = typeof messageId === 'string' ? messageId : '';
-        if (!pet || !id) return { speaking: false };
+        if (!pet || !id || isExternalSpeech(pet.agentId, id)) return { speaking: false };
         const seq = ++beginSeq;
         beginning.set(pet, { messageId: id, seq });
         const status = await voiceStatus(pet.agentId);
@@ -178,6 +179,7 @@ function initialize(options) {
     paths = options.paths;
     findPet = options.findPet;
     tts = options.tts;
+    isExternalSpeech = options.isExternalSpeech || (() => false);
     registerIpc();
 }
 
