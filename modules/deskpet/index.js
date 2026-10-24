@@ -1,16 +1,12 @@
 'use strict';
 
-// 桌宠的唯一入口（主进程）。main.js 只调用这里的 registerSchemes() 和 register(host)；
+// 桌宠的唯一入口（主进程）。由 modules/appFeatures.js 按 feature.json 加载，调用这里的 register(host)；
+// 自定义协议 vcp-deskpet:// 也在 feature.json 里声明，由加载器在 app ready 之前登记。
 // 桌宠需要核心配合的地方全部经 host.hooks（modules/hostHooks.js）挂上去，不反向 require 核心模块。
 // 删掉整个 modules/deskpet 目录，核心照常运行。
 
 const handlers = require('./petHandlers');
 const voice = require('./petVoice');
-
-/** 自定义协议 vcp-deskpet:// 必须在 app ready 之前登记。 */
-function registerSchemes() {
-    handlers.registerSchemes();
-}
 
 /**
  * app ready、主窗口建好以后调用一次。
@@ -57,4 +53,4 @@ function register(host) {
     };
 }
 
-module.exports = { registerSchemes, register };
+module.exports = { register };

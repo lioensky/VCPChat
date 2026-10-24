@@ -66,12 +66,6 @@ let coreInstaller = null; // modules/deskpet/cubismCore.js：设置页里装 Cub
 let restoreTimer = null;
 let disposeHostEvents = () => {};
 
-function registerSchemes() {
-    protocol.registerSchemesAsPrivileged([
-        { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
-    ]);
-}
-
 function registerProtocol() {
     protocol.handle(SCHEME, async (request) => {
         const file = await ctx.assets.resolveLocalFile(request.url);
@@ -295,7 +289,6 @@ function isolated(name, fn, fallback) {
 }
 
 module.exports = {
-    registerSchemes,
     initialize,
     closeAll,
     // 托盘：建菜单时取「桌宠」这一项，并在桌宠状态变了时请托盘刷新（经 index.js 挂到 hostHooks）

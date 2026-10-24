@@ -6,6 +6,7 @@ import { handleSaveGlobalSettings } from './global-settings-manager.js';
 import { syncDependentRows } from './ui-system/settings/dependent-rows.js';
 import { effectiveContextHistory, isContextCheckpoint } from './chat/contextCompactionState.js';
 import { shouldCompactContext } from './chat/contextCompactionService.js';
+import { installAppFeatures } from './renderer/appFeatures.js';
 
 let eventListenersBound = false;
 
@@ -1426,12 +1427,8 @@ export function setupEventListeners(deps) {
         }
     }
 
-    // 桌宠（可选模块）：preload 暴露了桌宠接口才载入它在主窗口这一侧的部分（桥、设置分区、样式）
-    if (typeof chatAPI.toggleDeskPet === 'function') {
-        import('../DeskPetmodules/mainWindow/index.js')
-            .then(({ installDeskPet }) => installDeskPet({ chatAPI, refs, itemListManager, chatManager, sendMessageBtn, globalSettingsBtn }))
-            .catch(error => console.warn('[DeskPet] bridge failed to load:', error));
-    }
+    // 应用功能模块在主窗口这一侧的入口（feature.json 的 renderer）
+    installAppFeatures({ chatAPI, refs, itemListManager, chatManager, sendMessageBtn, globalSettingsBtn });
 
     // 语音聊天按钮事件处理
     const voiceChatBtn = document.getElementById('voiceChatBtn');

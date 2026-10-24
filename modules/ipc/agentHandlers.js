@@ -353,7 +353,7 @@ function initialize(context) {
         return agentDir ? findPortraitUrls(agentDir) : null;
     });
 
-    // 助手的长期心情（modules/agentMood.js）：侧栏立绘和桌宠在回复的情绪过去以后回到它；读不到时为 null
+    // 助手的长期心情（modules/agentMood.js）：侧栏立绘等助手形象在回复的情绪过去以后回到它；读不到时为 null
     ipcMain.handle('get-agent-mood', async (event, agentId) => {
         try {
             return (await getAgentMoodStore()?.get(agentId)) ?? null;
@@ -600,7 +600,7 @@ function initialize(context) {
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
             // 先让心情不再写、等正在写的 mood.json 写完，否则删目录时可能撞上写入
             await getAgentMoodStore()?.forget(agentId);
-            // 记着这个助手的功能（例如开着的桌宠）先收尾
+            // 记着这个助手的功能（例如开着的窗口）先收尾
             await hostHooks.emitAsync('agent:removed', agentId);
             const portraitFiles = (await fs.readdir(agentDir).catch(() => []))
                 .filter(name => PORTRAIT_FILE_PATTERN.test(name))

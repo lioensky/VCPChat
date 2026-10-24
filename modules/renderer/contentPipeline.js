@@ -63,7 +63,7 @@ function stripPersonaBackfillTail(text) {
     return transformOutsideToolResults(text, stripPersonaBackfillSegment);
 }
 
-// 情绪标签 <!--emo:happy 0.8--> 只给立绘（以后还有桌宠）看，显示时剥掉；工具结果里的同样是数据，不动。
+// 情绪标签 <!--emo:happy 0.8--> 只给立绘等助手形象看，显示时剥掉；工具结果里的同样是数据，不动。
 // 流式时连尾巴上没写完的半个标签一起藏起来，免得闪出 "<!--emo"。
 function stripEmotionTagsOutsideToolResults(text, streaming) {
     if (!text || text.indexOf('<!') === -1) return text;

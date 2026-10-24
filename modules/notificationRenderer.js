@@ -102,7 +102,7 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
 
 const handledToolApprovalRequestIds = new Set();
 const toolApprovalTimers = new Map();
-// 待批请求 → 应答函数（和卡片上点允许/拒绝走同一条路）；别处（例如桌宠）点的允许/拒绝从这里进来
+// 待批请求 → 应答函数（和卡片上点允许/拒绝走同一条路）；别的界面点的允许/拒绝从这里进来
 const toolApprovalAnswerers = new Map();
 const TOOL_CHANGE_DIFF_MATRIX_LIMIT = 120000;
 const TOOL_APPROVAL_DIFF_PREVIEW_LINES = 8;
@@ -1248,7 +1248,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 toolApprovalTimers.set(reqId, cancelTimer);
             }
         }
-        // 还在等人点头：广播出去，别的界面（例如桌宠）可以也问一声，再经 answerToolApproval 应答
+        // 还在等人点头：广播出去，别的界面可以也问一声，再经 answerToolApproval 应答
         if (!handledToolApprovalRequestIds.has(reqId)) {
             const args = logData.data.args;
             window.dispatchEvent(new CustomEvent('vcp:tool-approval-pending', { detail: {

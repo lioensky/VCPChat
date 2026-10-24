@@ -1143,7 +1143,7 @@ function initialize(mainWindow, context) {
             return { error: `消息格式验证失败: ${validationError.message}` };
         }
 
-        // 单聊请求：挂钩的功能可以追加系统提示（例如桌宠的情绪标记协议），并得知请求开始。
+        // 单聊请求：挂钩的功能可以追加系统提示（例如情绪标记协议），并得知请求开始。
         if (!isGroupCall && context?.agentId) {
             messages = hostHooks.pipe('chat:request-messages', messages, context);
             hostHooks.emit('chat:request-start', messageId, context);

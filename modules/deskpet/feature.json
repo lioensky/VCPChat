@@ -1,0 +1,14 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "DeskPet",
+  "displayName": "桌宠",
+  "version": "1.0.0",
+  "description": "助手的桌面形象（Live2D、精灵图或立绘）：显示回复和工具进度、朗读、闲时搭话，也能在桌面上批准工具调用。",
+  "pluginType": "feature",
+  "main": "index.js",
+  "renderer": "DeskPetmodules/mainWindow/index.js",
+  "schemes": [
+    { "scheme": "vcp-deskpet", "privileges": { "standard": true, "secure": true, "supportFetchAPI": true } }
+  ],
+  "defaultEnabled": true
+}

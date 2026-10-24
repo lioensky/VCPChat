@@ -22,7 +22,7 @@ function addStylesheets(doc) {
 
 let installed = false;
 
-export function installDeskPet(context) {
+export function install(context) {
     if (installed) return;
     installed = true;
     addStylesheets(document);

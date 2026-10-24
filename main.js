@@ -111,10 +111,7 @@ const translatorHandlers = require('./modules/ipc/translatorHandlers'); // Impor
 const voiceHandlers = require('./modules/ipc/voiceHandlers'); // Import voice chat handlers
 const localSttHandlers = require('./modules/ipc/localSttHandlers'); // 本地 SenseVoice 语音识别
 const { hostHooks } = require('./modules/hostHooks'); // 可选功能的挂钩点
-// 桌宠是可选模块：目录不在就当没有。自定义协议必须在 app ready 之前登记
-const deskPet = fs.existsSync(path.join(__dirname, 'modules', 'deskpet', 'index.js')) ? require('./modules/deskpet') : null;
-deskPet?.registerSchemes();
-let deskPetHandle = null;
+const { createAppFeatures } = require('./modules/appFeatures'); // 应用功能模块（modules/*/feature.json）
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const chartHandlers = require('./modules/ipc/chartHandlers'); // Agent 图表工作台与持久化服务
@@ -318,6 +315,9 @@ if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoo
 const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
     ? path.resolve(isolatedAppDataRoot)
     : path.join(PROJECT_ROOT, 'AppData');
+// 应用功能模块：停用的不加载；它们声明的自定义协议必须在 app ready 之前登记
+const appFeatures = createAppFeatures({ projectRoot: PROJECT_ROOT, appDataRoot: APP_DATA_ROOT_IN_PROJECT });
+appFeatures.registerSchemes(protocol);
 const NATIVE_SPLASH_READY_FILE = app.isPackaged
     ? path.join(APP_DATA_ROOT_IN_PROJECT, '.vcp_ready')
     : path.join(__dirname, '.vcp_ready');
@@ -554,7 +554,7 @@ function startDistributedServerAfterRenderer() {
                 gameService,
                 // 工作区只读门面：direct 插件据此动态获取写入白名单
                 workspaceService: workspaceHandlers.workspaceService,
-                // 工具调用成功后通知挂钩的功能（例如桌宠播报闹钟、新话题）
+                // 工具调用成功后通知挂钩的功能（例如播报闹钟、新话题）
                 onToolResult: (...args) => hostHooks.emit('tools:result', ...args)
             });
             distributedServer = server;
@@ -726,7 +726,7 @@ async function performQuitCleanup() {
     appQuitCleanupPromise = (async () => {
         await historyWatcherLeases.dispose();
         await getAgentMoodStore()?.flush().catch(() => {});
-        await deskPetHandle?.dispose().catch(() => {});
+        await appFeatures.disposeAll();
 
         try {
             localSttHandlers.shutdown();
@@ -1034,7 +1034,7 @@ function createTray() {
         await toggleRagObserverVisibility();
     };
 
-    // 挂钩的菜单项（例如桌宠）会随功能状态变化：收到 tray:refresh 时刷新（见下面）
+    // 挂钩的菜单项会随功能状态变化：收到 tray:refresh 时刷新（见下面）
     const buildContextMenu = () => Menu.buildFromTemplate([
         {
             label: '显示/隐藏主窗口',
@@ -1632,7 +1632,7 @@ if (!gotTheLock) {
         });
         // 记录器必须早于 chatHandlers.initialize：聊天请求一发出就要有记录器；查看轨迹的 IPC 才按需激活
         configureSharedRecorder({ rootDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'ModelTrajectory') });
-        // 助手的长期心情（Agents/<id>/mood.json）：聊天请求经 chatHandlers 喂进来，变化广播给所有窗口（侧栏立绘、桌宠）
+        // 助手的长期心情（Agents/<id>/mood.json）：聊天请求经 chatHandlers 喂进来，变化广播给所有窗口（侧栏立绘和其他显示助手形象的界面）
         configureAgentMood({
             agentDir: AGENT_DIR,
             broadcast: payload => BrowserWindow.getAllWindows().forEach((win) => {
@@ -1819,6 +1819,7 @@ if (!gotTheLock) {
             openChildWindows,
             settingsManager: appSettingsManager,
             APP_DATA_ROOT_IN_PROJECT,
+            appFeatures,
         });
         await embeddedAppSessions?.closeAll();
         embeddedAppTasks?.dispose('main-window-reinitialized');
@@ -1961,14 +1962,16 @@ if (!gotTheLock) {
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
         localSttHandlers.initialize({ appDataRoot: APP_DATA_ROOT_IN_PROJECT });
-        deskPetHandle = deskPet?.register({
+        // 应用功能模块拿到的宿主能力（modules/appFeatures.js 的 register(host)）
+        appFeatures.installIpc(ipcMain);
+        appFeatures.registerAll({
             hooks: hostHooks,
             tts: sovitsHandlers,
             mainWindow,
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,
             agentDir: AGENT_DIR,
-            // 闲时主动搭话：读服务器设置、写「桌宠闲聊」话题（与插件建话题同一套串行写）
+            // 读服务器设置；写话题时与其他写入串行、用插件建话题的同一套助手操作
             readSettings: () => appSettingsManager.readSettings(),
             historyQueue: () => historyMutationQueue,
             agentOps: () => pluginAgentOperationService,

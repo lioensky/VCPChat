@@ -223,13 +223,13 @@ export function createEmotionDirector({
         append,
         end(messageId) { finish(messageId); },
         fail(messageId) { finish(messageId, { failed: true }); },
-        /** 外部直接指定情绪或状态（例如以后桌宠被点击时的反应） */
+        /** 外部直接指定情绪或状态（例如助手形象被点击时的反应） */
         nudge({ emotion, state = null, intensity = 0.7, source = 'external' } = {}) {
             if (state && !isState(state)) return;
             if (emotion) setMood(emotion, intensity, source);
             if (state) request({ state, emotion: mood.emotion, intensity: mood.intensity, source });
             else refresh(source);
-            // 回复之外的反应（点一下桌宠）过一会儿也回到底色
+            // 回复之外的反应（点一下助手形象）过一会儿也回到底色
             if (emotion && !reply) scheduleSettle();
         },
         /**

@@ -88,7 +88,7 @@ function setup(t) {
     }
     const mainWindow = new BrowserWindow({});
     sovits.initialize(mainWindow, null);
-    // 和 main.js 一样经 register 接上：朗读拦截走 hostHooks 的 tts:speak
+    // 和功能加载器（modules/appFeatures.js）一样经 register 接上：朗读拦截走 hostHooks 的 tts:speak
     const handle = deskPet.register({ hooks: require(files[4]).hostHooks, tts: sovits, mainWindow, projectRoot: path.resolve('.'), appDataRoot: root, agentDir });
     const open = async (agentId) => {
         await handlers.get('deskpet:toggle')({ sender: mainWindow.webContents }, agentId);

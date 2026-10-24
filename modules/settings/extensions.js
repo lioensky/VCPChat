@@ -1,4 +1,4 @@
-// extensions — 可选功能（例如桌宠）往全局设置里加分区。
+// extensions — 可选功能（modules/*/feature.json）往全局设置里加分区。
 // 功能模块在渲染进程里调用 registerSettingsSection，早于或晚于设置壳挂载都行：
 // schema-surface 渲染分区内容，settings-bridge 补上导航行。核心不认识具体功能，
 // 功能目录删掉，分区就不出现。

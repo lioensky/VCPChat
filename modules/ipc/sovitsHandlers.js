@@ -4,7 +4,7 @@ const { hostHooks } = require('../hostHooks');
 let sovitsTTSInstance = null;
 let internalMainWindow = null; // 用于在 handler 内部可靠地访问 mainWindow
 let internalSettingsManager = null;
-// 同一时间只有一个声音：TTS 实例是共用的，新的朗读开始时，上一个出声的窗口（主窗口、语音聊天、桌宠）里还在放的也停掉。
+// 同一时间只有一个声音：TTS 实例是共用的，新的朗读开始时，上一个出声的窗口（主窗口、语音聊天或功能模块的窗口）里还在放的也停掉。
 let lastSpeaker = null;
 
 function getSovitsTTS() {
@@ -86,7 +86,7 @@ function initialize(mainWindow, settingsManager) {
             sovitsTTSInstance.stop();
         }
 
-        // 正在出声的是别的窗口（例如桌宠）时也让它停下。
+        // 正在出声的是别的窗口时也让它停下。
         stopOtherSpeaker(event.sender);
         lastSpeaker = null;
 

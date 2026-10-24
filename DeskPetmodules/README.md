@@ -136,7 +136,7 @@ Codex 桌宠可通过 `pet.json`、整个文件夹、ZIP 或标准命名的 `spr
 
 主进程（`modules/`）：
 
-- `deskpet/index.js`：唯一入口。`main.js` 只调 `registerSchemes()` 和 `register(host)`；桌宠要核心配合的地方（聊天请求和回复流、工具结果、删助手、朗读拦截、托盘菜单）都挂在 `modules/hostHooks.js` 上，删掉 `modules/deskpet/` 核心照常运行。主窗口里的 API 在 `deskpet/preloadApi.js`（`preloads/core/registry.js` 自动扫到，删目录就没了）。工具审批经 `vcp:tool-approval-pending`/`settled` 事件转过来。
+- `deskpet/index.js`：唯一入口。由 `modules/appFeatures.js` 按 `deskpet/feature.json` 加载，只调 `register(host)`，协议 `vcp-deskpet://` 也在清单里声明；在插件管理器的 Feature 分类里可以停用（重启后生效）；桌宠要核心配合的地方（聊天请求和回复流、工具结果、删助手、朗读拦截、托盘菜单）都挂在 `modules/hostHooks.js` 上，删掉 `modules/deskpet/` 核心照常运行。主窗口里的 API 在 `deskpet/preloadApi.js`（`preloads/core/registry.js` 自动扫到，删目录就没了）。工具审批经 `vcp:tool-approval-pending`/`settled` 事件转过来。
 - `deskpet/petHandlers.js`：装配和主进程生命周期：建共用上下文、把下面这些装上、注册自定义协议、启动时恢复上次的桌宠、退出时收摊。
 - `deskpet/petContext.js`：各块共用的上下文（开着的桌宠、路径、主窗口、平台差异，以及推给主窗口和设置页的几句话）。
 - `deskpet/petWindow.js`：窗口的一生——打开、显示隐藏、鼠标穿透、页面就绪、关闭、崩溃恢复、启动时恢复。
@@ -161,7 +161,7 @@ Codex 桌宠可通过 `pet.json`、整个文件夹、ZIP 或标准命名的 `spr
 
 主窗口这一侧（`DeskPetmodules/mainWindow/`，只在 preload 暴露了桌宠接口时由 `modules/event-listeners.js` 动态载入）：
 
-- `index.js`：唯一入口 `installDeskPet()`：挂样式、经 `modules/settings/extensions.js` 注册设置里的「桌宠」分区、装上桥。
+- `index.js`：唯一入口 `install()`（清单里的 `renderer`，经 `modules/renderer/appFeatures.js` 载入）：挂样式、经 `modules/settings/extensions.js` 注册设置里的「桌宠」分区、装上桥。
 - `bridge.js`、`sendBridge.js`：桌宠和主窗口之间的往来（桌宠发言进当前会话、打开设置并切到桌宠分区）。
 - `settingsSection.js`、`settingsPanel.js`、`settings.css`：全局设置「桌宠」分区。
 

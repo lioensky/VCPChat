@@ -3,7 +3,7 @@
 /**
  * 每个助手的长期心情：存在 Agents/<id>/mood.json（不进 config.json），主进程是唯一的写入方。
  * - 聊天请求发出时读最后一条用户消息，回复结束后读整条回复，各算一次情绪事件（modules/emotion/moodState.js）；
- * - 心情变了就通过 broadcast(snapshot) 广播（main.js 发 'agent-mood-changed' 给所有窗口），侧栏立绘和桌宠用同一份；
+ * - 心情变了就通过 broadcast(snapshot) 广播（main.js 发 'agent-mood-changed' 给所有窗口），侧栏立绘和其他显示助手形象的界面用同一份；
  * - 心情随时间回落，定时检查一次，显示的情绪变了也广播。
  * 记录不影响聊天：任何异常都吞掉，模块没载入完（ESM 异步载入）时什么也不做。
  */

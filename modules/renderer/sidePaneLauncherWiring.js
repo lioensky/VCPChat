@@ -89,7 +89,7 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
         onFrame: frame => { if (PORTRAIT_EXPRESSIONS_ENABLED) controller.setLauncherPortraitFrame?.(frame); },
     });
     let emotionAgentId = null;
-    // 回复的情绪过去以后回到这个助手的长期心情（主进程按聊天记着，桌宠用的是同一份）
+    // 回复的情绪过去以后回到这个助手的长期心情（主进程按聊天记着，其他助手形象用的是同一份）
     const moodApi = chatAPI || win.electronAPI;
     let moodSeq = 0;
     const applyMood = (mood) => {

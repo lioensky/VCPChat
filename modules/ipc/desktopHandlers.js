@@ -18,6 +18,7 @@ let desktopWindow = null;
 let mainWindow = null;
 let openChildWindows = [];
 let appSettingsManager = null;
+let appFeatures = null; // modules/appFeatures.js：插件管理器里一并列出应用功能模块
 let alwaysOnBottomEnabled = false;
 let alwaysOnBottomInterval = null;
 let pendingAutoSpawnQueue = []; // 🌟 开门迎客离线挂件待上屏队列
@@ -65,6 +66,34 @@ function isSafePluginFolderName(value) {
         && value === path.basename(value)
         && !value.includes('..')
         && !/[\\/]/.test(value);
+}
+
+// 插件管理器里的应用功能模块用 "feature:<name>" 作 folderName，和分布式插件目录名区分开
+const FEATURE_FOLDER_PREFIX = 'feature:';
+
+function getFeatureName(folderName) {
+    return typeof folderName === 'string' && folderName.startsWith(FEATURE_FOLDER_PREFIX)
+        ? folderName.slice(FEATURE_FOLDER_PREFIX.length)
+        : null;
+}
+
+function listAppFeaturesForPluginManager() {
+    if (!appFeatures) return [];
+    return appFeatures.list().map((feature) => ({
+        folderName: FEATURE_FOLDER_PREFIX + feature.name,
+        featureName: feature.name,
+        source: 'feature',
+        relativePath: feature.relativePath,
+        enabled: feature.enabled,
+        active: feature.active,
+        manifestFileName: 'feature.json',
+        hasConfigEnv: false,
+        configEnvContent: '',
+        manifest: feature.manifest,
+        rawManifest: JSON.stringify(feature.manifest, null, 2),
+        parseError: feature.error,
+        pluginType: 'feature',
+    }));
 }
 
 function getPluginManagerPluginDir(folderName) {
@@ -1010,6 +1039,7 @@ function initialize(params) {
     mainWindow = params.mainWindow;
     openChildWindows = params.openChildWindows;
     appSettingsManager = params.settingsManager;
+    appFeatures = params.appFeatures || null;
     const appDataRoot = params.APP_DATA_ROOT_IN_PROJECT
         || path.join(PROJECT_ROOT, 'AppData');
     DESKTOP_WIDGETS_DIR = path.join(appDataRoot, 'DesktopWidgets');
@@ -2381,6 +2411,7 @@ function initialize(params) {
                 const plugin = await readVcpPluginEntry(entry, pluginsRoot);
                 if (plugin) plugins.push(plugin);
             }
+            plugins.push(...listAppFeaturesForPluginManager());
 
             plugins.sort((a, b) => {
                 const aName = a.manifest?.displayName || a.manifest?.name || a.folderName;
@@ -2397,6 +2428,7 @@ function initialize(params) {
 
     ipcMain.handle('plugin-manager-save-manifest', async (event, data = {}) => {
         try {
+            if (getFeatureName(data.folderName)) return { success: false, error: '应用功能模块的 feature.json 随应用发布，不在这里编辑' };
             const pluginDir = getPluginManagerPluginDir(data.folderName);
             await fs.ensureDir(pluginDir);
             const manifestInfo = findExistingManifestPath(pluginDir);
@@ -2419,6 +2451,7 @@ function initialize(params) {
 
     ipcMain.handle('plugin-manager-save-config-env', async (event, data = {}) => {
         try {
+            if (getFeatureName(data.folderName)) return { success: false, error: '应用功能模块没有 config.env' };
             const pluginDir = getPluginManagerPluginDir(data.folderName);
             await fs.ensureDir(pluginDir);
             const envPath = path.join(pluginDir, 'config.env');
@@ -2432,6 +2465,12 @@ function initialize(params) {
 
     ipcMain.handle('plugin-manager-set-plugin-enabled', async (event, data = {}) => {
         try {
+            const featureName = getFeatureName(data.folderName);
+            if (featureName) {
+                if (!appFeatures) return { success: false, error: '应用功能模块不可用' };
+                const result = appFeatures.setEnabled(featureName, Boolean(data.enabled));
+                return { success: true, enabled: result.enabled, restartRequired: result.restartRequired };
+            }
             const pluginDir = getPluginManagerPluginDir(data.folderName);
             const enabledPath = path.join(pluginDir, 'plugin-manifest.json');
             const disabledPath = path.join(pluginDir, 'plugin-manifest.json.block');
@@ -2464,7 +2503,10 @@ function initialize(params) {
 
     ipcMain.handle('plugin-manager-open-plugin-folder', async (event, data = {}) => {
         try {
-            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            const featureName = getFeatureName(data.folderName);
+            const feature = featureName ? appFeatures?.list().find((item) => item.name === featureName) : null;
+            if (featureName && !feature) return { success: false, error: '没有这个功能模块' };
+            const pluginDir = feature ? path.join(PROJECT_ROOT, feature.relativePath) : getPluginManagerPluginDir(data.folderName);
             if (!await fs.pathExists(pluginDir)) {
                 return { success: false, error: '插件目录不存在' };
             }

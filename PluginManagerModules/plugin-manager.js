@@ -1,7 +1,8 @@
 const api = window.utilityAPI || window.electronAPI;
 
-const PLUGIN_TYPES = ['renderer', 'static', 'messagePreprocessor', 'synchronous', 'asynchronous', 'service', 'hybridservice'];
+const PLUGIN_TYPES = ['feature', 'renderer', 'static', 'messagePreprocessor', 'synchronous', 'asynchronous', 'service', 'hybridservice'];
 const TYPE_LABELS = {
+    feature: 'Feature 应用功能模块',
     renderer: 'Renderer 渲染层插件',
     static: 'Static 自动注入',
     messagePreprocessor: 'Message Preprocessor 请求预处理',
@@ -333,10 +334,17 @@ window.openPluginModal = function openPluginModal(folderName) {
     const manifest = currentEditingManifest;
     const title = manifest.displayName || manifest.name || plugin.folderName;
     els.modalTitle.textContent = title;
-    els.modalSubtitle.textContent = `${plugin.relativePath} · ${plugin.enabled ? '已启用' : '已禁用'}`;
+    const pendingRestart = plugin.source === 'feature' && !plugin.parseError && plugin.enabled !== plugin.active;
+    els.modalSubtitle.textContent = `${plugin.relativePath} · ${plugin.enabled ? '已启用' : '已禁用'}${pendingRestart ? ' · 重启后生效' : ''}`;
     els.manifestEditor.value = JSON.stringify(manifest, null, 2);
     els.envEditor.value = plugin.configEnvContent || '';
     els.togglePluginBtn.textContent = plugin.enabled ? '禁用插件' : '启用插件';
+    // 应用功能模块的清单随应用发布，只能启停
+    const isFeature = plugin.source === 'feature';
+    els.manifestEditor.readOnly = isFeature;
+    els.envEditor.readOnly = isFeature;
+    if (els.saveManifestBtn) els.saveManifestBtn.disabled = isFeature;
+    if (els.saveEnvBtn) els.saveEnvBtn.disabled = isFeature;
 
     renderCommandEditors();
     activateModalTab('manifest-panel');
@@ -454,7 +462,8 @@ async function toggleCurrentPlugin() {
             throw new Error(result?.error || '切换失败');
         }
 
-        showToast(targetEnabled ? '插件已启用' : '插件已禁用', 'success');
+        const restartNote = result.restartRequired ? '，重启后生效' : '';
+        showToast(`${targetEnabled ? '插件已启用' : '插件已禁用'}${restartNote}`, 'success');
         await refreshPlugins();
         const reopened = allPlugins.find(item => item.folderName === currentEditingPlugin.folderName);
         if (reopened) window.openPluginModal(reopened.folderName);
