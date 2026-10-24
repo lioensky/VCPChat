@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const micIcon = document.getElementById('mic-icon');
     let historyMutationAuthority = null;
     let ttsSurfaceOwner = null;
+    let closing = false;
+    let sendStarting = false;
 
     // Detect user gestures to unlock the shared Web Audio playback surface.
     function detectUserGesture() {
@@ -69,6 +71,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Event Listeners ---
     closeBtn.addEventListener('click', async () => {
         closeBtn.disabled = true;
+        closing = true;
+        window.electronAPI.voiceChatSessionReady?.(false);
         try {
             if (activeStreamingMessageId) {
                 await window.electronAPI.interruptVcpRequest?.({ messageId: activeStreamingMessageId });
@@ -173,11 +177,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    sendMessageBtn.addEventListener('click', () => sendMessage(messageInput.value));
+    const sendComposer = () => {
+        if (!messageInput.value.trim()) return;
+        sendMessage(messageInput.value).catch(error => console.warn('[VoiceChat]', error.message));
+    };
+    sendMessageBtn.addEventListener('click', sendComposer);
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            sendMessage(messageInput.value);
+            sendComposer();
         }
     });
     toggleInputModeBtn.disabled = true;
@@ -294,7 +302,9 @@ document.addEventListener('DOMContentLoaded', () => {
         agentNameSpan.textContent = `${agentConfig.name} - ${getVoiceModeLabel(globalSettings)}`;
         messageInput.placeholder = getIdlePlaceholder();
 
+        if (closing) return;
         initializeRenderer();
+        window.electronAPI.voiceChatSessionReady?.(true);
         });
     });
 
@@ -652,14 +662,32 @@ document.addEventListener('DOMContentLoaded', () => {
         submitVoiceText(text);
     });
 
-    const sendMessage = async (messageContent) => {
-        if (!messageContent.trim() || !agentConfig || !messageRenderer) return;
+    const sendMessage = async (messageContent, options = {}) => {
+        if (closing || !streamRuntime || !agentConfig) throw new Error('语音会话尚未就绪或正在关闭');
+        if (sendStarting || activeStreamingMessageId) throw new Error('语音会话上一条还在回复中');
+        if (!messageContent.trim()) throw new Error('没有内容');
+        sendStarting = true;
+        try {
+            return await performSendMessage(messageContent, options);
+        } catch (error) {
+            restoreComposerAfterStream();
+            throw error;
+        } finally {
+            sendStarting = false;
+        }
+    };
 
+    const performSendMessage = async (messageContent, { onAccepted = () => {}, deadline, preserveDraft = false } = {}) => {
         const userMessage = { role: 'user', content: messageContent, timestamp: Date.now(), id: `user_msg_${Date.now()}` };
         await messageRenderer.renderMessage(userMessage);
+        if (closing || (Number.isFinite(deadline) && Date.now() > deadline)) {
+            throw new Error('语音会话已关闭或消息投递已过期');
+        }
         currentChatHistory.push(userMessage);
+        // 历史接收后立即回执，不等模型首 token；后续失败也不能让桌宠重复投递。
+        onAccepted();
 
-        messageInput.value = '';
+        if (!preserveDraft) messageInput.value = '';
         messageInput.disabled = true;
         sendMessageBtn.disabled = true;
 
@@ -704,6 +732,32 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!accepted) restoreComposerAfterStream();
         }
     };
+
+    const disposePetSend = window.electronAPI.onVoiceChatDeskPetSend?.(async (request = {}) => {
+        const { requestId, text, deadline } = request;
+        const reply = result => window.electronAPI.voiceChatDeskPetResult?.({ requestId, ...result });
+        if (typeof requestId !== 'string' || typeof text !== 'string') return;
+        if (!Number.isFinite(deadline) || Date.now() > deadline) {
+            reply({ success: false, error: '消息投递已过期，请重新发送' });
+            return;
+        }
+        let accepted = false;
+        try {
+            await sendMessage(text, { deadline, preserveDraft: true, onAccepted: () => { accepted = true; reply({ success: true }); } });
+        } catch (error) {
+            if (!accepted) reply({ success: false, error: error.message });
+            console.error('[VoiceChat] 桌宠消息发送失败：', error);
+        }
+    });
+    const disposePetInterrupt = window.electronAPI.onVoiceChatDeskPetInterrupt?.(payload => {
+        interruptActiveVoiceRequest(payload?.messageId).catch(error => console.warn('[VoiceChat]', error));
+    });
+    window.addEventListener('pagehide', () => {
+        closing = true;
+        window.electronAPI.voiceChatSessionReady?.(false);
+        disposePetSend?.();
+        disposePetInterrupt?.();
+    }, { once: true });
 
     window.electronAPI.onVCPStreamEvent((eventData) => {
         if (!streamRuntime || !isEventForCurrentVoiceSession(eventData)) return;

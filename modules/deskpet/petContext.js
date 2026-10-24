@@ -112,6 +112,7 @@ function createPetContext({ electron, voice }) {
 
     ctx.sessions = createSessionActivity({
         async titleOf(agentId, topicId) {
+            if (topicId === `voicechat_${agentId}`) return '语音聊天';
             if (!ctx.paths || !isAgentId(agentId)) return '';
             const config = await fs.readJson(path.join(ctx.paths.agentDir, agentId, 'config.json'));
             return config.topics?.find(topic => String(topic.id) === topicId)?.name || '';

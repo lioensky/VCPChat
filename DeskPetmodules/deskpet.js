@@ -102,6 +102,7 @@ async function start() {
     ctx.bindWalk();
     document.title = `${assets.name} · 桌宠`;
     ctx.setPetName(assets.name);
+    ctx.initializeChatRoute(assets.chatRoute);
 
     await ctx.pickBackend(assets);
     if (PREVIEW) {

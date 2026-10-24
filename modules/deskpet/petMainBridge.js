@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const crypto = require('crypto');
 const { isAgentId } = require('./petAssets');
+const { voiceChatSessions } = require('../voice/voiceChatSessions');
 
 // 桌宠带过来的文件：拖进来的（本机路径）或粘贴的图片（字节）。主窗口按拖进输入框的流程存成附件。
 const MAX_SEND_FILES = 10;
@@ -63,6 +64,8 @@ function createPetMainBridge(ctx) {
     }
 
     function sendFromPet(agentId, text, { files = [], newTopic = false } = {}) {
+        const voiceSend = voiceChatSessions.send(agentId, text, { files, newTopic });
+        if (voiceSend) return voiceSend;
         const { mainWindow } = ctx;
         if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve({ success: false, error: '主窗口不在了' });
         // 过了 deadline 桌宠已经报「没有响应」了：主窗口别再发出去，否则用户重试就会发两遍
@@ -105,6 +108,7 @@ function createPetMainBridge(ctx) {
     // 话题可能在气泡还挂着时被删掉了：主窗口选中一个不存在的话题后，接着说的话会存进一份话题列表里看不到的历史，
     // 所以先确认它还在这个助手的配置里。
     async function openTopic(agentId, topicId) {
+        if (topicId === `voicechat_${agentId}`) return voiceChatSessions.focus(agentId);
         openMainWindow();
         const { mainWindow } = ctx;
         if (!mainWindow || mainWindow.isDestroyed() || !isAgentId(agentId) || typeof topicId !== 'string' || !topicId) return false;

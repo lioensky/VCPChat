@@ -4,6 +4,7 @@
 
 // 滚一格算多少（deltaY 按像素给，攒够一格再变）
 const WHEEL_NOTCH = 100;
+const { voiceChatSessions } = require('../voice/voiceChatSessions');
 
 function registerIpc(ctx) {
     const { ipcMain } = ctx.electron;
@@ -46,7 +47,7 @@ function registerIpc(ctx) {
             if (pet.kind !== assets.outfit?.kind) ctx.sizing.applyAspect(pet, null, assets.outfit?.kind);
         }
         const saved = (await ctx.readPetState())[pet.agentId];
-        return { ...assets, wardrobeSelection: saved?.wardrobes?.[assets.outfit?.id] || {}, session: ctx.sessions.get(pet.agentId) };
+        return { ...assets, wardrobeSelection: saved?.wardrobes?.[assets.outfit?.id] || {}, session: ctx.sessions.get(pet.agentId), chatRoute: voiceChatSessions.status(pet.agentId) };
     });
     ipcMain.on('deskpet:preview-ready', (event, report) => {
         ctx.previews?.ready(event.sender, report && typeof report === 'object' ? report : null);
@@ -150,6 +151,10 @@ function registerIpc(ctx) {
     ipcMain.on('deskpet:interrupt', (event, messageId) => {
         const pet = ctx.petFromEvent(event);
         if (!pet || typeof messageId !== 'string' || !messageId || messageId.length > 200) return;
+        if (ctx.sessions.get(pet.agentId)?.sessions?.some(row => row.messageId === messageId && row.topicId === `voicechat_${pet.agentId}`)) {
+            voiceChatSessions.interrupt?.(pet.agentId, messageId);
+            return;
+        }
         const { mainWindow } = ctx;
         if (!mainWindow || mainWindow.isDestroyed()) return;
         mainWindow.webContents.send('deskpet:interrupt-request', { agentId: pet.agentId, messageId });

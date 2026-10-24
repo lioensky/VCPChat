@@ -18,6 +18,10 @@ module.exports = {
         // 语音聊天窗口与识别
         openVoiceChatWindow: send('open-voice-chat-window', 'data').roles('chat', 'utility'),
         onVoiceChatData: on('voice-chat-data'),
+        voiceChatSessionReady: send('voice-chat:session-ready', 'ready'),
+        onVoiceChatDeskPetSend: on('voice-chat:deskpet-send'),
+        voiceChatDeskPetResult: send('voice-chat:deskpet-result', 'result'),
+        onVoiceChatDeskPetInterrupt: on('voice-chat:deskpet-interrupt'),
         startSpeechRecognition: send('start-speech-recognition'),
         stopSpeechRecognition: send('stop-speech-recognition'),
         onSpeechRecognitionResult: on('speech-recognition-result'),

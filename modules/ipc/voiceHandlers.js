@@ -6,6 +6,8 @@ const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPat
 const { VoiceInputEngineAdapter } = require('../voice/voice-input-engine-adapter');
 const { MainChatVoiceCoordinator } = require('./mainChatVoiceCoordinator');
 
+const { voiceChatSessions } = require('../voice/voiceChatSessions');
+
 let mainWindow = null;
 let openChildWindows = [];
 let settingsManager = null;
@@ -536,6 +538,7 @@ function createVoiceChatWindow(agentId) {
         show: false,
     });
 
+    voiceChatSessions.register(agentId, voiceChatWindow);
     const voiceWebContentsId = voiceChatWindow.webContents.id;
     const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
     voiceChatWindow.webContents.once('did-finish-load', async () => {
@@ -604,6 +607,8 @@ function createVoiceChatWindow(agentId) {
 }
 
 function handleOpenVoiceChatWindow(_event, { agentId } = {}) {
+    if (typeof agentId !== 'string' || !agentId) return;
+    if (voiceChatSessions.focus(agentId)) return;
     return createVoiceChatWindow(agentId);
 }
 
@@ -618,6 +623,12 @@ function initialize(options) {
     }
 
     ipcMain.on('open-voice-chat-window', handleOpenVoiceChatWindow);
+    ipcMain.on('voice-chat:session-ready', (event, ready) => {
+        if (findVoiceChatWindowBySender(event.sender)) voiceChatSessions.setReady(event.sender, ready);
+    });
+    ipcMain.on('voice-chat:deskpet-result', (event, payload) => {
+        if (findVoiceChatWindowBySender(event.sender)) voiceChatSessions.acknowledge(event.sender, payload);
+    });
     ipcMain.on('voice-input-capture:ready', event => {
         if (voiceCaptureWindow?.webContents === event.sender) {
             voiceCaptureReady = true;
