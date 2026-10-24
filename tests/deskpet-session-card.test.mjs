@@ -204,7 +204,9 @@ test('idle dock stays collapsed, opens on intentional hover and tolerates the ga
     assert.equal(d.mode, 'hidden');
     const cue = dockHitArea(360, 480, { collapsed: true });
     assert.ok(containsPoint(cue, 180, 438));
-    assert.equal(containsPoint(cue, 120, 460), false, 'collapsed controls do not capture the old expanded blank area');
+    // 胶囊收起后光标直接落到打字、说话按钮的位置（离横条约 20px），也要算命中，胶囊才会重新冒出来
+    for (const x of [145, 161, 200, 215]) assert.ok(containsPoint(cue, x, 457), `button spot ${x}`);
+    assert.equal(containsPoint(cue, 120, 460), false, 'collapsed controls do not capture the wider session area');
 });
 
 test('input, recording and explicitly expanded sessions pin the dock; drag and click-through suppress it', () => {
