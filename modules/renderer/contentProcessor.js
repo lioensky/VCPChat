@@ -1265,6 +1265,7 @@ function processRenderedContent(contentDiv, settings = {}) {
                 {left: "\\[", right: "\\]", display: true}
             ],
             ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+            ignoredClasses: ['mermaid', 'mermaid-placeholder'],
             throwOnError: false
         });
     }

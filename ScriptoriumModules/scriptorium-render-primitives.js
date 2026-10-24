@@ -462,37 +462,34 @@ ${markdownBaseCss('.vdoc-runtime')}
                 node.dataset.vdocMermaidRendered !== 'true'
                 && node.dataset.vdocMermaidRendering !== 'true'
             );
-            if (!nodes.length || !window.mermaid?.render) return [];
-            window.mermaid.initialize({
-                startOnLoad: false,
-                securityLevel: 'strict',
-                theme: 'neutral',
-            });
+            if (!nodes.length) return [];
+            if (!window.pele || typeof window.pele.render !== 'function') {
+                console.warn('[Scriptorium] 本地 Pele 渲染依赖未加载，跳过图表渲染。');
+                return [];
+            }
             return Promise.all(nodes.map(async (node) => {
                 const source = decodeMermaidSource(node);
-                const renderId = `vdoc-mermaid-${Date.now().toString(36)}-${
-                    mermaidSequence += 1
-                }`;
                 node.contentEditable = 'false';
                 node.dataset.vdocAtomic = 'mermaid';
                 node.dataset.vdocStableId = node.dataset.vdocStableId
                     || `mermaid-${hybridCompiler.simpleHash(source)}`;
                 node.dataset.vdocMermaidRendering = 'true';
+                node.classList.add('pele-diagram');
                 try {
-                    const result = await window.mermaid.render(renderId, source);
+                    if (source.length > 100000) {
+                        throw new Error('图表源码超过 100,000 字符限制。');
+                    }
+                    const result = window.pele.render(source);
                     const template = document.createElement('template');
-                    template.innerHTML = String(
-                        typeof result === 'string' ? result : result?.svg || ''
-                    ).trim();
+                    template.innerHTML = String(result?.svg || '').trim();
                     const svg = template.content.querySelector('svg');
-                    if (!svg) throw new Error('Mermaid 没有返回 SVG 根。');
+                    if (!svg) throw new Error('Pele 没有返回 SVG 根。');
                     svg.setAttribute('role', 'img');
-                    svg.setAttribute('aria-label', 'Mermaid 图表');
+                    svg.setAttribute('aria-label', 'Pele 图表');
                     svg.style.maxWidth = '100%';
                     svg.style.height = 'auto';
                     node.replaceChildren(svg);
                     node.dataset.vdocMermaidRendered = 'true';
-                    result?.bindFunctions?.(node);
                     return node;
                 } catch (error) {
                     node.dataset.vdocMermaidError = error.message;

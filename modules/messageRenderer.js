@@ -648,20 +648,23 @@ async function renderMermaidDiagrams(container) {
     // Get the list of actual .mermaid elements to render
     const elementsToRender = placeholders.filter(el => el.classList.contains('mermaid'));
 
-    if (elementsToRender.length > 0 && typeof mermaid !== 'undefined') {
-        // Initialize mermaid if it hasn't been already
-        mermaid.initialize({ startOnLoad: false });
-
-        // 逐个渲染以防止单个图表错误导致所有图表显示错误
-        for (const el of elementsToRender) {
-            try {
-                await mermaid.run({ nodes: [el] });
-                enhanceMermaidDiagram(el);
-            } catch (error) {
-                console.error("Error rendering Mermaid diagram:", error);
-                const originalCode = el.dataset.mermaidSource || el.textContent;
-                el.innerHTML = `<div class="mermaid-error">Mermaid 渲染错误: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
+    for (const el of elementsToRender) {
+        el.classList.add('pele-diagram');
+        const originalCode = el.dataset.mermaidSource || el.textContent;
+        try {
+            if (typeof window.pele === 'undefined' || typeof window.pele.render !== 'function') {
+                throw new Error('本地 Pele 渲染依赖未加载。');
             }
+            if (originalCode.length > 100000) {
+                throw new Error('图表源码超过 100,000 字符限制。');
+            }
+            const { svg } = window.pele.render(originalCode);
+            el.innerHTML = svg;
+            enhanceMermaidDiagram(el);
+        } catch (error) {
+            console.error("Error rendering diagram with Pele:", error);
+            el.classList.add('mermaid-error');
+            el.innerHTML = `<div class="mermaid-error">Pele 图表渲染失败: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
         }
     }
 }
@@ -704,7 +707,7 @@ function enhanceMermaidDiagram(mermaidElement) {
     const canvas = ownerDocument.createElement('div');
     canvas.className = 'mermaid-viewer-canvas';
 
-    svg.removeAttribute('style');
+    // 保留 Pele 在 svg.style 中内联的 CSS 变量映射（如 --_s, --_b, --_fg），仅覆盖尺寸以便在视口中自由平移缩放
     svg.style.maxWidth = 'none';
     svg.style.height = 'auto';
     canvas.appendChild(svg);

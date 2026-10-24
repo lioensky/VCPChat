@@ -1813,14 +1813,32 @@ body[data-vcp-theme="dark"] .vcp-tool-result-bubble th {
     display: block;
 }
 
+/* Mermaid 源码由本地 Pele 渲染，颜色随全局主题变量实时自适应 */
 .mermaid {
+    --pele-bg: transparent;
+    --pele-fg: var(--primary-text, #F2F0E9);
+    --pele-muted: var(--secondary-text, #A7AFB1);
+    --pele-line: var(--primary-text, #F2F0E9);
+    --pele-border: var(--border-color, #3B4449);
+    --pele-surface: var(--secondary-bg, rgba(32, 37, 42, 0.86));
+    --pele-surface-alt: var(--accent-bg, rgba(42, 48, 53, 0.94));
+    --pele-accent: var(--highlight-text, #F2A900);
+    --pele-font: var(--font-family-sans-serif, sans-serif);
+    --pele-font-mono: var(--font-family-monospace, monospace);
     margin-top: 10px;
     margin-bottom: 10px;
     padding: 10px;
     background-color: var(--bg-color);
     border-radius: 8px;
     text-align: center;
-    /* Center the diagram */
+    overflow-x: auto;
+}
+
+.pele-diagram > svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin-inline: auto;
 }
 
 .mermaid-viewer {

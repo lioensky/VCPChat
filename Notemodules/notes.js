@@ -312,30 +312,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           : "../vendor/atom-one-dark.min.css";
     }
 
-    // Sync mermaid theme so subsequent diagrams match the app theme.
-    const desiredMermaidTheme = currentTheme === "light" ? "default" : "dark";
-    if (
-      window.mermaid &&
-      typeof window.mermaid.initialize === "function" &&
-      desiredMermaidTheme !== currentMermaidTheme
-    ) {
-      try {
-        window.mermaid.initialize({
-          startOnLoad: false,
-          theme: desiredMermaidTheme,
-          securityLevel: "loose",
-        });
-        const previousTheme = currentMermaidTheme;
-        currentMermaidTheme = desiredMermaidTheme;
-        // Re-render the active note so the new mermaid theme takes effect.
-        if (previousTheme !== null && activeNoteId) {
-          const note = findItemById(getCombinedTree(), activeNoteId);
-          if (note) renderMarkdown(note.content);
-        }
-      } catch (e) {
-        console.warn("[Notes] Failed to re-initialize mermaid theme:", e);
-      }
-    }
+    // Pele 图表颜色由 CSS 变量控制，随笔记主题实时自适应，无需重新初始化引擎。
+    currentMermaidTheme = currentTheme;
   }
 
   // --- Markdown & Preview Rendering ---
@@ -603,11 +581,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (window.renderMathInElement) {
       renderMathInElement(previewContentDiv, {
         delimiters: [
-          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: true },
           { left: "\\[", right: "\\]", display: true },
           { left: "\\(", right: "\\)", display: false },
           { left: "$", right: "$", display: false },
         ],
+        ignoredClasses: ["mermaid"],
         throwOnError: false,
       });
     }
@@ -704,34 +683,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     return nodes;
   }
 
-  async function renderMermaidNodes(nodes, renderTokenId) {
-    if (!window.mermaid || nodes.length === 0) return;
-    try {
-      nodes.forEach((node) => node.removeAttribute("data-processed"));
-      if (typeof window.mermaid.run === "function") {
-        await window.mermaid.run({ nodes });
-      } else if (typeof window.mermaid.init === "function") {
-        window.mermaid.init(undefined, nodes);
-      }
-    } catch (error) {
-      console.error("[Notes] Mermaid render error:", error);
-      nodes.forEach((el) => {
-        if (!el.isConnected) return;
-        const originalCode = el.textContent || "";
-        el.innerHTML = `<div class="mermaid-error">Mermaid 渲染错误: ${escapeHtmlForMermaid(
-          error.message || String(error)
-        )}</div><pre>${escapeHtmlForMermaid(originalCode)}</pre>`;
-      });
-    }
-
-    // If the user switched notes while mermaid was rendering, drop the stale output.
-    if (renderTokenId !== activeNoteId) {
-      nodes.forEach((el) => {
-        if (el.isConnected && el.parentNode === previewContentDiv.parentNode) {
-          // No-op; the next renderMarkdown will overwrite previewContentDiv.innerHTML.
+  function renderMermaidNodes(nodes, renderTokenId) {
+    if (!nodes || nodes.length === 0) return;
+    nodes.forEach((el) => {
+      if (!el.isConnected || renderTokenId !== activeNoteId) return;
+      const code = (el.textContent || "").trim();
+      el.classList.add("pele-diagram");
+      try {
+        if (!window.pele || typeof window.pele.render !== "function") {
+          throw new Error("本地 Pele 渲染依赖未加载。");
         }
-      });
-    }
+        if (code.length > 100000) {
+          throw new Error("图表源码超过 100,000 字符限制。");
+        }
+        const { svg } = window.pele.render(code);
+        el.innerHTML = svg;
+      } catch (error) {
+        console.error("[Notes] Pele diagram render error:", error);
+        el.classList.add("mermaid-error");
+        el.innerHTML = `<div class="mermaid-error">Pele 图表渲染失败: ${escapeHtmlForMermaid(
+          error.message || String(error)
+        )}</div><pre>${escapeHtmlForMermaid(code)}</pre>`;
+      }
+    });
   }
 
   function addCopyButtonsToCodeBlocks() {

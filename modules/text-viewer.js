@@ -1161,7 +1161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('[TextViewer] viewer API not found. Theme updates will not be received.');
     }
 
-    mermaid.initialize({ startOnLoad: false }); // 初始化 Mermaid，但不自动渲染
+    // Pele 无需初始化；图表在 enhanceRenderedContent 中同步、逐张渲染。
 
     if (window.marked) {
         marked.setOptions({
@@ -1362,7 +1362,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 acceptNode: (node) => {
                     const parent = node.parentElement;
                     if (!parent) return NodeFilter.FILTER_REJECT;
-                    if (parent.closest('pre, code, script, style, textarea, .custom-quote-light, .custom-quote-dark')) {
+                    if (parent.closest('pre, code, script, style, textarea, .mermaid, .custom-quote-light, .custom-quote-dark')) {
                         return NodeFilter.FILTER_REJECT;
                     }
                     QUOTE_REGEX.lastIndex = 0;
@@ -1575,29 +1575,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-        // --- RENDER MERMAID (ENHANCED) ---
-        if (window.mermaid && mermaidBlocksToRender.length > 0) {
-            const elementsToRender = [];
-            mermaidBlocksToRender.forEach(codeBlock => {
-                const preElement = codeBlock.parentElement;
-                const mermaidContainer = document.createElement('div');
-                mermaidContainer.className = 'mermaid';
-                const code = codeBlock.textContent.trim();
-                mermaidContainer.textContent = code;
-                preElement.parentNode.replaceChild(mermaidContainer, preElement);
-                elementsToRender.push(mermaidContainer);
-            });
+        // --- RENDER MERMAID SYNTAX WITH PELE (VIEWER ONLY) ---
+        mermaidBlocksToRender.forEach(codeBlock => {
+            const preElement = codeBlock.parentElement;
+            const diagramContainer = document.createElement('div');
+            diagramContainer.className = 'mermaid pele-diagram';
+            const code = codeBlock.textContent.trim();
+            preElement.parentNode.replaceChild(diagramContainer, preElement);
 
-            if (elementsToRender.length > 0) {
-                mermaid.run({ nodes: elementsToRender }).catch(error => {
-                    console.error("Error rendering Mermaid diagrams:", error);
-                    elementsToRender.forEach(el => {
-                        const originalCode = el.textContent;
-                        el.innerHTML = `<div class="mermaid-error">Mermaid render error: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
-                    });
-                });
+            try {
+                if (!window.pele || typeof window.pele.render !== 'function') {
+                    throw new Error('本地 Pele 渲染依赖未加载。');
+                }
+                // 限制不可信图表源码大小，避免超大输入阻塞阅读器。
+                if (code.length > 100000) {
+                    throw new Error('图表源码超过 100,000 字符限制。');
+                }
+                const { svg } = window.pele.render(code);
+                diagramContainer.innerHTML = svg;
+            } catch (error) {
+                console.error('[TextViewer] Pele diagram rendering failed:', error);
+                diagramContainer.classList.add('mermaid-error');
+                const message = document.createElement('div');
+                message.textContent = `Pele 图表渲染失败：${error.message || error}`;
+                const source = document.createElement('pre');
+                source.textContent = code;
+                diagramContainer.replaceChildren(message, source);
             }
-        }
+        });
 
         // --- RENDER DRAW.IO ---
         if (window.GraphViewer && drawioBlocksToRender.length > 0) {
@@ -1872,6 +1877,7 @@ ${codeContent}
                         {left: "\\(", right: "\\)", display: false},
                         {left: "\\[", right: "\\]", display: true}
                     ],
+                    ignoredClasses: ['mermaid'],
                     throwOnError: false
                 });
             } catch (e) {
@@ -1959,7 +1965,7 @@ ${codeContent}
                 const renderedHtml = window.marked.parse(processedContent);
                 contentDiv.innerHTML = renderedHtml;
 
-                // Wait for async enhancements (Mermaid, etc.) AND image loading to complete.
+                // Wait for content enhancements (including synchronous Pele rendering) and images.
                 await enhanceRenderedContent(contentDiv);
                 await waitForImages(contentDiv);
 

@@ -472,15 +472,30 @@
             background-color: var(--viewer-code-bg); /* Slight background for headers */
         }
 
-        /* Style for Mermaid diagrams */
+        /* Mermaid 源码由本地 Pele 渲染，颜色随阅读器主题实时更新。 */
         .mermaid {
+            --pele-bg: var(--viewer-code-bg);
+            --pele-fg: var(--viewer-primary-text);
+            --pele-muted: var(--secondary-text, var(--viewer-primary-text));
+            --pele-line: var(--viewer-primary-text);
+            --pele-border: var(--border-color, var(--viewer-code-bg-hover));
+            --pele-surface: var(--viewer-message-bg-assistant);
+            --pele-surface-alt: var(--viewer-code-bg-hover);
+            --pele-accent: var(--highlight-text);
+            --pele-font: var(--font-family-sans-serif, sans-serif);
+            --pele-font-mono: var(--font-family-monospace, monospace);
             background-color: var(--viewer-code-bg);
             padding: 1em;
             border-radius: 5px;
             margin-bottom: 1em;
-            display: flex; /* 新增：使其内容居中 */
-            justify-content: center; /* 新增：使其内容居中 */
-            align-items: center; /* 新增：使其内容居中 */
+            overflow-x: auto;
+        }
+
+        .pele-diagram > svg {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            margin-inline: auto;
         }
 
         .mermaid-error {
@@ -796,7 +811,8 @@
         </div>
     </div>
     <div class="force-spacer">&nbsp;</div>
-    <script src="../vendor/mermaid.min.js"></script>
+    <!-- 阅读器试用 Pele 1.9.0；其他页面继续使用 Mermaid。 -->
+    <script src="../vendor/pele.global.js"></script>
     <script src="../vendor/marked.min.js"></script>
     <script src="../vendor/highlight.min.js"></script>
     <!-- modern-screenshot 是 ESM 模块，由 text-viewer.js 中通过 import 加载，这里不需要再用 <script> 引入 -->

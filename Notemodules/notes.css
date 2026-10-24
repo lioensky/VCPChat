@@ -880,22 +880,32 @@ body.light-theme .markdown-preview tbody tr:nth-child(even) {
   background: var(--scrollbar-thumb-hover);
 }
 
-/* --- Mermaid diagram rendering --- */
+/* --- Mermaid diagram rendering with local Pele --- */
 .markdown-preview .mermaid {
+  --pele-bg: var(--tertiary-bg);
+  --pele-fg: var(--primary-text);
+  --pele-muted: var(--secondary-text, var(--primary-text));
+  --pele-line: var(--primary-text);
+  --pele-border: var(--border-color);
+  --pele-surface: var(--secondary-bg, var(--tertiary-bg));
+  --pele-surface-alt: var(--hover-bg, rgba(128, 128, 128, 0.15));
+  --pele-accent: var(--accent-color, #1976d2);
+  --pele-font: var(--font-family-sans-serif, sans-serif);
+  --pele-font-mono: var(--font-family-monospace, monospace);
   background-color: var(--tertiary-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 1em;
   margin: 1em 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
   overflow-x: auto;
 }
 
+.markdown-preview .pele-diagram > svg,
 .markdown-preview .mermaid svg {
+  display: block;
   max-width: 100%;
   height: auto;
+  margin-inline: auto;
 }
 
 .markdown-preview .mermaid-error {
