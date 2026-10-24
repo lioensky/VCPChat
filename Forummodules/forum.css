@@ -187,14 +187,24 @@ button:disabled {
     overflow-y: auto;
 }
 
+/* The title row carries the settings gear on its right. */
 .sidebar-title {
     display: flex;
     flex: 0 0 30px;
     align-items: center;
-    padding: 0 10px;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 2px 0 10px;
     color: var(--fm-ink-2);
     font-size: 13px;
     font-weight: 500;
+}
+
+.sidebar-title-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .nav-group {
@@ -266,9 +276,8 @@ button:disabled {
     font-variant-numeric: tabular-nums;
 }
 
-/* Boards and posting only make sense once signed in. */
-body:not([data-forum-view="forum"]) .forum-boards-group,
-body:not([data-forum-view="forum"]) .forum-create-item {
+/* Boards only make sense once signed in. */
+body:not([data-forum-view="forum"]) .forum-boards-group {
     display: none;
 }
 
@@ -346,8 +355,12 @@ html[data-vcp-embedded-app="true"] .shell {
     min-width: 0;
 }
 
-.page-head-row .nav-icon-btn {
+/* Refresh, then the page's one primary action. */
+.page-head-actions {
+    display: flex;
     flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
 }
 
 .page-title {
@@ -415,6 +428,11 @@ html[data-vcp-embedded-app="true"] .shell {
     transition: background 120ms ease;
 }
 
+.jelly-btn svg {
+    flex: 0 0 auto;
+    margin: 0 6px 0 -4px;
+}
+
 .jelly-btn:hover:not(:disabled) {
     background: var(--fm-hover);
 }
@@ -439,12 +457,19 @@ html[data-vcp-embedded-app="true"] .shell {
     background: color-mix(in srgb, var(--fm-danger) 86%, var(--fm-panel));
 }
 
-.jelly-btn.delete-post-btn {
-    color: var(--fm-danger);
+/* An inline text action inside a sentence, such as 去设置. */
+.link-btn {
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--fm-accent);
+    font-weight: 500;
 }
 
-.jelly-btn.delete-post-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--fm-danger) 8%, transparent);
+.link-btn:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
 /* ========== Form fields ========== */
@@ -691,6 +716,11 @@ textarea.glass-input {
     white-space: nowrap;
 }
 
+/* With one board selected the page title names it already. */
+.post-list[data-board-filtered] .post-badge {
+    display: none;
+}
+
 .post-meta {
     display: flex;
     flex-wrap: wrap;
@@ -722,6 +752,7 @@ textarea.glass-input {
 
 .author-avatar,
 .reply-avatar {
+    --fm-tone: var(--fm-ink-2);
     display: inline-flex;
     flex: 0 0 auto;
     align-items: center;
@@ -729,15 +760,24 @@ textarea.glass-input {
     width: 28px;
     height: 28px;
     border-radius: 50%;
+    background-color: color-mix(in srgb, var(--fm-tone) 20%, var(--fm-panel));
     background-size: cover;
     background-position: center;
-    color: var(--text-on-accent);
+    color: color-mix(in srgb, var(--fm-tone) 78%, var(--fm-ink));
     font-size: 12px;
     line-height: 1;
     font-weight: 600;
     overflow: hidden;
     user-select: none;
 }
+
+/* Letter avatars: six tints of the theme's own colours, picked by name in
+   forum.js (avatarTone). A loaded picture covers the tint. */
+:is(.author-avatar, .reply-avatar)[data-tone="1"] { --fm-tone: var(--fm-accent); }
+:is(.author-avatar, .reply-avatar)[data-tone="2"] { --fm-tone: var(--quoted-text); }
+:is(.author-avatar, .reply-avatar)[data-tone="3"] { --fm-tone: var(--fm-danger); }
+:is(.author-avatar, .reply-avatar)[data-tone="4"] { --fm-tone: color-mix(in srgb, var(--fm-accent) 50%, var(--quoted-text)); }
+:is(.author-avatar, .reply-avatar)[data-tone="5"] { --fm-tone: color-mix(in srgb, var(--fm-danger) 50%, var(--quoted-text)); }
 
 .reply-avatar {
     width: 24px;
@@ -784,7 +824,7 @@ textarea.glass-input {
 
 .expanded-card .post-card-header {
     align-items: flex-start;
-    padding: 0 40px 0 0;
+    padding: 0;
 }
 
 .expanded-card .author-avatar {
@@ -810,53 +850,89 @@ textarea.glass-input {
     margin-top: 4px;
 }
 
-.expanded-close-btn {
-    position: absolute;
-    top: 22px;
-    right: 24px;
-    display: inline-flex;
+/* Header tools: the … menu, then close. */
+.post-head-actions {
+    display: flex;
+    flex: 0 0 auto;
     align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--fm-radius-sm);
-    background: transparent;
-    color: var(--fm-ink-3);
-    font-size: 20px;
-    line-height: 1;
+    gap: 2px;
+    margin: -1px -4px 0 0;
 }
 
-.expanded-close-btn:hover {
-    background: var(--fm-hover);
+.post-menu-wrap {
+    position: relative;
+}
+
+.post-menu-btn[aria-expanded="true"] {
+    background: var(--fm-active);
     color: var(--fm-ink);
 }
 
-.post-meta-header {
+.post-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 3;
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-    padding: 10px 14px;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 176px;
+    padding: 4px;
+    border: 0.5px solid var(--fm-line-3);
     border-radius: var(--fm-radius-md);
-    background: var(--fm-surface);
-    font-size: 12px;
-    line-height: 18px;
+    background: var(--fm-panel);
+    box-shadow: 0 8px 24px var(--fm-shadow);
 }
 
-.meta-item {
-    min-width: 0;
-    overflow-wrap: anywhere;
+.post-menu[hidden] {
+    display: none;
 }
 
-.meta-key {
-    color: var(--fm-ink-4);
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--fm-radius-sm);
+    background: transparent;
+    color: var(--fm-ink);
+    font-size: 13px;
+    line-height: 20px;
+    text-align: left;
+    white-space: nowrap;
 }
 
-.meta-value {
-    color: var(--fm-ink-2);
-    font-family: var(--fm-mono);
-    font-size: 11px;
+.menu-item svg {
+    flex: 0 0 16px;
+    color: var(--fm-ink-3);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+    background: var(--fm-hover);
+}
+
+.menu-item:focus-visible {
+    outline: none;
+}
+
+.menu-item-danger,
+.menu-item-danger svg {
+    color: var(--fm-danger);
+}
+
+.menu-item-danger:hover,
+.menu-item-danger:focus-visible {
+    background: color-mix(in srgb, var(--fm-danger) 8%, transparent);
+}
+
+.menu-separator {
+    height: 0.5px;
+    margin: 3px 6px;
+    background: var(--fm-line-2);
 }
 
 .post-loading {
@@ -876,8 +952,7 @@ textarea.glass-input {
 }
 
 /* Two specificity steps above `.post-preview div`, so the content rules
-   below never turn these toolbars back into blocks. */
-.post-preview .post-actions,
+   below never turn this footer back into a block. */
 .post-preview .edit-controls,
 .reply-content .edit-controls {
     display: flex;
@@ -885,11 +960,6 @@ textarea.glass-input {
     justify-content: flex-end;
     gap: 8px;
     margin: 12px 0 0;
-}
-
-.post-preview .post-actions {
-    padding-top: 12px;
-    border-top: 0.5px solid var(--fm-line-2);
 }
 
 .edit-textarea {
@@ -950,19 +1020,22 @@ textarea.glass-input {
 
 .reply-item {
     min-width: 0;
-    padding: 14px 0;
+    padding: 12px 0 14px;
 }
 
 .reply-item + .reply-item {
     border-top: 0.5px solid var(--fm-line-2);
 }
 
+/* Row header: who and when on the left; floor and the row's icon tools on
+   the right. */
 .reply-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 6px;
+    min-height: 28px;
+    margin-bottom: 4px;
 }
 
 .reply-who {
@@ -972,8 +1045,19 @@ textarea.glass-input {
     min-width: 0;
 }
 
-.reply-floor {
-    color: var(--fm-ink-4);
+.reply-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+}
+
+.reply-time {
+    flex: 0 0 auto;
+    color: var(--fm-ink-3);
     font-size: 12px;
     line-height: 18px;
     font-variant-numeric: tabular-nums;
@@ -981,23 +1065,21 @@ textarea.glass-input {
 
 .reply-actions {
     display: flex;
+    flex: 0 0 auto;
+    align-items: center;
     gap: 2px;
 }
 
-.reply-actions button {
-    height: 24px;
-    padding: 0 8px;
-    border: 0;
-    border-radius: var(--fm-radius-sm);
-    background: transparent;
-    color: var(--fm-ink-3);
+.reply-floor {
+    margin-right: 4px;
+    color: var(--fm-ink-4);
     font-size: 12px;
     line-height: 18px;
+    font-variant-numeric: tabular-nums;
 }
 
-.reply-actions button:hover:not(:disabled) {
-    background: var(--fm-hover);
-    color: var(--fm-ink);
+.reply-actions .nav-icon-btn {
+    color: var(--fm-ink-4);
 }
 
 .reply-actions .delete-floor-btn:hover:not(:disabled) {
@@ -1007,41 +1089,104 @@ textarea.glass-input {
 
 .reply-content {
     min-width: 0;
+    padding-left: 32px;
     font-size: 13px;
     line-height: 22px;
 }
 
-/* The reply box stays at the bottom of the post view while it scrolls. */
+/* The composer stays at the bottom of the post view while it scrolls. */
 .reply-area-fixed {
     position: sticky;
     bottom: 0;
     z-index: 2;
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
     margin: 0 -24px;
     padding: 12px 24px 16px;
-    border-top: 0.5px solid var(--fm-line-2);
+    background: linear-gradient(to bottom, transparent, var(--fm-panel) 12px);
+}
+
+.composer {
+    display: flex;
+    flex-direction: column;
+    border: 0.5px solid var(--fm-line-3);
+    border-radius: var(--fm-radius-md);
     background: var(--fm-panel);
+    box-shadow: 0 0 0 4px var(--fm-panel);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-#quick-reply-name {
-    flex: 0 0 120px;
-    width: 120px;
+.composer:focus-within {
+    border-color: var(--fm-accent);
+    box-shadow: 0 0 0 4px var(--fm-panel), 0 0 0 2px var(--fm-focus-ring);
 }
 
-.reply-area-fixed .textarea-container {
-    flex: 1;
+.composer-input {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    max-height: 200px;
+    padding: 10px 14px 4px;
+    border: 0;
+    border-radius: var(--fm-radius-md) var(--fm-radius-md) 0 0;
+    background: transparent;
+    outline: none;
+    font-size: 13px;
+    line-height: 20px;
+    resize: vertical;
+}
+
+/* These fields draw their own focus ring (border plus shadow). */
+.edit-textarea:focus-visible,
+.composer-input:focus-visible {
+    outline: none;
+}
+
+.composer-input::placeholder {
+    color: var(--fm-ink-4);
+}
+
+.composer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 6px 6px 14px;
+}
+
+.composer-identity {
     min-width: 0;
+    margin: 0;
+    color: var(--fm-ink-3);
+    font-size: 12px;
+    line-height: 18px;
 }
 
-#quick-reply-text {
-    height: 56px;
+.composer-identity strong {
+    color: var(--fm-ink-2);
+    font-weight: 500;
 }
 
-.reply-area-fixed .jelly-btn {
+.composer-identity[data-state="missing"] {
+    color: var(--fm-ink-2);
+}
+
+.composer-sep {
+    padding: 0 6px;
+    color: var(--fm-ink-4);
+}
+
+.composer-tools {
+    display: flex;
     flex: 0 0 auto;
-    height: 36px;
+    align-items: center;
+    gap: 4px;
+}
+
+.composer-hint {
+    margin-right: 4px;
+    color: var(--fm-ink-4);
+    font-size: 11px;
+    line-height: 16px;
+    white-space: nowrap;
 }
 
 .textarea-container {
@@ -1492,7 +1637,12 @@ code {
     }
 
     .sidebar-title {
-        font-size: 0;
+        justify-content: center;
+        padding: 0;
+    }
+
+    .sidebar-title-label {
+        display: none;
     }
 
     .nav-group-label {
@@ -1534,20 +1684,17 @@ code {
         padding: 20px 16px 0;
     }
 
-    .expanded-close-btn {
-        top: 18px;
-        right: 16px;
-    }
-
     .reply-area-fixed {
-        flex-wrap: wrap;
         margin: 0 -16px;
         padding: 12px 16px 16px;
     }
 
-    #quick-reply-name {
-        flex: 1 0 100%;
-        width: 100%;
+    .reply-content {
+        padding-left: 0;
+    }
+
+    .composer-hint {
+        display: none;
     }
 
     .form-row {

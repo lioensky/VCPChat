@@ -556,6 +556,7 @@ async function saveSettings() {
         passwordInput.value = forumConfig.password;
         rememberMeCheckbox.checked = forumConfig.rememberCredentials;
         settingsModal.style.display = 'none';
+        updateComposerIdentity(activePostOverlay);
     } catch (error) {
         showError(settingsError, '保存失败: ' + error.message);
     } finally {
@@ -747,6 +748,8 @@ function renderCurrentFilteredPosts({ force = false } = {}) {
     const renderKey = getPostRenderKey(filtered);
     syncBoardNav();
     renderForumSummary(filtered);
+    // The page title already names the board, so the rows drop their chip.
+    masonryContainer.toggleAttribute('data-board-filtered', boardFilter.value !== 'all');
 
     if (!force && renderKey === lastRenderedPostKeys) {
         return;
@@ -798,19 +801,18 @@ function createPostCard(post, index) {
     const lastReplier = post.lastReplyBy;
     const hasNewReplier = hasReply && lastReplier && lastReplier !== post.author;
 
-    const avatarHTML = (name) => {
-        const hue = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-        return `<div class="author-avatar loading-avatar" style="background: hsl(${hue}, 70%, 60%)" data-author="${escapeHtml(name)}">${name.slice(0,1).toUpperCase()}</div>`;
-    };
+    const avatarHTML = (name) => `<div class="author-avatar loading-avatar" data-tone="${avatarTone(name)}" data-author="${escapeHtml(name)}">${escapeHtml(name.slice(0,1).toUpperCase())}</div>`;
 
-    // One quiet line: author, when it was posted and, if anyone replied, who replied last.
+    // One quiet line: author, when it was posted and, if anyone replied, who
+    // replied last. The exact time sits in the tooltip.
+    const postedAt = hasReply ? post.timestamp : displayDate;
     const metaItems = [
         `<span class="post-meta-item post-author">${escapeHtml(post.author)}</span>`,
-        `<span class="post-meta-item">发帖于 ${formatDate(hasReply ? post.timestamp : displayDate)}</span>`
+        `<span class="post-meta-item" title="${escapeHtml(formatFullDate(postedAt))}">发帖于 ${formatDate(postedAt)}</span>`
     ];
     if (hasReply) {
         const replier = hasNewReplier ? `${escapeHtml(lastReplier)} ` : '';
-        metaItems.push(`<span class="post-meta-item">${replier}最后回复于 ${formatDate(displayDate)}</span>`);
+        metaItems.push(`<span class="post-meta-item" title="${escapeHtml(formatFullDate(displayDate))}">${replier}最后回复于 ${formatDate(displayDate)}</span>`);
     }
 
     el.setAttribute('role', 'button');
@@ -848,6 +850,14 @@ function createPostCard(post, index) {
     }
     
     return el;
+}
+
+// Letter avatars pick one of the theme tones in forum.css by name, so the
+// same person keeps the same colour in both themes.
+const AVATAR_TONES = 6;
+
+function avatarTone(name) {
+    return String(name || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % AVATAR_TONES;
 }
 
 async function loadAvatarForElement(avatarEl, username) {
@@ -899,13 +909,18 @@ async function expandPost(post, originalCard) {
     expanded.style.margin = '0 auto';
     expanded.style.cursor = 'default';
 
+    // Header tools: the post menu joins once the body has loaded.
+    const headActions = document.createElement('div');
+    headActions.className = 'post-head-actions';
     const closeBtn = document.createElement('button');
-    closeBtn.className = 'expanded-close-btn';
+    closeBtn.type = 'button';
+    closeBtn.className = 'nav-icon-btn expanded-close-btn';
     closeBtn.title = '返回列表';
     closeBtn.setAttribute('aria-label', '返回列表');
-    closeBtn.innerHTML = '&times;';
+    closeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
     closeBtn.onclick = closeExpandedPost;
-    expanded.appendChild(closeBtn);
+    headActions.appendChild(closeBtn);
+    expanded.querySelector('.post-card-header').appendChild(headActions);
 
     try {
         const previewEl = expanded.querySelector('.post-preview');
@@ -941,8 +956,11 @@ activePostOverlay.addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && activePostOverlay.classList.contains('active')) {
+        const openMenu = activePostOverlay.querySelector('.post-menu:not([hidden])');
         const activeEditingArea = activePostOverlay.querySelector('.edit-textarea');
-        if (activeEditingArea) {
+        if (openMenu) {
+            closePostMenu(openMenu, { focusButton: true });
+        } else if (activeEditingArea) {
             // If in edit mode, find the corresponding cancel button and trigger it
             const cancelButton = activeEditingArea.parentElement.querySelector('.cancel-edit-btn');
             if (cancelButton) {
@@ -1327,6 +1345,107 @@ function applyBoldFormatting(container) {
 
 // ===== End ported functions =====
 
+const ICON_EDIT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
+const ICON_TRASH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"></path></svg>';
+const ICON_COPY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path></svg>';
+const ICON_MORE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg>';
+
+// ========== Post menu ==========
+// Edit, copy ID and delete share one … menu in the post header, ahead of
+// the close button. It is rebuilt on every render because edits and replies
+// re-render the whole post.
+function renderPostMenu(card, previewEl, uid, postUid) {
+    const headActions = card.querySelector('.post-head-actions');
+    if (!headActions) return;
+    headActions.querySelector('.post-menu-wrap')?.remove();
+
+    const wrap = document.createElement('div');
+    wrap.className = 'post-menu-wrap';
+    wrap.innerHTML = `
+        <button type="button" class="nav-icon-btn post-menu-btn" title="更多操作" aria-label="更多操作" aria-haspopup="menu" aria-expanded="false">${ICON_MORE}</button>
+        <div class="post-menu" role="menu" aria-label="帖子操作" hidden>
+            <button type="button" class="menu-item edit-btn" role="menuitem">${ICON_EDIT}<span>编辑正文</span></button>
+            <button type="button" class="menu-item copy-uid-btn" role="menuitem" title="${escapeHtml(postUid)}">${ICON_COPY}<span>复制帖子 ID</span></button>
+            <div class="menu-separator" role="separator"></div>
+            <button type="button" class="menu-item menu-item-danger delete-post-btn" role="menuitem">${ICON_TRASH}<span>删除帖子</span></button>
+        </div>
+    `;
+    headActions.insertBefore(wrap, headActions.firstChild);
+
+    const menuBtn = wrap.querySelector('.post-menu-btn');
+    const menu = wrap.querySelector('.post-menu');
+    menuBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (menu.hidden) openPostMenu(menu);
+        else closePostMenu(menu);
+    });
+    menu.addEventListener('keydown', e => {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        e.preventDefault();
+        const items = [...menu.querySelectorAll('.menu-item')];
+        const index = items.indexOf(document.activeElement);
+        const next = (index + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[next].focus();
+    });
+    menu.querySelector('.edit-btn').addEventListener('click', () => {
+        closePostMenu(menu);
+        toggleEditMode(card, previewEl, uid);
+    });
+    menu.querySelector('.copy-uid-btn').addEventListener('click', async (e) => {
+        const label = e.currentTarget.querySelector('span');
+        try {
+            await navigator.clipboard.writeText(postUid);
+            // Confirm in place, then fold the menu away.
+            label.textContent = '已复制';
+            setTimeout(() => {
+                label.textContent = '复制帖子 ID';
+                if (!menu.hidden) closePostMenu(menu, { focusButton: true });
+            }, 900);
+        } catch (error) {
+            closePostMenu(menu, { focusButton: true });
+            await customAlert(`帖子 ID：${postUid}`, '复制失败');
+        }
+    });
+    menu.querySelector('.delete-post-btn').addEventListener('click', () => {
+        closePostMenu(menu);
+        handleDeletePost(uid);
+    });
+}
+
+function openPostMenu(menu) {
+    menu.hidden = false;
+    menu.parentElement.querySelector('.post-menu-btn').setAttribute('aria-expanded', 'true');
+    menu.querySelector('.menu-item')?.focus();
+}
+
+function closePostMenu(menu, { focusButton = false } = {}) {
+    const menuBtn = menu.parentElement.querySelector('.post-menu-btn');
+    menu.hidden = true;
+    menuBtn.setAttribute('aria-expanded', 'false');
+    if (focusButton) menuBtn.focus();
+}
+
+document.addEventListener('click', e => {
+    activePostOverlay.querySelectorAll('.post-menu:not([hidden])').forEach(menu => {
+        if (!menu.parentElement.contains(e.target)) closePostMenu(menu);
+    });
+});
+
+// ========== Composer identity ==========
+// Replies are signed with the name from settings. The footer line says which
+// name that is, or, when none is set, links straight to settings.
+function updateComposerIdentity(root) {
+    const identity = root?.querySelector('#quick-reply-identity');
+    if (!identity) return;
+    const name = forumConfig.replyUsername || forumConfig.username || '';
+    root.querySelector('#quick-reply-name').value = name;
+    root.querySelector('#quick-reply-btn').disabled = !name;
+    identity.dataset.state = name ? 'named' : 'missing';
+    identity.innerHTML = name
+        ? `以 <strong>${escapeHtml(name)}</strong> 的身份回复<span class="composer-sep">·</span><button type="button" class="link-btn">更改</button>`
+        : `还没有设置回帖署名，<button type="button" class="link-btn">去设置</button>`;
+}
+
 function renderFullContent(container, markdown, uid) {
     const previewEl = container.querySelector('.post-preview');
     
@@ -1363,39 +1482,11 @@ function renderFullContent(container, markdown, uid) {
     let mainMd = parts[0];
     const repliesMd = parts[1] || '';
 
-    // --- NEW: Precisely extract and display specific meta fields as per user request ---
-    const metaItems = [];
-    const authorMatch = markdown.match(/\*\*作者[:：]\*\*\s*(.*)/);
+    // The meta block (author, UID, timestamp) repeats the header, so it is
+    // stripped; the UID stays reachable through the post menu.
     const uidMatch = markdown.match(/\*\*UID[:：]\*\*\s*(.*)/);
-    const timestampMatch = markdown.match(/\*\*时间戳[:：]\*\*\s*(.*)/);
-
-    if (authorMatch) {
-        metaItems.push(`<span class="meta-item"><span class="meta-key">作者:</span> <span class="meta-value">${escapeHtml(authorMatch[1].trim())}</span></span>`);
-    }
-    if (uidMatch) {
-        metaItems.push(`<span class="meta-item"><span class="meta-key">UID:</span> <span class="meta-value">${escapeHtml(uidMatch[1].trim())}</span></span>`);
-    }
-    if (timestampMatch) {
-        metaItems.push(`<span class="meta-item"><span class="meta-key">时间戳:</span> <span class="meta-value">${escapeHtml(timestampMatch[1].trim())}</span></span>`);
-    }
-
-    // Remove any existing meta header before adding a new one
-    const existingMetaHeader = container.querySelector('.post-meta-header');
-    if (existingMetaHeader) {
-        existingMetaHeader.remove();
-    }
-
-    // If we found any meta items, create and insert the header
-    if (metaItems.length > 0) {
-        const metaHeaderEl = document.createElement('div');
-        metaHeaderEl.className = 'post-meta-header';
-        metaHeaderEl.innerHTML = metaItems.join('');
-        container.insertBefore(metaHeaderEl, previewEl);
-    }
-
-    // Prepare the main content by stripping the entire meta block
+    const postUid = uidMatch ? uidMatch[1].trim() : String(uid);
     const postContentMd = mainMd.replace(/^(.|\n)*?---\n?/, '');
-    // --- END NEW ---
 
     previewEl.innerHTML = renderMarkdownWithProtectedMath(postContentMd);
     previewEl.dataset.rawContent = postContentMd; // Store raw content for editing
@@ -1420,16 +1511,7 @@ function renderFullContent(container, markdown, uid) {
         setupImageViewer(previewEl);
     });
 
-    // Add post actions (edit/delete)
-    const postActions = document.createElement('div');
-    postActions.className = 'post-actions';
-    postActions.innerHTML = `
-        <button class="jelly-btn edit-btn">编辑正文</button>
-        <button class="jelly-btn delete-post-btn">删除帖子</button>
-    `;
-    postActions.querySelector('.delete-post-btn').addEventListener('click', () => handleDeletePost(uid));
-    postActions.querySelector('.edit-btn').addEventListener('click', (e) => toggleEditMode(e.currentTarget.closest('.expanded-card'), previewEl, uid));
-    previewEl.appendChild(postActions);
+    renderPostMenu(container, previewEl, uid, postUid);
 
 
     if (repliesMd.trim()) {
@@ -1465,27 +1547,36 @@ function renderFullContent(container, markdown, uid) {
                 }
             }
             
-            const hue = replyUsername.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-            const avatarColor = `hsl(${hue}, 70%, 60%)`;
-            
             const replyItem = document.createElement('div');
             replyItem.className = 'reply-item';
 
             const metadataEndIndex = replyMd.indexOf('\n\n');
             const replyRawContent = metadataEndIndex !== -1 ? replyMd.substring(metadataEndIndex + 2) : replyMd;
 
+            // The floor heading and the 回复者/时间 lines move into the row
+            // header. A head that holds anything else renders as before.
+            const replyHead = metadataEndIndex !== -1 ? replyMd.substring(0, metadataEndIndex) : '';
+            const headIsMeta = replyHead.trim() !== '' && replyHead.split('\n')
+                .filter(line => line.trim())
+                .every(line => /^(###\s|\*\*[^*]+[:：]\*\*)/.test(line.trim()));
+            const replyBodyMd = headIsMeta ? replyRawContent.trim() : replyMd.trim();
+            const replyTimeMatch = headIsMeta ? replyHead.match(/\*\*时间[:：]\*\*\s*(.+)/) : null;
+            const replyTime = replyTimeMatch ? replyTimeMatch[1].trim() : '';
+
             replyItem.innerHTML = `
                 <div class="reply-header">
                     <div class="reply-who">
-                        <div class="reply-avatar loading-avatar" style="background: ${avatarColor}" data-author="${escapeHtml(replyUsername)}">${replyUsername ? replyUsername.slice(0,1).toUpperCase() : '#'}</div>
-                        <span class="reply-floor">#${floor}</span>
+                        <div class="reply-avatar loading-avatar" data-tone="${avatarTone(replyUsername)}" data-author="${escapeHtml(replyUsername)}">${replyUsername ? escapeHtml(replyUsername.slice(0,1).toUpperCase()) : '#'}</div>
+                        ${replyUsername ? `<span class="reply-name">${escapeHtml(replyUsername)}</span>` : ''}
+                        ${replyTime ? `<span class="reply-time" title="${escapeHtml(formatFullDate(replyTime))}">${escapeHtml(formatDate(replyTime))}</span>` : ''}
                     </div>
                     <div class="reply-actions">
-                        <button class="delete-floor-btn" data-uid="${uid}" data-floor="${floor}">删除</button>
-                        <button class="edit-btn" data-uid="${uid}" data-floor="${floor}">编辑</button>
+                        <span class="reply-floor">#${floor}</span>
+                        <button type="button" class="nav-icon-btn edit-btn" data-uid="${uid}" data-floor="${floor}" title="编辑 #${floor}" aria-label="编辑第 ${floor} 楼">${ICON_EDIT}</button>
+                        <button type="button" class="nav-icon-btn delete-floor-btn" data-uid="${uid}" data-floor="${floor}" title="删除 #${floor}" aria-label="删除第 ${floor} 楼">${ICON_TRASH}</button>
                     </div>
                 </div>
-                <div class="reply-content">${renderMarkdownWithProtectedMath(replyMd.trim())}</div>
+                <div class="reply-content">${renderMarkdownWithProtectedMath(replyBodyMd)}</div>
             `;
             replyItem.querySelector('.reply-content').dataset.rawContent = replyRawContent; // Store raw content
             replyRows.appendChild(replyItem);
@@ -1527,22 +1618,31 @@ function renderFullContent(container, markdown, uid) {
         container.appendChild(replyList);
     }
 
+    // Composer: one card with the text, then a footer line that says who the
+    // reply is signed as (the name comes from settings) and the send tools.
     const replyBox = document.createElement('div');
     replyBox.className = 'reply-area-fixed';
     replyBox.innerHTML = `
-        <input type="text" id="quick-reply-name" class="glass-input" placeholder="昵称" aria-label="回复署名">
-        <div class="textarea-container">
-            <textarea id="quick-reply-text" class="glass-input reply-input" placeholder="写下你的评论... (Ctrl+Enter 发送)" aria-label="评论内容"></textarea>
-            <button class="emoticon-btn" id="reply-emoticon-btn" title="表情" aria-label="插入表情"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><path d="M9 9h.01M15 9h.01"></path></svg></button>
+        <div class="composer">
+            <input type="hidden" id="quick-reply-name">
+            <textarea id="quick-reply-text" class="composer-input" rows="2" placeholder="写下你的评论…" aria-label="评论内容"></textarea>
+            <div class="composer-footer">
+                <p class="composer-identity" id="quick-reply-identity"></p>
+                <div class="composer-tools">
+                    <span class="composer-hint">Ctrl+Enter 发送</span>
+                    <button type="button" class="nav-icon-btn" id="reply-emoticon-btn" title="表情" aria-label="插入表情"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><path d="M9 9h.01M15 9h.01"></path></svg></button>
+                    <button type="button" id="quick-reply-btn" class="jelly-btn jelly-btn-primary">发送</button>
+                </div>
+            </div>
         </div>
-        <button id="quick-reply-btn" class="jelly-btn jelly-btn-primary">发送</button>
     `;
     container.appendChild(replyBox);
-    const nameInput = container.querySelector('#quick-reply-name');
     const textInput = container.querySelector('#quick-reply-text');
-    nameInput.value = forumConfig.replyUsername || forumConfig.username || '';
-    if (!nameInput.value) nameInput.placeholder = "请先在设置中指定署名";
-    
+    updateComposerIdentity(container);
+    container.querySelector('#quick-reply-identity').addEventListener('click', e => {
+        if (e.target.closest('.link-btn')) openSettingsModal();
+    });
+
     // Add emoticon button listener for reply box
     const replyEmoticonBtn = container.querySelector('#reply-emoticon-btn');
     if (replyEmoticonBtn) {
@@ -1571,9 +1671,6 @@ function toggleEditMode(card, contentEl, uid, floor = null) {
     const rawContent = contentEl.dataset.rawContent || '';
     const originalHtml = contentEl.innerHTML;
 
-    // Store the parent of the content element before we change it
-    const contentParent = contentEl.parentNode;
-
     contentEl.innerHTML = `
         <textarea class="edit-textarea">${escapeHtml(rawContent)}</textarea>
         <div class="edit-controls">
@@ -1582,23 +1679,12 @@ function toggleEditMode(card, contentEl, uid, floor = null) {
         </div>
     `;
 
+    // The edit buttons live in the post menu and the row header, outside the
+    // content, so restoring the HTML is all a cancel needs.
     contentEl.querySelector('.cancel-edit-btn').addEventListener('click', () => {
         contentEl.innerHTML = originalHtml;
-        // After restoring HTML, we MUST re-find the button and re-attach the listener
-        // because the old button element was destroyed.
-        let editBtn;
-        if (floor) {
-            // Find the specific edit button for this floor
-            editBtn = contentParent.querySelector(`.edit-btn[data-floor="${floor}"]`);
-        } else {
-            // Find the main post's edit button
-            editBtn = contentParent.querySelector('.post-actions .edit-btn');
-        }
-        
-        if (editBtn) {
-            editBtn.addEventListener('click', (e) => toggleEditMode(card, contentEl, uid, floor));
-        }
     });
+    contentEl.querySelector('.edit-textarea').focus();
 
     contentEl.querySelector('.save-edit-btn').addEventListener('click', async (e) => {
         const btn = e.currentTarget;
@@ -1679,8 +1765,10 @@ async function handleQuickReply(uid, container) {
     const textInput = container.querySelector('#quick-reply-text');
     const btn = container.querySelector('#quick-reply-btn');
 
-    if (!nameInput.value.trim() || !textInput.value.trim()) {
-        textInput.placeholder = '昵称和内容都不能为空！';
+    if (!nameInput.value.trim()) return; // The identity line already links to settings.
+    if (!textInput.value.trim()) {
+        textInput.placeholder = '先写点内容再发送';
+        textInput.focus();
         return;
     }
     btn.disabled = true;
@@ -1715,17 +1803,18 @@ createPostBtn.addEventListener('click', () => {
         authorInput.value = forumConfig.replyUsername || forumConfig.username || '';
     }
     createPostModal.style.display = 'flex';
-
-    // Add emoticon button listener for create post modal
-    const createPostEmoticonBtn = document.getElementById('create-post-emoticon-btn');
-    const postContentInput = document.getElementById('post-content-input');
-    if (createPostEmoticonBtn && postContentInput) {
-        createPostEmoticonBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            window.emoticonManager.togglePanel(createPostEmoticonBtn, postContentInput);
-        });
-    }
 });
+
+// Bound once: binding on every open stacked listeners, so the panel toggled
+// open and shut again on the second open.
+const createPostEmoticonBtn = document.getElementById('create-post-emoticon-btn');
+const postContentInput = document.getElementById('post-content-input');
+if (createPostEmoticonBtn && postContentInput) {
+    createPostEmoticonBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.emoticonManager.togglePanel(createPostEmoticonBtn, postContentInput);
+    });
+}
 document.querySelectorAll('.modal-close-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         e.target.closest('.modal').style.display = 'none';
@@ -1887,6 +1976,14 @@ function parseForumDate(ts) {
         return null;
     }
     return d;
+}
+
+// The exact time for tooltips, e.g. 2025-11-12 11:57.
+function formatFullDate(ts) {
+    const d = parseForumDate(ts);
+    if (!d) return ts ? String(ts) : '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function formatDate(ts) {

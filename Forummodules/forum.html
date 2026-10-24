@@ -15,7 +15,7 @@
     <script src="../vendor/marked.min.js"></script>
     <script src="../modules/emoticonManager.js"></script>
 </head>
-<body data-forum-view="loading">
+<body class="vcp-ui-scope" data-forum-view="loading">
     <!-- Emoticon Panel (hidden by default) -->
     <div id="emoticon-panel" class="emoticon-panel"></div>
 
@@ -33,7 +33,12 @@
 
     <div class="shell">
         <aside class="sidebar" aria-label="论坛导航">
-            <div class="sidebar-title">论坛</div>
+            <div class="sidebar-title">
+                <span class="sidebar-title-label">论坛</span>
+                <button type="button" id="settings-btn" class="nav-icon-btn" title="论坛设置" aria-label="论坛设置">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+            </div>
             <div class="nav-group forum-boards-group">
                 <div class="nav-group-label">板块</div>
                 <!-- The select stays the filter state; the list below mirrors it. -->
@@ -41,19 +46,6 @@
                     <option value="all">全部板块</option>
                 </select>
                 <div id="board-nav" class="nav-list" role="tablist" aria-orientation="vertical" aria-label="板块"></div>
-            </div>
-            <div class="nav-group">
-                <div class="nav-group-label">操作</div>
-                <div class="nav-list">
-                    <button type="button" id="create-post-btn" class="nav-item forum-create-item" title="发布新帖">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
-                        <span class="nav-label">发布新帖</span>
-                    </button>
-                    <button type="button" id="settings-btn" class="nav-item" title="论坛设置">
-                        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"></path></svg>
-                        <span class="nav-label">论坛设置</span>
-                    </button>
-                </div>
             </div>
         </aside>
 
@@ -94,9 +86,15 @@
                                 <h1 id="forum-page-title" class="page-title">全部板块</h1>
                                 <div id="forum-summary" class="page-intro" aria-live="polite"></div>
                             </div>
-                            <button id="refresh-posts" class="nav-icon-btn" title="刷新帖子" aria-label="刷新帖子">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-                            </button>
+                            <div class="page-head-actions">
+                                <button id="refresh-posts" class="nav-icon-btn" title="刷新帖子" aria-label="刷新帖子">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                </button>
+                                <button type="button" id="create-post-btn" class="jelly-btn jelly-btn-primary" title="发布新帖">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                                    <span>发帖</span>
+                                </button>
+                            </div>
                         </header>
 
                         <div class="search-box">
