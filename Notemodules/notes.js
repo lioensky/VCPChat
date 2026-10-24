@@ -219,10 +219,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let overlay = document.getElementById("loading-overlay");
     if (!overlay) {
       overlay = document.createElement("div");
-      overlay.id = "loading-overlay";
-      // Using CSS text for simplicity; ideally this would be a class
-      overlay.style.cssText =
-        "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:10000; color:white; flex-direction:column;";
+      overlay.id = "loading-overlay"; // styled in notes.css
       const p = document.createElement("p");
       overlay.appendChild(p);
       document.body.appendChild(overlay);
@@ -262,7 +259,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       titleElement.textContent = String(title || "");
       if (isError) {
         messageElement.textContent = String(message || "");
-        messageElement.style.color = "var(--danger-color, #f44336)";
+        messageElement.style.color = "var(--danger-color)";
       } else {
         // 信息窗内容由本模块提供，允许帮助文本中的基础格式。
         messageElement.innerHTML = message;
@@ -2542,8 +2539,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       const editorBasis = `calc(${safePercent}% - 14px)`;
       const previewBasis = `calc(${100 - safePercent}% - 14px)`;
 
-      editorContainer.style.flex = `0 0 ${editorBasis}`;
-      previewContainer.style.flex = `0 0 ${previewBasis}`;
+      // notes.css reads these, so the collapsed and single-pane states can
+      // override the split without fighting an inline style.
+      noteBody.style.setProperty("--nt-editor-basis", editorBasis);
+      noteBody.style.setProperty("--nt-preview-basis", previewBasis);
       editorPreviewResizer.setAttribute(
         "aria-valuenow",
         String(Math.round(safePercent))
