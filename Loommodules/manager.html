@@ -7,143 +7,301 @@
     <title>VCP Loom Manager</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <style>
-        :root {
-            --bg: var(--primary-bg, #171a1d);
-            --panel: var(--panel-bg-dark, rgba(32, 37, 42, .94));
-            --panel-2: var(--secondary-bg, #20252a);
-            --line: color-mix(in srgb, var(--border-color, #3b4449) 72%, transparent);
-            --text: var(--primary-text, #f2f0e9);
-            --muted: var(--secondary-text, #a7afb1);
-            --accent: var(--highlight-text, #f2a900);
-            --accent-2: var(--success-color, #76bfae);
-            --danger: var(--danger-color, #e06c5f);
-            --shadow: 0 18px 60px color-mix(in srgb, var(--primary-bg, #171a1d) 62%, transparent);
-            --loom-panel: color-mix(in srgb, var(--panel-bg, var(--panel)) 94%, transparent);
-            --loom-bar: color-mix(in srgb, var(--secondary-bg, #20252a) 88%, transparent);
-            --loom-sidebar: color-mix(in srgb, var(--primary-bg, #171a1d) 82%, transparent);
-            --loom-control: color-mix(in srgb, var(--secondary-bg, #20252a) 72%, transparent);
-            --loom-hover: color-mix(in srgb, var(--accent) 11%, transparent);
+        /* Loom manager: the same shell as the main window (42px bar, 260px
+           sidebar, framed workspace) with the apps as navigation rows. The
+           editor is a settings page: grouped cards of hairline rows, labels
+           on the left and controls on the right, and a save bar pinned to the
+           bottom of the panel. Every color comes from the theme variables in
+           styles/themes.css. */
+        body {
+            --lm-ink: var(--primary-text);
+            --lm-ink-2: var(--secondary-text);
+            --lm-ink-3: color-mix(in srgb, var(--secondary-text) 78%, transparent);
+            --lm-ink-4: color-mix(in srgb, var(--secondary-text) 56%, transparent);
+            --lm-ground: var(--primary-bg);
+            --lm-panel: var(--secondary-bg);
+            --lm-card: color-mix(in srgb, var(--primary-text) 2%, transparent);
+            --lm-surface: color-mix(in srgb, var(--primary-text) 3.5%, transparent);
+            --lm-line-1: color-mix(in srgb, var(--primary-text) 8%, transparent);
+            --lm-line-2: color-mix(in srgb, var(--primary-text) 10%, transparent);
+            --lm-line-3: color-mix(in srgb, var(--primary-text) 14%, transparent);
+            --lm-hover: color-mix(in srgb, var(--primary-text) 6%, transparent);
+            --lm-active: color-mix(in srgb, var(--primary-text) 10%, transparent);
+            --lm-accent: var(--button-bg);
+            --lm-focus-ring: color-mix(in srgb, var(--lm-accent) 18%, transparent);
+            --lm-danger: var(--danger-color);
+            --lm-on-danger: var(--text-on-accent);
+            --lm-success: var(--success-color);
+            --lm-thumb-off: var(--secondary-text);
+            --lm-shadow: color-mix(in srgb, var(--tertiary-bg) 72%, transparent);
+            --lm-mono: 'SF Mono', 'JetBrains Mono', Consolas, 'Cascadia Code', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', monospace;
+            --lm-radius-xs: 4px;
+            --lm-radius-sm: 8px;
+            --lm-radius-md: 12px;
+            --lm-radius-lg: 16px;
+            --lm-radius-xl: 20px;
+            margin: 0;
+            font: 400 13px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--lm-ink);
+            overflow: hidden;
+            background-color: var(--lm-ground);
+            background-image: none;
         }
         body.light-theme {
-            --panel: var(--panel-bg-light, rgba(252, 250, 244, .94));
-            --shadow: 0 18px 60px rgba(27, 33, 31, .12);
+            --lm-thumb-off: var(--secondary-bg);
+            --lm-shadow: color-mix(in srgb, var(--primary-text) 14%, transparent);
+            background-image: none;
         }
         * { box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-        body {
-            background:
-                radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 30%),
-                radial-gradient(circle at 85% 80%, color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 28%),
-                var(--bg);
-            color: var(--text);
-            font: 13px/1.45 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        html, body { width: 100%; height: 100%; }
+        button, input, textarea, select { font: inherit; color: inherit; }
+        button { cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: 0.4; }
+        [hidden] { display: none !important; }
+        :is(button, input, select, textarea):focus-visible {
+            outline: 2px solid var(--lm-accent);
+            outline-offset: 2px;
         }
-        button, input, textarea, select { font: inherit; }
-        button { color: inherit; }
-        .titlebar {
-            height: 44px;
+        svg { display: block; flex: none; }
+
+        /* ---- Window chrome ---- */
+        .window-controls {
+            position: fixed;
+            top: 0;
+            right: 0;
+            z-index: 10;
             display: flex;
+            height: 42px;
+            -webkit-app-region: no-drag;
+        }
+        .window-btn {
+            appearance: none;
+            display: inline-flex;
             align-items: center;
-            border-bottom: 1px solid var(--line);
-            background: var(--loom-bar);
-            backdrop-filter: blur(14px) saturate(112%);
-            -webkit-backdrop-filter: blur(14px) saturate(112%);
+            justify-content: center;
+            width: 46px;
+            height: 42px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: var(--lm-ink-2);
+        }
+        .window-btn:hover {
+            background: color-mix(in srgb, var(--primary-text) 15%, transparent);
+            color: var(--lm-ink);
+        }
+        .window-btn-close:hover {
+            background: var(--lm-danger);
+            color: var(--lm-on-danger);
+        }
+        /* The window is frameless, so the strip above the shell drags it. */
+        .drag-strip {
+            position: fixed;
+            inset: 0 0 auto;
+            height: 42px;
             -webkit-app-region: drag;
-            user-select: none;
         }
-        .brand { padding: 0 16px; display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .3px; }
-        .brand-mark {
-            width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center;
-            background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 58%, var(--accent-2)));
-            color: var(--text-on-accent, #171a1d);
-            box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 35%, transparent);
-            line-height: 1; padding-bottom: 1px;
-        }
-        .brand small { color: var(--muted); font-weight: 400; margin-left: 4px; }
-        .window-controls { margin-left: auto; height: 100%; display: flex; -webkit-app-region: no-drag; }
-        .window-controls button {
-            width: 48px; border: 0; background: transparent; cursor: pointer; font-size: 16px;
-        }
-        .window-controls button:hover { background: var(--loom-hover); }
-        .window-controls .close:hover { background: var(--danger); color: var(--text-on-accent, white); }
+
+        /* ---- Shell ---- */
         .layout {
-            height: calc(100% - 44px);
+            position: fixed;
+            inset: 42px 0 0;
+            display: grid;
+            grid-template-columns: 260px minmax(0, 1fr);
             min-height: 0;
             overflow: hidden;
-            display: grid;
-            grid-template-columns: 300px minmax(0, 1fr);
         }
+        html[data-vcp-embedded-app="true"] body { background-color: transparent; }
+        html[data-vcp-embedded-app="true"] .window-controls,
+        html[data-vcp-embedded-app="true"] .drag-strip { display: none; }
+        html[data-vcp-embedded-app="true"] .layout { inset: 0; }
+
         .sidebar {
-            min-width: 0; min-height: 0; overflow: hidden;
-            border-right: 1px solid var(--line); background: var(--loom-sidebar);
-            display: flex; flex-direction: column; backdrop-filter: blur(14px) saturate(112%);
-            -webkit-backdrop-filter: blur(14px) saturate(112%);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 0;
+            min-height: 0;
+            padding: 9px 8px 15px;
+            background: transparent;
+            overflow: hidden;
         }
-        .side-actions { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-bottom: 1px solid var(--line); }
-        .btn {
-            border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; background: var(--loom-control);
-            cursor: pointer; transition: .15s ease; white-space: nowrap;
+        .sidebar-title {
+            flex: 0 0 30px;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            padding: 0 4px 0 10px;
+            color: var(--lm-ink-2);
+            font-size: 13px;
+            font-weight: 500;
         }
-        .btn:hover { border-color: color-mix(in srgb, var(--accent) 65%, transparent); background: var(--loom-hover); }
-        .btn.primary { background: var(--button-bg, var(--accent)); color: var(--text-on-accent, #171a1d); border-color: transparent; font-weight: 600; }
-        .btn.primary:hover { background: var(--button-hover-bg, var(--accent)); }
-        .btn.danger { color: var(--danger); }
-        .btn:disabled { opacity: .48; cursor: default; }
-        .search { margin: 12px 14px 7px; width: calc(100% - 28px); }
-        input, textarea, select {
-            color: var(--text); background: var(--input-bg, var(--loom-control)); border: 1px solid var(--line); border-radius: 8px;
-            outline: none; padding: 8px 10px;
+        .sidebar-title-text { flex: 1; min-width: 0; }
+        .icon-btn {
+            appearance: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 0;
+            border-radius: var(--lm-radius-sm);
+            background: transparent;
+            color: var(--lm-ink-3);
         }
-        input::placeholder, textarea::placeholder { color: var(--placeholder-text, var(--muted)); }
-        input:focus, textarea:focus, select:focus { border-color: color-mix(in srgb, var(--accent) 75%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+        .icon-btn:hover:not(:disabled),
+        .icon-btn[aria-expanded="true"] {
+            background: var(--lm-hover);
+            color: var(--lm-ink);
+        }
+        .icon-btn-outline {
+            width: 30px;
+            height: 30px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            color: var(--lm-ink-2);
+        }
+
+        .search-box {
+            position: relative;
+            display: flex;
+            align-items: center;
+            flex: none;
+        }
+        .search-box svg {
+            position: absolute;
+            left: 12px;
+            color: var(--lm-ink-4);
+            pointer-events: none;
+        }
+        .search-box input {
+            width: 100%;
+            height: 36px;
+            padding: 0 12px 0 36px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            outline: none;
+            transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+        .search-box input::-webkit-search-cancel-button { display: none; }
+        .search-box input::placeholder { color: var(--lm-ink-4); }
+
+        .nav-group-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex: none;
+            padding: 0 10px;
+            color: var(--lm-ink-4);
+            font-size: 12px;
+            line-height: 16px;
+            font-weight: 500;
+        }
+        .nav-count { font-weight: 400; font-variant-numeric: tabular-nums; }
         .app-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
             min-height: 0;
             flex: 1;
             overflow-x: hidden;
             overflow-y: auto;
             overscroll-behavior: contain;
-            padding: 6px 9px 14px;
+            margin-top: -8px;
+        }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: none;
+            width: 100%;
+            height: 34px;
+            padding: 0 10px;
+            border: 0;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--lm-ink-2);
+            font-size: 14px;
+            line-height: 20px;
+            text-align: left;
+        }
+        .nav-item:hover {
+            background: var(--lm-hover);
+            color: var(--lm-ink);
+        }
+        .nav-item[aria-current="page"] {
+            background: var(--lm-active);
+            color: var(--lm-ink);
+            font-weight: 500;
+        }
+        .nav-icon { width: 16px; height: 16px; }
+        .nav-label {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .nav-item[data-disabled="true"] .nav-label { color: var(--lm-ink-4); }
+        .nav-empty {
+            padding: 8px 10px;
+            color: var(--lm-ink-4);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        /* App glyph: a small tile; a running app gets a dot on its corner. */
+        .app-tile {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 20px;
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            background: var(--lm-surface);
+            font-size: 13px;
+            line-height: 1;
+        }
+        .app-tile img {
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            object-fit: cover;
+        }
+        .app-tile[data-running="true"]::after {
+            content: '';
+            position: absolute;
+            right: -2px;
+            bottom: -2px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--lm-success);
+            box-shadow: 0 0 0 2px var(--lm-ground);
         }
         .skill-manager-footer {
             flex: none;
-            padding: 10px 14px 14px;
-            border-top: 1px solid var(--line);
-            background: color-mix(in srgb, var(--loom-sidebar) 88%, transparent);
+            padding-top: 8px;
+            border-top: 0.5px solid var(--lm-line-2);
         }
-        .skill-manager-footer .btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            width: 100%;
-        }
-        .app-card {
-            width: 100%; border: 1px solid transparent; border-radius: 11px; background: transparent; padding: 10px;
-            display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; text-align: left; cursor: pointer;
-        }
-        .app-card:hover { background: var(--loom-hover); }
-        .app-card.active { background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
-        .app-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; object-fit: cover; background: var(--loom-control); font-size: 21px; }
-        .app-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .app-id { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .55; }
-        .status-dot.running { background: var(--accent-2); box-shadow: 0 0 10px color-mix(in srgb, var(--accent-2) 70%, transparent); opacity: 1; }
-        .empty { color: var(--muted); text-align: center; padding: 40px 20px; }
+
+        /* ---- Workspace ---- */
         .editor {
-            min-width: 0;
-            min-height: 0;
-            overflow: hidden;
+            position: relative;
             display: flex;
             flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+            margin: 0 4px 4px 0;
+            border: 1px solid var(--border-color);
+            border-radius: var(--vcp-ui-shell-radius, 14px);
+            background: var(--lm-panel);
+            overflow: hidden;
         }
-        .editor-head {
-            height: 59px; padding: 10px 17px; border-bottom: 1px solid var(--line);
-            display: flex; align-items: center; gap: 8px; background: var(--loom-bar);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-        }
-        .editor-title { min-width: 0; margin-right: auto; }
-        .editor-title strong { display: block; font-size: 15px; }
-        .editor-title span { color: var(--muted); font-size: 11px; }
         .editor-body {
             min-width: 0;
             min-height: 0;
@@ -152,193 +310,868 @@
             overflow-y: auto;
             overscroll-behavior: contain;
             scrollbar-gutter: stable;
-            padding: 17px;
         }
         .app-list::-webkit-scrollbar,
+        .code-editor::-webkit-scrollbar,
         .editor-body::-webkit-scrollbar {
             width: 9px;
             height: 9px;
         }
         .app-list::-webkit-scrollbar-track,
-        .editor-body::-webkit-scrollbar-track {
-            background: color-mix(in srgb, var(--loom-sidebar) 74%, transparent);
+        .editor-body::-webkit-scrollbar-track,
+        .code-editor::-webkit-scrollbar-track {
+            background: transparent;
         }
         .app-list::-webkit-scrollbar-thumb,
-        .editor-body::-webkit-scrollbar-thumb {
-            min-height: 36px;
+        .editor-body::-webkit-scrollbar-thumb,
+        .code-editor::-webkit-scrollbar-thumb {
             border: 2px solid transparent;
             border-radius: 999px;
-            background: color-mix(in srgb, var(--muted) 58%, transparent);
+            background: var(--scrollbar-thumb);
             background-clip: padding-box;
         }
         .app-list::-webkit-scrollbar-thumb:hover,
-        .editor-body::-webkit-scrollbar-thumb:hover {
-            background: color-mix(in srgb, var(--accent) 72%, transparent);
+        .editor-body::-webkit-scrollbar-thumb:hover,
+        .code-editor::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
             background-clip: padding-box;
         }
-        .placeholder {
-            height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center;
+        .page {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            width: 100%;
+            max-width: 808px;
+            margin: 0 auto;
+            padding: 24px 24px 40px;
         }
-        .placeholder-mark { font-size: 55px; filter: drop-shadow(0 8px 22px color-mix(in srgb, var(--accent) 30%, transparent)); }
-        .form { display: none; max-width: 1100px; margin: 0 auto; }
-        .form.visible { display: block; }
-        .section {
-            background: var(--loom-panel); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 13px;
-            box-shadow: var(--shadow); overflow: hidden;
+        .page-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
-        .section-title { padding: 11px 14px; border-bottom: 1px solid var(--line); font-weight: 650; color: var(--accent); }
-        .section-body { padding: 14px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
-        .field { grid-column: span 6; min-width: 0; }
-        .field.full { grid-column: 1 / -1; }
-        .field.third { grid-column: span 4; }
-        .field.quarter { grid-column: span 3; }
-        .field label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
-        .field input, .field select, .field textarea { width: 100%; }
-        .field textarea { min-height: 94px; resize: vertical; font-family: Consolas, monospace; font-size: 12px; }
-        .field textarea.code { min-height: 250px; tab-size: 4; }
-        .check-row { display: flex; flex-wrap: wrap; gap: 18px; grid-column: 1 / -1; }
-        .check { display: flex; gap: 7px; align-items: center; color: var(--text); }
-        .check input { width: 15px; height: 15px; accent-color: var(--accent); }
-        .hint { color: var(--muted); font-size: 11px; margin-top: 5px; }
+        .page-head-copy {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .page-head-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: none;
+        }
+        .page-title {
+            margin: 0;
+            overflow: hidden;
+            font-size: 18px;
+            line-height: 26px;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .page-intro {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            margin: 0;
+            color: var(--lm-ink-3);
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .intro-item { white-space: nowrap; }
+        .intro-item + .intro-item::before {
+            content: '·';
+            padding: 0 6px;
+            color: var(--lm-ink-4);
+        }
+        .intro-item[data-tone="running"] { color: var(--lm-success); }
+        .hero-tile {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 44px;
+            width: 44px;
+            height: 44px;
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            font-size: 24px;
+            line-height: 1;
+        }
+        .hero-tile img {
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            object-fit: cover;
+        }
+
+        /* ---- Buttons ---- */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 30px;
+            padding: 0 14px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: transparent;
+            color: var(--lm-ink);
+            font-size: 13px;
+            line-height: 20px;
+            white-space: nowrap;
+            transition: background 120ms ease;
+        }
+        .btn:hover:not(:disabled) { background: var(--lm-hover); }
+        .btn svg { width: 14px; height: 14px; }
+        .btn-primary {
+            background: var(--lm-ink);
+            border-color: transparent;
+            color: var(--lm-panel);
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--lm-ink) 86%, var(--lm-panel));
+        }
+        .btn-ghost { border-color: transparent; }
+        .btn-ghost-danger {
+            padding: 0 10px;
+            border-color: transparent;
+            color: var(--lm-danger);
+        }
+        .btn-ghost-danger:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--lm-danger) 10%, transparent);
+        }
+        .btn-danger {
+            background: var(--lm-danger);
+            border-color: transparent;
+            color: var(--lm-on-danger);
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--lm-danger) 86%, var(--lm-panel));
+        }
+
+        /* ---- Menus ---- */
+        .menu {
+            position: fixed;
+            z-index: 1500;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 200px;
+            padding: 6px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-panel);
+            box-shadow: 0 12px 32px var(--lm-shadow);
+        }
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            min-height: 34px;
+            padding: 0 10px;
+            border: 0;
+            border-radius: var(--lm-radius-sm);
+            background: transparent;
+            color: var(--lm-ink);
+            text-align: left;
+            white-space: nowrap;
+        }
+        .menu-item:hover:not(:disabled),
+        .menu-item:focus-visible {
+            background: var(--lm-hover);
+            outline: none;
+        }
+        .menu-item svg {
+            width: 16px;
+            height: 16px;
+            color: var(--lm-ink-3);
+        }
+        .menu-separator {
+            height: 1px;
+            margin: 4px 6px;
+            background: var(--lm-line-2);
+        }
+
+        /* ---- Settings groups ----
+           One card per group, rows split by hairlines; a row carries its
+           label and hint on the left and the control in a fixed column on the
+           right. Editors that need the full width stack under their label. */
+        .form { display: flex; flex-direction: column; gap: 24px; }
+        .notice {
+            margin: 0;
+            padding: 8px 12px;
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            color: var(--lm-ink-2);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        .group { display: flex; flex-direction: column; gap: 8px; }
+        .group-title {
+            margin: 0;
+            padding: 0 2px;
+            font-size: 14px;
+            line-height: 22px;
+            font-weight: 500;
+        }
+        .group-card {
+            display: flex;
+            flex-direction: column;
+            padding: 0 20px;
+            border: 1px solid var(--lm-line-1);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-card);
+        }
+        .row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 280px;
+            align-items: center;
+            gap: 8px 24px;
+            padding: 14px 0;
+        }
+        .row + .row { border-top: 0.5px solid var(--lm-line-2); }
+        .row-stack { grid-template-columns: minmax(0, 1fr); }
+        .row-switch { grid-template-columns: minmax(0, 1fr) auto; }
+        .row-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .row-label {
+            font-size: 13px;
+            line-height: 20px;
+            font-weight: 500;
+        }
+        .row-hint {
+            color: var(--lm-ink-3);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        .row-hint code {
+            padding: 0 4px;
+            border-radius: var(--lm-radius-xs);
+            background: var(--lm-hover);
+            font-family: var(--lm-mono);
+            font-size: 11px;
+        }
+
+        .input,
+        .select select {
+            width: 100%;
+            height: 32px;
+            padding: 0 10px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            outline: none;
+            transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+        .input::placeholder,
+        .code-editor::placeholder { color: var(--lm-ink-4); }
+        .input-mono { font-family: var(--lm-mono); font-size: 12px; }
+        .input[type="number"] { appearance: textfield; font-variant-numeric: tabular-nums; }
+        .input[type="number"]::-webkit-inner-spin-button,
+        .input[type="number"]::-webkit-outer-spin-button { appearance: none; margin: 0; }
+        .input:disabled,
+        .select select:disabled,
+        .code-editor:disabled { cursor: default; opacity: 1; color: var(--lm-ink-3); }
+        .input:invalid:not(:placeholder-shown) { border-color: var(--lm-danger); }
+        .search-box input:focus,
+        .input:focus,
+        .select select:focus,
+        .code-editor:focus {
+            border-color: var(--lm-accent);
+            box-shadow: 0 0 0 2px var(--lm-focus-ring);
+        }
+        /* These fields show focus with their border and ring; the theme-wide
+           outline rule is id-specific, so it needs !important to step aside. */
+        :is(.search-box input, .input, .select select, .code-editor):focus-visible { outline: none !important; }
+        .input-emoji { width: 72px; justify-self: end; text-align: center; font-size: 16px; }
+        .select { position: relative; display: flex; align-items: center; }
+        .select select { appearance: none; padding-right: 32px; }
+        .select svg {
+            position: absolute;
+            right: 10px;
+            width: 14px;
+            height: 14px;
+            color: var(--lm-ink-3);
+            pointer-events: none;
+        }
+        .pair {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pair .input { flex: 1; min-width: 0; }
+        .pair-sep { color: var(--lm-ink-4); }
+
+        .code-editor {
+            display: block;
+            width: 100%;
+            min-height: 112px;
+            padding: 10px 12px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            outline: none;
+            resize: vertical;
+            font: 12px/18px var(--lm-mono);
+            tab-size: 4;
+            transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+        .code-editor.code { min-height: 260px; }
+
+        .tabs {
+            display: flex;
+            gap: 0 22px;
+            border-bottom: 0.5px solid var(--lm-line-3);
+        }
+        .tab {
+            position: relative;
+            padding: 4px 1px 8px;
+            border: 0;
+            background: transparent;
+            color: var(--lm-ink-3);
+            font: 12px/18px var(--lm-mono);
+        }
+        .tab:hover { color: var(--lm-ink); }
+        .tab[aria-selected="true"] { color: var(--lm-ink); font-weight: 500; }
+        .tab[aria-selected="true"]::after {
+            content: '';
+            position: absolute;
+            inset: auto 0 -0.5px;
+            height: 2px;
+            border-radius: 1px;
+            background: var(--lm-ink);
+        }
+        .tab:focus-visible { outline-offset: -2px; border-radius: var(--lm-radius-xs); }
+
+        /* ---- Switch ---- */
+        .switch {
+            position: relative;
+            display: inline-flex;
+            cursor: pointer;
+        }
+        .switch input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .switch-track {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            border-radius: 999px;
+            background: var(--lm-line-3);
+            transition: background 120ms ease;
+        }
+        .switch-track::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--lm-thumb-off);
+            transition: transform 120ms ease;
+        }
+        .switch input:checked + .switch-track { background: var(--lm-ink); }
+        .switch input:checked + .switch-track::after {
+            transform: translateX(16px);
+            background: var(--lm-panel);
+        }
+        .switch input:focus-visible + .switch-track {
+            outline: 2px solid var(--lm-accent);
+            outline-offset: 2px;
+        }
+        .switch input:disabled + .switch-track { opacity: 0.4; }
+        .switch:has(input:disabled) { cursor: default; }
+
+        /* ---- Save bar ---- */
+        .editor-foot {
+            flex: none;
+            border-top: 0.5px solid var(--lm-line-2);
+            background: var(--lm-panel);
+        }
+        .editor-foot-inner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 808px;
+            margin: 0 auto;
+            padding: 12px 24px;
+        }
+        .foot-spacer { flex: 1; }
+        .dirty-hint {
+            color: var(--lm-ink-3);
+            font-size: 12px;
+            line-height: 18px;
+        }
+
+        /* ---- Empty state ---- */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 40px 16px;
+            border: 1px dashed var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            color: var(--lm-ink-3);
+            text-align: center;
+        }
+        .empty-state p { margin: 0; }
+
+        /* ---- Dialog ---- */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+            background: color-mix(in srgb, var(--lm-ground) 58%, transparent);
+            backdrop-filter: blur(2px);
+        }
+        .modal-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            max-width: 420px;
+            padding: 20px 24px 18px;
+            border-radius: var(--lm-radius-xl);
+            background: var(--lm-panel);
+            box-shadow:
+                0 0 0 0.5px var(--lm-line-3),
+                0 24px 64px var(--lm-shadow);
+        }
+        .modal-content h3 {
+            margin: 0;
+            font-size: 16px;
+            line-height: 24px;
+            font-weight: 600;
+        }
+        .modal-content p {
+            margin: 0;
+            color: var(--lm-ink-2);
+            overflow-wrap: anywhere;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding-top: 12px;
+        }
+
+        /* ---- Toast ---- */
         .toast {
-            position: fixed; right: 18px; bottom: 18px; max-width: 430px; padding: 11px 14px; border-radius: 10px;
-            background: var(--notification-bg, var(--panel)); border: 1px solid var(--line); box-shadow: var(--shadow);
-            opacity: 0; transform: translateY(8px); pointer-events: none; transition: .2s ease; z-index: 20;
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 3000;
+            max-width: 380px;
+            padding: 9px 14px;
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-panel);
+            color: var(--lm-ink);
+            box-shadow:
+                0 0 0 0.5px var(--lm-line-3),
+                0 8px 28px var(--lm-shadow);
+            opacity: 0;
+            transform: translateY(8px);
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            overflow-wrap: anywhere;
         }
         .toast.show { opacity: 1; transform: translateY(0); }
-        .toast.error { border-color: color-mix(in srgb, var(--danger) 55%, transparent); color: var(--danger); }
-        @media (max-width: 900px) {
-            .layout { grid-template-columns: 240px minmax(0, 1fr); }
-            .field, .field.third, .field.quarter { grid-column: 1 / -1; }
+        /* Sit above the save bar so a toast never covers Save. */
+        body:has(.editor-foot:not([hidden])) .toast { bottom: 72px; }
+        .toast.error {
+            color: var(--lm-danger);
+            box-shadow:
+                0 0 0 0.5px color-mix(in srgb, var(--lm-danger) 60%, transparent),
+                0 8px 28px var(--lm-shadow);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .btn, .input, .select select, .code-editor, .search-box input,
+            .switch-track, .switch-track::after, .toast {
+                transition: none;
+            }
+        }
+
+        /* The navigation collapses to an icon rail on narrow windows. */
+        @media (max-width: 860px) {
+            .layout { grid-template-columns: 56px minmax(0, 1fr); }
+            .sidebar-title {
+                flex: none;
+                flex-direction: column;
+                gap: 4px;
+                padding: 0;
+            }
+            .sidebar-title-text,
+            .search-box,
+            .nav-label { display: none; }
+            .nav-group-label {
+                height: 1px;
+                margin: 0 8px;
+                padding: 0;
+                overflow: hidden;
+                background: var(--lm-line-2);
+                color: transparent;
+            }
+            .app-list { margin-top: 0; }
+            .nav-item { justify-content: center; padding: 0; }
+        }
+
+        @media (max-width: 640px) {
+            .page { padding: 20px 16px 32px; }
+            .editor-foot-inner { padding: 10px 16px; }
+            .group-card { padding: 0 14px; }
+            .row { grid-template-columns: minmax(0, 1fr); }
+            .row-switch { grid-template-columns: minmax(0, 1fr) auto; }
+            .input-emoji { justify-self: start; }
+            .dirty-hint { display: none; }
         }
     </style>
 </head>
 <body>
-    <header class="titlebar">
-        <div class="brand"><span class="brand-mark">🕸</span><span>VCP Loom <small>Arachne / 一期管理器</small></span></div>
-        <div class="window-controls">
-            <button id="minimize" title="最小化">─</button>
-            <button id="maximize" title="最大化">□</button>
-            <button id="close" class="close" title="关闭">×</button>
-        </div>
-    </header>
+    <div class="drag-strip"></div>
+    <div class="window-controls">
+        <button id="minimize" class="window-btn" type="button" title="最小化" aria-label="最小化">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button id="maximize" class="window-btn" type="button" title="最大化" aria-label="最大化">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"></rect></svg>
+        </button>
+        <button id="close" class="window-btn window-btn-close" type="button" title="关闭" aria-label="关闭">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+    </div>
 
     <main class="layout">
         <aside class="sidebar">
-            <div class="side-actions">
-                <button class="btn primary" id="newApp">＋ 新建</button>
-                <button class="btn" id="importApp">⇩ 导入</button>
-                <button class="btn" id="refreshApps">↻ 刷新</button>
-                <button class="btn" id="exportApp">⇧ 导出</button>
+            <div class="sidebar-title">
+                <span class="sidebar-title-text">Loom</span>
+                <button class="icon-btn" id="newApp" type="button" title="新建应用" aria-label="新建应用">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <button class="icon-btn" id="sidebarMore" type="button" title="更多" aria-label="更多" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebarMenu">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+                </button>
             </div>
-            <input id="search" class="search" type="search" placeholder="搜索 LoomAPP…">
+            <label class="search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                <input id="search" type="search" placeholder="搜索应用" aria-label="搜索应用">
+            </label>
+            <div class="nav-group-label"><span>应用</span><span class="nav-count" id="appCount"></span></div>
             <div class="app-list" id="appList"></div>
             <div class="skill-manager-footer">
-                <button class="btn" id="manageSkills" type="button" title="在 Canvas 中打开 LoomSkills 工作区">
-                    <span aria-hidden="true">⌘</span>
-                    <span>管理 LoomSkill</span>
+                <button class="nav-item" id="manageSkills" type="button" title="在 Canvas 中打开 LoomSkills 工作区">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>
+                    <span class="nav-label">管理 LoomSkill</span>
                 </button>
             </div>
         </aside>
 
         <section class="editor">
-            <div class="editor-head">
-                <div class="editor-title">
-                    <strong id="editorName">选择或创建 LoomAPP</strong>
-                    <span id="editorMeta">远程网页持久化应用容器</span>
-                </div>
-                <button class="btn" id="openFolder" disabled>目录</button>
-                <button class="btn" id="clearSession" disabled>清除登录</button>
-                <button class="btn danger" id="deleteApp" disabled>删除</button>
-                <button class="btn" id="launchApp" disabled>▶ 启动</button>
-                <button class="btn primary" id="saveApp" disabled>保存</button>
-            </div>
             <div class="editor-body">
-                <div class="placeholder" id="placeholder">
-                    <div><div class="placeholder-mark">🕸️</div><h2>VCP Loom</h2><p>将真实网页织入 VChat，形成拥有独立身份与持久会话的子应用。</p></div>
+                <div class="page" id="placeholder">
+                    <header class="page-head">
+                        <div class="page-head-copy">
+                            <h1 class="page-title">Loom</h1>
+                            <p class="page-intro"><span class="intro-item">把网页织进 VChat，每个应用有独立的身份和登录状态</span></p>
+                        </div>
+                    </header>
+                    <div class="empty-state">
+                        <p>在左侧选择一个应用查看配置，或新建一个。</p>
+                        <button class="btn btn-primary" id="placeholderNew" type="button">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                            新建应用
+                        </button>
+                    </div>
                 </div>
 
-                <form class="form" id="appForm">
-                    <div class="section">
-                        <div class="section-title">应用身份</div>
-                        <div class="section-body">
-                            <div class="field third"><label for="appId">应用 ID</label><input id="appId" required pattern="[a-z0-9][a-z0-9_\-]{1,63}" placeholder="example-mobile"></div>
-                            <div class="field third"><label for="appName">显示名称</label><input id="appName" required placeholder="示例移动应用"></div>
-                            <div class="field third"><label for="emoji">Emoji 图标</label><input id="emoji" value="🕸️" maxlength="8"></div>
-                            <div class="field full"><label for="description">描述</label><input id="description" placeholder="此 LoomAPP 的用途"></div>
-                            <div class="field full"><label for="startUrl">启动 URL</label><input id="startUrl" required type="url" value="https://example.com/"></div>
-                            <div class="field full"><label for="icon">传统图标</label><input id="icon" placeholder="应用目录内相对路径、https URL 或 data:image URL"><div class="hint">社区分发可使用应用目录内文件名，例如 icon.png；配置图标源码后将优先显示源码图标。</div></div>
-                            <div class="field full"><label for="iconSource">手绘图标源码（JSON）</label><textarea id="iconSource" spellcheck="false" placeholder='{"type":"svg","source":"<svg viewBox=\"0 0 64 64\">...</svg>"}'></textarea><div class="hint">支持 svg、css、canvas。Canvas 使用声明式 commands，不执行任意 JavaScript；留空则使用传统图标或 Emoji。</div></div>
-                            <div class="check-row">
-                                <label class="check"><input id="enabled" type="checkbox" checked>启用应用</label>
-                                <label class="check"><input id="exposeDrawer" type="checkbox" checked>暴露在应用抽屉</label>
-                                <label class="check"><input id="exposeManager" type="checkbox" checked>允许管理器暴露在应用抽屉</label>
-                            </div>
+                <div class="page" id="appView" hidden>
+                    <header class="page-head editor-head">
+                        <span class="hero-tile" id="editorIcon" aria-hidden="true"></span>
+                        <div class="page-head-copy editor-title">
+                            <h1 class="page-title" id="editorName">新建应用</h1>
+                            <p class="page-intro" id="editorMeta"></p>
                         </div>
-                    </div>
+                        <div class="page-head-actions">
+                            <button class="btn" id="launchApp" type="button" disabled>
+                                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+                                启动
+                            </button>
+                            <button class="icon-btn icon-btn-outline" id="appMore" type="button" title="更多" aria-label="更多" aria-haspopup="menu" aria-expanded="false" aria-controls="appMenu" disabled>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+                            </button>
+                        </div>
+                    </header>
 
-                    <div class="section">
-                        <div class="section-title">窗口与视口</div>
-                        <div class="section-body">
-                            <div class="field quarter"><label for="windowWidth">窗口宽度</label><input id="windowWidth" type="number" min="320" max="3840" value="420"></div>
-                            <div class="field quarter"><label for="windowHeight">窗口高度</label><input id="windowHeight" type="number" min="360" max="2160" value="780"></div>
-                            <div class="field quarter"><label for="minWidth">最小宽度</label><input id="minWidth" type="number" min="240" value="320"></div>
-                            <div class="field quarter"><label for="minHeight">最小高度</label><input id="minHeight" type="number" min="240" value="480"></div>
-                            <div class="field quarter"><label for="viewportWidth">页面视口宽度</label><input id="viewportWidth" type="number" min="240" value="390"></div>
-                            <div class="field quarter"><label for="viewportHeight">页面视口高度</label><input id="viewportHeight" type="number" min="240" value="700"></div>
-                            <div class="field quarter"><label for="maxWidth">最大宽度（可空）</label><input id="maxWidth" type="number" min="320"></div>
-                            <div class="field quarter"><label for="maxHeight">最大高度（可空）</label><input id="maxHeight" type="number" min="360"></div>
-                            <div class="check-row">
-                                <label class="check"><input id="resizable" type="checkbox" checked>窗口可调整尺寸</label>
-                                <label class="check"><input id="autoResize" type="checkbox" checked>页面视口跟随窗口</label>
-                            </div>
-                        </div>
-                    </div>
+                    <form class="form" id="appForm" novalidate>
+                        <p class="notice" id="readonlyNotice" hidden>这是内置的协作浏览器，配置不能在这里修改；浏览数据请在侧栏浏览器的菜单里清除。</p>
 
-                    <div class="section">
-                        <div class="section-title">请求模拟与导航</div>
-                        <div class="section-body">
-                            <div class="field third">
-                                <label for="profile">请求配置</label>
-                                <select id="profile">
-                                    <option value="desktop">桌面浏览器</option>
-                                    <option value="mobile" selected>Android 手机</option>
-                                    <option value="iphone">iPhone</option>
-                                    <option value="custom">自定义 UA</option>
-                                </select>
+                        <section class="group">
+                            <h2 class="group-title">基本信息</h2>
+                            <div class="group-card">
+                                <div class="row">
+                                    <div class="row-copy"><label class="row-label" for="appName">名称</label></div>
+                                    <input class="input" id="appName" required placeholder="示例移动应用">
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="appId">应用 ID</label>
+                                        <span class="row-hint" id="appIdHint">小写字母、数字、- 或 _，创建后不能修改</span>
+                                    </div>
+                                    <input class="input input-mono" id="appId" required pattern="[a-z0-9][a-z0-9_\-]{1,63}" placeholder="example-mobile" spellcheck="false">
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy"><label class="row-label" for="description">描述</label></div>
+                                    <input class="input" id="description" placeholder="这个应用的用途">
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="startUrl">启动网址</label>
+                                        <span class="row-hint">打开应用时载入的页面</span>
+                                    </div>
+                                    <input class="input" id="startUrl" required type="url" value="https://example.com/" spellcheck="false">
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy">
+                                        <span class="row-label">启用应用</span>
+                                        <span class="row-hint">停用后不能启动</span>
+                                    </div>
+                                    <label class="switch" aria-label="启用应用"><input id="enabled" type="checkbox" checked><span class="switch-track"></span></label>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy"><span class="row-label">显示在应用抽屉</span></div>
+                                    <label class="switch" aria-label="显示在应用抽屉"><input id="exposeDrawer" type="checkbox" checked><span class="switch-track"></span></label>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy"><span class="row-label">允许管理器暴露在应用抽屉</span></div>
+                                    <label class="switch" aria-label="允许管理器暴露在应用抽屉"><input id="exposeManager" type="checkbox" checked><span class="switch-track"></span></label>
+                                </div>
                             </div>
-                            <div class="field" style="grid-column: span 8"><label for="userAgent">自定义 User-Agent（可空）</label><input id="userAgent" placeholder="留空则使用所选配置的内置 UA"></div>
-                            <div class="field full"><label for="headers">附加请求头（JSON）</label><textarea id="headers" spellcheck="false">{}</textarea><div class="hint">Cookie 与 Host 不允许在此覆写；登录状态由独立持久化 session 自动保存。</div></div>
-                            <div class="check-row">
-                                <label class="check"><input id="allowPopups" type="checkbox">允许弹窗链接在应用内打开</label>
-                                <label class="check"><input id="externalOrigins" type="checkbox">跨域导航改用系统浏览器</label>
-                            </div>
-                        </div>
-                    </div>
+                        </section>
 
-                    <div class="section">
-                        <div class="section-title">注入修正</div>
-                        <div class="section-body">
-                            <div class="field full"><label for="injectCss">inject.css</label><textarea class="code" id="injectCss" spellcheck="false" placeholder="/* 页面布局修正 */"></textarea></div>
-                            <div class="field full"><label for="injectJs">inject.js</label><textarea class="code" id="injectJs" spellcheck="false" placeholder="// 页面功能修正；代码在页面加载完成后执行"></textarea></div>
-                        </div>
-                    </div>
-                </form>
+                        <section class="group">
+                            <h2 class="group-title">图标</h2>
+                            <div class="group-card">
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="emoji">Emoji</label>
+                                        <span class="row-hint">没有图片图标时显示</span>
+                                    </div>
+                                    <input class="input input-emoji" id="emoji" value="🕸️" maxlength="8">
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="icon">图片图标</label>
+                                        <span class="row-hint">应用目录里的文件名（如 <code>icon.png</code>）、https 或 data:image 网址</span>
+                                    </div>
+                                    <input class="input" id="icon" placeholder="icon.png" spellcheck="false">
+                                </div>
+                                <div class="row row-stack">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="iconSource">手绘图标源码</label>
+                                        <span class="row-hint">JSON，支持 svg、css、canvas；canvas 只用声明式 commands，不执行 JavaScript。填写后优先于图片图标。</span>
+                                    </div>
+                                    <textarea class="code-editor" id="iconSource" spellcheck="false" placeholder='{"type":"svg","source":"<svg viewBox=\"0 0 64 64\">...</svg>"}'></textarea>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="group">
+                            <h2 class="group-title">窗口与视口</h2>
+                            <div class="group-card">
+                                <div class="row">
+                                    <div class="row-copy"><span class="row-label">窗口尺寸</span></div>
+                                    <div class="pair">
+                                        <input class="input" id="windowWidth" type="number" min="320" max="3840" value="420" aria-label="窗口宽度" title="宽度">
+                                        <span class="pair-sep">×</span>
+                                        <input class="input" id="windowHeight" type="number" min="360" max="2160" value="780" aria-label="窗口高度" title="高度">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy"><span class="row-label">最小尺寸</span></div>
+                                    <div class="pair">
+                                        <input class="input" id="minWidth" type="number" min="240" value="320" aria-label="最小宽度" title="宽度">
+                                        <span class="pair-sep">×</span>
+                                        <input class="input" id="minHeight" type="number" min="240" value="480" aria-label="最小高度" title="高度">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <span class="row-label">最大尺寸</span>
+                                        <span class="row-hint">留空表示不限制</span>
+                                    </div>
+                                    <div class="pair">
+                                        <input class="input" id="maxWidth" type="number" min="320" placeholder="不限" aria-label="最大宽度" title="宽度">
+                                        <span class="pair-sep">×</span>
+                                        <input class="input" id="maxHeight" type="number" min="360" placeholder="不限" aria-label="最大高度" title="高度">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <span class="row-label">页面视口</span>
+                                        <span class="row-hint">网页看到的屏幕尺寸</span>
+                                    </div>
+                                    <div class="pair">
+                                        <input class="input" id="viewportWidth" type="number" min="240" value="390" aria-label="页面视口宽度" title="宽度">
+                                        <span class="pair-sep">×</span>
+                                        <input class="input" id="viewportHeight" type="number" min="240" value="700" aria-label="页面视口高度" title="高度">
+                                    </div>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy"><span class="row-label">窗口可调整大小</span></div>
+                                    <label class="switch" aria-label="窗口可调整大小"><input id="resizable" type="checkbox" checked><span class="switch-track"></span></label>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy">
+                                        <span class="row-label">视口跟随窗口</span>
+                                        <span class="row-hint">调整窗口大小时同步改变页面视口</span>
+                                    </div>
+                                    <label class="switch" aria-label="视口跟随窗口"><input id="autoResize" type="checkbox" checked><span class="switch-track"></span></label>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="group">
+                            <h2 class="group-title">请求与导航</h2>
+                            <div class="group-card">
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="profile">设备类型</label>
+                                        <span class="row-hint">决定发给网站的 User-Agent</span>
+                                    </div>
+                                    <div class="select">
+                                        <select id="profile">
+                                            <option value="desktop">桌面浏览器</option>
+                                            <option value="mobile" selected>Android 手机</option>
+                                            <option value="iphone">iPhone</option>
+                                            <option value="custom">自定义 UA</option>
+                                        </select>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                                    </div>
+                                </div>
+                                <div class="row row-stack">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="userAgent">自定义 User-Agent</label>
+                                        <span class="row-hint">留空时使用所选设备的内置 UA</span>
+                                    </div>
+                                    <input class="input input-mono" id="userAgent" placeholder="Mozilla/5.0 …" spellcheck="false">
+                                </div>
+                                <div class="row row-stack">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="headers">附加请求头</label>
+                                        <span class="row-hint">JSON 对象；不能覆写 Cookie 和 Host，登录状态由应用的独立会话自动保存</span>
+                                    </div>
+                                    <textarea class="code-editor" id="headers" spellcheck="false">{}</textarea>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy"><span class="row-label">在应用内打开弹窗链接</span></div>
+                                    <label class="switch" aria-label="在应用内打开弹窗链接"><input id="allowPopups" type="checkbox"><span class="switch-track"></span></label>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy"><span class="row-label">跨域导航改用系统浏览器</span></div>
+                                    <label class="switch" aria-label="跨域导航改用系统浏览器"><input id="externalOrigins" type="checkbox"><span class="switch-track"></span></label>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="group">
+                            <h2 class="group-title">注入修正</h2>
+                            <div class="group-card">
+                                <div class="row row-stack">
+                                    <div class="row-copy">
+                                        <span class="row-hint">页面加载完成后注入，用来修正布局或补充功能</span>
+                                    </div>
+                                    <div class="tabs" role="tablist" aria-label="注入文件">
+                                        <button class="tab" type="button" role="tab" id="tabCss" aria-selected="true" aria-controls="injectCss">inject.css</button>
+                                        <button class="tab" type="button" role="tab" id="tabJs" aria-selected="false" aria-controls="injectJs" tabindex="-1">inject.js</button>
+                                    </div>
+                                    <textarea class="code-editor code" id="injectCss" spellcheck="false" placeholder="/* 页面布局修正 */" aria-labelledby="tabCss"></textarea>
+                                    <textarea class="code-editor code" id="injectJs" spellcheck="false" placeholder="// 页面功能修正；在页面加载完成后执行" aria-labelledby="tabJs" hidden></textarea>
+                                </div>
+                            </div>
+                        </section>
+                    </form>
+                </div>
             </div>
+
+            <footer class="editor-foot" id="editorFoot" hidden>
+                <div class="editor-foot-inner">
+                    <button class="btn btn-ghost-danger" id="deleteApp" type="button" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+                        删除
+                    </button>
+                    <span class="foot-spacer"></span>
+                    <span class="dirty-hint" id="dirtyHint" hidden>有未保存的更改</span>
+                    <button class="btn btn-ghost" id="revertApp" type="button" hidden>撤销更改</button>
+                    <button class="btn btn-primary" id="saveApp" type="button" disabled>保存</button>
+                </div>
+            </footer>
         </section>
     </main>
 
-    <div class="toast" id="toast"></div>
+    <div class="menu" id="sidebarMenu" role="menu" aria-label="更多" hidden>
+        <button class="menu-item" id="importApp" type="button" role="menuitem" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+            导入应用…
+        </button>
+        <button class="menu-item" id="refreshApps" type="button" role="menuitem" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            重新读取应用目录
+        </button>
+    </div>
+
+    <div class="menu" id="appMenu" role="menu" aria-label="更多" hidden>
+        <button class="menu-item" id="openFolder" type="button" role="menuitem" tabindex="-1" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            打开应用目录
+        </button>
+        <button class="menu-item" id="exportApp" type="button" role="menuitem" tabindex="-1" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg>
+            导出…
+        </button>
+        <div class="menu-separator" role="separator"></div>
+        <button class="menu-item" id="clearSession" type="button" role="menuitem" tabindex="-1" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h11"/></svg>
+            清除登录数据…
+        </button>
+    </div>
+
+    <div class="modal-overlay" id="confirmDialog" hidden>
+        <div class="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+            <h3 id="confirmTitle"></h3>
+            <p id="confirmBody"></p>
+            <div class="modal-actions">
+                <button class="btn" id="confirmCancel" type="button">取消</button>
+                <button class="btn btn-danger" id="confirmOk" type="button"></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script>
         'use strict';
 
         const api = window.loomAPI;
         const $ = (id) => document.getElementById(id);
+        const DEFAULT_EMOJI = '🕸️';
         let apps = [];
         let selectedId = null;
         let originalId = null;
         let isNew = false;
+        let isReadonly = false;
+        let currentSources = null;
+        let baseline = '';
         let toastTimer = null;
 
         function applyTheme(theme) {
@@ -367,6 +1200,106 @@
             toastTimer = setTimeout(() => { toast.className = 'toast'; }, 3200);
         }
 
+        // 确认对话框，替代 window.confirm；返回 Promise<boolean>
+        function confirmDialog({ title, body, confirmLabel }) {
+            const dialog = $('confirmDialog');
+            const ok = $('confirmOk');
+            const cancel = $('confirmCancel');
+            const previousFocus = document.activeElement;
+            $('confirmTitle').textContent = title;
+            $('confirmBody').textContent = body;
+            ok.textContent = confirmLabel;
+            dialog.hidden = false;
+            cancel.focus();
+            return new Promise((resolve) => {
+                const finish = (value) => {
+                    dialog.hidden = true;
+                    ok.removeEventListener('click', onOk);
+                    cancel.removeEventListener('click', onCancel);
+                    dialog.removeEventListener('pointerdown', onBackdrop);
+                    document.removeEventListener('keydown', onKey, true);
+                    previousFocus?.focus?.();
+                    resolve(value);
+                };
+                const onOk = () => finish(true);
+                const onCancel = () => finish(false);
+                const onBackdrop = (event) => { if (event.target === dialog) finish(false); };
+                const onKey = (event) => {
+                    if (event.key === 'Escape') { event.stopPropagation(); finish(false); }
+                    if (event.key === 'Tab') {
+                        event.preventDefault();
+                        (document.activeElement === ok ? cancel : ok).focus();
+                    }
+                };
+                ok.addEventListener('click', onOk);
+                cancel.addEventListener('click', onCancel);
+                dialog.addEventListener('pointerdown', onBackdrop);
+                document.addEventListener('keydown', onKey, true);
+            });
+        }
+
+        // ---- Menus ----
+        let openMenuState = null;
+
+        function closeMenu({ restoreFocus = false } = {}) {
+            if (!openMenuState) return;
+            const { menu, trigger } = openMenuState;
+            menu.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+            openMenuState = null;
+            if (restoreFocus) trigger.focus();
+        }
+
+        function openMenu(trigger, menu) {
+            closeMenu();
+            menu.hidden = false;
+            const rect = trigger.getBoundingClientRect();
+            const width = menu.offsetWidth;
+            const left = rect.right - width >= 8 ? rect.right - width : rect.left;
+            menu.style.left = `${Math.min(left, window.innerWidth - width - 8)}px`;
+            menu.style.top = `${rect.bottom + 6}px`;
+            trigger.setAttribute('aria-expanded', 'true');
+            openMenuState = { menu, trigger };
+            menu.querySelector('.menu-item:not(:disabled)')?.focus();
+        }
+
+        function bindMenu(trigger, menu) {
+            trigger.addEventListener('click', () => {
+                if (openMenuState?.menu === menu) closeMenu();
+                else openMenu(trigger, menu);
+            });
+            menu.addEventListener('click', (event) => {
+                if (event.target.closest('.menu-item')) closeMenu();
+            });
+            menu.addEventListener('keydown', (event) => {
+                const items = Array.from(menu.querySelectorAll('.menu-item:not(:disabled)'));
+                const index = items.indexOf(document.activeElement);
+                let next = null;
+                if (event.key === 'ArrowDown') next = (index + 1) % items.length;
+                else if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
+                else if (event.key === 'Home') next = 0;
+                else if (event.key === 'End') next = items.length - 1;
+                else if (event.key === 'Escape') { event.preventDefault(); closeMenu({ restoreFocus: true }); return; }
+                else if (event.key === 'Tab') { closeMenu(); return; }
+                if (next === null || !items.length) return;
+                event.preventDefault();
+                items[next].focus();
+            });
+        }
+
+        document.addEventListener('pointerdown', (event) => {
+            if (!openMenuState) return;
+            if (openMenuState.menu.contains(event.target) || openMenuState.trigger.contains(event.target)) return;
+            closeMenu();
+        });
+        window.addEventListener('resize', () => closeMenu());
+        $('appList').addEventListener('scroll', () => closeMenu(), { passive: true });
+        document.querySelector('.editor-body').addEventListener('scroll', () => closeMenu(), { passive: true });
+
+        bindMenu($('sidebarMore'), $('sidebarMenu'));
+        bindMenu($('appMore'), $('appMenu'));
+
+        // ---- Form ----
         function numberValue(id, fallback = null) {
             const value = $(id).value.trim();
             if (!value) return fallback;
@@ -386,7 +1319,7 @@
                 exposeManagerInAppDrawer: true,
                 icon: '',
                 iconSource: null,
-                emoji: '🕸️',
+                emoji: DEFAULT_EMOJI,
                 window: { width: 420, height: 780, minWidth: 320, minHeight: 480, maxWidth: null, maxHeight: null, resizable: true },
                 viewport: { width: 390, height: 700, autoResize: true },
                 request: { profile: 'mobile', userAgent: '', headers: {} },
@@ -394,9 +1327,84 @@
             };
         }
 
+        function formControls() {
+            return Array.from($('appForm').elements).filter((element) => element.id && element.tagName !== 'BUTTON');
+        }
+
+        function snapshot() {
+            return JSON.stringify(formControls().map((element) =>
+                element.type === 'checkbox' ? element.checked : element.value));
+        }
+
+        function isDirty() {
+            return !$('appView').hidden && !isReadonly && snapshot() !== baseline;
+        }
+
+        function updateDirty() {
+            const changed = !isNew && snapshot() !== baseline;
+            $('saveApp').disabled = isReadonly || !(isNew || changed);
+            $('dirtyHint').hidden = !changed;
+            $('revertApp').hidden = !(isNew || changed);
+            $('revertApp').textContent = isNew ? '取消' : '撤销更改';
+        }
+
+        function fillTile(tile, item) {
+            tile.textContent = '';
+            if (item.icon && /^(https?:|data:image\/|file:)/i.test(item.icon)) {
+                const image = document.createElement('img');
+                image.src = item.icon;
+                image.alt = '';
+                image.addEventListener('error', () => { tile.textContent = item.emoji || DEFAULT_EMOJI; }, { once: true });
+                tile.appendChild(image);
+            } else {
+                tile.textContent = item.emoji || DEFAULT_EMOJI;
+            }
+        }
+
+        function renderHead() {
+            const listed = apps.find((item) => item.id === originalId);
+            const manifest = isNew ? null : (listed || currentSources?.manifest);
+            $('editorName').textContent = isNew ? '新建应用' : (manifest?.name || originalId || '');
+            fillTile($('editorIcon'), isNew ? { emoji: $('emoji').value.trim() } : (listed || { emoji: manifest?.emoji }));
+
+            const meta = $('editorMeta');
+            meta.textContent = '';
+            const items = isNew
+                ? [['填写下面的信息后创建']]
+                : [
+                    [manifest?.id || originalId],
+                    manifest?.running ? ['运行中', 'running'] : ['未运行'],
+                    manifest?.builtin ? ['内置'] : null,
+                    manifest?.enabled === false ? ['已停用'] : null,
+                ];
+            items.filter(Boolean).forEach(([text, tone]) => {
+                const span = document.createElement('span');
+                span.className = 'intro-item';
+                if (tone) span.dataset.tone = tone;
+                span.textContent = text;
+                meta.appendChild(span);
+            });
+            $('launchApp').disabled = isNew;
+        }
+
+        function showPlaceholder() {
+            selectedId = originalId = null;
+            isNew = false;
+            isReadonly = false;
+            currentSources = null;
+            closeMenu();
+            $('appView').hidden = true;
+            $('editorFoot').hidden = true;
+            $('placeholder').hidden = false;
+            $('saveApp').disabled = $('launchApp').disabled = $('deleteApp').disabled = true;
+            $('clearSession').disabled = $('openFolder').disabled = $('exportApp').disabled = true;
+            $('appMore').disabled = true;
+            renderList();
+        }
+
         function setForm(manifest, css = '', js = '') {
+            isReadonly = !isNew && manifest.builtin === true;
             $('appId').value = manifest.id || '';
-            $('appId').disabled = !isNew;
             $('appName').value = manifest.name || '';
             $('description').value = manifest.description || '';
             $('startUrl').value = manifest.startUrl || '';
@@ -404,7 +1412,7 @@
             $('iconSource').value = manifest.iconSource
                 ? JSON.stringify(manifest.iconSource, null, 2)
                 : '';
-            $('emoji').value = manifest.emoji || '🕸️';
+            $('emoji').value = manifest.emoji || DEFAULT_EMOJI;
             $('enabled').checked = manifest.enabled !== false;
             $('exposeDrawer').checked = manifest.exposeInAppDrawer !== false;
             $('exposeManager').checked = manifest.exposeManagerInAppDrawer !== false;
@@ -425,15 +1433,26 @@
             $('externalOrigins').checked = manifest.navigation?.openExternalOriginsInBrowser === true;
             $('injectCss').value = css;
             $('injectJs').value = js;
-            $('placeholder').style.display = 'none';
-            $('appForm').classList.add('visible');
-            $('saveApp').disabled = false;
-            $('launchApp').disabled = isNew;
+
+            formControls().forEach((element) => { element.disabled = isReadonly; });
+            $('appId').disabled = isReadonly || !isNew;
+            $('appIdHint').textContent = isNew ? '小写字母、数字、- 或 _，创建后不能修改' : '创建后不能修改';
+            $('readonlyNotice').hidden = !isReadonly;
+
+            $('placeholder').hidden = true;
+            $('appView').hidden = false;
+            $('editorFoot').hidden = isReadonly;
             $('deleteApp').disabled = isNew;
-            $('clearSession').disabled = isNew;
-            $('openFolder').disabled = isNew;
-            $('editorName').textContent = isNew ? '新建 LoomAPP' : manifest.name;
-            $('editorMeta').textContent = isNew ? '配置应用身份与页面容器' : `${manifest.id} · ${manifest.running ? '运行中' : '未运行'}`;
+            $('deleteApp').hidden = isNew;
+            $('saveApp').textContent = isNew ? '创建' : '保存';
+            $('appMore').disabled = isNew || isReadonly;
+            $('openFolder').disabled = isNew || isReadonly;
+            $('exportApp').disabled = isNew || isReadonly;
+            $('clearSession').disabled = isNew || isReadonly;
+            selectInjectTab('css');
+            baseline = snapshot();
+            renderHead();
+            updateDirty();
         }
 
         function collectForm() {
@@ -466,7 +1485,7 @@
                 exposeManagerInAppDrawer: $('exposeManager').checked,
                 icon: $('icon').value.trim(),
                 iconSource,
-                emoji: $('emoji').value.trim() || '🕸️',
+                emoji: $('emoji').value.trim() || DEFAULT_EMOJI,
                 window: {
                     width: numberValue('windowWidth', 420),
                     height: numberValue('windowHeight', 780),
@@ -494,60 +1513,74 @@
             };
         }
 
+        function selectInjectTab(which) {
+            const css = which === 'css';
+            $('tabCss').setAttribute('aria-selected', String(css));
+            $('tabJs').setAttribute('aria-selected', String(!css));
+            $('tabCss').tabIndex = css ? 0 : -1;
+            $('tabJs').tabIndex = css ? -1 : 0;
+            $('injectCss').hidden = !css;
+            $('injectJs').hidden = css;
+        }
+
+        $('tabCss').addEventListener('click', () => selectInjectTab('css'));
+        $('tabJs').addEventListener('click', () => selectInjectTab('js'));
+        document.querySelector('.tabs').addEventListener('keydown', (event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            const next = $('tabCss').getAttribute('aria-selected') === 'true' ? 'js' : 'css';
+            selectInjectTab(next);
+            $(next === 'css' ? 'tabCss' : 'tabJs').focus();
+        });
+
+        // ---- List ----
         function renderList() {
             const list = $('appList');
             const query = $('search').value.trim().toLowerCase();
             const filtered = apps.filter((item) =>
                 !query || item.name.toLowerCase().includes(query) || item.id.toLowerCase().includes(query)
             );
+            $('appCount').textContent = apps.length ? String(apps.length) : '';
             list.innerHTML = '';
             if (!filtered.length) {
-                list.innerHTML = '<div class="empty">没有 LoomAPP</div>';
+                const empty = document.createElement('div');
+                empty.className = 'nav-empty';
+                empty.textContent = query ? '没有匹配的应用' : '还没有应用';
+                list.appendChild(empty);
                 return;
             }
             filtered.forEach((item) => {
-                const card = document.createElement('button');
-                card.className = `app-card${item.id === selectedId ? ' active' : ''}`;
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'nav-item';
+                row.title = item.name;
+                if (item.id === selectedId) row.setAttribute('aria-current', 'page');
+                if (item.enabled === false) row.dataset.disabled = 'true';
 
-                let icon;
-                if (item.icon) {
-                    icon = document.createElement('img');
-                    icon.src = item.icon;
-                    icon.alt = '';
-                } else {
-                    icon = document.createElement('span');
-                    icon.textContent = item.emoji || '🕸️';
-                }
-                icon.className = 'app-icon';
+                const tile = document.createElement('span');
+                tile.className = 'app-tile';
+                tile.setAttribute('aria-hidden', 'true');
+                if (item.running) tile.dataset.running = 'true';
+                fillTile(tile, item);
 
-                const identity = document.createElement('span');
                 const name = document.createElement('span');
-                name.className = 'app-name';
+                name.className = 'nav-label';
                 name.textContent = item.name;
-                const id = document.createElement('span');
-                id.className = 'app-id';
-                id.textContent = item.id;
-                identity.append(name, id);
 
-                const status = document.createElement('span');
-                status.className = `status-dot${item.running ? ' running' : ''}`;
-
-                card.append(icon, identity, status);
-                card.addEventListener('click', () => selectApp(item.id));
-                list.appendChild(card);
+                row.append(tile, name);
+                if (item.running) row.setAttribute('aria-description', '运行中');
+                row.addEventListener('click', async () => {
+                    if (item.id === selectedId && !isNew) return;
+                    if (await confirmDiscard()) selectApp(item.id);
+                });
+                list.appendChild(row);
             });
         }
 
         async function loadApps() {
             apps = unwrap(await api.listApps()) || [];
             renderList();
-            if (selectedId && !isNew) {
-                const current = apps.find((item) => item.id === selectedId);
-                if (current) {
-                    $('editorName').textContent = current.name;
-                    $('editorMeta').textContent = `${current.id} · ${current.running ? '运行中' : '未运行'}`;
-                }
-            }
+            if (selectedId && !isNew && !$('appView').hidden) renderHead();
         }
 
         async function selectApp(appId) {
@@ -557,19 +1590,46 @@
                 isNew = false;
                 renderList();
                 const sources = unwrap(await api.getApp(appId));
+                currentSources = sources;
                 setForm(sources.manifest, sources.css, sources.js);
+                document.querySelector('.editor-body').scrollTop = 0;
             } catch (error) {
                 showToast(error.message, true);
             }
         }
 
-        $('newApp').addEventListener('click', () => {
+        async function confirmDiscard() {
+            if (!isDirty()) return true;
+            return confirmDialog({
+                title: '放弃未保存的更改？',
+                body: '当前应用的修改还没有保存，离开后会丢失。',
+                confirmLabel: '放弃更改',
+            });
+        }
+
+        async function startNewApp() {
+            if (!(await confirmDiscard())) return;
             selectedId = null;
             originalId = null;
             isNew = true;
+            currentSources = null;
             renderList();
             setForm(emptyManifest());
-            $('appId').focus();
+            document.querySelector('.editor-body').scrollTop = 0;
+            $('appName').focus();
+        }
+
+        $('newApp').addEventListener('click', startNewApp);
+        $('placeholderNew').addEventListener('click', startNewApp);
+
+        $('appForm').addEventListener('input', updateDirty);
+        $('appForm').addEventListener('change', updateDirty);
+        $('appForm').addEventListener('submit', (event) => event.preventDefault());
+        $('emoji').addEventListener('input', () => { if (isNew) renderHead(); });
+
+        $('revertApp').addEventListener('click', () => {
+            if (isNew) return showPlaceholder();
+            if (currentSources) setForm(currentSources.manifest, currentSources.css, currentSources.js);
         });
 
         $('saveApp').addEventListener('click', async () => {
@@ -578,10 +1638,11 @@
                 const manifest = collectForm();
                 const payload = { originalId, manifest, css: $('injectCss').value, js: $('injectJs').value };
                 const saved = unwrap(await (isNew ? api.createApp(payload) : api.saveApp(payload)));
+                const created = isNew;
                 selectedId = saved.id;
                 originalId = saved.id;
                 isNew = false;
-                showToast('LoomAPP 已保存。');
+                showToast(created ? '应用已创建。' : '已保存。');
                 await loadApps();
                 await selectApp(saved.id);
             } catch (error) {
@@ -592,31 +1653,39 @@
         $('launchApp').addEventListener('click', async () => {
             try {
                 unwrap(await api.openApp(originalId));
-                showToast('LoomAPP 已启动。');
+                showToast('应用已启动。');
                 await loadApps();
             } catch (error) { showToast(error.message, true); }
         });
 
         $('deleteApp').addEventListener('click', async () => {
-            if (!originalId || !confirm(`确定删除 LoomAPP “${originalId}”吗？其配置与注入脚本将被删除。`)) return;
+            if (!originalId) return;
+            const name = $('editorName').textContent || originalId;
+            const confirmed = await confirmDialog({
+                title: `删除“${name}”？`,
+                body: '应用的配置和注入脚本会一起删除，无法恢复。',
+                confirmLabel: '删除',
+            });
+            if (!confirmed) return;
             try {
                 unwrap(await api.deleteApp(originalId));
-                selectedId = originalId = null;
-                $('appForm').classList.remove('visible');
-                $('placeholder').style.display = '';
-                $('saveApp').disabled = $('launchApp').disabled = $('deleteApp').disabled = $('clearSession').disabled = $('openFolder').disabled = true;
-                $('editorName').textContent = '选择或创建 LoomAPP';
-                $('editorMeta').textContent = '远程网页持久化应用容器';
-                showToast('LoomAPP 已删除。');
+                showPlaceholder();
+                showToast('应用已删除。');
                 await loadApps();
             } catch (error) { showToast(error.message, true); }
         });
 
         $('clearSession').addEventListener('click', async () => {
-            if (!originalId || !confirm('清除独立会话将退出此应用中的登录账号，并清除 Cookie、缓存与站点存储。继续吗？')) return;
+            if (!originalId) return;
+            const confirmed = await confirmDialog({
+                title: '清除登录数据？',
+                body: '会关闭这个应用，并退出其中登录的账号，清除 Cookie、缓存和站点存储。',
+                confirmLabel: '清除',
+            });
+            if (!confirmed) return;
             try {
                 unwrap(await api.clearSession(originalId));
-                showToast('独立会话已清除。');
+                showToast('登录数据已清除。');
                 await loadApps();
             } catch (error) { showToast(error.message, true); }
         });
@@ -639,26 +1708,35 @@
             try {
                 apps = unwrap(await api.reloadRegistry()) || [];
                 renderList();
-                showToast('注册表已刷新。');
+                if (selectedId && !isNew && !$('appView').hidden) renderHead();
+                showToast('已重新读取应用目录。');
             } catch (error) { showToast(error.message, true); }
         });
 
         $('importApp').addEventListener('click', async () => {
             try {
+                if (!(await confirmDiscard())) return;
                 const result = unwrap(await api.importApp());
                 if (result?.canceled) return;
-                showToast('LoomAPP 已导入。');
+                showToast('应用已导入。');
                 await loadApps();
                 if (result?.app?.id) await selectApp(result.app.id);
             } catch (error) { showToast(error.message, true); }
         });
 
         $('exportApp').addEventListener('click', async () => {
-            if (!originalId) return showToast('请先选择要导出的 LoomAPP。', true);
+            if (!originalId) return showToast('请先选择要导出的应用。', true);
             try {
                 const result = unwrap(await api.exportApp(originalId));
                 if (!result?.canceled) showToast(`已导出到 ${result.filePath}`);
             } catch (error) { showToast(error.message, true); }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !$('appView').hidden) {
+                event.preventDefault();
+                if (!$('saveApp').disabled) $('saveApp').click();
+            }
         });
 
         $('search').addEventListener('input', renderList);
@@ -669,6 +1747,7 @@
         api.onRegistryChanged((nextApps) => {
             apps = Array.isArray(nextApps) ? nextApps : apps;
             renderList();
+            if (selectedId && !isNew && !$('appView').hidden) renderHead();
         });
 
         initializeTheme();
