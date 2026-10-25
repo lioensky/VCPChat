@@ -594,7 +594,10 @@ async function loadPosts() {
             // Log errors immediately as well.
             console.error('Load posts failed:', error);
             lastLoadError = describeRequestError(error);
-            setForumNotice(`帖子加载失败：${lastLoadError}`, 'error');
+            // With nothing to show, the empty state carries the error and a retry;
+            // the notice only speaks when a stale list stays on screen.
+            if (allPosts.length) setForumNotice(`帖子刷新失败：${lastLoadError}`, 'error');
+            else setForumNotice('');
             renderCurrentFilteredPosts({ force: true });
             // We re-throw the error to ensure Promise.all can catch it if needed,
             // but the main goal is immediate logging.
@@ -697,7 +700,8 @@ function setForumNotice(message, tone = '') {
 function renderForumSummary(filtered) {
     if (!forumSummary) return;
     if (!postsLoaded) {
-        forumSummary.innerHTML = `<span class="intro-item">${lastLoadError ? '未能读取帖子' : '正在加载…'}</span>`;
+        // A failed load is explained in the empty state below, not here as well.
+        forumSummary.innerHTML = lastLoadError ? '' : '<span class="intro-item">正在加载…</span>';
         return;
     }
     const boards = new Set(allPosts.map(p => p.board).filter(Boolean)).size;
@@ -764,10 +768,20 @@ function renderWaterfall(postsToRender) {
     if (!postsToRender || postsToRender.length === 0) {
         lastRenderedPostKeys = '';
         if (forumEmpty) {
-            forumEmpty.textContent = allPosts.length
-                ? '没有匹配的帖子'
-                : lastLoadError ? '暂时无法读取帖子，请稍后刷新重试'
-                : postsLoaded ? '这里还没有帖子' : '正在加载帖子…';
+            // One place says what is wrong and offers the way out.
+            if (allPosts.length) {
+                forumEmpty.innerHTML = searchInput.value.trim()
+                    ? '没有匹配的帖子<span class="inline-sep">·</span><button type="button" class="link-btn" data-empty-action="clear-search">清除搜索</button>'
+                    : '没有匹配的帖子';
+            } else if (lastLoadError) {
+                forumEmpty.innerHTML = `
+                    <p class="empty-title">读不到帖子</p>
+                    <p class="empty-detail">${escapeHtml(lastLoadError)}</p>
+                    <button type="button" class="jelly-btn" data-empty-action="retry">重试</button>`;
+            } else {
+                forumEmpty.textContent = postsLoaded ? '这里还没有帖子' : '正在加载帖子…';
+            }
+            forumEmpty.dataset.tone = !allPosts.length && lastLoadError ? 'error' : '';
             forumEmpty.hidden = false;
         }
         return;
@@ -896,6 +910,8 @@ async function expandPost(post, originalCard) {
 
     activePostOverlay.innerHTML = '';
     activePostOverlay.appendChild(expanded);
+    postPinnedToBottom = false;
+    postSizeObserver.observe(expanded);
 
     expanded.offsetHeight; // Force reflow
     
@@ -944,6 +960,7 @@ function closeExpandedPost() {
         expanded.style.opacity = '0';
         expanded.style.transform = 'translateY(6px)';
     }
+    if (expanded) postSizeObserver.unobserve(expanded);
     setTimeout(() => {
         activePostOverlay.innerHTML = '';
         document.body.style.overflow = '';
@@ -953,6 +970,19 @@ function closeExpandedPost() {
 activePostOverlay.addEventListener('click', (e) => {
     if (e.target === activePostOverlay) closeExpandedPost();
 });
+
+// The composer is sticky, so when the view or the composer changes height
+// after the reader reached the end, the last comment would slide under it.
+// Stay at the end instead.
+let postPinnedToBottom = false;
+activePostOverlay.addEventListener('scroll', () => {
+    const { scrollTop, scrollHeight, clientHeight } = activePostOverlay;
+    postPinnedToBottom = scrollHeight > clientHeight + 1 && scrollHeight - scrollTop - clientHeight < 2;
+}, { passive: true });
+const postSizeObserver = new ResizeObserver(() => {
+    if (postPinnedToBottom) activePostOverlay.scrollTop = activePostOverlay.scrollHeight;
+});
+postSizeObserver.observe(activePostOverlay);
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && activePostOverlay.classList.contains('active')) {
@@ -1442,7 +1472,7 @@ function updateComposerIdentity(root) {
     root.querySelector('#quick-reply-btn').disabled = !name;
     identity.dataset.state = name ? 'named' : 'missing';
     identity.innerHTML = name
-        ? `以 <strong>${escapeHtml(name)}</strong> 的身份回复<span class="composer-sep">·</span><button type="button" class="link-btn">更改</button>`
+        ? `以 <strong>${escapeHtml(name)}</strong> 的身份回复<span class="inline-sep">·</span><button type="button" class="link-btn">更改</button>`
         : `还没有设置回帖署名，<button type="button" class="link-btn">去设置</button>`;
 }
 
@@ -1626,6 +1656,7 @@ function renderFullContent(container, markdown, uid) {
         <div class="composer">
             <input type="hidden" id="quick-reply-name">
             <textarea id="quick-reply-text" class="composer-input" rows="2" placeholder="写下你的评论…" aria-label="评论内容"></textarea>
+            <p class="composer-error" id="quick-reply-error" role="alert" hidden></p>
             <div class="composer-footer">
                 <p class="composer-identity" id="quick-reply-identity"></p>
                 <div class="composer-tools">
@@ -1654,6 +1685,7 @@ function renderFullContent(container, markdown, uid) {
 
     const quickReplyHandler = () => handleQuickReply(uid, container);
     container.querySelector('#quick-reply-btn').addEventListener('click', quickReplyHandler);
+    textInput.addEventListener('input', () => setComposerError(container, ''));
     textInput.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'Enter') {
             e.preventDefault(); // 防止在文本框中插入换行符
@@ -1675,7 +1707,7 @@ function toggleEditMode(card, contentEl, uid, floor = null) {
         <textarea class="edit-textarea">${escapeHtml(rawContent)}</textarea>
         <div class="edit-controls">
             <button class="jelly-btn cancel-edit-btn">取消</button>
-            <button class="jelly-btn jelly-btn-primary save-edit-btn">确认</button>
+            <button class="jelly-btn jelly-btn-primary save-edit-btn">保存</button>
         </div>
     `;
 
@@ -1717,7 +1749,7 @@ async function handleSaveEdit(uid, content, floor, card) {
         // Re-enable button on failure
         const btn = card.querySelector('.save-edit-btn');
         if (btn) {
-            btn.textContent = '确认';
+            btn.textContent = '保存';
             btn.disabled = false;
         }
     }
@@ -1771,6 +1803,7 @@ async function handleQuickReply(uid, container) {
         textInput.focus();
         return;
     }
+    setComposerError(container, '');
     btn.disabled = true;
     btn.textContent = '...';
     try {
@@ -1782,10 +1815,19 @@ async function handleQuickReply(uid, container) {
         container.querySelectorAll('.reply-list, .reply-area-fixed').forEach(e => e.remove());
         renderFullContent(container, data.content, uid);
     } catch (error) {
-        alert('回复失败: ' + error.message);
+        // The draft stays in the box so the reply can be sent again.
+        setComposerError(container, `回复没有发出去：${describeRequestError(error)}`);
         btn.disabled = false;
         btn.textContent = '发送';
     }
+}
+
+function setComposerError(container, message) {
+    const errorEl = container.querySelector('#quick-reply-error');
+    if (!errorEl) return;
+    errorEl.textContent = message;
+    errorEl.hidden = !message;
+    errorEl.closest('.composer')?.toggleAttribute('data-error', Boolean(message));
 }
 
 function applyFilters() {
@@ -1795,6 +1837,16 @@ function applyFilters() {
 searchInput.addEventListener('input', debounce(() => applyFilters(), 120));
 boardFilter.addEventListener('change', applyFilters);
 refreshBtn.addEventListener('click', loadPosts);
+forumEmpty?.addEventListener('click', e => {
+    const action = e.target.closest('[data-empty-action]')?.dataset.emptyAction;
+    if (action === 'retry') {
+        loadPosts();
+    } else if (action === 'clear-search') {
+        searchInput.value = '';
+        applyFilters();
+        searchInput.focus();
+    }
+});
 
 createPostBtn.addEventListener('click', () => {
     const authorInput = document.getElementById('post-author-input');
