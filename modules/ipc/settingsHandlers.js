@@ -76,10 +76,6 @@ function initialize(paths) {
 
     ipcMain.handle('save-translator-settings', async (event, settings) => {
         try {
-            // 上次选择的目标语言（可选字段，旧文件没有它也照常读取）
-            const savedLanguageId = typeof settings?.targetLanguage?.id === 'string'
-                ? settings.targetLanguage.id.trim().slice(0, 32)
-                : '';
             const normalizedSettings = {
                 models: {
                     fast: String(settings?.models?.fast || 'gemini-3.1-flash-lite-preview').trim(),
@@ -87,12 +83,6 @@ function initialize(paths) {
                     quality: String(settings?.models?.quality || 'gemini-3.1-pro').trim()
                 },
                 stream: Boolean(settings?.stream),
-                ...(savedLanguageId ? {
-                    targetLanguage: {
-                        id: savedLanguageId,
-                        custom: String(settings.targetLanguage.custom || '').trim().slice(0, 100)
-                    }
-                } : {}),
                 updatedAt: new Date().toISOString()
             };
 
