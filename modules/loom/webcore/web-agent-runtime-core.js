@@ -405,15 +405,25 @@
                 if (error.code !== 'TARGET_AMBIGUOUS' || !error.details?.candidates?.length ||
                     definition.risk === protocol.Risk.ROOT || !this.options.arbiter?.arbitrate) throw error;
                 let decision;
+                const identityBefore = await this.adapter.getTargetIdentity(request.targetContext);
+                const documentBefore = await this.adapter.getDocumentState(identityBefore);
                 try {
-                    const target = await this.adapter.getTarget?.(request.targetContext?.targetId);
+                    const target = await this.adapter.getTarget?.(identityBefore.targetId);
                     decision = await this.options.arbiter.arbitrate({
                         command: request.command, target: params.target,
                         pageUrl: target?.url || '', candidates: error.details.candidates
                     });
                 } catch { throw error; }
-                if (!decision?.resolved || !error.details.candidates.some(item =>
-                    item.handleId === decision.chosen?.handleId)) throw error;
+                if (!decision?.resolved || !decision.chosen?.handleId || !error.details.candidates.some(item =>
+                    item.handleId === decision.chosen.handleId)) throw error;
+                const identityAfter = await this.adapter.getTargetIdentity(request.targetContext);
+                const documentAfter = await this.adapter.getDocumentState(identityAfter);
+                protocol.assertIdentity(
+                    { ...identityBefore, ...documentBefore },
+                    { ...identityAfter, ...documentAfter }, { strict: true }
+                );
+                // Pin the original target after async arbitration, never the newly active tab.
+                if (String(identityBefore.targetId) !== String(identityAfter.targetId)) throw error;
                 const response = await invoke({ ...params, target: decision.chosen.handleId });
                 const result = response.result || (response.result = {});
                 result.targetResolution = { ...result.targetResolution,
@@ -427,7 +437,8 @@
             const params = { ...request.params, verification: request.params?.verification ?? request.options?.verification };
             const options = request.options || {};
             const backend = options.backend || params.actionBackend || 'auto';
-            const native = this.capabilities.has('nativeInput') && backend !== 'page-core';
+            const native = this.capabilities.has('nativeInput') &&
+                !['page-core', 'content-script'].includes(backend);
             const invoke = payload => this.pageOperation(command, payload, request, definition);
             const action = command.replace(/^page_/, '');
             let fallbackUsed = false;
