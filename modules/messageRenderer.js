@@ -699,7 +699,7 @@ function enhanceMermaidDiagram(mermaidElement) {
         <button type="button" class="mermaid-viewer-btn" data-mermaid-action="zoom-out" title="缩小">−</button>
         <button type="button" class="mermaid-viewer-btn" data-mermaid-action="reset" title="重置视图">100%</button>
         <button type="button" class="mermaid-viewer-btn" data-mermaid-action="zoom-in" title="放大">＋</button>
-        <button type="button" class="mermaid-viewer-btn" data-mermaid-action="fit" title="适应宽度">适应</button>
+        <button type="button" class="mermaid-viewer-btn" data-mermaid-action="fit" title="自动适应宽高，完整显示图表">适应</button>
     `;
 
     const viewport = ownerDocument.createElement('div');
@@ -726,8 +726,8 @@ function enhanceMermaidDiagram(mermaidElement) {
         translateX: parseFloat(wrapper.dataset.translateX) || 0,
         translateY: parseFloat(wrapper.dataset.translateY) || 0
     });
-    const setState = (nextState) => {
-        const scale = clampScale(nextState.scale);
+    const setState = (nextState, minimumScale = 0.2) => {
+        const scale = Math.min(5, Math.max(minimumScale, nextState.scale));
         wrapper.dataset.scale = String(scale);
         wrapper.dataset.translateX = String(nextState.translateX || 0);
         wrapper.dataset.translateY = String(nextState.translateY || 0);
@@ -746,18 +746,28 @@ function enhanceMermaidDiagram(mermaidElement) {
         });
     };
     const resetView = () => setState({ scale: 1, translateX: 0, translateY: 0 });
-    const fitToWidth = () => {
-        const svgWidth = svg.getBBox?.().width || svg.viewBox?.baseVal?.width || svg.getBoundingClientRect().width;
+    const fitToViewport = () => {
+        // 按最终 DOM 的实际显示尺寸测量，而非 SVG 内部坐标；
+        // 通过画布实际缩放消除当前缩放（包括过渡动画）的影响。
+        const canvasRect = canvas.getBoundingClientRect();
+        const svgRect = svg.getBoundingClientRect();
+        const renderedScale = canvas.offsetWidth > 0 ? canvasRect.width / canvas.offsetWidth : 0;
+        if (!(renderedScale > 0) || !(svgRect.width > 0) || !(svgRect.height > 0)
+            || !(viewport.clientWidth > 0) || !(viewport.clientHeight > 0)) return;
+
+        const svgWidth = svgRect.width / renderedScale;
+        const svgHeight = svgRect.height / renderedScale;
+        const offsetX = (svgRect.left - canvasRect.left) / renderedScale;
+        const offsetY = (svgRect.top - canvasRect.top) / renderedScale;
         const availableWidth = Math.max(1, viewport.clientWidth - 32);
-        if (!svgWidth) {
-            resetView();
-            return;
-        }
+        const availableHeight = Math.max(1, viewport.clientHeight - 32);
+        // 较小的比例自动决定适应宽度还是高度，超长图不受手动缩放的 20% 下限限制。
+        const scale = Math.min(1.8, availableWidth / svgWidth, availableHeight / svgHeight);
         setState({
-            scale: clampScale(Math.min(1.8, availableWidth / svgWidth)),
-            translateX: 0,
-            translateY: 0
-        });
+            scale,
+            translateX: (viewport.clientWidth - svgWidth * scale) / 2 - offsetX * scale,
+            translateY: (viewport.clientHeight - svgHeight * scale) / 2 - offsetY * scale
+        }, Math.min(0.2, scale));
     };
 
 
@@ -773,7 +783,7 @@ function enhanceMermaidDiagram(mermaidElement) {
         if (action === 'zoom-in') zoomAt(scale * 1.2);
         else if (action === 'zoom-out') zoomAt(scale / 1.2);
         else if (action === 'reset') resetView();
-        else if (action === 'fit') fitToWidth();
+        else if (action === 'fit') fitToViewport();
     });
 
     listen(viewport, 'wheel', (event) => {
@@ -827,7 +837,7 @@ function enhanceMermaidDiagram(mermaidElement) {
         resetView();
     });
 
-    // 初始视图固定为 100%，仅在用户点击“适应”时按视口宽度缩放。
+    // 初始视图固定为 100%，仅在用户点击“适应”时自动匹配视口宽高。
     // 历史加载期间容器可能尚未完成布局，不应据此覆盖默认缩放。
     resetView();
 }
