@@ -397,10 +397,18 @@ function decorateLogLine(line) {
     return result;
 }
 
+// Highlights only the text between tags, so a term such as "error" or "class"
+// never rewrites the level span's markup. Each text part is matched in its
+// decoded form, so a term cannot split an entity like "&amp;" either.
 function highlightTerm(html, term) {
-    const safeTerm = escapeRegExp(escapeHtml(term));
-    if (!safeTerm) return html;
-    return html.replace(new RegExp(safeTerm, 'ig'), (match) => `<span class="keyword-hit">${match}</span>`);
+    if (!term) return html;
+    const pattern = new RegExp(`(${escapeRegExp(term)})`, 'i');
+    return html.split(/(<[^>]*>)/).map((part) => {
+        if (part.startsWith('<')) return part;
+        return unescapeHtml(part).split(pattern).map((piece, index) => (
+            index % 2 ? `<span class="keyword-hit">${escapeHtml(piece)}</span>` : escapeHtml(piece)
+        )).join('');
+    }).join('');
 }
 
 function splitLogLines(content) {
@@ -564,6 +572,15 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+function unescapeHtml(value) {
+    return value
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&amp;/g, '&');
 }
 
 function escapeRegExp(value) {

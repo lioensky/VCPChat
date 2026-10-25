@@ -46,6 +46,10 @@ body {
 
 /* A log page reads better on a plain surface than over the wallpaper. */
 body.light-theme {
+    /* The light theme has no warning yellow (--highlight-text is the danger
+       red). Mixing danger and success in oklch lands the hue between them, a
+       dark ochre that reads apart from errors. */
+    --log-warning: color-mix(in oklch, var(--danger-color) 70%, var(--success-color));
     --log-thumb-off: var(--secondary-bg);
     --log-shadow: color-mix(in srgb, var(--primary-text) 14%, transparent);
     background-image: none;
@@ -332,6 +336,7 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 .page-head-tools {
+    position: relative;
     display: flex;
     flex: 0 0 auto;
     align-items: center;
@@ -435,20 +440,25 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 /* ---- Settings popover ----
-   The line limit is a setting, not content, so it sits behind the gear. */
+   The line limit is a setting, not content, so it sits behind the gear. It
+   opens to the left of the header tools, centred on the header row: the
+   toolbar starts 16px below the header, so anything dropping from the gear
+   would cover its icons and the first log lines. Only the header's empty
+   right side is overlaid. The width gives way on narrow panels (the text
+   wraps) so the popover never runs past the rail or the sidebar. */
 .settings-anchor {
-    position: relative;
     display: flex;
 }
 
 .settings-popover {
     position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
+    top: 50%;
+    right: calc(100% + 8px);
     z-index: 50;
-    width: 320px;
-    max-width: calc(100vw - 32px);
-    padding: 14px 16px;
+    width: max-content;
+    max-width: min(360px, calc(100vw - 172px));
+    padding: 10px 14px;
+    transform: translateY(-50%);
     border-radius: var(--log-radius-md);
     background: var(--log-panel);
     box-shadow:
@@ -463,7 +473,7 @@ html[data-vcp-embedded-app="true"] .shell {
 .settings-row {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
 }
 
 .settings-copy {
@@ -649,16 +659,8 @@ html[data-vcp-embedded-app="true"] .shell {
 
 .level-error,
 .level-fatal {
-    background: color-mix(in srgb, var(--log-danger) 10%, transparent);
+    background: color-mix(in srgb, var(--log-danger) 14%, transparent);
     color: var(--log-danger);
-}
-
-/* The light theme has no warning yellow (it reuses the danger red), so
-   errors get the solid chip to stay apart from warnings. */
-body.light-theme .level-error,
-body.light-theme .level-fatal {
-    background: var(--log-danger);
-    color: var(--log-on-danger);
 }
 
 .keyword-hit {
@@ -858,6 +860,12 @@ body.light-theme .level-fatal {
 
     .log-path {
         flex-shrink: 0;
+    }
+
+    /* The description wraps here; tighter padding keeps the popover clear
+       of the toolbar below the header. */
+    .settings-popover {
+        padding: 6px 12px;
     }
 
     .log-meta {
