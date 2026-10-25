@@ -221,7 +221,7 @@ Date:「始」${date}「末」,`;
             if (typeof loadFolders === 'function') {
                 setTimeout(async () => {
                     await loadFolders();
-                    if (currentFolder) await loadMemos(currentFolder);
+                    await refreshMemoList();
                 }, 1000);
             }
 

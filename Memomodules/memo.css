@@ -945,10 +945,23 @@ body.memo-batch-mode .header-actions {
     white-space: nowrap;
 }
 
-/* 行尾联想图标：与标题行居中对齐 */
+/* 行尾联想图标：与标题行居中对齐；平时隐去，悬停该行或键盘聚焦到它时才出现 */
 .memo-card .association-btn {
     margin: -4px 0 0;
     color: var(--memo-ink-4);
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.memo-card:hover .association-btn,
+.memo-card:focus-within .association-btn {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .memo-card .association-btn {
+        opacity: 1;
+    }
 }
 
 /* 批量模式：行首选择框 */
@@ -1054,6 +1067,11 @@ body.memo-batch-mode .header-actions {
 
 .modal-content-form {
     max-width: 600px;
+}
+
+/* 联想弹窗的参数面板从标题栏向下展开，正文留足高度，面板落在底栏之上 */
+#assoc-config-modal .modal-body {
+    min-height: 220px;
 }
 
 .modal-content-medium {
@@ -1425,19 +1443,50 @@ input[type="date"].memo-input {
     border-bottom: 0.5px solid var(--memo-line-2);
 }
 
-.editor-title-input {
+/* 标题显示可读名；文件名退到下面一行做三级文字，仍可直接改名 */
+.editor-title-block {
+    display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
     min-width: 0;
-    height: 32px;
-    padding: 0;
-    border: 0;
-    background: transparent;
+}
+
+.editor-heading {
+    overflow: hidden;
+    margin: 0;
+    color: var(--memo-ink);
     font-size: 16px;
     font-weight: 600;
     line-height: 24px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.editor-title-input:focus-visible,
+.editor-title-input {
+    width: 100%;
+    min-width: 0;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--memo-radius-xs);
+    background: transparent;
+    color: var(--memo-ink-3);
+    font-family: var(--memo-mono);
+    font-size: 11px;
+    line-height: 20px;
+}
+
+.editor-title-input:hover {
+    color: var(--memo-ink-2);
+}
+
+.editor-title-input:focus-visible {
+    outline: none;
+    color: var(--memo-ink);
+    box-shadow: 0 1px 0 var(--memo-accent);
+}
+
 .editor-textarea:focus-visible {
     outline: none;
 }

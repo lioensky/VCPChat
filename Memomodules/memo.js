@@ -35,6 +35,7 @@ const contextMenuEl = document.getElementById('context-menu');
 const editorOverlay = document.getElementById('editor-overlay');
 const editorContainer = document.querySelector('.editor-container');
 const editorTitleInput = document.getElementById('editor-title');
+const editorHeadingEl = document.getElementById('editor-heading');
 const editorTextarea = document.getElementById('editor-textarea');
 const editorPreview = document.getElementById('editor-preview');
 const editorStatus = document.getElementById('editor-status');
@@ -80,9 +81,21 @@ const popoverTriggers = new WeakMap();
 function openPopover(trigger, popover) {
     openPopovers.forEach(p => { if (p !== popover) closePopover(p); });
     popover.hidden = false;
+    fitPopoverInDialog(popover);
     trigger.setAttribute('aria-expanded', 'true');
     popoverTriggers.set(popover, trigger);
     openPopovers.add(popover);
+}
+
+// 弹窗里的面板不越过底栏：高度限制在面板顶边与底栏之间，放不下时面板内滚动
+function fitPopoverInDialog(popover) {
+    popover.style.maxHeight = '';
+    const dialog = popover.closest('.modal-content, .editor-container, .workbench-container');
+    if (!dialog) return;
+    const footer = dialog.querySelector('.modal-footer, .editor-footer');
+    const limit = footer ? footer.getBoundingClientRect().top : dialog.getBoundingClientRect().bottom;
+    const room = Math.floor(limit - popover.getBoundingClientRect().top - 8);
+    if (room < popover.scrollHeight) popover.style.maxHeight = `${Math.max(room, 96)}px`;
 }
 
 function closePopover(popover) {
@@ -244,7 +257,7 @@ function setupEventListeners() {
         refreshBtn.classList.add('spinning');
         try {
             await loadFolders();
-            if (currentFolder) await loadMemos(currentFolder);
+            await refreshMemoList();
             // 确保动画至少持续一秒，增加交互感
             await new Promise(resolve => setTimeout(resolve, 800));
         } finally {
@@ -252,23 +265,18 @@ function setupEventListeners() {
         }
     };
 
-    // 搜索范围切换
-    const searchScopeTabs = Array.from(document.querySelectorAll('#search-scope-tabs .memo-tab'));
-    const searchPlaceholders = {
-        folder: '在当前文件夹中搜索，回车确认',
-        global: '在全部日记中搜索，回车确认',
-        semantic: '描述想找的内容，回车进行语义检索'
-    };
-    searchScopeTabs.forEach(tab => {
+    // 搜索范围切换：范围本身就是当前视图，没有搜索词时也切换列表、标题和侧边栏选中
+    document.querySelectorAll('#search-scope-tabs .memo-tab').forEach(tab => {
         tab.onclick = () => {
             if (searchScope === tab.dataset.scope) return;
-            searchScope = tab.dataset.scope;
-            searchScopeTabs.forEach(t => t.setAttribute('aria-selected', String(t === tab)));
-            searchInput.placeholder = searchPlaceholders[searchScope];
+            setSearchScope(tab.dataset.scope);
 
-            // 已有搜索词时按新范围重新搜索
             const term = searchInput.value.trim();
-            if (term) debouncedSearch(term);
+            if (term) {
+                debouncedSearch(term);
+            } else {
+                refreshMemoList();
+            }
         };
     });
 
@@ -282,8 +290,8 @@ function setupEventListeners() {
             const term = searchInput.value.trim();
             if (term) {
                 debouncedSearch(term);
-            } else if (currentFolder) {
-                loadMemos(currentFolder);
+            } else {
+                refreshMemoList();
             }
         }
     };
@@ -488,6 +496,7 @@ function setupEventListeners() {
     editorTextarea.oninput = () => {
         renderPreview(editorTextarea.value);
     };
+    editorTitleInput.oninput = updateEditorHeading;
 
     document.getElementById('save-memo-btn').onclick = handleSaveMemo;
     document.getElementById('delete-memo-btn').onclick = handleDeleteMemo;
@@ -713,7 +722,7 @@ function renderFolders(folders) {
 
         cat.folders.forEach(folder => {
             const item = document.createElement('div');
-            item.className = `folder-item ${folder === currentFolder ? 'active' : ''}`;
+            item.className = `folder-item ${searchScope === 'folder' && folder === currentFolder ? 'active' : ''}`;
             item.setAttribute('draggable', 'true');
             item.innerHTML = `
                 <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
@@ -798,17 +807,58 @@ async function toggleCategory(catId) {
     await saveMemoConfig();
 }
 
+const SEARCH_PLACEHOLDERS = {
+    folder: '在当前文件夹中搜索，回车确认',
+    global: '在全部日记中搜索，回车确认',
+    semantic: '描述想找的内容，回车进行语义检索'
+};
+
+function setSearchScope(scope) {
+    searchScope = scope;
+    document.querySelectorAll('#search-scope-tabs .memo-tab').forEach(tab => {
+        tab.setAttribute('aria-selected', String(tab.dataset.scope === scope));
+    });
+    searchInput.placeholder = SEARCH_PLACEHOLDERS[scope];
+    syncFolderHighlight();
+}
+
+// 只有“当前文件夹”范围才在侧边栏标出文件夹；全部日记和语义检索不属于任何一个文件夹
+function syncFolderHighlight() {
+    const activeFolder = searchScope === 'folder' ? currentFolder : null;
+    document.querySelectorAll('.folder-item').forEach(el => {
+        el.classList.toggle('active', el.querySelector('span')?.textContent === activeFolder);
+    });
+}
+
 async function selectFolder(folderName) {
     if (memoStartupBlocked) return;
     currentFolder = folderName;
+    // 点侧边栏文件夹即回到“当前文件夹”范围
+    if (searchScope !== 'folder') setSearchScope('folder');
     currentFolderNameEl.textContent = folderName;
-
-    // 更新 UI 选中状态
-    document.querySelectorAll('.folder-item').forEach(el => {
-        el.classList.toggle('active', el.querySelector('span').textContent === folderName);
-    });
+    syncFolderHighlight();
 
     await loadMemos(folderName);
+}
+
+// 全部日记：并行读取所有可见文件夹，按修改时间倒序合成一个列表
+async function loadAllMemos() {
+    const folders = visibleFolderNames.slice();
+    try {
+        memoGridEl.innerHTML = renderEmptyState('加载中...');
+        const lists = await Promise.all(folders.map(async folder => {
+            const data = await apiFetch(`/folder/${encodeURIComponent(folder)}`);
+            return (data.memos || data.notes || []).map(memo => ({ ...memo, folderName: memo.folderName || folder }));
+        }));
+        // 加载期间换了范围或输入了搜索词，就不再覆盖列表
+        if (searchScope !== 'global' || searchInput.value.trim()) return;
+        const timeOf = memo => new Date(memo.lastModified).getTime() || 0;
+        allMemos = lists.flat().sort((a, b) => timeOf(b) - timeOf(a));
+        renderMemos(allMemos);
+    } catch (error) {
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState(`加载失败: ${error.message}`, 'error');
+    }
 }
 
 async function loadMemos(folderName) {
@@ -827,12 +877,19 @@ async function loadMemos(folderName) {
 
 function renderMemos(memos) {
     memoGridEl.innerHTML = '';
+    // 全部日记视图（无搜索词）：每行都写所在文件夹，简介里补一句文件夹数
+    const isAllView = searchScope === 'global' && !searchInput.value.trim();
     if (memos.length === 0) {
         setMemoIntro(['0 篇日记']);
-        memoGridEl.innerHTML = renderEmptyState('该文件夹下暂无日记');
+        memoGridEl.innerHTML = renderEmptyState(isAllView ? '还没有日记' : '该文件夹下暂无日记');
         return;
     }
-    setMemoIntro([`${memos.length} 篇日记`, isBatchMode ? '点击行选择或取消选择' : '']);
+    const folderCount = isAllView ? new Set(memos.map(memo => memo.folderName)).size : 0;
+    setMemoIntro([
+        `${memos.length} 篇日记`,
+        folderCount ? `${folderCount} 个文件夹` : '',
+        isBatchMode ? '点击行选择或取消选择' : ''
+    ]);
 
     const gridWidth = memoGridEl.offsetWidth;
     const columns = window.innerWidth > 1200 ? 3 : (window.innerWidth > 800 ? 2 : 1);
@@ -853,7 +910,7 @@ function renderMemos(memos) {
         // 每行只显示一次时间：文件名里的时间优先，否则用修改时间
         const titleParts = parseStructuredMemoName(memo.name);
         const timeText = titleParts?.readableTime || formatMemoTime(memo.lastModified);
-        const crossFolder = memo.folderName && memo.folderName !== currentFolder;
+        const crossFolder = memo.folderName && (searchScope !== 'folder' || memo.folderName !== currentFolder);
         const metaText = [crossFolder ? memo.folderName : '', timeText].filter(Boolean).join(' · ');
         const modifiedText = formatMemoTime(memo.lastModified);
 
@@ -994,20 +1051,14 @@ async function openMemo(memo) {
         // 跳转逻辑：如果点击的是非当前文件夹的日记，更新当前文件夹状态
         if (memoFolder !== currentFolder) {
             currentFolder = memoFolder;
-            // 更新侧边栏 UI 选中状态
-            document.querySelectorAll('.folder-item').forEach(el => {
-                const span = el.querySelector('span');
-                if (span && span.textContent === memoFolder) {
-                    el.classList.add('active');
-                } else {
-                    el.classList.remove('active');
-                }
-            });
+            // 更新侧边栏 UI 选中状态（全部日记 / 语义检索范围下不标文件夹）
+            syncFolderHighlight();
         }
 
         editorStatus.textContent = '正在加载内容...';
         editorOverlay.classList.add('active');
         editorTitleInput.value = memo.name;
+        updateEditorHeading();
         editorTextarea.value = '';
         editorPreview.innerHTML = '';
 
@@ -1020,12 +1071,28 @@ async function openMemo(memo) {
         };
 
         editorTextarea.value = data.content;
+        updateEditorHeading();
         renderPreview(data.content);
         editorStatus.textContent = memo.lastModified ? `修改于 ${formatMemoTime(memo.lastModified)}` : '';
     } catch (error) {
         alert('读取日记失败: ' + error.message);
         editorOverlay.classList.remove('active');
     }
+}
+
+// 编辑器标题与列表一致：结构化文件名取其中的标题；
+// 普通文件名先看正文开头的 Markdown 标题，没有再用去掉扩展名的文件名
+function getEditorHeading(fileName, content) {
+    if (parseStructuredMemoName(fileName)?.title) return getMemoDisplayTitle(fileName);
+    const heading = String(content || '').split(/\r?\n/, 20)
+        .map(line => line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/))
+        .find(Boolean);
+    return heading ? heading[1] : getMemoDisplayTitle(fileName);
+}
+
+function updateEditorHeading() {
+    const fileName = editorTitleInput.value.trim();
+    editorHeadingEl.textContent = fileName ? getEditorHeading(fileName, editorTextarea.value) : '未命名日记';
 }
 
 // view: 'edit' 只看源码，'split' 分栏，'preview' 只看渲染
@@ -1103,6 +1170,7 @@ async function handleSaveMemo() {
         currentMemo.file = savedFileName;
         currentMemo.content = newContent;
         editorTitleInput.value = savedFileName;
+        updateEditorHeading();
 
         editorStatus.textContent = '保存成功 ' + new Date().toLocaleTimeString();
 
@@ -1238,7 +1306,7 @@ Date:「始」${date}「末」,`;
         // 延迟刷新，给后端一点处理时间
         setTimeout(async () => {
             await loadFolders();
-            if (currentFolder) await loadMemos(currentFolder);
+            await refreshMemoList();
         }, 1000);
 
     } catch (error) {
@@ -1648,12 +1716,23 @@ function openHiddenFoldersModal() {
     modal.style.display = 'flex';
 }
 
+// 按当前范围重载列表：有搜索词就重新搜索；否则文件夹范围读当前文件夹，
+// 全部日记读所有可见文件夹，语义检索等用户输入描述
 async function refreshMemoList() {
     if (memoStartupBlocked) return;
     const term = searchInput.value.trim();
     if (term) {
         await searchMemos(term);
+    } else if (searchScope === 'global') {
+        currentFolderNameEl.textContent = '全部日记';
+        await loadAllMemos();
+    } else if (searchScope === 'semantic') {
+        currentFolderNameEl.textContent = '语义检索';
+        allMemos = [];
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState('描述想找的内容，回车进行语义检索');
     } else if (currentFolder) {
+        currentFolderNameEl.textContent = currentFolder;
         await loadMemos(currentFolder);
     }
 }

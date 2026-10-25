@@ -125,9 +125,12 @@
 
     <!-- 编辑器/详情 弹窗 -->
     <div id="editor-overlay" class="editor-overlay">
-        <div class="editor-container" role="dialog" aria-modal="true" aria-label="编辑日记">
+        <div class="editor-container" role="dialog" aria-modal="true" aria-labelledby="editor-heading">
             <div class="editor-header">
-                <input type="text" id="editor-title" class="editor-title-input" placeholder="日记标题..." aria-label="日记标题">
+                <div class="editor-title-block">
+                    <h2 id="editor-heading" class="editor-heading">日记</h2>
+                    <input type="text" id="editor-title" class="editor-title-input" placeholder="文件名" aria-label="文件名" title="文件名，修改后保存即重命名" spellcheck="false">
+                </div>
                 <div class="editor-header-actions">
                     <div id="editor-view-switch" class="memo-segmented" role="radiogroup" aria-label="编辑器视图">
                         <button type="button" class="memo-segment" role="radio" data-view="edit" aria-checked="false">编辑</button>
@@ -169,7 +172,7 @@
                         </button>
                         <div id="create-options-popover" class="memo-popover memo-popover-form" role="dialog" aria-label="发布选项" hidden>
                             <label class="field">
-                                <span class="field-label">署名 <span class="field-hint">maid</span></span>
+                                <span class="field-label">署名 <span class="field-hint">写日记的角色名</span></span>
                                 <input type="text" id="new-memo-maid" class="memo-input" placeholder="如：Nova">
                             </label>
                             <label class="field">
@@ -342,7 +345,7 @@
                                 <input type="date" id="workbench-new-date" class="memo-input">
                             </label>
                             <label class="form-group">
-                                <span class="field-label">署名 / 目标文件夹 <span class="field-hint">maid</span></span>
+                                <span class="field-label">署名 / 目标文件夹</span>
                                 <input type="text" id="workbench-new-folder" class="memo-input" placeholder="如：Nova 或 [Nova的知识]Nova">
                             </label>
                         </div>
