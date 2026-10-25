@@ -17,6 +17,11 @@ function fixture() {
         ensureWebAgentRuntime: async i => { i.webAgentReady = true; return i; },
         executeIsolatedPageOperation: async (i, action, params) => {
             calls.push([i.tabId, action, params]);
+            if (action === 'page_prepare_action') return {
+                status: 'success', code: 'ACTION_PREPARED',
+                result: { handleId: 'vcp-h-1-0-1-test', isTopFrame: true,
+                    point: { x: 20, y: 20 }, beforeState: {}, targetResolution: {} },
+            };
             return { status: 'success', result: { verified: true } };
         },
     };
@@ -24,7 +29,8 @@ function fixture() {
     function guest(id) {
         const wc = new EventEmitter();
         const debuggerApi = new EventEmitter();
-        debuggerApi.isAttached = () => false;
+        debuggerApi.isAttached = () => true;
+        debuggerApi.sendCommand = async () => ({});
         return Object.assign(wc, { id, debugger: debuggerApi, isDestroyed: () => false,
             getTitle: () => `Page ${id}`, getURL: () => `https://example.com/${id}`,
             isLoadingMainFrame: () => false,
@@ -56,7 +62,7 @@ test('assistance pauses writes, cancellation stays paused, only matching user co
     const retry = await h.service.requestAssistance('browser:1', '请确认继续');
     h.service.completeAssistance(h.sender, 'browser:1', retry.assistance.requestId);
     await h.service.execute('click', { targetId: 'browser:1' });
-    assert.equal(h.calls.length, 1);
+    assert.deepEqual(h.calls.map(call => call[1]), ['page_prepare_action', 'page_verify_action']);
 });
 
 test('old disposal cannot unregister a replacement page with the same tab ID', () => {

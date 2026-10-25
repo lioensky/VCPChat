@@ -26,7 +26,8 @@ function webUrl(value) {
 }
 
 class SideBrowserService {
-    constructor({ manager, getMainWindow, timeoutMs = 30000 }) {
+    constructor({ manager, getMainWindow, timeoutMs = 30000, jevService }) {
+        this.jevService = jevService;
         this.manager = manager;
         this.getMainWindow = getMainWindow;
         this.timeoutMs = timeoutMs;
@@ -101,7 +102,11 @@ class SideBrowserService {
         adapter.closeTarget = async target => this.close(target);
         if (instance.loading) instance.documentReadyPromise = new Promise(resolve => { instance.resolveDocumentReady = resolve; });
         instance.webAgentAdapter = adapter;
-        instance.webAgentRuntime = core.createRuntime(adapter);
+        const jev = this.jevService || this.manager.jevService || globalThis.vcpJev;
+        instance.webAgentRuntime = core.createRuntime(adapter, {
+            arbiter: typeof jev?.decide === 'function'
+                ? core.createEntityArbiter({ decide: jev.decide.bind(jev) }) : undefined,
+        });
         const listen = (event, fn) => {
             guest.on(event, fn);
             instance.listeners.push(() => guest.removeListener(event, fn));

@@ -430,6 +430,7 @@ function safeText(value, maxBytes = MAX_INJECT_BYTES) {
 
 class VCPLoomManager {
     constructor(options = {}) {
+        this.jevService = options.jevService || null;
         this.projectRoot = options.projectRoot || path.resolve(__dirname, '..', '..');
         this.appDataRoot = options.appDataRoot || path.join(this.projectRoot, 'AppData');
         this.appsRoot = path.join(this.appDataRoot, 'LoomApps');
@@ -453,6 +454,13 @@ class VCPLoomManager {
         this.sideBrowser = new SideBrowserService({
             manager: this, getMainWindow: options.getMainWindow || (() => this.mainWindow),
         });
+    }
+
+    createEntityArbiter() {
+        const service = this.jevService || globalThis.vcpJev;
+        return service && typeof service.decide === 'function'
+            ? webAgentCore.createEntityArbiter({ decide: service.decide.bind(service) })
+            : undefined;
     }
 
     async initialize() {
@@ -1704,6 +1712,7 @@ class VCPLoomManager {
                 this.executeIsolatedPageOperation(instance, action, params, request),
         });
         instance.webAgentRuntime = webAgentCore.createRuntime(instance.webAgentAdapter, {
+            arbiter: this.createEntityArbiter(),
             audit: (entry) => {
                 if (entry.phase === 'error') {
                     console.warn(`[VCPLoomManager] Web Agent ${instance.appId} ${entry.command || 'unknown'} failed.`);
