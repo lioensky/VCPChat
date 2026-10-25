@@ -20,8 +20,43 @@ let graphState = {
         k: 10,
         boost: '0.6+',
         range: []
-    }
+    },
+    palette: null,
+    themeObserver: null
 };
+
+const GRAPH_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif";
+
+// 画布颜色全部取自主题变量。变量的值可能是 color-mix 之类的表达式，
+// 先让探针元素解析成具体颜色再交给 canvas；透明度统一用 globalAlpha 控制。
+function resolveThemeColor(probe, expr) {
+    probe.style.color = expr;
+    return getComputedStyle(probe).color;
+}
+
+function refreshGraphPalette() {
+    const probe = document.createElement('span');
+    probe.hidden = true;
+    document.body.appendChild(probe);
+    graphState.palette = {
+        text: resolveThemeColor(probe, 'var(--memo-ink)'),
+        textSecondary: resolveThemeColor(probe, 'var(--memo-ink-2)'),
+        textTertiary: resolveThemeColor(probe, 'var(--memo-ink-3)'),
+        card: resolveThemeColor(probe, 'var(--memo-panel)'),
+        border: resolveThemeColor(probe, 'var(--border-color)'),
+        accent: resolveThemeColor(probe, 'var(--memo-accent)')
+    };
+    probe.remove();
+}
+
+// 主题切换会改 body / html 的 class 或 style，届时重新取色
+function watchGraphTheme() {
+    if (graphState.themeObserver) return;
+    graphState.themeObserver = new MutationObserver(refreshGraphPalette);
+    const options = { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] };
+    graphState.themeObserver.observe(document.body, options);
+    graphState.themeObserver.observe(document.documentElement, options);
+}
 
 // ========== 联想逻辑 & 神经图谱引擎 ==========
 
@@ -33,19 +68,26 @@ async function openAssociationConfig(memo, isAppend = false) {
     const tagCloud = document.getElementById('assoc-folder-tags');
     const searchInput = document.getElementById('assoc-folder-search');
     tagCloud.innerHTML = '';
+    closeAllPopovers();
 
     if (searchInput) searchInput.value = '';
+    const sourceTitle = getMemoDisplayTitle(memo.name);
+    document.getElementById('assoc-source-name').textContent = `从「${sourceTitle}」出发`;
 
     try {
         const data = await apiFetch('/folders');
         const folders = data.folders.filter(f => f !== 'MusicDiary' && !hiddenFolders.has(f));
 
         const folderTags = folders.map(folder => {
-            const tag = document.createElement('div');
+            const tag = document.createElement('button');
+            tag.type = 'button';
             tag.className = 'folder-tag';
             tag.textContent = folder;
+            tag.setAttribute('aria-pressed', 'false');
             tag.onclick = () => {
-                tag.classList.toggle('active');
+                const active = tag.classList.toggle('active');
+                tag.setAttribute('aria-pressed', String(active));
+                updateAssocScopeHint();
             };
             tagCloud.appendChild(tag);
             return tag;
@@ -57,21 +99,42 @@ async function openAssociationConfig(memo, isAppend = false) {
                 const term = e.target.value.toLowerCase().trim();
                 folderTags.forEach(tag => {
                     const visible = tag.textContent.toLowerCase().includes(term);
-                    tag.style.display = visible ? 'block' : 'none';
+                    tag.style.display = visible ? '' : 'none';
                 });
             };
         }
 
+        updateAssocSummary();
+        updateAssocScopeHint();
         modal.style.display = 'flex';
     } catch (e) {
         alert('加载文件夹列表失败: ' + e.message);
     }
 }
 
+// 参数面板收起时，底部摘要显示当前深度和强度
+function updateAssocSummary() {
+    const summary = document.getElementById('assoc-summary');
+    if (!summary) return;
+    const k = document.getElementById('input-assoc-k').value;
+    const boost = document.getElementById('input-assoc-boost').value.trim() || '默认';
+    summary.textContent = `深度 ${k} · 强度 ${boost}`;
+}
+
+function updateAssocScopeHint() {
+    const hint = document.getElementById('assoc-scope-hint');
+    if (!hint) return;
+    const count = document.querySelectorAll('#assoc-folder-tags .folder-tag.active').length;
+    const sourceFolder = graphState.sourceMemo?.folderName || currentFolder;
+    hint.textContent = count > 0
+        ? `在 ${count} 个文件夹中联想`
+        : `未选择时只在「${sourceFolder}」中联想`;
+}
+
 async function startAssociation() {
     const k = parseInt(document.getElementById('input-assoc-k').value);
     const boost = document.getElementById('input-assoc-boost').value.trim();
-    let selectedTags = Array.from(document.querySelectorAll('.folder-tag.active')).map(t => t.textContent);
+    let selectedTags = Array.from(document.querySelectorAll('#assoc-folder-tags .folder-tag.active')).map(t => t.textContent);
     
     // 保底逻辑：如果用户没有选择任何文件夹，则默认使用当前日记所在的文件夹
     if (selectedTags.length === 0 && graphState.sourceMemo) {
@@ -82,6 +145,7 @@ async function startAssociation() {
         }
     }
     
+    closeAllPopovers();
     document.getElementById('assoc-config-modal').style.display = 'none';
     
     // 显示视图并初始化 Canvas
@@ -90,8 +154,10 @@ async function startAssociation() {
     const canvas = document.getElementById('neural-canvas');
     const ctx = canvas.getContext('2d');
     
-    const sourceTitle = graphState.sourceMemo.name;
-    document.getElementById('graph-source-title').textContent = sourceTitle;
+    const sourceTitle = getMemoDisplayTitle(graphState.sourceMemo.name);
+    const graphSourceTitle = document.getElementById('graph-source-title');
+    graphSourceTitle.textContent = sourceTitle;
+    graphSourceTitle.title = graphState.sourceMemo.name;
     document.getElementById('node-count-stat').textContent = '正在联想中...';
     
     // 恢复被误删的变量定义
@@ -105,7 +171,7 @@ async function startAssociation() {
     if (loader) {
         loader.style.display = 'flex';
         loader.style.opacity = '1';
-        if (loaderText) loaderText.textContent = `神经网络正在遍历 "${sourceMemo.name}" 的记忆星图`;
+        if (loaderText) loaderText.textContent = `神经网络正在遍历「${sourceTitle}」的记忆星图`;
     }
 
     console.log('[Association] Request Path:', `'${sourceFilePath}'`);
@@ -254,13 +320,16 @@ function initGraphData(results, isAppend = false) {
 function startGraphEngine(canvas, ctx) {
     if (graphState.animationId) cancelAnimationFrame(graphState.animationId);
 
-    // 设置 Canvas 大小
+    // 设置 Canvas 大小：位图按 devicePixelRatio 放大，绘制坐标仍是 CSS 像素，文字才不会发虚
     const resize = () => {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.round(window.innerWidth * dpr);
+        canvas.height = Math.round(window.innerHeight * dpr);
     };
     window.addEventListener('resize', resize);
     resize();
+    refreshGraphPalette();
+    watchGraphTheme();
 
     // 交互逻辑
     canvas.onmousedown = (e) => {
@@ -408,32 +477,25 @@ function startGraphEngine(canvas, ctx) {
     }
 
     function draw() {
+        const dpr = canvas.width / window.innerWidth || 1;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // 获取当前主题颜色
-        const style = getComputedStyle(document.documentElement);
-        const accentColor = style.getPropertyValue('--accent-color').trim() || '#4a90e2';
-        const accentColorRGB = style.getPropertyValue('--accent-color-rgb').trim() || '74, 144, 226';
-        const textPrimary = style.getPropertyValue('--primary-text').trim() || style.getPropertyValue('--text-primary').trim() || '#ffffff';
-        const textSecondary = style.getPropertyValue('--secondary-text').trim() || style.getPropertyValue('--text-secondary').trim() || 'rgba(255,255,255,0.6)';
-        const isLightTheme = document.body.classList.contains('light-theme');
+
+        const palette = graphState.palette;
 
         ctx.save();
-        ctx.translate(canvas.width / 2 + graphState.transform.x, canvas.height / 2 + graphState.transform.y);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.translate(window.innerWidth / 2 + graphState.transform.x, window.innerHeight / 2 + graphState.transform.y);
         ctx.scale(graphState.transform.scale, graphState.transform.scale);
 
-        // 绘制连线
+        // 绘制连线：主题强调色，得分越高越实
         graphState.links.forEach(link => {
-            const grad = ctx.createLinearGradient(link.source.x, link.source.y, link.target.x, link.target.y);
-            const intensity = 0.1 + link.score * 0.8;
-            grad.addColorStop(0, `rgba(${accentColorRGB}, ${intensity * 0.5})`);
-            grad.addColorStop(1, `rgba(${accentColorRGB}, ${intensity})`);
-            
             ctx.beginPath();
             ctx.moveTo(link.source.x, link.source.y);
             ctx.lineTo(link.target.x, link.target.y);
-            ctx.lineWidth = 1 + link.score * 3;
-            ctx.strokeStyle = grad;
+            ctx.lineWidth = 1 + link.score * 2;
+            ctx.strokeStyle = palette.accent;
+            ctx.globalAlpha = 0.2 + link.score * 0.5;
             ctx.stroke();
 
             // 绘制流动光点 (脉冲)
@@ -441,13 +503,13 @@ function startGraphEngine(canvas, ctx) {
             const progress = (time % 2) / 2;
             const lx = link.source.x + (link.target.x - link.source.x) * progress;
             const ly = link.source.y + (link.target.y - link.source.y) * progress;
-            
+
             ctx.beginPath();
             ctx.arc(lx, ly, 2, 0, Math.PI * 2);
-            ctx.fillStyle = isLightTheme ? accentColor : '#fff';
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = accentColor;
+            ctx.fillStyle = palette.accent;
+            ctx.globalAlpha = 0.9;
             ctx.fill();
+            ctx.globalAlpha = 1;
         });
 
         // 绘制节点
@@ -462,15 +524,17 @@ function startGraphEngine(canvas, ctx) {
             const y = node.y - height / 2;
             const radius = 10;
 
-            // 1. 外部发光
+            // 1. 外圈：源节点、悬停和选中节点用强调色淡环标出
             if (isHovered || isSelected || node.isSource) {
                 ctx.beginPath();
                 ctx.roundRect(x - 5, y - 5, width + 10, height + 10, radius + 5);
-                ctx.fillStyle = node.isSource ? 'rgba(255, 215, 0, 0.15)' : `rgba(${accentColorRGB}, 0.2)`;
+                ctx.fillStyle = palette.accent;
+                ctx.globalAlpha = node.isSource ? 0.16 : 0.12;
                 ctx.fill();
+                ctx.globalAlpha = 1;
             }
 
-            // 2. 玻璃背景
+            // 2. 卡片背景
             ctx.beginPath();
             if (ctx.roundRect) {
                 ctx.roundRect(x, y, width, height, radius);
@@ -488,36 +552,29 @@ function startGraphEngine(canvas, ctx) {
                 ctx.closePath();
             }
             
-            // 根据主题调整背景色
-            if (isLightTheme) {
-                ctx.fillStyle = isSelected ? 'rgba(255, 255, 255, 0.98)' : 'rgba(255, 255, 255, 0.85)';
-            } else {
-                ctx.fillStyle = isSelected ? 'rgba(255, 255, 255, 0.15)' : 'rgba(20, 22, 25, 0.85)';
-            }
-            
-            ctx.shadowBlur = (isHovered || isSelected) ? 20 : 0;
-            ctx.shadowColor = node.isSource ? '#ffd700' : accentColor;
+            // 卡片底色用面板色，文字对比度与页面一致
+            ctx.fillStyle = palette.card;
             ctx.fill();
-            ctx.shadowBlur = 0;
 
             // 3. 边框
             ctx.lineWidth = (isSelected || node.isSource) ? 2 : 1;
-            ctx.strokeStyle = node.isSource ? '#ffd700' : (isSelected ? (isLightTheme ? accentColor : '#fff') : (isLightTheme ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'));
+            ctx.strokeStyle = (isSelected || node.isSource) ? palette.accent : palette.border;
             ctx.stroke();
 
             // 4. 文字内容
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            
-            // 标题
-            ctx.fillStyle = node.isSource ? (isLightTheme ? '#b8860b' : '#ffd700') : textPrimary;
-            ctx.font = `bold ${node.isSource ? '13px' : '11px'} 'Segoe UI', system-ui`;
-            const title = node.name.length > 18 ? node.name.slice(0, 16) + '...' : node.name;
+
+            // 标题：与列表一致的可读标题
+            ctx.fillStyle = node.isSource ? palette.accent : palette.text;
+            ctx.font = `600 ${node.isSource ? '13px' : '12px'} ${GRAPH_FONT}`;
+            const displayName = getMemoDisplayTitle(node.name);
+            const title = displayName.length > 18 ? displayName.slice(0, 16) + '…' : displayName;
             ctx.fillText(title, x + 12, y + 12);
 
             // 摘要 (从 chunks 中取一小段)
-            ctx.fillStyle = node.isSource ? (isLightTheme ? 'rgba(184,134,11,0.8)' : 'rgba(255,215,0,0.7)') : textSecondary;
-            ctx.font = "9px 'Segoe UI', system-ui";
+            ctx.fillStyle = palette.textSecondary;
+            ctx.font = `11px ${GRAPH_FONT}`;
             const summary = (node.chunks && node.chunks[0])
                 ? node.chunks[0].slice(0, 160).replace(/\n/g, ' ') + '...'
                 : (node.isSource ? '核心源节点内容加载中...' : '暂无摘要内容...');
@@ -533,27 +590,26 @@ function startGraphEngine(canvas, ctx) {
                 if (metrics.width > width - 24 && n > 0) {
                     ctx.fillText(line, x + 12, textY);
                     line = words[n];
-                    textY += 13;
+                    textY += 15;
                     lineCount++;
-                    if (lineCount >= 4) break;
+                    if (lineCount >= 3) break;
                 } else {
                     line = testLine;
                 }
             }
-            if (lineCount < 4) ctx.fillText(line, x + 12, textY);
+            if (lineCount < 3) ctx.fillText(line, x + 12, textY);
 
+            // 底行：源节点写所在文件夹，其余写得分
+            ctx.textBaseline = 'bottom';
             if (node.isSource) {
-                ctx.fillStyle = isLightTheme ? 'rgba(184,134,11,0.6)' : 'rgba(255,215,0,0.5)';
-                ctx.font = "italic 8px 'Segoe UI', system-ui";
-                ctx.fillText(`[核心源] 文件夹: ${node.folder || '根目录'}`, x + 12, y + height - 12);
-            }
-
-            // 5. 分数标签 (右下角)
-            if (!node.isSource) {
-                ctx.fillStyle = accentColor;
-                ctx.font = "bold 9px 'Segoe UI'";
+                ctx.fillStyle = palette.textTertiary;
+                ctx.font = `10px ${GRAPH_FONT}`;
+                ctx.fillText(`源 · ${node.folder || '根目录'}`, x + 12, y + height - 10);
+            } else {
+                ctx.fillStyle = palette.accent;
+                ctx.font = `600 10px ${GRAPH_FONT}`;
                 ctx.textAlign = 'right';
-                ctx.fillText(node.score.toFixed(2), x + width - 10, y + height - 12);
+                ctx.fillText(node.score.toFixed(2), x + width - 12, y + height - 10);
             }
         });
 
@@ -593,10 +649,17 @@ function updateGraphStats() {
     }
     document.getElementById('node-count-stat').textContent = statText;
 
-    // 更新详情面板中的“加入工作台”按钮文本
+    // 更新详情面板中“加入工作台”图标的提示与数量角标
     const addBtn = document.getElementById('node-add-workbench-btn');
     if (addBtn) {
-        addBtn.textContent = selectedCount > 1 ? `🛠️ 批量加入工作台 (${selectedCount})` : `🛠️ 加入工作台`;
+        const label = selectedCount > 1 ? `批量加入工作台（${selectedCount}）` : '加入工作台';
+        addBtn.title = label;
+        addBtn.setAttribute('aria-label', label);
+        const badge = document.getElementById('node-add-workbench-count');
+        if (badge) {
+            badge.textContent = String(selectedCount);
+            badge.hidden = selectedCount <= 1;
+        }
         addBtn.onclick = async () => {
             if (window.DiaryWorkbench) {
                 const nodesToAdd = selectedCount > 0 ? Array.from(graphState.selectedNodes) : [graphState.selectedNode];
@@ -612,8 +675,11 @@ async function selectGraphNode(node) {
     graphState.selectedNode = node;
     updateGraphStats();
     
-    document.getElementById('detail-title').textContent = node.name;
-    document.getElementById('detail-path').textContent = node.path;
+    // 标题只显示日记名，完整路径放进提示；副标题只写所在文件夹，避免把文件名再显示一遍
+    const detailTitle = document.getElementById('detail-title');
+    detailTitle.textContent = getMemoDisplayTitle(node.name);
+    detailTitle.title = node.path;
+    document.getElementById('detail-path').textContent = node.folder || '';
     document.getElementById('detail-score').textContent = node.isSource ? "1.000 (源)" : node.score.toFixed(3);
     
     const tagList = document.getElementById('detail-tags');
@@ -636,9 +702,6 @@ async function selectGraphNode(node) {
         if (!showAll) {
             const moreBtn = document.createElement('span');
             moreBtn.className = 'tag-item more-tags-btn';
-            moreBtn.style.cursor = 'pointer';
-            moreBtn.style.background = 'var(--accent-color)';
-            moreBtn.style.color = '#fff';
             moreBtn.textContent = `+ 展开更多 (${node.tags.length - maxVisibleTags})`;
             moreBtn.onclick = () => {
                 tagList.querySelectorAll('.hidden-tag').forEach(el => el.style.display = 'inline-block');

@@ -15,7 +15,10 @@
 
     /* Integrated business pages join the top navigation instead of painting
        a second title-bar divider. Pages with a rail still own that rail;
-       canvas pages expose a single rounded work surface. */
+       canvas pages expose a single rounded work surface.
+       The chat container is hidden while an app is open, so the host stays
+       transparent and the page rail sits on the same navigation material as
+       the top bar: one colour from the tabs down to the rail. */
     html .vcp-ui-scope.next-ui-internal-app-host:is(
         [data-active-app-id="vchat-app-notes"],
         [data-active-app-id="vchat-app-translator"],
@@ -27,9 +30,32 @@
         [data-active-app-id="vchat-app-note-mini"]
     ) {
         border-top: 0;
-        background: var(--vcp-ui-bg-1);
+        background: transparent;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
+    }
+
+    /* Global wallpaper hides the shared material and the top bar paints its
+       own glass. The host repeats that glass, with the sheen fixed to the
+       viewport on both, so the two read as one sheet over the wallpaper. */
+    html[data-vcp-wallpaper-scope="global"] .vcp-ui-scope.next-ui-internal-app-host:is(
+        [data-active-app-id="vchat-app-notes"],
+        [data-active-app-id="vchat-app-translator"],
+        [data-active-app-id="vchat-app-memo"],
+        [data-active-app-id="vchat-app-log"],
+        [data-active-app-id="vchat-app-plugin-manager"],
+        [data-active-app-id="vchat-app-task"],
+        [data-active-app-id="vchat-app-forum"],
+        [data-active-app-id="vchat-app-note-mini"]
+    ) {
+        background-color: var(
+            --panel-bg,
+            color-mix(in srgb, var(--next-shell-bg) var(--vcp-material-opacity, 68%), transparent)
+        );
+        background-image: var(--next-material-sheen);
+        background-attachment: fixed;
+        backdrop-filter: var(--next-backdrop-filter);
+        -webkit-backdrop-filter: var(--next-backdrop-filter);
     }
 
     html .vcp-ui-scope .next-ui-internal-app-view {

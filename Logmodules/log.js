@@ -12,18 +12,22 @@ let serverBaseUrl = '';
 let apiAuthHeader = '';
 let allLines = [];
 let currentOffset = 0;
+let baseEmptyMessage = '暂无日志内容';
 let currentLogPath = '';
 let isReverseOrder = false;
 let lineLimit = 500;
 let pollTimer = null;
 let isLoading = false;
+// '' is "all logs", a preset name selects that sidebar item, null is free text typed into the filter.
 let activePreset = '';
 let currentFilter = '';
-let scrollHideTimer = null;
-let suppressScrollReveal = false;
+// The file part of the summary line, e.g. "文件 5.9 KB"; empty until the first read.
+let fileSizeText = '';
+let visibleLineCount = 0;
 
 const elements = {
     status: document.getElementById('log-status'),
+    path: document.getElementById('log-path'),
     meta: document.getElementById('log-meta'),
     lines: document.getElementById('log-lines'),
     empty: document.getElementById('empty-state'),
@@ -34,8 +38,11 @@ const elements = {
     confirmCancelBtn: document.getElementById('confirm-cancel-btn'),
     refreshBtn: document.getElementById('refresh-log-btn'),
     clearBtn: document.getElementById('clear-log-btn'),
-    orderBtn: document.getElementById('order-toggle-btn'),
+    orderToggle: document.getElementById('order-toggle-btn'),
     copyBtn: document.getElementById('copy-visible-btn'),
+    settingsBtn: document.getElementById('log-settings-btn'),
+    settingsPopover: document.getElementById('log-settings-popover'),
+    pageTitle: document.getElementById('log-page-title'),
     lineLimitInput: document.getElementById('line-limit-input'),
     filterInput: document.getElementById('log-filter-input'),
     scrollTopBtn: document.getElementById('scroll-top-btn'),
@@ -107,7 +114,7 @@ function setupEvents() {
 
     elements.clearBtn?.addEventListener('click', openClearConfirmModal);
 
-    elements.orderBtn?.addEventListener('click', () => {
+    elements.orderToggle?.addEventListener('click', () => {
         isReverseOrder = !isReverseOrder;
         localStorage.setItem(STORAGE_KEYS.reverseOrder, String(isReverseOrder));
         updateOrderButton();
@@ -115,6 +122,22 @@ function setupEvents() {
     });
 
     elements.copyBtn?.addEventListener('click', copyVisibleLogs);
+
+    elements.settingsBtn?.addEventListener('click', () => {
+        setSettingsOpen(elements.settingsPopover.hidden);
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+        if (elements.settingsPopover.hidden) return;
+        if (event.target.closest('.settings-anchor')) return;
+        setSettingsOpen(false);
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || elements.settingsPopover.hidden) return;
+        setSettingsOpen(false);
+        elements.settingsBtn.focus();
+    });
 
     elements.lineLimitInput?.addEventListener('change', () => {
         lineLimit = normalizeLineLimit(parseInt(elements.lineLimitInput.value || '500', 10));
@@ -126,6 +149,8 @@ function setupEvents() {
 
     elements.filterInput?.addEventListener('input', debounce(() => {
         currentFilter = elements.filterInput.value.trim();
+        activePreset = currentFilter === '' || PRESET_FILTERS.includes(currentFilter) ? currentFilter : null;
+        updatePresetButtons();
         render();
     }, 120));
 
@@ -145,29 +170,12 @@ function setupEvents() {
     });
 
     elements.scrollTopBtn?.addEventListener('click', () => {
-        revealFloatingActions();
-        scheduleFloatingActionsHide();
-        suppressScrollReveal = true;
         elements.lines.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
     elements.scrollBottomBtn?.addEventListener('click', () => {
-        revealFloatingActions();
-        scheduleFloatingActionsHide();
-        suppressScrollReveal = true;
         elements.lines.scrollTo({ top: elements.lines.scrollHeight, behavior: 'smooth' });
     });
-
-    elements.lines?.addEventListener('scroll', () => {
-        if (suppressScrollReveal) {
-            suppressScrollReveal = false;
-            return;
-        }
-        revealFloatingActions();
-        scheduleFloatingActionsHide();
-    }, { passive: true });
-
-    hideFloatingActions();
 }
 
 async function initAuthAndServer() {
@@ -175,8 +183,9 @@ async function initAuthAndServer() {
     try {
         const settings = await api?.loadSettings?.();
         if (!settings?.vcpServerUrl) {
-            setStatus('未配置 VCP 服务器 URL');
-            showToast('请先在主设置中配置 VCP 服务器 URL');
+            setStatus('未配置服务器', 'error');
+            setEmptyMessage('未配置 VCP 服务器地址：请在全局设置中配置后点击刷新');
+            showToast('请先在全局设置中配置 VCP 服务器地址');
             return;
         }
 
@@ -185,16 +194,18 @@ async function initAuthAndServer() {
 
         const forumConfig = await api?.loadForumConfig?.();
         if (!forumConfig?.username || !forumConfig?.password) {
-            setStatus('缺少论坛管理员凭据');
-            showToast('未找到论坛模块登录配置，请先在论坛模块登录并保存凭据');
+            setStatus('未登录论坛', 'error');
+            setEmptyMessage('未找到论坛登录凭据：请先在「论坛」应用中登录后点击刷新');
+            showToast('请先在「论坛」应用中登录，日志中心使用同一凭据');
             return;
         }
 
         apiAuthHeader = `Basic ${btoa(`${forumConfig.username}:${forumConfig.password}`)}`;
-        setStatus('已连接配置，准备读取日志');
+        setStatus('正在连接服务器...');
     } catch (error) {
         console.error('[LogCenter] Init failed:', error);
-        setStatus(`初始化失败: ${error.message}`);
+        setStatus('初始化失败', 'error');
+        setEmptyMessage(`初始化失败：${error.message}`);
         showToast(`初始化失败: ${error.message}`);
     }
 }
@@ -250,16 +261,19 @@ async function fetchLog({ incremental, silent }) {
             allLines.push(...splitLogLines(data.content));
         }
 
+        fileSizeText = `文件 ${data.fileSize ? formatBytes(data.fileSize) : '--'}`;
         trimLines();
+        baseEmptyMessage = '暂无日志内容';
+        setStatus('');
+        setLogPath(currentLogPath);
         render();
-
-        const sizeText = data.fileSize ? formatBytes(data.fileSize) : '--';
-        setStatus(currentLogPath ? `监听: ${currentLogPath}` : '日志已载入');
-        setMeta(`总行 ${allLines.length} · 偏移 ${currentOffset} · 文件 ${sizeText}`);
     } catch (error) {
         console.error('[LogCenter] Fetch log failed:', error);
-        setStatus(`读取失败: ${error.message}`);
-        if (!silent) showToast(`读取日志失败: ${error.message}`);
+        setStatus(`读取失败: ${error.message}`, 'error');
+        if (!silent) {
+            if (allLines.length === 0) setEmptyMessage(`读取日志失败：${error.message}`);
+            showToast(`读取日志失败: ${error.message}`);
+        }
     } finally {
         isLoading = false;
         elements.refreshBtn?.classList.remove('spinning');
@@ -304,13 +318,13 @@ async function clearServerLog() {
 
         allLines = [];
         currentOffset = 0;
+        fileSizeText = '文件已清空';
+        setStatus('');
         render();
-        setMeta('总行 0 · 偏移 0 · 文件已清空');
-        setStatus('日志已清空');
         showToast(data.message || '日志已清空');
     } catch (error) {
         console.error('[LogCenter] Clear failed:', error);
-        setStatus(`清空失败: ${error.message}`);
+        setStatus(`清空失败: ${error.message}`, 'error');
         showToast(`清空失败: ${error.message}`);
     } finally {
         closeClearConfirmModal();
@@ -336,11 +350,16 @@ function render() {
 
     elements.lines.innerHTML = '';
     elements.lines.appendChild(fragment);
+    if (visibleLines.length === 0) {
+        elements.empty.textContent = allLines.length > 0 ? '没有匹配的日志行' : baseEmptyMessage;
+    }
     elements.empty.classList.toggle('active', visibleLines.length === 0);
+    visibleLineCount = visibleLines.length;
+    renderCounts();
+    renderMeta();
 
     if (!isReverseOrder && shouldStickBottom) {
         requestAnimationFrame(() => {
-            suppressScrollReveal = true;
             elements.lines.scrollTop = elements.lines.scrollHeight;
         });
     }
@@ -378,10 +397,18 @@ function decorateLogLine(line) {
     return result;
 }
 
+// Highlights only the text between tags, so a term such as "error" or "class"
+// never rewrites the level span's markup. Each text part is matched in its
+// decoded form, so a term cannot split an entity like "&amp;" either.
 function highlightTerm(html, term) {
-    const safeTerm = escapeRegExp(escapeHtml(term));
-    if (!safeTerm) return html;
-    return html.replace(new RegExp(safeTerm, 'ig'), (match) => `<span class="keyword-hit">${match}</span>`);
+    if (!term) return html;
+    const pattern = new RegExp(`(${escapeRegExp(term)})`, 'i');
+    return html.split(/(<[^>]*>)/).map((part) => {
+        if (part.startsWith('<')) return part;
+        return unescapeHtml(part).split(pattern).map((piece, index) => (
+            index % 2 ? `<span class="keyword-hit">${escapeHtml(piece)}</span>` : escapeHtml(piece)
+        )).join('');
+    }).join('');
 }
 
 function splitLogLines(content) {
@@ -432,22 +459,78 @@ function fallbackCopy(text) {
 }
 
 function updateOrderButton() {
-    elements.orderBtn.textContent = isReverseOrder ? '正序显示' : '倒序显示';
-    elements.orderBtn.title = isReverseOrder ? '当前为倒序，点击切换为正序' : '当前为正序，点击切换为倒序';
+    if (!elements.orderToggle) return;
+    elements.orderToggle.setAttribute('aria-pressed', String(isReverseOrder));
+    elements.orderToggle.title = isReverseOrder ? '最新的行在上（再点一次改回最早在上）' : '最新的行在上';
+}
+
+function setSettingsOpen(open) {
+    elements.settingsPopover.hidden = !open;
+    elements.settingsBtn.setAttribute('aria-expanded', String(open));
+    if (open) elements.lineLimitInput.focus();
 }
 
 function updatePresetButtons() {
     document.querySelectorAll('.preset-chip').forEach((button) => {
-        button.classList.toggle('active', (button.dataset.filter || '') === activePreset);
+        const selected = (button.dataset.filter || '') === activePreset;
+        button.classList.toggle('active', selected);
+        if (selected) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+    });
+    if (elements.pageTitle) {
+        elements.pageTitle.textContent = activePreset === '' ? '全部日志' : (activePreset ? `${activePreset} 日志` : '筛选结果');
+    }
+}
+
+// Sidebar counts are lines matching each preset among the retained lines.
+function renderCounts() {
+    const lowered = allLines.map((line) => line.toLowerCase());
+    document.querySelectorAll('[data-count-for]').forEach((count) => {
+        const term = count.dataset.countFor.toLowerCase();
+        count.textContent = String(term ? lowered.filter((line) => line.includes(term)).length : lowered.length);
     });
 }
 
-function setStatus(message) {
-    elements.status.textContent = message;
+// The counters and the display order, as one "·"-separated run after the path.
+function renderMeta() {
+    if (!fileSizeText) {
+        elements.meta.textContent = '';
+        return;
+    }
+    const lineText = visibleLineCount === allLines.length
+        ? `${allLines.length} 行`
+        : `${visibleLineCount} / ${allLines.length} 行`;
+    const parts = [lineText, `偏移 ${currentOffset}`, fileSizeText];
+    if (isReverseOrder) parts.push('最新在上');
+    elements.meta.textContent = parts.join(' · ');
 }
 
-function setMeta(message) {
-    elements.meta.textContent = message;
+// The folder part can ellipsize on its own so the file name stays readable.
+function setLogPath(fullPath) {
+    elements.path.replaceChildren();
+    elements.path.title = fullPath || '';
+    if (!fullPath) return;
+    const cut = Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/')) + 1;
+    const dir = document.createElement('span');
+    dir.className = 'log-path-dir';
+    dir.textContent = fullPath.slice(0, cut);
+    const file = document.createElement('span');
+    file.className = 'log-path-file';
+    file.textContent = fullPath.slice(cut);
+    elements.path.append(dir, file);
+}
+
+function setStatus(message, tone = '') {
+    elements.status.textContent = message;
+    elements.status.dataset.tone = tone;
+}
+
+function setEmptyMessage(message) {
+    baseEmptyMessage = message;
+    if (elements.empty) {
+        elements.empty.textContent = message;
+        elements.empty.classList.add('active');
+    }
 }
 
 function showToast(message) {
@@ -457,21 +540,6 @@ function showToast(message) {
     showToast.timer = setTimeout(() => {
         elements.toast.classList.remove('active');
     }, 2200);
-}
-
-function revealFloatingActions() {
-    elements.scrollTopBtn?.closest('.floating-actions')?.classList.add('visible');
-}
-
-function hideFloatingActions() {
-    elements.scrollTopBtn?.closest('.floating-actions')?.classList.remove('visible');
-}
-
-function scheduleFloatingActionsHide() {
-    clearTimeout(scrollHideTimer);
-    scrollHideTimer = setTimeout(() => {
-        hideFloatingActions();
-    }, 2000);
 }
 
 elements.confirmOkBtn?.addEventListener('click', clearServerLog);
@@ -504,6 +572,15 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+function unescapeHtml(value) {
+    return value
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&amp;/g, '&');
 }
 
 function escapeRegExp(value) {

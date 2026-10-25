@@ -19,6 +19,7 @@ let selectedMemos = new Set(); // Set of "folder:::name" strings
 let hiddenFolders = new Set(); // Set of hidden folder names
 let collapsedCategories = new Set(); // Set of collapsed category IDs
 let folderOrder = []; // Array of folder names for UI sorting
+let visibleFolderNames = []; // 批量移动菜单的候选文件夹
 let draggedFolder = null; // Currently dragged folder name
 let memoStartupBlocked = false;
 
@@ -26,6 +27,7 @@ let memoStartupBlocked = false;
 const folderListEl = document.getElementById('folder-list');
 const memoGridEl = document.getElementById('memo-grid');
 const currentFolderNameEl = document.getElementById('current-folder-name');
+const memoIntroEl = document.getElementById('memo-intro');
 const searchInput = document.getElementById('search-memos');
 const contextMenuEl = document.getElementById('context-menu');
 
@@ -33,6 +35,7 @@ const contextMenuEl = document.getElementById('context-menu');
 const editorOverlay = document.getElementById('editor-overlay');
 const editorContainer = document.querySelector('.editor-container');
 const editorTitleInput = document.getElementById('editor-title');
+const editorHeadingEl = document.getElementById('editor-heading');
 const editorTextarea = document.getElementById('editor-textarea');
 const editorPreview = document.getElementById('editor-preview');
 const editorStatus = document.getElementById('editor-status');
@@ -49,16 +52,101 @@ function blockStartup(message) {
     memoStartupBlocked = true;
     currentFolder = '';
     currentFolderNameEl.textContent = '初始化未完成';
+    setMemoIntro([]);
     folderListEl.innerHTML = `
-        <div class="folder-item" style="cursor: default; opacity: 0.8;">
-            <span>${escapeHtml(message)}</span>
+        <div class="folder-item folder-item-static">
+            <span class="nav-label">初始化未完成</span>
         </div>
     `;
-    memoGridEl.innerHTML = `
-        <div style="padding: 20px; color: var(--danger-color); line-height: 1.7;">
-            ${escapeHtml(message)}
-        </div>
-    `;
+    memoGridEl.innerHTML = renderEmptyState(message, 'error');
+}
+
+function renderEmptyState(message, tone = '') {
+    const toneAttr = tone ? ` data-tone="${tone}"` : '';
+    return `<div class="empty-state"${toneAttr}>${escapeHtml(message)}</div>`;
+}
+
+function setMemoIntro(items) {
+    if (!memoIntroEl) return;
+    memoIntroEl.innerHTML = items
+        .filter(Boolean)
+        .map(item => `<span class="intro-item">${escapeHtml(item)}</span>`)
+        .join('');
+}
+
+// ========== 弹出层（菜单 / 参数面板） ==========
+const openPopovers = new Set();
+const popoverTriggers = new WeakMap();
+
+function openPopover(trigger, popover) {
+    openPopovers.forEach(p => { if (p !== popover) closePopover(p); });
+    popover.hidden = false;
+    fitPopoverInDialog(popover);
+    trigger.setAttribute('aria-expanded', 'true');
+    popoverTriggers.set(popover, trigger);
+    openPopovers.add(popover);
+}
+
+// 弹窗里的面板不越过底栏：高度限制在面板顶边与底栏之间，放不下时面板内滚动
+function fitPopoverInDialog(popover) {
+    popover.style.maxHeight = '';
+    const dialog = popover.closest('.modal-content, .editor-container, .workbench-container');
+    if (!dialog) return;
+    const footer = dialog.querySelector('.modal-footer, .editor-footer');
+    const limit = footer ? footer.getBoundingClientRect().top : dialog.getBoundingClientRect().bottom;
+    const room = Math.floor(limit - popover.getBoundingClientRect().top - 8);
+    if (room < popover.scrollHeight) popover.style.maxHeight = `${Math.max(room, 96)}px`;
+}
+
+function closePopover(popover) {
+    if (!popover || popover.hidden) return;
+    popover.hidden = true;
+    popoverTriggers.get(popover)?.setAttribute('aria-expanded', 'false');
+    openPopovers.delete(popover);
+}
+
+function closeAllPopovers() {
+    Array.from(openPopovers).forEach(closePopover);
+}
+
+function bindPopover(trigger, popover, { onOpen } = {}) {
+    if (!trigger || !popover) return;
+    trigger.setAttribute('aria-expanded', 'false');
+    popoverTriggers.set(popover, trigger);
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!popover.hidden) {
+            closePopover(popover);
+            return;
+        }
+        onOpen?.();
+        openPopover(trigger, popover);
+        popover.querySelector('input, button:not([disabled]), [role="menuitem"]')?.focus();
+    });
+}
+
+document.addEventListener('click', (e) => {
+    const path = e.composedPath();
+    Array.from(openPopovers).forEach(popover => {
+        const trigger = popoverTriggers.get(popover);
+        if (!path.includes(popover) && !path.includes(trigger)) closePopover(popover);
+    });
+});
+
+// Esc 先关闭最上层的弹出层；返回 true 表示已处理
+function closeTopPopover() {
+    const last = Array.from(openPopovers).pop();
+    if (!last) return false;
+    closePopover(last);
+    popoverTriggers.get(last)?.focus();
+    return true;
+}
+
+function formatMemoTime(ts) {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 window.alert = (message) => {
@@ -169,7 +257,7 @@ function setupEventListeners() {
         refreshBtn.classList.add('spinning');
         try {
             await loadFolders();
-            if (currentFolder) await loadMemos(currentFolder);
+            await refreshMemoList();
             // 确保动画至少持续一秒，增加交互感
             await new Promise(resolve => setTimeout(resolve, 800));
         } finally {
@@ -177,32 +265,20 @@ function setupEventListeners() {
         }
     };
 
-    // 搜索范围切换
-    const searchScopeBtn = document.getElementById('search-scope-btn');
-    searchScopeBtn.onclick = () => {
-        if (searchScope === 'folder') {
-            searchScope = 'global';
-        } else if (searchScope === 'global') {
-            searchScope = 'semantic';
-        } else {
-            searchScope = 'folder';
-        }
-        
-        // 更新按钮 UI
-        searchScopeBtn.classList.toggle('active', searchScope !== 'folder');
-        
-        // 切换图标和标题
-        if (searchScope === 'global') {
-            searchScopeBtn.title = '当前范围：全局搜索';
-            searchScopeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`;
-        } else if (searchScope === 'semantic') {
-            searchScopeBtn.title = '当前范围：语义级全局检索';
-            searchScopeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>`;
-        } else {
-            searchScopeBtn.title = '当前范围：文件夹内';
-            searchScopeBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`;
-        }
-    };
+    // 搜索范围切换：范围本身就是当前视图，没有搜索词时也切换列表、标题和侧边栏选中
+    document.querySelectorAll('#search-scope-tabs .memo-tab').forEach(tab => {
+        tab.onclick = () => {
+            if (searchScope === tab.dataset.scope) return;
+            setSearchScope(tab.dataset.scope);
+
+            const term = searchInput.value.trim();
+            if (term) {
+                debouncedSearch(term);
+            } else {
+                refreshMemoList();
+            }
+        };
+    });
 
     // 搜索 (增加防抖保护)
     const debouncedSearch = debounce((term) => {
@@ -214,37 +290,40 @@ function setupEventListeners() {
             const term = searchInput.value.trim();
             if (term) {
                 debouncedSearch(term);
-            } else if (currentFolder) {
-                loadMemos(currentFolder);
+            } else {
+                refreshMemoList();
             }
         }
     };
 
     // 批量管理
     const batchEditBtn = document.getElementById('batch-edit-btn');
-    const batchActions = document.getElementById('batch-actions');
     const cancelBatchBtn = document.getElementById('cancel-batch-btn');
 
-    batchEditBtn.onclick = () => {
-        isBatchMode = true;
-        batchEditBtn.style.display = 'none';
-        batchActions.style.display = 'flex';
+    // 批量模式下工具条替换页头按钮，由 body 类切换显示
+    const setBatchMode = (enabled) => {
+        isBatchMode = enabled;
+        document.body.classList.toggle('memo-batch-mode', enabled);
+        closeAllPopovers();
         selectedMemos.clear();
         updateBatchUI();
         renderMemos(allMemos); // 重新渲染以显示选择状态
+        (enabled ? cancelBatchBtn : batchEditBtn).focus();
     };
 
-    cancelBatchBtn.onclick = () => {
-        isBatchMode = false;
-        batchEditBtn.style.display = 'flex';
-        batchActions.style.display = 'none';
-        selectedMemos.clear();
-        updateBatchUI();
-        renderMemos(allMemos);
-    };
+    batchEditBtn.onclick = () => setBatchMode(true);
+    cancelBatchBtn.onclick = () => setBatchMode(false);
 
     document.getElementById('batch-delete-btn').onclick = handleBatchDelete;
-    document.getElementById('batch-move-select').onchange = handleBatchMove;
+    bindPopover(
+        document.getElementById('batch-move-btn'),
+        document.getElementById('batch-move-menu'),
+        { onOpen: renderBatchMoveMenu }
+    );
+    bindPopover(
+        document.getElementById('selected-count'),
+        document.getElementById('batch-selection-popover')
+    );
     document.getElementById('batch-workbench-btn').onclick = () => {
         const selected = allMemos.filter(m => {
             const memoId = `${m.folderName || currentFolder}:::${m.name}`;
@@ -255,26 +334,43 @@ function setupEventListeners() {
         }
     };
 
-    // 悬浮条清空
+    // 已选列表中的清空
     document.getElementById('batch-bar-clear').onclick = () => {
         selectedMemos.clear();
+        closeAllPopovers();
         updateBatchUI();
         renderMemos(allMemos);
     };
 
-    // 新建日记弹窗
+    // 新建日记弹窗：署名、日期、文件名收进参数面板，标题下只显示摘要
     document.getElementById('create-memo-btn').onclick = () => {
         const now = new Date();
         newMemoDateInput.value = now.toISOString().split('T')[0];
         newMemoMaidInput.value = forumConfig.replyUsername || forumConfig.username || '';
+        setCreateNotice('');
+        closeAllPopovers();
+        updateCreateSummary();
         createModal.style.display = 'flex';
     };
 
     document.getElementById('close-create-modal-btn').onclick = () => {
+        closeAllPopovers();
         createModal.style.display = 'none';
     };
 
-    document.getElementById('submit-new-memo-btn').onclick = handleCreateMemo;
+    bindPopover(
+        document.getElementById('create-options-btn'),
+        document.getElementById('create-options-popover')
+    );
+    [newMemoMaidInput, newMemoDateInput, newMemoFilenameInput].forEach(input => {
+        input.addEventListener('input', updateCreateSummary);
+    });
+
+    // 校验失败时需要打开参数面板，阻止冒泡以免被外部点击立即关闭
+    document.getElementById('submit-new-memo-btn').onclick = (e) => {
+        e.stopPropagation();
+        handleCreateMemo();
+    };
 
     // 隐藏文件夹管理
     document.getElementById('manage-hidden-btn').onclick = openHiddenFoldersModal;
@@ -289,9 +385,21 @@ function setupEventListeners() {
     const kInput = document.getElementById('input-assoc-k');
     const kValueLabel = document.getElementById('label-k-value');
 
-    if (kInput) kInput.oninput = () => kValueLabel.textContent = kInput.value;
+    if (kInput) {
+        kInput.oninput = () => {
+            kValueLabel.textContent = kInput.value;
+            updateAssocSummary();
+        };
+    }
+    document.getElementById('input-assoc-boost')?.addEventListener('input', updateAssocSummary);
+
+    bindPopover(
+        document.getElementById('assoc-options-btn'),
+        document.getElementById('assoc-options-popover')
+    );
 
     document.getElementById('close-assoc-config-btn').onclick = () => {
+        closeAllPopovers();
         document.getElementById('assoc-config-modal').style.display = 'none';
     };
 
@@ -368,14 +476,27 @@ function setupEventListeners() {
         editorOverlay.classList.remove('active');
     };
 
-    document.getElementById('toggle-preview-btn').onclick = () => {
-        const isCollapsed = editorContainer.classList.toggle('preview-collapsed');
-        updateEditorPreviewToggle(isCollapsed);
-    };
+    // 编辑 / 分栏 / 预览 分段切换
+    const viewSwitch = document.getElementById('editor-view-switch');
+    const viewSegments = Array.from(viewSwitch.querySelectorAll('.memo-segment'));
+    viewSegments.forEach(segment => {
+        segment.onclick = () => setEditorView(segment.dataset.view);
+    });
+    viewSwitch.addEventListener('keydown', (e) => {
+        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+        if (!step) return;
+        e.preventDefault();
+        const index = viewSegments.findIndex(s => s.getAttribute('aria-checked') === 'true');
+        const next = viewSegments[(index + step + viewSegments.length) % viewSegments.length];
+        setEditorView(next.dataset.view);
+        next.focus();
+    });
+    setEditorView('split');
 
     editorTextarea.oninput = () => {
         renderPreview(editorTextarea.value);
     };
+    editorTitleInput.oninput = updateEditorHeading;
 
     document.getElementById('save-memo-btn').onclick = handleSaveMemo;
     document.getElementById('delete-memo-btn').onclick = handleDeleteMemo;
@@ -431,11 +552,13 @@ function setupEventListeners() {
     // 全局 Esc 键监听
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            // 优先级：确认弹窗 > 编辑器 > 新建弹窗
+            // 优先级：弹出层 > 确认弹窗 > 编辑器 > 新建弹窗
             const confirmModal = document.getElementById('custom-confirm-modal');
             const alertModal = document.getElementById('custom-alert-modal');
 
-            if (confirmModal && confirmModal.style.display === 'flex') {
+            if (closeTopPopover()) {
+                return;
+            } else if (confirmModal && confirmModal.style.display === 'flex') {
                 document.getElementById('confirm-cancel-btn').click();
             } else if (alertModal && alertModal.style.display === 'flex') {
                 document.getElementById('alert-ok-btn').click();
@@ -533,7 +656,8 @@ async function loadFolders() {
                 // 如果所有文件夹都被隐藏了或暂无文件夹
                 currentFolder = '';
                 currentFolderNameEl.textContent = '暂无可用文件夹';
-                memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">所有文件夹均已隐藏或暂无文件夹</div>';
+                setMemoIntro([]);
+                memoGridEl.innerHTML = renderEmptyState('所有文件夹均已隐藏或暂无文件夹');
             }
         }
     } catch (error) {
@@ -543,8 +667,6 @@ async function loadFolders() {
 
 function renderFolders(folders) {
     folderListEl.innerHTML = '';
-    const moveSelect = document.getElementById('batch-move-select');
-    moveSelect.innerHTML = '<option value="">-- 移动到文件夹 --</option>';
 
     // 过滤掉 MusicDiary 和隐藏文件夹
     const visibleFolders = folders.filter(f => f !== 'MusicDiary' && !hiddenFolders.has(f));
@@ -561,6 +683,7 @@ function renderFolders(folders) {
 
     // 更新 folderOrder 以包含新发现的文件夹
     folderOrder = visibleFolders;
+    visibleFolderNames = visibleFolders;
 
     // 分类逻辑
     const clusters = visibleFolders.filter(f => f.endsWith('簇'));
@@ -580,22 +703,30 @@ function renderFolders(folders) {
 
         const header = document.createElement('div');
         header.className = 'category-header';
+        header.setAttribute('role', 'button');
+        header.tabIndex = 0;
         header.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             <span>${cat.name}</span>
+            <svg class="category-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
         `;
         header.onclick = () => toggleCategory(cat.id);
+        header.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleCategory(cat.id);
+            }
+        };
 
         const content = document.createElement('div');
         content.className = 'category-content';
 
         cat.folders.forEach(folder => {
             const item = document.createElement('div');
-            item.className = `folder-item ${folder === currentFolder ? 'active' : ''}`;
+            item.className = `folder-item ${searchScope === 'folder' && folder === currentFolder ? 'active' : ''}`;
             item.setAttribute('draggable', 'true');
             item.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                <span>${escapeHtml(folder)}</span>
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span class="nav-label">${escapeHtml(folder)}</span>
             `;
             item.onclick = () => selectFolder(folder);
 
@@ -655,14 +786,6 @@ function renderFolders(folders) {
             };
 
             content.appendChild(item);
-
-            // 批量移动下拉框
-            if (folder !== currentFolder) {
-                const opt = document.createElement('option');
-                opt.value = folder;
-                opt.textContent = folder;
-                moveSelect.appendChild(opt);
-            }
         });
 
         catEl.appendChild(header);
@@ -684,38 +807,89 @@ async function toggleCategory(catId) {
     await saveMemoConfig();
 }
 
+const SEARCH_PLACEHOLDERS = {
+    folder: '在当前文件夹中搜索，回车确认',
+    global: '在全部日记中搜索，回车确认',
+    semantic: '描述想找的内容，回车进行语义检索'
+};
+
+function setSearchScope(scope) {
+    searchScope = scope;
+    document.querySelectorAll('#search-scope-tabs .memo-tab').forEach(tab => {
+        tab.setAttribute('aria-selected', String(tab.dataset.scope === scope));
+    });
+    searchInput.placeholder = SEARCH_PLACEHOLDERS[scope];
+    syncFolderHighlight();
+}
+
+// 只有“当前文件夹”范围才在侧边栏标出文件夹；全部日记和语义检索不属于任何一个文件夹
+function syncFolderHighlight() {
+    const activeFolder = searchScope === 'folder' ? currentFolder : null;
+    document.querySelectorAll('.folder-item').forEach(el => {
+        el.classList.toggle('active', el.querySelector('span')?.textContent === activeFolder);
+    });
+}
+
 async function selectFolder(folderName) {
     if (memoStartupBlocked) return;
     currentFolder = folderName;
+    // 点侧边栏文件夹即回到“当前文件夹”范围
+    if (searchScope !== 'folder') setSearchScope('folder');
     currentFolderNameEl.textContent = folderName;
-
-    // 更新 UI 选中状态
-    document.querySelectorAll('.folder-item').forEach(el => {
-        el.classList.toggle('active', el.querySelector('span').textContent === folderName);
-    });
+    syncFolderHighlight();
 
     await loadMemos(folderName);
 }
 
+// 全部日记：并行读取所有可见文件夹，按修改时间倒序合成一个列表
+async function loadAllMemos() {
+    const folders = visibleFolderNames.slice();
+    try {
+        memoGridEl.innerHTML = renderEmptyState('加载中...');
+        const lists = await Promise.all(folders.map(async folder => {
+            const data = await apiFetch(`/folder/${encodeURIComponent(folder)}`);
+            return (data.memos || data.notes || []).map(memo => ({ ...memo, folderName: memo.folderName || folder }));
+        }));
+        // 加载期间换了范围或输入了搜索词，就不再覆盖列表
+        if (searchScope !== 'global' || searchInput.value.trim()) return;
+        const timeOf = memo => new Date(memo.lastModified).getTime() || 0;
+        allMemos = lists.flat().sort((a, b) => timeOf(b) - timeOf(a));
+        renderMemos(allMemos);
+    } catch (error) {
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState(`加载失败: ${error.message}`, 'error');
+    }
+}
+
 async function loadMemos(folderName) {
     try {
-        memoGridEl.innerHTML = '<div style="padding: 20px;">加载中...</div>';
+        memoGridEl.innerHTML = renderEmptyState('加载中...');
         const data = await apiFetch(`/folder/${encodeURIComponent(folderName)}`);
         const memos = data.memos || data.notes || [];
         console.log('[MemoCenter] Raw data from folder API:', memos);
         allMemos = memos; // 更新全局变量，修复批量管理模式显示为空的问题
         renderMemos(memos);
     } catch (error) {
-        memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">加载失败: ${error.message}</div>`;
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState(`加载失败: ${error.message}`, 'error');
     }
 }
 
 function renderMemos(memos) {
     memoGridEl.innerHTML = '';
+    // 全部日记视图（无搜索词）：每行都写所在文件夹，简介里补一句文件夹数
+    const isAllView = searchScope === 'global' && !searchInput.value.trim();
     if (memos.length === 0) {
-        memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">该文件夹下暂无日记</div>';
+        setMemoIntro(['0 篇日记']);
+        memoGridEl.innerHTML = renderEmptyState(isAllView ? '还没有日记' : '该文件夹下暂无日记');
         return;
     }
+    const folderCount = isAllView ? new Set(memos.map(memo => memo.folderName)).size : 0;
+    setMemoIntro([
+        `${memos.length} 篇日记`,
+        folderCount ? `${folderCount} 个文件夹` : '',
+        isBatchMode ? '点击行选择或取消选择' : ''
+    ]);
 
     const gridWidth = memoGridEl.offsetWidth;
     const columns = window.innerWidth > 1200 ? 3 : (window.innerWidth > 800 ? 2 : 1);
@@ -726,41 +900,31 @@ function renderMemos(memos) {
         const memoFolder = memo.folderName || currentFolder;
         const memoId = `${memoFolder}:::${memo.name}`;
         const isSelected = selectedMemos.has(memoId);
-        card.className = `memo-card glass glass-hover ${isBatchMode ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`;
-
-        const dateStr = new Date(memo.lastModified).toLocaleString();
+        card.className = `memo-card ${isBatchMode ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`;
 
         const previewText = memo.preview || '无预览内容';
 
         card.dataset.memoId = memoId;
         card.dataset.pretextWidth = String(Math.max(estimatedCardWidth, 240));
 
+        // 每行只显示一次时间：文件名里的时间优先，否则用修改时间
         const titleParts = parseStructuredMemoName(memo.name);
-        const titleHtml = titleParts
-            ? `
-                <h3 class="memo-title structured" title="${escapeHtml(memo.name)}">
-                    <span class="memo-format-tag">${escapeHtml(titleParts.format)}</span>
-                    <span class="memo-readable-title">${escapeHtml(titleParts.title)}</span>
-                    <span class="memo-readable-time">${escapeHtml(titleParts.readableTime)}</span>
-                </h3>
-            `
-            : `<h3 title="${escapeHtml(memo.name)}">${escapeHtml(memo.name)}</h3>`;
+        const timeText = titleParts?.readableTime || formatMemoTime(memo.lastModified);
+        const crossFolder = memo.folderName && (searchScope !== 'folder' || memo.folderName !== currentFolder);
+        const metaText = [crossFolder ? memo.folderName : '', timeText].filter(Boolean).join(' · ');
+        const modifiedText = formatMemoTime(memo.lastModified);
 
         card.innerHTML = `
-            <div>
-                ${titleHtml}
+            <div class="memo-card-copy">
+                <div class="memo-card-head">
+                    <h3 class="memo-title" title="${escapeHtml(memo.name)}">${escapeHtml(getMemoDisplayTitle(memo.name))}</h3>
+                    <span class="memo-card-meta"${modifiedText ? ` title="修改于 ${modifiedText}"` : ''}>${escapeHtml(metaText)}</span>
+                </div>
                 <p class="preview">${escapeHtml(previewText)}</p>
             </div>
-            <div class="meta">
-                <span>📅 ${dateStr}</span>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    ${memo.folderName && memo.folderName !== currentFolder ? `<span style="opacity:0.6; font-size:0.7rem;">📁 ${escapeHtml(memo.folderName)}</span>` : ''}
-                    <button class="association-btn" title="记忆联想">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
-                    联想
-                </button>
-                </div>
-            </div>
+            <button type="button" class="memo-icon-btn association-btn" title="记忆联想" aria-label="记忆联想">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
+            </button>
         `;
 
         card.onclick = (e) => {
@@ -818,40 +982,66 @@ function scheduleVisibleMemoPretextEstimation() {
     }
 }
 
+// 选择数只在工具条上显示一次；点开计数按钮查看或移除已选项
 function updateBatchUI() {
     const count = selectedMemos.size;
-    document.getElementById('selected-count').textContent = `已选 ${count} 项`;
-
-    const floatingBar = document.getElementById('batch-floating-bar');
-    const barCount = document.getElementById('batch-bar-count');
-    const barItems = document.getElementById('batch-bar-items');
-
-    if (count > 0 && isBatchMode) {
-        floatingBar.style.display = 'flex';
-        barCount.textContent = `已选择 ${count} 项`;
-
-        // 渲染选中项列表
-        barItems.innerHTML = '';
-        selectedMemos.forEach(memoId => {
-            const [folder, name] = memoId.split(':::');
-            const item = document.createElement('div');
-            item.className = 'batch-item-tag';
-            item.innerHTML = `
-                <div class="item-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-                <div class="item-folder">📁 ${escapeHtml(folder)}</div>
-                <div class="batch-item-remove" title="移除">×</div>
-            `;
-            item.querySelector('.batch-item-remove').onclick = (e) => {
-                e.stopPropagation();
-                selectedMemos.delete(memoId);
-                updateBatchUI();
-                renderMemos(allMemos);
-            };
-            barItems.appendChild(item);
-        });
-    } else {
-        floatingBar.style.display = 'none';
+    document.getElementById('selected-count-label').textContent = `已选 ${count} 项`;
+    ['selected-count', 'batch-move-btn', 'batch-delete-btn', 'batch-workbench-btn'].forEach(id => {
+        document.getElementById(id).disabled = count === 0;
+    });
+    if (count === 0) {
+        closePopover(document.getElementById('batch-selection-popover'));
+        closePopover(document.getElementById('batch-move-menu'));
     }
+
+    const barItems = document.getElementById('batch-bar-items');
+    barItems.innerHTML = '';
+    selectedMemos.forEach(memoId => {
+        const [folder, name] = memoId.split(':::');
+        const item = document.createElement('div');
+        item.className = 'batch-item-row';
+        item.innerHTML = `
+            <div class="batch-item-copy">
+                <div class="item-name" title="${escapeHtml(name)}">${escapeHtml(getMemoDisplayTitle(name))}</div>
+                <div class="item-folder">${escapeHtml(folder)}</div>
+            </div>
+            <button type="button" class="memo-icon-btn memo-icon-btn-sm batch-item-remove" title="移出选择" aria-label="移出选择">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        `;
+        item.querySelector('.batch-item-remove').onclick = () => {
+            selectedMemos.delete(memoId);
+            updateBatchUI();
+            renderMemos(allMemos);
+        };
+        barItems.appendChild(item);
+    });
+}
+
+function renderBatchMoveMenu() {
+    const menu = document.getElementById('batch-move-menu');
+    const targets = visibleFolderNames.filter(folder => folder !== currentFolder);
+    menu.innerHTML = '<div class="memo-menu-label">移动到</div>';
+    if (targets.length === 0) {
+        menu.insertAdjacentHTML('beforeend', '<div class="memo-menu-empty">没有可移动到的文件夹</div>');
+        return;
+    }
+    targets.forEach(folder => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'memo-menu-item';
+        item.setAttribute('role', 'menuitem');
+        item.textContent = folder;
+        item.onclick = () => {
+            closeAllPopovers();
+            handleBatchMove(folder);
+        };
+        menu.appendChild(item);
+    });
+}
+
+function getMemoDisplayTitle(name) {
+    return parseStructuredMemoName(name)?.title || String(name).replace(/\.[^.]+$/, '');
 }
 
 async function openMemo(memo) {
@@ -861,20 +1051,14 @@ async function openMemo(memo) {
         // 跳转逻辑：如果点击的是非当前文件夹的日记，更新当前文件夹状态
         if (memoFolder !== currentFolder) {
             currentFolder = memoFolder;
-            // 更新侧边栏 UI 选中状态
-            document.querySelectorAll('.folder-item').forEach(el => {
-                const span = el.querySelector('span');
-                if (span && span.textContent === memoFolder) {
-                    el.classList.add('active');
-                } else {
-                    el.classList.remove('active');
-                }
-            });
+            // 更新侧边栏 UI 选中状态（全部日记 / 语义检索范围下不标文件夹）
+            syncFolderHighlight();
         }
 
         editorStatus.textContent = '正在加载内容...';
         editorOverlay.classList.add('active');
         editorTitleInput.value = memo.name;
+        updateEditorHeading();
         editorTextarea.value = '';
         editorPreview.innerHTML = '';
 
@@ -887,21 +1071,39 @@ async function openMemo(memo) {
         };
 
         editorTextarea.value = data.content;
+        updateEditorHeading();
         renderPreview(data.content);
-        editorStatus.textContent = `最后修改: ${new Date(memo.lastModified).toLocaleString()}`;
+        editorStatus.textContent = memo.lastModified ? `修改于 ${formatMemoTime(memo.lastModified)}` : '';
     } catch (error) {
         alert('读取日记失败: ' + error.message);
         editorOverlay.classList.remove('active');
     }
 }
 
-function updateEditorPreviewToggle(isCollapsed = editorContainer.classList.contains('preview-collapsed')) {
-    const togglePreviewBtn = document.getElementById('toggle-preview-btn');
-    if (!togglePreviewBtn) return;
+// 编辑器标题与列表一致：结构化文件名取其中的标题；
+// 普通文件名先看正文开头的 Markdown 标题，没有再用去掉扩展名的文件名
+function getEditorHeading(fileName, content) {
+    if (parseStructuredMemoName(fileName)?.title) return getMemoDisplayTitle(fileName);
+    const heading = String(content || '').split(/\r?\n/, 20)
+        .map(line => line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/))
+        .find(Boolean);
+    return heading ? heading[1] : getMemoDisplayTitle(fileName);
+}
 
-    togglePreviewBtn.title = isCollapsed ? '展开渲染区' : '收纳渲染区';
-    togglePreviewBtn.setAttribute('aria-label', togglePreviewBtn.title);
-    togglePreviewBtn.setAttribute('aria-expanded', String(!isCollapsed));
+function updateEditorHeading() {
+    const fileName = editorTitleInput.value.trim();
+    editorHeadingEl.textContent = fileName ? getEditorHeading(fileName, editorTextarea.value) : '未命名日记';
+}
+
+// view: 'edit' 只看源码，'split' 分栏，'preview' 只看渲染
+function setEditorView(view) {
+    editorContainer.classList.toggle('preview-collapsed', view === 'edit');
+    editorContainer.classList.toggle('preview-only', view === 'preview');
+    document.querySelectorAll('#editor-view-switch .memo-segment').forEach(segment => {
+        const checked = segment.dataset.view === view;
+        segment.setAttribute('aria-checked', String(checked));
+        segment.tabIndex = checked ? 0 : -1;
+    });
 }
 
 function renderPreview(content) {
@@ -968,6 +1170,7 @@ async function handleSaveMemo() {
         currentMemo.file = savedFileName;
         currentMemo.content = newContent;
         editorTitleInput.value = savedFileName;
+        updateEditorHeading();
 
         editorStatus.textContent = '保存成功 ' + new Date().toLocaleTimeString();
 
@@ -1038,10 +1241,22 @@ async function handleCreateMemo() {
     const tags = newMemoTagsInput.value.trim();
     const content = newMemoContentInput.value.trim();
 
-    if (!date || !maid || !content) {
-        alert('请填写完整信息');
+    // 缺项时就地提示；署名和日期在参数面板里，需要先打开面板
+    const optionsBtn = document.getElementById('create-options-btn');
+    const optionsPopover = document.getElementById('create-options-popover');
+    if (!maid || !date) {
+        setCreateNotice(!maid ? '请填写署名' : '请选择日期', 'error');
+        openPopover(optionsBtn, optionsPopover);
+        (!maid ? newMemoMaidInput : newMemoDateInput).focus();
         return;
     }
+    if (!content) {
+        setCreateNotice('请填写内容', 'error');
+        newMemoContentInput.focus();
+        return;
+    }
+    setCreateNotice('');
+    closeAllPopovers();
 
     const submitBtn = document.getElementById('submit-new-memo-btn');
     submitBtn.disabled = true;
@@ -1091,15 +1306,36 @@ Date:「始」${date}「末」,`;
         // 延迟刷新，给后端一点处理时间
         setTimeout(async () => {
             await loadFolders();
-            if (currentFolder) await loadMemos(currentFolder);
+            await refreshMemoList();
         }, 1000);
 
     } catch (error) {
-        alert('发布失败: ' + error.message);
+        setCreateNotice('发布失败: ' + error.message, 'error');
     } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = '🚀 发布';
+        submitBtn.textContent = '发布';
     }
+}
+
+function setCreateNotice(message, tone = '') {
+    const notice = document.getElementById('create-form-notice');
+    if (!notice) return;
+    notice.textContent = message;
+    if (tone) notice.dataset.tone = tone;
+    else delete notice.dataset.tone;
+}
+
+// 参数面板收起时，标题下的摘要说明当前署名、日期和文件名
+function updateCreateSummary() {
+    const summary = document.getElementById('create-summary');
+    if (!summary) return;
+    const maid = newMemoMaidInput.value.trim();
+    const fileName = newMemoFilenameInput.value.trim();
+    summary.textContent = [
+        maid ? `署名 ${maid}` : '未署名',
+        newMemoDateInput.value || '未选日期',
+        fileName ? `文件名 ${fileName}` : '文件名自动生成'
+    ].join(' · ');
 }
 
 async function searchMemos(term) {
@@ -1110,7 +1346,7 @@ async function searchMemos(term) {
     searchAbortController = new AbortController();
 
     try {
-        memoGridEl.innerHTML = '<div style="padding: 20px;">搜索中...</div>';
+        memoGridEl.innerHTML = renderEmptyState('搜索中...');
 
         if (searchScope === 'semantic') {
             await performSemanticSearch(term);
@@ -1140,7 +1376,8 @@ async function searchMemos(term) {
             console.log('搜索请求已取消:', term);
             return;
         }
-        memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">搜索失败: ${error.message}</div>`;
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState(`搜索失败: ${error.message}`, 'error');
     } finally {
         // 如果当前 controller 还是自己，则清空
         if (searchAbortController && !searchAbortController.signal.aborted) {
@@ -1197,14 +1434,16 @@ search_all_knowledge_bases:「始」true「末」
         if (output) {
             processSemanticSearchResults(output, query);
         } else {
-            memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">语义搜索未返回结果</div>';
+            setMemoIntro([]);
+            memoGridEl.innerHTML = renderEmptyState('语义搜索未返回结果');
         }
     } catch (err) {
         if (err.name === 'AbortError') return;
         // 竞态检查：如果已被新搜索取代，静默退出
         if (myAbortController !== searchAbortController) return;
         console.error('[Memo] Semantic search error:', err);
-        memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">语义搜索失败: ${err.message}</div>`;
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState(`语义搜索失败: ${err.message}`, 'error');
     }
 }
 
@@ -1327,7 +1566,8 @@ function processSemanticSearchResults(output, query) {
     currentFolderNameEl.textContent = `语义级全局检索: ${query}`;
 
     if (results.length === 0) {
-        memoGridEl.innerHTML = '<div style="padding: 20px; color: var(--text-secondary);">语义搜索返回了内容，但未识别到可打开的日记路径</div>';
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState('语义搜索返回了内容，但未识别到可打开的日记路径');
         return;
     }
 
@@ -1389,15 +1629,11 @@ async function handleBatchDelete() {
     }
 }
 
-async function handleBatchMove(e) {
-    const targetFolder = e.target.value;
+async function handleBatchMove(targetFolder) {
     if (!targetFolder || selectedMemos.size === 0) return;
 
     const confirmed = await customConfirm(`确定要将选中的 ${selectedMemos.size} 项日记移动到 "${targetFolder}" 吗？`, '📦 批量移动确认');
-    if (!confirmed) {
-        e.target.value = ''; // 重置下拉框
-        return;
-    }
+    if (!confirmed) return;
 
     try {
         const sourceNotes = Array.from(selectedMemos).map(memoId => {
@@ -1419,8 +1655,6 @@ async function handleBatchMove(e) {
         await loadFolders();
     } catch (error) {
         alert('批量移动失败: ' + error.message);
-    } finally {
-        e.target.value = ''; // 重置下拉框
     }
 }
 
@@ -1457,18 +1691,17 @@ function openHiddenFoldersModal() {
     listEl.innerHTML = '';
 
     if (hiddenFolders.size === 0) {
-        listEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-secondary);">暂无隐藏的文件夹</div>';
+        listEl.innerHTML = renderEmptyState('暂无隐藏的文件夹');
     } else {
         hiddenFolders.forEach(folder => {
             const item = document.createElement('div');
-            item.className = 'folder-item';
-            item.style.justifyContent = 'space-between';
+            item.className = 'hidden-folder-row';
             item.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                    <span>${escapeHtml(folder)}</span>
-                </div>
-                <button class="glass-btn" style="padding: 4px 10px; font-size: 0.8rem;">取消隐藏</button>
+                <svg class="hidden-folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span class="hidden-folder-name">${escapeHtml(folder)}</span>
+                <button type="button" class="memo-icon-btn" title="取消隐藏「${escapeHtml(folder)}」" aria-label="取消隐藏「${escapeHtml(folder)}」">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
             `;
             item.querySelector('button').onclick = async () => {
                 hiddenFolders.delete(folder);
@@ -1483,12 +1716,23 @@ function openHiddenFoldersModal() {
     modal.style.display = 'flex';
 }
 
+// 按当前范围重载列表：有搜索词就重新搜索；否则文件夹范围读当前文件夹，
+// 全部日记读所有可见文件夹，语义检索等用户输入描述
 async function refreshMemoList() {
     if (memoStartupBlocked) return;
     const term = searchInput.value.trim();
     if (term) {
         await searchMemos(term);
+    } else if (searchScope === 'global') {
+        currentFolderNameEl.textContent = '全部日记';
+        await loadAllMemos();
+    } else if (searchScope === 'semantic') {
+        currentFolderNameEl.textContent = '语义检索';
+        allMemos = [];
+        setMemoIntro([]);
+        memoGridEl.innerHTML = renderEmptyState('描述想找的内容，回车进行语义检索');
     } else if (currentFolder) {
+        currentFolderNameEl.textContent = currentFolder;
         await loadMemos(currentFolder);
     }
 }
@@ -1599,6 +1843,9 @@ function parseStructuredMemoName(fileName) {
     if (titleTailMatch && !formatFromExt) {
         rawTitle = titleTailMatch[1];
         format = titleTailMatch[2];
+    } else if (titleTailMatch && /^(md|txt|markdown)$/i.test(titleTailMatch[2])) {
+        // 旧命名“标题-md.txt”：尾缀只是格式标记，不进标题
+        rawTitle = titleTailMatch[1];
     }
 
     if (!format) return null;

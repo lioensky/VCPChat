@@ -1,283 +1,804 @@
-/*
- * 全局和基础样式
- * 使用主程序传入的 CSS 变量进行统一样式
- */
+/* Translator: a full-window shell with a navigation column and a framed
+   content panel. The sidebar picks the target language; the panel has an
+   18px title row with the one primary action and a model menu, then a single
+   card holding source and result. Every color comes from the theme variables
+   in styles/themes.css, so the light and dark themes both follow without
+   per-theme overrides. */
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --tr-ink: var(--primary-text);
+    --tr-ink-2: var(--secondary-text);
+    --tr-ink-3: color-mix(in srgb, var(--secondary-text) 78%, transparent);
+    --tr-ink-4: color-mix(in srgb, var(--secondary-text) 56%, transparent);
+    --tr-ground: var(--primary-bg);
+    --tr-panel: var(--secondary-bg);
+    --tr-surface: color-mix(in srgb, var(--primary-text) 3.5%, transparent);
+    --tr-line-2: color-mix(in srgb, var(--primary-text) 10%, transparent);
+    --tr-line-3: color-mix(in srgb, var(--primary-text) 14%, transparent);
+    --tr-line-4: color-mix(in srgb, var(--primary-text) 20%, transparent);
+    --tr-hover: color-mix(in srgb, var(--primary-text) 6%, transparent);
+    --tr-active: color-mix(in srgb, var(--primary-text) 10%, transparent);
+    --tr-accent: var(--button-bg);
+    --tr-focus-line: var(--tr-accent);
+    --tr-focus-ring: color-mix(in srgb, var(--tr-accent) 18%, transparent);
+    --tr-danger: var(--danger-color);
+    --tr-on-danger: var(--text-on-accent);
+    --tr-success: var(--success-color);
+    --tr-warning: var(--highlight-text);
+    --tr-thumb-off: var(--secondary-text);
+    --tr-shadow: color-mix(in srgb, var(--tertiary-bg) 72%, transparent);
+    --tr-radius-xs: 4px;
+    --tr-radius-sm: 8px;
+    --tr-radius-md: 12px;
+    --tr-radius-lg: 16px;
+    --tr-radius-xl: 20px;
     margin: 0;
-    padding: 0;
-    height: 100vh;
+    font: 400 13px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    color: var(--tr-ink);
     overflow: hidden;
-    /* background-color: var(--primary-bg); */ /* Let the wallpaper show through */
-    color: var(--primary-text);
-    display: flex; /* 使用 Flexbox 布局 */
-    flex-direction: column;
-    /* Add some padding to the body to create space around the container */
-    padding: 15px;
+    background-color: var(--tr-ground);
+    background-image: none;
+}
+
+/* A working page reads better on a plain surface than over the wallpaper.
+   The light accent is the same red as the danger colour, so focus there is
+   drawn in ink instead; otherwise a focused field looks like an error. */
+body.light-theme {
+    --tr-thumb-off: var(--secondary-bg);
+    --tr-shadow: color-mix(in srgb, var(--primary-text) 14%, transparent);
+    --tr-focus-line: color-mix(in srgb, var(--primary-text) 36%, transparent);
+    --tr-focus-ring: color-mix(in srgb, var(--primary-text) 7%, transparent);
+    background-image: none;
+}
+
+* {
     box-sizing: border-box;
 }
 
-.translator-container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 20px;
-    box-sizing: border-box;
-    gap: 15px; /* 调整元素间距 */
-
-    /* --- Frosted Glass Effect --- */
-    background-color: var(--panel-bg);
-    backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+button,
+input,
+textarea {
+    font: inherit;
+    color: inherit;
 }
 
-/* 头部样式 */
-.translator-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 15px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.translator-header h2 {
-    margin: 0;
-    font-size: 1.2em;
-    color: var(--primary-text);
-}
-
-.translator-controls {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-
-/* 输入控件 (下拉、输入框、按钮) 统一样式 */
-.translator-controls select,
-.translator-controls input[type="text"],
-.translator-controls button,
-#copyBtn {
-    padding: 7px 14px 8px; /* 调整 padding-top 使文本稍微向上偏移 */
-    border-radius: 8px; /* 更圆润的边角 */
-    border: 1px solid var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 0.95em;
-    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-    height: 36px; /* 统一高度 */
-    box-sizing: border-box; /* 确保 padding 和 border 包含在 height 内 */
-}
-
-/* --- 自定义下拉箭头 --- */
-.translator-controls select {
-    -webkit-appearance: none;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 24 24'%3E%3Cpath stroke='%23cccccc' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m19 9-7 7-7-7'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    padding-right: 30px; /* 为自定义箭头留出空间 */
-}
-
-.translator-controls select:focus,
-.translator-controls input[type="text"]:focus,
-.translator-main textarea:focus {
-    outline: none;
-    border-color: var(--highlight-text);
-    box-shadow: 0 0 0 2px rgba(var(--highlight-text), 0.3); /* 使用高亮色作为聚焦效果 */
-}
-
-/* 按钮专属样式 */
-.translator-controls button,
-#copyBtn {
-    background-color: var(--button-bg);
+button {
     cursor: pointer;
-    display: flex; /* 使用 Flexbox 布局 */
-    align-items: center; /* 垂直居中 */
-    justify-content: center; /* 水平居中 */
-}
-/* 为翻译按钮设置白色文本 */
-#translateBtn {
-    color: var(--text-on-accent); /* 确保翻译按钮文本与主题匹配 */
 }
 
-.translator-controls button:hover,
-#copyBtn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--highlight-text);
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
 }
 
-/* 主要内容区域 (文本框) */
-.translator-main {
-    display: flex;
-    flex-grow: 1;
-    gap: 20px;
-    min-height: 0; /* 防止 flex 溢出的关键 */
+:is(button, input, textarea):focus-visible {
+    outline: 2px solid var(--tr-focus-line);
+    outline-offset: 2px;
 }
 
-.translator-main textarea {
-    flex: 1;
-    padding: 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    /* Use a more solid background for readability on a frosted panel */
-    background-color: var(--secondary-bg);
-    color: var(--primary-text);
-    font-size: 1em;
-    line-height: 1.6;
-    resize: none;
-    box-sizing: border-box;
-}
-
-.translator-main textarea::placeholder {
-    color: var(--secondary-text);
-}
-
-/* “翻译中”的闪烁效果 */
-.translator-main textarea.streaming {
-    animation: shimmer 1.5s infinite linear;
-    background-image: linear-gradient(to right, var(--input-bg) 0%, var(--accent-bg) 50%, var(--input-bg) 100%);
-    background-size: 200% 100%;
-}
-
-@keyframes shimmer {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
-}
-
-
-/* 输出区域和复制按钮 */
-.output-area {
-    position: relative;
-    flex: 1;
-    display: flex;
-}
-
-#copyBtn {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 10;
-    padding: 6px;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#copyBtn svg {
-    width: 18px;
-    height: 18px;
-    color: var(--text-on-accent); /* 确保复制按钮图标与主题匹配 */
-}
-
-.copy-feedback {
-    font-size: 12px;
-    font-family: sans-serif;
-    color: var(--primary-text);
-}
-
-/* 滚动条样式 */
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover);
-}
-
-/* ------------------------- */
-/* --- 自定义标题栏 --- */
-/* ------------------------- */
-
-#custom-title-bar {
+/* ---- Window chrome ----
+   The main window has a 42px navigation bar above a 260px sidebar and a
+   rounded workspace with a 4px gutter. The standalone window keeps the same
+   geometry so switching between them does not shift anything. As a tab of
+   the main window, the host bar already sits above the page and its
+   navigation material shows through, so only the workspace is painted. */
+.window-controls {
     position: fixed;
     top: 0;
-    left: 0;
     right: 0;
-    height: 40px;
+    z-index: 10;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 15px;
-    background-color: transparent;
-    z-index: 1000;
-    -webkit-app-region: drag;
-    user-select: none;
-}
-
-#custom-title-bar .title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--primary-text);
+    height: 42px;
     -webkit-app-region: no-drag;
 }
 
-#custom-title-bar .window-controls {
-    display: flex;
-    gap: 10px;
-    -webkit-app-region: no-drag;
-}
-
-.window-control-btn {
-    width: 30px;
-    height: 30px;
-    border: none;
-    background-color: transparent;
-    color: var(--secondary-text);
-    border-radius: 8px;
-    display: flex;
+.window-btn {
+    appearance: none;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    width: 46px;
+    height: 42px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--tr-ink-2);
 }
 
-.window-control-btn:hover {
-    background-color: var(--button-hover-bg);
-    color: var(--primary-text);
+.window-btn:hover {
+    background: color-mix(in srgb, var(--primary-text) 15%, transparent);
+    color: var(--tr-ink);
 }
 
-#close-translator-btn:hover {
-    background-color: #e81123;
-    color: white;
+.window-btn-close:hover {
+    background: var(--tr-danger);
+    color: var(--tr-on-danger);
 }
 
-/* 调整 body 元素的 padding 以适应标题栏 */
-body {
-    padding-top: 40px; /* 15px 原有 padding + 40px 标题栏高度 */
+.nav-icon-btn {
+    appearance: none;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--tr-ink-3);
+    border-radius: var(--tr-radius-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
 }
 
-
-/* ------------------------- */
-/* --- 翻译设置模态窗 --- */
-/* ------------------------- */
-
-#translator-settings-btn svg {
-    width: 15px;
-    height: 15px;
+.nav-icon-btn svg {
+    display: block;
 }
 
-.settings-modal.hidden {
+.nav-icon-btn:hover:not(:disabled) {
+    color: var(--tr-ink);
+    background: var(--tr-hover);
+}
+
+/* ---- Shell ---- */
+.shell {
+    position: fixed;
+    inset: 42px 0 0;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-height: 0;
+    padding: 9px 8px 15px;
+    background: transparent;
+    overflow-y: auto;
+}
+
+.sidebar-title {
+    flex: 0 0 30px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    color: var(--tr-ink-2);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nav-group-label {
+    padding: 0 10px 4px;
+    color: var(--tr-ink-4);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+}
+
+.nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.nav-item {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 34px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--tr-ink-2);
+    font-size: 14px;
+    line-height: 20px;
+    text-align: left;
+}
+
+.nav-item:hover {
+    background: var(--tr-hover);
+    color: var(--tr-ink);
+}
+
+.nav-item[aria-checked="true"] {
+    background: var(--tr-active);
+    color: var(--tr-ink);
+    font-weight: 500;
+}
+
+.nav-icon {
+    flex: 0 0 20px;
+    width: 20px;
+    height: 16px;
+}
+
+/* Languages have no fitting pictogram, so each one shows its two-letter
+   code in a key cap. Every cap holds Latin capitals of one size and weight,
+   so the column reads as one set; the pencil below shares its 20px slot. */
+.nav-glyph {
+    display: inline-flex;
+    flex: 0 0 20px;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 16px;
+    border: 1px solid var(--tr-line-4);
+    border-radius: var(--tr-radius-xs);
+    font-size: 9px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.nav-item[aria-checked="true"] .nav-glyph {
+    border-color: currentcolor;
+}
+
+.nav-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.panel-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    margin: 0 4px 4px 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--vcp-ui-shell-radius, 14px);
+    background: var(--tr-panel);
+    overflow: hidden;
+}
+
+/* The window is frameless, so the strip above the shell drags it, like the
+   navigation bar of the main window. */
+.shell::before {
+    content: '';
+    position: absolute;
+    inset: -42px 0 auto;
+    height: 42px;
+    -webkit-app-region: drag;
+}
+
+html[data-vcp-embedded-app="true"] body {
+    background-color: transparent;
+}
+
+html[data-vcp-embedded-app="true"] .window-controls,
+html[data-vcp-embedded-app="true"] .shell::before {
     display: none;
 }
 
+html[data-vcp-embedded-app="true"] .shell {
+    inset: 0;
+}
+
+/* ---- Page ----
+   The header carries the one primary action, 翻译, next to the model menu.
+   Below it, source and result share one card: side by side while the page
+   is wide enough for two readable columns, stacked once it is not. The card
+   takes whatever height the window has, so the text never sits below the
+   fold. */
+.app-container {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+}
+
+.translator-page {
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+    container-type: inline-size;
+}
+
+.page-head,
+.page-head-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.page-head-row {
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 16px;
+}
+
+.page-head-copy {
+    flex: 1 1 260px;
+    min-width: 0;
+}
+
+/* Sized for the custom-language field, so picking 自定义 does not shift the
+   page down. */
+.page-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 30px;
+}
+
+.page-title {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 18px;
+    line-height: 26px;
+    font-weight: 600;
+}
+
+/* With 自定义 picked, the title reads "翻译为 [field]", so the language is
+   typed where it is shown instead of in a second field below. */
+.title-input {
+    flex: 0 1 240px;
+    min-width: 0;
+    height: 30px;
+    padding: 0 10px;
+    border: 0.5px solid var(--tr-line-3);
+    border-radius: var(--tr-radius-sm);
+    background: var(--tr-surface);
+    outline: none;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.page-intro {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: 20px;
+    color: var(--tr-ink-3);
+    font-size: 13px;
+    line-height: 20px;
+}
+
+.intro-item {
+    white-space: nowrap;
+}
+
+.intro-item + .intro-item::before {
+    content: '·';
+    padding: 0 6px;
+    color: var(--tr-ink-4);
+}
+
+.page-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.page-actions .nav-icon-btn {
+    width: 30px;
+    height: 30px;
+}
+
+.nav-icon-btn[aria-expanded="true"] {
+    background: var(--tr-active);
+    color: var(--tr-ink);
+}
+
+/* A filled 附加要求 stays visible as an accent icon while its row is shut. */
+.nav-icon-btn.has-value {
+    color: var(--tr-accent);
+}
+
+.translator-notice {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: var(--tr-radius-md);
+    background: var(--tr-surface);
+    color: var(--tr-ink-2);
+    font-size: 12px;
+    line-height: 18px;
+    overflow-wrap: anywhere;
+}
+
+.translator-notice[data-type="error"] {
+    background: color-mix(in srgb, var(--tr-danger) 8%, transparent);
+    color: var(--tr-danger);
+}
+
+.translator-notice[data-type="warning"] {
+    background: color-mix(in srgb, var(--tr-warning) 10%, transparent);
+    color: var(--tr-warning);
+}
+
+/* ---- Model menu ----
+   The three modes are a choice made now and then, so they live in a menu
+   on the sliders button. Each row shows the model it maps to; the active
+   one is named again only in the intro line. */
+.menu-anchor {
+    position: relative;
+    display: flex;
+}
+
+.menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: max-content;
+    min-width: 248px;
+    max-width: 320px;
+    padding: 6px;
+    border: 0.5px solid var(--tr-line-3);
+    border-radius: var(--tr-radius-md);
+    background: var(--tr-panel);
+    box-shadow: 0 12px 32px var(--tr-shadow);
+}
+
+.menu-label {
+    padding: 4px 10px 2px;
+    color: var(--tr-ink-4);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 40px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: var(--tr-radius-sm);
+    background: transparent;
+    color: var(--tr-ink);
+    text-align: left;
+}
+
+.menu-item:not([data-mode]) {
+    min-height: 34px;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+    background: var(--tr-hover);
+    outline: none;
+}
+
+.menu-icon,
+.menu-check {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.menu-icon {
+    color: var(--tr-ink-3);
+}
+
+.menu-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.menu-name {
+    font-size: 13px;
+    line-height: 18px;
+}
+
+.menu-meta {
+    overflow: hidden;
+    color: var(--tr-ink-4);
+    font-size: 12px;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.menu-meta:empty {
+    display: none;
+}
+
+.menu-check {
+    color: var(--tr-accent);
+    visibility: hidden;
+}
+
+.menu-item[aria-checked="true"] .menu-name {
+    font-weight: 500;
+}
+
+.menu-item[aria-checked="true"] .menu-check {
+    visibility: visible;
+}
+
+.menu-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--tr-line-2);
+}
+
+/* ---- Fields ---- */
+.translator-input {
+    width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    border: 0.5px solid var(--tr-line-3);
+    border-radius: var(--tr-radius-md);
+    background: var(--tr-surface);
+    outline: none;
+    font-size: 13px;
+    line-height: 20px;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.translator-input::placeholder,
+.title-input::placeholder,
+.footer-input::placeholder,
+.text-well::placeholder {
+    color: var(--tr-ink-4);
+    font-weight: 400;
+}
+
+.translator-input:focus,
+.title-input:focus {
+    border-color: var(--tr-focus-line);
+    box-shadow: 0 0 0 2px var(--tr-focus-ring);
+}
+
+.translator-input:focus-visible,
+.title-input:focus-visible,
+.footer-input:focus-visible,
+.text-well:focus-visible {
+    outline: none;
+}
+
+/* ---- Translate surface ---- */
+.translate-surface {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 360px;
+    border: 0.5px solid var(--tr-line-3);
+    border-radius: var(--tr-radius-lg);
+    overflow: hidden;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.translate-surface:has(#sourceText:focus, .footer-input:focus) {
+    border-color: var(--tr-focus-line);
+    box-shadow: 0 0 0 2px var(--tr-focus-ring);
+}
+
+.text-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* The result side sits on a faint tint, so the two halves read as input
+   and output at a glance. */
+.output-area {
+    border-left: 0.5px solid var(--tr-line-2);
+    background: var(--tr-surface);
+}
+
+/* The error keeps the pane's own surface and only adds a faint wash; the red
+   text already says what happened. */
+.output-area:has(#translatedText[data-state="error"]) {
+    --tr-error-wash: color-mix(in srgb, var(--tr-danger) 2%, transparent);
+
+    background:
+        linear-gradient(var(--tr-error-wash), var(--tr-error-wash)),
+        var(--tr-surface);
+}
+
+.pane-header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 8px 0 14px;
+}
+
+.pane-header h2 {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0;
+    color: var(--tr-ink-2);
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+}
+
+.pane-count {
+    color: var(--tr-ink-4);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+}
+
+.pane-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.nav-icon-btn.is-copied {
+    color: var(--tr-success);
+}
+
+.text-well {
+    display: block;
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    padding: 6px 14px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    outline: none;
+    resize: none;
+    font-size: 15px;
+    line-height: 24px;
+}
+
+/* Server errors often carry a long unbroken body, so they wrap anywhere
+   rather than run out of the pane. */
+#translatedText[data-state="error"] {
+    color: var(--tr-danger);
+    font-size: 13px;
+    line-height: 20px;
+    overflow-wrap: anywhere;
+}
+
+/* While a request is open the result well carries a slow sheen, so waiting
+   reads as progress rather than a frozen page. */
+.text-well.streaming {
+    background-image: linear-gradient(
+        100deg,
+        transparent 30%,
+        color-mix(in srgb, var(--primary-text) 5%, transparent) 50%,
+        transparent 70%
+    );
+    background-size: 220% 100%;
+    color: var(--tr-ink-2);
+    animation: translator-sheen 1.6s linear infinite;
+}
+
+@keyframes translator-sheen {
+    from {
+        background-position: 120% 0;
+    }
+
+    to {
+        background-position: -120% 0;
+    }
+}
+
+/* 附加要求 is optional, so it opens as a quiet line under the source text
+   rather than standing above it like a second main field. */
+.pane-footer {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    border-top: 0.5px solid var(--tr-line-2);
+}
+
+/* The label stays in front of the text, so a filled line still reads as an
+   instruction and not as more source text. */
+.footer-label {
+    flex: 0 0 auto;
+    padding-left: 14px;
+    color: var(--tr-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.footer-input {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+    padding: 0 14px 0 10px;
+    border: 0;
+    background: transparent;
+    outline: none;
+    font-size: 13px;
+    line-height: 20px;
+}
+
+.translator-notice[hidden],
+.title-input[hidden],
+.pane-count[hidden],
+.nav-icon-btn[hidden],
+.menu[hidden],
+.pane-footer[hidden] {
+    display: none;
+}
+
+@container (max-width: 720px) {
+    .translate-surface {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(200px, 1fr) minmax(200px, 1fr);
+        min-height: 440px;
+    }
+
+    .output-area {
+        border-top: 0.5px solid var(--tr-line-2);
+        border-left: 0;
+    }
+}
+
+/* ---- Buttons ---- */
+.translator-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 0 14px;
+    border: 0.5px solid var(--tr-line-3);
+    border-radius: var(--tr-radius-md);
+    background: transparent;
+    color: var(--tr-ink);
+    font-size: 13px;
+    line-height: 20px;
+    white-space: nowrap;
+    transition: background 120ms ease;
+}
+
+.translator-button:hover:not(:disabled) {
+    background: var(--tr-hover);
+}
+
+.translator-button-primary {
+    background: var(--tr-ink);
+    border-color: transparent;
+    color: var(--tr-panel);
+}
+
+.translator-button-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--tr-ink) 86%, var(--tr-panel));
+}
+
+/* ---- Settings dialog ---- */
 .settings-modal {
     position: fixed;
     inset: 0;
@@ -285,136 +806,123 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    -webkit-app-region: no-drag;
+    padding: 32px;
+}
+
+.settings-modal.hidden {
+    display: none;
 }
 
 .settings-modal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: color-mix(in srgb, var(--tr-ground) 58%, transparent);
+    backdrop-filter: blur(2px);
 }
 
 .settings-modal-panel {
     position: relative;
-    width: min(520px, calc(100vw - 48px));
-    max-height: calc(100vh - 90px);
     display: flex;
     flex-direction: column;
+    width: 100%;
+    max-width: 440px;
+    max-height: 100%;
+    border-radius: var(--tr-radius-xl);
+    background: var(--tr-panel);
+    box-shadow:
+        0 0 0 0.5px var(--tr-line-3),
+        0 24px 64px var(--tr-shadow);
     overflow: hidden;
-    background-color: var(--panel-bg);
-    color: var(--primary-text);
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(16px) saturate(150%);
-    -webkit-backdrop-filter: blur(16px) saturate(150%);
-}
-
-.settings-modal-header,
-.settings-modal-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border-color: var(--border-color);
 }
 
 .settings-modal-header {
-    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 16px 12px 24px;
 }
 
-.settings-modal-footer {
-    justify-content: flex-end;
-    gap: 10px;
-    border-top: 1px solid var(--border-color);
+.settings-modal-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
 }
 
 .settings-modal-header h3 {
     margin: 0;
-    font-size: 1.05em;
+    font-size: 16px;
+    line-height: 24px;
     font-weight: 600;
 }
 
-.settings-close-btn {
-    width: 30px;
-    height: 30px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--secondary-text);
-    font-size: 22px;
-    line-height: 1;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.settings-close-btn:hover {
-    background-color: var(--button-hover-bg);
-    color: var(--primary-text);
+.settings-modal-subtitle {
+    margin: 0;
+    color: var(--tr-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+    overflow-wrap: anywhere;
 }
 
 .settings-modal-body {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 16px;
-    overflow-y: auto;
+    gap: 10px;
+    min-height: 0;
+    padding: 8px 24px 20px;
+    overflow: auto;
 }
 
+/* Model ids are short, so each one sits on a single row beside its label
+   rather than under it. */
 .setting-field {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    font-size: 0.92em;
-    color: var(--secondary-text);
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
 }
 
-.setting-field input[type="text"] {
-    width: 100%;
-    height: 38px;
-    box-sizing: border-box;
-    padding: 8px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 0.95em;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.setting-field input[type="text"]:focus {
-    outline: none;
-    border-color: var(--highlight-text);
-    box-shadow: 0 0 0 2px rgba(var(--highlight-text), 0.3);
+.setting-field > span {
+    color: var(--tr-ink-2);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .setting-toggle {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 12px;
+    position: relative;
+    display: flex;
     align-items: center;
-    padding: 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    background-color: var(--secondary-bg);
+    gap: 16px;
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 0.5px solid var(--tr-line-2);
+    cursor: pointer;
 }
 
-.setting-toggle strong {
-    display: block;
-    margin-bottom: 3px;
-    color: var(--primary-text);
-    font-size: 0.95em;
+.setting-toggle-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
 }
 
-.setting-toggle small {
-    display: block;
-    color: var(--secondary-text);
-    line-height: 1.4;
+.setting-toggle-copy strong {
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 500;
 }
 
-.setting-toggle input[type="checkbox"] {
+.setting-toggle-copy small {
+    color: var(--tr-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.setting-toggle input {
     position: absolute;
     opacity: 0;
     pointer-events: none;
@@ -422,84 +930,172 @@ body {
 
 .toggle-slider {
     position: relative;
-    width: 46px;
-    height: 24px;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 20px;
     border-radius: 999px;
-    background-color: var(--input-bg);
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    background: var(--tr-line-3);
+    transition: background 120ms ease;
 }
 
-.toggle-slider::before {
-    content: "";
+.toggle-slider::after {
+    content: '';
     position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 18px;
-    height: 18px;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background-color: var(--secondary-text);
-    transition: transform 0.2s ease, background-color 0.2s ease;
+    background: var(--tr-thumb-off);
+    transition: transform 120ms ease;
 }
 
-.setting-toggle input[type="checkbox"]:checked + .toggle-slider {
-    background-color: var(--button-bg);
-    border-color: var(--highlight-text);
+.setting-toggle input:checked + .toggle-slider {
+    background: var(--tr-ink);
 }
 
-.setting-toggle input[type="checkbox"]:checked + .toggle-slider::before {
-    transform: translateX(22px);
-    background-color: var(--text-on-accent);
+.setting-toggle input:checked + .toggle-slider::after {
+    transform: translateX(16px);
+    background: var(--tr-panel);
+}
+
+.setting-toggle input:focus-visible + .toggle-slider {
+    outline: 2px solid var(--tr-focus-line);
+    outline-offset: 2px;
+}
+
+.settings-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 24px 18px;
+    border-top: 0.5px solid var(--tr-line-2);
+}
+
+.settings-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
 }
 
 .settings-save-status {
-    min-height: 18px;
-    color: var(--secondary-text);
-    font-size: 0.86em;
+    min-width: 0;
+    color: var(--tr-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+    text-align: right;
+    overflow-wrap: anywhere;
 }
 
 .settings-save-status[data-type="success"] {
-    color: #36d399;
+    color: var(--tr-success);
 }
 
 .settings-save-status[data-type="error"] {
-    color: #ff6b6b;
+    color: var(--tr-danger);
 }
 
 .settings-save-status[data-type="pending"] {
-    color: var(--highlight-text);
+    color: var(--tr-warning);
 }
 
-.primary-btn,
-.secondary-btn {
-    min-width: 92px;
-    height: 36px;
-    padding: 0 14px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
 }
 
-.primary-btn {
-    background-color: var(--button-bg);
-    color: var(--text-on-accent);
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, transparent);
 }
 
-.secondary-btn {
-    background-color: var(--input-bg);
-    color: var(--primary-text);
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
 }
 
-.primary-btn:hover,
-.secondary-btn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--highlight-text);
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
 }
 
-.primary-btn:disabled,
-.secondary-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+@media (prefers-reduced-motion: reduce) {
+    .translator-input,
+    .title-input,
+    .translate-surface,
+    .translator-button,
+    .toggle-slider,
+    .toggle-slider::after {
+        transition: none;
+    }
+
+    .text-well.streaming {
+        animation: none;
+    }
+}
+
+/* The navigation collapses to an icon rail on narrow windows. */
+@media (max-width: 860px) {
+    .shell {
+        grid-template-columns: 56px minmax(0, 1fr);
+    }
+
+    .sidebar-title {
+        font-size: 0;
+    }
+
+    .nav-group-label {
+        height: 1px;
+        margin: 0 8px 4px;
+        padding: 0;
+        overflow: hidden;
+        background: var(--tr-line-2);
+        color: transparent;
+    }
+
+    .nav-item {
+        justify-content: center;
+        padding: 0;
+    }
+
+    .nav-label {
+        display: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .translator-page {
+        padding: 20px 16px;
+    }
+
+    .settings-modal {
+        padding: 0;
+    }
+
+    .settings-modal-panel {
+        border-radius: var(--tr-radius-lg);
+    }
+
+    .settings-modal-header {
+        padding: 16px 12px 10px 16px;
+    }
+
+    .settings-modal-body {
+        padding: 8px 16px 16px;
+    }
+
+    .settings-modal-footer {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px 16px 16px;
+    }
+
+    .settings-modal-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .settings-modal-footer .translator-button {
+        width: 100%;
+    }
 }

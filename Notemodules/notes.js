@@ -44,9 +44,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   const noteScopeFilter = document.getElementById("noteScopeFilter");
   const noteTagFilter = document.getElementById("noteTagFilter");
   const noteSortSelect = document.getElementById("noteSortSelect");
-  const noteTemplateSelect = document.getElementById("noteTemplateSelect");
+  const newItemBtn = document.getElementById("newItemBtn");
+  const newItemMenu = document.getElementById("newItemMenu");
+  const noteFilterBtn = document.getElementById("noteFilterBtn");
+  const noteFilterMenu = document.getElementById("noteFilterMenu");
+  const noteFilterSummary = document.getElementById("noteFilterSummary");
+  const noteFilterSummaryText = document.getElementById(
+    "noteFilterSummaryText"
+  );
+  const noteFilterClearBtn = document.getElementById("noteFilterClearBtn");
+  const noteMeta = document.getElementById("noteMeta");
   const insertImageBtn = document.getElementById("insertImageBtn");
   const imageFileInput = document.getElementById("imageFileInput");
+  const formatOverflowBtn = document.getElementById("formatOverflowBtn");
+  const formatOverflowMenu = document.getElementById("formatOverflowMenu");
   const viewModeButtons = Array.from(
     document.querySelectorAll("[data-view-mode]")
   );
@@ -55,7 +66,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   );
 
   // --- Custom Title Bar Elements ---
-  const previewToggleBtn = document.getElementById("preview-toggle-btn");
   const minimizeNotesBtn = document.getElementById("minimize-notes-btn");
   const maximizeNotesBtn = document.getElementById("maximize-notes-btn");
   const closeNotesBtn = document.getElementById("close-notes-btn");
@@ -88,31 +98,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const NOTE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="item-icon"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"></path></svg>`;
   const TOGGLE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="folder-toggle"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"></path></svg>`;
 
-  // --- Preview Panel Toggle ---
-  function updatePreviewToggleState(isPreviewCollapsed) {
-    document.body.classList.toggle("preview-collapsed", isPreviewCollapsed);
-    previewToggleBtn.classList.toggle("is-collapsed", isPreviewCollapsed);
-    previewToggleBtn.title = isPreviewCollapsed ? "打开预览区" : "关闭预览区";
-    previewToggleBtn.setAttribute(
-      "aria-label",
-      isPreviewCollapsed ? "打开预览区" : "关闭预览区"
-    );
-    previewToggleBtn.setAttribute("aria-pressed", String(isPreviewCollapsed));
-    localStorage.setItem("notesPreviewCollapsed", String(isPreviewCollapsed));
-
-    if (window.pretextBridge && window.pretextBridge.isReady()) {
-      requestAnimationFrame(() =>
-        window.pretextBridge.recalculateAll(window.innerWidth)
-      );
-    }
-  }
-
-  function togglePreviewPanel() {
-    updatePreviewToggleState(
-      !document.body.classList.contains("preview-collapsed")
-    );
-  }
-
+  // --- View Mode ---
   function setViewMode(mode) {
     const normalizedMode = ["editor", "split", "preview"].includes(mode)
       ? mode
@@ -125,10 +111,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
-
-    if (normalizedMode === "split") {
-      updatePreviewToggleState(false);
-    }
 
     requestAnimationFrame(() => {
       if (window.pretextBridge?.isReady()) {
@@ -175,11 +157,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     duration = 2000
   ) {
     const feedbackClass = isSuccess ? "button-success" : "button-error";
-    button.textContent = feedbackText;
+    // Icon buttons keep their icon and say the feedback in the tooltip.
+    const isIconButton = !button.classList.contains("button");
+    if (isIconButton) {
+      button.title = feedbackText;
+      button.setAttribute("aria-label", feedbackText);
+    } else {
+      button.textContent = feedbackText;
+    }
     button.classList.add(feedbackClass);
     button.disabled = true;
     setTimeout(() => {
-      button.textContent = originalText;
+      if (isIconButton) {
+        button.title = originalText;
+        button.setAttribute("aria-label", originalText);
+      } else {
+        button.textContent = originalText;
+      }
       button.classList.remove(feedbackClass);
       button.disabled = false;
       button.blur();
@@ -219,10 +213,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let overlay = document.getElementById("loading-overlay");
     if (!overlay) {
       overlay = document.createElement("div");
-      overlay.id = "loading-overlay";
-      // Using CSS text for simplicity; ideally this would be a class
-      overlay.style.cssText =
-        "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:10000; color:white; flex-direction:column;";
+      overlay.id = "loading-overlay"; // styled in notes.css
       const p = document.createElement("p");
       overlay.appendChild(p);
       document.body.appendChild(overlay);
@@ -262,7 +253,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       titleElement.textContent = String(title || "");
       if (isError) {
         messageElement.textContent = String(message || "");
-        messageElement.style.color = "var(--danger-color, #f44336)";
+        messageElement.style.color = "var(--danger-color)";
       } else {
         // 信息窗内容由本模块提供，允许帮助文本中的基础格式。
         messageElement.innerHTML = message;
@@ -882,7 +873,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function refreshTagFilterOptions() {
     const selectedTag = noteTagFilter.value;
     const tags = getAvailableTags();
-    noteTagFilter.replaceChildren(new Option("全部标签", ""));
+    noteTagFilter.replaceChildren(new Option("全部", ""));
     tags.forEach((tag) => noteTagFilter.add(new Option(`#${tag}`, tag)));
     noteTagFilter.value = tags.includes(selectedTag) ? selectedTag : "";
   }
@@ -953,7 +944,263 @@ document.addEventListener("DOMContentLoaded", async () => {
       fragment.appendChild(section);
     });
     noteList.appendChild(fragment);
+    updateFilterSummary();
   }
+
+  // --- Popovers ---
+  // The "+" menu, the filter menu and the toolbar's "…" menu share one
+  // open/close path: a click outside or Escape closes them, and arrow keys
+  // move between rows.
+  let openPopoverState = null;
+
+  function getPopoverItems(menu) {
+    return Array.from(menu.querySelectorAll(".popover-item"));
+  }
+
+  function closePopover({ restoreFocus = false } = {}) {
+    if (!openPopoverState) return;
+    const { menu, trigger } = openPopoverState;
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    openPopoverState = null;
+    if (restoreFocus) trigger.focus();
+  }
+
+  function openPopover(menu, trigger) {
+    closePopover();
+    if (menu === noteFilterMenu) renderFilterMenu();
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    openPopoverState = { menu, trigger };
+    const items = getPopoverItems(menu);
+    const checked = items.find(
+      (item) => item.getAttribute("aria-checked") === "true"
+    );
+    (checked || items[0])?.focus();
+  }
+
+  function togglePopover(menu, trigger) {
+    if (openPopoverState?.menu === menu) {
+      closePopover();
+    } else {
+      openPopover(menu, trigger);
+    }
+  }
+
+  document.addEventListener("pointerdown", (e) => {
+    if (!openPopoverState) return;
+    const { menu, trigger } = openPopoverState;
+    if (menu.contains(e.target) || trigger.contains(e.target)) return;
+    closePopover();
+  });
+
+  [newItemMenu, noteFilterMenu, formatOverflowMenu].forEach((menu) => {
+    menu.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closePopover({ restoreFocus: true });
+        return;
+      }
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      const items = getPopoverItems(menu);
+      const index = items.indexOf(document.activeElement);
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      items[(index + step + items.length) % items.length]?.focus();
+    });
+  });
+
+  newItemBtn.addEventListener("click", () =>
+    togglePopover(newItemMenu, newItemBtn)
+  );
+  noteFilterBtn.addEventListener("click", () =>
+    togglePopover(noteFilterMenu, noteFilterBtn)
+  );
+  // Every row of the "+" menu creates something, so any click closes it.
+  newItemMenu.addEventListener("click", (e) => {
+    if (e.target.closest(".popover-item")) closePopover();
+  });
+
+  // The "…" menu holds the tools a narrow toolbar folds away. It sits at
+  // body level, so it is placed under its trigger each time it opens.
+  function placeFormatOverflowMenu() {
+    const rect = formatOverflowBtn.getBoundingClientRect();
+    const maxLeft = window.innerWidth - formatOverflowMenu.offsetWidth - 8;
+    formatOverflowMenu.style.top = `${Math.round(rect.bottom + 4)}px`;
+    formatOverflowMenu.style.left = `${Math.round(Math.max(8, Math.min(rect.left, maxLeft)))}px`;
+  }
+
+  formatOverflowBtn.addEventListener("click", () => {
+    togglePopover(formatOverflowMenu, formatOverflowBtn);
+    if (!formatOverflowMenu.hidden) placeFormatOverflowMenu();
+  });
+  // Markdown rows run through the shared toolbar binding; the image row
+  // hands off to the real button so the file picker path stays the same.
+  formatOverflowMenu.addEventListener("click", (e) => {
+    const item = e.target.closest(".popover-item");
+    if (!item) return;
+    closePopover();
+    if (item.hasAttribute("data-overflow-image")) insertImageBtn.click();
+  });
+  window.addEventListener("resize", () => {
+    if (openPopoverState?.menu === formatOverflowMenu) closePopover();
+  });
+
+  // --- Filters ---
+  // The three hidden selects stay the source of truth for renderTree(); the
+  // filter menu only writes them.
+  const FILTER_SELECTS = [noteScopeFilter, noteTagFilter, noteSortSelect];
+  const FILTER_DEFAULTS = new Map([
+    [noteScopeFilter, "all"],
+    [noteTagFilter, ""],
+    [noteSortSelect, "custom"],
+  ]);
+  const CHECK_ICON = `<svg class="popover-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg>`;
+
+  function renderFilterMenu() {
+    const fragment = document.createDocumentFragment();
+    FILTER_SELECTS.forEach((select, index) => {
+      if (index > 0) {
+        const separator = document.createElement("div");
+        separator.className = "popover-separator";
+        separator.setAttribute("role", "separator");
+        fragment.appendChild(separator);
+      }
+      const label = document.createElement("div");
+      label.className = "popover-label";
+      label.textContent = select.dataset.filterLabel;
+      fragment.appendChild(label);
+
+      Array.from(select.options).forEach((option) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "popover-item";
+        item.setAttribute("role", "menuitemradio");
+        item.setAttribute(
+          "aria-checked",
+          String(option.value === select.value)
+        );
+        item.dataset.filterSelect = select.id;
+        item.dataset.filterValue = option.value;
+        const text = document.createElement("span");
+        text.className = "popover-item-label";
+        text.textContent = option.textContent;
+        item.appendChild(text);
+        item.insertAdjacentHTML("beforeend", CHECK_ICON);
+        fragment.appendChild(item);
+      });
+
+      if (select === noteTagFilter && select.options.length === 1) {
+        const empty = document.createElement("div");
+        empty.className = "popover-empty";
+        empty.textContent = "笔记里写“标签：#名称”后会出现在这里";
+        fragment.appendChild(empty);
+      }
+    });
+    noteFilterMenu.replaceChildren(fragment);
+  }
+
+  noteFilterMenu.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-filter-select]");
+    if (!item) return;
+    const select = document.getElementById(item.dataset.filterSelect);
+    if (select.value === item.dataset.filterValue) return;
+    select.value = item.dataset.filterValue;
+    select.dispatchEvent(new Event("change"));
+    // Rebuild the checks and keep focus on the row that was chosen.
+    renderFilterMenu();
+    noteFilterMenu
+      .querySelector(
+        `[data-filter-select="${select.id}"][data-filter-value="${CSS.escape(
+          item.dataset.filterValue
+        )}"]`
+      )
+      ?.focus();
+  });
+
+  function updateFilterSummary() {
+    const parts = FILTER_SELECTS.filter(
+      (select) => select.value !== FILTER_DEFAULTS.get(select)
+    ).map((select) => select.selectedOptions[0]?.textContent || select.value);
+    const isFiltered = parts.length > 0;
+    noteFilterSummaryText.textContent = parts.join(" · ");
+    noteFilterSummary.hidden = !isFiltered;
+    noteFilterBtn.classList.toggle("has-active-filter", isFiltered);
+  }
+
+  noteFilterClearBtn.addEventListener("click", () => {
+    FILTER_DEFAULTS.forEach((value, select) => {
+      select.value = value;
+    });
+    renderTree();
+    if (openPopoverState?.menu === noteFilterMenu) renderFilterMenu();
+    searchInput.focus();
+  });
+
+  // --- Note Meta Line ---
+  // folder · updated time · length, for the open note only.
+  function findItemTrail(tree, id, trail = []) {
+    for (const item of tree) {
+      if (item.id === id) return [...trail, item];
+      if (item.type === "folder" && item.children) {
+        const found = findItemTrail(item.children, id, [...trail, item]);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  function getNoteLocation(id) {
+    const isCloud = isCloudItem(id);
+    const trail = findItemTrail(isCloud ? networkNoteTree : localNoteTree, id);
+    const parent = trail && trail.length > 1 ? trail[trail.length - 2] : null;
+    if (!parent) return isCloud ? "网络笔记" : "本地笔记";
+    const name = parent.name || parent.title;
+    return isCloud && name.includes("dailynote") ? "VCP核心记忆库" : name;
+  }
+
+  function formatNoteTime(timestamp) {
+    const date = new Date(Number(timestamp));
+    if (!timestamp || Number.isNaN(date.getTime())) return "";
+    const now = new Date();
+    const time = date.toLocaleTimeString("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    if (date.toDateString() === now.toDateString()) return `今天 ${time}`;
+    const day = `${date.getMonth() + 1}月${date.getDate()}日`;
+    return date.getFullYear() === now.getFullYear()
+      ? `${day} ${time}`
+      : `${date.getFullYear()}年${day} ${time}`;
+  }
+
+  function updateNoteMeta() {
+    const note = activeNoteId
+      ? findItemById(getCombinedTree(), activeNoteId)
+      : null;
+    if (!note) {
+      noteMeta.textContent = "未打开笔记";
+      return;
+    }
+    const characters = noteContentInput.value.replace(/\s/g, "").length;
+    const parts = [
+      getNoteLocation(note.id),
+      note.timestamp ? `更新于 ${formatNoteTime(note.timestamp)}` : "",
+      `${characters.toLocaleString("zh-CN")} 字`,
+    ].filter(Boolean);
+    noteMeta.replaceChildren(
+      ...parts.map((text) => {
+        const span = document.createElement("span");
+        span.className = "intro-item";
+        span.textContent = text;
+        return span;
+      })
+    );
+  }
+
+  const debouncedUpdateNoteMeta = debounce(updateNoteMeta, 200);
 
   function createTreeElement(item) {
     const isFolder = item.type === "folder";
@@ -1018,15 +1265,8 @@ document.addEventListener("DOMContentLoaded", async () => {
               .map((tag) => `<span class="note-tag">#${tag}</span>`)
               .join("")}</span>`
           : "";
-      const timeSpan = `<span class="note-timestamp-display">${new Date(
-        item.timestamp
-      ).toLocaleString("zh-CN", {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      })}</span>`;
-      li.innerHTML = `${NOTE_ICON} <span class="note-item-details">${nameSpan}${tagSpans}</span> ${timeSpan}`;
+      // The open note's update time lives in the header meta line.
+      li.innerHTML = `${NOTE_ICON} <span class="note-item-details">${nameSpan}${tagSpans}</span>`;
 
       if (selectedItems.has(item.id)) li.classList.add("selected");
       if (activeItemId === item.id) li.classList.add("active");
@@ -1142,6 +1382,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       noteTitleInput.disabled = false;
       noteContentInput.disabled = false;
+      updateNoteMeta();
     } else {
       clearNoteEditor();
     }
@@ -1155,6 +1396,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     previewContentDiv.innerHTML = "";
     noteTitleInput.disabled = true;
     noteContentInput.disabled = true;
+    updateNoteMeta();
   }
 
   const NOTE_TEMPLATES = {
@@ -1183,6 +1425,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   newMdBtn.addEventListener("click", () => createNewItem("note", ".md"));
   newTxtBtn.addEventListener("click", () => createNewItem("note", ".txt"));
   newFolderBtn.addEventListener("click", () => createNewItem("folder"));
+  newItemMenu.querySelectorAll("[data-note-template]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const template = NOTE_TEMPLATES[item.dataset.noteTemplate];
+      if (template) createNewItem("note", ".md", template);
+    });
+  });
 
   async function createNewItem(type, ext = ".md", template = null) {
     // Default to .md for backward compatibility if needed
@@ -1341,13 +1589,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       "笔记快速帮助",
       `
         <strong>从这里开始</strong><br>
-        • 点击“新建笔记”创建 Markdown 笔记，“新建文件夹”整理内容。<br>
-        • 顶部工具栏可插入加粗、列表、代码、链接和图片。<br>
+        • 侧栏右上角的 <code>+</code> 可新建笔记（.md）、文本（.txt）、文件夹，或从模板新建。<br>
+        • 标题即文件名，可直接修改；输入后几秒会自动保存，也可点“保存”。<br>
+        • 编辑区上方的图标可插入加粗、斜体、标题、列表、引用、代码、链接、标签行和图片；窗口较窄时，部分工具收进“…”菜单。图片也可直接粘贴。<br>
         • 使用独立标签行 <code>标签：#学习 #项目</code>，即可自动归类和筛选；正文或源码中的井号词不会被识别。<br>
-        • 使用“分屏 / 编辑 / 预览”切换专注模式。<br>
-        • 本地与网络笔记会分别显示；可通过来源、标签、排序筛选。<br><br>
+        • 标题右侧的“编辑 / 分栏 / 预览”切换视图；分栏时拖动中间的分隔线调整比例。<br>
+        • 本地与网络笔记会分别显示；侧栏的筛选按钮可按来源、标签筛选和排序。<br><br>
         <strong>常用语法</strong><br>
-        <code># 标题</code>　<code>**加粗**</code>　<code>- 列表</code>　<code>[链接](https://)</code><br><br>
+        <code># 标题</code>　<code>**加粗**</code>　<code>*斜体*</code>　<code>- 列表</code>　<code>&gt; 引用</code>　<code>[链接](https://)</code><br><br>
         <strong>快捷方式</strong><br>
         <code>Ctrl+S</code> 保存　<code>Ctrl+F</code> 搜索当前笔记　<code>Ctrl+B</code> 加粗
       `
@@ -1622,11 +1871,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   noteScopeFilter.addEventListener("change", renderTree);
   noteTagFilter.addEventListener("change", renderTree);
   noteSortSelect.addEventListener("change", renderTree);
-  noteTemplateSelect.addEventListener("change", async () => {
-    const template = NOTE_TEMPLATES[noteTemplateSelect.value];
-    noteTemplateSelect.value = "";
-    if (template) await createNewItem("note", ".md", template);
-  });
   viewModeButtons.forEach((button) => {
     button.addEventListener("click", () =>
       setViewMode(button.dataset.viewMode)
@@ -1648,6 +1892,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   noteContentInput.addEventListener("input", (e) => {
     debouncedRender(e.target.value);
     debouncedSaveNote();
+    debouncedUpdateNoteMeta();
   });
   saveNoteBtn.addEventListener("click", () => saveCurrentNote(false));
 
@@ -1735,6 +1980,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       }
       await loadNoteTree(); // Re-render the list with the updated data, keeping the editor intact.
+      updateNoteMeta();
     } else {
       if (!isAutoSave)
         showButtonFeedback(
@@ -2539,11 +2785,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const applySplit = (percent) => {
       const safePercent = clampPercent(Number(percent) || 50);
-      const editorBasis = `calc(${safePercent}% - 14px)`;
-      const previewBasis = `calc(${100 - safePercent}% - 14px)`;
+      // Each pane gives up half of the 9px resizer.
+      const editorBasis = `calc(${safePercent}% - 4.5px)`;
+      const previewBasis = `calc(${100 - safePercent}% - 4.5px)`;
 
-      editorContainer.style.flex = `0 0 ${editorBasis}`;
-      previewContainer.style.flex = `0 0 ${previewBasis}`;
+      // notes.css reads these, so the single-pane modes can override the
+      // split without fighting an inline style.
+      noteBody.style.setProperty("--nt-editor-basis", editorBasis);
+      noteBody.style.setProperty("--nt-preview-basis", previewBasis);
       editorPreviewResizer.setAttribute(
         "aria-valuenow",
         String(Math.round(safePercent))
@@ -2583,7 +2832,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     editorPreviewResizer.addEventListener("mousedown", (e) => {
-      if (document.body.classList.contains("preview-collapsed")) return;
+      if (document.body.dataset.noteViewMode !== "split") return;
 
       e.preventDefault();
       noteBody.classList.add("is-resizing");
@@ -2621,12 +2870,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     // --- Custom Title Bar Listeners ---
-    const isPreviewCollapsed =
-      localStorage.getItem("notesPreviewCollapsed") === "true";
-    updatePreviewToggleState(isPreviewCollapsed);
-    setViewMode(localStorage.getItem("notesViewMode") || "split");
-
-    previewToggleBtn.addEventListener("click", togglePreviewPanel);
+    // The old "close preview" toggle was the editor mode by another name:
+    // carry a collapsed split over as the editor mode, once.
+    let savedViewMode = localStorage.getItem("notesViewMode") || "split";
+    if (localStorage.getItem("notesPreviewCollapsed") !== null) {
+      if (
+        localStorage.getItem("notesPreviewCollapsed") === "true" &&
+        savedViewMode === "split"
+      ) {
+        savedViewMode = "editor";
+      }
+      localStorage.removeItem("notesPreviewCollapsed");
+    }
+    setViewMode(savedViewMode);
 
     minimizeNotesBtn.addEventListener("click", () => {
       if (api) api.minimizeWindow();

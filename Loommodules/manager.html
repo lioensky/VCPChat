@@ -7,143 +7,338 @@
     <title>VCP Loom Manager</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <style>
-        :root {
-            --bg: var(--primary-bg, #171a1d);
-            --panel: var(--panel-bg-dark, rgba(32, 37, 42, .94));
-            --panel-2: var(--secondary-bg, #20252a);
-            --line: color-mix(in srgb, var(--border-color, #3b4449) 72%, transparent);
-            --text: var(--primary-text, #f2f0e9);
-            --muted: var(--secondary-text, #a7afb1);
-            --accent: var(--highlight-text, #f2a900);
-            --accent-2: var(--success-color, #76bfae);
-            --danger: var(--danger-color, #e06c5f);
-            --shadow: 0 18px 60px color-mix(in srgb, var(--primary-bg, #171a1d) 62%, transparent);
-            --loom-panel: color-mix(in srgb, var(--panel-bg, var(--panel)) 94%, transparent);
-            --loom-bar: color-mix(in srgb, var(--secondary-bg, #20252a) 88%, transparent);
-            --loom-sidebar: color-mix(in srgb, var(--primary-bg, #171a1d) 82%, transparent);
-            --loom-control: color-mix(in srgb, var(--secondary-bg, #20252a) 72%, transparent);
-            --loom-hover: color-mix(in srgb, var(--accent) 11%, transparent);
+        /* Loom manager: the same shell as the main window (42px bar, 260px
+           sidebar, framed workspace). The workspace has two views in one
+           column: "全部应用" lists every app with its launch button and enable
+           switch, and opening an app drills into its settings page, with a
+           breadcrumb back. Every color comes from the theme variables in
+           styles/themes.css. */
+        body {
+            --lm-ink: var(--primary-text);
+            --lm-ink-2: var(--secondary-text);
+            --lm-ink-3: color-mix(in srgb, var(--secondary-text) 78%, transparent);
+            --lm-ink-4: color-mix(in srgb, var(--secondary-text) 56%, transparent);
+            --lm-ground: var(--primary-bg);
+            --lm-panel: var(--secondary-bg);
+            --lm-card: color-mix(in srgb, var(--primary-text) 2%, transparent);
+            --lm-surface: color-mix(in srgb, var(--primary-text) 3.5%, transparent);
+            --lm-line-1: color-mix(in srgb, var(--primary-text) 8%, transparent);
+            --lm-line-2: color-mix(in srgb, var(--primary-text) 10%, transparent);
+            --lm-line-3: color-mix(in srgb, var(--primary-text) 14%, transparent);
+            --lm-hover: color-mix(in srgb, var(--primary-text) 6%, transparent);
+            --lm-active: color-mix(in srgb, var(--primary-text) 10%, transparent);
+            --lm-accent: var(--button-bg);
+            --lm-focus-ring: color-mix(in srgb, var(--lm-accent) 18%, transparent);
+            --lm-danger: var(--danger-color);
+            --lm-on-danger: var(--text-on-accent);
+            --lm-success: var(--success-color);
+            --lm-thumb-off: var(--secondary-text);
+            --lm-shadow: color-mix(in srgb, var(--tertiary-bg) 72%, transparent);
+            --lm-mono: 'SF Mono', 'JetBrains Mono', Consolas, 'Cascadia Code', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', monospace;
+            --lm-radius-xs: 4px;
+            --lm-radius-sm: 8px;
+            --lm-radius-md: 12px;
+            --lm-radius-lg: 16px;
+            --lm-radius-xl: 20px;
+            margin: 0;
+            font: 400 13px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: var(--lm-ink);
+            overflow: hidden;
+            background-color: var(--lm-ground);
+            background-image: none;
         }
         body.light-theme {
-            --panel: var(--panel-bg-light, rgba(252, 250, 244, .94));
-            --shadow: 0 18px 60px rgba(27, 33, 31, .12);
+            --lm-thumb-off: var(--secondary-bg);
+            --lm-shadow: color-mix(in srgb, var(--primary-text) 14%, transparent);
+            background-image: none;
         }
         * { box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-        body {
-            background:
-                radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 30%),
-                radial-gradient(circle at 85% 80%, color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 28%),
-                var(--bg);
-            color: var(--text);
-            font: 13px/1.45 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        html, body { width: 100%; height: 100%; }
+        button, input, textarea, select { font: inherit; color: inherit; }
+        button { cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: 0.4; }
+        [hidden] { display: none !important; }
+        :is(button, input, select, textarea, summary):focus-visible {
+            outline: 2px solid var(--lm-accent);
+            outline-offset: 2px;
         }
-        button, input, textarea, select { font: inherit; }
-        button { color: inherit; }
-        .titlebar {
-            height: 44px;
+        svg { display: block; flex: none; }
+
+        /* Busy marker for buttons: a ring that replaces the button's icon. */
+        .spinner {
+            flex: none;
+            width: 14px;
+            height: 14px;
+            border: 1.5px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: lm-spin 0.7s linear infinite;
+        }
+        @keyframes lm-spin { to { transform: rotate(360deg); } }
+        @keyframes lm-pulse { 50% { opacity: 0.45; } }
+
+        /* ---- Window chrome ---- */
+        .window-controls {
+            position: fixed;
+            top: 0;
+            right: 0;
+            z-index: 10;
             display: flex;
+            height: 42px;
+            -webkit-app-region: no-drag;
+        }
+        .window-btn {
+            appearance: none;
+            display: inline-flex;
             align-items: center;
-            border-bottom: 1px solid var(--line);
-            background: var(--loom-bar);
-            backdrop-filter: blur(14px) saturate(112%);
-            -webkit-backdrop-filter: blur(14px) saturate(112%);
+            justify-content: center;
+            width: 46px;
+            height: 42px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: var(--lm-ink-2);
+        }
+        .window-btn:hover {
+            background: color-mix(in srgb, var(--primary-text) 15%, transparent);
+            color: var(--lm-ink);
+        }
+        .window-btn-close:hover {
+            background: var(--lm-danger);
+            color: var(--lm-on-danger);
+        }
+        /* The window is frameless, so the strip above the shell drags it. */
+        .drag-strip {
+            position: fixed;
+            inset: 0 0 auto;
+            height: 42px;
             -webkit-app-region: drag;
-            user-select: none;
         }
-        .brand { padding: 0 16px; display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .3px; }
-        .brand-mark {
-            width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center;
-            background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 58%, var(--accent-2)));
-            color: var(--text-on-accent, #171a1d);
-            box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 35%, transparent);
-            line-height: 1; padding-bottom: 1px;
-        }
-        .brand small { color: var(--muted); font-weight: 400; margin-left: 4px; }
-        .window-controls { margin-left: auto; height: 100%; display: flex; -webkit-app-region: no-drag; }
-        .window-controls button {
-            width: 48px; border: 0; background: transparent; cursor: pointer; font-size: 16px;
-        }
-        .window-controls button:hover { background: var(--loom-hover); }
-        .window-controls .close:hover { background: var(--danger); color: var(--text-on-accent, white); }
+
+        /* ---- Shell ---- */
         .layout {
-            height: calc(100% - 44px);
+            position: fixed;
+            inset: 42px 0 0;
+            display: grid;
+            grid-template-columns: 260px minmax(0, 1fr);
             min-height: 0;
             overflow: hidden;
-            display: grid;
-            grid-template-columns: 300px minmax(0, 1fr);
         }
+        html[data-vcp-embedded-app="true"] body { background-color: transparent; }
+        html[data-vcp-embedded-app="true"] .window-controls,
+        html[data-vcp-embedded-app="true"] .drag-strip { display: none; }
+        html[data-vcp-embedded-app="true"] .layout { inset: 0; }
+
         .sidebar {
-            min-width: 0; min-height: 0; overflow: hidden;
-            border-right: 1px solid var(--line); background: var(--loom-sidebar);
-            display: flex; flex-direction: column; backdrop-filter: blur(14px) saturate(112%);
-            -webkit-backdrop-filter: blur(14px) saturate(112%);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 0;
+            min-height: 0;
+            padding: 9px 8px 15px;
+            background: transparent;
+            overflow: hidden;
         }
-        .side-actions { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-bottom: 1px solid var(--line); }
-        .btn {
-            border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; background: var(--loom-control);
-            cursor: pointer; transition: .15s ease; white-space: nowrap;
+        .sidebar-title {
+            flex: 0 0 30px;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            padding: 0 4px 0 10px;
+            color: var(--lm-ink-2);
+            font-size: 13px;
+            font-weight: 500;
         }
-        .btn:hover { border-color: color-mix(in srgb, var(--accent) 65%, transparent); background: var(--loom-hover); }
-        .btn.primary { background: var(--button-bg, var(--accent)); color: var(--text-on-accent, #171a1d); border-color: transparent; font-weight: 600; }
-        .btn.primary:hover { background: var(--button-hover-bg, var(--accent)); }
-        .btn.danger { color: var(--danger); }
-        .btn:disabled { opacity: .48; cursor: default; }
-        .search { margin: 12px 14px 7px; width: calc(100% - 28px); }
-        input, textarea, select {
-            color: var(--text); background: var(--input-bg, var(--loom-control)); border: 1px solid var(--line); border-radius: 8px;
-            outline: none; padding: 8px 10px;
+        .sidebar-title-text { flex: 1; min-width: 0; }
+        .icon-btn {
+            appearance: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 0;
+            border-radius: var(--lm-radius-sm);
+            background: transparent;
+            color: var(--lm-ink-3);
+            transition: background 120ms ease, color 120ms ease;
         }
-        input::placeholder, textarea::placeholder { color: var(--placeholder-text, var(--muted)); }
-        input:focus, textarea:focus, select:focus { border-color: color-mix(in srgb, var(--accent) 75%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+        .icon-btn:hover:not(:disabled),
+        .icon-btn[aria-expanded="true"] {
+            background: var(--lm-hover);
+            color: var(--lm-ink);
+        }
+        .icon-btn-outline {
+            width: 30px;
+            height: 30px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            color: var(--lm-ink-2);
+        }
+        .icon-btn .spinner { width: 13px; height: 13px; }
+
+        .search-box {
+            position: relative;
+            display: flex;
+            align-items: center;
+            flex: none;
+        }
+        .search-box > svg {
+            position: absolute;
+            left: 12px;
+            color: var(--lm-ink-4);
+            pointer-events: none;
+        }
+        .search-box input {
+            width: 100%;
+            height: 36px;
+            padding: 0 36px 0 36px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            outline: none;
+            transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+        .search-box input::-webkit-search-cancel-button { display: none; }
+        .search-box input::placeholder { color: var(--lm-ink-4); }
+        .search-clear {
+            position: absolute;
+            right: 6px;
+            width: 24px;
+            height: 24px;
+            border-radius: var(--lm-radius-sm);
+        }
+
+        .nav-group-label {
+            display: flex;
+            align-items: center;
+            flex: none;
+            padding: 0 10px;
+            color: var(--lm-ink-4);
+            font-size: 12px;
+            line-height: 16px;
+            font-weight: 500;
+        }
+        .nav-count {
+            flex: none;
+            color: var(--lm-ink-4);
+            font-size: 12px;
+            font-weight: 400;
+            font-variant-numeric: tabular-nums;
+        }
         .app-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
             min-height: 0;
             flex: 1;
             overflow-x: hidden;
             overflow-y: auto;
             overscroll-behavior: contain;
-            padding: 6px 9px 14px;
+            margin-top: -8px;
+        }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: none;
+            width: 100%;
+            height: 34px;
+            padding: 0 10px;
+            border: 0;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--lm-ink-2);
+            font-size: 14px;
+            line-height: 20px;
+            text-align: left;
+            transition: background 120ms ease, color 120ms ease;
+        }
+        .nav-item:hover {
+            background: var(--lm-hover);
+            color: var(--lm-ink);
+        }
+        .nav-item[aria-current="page"] {
+            background: var(--lm-active);
+            color: var(--lm-ink);
+            font-weight: 500;
+        }
+        .nav-item:focus-visible { outline-offset: -2px; }
+        .nav-icon { width: 16px; height: 16px; }
+        .nav-label {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .nav-item[data-disabled="true"] .nav-label { color: var(--lm-ink-4); }
+        .nav-item[data-disabled="true"] .app-tile { opacity: 0.5; }
+        .nav-empty {
+            padding: 8px 10px;
+            color: var(--lm-ink-4);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        /* App glyph: a small tile; a running app gets a dot on its corner. */
+        .app-tile {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 20px;
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            background: var(--lm-surface);
+            font-size: 13px;
+            line-height: 1;
+        }
+        .app-tile img,
+        .app-plate img,
+        .hero-tile img {
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            object-fit: cover;
+        }
+        :is(.app-tile, .app-plate, .hero-tile)[data-running="true"]::after {
+            content: '';
+            position: absolute;
+            right: -2px;
+            bottom: -2px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--lm-success);
+            box-shadow: 0 0 0 2px var(--lm-ground);
+        }
+        :is(.app-plate, .hero-tile)[data-running="true"]::after {
+            width: 10px;
+            height: 10px;
+            box-shadow: 0 0 0 2px var(--lm-panel);
         }
         .skill-manager-footer {
             flex: none;
-            padding: 10px 14px 14px;
-            border-top: 1px solid var(--line);
-            background: color-mix(in srgb, var(--loom-sidebar) 88%, transparent);
+            padding-top: 8px;
+            border-top: 0.5px solid var(--lm-line-2);
         }
-        .skill-manager-footer .btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            width: 100%;
-        }
-        .app-card {
-            width: 100%; border: 1px solid transparent; border-radius: 11px; background: transparent; padding: 10px;
-            display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; text-align: left; cursor: pointer;
-        }
-        .app-card:hover { background: var(--loom-hover); }
-        .app-card.active { background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
-        .app-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; object-fit: cover; background: var(--loom-control); font-size: 21px; }
-        .app-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .app-id { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .55; }
-        .status-dot.running { background: var(--accent-2); box-shadow: 0 0 10px color-mix(in srgb, var(--accent-2) 70%, transparent); opacity: 1; }
-        .empty { color: var(--muted); text-align: center; padding: 40px 20px; }
+
+        /* ---- Workspace ---- */
         .editor {
-            min-width: 0;
-            min-height: 0;
-            overflow: hidden;
+            position: relative;
             display: flex;
             flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+            margin: 0 4px 4px 0;
+            border: 1px solid var(--border-color);
+            border-radius: var(--vcp-ui-shell-radius, 14px);
+            background: var(--lm-panel);
+            overflow: hidden;
         }
-        .editor-head {
-            height: 59px; padding: 10px 17px; border-bottom: 1px solid var(--line);
-            display: flex; align-items: center; gap: 8px; background: var(--loom-bar);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-        }
-        .editor-title { min-width: 0; margin-right: auto; }
-        .editor-title strong { display: block; font-size: 15px; }
-        .editor-title span { color: var(--muted); font-size: 11px; }
         .editor-body {
             min-width: 0;
             min-height: 0;
@@ -152,194 +347,1300 @@
             overflow-y: auto;
             overscroll-behavior: contain;
             scrollbar-gutter: stable;
-            padding: 17px;
         }
         .app-list::-webkit-scrollbar,
+        .code-editor::-webkit-scrollbar,
         .editor-body::-webkit-scrollbar {
             width: 9px;
             height: 9px;
         }
         .app-list::-webkit-scrollbar-track,
-        .editor-body::-webkit-scrollbar-track {
-            background: color-mix(in srgb, var(--loom-sidebar) 74%, transparent);
+        .editor-body::-webkit-scrollbar-track,
+        .code-editor::-webkit-scrollbar-track {
+            background: transparent;
         }
         .app-list::-webkit-scrollbar-thumb,
-        .editor-body::-webkit-scrollbar-thumb {
-            min-height: 36px;
+        .editor-body::-webkit-scrollbar-thumb,
+        .code-editor::-webkit-scrollbar-thumb {
             border: 2px solid transparent;
             border-radius: 999px;
-            background: color-mix(in srgb, var(--muted) 58%, transparent);
+            background: var(--scrollbar-thumb);
             background-clip: padding-box;
         }
         .app-list::-webkit-scrollbar-thumb:hover,
-        .editor-body::-webkit-scrollbar-thumb:hover {
-            background: color-mix(in srgb, var(--accent) 72%, transparent);
+        .editor-body::-webkit-scrollbar-thumb:hover,
+        .code-editor::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-thumb-hover);
             background-clip: padding-box;
         }
-        .placeholder {
-            height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center;
+        .page {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            width: 100%;
+            max-width: 808px;
+            margin: 0 auto;
+            padding: 24px 24px 40px;
         }
-        .placeholder-mark { font-size: 55px; filter: drop-shadow(0 8px 22px color-mix(in srgb, var(--accent) 30%, transparent)); }
-        .form { display: none; max-width: 1100px; margin: 0 auto; }
-        .form.visible { display: block; }
-        .section {
-            background: var(--loom-panel); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 13px;
-            box-shadow: var(--shadow); overflow: hidden;
+        .page-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
-        .section-title { padding: 11px 14px; border-bottom: 1px solid var(--line); font-weight: 650; color: var(--accent); }
-        .section-body { padding: 14px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
-        .field { grid-column: span 6; min-width: 0; }
-        .field.full { grid-column: 1 / -1; }
-        .field.third { grid-column: span 4; }
-        .field.quarter { grid-column: span 3; }
-        .field label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
-        .field input, .field select, .field textarea { width: 100%; }
-        .field textarea { min-height: 94px; resize: vertical; font-family: Consolas, monospace; font-size: 12px; }
-        .field textarea.code { min-height: 250px; tab-size: 4; }
-        .check-row { display: flex; flex-wrap: wrap; gap: 18px; grid-column: 1 / -1; }
-        .check { display: flex; gap: 7px; align-items: center; color: var(--text); }
-        .check input { width: 15px; height: 15px; accent-color: var(--accent); }
-        .hint { color: var(--muted); font-size: 11px; margin-top: 5px; }
+        .page-head-copy {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .page-head-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: none;
+        }
+        .page-title {
+            margin: 0;
+            overflow: hidden;
+            font-size: 18px;
+            line-height: 26px;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .page-intro {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            margin: 0;
+            color: var(--lm-ink-3);
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .intro-item { white-space: nowrap; }
+        .intro-item + .intro-item::before {
+            content: '·';
+            padding: 0 6px;
+            color: var(--lm-ink-4);
+        }
+        .intro-item[data-tone="running"] { color: var(--lm-success); }
+        .id-chip {
+            padding: 0 6px;
+            border-radius: var(--lm-radius-xs);
+            background: var(--lm-hover);
+            color: var(--lm-ink-2);
+            font: 12px/18px var(--lm-mono);
+        }
+        .hero-tile {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 44px;
+            width: 44px;
+            height: 44px;
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            font-size: 24px;
+            line-height: 1;
+        }
+
+        /* Breadcrumb back to the overview; the last part is the open page. */
+        .crumbs {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            min-width: 0;
+            margin: -8px 0 -12px;
+            color: var(--lm-ink-3);
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .crumb-link {
+            flex: none;
+            padding: 2px 6px;
+            margin-left: -6px;
+            border: 0;
+            border-radius: var(--lm-radius-sm);
+            background: transparent;
+            color: var(--lm-ink-3);
+            transition: background 120ms ease, color 120ms ease;
+        }
+        .crumb-link:hover { background: var(--lm-hover); color: var(--lm-ink); }
+        /* The link's own padding already sits on its right, so only pad after the slash. */
+        .crumb-sep { margin-right: 6px; color: var(--lm-ink-4); }
+        .crumb-current {
+            min-width: 0;
+            overflow: hidden;
+            color: var(--lm-ink-2);
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ---- Buttons ---- */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 30px;
+            padding: 0 14px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: transparent;
+            color: var(--lm-ink);
+            font-size: 13px;
+            line-height: 20px;
+            white-space: nowrap;
+            transition: background 120ms ease;
+        }
+        .btn:hover:not(:disabled) { background: var(--lm-hover); }
+        .btn svg { width: 14px; height: 14px; }
+        .btn[aria-busy="true"] { cursor: progress; opacity: 0.72; }
+        .btn-primary {
+            background: var(--lm-ink);
+            border-color: transparent;
+            color: var(--lm-panel);
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--lm-ink) 86%, var(--lm-panel));
+        }
+        .btn-ghost { border-color: transparent; }
+        .btn-ghost-danger {
+            padding: 0 10px;
+            margin-left: -10px;
+            border-color: transparent;
+            color: var(--lm-danger);
+        }
+        .btn-ghost-danger:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--lm-danger) 10%, transparent);
+        }
+        .btn-danger {
+            background: var(--lm-danger);
+            border-color: transparent;
+            color: var(--lm-on-danger);
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--lm-danger) 86%, var(--lm-panel));
+        }
+        .btn-sm { height: 26px; padding: 0 10px; font-size: 12px; }
+
+        /* ---- Menus ---- */
+        .menu {
+            position: fixed;
+            z-index: 1500;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 200px;
+            padding: 6px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-panel);
+            box-shadow: 0 12px 32px var(--lm-shadow);
+        }
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            min-height: 34px;
+            padding: 0 10px;
+            border: 0;
+            border-radius: var(--lm-radius-sm);
+            background: transparent;
+            color: var(--lm-ink);
+            text-align: left;
+            white-space: nowrap;
+        }
+        .menu-item:hover:not(:disabled),
+        .menu-item:focus-visible {
+            background: var(--lm-hover);
+            outline: none;
+        }
+        .menu-item svg {
+            width: 16px;
+            height: 16px;
+            color: var(--lm-ink-3);
+        }
+        .menu-item-danger,
+        .menu-item-danger svg { color: var(--lm-danger); }
+        .menu-separator {
+            height: 1px;
+            margin: 4px 6px;
+            background: var(--lm-line-2);
+        }
+
+        /* ---- Overview list ----
+           One card of hairline rows. The name button stretches over the whole
+           row, so clicking anywhere opens the app; the launch button and the
+           switch sit above that layer and keep their own clicks. */
+        .resource-list {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--lm-line-1);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-card);
+            overflow: hidden;
+        }
+        .app-row {
+            position: relative;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            transition: background 120ms ease;
+        }
+        .app-row + .app-row { border-top: 0.5px solid var(--lm-line-2); }
+        .app-row:hover { background: var(--lm-hover); }
+        .app-row:has(.app-row-name:focus-visible) {
+            outline: 2px solid var(--lm-accent);
+            outline-offset: -2px;
+        }
+        .app-plate {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--lm-surface);
+            font-size: 19px;
+            line-height: 1;
+        }
+        .app-row[data-disabled="true"] .app-plate { opacity: 0.5; }
+        .app-row-main {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .app-row-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .app-row-name {
+            min-width: 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            overflow: hidden;
+            font-size: 14px;
+            line-height: 20px;
+            font-weight: 500;
+            text-align: left;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .app-row-name::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+        }
+        .app-row-name:focus-visible { outline: none; }
+        .app-row[data-disabled="true"] .app-row-name { color: var(--lm-ink-3); }
+        .app-row-sub {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            color: var(--lm-ink-3);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        .app-row-desc {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .app-row-state {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            flex: none;
+            color: var(--lm-success);
+        }
+        .app-row-state::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        .app-row-state + .app-row-desc::before {
+            content: '·';
+            padding-right: 6px;
+            color: var(--lm-ink-4);
+        }
+        .app-row-actions {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .tag {
+            flex: none;
+            padding: 0 6px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--lm-ink) 8%, transparent);
+            color: var(--lm-ink-3);
+            font-size: 11px;
+            line-height: 16px;
+            font-weight: 400;
+        }
+
+        .skeleton-row { pointer-events: none; }
+        .skeleton-bar {
+            display: block;
+            height: 10px;
+            border-radius: 999px;
+            background: var(--lm-active);
+            animation: lm-pulse 1.4s ease-in-out infinite;
+        }
+        .skeleton-row .app-plate { animation: lm-pulse 1.4s ease-in-out infinite; }
+
+        .load-error {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px 10px 16px;
+            border-radius: var(--lm-radius-md);
+            background: color-mix(in srgb, var(--lm-danger) 8%, transparent);
+            color: var(--lm-danger);
+            font-size: 13px;
+            line-height: 20px;
+        }
+        .load-error span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+        /* ---- Settings groups ----
+           One card per group, rows split by hairlines; a row carries its
+           label and hint on the left and the control in a fixed column on the
+           right. Editors that need the full width stack under their label. */
+        .form { display: flex; flex-direction: column; gap: 24px; }
+        .form-fields {
+            display: contents;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            min-width: 0;
+        }
+        .notice {
+            margin: 0;
+            padding: 8px 12px;
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            color: var(--lm-ink-2);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        .form-error {
+            margin: 0;
+            padding: 10px 14px;
+            border-radius: var(--lm-radius-md);
+            background: color-mix(in srgb, var(--lm-danger) 8%, transparent);
+            color: var(--lm-danger);
+            font-size: 13px;
+            line-height: 20px;
+            overflow-wrap: anywhere;
+        }
+        .group { display: flex; flex-direction: column; gap: 8px; }
+        .group-title {
+            margin: 0;
+            padding: 0 2px;
+            font-size: 14px;
+            line-height: 22px;
+            font-weight: 500;
+        }
+        .group-card {
+            display: flex;
+            flex-direction: column;
+            padding: 0 20px;
+            border: 1px solid var(--lm-line-1);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-card);
+        }
+        .group-card > * + *,
+        .disclosure-body > .row { border-top: 0.5px solid var(--lm-line-2); }
+        .row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 280px;
+            align-items: center;
+            gap: 8px 24px;
+            padding: 14px 0;
+        }
+        .row-stack { grid-template-columns: minmax(0, 1fr); }
+        .row-switch { grid-template-columns: minmax(0, 1fr) auto; }
+        .row-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .row-label {
+            font-size: 13px;
+            line-height: 20px;
+            font-weight: 500;
+        }
+        .row-hint {
+            color: var(--lm-ink-3);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        .row-hint code {
+            padding: 0 4px;
+            border-radius: var(--lm-radius-xs);
+            background: var(--lm-hover);
+            font-family: var(--lm-mono);
+            font-size: 11px;
+        }
+        .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+        .field-error {
+            color: var(--lm-danger);
+            font-size: 12px;
+            line-height: 18px;
+            overflow-wrap: anywhere;
+        }
+
+        .input {
+            width: 100%;
+            height: 32px;
+            padding: 0 10px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            outline: none;
+            transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+        .input::placeholder,
+        .code-editor::placeholder { color: var(--lm-ink-4); }
+        .input-mono { font-family: var(--lm-mono); font-size: 12px; }
+        .input[type="number"] { appearance: textfield; font-variant-numeric: tabular-nums; }
+        .input[type="number"]::-webkit-inner-spin-button,
+        .input[type="number"]::-webkit-outer-spin-button { appearance: none; margin: 0; }
+        .input:disabled,
+        .code-editor:disabled { cursor: default; opacity: 1; color: var(--lm-ink-3); }
+        .search-box input:focus,
+        .input:focus,
+        .code-editor:focus {
+            border-color: var(--lm-accent);
+            box-shadow: 0 0 0 2px var(--lm-focus-ring);
+        }
+        :is(.input, .code-editor)[aria-invalid="true"] { border-color: var(--lm-danger); }
+        :is(.input, .code-editor)[aria-invalid="true"]:focus {
+            border-color: var(--lm-danger);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--lm-danger) 18%, transparent);
+        }
+        /* These fields show focus with their border and ring; the theme-wide
+           outline rule is id-specific, so it needs !important to step aside. */
+        :is(.search-box input, .input, .code-editor):focus-visible { outline: none !important; }
+        .icon-field { display: flex; align-items: center; gap: 8px; }
+        .icon-field .input { flex: 1; min-width: 0; }
+        .icon-field .input-emoji { flex: 0 0 56px; text-align: center; font-size: 16px; }
+        .pair {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pair .input { flex: 1; min-width: 0; }
+        .pair-sep { color: var(--lm-ink-4); }
+
+        /* Device type: four options, so a segmented control instead of a select. */
+        .segmented {
+            display: flex;
+            padding: 2px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+        }
+        .segment { position: relative; flex: 1; min-width: 0; }
+        .segment input { position: absolute; opacity: 0; pointer-events: none; }
+        .segment span {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 26px;
+            padding: 0 6px;
+            border-radius: 10px;
+            color: var(--lm-ink-3);
+            font-size: 12px;
+            line-height: 18px;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: background 120ms ease, color 120ms ease;
+        }
+        .segment span:hover { color: var(--lm-ink); }
+        .segment input:checked + span {
+            background: var(--lm-panel);
+            color: var(--lm-ink);
+            font-weight: 500;
+            box-shadow: 0 0 0 0.5px var(--lm-line-3), 0 1px 2px var(--lm-shadow);
+        }
+        .segment input:focus-visible + span {
+            outline: 2px solid var(--lm-accent);
+            outline-offset: 1px;
+        }
+        .segment input:disabled + span { cursor: default; }
+
+        /* Rarely changed settings fold behind a disclosure row. */
+        .disclosure > summary {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 0;
+            list-style: none;
+            cursor: pointer;
+            border-radius: var(--lm-radius-xs);
+        }
+        .disclosure > summary::-webkit-details-marker { display: none; }
+        .disclosure > summary svg {
+            width: 14px;
+            height: 14px;
+            color: var(--lm-ink-3);
+        }
+        .disclosure[open] > summary svg { transform: rotate(90deg); }
+        .disclosure > summary:hover .row-label { color: var(--lm-ink); }
+        .disclosure-label { flex: 1; min-width: 0; }
+        .disclosure-meta {
+            color: var(--lm-ink-4);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        .disclosure-body > .row-stack:first-child { border-top: 0; padding-top: 0; }
+
+        .code-editor {
+            display: block;
+            width: 100%;
+            min-height: 112px;
+            padding: 10px 12px;
+            border: 0.5px solid var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-surface);
+            outline: none;
+            resize: vertical;
+            font: 12px/18px var(--lm-mono);
+            tab-size: 4;
+            transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+        .code-editor.code { min-height: 220px; }
+
+        .tabs {
+            display: flex;
+            gap: 0 22px;
+            border-bottom: 0.5px solid var(--lm-line-3);
+        }
+        .tab {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 1px 8px;
+            border: 0;
+            background: transparent;
+            color: var(--lm-ink-3);
+            font: 12px/18px var(--lm-mono);
+        }
+        .tab:hover { color: var(--lm-ink); }
+        .tab[aria-selected="true"] { color: var(--lm-ink); font-weight: 500; }
+        .tab[aria-selected="true"]::after {
+            content: '';
+            position: absolute;
+            inset: auto 0 -0.5px;
+            height: 2px;
+            border-radius: 1px;
+            background: var(--lm-ink);
+        }
+        /* A dot on the tab tells which injection file has content. */
+        .tab[data-filled="true"]::before {
+            content: '';
+            order: 1;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--lm-ink-3);
+        }
+        .tab:focus-visible { outline-offset: -2px; border-radius: var(--lm-radius-xs); }
+
+        /* ---- Switch ---- */
+        .switch {
+            position: relative;
+            display: inline-flex;
+            padding: 4px 0;
+            margin: -4px 0;
+            cursor: pointer;
+        }
+        .switch input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .switch-track {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            border-radius: 999px;
+            background: var(--lm-line-3);
+            transition: background 120ms ease;
+        }
+        .switch-track::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--lm-thumb-off);
+            transition: transform 120ms ease;
+        }
+        .switch input:checked + .switch-track { background: var(--lm-ink); }
+        .switch input:checked + .switch-track::after {
+            transform: translateX(16px);
+            background: var(--lm-panel);
+        }
+        .switch input:focus-visible + .switch-track {
+            outline: 2px solid var(--lm-accent);
+            outline-offset: 2px;
+        }
+        .switch input:disabled + .switch-track { opacity: 0.4; }
+        .switch:has(input:disabled) { cursor: default; }
+        .switch[aria-busy="true"] .switch-track { opacity: 0.6; }
+        .switch[aria-busy="true"] { cursor: progress; }
+        .head-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding-right: 4px;
+            color: var(--lm-ink-2);
+            font-size: 13px;
+            line-height: 20px;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .head-toggle:has(input:disabled) { cursor: default; color: var(--lm-ink-3); }
+
+        /* ---- Save bar ---- */
+        .editor-foot {
+            flex: none;
+            border-top: 0.5px solid var(--lm-line-2);
+            background: var(--lm-panel);
+        }
+        .editor-foot-inner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 808px;
+            margin: 0 auto;
+            padding: 12px 24px;
+        }
+        .foot-spacer { flex: 1; }
+        .foot-status {
+            color: var(--lm-ink-3);
+            font-size: 12px;
+            line-height: 18px;
+        }
+        .foot-status[data-tone="saved"] { color: var(--lm-success); }
+
+        /* ---- Empty state ---- */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 40px 16px;
+            border: 1px dashed var(--lm-line-3);
+            border-radius: var(--lm-radius-md);
+            color: var(--lm-ink-3);
+            text-align: center;
+        }
+        .empty-state p { margin: 0; }
+        .empty-title { color: var(--lm-ink); font-size: 14px; line-height: 22px; font-weight: 500; }
+        .empty-actions { display: flex; gap: 8px; padding-top: 10px; }
+
+        /* ---- Dialog ---- */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+            background: color-mix(in srgb, var(--lm-ground) 58%, transparent);
+            backdrop-filter: blur(2px);
+        }
+        .modal-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            max-width: 420px;
+            padding: 20px 24px 18px;
+            border-radius: var(--lm-radius-xl);
+            background: var(--lm-panel);
+            box-shadow:
+                0 0 0 0.5px var(--lm-line-3),
+                0 24px 64px var(--lm-shadow);
+        }
+        .modal-content h3 {
+            margin: 0;
+            font-size: 16px;
+            line-height: 24px;
+            font-weight: 600;
+            overflow-wrap: anywhere;
+        }
+        .modal-content p {
+            margin: 0;
+            color: var(--lm-ink-2);
+            overflow-wrap: anywhere;
+        }
+        .modal-content .modal-error { color: var(--lm-danger); font-size: 12px; line-height: 18px; }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding-top: 12px;
+        }
+
+        /* ---- Toast ---- */
         .toast {
-            position: fixed; right: 18px; bottom: 18px; max-width: 430px; padding: 11px 14px; border-radius: 10px;
-            background: var(--notification-bg, var(--panel)); border: 1px solid var(--line); box-shadow: var(--shadow);
-            opacity: 0; transform: translateY(8px); pointer-events: none; transition: .2s ease; z-index: 20;
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 3000;
+            max-width: 380px;
+            padding: 9px 14px;
+            border-radius: var(--lm-radius-md);
+            background: var(--lm-panel);
+            color: var(--lm-ink);
+            box-shadow:
+                0 0 0 0.5px var(--lm-line-3),
+                0 8px 28px var(--lm-shadow);
+            opacity: 0;
+            transform: translateY(8px);
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            overflow-wrap: anywhere;
         }
         .toast.show { opacity: 1; transform: translateY(0); }
-        .toast.error { border-color: color-mix(in srgb, var(--danger) 55%, transparent); color: var(--danger); }
-        @media (max-width: 900px) {
-            .layout { grid-template-columns: 240px minmax(0, 1fr); }
-            .field, .field.third, .field.quarter { grid-column: 1 / -1; }
+        /* Sit above the save bar so a toast never covers Save. */
+        body:has(.editor-foot:not([hidden])) .toast { bottom: 72px; }
+        .toast.error {
+            color: var(--lm-danger);
+            box-shadow:
+                0 0 0 0.5px color-mix(in srgb, var(--lm-danger) 60%, transparent),
+                0 8px 28px var(--lm-shadow);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .btn, .icon-btn, .nav-item, .crumb-link, .app-row, .input, .code-editor,
+            .search-box input, .segment span, .switch-track, .switch-track::after, .toast {
+                transition: none;
+            }
+            .spinner { animation-duration: 2s; }
+            .skeleton-bar, .skeleton-row .app-plate { animation: none; }
+        }
+
+        /* The navigation collapses to an icon rail on narrow windows. */
+        @media (max-width: 860px) {
+            .layout { grid-template-columns: 56px minmax(0, 1fr); }
+            .sidebar-title {
+                flex: none;
+                flex-direction: column;
+                gap: 4px;
+                padding: 0;
+            }
+            .sidebar-title-text,
+            .search-box,
+            .nav-label,
+            .nav-item .nav-count { display: none; }
+            .nav-group-label {
+                height: 1px;
+                margin: 0 8px;
+                padding: 0;
+                overflow: hidden;
+                background: var(--lm-line-2);
+                color: transparent;
+            }
+            .app-list { margin-top: 0; }
+            .nav-item { justify-content: center; padding: 0; }
+        }
+
+        @media (max-width: 640px) {
+            .page { padding: 20px 16px 32px; }
+            .page-head { flex-wrap: wrap; }
+            .editor-head .page-head-actions { width: 100%; }
+            .editor-foot-inner { padding: 10px 16px; }
+            .group-card { padding: 0 14px; }
+            .row { grid-template-columns: minmax(0, 1fr); }
+            .row-switch { grid-template-columns: minmax(0, 1fr) auto; }
+            .app-row { padding: 12px; }
+            .app-row-desc { display: none; }
+            .foot-status { display: none; }
         }
     </style>
 </head>
 <body>
-    <header class="titlebar">
-        <div class="brand"><span class="brand-mark">🕸</span><span>VCP Loom <small>Arachne / 一期管理器</small></span></div>
-        <div class="window-controls">
-            <button id="minimize" title="最小化">─</button>
-            <button id="maximize" title="最大化">□</button>
-            <button id="close" class="close" title="关闭">×</button>
-        </div>
-    </header>
+    <div class="drag-strip"></div>
+    <div class="window-controls">
+        <button id="minimize" class="window-btn" type="button" title="最小化" aria-label="最小化">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button id="maximize" class="window-btn" type="button" title="最大化" aria-label="最大化">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"></rect></svg>
+        </button>
+        <button id="close" class="window-btn window-btn-close" type="button" title="关闭" aria-label="关闭">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+    </div>
 
     <main class="layout">
         <aside class="sidebar">
-            <div class="side-actions">
-                <button class="btn primary" id="newApp">＋ 新建</button>
-                <button class="btn" id="importApp">⇩ 导入</button>
-                <button class="btn" id="refreshApps">↻ 刷新</button>
-                <button class="btn" id="exportApp">⇧ 导出</button>
+            <div class="sidebar-title">
+                <span class="sidebar-title-text">Loom</span>
+                <button class="icon-btn" id="newApp" type="button" title="新建应用" aria-label="新建应用">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <button class="icon-btn" id="sidebarMore" type="button" title="更多" aria-label="更多" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebarMenu">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+                </button>
             </div>
-            <input id="search" class="search" type="search" placeholder="搜索 LoomAPP…">
+            <div class="search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                <input id="search" type="search" placeholder="搜索名称或 ID" aria-label="搜索应用" autocomplete="off" spellcheck="false">
+                <button class="icon-btn search-clear" id="searchClear" type="button" title="清除搜索" aria-label="清除搜索" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <button class="nav-item" id="navAll" type="button" title="全部应用" aria-current="page">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>
+                <span class="nav-label">全部应用</span>
+                <span class="nav-count" id="appCount"></span>
+            </button>
+            <div class="nav-group-label">应用</div>
             <div class="app-list" id="appList"></div>
             <div class="skill-manager-footer">
-                <button class="btn" id="manageSkills" type="button" title="在 Canvas 中打开 LoomSkills 工作区">
-                    <span aria-hidden="true">⌘</span>
-                    <span>管理 LoomSkill</span>
+                <button class="nav-item" id="manageSkills" type="button" title="在 Canvas 中打开 LoomSkills 工作区">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>
+                    <span class="nav-label">管理 LoomSkill</span>
                 </button>
             </div>
         </aside>
 
         <section class="editor">
-            <div class="editor-head">
-                <div class="editor-title">
-                    <strong id="editorName">选择或创建 LoomAPP</strong>
-                    <span id="editorMeta">远程网页持久化应用容器</span>
-                </div>
-                <button class="btn" id="openFolder" disabled>目录</button>
-                <button class="btn" id="clearSession" disabled>清除登录</button>
-                <button class="btn danger" id="deleteApp" disabled>删除</button>
-                <button class="btn" id="launchApp" disabled>▶ 启动</button>
-                <button class="btn primary" id="saveApp" disabled>保存</button>
-            </div>
             <div class="editor-body">
-                <div class="placeholder" id="placeholder">
-                    <div><div class="placeholder-mark">🕸️</div><h2>VCP Loom</h2><p>将真实网页织入 VChat，形成拥有独立身份与持久会话的子应用。</p></div>
+                <div class="page" id="placeholder">
+                    <header class="page-head">
+                        <div class="page-head-copy">
+                            <h1 class="page-title">全部应用</h1>
+                            <p class="page-intro" id="overviewIntro"></p>
+                        </div>
+                        <div class="page-head-actions">
+                            <button class="icon-btn icon-btn-outline" id="overviewRefresh" type="button" title="重新读取应用目录" aria-label="重新读取应用目录">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            </button>
+                            <button class="btn btn-primary" id="overviewNew" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                新建应用
+                            </button>
+                        </div>
+                    </header>
+                    <div class="load-error" id="loadError" role="alert" hidden>
+                        <span id="loadErrorText"></span>
+                        <button class="btn btn-sm" id="retryLoad" type="button">重试</button>
+                    </div>
+                    <div class="resource-list" id="overviewList"></div>
+                    <div class="empty-state" id="overviewEmpty" hidden>
+                        <p class="empty-title" id="emptyTitle"></p>
+                        <p id="emptyBody"></p>
+                        <div class="empty-actions">
+                            <button class="btn btn-primary" id="placeholderNew" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                新建应用
+                            </button>
+                            <button class="btn" id="emptyImport" type="button">导入应用…</button>
+                            <button class="btn" id="emptyClearSearch" type="button">清除搜索</button>
+                        </div>
+                    </div>
                 </div>
 
-                <form class="form" id="appForm">
-                    <div class="section">
-                        <div class="section-title">应用身份</div>
-                        <div class="section-body">
-                            <div class="field third"><label for="appId">应用 ID</label><input id="appId" required pattern="[a-z0-9][a-z0-9_\-]{1,63}" placeholder="example-mobile"></div>
-                            <div class="field third"><label for="appName">显示名称</label><input id="appName" required placeholder="示例移动应用"></div>
-                            <div class="field third"><label for="emoji">Emoji 图标</label><input id="emoji" value="🕸️" maxlength="8"></div>
-                            <div class="field full"><label for="description">描述</label><input id="description" placeholder="此 LoomAPP 的用途"></div>
-                            <div class="field full"><label for="startUrl">启动 URL</label><input id="startUrl" required type="url" value="https://example.com/"></div>
-                            <div class="field full"><label for="icon">传统图标</label><input id="icon" placeholder="应用目录内相对路径、https URL 或 data:image URL"><div class="hint">社区分发可使用应用目录内文件名，例如 icon.png；配置图标源码后将优先显示源码图标。</div></div>
-                            <div class="field full"><label for="iconSource">手绘图标源码（JSON）</label><textarea id="iconSource" spellcheck="false" placeholder='{"type":"svg","source":"<svg viewBox=\"0 0 64 64\">...</svg>"}'></textarea><div class="hint">支持 svg、css、canvas。Canvas 使用声明式 commands，不执行任意 JavaScript；留空则使用传统图标或 Emoji。</div></div>
-                            <div class="check-row">
-                                <label class="check"><input id="enabled" type="checkbox" checked>启用应用</label>
-                                <label class="check"><input id="exposeDrawer" type="checkbox" checked>暴露在应用抽屉</label>
-                                <label class="check"><input id="exposeManager" type="checkbox" checked>允许管理器暴露在应用抽屉</label>
-                            </div>
+                <div class="page" id="appView" hidden>
+                    <nav class="crumbs" aria-label="位置">
+                        <button class="crumb-link" id="crumbAll" type="button">全部应用</button>
+                        <span class="crumb-sep" aria-hidden="true">/</span>
+                        <span class="crumb-current" id="crumbName" aria-current="page"></span>
+                    </nav>
+                    <header class="page-head editor-head">
+                        <span class="hero-tile" id="editorIcon" aria-hidden="true"></span>
+                        <div class="page-head-copy editor-title">
+                            <h1 class="page-title" id="editorName">新建应用</h1>
+                            <p class="page-intro" id="editorMeta"></p>
                         </div>
-                    </div>
+                        <div class="page-head-actions">
+                            <label class="head-toggle" id="enabledToggle">
+                                <span>启用</span>
+                                <span class="switch"><input id="enabled" type="checkbox" checked><span class="switch-track"></span></span>
+                            </label>
+                            <button class="btn" id="launchApp" type="button" disabled>
+                                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+                                <span>启动</span>
+                            </button>
+                            <button class="icon-btn icon-btn-outline" id="appMore" type="button" title="更多" aria-label="更多" aria-haspopup="menu" aria-expanded="false" aria-controls="appMenu" disabled>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+                            </button>
+                        </div>
+                    </header>
 
-                    <div class="section">
-                        <div class="section-title">窗口与视口</div>
-                        <div class="section-body">
-                            <div class="field quarter"><label for="windowWidth">窗口宽度</label><input id="windowWidth" type="number" min="320" max="3840" value="420"></div>
-                            <div class="field quarter"><label for="windowHeight">窗口高度</label><input id="windowHeight" type="number" min="360" max="2160" value="780"></div>
-                            <div class="field quarter"><label for="minWidth">最小宽度</label><input id="minWidth" type="number" min="240" value="320"></div>
-                            <div class="field quarter"><label for="minHeight">最小高度</label><input id="minHeight" type="number" min="240" value="480"></div>
-                            <div class="field quarter"><label for="viewportWidth">页面视口宽度</label><input id="viewportWidth" type="number" min="240" value="390"></div>
-                            <div class="field quarter"><label for="viewportHeight">页面视口高度</label><input id="viewportHeight" type="number" min="240" value="700"></div>
-                            <div class="field quarter"><label for="maxWidth">最大宽度（可空）</label><input id="maxWidth" type="number" min="320"></div>
-                            <div class="field quarter"><label for="maxHeight">最大高度（可空）</label><input id="maxHeight" type="number" min="360"></div>
-                            <div class="check-row">
-                                <label class="check"><input id="resizable" type="checkbox" checked>窗口可调整尺寸</label>
-                                <label class="check"><input id="autoResize" type="checkbox" checked>页面视口跟随窗口</label>
-                            </div>
-                        </div>
-                    </div>
+                    <form class="form" id="appForm" novalidate>
+                        <p class="notice" id="readonlyNotice" hidden>这是内置的协作浏览器，配置不能在这里修改；浏览数据请在侧栏浏览器的菜单里清除。</p>
+                        <p class="form-error" id="formError" role="alert" hidden></p>
 
-                    <div class="section">
-                        <div class="section-title">请求模拟与导航</div>
-                        <div class="section-body">
-                            <div class="field third">
-                                <label for="profile">请求配置</label>
-                                <select id="profile">
-                                    <option value="desktop">桌面浏览器</option>
-                                    <option value="mobile" selected>Android 手机</option>
-                                    <option value="iphone">iPhone</option>
-                                    <option value="custom">自定义 UA</option>
-                                </select>
+                        <fieldset class="form-fields" id="formFields">
+                        <section class="group">
+                            <h2 class="group-title">基本信息</h2>
+                            <div class="group-card">
+                                <div class="row">
+                                    <div class="row-copy"><label class="row-label" for="appName">名称</label></div>
+                                    <div class="field">
+                                        <input class="input" id="appName" placeholder="比如：小红书" maxlength="80" autocomplete="off">
+                                        <span class="field-error" id="appNameError" hidden></span>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="startUrl">启动网址</label>
+                                        <span class="row-hint">打开应用时载入的页面</span>
+                                    </div>
+                                    <div class="field">
+                                        <input class="input" id="startUrl" type="url" placeholder="https://example.com" spellcheck="false" autocomplete="off">
+                                        <span class="field-error" id="startUrlError" hidden></span>
+                                    </div>
+                                </div>
+                                <div class="row" id="appIdRow" hidden>
+                                    <div class="row-copy">
+                                        <label class="row-label" for="appId">应用 ID</label>
+                                        <span class="row-hint" id="appIdHint">按启动网址生成；用作目录名和登录分区，创建后不能修改</span>
+                                    </div>
+                                    <div class="field">
+                                        <input class="input input-mono" id="appId" placeholder="example-com" spellcheck="false" autocomplete="off" maxlength="64">
+                                        <span class="field-error" id="appIdError" hidden></span>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy"><label class="row-label" for="description">描述</label></div>
+                                    <input class="input" id="description" placeholder="一句话说明用途，显示在应用列表里" maxlength="500">
+                                </div>
                             </div>
-                            <div class="field" style="grid-column: span 8"><label for="userAgent">自定义 User-Agent（可空）</label><input id="userAgent" placeholder="留空则使用所选配置的内置 UA"></div>
-                            <div class="field full"><label for="headers">附加请求头（JSON）</label><textarea id="headers" spellcheck="false">{}</textarea><div class="hint">Cookie 与 Host 不允许在此覆写；登录状态由独立持久化 session 自动保存。</div></div>
-                            <div class="check-row">
-                                <label class="check"><input id="allowPopups" type="checkbox">允许弹窗链接在应用内打开</label>
-                                <label class="check"><input id="externalOrigins" type="checkbox">跨域导航改用系统浏览器</label>
-                            </div>
-                        </div>
-                    </div>
+                        </section>
 
-                    <div class="section">
-                        <div class="section-title">注入修正</div>
-                        <div class="section-body">
-                            <div class="field full"><label for="injectCss">inject.css</label><textarea class="code" id="injectCss" spellcheck="false" placeholder="/* 页面布局修正 */"></textarea></div>
-                            <div class="field full"><label for="injectJs">inject.js</label><textarea class="code" id="injectJs" spellcheck="false" placeholder="// 页面功能修正；代码在页面加载完成后执行"></textarea></div>
-                        </div>
-                    </div>
-                </form>
+                        <section class="group">
+                            <h2 class="group-title">图标与入口</h2>
+                            <div class="group-card">
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <label class="row-label" for="icon">图标</label>
+                                        <span class="row-hint">填 Emoji；图片可用文件名、https 或 data:image</span>
+                                    </div>
+                                    <div class="field">
+                                        <div class="icon-field">
+                                            <input class="input input-emoji" id="emoji" maxlength="8" aria-label="Emoji 图标" title="没有图片时显示">
+                                            <input class="input" id="icon" placeholder="图片（可选）" spellcheck="false" aria-label="图片图标" autocomplete="off">
+                                        </div>
+                                        <span class="field-error" id="iconError" hidden></span>
+                                    </div>
+                                </div>
+                                <details class="disclosure" id="iconSourceMore">
+                                    <summary>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                                        <span class="disclosure-label row-label">手绘图标源码</span>
+                                        <span class="disclosure-meta" id="iconSourceMeta">可选</span>
+                                    </summary>
+                                    <div class="disclosure-body">
+                                        <div class="row row-stack">
+                                            <span class="row-hint">JSON 对象，支持 svg、css、canvas 三种类型；canvas 只接受声明式 commands，不执行脚本。填写后优先于上面的图片。</span>
+                                            <div class="field">
+                                                <textarea class="code-editor" id="iconSource" spellcheck="false" aria-label="手绘图标源码" placeholder='{&#10;  "type": "svg",&#10;  "source": "&lt;svg viewBox=\"0 0 64 64\"&gt;…&lt;/svg&gt;"&#10;}'></textarea>
+                                                <span class="field-error" id="iconSourceError" hidden></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </details>
+                                <div class="row row-switch">
+                                    <div class="row-copy">
+                                        <span class="row-label">显示在应用抽屉</span>
+                                        <span class="row-hint">在 VChat 的应用抽屉里放一个入口</span>
+                                    </div>
+                                    <label class="switch" aria-label="显示在应用抽屉"><input id="exposeDrawer" type="checkbox" checked><span class="switch-track"></span></label>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="group">
+                            <h2 class="group-title">窗口与设备</h2>
+                            <div class="group-card">
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <span class="row-label" id="profileLabel">设备类型</span>
+                                        <span class="row-hint">决定网站看到的设备和 User-Agent</span>
+                                    </div>
+                                    <div class="segmented" role="radiogroup" aria-labelledby="profileLabel">
+                                        <label class="segment"><input type="radio" name="profile" id="profileDesktop" value="desktop"><span>桌面</span></label>
+                                        <label class="segment"><input type="radio" name="profile" id="profileMobile" value="mobile"><span>Android</span></label>
+                                        <label class="segment"><input type="radio" name="profile" id="profileIphone" value="iphone"><span>iPhone</span></label>
+                                        <label class="segment"><input type="radio" name="profile" id="profileCustom" value="custom"><span>自定义</span></label>
+                                    </div>
+                                </div>
+                                <div class="row row-stack" id="userAgentRow" hidden>
+                                    <div class="row-copy">
+                                        <label class="row-label" for="userAgent">User-Agent</label>
+                                        <span class="row-hint" id="userAgentHint">留空时使用所选设备的默认值</span>
+                                    </div>
+                                    <input class="input input-mono" id="userAgent" placeholder="Mozilla/5.0 (…) AppleWebKit/537.36 …" spellcheck="false" autocomplete="off">
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy"><span class="row-label" id="windowSizeLabel">窗口尺寸</span></div>
+                                    <div class="field">
+                                        <div class="pair" role="group" aria-labelledby="windowSizeLabel">
+                                            <input class="input" id="windowWidth" type="number" min="320" max="3840" aria-label="窗口宽度" title="宽度">
+                                            <span class="pair-sep">×</span>
+                                            <input class="input" id="windowHeight" type="number" min="360" max="2160" aria-label="窗口高度" title="高度">
+                                        </div>
+                                        <span class="field-error" id="windowSizeError" hidden></span>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="row-copy">
+                                        <span class="row-label" id="viewportSizeLabel">页面视口</span>
+                                        <span class="row-hint">网页看到的屏幕尺寸</span>
+                                    </div>
+                                    <div class="field">
+                                        <div class="pair" role="group" aria-labelledby="viewportSizeLabel">
+                                            <input class="input" id="viewportWidth" type="number" min="240" max="3840" aria-label="页面视口宽度" title="宽度">
+                                            <span class="pair-sep">×</span>
+                                            <input class="input" id="viewportHeight" type="number" min="240" max="4320" aria-label="页面视口高度" title="高度">
+                                        </div>
+                                        <span class="field-error" id="viewportSizeError" hidden></span>
+                                    </div>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy">
+                                        <span class="row-label">视口跟随窗口</span>
+                                        <span class="row-hint">调整窗口大小时同步改变页面视口</span>
+                                    </div>
+                                    <label class="switch" aria-label="视口跟随窗口"><input id="autoResize" type="checkbox" checked><span class="switch-track"></span></label>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy"><span class="row-label">窗口可调整大小</span></div>
+                                    <label class="switch" aria-label="窗口可调整大小"><input id="resizable" type="checkbox" checked><span class="switch-track"></span></label>
+                                </div>
+                                <details class="disclosure" id="limitsMore">
+                                    <summary>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                                        <span class="disclosure-label row-label">尺寸限制</span>
+                                        <span class="disclosure-meta" id="limitsMeta"></span>
+                                    </summary>
+                                    <div class="disclosure-body">
+                                        <div class="row">
+                                            <div class="row-copy">
+                                                <span class="row-label" id="minSizeLabel">最小尺寸</span>
+                                                <span class="row-hint">不会超过窗口尺寸</span>
+                                            </div>
+                                            <div class="field">
+                                                <div class="pair" role="group" aria-labelledby="minSizeLabel">
+                                                    <input class="input" id="minWidth" type="number" min="240" placeholder="320" aria-label="最小宽度" title="宽度">
+                                                    <span class="pair-sep">×</span>
+                                                    <input class="input" id="minHeight" type="number" min="240" placeholder="480" aria-label="最小高度" title="高度">
+                                                </div>
+                                                <span class="field-error" id="minSizeError" hidden></span>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="row-copy">
+                                                <span class="row-label" id="maxSizeLabel">最大尺寸</span>
+                                                <span class="row-hint">留空表示不限制</span>
+                                            </div>
+                                            <div class="field">
+                                                <div class="pair" role="group" aria-labelledby="maxSizeLabel">
+                                                    <input class="input" id="maxWidth" type="number" min="320" placeholder="不限" aria-label="最大宽度" title="宽度">
+                                                    <span class="pair-sep">×</span>
+                                                    <input class="input" id="maxHeight" type="number" min="360" placeholder="不限" aria-label="最大高度" title="高度">
+                                                </div>
+                                                <span class="field-error" id="maxSizeError" hidden></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+                        </section>
+
+                        <section class="group">
+                            <h2 class="group-title">网络与导航</h2>
+                            <div class="group-card">
+                                <div class="row row-switch">
+                                    <div class="row-copy">
+                                        <span class="row-label">在应用内打开弹窗链接</span>
+                                        <span class="row-hint">关闭时，新窗口链接交给系统浏览器</span>
+                                    </div>
+                                    <label class="switch" aria-label="在应用内打开弹窗链接"><input id="allowPopups" type="checkbox"><span class="switch-track"></span></label>
+                                </div>
+                                <div class="row row-switch">
+                                    <div class="row-copy">
+                                        <span class="row-label">跨站点导航改用系统浏览器</span>
+                                        <span class="row-hint">页面跳到其他站点时，在系统浏览器里打开</span>
+                                    </div>
+                                    <label class="switch" aria-label="跨站点导航改用系统浏览器"><input id="externalOrigins" type="checkbox"><span class="switch-track"></span></label>
+                                </div>
+                                <details class="disclosure" id="headersMore">
+                                    <summary>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                                        <span class="disclosure-label row-label">附加请求头</span>
+                                        <span class="disclosure-meta" id="headersMeta">可选</span>
+                                    </summary>
+                                    <div class="disclosure-body">
+                                        <div class="row row-stack">
+                                            <span class="row-hint">JSON 对象，随每个请求发送。Cookie 和 Host 不能覆写；登录状态由应用的独立会话保存。</span>
+                                            <div class="field">
+                                                <textarea class="code-editor" id="headers" spellcheck="false" aria-label="附加请求头" placeholder='{&#10;  "Accept-Language": "zh-CN",&#10;  "X-Requested-With": "VChat"&#10;}'></textarea>
+                                                <span class="field-error" id="headersError" hidden></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+                        </section>
+
+                        <section class="group">
+                            <h2 class="group-title">注入修正</h2>
+                            <div class="group-card">
+                                <div class="row row-stack">
+                                    <span class="row-hint">页面加载完成后注入，用来修正布局或补充功能</span>
+                                    <div class="tabs" role="tablist" aria-label="注入文件">
+                                        <button class="tab" type="button" role="tab" id="tabCss" aria-selected="true" aria-controls="injectCss">inject.css</button>
+                                        <button class="tab" type="button" role="tab" id="tabJs" aria-selected="false" aria-controls="injectJs" tabindex="-1">inject.js</button>
+                                    </div>
+                                    <textarea class="code-editor code" id="injectCss" spellcheck="false" placeholder="/* 页面布局修正，比如隐藏下载横幅 */&#10;.download-banner { display: none !important; }" aria-labelledby="tabCss"></textarea>
+                                    <textarea class="code-editor code" id="injectJs" spellcheck="false" placeholder="// 页面功能修正；在页面加载完成后执行&#10;document.querySelector('.open-in-app')?.remove();" aria-labelledby="tabJs" hidden></textarea>
+                                    <span class="field-error" id="injectError" hidden></span>
+                                </div>
+                            </div>
+                        </section>
+                        </fieldset>
+                    </form>
+                </div>
             </div>
+
+            <footer class="editor-foot" id="editorFoot" hidden>
+                <div class="editor-foot-inner">
+                    <button class="btn btn-ghost-danger" id="deleteApp" type="button" hidden>删除应用</button>
+                    <span class="foot-spacer"></span>
+                    <span class="foot-status" id="dirtyHint" role="status" aria-live="polite"></span>
+                    <button class="btn btn-ghost" id="revertApp" type="button" hidden>撤销更改</button>
+                    <button class="btn btn-primary" id="saveApp" type="button" disabled>保存</button>
+                </div>
+            </footer>
         </section>
     </main>
 
-    <div class="toast" id="toast"></div>
+    <div class="menu" id="sidebarMenu" role="menu" aria-label="更多" hidden>
+        <button class="menu-item" id="importApp" type="button" role="menuitem" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+            导入应用…
+        </button>
+        <button class="menu-item" id="refreshApps" type="button" role="menuitem" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            重新读取应用目录
+        </button>
+    </div>
+
+    <div class="menu" id="appMenu" role="menu" aria-label="更多" hidden>
+        <button class="menu-item" id="openFolder" type="button" role="menuitem" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            打开应用目录
+        </button>
+        <button class="menu-item" id="exportApp" type="button" role="menuitem" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg>
+            导出…
+        </button>
+        <div class="menu-separator" role="separator" id="appMenuSeparator"></div>
+        <button class="menu-item" id="closeApp" type="button" role="menuitem" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+            关闭应用窗口
+        </button>
+        <button class="menu-item menu-item-danger" id="clearSession" type="button" role="menuitem" tabindex="-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h11"/></svg>
+            清除登录数据…
+        </button>
+    </div>
+
+    <div class="modal-overlay" id="confirmDialog" hidden>
+        <div class="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+            <h3 id="confirmTitle"></h3>
+            <p id="confirmBody"></p>
+            <p class="modal-error" id="confirmError" role="alert" hidden></p>
+            <div class="modal-actions">
+                <button class="btn" id="confirmCancel" type="button">取消</button>
+                <button class="btn btn-danger" id="confirmOk" type="button"></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script>
         'use strict';
 
         const api = window.loomAPI;
         const $ = (id) => document.getElementById(id);
+        const DEFAULT_EMOJI = '🕸️';
+        const SAFE_ID = /^[a-z0-9][a-z0-9_-]{1,63}$/;
+        const PROFILES = { desktop: 'profileDesktop', mobile: 'profileMobile', iphone: 'profileIphone', custom: 'profileCustom' };
+        // Sizes a fresh app gets for each device type. Switching the type only
+        // swaps sizes that still match the previous type's defaults.
+        const PROFILE_SIZES = {
+            desktop: { windowWidth: 1200, windowHeight: 800, viewportWidth: 1200, viewportHeight: 800 },
+            mobile: { windowWidth: 420, windowHeight: 780, viewportWidth: 390, viewportHeight: 700 },
+            iphone: { windowWidth: 420, windowHeight: 780, viewportWidth: 390, viewportHeight: 700 },
+        };
+        // Pairs of number fields and the ranges the main process accepts.
+        const SIZE_FIELDS = {
+            windowSize: { ids: ['windowWidth', 'windowHeight'], ranges: [[320, 3840], [360, 2160]], required: true },
+            viewportSize: { ids: ['viewportWidth', 'viewportHeight'], ranges: [[240, 3840], [240, 4320]], required: true },
+            minSize: { ids: ['minWidth', 'minHeight'], ranges: [[240, 3840], [240, 2160]], required: false },
+            maxSize: { ids: ['maxWidth', 'maxHeight'], ranges: [[320, 7680], [360, 4320]], required: false },
+        };
+        // Which input each error key points at, for aria-invalid and focus.
+        const ERROR_INPUTS = {
+            appName: ['appName'],
+            startUrl: ['startUrl'],
+            appId: ['appId'],
+            icon: ['icon'],
+            iconSource: ['iconSource'],
+            headers: ['headers'],
+            inject: ['injectCss', 'injectJs'],
+            ...Object.fromEntries(Object.entries(SIZE_FIELDS).map(([key, field]) => [key, field.ids])),
+        };
+        const DISCLOSURE_OF = { iconSource: 'iconSourceMore', headers: 'headersMore', minSize: 'limitsMore', maxSize: 'limitsMore' };
+
         let apps = [];
+        let loading = true;
+        let loadErrorMessage = '';
+        let refreshing = false;
         let selectedId = null;
         let originalId = null;
         let isNew = false;
+        let isReadonly = false;
+        let currentSources = null;
+        let baseline = '';
+        let saving = false;
+        let idEdited = false;
+        let lastProfile = null;
+        let attemptedSave = false;
+        let savedNoticeTimer = null;
         let toastTimer = null;
+        const touched = new Set();
+        const pendingEnable = new Set();
+        const launching = new Set();
 
         function applyTheme(theme) {
             document.body.classList.toggle('light-theme', theme === 'light');
@@ -359,14 +1660,524 @@
             return result.data;
         }
 
+        // Longer messages stay up longer, so a file path can be read in full.
         function showToast(message, isError = false) {
             const toast = $('toast');
             toast.textContent = message;
             toast.className = `toast show${isError ? ' error' : ''}`;
             clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => { toast.className = 'toast'; }, 3200);
+            const hold = Math.min(8000, Math.max(3200, 1800 + String(message).length * 70));
+            toastTimer = setTimeout(() => { toast.className = 'toast'; }, hold);
         }
 
+        function svgIcon(markup, size = 14) {
+            const template = document.createElement('template');
+            template.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${markup}</svg>`;
+            return template.content.firstElementChild;
+        }
+        const ICON_PLAY = '<path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/>';
+        const ICON_SHOW = '<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M20 4l-8 8M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>';
+
+        function spinner() {
+            const ring = document.createElement('span');
+            ring.className = 'spinner';
+            ring.setAttribute('aria-hidden', 'true');
+            return ring;
+        }
+
+        // Swap a button's content for a busy label and back again.
+        function setButtonBusy(button, busy, busyLabel) {
+            if (busy) {
+                if (!button._idle) button._idle = Array.from(button.childNodes);
+                button.replaceChildren(spinner(), document.createTextNode(busyLabel));
+                button.setAttribute('aria-busy', 'true');
+                button.disabled = true;
+            } else {
+                if (button._idle) button.replaceChildren(...button._idle);
+                button._idle = null;
+                button.removeAttribute('aria-busy');
+            }
+        }
+
+        /* Confirm dialog. With an `action`, the dialog stays open while it
+           runs, shows a busy label on the confirm button, and keeps any error
+           inside the dialog so the user can retry or cancel. */
+        function confirmDialog({ title, body, confirmLabel, busyLabel, action }) {
+            const dialog = $('confirmDialog');
+            const ok = $('confirmOk');
+            const cancel = $('confirmCancel');
+            const errorLine = $('confirmError');
+            const previousFocus = document.activeElement;
+            $('confirmTitle').textContent = title;
+            $('confirmBody').textContent = body;
+            errorLine.hidden = true;
+            ok.textContent = confirmLabel;
+            ok.disabled = false;
+            cancel.disabled = false;
+            dialog.hidden = false;
+            cancel.focus();
+            let busy = false;
+            return new Promise((resolve) => {
+                const finish = (value) => {
+                    dialog.hidden = true;
+                    ok.removeEventListener('click', onOk);
+                    cancel.removeEventListener('click', onCancel);
+                    dialog.removeEventListener('pointerdown', onBackdrop);
+                    document.removeEventListener('keydown', onKey, true);
+                    if (document.contains(previousFocus)) previousFocus.focus?.();
+                    resolve(value);
+                };
+                const onOk = async () => {
+                    if (!action) return finish(true);
+                    busy = true;
+                    errorLine.hidden = true;
+                    cancel.disabled = true;
+                    setButtonBusy(ok, true, busyLabel || confirmLabel);
+                    try {
+                        await action();
+                        setButtonBusy(ok, false);
+                        finish(true);
+                    } catch (error) {
+                        busy = false;
+                        setButtonBusy(ok, false);
+                        ok.disabled = false;
+                        cancel.disabled = false;
+                        errorLine.textContent = error.message;
+                        errorLine.hidden = false;
+                        ok.focus();
+                    }
+                };
+                const onCancel = () => { if (!busy) finish(false); };
+                const onBackdrop = (event) => { if (event.target === dialog && !busy) finish(false); };
+                const onKey = (event) => {
+                    if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!busy) finish(false);
+                    }
+                    if (event.key === 'Tab') {
+                        event.preventDefault();
+                        if (!busy) (document.activeElement === ok ? cancel : ok).focus();
+                    }
+                };
+                ok.addEventListener('click', onOk);
+                cancel.addEventListener('click', onCancel);
+                dialog.addEventListener('pointerdown', onBackdrop);
+                document.addEventListener('keydown', onKey, true);
+            });
+        }
+
+        // ---- Menus ----
+        let openMenuState = null;
+
+        function closeMenu({ restoreFocus = false } = {}) {
+            if (!openMenuState) return;
+            const { menu, trigger } = openMenuState;
+            menu.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+            openMenuState = null;
+            if (restoreFocus) trigger.focus();
+        }
+
+        function openMenu(trigger, menu) {
+            closeMenu();
+            menu.hidden = false;
+            const rect = trigger.getBoundingClientRect();
+            const width = menu.offsetWidth;
+            const left = rect.right - width >= 8 ? rect.right - width : rect.left;
+            menu.style.left = `${Math.min(left, window.innerWidth - width - 8)}px`;
+            menu.style.top = `${rect.bottom + 6}px`;
+            trigger.setAttribute('aria-expanded', 'true');
+            openMenuState = { menu, trigger };
+            menu.querySelector('.menu-item:not(:disabled):not([hidden])')?.focus();
+        }
+
+        function bindMenu(trigger, menu, beforeOpen) {
+            trigger.addEventListener('click', () => {
+                if (openMenuState?.menu === menu) return closeMenu();
+                beforeOpen?.();
+                openMenu(trigger, menu);
+            });
+            menu.addEventListener('click', (event) => {
+                if (event.target.closest('.menu-item')) closeMenu();
+            });
+            menu.addEventListener('keydown', (event) => {
+                const items = Array.from(menu.querySelectorAll('.menu-item:not(:disabled):not([hidden])'));
+                const index = items.indexOf(document.activeElement);
+                let next = null;
+                if (event.key === 'ArrowDown') next = (index + 1) % items.length;
+                else if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
+                else if (event.key === 'Home') next = 0;
+                else if (event.key === 'End') next = items.length - 1;
+                else if (event.key === 'Escape') { event.preventDefault(); closeMenu({ restoreFocus: true }); return; }
+                else if (event.key === 'Tab') { closeMenu(); return; }
+                if (next === null || !items.length) return;
+                event.preventDefault();
+                items[next].focus();
+            });
+        }
+
+        document.addEventListener('pointerdown', (event) => {
+            if (!openMenuState) return;
+            if (openMenuState.menu.contains(event.target) || openMenuState.trigger.contains(event.target)) return;
+            closeMenu();
+        });
+        window.addEventListener('resize', () => closeMenu());
+        $('appList').addEventListener('scroll', () => closeMenu(), { passive: true });
+        document.querySelector('.editor-body').addEventListener('scroll', () => closeMenu(), { passive: true });
+
+        bindMenu($('sidebarMore'), $('sidebarMenu'));
+        bindMenu($('appMore'), $('appMenu'), updateAppMenu);
+
+        // ---- Shared helpers ----
+        function appById(appId) {
+            return apps.find((item) => item.id === appId) || null;
+        }
+
+        function hostOf(url) {
+            try { return new URL(url).host; } catch { return ''; }
+        }
+
+        function fillTile(tile, item) {
+            tile.textContent = '';
+            if (item.icon && /^(https?:|data:image\/|file:)/i.test(item.icon)) {
+                const image = document.createElement('img');
+                image.src = item.icon;
+                image.alt = '';
+                image.addEventListener('error', () => { tile.textContent = item.emoji || DEFAULT_EMOJI; }, { once: true });
+                tile.appendChild(image);
+            } else {
+                tile.textContent = item.emoji || DEFAULT_EMOJI;
+            }
+            if (item.running) tile.dataset.running = 'true';
+            else delete tile.dataset.running;
+        }
+
+        function matchesQuery(item) {
+            const query = $('search').value.trim().toLowerCase();
+            if (!query) return true;
+            return [item.name, item.id, item.description, hostOf(item.startUrl)]
+                .some((text) => String(text || '').toLowerCase().includes(query));
+        }
+
+        function introItems(container, items) {
+            container.textContent = '';
+            items.filter(Boolean).forEach(([content, tone]) => {
+                const span = document.createElement('span');
+                span.className = 'intro-item';
+                if (tone) span.dataset.tone = tone;
+                if (content instanceof Node) span.appendChild(content);
+                else span.textContent = content;
+                container.appendChild(span);
+            });
+        }
+
+        // ---- Enable and launch (shared by the overview rows and the header) ----
+        async function setAppEnabled(appId, enabled) {
+            if (pendingEnable.has(appId)) return;
+            // The switch shows the new state while the change is written, and
+            // flips back if it fails.
+            const listed = appById(appId);
+            const previous = listed ? listed.enabled !== false : !enabled;
+            if (listed) listed.enabled = enabled;
+            pendingEnable.add(appId);
+            renderAll();
+            try {
+                unwrap(await api.setEnabled(appId, enabled));
+                if (currentSources && originalId === appId) currentSources.manifest.enabled = enabled;
+            } catch (error) {
+                const current = appById(appId);
+                if (current) current.enabled = previous;
+                showToast(`无法${enabled ? '启用' : '停用'}应用：${error.message}`, true);
+            } finally {
+                pendingEnable.delete(appId);
+                renderAll();
+            }
+        }
+
+        async function launch(appId) {
+            if (launching.has(appId)) return;
+            launching.add(appId);
+            renderAll();
+            try {
+                unwrap(await api.openApp(appId));
+                const listed = appById(appId);
+                if (listed) listed.running = true;
+            } catch (error) {
+                showToast(`无法启动：${error.message}`, true);
+            } finally {
+                launching.delete(appId);
+                renderAll();
+            }
+        }
+
+        function launchTitle(item) {
+            if (item.enabled === false) return '应用已停用，启用后才能启动';
+            return item.running ? '显示应用窗口' : '启动';
+        }
+
+        function makeSwitch(item, label) {
+            const wrap = document.createElement('label');
+            wrap.className = 'switch';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = item.enabled !== false;
+            input.setAttribute('aria-label', label);
+            const busy = pendingEnable.has(item.id);
+            input.disabled = item.builtin === true || busy;
+            if (busy) wrap.setAttribute('aria-busy', 'true');
+            wrap.title = item.builtin ? '内置应用始终启用' : (input.checked ? '已启用' : '已停用');
+            input.addEventListener('change', () => setAppEnabled(item.id, input.checked));
+            const track = document.createElement('span');
+            track.className = 'switch-track';
+            wrap.append(input, track);
+            return wrap;
+        }
+
+        // ---- Sidebar ----
+        function renderList() {
+            const list = $('appList');
+            const filtered = apps.filter(matchesQuery);
+            const overview = $('appView').hidden;
+            $('appCount').textContent = apps.length ? String(apps.length) : '';
+            if (overview) $('navAll').setAttribute('aria-current', 'page');
+            else $('navAll').removeAttribute('aria-current');
+            $('searchClear').hidden = !$('search').value;
+            const focusedId = document.activeElement?.closest?.('#appList .nav-item')?.dataset.appId;
+            list.innerHTML = '';
+            if (!filtered.length) {
+                const empty = document.createElement('div');
+                empty.className = 'nav-empty';
+                empty.textContent = loading ? '正在读取…' : ($('search').value.trim() ? '没有匹配的应用' : '还没有应用');
+                list.appendChild(empty);
+                return;
+            }
+            filtered.forEach((item) => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'nav-item';
+                row.title = item.name;
+                row.dataset.appId = item.id;
+                if (item.id === selectedId && !overview) row.setAttribute('aria-current', 'page');
+                if (item.enabled === false) row.dataset.disabled = 'true';
+                const states = [item.running ? '运行中' : '', item.enabled === false ? '已停用' : ''].filter(Boolean);
+                if (states.length) row.setAttribute('aria-description', states.join('，'));
+
+                const tile = document.createElement('span');
+                tile.className = 'app-tile';
+                tile.setAttribute('aria-hidden', 'true');
+                fillTile(tile, item);
+
+                const name = document.createElement('span');
+                name.className = 'nav-label';
+                name.textContent = item.name;
+
+                row.append(tile, name);
+                row.addEventListener('click', () => openApp(item.id));
+                list.appendChild(row);
+            });
+            if (focusedId) list.querySelector(`.nav-item[data-app-id="${CSS.escape(focusedId)}"]`)?.focus();
+        }
+
+        // Up and down arrows move between apps in the sidebar.
+        $('appList').addEventListener('keydown', (event) => {
+            const items = Array.from($('appList').querySelectorAll('.nav-item'));
+            const index = items.indexOf(document.activeElement);
+            if (index < 0) return;
+            let next = null;
+            if (event.key === 'ArrowDown') next = Math.min(items.length - 1, index + 1);
+            else if (event.key === 'ArrowUp') next = Math.max(0, index - 1);
+            else if (event.key === 'Home') next = 0;
+            else if (event.key === 'End') next = items.length - 1;
+            if (next === null) return;
+            event.preventDefault();
+            items[next].focus();
+        });
+
+        // ---- Overview ----
+        function skeletonRow() {
+            const row = document.createElement('div');
+            row.className = 'app-row skeleton-row';
+            row.setAttribute('aria-hidden', 'true');
+            const plate = document.createElement('span');
+            plate.className = 'app-plate';
+            const main = document.createElement('div');
+            main.className = 'app-row-main';
+            [['40%', 12], ['64%', 10]].forEach(([width, height]) => {
+                const bar = document.createElement('span');
+                bar.className = 'skeleton-bar';
+                bar.style.width = width;
+                bar.style.height = `${height}px`;
+                bar.style.margin = '4px 0';
+                main.appendChild(bar);
+            });
+            row.append(plate, main, document.createElement('span'));
+            return row;
+        }
+
+        function overviewRow(item) {
+            const row = document.createElement('div');
+            row.className = 'app-row';
+            row.dataset.appId = item.id;
+            if (item.enabled === false) row.dataset.disabled = 'true';
+
+            const plate = document.createElement('span');
+            plate.className = 'app-plate';
+            plate.setAttribute('aria-hidden', 'true');
+            fillTile(plate, item);
+
+            const main = document.createElement('div');
+            main.className = 'app-row-main';
+            const title = document.createElement('div');
+            title.className = 'app-row-title';
+            const name = document.createElement('button');
+            name.type = 'button';
+            name.className = 'app-row-name';
+            name.textContent = item.name;
+            name.addEventListener('click', () => openApp(item.id));
+            title.appendChild(name);
+            if (item.builtin) title.appendChild(Object.assign(document.createElement('span'), { className: 'tag', textContent: '内置' }));
+            if (item.enabled === false) title.appendChild(Object.assign(document.createElement('span'), { className: 'tag', textContent: '已停用' }));
+
+            const sub = document.createElement('div');
+            sub.className = 'app-row-sub';
+            if (item.running) sub.appendChild(Object.assign(document.createElement('span'), { className: 'app-row-state', textContent: '运行中' }));
+            const desc = item.description || hostOf(item.startUrl);
+            if (desc) sub.appendChild(Object.assign(document.createElement('span'), { className: 'app-row-desc', textContent: desc, title: desc }));
+            main.append(title, sub);
+
+            const actions = document.createElement('div');
+            actions.className = 'app-row-actions';
+            const launchButton = document.createElement('button');
+            launchButton.type = 'button';
+            launchButton.className = 'icon-btn';
+            const busy = launching.has(item.id);
+            launchButton.title = busy ? '正在启动' : launchTitle(item);
+            launchButton.setAttribute('aria-label', `${item.running ? '显示' : '启动'}“${item.name}”`);
+            launchButton.disabled = item.enabled === false || busy;
+            if (busy) launchButton.setAttribute('aria-busy', 'true');
+            launchButton.appendChild(busy ? spinner() : svgIcon(item.running ? ICON_SHOW : ICON_PLAY, 15));
+            launchButton.addEventListener('click', () => launch(item.id));
+            actions.append(launchButton, makeSwitch(item, `启用“${item.name}”`));
+
+            row.append(plate, main, actions);
+            return row;
+        }
+
+        function renderOverview() {
+            const query = $('search').value.trim();
+            const list = $('overviewList');
+            const filtered = apps.filter(matchesQuery);
+            const running = apps.filter((item) => item.running).length;
+
+            introItems($('overviewIntro'), [
+                loading && !apps.length ? ['正在读取应用…'] : [`${apps.length} 个应用`],
+                running ? [`${running} 个运行中`, 'running'] : null,
+                ['把网页织进 VChat，每个应用有独立的登录状态'],
+            ]);
+            $('overviewNew').hidden = !loading && !apps.length && !query;
+            $('overviewRefresh').disabled = refreshing || loading;
+            $('overviewRefresh').replaceChildren(refreshing
+                ? spinner()
+                : svgIcon('<path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5"/>', 15));
+            $('overviewRefresh').toggleAttribute('aria-busy', refreshing);
+
+            $('loadError').hidden = !loadErrorMessage;
+            $('loadErrorText').textContent = !loadErrorMessage ? ''
+                : apps.length
+                    ? `无法刷新应用列表：${loadErrorMessage}，下面显示的是上次读取的结果。`
+                    : `无法读取应用列表：${loadErrorMessage}`;
+
+            const focusedId = document.activeElement?.closest?.('.app-row')?.dataset.appId;
+            const focusedSwitch = document.activeElement?.type === 'checkbox';
+            list.innerHTML = '';
+            list.removeAttribute('role');
+            list.removeAttribute('aria-label');
+            if (loading && !apps.length) {
+                list.setAttribute('role', 'status');
+                list.setAttribute('aria-label', '正在读取应用');
+                for (let i = 0; i < 3; i += 1) list.appendChild(skeletonRow());
+                list.hidden = false;
+                $('overviewEmpty').hidden = true;
+                return;
+            }
+            filtered.forEach((item) => list.appendChild(overviewRow(item)));
+            list.hidden = !filtered.length;
+
+            const empty = $('overviewEmpty');
+            empty.hidden = filtered.length > 0 || (!!loadErrorMessage && !apps.length);
+            if (query) {
+                $('emptyTitle').textContent = `没有匹配“${query}”的应用`;
+                $('emptyBody').textContent = '可以按名称、ID、描述或网址搜索。';
+            } else {
+                $('emptyTitle').textContent = '还没有应用';
+                $('emptyBody').textContent = '新建一个应用，填入网址就能在独立窗口里打开它；也可以导入别人分享的应用包。';
+            }
+            $('placeholderNew').hidden = !!query;
+            $('emptyImport').hidden = !!query;
+            $('emptyClearSearch').hidden = !query;
+
+            if (focusedId) {
+                const row = list.querySelector(`.app-row[data-app-id="${CSS.escape(focusedId)}"]`);
+                (focusedSwitch ? row?.querySelector('input') : row?.querySelector('.app-row-name'))?.focus();
+            }
+        }
+
+        function renderAll() {
+            renderList();
+            if ($('appView').hidden) renderOverview();
+            else renderHead();
+        }
+
+        async function loadApps() {
+            try {
+                apps = unwrap(await api.listApps()) || [];
+                loadErrorMessage = '';
+            } catch (error) {
+                loadErrorMessage = error.message;
+            } finally {
+                loading = false;
+                renderAll();
+            }
+        }
+
+        async function refreshApps({ fromMenu = false } = {}) {
+            if (refreshing) return;
+            refreshing = true;
+            renderAll();
+            try {
+                apps = unwrap(await api.reloadRegistry()) || [];
+                loadErrorMessage = '';
+                if (fromMenu && !$('appView').hidden) showToast(`已重新读取，共 ${apps.length} 个应用。`);
+            } catch (error) {
+                if ($('appView').hidden) loadErrorMessage = error.message;
+                else showToast(`无法重新读取应用目录：${error.message}`, true);
+            } finally {
+                refreshing = false;
+                renderAll();
+            }
+        }
+
+        function showOverview() {
+            selectedId = originalId = null;
+            isNew = false;
+            isReadonly = false;
+            currentSources = null;
+            closeMenu();
+            clearErrors();
+            $('appView').hidden = true;
+            $('editorFoot').hidden = true;
+            $('placeholder').hidden = false;
+            document.querySelector('.editor-body').scrollTop = 0;
+            renderAll();
+        }
+
+        async function goOverview() {
+            if (!(await confirmDiscard())) return;
+            showOverview();
+        }
+
+        // ---- Form ----
         function numberValue(id, fallback = null) {
             const value = $(id).value.trim();
             if (!value) return fallback;
@@ -380,13 +2191,13 @@
                 id: '',
                 name: '',
                 description: '',
-                startUrl: 'https://example.com/',
+                startUrl: '',
                 enabled: true,
                 exposeInAppDrawer: true,
                 exposeManagerInAppDrawer: true,
                 icon: '',
                 iconSource: null,
-                emoji: '🕸️',
+                emoji: DEFAULT_EMOJI,
                 window: { width: 420, height: 780, minWidth: 320, minHeight: 480, maxWidth: null, maxHeight: null, resizable: true },
                 viewport: { width: 390, height: 700, autoResize: true },
                 request: { profile: 'mobile', userAgent: '', headers: {} },
@@ -394,9 +2205,157 @@
             };
         }
 
+        function formControls() {
+            return Array.from($('appForm').elements).filter((element) =>
+                element.id && element.tagName !== 'BUTTON' && element.tagName !== 'FIELDSET');
+        }
+
+        function snapshot() {
+            return JSON.stringify(formControls().map((element) =>
+                (element.type === 'checkbox' || element.type === 'radio') ? element.checked : element.value));
+        }
+
+        function isDirty() {
+            return !$('appView').hidden && !isReadonly && (isNew ? hasNewInput() : snapshot() !== baseline);
+        }
+
+        // A new app only counts as started once something identifying is typed.
+        function hasNewInput() {
+            return ['appName', 'startUrl', 'description', 'icon', 'iconSource', 'injectCss', 'injectJs']
+                .some((id) => $(id).value.trim());
+        }
+
+        function profileValue() {
+            return Object.keys(PROFILES).find((key) => $(PROFILES[key]).checked) || 'desktop';
+        }
+
+        function setNotice(text, tone) {
+            clearTimeout(savedNoticeTimer);
+            $('dirtyHint').textContent = text;
+            if (tone) $('dirtyHint').dataset.tone = tone;
+            else delete $('dirtyHint').dataset.tone;
+        }
+
+        function updateDirty() {
+            const changed = !isNew && snapshot() !== baseline;
+            $('saveApp').disabled = saving || isReadonly || !(isNew || changed);
+            $('revertApp').hidden = !(isNew || changed);
+            $('revertApp').disabled = saving;
+            $('revertApp').textContent = isNew ? '取消' : '撤销更改';
+            if (changed) setNotice('有未保存的更改');
+            else if ($('dirtyHint').dataset.tone !== 'saved') setNotice('');
+        }
+
+        function updateDisclosureMeta() {
+            const iconSourceFilled = !!$('iconSource').value.trim();
+            $('iconSourceMeta').textContent = iconSourceFilled ? '已填写' : '可选';
+            const headerCount = (() => {
+                try {
+                    const parsed = JSON.parse($('headers').value || '{}');
+                    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.keys(parsed).length : 0;
+                } catch { return 0; }
+            })();
+            $('headersMeta').textContent = headerCount ? `${headerCount} 项` : ($('headers').value.trim() ? '已填写' : '可选');
+            const min = `${$('minWidth').value || 320} × ${$('minHeight').value || 480}`;
+            const max = $('maxWidth').value || $('maxHeight').value
+                ? `${$('maxWidth').value || '不限'} × ${$('maxHeight').value || '不限'}`
+                : '不限';
+            $('limitsMeta').textContent = `最小 ${min} · 最大 ${max}`;
+            $('tabCss').dataset.filled = String(!!$('injectCss').value.trim());
+            $('tabJs').dataset.filled = String(!!$('injectJs').value.trim());
+        }
+
+        function updateUserAgentRow() {
+            const custom = profileValue() === 'custom';
+            $('userAgentRow').hidden = !custom && !$('userAgent').value.trim();
+            $('userAgentHint').textContent = custom
+                ? '网站看到的 User-Agent；留空时使用 Electron 默认值'
+                : '填写后会覆盖所选设备的默认值';
+        }
+
+        // Code fields grow with their content up to a cap, then scroll.
+        function autoGrow(textarea) {
+            if (textarea.hidden) return;
+            const max = textarea.classList.contains('code') ? 520 : 240;
+            textarea.style.height = 'auto';
+            textarea.style.height = `${Math.min(max, textarea.scrollHeight + 2)}px`;
+        }
+
+        function growAll() {
+            ['iconSource', 'headers', 'injectCss', 'injectJs'].forEach((id) => autoGrow($(id)));
+        }
+
+        function renderHead() {
+            if ($('appView').hidden) return;
+            const listed = appById(originalId);
+            const manifest = listed || currentSources?.manifest || {};
+            const name = isNew ? ($('appName').value.trim() || '新建应用') : (manifest.name || originalId || '');
+            $('editorName').textContent = name;
+            $('crumbName').textContent = name;
+            const preview = isReadonly || !isNew
+                ? { ...manifest, emoji: isReadonly ? manifest.emoji : ($('emoji').value.trim() || manifest.emoji) }
+                : { emoji: $('emoji').value.trim() };
+            if (isNew && /^(https?:|data:image\/)/i.test($('icon').value.trim())) preview.icon = $('icon').value.trim();
+            fillTile($('editorIcon'), preview);
+
+            const id = document.createElement('code');
+            id.className = 'id-chip';
+            id.textContent = manifest.id || originalId || '';
+            introItems($('editorMeta'), isNew
+                ? [['填写名称和启动网址后创建']]
+                : [
+                    [id],
+                    manifest.running ? ['运行中', 'running'] : ['未运行'],
+                    manifest.builtin ? ['内置'] : null,
+                ]);
+
+            // Header actions.
+            const enabledInput = $('enabled');
+            const enabled = manifest.enabled !== false;
+            $('enabledToggle').hidden = isNew;
+            enabledInput.checked = enabled;
+            const enableBusy = pendingEnable.has(originalId);
+            enabledInput.disabled = isReadonly || enableBusy;
+            enabledInput.closest('.switch').toggleAttribute('aria-busy', enableBusy);
+            $('enabledToggle').title = isReadonly ? '内置应用始终启用' : (enabled ? '停用后不能启动' : '启用后才能启动');
+
+            const launchButton = $('launchApp');
+            const busy = launching.has(originalId);
+            if (!busy) {
+                setButtonBusy(launchButton, false);
+                launchButton.replaceChildren(
+                    svgIcon(manifest.running ? ICON_SHOW : ICON_PLAY),
+                    document.createTextNode(manifest.running ? '显示窗口' : '启动'),
+                );
+            } else if (launchButton.getAttribute('aria-busy') !== 'true') {
+                setButtonBusy(launchButton, true, '启动中…');
+            }
+            launchButton.hidden = isNew;
+            launchButton.disabled = isNew || busy || !enabled;
+            launchButton.title = isNew ? '' : (busy ? '正在启动' : launchTitle({ ...manifest, enabled }));
+
+            updateAppMenu();
+        }
+
+        function updateAppMenu() {
+            const manifest = appById(originalId) || currentSources?.manifest || {};
+            $('openFolder').hidden = isReadonly;
+            $('exportApp').hidden = isReadonly;
+            $('clearSession').hidden = isReadonly;
+            $('closeApp').hidden = !manifest.running;
+            $('appMenuSeparator').hidden = isReadonly;
+            const any = Array.from($('appMenu').querySelectorAll('.menu-item')).some((item) => !item.hidden);
+            $('appMore').hidden = isNew;
+            $('appMore').disabled = isNew || !any;
+        }
+
         function setForm(manifest, css = '', js = '') {
+            isReadonly = !isNew && manifest.builtin === true;
+            clearErrors();
+            touched.clear();
+            attemptedSave = false;
+            idEdited = false;
             $('appId').value = manifest.id || '';
-            $('appId').disabled = !isNew;
             $('appName').value = manifest.name || '';
             $('description').value = manifest.description || '';
             $('startUrl').value = manifest.startUrl || '';
@@ -404,10 +2363,8 @@
             $('iconSource').value = manifest.iconSource
                 ? JSON.stringify(manifest.iconSource, null, 2)
                 : '';
-            $('emoji').value = manifest.emoji || '🕸️';
-            $('enabled').checked = manifest.enabled !== false;
+            $('emoji').value = manifest.emoji || DEFAULT_EMOJI;
             $('exposeDrawer').checked = manifest.exposeInAppDrawer !== false;
-            $('exposeManager').checked = manifest.exposeManagerInAppDrawer !== false;
             $('windowWidth').value = manifest.window?.width || 420;
             $('windowHeight').value = manifest.window?.height || 780;
             $('minWidth').value = manifest.window?.minWidth || 320;
@@ -418,55 +2375,66 @@
             $('viewportWidth').value = manifest.viewport?.width || 390;
             $('viewportHeight').value = manifest.viewport?.height || 700;
             $('autoResize').checked = manifest.viewport?.autoResize !== false;
-            $('profile').value = manifest.request?.profile || 'desktop';
+            const profile = PROFILES[manifest.request?.profile] ? manifest.request.profile : 'desktop';
+            $(PROFILES[profile]).checked = true;
+            lastProfile = profile;
             $('userAgent').value = manifest.request?.userAgent || '';
-            $('headers').value = JSON.stringify(manifest.request?.headers || {}, null, 2);
+            const headers = manifest.request?.headers || {};
+            $('headers').value = Object.keys(headers).length ? JSON.stringify(headers, null, 2) : '';
             $('allowPopups').checked = manifest.navigation?.allowPopups === true;
             $('externalOrigins').checked = manifest.navigation?.openExternalOriginsInBrowser === true;
             $('injectCss').value = css;
             $('injectJs').value = js;
-            $('placeholder').style.display = 'none';
-            $('appForm').classList.add('visible');
-            $('saveApp').disabled = false;
-            $('launchApp').disabled = isNew;
-            $('deleteApp').disabled = isNew;
-            $('clearSession').disabled = isNew;
-            $('openFolder').disabled = isNew;
-            $('editorName').textContent = isNew ? '新建 LoomAPP' : manifest.name;
-            $('editorMeta').textContent = isNew ? '配置应用身份与页面容器' : `${manifest.id} · ${manifest.running ? '运行中' : '未运行'}`;
+
+            formControls().forEach((element) => { element.disabled = isReadonly; });
+            $('tabCss').disabled = $('tabJs').disabled = false;
+            $('appIdRow').hidden = !isNew;
+            $('readonlyNotice').hidden = !isReadonly;
+
+            // Folded sections open when they hold something.
+            $('iconSourceMore').open = !!$('iconSource').value.trim();
+            $('headersMore').open = !!$('headers').value.trim();
+            $('limitsMore').open = !!(manifest.window?.maxWidth || manifest.window?.maxHeight
+                || (manifest.window?.minWidth && manifest.window.minWidth !== 320)
+                || (manifest.window?.minHeight && manifest.window.minHeight !== 480));
+
+            $('placeholder').hidden = true;
+            $('appView').hidden = false;
+            $('editorFoot').hidden = isReadonly;
+            $('deleteApp').hidden = isNew;
+            $('saveApp').textContent = isNew ? '创建' : '保存';
+            setNotice('');
+            selectInjectTab('css');
+            updateUserAgentRow();
+            updateDisclosureMeta();
+            baseline = snapshot();
+            renderHead();
+            updateDirty();
+            requestAnimationFrame(growAll);
+        }
+
+        function parseJsonObject(text) {
+            const value = JSON.parse(text);
+            if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('not an object');
+            return value;
         }
 
         function collectForm() {
-            let headers;
-            try {
-                headers = JSON.parse($('headers').value || '{}');
-            } catch {
-                throw new Error('附加请求头不是有效 JSON。');
-            }
-            let iconSource = null;
             const iconSourceText = $('iconSource').value.trim();
-            if (iconSourceText) {
-                try {
-                    iconSource = JSON.parse(iconSourceText);
-                } catch {
-                    throw new Error('手绘图标源码不是有效 JSON。');
-                }
-                if (!iconSource || typeof iconSource !== 'object' || Array.isArray(iconSource)) {
-                    throw new Error('手绘图标源码必须是 JSON 对象。');
-                }
-            }
+            const headersText = $('headers').value.trim();
+            const previous = currentSources?.manifest || {};
             return {
                 schemaVersion: 1,
                 id: $('appId').value.trim(),
                 name: $('appName').value.trim(),
                 description: $('description').value.trim(),
                 startUrl: $('startUrl').value.trim(),
-                enabled: $('enabled').checked,
+                enabled: isNew ? true : $('enabled').checked,
                 exposeInAppDrawer: $('exposeDrawer').checked,
-                exposeManagerInAppDrawer: $('exposeManager').checked,
+                exposeManagerInAppDrawer: previous.exposeManagerInAppDrawer !== false,
                 icon: $('icon').value.trim(),
-                iconSource,
-                emoji: $('emoji').value.trim() || '🕸️',
+                iconSource: iconSourceText ? parseJsonObject(iconSourceText) : null,
+                emoji: $('emoji').value.trim() || DEFAULT_EMOJI,
                 window: {
                     width: numberValue('windowWidth', 420),
                     height: numberValue('windowHeight', 780),
@@ -482,9 +2450,9 @@
                     autoResize: $('autoResize').checked,
                 },
                 request: {
-                    profile: $('profile').value,
+                    profile: profileValue(),
                     userAgent: $('userAgent').value.trim(),
-                    headers,
+                    headers: headersText ? parseJsonObject(headersText) : {},
                 },
                 navigation: {
                     allowPopups: $('allowPopups').checked,
@@ -494,185 +2462,472 @@
             };
         }
 
-        function renderList() {
-            const list = $('appList');
-            const query = $('search').value.trim().toLowerCase();
-            const filtered = apps.filter((item) =>
-                !query || item.name.toLowerCase().includes(query) || item.id.toLowerCase().includes(query)
-            );
-            list.innerHTML = '';
-            if (!filtered.length) {
-                list.innerHTML = '<div class="empty">没有 LoomAPP</div>';
-                return;
-            }
-            filtered.forEach((item) => {
-                const card = document.createElement('button');
-                card.className = `app-card${item.id === selectedId ? ' active' : ''}`;
+        // ---- Validation ----
+        // Errors are worked out on every change but shown only for fields the
+        // user has left, or for every field once Save was pressed.
+        function validate() {
+            const errors = {};
+            if (!$('appName').value.trim()) errors.appName = '请填写名称';
 
-                let icon;
-                if (item.icon) {
-                    icon = document.createElement('img');
-                    icon.src = item.icon;
-                    icon.alt = '';
-                } else {
-                    icon = document.createElement('span');
-                    icon.textContent = item.emoji || '🕸️';
+            const url = $('startUrl').value.trim();
+            if (!url) errors.startUrl = '请填写启动网址';
+            else {
+                try {
+                    const parsed = new URL(url);
+                    if (!['http:', 'https:'].includes(parsed.protocol)) errors.startUrl = '只支持 http 或 https 网址';
+                } catch {
+                    errors.startUrl = '网址格式不对，应以 https:// 开头';
                 }
-                icon.className = 'app-icon';
+            }
 
-                const identity = document.createElement('span');
-                const name = document.createElement('span');
-                name.className = 'app-name';
-                name.textContent = item.name;
-                const id = document.createElement('span');
-                id.className = 'app-id';
-                id.textContent = item.id;
-                identity.append(name, id);
+            if (isNew) {
+                const id = $('appId').value.trim();
+                if (!id) errors.appId = '请填写应用 ID';
+                else if (!SAFE_ID.test(id)) errors.appId = '2–64 位小写字母、数字、- 或 _，以字母或数字开头';
+                else if (appById(id)) errors.appId = '已有应用使用这个 ID';
+            }
 
-                const status = document.createElement('span');
-                status.className = `status-dot${item.running ? ' running' : ''}`;
+            const iconSourceText = $('iconSource').value.trim();
+            if (iconSourceText) {
+                try { parseJsonObject(iconSourceText); } catch { errors.iconSource = '需要是一个 JSON 对象，比如 {"type": "svg", "source": "…"}'; }
+            }
+            const headersText = $('headers').value.trim();
+            if (headersText) {
+                try { parseJsonObject(headersText); } catch { errors.headers = '需要是一个 JSON 对象，比如 {"Accept-Language": "zh-CN"}'; }
+            }
 
-                card.append(icon, identity, status);
-                card.addEventListener('click', () => selectApp(item.id));
-                list.appendChild(card);
+            Object.entries(SIZE_FIELDS).forEach(([key, field]) => {
+                const problems = field.ids.map((id, index) => {
+                    const raw = $(id).value.trim();
+                    const [min, max] = field.ranges[index];
+                    if (!raw) return field.required ? `${index ? '高度' : '宽度'}不能为空` : null;
+                    const value = Number(raw);
+                    if (!Number.isInteger(value)) return `${index ? '高度' : '宽度'}需要是整数`;
+                    if (value < min || value > max) return `${index ? '高度' : '宽度'}需在 ${min}–${max} 之间`;
+                    return null;
+                }).filter(Boolean);
+                if (problems.length) errors[key] = problems.join('，');
+            });
+            return errors;
+        }
+
+        function errorElement(key) {
+            return $(`${key}Error`);
+        }
+
+        function clearErrors() {
+            Object.keys(ERROR_INPUTS).forEach((key) => setFieldError(key, ''));
+            $('formError').hidden = true;
+        }
+
+        function setFieldError(key, message) {
+            const line = errorElement(key);
+            if (line) {
+                line.textContent = message;
+                line.hidden = !message;
+            }
+            (ERROR_INPUTS[key] || []).forEach((id) => {
+                const input = $(id);
+                if (message) {
+                    input.setAttribute('aria-invalid', 'true');
+                    if (line) input.setAttribute('aria-describedby', line.id);
+                } else {
+                    input.removeAttribute('aria-invalid');
+                    if (line && input.getAttribute('aria-describedby') === line.id) input.removeAttribute('aria-describedby');
+                }
             });
         }
 
-        async function loadApps() {
-            apps = unwrap(await api.listApps()) || [];
-            renderList();
-            if (selectedId && !isNew) {
-                const current = apps.find((item) => item.id === selectedId);
-                if (current) {
-                    $('editorName').textContent = current.name;
-                    $('editorMeta').textContent = `${current.id} · ${current.running ? '运行中' : '未运行'}`;
-                }
-            }
+        function showErrors(errors) {
+            Object.keys(ERROR_INPUTS).forEach((key) => {
+                if (key === 'inject' || key === 'icon') return;
+                const visible = attemptedSave || touched.has(key);
+                setFieldError(key, visible ? (errors[key] || '') : '');
+            });
+        }
+
+        function errorKeyOf(id) {
+            return Object.keys(ERROR_INPUTS).find((key) => ERROR_INPUTS[key].includes(id)) || null;
+        }
+
+        function focusError(key) {
+            const disclosure = DISCLOSURE_OF[key];
+            if (disclosure) $(disclosure).open = true;
+            const input = $(ERROR_INPUTS[key]?.find((id) => !$(id).hidden) || ERROR_INPUTS[key]?.[0]);
+            if (!input) return;
+            input.scrollIntoView({ block: 'center' });
+            input.focus({ preventScroll: true });
+        }
+
+        // Errors from the main process are mapped back to their field when the
+        // message names one; anything else shows above the form.
+        function serverErrorKey(message) {
+            if (/应用 ID|LoomAPP ID/.test(message)) return 'appId';
+            if (/启动 URL/.test(message)) return 'startUrl';
+            if (/图标源码|iconSource|Canvas 图标|SVG 图标|CSS 图标/.test(message)) return 'iconSource';
+            if (/图标/.test(message)) return 'icon';
+            if (/脚本内容/.test(message)) return 'inject';
+            return null;
+        }
+
+        function friendlyServerError(key, message) {
+            if (key === 'appId' && /已存在/.test(message)) return '已有应用使用这个 ID';
+            if (key === 'startUrl' && /协议/.test(message)) return '只支持 http 或 https 网址';
+            if (key === 'startUrl') return '网址格式不对，应以 https:// 开头';
+            if (key === 'inject') return `${message.replace(/。$/, '')}，请精简注入的 CSS 或 JS`;
+            return message;
+        }
+
+        // ---- Tabs ----
+        function selectInjectTab(which) {
+            const css = which === 'css';
+            $('tabCss').setAttribute('aria-selected', String(css));
+            $('tabJs').setAttribute('aria-selected', String(!css));
+            $('tabCss').tabIndex = css ? 0 : -1;
+            $('tabJs').tabIndex = css ? -1 : 0;
+            $('injectCss').hidden = !css;
+            $('injectJs').hidden = css;
+            autoGrow($(css ? 'injectCss' : 'injectJs'));
+        }
+
+        $('tabCss').addEventListener('click', () => selectInjectTab('css'));
+        $('tabJs').addEventListener('click', () => selectInjectTab('js'));
+        document.querySelector('.tabs').addEventListener('keydown', (event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            const next = $('tabCss').getAttribute('aria-selected') === 'true' ? 'js' : 'css';
+            selectInjectTab(next);
+            $(next === 'css' ? 'tabCss' : 'tabJs').focus();
+        });
+
+        // ---- Navigation between apps ----
+        async function confirmDiscard() {
+            if (saving) return false;
+            if (!isDirty()) return true;
+            return confirmDialog({
+                title: '放弃未保存的更改？',
+                body: isNew ? '新应用还没有创建，离开后填写的内容会丢失。' : `“${$('editorName').textContent}”的修改还没有保存，离开后会丢失。`,
+                confirmLabel: '放弃更改',
+            });
+        }
+
+        async function openApp(appId) {
+            if (appId === originalId && !isNew && !$('appView').hidden) return;
+            if (!(await confirmDiscard())) return;
+            await selectApp(appId);
         }
 
         async function selectApp(appId) {
             try {
+                const sources = unwrap(await api.getApp(appId));
                 selectedId = appId;
                 originalId = appId;
                 isNew = false;
-                renderList();
-                const sources = unwrap(await api.getApp(appId));
+                currentSources = sources;
+                closeMenu();
                 setForm(sources.manifest, sources.css, sources.js);
+                document.querySelector('.editor-body').scrollTop = 0;
+                renderList();
+                $('appList').querySelector('.nav-item[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
             } catch (error) {
-                showToast(error.message, true);
+                showToast(`无法打开应用：${error.message}`, true);
             }
         }
 
-        $('newApp').addEventListener('click', () => {
+        async function startNewApp() {
+            if (!(await confirmDiscard())) return;
             selectedId = null;
             originalId = null;
             isNew = true;
-            renderList();
+            currentSources = null;
+            closeMenu();
             setForm(emptyManifest());
-            $('appId').focus();
+            renderList();
+            document.querySelector('.editor-body').scrollTop = 0;
+            $('appName').focus();
+        }
+
+        // A new app's ID follows the start URL's host (or a Latin name) until
+        // the user types an ID of their own.
+        function suggestId() {
+            const host = hostOf(normalizeUrl($('startUrl').value.trim())).replace(/^www\./, '').replace(/:\d+$/, '');
+            const source = host || $('appName').value.trim();
+            let base = source.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 56);
+            if (base.length < 2) return '';
+            let candidate = base;
+            for (let n = 2; appById(candidate); n += 1) candidate = `${base}-${n}`;
+            return candidate;
+        }
+
+        // "example.com" is completed to "https://example.com" when the field is left.
+        function normalizeUrl(value) {
+            if (!value || /^[a-z][a-z0-9+.-]*:/i.test(value)) return value;
+            return /^[^\s/]+\.[^\s/]+/.test(value) ? `https://${value}` : value;
+        }
+
+        $('newApp').addEventListener('click', startNewApp);
+        $('overviewNew').addEventListener('click', startNewApp);
+        $('placeholderNew').addEventListener('click', startNewApp);
+        $('navAll').addEventListener('click', goOverview);
+        $('crumbAll').addEventListener('click', goOverview);
+
+        function onFormEdit(event) {
+            const id = event.target.id;
+            if (isNew && id === 'appId') idEdited = !!$('appId').value.trim();
+            if (isNew && !idEdited && (id === 'startUrl' || id === 'appName')) $('appId').value = suggestId();
+            if (event.target.name === 'profile') applyProfileSizes();
+            if (id === 'userAgent' || event.target.name === 'profile') updateUserAgentRow();
+            if (event.target.tagName === 'TEXTAREA') autoGrow(event.target);
+            if (['appName', 'emoji', 'icon'].includes(id)) renderHead();
+            // A server error stays until its field is edited.
+            const key = errorKeyOf(id);
+            if (key === 'inject' || key === 'icon') setFieldError(key, '');
+            $('formError').hidden = true;
+            updateDisclosureMeta();
+            showErrors(validate());
+            if ($('dirtyHint').dataset.tone === 'saved') setNotice('');
+            updateDirty();
+        }
+
+        function applyProfileSizes() {
+            const next = profileValue();
+            const previous = PROFILE_SIZES[lastProfile];
+            const preset = PROFILE_SIZES[next];
+            lastProfile = next;
+            if (!previous || !preset) return;
+            const untouched = Object.entries(previous).every(([id, value]) => numberValue(id) === value);
+            if (untouched) Object.entries(preset).forEach(([id, value]) => { $(id).value = value; });
+        }
+
+        $('appForm').addEventListener('input', onFormEdit);
+        $('appForm').addEventListener('change', onFormEdit);
+        $('appForm').addEventListener('submit', (event) => event.preventDefault());
+        $('appForm').addEventListener('focusout', (event) => {
+            const id = event.target.id;
+            if (id === 'startUrl') {
+                const completed = normalizeUrl($('startUrl').value.trim());
+                if (completed !== $('startUrl').value) {
+                    $('startUrl').value = completed;
+                    if (isNew && !idEdited) $('appId').value = suggestId();
+                    updateDirty();
+                }
+            }
+            const key = errorKeyOf(id);
+            if (!key) return;
+            // A pair is only "left" once focus moves outside both inputs.
+            if (ERROR_INPUTS[key].includes(event.relatedTarget?.id)) return;
+            touched.add(key);
+            showErrors(validate());
+        });
+        ['iconSourceMore', 'headersMore'].forEach((id) => $(id).addEventListener('toggle', () => requestAnimationFrame(growAll)));
+
+        $('revertApp').addEventListener('click', () => {
+            if (isNew) return showOverview();
+            if (currentSources) setForm(currentSources.manifest, currentSources.css, currentSources.js);
         });
 
-        $('saveApp').addEventListener('click', async () => {
+        $('enabled').addEventListener('change', () => {
+            if (!originalId || isNew) return;
+            setAppEnabled(originalId, $('enabled').checked);
+        });
+
+        // ---- Save ----
+        async function save() {
+            if (saving || isReadonly) return;
+            attemptedSave = true;
+            const errors = validate();
+            showErrors(errors);
+            const first = Object.keys(ERROR_INPUTS).find((key) => errors[key]);
+            if (first) {
+                focusError(first);
+                return;
+            }
+            const created = isNew;
+            const payload = { originalId, manifest: collectForm(), css: $('injectCss').value, js: $('injectJs').value };
+            saving = true;
+            $('formFields').disabled = true;
+            $('revertApp').disabled = true;
+            $('deleteApp').disabled = true;
+            setButtonBusy($('saveApp'), true, created ? '创建中…' : '保存中…');
+            setNotice('');
             try {
-                if (!$('appForm').reportValidity()) return;
-                const manifest = collectForm();
-                const payload = { originalId, manifest, css: $('injectCss').value, js: $('injectJs').value };
-                const saved = unwrap(await (isNew ? api.createApp(payload) : api.saveApp(payload)));
-                selectedId = saved.id;
-                originalId = saved.id;
-                isNew = false;
-                showToast('LoomAPP 已保存。');
+                const saved = unwrap(await (created ? api.createApp(payload) : api.saveApp(payload)));
+                saving = false;
                 await loadApps();
                 await selectApp(saved.id);
+                setNotice(created ? '已创建' : '已保存', 'saved');
+                savedNoticeTimer = setTimeout(() => setNotice(''), 2500);
             } catch (error) {
-                showToast(error.message, true);
+                saving = false;
+                const key = serverErrorKey(error.message);
+                if (key) {
+                    setFieldError(key, friendlyServerError(key, error.message));
+                    focusError(key);
+                } else {
+                    $('formError').textContent = `${created ? '创建' : '保存'}失败：${error.message}`;
+                    $('formError').hidden = false;
+                    $('formError').scrollIntoView({ block: 'nearest' });
+                }
+            } finally {
+                saving = false;
+                $('formFields').disabled = false;
+                $('deleteApp').disabled = false;
+                setButtonBusy($('saveApp'), false);
+                $('saveApp').textContent = isNew ? '创建' : '保存';
+                updateDirty();
             }
-        });
+        }
+        $('saveApp').addEventListener('click', save);
 
-        $('launchApp').addEventListener('click', async () => {
-            try {
-                unwrap(await api.openApp(originalId));
-                showToast('LoomAPP 已启动。');
-                await loadApps();
-            } catch (error) { showToast(error.message, true); }
-        });
+        $('launchApp').addEventListener('click', () => { if (originalId) launch(originalId); });
 
         $('deleteApp').addEventListener('click', async () => {
-            if (!originalId || !confirm(`确定删除 LoomAPP “${originalId}”吗？其配置与注入脚本将被删除。`)) return;
-            try {
-                unwrap(await api.deleteApp(originalId));
-                selectedId = originalId = null;
-                $('appForm').classList.remove('visible');
-                $('placeholder').style.display = '';
-                $('saveApp').disabled = $('launchApp').disabled = $('deleteApp').disabled = $('clearSession').disabled = $('openFolder').disabled = true;
-                $('editorName').textContent = '选择或创建 LoomAPP';
-                $('editorMeta').textContent = '远程网页持久化应用容器';
-                showToast('LoomAPP 已删除。');
-                await loadApps();
-            } catch (error) { showToast(error.message, true); }
+            if (!originalId || isNew) return;
+            const appId = originalId;
+            const name = $('editorName').textContent || appId;
+            const deleted = await confirmDialog({
+                title: `删除“${name}”？`,
+                body: '应用的配置、图标和注入脚本会被删除，登录状态也会清除。此操作无法撤销。',
+                confirmLabel: '删除应用',
+                busyLabel: '删除中…',
+                action: async () => { unwrap(await api.deleteApp(appId)); },
+            });
+            if (!deleted) return;
+            apps = apps.filter((item) => item.id !== appId);
+            showOverview();
+            showToast(`已删除“${name}”。`);
+            loadApps();
         });
 
         $('clearSession').addEventListener('click', async () => {
-            if (!originalId || !confirm('清除独立会话将退出此应用中的登录账号，并清除 Cookie、缓存与站点存储。继续吗？')) return;
+            if (!originalId) return;
+            const appId = originalId;
+            const name = $('editorName').textContent || appId;
+            const cleared = await confirmDialog({
+                title: `清除“${name}”的登录数据？`,
+                body: '会关闭这个应用并退出其中登录的账号，清除 Cookie、缓存和站点存储。应用配置不受影响。',
+                confirmLabel: '清除数据',
+                busyLabel: '清除中…',
+                action: async () => { unwrap(await api.clearSession(appId)); },
+            });
+            if (!cleared) return;
+            showToast(`已清除“${name}”的登录数据。`);
+            loadApps();
+        });
+
+        $('closeApp').addEventListener('click', async () => {
+            if (!originalId) return;
             try {
-                unwrap(await api.clearSession(originalId));
-                showToast('独立会话已清除。');
-                await loadApps();
-            } catch (error) { showToast(error.message, true); }
+                unwrap(await api.closeApp(originalId));
+                const listed = appById(originalId);
+                if (listed) listed.running = false;
+                renderAll();
+            } catch (error) { showToast(`无法关闭应用窗口：${error.message}`, true); }
         });
 
         $('openFolder').addEventListener('click', async () => {
             try { unwrap(await api.openAppFolder(originalId)); }
-            catch (error) { showToast(error.message, true); }
+            catch (error) { showToast(`无法打开应用目录：${error.message}`, true); }
         });
 
         $('manageSkills').addEventListener('click', async () => {
             try {
                 unwrap(await api.openSkillManager());
-                showToast('已在 Canvas 中打开 LoomSkills 工作区。');
             } catch (error) {
-                showToast(error.message, true);
+                showToast(`无法打开 LoomSkills 工作区：${error.message}`, true);
             }
         });
 
-        $('refreshApps').addEventListener('click', async () => {
-            try {
-                apps = unwrap(await api.reloadRegistry()) || [];
-                renderList();
-                showToast('注册表已刷新。');
-            } catch (error) { showToast(error.message, true); }
+        $('refreshApps').addEventListener('click', () => refreshApps({ fromMenu: true }));
+        $('overviewRefresh').addEventListener('click', () => refreshApps());
+        $('retryLoad').addEventListener('click', () => {
+            loading = !apps.length;
+            loadErrorMessage = '';
+            renderAll();
+            loadApps();
         });
 
-        $('importApp').addEventListener('click', async () => {
+        async function importApp() {
             try {
+                if (!(await confirmDiscard())) return;
                 const result = unwrap(await api.importApp());
                 if (result?.canceled) return;
-                showToast('LoomAPP 已导入。');
                 await loadApps();
                 if (result?.app?.id) await selectApp(result.app.id);
-            } catch (error) { showToast(error.message, true); }
-        });
+                showToast(`已导入“${appById(result?.app?.id)?.name || result?.app?.id || '应用'}”。`);
+            } catch (error) { showToast(`导入失败：${error.message}`, true); }
+        }
+        $('importApp').addEventListener('click', importApp);
+        $('emptyImport').addEventListener('click', importApp);
 
         $('exportApp').addEventListener('click', async () => {
-            if (!originalId) return showToast('请先选择要导出的 LoomAPP。', true);
+            if (!originalId) return;
             try {
                 const result = unwrap(await api.exportApp(originalId));
                 if (!result?.canceled) showToast(`已导出到 ${result.filePath}`);
-            } catch (error) { showToast(error.message, true); }
+            } catch (error) { showToast(`导出失败：${error.message}`, true); }
         });
 
-        $('search').addEventListener('input', renderList);
+        // ---- Search ----
+        function onSearch() {
+            renderList();
+            if ($('appView').hidden) renderOverview();
+        }
+        $('search').addEventListener('input', onSearch);
+        $('search').addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && $('search').value) {
+                event.preventDefault();
+                $('search').value = '';
+                onSearch();
+            } else if (event.key === 'Escape') {
+                $('search').blur();
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                $('appList').querySelector('.nav-item')?.focus();
+            }
+        });
+        function clearSearch() {
+            $('search').value = '';
+            onSearch();
+            $('search').focus();
+        }
+        $('searchClear').addEventListener('click', clearSearch);
+        $('emptyClearSearch').addEventListener('click', clearSearch);
+
+        document.addEventListener('keydown', (event) => {
+            if (!$('confirmDialog').hidden) return;
+            const mod = event.ctrlKey || event.metaKey;
+            if (mod && event.key.toLowerCase() === 's' && !$('appView').hidden) {
+                event.preventDefault();
+                if (!$('saveApp').disabled) save();
+            } else if (mod && event.key.toLowerCase() === 'f') {
+                event.preventDefault();
+                $('search').focus();
+                $('search').select();
+            }
+        });
+
         $('minimize').addEventListener('click', () => api.minimizeWindow());
         $('maximize').addEventListener('click', () => api.maximizeWindow());
         $('close').addEventListener('click', () => api.closeWindow());
 
         api.onRegistryChanged((nextApps) => {
-            apps = Array.isArray(nextApps) ? nextApps : apps;
-            renderList();
+            if (!Array.isArray(nextApps)) return;
+            apps = nextApps;
+            loadErrorMessage = '';
+            // The open app was removed elsewhere (another window, the file system).
+            if (!$('appView').hidden && !isNew && originalId && !appById(originalId)) {
+                const name = $('editorName').textContent || originalId;
+                showOverview();
+                showToast(`“${name}”已不在应用目录中。`);
+                return;
+            }
+            renderAll();
         });
 
         initializeTheme();
-        loadApps().catch((error) => showToast(error.message, true));
+        renderAll();
+        loadApps();
     </script>
 </body>
 </html>

@@ -6,7 +6,6 @@
     <!-- Allow data: images for avatars/previews if needed, unsafe-inline styles for dynamic JS styling -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: file:; connect-src *;">
     <title>VCP 论坛</title>
-    <!-- Assuming themes.css provides the base wallpaper variables if available -->
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="forum.css">
     <!-- KaTeX for LaTeX rendering -->
@@ -16,146 +15,211 @@
     <script src="../vendor/marked.min.js"></script>
     <script src="../modules/emoticonManager.js"></script>
 </head>
-<body>
+<body class="vcp-ui-scope" data-forum-view="loading">
     <!-- Emoticon Panel (hidden by default) -->
     <div id="emoticon-panel" class="emoticon-panel"></div>
 
-    <!-- Immersive Top Navigation Bar -->
-    <nav id="top-nav-bar" class="glass">
-        <div class="nav-left">
-            <div class="nav-title">VCP Forum</div>
-            <select id="board-filter" class="glass search-glass" style="width: auto; cursor: pointer;">
-                <option value="all">✨ 全部板块</option>
-            </select>
-        </div>
-        <div class="nav-right">
-            <input type="search" id="search-posts" class="search-glass" placeholder="🔍 搜索灵感...">
-            <button id="refresh-posts" class="nav-icon-btn" title="刷新瀑布流">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-            </button>
-            <button id="create-post-btn" class="jelly-btn" style="width: auto; padding: 8px 20px; font-size: 0.9rem;">
-                + 发布
-            </button>
-            
-            <button id="settings-btn" class="nav-icon-btn" title="设置">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            </button>
-            <!-- Window Controls (Integrated nicely) -->
-            <div style="width: 1px; height: 20px; background: var(--glass-border); margin: 0 10px;"></div>
-            <button id="minimize-forum-btn" class="nav-icon-btn" title="最小化">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-            <button id="maximize-forum-btn" class="nav-icon-btn" title="最大化">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-            </button>
-            <button id="close-forum-btn" class="nav-icon-btn" title="关闭" style="color: var(--danger-color); opacity: 1;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            </button>
-        </div>
-    </nav>
-
-    <div class="app-container">
-        <!-- Login View -->
-        <div id="login-view" class="view-container">
-            <div class="login-card glass">
-                <h2 class="login-title">欢迎回来</h2>
-                <input type="text" id="username" class="glass-input" placeholder="用户名 / 凭据">
-                <input type="password" id="password" class="glass-input" placeholder="密码">
-                <div style="text-align: left; margin-bottom: 20px; padding-left: 5px;">
-                    <input type="checkbox" id="remember-me" style="accent-color: var(--accent-color);">
-                    <label for="remember-me" style="color: var(--text-secondary); font-size: 0.9rem;">记住我，下次自动进入</label>
-                </div>
-                <button id="login-button" class="jelly-btn">进入论坛</button>
-                <p id="login-error" class="error-jiggle" style="min-height: 20px; margin-top: 15px;"></p>
-            </div>
-        </div>
-
-        <!-- Forum Waterfall View -->
-        <div id="forum-view" class="view-container">
-            <div id="masonry-container" class="masonry-grid">
-                <!-- Columns will be generated by JS dynamically -->
-            </div>
-        </div>
+    <div class="window-controls">
+        <button id="minimize-forum-btn" class="window-btn" title="最小化" aria-label="最小化">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button id="maximize-forum-btn" class="window-btn" title="最大化" aria-label="最大化">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"></rect></svg>
+        </button>
+        <button id="close-forum-btn" class="window-btn window-btn-close" title="关闭" aria-label="关闭">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
     </div>
 
-    <!-- Active Post Expansion Overlay -->
-    <div id="active-post-overlay">
-        <!-- Content populated by JS when a card is clicked -->
+    <div class="shell">
+        <aside class="sidebar" aria-label="论坛导航">
+            <div class="sidebar-title">
+                <span class="sidebar-title-label">论坛</span>
+                <button type="button" id="settings-btn" class="nav-icon-btn" title="论坛设置" aria-label="论坛设置">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+            </div>
+            <div class="nav-group forum-boards-group">
+                <div class="nav-group-label">板块</div>
+                <!-- The select stays the filter state; the list below mirrors it. -->
+                <select id="board-filter" class="visually-hidden" tabindex="-1" aria-hidden="true">
+                    <option value="all">全部板块</option>
+                </select>
+                <div id="board-nav" class="nav-list" role="tablist" aria-orientation="vertical" aria-label="板块"></div>
+            </div>
+        </aside>
+
+        <section class="panel-frame">
+            <main class="app-container">
+                <div class="forum-page">
+                    <!-- Login View -->
+                    <section id="login-view" class="view-container" aria-labelledby="login-title">
+                        <header class="page-head">
+                            <h1 id="login-title" class="page-title login-title">登录论坛</h1>
+                            <p class="page-intro">使用 VCP 服务器的管理员账号进入论坛。</p>
+                        </header>
+                        <div class="login-card">
+                            <label class="form-field">
+                                <span class="form-label">用户名</span>
+                                <input type="text" id="username" class="glass-input" placeholder="用户名 / 凭据" autocomplete="username">
+                            </label>
+                            <label class="form-field">
+                                <span class="form-label">密码</span>
+                                <input type="password" id="password" class="glass-input" placeholder="密码" autocomplete="current-password">
+                            </label>
+                            <label class="switch-row" for="remember-me">
+                                <span class="switch-row-label">记住我，下次自动进入</span>
+                                <span class="switch-container">
+                                    <input type="checkbox" id="remember-me" role="switch">
+                                    <span class="switch-slider" aria-hidden="true"></span>
+                                </span>
+                            </label>
+                            <button id="login-button" class="jelly-btn jelly-btn-primary login-button">进入论坛</button>
+                        </div>
+                        <p id="login-error" class="forum-notice error-jiggle" data-tone="error" role="alert"></p>
+                    </section>
+
+                    <!-- Forum List View -->
+                    <section id="forum-view" class="view-container" aria-labelledby="forum-page-title">
+                        <header class="page-head page-head-row">
+                            <div class="page-head-copy">
+                                <h1 id="forum-page-title" class="page-title">全部板块</h1>
+                                <div id="forum-summary" class="page-intro" aria-live="polite"></div>
+                            </div>
+                            <div class="page-head-actions">
+                                <button id="refresh-posts" class="nav-icon-btn" title="刷新帖子" aria-label="刷新帖子">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                                </button>
+                                <button type="button" id="create-post-btn" class="jelly-btn jelly-btn-primary" title="发布新帖">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                                    <span>发帖</span>
+                                </button>
+                            </div>
+                        </header>
+
+                        <div class="search-box">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                            <input type="search" id="search-posts" placeholder="搜索标题或作者..." aria-label="搜索帖子">
+                        </div>
+
+                        <p id="forum-notice" class="forum-notice" role="status" aria-live="polite"></p>
+
+                        <div id="masonry-container" class="post-list"></div>
+                        <div id="forum-empty" class="empty-state" hidden></div>
+                    </section>
+                </div>
+            </main>
+
+            <!-- Post view: covers the panel while a post is open -->
+            <div id="active-post-overlay"></div>
+        </section>
     </div>
 
     <!-- Create Post Modal -->
-    <div id="create-post-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000;">
-        <div class="modal-glass-content glass">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">✨ 发布新主题</h2>
-                <button class="nav-icon-btn modal-close-btn" style="font-size: 1.5rem;">&times;</button>
+    <div id="create-post-modal" class="modal" style="display: none;">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="create-post-title">
+            <div class="modal-header">
+                <div>
+                    <h3 id="create-post-title">发布新帖</h3>
+                    <p class="modal-subtitle">正文支持 Markdown。</p>
+                </div>
+                <button class="modal-close-btn" aria-label="关闭">&times;</button>
             </div>
-            
-            <input type="text" id="post-title-input" class="glass-input" placeholder="标题：一句话描述你的想法...">
-            <div style="display: flex; gap: 15px;">
-                <input type="text" id="post-board-input" class="glass-input" placeholder="板块：例如 '闲聊', '技术'..." style="flex: 1;" list="existing-boards">
-                <datalist id="existing-boards"></datalist>
-                <input type="text" id="post-author-input" class="glass-input" placeholder="署名" style="flex: 1;">
+            <div class="modal-body">
+                <label class="form-field">
+                    <span class="form-label">标题</span>
+                    <input type="text" id="post-title-input" class="glass-input" placeholder="一句话描述你的想法...">
+                </label>
+                <div class="form-row">
+                    <label class="form-field">
+                        <span class="form-label">板块</span>
+                        <input type="text" id="post-board-input" class="glass-input" placeholder="例如 闲聊、技术" list="existing-boards">
+                    </label>
+                    <datalist id="existing-boards"></datalist>
+                    <label class="form-field">
+                        <span class="form-label">署名</span>
+                        <input type="text" id="post-author-input" class="glass-input" placeholder="署名">
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="post-content-input">正文</label>
+                    <div class="textarea-container">
+                        <textarea id="post-content-input" class="glass-input" placeholder="写点什么..."></textarea>
+                        <button class="emoticon-btn" id="create-post-emoticon-btn" title="表情" aria-label="插入表情">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><path d="M9 9h.01M15 9h.01"></path></svg>
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="textarea-container" style="position: relative;">
-                <textarea id="post-content-input" class="glass-input" placeholder="正文：支持 Markdown，尽情发挥..." style="min-height: 200px; resize: vertical; font-family: inherit;"></textarea>
-                <button class="emoticon-btn" id="create-post-emoticon-btn" style="position: absolute; bottom: 15px; right: 15px; z-index: 10;">😀</button>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <p id="create-post-error" class="error-jiggle" style="margin: 0;"></p>
-                <button id="submit-post-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">🚀 发布</button>
+            <div class="modal-footer">
+                <p id="create-post-error" class="modal-error error-jiggle"></p>
+                <button id="submit-post-btn" class="jelly-btn jelly-btn-primary">发布</button>
             </div>
         </div>
     </div>
 
     <!-- Settings Modal -->
-    <div id="settings-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 3000;">
-        <div class="modal-glass-content glass">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">⚙️ 论坛设置</h2>
-                <button class="nav-icon-btn modal-close-btn" style="font-size: 1.5rem;">&times;</button>
+    <div id="settings-modal" class="modal" style="display: none;">
+        <div class="modal-content modal-content-narrow" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="modal-header">
+                <div>
+                    <h3 id="settings-title">论坛设置</h3>
+                    <p class="modal-subtitle">登录凭据与默认回帖署名。</p>
+                </div>
+                <button class="modal-close-btn" aria-label="关闭">&times;</button>
             </div>
-            
-            <label for="settings-username">登录用户名</label>
-            <input type="text" id="settings-username" class="glass-input" placeholder="用于登录的管理员用户名">
-            
-            <label for="settings-password">登录密码</label>
-            <input type="password" id="settings-password" class="glass-input" placeholder="用于登录的管理员密码">
-
-            <label for="settings-reply-name">默认回帖署名</label>
-            <input type="text" id="settings-reply-name" class="glass-input" placeholder="留空则使用登录用户名">
-
-            <div style="text-align: left; margin-bottom: 20px; padding-left: 5px;">
-                <input type="checkbox" id="settings-remember-me" style="accent-color: var(--accent-color);">
-                <label for="settings-remember-me" style="color: var(--text-secondary); font-size: 0.9rem;">记住登录信息，下次自动进入</label>
+            <div class="modal-body">
+                <label class="form-field">
+                    <span class="form-label">登录用户名</span>
+                    <input type="text" id="settings-username" class="glass-input" placeholder="用于登录的管理员用户名" autocomplete="username">
+                </label>
+                <label class="form-field">
+                    <span class="form-label">登录密码</span>
+                    <input type="password" id="settings-password" class="glass-input" placeholder="用于登录的管理员密码" autocomplete="current-password">
+                </label>
+                <label class="form-field">
+                    <span class="form-label">默认回帖署名</span>
+                    <input type="text" id="settings-reply-name" class="glass-input" placeholder="留空则使用登录用户名">
+                </label>
+                <label class="switch-row" for="settings-remember-me">
+                    <span class="switch-row-label">记住登录信息，下次自动进入</span>
+                    <span class="switch-container">
+                        <input type="checkbox" id="settings-remember-me" role="switch">
+                        <span class="switch-slider" aria-hidden="true"></span>
+                    </span>
+                </label>
             </div>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <p id="settings-error" class="error-jiggle" style="margin: 0;"></p>
-                <button id="save-settings-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">💾 保存</button>
+            <div class="modal-footer">
+                <p id="settings-error" class="modal-error error-jiggle"></p>
+                <button id="save-settings-btn" class="jelly-btn jelly-btn-primary">保存</button>
             </div>
         </div>
     </div>
 
     <!-- Custom Confirm Dialog -->
-    <div id="custom-confirm-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 4000;">
-        <div class="modal-glass-content glass" style="max-width: 500px; text-align: center;">
-            <h3 id="confirm-title" style="margin-top: 0; margin-bottom: 20px;">确认操作</h3>
-            <p id="confirm-message" style="margin-bottom: 30px; line-height: 1.6;"></p>
-            <div style="display: flex; gap: 15px; justify-content: center;">
-                <button id="confirm-cancel-btn" class="jelly-btn" style="width: auto; padding: 10px 30px; background: var(--glass-bg);">取消</button>
-                <button id="confirm-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 30px; background: var(--danger-color);">确定</button>
+    <div id="custom-confirm-modal" class="modal modal-dialog" style="display: none;">
+        <div class="modal-content modal-content-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+            <div class="modal-body">
+                <h3 id="confirm-title" class="dialog-title">确认操作</h3>
+                <p id="confirm-message" class="dialog-message"></p>
+            </div>
+            <div class="modal-footer modal-footer-end">
+                <button id="confirm-cancel-btn" class="jelly-btn">取消</button>
+                <button id="confirm-ok-btn" class="jelly-btn jelly-btn-danger">确定</button>
             </div>
         </div>
     </div>
 
     <!-- Custom Alert Dialog -->
-    <div id="custom-alert-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 4000;">
-        <div class="modal-glass-content glass" style="max-width: 500px; text-align: center;">
-            <h3 id="alert-title" style="margin-top: 0; margin-bottom: 20px;">提示</h3>
-            <p id="alert-message" style="margin-bottom: 30px; line-height: 1.6;"></p>
-            <button id="alert-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">确定</button>
+    <div id="custom-alert-modal" class="modal modal-dialog" style="display: none;">
+        <div class="modal-content modal-content-dialog" role="alertdialog" aria-modal="true" aria-labelledby="alert-title" aria-describedby="alert-message">
+            <div class="modal-body">
+                <h3 id="alert-title" class="dialog-title">提示</h3>
+                <p id="alert-message" class="dialog-message"></p>
+            </div>
+            <div class="modal-footer modal-footer-end">
+                <button id="alert-ok-btn" class="jelly-btn jelly-btn-primary">确定</button>
+            </div>
         </div>
     </div>
 

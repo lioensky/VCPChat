@@ -1,355 +1,688 @@
-body:not(.light-theme) {
-    --log-bg: var(--primary-bg, #07151d);
-    --log-panel: var(--panel-bg, rgba(13, 42, 56, 0.82));
-    --log-border: var(--border-color, rgba(255, 255, 255, 0.12));
-    --log-text: var(--primary-text, #e0e6e9);
-    --log-muted: var(--secondary-text, #aebdc4);
-    --log-accent: var(--button-bg, #daa520);
-    --log-accent-text: var(--text-on-accent, #161616);
-    --log-danger: var(--danger-color, #e57373);
-    --log-code-bg: rgba(0, 0, 0, 0.34);
-    --log-hover: rgba(255, 255, 255, 0.08);
+/* Log center: the same full-window shell as the main chat window, with the
+   preset filters in the navigation column and a framed content panel. Inside
+   the panel the page is a reader: an 18px title with a one-line summary, one
+   toolbar row (filter field plus icon buttons) and the log well taking the
+   rest of the height. Settings live in a popover behind the gear in the title
+   row. Every color comes from the theme variables in
+   styles/themes.css, so the light and dark themes both follow without
+   per-theme overrides. */
+body {
+    --log-ink: var(--primary-text);
+    --log-ink-2: var(--secondary-text);
+    --log-ink-3: color-mix(in srgb, var(--secondary-text) 78%, transparent);
+    --log-ink-4: color-mix(in srgb, var(--secondary-text) 56%, transparent);
+    --log-ground: var(--primary-bg);
+    --log-layer: var(--secondary-bg);
+    --log-panel: var(--secondary-bg);
+    --log-card: color-mix(in srgb, var(--primary-text) 2%, transparent);
+    --log-surface: color-mix(in srgb, var(--primary-text) 3.5%, transparent);
+    --log-line-1: color-mix(in srgb, var(--primary-text) 8%, transparent);
+    --log-line-2: color-mix(in srgb, var(--primary-text) 10%, transparent);
+    --log-line-3: color-mix(in srgb, var(--primary-text) 14%, transparent);
+    --log-line-4: color-mix(in srgb, var(--primary-text) 20%, transparent);
+    --log-hover: color-mix(in srgb, var(--primary-text) 6%, transparent);
+    --log-active: color-mix(in srgb, var(--primary-text) 10%, transparent);
+    --log-accent: var(--button-bg);
+    --log-focus-ring: color-mix(in srgb, var(--log-accent) 18%, transparent);
+    --log-danger: var(--danger-color);
+    --log-on-danger: var(--text-on-accent);
+    --log-success: var(--success-color);
+    --log-warning: var(--highlight-text);
+    --log-thumb-off: var(--secondary-text);
+    --log-shadow: color-mix(in srgb, var(--tertiary-bg) 72%, transparent);
+    --log-mono: 'SF Mono', 'JetBrains Mono', Consolas, 'Cascadia Code', monospace;
+    --log-radius-xs: 4px;
+    --log-radius-sm: 8px;
+    --log-radius-md: 12px;
+    --log-radius-lg: 16px;
+    --log-radius-xl: 20px;
+    margin: 0;
+    font: 400 13px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    color: var(--log-ink);
+    overflow: hidden;
+    background-color: var(--log-ground);
+    background-image: none;
 }
 
+/* A log page reads better on a plain surface than over the wallpaper. */
 body.light-theme {
-    --log-bg: var(--primary-bg, #eef3f7);
-    --log-panel: var(--panel-bg, rgba(255, 255, 255, 0.86));
-    --log-border: var(--border-color, rgba(0, 0, 0, 0.12));
-    --log-text: var(--primary-text, #2f4050);
-    --log-muted: var(--secondary-text, #667585);
-    --log-accent: var(--button-bg, #4a90e2);
-    --log-accent-text: var(--text-on-accent, #ffffff);
-    --log-danger: var(--danger-color, #e74c3c);
-    --log-code-bg: rgba(255, 255, 255, 0.68);
-    --log-hover: rgba(0, 0, 0, 0.05);
+    /* The light theme has no warning yellow (--highlight-text is the danger
+       red). Mixing danger and success in oklch lands the hue between them, a
+       dark ochre that reads apart from errors. */
+    --log-warning: color-mix(in oklch, var(--danger-color) 70%, var(--success-color));
+    --log-thumb-off: var(--secondary-bg);
+    --log-shadow: color-mix(in srgb, var(--primary-text) 14%, transparent);
+    background-image: none;
 }
 
 * {
     box-sizing: border-box;
 }
 
-body {
-    margin: 0;
-    min-height: 100vh;
-    overflow: hidden;
-    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-    color: var(--log-text);
-    background-color: var(--log-bg);
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
+button,
+input {
+    font: inherit;
+    color: inherit;
 }
 
-body::before {
-    content: "";
+button {
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+:is(button, input):focus-visible {
+    outline: 2px solid var(--log-accent);
+    outline-offset: 2px;
+}
+
+/* ---- Window chrome ----
+   The main window has a 42px navigation bar above a 260px sidebar and a
+   rounded workspace with a 4px gutter. The standalone window keeps the same
+   geometry so switching between them does not shift anything. As a tab of
+   the main window, the host bar already sits above the page and its
+   navigation material shows through, so only the workspace is painted. */
+.window-controls {
     position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-        radial-gradient(circle at top left, rgba(74, 144, 226, 0.18), transparent 36%),
-        radial-gradient(circle at bottom right, rgba(218, 165, 32, 0.13), transparent 32%),
-        color-mix(in srgb, var(--log-bg) 32%, transparent);
-}
-
-.glass {
-    background: var(--log-panel);
-    border: 1px solid var(--log-border);
-    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
-    backdrop-filter: blur(22px) saturate(170%);
-    -webkit-backdrop-filter: blur(22px) saturate(170%);
-}
-
-.log-titlebar {
-    position: fixed;
-    inset: 0 0 auto 0;
-    height: 58px;
-    z-index: 50;
+    top: 0;
+    right: 0;
+    z-index: 10;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 14px 0 18px;
-    -webkit-app-region: drag;
-}
-
-.nav-left,
-.nav-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
+    height: 42px;
     -webkit-app-region: no-drag;
 }
 
-.nav-title {
-    font-size: 1.2rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    white-space: nowrap;
+.window-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 42px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--log-ink-2);
 }
 
-.log-status {
-    max-width: 36vw;
+.window-btn:hover {
+    background: color-mix(in srgb, var(--primary-text) 15%, transparent);
+    color: var(--log-ink);
+}
+
+.window-btn-close:hover {
+    background: var(--log-danger);
+    color: var(--log-on-danger);
+}
+
+.nav-icon-btn {
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--log-ink-3);
+    border-radius: var(--log-radius-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+.nav-icon-btn svg {
+    display: block;
+}
+
+.nav-icon-btn:hover:not(:disabled) {
+    color: var(--log-ink);
+    background: var(--log-hover);
+}
+
+.nav-icon-btn.danger-btn:hover:not(:disabled) {
+    color: var(--log-danger);
+    background: color-mix(in srgb, var(--log-danger) 10%, transparent);
+}
+
+/* The refresh icon turns while a request is in flight. */
+.nav-icon-btn.spinning svg {
+    animation: log-spin 0.9s linear infinite;
+}
+
+@keyframes log-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ---- Shell ---- */
+.shell {
+    position: fixed;
+    inset: 42px 0 0;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-height: 0;
+    padding: 9px 8px 15px;
+    background: transparent;
+    overflow-y: auto;
+}
+
+.sidebar-title {
+    flex: 0 0 30px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    color: var(--log-ink-2);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nav-group-label {
+    padding: 0 10px 4px;
+    color: var(--log-ink-4);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+}
+
+.nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 34px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--log-ink-2);
+    font-size: 14px;
+    line-height: 20px;
+    text-align: left;
+}
+
+.nav-item:hover {
+    background: var(--log-hover);
+    color: var(--log-ink);
+}
+
+.nav-item[aria-current="page"] {
+    background: var(--log-active);
+    color: var(--log-ink);
+    font-weight: 500;
+}
+
+.nav-icon {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.nav-label {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
-    color: var(--log-muted);
-    font-size: 0.82rem;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.nav-icon-btn,
-.glass-btn,
-.preset-chip,
-.float-btn {
-    border: 1px solid var(--log-border);
-    color: var(--log-text);
-    background: rgba(255, 255, 255, 0.055);
-    cursor: pointer;
-    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
-    -webkit-app-region: no-drag;
-}
-
-.nav-icon-btn {
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.nav-icon-btn:hover,
-.glass-btn:hover,
-.preset-chip:hover,
-.float-btn:hover {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--log-accent) 70%, var(--log-border));
-    background: var(--log-hover);
-}
-
-.nav-icon-btn:active,
-.glass-btn:active,
-.preset-chip:active,
-.float-btn:active {
-    transform: scale(0.96);
-}
-
-.danger-btn,
-#close-log-btn {
-    color: var(--log-danger);
-}
-
-.window-divider {
-    width: 1px;
-    height: 22px;
-    background: var(--log-border);
-    margin: 0 3px;
-}
-
-.log-app {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 70px 14px 14px;
-}
-
-.control-panel {
-    flex: 0 0 auto;
-    border-radius: 18px;
-    padding: 12px;
-}
-
-.control-row {
-    display: flex;
-    align-items: flex-end;
-    gap: 10px;
-}
-
-.control-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 120px;
-}
-
-.control-field.grow {
-    flex: 1 1 auto;
-    min-width: 180px;
-}
-
-.control-field span,
-.preset-label {
-    color: var(--log-muted);
-    font-size: 0.78rem;
-}
-
-.glass-input {
-    width: 100%;
-    border: 1px solid var(--log-border);
-    outline: none;
-    color: var(--log-text);
-    background: rgba(255, 255, 255, 0.055);
-    border-radius: 12px;
-    caret-color: var(--log-accent);
-}
-
-.glass-input:focus {
-    border-color: var(--log-accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--log-accent) 20%, transparent);
-}
-
-.compact-input {
-    height: 36px;
-    padding: 0 12px;
-}
-
-.glass-btn {
-    height: 36px;
-    padding: 0 14px;
-    border-radius: 12px;
-    font-weight: 650;
-    white-space: nowrap;
-}
-
-.glass-btn.primary {
-    color: var(--log-accent-text);
-    background: var(--log-accent);
-    border-color: transparent;
-}
-
-.glass-btn.danger-solid {
-    color: #ffffff;
-    background: var(--log-danger);
-    border-color: transparent;
-}
-
-.preset-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-    flex-wrap: wrap;
-}
-
-.preset-chip {
-    height: 30px;
-    padding: 0 12px;
-    border-radius: 999px;
-    font-weight: 650;
-    letter-spacing: 0.02em;
-}
-
-.preset-chip.active {
-    color: var(--log-accent-text);
-    background: var(--log-accent);
-    border-color: transparent;
-}
-
-.log-meta {
-    margin-left: auto;
-    color: var(--log-muted);
-    font-size: 0.78rem;
+.nav-count {
+    color: var(--log-ink-4);
+    font-size: 12px;
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
 }
 
+.panel-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    margin: 0 4px 4px 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--vcp-ui-shell-radius, 14px);
+    background: var(--log-panel);
+    overflow: hidden;
+}
+
+/* The window is frameless, so the strip above the shell drags it, like the
+   navigation bar of the main window. */
+.shell::before {
+    content: '';
+    position: absolute;
+    inset: -42px 0 auto;
+    height: 42px;
+    -webkit-app-region: drag;
+}
+
+html[data-vcp-embedded-app="true"] body {
+    background-color: transparent;
+}
+
+html[data-vcp-embedded-app="true"] .window-controls,
+html[data-vcp-embedded-app="true"] .shell::before {
+    display: none;
+}
+
+html[data-vcp-embedded-app="true"] .shell {
+    inset: 0;
+}
+
+/* ---- Page ----
+   Log lines are long single-line records, so unlike the 808px settings
+   column the page uses the full panel width: at 808px most lines wrap, which
+   doubles the row count and breaks the timestamp column for scanning. The
+   padding, the title and the 16px beat stay the same as the settings pages,
+   and the title, toolbar and well share one left edge. The column fills the
+   panel height so the well can take the rest of it and scroll on its own,
+   which keeps "stick to the newest line" working. */
+.app-container {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+}
+
+.log-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    height: 100%;
+    min-height: 520px;
+    margin: 0 auto;
+    padding: 24px 24px 40px;
+}
+
+.page-head,
+.page-head-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.page-head-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.page-head-copy {
+    min-width: 0;
+}
+
+.page-head-tools {
+    position: relative;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+}
+
+.page-title {
+    margin: 0;
+    font-size: 18px;
+    line-height: 26px;
+    font-weight: 600;
+}
+
+/* The summary is one quiet line that never wraps: a transient status, the
+   watched file, then the counters and the display order. A long path gives
+   way first: its folder ellipsizes while the file name stays readable, and
+   the full path is in the tooltip. Only a failure is colored. */
+.page-intro {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--log-ink-3);
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.intro-item {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+/* A separator goes before every shown item that follows another shown one. */
+.intro-item:not(:empty) ~ .intro-item:not(:empty)::before {
+    content: '·';
+    flex: 0 0 auto;
+    padding: 0 6px;
+    color: var(--log-ink-4);
+}
+
+.intro-item:empty {
+    display: none;
+}
+
+.intro-item[data-tone="error"] {
+    color: var(--log-danger);
+}
+
+.log-status {
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.log-path {
+    display: flex;
+    flex: 0 1 auto;
+}
+
+.log-path-dir {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.log-path-file {
+    flex: 0 0 auto;
+}
+
+/* ---- Buttons ---- */
+.log-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 0 14px;
+    border: 0.5px solid var(--log-line-3);
+    border-radius: var(--log-radius-md);
+    background: transparent;
+    color: var(--log-ink);
+    font-size: 13px;
+    line-height: 20px;
+    white-space: nowrap;
+    transition: background 120ms ease;
+}
+
+.log-button:hover:not(:disabled) {
+    background: var(--log-hover);
+}
+
+.log-button-danger {
+    background: var(--log-danger);
+    border-color: transparent;
+    color: var(--log-on-danger);
+}
+
+.log-button-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--log-danger) 86%, var(--log-panel));
+}
+
+/* ---- Settings popover ----
+   The line limit is a setting, not content, so it sits behind the gear. It
+   opens to the left of the header tools, centred on the header row: the
+   toolbar starts 16px below the header, so anything dropping from the gear
+   would cover its icons and the first log lines. Only the header's empty
+   right side is overlaid. The width gives way on narrow panels (the text
+   wraps) so the popover never runs past the rail or the sidebar. */
+.settings-anchor {
+    display: flex;
+}
+
+.settings-popover {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + 8px);
+    z-index: 50;
+    width: max-content;
+    max-width: min(360px, calc(100vw - 172px));
+    padding: 10px 14px;
+    transform: translateY(-50%);
+    border-radius: var(--log-radius-md);
+    background: var(--log-panel);
+    box-shadow:
+        0 0 0 0.5px var(--log-line-3),
+        0 12px 36px var(--log-shadow);
+}
+
+.settings-popover[hidden] {
+    display: none;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.settings-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.settings-title {
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 500;
+}
+
+.settings-description {
+    color: var(--log-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.log-input {
+    flex: 0 0 88px;
+    width: 88px;
+    height: 30px;
+    padding: 0 10px;
+    border: 0.5px solid var(--log-line-3);
+    border-radius: var(--log-radius-sm);
+    background: var(--log-surface);
+    outline: none;
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+/* ---- Toolbar ----
+   One row: the filter field, then 16px icons in 30px buttons grouped by
+   hairlines (order | copy and scroll | clear). The row wraps on narrow
+   windows, with the icons keeping to the right. */
+.log-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+.toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.toolbar-actions .nav-icon-btn {
+    width: 30px;
+    height: 30px;
+}
+
+.nav-icon-btn[aria-pressed="true"] {
+    background: var(--log-active);
+    color: var(--log-ink);
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 6px;
+    background: var(--log-line-3);
+}
+
+.search-box {
+    position: relative;
+    display: flex;
+    flex: 1 1 220px;
+    align-items: center;
+    min-width: 0;
+    max-width: 360px;
+}
+
+.search-box svg {
+    position: absolute;
+    left: 12px;
+    pointer-events: none;
+    color: var(--log-ink-4);
+}
+
+.search-box input {
+    width: 100%;
+    height: 32px;
+    padding: 0 12px 0 36px;
+    border: 0.5px solid var(--log-line-3);
+    border-radius: var(--log-radius-md);
+    background: var(--log-surface);
+    outline: none;
+    font-size: 13px;
+    line-height: 20px;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.search-box input::placeholder {
+    color: var(--log-ink-4);
+}
+
+.search-box input:focus,
+.log-input:focus {
+    border-color: var(--log-accent);
+    box-shadow: 0 0 0 2px var(--log-focus-ring);
+}
+
+.search-box input:focus-visible,
+.log-input:focus-visible {
+    outline: none;
+}
+
+/* ---- Log well ----
+   The log itself is the page's one card: a hairline-bordered well that takes
+   the remaining height and scrolls on its own. */
 .log-shell {
     position: relative;
-    flex: 1 1 auto;
-    min-height: 0;
+    flex: 1;
+    min-height: 220px;
+    border: 1px solid var(--log-line-1);
+    border-radius: var(--log-radius-md);
+    background: var(--log-card);
     overflow: hidden;
-    border-radius: 20px;
 }
 
 .log-lines {
     height: 100%;
     overflow: auto;
-    padding: 14px 0;
-    font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
-    font-size: 12.5px;
-    line-height: 1.52;
+    padding: 12px 14px 14px 4px;
+    font-family: var(--log-mono);
+    font-size: 12px;
+    line-height: 18px;
     counter-reset: log-line;
 }
 
-.log-lines::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-}
-
-.log-lines::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.log-lines::-webkit-scrollbar-thumb {
-    border: 3px solid transparent;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--log-muted) 55%, transparent);
-    background-clip: content-box;
-}
-
+/* Rows have no hover fill; the line number is a quiet gutter. */
 .log-row {
     display: grid;
-    grid-template-columns: 58px minmax(0, 1fr);
-    gap: 10px;
-    padding: 2px 14px;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 12px;
+    color: var(--log-ink-2);
     white-space: pre-wrap;
     word-break: break-word;
-}
-
-.log-row:hover {
-    background: var(--log-hover);
 }
 
 .log-row::before {
     counter-increment: log-line;
     content: counter(log-line);
-    color: var(--log-muted);
+    color: var(--log-ink-4);
     text-align: right;
+    font-variant-numeric: tabular-nums;
     user-select: none;
-    opacity: 0.62;
 }
 
 .log-content {
     min-width: 0;
 }
 
+/* Level tags are code chips; only warnings and failures are tinted. */
 .log-level {
-    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: var(--log-radius-xs);
+    background: var(--log-hover);
+    color: var(--log-ink-2);
+    font-size: 11px;
+    line-height: 18px;
 }
 
-.level-error,
-.level-fatal {
-    color: #ff6b6b;
+.level-debug {
+    color: var(--log-ink-3);
 }
 
 .level-warn,
 .level-warning {
-    color: #ffd166;
+    background: color-mix(in srgb, var(--log-warning) 12%, transparent);
+    color: var(--log-warning);
 }
 
-.level-log,
-.level-info {
-    color: #70d6ff;
-}
-
-.level-debug {
-    color: #cdb4db;
+.level-error,
+.level-fatal {
+    background: color-mix(in srgb, var(--log-danger) 14%, transparent);
+    color: var(--log-danger);
 }
 
 .keyword-hit {
-    color: var(--log-accent);
-    font-weight: 800;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--log-accent) 22%, transparent);
+    color: var(--log-ink);
 }
 
+/* With nothing to show, the well gives way to the standard dashed box. */
 .empty-state {
     position: absolute;
     inset: 0;
     display: none;
     align-items: center;
     justify-content: center;
-    color: var(--log-muted);
-    font-size: 0.95rem;
+    padding: 36px 16px;
+    border: 1px dashed var(--log-line-3);
+    border-radius: var(--log-radius-md);
+    color: var(--log-ink-3);
+    font-size: 13px;
+    line-height: 20px;
+    text-align: center;
     pointer-events: none;
 }
 
@@ -357,51 +690,26 @@ body::before {
     display: flex;
 }
 
-.floating-actions {
-    position: fixed;
-    right: 24px;
-    bottom: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    z-index: 60;
-    opacity: 0;
-    transform: translateY(10px);
-    pointer-events: none;
-    transition: opacity 0.22s ease, transform 0.22s ease;
+.log-shell:has(.empty-state.active) {
+    border-color: transparent;
+    background: transparent;
 }
 
-.floating-actions.visible {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-}
-
-.float-btn {
-    width: 42px;
-    height: 42px;
-    border-radius: 999px;
-    font-size: 1.05rem;
-    font-weight: 800;
-    background: var(--log-panel);
-    backdrop-filter: blur(16px);
-}
-
+/* ---- Confirm dialog ---- */
 .confirm-modal {
     position: fixed;
     inset: 0;
-    z-index: 10000;
+    z-index: 2000;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
-    background: rgba(0, 0, 0, 0.46);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    padding: 32px;
+    background: color-mix(in srgb, var(--log-ground) 58%, transparent);
+    backdrop-filter: blur(2px);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.18s ease, visibility 0.18s ease;
+    transition: opacity 160ms ease, visibility 160ms ease;
 }
 
 .confirm-modal.active {
@@ -411,99 +719,167 @@ body::before {
 }
 
 .confirm-card {
-    width: min(430px, 92vw);
-    padding: 28px;
-    border-radius: 24px;
-    text-align: center;
-    transform: translateY(14px) scale(0.96);
-    transition: transform 0.18s ease;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 440px;
+    border-radius: var(--log-radius-xl);
+    background: var(--log-panel);
+    box-shadow:
+        0 0 0 0.5px var(--log-line-3),
+        0 24px 64px var(--log-shadow);
+    overflow: hidden;
 }
 
-.confirm-modal.active .confirm-card {
-    transform: translateY(0) scale(1);
+.confirm-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 20px 24px 4px;
 }
 
-.confirm-icon {
-    width: 54px;
-    height: 54px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 12px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--log-danger) 18%, transparent);
-    color: var(--log-danger);
-    font-size: 1.6rem;
-}
-
-.confirm-card h2 {
-    margin: 0 0 10px;
-    font-size: 1.15rem;
-}
-
-.confirm-card p {
+.confirm-header h3 {
     margin: 0;
-    color: var(--log-muted);
-    line-height: 1.65;
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 600;
+}
+
+.confirm-header p {
+    margin: 0;
+    color: var(--log-ink-3);
+    font-size: 13px;
+    line-height: 20px;
 }
 
 .confirm-actions {
     display: flex;
-    justify-content: center;
-    gap: 12px;
-    margin-top: 24px;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 24px 20px;
 }
+
+/* ---- Toast ---- */
 .toast {
     position: fixed;
-    left: 50%;
-    bottom: 26px;
-    transform: translateX(-50%) translateY(20px);
-    z-index: 80;
-    max-width: min(520px, 80vw);
-    padding: 10px 16px;
-    border-radius: 999px;
-    color: var(--log-accent-text);
-    background: var(--log-accent);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+    right: 24px;
+    bottom: 24px;
+    z-index: 3000;
+    max-width: 380px;
+    padding: 9px 14px;
+    border-radius: var(--log-radius-md);
+    background: var(--log-panel);
+    color: var(--log-ink);
+    font-size: 13px;
+    line-height: 20px;
+    box-shadow:
+        0 0 0 0.5px var(--log-line-3),
+        0 8px 28px var(--log-shadow);
     opacity: 0;
+    transform: translateY(6px);
     pointer-events: none;
-    transition: opacity 0.18s ease, transform 0.18s ease;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
 .toast.active {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
 }
 
-@media (max-width: 760px) {
-    .log-titlebar {
-        padding-left: 12px;
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, transparent);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .log-button,
+    .search-box input,
+    .log-input,
+    .confirm-modal,
+    .toast {
+        transition: none;
     }
 
-    .log-status {
+    .nav-icon-btn.spinning svg {
+        animation: none;
+    }
+}
+
+/* The navigation collapses to an icon rail on narrow windows. */
+@media (max-width: 860px) {
+    .shell {
+        grid-template-columns: 56px minmax(0, 1fr);
+    }
+
+    .sidebar-title {
+        font-size: 0;
+    }
+
+    .nav-group-label {
+        height: 1px;
+        margin: 0 8px 4px;
+        padding: 0;
+        overflow: hidden;
+        background: var(--log-line-2);
+        color: transparent;
+    }
+
+    .nav-item {
+        justify-content: center;
+        padding: 0;
+    }
+
+    .nav-label,
+    .nav-count {
+        display: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .log-page {
+        padding: 20px 16px 32px;
+    }
+
+    /* Narrow panels show only the log file name; the counters need the room. */
+    .log-path-dir {
         display: none;
     }
 
-    .control-row {
-        flex-wrap: wrap;
+    .log-path {
+        flex-shrink: 0;
     }
 
-    .control-field,
-    .control-field.grow {
-        min-width: calc(50% - 5px);
+    /* The description wraps here; tighter padding keeps the popover clear
+       of the toolbar below the header. */
+    .settings-popover {
+        padding: 6px 12px;
     }
 
     .log-meta {
-        width: 100%;
-        margin-left: 0;
+        flex-shrink: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .search-box {
+        max-width: none;
     }
 
     .log-row {
-        grid-template-columns: 42px minmax(0, 1fr);
+        grid-template-columns: 32px minmax(0, 1fr);
         gap: 8px;
-        padding-inline: 8px;
     }
 }
