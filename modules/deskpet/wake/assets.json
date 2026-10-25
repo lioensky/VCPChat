@@ -1,0 +1,31 @@
+{
+  "id": "wenetspeech-mobile-2024-01-01",
+  "directory": "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile",
+  "archiveUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile.tar.bz2",
+  "files": [
+    {
+      "key": "encoder",
+      "name": "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
+      "bytes": 3990821,
+      "sha256": "4ded45b30961270f2a9a64bede4569b324c36d4f3a772c1b35bb70a244150675"
+    },
+    {
+      "key": "decoder",
+      "name": "decoder-epoch-12-avg-2-chunk-16-left-64.onnx",
+      "bytes": 675349,
+      "sha256": "fb581d6734511676e246e0dff2fea01b31b0913176cb3ca64576dbab0a177774"
+    },
+    {
+      "key": "joiner",
+      "name": "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
+      "bytes": 65242,
+      "sha256": "f79760052b87239e325f0567c752ad3130b30d92effb847d4307743c20c59a24"
+    },
+    {
+      "key": "tokens",
+      "name": "tokens.txt",
+      "bytes": 1627,
+      "sha256": "72316508d9119696145abc6f1f8cdc46287535c34e5ce7e595f845cb1499cf2e"
+    }
+  ]
+}

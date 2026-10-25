@@ -15,6 +15,7 @@
     "package": ["scripts/deskpet/fetch-cubism-core.cjs", "--strict"]
   },
   "tests": [
+    "tests/deskpet-wake.test.mjs",
     "tests/deskpet-session-card.test.mjs",
     "tests/deskpet-voice-session.test.mjs",
     "tests/deskpet-assets.test.mjs",

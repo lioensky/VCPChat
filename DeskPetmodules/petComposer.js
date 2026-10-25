@@ -32,6 +32,7 @@ export function createPetComposer(ctx) {
         $('dock').dataset.mode = mode;
         syncDockLayers();
         composer.open = mode === 'bar';
+        if (previous === 'rec' && mode !== 'rec') api.manualVoiceCapture?.(false);
         // 只看不点时光标压着角色会变淡：打字、录音时得看得见
         if (mode === 'bar' || mode === 'rec') document.body.classList.remove('is-ghost-hover');
         // 打字、录音的时候别打瞌睡
@@ -103,9 +104,12 @@ export function createPetComposer(ctx) {
         dock.autoSend = autoSend;
         setDock('rec');
         try {
+            await api.manualVoiceCapture?.(true);
+            if (dock.mode !== 'rec') { api.manualVoiceCapture?.(false); return; }
             await voice.start();
             voice.onLimit(() => finishVoice());
         } catch (error) {
+            api.manualVoiceCapture?.(false);
             if (error.code === 'cancelled') return; // 打开麦克风前就被收起：界面已经是别的状态了
             ctx.notice(error.message, { error: true, ms: error.code === 'no-model' ? 8000 : 5000 });
             setDock(from === 'bar' ? 'bar' : restingDock());
@@ -290,6 +294,19 @@ export function createPetComposer(ctx) {
 
     function bindComposer() {
         const input = $('composerInput');
+        const offWakeStatus = api.onWakeStatus?.(text => ctx.notice(text, { ms: 5000 }));
+        const offWakeText = api.onWakeText?.(async ({ text, autoSend } = {}) => {
+            if (typeof text !== 'string' || !text.trim()) return;
+            // 唤醒输入是独立请求，不读取已有草稿、附件或“新话题”开关。
+            if (autoSend && !composer.sending && !ctx.bubble.replyId) {
+                if (await sendText(text)) return;
+            }
+            input.value = input.value.trim() ? `${input.value.trimEnd()}\n${text}` : text;
+            fitComposerInput();
+            openComposer();
+            ctx.notice('听到的话已放入输入条，请确认后发送', { ms: 5000 });
+        });
+        window.addEventListener('pagehide', () => { offWakeStatus?.(); offWakeText?.(); }, { once: true });
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.preventDefault();

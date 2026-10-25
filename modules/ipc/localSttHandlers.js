@@ -60,4 +60,10 @@ function shutdown() {
     service?.dispose();
 }
 
-module.exports = { initialize, shutdown };
+module.exports = {
+    initialize,
+    shutdown,
+    warmup: () => service ? service.warmup() : Promise.reject(new Error('语音识别服务尚未初始化')),
+    transcribe: (wav, options) => service ? service.transcribe(wav, options) : Promise.reject(new Error('语音识别服务尚未初始化')),
+    getPaths: () => manager?.isInstalled() ? manager.getPaths() : null,
+};

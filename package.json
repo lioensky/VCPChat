@@ -158,6 +158,7 @@
     "os": "^0.1.2",
     "pdf-parse": "^1.1.1",
     "pdf-poppler": "^0.2.1",
+    "pinyin-pro": "^3.29.5",
     "pixi.js": "^8.20.1",
     "portfinder": "^1.0.37",
     "puppeteer": "^25.9.0",
@@ -194,6 +195,7 @@
       "node_modules/sherpa-onnx-linux-arm64/**/*",
       "node_modules/sherpa-onnx-linux-x64/**/*",
       "modules/voice/localStt/sttWorker.js",
+      "modules/deskpet/wake/kwsWorker.js",
       "VCPDistributedServer/Plugin/PowerShellExecutor/AdminConfirm.py"
     ],
     "files": [

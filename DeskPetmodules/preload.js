@@ -173,6 +173,16 @@ function onMusicGroove(callback) {
 }
 
 contextBridge.exposeInMainWorld('deskPetAPI', Object.freeze({
+    onWakeText: callback => {
+        const listener = (_event, payload) => callback(payload);
+        ipcRenderer.on('deskpet:wake-text', listener);
+        return () => ipcRenderer.removeListener('deskpet:wake-text', listener);
+    },
+    onWakeStatus: callback => {
+        const listener = (_event, text) => callback(String(text || ''));
+        ipcRenderer.on('deskpet:wake-status', listener);
+        return () => ipcRenderer.removeListener('deskpet:wake-status', listener);
+    },
     onMusicGroove,
     onChatRoute,
     getAssets: () => ipcRenderer.invoke('deskpet:get-assets'),
@@ -236,6 +246,7 @@ contextBridge.exposeInMainWorld('deskPetAPI', Object.freeze({
         job: new URLSearchParams(location.search).get('job'),
     }),
     // 语音输入：和主窗口共用本地 SenseVoice（全局设置 → 语音设置里安装）
+    manualVoiceCapture: active => ipcRenderer.invoke('deskpet-wake:manual-capture', active === true).catch(() => false),
     sttStatus: () => ipcRenderer.invoke('local-stt:status'),
     transcribe: (wav, language) => ipcRenderer.invoke('local-stt:transcribe', { wav, language: String(language || 'auto') }),
 }));

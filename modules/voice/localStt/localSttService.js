@@ -82,6 +82,13 @@ class LocalSttService {
         return this.loading;
     }
 
+    async warmup() {
+        await this.ensureWorker();
+        clearTimeout(this.idleTimer);
+        this.idleTimer = setTimeout(() => this.killWorker(), IDLE_TIMEOUT_MS);
+        this.idleTimer.unref?.();
+    }
+
     async transcribe(wavBytes, { language = 'auto' } = {}) {
         const wav = Buffer.isBuffer(wavBytes) ? wavBytes : Buffer.from(wavBytes || []);
         if (!wav.length) throw new Error('音频为空');

@@ -20,6 +20,8 @@ import { buildMapping, wireMapping } from './settings/expressionMapping.js';
 import { buildOptions, wireOptions } from './settings/options.js';
 import { buildShortcuts, wireShortcuts } from './settings/shortcuts.js';
 
+import { buildWake, wireWake } from './settings/wake.js';
+
 const CATALOG_DEBOUNCE_MS = 150;
 
 function getApi(doc) {
@@ -40,10 +42,11 @@ export function buildDeskPetPanel(doc) {
     const coreParts = buildCore(doc);
     const optionParts = buildOptions(doc);
     const shortcutParts = buildShortcuts(doc);
+    const wakeParts = buildWake(doc);
 
     root.append(
         stageParts.intro, stageParts.stage, stageParts.drawer,
-        catalogParts.head, catalogParts.grid, mapParts.mapSection,
+        catalogParts.head, catalogParts.grid, wakeParts.root, mapParts.mapSection,
         coreParts.coreTitle, coreParts.coreCard,
         optionParts.optionsTitle, optionParts.options,
         shortcutParts.shortcutsTitle, shortcutParts.shortcuts,
@@ -104,6 +107,7 @@ export function buildDeskPetPanel(doc) {
     const mapApi = wireMapping(ctx, mapParts);
     const optionsApi = wireOptions(ctx, optionParts);
     const shortcutsApi = wireShortcuts(ctx, shortcutParts);
+    const wakeApi = wireWake(ctx, wakeParts);
 
     // ---- 拉数据、把快照和目录摊到各块上 ----
 
@@ -120,6 +124,7 @@ export function buildDeskPetPanel(doc) {
         catalogApi.renderGrid(rebuild);
         coreApi.renderCore();
         mapApi.renderMapSection();
+        wakeApi.refresh();
     }
 
     async function loadCatalog(agentId = state.agentId, { refresh = false } = {}) {
@@ -182,6 +187,7 @@ export function buildDeskPetPanel(doc) {
 
     function onHidden() {
         state.visible = false;
+        wakeApi.hide();
         ctx.dock.cancelVoice();
         if (ctx.dock.mode() !== 'bar' || !ctx.dock.hasText()) ctx.dock.setDock('pill');
         if (state.recording) shortcutsApi.stopRecording();
@@ -192,6 +198,7 @@ export function buildDeskPetPanel(doc) {
             if (!root.isConnected) {
                 observer.disconnect();
                 for (const off of unsubscribe) off?.();
+                wakeApi.dispose();
                 return;
             }
             const shown = entries.some((entry) => entry.isIntersecting);

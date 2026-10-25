@@ -185,6 +185,7 @@ function initialize(options) {
 
 module.exports = {
     initialize,
+    anySpeaking: () => { pruneClaims(); return claims.size > 0 || tts?.isSpeaking?.() === true; },
     release,
     menuItem,
     // 挂到 tts:speak：别的窗口要念的正是桌宠在念的那条就不念

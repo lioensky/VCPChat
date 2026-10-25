@@ -1971,6 +1971,7 @@ if (!gotTheLock) {
         appFeatures.registerAll({
             hooks: hostHooks,
             tts: sovitsHandlers,
+            stt: localSttHandlers,
             mainWindow,
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,

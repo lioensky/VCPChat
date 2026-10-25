@@ -124,5 +124,21 @@ module.exports = {
     initialize,
     startSpeech,
     appendSpeech,
-    stopSpeechFrom
+    stopSpeechFrom,
+    isSpeaking: () => Boolean(sovitsTTSInstance?.isSpeaking || sovitsTTSInstance?.speechQueue?.length),
+    // 仅生成音频，不改变朗读队列、会话号或当前出声窗口。
+    async generateAudio({ text, voice, speed = 1, directorPrompts = [] }) {
+        const instance = getSovitsTTS();
+        const runtime = await instance.getRuntimeConfig();
+        const result = await instance.textToSpeech(text, voice, speed, directorPrompts);
+        if (!result?.audioBuffer?.length) throw new Error('语音生成失败，请检查 TTS 服务与音色配置');
+        return {
+            audioBuffer: result.audioBuffer,
+            playbackRate: runtime.voiceMode === 'network' ? Math.min(2, Math.max(0.5, Number(speed) || 1)) : 1,
+        };
+    },
+    async generationIdentity() {
+        const runtime = await getSovitsTTS().getRuntimeConfig();
+        return { voiceMode: runtime.voiceMode, baseUrl: runtime.baseUrl };
+    }
 };

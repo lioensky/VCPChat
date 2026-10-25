@@ -173,6 +173,10 @@ function initialize(options) {
     });
     const controls = ctx.controls;
     controls.registerIpc();
+    if (options.stt && options.tts?.generateAudio) {
+        const { createWakeCoordinator } = require('./wake/coordinator');
+        ctx.wake = createWakeCoordinator(ctx, { tts: options.tts, stt: options.stt });
+    }
     ctx.previews = createPetPreviews({
         BrowserWindow,
         cacheRoot: path.join(paths.appDataRoot, 'deskpet', 'previews'),
@@ -221,6 +225,7 @@ function initialize(options) {
     }).registerIpc();
     ctx.displays.initFullscreenWatch();
     controls.onChange((_settings, changed) => {
+        if (changed.includes('doNotDisturb')) ctx.wake?.refresh();
         if (changed.some((key) => PAGE_PREF_KEYS.includes(key))) ctx.sizing.broadcastPrefs();
         if (changed.includes('hideFromCapture')) for (const pet of ctx.pets.values()) ctx.windows.applyCaptureHiding(pet.win);
         if (changed.includes('wander') && controls.get().wander !== true) for (const pet of ctx.pets.values()) ctx.motion.stopWalk(pet);
@@ -234,6 +239,7 @@ function initialize(options) {
         controls.applyShortcuts();
         ctx.refreshTray();
         ctx.idle.update();
+        ctx.wake?.refresh();
     });
     // 主窗口载完以后再恢复上次的桌宠
     const scheduleRestore = () => settingsReady.then(() => {
@@ -295,7 +301,7 @@ function closeAll() {
     ctx.previews?.dispose();
     ctx.idle?.stop();
     // 退出流程要等这次写盘：去抖窗口里改的设置不能丢
-    return Promise.resolve(settingsSaved);
+    return Promise.all([Promise.resolve(settingsSaved), ctx.wake?.dispose()]);
 }
 
 // chatHandlers 在主聊天的发送和流式路径上调用这些钩子；桌宠出任何错都不能打断主聊天。
@@ -324,7 +330,7 @@ module.exports = {
     onStreamPayload: isolated('onStreamPayload', ctx.stream.onStreamPayload),
     onFullResponse: isolated('onFullResponse', ctx.stream.onFullResponse),
     onDistributedToolResult: isolated('onDistributedToolResult', ctx.proactive.onDistributedToolResult),
-    forgetAgent: (agentId) => Promise.resolve(ctx.windows.forgetAgent(agentId)).catch((error) => console.warn('[DeskPet] forget agent failed:', error.message)),
+    forgetAgent: (agentId) => Promise.all([ctx.windows.forgetAgent(agentId), ctx.wake?.forget(agentId)]).catch((error) => console.warn('[DeskPet] forget agent failed:', error.message)),
     // 测试用
     _promptReady: () => Boolean(ctx.emotionPrompt),
     _applyFullscreen: ctx.displays.applyFullscreen,

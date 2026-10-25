@@ -867,3 +867,36 @@
 :is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps [hidden] {
   display: none;
 }
+
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-wake {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--dps-line);
+  border-radius: 14px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-wake-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-wake-field input {
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--dps-line);
+  border-radius: 8px;
+  background: var(--dps-surface);
+  color: var(--dps-ink);
+  font: inherit;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .dps-wake-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

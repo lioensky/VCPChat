@@ -257,8 +257,8 @@ function createPetWindow(ctx) {
         });
         // 窗口开着时关了后台节流（主窗口最小化时桌宠照常动），隐藏时页面感觉不到，主动告诉它停下。
         const sendVisibility = (visible) => !win.isDestroyed() && win.webContents.send('deskpet:visibility', visible);
-        win.on('hide', () => sendVisibility(false));
-        win.on('show', () => sendVisibility(true));
+        win.on('hide', () => { sendVisibility(false); ctx.wake?.visibilityChanged(); });
+        win.on('show', () => { sendVisibility(true); ctx.wake?.visibilityChanged(); });
         // 置顶被系统或别的程序取消时（例如别的程序调用了 SetWindowPos），马上补回来
         win.on('always-on-top-changed', (_e, onTop) => {
             if (!onTop && !ctx.shuttingDown) setImmediate(() => reassertTopmost(pet));
@@ -273,6 +273,7 @@ function createPetWindow(ctx) {
             settleReady(pet, new Error('桌宠已经关了'));
             ctx.proactive.forgetPetApprovals(agentId);
             pets.delete(agentId);
+            ctx.wake?.visibilityChanged();
             updateTopmostGuard();
             ctx.displays.updateFullscreenWatch();
             if (ctx.lastTouched === agentId) ctx.lastTouched = null;
