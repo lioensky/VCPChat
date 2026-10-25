@@ -208,6 +208,32 @@
               <p id="noteMeta" class="note-meta" aria-live="polite"></p>
             </div>
             <div class="note-actions">
+              <div class="view-mode-group" role="group" aria-label="编辑视图">
+                <button
+                  class="toolbar-button view-mode-button"
+                  type="button"
+                  data-view-mode="editor"
+                  aria-pressed="false"
+                >
+                  编辑
+                </button>
+                <button
+                  class="toolbar-button view-mode-button is-active"
+                  type="button"
+                  data-view-mode="split"
+                  aria-pressed="true"
+                >
+                  分栏
+                </button>
+                <button
+                  class="toolbar-button view-mode-button"
+                  type="button"
+                  data-view-mode="preview"
+                  aria-pressed="false"
+                >
+                  预览
+                </button>
+              </div>
               <button
                 id="deleteNoteBtn"
                 class="nav-icon-btn note-delete-btn"
@@ -249,10 +275,10 @@
                   <button class="toolbar-button" type="button" data-markdown-action="bulletList" title="无序列表" aria-label="无序列表">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11"></path><path d="M9 12h11"></path><path d="M9 18h11"></path><circle cx="4.5" cy="6" r="1" fill="currentColor" stroke="none"></circle><circle cx="4.5" cy="12" r="1" fill="currentColor" stroke="none"></circle><circle cx="4.5" cy="18" r="1" fill="currentColor" stroke="none"></circle></svg>
                   </button>
-                  <button class="toolbar-button" type="button" data-markdown-action="quote" title="引用" aria-label="引用">
+                  <button class="toolbar-button" type="button" data-markdown-action="quote" data-toolbar-overflow title="引用" aria-label="引用">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5v14"></path><path d="M10 8h9"></path><path d="M10 12h9"></path><path d="M10 16h6"></path></svg>
                   </button>
-                  <button class="toolbar-button" type="button" data-markdown-action="code" title="代码块" aria-label="代码块">
+                  <button class="toolbar-button" type="button" data-markdown-action="code" data-toolbar-overflow title="代码块" aria-label="代码块">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 8-4 4 4 4"></path><path d="m16 8 4 4-4 4"></path><path d="m13.5 5-3 14"></path></svg>
                   </button>
                 </div>
@@ -261,39 +287,25 @@
                   <button class="toolbar-button" type="button" data-markdown-action="link" title="链接" aria-label="链接">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"></path><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"></path></svg>
                   </button>
-                  <button class="toolbar-button" type="button" data-markdown-action="tag" title="标签行" aria-label="标签行">
+                  <button class="toolbar-button" type="button" data-markdown-action="tag" data-toolbar-overflow title="标签行" aria-label="标签行">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9h15"></path><path d="M4 15h15"></path><path d="M10 4 8 20"></path><path d="m16 4-2 16"></path></svg>
                   </button>
-                  <button id="insertImageBtn" class="toolbar-button" type="button" title="插入图片" aria-label="插入图片">
+                  <button id="insertImageBtn" class="toolbar-button" type="button" data-toolbar-overflow title="插入图片" aria-label="插入图片">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="m20.5 15.5-5-5-9.5 9"></path></svg>
                   </button>
                   <input id="imageFileInput" type="file" accept="image/*" hidden />
                 </div>
-              </div>
-              <div class="view-mode-group" role="group" aria-label="编辑视图">
                 <button
-                  class="toolbar-button view-mode-button is-active"
+                  id="formatOverflowBtn"
+                  class="toolbar-button format-overflow-btn"
                   type="button"
-                  data-view-mode="split"
-                  aria-pressed="true"
+                  title="更多格式"
+                  aria-label="更多格式"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  aria-controls="formatOverflowMenu"
                 >
-                  分屏
-                </button>
-                <button
-                  class="toolbar-button view-mode-button"
-                  type="button"
-                  data-view-mode="editor"
-                  aria-pressed="false"
-                >
-                  编辑
-                </button>
-                <button
-                  class="toolbar-button view-mode-button"
-                  type="button"
-                  data-view-mode="preview"
-                  aria-pressed="false"
-                >
-                  预览
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="18.5" cy="12" r="1.5"></circle></svg>
                 </button>
               </div>
             </div>
@@ -375,9 +387,36 @@
     <div id="customContextMenu" class="custom-context-menu">
       <ul>
         <li id="context-rename">重命名</li>
-        <li id="context-delete">删除</li>
         <li id="context-copy-note">复制笔记</li>
+        <li class="separator" role="separator"></li>
+        <li id="context-delete" class="danger">删除</li>
       </ul>
+    </div>
+
+    <!-- Formatting tools that fold out of a narrow toolbar -->
+    <div
+      id="formatOverflowMenu"
+      class="notes-popover is-anchored"
+      role="menu"
+      aria-label="更多格式"
+      hidden
+    >
+      <button class="popover-item" type="button" role="menuitem" data-markdown-action="quote">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5v14"></path><path d="M10 8h9"></path><path d="M10 12h9"></path><path d="M10 16h6"></path></svg>
+        <span class="popover-item-label">引用</span>
+      </button>
+      <button class="popover-item" type="button" role="menuitem" data-markdown-action="code">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 8-4 4 4 4"></path><path d="m16 8 4 4-4 4"></path><path d="m13.5 5-3 14"></path></svg>
+        <span class="popover-item-label">代码块</span>
+      </button>
+      <button class="popover-item" type="button" role="menuitem" data-markdown-action="tag">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9h15"></path><path d="M4 15h15"></path><path d="M10 4 8 20"></path><path d="m16 4-2 16"></path></svg>
+        <span class="popover-item-label">标签行</span>
+      </button>
+      <button class="popover-item" type="button" role="menuitem" data-overflow-image>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="m20.5 15.5-5-5-9.5 9"></path></svg>
+        <span class="popover-item-label">插入图片</span>
+      </button>
     </div>
 
     <!-- Editor Context Menu HTML -->
@@ -397,7 +436,7 @@
         <p id="modalMessage">你确定要执行这个操作吗？</p>
         <div class="modal-actions">
           <button id="modalConfirmBtn" class="button button-danger" type="button">
-            确认
+            删除
           </button>
           <button id="modalCancelBtn" class="button" type="button">取消</button>
         </div>

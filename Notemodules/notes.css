@@ -25,7 +25,9 @@ body {
   --nt-success: var(--success-color);
   --nt-on-success: var(--text-on-accent);
   --nt-shadow: color-mix(in srgb, var(--tertiary-bg) 72%, transparent);
-  --nt-mono: 'SF Mono', 'JetBrains Mono', Consolas, 'Cascadia Code', monospace;
+  /* Latin glyphs come from the code faces; CJK falls through to the UI
+     sans before the generic monospace, which maps to SimSun on Windows. */
+  --nt-mono: 'SF Mono', 'JetBrains Mono', Consolas, 'Cascadia Code', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', monospace;
   --nt-radius-xs: 4px;
   --nt-radius-sm: 8px;
   --nt-radius-md: 12px;
@@ -863,7 +865,7 @@ html[data-vcp-embedded-app="true"] .shell {
 /* ---- Writing surface ----
    One 12px-radius surface holds the toolbar and the editor and preview,
    which a hairline resizer splits. The toolbar carries the Markdown tools
-   as icon groups and the view switch as a segmented control. */
+   as icon groups; the view switch lives in the header beside 保存. */
 .note-surface {
   flex: 1;
   display: flex;
@@ -883,6 +885,7 @@ html[data-vcp-embedded-app="true"] .shell {
   min-width: 0;
   padding: 0 6px;
   border-bottom: 0.5px solid var(--nt-line-2);
+  container: note-toolbar / inline-size;
 }
 
 .formatting-toolbar {
@@ -899,10 +902,10 @@ html[data-vcp-embedded-app="true"] .shell {
   display: none;
 }
 
-/* Preview mode has nothing to format; the tools step aside but keep their
-   place so the view switch does not move. */
-body[data-note-view-mode="preview"] .formatting-toolbar {
-  visibility: hidden;
+/* Preview mode has nothing to format, so the whole tool row goes and the
+   preview starts at the top of the surface. */
+body[data-note-view-mode="preview"] .note-workspace-toolbar {
+  display: none;
 }
 
 .toolbar-group {
@@ -939,6 +942,42 @@ body[data-note-view-mode="preview"] .formatting-toolbar {
   display: block;
 }
 
+/* The "…" trigger only appears once the row is too narrow for every tool;
+   the less-used ones then move into #formatOverflowMenu. */
+.format-overflow-btn {
+  display: none;
+}
+
+@container note-toolbar (max-width: 340px) {
+  .formatting-toolbar {
+    gap: 2px;
+  }
+
+  .formatting-toolbar [data-toolbar-overflow],
+  .formatting-toolbar .toolbar-divider {
+    display: none;
+  }
+
+  .formatting-toolbar .format-overflow-btn {
+    display: inline-flex;
+  }
+}
+
+.format-overflow-btn[aria-expanded="true"] {
+  background: var(--nt-active);
+  color: var(--nt-ink);
+}
+
+/* Body-level so the surface's clipping cannot cut it; script anchors it
+   under the trigger. */
+.notes-popover.is-anchored {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 1000;
+  width: 196px;
+}
+
 .toolbar-button:hover:not(:disabled) {
   background: var(--nt-hover);
   color: var(--nt-ink);
@@ -949,7 +988,7 @@ body[data-note-view-mode="preview"] .formatting-toolbar {
   flex: 0 0 auto;
   display: flex;
   gap: 2px;
-  margin-left: auto;
+  margin-right: 4px;
   padding: 2px;
   border-radius: var(--nt-radius-sm);
   background: var(--nt-hover);
@@ -1326,7 +1365,7 @@ body[data-note-view-mode="preview"] .preview-container {
   --pele-surface-alt: var(--nt-hover);
   --pele-accent: var(--nt-accent);
   --pele-font: var(--font-family-sans-serif, sans-serif);
-  --pele-font-mono: var(--font-family-monospace, monospace);
+  --pele-font-mono: var(--nt-mono);
   margin: 1em 0;
   padding: 1em;
   border: 0.5px solid var(--nt-line-3);
@@ -1412,6 +1451,17 @@ body[data-note-view-mode="preview"] .preview-container {
   margin: 4px 6px;
   padding: 0;
   background: var(--nt-line-2);
+  cursor: default;
+}
+
+/* Destructive rows sit last, under a separator, in the danger colour. */
+.custom-context-menu ul li.danger {
+  color: var(--nt-danger);
+}
+
+.custom-context-menu ul li.danger:hover:not(.disabled),
+.custom-context-menu ul li.danger:active:not(.disabled) {
+  background: color-mix(in srgb, var(--nt-danger) 10%, transparent);
 }
 
 .custom-context-menu .submenu {
@@ -1585,18 +1635,11 @@ body[data-note-view-mode="preview"] .preview-container {
   }
 }
 
-/* Narrow windows: a slimmer column and a tighter toolbar. */
+/* Narrow windows: a slimmer column. The tool row folds by its own width
+   (the note-toolbar container query above). */
 @media (max-width: 860px) {
   .sidebar {
     max-width: 220px;
-  }
-
-  .formatting-toolbar {
-    gap: 2px;
-  }
-
-  .toolbar-divider {
-    display: none;
   }
 }
 

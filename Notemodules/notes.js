@@ -56,6 +56,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const noteMeta = document.getElementById("noteMeta");
   const insertImageBtn = document.getElementById("insertImageBtn");
   const imageFileInput = document.getElementById("imageFileInput");
+  const formatOverflowBtn = document.getElementById("formatOverflowBtn");
+  const formatOverflowMenu = document.getElementById("formatOverflowMenu");
   const viewModeButtons = Array.from(
     document.querySelectorAll("[data-view-mode]")
   );
@@ -945,9 +947,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateFilterSummary();
   }
 
-  // --- Title-row Popovers ---
-  // The "+" menu and the filter menu share one open/close path: a click
-  // outside or Escape closes them, and arrow keys move between rows.
+  // --- Popovers ---
+  // The "+" menu, the filter menu and the toolbar's "…" menu share one
+  // open/close path: a click outside or Escape closes them, and arrow keys
+  // move between rows.
   let openPopoverState = null;
 
   function getPopoverItems(menu) {
@@ -991,7 +994,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     closePopover();
   });
 
-  [newItemMenu, noteFilterMenu].forEach((menu) => {
+  [newItemMenu, noteFilterMenu, formatOverflowMenu].forEach((menu) => {
     menu.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -1017,6 +1020,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Every row of the "+" menu creates something, so any click closes it.
   newItemMenu.addEventListener("click", (e) => {
     if (e.target.closest(".popover-item")) closePopover();
+  });
+
+  // The "…" menu holds the tools a narrow toolbar folds away. It sits at
+  // body level, so it is placed under its trigger each time it opens.
+  function placeFormatOverflowMenu() {
+    const rect = formatOverflowBtn.getBoundingClientRect();
+    const maxLeft = window.innerWidth - formatOverflowMenu.offsetWidth - 8;
+    formatOverflowMenu.style.top = `${Math.round(rect.bottom + 4)}px`;
+    formatOverflowMenu.style.left = `${Math.round(Math.max(8, Math.min(rect.left, maxLeft)))}px`;
+  }
+
+  formatOverflowBtn.addEventListener("click", () => {
+    togglePopover(formatOverflowMenu, formatOverflowBtn);
+    if (!formatOverflowMenu.hidden) placeFormatOverflowMenu();
+  });
+  // Markdown rows run through the shared toolbar binding; the image row
+  // hands off to the real button so the file picker path stays the same.
+  formatOverflowMenu.addEventListener("click", (e) => {
+    const item = e.target.closest(".popover-item");
+    if (!item) return;
+    closePopover();
+    if (item.hasAttribute("data-overflow-image")) insertImageBtn.click();
+  });
+  window.addEventListener("resize", () => {
+    if (openPopoverState?.menu === formatOverflowMenu) closePopover();
   });
 
   // --- Filters ---
@@ -1563,9 +1591,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         <strong>从这里开始</strong><br>
         • 侧栏右上角的 <code>+</code> 可新建笔记（.md）、文本（.txt）、文件夹，或从模板新建。<br>
         • 标题即文件名，可直接修改；输入后几秒会自动保存，也可点“保存”。<br>
-        • 编辑区上方的图标可插入加粗、斜体、标题、列表、引用、代码、链接、标签行和图片；图片也可直接粘贴。<br>
+        • 编辑区上方的图标可插入加粗、斜体、标题、列表、引用、代码、链接、标签行和图片；窗口较窄时，部分工具收进“…”菜单。图片也可直接粘贴。<br>
         • 使用独立标签行 <code>标签：#学习 #项目</code>，即可自动归类和筛选；正文或源码中的井号词不会被识别。<br>
-        • 右侧的“分屏 / 编辑 / 预览”切换视图；分屏时拖动中间的分隔线调整比例。<br>
+        • 标题右侧的“编辑 / 分栏 / 预览”切换视图；分栏时拖动中间的分隔线调整比例。<br>
         • 本地与网络笔记会分别显示；侧栏的筛选按钮可按来源、标签筛选和排序。<br><br>
         <strong>常用语法</strong><br>
         <code># 标题</code>　<code>**加粗**</code>　<code>*斜体*</code>　<code>- 列表</code>　<code>&gt; 引用</code>　<code>[链接](https://)</code><br><br>
