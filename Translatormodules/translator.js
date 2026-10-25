@@ -62,18 +62,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     let translatorSettings = structuredClone(DEFAULT_TRANSLATOR_SETTINGS);
     let activeLanguage = 'en';
     let activeMode = 'fast';
+    let settingsLoaded = false; // 读取成功前不写回，避免用默认值覆盖用户的设置文件
+    let settingsSaveQueue = Promise.resolve();
+    let targetLanguageSaveTimer = null;
 
     // 保存复制按钮原始的 SVG 图标
     const originalCopyBtnIcon = copyBtn.innerHTML;
 
     const cloneDefaultSettings = () => structuredClone(DEFAULT_TRANSLATOR_SETTINGS);
 
+    const normalizeTargetLanguage = (value) => (typeof value?.id === 'string'
+        ? { id: value.id, custom: typeof value.custom === 'string' ? value.custom : '' }
+        : null);
+
     const normalizeTranslatorSettings = (settings = {}) => ({
         models: {
             ...DEFAULT_TRANSLATOR_SETTINGS.models,
             ...(settings.models || {})
         },
-        stream: Boolean(settings.stream)
+        stream: Boolean(settings.stream),
+        targetLanguage: normalizeTargetLanguage(settings.targetLanguage)
     });
 
     const getModelName = (mode) => translatorSettings.models[mode] || DEFAULT_TRANSLATOR_SETTINGS.models[mode] || DEFAULT_TRANSLATOR_SETTINGS.models.balanced;
@@ -209,12 +217,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         onSelect(items[nextIndex]);
     };
 
-    const fillSettingsForm = () => {
-        fastModelInput.value = translatorSettings.models.fast;
-        balancedModelInput.value = translatorSettings.models.balanced;
-        qualityModelInput.value = translatorSettings.models.quality;
-        streamModeToggle.checked = translatorSettings.stream;
+    const fillSettingsForm = (settings = translatorSettings) => {
+        fastModelInput.value = settings.models.fast;
+        balancedModelInput.value = settings.models.balanced;
+        qualityModelInput.value = settings.models.quality;
+        streamModeToggle.checked = settings.stream;
         settingsSaveStatus.textContent = '';
+    };
+
+    const currentTargetLanguage = () => ({ id: activeLanguage, custom: customLanguageInput.value.trim() });
+
+    // 所有写入排队进行，语言切换和设置对话框不会同时写同一个文件
+    const queueSettingsSave = (settings) => {
+        const run = settingsSaveQueue.then(() => api.saveTranslatorSettings(settings));
+        settingsSaveQueue = run.catch(() => {});
+        return run;
+    };
+
+    // 目标语言（含自定义文字）随翻译设置一起保存，下次打开时恢复
+    const saveTargetLanguage = () => {
+        clearTimeout(targetLanguageSaveTimer);
+        targetLanguageSaveTimer = null;
+        if (!settingsLoaded || typeof api?.saveTranslatorSettings !== 'function') return;
+        translatorSettings.targetLanguage = currentTargetLanguage();
+        queueSettingsSave({ ...translatorSettings }).then((result) => {
+            if (!result?.success) console.warn('Failed to save target language:', result?.error);
+        }).catch((error) => console.error('Error saving target language:', error));
+    };
+
+    const scheduleTargetLanguageSave = () => {
+        clearTimeout(targetLanguageSaveTimer);
+        targetLanguageSaveTimer = setTimeout(saveTargetLanguage, 400);
+    };
+
+    const restoreTargetLanguage = () => {
+        const saved = translatorSettings.targetLanguage;
+        if (!saved) return;
+        customLanguageInput.value = saved.custom;
+        if (targetLanguageList.querySelector(`[data-language="${CSS.escape(saved.id)}"]`)) {
+            selectLanguage(saved.id);
+        }
     };
 
     const readSettingsForm = () => ({
@@ -276,6 +318,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const result = await api.loadTranslatorSettings();
             if (result?.success) {
                 translatorSettings = normalizeTranslatorSettings(result.settings);
+                restoreTargetLanguage();
+                settingsLoaded = true;
             } else {
                 console.warn('Failed to load translator settings, using defaults:', result?.error);
                 translatorSettings = cloneDefaultSettings();
@@ -289,7 +333,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function saveTranslatorSettingsFromForm() {
-        const nextSettings = normalizeTranslatorSettings(readSettingsForm());
+        clearTimeout(targetLanguageSaveTimer);
+        targetLanguageSaveTimer = null;
+        const nextSettings = normalizeTranslatorSettings({ ...readSettingsForm(), targetLanguage: currentTargetLanguage() });
         setSettingsStatus('保存中...', 'pending');
         saveSettingsBtn.disabled = true;
 
@@ -298,12 +344,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error('当前预加载 API 未暴露保存翻译设置接口。');
             }
 
-            const result = await api.saveTranslatorSettings(nextSettings);
+            const result = await queueSettingsSave(nextSettings);
             if (!result?.success) {
                 throw new Error(result?.error || '保存失败。');
             }
 
             translatorSettings = normalizeTranslatorSettings(result.settings || nextSettings);
+            settingsLoaded = true;
             refreshModelModeLabels();
             fillSettingsForm();
             setSettingsStatus('已保存到 AppData/translatorsetting.json', 'success');
@@ -510,9 +557,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const item = event.target.closest('.nav-item');
         if (!item) return;
         selectLanguage(item.dataset.language);
+        scheduleTargetLanguageSave();
         if (item.dataset.language === 'custom' && !customLanguageInput.value.trim()) customLanguageInput.focus();
     });
-    targetLanguageList.addEventListener('keydown', handleRadioKeydown(targetLanguageList, (item) => selectLanguage(item.dataset.language)));
+    targetLanguageList.addEventListener('keydown', handleRadioKeydown(targetLanguageList, (item) => {
+        selectLanguage(item.dataset.language);
+        scheduleTargetLanguageSave();
+    }));
 
     // --- Model Menu ---
     settingsTranslatorBtn.addEventListener('click', () => {
@@ -559,7 +610,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Input Listeners ---
     sourceTextarea.addEventListener('input', updateSourceCount);
-    customLanguageInput.addEventListener('input', clearNotice);
+    customLanguageInput.addEventListener('input', () => {
+        clearNotice();
+        scheduleTargetLanguageSave();
+    });
+    customLanguageInput.addEventListener('change', saveTargetLanguage);
+    window.addEventListener('pagehide', () => {
+        if (targetLanguageSaveTimer) saveTargetLanguage();
+    });
     customPromptVarInput.addEventListener('input', updateExtraPromptIndicator);
 
     extraPromptBtn.addEventListener('click', () => {
@@ -597,8 +655,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingsModalBackdrop.addEventListener('click', closeSettingsModal);
     saveSettingsBtn.addEventListener('click', saveTranslatorSettingsFromForm);
     resetSettingsBtn.addEventListener('click', () => {
-        translatorSettings = cloneDefaultSettings();
-        fillSettingsForm();
+        fillSettingsForm(cloneDefaultSettings());
         setSettingsStatus('已恢复默认，点击保存后生效。', 'pending');
     });
 

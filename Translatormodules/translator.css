@@ -18,6 +18,7 @@ body {
     --tr-hover: color-mix(in srgb, var(--primary-text) 6%, transparent);
     --tr-active: color-mix(in srgb, var(--primary-text) 10%, transparent);
     --tr-accent: var(--button-bg);
+    --tr-focus-line: var(--tr-accent);
     --tr-focus-ring: color-mix(in srgb, var(--tr-accent) 18%, transparent);
     --tr-danger: var(--danger-color);
     --tr-on-danger: var(--text-on-accent);
@@ -38,10 +39,14 @@ body {
     background-image: none;
 }
 
-/* A working page reads better on a plain surface than over the wallpaper. */
+/* A working page reads better on a plain surface than over the wallpaper.
+   The light accent is the same red as the danger colour, so focus there is
+   drawn in ink instead; otherwise a focused field looks like an error. */
 body.light-theme {
     --tr-thumb-off: var(--secondary-bg);
     --tr-shadow: color-mix(in srgb, var(--primary-text) 14%, transparent);
+    --tr-focus-line: color-mix(in srgb, var(--primary-text) 36%, transparent);
+    --tr-focus-ring: color-mix(in srgb, var(--primary-text) 7%, transparent);
     background-image: none;
 }
 
@@ -66,7 +71,7 @@ button:disabled {
 }
 
 :is(button, input, textarea):focus-visible {
-    outline: 2px solid var(--tr-accent);
+    outline: 2px solid var(--tr-focus-line);
     outline-offset: 2px;
 }
 
@@ -212,26 +217,27 @@ button:disabled {
 }
 
 .nav-icon {
-    flex: 0 0 16px;
-    width: 16px;
+    flex: 0 0 20px;
+    width: 20px;
     height: 16px;
 }
 
-/* Languages have no fitting pictogram, so each one shows its short name in
-   a 16px key cap that lines up with the stroke icons below it. */
+/* Languages have no fitting pictogram, so each one shows its two-letter
+   code in a key cap. Every cap holds Latin capitals of one size and weight,
+   so the column reads as one set; the pencil below shares its 20px slot. */
 .nav-glyph {
     display: inline-flex;
-    flex: 0 0 16px;
+    flex: 0 0 20px;
     align-items: center;
     justify-content: center;
-    width: 16px;
+    width: 20px;
     height: 16px;
     border: 1px solid var(--tr-line-4);
     border-radius: var(--tr-radius-xs);
-    font-size: 8px;
+    font-size: 9px;
     line-height: 1;
     font-weight: 600;
-    letter-spacing: -0.02em;
+    letter-spacing: 0.02em;
 }
 
 .nav-item[aria-checked="true"] .nav-glyph {
@@ -546,8 +552,8 @@ html[data-vcp-embedded-app="true"] .shell {
 /* ---- Fields ---- */
 .translator-input {
     width: 100%;
-    height: 36px;
-    padding: 0 12px;
+    height: 32px;
+    padding: 0 10px;
     border: 0.5px solid var(--tr-line-3);
     border-radius: var(--tr-radius-md);
     background: var(--tr-surface);
@@ -567,7 +573,7 @@ html[data-vcp-embedded-app="true"] .shell {
 
 .translator-input:focus,
 .title-input:focus {
-    border-color: var(--tr-accent);
+    border-color: var(--tr-focus-line);
     box-shadow: 0 0 0 2px var(--tr-focus-ring);
 }
 
@@ -591,7 +597,7 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 .translate-surface:has(#sourceText:focus, .footer-input:focus) {
-    border-color: var(--tr-accent);
+    border-color: var(--tr-focus-line);
     box-shadow: 0 0 0 2px var(--tr-focus-ring);
 }
 
@@ -609,8 +615,14 @@ html[data-vcp-embedded-app="true"] .shell {
     background: var(--tr-surface);
 }
 
+/* The error keeps the pane's own surface and only adds a faint wash; the red
+   text already says what happened. */
 .output-area:has(#translatedText[data-state="error"]) {
-    background: color-mix(in srgb, var(--tr-danger) 6%, transparent);
+    --tr-error-wash: color-mix(in srgb, var(--tr-danger) 2%, transparent);
+
+    background:
+        linear-gradient(var(--tr-error-wash), var(--tr-error-wash)),
+        var(--tr-surface);
 }
 
 .pane-header {
@@ -667,10 +679,13 @@ html[data-vcp-embedded-app="true"] .shell {
     line-height: 24px;
 }
 
+/* Server errors often carry a long unbroken body, so they wrap anywhere
+   rather than run out of the pane. */
 #translatedText[data-state="error"] {
     color: var(--tr-danger);
     font-size: 13px;
     line-height: 20px;
+    overflow-wrap: anywhere;
 }
 
 /* While a request is open the result well carries a slow sheen, so waiting
@@ -706,11 +721,23 @@ html[data-vcp-embedded-app="true"] .shell {
     border-top: 0.5px solid var(--tr-line-2);
 }
 
+/* The label stays in front of the text, so a filled line still reads as an
+   instruction and not as more source text. */
+.footer-label {
+    flex: 0 0 auto;
+    padding-left: 14px;
+    color: var(--tr-ink-3);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
 .footer-input {
     flex: 1;
     min-width: 0;
     height: 40px;
-    padding: 0 14px;
+    padding: 0 14px 0 10px;
     border: 0;
     background: transparent;
     outline: none;
@@ -798,7 +825,7 @@ html[data-vcp-embedded-app="true"] .shell {
     display: flex;
     flex-direction: column;
     width: 100%;
-    max-width: 520px;
+    max-width: 440px;
     max-height: 100%;
     border-radius: var(--tr-radius-xl);
     background: var(--tr-panel);
@@ -841,16 +868,19 @@ html[data-vcp-embedded-app="true"] .shell {
 .settings-modal-body {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
     min-height: 0;
     padding: 8px 24px 20px;
     overflow: auto;
 }
 
+/* Model ids are short, so each one sits on a single row beside its label
+   rather than under it. */
 .setting-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
 }
 
 .setting-field > span {
@@ -858,6 +888,7 @@ html[data-vcp-embedded-app="true"] .shell {
     font-size: 12px;
     line-height: 18px;
     font-weight: 500;
+    white-space: nowrap;
 }
 
 .setting-toggle {
@@ -865,7 +896,7 @@ html[data-vcp-embedded-app="true"] .shell {
     display: flex;
     align-items: center;
     gap: 16px;
-    margin-top: 2px;
+    margin-top: 6px;
     padding-top: 14px;
     border-top: 0.5px solid var(--tr-line-2);
     cursor: pointer;
@@ -929,7 +960,7 @@ html[data-vcp-embedded-app="true"] .shell {
 }
 
 .setting-toggle input:focus-visible + .toggle-slider {
-    outline: 2px solid var(--tr-accent);
+    outline: 2px solid var(--tr-focus-line);
     outline-offset: 2px;
 }
 

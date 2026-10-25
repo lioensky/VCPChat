@@ -27,9 +27,9 @@
                 <div id="language-group-label" class="nav-group-label">目标语言</div>
                 <div id="targetLanguageList" class="nav-list" role="radiogroup" aria-labelledby="language-group-label">
                     <button type="button" class="nav-item" role="radio" data-language="en" aria-checked="true" tabindex="0" title="英语"><span class="nav-glyph" aria-hidden="true">EN</span><span class="nav-label">英语</span></button>
-                    <button type="button" class="nav-item" role="radio" data-language="zh" aria-checked="false" tabindex="-1" title="中文"><span class="nav-glyph" aria-hidden="true">中</span><span class="nav-label">中文</span></button>
-                    <button type="button" class="nav-item" role="radio" data-language="ja" aria-checked="false" tabindex="-1" title="日语"><span class="nav-glyph" aria-hidden="true">日</span><span class="nav-label">日语</span></button>
-                    <button type="button" class="nav-item" role="radio" data-language="ko" aria-checked="false" tabindex="-1" title="韩语"><span class="nav-glyph" aria-hidden="true">한</span><span class="nav-label">韩语</span></button>
+                    <button type="button" class="nav-item" role="radio" data-language="zh" aria-checked="false" tabindex="-1" title="中文"><span class="nav-glyph" aria-hidden="true">ZH</span><span class="nav-label">中文</span></button>
+                    <button type="button" class="nav-item" role="radio" data-language="ja" aria-checked="false" tabindex="-1" title="日语"><span class="nav-glyph" aria-hidden="true">JA</span><span class="nav-label">日语</span></button>
+                    <button type="button" class="nav-item" role="radio" data-language="ko" aria-checked="false" tabindex="-1" title="韩语"><span class="nav-glyph" aria-hidden="true">KO</span><span class="nav-label">韩语</span></button>
                     <button type="button" class="nav-item" role="radio" data-language="fr" aria-checked="false" tabindex="-1" title="法语"><span class="nav-glyph" aria-hidden="true">FR</span><span class="nav-label">法语</span></button>
                     <button type="button" class="nav-item" role="radio" data-language="de" aria-checked="false" tabindex="-1" title="德语"><span class="nav-glyph" aria-hidden="true">DE</span><span class="nav-label">德语</span></button>
                     <button type="button" class="nav-item" role="radio" data-language="es" aria-checked="false" tabindex="-1" title="西班牙语"><span class="nav-glyph" aria-hidden="true">ES</span><span class="nav-label">西班牙语</span></button>
@@ -102,7 +102,8 @@
                             </div>
                             <textarea id="sourceText" class="text-well" placeholder="输入或粘贴要翻译的文本，Ctrl + Enter 翻译" aria-labelledby="sourceHeading"></textarea>
                             <div id="extraPromptRow" class="pane-footer" hidden>
-                                <input type="text" id="customPromptVar" class="footer-input" placeholder="附加要求，例如：保留专有名词、语气口语化" aria-label="附加要求">
+                                <label class="footer-label" for="customPromptVar">附加要求</label>
+                                <input type="text" id="customPromptVar" class="footer-input" placeholder="例如：保留专有名词、语气口语化">
                             </div>
                         </section>
 
