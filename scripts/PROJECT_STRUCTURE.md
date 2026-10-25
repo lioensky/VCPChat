@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-10-24 21:51:04  
+> 自动生成于：2026-10-26 03:08:09  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,18 +10,18 @@
 
 ## 文件统计
 
-- **总目录数**：232
-- **总文件数**：1618
+- **总目录数**：233
+- **总文件数**：1639
 - **文件类型数**：21
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 993 |
+| JavaScript | `.js` | 1013 |
 | CSS | `.css` | 155 |
 | JSON | `.json` | 149 |
 | Rust | `.rs` | 116 |
 | Markdown | `.md` | 63 |
-| HTML | `.html` | 46 |
+| HTML | `.html` | 47 |
 | Python | `.py` | 26 |
 | TOML | `.toml` | 9 |
 | Batch Script | `.bat` | 9 |
@@ -37,7 +37,7 @@
 | Shell Script | `.sh` | 2 |
 | C# | `.cs` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1618** |
+| **合计** | - | **1639** |
 
 ## 目录结构树
 
@@ -192,7 +192,8 @@ VCPChat/
 │   │   │   ├── expressionMapping.js
 │   │   │   ├── options.js
 │   │   │   ├── shortcuts.js
-│   │   │   └── stage.js
+│   │   │   ├── stage.js
+│   │   │   └── wake.js
 │   │   ├── bridge.js
 │   │   ├── index.js
 │   │   ├── sendBridge.js
@@ -204,6 +205,7 @@ VCPChat/
 │   ├── bubbleText.js
 │   ├── core-probe.html
 │   ├── core-probe.js
+│   ├── danceProfile.js
 │   ├── deskpet.css
 │   ├── deskpet.html
 │   ├── deskpet.js
@@ -222,8 +224,11 @@ VCPChat/
 │   ├── lifeFx.js
 │   ├── lifeMotion.js
 │   ├── live2dBackend.js
+│   ├── live2dWardrobe.js
 │   ├── missedReply.js
+│   ├── modelControls.js
 │   ├── moodOrder.js
+│   ├── musicGroove.js
 │   ├── petApprovals.js
 │   ├── petBackendPick.js
 │   ├── petBubble.js
@@ -231,6 +236,7 @@ VCPChat/
 │   ├── petFiles.js
 │   ├── petHit.js
 │   ├── petLife.js
+│   ├── petMusic.js
 │   ├── petPrefs.js
 │   ├── petReactions.js
 │   ├── petSpeech.js
@@ -248,7 +254,10 @@ VCPChat/
 │   ├── spriteBackend.js
 │   ├── toolActivity.js
 │   ├── toolCard.js
-│   └── voice.js
+│   ├── voice.js
+│   ├── wake-capture.html
+│   ├── wake-capture.js
+│   └── wake-preload.js
 ├── Desktopmodules/
 │   ├── api/
 │   │   ├── desktopMetrics.js
@@ -493,6 +502,14 @@ VCPChat/
 │   │   ├── surfaceConversation.js
 │   │   └── vcpStreamBridge.js
 │   ├── deskpet/
+│   │   ├── wake/
+│   │   │   ├── assets.json
+│   │   │   ├── coordinator.js
+│   │   │   ├── keywords.js
+│   │   │   ├── kwsWorker.js
+│   │   │   ├── modelManager.js
+│   │   │   ├── store.js
+│   │   │   └── workerClient.js
 │   │   ├── codexPet.js
 │   │   ├── cubismCore.js
 │   │   ├── edgeSnap.js
@@ -502,6 +519,8 @@ VCPChat/
 │   │   ├── idleChat.js
 │   │   ├── idleRunner.js
 │   │   ├── index.js
+│   │   ├── live2dCapabilities.js
+│   │   ├── live2dWardrobe.js
 │   │   ├── outfits.js
 │   │   ├── petAssets.js
 │   │   ├── petCommands.js
@@ -604,16 +623,17 @@ VCPChat/
 │   │   │   ├── comfyui-page-adapter.js
 │   │   │   ├── electron-adapter.js
 │   │   │   ├── index.js
+│   │   │   ├── web-agent-entity-arbiter.js
 │   │   │   ├── web-agent-page-core.js
 │   │   │   ├── web-agent-page-runtime-core.js
 │   │   │   ├── web-agent-protocol.js
-│   │   │   ├── web-agent-runtime-core.js
-│   │   │   └── 后端运行时参考协议-plugin-manifest.json
+│   │   │   └── web-agent-runtime-core.js
 │   │   ├── sideBrowserService.js
 │   │   └── VCPLoomManager.js
 │   ├── lyrics/
 │   │   ├── krcDecrypt.js
 │   │   ├── lyricFetcherUnified.js
+│   │   ├── lyricsMarkdown.js
 │   │   ├── matchScore.js
 │   │   ├── parserCore.js
 │   │   └── qrcDecrypt.js
@@ -720,6 +740,7 @@ VCPChat/
 │   │   ├── historyMutationQueue.js
 │   │   ├── historyWatcherLeaseManager.js
 │   │   ├── jevClient.js
+│   │   ├── musicGrooveBus.js
 │   │   ├── networkNotesCacheStore.js
 │   │   ├── pdfAttachmentService.js
 │   │   ├── pluginAgentOperationService.js
@@ -994,6 +1015,7 @@ VCPChat/
 │   │   ├── passiveVoiceSentinel.js
 │   │   ├── speechDirectiveMatcher.js
 │   │   ├── voice-input-engine-adapter.js
+│   │   ├── voiceChatSessions.js
 │   │   ├── voiceComposerView.js
 │   │   ├── voiceWaveform.js
 │   │   └── wavAudioEncoder.js
