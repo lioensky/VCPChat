@@ -469,7 +469,7 @@
     "dynamicSites": [
       {
         "file": "modules/ipc/musicHandlers.js",
-        "line": 674,
+        "line": 751,
         "kind": "event-send",
         "match": "event.sender.send(channel"
       }
@@ -1320,67 +1320,6 @@
         "line": 21,
         "kind": "custom-event-listener",
         "match": "target.addEventListener(type"
-      }
-    ],
-    "evidence": [
-      "Source review at integration base 8eb9593a; exact operation matches below; new or changed dynamic sites still fail the contract gate."
-    ]
-  },
-  {
-    "id": "source.dynamic.modules.vcpclient",
-    "kind": "source-review",
-    "owner": "modules/vcpClient.js",
-    "status": "reviewed",
-    "dynamic": true,
-    "review": "Stream sends use the request-injected streamChannel (default vcp-stream-event), messageId and context; error/data/end are payload types on that channel. This registers the adapter, not transport terminal reliability.",
-    "dynamicSites": [
-      {
-        "file": "modules/vcpClient.js",
-        "line": 379,
-        "kind": "event-send",
-        "match": "webContents.send(streamChannel"
-      },
-      {
-        "file": "modules/vcpClient.js",
-        "line": 418,
-        "kind": "event-send",
-        "match": "webContents.send(streamChannel"
-      },
-      {
-        "file": "modules/vcpClient.js",
-        "line": 445,
-        "kind": "event-send",
-        "match": "webContents.send(streamChannel"
-      },
-      {
-        "file": "modules/vcpClient.js",
-        "line": 451,
-        "kind": "event-send",
-        "match": "webContents.send(streamChannel"
-      },
-      {
-        "file": "modules/vcpClient.js",
-        "line": 461,
-        "kind": "event-send",
-        "match": "webContents.send(streamChannel"
-      },
-      {
-        "file": "modules/vcpClient.js",
-        "line": 478,
-        "kind": "event-send",
-        "match": "webContents.send(streamChannel"
-      },
-      {
-        "file": "modules/vcpClient.js",
-        "line": 512,
-        "kind": "event-send",
-        "match": "webContents.send(streamChannel"
-      },
-      {
-        "file": "modules/vcpClient.js",
-        "line": 520,
-        "kind": "event-send",
-        "match": "webContents.send(streamChannel"
       }
     ],
     "evidence": [

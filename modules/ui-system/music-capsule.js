@@ -20,6 +20,15 @@
         let hovering = false;
         let focused = false;
         let previewing = false;
+        let injectionPending = false;
+        const renderInjection = () => {
+            const enabled = state.musicInfoInjectionEnabled !== false;
+            root.classList.toggle('is-injection-disabled', !enabled);
+            trigger.title = injectionPending ? '正在保存音乐信息注入状态…'
+                : `音乐信息注入已${enabled ? '开启' : '关闭'}；右键${enabled ? '关闭' : '开启'}`;
+            trigger.setAttribute('aria-label', `当前音乐；${trigger.title}`);
+            trigger.setAttribute('aria-busy', String(injectionPending));
+        };
         const updateWidth = () => {
             if (disposed || root.hidden) return;
             measure.textContent = title.textContent;
@@ -52,6 +61,7 @@
             const changed = next.open && next.trackKey && next.trackKey !== state.trackKey;
             state = next;
             root.hidden = !state.open;
+            renderInjection();
             const nextTitle = state.title || '尚未选择曲目';
             const needsMeasure = title.textContent !== nextTitle || !measure.textContent;
             title.textContent = nextTitle;
@@ -91,6 +101,35 @@
             if (!state.open || !command) return;
             api.sendMusicCapsuleCommand(command === 'toggle' ? (state.playing ? 'pause' : 'play') : command);
         });
+        const toggleInjection = async event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (disposed || injectionPending || !api.toggleMusicInfoInjection) return;
+            injectionPending = true;
+            renderInjection();
+            let failure = null;
+            try {
+                const next = await api.toggleMusicInfoInjection();
+                apply(next);
+            } catch (error) {
+                failure = error;
+                console.warn('[MusicCapsule] Injection toggle failed:', error);
+            } finally {
+                injectionPending = false;
+                if (!disposed) {
+                    renderInjection();
+                    if (failure) {
+                        trigger.title = '音乐信息注入状态保存失败，请右键重试';
+                        trigger.setAttribute('aria-label', trigger.title);
+                    }
+                }
+            }
+        };
+        trigger.addEventListener('contextmenu', toggleInjection);
+        trigger.addEventListener('keydown', event => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) toggleInjection(event);
+        });
+        renderInjection();
         const unsubscribe = api.onMusicCapsuleState(next => { received = true; apply(next); });
         Promise.resolve(api.getMusicCapsuleState()).then(next => {
             if (!received) apply(next);

@@ -1178,8 +1178,8 @@ function initialize(mainWindow, context) {
                     const topParts = [];
                     const bottomParts = [];
 
-                    // 1. 始终注入当前播放的歌曲信息（如果存在）
-                    if (currentSongInfo) {
+                    // 1. 音乐标签右键可关闭当前曲目信息，不影响 Agent 点歌权限。
+                    if (settings.musicInfoInjectionEnabled !== false && currentSongInfo) {
                         bottomParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
                     }
 

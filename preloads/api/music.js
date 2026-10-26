@@ -13,6 +13,7 @@ module.exports = {
         musicRendererReady: send('music-renderer-ready'),
         getMusicCapsuleState: invoke('music-capsule-get-state').roles('chat'),
         onMusicCapsuleState: on('music-capsule-state').roles('chat'),
+        toggleMusicInfoInjection: invoke('music-info-injection-toggle').roles('chat'),
         sendMusicCapsuleCommand: send('music-capsule-command', 'command').roles('chat'),
         publishMusicCapsuleState: send('music-capsule-publish', 'state'),
         publishMusicGroove: send('music-groove-publish', 'payload'),

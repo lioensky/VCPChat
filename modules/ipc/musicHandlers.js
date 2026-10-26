@@ -17,9 +17,12 @@ let fetch;
 
 let musicWindow = null;
 let musicCapsuleState = { open: false, title: '', trackKey: '', playing: false };
+let musicInfoInjectionEnabled = true;
+let settingsManager = null;
+const getMusicCapsuleSnapshot = () => ({ ...musicCapsuleState, musicInfoInjectionEnabled });
 function publishMusicCapsule() {
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('music-capsule-state', musicCapsuleState);
+        mainWindow.webContents.send('music-capsule-state', getMusicCapsuleSnapshot());
     }
 }
 let currentSongInfo = null; // 保持这个变量，用于可能的UI状态同步
@@ -386,6 +389,14 @@ function initialize(options) {
         return;
     }
 
+    settingsManager = options.settingsManager;
+    const applyInjectionSetting = settings => {
+        musicInfoInjectionEnabled = settings?.musicInfoInjectionEnabled !== false;
+        publishMusicCapsule();
+    };
+    settingsManager?.on('settings-updated', applyInjectionSetting);
+    settingsManager?.on('settings-external-updated', payload => applyInjectionSetting(payload?.settings));
+
     const registerIpcHandlers = () => {
         console.log('[Music] registerIpcHandlers called');
         ipcMain.on('open-music-window', async () => {
@@ -397,7 +408,23 @@ function initialize(options) {
         });
 
         // --- 前端初始化时拉取待播放请求（解决新窗口点歌竞态问题）---
-        ipcMain.handle('music-capsule-get-state', () => musicCapsuleState);
+        ipcMain.handle('music-capsule-get-state', async () => {
+            if (settingsManager) applyInjectionSetting(await settingsManager.readSettings());
+            return getMusicCapsuleSnapshot();
+        });
+        ipcMain.handle('music-info-injection-toggle', async event => {
+            if (!mainWindow || event.sender !== mainWindow.webContents) {
+                throw new Error('仅主聊天窗口可以切换音乐信息注入。');
+            }
+            if (!settingsManager) throw new Error('设置管理器未初始化。');
+            const result = await settingsManager.updateSettings(current => ({
+                ...current,
+                musicInfoInjectionEnabled: current.musicInfoInjectionEnabled === false
+            }));
+            if (!result.success) throw new Error(result.error || '保存音乐信息注入状态失败。');
+            applyInjectionSetting(result.settings);
+            return getMusicCapsuleSnapshot();
+        });
         ipcMain.on('music-groove-publish', (event, payload) => {
             if (!musicWindow || musicWindow.isDestroyed() || event.sender !== musicWindow.webContents) return;
             musicGrooveBus.publish(payload);

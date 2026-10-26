@@ -51,6 +51,21 @@ html .vcp-ui-scope .music-capsule button:hover { color: var(--highlight-text); b
 html .vcp-ui-scope .music-capsule button:focus-visible { outline: 2px solid var(--highlight-text); outline-offset: -3px; }
 html .vcp-ui-scope .music-capsule .vcp-ui-icon { --vcp-ui-icon-size: 16px; }
 html .vcp-ui-scope .music-capsule.is-playing .music-capsule-trigger { color: var(--highlight-text); }
+/* 斜线仅表示不向 AI 播报音乐，不改变播放状态。 */
+html .vcp-ui-scope .music-capsule.is-injection-disabled .music-capsule-trigger {
+    position: relative;
+    color: var(--secondary-text);
+}
+html .vcp-ui-scope .music-capsule.is-injection-disabled .music-capsule-trigger::after {
+    content: '';
+    position: absolute;
+    width: 19px;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    transform: rotate(-45deg);
+    pointer-events: none;
+}
 html .vcp-ui-scope .music-capsule-details {
     display: flex;
     align-items: center;
