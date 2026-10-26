@@ -37,6 +37,7 @@ let vchatThemesWindow = null;
 let vchatTaskWindow = null;
 let vchatPluginManagerWindow = null;
 let vchatProjectForgeWindow = null;
+let vchatMinerUWindow = null;
 let vchatGameWindow = null;
 
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
@@ -799,6 +800,26 @@ function registerManagedWindows() {
             return vchatProjectForgeWindow;
         },
     });
+
+    windowService.register(WINDOW_APP_IDS.MINERU, {
+        owner: 'desktopHandlers',
+        getWindow: () => vchatMinerUWindow || findWindowByUrl('MinerUmodules/mineru.html'),
+        open: async () => {
+            const existing = findWindowByUrl('MinerUmodules/mineru.html');
+            if (existing) {
+                if (!existing.isVisible()) existing.show();
+                existing.focus();
+                vchatMinerUWindow = existing;
+                return existing;
+            }
+            vchatMinerUWindow = createOrFocusChildWindow(vchatMinerUWindow, {
+                width: 1460, height: 900, minWidth: 1080, minHeight: 680,
+                title: 'MinerU 论文工作台',
+                htmlPath: path.join(app.getAppPath(), 'MinerUmodules', 'mineru.html'),
+            });
+            return vchatMinerUWindow;
+        },
+    });
 }
 function registerGameWindow() {
     require('./gameHandlers').initialize();
@@ -855,6 +876,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.PLUGIN_MANAGER;
         case 'open-project-forge-window':
             return WINDOW_APP_IDS.PROJECT_FORGE;
+        case 'open-mineru-window':
+            return WINDOW_APP_IDS.MINERU;
         case 'open-scriptorium-window':
             return WINDOW_APP_IDS.DOCX;
         case 'open-desktop-window':

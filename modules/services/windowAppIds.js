@@ -16,6 +16,7 @@ module.exports = Object.freeze({
     TASK: 'task',
     PLUGIN_MANAGER: 'plugin-manager',
     PROJECT_FORGE: 'project-forge',
+    MINERU: 'mineru-workbench',
     CHART: 'chart-workbench',
     DOCX: 'docx-editor',
 });

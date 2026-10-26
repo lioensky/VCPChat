@@ -237,6 +237,7 @@
       "rust_assistant_engine/runtime/**/*",
       "rust_voice_input_engine/runtime/**/*",
       "Chartmodules/**/*",
+      "MinerUmodules/**/*",
       "Notemodules/**/*",
       "Translatormodules/**/*",
       "vendor/**/*",

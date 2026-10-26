@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: vcp-mineru: http: https:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' file: vcp-mineru:;">
+    <title>MinerU 论文工作台</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="../vendor/katex.min.css">
+    <link rel="stylesheet" href="mineru.css">
+    <script src="../vendor/marked.min.js"></script>
+    <script src="../vendor/purify.min.js"></script>
+    <script src="../vendor/katex.min.js"></script>
+    <script src="../vendor/auto-render.min.js"></script>
+</head>
+<body>
+    <header id="title-bar">
+        <div class="title-left">
+            <span class="app-mark" aria-hidden="true">MU</span>
+            <span class="title">MinerU 论文工作台</span>
+            <span class="subtitle">解析 · 去重 · 阅读</span>
+        </div>
+        <div class="title-right">
+            <button id="status-chip" class="status-chip" type="button" title="查看配置">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span id="status-chip-text">正在检查</span>
+            </button>
+            <button id="refresh-btn" class="icon-btn" type="button" title="刷新论文库" aria-label="刷新论文库">↻</button>
+            <button id="settings-btn" class="icon-btn" type="button" title="设置" aria-label="设置">⚙</button>
+            <span class="divider"></span>
+            <button id="minimize-btn" class="icon-btn" type="button" title="最小化" aria-label="最小化">—</button>
+            <button id="maximize-btn" class="icon-btn" type="button" title="最大化" aria-label="最大化">☐</button>
+            <button id="close-btn" class="icon-btn danger" type="button" title="关闭" aria-label="关闭">✕</button>
+        </div>
+    </header>
+
+    <div class="layout">
+        <aside id="paper-sidebar" class="panel" data-side-active="library">
+            <div id="side-tabs" class="side-tabs" role="tablist" aria-label="工作台分页">
+                <button id="side-tab-library" class="side-tab active" type="button" role="tab" data-side-tab="library" aria-selected="true" aria-controls="side-page-library">论文库<span id="library-count" class="tab-count" aria-hidden="true"></span></button>
+                <button id="side-tab-import" class="side-tab" type="button" role="tab" data-side-tab="import" aria-selected="false" aria-controls="side-page-import" tabindex="-1">导入解析<span id="import-count" class="tab-count" aria-hidden="true" hidden></span></button>
+                <button id="side-tab-dedupe" class="side-tab" type="button" role="tab" data-side-tab="dedupe" aria-selected="false" aria-controls="side-page-dedupe" tabindex="-1">重复检索</button>
+            </div>
+
+            <div class="side-viewport">
+                <div class="side-track">
+                    <section id="side-page-library" class="side-page" data-side-page="library" role="tabpanel" aria-labelledby="side-tab-library">
+                        <div class="sidebar-head">
+                            <input id="library-search" type="search" placeholder="搜索标题 / paper_id / 文件..." autocomplete="off" spellcheck="false">
+                            <select id="library-status" aria-label="按状态筛选">
+                                <option value="all">全部状态</option>
+                                <option value="indexed">已完成</option>
+                                <option value="running">进行中</option>
+                                <option value="timeout">待续查</option>
+                                <option value="failed">失败</option>
+                            </select>
+                        </div>
+                        <div id="library-stats" class="library-stats" role="status"></div>
+                        <ul id="paper-list" class="paper-list" aria-label="论文列表"></ul>
+                    </section>
+
+                    <section id="side-page-import" class="side-page" data-side-page="import" role="tabpanel" aria-labelledby="side-tab-import" aria-hidden="true" inert>
+                        <div class="import-head">
+                            <div class="import-actions">
+                                <button id="pick-pdfs-btn" class="btn primary" type="button">选择 PDF</button>
+                                <button id="pick-folder-btn" class="btn" type="button">选择文件夹</button>
+                            </div>
+                            <p class="hint">选择后会先用 SHA-256 与论文库比对；同一内容只保留一份。</p>
+                            <div id="import-selection" class="import-selection muted">尚未选择文件</div>
+                            <div class="import-row">
+                                <button id="preflight-btn" class="btn small" type="button">重新查重</button>
+                                <button id="clear-import-btn" class="btn small" type="button">清空</button>
+                            </div>
+                        </div>
+                        <div id="preflight-summary" class="preflight-summary" hidden></div>
+                        <ul id="import-list" class="import-list" aria-label="待解析文件"></ul>
+                        <div class="parse-options">
+                            <div class="option-grid">
+                                <label>模型
+                                    <select id="opt-model">
+                                        <option value="vlm">vlm（推荐）</option>
+                                        <option value="pipeline">pipeline</option>
+                                    </select>
+                                </label>
+                                <label>并发
+                                    <select id="opt-workers">
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
+                                    </select>
+                                </label>
+                                <label>语言
+                                    <input id="opt-language" type="text" maxlength="16" placeholder="en">
+                                </label>
+                            </div>
+                            <div class="option-checks">
+                                <label><input id="opt-ocr" type="checkbox"> 扫描件 OCR</label>
+                                <label><input id="opt-formula" type="checkbox" checked> 公式</label>
+                                <label><input id="opt-table" type="checkbox" checked> 表格</label>
+                                <label><input id="opt-recursive" type="checkbox" checked> 递归文件夹</label>
+                            </div>
+                        </div>
+                        <div class="import-footer">
+                            <span id="parse-selected-count" class="muted">已选 0 项</span>
+                            <button id="parse-btn" class="btn primary" type="button" disabled>开始解析</button>
+                        </div>
+                    </section>
+
+                    <section id="side-page-dedupe" class="side-page" data-side-page="dedupe" role="tabpanel" aria-labelledby="side-tab-dedupe" aria-hidden="true" inert>
+                        <div class="dedupe-head">
+                            <label>分组维度
+                                <select id="dedupe-group-by">
+                                    <option value="all">全部</option>
+                                    <option value="text,title">正文 + 标题</option>
+                                    <option value="asset">资产目录</option>
+                                    <option value="source">同一源文件</option>
+                                </select>
+                            </label>
+                            <label>关键词（可选）
+                                <input id="dedupe-query" type="search" placeholder="只看匹配论文" autocomplete="off">
+                            </label>
+                            <button id="dedupe-scan-btn" class="btn primary" type="button">扫描全库重复</button>
+                            <p class="hint">只读扫描：同 paper_id 资产、正文指纹、标题指纹、同一源文件。不会删除任何文件。</p>
+                        </div>
+                        <div id="dedupe-summary" class="dedupe-summary" hidden></div>
+                        <div id="dedupe-groups" class="dedupe-groups"></div>
+                    </section>
+                </div>
+            </div>
+
+            <div id="job-dock" class="job-dock">
+                <div class="job-head">
+                    <strong>解析队列</strong>
+                    <span id="job-summary" class="muted">无任务</span>
+                </div>
+                <ul id="job-list" class="job-list" aria-label="解析任务"></ul>
+            </div>
+        </aside>
+
+        <main id="main-panel" class="panel">
+            <div id="empty-state" class="empty-state">
+                <div class="empty-mark" aria-hidden="true">⌁</div>
+                <p>选择左侧论文开始阅读，或在「导入解析」中批量导入 PDF</p>
+                <button id="empty-import-btn" class="btn" type="button">去导入论文</button>
+            </div>
+
+            <section id="paper-view" hidden>
+                <div id="paper-header" class="paper-header"></div>
+                <div class="reader-toolbar">
+                    <div class="view-switch" role="group" aria-label="阅读视图">
+                        <button class="btn small active" type="button" data-view-mode="split">对照</button>
+                        <button class="btn small" type="button" data-view-mode="md">Markdown</button>
+                        <button class="btn small" type="button" data-view-mode="pdf">PDF</button>
+                    </div>
+                    <div class="reader-tools">
+                        <button id="outline-toggle" class="btn small active" type="button" aria-pressed="true">大纲</button>
+                        <div class="md-find">
+                            <input id="md-find-input" type="search" placeholder="在正文中查找" autocomplete="off" spellcheck="false">
+                            <span id="md-find-count" class="find-count" hidden></span>
+                            <button id="md-find-prev" class="icon-btn small" type="button" title="上一个" aria-label="上一个匹配">↑</button>
+                            <button id="md-find-next" class="icon-btn small" type="button" title="下一个" aria-label="下一个匹配">↓</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="reader-body" class="reader-body" data-view="split">
+                    <aside id="outline-pane" class="outline-pane" aria-label="论文大纲">
+                        <div class="outline-head">大纲</div>
+                        <div id="outline-list" class="outline-list"></div>
+                        <div id="quality-box" class="quality-box" hidden></div>
+                    </aside>
+                    <div id="pdf-pane" class="reader-pane pdf-pane">
+                        <div class="pane-head">
+                            <span class="pane-title">PDF</span>
+                            <div class="pdf-controls">
+                                <button id="pdf-prev" class="icon-btn small" type="button" title="上一页" aria-label="上一页">←</button>
+                                <input id="pdf-page-input" type="number" min="1" value="1" aria-label="页码">
+                                <span id="pdf-page-total" class="muted">/ 0</span>
+                                <button id="pdf-next" class="icon-btn small" type="button" title="下一页" aria-label="下一页">→</button>
+                                <span class="toolbar-sep"></span>
+                                <button id="pdf-zoom-out" class="icon-btn small" type="button" title="缩小" aria-label="缩小">−</button>
+                                <span id="pdf-zoom-label" class="muted">100%</span>
+                                <button id="pdf-zoom-in" class="icon-btn small" type="button" title="放大" aria-label="放大">+</button>
+                                <button id="pdf-fit" class="btn small" type="button" aria-pressed="true">适合宽度</button>
+                            </div>
+                        </div>
+                        <div id="pdf-scroll" class="pdf-scroll">
+                            <div id="pdf-placeholder" class="reader-placeholder">正在准备 PDF...</div>
+                            <canvas id="pdf-canvas" hidden></canvas>
+                        </div>
+                    </div>
+                    <div id="md-pane" class="reader-pane md-pane">
+                        <div class="pane-head">
+                            <span class="pane-title">Markdown</span>
+                            <span id="md-source-label" class="muted"></span>
+                            <button id="md-wrap-toggle" class="btn small" type="button" aria-pressed="false">自动换行</button>
+                        </div>
+                        <div id="md-scroll" class="md-scroll">
+                            <article id="md-content" class="markdown-body"></article>
+                            <div id="md-placeholder" class="reader-placeholder" hidden>暂无 Markdown 内容</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="settings-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal-card panel">
+            <div class="modal-head">
+                <div>
+                    <strong id="settings-title">MinerU 工作台设置</strong>
+                    <div class="muted">解析默认值与 VCPToolBox 位置</div>
+                </div>
+                <button class="icon-btn" type="button" data-close-settings aria-label="关闭">✕</button>
+            </div>
+            <div class="settings-body">
+                <div class="field">
+                    <label>VCPToolBox 根目录</label>
+                    <div class="field-row">
+                        <input id="set-toolbox-root" type="text" readonly placeholder="未找到">
+                        <button id="set-toolbox-pick" class="btn small" type="button">选择目录</button>
+                    </div>
+                    <p class="hint">该目录下应有 Plugin/MinerUParser 与已构建的 bin/MinerUParser-*.exe。</p>
+                </div>
+                <div class="option-grid">
+                    <label>默认模型
+                        <select id="set-model">
+                            <option value="vlm">vlm（推荐）</option>
+                            <option value="pipeline">pipeline</option>
+                        </select>
+                    </label>
+                    <label>默认语言
+                        <input id="set-language" type="text" maxlength="16" placeholder="en">
+                    </label>
+                    <label>并发数
+                        <select id="set-workers">
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="option-checks">
+                    <label><input id="set-ocr" type="checkbox"> 默认按扫描件 OCR</label>
+                    <label><input id="set-formula" type="checkbox"> 解析公式</label>
+                    <label><input id="set-table" type="checkbox"> 解析表格</label>
+                    <label><input id="set-recursive" type="checkbox"> 文件夹递归</label>
+                </div>
+                <div id="settings-status" class="settings-status"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" type="button" data-close-settings>取消</button>
+                <button id="settings-save-btn" class="btn primary" type="button">保存设置</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div class="modal-card panel small">
+            <h3 id="confirm-title">确认</h3>
+            <div id="confirm-body" class="confirm-body"></div>
+            <div class="modal-actions">
+                <button id="confirm-cancel" class="btn" type="button">取消</button>
+                <button id="confirm-ok" class="btn primary" type="button">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="lightbox" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="查看图片">
+        <button id="lightbox-close" class="lightbox-close" type="button" aria-label="关闭">✕</button>
+        <img id="lightbox-img" alt="">
+        <div id="lightbox-caption" class="lightbox-caption"></div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="mineru.js"></script>
+</body>
+</html>

@@ -43,6 +43,7 @@ const trayManager = (function () {
         { id: 'vchat-app-task', name: '任务', icon: 'task', action: 'open-task-window' },
         { id: 'vchat-app-plugin-manager', name: '插件', icon: 'plugin', action: 'open-plugin-manager-window' },
         { id: 'vchat-app-project-forge', name: '工程', icon: 'forge', action: 'open-project-forge-window' },
+        { id: 'vchat-app-mineru', name: '论文', icon: 'mineru', action: 'open-mineru-window' },
         { id: 'vchat-app-terminal', name: '终端', icon: 'terminal', action: 'open-powershell-executor-terminal' },
         { id: 'vchat-app-desktop', name: '桌面', icon: 'desktop', action: 'open-desktop-window' }
     ];
@@ -71,7 +72,8 @@ const trayManager = (function () {
         terminal: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-terminal-square"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg>`,
         scriptorium: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-feather"><path d="M14.086 18.412A2 2 0 0112.67 19H5v-7.672a2 2 0 01.586-1.414L11.75 3.75a6 6 0 118.49 8.49z"/><path d="M16 8 2 22"/><path d="M17.488 15H9"/></svg>`,
         plugin: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-puzzle"><path d="M15.39 4.39a1.5 1.5 0 1 0-2.78 1.12A2 2 0 0 1 10.76 8H5a1 1 0 0 0-1 1v5.76a2 2 0 0 0 2.49 1.85 1.5 1.5 0 1 1 1.12 2.78A2 2 0 0 0 9.24 22H15a1 1 0 0 0 1-1v-5.76a2 2 0 0 1 2.49-1.85 1.5 1.5 0 1 0 1.12-2.78A2 2 0 0 1 22 9.24V5a1 1 0 0 0-1-1h-4.24a2 2 0 0 1-1.37.39Z"/></svg>`,
-        forge: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-git-branch"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`
+        forge: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-git-branch"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`,
+        mineru: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-scan-text"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/></svg>`
     };
 
     /**
