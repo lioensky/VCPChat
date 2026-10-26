@@ -34,6 +34,56 @@ window.topicListManager = (() => {
     const TOPIC_SEARCH_DEBOUNCE_MS = 200;
     let topicSearchTimer = null;
 
+    // 话题分类筛选：'__all__' 表示全部，'__uncategorized__' 表示未分类，
+    // 其他值就是 topic.category 本身。每个助手/群组各自记住当前筛选。
+    const TOPIC_CATEGORY_ALL = '__all__';
+    const TOPIC_CATEGORY_UNCATEGORIZED = '__uncategorized__';
+    const TOPIC_CATEGORY_MAX_LENGTH = 40;
+    let activeTopicCategory = TOPIC_CATEGORY_ALL;
+    let categoryBarCleanup = null;
+
+    function normalizeTopicCategory(value) {
+        if (typeof value !== 'string') return '';
+        return value.trim().slice(0, TOPIC_CATEGORY_MAX_LENGTH);
+    }
+
+    function topicCategoryStorageKey(itemType, itemId) {
+        return `vcpchat.topicCategoryFilter:${itemType}:${itemId}`;
+    }
+
+    function readStoredTopicCategory(itemType, itemId) {
+        try {
+            const stored = window.localStorage?.getItem(topicCategoryStorageKey(itemType, itemId));
+            return typeof stored === 'string' && stored ? stored : TOPIC_CATEGORY_ALL;
+        } catch {
+            return TOPIC_CATEGORY_ALL;
+        }
+    }
+
+    function storeTopicCategory(itemType, itemId, value) {
+        try {
+            window.localStorage?.setItem(topicCategoryStorageKey(itemType, itemId), value);
+        } catch {
+            // localStorage is optional; the filter still works for this render.
+        }
+    }
+
+    function collectTopicCategories(topics) {
+        const counts = new Map();
+        let uncategorized = 0;
+        for (const topic of topics) {
+            const category = normalizeTopicCategory(topic?.category);
+            if (category) counts.set(category, (counts.get(category) || 0) + 1);
+            else uncategorized += 1;
+        }
+        return { categories: [...counts], uncategorized, total: topics.length };
+    }
+
+    function topicCategoryFilterLabel(value) {
+        if (value === TOPIC_CATEGORY_UNCATEGORIZED) return '未分类';
+        return value;
+    }
+
     const addListener = (target, type, handler, options) => {
         if (listenerOwner) return listenerOwner.add(target, type, handler, options);
         target?.addEventListener?.(type, handler, options);
@@ -502,7 +552,7 @@ window.topicListManager = (() => {
                 topicListScrollCleanup = null;
             }
 
-            if (currentSelectedItem.id && topicsToProcess.length > 0 && typeof Sortable !== 'undefined' && !searchTerm) {
+            if (currentSelectedItem.id && topicsToProcess.length > 0 && typeof Sortable !== 'undefined' && !searchTerm && activeTopicCategory === TOPIC_CATEGORY_ALL) {
                 initializeTopicSortable(currentSelectedItem.id, currentSelectedItem.type);
             }
         };
@@ -657,6 +707,190 @@ window.topicListManager = (() => {
         enabledItems()[0]?.focus({ preventScroll: true });
     }
 
+    /**
+     * 在话题列表上方渲染分类筛选条。没有任何话题带分类时保持原样（不显示分类条）。
+     * 分类多时可以通过左右按钮、滚动条或 Shift+滚轮横向滚动。
+     * 返回当前生效的分类筛选值。
+     */
+    function removeTopicCategoryBar() {
+        if (typeof categoryBarCleanup === 'function') categoryBarCleanup();
+        categoryBarCleanup = null;
+        topicListContainer?.querySelector('.topic-category-bar-wrap')?.remove();
+    }
+
+    function ensureTopicCategoryBar(topicListUl) {
+        let wrap = topicListContainer.querySelector('.topic-category-bar-wrap');
+        if (wrap) {
+            return {
+                wrap,
+                bar: wrap.querySelector('.topic-category-bar'),
+                left: wrap.querySelector('.topic-category-scroll-btn.is-left'),
+                right: wrap.querySelector('.topic-category-scroll-btn.is-right')
+            };
+        }
+
+        wrap = document.createElement('div');
+        wrap.className = 'topic-category-bar-wrap';
+
+        const left = document.createElement('button');
+        left.type = 'button';
+        left.className = 'topic-category-scroll-btn is-left';
+        left.title = '向左滚动分类';
+        left.setAttribute('aria-label', '向左滚动分类');
+        left.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">chevron_left</span>';
+
+        const bar = document.createElement('div');
+        bar.className = 'topic-category-bar';
+        bar.setAttribute('role', 'tablist');
+        bar.setAttribute('aria-label', '话题分类筛选');
+
+        const right = document.createElement('button');
+        right.type = 'button';
+        right.className = 'topic-category-scroll-btn is-right';
+        right.title = '向右滚动分类';
+        right.setAttribute('aria-label', '向右滚动分类');
+        right.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">chevron_right</span>';
+
+        wrap.append(left, bar, right);
+
+        const scroll = topicListContainer.querySelector('.sidebar-list-scroll');
+        if (scroll?.parentNode === topicListContainer) {
+            topicListContainer.insertBefore(wrap, scroll);
+        } else if (topicListUl?.parentNode === topicListContainer) {
+            topicListContainer.insertBefore(wrap, topicListUl);
+        } else {
+            topicListContainer.appendChild(wrap);
+        }
+
+        const updateScrollState = () => {
+            const maxScroll = Math.max(0, bar.scrollWidth - bar.clientWidth);
+            const hasOverflow = maxScroll > 1;
+            const canScrollLeft = hasOverflow && bar.scrollLeft > 1;
+            const canScrollRight = hasOverflow && bar.scrollLeft < maxScroll - 1;
+            wrap.classList.toggle('has-overflow', hasOverflow);
+            wrap.classList.toggle('can-scroll-left', canScrollLeft);
+            wrap.classList.toggle('can-scroll-right', canScrollRight);
+            left.disabled = !canScrollLeft;
+            right.disabled = !canScrollRight;
+        };
+
+        const scrollByPage = direction => {
+            const step = Math.max(96, Math.floor(bar.clientWidth * 0.8));
+            if (typeof bar.scrollBy === 'function') {
+                try {
+                    bar.scrollBy({ left: direction * step, behavior: 'smooth' });
+                } catch {
+                    bar.scrollLeft = Math.max(0, bar.scrollLeft + direction * step);
+                }
+            } else {
+                bar.scrollLeft = Math.max(0, bar.scrollLeft + direction * step);
+            }
+            updateScrollState();
+        };
+
+        const onScroll = () => updateScrollState();
+        const onLeftClick = () => scrollByPage(-1);
+        const onRightClick = () => scrollByPage(1);
+        const onWheel = event => {
+            if (!event.shiftKey || !event.deltaY) return;
+            bar.scrollLeft += event.deltaY;
+            event.preventDefault();
+            updateScrollState();
+        };
+
+        bar.addEventListener('scroll', onScroll, { passive: true });
+        bar.addEventListener('wheel', onWheel, { passive: false });
+        left.addEventListener('click', onLeftClick);
+        right.addEventListener('click', onRightClick);
+
+        let resizeObserver = null;
+        if (typeof ResizeObserver === 'function') {
+            resizeObserver = new ResizeObserver(updateScrollState);
+            resizeObserver.observe(bar);
+            resizeObserver.observe(wrap);
+        }
+
+        categoryBarCleanup = () => {
+            bar.removeEventListener('scroll', onScroll);
+            bar.removeEventListener('wheel', onWheel);
+            left.removeEventListener('click', onLeftClick);
+            right.removeEventListener('click', onRightClick);
+            resizeObserver?.disconnect();
+        };
+        bar.__updateCategoryScrollState = updateScrollState;
+        updateScrollState();
+        return { wrap, bar, left, right };
+    }
+
+    function renderTopicCategoryBar(itemType, itemId, topics, topicListUl) {
+        const { categories, uncategorized, total } = collectTopicCategories(topics);
+
+        if (categories.length === 0) {
+            removeTopicCategoryBar();
+            activeTopicCategory = TOPIC_CATEGORY_ALL;
+            storeTopicCategory(itemType, itemId, TOPIC_CATEGORY_ALL);
+            return activeTopicCategory;
+        }
+
+        const availableValues = new Set([TOPIC_CATEGORY_ALL, ...categories.map(([category]) => category)]);
+        if (uncategorized > 0) availableValues.add(TOPIC_CATEGORY_UNCATEGORIZED);
+        let selected = readStoredTopicCategory(itemType, itemId);
+        if (!availableValues.has(selected)) selected = TOPIC_CATEGORY_ALL;
+        activeTopicCategory = selected;
+
+        const { bar } = ensureTopicCategoryBar(topicListUl);
+        bar.replaceChildren();
+
+        const makeChip = (value, label, count) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'topic-category-chip';
+            chip.dataset.topicCategoryFilter = value;
+            const isActive = value === selected;
+            chip.classList.toggle('active', isActive);
+            chip.setAttribute('role', 'tab');
+            chip.setAttribute('aria-selected', String(isActive));
+            const nameEl = document.createElement('span');
+            nameEl.className = 'topic-category-name';
+            nameEl.textContent = label;
+            const countEl = document.createElement('span');
+            countEl.className = 'topic-category-count';
+            countEl.textContent = String(count);
+            chip.append(nameEl, countEl);
+            chip.addEventListener('click', () => {
+                if (activeTopicCategory === value) return;
+                activeTopicCategory = value;
+                storeTopicCategory(itemType, itemId, value);
+                loadTopicList();
+            });
+            return chip;
+        };
+
+        bar.appendChild(makeChip(TOPIC_CATEGORY_ALL, '全部', total));
+        for (const [category, count] of categories) {
+            bar.appendChild(makeChip(category, category, count));
+        }
+        if (uncategorized > 0) {
+            bar.appendChild(makeChip(TOPIC_CATEGORY_UNCATEGORIZED, '未分类', uncategorized));
+        }
+
+        requestAnimationFrame(() => {
+            if (!bar.isConnected) return;
+            const activeChip = bar.querySelector('.topic-category-chip.active');
+            if (activeChip) {
+                const barRect = bar.getBoundingClientRect();
+                const chipRect = activeChip.getBoundingClientRect();
+                if (chipRect.left < barRect.left) {
+                    bar.scrollLeft -= (barRect.left - chipRect.left) + 8;
+                } else if (chipRect.right > barRect.right) {
+                    bar.scrollLeft += (chipRect.right - barRect.right) + 8;
+                }
+            }
+            bar.__updateCategoryScrollState?.();
+        });
+        return selected;
+    }
+
     async function loadTopicList() {
         if (!topicListContainer) {
             console.error("Topic list container (tabContentTopics) not found.");
@@ -761,6 +995,14 @@ window.topicListManager = (() => {
 
             // topicsToProcess.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
+            const categoryFilter = renderTopicCategoryBar(currentSelectedItem.type, currentSelectedItem.id, topicsToProcess, topicListUl);
+            if (categoryFilter !== TOPIC_CATEGORY_ALL) {
+                topicsToProcess = topicsToProcess.filter(topic => {
+                    const category = normalizeTopicCategory(topic.category);
+                    return categoryFilter === TOPIC_CATEGORY_UNCATEGORIZED ? !category : category === categoryFilter;
+                });
+            }
+
             if (contentQueryTerm) {
                 let frontendFilteredTopics = topicsToProcess.filter(topic => {
                     const normalizedTopicTitle = normalizeTopicTitle(topic.name || '');
@@ -807,7 +1049,10 @@ window.topicListManager = (() => {
             syncManageUi();
 
             if (topicsToProcess.length === 0) {
-                renderTopicListStatus(topicListUl, `${itemNameForLoading} 还没有任何话题${searchTerm ? '匹配当前搜索' : ''}。您可以点击上方的“新建${currentSelectedItem.type === 'group' ? '群聊话题' : '聊天话题'}”按钮创建一个。`);
+                const categoryPrefix = activeTopicCategory === TOPIC_CATEGORY_ALL
+                    ? ''
+                    : `「${topicCategoryFilterLabel(activeTopicCategory)}」分类下`;
+                renderTopicListStatus(topicListUl, `${itemNameForLoading} ${categoryPrefix}还没有任何话题${searchTerm ? '匹配当前搜索' : ''}。您可以点击上方的“新建${currentSelectedItem.type === 'group' ? '群聊话题' : '聊天话题'}”按钮创建一个。`);
             } else {
                 const currentTopicId = currentTopicIdRef.get();
                 renderTopicListProgressively(topicListUl, topicsToProcess, currentSelectedItem, currentTopicId, itemConfigFull, searchTerm);
@@ -855,6 +1100,7 @@ window.topicListManager = (() => {
         const searchCloseButton = document.getElementById('nextUiTopicSearchClose');
         const searchInput = document.getElementById('topicSearchInput');
         const selectAllButton = document.getElementById('nextUiSelectAllTopicsBtn');
+        const categorizeButton = document.getElementById('nextUiCategorizeTopicsBtn');
         const deleteButton = document.getElementById('nextUiDeleteTopicsBtn');
         const exitButton = document.getElementById('nextUiExitTopicManageBtn');
 
@@ -894,6 +1140,7 @@ window.topicListManager = (() => {
             }
         });
         if (selectAllButton) addListener(selectAllButton, 'click', toggleSelectAllDisplayedTopics);
+        if (categorizeButton) addListener(categorizeButton, 'click', categorizeSelectedTopics);
         if (deleteButton) addListener(deleteButton, 'click', deleteSelectedTopics);
         if (exitButton) addListener(exitButton, 'click', () => setManageMode(false));
 
@@ -930,12 +1177,26 @@ window.topicListManager = (() => {
         syncManageUi();
     }
 
+    function categorizeSelectedTopics() {
+        if (!isManageMode || selectedTopicIds.size === 0 || !currentItemConfig) return;
+        const currentSelectedItem = currentSelectedItemRef.get();
+        if (!currentSelectedItem?.id || currentItemConfig.id !== currentSelectedItem.id) return;
+        const topics = availableTopics.filter(topic => selectedTopicIds.has(topic.id));
+        if (topics.length === 0) return;
+        showTopicCategoryDialog({
+            topics,
+            itemFullConfig: currentItemConfig,
+            itemType: currentSelectedItem.type
+        });
+    }
+
     function syncManageUi() {
         const container = document.getElementById('tabContentTopics');
         const manageButton = document.getElementById('nextUiManageTopicsBtn');
         const managePanel = container?.querySelector('.next-ui-topic-manage-panel');
         const count = document.getElementById('nextUiTopicSelectionCount');
         const selectAllButton = document.getElementById('nextUiSelectAllTopicsBtn');
+        const categorizeButton = document.getElementById('nextUiCategorizeTopicsBtn');
         const deleteButton = document.getElementById('nextUiDeleteTopicsBtn');
         const allDisplayedSelected = displayedTopics.length > 0
             && displayedTopics.every(topic => selectedTopicIds.has(topic.id));
@@ -945,6 +1206,7 @@ window.topicListManager = (() => {
         manageButton?.setAttribute('aria-pressed', String(isManageMode));
         managePanel?.setAttribute('aria-hidden', String(!isManageMode));
         if (count) count.textContent = `已选择 ${selectedTopicIds.size} 项`;
+        if (categorizeButton) categorizeButton.disabled = selectedTopicIds.size === 0;
         if (deleteButton) deleteButton.disabled = selectedTopicIds.size === 0;
         const selectAllIcon = selectAllButton?.querySelector('.vcp-ui-icon');
         if (selectAllIcon) selectAllIcon.textContent = allDisplayedSelected ? 'check_box' : 'check_box_outline_blank';
@@ -1088,6 +1350,229 @@ window.topicListManager = (() => {
         });
     }
 
+    function collectKnownTopicCategories(itemFullConfig) {
+        const set = new Set();
+        for (const topic of itemFullConfig?.topics || []) {
+            const category = normalizeTopicCategory(topic?.category);
+            if (category) set.add(category);
+        }
+        return [...set];
+    }
+
+    /**
+     * 为一个或多个话题设置分类。分类只是 config.topics 上的可选字符串，
+     * 留空保存即移出分类。支持右键单个设置和管理模式批量设置。
+     */
+    function showTopicCategoryDialog({ topics, itemFullConfig, itemType }) {
+        const targetTopics = (Array.isArray(topics) ? topics : []).filter(topic => topic?.id);
+        if (targetTopics.length === 0 || !itemFullConfig?.id) return;
+
+        const isBulk = targetTopics.length > 1;
+        const previousFocus = document.activeElement;
+        const currentCategories = [...new Set(targetTopics.map(topic => normalizeTopicCategory(topic.category)))];
+        const sharedCategory = currentCategories.length === 1 ? currentCategories[0] : '';
+        const hasAnyCategory = currentCategories.some(Boolean);
+        const knownCategories = collectKnownTopicCategories(itemFullConfig)
+            .filter(category => category !== sharedCategory);
+        const showToast = (message, type) => uiHelper?.showToastNotification?.(message, type);
+
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay topic-category-overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = `confirm-dialog topic-category-dialog${isBulk ? ' is-bulk' : ''}`;
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        const titleId = `topic-category-title-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        dialog.setAttribute('aria-labelledby', titleId);
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'confirm-dialog-title';
+        titleEl.id = titleId;
+        titleEl.textContent = isBulk ? '批量设置话题分类' : '设置话题分类';
+        dialog.appendChild(titleEl);
+
+        const messageEl = document.createElement('div');
+        messageEl.className = 'confirm-dialog-message';
+        messageEl.textContent = isBulk
+            ? `为选中的 ${targetTopics.length} 个话题设置分类，留空保存即移出分类。`
+            : `为「${normalizeTopicTitle(targetTopics[0].name || '未命名话题')}」设置分类，留空保存即移出分类。`;
+        dialog.appendChild(messageEl);
+
+        const field = document.createElement('div');
+        field.className = 'topic-category-field';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'topic-category-input';
+        input.maxLength = TOPIC_CATEGORY_MAX_LENGTH;
+        input.placeholder = '例如：论文、工作、日常';
+        input.setAttribute('aria-label', '话题分类');
+        input.value = sharedCategory;
+        field.appendChild(input);
+
+        if (knownCategories.length > 0) {
+            const suggestions = document.createElement('div');
+            suggestions.className = 'topic-category-suggestions';
+            const hint = document.createElement('span');
+            hint.className = 'topic-category-suggestions-hint';
+            hint.textContent = '已有分类：';
+            suggestions.appendChild(hint);
+            for (const category of knownCategories) {
+                const suggestion = document.createElement('button');
+                suggestion.type = 'button';
+                suggestion.className = 'topic-category-suggestion';
+                suggestion.textContent = category;
+                suggestion.addEventListener('click', () => {
+                    input.value = category;
+                    input.focus();
+                });
+                suggestions.appendChild(suggestion);
+            }
+            field.appendChild(suggestions);
+        }
+        dialog.appendChild(field);
+
+        const buttonsEl = document.createElement('div');
+        buttonsEl.className = 'confirm-dialog-buttons';
+
+        let clearBtn = null;
+        if (hasAnyCategory) {
+            clearBtn = document.createElement('button');
+            clearBtn.type = 'button';
+            clearBtn.className = 'confirm-dialog-btn topic-category-clear';
+            clearBtn.textContent = '移出分类';
+            buttonsEl.appendChild(clearBtn);
+        }
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'confirm-dialog-btn confirm-dialog-cancel';
+        cancelBtn.textContent = '取消';
+        buttonsEl.appendChild(cancelBtn);
+
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'confirm-dialog-btn confirm-dialog-confirm';
+        saveBtn.textContent = '保存';
+        buttonsEl.appendChild(saveBtn);
+
+        dialog.appendChild(buttonsEl);
+        overlay.appendChild(dialog);
+
+        let saving = false;
+
+        const onKeydown = event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                close();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusables = [...dialog.querySelectorAll('button, input')]
+                .filter(element => !element.disabled);
+            if (focusables.length === 0) return;
+            const current = focusables.indexOf(document.activeElement);
+            event.preventDefault();
+            focusables[(current + (event.shiftKey ? -1 : 1) + focusables.length) % focusables.length].focus();
+        };
+
+        const cleanup = () => {
+            overlay.remove();
+            document.removeEventListener('keydown', onKeydown, true);
+            if (previousFocus?.isConnected) previousFocus.focus();
+        };
+        const close = () => cleanup();
+
+        const setBusy = busy => {
+            input.disabled = busy;
+            saveBtn.disabled = busy;
+            cancelBtn.disabled = busy;
+            if (clearBtn) clearBtn.disabled = busy;
+            dialog.querySelectorAll('.topic-category-suggestion').forEach(button => {
+                button.disabled = busy;
+            });
+        };
+
+        const applyCategoryLocally = normalizedCategory => {
+            for (const topic of targetTopics) {
+                if (normalizedCategory) topic.category = normalizedCategory;
+                else delete topic.category;
+                const topicInConfig = itemFullConfig.topics?.find(candidate => candidate.id === topic.id);
+                if (!topicInConfig) continue;
+                if (normalizedCategory) topicInConfig.category = normalizedCategory;
+                else delete topicInConfig.category;
+            }
+        };
+
+        const saveCategory = async rawValue => {
+            if (saving) return;
+            const normalizedCategory = normalizeTopicCategory(rawValue);
+            const allAlreadyMatch = targetTopics.every(
+                topic => normalizeTopicCategory(topic.category) === normalizedCategory
+            );
+            if (allAlreadyMatch) {
+                close();
+                return;
+            }
+
+            const setCategories = itemType === 'group'
+                ? electronAPI?.setGroupTopicsCategory
+                : electronAPI?.setAgentTopicsCategory;
+            if (typeof setCategories !== 'function') {
+                showToast('当前版本不支持话题分类，请重启应用后重试。', 'error');
+                return;
+            }
+
+            saving = true;
+            setBusy(true);
+            try {
+                const topicIds = targetTopics.map(topic => topic.id);
+                const result = await setCategories.call(electronAPI, itemFullConfig.id, topicIds, normalizedCategory);
+                if (!result?.success) {
+                    showToast(`设置分类失败: ${result?.error || '未知错误'}`, 'error');
+                    saving = false;
+                    setBusy(false);
+                    return;
+                }
+
+                applyCategoryLocally(normalizedCategory);
+                close();
+                if (normalizedCategory) {
+                    showToast(
+                        isBulk
+                            ? `已为 ${targetTopics.length} 个话题设置分类「${normalizedCategory}」`
+                            : `已设置分类「${normalizedCategory}」`,
+                        'success'
+                    );
+                } else {
+                    showToast(isBulk ? `已将 ${targetTopics.length} 个话题移出分类` : '已移出分类', 'success');
+                }
+                loadTopicList();
+            } catch (error) {
+                console.error('[TopicListManager] Failed to save topic category:', error);
+                showToast(`设置分类失败: ${error.message}`, 'error');
+                saving = false;
+                setBusy(false);
+            }
+        };
+
+        saveBtn.addEventListener('click', () => saveCategory(input.value));
+        cancelBtn.addEventListener('click', close);
+        if (clearBtn) clearBtn.addEventListener('click', () => saveCategory(''));
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                saveCategory(input.value);
+            }
+        });
+
+        document.addEventListener('keydown', onKeydown, true);
+        document.body.appendChild(overlay);
+        overlay.classList.add('visible');
+        input.focus();
+        input.select();
+    }
+
     function showTopicContextMenu(event, topicItemElement, itemFullConfig, topic, itemType) {
         // closeContextMenu(); // This function is not available in this module
         closeTopicContextMenu();
@@ -1219,6 +1704,15 @@ window.topicListManager = (() => {
         };
         menu.appendChild(editTitleOption);
         menu.appendChild(regenerateTitleOption);
+
+        const editCategoryOption = document.createElement('div');
+        editCategoryOption.classList.add('context-menu-item');
+        editCategoryOption.innerHTML = `<i class="fas fa-folder"></i> 设置分类…`;
+        editCategoryOption.onclick = () => {
+            closeTopicContextMenu();
+            showTopicCategoryDialog({ topics: [topic], itemFullConfig, itemType: targetItemType });
+        };
+        menu.appendChild(editCategoryOption);
 
         const copyTopicIdOption = document.createElement('div');
         copyTopicIdOption.classList.add('context-menu-item');
@@ -1679,6 +2173,8 @@ window.topicListManager = (() => {
         cancelPendingTopicSearch();
         cleanupProgressiveTopicRendering();
         closeTopicContextMenu();
+        removeTopicCategoryBar();
+        activeTopicCategory = TOPIC_CATEGORY_ALL;
         selectedTopicIds.clear();
         displayedTopics = [];
         availableTopics = [];

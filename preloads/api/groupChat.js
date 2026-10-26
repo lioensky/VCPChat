@@ -21,6 +21,8 @@ module.exports = {
         createNewTopicForGroup: invoke('create-new-topic-for-group', 'groupId', 'topicName'),
         deleteGroupTopic: invoke('delete-group-topic', 'groupId', 'topicId'),
         saveGroupTopicTitle: invoke('save-group-topic-title', 'groupId', 'topicId', 'newTitle'),
+        setGroupTopicCategory: invoke('set-group-topic-category', 'groupId', 'topicId', 'category'),
+        setGroupTopicsCategory: invoke('set-group-topics-category', 'groupId', 'topicIds', 'category'),
         regenerateGroupTopicTitle: invoke('regenerate-group-topic-title', 'groupId', 'topicId'),
         saveGroupTopicOrder: invoke('save-group-topic-order', 'groupId', 'orderedTopicIds'),
         onVCPGroupTopicUpdated: on('vcp-group-topic-updated'),

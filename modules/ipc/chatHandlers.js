@@ -51,8 +51,7 @@ function stableStringify(value) {
     return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
 }
 
-function extractTextForHash(content) {
-    if (typeof content === 'string') {
+function extractTextForHash(content) {    if (typeof content === 'string') {
         return content;
     }
     if (Array.isArray(content)) {
@@ -69,6 +68,21 @@ function extractTextForHash(content) {
 
 function hashSentMessage(message) {
     return `sha256:${crypto.createHash('sha256').update(extractTextForHash(message.content), 'utf8').digest('hex')}`;
+}
+
+// 话题分类只是 config.topics 上的一个可选字符串；空字符串表示未分类。
+const TOPIC_CATEGORY_MAX_LENGTH = 40;
+
+function normalizeTopicCategory(value) {
+    if (typeof value !== 'string') return '';
+    return value.trim().slice(0, TOPIC_CATEGORY_MAX_LENGTH);
+}
+
+function withTopicCategory(topic, category) {
+    const nextTopic = { ...topic };
+    if (category) nextTopic.category = category;
+    else delete nextTopic.category;
+    return nextTopic;
 }
 
 function buildVcpChatExtensionsFromMessages(messages, context = null, requestId = null) {
@@ -526,6 +540,81 @@ function initialize(mainWindow, context) {
         } catch (error) {
             console.error(`保存Agent ${agentId} 话题 ${topicId} 标题为 "${newTitle}" 失败:`, error);
             return { error: error.message };
+        }
+    });
+
+    ipcMain.handle('set-agent-topic-category', async (event, agentId, topicId, category) => {
+        if (!agentId || !topicId) {
+            return { success: false, error: '缺少 agentId 或 topicId。' };
+        }
+        const normalizedCategory = normalizeTopicCategory(category);
+        try {
+            if (!agentConfigManager) {
+                return { success: false, error: 'AgentConfigManager 未初始化，无法更新话题分类。' };
+            }
+
+            await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
+                if (!Array.isArray(existingConfig.topics)) {
+                    throw new Error('配置文件损坏或缺少话题列表');
+                }
+                let found = false;
+                const topics = existingConfig.topics.map(topic => {
+                    if (topic.id !== topicId) return topic;
+                    found = true;
+                    return withTopicCategory(topic, normalizedCategory);
+                });
+                if (!found) throw new Error(`未找到话题 ${topicId}`);
+                return { ...existingConfig, topics };
+            });
+
+            return { success: true, category: normalizedCategory };
+        } catch (error) {
+            console.error(`设置 Agent ${agentId} 话题 ${topicId} 分类失败:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('set-agent-topics-category', async (event, agentId, topicIds, category) => {
+        if (!agentId || !Array.isArray(topicIds) || topicIds.length === 0) {
+            return { success: false, error: '缺少 agentId 或 topicIds。' };
+        }
+        const idSet = new Set(topicIds.filter(topicId => typeof topicId === 'string' && topicId));
+        if (idSet.size === 0) {
+            return { success: false, error: 'topicIds 必须包含有效的话题 ID。' };
+        }
+        const normalizedCategory = normalizeTopicCategory(category);
+        try {
+            if (!agentConfigManager) {
+                return { success: false, error: 'AgentConfigManager 未初始化，无法更新话题分类。' };
+            }
+
+            let updatedTopicIds = [];
+            await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
+                if (!Array.isArray(existingConfig.topics)) {
+                    throw new Error('配置文件损坏或缺少话题列表');
+                }
+                const foundTopicIds = [];
+                const topics = existingConfig.topics.map(topic => {
+                    if (!idSet.has(topic.id)) return topic;
+                    foundTopicIds.push(topic.id);
+                    return withTopicCategory(topic, normalizedCategory);
+                });
+                if (foundTopicIds.length === 0) {
+                    throw new Error('未找到要设置分类的话题');
+                }
+                updatedTopicIds = foundTopicIds;
+                return { ...existingConfig, topics };
+            });
+
+            return {
+                success: true,
+                category: normalizedCategory,
+                topicIds: updatedTopicIds,
+                updatedCount: updatedTopicIds.length
+            };
+        } catch (error) {
+            console.error(`批量设置 Agent ${agentId} 话题分类失败:`, error);
+            return { success: false, error: error.message };
         }
     });
 

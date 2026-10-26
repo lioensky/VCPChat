@@ -1754,6 +1754,81 @@ body.light-theme .grid-cell[data-function="none"]:hover {
     background-color: var(--danger-hover-bg);
 }
 
+/* --- 话题分类对话框 --- */
+.topic-category-dialog {
+    width: 420px;
+    max-width: 90vw;
+}
+
+.topic-category-field {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.topic-category-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--accent-bg);
+    color: var(--primary-text);
+    font: inherit;
+    font-size: 14px;
+}
+
+.topic-category-input:focus {
+    outline: none;
+    border-color: var(--border-color);
+    box-shadow: 0 0 0 1px var(--user-bubble-bg);
+}
+
+.topic-category-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    max-height: 104px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.topic-category-suggestions-hint {
+    font-size: 12px;
+    color: var(--secondary-text);
+}
+
+.topic-category-suggestion {
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 9999px;
+    background-color: transparent;
+    color: var(--secondary-text);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.topic-category-suggestion:hover {
+    background-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
+.topic-category-clear {
+    margin-right: auto;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--secondary-text);
+}
+
+.topic-category-clear:hover {
+    background-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
 /* Light theme for confirm dialog */
 body.light-theme .confirm-dialog {
     background-color: #ffffff;

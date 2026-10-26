@@ -2368,6 +2368,59 @@ async function saveGroupTopicTitle(groupId, topicId, newTitle) {
     return result.success ? { success: true, topics: result.agentGroup.topics } : { success: false, error: result.error };
 }
 
+async function saveGroupTopicCategory(groupId, topicId, category) {
+    const normalizedCategory = typeof category === 'string' ? category.trim().slice(0, 40) : '';
+    let groupConfig = await getAgentGroupConfig(groupId);
+    if (!groupConfig || !Array.isArray(groupConfig.topics)) {
+        return { success: false, error: `Group ${groupId} or its topics not found.` };
+    }
+    const topicIndex = groupConfig.topics.findIndex(t => t.id === topicId);
+    if (topicIndex === -1) {
+        return { success: false, error: `Topic ID ${topicId} not found in group ${groupId}.` };
+    }
+    const nextTopic = { ...groupConfig.topics[topicIndex] };
+    if (normalizedCategory) nextTopic.category = normalizedCategory;
+    else delete nextTopic.category;
+    groupConfig.topics[topicIndex] = nextTopic;
+    const result = await saveAgentGroupConfig(groupId, { topics: groupConfig.topics });
+    return result.success
+        ? { success: true, category: normalizedCategory }
+        : { success: false, error: result.error };
+}
+
+async function saveGroupTopicsCategory(groupId, topicIds, category) {
+    if (!Array.isArray(topicIds) || topicIds.length === 0) {
+        return { success: false, error: 'topicIds must be a non-empty array.' };
+    }
+    const idSet = new Set(topicIds.filter(topicId => typeof topicId === 'string' && topicId));
+    if (idSet.size === 0) {
+        return { success: false, error: 'topicIds must contain valid topic IDs.' };
+    }
+    const normalizedCategory = typeof category === 'string' ? category.trim().slice(0, 40) : '';
+    let groupConfig = await getAgentGroupConfig(groupId);
+    if (!groupConfig || !Array.isArray(groupConfig.topics)) {
+        return { success: false, error: `Group ${groupId} or its topics not found.` };
+    }
+
+    const updatedTopicIds = [];
+    groupConfig.topics = groupConfig.topics.map(topic => {
+        if (!idSet.has(topic.id)) return topic;
+        updatedTopicIds.push(topic.id);
+        const nextTopic = { ...topic };
+        if (normalizedCategory) nextTopic.category = normalizedCategory;
+        else delete nextTopic.category;
+        return nextTopic;
+    });
+    if (updatedTopicIds.length === 0) {
+        return { success: false, error: `No matching topics found in group ${groupId}.` };
+    }
+
+    const result = await saveAgentGroupConfig(groupId, { topics: groupConfig.topics });
+    return result.success
+        ? { success: true, category: normalizedCategory, topicIds: updatedTopicIds, updatedCount: updatedTopicIds.length }
+        : { success: false, error: result.error };
+}
+
 async function getGroupChatHistory(groupId, topicId) {
     if (!mainAppPaths.USER_DATA_DIR) return { error: "Paths not initialized" };
     const historyFile = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', topicId, 'history.json');
@@ -2616,6 +2669,8 @@ module.exports = {
     createNewTopicForGroup,
     deleteGroupTopic,
     saveGroupTopicTitle,
+    saveGroupTopicCategory,
+    saveGroupTopicsCategory,
     regenerateGroupTopicTitle,
     getGroupChatHistory,
 };

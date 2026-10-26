@@ -12,6 +12,8 @@ module.exports = {
         getAgentTopics: invoke('get-agent-topics', 'agentId'),
         createNewTopicForAgent: invoke('create-new-topic-for-agent', 'agentId', 'topicName', 'isBranch', 'locked'),
         saveAgentTopicTitle: invoke('save-agent-topic-title', 'agentId', 'topicId', 'newTitle'),
+        setAgentTopicCategory: invoke('set-agent-topic-category', 'agentId', 'topicId', 'category'),
+        setAgentTopicsCategory: invoke('set-agent-topics-category', 'agentId', 'topicIds', 'category'),
         regenerateAgentTopicTitle: invoke('regenerate-agent-topic-title', 'agentId', 'topicId'),
         deleteTopic: invoke('delete-topic', 'agentId', 'topicId'),
         toggleTopicLock: invoke('toggle-topic-lock', 'agentId', 'topicId'),

@@ -436,6 +436,115 @@
         padding-bottom: var(--vcp-ui-space-1);
     }
 
+    /* 话题分类筛选条：只有存在分类时才显示 */
+    html .vcp-ui-scope.sidebar .topic-category-bar-wrap {
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-1);
+        padding: 0 var(--vcp-ui-space-1) var(--vcp-ui-space-2) var(--vcp-ui-sidebar-list-gutter);
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-bar {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-1);
+        padding-bottom: var(--vcp-ui-space-1);
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+        scrollbar-color: var(--vcp-ui-fill-1) transparent;
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-bar::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-bar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-bar::-webkit-scrollbar-thumb {
+        background: var(--vcp-ui-fill-1);
+        border-radius: var(--vcp-ui-radius-full);
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-scroll-btn {
+        flex: 0 0 auto;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 0;
+        border-radius: var(--vcp-ui-radius-full);
+        background: var(--vcp-ui-fill-0);
+        color: var(--vcp-ui-text-1);
+        cursor: pointer;
+        transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), opacity var(--vcp-ui-transition-fast);
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-bar-wrap.has-overflow .topic-category-scroll-btn {
+        display: inline-flex;
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-scroll-btn .vcp-ui-icon {
+        --vcp-ui-icon-size: var(--vcp-ui-icon-sm);
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-scroll-btn:hover:not(:disabled) {
+        background: var(--vcp-ui-fill-1);
+        color: var(--vcp-ui-text-0);
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-scroll-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-chip {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-1);
+        height: 24px;
+        padding: 0 var(--vcp-ui-space-2);
+        border: 1px solid transparent;
+        border-radius: var(--vcp-ui-radius-full);
+        background: var(--vcp-ui-fill-0);
+        color: var(--vcp-ui-text-1);
+        font: inherit;
+        font-size: var(--vcp-ui-font-size-xs);
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: color var(--vcp-ui-transition-fast), background var(--vcp-ui-transition-fast), border-color var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast);
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-chip:hover {
+        background: var(--vcp-ui-fill-1);
+        color: var(--vcp-ui-text-0);
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-chip.active {
+        background: var(--vcp-ui-selection-bg);
+        border-color: var(--vcp-ui-accent);
+        box-shadow: inset 0 0 0 1px var(--vcp-ui-accent);
+        color: var(--vcp-ui-text-0);
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-chip:focus-visible {
+        outline: 1px solid var(--vcp-ui-accent);
+        outline-offset: 1px;
+    }
+
+    html .vcp-ui-scope.sidebar .topic-category-count {
+        color: inherit;
+        opacity: 0.65;
+    }
+
     html .vcp-ui-scope.sidebar .agent-list li,
     html .vcp-ui-scope.sidebar .topic-list .topic-item {
         position: relative;

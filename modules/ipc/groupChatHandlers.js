@@ -149,6 +149,20 @@ function initialize(mainWindow, context) {
         return await groupChat.saveGroupTopicTitle(groupId, topicId, newTitle);
     });
 
+    ipcMain.handle('set-group-topic-category', async (event, groupId, topicId, category) => {
+        if (!groupId || !topicId) {
+            return { success: false, error: '缺少 groupId 或 topicId。' };
+        }
+        return await groupChat.saveGroupTopicCategory(groupId, topicId, category);
+    });
+
+    ipcMain.handle('set-group-topics-category', async (event, groupId, topicIds, category) => {
+        if (!groupId || !Array.isArray(topicIds) || topicIds.length === 0) {
+            return { success: false, error: '缺少 groupId 或 topicIds。' };
+        }
+        return await groupChat.saveGroupTopicsCategory(groupId, topicIds, category);
+    });
+
     ipcMain.handle('regenerate-group-topic-title', async (event, groupId, topicId) => {
         return await groupChat.regenerateGroupTopicTitle(groupId, topicId);
     });
