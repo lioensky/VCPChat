@@ -431,6 +431,8 @@ export function createSideChatWiring({
                 error.cascaded = res?.cascaded || 0;
                 throw error;
             }
+            // 之前关闭过的分支仍留在“最近关闭”里：记录已删，重开只会得到空壳
+            controller.forgetClosedTabs?.(tab => doomedIds.has(tab?.descriptor?.child?.topicId));
 
             // 只有删除的是「当前正在查看的分支」时才返航其父分支；删除别的分支不打扰当前视图
             if (isDeletingCurrentBranch && deletedParentTopicId) {
@@ -646,8 +648,31 @@ export function createSideChatWiring({
         return handle;
     }
 
-    async function restoreSessions(agentId, parentTopicId) {
-        const listRes = await listSideChatsForParent({ electronAPI: chatAPI, agentId, parentTopicId });
+    // 磁盘上的“已关闭辅助对话”：重启后内存里的 recentlyClosed 没了，这里仍能列出来并重开。
+    // 只读 metadata 的 open/status，不碰历史文件。
+    async function listClosedSessions() {
+        const item = selectedItemRef.get();
+        const parentTopicId = topicIdRef.get();
+        if (item?.type !== 'agent' || !item.id || !parentTopicId) return [];
+        const res = await listSideChatsForParent({ electronAPI: chatAPI, agentId: item.id, parentTopicId });
+        if (!res?.ok) return [];
+        return (Array.isArray(res.items) ? res.items : [])
+            .filter(meta => meta && (meta.open === false || meta.status === 'closed'))
+            .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
+            .map(meta => ({
+                id: meta.child?.topicId || meta.id,
+                title: meta.title || meta.branchTitle || '辅助对话',
+                meta
+            }));
+    }
+
+    async function reopenClosedSession(item) {
+        const meta = item?.meta || item;
+        if (!meta?.child?.topicId) return null;
+        return openSideChat(branchMetaToReopenArgs(meta));
+    }
+
+    async function restoreSessions(agentId, parentTopicId) {        const listRes = await listSideChatsForParent({ electronAPI: chatAPI, agentId, parentTopicId });
         if (!isSameParent(getController().getSnapshot().parent, agentId, parentTopicId)) return [];
         if (!listRes.ok || !Array.isArray(listRes.items)) return [];
 
@@ -756,49 +781,44 @@ export function createSideChatWiring({
 
 
     const selectionEntry = win.openSideChatWithSelection;
-    // 还没显示过的辅助对话（恢复出来、没挂载）关闭前同样确认：有记录或草稿就问一句，和挂载后的 requestClose 一致
-    async function requestTabClose(descriptor) {
-        // 分形树子分支：仅关闭视图 Tab，不物理销毁子话题，随时可从脉络图重开。
-        // 判别只认 forkFromTopicId：rootTopicId 对根侧聊也指向自己，不能作为分支依据
-        if (descriptor?.forkFromTopicId) {
-            return { closed: true };
-        }
-        if (typeof uiHelper?.showConfirmDialog !== 'function') return { closed: true };
-        const agentId = descriptor?.child?.itemId || descriptor?.parent?.itemId;
-        const childTopicId = descriptor?.child?.topicId;
-        if (!agentId || !childTopicId) return { closed: true };
-        const stored = sideChatOwner.readDraft(descriptor);
-        const input = stored?.input || {};
-        let hasContent = !!input.draft || (Array.isArray(input.references) && input.references.length > 0);
-        if (!hasContent && typeof chatAPI?.getChatHistory === 'function') {
-            try {
-                const history = await chatAPI.getChatHistory(agentId, childTopicId);
-                // 读不出来时按有记录处理：宁可多问一句
-                hasContent = !Array.isArray(history) || history.length > 0;
-            } catch {
-                hasContent = true;
-            }
-        }
-        if (!hasContent) return { closed: true };
-        const confirmed = await uiHelper.showConfirmDialog(
-            `关闭「${descriptor.title || '辅助对话'}」会删除这段辅助对话的全部记录，无法恢复。`,
-            '关闭辅助对话', '关闭并删除', '取消', true);
-        return confirmed ? { closed: true } : { closed: false, reason: 'USER_CANCELED' };
+    // 关闭只是收起视图：没挂载的标签没有未保存内容，不需要任何确认
+    async function requestTabClose() {
+        return { closed: true };
     }
-    async function onTabClosed(descriptor) {
+
+    // 关闭/重开只维护 metadata 里的 open/status，历史、快照与草稿都留在磁盘上。
+    // 真正的删除只走分支拓扑里的 deleteBranch。
+    async function setSideChatOpenState(descriptor, open) {
         const agentId = descriptor?.child?.itemId || descriptor?.parent?.itemId;
         const childTopicId = descriptor?.child?.topicId;
         if (!agentId || !childTopicId) return;
-        // 分形树子分支：关闭 Tab 不物理删除子话题，保留在脉络图中随时可重新激活
-        if (descriptor?.forkFromTopicId) {
+        const result = await updateSideChatBranch({
+            electronAPI: chatAPI,
+            agentId,
+            childTopicId,
+            patch: open ? { open: true, status: 'ready' } : { open: false, status: 'closed' }
+        });
+        if (!result.ok) {
+            console.warn(`[SideChat] Failed to persist ${open ? 'opened' : 'closed'} state:`, result.message);
+        }
+    }
+
+    async function onTabOpened(descriptor) {
+        await setSideChatOpenState(descriptor, true);
+    }
+
+    async function onTabClosed(descriptor) {
+        const childTopicId = descriptor?.child?.topicId;
+        // 关闭清理还没结束时用户已从“最近关闭”重开：以仍开着的标签为准，别把刚重开的记录写回关闭
+        if (childTopicId && getController().getSnapshot().tabs.some(tab => tab.kind === 'chat'
+            && tab.descriptor?.child?.topicId === childTopicId)) {
             return;
         }
-        const result = await deleteSideChatChild({ electronAPI: chatAPI, agentId, childTopicId });
-        if (result.ok) sideChatOwner.forgetDraft(descriptor);
-        else console.warn('[SideChat] Failed to delete closed side chat:', result.message);
+        await setSideChatOpenState(descriptor, false);
     }
     return Object.freeze({
-        provider: sideChatOwner, openSideChat, restoreSessions, onTabClosed, requestTabClose,
+        provider: sideChatOwner, openSideChat, restoreSessions, onTabClosed, onTabOpened, requestTabClose,
+        listClosedSessions, reopenClosedSession,
         // 分支生命周期操作（与内部 branchApi 同源），暴露以便复用与测试
         collectBranchContext: (opts) => branchApi.collectBranchContext(opts),
         deleteBranch: (opts) => branchApi.deleteBranch(opts),

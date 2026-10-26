@@ -52,6 +52,11 @@ export function initWorkspaceSidePane({
         persistence: { storage: win.localStorage }
     });
     subscriptions.add(controller);
+    // 重启后“最近关闭”是空的：概览打开时从磁盘 metadata 补回已关闭的辅助对话
+    controller.setClosedSideChatsProvider(
+        () => sideChat.listClosedSessions(),
+        item => sideChat.reopenClosedSession(item)
+    );
     const releaseDiagnostics = win.VCPLifecycleInspector?.setSidePaneDiagnosticsProvider?.(() => controller.getDiagnostics());
     if (typeof releaseDiagnostics === 'function') subscriptions.add({ dispose: releaseDiagnostics });
 
@@ -75,7 +80,7 @@ export function initWorkspaceSidePane({
         openModelTrajectory: (options = {}) => modelTrajectory.provider.openModelTrajectoryTab(options)
     }));
     const terminal = defineTerminalTabType({ ...deps, onOpenUrl: url => browser.provider.openBrowserTab({ url, forceNew: true }) });
-    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onClosed: sideChat.onTabClosed, requestClose: sideChat.requestTabClose, canOpen: () => controller.getSnapshot().parent?.itemType === 'agent' }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory, appearance]) {
+    for (const definition of [defineNotificationsTabType(), defineChatTabType({ provider: sideChat.provider, openSideChat: sideChat.openSideChat, onOpened: sideChat.onTabOpened, onClosed: sideChat.onTabClosed, requestClose: sideChat.requestTabClose, canOpen: () => controller.getSnapshot().parent?.itemType === 'agent' }), codeViewer, browser, terminal, toolOutput, planDetail, modelTrajectory, appearance]) {
         controller.registerTabType(definition);
     }
     const offTerminalView = chatAPI?.onTerminalViewRequest?.(async request => {

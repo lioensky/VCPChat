@@ -74,7 +74,8 @@ const CHANNELS = [
 ];
 
 // 分形分支：允许通过 update-branch 合并更新的字段白名单
-const BRANCH_PATCH_FIELDS = ['rootTopicId', 'forkFromTopicId', 'forkMessageId', 'forkLabel', 'branchTitle', 'title', 'depth', 'crystallized'];
+// open/status 记录“标签是否开着”，关闭标签时只更新这两个字段，不碰历史与快照
+const BRANCH_PATCH_FIELDS = ['rootTopicId', 'forkFromTopicId', 'forkMessageId', 'forkLabel', 'branchTitle', 'title', 'depth', 'crystallized', 'open', 'status'];
 
 // 元数据写锁：同一子话题的 save-metadata（全量写）与 update-branch（读改写）
 // 必须串行，否则「读-改-写」窗口内的并发全量写会被旧快照覆盖（丢失更新）。
@@ -578,8 +579,10 @@ function initialize(paths) {
                     const value = patch[field];
                     if (field === 'depth') {
                         meta[field] = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
-                    } else if (field === 'crystallized') {
+                    } else if (field === 'crystallized' || field === 'open') {
                         meta[field] = Boolean(value);
+                    } else if (field === 'status') {
+                        meta[field] = value === 'closed' ? 'closed' : 'ready';
                     } else if (value === null) {
                         meta[field] = null;
                     }  else if (typeof value === 'string' && value) {

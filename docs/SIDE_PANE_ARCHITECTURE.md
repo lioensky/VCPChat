@@ -163,7 +163,7 @@ handle 的方法都是可选的：
 一个标签 id 的一生：
 
 ```
-openTab ─ 创建 occurrence ─ openView(scope) ─ 发布可见性 ─ mountTab ─┬─ 显示 ⇄ 隐藏（resume / suspend）
+openTab ─ 写入标签状态 ─ onOpened（新标签）─ 创建 occurrence ─ openView(scope) ─ 发布可见性 ─ mountTab ─┬─ 显示 ⇄ 隐藏（resume / suspend）
                                                                      ├─ 休眠：captureState → 摘掉视图 → dispose → 关 view scope
                                                                      │        再显示时：新 view scope → mountTab(restoredState)
                                                                      └─ 关闭：requestClose → 移除标签和视图 → dispose → occurrence 释放（signal abort）→ onClosed
@@ -216,7 +216,8 @@ openTab ─ 创建 occurrence ─ openView(scope) ─ 发布可见性 ─ mountT
    | 字段 | 作用 |
    | :--- | :--- |
    | `toTab(payload, tabs)` | `openTab(payload)` 先经过它变成标签。辅助对话用它校验描述符，并让同一个子话题重复打开时落到已有标签上，所以调用方写 `openTab({ kind: 'chat', descriptor })` |
-   | `onClosed(tab)` | 标签关掉、视图拆掉后调用。辅助对话用它删掉子话题；抛错只记日志 |
+   | `onOpened(tab)` | 标签新打开时调用（从“最近关闭”重开也算）。辅助对话用它把子话题 metadata 标记为打开 |
+   | `onClosed(tab)` | 标签关掉、视图拆掉后调用。辅助对话用它把子话题 metadata 标记为关闭（不删除记录）；抛错只记日志 |
    | `requestClose(tab)` | 标签没挂载（从没显示过或在休眠）时关闭前的确认；挂着的由 handle 的 `requestClose` 确认。返回 `{ closed: false }` 取消 |
    | `dormancy` | 休眠方式，见第 4 节和 `side-pane-dormancy.js`：`none`（默认）、`detach`（终端：控制器同 `none`，provider 自己跨休眠保留会话）、`limit-only`（浏览器）、`keep`（辅助对话） |
    | `load()` | 没给 `provider` 时用它懒加载实现 |
@@ -249,7 +250,9 @@ provider 只能修改自己的视图，跨模块动作通过组合者注入的�
 
 读取时先看版本号，再逐项校验：坏 JSON、别的版本、不认识或不允许持久化的标签类型都直接丢掉。`sidePaneWiring` 登记完所有标签类型后调用 `controller.restoreLayout()`；在这之前控制器不会写存档，免得启动时的空布局把存档盖掉。保存做了 400ms 防抖，页面隐藏、卸载或控制器销毁时立刻写一次。
 
-辅助对话不走这套存档：宿主切换对话时调用辅助对话 owner 的 `restoreSessions`，从会话服务恢复。
+辅助对话不走这套存档：宿主切换对话时调用辅助对话 owner 的 `restoreSessions`，从会话服务恢复。关闭辅助对话标签只更新 `sidechat-metadata.json` 的 `open/status`，历史、快照和草稿都留在磁盘上；删除 `history.json` 及其目录只能通过分支拓扑的“删除分支”（`deleteBranch`），关闭与删除互不触发。
+
+“最近关闭的标签页”只存在内存里。为了在关掉所有辅助对话并重启应用（甚至重启电脑）后还能找回，标签页概览会通过 `setClosedSideChatsProvider` 读取磁盘 metadata，在“已关闭的辅助对话”一节列出它们并支持一键重开；该读取只在概览打开时进行，不依赖启动时恢复的标签。
 
 关闭等待 provider 的 `requestClose()`，同一 occurrence 的重复请求共享这次操作；拒绝或异常后允许重试。授权成功后同步移除标签和视图，再等待该 occurrence 的 dispose 与已捕获的 onClosed。因此等待旧清理期间，同 ID 的新打开不会被旧操作移除。控制器销毁与关闭共用一次 dispose，并等待已提交关闭的清理；仍未授权的关闭结果迟到时不删除业务资源。不可关闭标签不会进入授权或清理。焦点归属在授权结束、提交移除时读取。
 

@@ -252,7 +252,7 @@ async function closeAll(page) {
         const left = await page.evaluate(() => { const b = document.querySelector('.side-pane-tab-item .side-pane-tab-close'); b?.click(); return !!b; });
         if (!left) return;
         await wait(250);
-        // 有记录的辅助对话关闭前要确认
+        // 关闭辅助对话不再询问；这里只兼容其他标签类型可能出现的关闭确认
         const confirmed = await page.evaluate(() => { const b = [...document.querySelectorAll('.confirm-dialog button')].find(x => x.textContent.includes('关闭并删除')); b?.click(); return !!b; });
         if (confirmed) await wait(400);
     }

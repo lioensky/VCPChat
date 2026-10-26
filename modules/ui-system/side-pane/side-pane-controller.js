@@ -216,6 +216,35 @@ export function createSidePaneController({
     let overview = null;
     let tabMenu = null;
 
+    // 磁盘上已关闭的辅助对话：不进布局、也不在内存的 recentlyClosed 里，开概览时按需从会话服务读取
+    let closedSideChatsProvider = null;
+    let closedSideChatOpener = null;
+    let closedSideChats = [];
+    let closedSideChatsRequestId = 0;
+    let closedSideChatsLoading = null;
+
+    function loadClosedSideChats() {
+        if (isDisposed || !closedSideChatsProvider) return Promise.resolve(closedSideChats);
+        const requestId = ++closedSideChatsRequestId;
+        const loading = Promise.resolve()
+            .then(() => closedSideChatsProvider())
+            .then(items => {
+                if (isDisposed || requestId !== closedSideChatsRequestId) return closedSideChats;
+                closedSideChats = Array.isArray(items) ? items : [];
+                overview?.refresh();
+                return closedSideChats;
+            })
+            .catch(error => {
+                console.warn('[SidePaneController] Failed to load closed side chats:', error);
+                return closedSideChats;
+            })
+            .finally(() => {
+                if (closedSideChatsLoading === loading) closedSideChatsLoading = null;
+            });
+        closedSideChatsLoading = loading;
+        return loading;
+    }
+
     const launcher = createSidePaneLauncher({
         contentContainer,
         addButton: resolvedAddTabButton,
@@ -278,6 +307,7 @@ export function createSidePaneController({
             getActiveTabId: () => state.activeTabId,
             // 只列当前对话能看到的：别的话题的标签重开后登记在那个话题下，这里看起来像点了没反应
             getRecentlyClosed: () => recentlyClosedTabs.filter(entry => SidePaneState.isTabVisibleForParent(entry.tab, state.parent)),
+            getClosedSideChats: () => closedSideChats,
             isClosable: isClosableTab,
             onActivate: (tabId) => {
                 controller.activateTab(tabId);
@@ -285,7 +315,15 @@ export function createSidePaneController({
             },
             onClose: (tabId) => controller.closeTab(tabId),
             onReopen: (closedId) => controller.reopenClosedTab(closedId),
-            onShow: () => tabMenu?.hide()
+            onOpenClosedSideChat: async item => {
+                await closedSideChatOpener?.(item);
+                await loadClosedSideChats();
+            },
+            onShow: () => {
+                tabMenu?.hide();
+                // 重启后内存里没有最近关闭记录，靠 metadata 把已关闭的辅助对话补回概览
+                void loadClosedSideChats();
+            }
         });
         cleanupListeners.push(() => overview.dispose());
     }
@@ -670,7 +708,7 @@ export function createSidePaneController({
         if (isFocusUnchanged(origin)) failedMounts.get(tabId)?.querySelector?.('.side-pane-mount-error-retry')?.focus?.();
     }
 
-    // 临时标签（如辅助对话）不进“最近关闭”，其他标签都能重新打开
+    // 显式声明 ephemeral 或 reopenable:false 的标签不进“最近关闭”，其他标签都能重新打开
     function rememberClosed(tabObj) {
         if (tabObj.ephemeral || tabObj.reopenable === false || getTabType(tabObj.kind)?.reopenable === false) return;
         const { openedAt, ...reopenable } = tabObj;
@@ -837,8 +875,35 @@ export function createSidePaneController({
             renderTabList();
         },
 
+        /**
+         * 磁盘上已关闭辅助对话的数据源与重开方式（由辅助对话模块提供）：
+         * provider 返回 [{ id, title, meta }]，opener 接收其中一项并重新打开它。
+         */
+        setClosedSideChatsProvider(provider, opener = null) {
+            if (isDisposed) return;
+            closedSideChatsRequestId++;
+            closedSideChatsProvider = typeof provider === 'function' ? provider : null;
+            closedSideChatOpener = typeof opener === 'function' ? opener : null;
+            closedSideChats = [];
+            overview?.refresh();
+        },
+
+        /** 重新读取已关闭的辅助对话（辅助对话开关状态变化后调用） */
+        refreshClosedSideChats() {
+            return loadClosedSideChats();
+        },
+
         getRecentlyClosedTabs() {
             return recentlyClosedTabs.map(entry => ({ ...entry }));
+        },
+
+        /** 删除已不存在的业务资源后清掉对应的“最近关闭”记录，避免重开出空壳标签 */
+        forgetClosedTabs(predicate) {
+            if (typeof predicate !== 'function' || recentlyClosedTabs.length === 0) return;
+            const kept = recentlyClosedTabs.filter(entry => !predicate(entry.tab));
+            if (kept.length === recentlyClosedTabs.length) return;
+            recentlyClosedTabs.splice(0, recentlyClosedTabs.length, ...kept);
+            overview?.refresh();
         },
 
         async reopenClosedTab(closedId) {
@@ -902,15 +967,30 @@ export function createSidePaneController({
             const origin = doc.activeElement;
             const definition = getTabType(rawTab.kind);
             const resolved = definition?.toTab ? definition.toTab(rawTab, state.tabs) : rawTab;
+            const targetTabId = String(resolved.id);
+            const wasOpen = state.tabs.some(tab => tab.id === targetTabId);
             state = SidePaneState.openTab(state, definition ? {
                 icon: definition.icon, typeLabel: definition.label, searchHint: definition.searchHint,
                 ...resolved
             } : resolved);
             navigationRevision++;
-            const targetTabId = String(resolved.id);
             const openedTab = state.tabs.find(t => t.id === targetTabId);
+            // 从分支拓扑等非“最近关闭”入口把同一个标签重新打开时，别在总览里留下重复的关闭记录
+            const closedIndex = recentlyClosedTabs.findIndex(entry => entry.id === targetTabId);
+            if (closedIndex !== -1) {
+                recentlyClosedTabs.splice(closedIndex, 1);
+                overview?.refresh();
+            }
             rememberOpened(SidePaneState.getTabParent(openedTab), targetTabId);
             renderTabList();
+            // 从“最近关闭”重开等新建标签路径：通知类型把资源重新标记为打开
+            if (!wasOpen && typeof definition?.onOpened === 'function') {
+                try {
+                    await definition.onOpened(openedTab);
+                } catch (error) {
+                    console.warn(`[SidePaneController] onOpened failed for "${targetTabId}":`, error);
+                }
+            }
 
             const mounting = ensureTabMounted(targetTabId, {
                 provider: providers[rawTab.kind],

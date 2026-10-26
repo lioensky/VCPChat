@@ -13,12 +13,13 @@ import {
 
 /**
  * button 打开 / 收起 popover；列表数据和动作都从外面来：
- *   getTabs() / getActiveTabId() / getRecentlyClosed()
+ *   getTabs() / getActiveTabId() / getRecentlyClosed() / getClosedSideChats()
  *   isClosable(tab)
  *   onActivate(tabId)   点开一个打开的标签（同时展开面板）
  *   onClose(tabId)      关闭按钮，返回 Promise
  *   onReopen(closedId)  重新打开最近关闭的标签
- *   onShow()            popover 打开前调用，用来收起别的浮层
+ *   onOpenClosedSideChat(item)  重新打开磁盘上已关闭的辅助对话（重启后也能用）
+ *   onShow()            popover 打开前调用，用来收起别的浮层并刷新磁盘上的已关闭辅助对话
  */
 export function createSidePaneTabOverview({
     button,
@@ -27,10 +28,12 @@ export function createSidePaneTabOverview({
     getTabType = () => null,
     getActiveTabId,
     getRecentlyClosed,
+    getClosedSideChats = () => [],
     isClosable,
     onActivate,
     onClose,
     onReopen,
+    onOpenClosedSideChat = null,
     onShow = () => {}
 }) {
     const doc = popover.ownerDocument;
@@ -124,8 +127,13 @@ export function createSidePaneTabOverview({
             closed,
             searchFields: buildSearchFields(closed.title, getTabSearchHint(closed.tab, getTabType), getTabTypeLabel(closed.tab, getTabType))
         })), queryParts);
+        // 磁盘上已关闭的辅助对话：重启后“最近关闭”清空，这里仍然列出并可以重开
+        const closedSideChatItems = filterAndRankSearchItems(getClosedSideChats().map(item => ({
+            item,
+            searchFields: buildSearchFields(item.title || '辅助对话', '辅助对话', '辅助对话')
+        })), queryParts);
 
-        if (openItems.length === 0 && closedItems.length === 0) {
+        if (openItems.length === 0 && closedItems.length === 0 && closedSideChatItems.length === 0) {
             const emptyEl = doc.createElement('div');
             emptyEl.className = 'side-pane-overview-empty';
             emptyEl.textContent = '未找到匹配的标签页';
@@ -179,6 +187,22 @@ export function createSidePaneTabOverview({
                 item.addEventListener('click', async () => {
                     hide();
                     await onReopen(closed.id);
+                });
+                listEl.appendChild(item);
+            });
+        }
+
+        if (closedSideChatItems.length > 0) {
+            listEl.appendChild(createSectionTitle('已关闭的辅助对话'));
+            closedSideChatItems.forEach(({ item: entry }) => {
+                const item = doc.createElement('div');
+                item.className = 'side-pane-overview-item closed-side-chat';
+                item.setAttribute('data-closed-side-chat-id', entry.id);
+                markOption(item);
+                item.append(createItemTitle('chat_bubble', entry.title || '辅助对话'), createTime('已关闭'));
+                item.addEventListener('click', async () => {
+                    hide();
+                    await onOpenClosedSideChat?.(entry);
                 });
                 listEl.appendChild(item);
             });

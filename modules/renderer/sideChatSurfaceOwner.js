@@ -929,20 +929,8 @@ export async function mountSideChatSurface(container, {
                 chatCapabilities?.uiHelper?.showToastNotification?.('无法关闭标签页：存在未保存的历史记录。请点击保存徽标重试，或右键点击徽标放弃更改。', 'warning');
                 return { closed: false, reason: 'UNSAVED_CHANGES' };
             }
-            // 分形子分支关闭 Tab 时不删除子话题（随时可在脉络图中重开）；
-            // 根侧聊（forkFromTopicId 为空）保留原关闭确认与删除语义
-            const isBranch = Boolean(currentDescriptor?.forkFromTopicId);
-            if (!isBranch) {
-                const uiHelper = chatCapabilities?.uiHelper;
-                const history = liveConversation?.historyRef?.get?.() || [];
-                const hasInput = Boolean(textarea.value.trim()) || references.length > 0 || attachmentsOwner.count > 0;
-                if (typeof uiHelper?.showConfirmDialog === 'function' && (history.length > 0 || hasInput)) {
-                    const confirmed = await uiHelper.showConfirmDialog(
-                        `关闭「${descriptor.title || '辅助对话'}」会删除这段辅助对话的全部记录，无法恢复。`,
-                        '关闭辅助对话', '关闭并删除', '取消', true);
-                    if (!confirmed) return { closed: false, reason: 'USER_CANCELED' };
-                }
-            }
+            // 关闭标签只收起视图：对话记录、快照和草稿都留在磁盘上，之后可从分支拓扑或最近关闭重开。
+            // 删除必须走分支拓扑里的“删除分支”，与关闭彻底分开。
             // Cancel active operation and wait for settlement
             if (activeSendController) {
                 activeSendController.abort('side-chat-closed');

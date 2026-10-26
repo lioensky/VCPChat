@@ -330,7 +330,7 @@ export function reorderTabs(state, activeId, overId) {
 }
 
 // 话题级标签只在所属对话里可见；没有当前对话（群组、启动早期）时一律不可见，
-// 否则「关闭所有」会关掉、进而删除别的对话的辅助对话
+// 否则「关闭所有」会关掉别的对话正在用的标签
 export function isTabVisibleForParent(tab, parentRef) {
     if (tab.id === NOTIFICATIONS_TAB_ID || tab.scopeMode === 'global') return true;
     const tabParent = getTabParent(tab);

@@ -408,6 +408,9 @@ impl Reconciler {
         else {
             return Ok(None);
         };
+        if is_ephemeral_side_chat_topic_id(&topic_id) {
+            return Ok(None);
+        }
         if !path.is_file() {
             return Ok(None);
         }
@@ -636,7 +639,10 @@ impl Reconciler {
         {
             let entry = entry?;
             if entry.file_type()?.is_dir() {
-                topic_ids.push(entry.file_name().to_string_lossy().to_string());
+                let topic_id = entry.file_name().to_string_lossy().to_string();
+                if !is_ephemeral_side_chat_topic_id(&topic_id) {
+                    topic_ids.push(topic_id);
+                }
             }
         }
         topic_ids.sort();
@@ -962,6 +968,23 @@ fn is_synthetic_recovered_topic(topic: &TopicDefinition) -> bool {
         .as_deref()
         .and_then(|name| name.strip_prefix("Recovered: "))
         == Some(topic.topic_id.as_str())
+}
+
+// 侧聊子会话目录（sidechat_<时间戳>_<6位hex>）是桌面端侧栏的临时分支，
+// 不属于 Owner 的 Topic 投影；恢复扫描与移动端索引都必须跳过。
+fn is_ephemeral_side_chat_topic_id(topic_id: &str) -> bool {
+    let Some(rest) = topic_id.strip_prefix("sidechat_") else {
+        return false;
+    };
+    let Some((timestamp, suffix)) = rest.split_once('_') else {
+        return false;
+    };
+    !timestamp.is_empty()
+        && timestamp.bytes().all(|byte| byte.is_ascii_digit())
+        && suffix.len() == 6
+        && suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 pub fn parse_owner_config(
@@ -2303,6 +2326,61 @@ mod tests {
             )
             .expect("count orphan topic");
         assert_eq!(indexed, 1);
+    }
+
+    #[tokio::test]
+    async fn ephemeral_side_chat_topics_are_not_projected_or_indexed() {
+        let (_temp, config, database, reconciler) = fixture();
+        let owner_id = "agent_sidechat";
+        let real_topic_id = "topic_real";
+        let sidechat_id = "sidechat_1792902280175_cd6c61";
+        write_owner(
+            &config,
+            OwnerType::Agent,
+            owner_id,
+            "Side Chat Agent",
+            &[sidechat_id, real_topic_id],
+        );
+        write_history(
+            &config,
+            owner_id,
+            real_topic_id,
+            serde_json::json!([
+                {"id":"message_real","role":"user","content":"hi","timestamp":100}
+            ]),
+        );
+        write_history(
+            &config,
+            owner_id,
+            sidechat_id,
+            serde_json::json!([
+                {"id":"message_side","role":"user","content":"side","timestamp":200}
+            ]),
+        );
+
+        let stats = reconciler.reconcile().await.expect("reconcile");
+        assert_eq!(stats.topics_seen, 1);
+        assert_eq!(stats.messages_ingested, 1);
+        let sidechat_rows: i64 = database
+            .connection
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM topics WHERE owner_id=?1 AND topic_id=?2",
+                rusqlite::params![owner_id, sidechat_id],
+                |row| row.get(0),
+            )
+            .expect("count side chat topics");
+        assert_eq!(sidechat_rows, 0);
+        let sidechat_messages: i64 = database
+            .connection
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE owner_id=?1 AND topic_id=?2",
+                rusqlite::params![owner_id, sidechat_id],
+                |row| row.get(0),
+            )
+            .expect("count side chat messages");
+        assert_eq!(sidechat_messages, 0);
     }
 
     #[tokio::test]

@@ -1217,6 +1217,7 @@ async function repairOwnerTopicProjection({
       if (
         typeof topicId === "string" &&
         sanitizeId(topicId) === topicId &&
+        !isEphemeralSideChatTopicId(topicId) &&
         physicalTopics.has(topicId) &&
         !isTombstoned(topicId) &&
         !projectedIds.has(topicId) &&
@@ -1246,7 +1247,11 @@ async function repairOwnerTopicProjection({
 
     let added = 0;
     for (const topicId of [...physicalTopics].sort()) {
-      if (projectedIds.has(topicId) || isTombstoned(topicId)) continue;
+      if (
+        projectedIds.has(topicId) ||
+        isEphemeralSideChatTopicId(topicId) ||
+        isTombstoned(topicId)
+      ) continue;
       const historyPath = path.join(
         appDataPath,
         "UserData",
@@ -1340,7 +1345,9 @@ async function scanPhysicalTopicTree(appDataPath) {
     if (!ownerId || sanitizeId(ownerId) !== ownerId) continue;
     const topicsPath = path.join(userDataPath, ownerId, "topics");
     const topicIds = (await listDirectories(topicsPath))
-      .filter((topicId) => sanitizeId(topicId) === topicId);
+      .filter((topicId) =>
+        sanitizeId(topicId) === topicId && !isEphemeralSideChatTopicId(topicId),
+      );
     const owner = ownersById.get(ownerId);
     if (!owner) {
       if (topicIds.length > 0) {
@@ -2169,6 +2176,14 @@ async function deleteMessage({
 function sanitizeId(id) {
   if (typeof id !== "string") return "";
   return id.replace(/[^a-zA-Z0-9_\-]/g, "");
+}
+
+// 侧聊子会话只是 topics/ 下的临时分支目录（带 sidechat-child.json），
+// 不属于 Owner 的 Topic 投影，不能被恢复扫描写回 config.topics。
+const EPHEMERAL_SIDE_CHAT_ID = /^sidechat_\d+_[0-9a-f]+$/;
+
+function isEphemeralSideChatTopicId(topicId) {
+  return typeof topicId === "string" && EPHEMERAL_SIDE_CHAT_ID.test(topicId);
 }
 
 module.exports = {

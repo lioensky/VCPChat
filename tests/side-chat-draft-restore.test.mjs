@@ -34,6 +34,11 @@ async function fixture(t, legacyInput = {}) {
             return promise;
         },
         async deleteSideChatChild(...args) { deletions.push(args); return call('side-chat:delete-child', ...args); },
+        updateSideChatBranch: (...args) => {
+            const promise = call('side-chat:update-branch', ...args);
+            metadataWrites.push(promise);
+            return promise;
+        },
         getChatHistory: async (_agent, topic) => JSON.parse(await fs.readFile(path.join(directory, 'agent', 'topics', topic, 'history.json'), 'utf8'))
     };
     function mountController({ dormancy = null } = {}) {
@@ -53,7 +58,7 @@ async function fixture(t, legacyInput = {}) {
         });
         controller = createSidePaneController({ root: doc.getElementById('pane'), tabListElement: doc.getElementById('tabs'),
             contentContainer: doc.getElementById('content'), dormancy,
-            tabTypes: [defineChatTabType({ provider: wiring.provider, onClosed: wiring.onTabClosed })] });
+            tabTypes: [defineChatTabType({ provider: wiring.provider, onOpened: wiring.onTabOpened, onClosed: wiring.onTabClosed })] });
         controller.setParent(descriptor.parent);
         const session = { controller, wiring };
         sessions.push(session);
@@ -71,7 +76,7 @@ async function fixture(t, legacyInput = {}) {
         metadata: async () => JSON.parse(await fs.readFile(path.join(childDir, 'sidechat-metadata.json'), 'utf8')) };
 }
 
-test('empty-history side chats restore browser drafts, references and models through the real controller, then explicit close clears storage', async t => {
+test('empty-history side chats restore browser drafts through the real controller, and explicit close keeps records and draft', async t => {
     const f = await fixture(t, { composerStorage: 'local' });
     f.drafts.save(f.descriptor, { draft: 'my unsent question', model: 'chosen-model', references: [{ id: 'ref', text: 'selected text' }] });
     const { controller, wiring } = f.mountController();
@@ -83,9 +88,66 @@ test('empty-history side chats restore browser drafts, references and models thr
     assert.equal(handle.getDraft(), 'my unsent question');
     assert.equal(handle.getModel(), 'chosen-model');
     assert.equal(handle.getReferences()[0].text, 'selected text');
+
+    // 关闭标签只是收起视图：记录、目录和草稿都保留
     await controller.closeTab(tab.id);
-    assert.equal(f.drafts.read(f.descriptor).input, null);
-    await assert.rejects(fs.stat(f.childDir), { code: 'ENOENT' });
+    await f.settleMetadata();
+    assert.equal(f.deletions.length, 0);
+    await fs.stat(f.childDir);
+    assert.equal((await f.metadata()).open, false);
+    assert.equal((await f.metadata()).status, 'closed');
+    assert.equal(f.drafts.read(f.descriptor).input?.draft, 'my unsent question');
+
+    // 切回这个对话时不会被自动恢复，也不会被当成空会话清掉
+    await wiring.restoreSessions('agent', 'parent');
+    assert.equal(controller.getSnapshot().tabs.some(item => item.id === tab.id), false);
+    assert.equal(f.deletions.length, 0);
+    await fs.stat(f.childDir);
+
+    // 从“最近关闭”重开后，metadata 重新标记为打开
+    assert.equal(controller.getRecentlyClosedTabs().some(entry => entry.id === tab.id), true);
+    assert.ok(await controller.reopenClosedTab(tab.id));
+    await f.settleMetadata();
+    assert.equal((await f.metadata()).open, true);
+    assert.equal((await f.metadata()).status, 'ready');
+});
+
+test('closing a side chat with messages keeps history on disk and reopens with the same messages', async t => {
+    const f = await fixture(t);
+    const messages = [
+        { id: 'q1', role: 'user', content: '关闭后还要能看见的问题' },
+        { id: 'a1', role: 'assistant', content: '关闭后还要能看见的回答' }
+    ];
+    const historyPath = path.join(f.childDir, 'history.json');
+    await fs.writeFile(historyPath, JSON.stringify(messages), 'utf8');
+
+    const { controller, wiring } = f.mountController();
+    await wiring.restoreSessions('agent', 'parent');
+    const tab = controller.getSnapshot().tabs.find(item => item.kind === 'chat');
+    assert.ok(tab);
+    controller.activateTab(tab.id);
+    await waitFor(() => Boolean(controller.getTabHandle(tab.id)));
+
+    await controller.closeTab(tab.id);
+    await f.settleMetadata();
+
+    // 关闭不再删除任何记录：history 原样保留，metadata 只标记为关闭
+    assert.deepEqual(JSON.parse(await fs.readFile(historyPath, 'utf8')), messages);
+    assert.equal(f.deletions.length, 0);
+    assert.equal((await f.metadata()).open, false);
+    assert.equal((await f.metadata()).status, 'closed');
+
+    // 重启后内存里的“最近关闭”不会存在：按磁盘 metadata 仍能列出并重开
+    const closed = await wiring.listClosedSessions();
+    const closedEntry = closed.find(item => item.id === f.descriptor.child.topicId);
+    assert.ok(closedEntry, 'closed side chat must be recoverable from disk');
+    assert.equal(closedEntry.title, f.descriptor.title);
+
+    assert.ok(await wiring.reopenClosedSession(closedEntry));
+    await waitFor(() => Boolean(controller.getTabHandle(tab.id)));
+    assert.deepEqual(JSON.parse(await fs.readFile(historyPath, 'utf8')), messages);
+    await f.settleMetadata();
+    assert.equal((await f.metadata()).open, true);
 });
 
 test('a restored side chat keeps its saved id, so the pane can return to it after every restart', async t => {

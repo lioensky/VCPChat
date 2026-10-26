@@ -4,6 +4,12 @@
  * Also detects and recovers orphaned agents (topic files exist but agent config is missing)
  */
 
+// 侧聊（side chat）子会话目录不属于 Topic 投影，不能被当成孤儿话题恢复。
+const EPHEMERAL_SIDE_CHAT_ID = /^sidechat_\d+_[0-9a-f]+$/;
+function isEphemeralSideChatTopicId(topicId) {
+    return typeof topicId === 'string' && EPHEMERAL_SIDE_CHAT_ID.test(topicId);
+}
+
 class ConsistencyChecker {
     constructor(appDataPath, apiHandlers) {
         this.appDataPath = appDataPath;
@@ -46,7 +52,8 @@ class ConsistencyChecker {
         
         try {
             // Get actual topic directories from filesystem
-            const actualTopicDirs = await this.api.listDir(userDataPath);
+            const actualTopicDirs = (await this.api.listDir(userDataPath) || [])
+                .filter(dirName => !isEphemeralSideChatTopicId(dirName));
             
             if (!actualTopicDirs || actualTopicDirs.length === 0) {
                 // No topics directory exists, but config might have topics
@@ -163,7 +170,8 @@ class ConsistencyChecker {
 
                 // Check if this UserData directory has a topics subdirectory
                 const topicsPath = `${this.appDataPath}UserData/${dirName}/topics`;
-                const topicDirs = await this.api.listDir(topicsPath);
+                const topicDirs = (await this.api.listDir(topicsPath) || [])
+                    .filter(topicId => !isEphemeralSideChatTopicId(topicId));
                 
                 if (!topicDirs || topicDirs.length === 0) continue; // No topic files, skip
 

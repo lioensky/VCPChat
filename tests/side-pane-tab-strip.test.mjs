@@ -186,6 +186,39 @@ test('controller: tabs marked reopenable:false are not remembered; list is cappe
     controller.dispose();
 });
 
+test('controller: forgetting a deleted resource removes only its recently closed entries', async () => {
+    const { controller } = setup({ notes: notesProvider });
+    await controller.openTab({ id: 'n1', kind: 'notes', title: 'N1', scopeMode: 'global' });
+    await controller.openTab({ id: 'n2', kind: 'notes', title: 'N2', scopeMode: 'global' });
+    await controller.closeTab('n1');
+    await controller.closeTab('n2');
+    assert.equal(controller.getRecentlyClosedTabs().length, 2);
+
+    controller.forgetClosedTabs(tab => tab.id === 'n1');
+    assert.deepEqual(controller.getRecentlyClosedTabs().map(entry => entry.id), ['n2']);
+    controller.dispose();
+});
+
+test('controller: the overview lists disk-backed closed side chats and reopens them', async () => {
+    const { controller, doc } = setup({ notes: notesProvider });
+    let opened = null;
+    controller.setClosedSideChatsProvider(
+        async () => [{ id: 'child-1', title: '已关闭的辅助对话' }],
+        async item => { opened = item; }
+    );
+
+    doc.getElementById('sidePaneTabOverviewBtn').click();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const row = doc.querySelector('[data-closed-side-chat-id="child-1"]');
+    assert.ok(row, 'closed side chat from disk must be listed after reopening the overview');
+    assert.ok(row.textContent.includes('已关闭的辅助对话'));
+
+    row.click();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(opened?.id, 'child-1');
+    controller.dispose();
+});
+
 test('controller: the tab overview is keyboard driven (arrows, Enter, Escape)', async () => {
     const { controller, doc, dom } = setup({ notes: notesProvider });
     await controller.openTab({ id: 'n1', kind: 'notes', title: 'N1', scopeMode: 'global' });

@@ -23,7 +23,6 @@ async function fixture(t) {
     const backup = historyPath + '.backup';
     let blocked = false, gate, saveResult, history = [], sends = 0;
     const toasts = [], removals = [], writes = [], confirms = [];
-    let confirmAnswer = true;
     const dom = new JSDOM('<div id="mount"></div>');
     const doc = dom.window.document;
     const repository = {
@@ -40,7 +39,7 @@ async function fixture(t) {
             parent: { itemId: 'agent', topicId: 'parent' }, child: { itemId: 'agent', topicId: 'child' } },
         chatCapabilities: {
             repository,
-            uiHelper: { showConfirmDialog: async message => { confirms.push(message); return confirmAnswer; },
+            uiHelper: { showConfirmDialog: async message => { confirms.push(message); return true; },
                 showToastNotification: (message, type) => toasts.push({ message, type }) },
             manager: { sendMessage() { sends++; throw new Error('Unexpected generation'); } },
             createRenderer({ root: list, conversation }) {
@@ -92,7 +91,6 @@ async function fixture(t) {
     }
     function remove(id) { menu(id); doc.querySelector('[data-side-chat-action="delete"]').click(); }
     return { doc, handle, initial, toasts, writes, removals, menu, remove, repair, confirms,
-        answerConfirm: answer => { confirmAnswer = answer; },
         history: () => history, read: () => queue.read(child), sends: () => sends,
         failWithResult(result) { saveResult = result; },
         holdSave(promise) { gate = promise; },
@@ -166,19 +164,14 @@ test('pending side deletion keeps typed drafts, blocks send and close, then pers
     assert.equal(f.writes.length, 2, 'one acknowledged save per deletion, no hidden renderer write');
 });
 
-test('closing a side chat that has messages asks first, and keeps it when declined', async t => {
+test('closing a side chat with messages does not ask and keeps the records', async t => {
     const f = await fixture(t);
-    f.answerConfirm(false);
-    assert.deepEqual(await f.handle.requestClose(), { closed: false, reason: 'USER_CANCELED' });
-    assert.equal(f.confirms.length, 1);
-    assert.deepEqual(await f.read(), f.initial);
-
-    f.answerConfirm(true);
     assert.deepEqual(await f.handle.requestClose(), { closed: true });
-    assert.equal(f.confirms.length, 2);
+    assert.equal(f.confirms.length, 0, 'closing is not destructive, so there is nothing to confirm');
+    assert.deepEqual(await f.read(), f.initial);
 });
 
-test('closing a side chat with no messages but an unsent draft still asks first', async t => {
+test('closing a side chat with no messages but an unsent draft does not ask nor discard it', async t => {
     const f = await fixture(t);
     f.remove('answer');
     await waitFor(() => !f.doc.querySelector('[data-message-id="answer"]'));
@@ -186,9 +179,8 @@ test('closing a side chat with no messages but an unsent draft still asks first'
     await waitFor(() => !f.doc.querySelector('.message-item'));
     f.handle.setDraft('a long question I have not sent yet');
     const before = f.confirms.length;
-    f.answerConfirm(false);
-    assert.deepEqual(await f.handle.requestClose(), { closed: false, reason: 'USER_CANCELED' });
-    assert.equal(f.confirms.length, before + 1, 'the draft alone is worth a confirmation');
+    assert.deepEqual(await f.handle.requestClose(), { closed: true });
+    assert.equal(f.confirms.length, before, 'closing keeps the draft, so no confirmation is needed');
     assert.equal(f.handle.getDraft(), 'a long question I have not sent yet');
 });
 

@@ -57,8 +57,8 @@ export function createSidePaneTabCloseOwner({
                 // 确认期间视图换了（休眠释放、又挂上）：用户已经同意关闭，按现在的样子关；标签本身换了由下面的 lifetime 检查拦住
                 if (getEntry(tabId) !== entry) entry = getEntry(tabId) || null;
             } else if (!entry && !options.discard) {
-                // 没挂载过的标签（恢复后还没显示的辅助对话）没有 handle 可问，由类型自己确认：
-                // 否则在「关闭其他 / 全部」里它们会不经确认就被删掉
+                // 没挂载过的标签（恢复后还没显示的辅助对话）没有 handle 可问，由类型自己决定能否关闭：
+                // 否则「关闭其他 / 全部」会绕过类型自己的关闭检查
                 const requestClose = getRequestClose(tab);
                 if (requestClose) {
                     const result = await requestClose(tab);

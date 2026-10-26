@@ -30,7 +30,7 @@ function createTestDOM() {
     `);
 }
 
-test('Parity: Closing selection-side-chat destroys runtime and is explicitly excluded from recentlyClosedTabs', async () => {
+test('Parity: closing a side chat only releases runtime and stays reopenable from recentlyClosedTabs', async () => {
     const dom = createTestDOM();
     const doc = dom.window.document;
     const root = doc.getElementById('vcpSidePane');
@@ -38,8 +38,10 @@ test('Parity: Closing selection-side-chat destroys runtime and is explicitly exc
     const content = root.querySelector('.side-pane-content-container');
 
     let disposedRuntime = false;
+    let mounts = 0;
     const mockChatProvider = {
         async mountTab(desc, view) {
+            mounts += 1;
             return {
                 descriptor: desc,
                 focus() {},
@@ -50,12 +52,16 @@ test('Parity: Closing selection-side-chat destroys runtime and is explicitly exc
     };
 
     const closedDescriptors = [];
+    const openedDescriptors = [];
     const ctrl = createSidePaneController({
         root,
         tabListElement: tabList,
         contentContainer: content,
         tabTypes: [defineChatTabType({
             provider: mockChatProvider,
+            onOpened: async (desc) => {
+                openedDescriptors.push(desc);
+            },
             onClosed: async (desc) => {
                 closedDescriptors.push(desc);
             }
@@ -65,15 +71,16 @@ test('Parity: Closing selection-side-chat destroys runtime and is explicitly exc
     const desc = createSideChatDescriptor({
         parent: { itemId: 'agent-alpha', topicId: 'main-topic' },
         childTopicId: 'child-topic-1',
-        title: 'Ephemeral Side Chat'
+        title: 'Side Chat'
     });
 
     ctrl.setParent(desc.parent);
     await ctrl.openTab({ kind: 'chat', descriptor: desc });
     assert.equal(ctrl.getSnapshot().tabs.length, 2); // notifications + side chat
     assert.equal(ctrl.getSnapshot().activeTabId, desc.id);
+    assert.equal(openedDescriptors.length, 1, 'opening a new side chat tab must notify the type');
 
-    // Close the ephemeral side chat tab
+    // Close the side chat tab: view goes away, records are untouched
     await ctrl.closeTab(desc.id);
 
     // 1. Runtime must be completely disposed
@@ -83,15 +90,24 @@ test('Parity: Closing selection-side-chat destroys runtime and is explicitly exc
     const views = content.querySelectorAll(`.side-pane-view[data-tab-id="${desc.id}"]`);
     assert.equal(views.length, 0, 'View element must be removed from DOM');
 
-    // 3. the chat tab type's onClosed must be notified with the descriptor for logical tab cleanup
+    // 3. the chat tab type's onClosed must be notified so the record can be marked closed
     assert.equal(closedDescriptors.length, 1);
     assert.equal(closedDescriptors[0].id, desc.id);
 
-    // 4. Tab must NOT be offered for reopening as a recently closed tab
-    assert.equal(ctrl.getRecentlyClosedTabs().some(entry => entry.id === desc.id), false,
-        'selection-side-chat must be explicitly excluded from recentlyClosedTabs');
-    assert.equal(await ctrl.reopenClosedTab(desc.id), null);
-    assert.equal(ctrl.getSnapshot().tabs.some(tab => tab.id === desc.id), false);
+    // 4. Closing is not deletion: the tab stays available under "recently closed"
+    assert.equal(ctrl.getRecentlyClosedTabs().some(entry => entry.id === desc.id), true,
+        'a closed side chat must remain reopenable');
+
+    // 5. Reopening from another entry (e.g. the branch rail) clears the stale recently-closed entry
+    await ctrl.openTab({ kind: 'chat', descriptor: desc });
+    assert.equal(ctrl.getRecentlyClosedTabs().some(entry => entry.id === desc.id), false);
+    await ctrl.closeTab(desc.id);
+
+    const reopened = await ctrl.reopenClosedTab(desc.id);
+    assert.ok(reopened, 'reopenClosedTab returns the mounted handle');
+    assert.equal(ctrl.getSnapshot().tabs.some(tab => tab.id === desc.id), true);
+    assert.equal(mounts, 3, 'reopening mounts the side chat again');
+    assert.equal(openedDescriptors.length, 3, 'reopening notifies the type that the record is open again');
 
     await ctrl.dispose();
     dom.window.close();

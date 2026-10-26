@@ -65,8 +65,7 @@ export function sideChatTab(rawDescriptor, tabs = []) {
         id: existing ? existing.id : descriptor.id,
         kind: 'chat',
         type: 'selection-side-chat',
-        // 临时标签：关掉就删子话题，不进"最近关闭"，也不随布局持久化（由会话服务恢复）
-        ephemeral: true,
+        // 关闭只收起标签：子话题记录留在磁盘，开着的标签由会话服务恢复，关掉的进“最近关闭”可重开
         title: descriptor.title,
         icon: 'chat_bubble',
         closable: true,
@@ -80,11 +79,12 @@ export function sideChatTab(rawDescriptor, tabs = []) {
  * @returns {import('../side-pane-types.js').SidePaneTabType}
  * provider：mountTab(descriptor, view, ctx)，返回辅助对话 handle；ctx 原样转交控制器给的挂载上下文（含 view scope）。
  * openSideChat：新标签页入口；不传时不出现在新标签页里。
- * onClosed(descriptor)：标签关掉后调用，用来删掉子话题。
+ * onClosed(descriptor)：标签关掉后调用，用来记录子话题已关闭（不删除记录）。
+ * onOpened(descriptor)：标签新打开时调用（包括从“最近关闭”重开），用来把子话题标记为打开。
  * requestClose(descriptor)：还没挂载的标签关闭前确认（挂着的由 handle.requestClose 确认），返回 { closed: false } 取消。
  * canOpen()：当前能不能新开辅助对话（群聊里不能）；返回 false 时新标签页里不列这个入口。
  */
-export function defineChatTabType({ provider, openSideChat = null, onClosed = null, requestClose = null, canOpen = null }) {
+export function defineChatTabType({ provider, openSideChat = null, onClosed = null, onOpened = null, requestClose = null, canOpen = null }) {
     return Object.freeze({
         kind: 'chat', label: '辅助对话', icon: 'chat_bubble', searchHint: '辅助对话',
         persist: false,
@@ -102,6 +102,7 @@ export function defineChatTabType({ provider, openSideChat = null, onClosed = nu
             mountTab: (payload, view, ctx) => provider.mountTab(payload.descriptor, view, ctx)
         } : null,
         onClosed: typeof onClosed === 'function' ? tab => onClosed({ ...tab.descriptor }) : null,
+        onOpened: typeof onOpened === 'function' ? tab => onOpened({ ...tab.descriptor }) : null,
         requestClose: typeof requestClose === 'function' ? tab => requestClose({ ...tab.descriptor }) : null
     });
 }

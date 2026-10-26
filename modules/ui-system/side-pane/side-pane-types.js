@@ -101,6 +101,8 @@
  * @property {SidePaneOpenTabEntry | null} [entry] 有时出现在新标签页里
  * @property {(payload: object, tabs: readonly SidePaneTab[]) => SidePaneTab} [toTab]
  *   openTab(payload) 先经过它变成标签；可以返回已有标签的 id 让重复打开落到同一个标签上
+ * @property {(tab: SidePaneTab) => Promise<void> | void} [onOpened]
+ *   标签新打开时调用（从“最近关闭”重开也算）；已存在的标签被再次激活不会调用
  * @property {(tab: SidePaneTab) => Promise<void> | void} [onClosed] 标签关掉后调用（视图已经拆掉）
  * @property {(tab: SidePaneTab) => Promise<{ closed: boolean } | void> | { closed: boolean } | void} [requestClose]
  *   标签没挂载（从没显示过或在休眠）时关闭前调用；挂着的标签由 handle.requestClose 确认。返回 { closed: false } 拦下

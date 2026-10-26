@@ -972,6 +972,68 @@ test("启动 repair 用普通 backup 补回物理 Topic 元数据", async (t) =>
   );
 });
 
+test("启动 repair 不把侧聊子会话目录恢复成话题，并清掉既有的 Recovered 侧聊条目", async (t) => {
+  const { entity } = loadSqliteModules();
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-repair-sidechat-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  const ownerId = "agent-sidechat";
+  const realTopicId = "topic_real";
+  const sideChatId = "sidechat_1792902280175_cd6c61";
+  const agentDir = path.join(directory, "Agents", ownerId);
+  const configPath = path.join(agentDir, "config.json");
+  const topicsDir = path.join(directory, "UserData", ownerId, "topics");
+  const realTopicDir = path.join(topicsDir, realTopicId);
+  const sideChatDir = path.join(topicsDir, sideChatId);
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.mkdirSync(realTopicDir, { recursive: true });
+  fs.mkdirSync(sideChatDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(realTopicDir, "history.json"),
+    JSON.stringify([{ id: "msg-real", role: "user", content: "hi", timestamp: 100 }]),
+  );
+  fs.writeFileSync(
+    path.join(sideChatDir, "history.json"),
+    JSON.stringify([{ id: "msg-side", role: "user", content: "side", timestamp: 200 }]),
+  );
+  fs.writeFileSync(
+    path.join(sideChatDir, "sidechat-child.json"),
+    JSON.stringify({ schemaVersion: 1, ephemeral: true, agentId: ownerId, topicId: sideChatId }),
+  );
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({
+      name: "Side Chat Agent",
+      topics: [
+        { id: sideChatId, name: `Recovered: ${sideChatId}`, createdAt: 200 },
+        { id: realTopicId, name: "Real Topic", createdAt: 100 },
+      ],
+    }),
+  );
+
+  assert.deepEqual(await entity.repairTopicProjectionsFromDisk(directory), {
+    ownersChanged: 1,
+    topicsAdded: 0,
+    topicsRemoved: 1,
+  });
+  const repaired = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  assert.deepEqual(repaired.topics, [
+    { id: realTopicId, name: "Real Topic", createdAt: 100 },
+  ]);
+  assert.equal(fs.existsSync(sideChatDir), true, "侧聊目录不能被删除");
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(sideChatDir, "history.json"), "utf8")).length,
+    1,
+    "侧聊历史必须保留",
+  );
+
+  assert.deepEqual(await entity.repairTopicProjectionsFromDisk(directory), {
+    ownersChanged: 0,
+    topicsAdded: 0,
+    topicsRemoved: 0,
+  });
+});
+
 test("启动 repair 忽略缺失 history.json 的孤立空目录且剥离 DTO 临时字段", async (t) => {
   const { entity } = loadSqliteModules();
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-repair-empty-dir-"));
