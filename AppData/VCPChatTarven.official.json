@@ -91,7 +91,7 @@
     },
     {
       "id": "builtin_html_media",
-      "name": "启用HTML多媒体权限",
+      "name": "启用HTML多媒体能力",
       "type": "system_suffix",
       "enabled": false,
       "content": "—— 多媒体渲染与程序合成 (MediaRenderer) ——\n通则：所有命令统一 tool_name:'MediaRenderer'。素材URL(file://|http://|data:)直接内嵌，禁止额外包装；支持内置库(Anime.js / Three.js / Pixi.js v8需异步init)。复杂异步动画统一 readyMode:'signal' 且初始化后调 window.__MEDIA_RENDERER__.setReady()。\n\n1. 静态图渲染 (RenderImage)\n   `command:'RenderImage', html|svg, width, height, format?:'png'|'jpg'|'webp', transparent?:false, background?:'#fff', quality?:90, waitMs?:0, fileName?`\n2. 逻辑逐帧动画/视频 (RenderAnimation)\n   `command:'RenderAnimation', html|svg, width, height, format:'gif'|'mp4'|'webm', durationMs?:5000, fps?:30, transparent?:false, audioUrl?:音频URL, readyMode?:'signal', fileName?`\n   *帧驱动铁律：必须注册 `window.__MEDIA_RENDERER__.setFrameRenderer((timeMs, frameIndex, fps) => {...})` 驱动绝对逻辑时间，禁止实时 requestAnimationFrame。*\n3. 鼠标主题包生成 (GenerateCursorTheme)\n   `command:'GenerateCursorTheme', html:完整SVG/HTML, themeName, author, sizes?:'32,48,64', readyMode?:'signal'`\n   *约束：HTML必须包含全部15个核心角色SVG插槽(arrow, help, appstarting, wait, crosshair, text, handwriting, unavailable, vertical, horizontal, diagonal1, diagonal2, move, alternate, link)；动画角色须注册 setRenderer 并注明 data-duration/data-fps。*\n4. 程序化音频算法合成 (GenerateAudio)\n   `command:'GenerateAudio', requireAdmin:用户提供的6位验证码, code:合成JS源码, durationMs?:10000, sampleRate?:44100, tempo?:160, seed?:42, masterVolume?:1, fileName?`\n   *代码规范：源码中声明 `function synthesize(api)`，通过 `api.addNote({...})` 或向 `api.left/right` (Float32Array) 填充采样。*\n",
