@@ -1815,7 +1815,8 @@ body[data-vcp-theme="dark"] .vcp-tool-result-bubble th {
 
 /* Mermaid 源码由本地 Pele 渲染，颜色随全局主题变量实时自适应 */
 .mermaid {
-    --pele-bg: transparent;
+    /* Pele 也将背景色用于实色节点的反色文字、标签遮罩与空心标记，不能设为 transparent。 */
+    --pele-bg: var(--bg-color, #20252A);
     --pele-fg: var(--primary-text, #F2F0E9);
     --pele-muted: var(--secondary-text, #A7AFB1);
     --pele-line: var(--primary-text, #F2F0E9);
