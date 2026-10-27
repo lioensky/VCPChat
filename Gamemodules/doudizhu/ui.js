@@ -125,7 +125,9 @@
         if (busy || pending || observation?.turn !== 0) return;
         pending = {
             matchId, decisionId: observation.decisionId, revision: observation.revision,
-            submissionId: crypto.randomUUID(),
+            submissionId: (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+                ? crypto.randomUUID()
+                : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
             action: { ...action, speech: $('speech').value, emoteUrl: $('emote').value.trim() },
         };
         void sendPending();
