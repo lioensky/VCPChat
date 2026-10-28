@@ -827,23 +827,42 @@ class VCPLoomManager {
     }
 
     async ensureWebAgentRuntime(instance) {
-        if (instance.webAgentReady) return instance;
-        if (instance.webAgentInitializationPromise) {
-            await instance.webAgentInitializationPromise;
-            return instance;
-        }
+        // 首次打开、重定向或站点自动刷新可能使正在等待的初始化属于旧文档。
+        // 仅重试无副作用的运行时初始化，不重放打开标签或页面操作。
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            const contents = instance?.view?.webContents;
+            if (!contents || contents.isDestroyed()) {
+                throw new Error('LoomAPP 页面进程不可用。');
+            }
+            if (instance.webAgentReady) return instance;
 
-        const generation = instance.documentGeneration;
-        const initialization = this.initializeWebAgentRuntime(instance, generation);
-        instance.webAgentInitializationPromise = initialization;
-        try {
-            await initialization;
-        } finally {
-            if (instance.webAgentInitializationPromise === initialization) {
-                instance.webAgentInitializationPromise = null;
+            const generation = instance.documentGeneration;
+            const initialization = instance.webAgentInitializationPromise
+                || this.initializeWebAgentRuntime(instance, generation);
+            instance.webAgentInitializationPromise = initialization;
+            try {
+                await initialization;
+                if (generation === instance.documentGeneration && instance.webAgentReady) {
+                    return instance;
+                }
+            } catch (error) {
+                // 上下文在注入期间被销毁时，Electron 也可能抛出原生错误；
+                // 只有确认文档已更换，或明确的旧文档错误，才允许重试。
+                if (
+                    generation === instance.documentGeneration
+                    && error?.code !== 'LOOM_DOCUMENT_CHANGED'
+                ) {
+                    throw error;
+                }
+            } finally {
+                if (instance.webAgentInitializationPromise === initialization) {
+                    instance.webAgentInitializationPromise = null;
+                }
             }
         }
-        return instance;
+        const error = new Error('页面持续导航，Web Agent 暂未就绪；请等待页面稳定后重新读取页面，不要重复打开浏览器。');
+        error.code = 'LOOM_DOCUMENT_UNSTABLE';
+        throw error;
     }
 
     async getWebAgentPageInfo(appId, options = {}) {
@@ -1769,6 +1788,9 @@ class VCPLoomManager {
             instance.loading = true;
             instance.webAgentReady = false;
             instance.webAgentInitializationPromise = null;
+            // 唤醒旧文档等待者，让其检测代次变化并转向新文档，
+            // 避免旧 ready Promise 被替换后一直等待到超时。
+            instance.resolveDocumentReady?.();
             instance.documentReadyPromise = new Promise((resolve) => {
                 instance.resolveDocumentReady = resolve;
             });
