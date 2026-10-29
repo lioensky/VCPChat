@@ -28,6 +28,36 @@ test('desk pet protocol serves only the pet page, vendor, core and agent pet fil
     assert.equal(resolve('vcp-deskpet://pet/default-avatar.png'), path.join(root, 'assets', 'default_avatar.png'));
     assert.equal(resolve('vcp-deskpet://pet/default-avatar.png/x'), null);
 });
+// 沿真实页面入口检查静态依赖，避免共享模块新增 import 后被协议白名单挡住。
+// 假窗口生命周期测试不执行页面模块，无法发现这种启动前失败。
+test('the pet entry static module graph is fully served by its protocol', async () => {
+    const { parse } = require('@babel/parser');
+    const projectRoot = path.resolve('.');
+    const assets = createPetAssets({ paths: {
+        projectRoot,
+        appDataRoot: path.join(projectRoot, 'AppData'),
+        agentDir: path.join(projectRoot, 'AppData', 'Agents'),
+    } });
+    const visited = new Set();
+    const visit = async (url, importer = 'page') => {
+        if (visited.has(url)) return;
+        visited.add(url);
+        const file = await assets.resolveLocalFile(url);
+        assert.ok(file, `${importer} 的静态依赖无法通过桌宠协议加载：${url}`);
+        const ast = parse(fs.readFileSync(file, 'utf8'), { sourceType: 'module' });
+        for (const node of ast.program.body) {
+            if (!['ImportDeclaration', 'ExportNamedDeclaration', 'ExportAllDeclaration'].includes(node.type) || !node.source) continue;
+            const spec = node.source.value;
+            assert.ok(spec.startsWith('.') || spec.startsWith('vcp-deskpet:'), `未支持的页面依赖：${spec}`);
+            await visit(new URL(spec, url).href, url);
+        }
+    };
+    await visit('vcp-deskpet://pet/app/deskpet.js');
+    assert.ok(visited.has('vcp-deskpet://pet/renderer/toolBatchRegions.js'));
+    assert.equal(await assets.resolveLocalFile('vcp-deskpet://pet/renderer/contentPipeline.js'), null,
+        '不能为修复依赖而暴露整个 renderer 目录');
+});
+
 
 test('desk pet protocol refuses agent config, history and traversal', () => {
     for (const url of [
