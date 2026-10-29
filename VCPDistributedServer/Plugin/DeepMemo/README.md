@@ -11,7 +11,7 @@ DeepMemo 2.0 已迁移为 `hybridservice/direct` 薄适配器。
 - DeepMemo 不再扫描 Agent、Topic 或 `history.json`。
 - DeepMemo 不再创建临时 Tantivy/FlexSearch 索引。
 - DeepMemo 不再初始化独立 Jieba 实例。
-- 正常路径不再启动 `deepmemo_rust.exe`。
+- 仅使用中央 CDS，旧 Rust 可执行程序与回退入口已移除。
 
 因此不需要额外创建一个独立 JS 子进程。JS 适配器依附于现有 VCPDistributedServer 常驻进程，数据服务和持久索引仍由 VCP-CDS 独占管理。
 
@@ -83,8 +83,6 @@ VCP 主服务器需要在下发 `execute_tool` 时将它复制到顶层内部字
 ## 配置
 
 ```dotenv
-DeepMemoBackend=central
-DeepMemoLegacyFallback=False
 DeepMemoExcludeCurrentTopic=True
 DeepMemoCandidateLimit=50
 DeepMemoResultLimit=8
@@ -102,9 +100,6 @@ RerankMaxTokensPerBatch=60000
 RerankTimeoutMs=30000
 ```
 
-- `DeepMemoBackend=central`：使用中央搜索，默认值。
-- `DeepMemoBackend=legacy`：强制执行旧 EXE，仅用于回滚。
-- `DeepMemoLegacyFallback=True`：中央搜索失败后尝试旧 EXE。
 - `DeepMemoExcludeCurrentTopic=True`：有可信 Topic 上下文时排除当前 Topic。
 - `MaxMemoTokens`：历史名称保留，实际表示最终输出最大字符数。
 - `RerankSearch=True`：由常驻 DeepMemo JS 适配器调用 Rerank API，作为省略工具参数时的默认策略。
@@ -114,13 +109,13 @@ RerankTimeoutMs=30000
 - `RerankMaxTokensPerBatch=60000`：按 Unicode 字符一字符一 token 保守估算；最大允许 64000，默认预留到 60000。
 - `RerankTimeoutMs=30000`：每个并发批次的请求超时。
 
-Rerank 文档直接使用 VCP-CDS 已清理的 `contentText`，不传原始 HTML。所有候选只评分一次；各批次的 `relevance_score` 合并后执行全局排序，不使用旧版递归淘汰。任意批次失败、响应缺项或返回非法分数时，整次精排回退到 VCP-CDS/Tantivy 原排名，并继续遵守最终结果数量和字符预算。
+Rerank 文档优先从 contentRaw 执行协议净化和 HTML 清理，兼容 contentText，不传工具载荷或原始 HTML。所有候选只评分一次；各批次的 `relevance_score` 合并后执行全局排序，不使用旧版递归淘汰。任意批次失败、响应缺项或返回非法分数时，整次精排回退到 VCP-CDS/Tantivy 原排名，并继续遵守最终结果数量和字符预算。
 
-旧 EXE 暂时保留在插件目录中，但默认配置不会启动它。
+历史工具请求投影为“调用了 xxx 工具”，结果载荷整块移除，角色与批次界定符移除，调用摘要转换为普通文本。净化发生在插件 JavaScript 层，不修改 CDS 数据、索引或原始历史。
 
 ## 返回兼容
 
-中央服务返回的 `formattedResult` 会直接作为工具结果返回：
+优先从中央服务返回的原始消息窗口净化并格式化；无消息明细时兼容净化 formattedResult：
 
 ```text
 [回忆片段1]:

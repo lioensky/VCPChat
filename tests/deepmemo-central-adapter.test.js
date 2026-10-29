@@ -55,8 +55,6 @@ test('旧参数被规范化并通过 maid 调用中央搜索', async () => {
             })
         },
         config: {
-            DeepMemoBackend: 'central',
-            DeepMemoLegacyFallback: false,
             DeepMemoTimeoutMs: 1234
         }
     });
@@ -168,13 +166,9 @@ test('没有 owner 上下文或 maid 时拒绝请求', async () => {
     );
 });
 
-test('中央服务不可用且默认禁用旧 EXE 回退时返回清晰错误', async () => {
+test('中央服务不可用时返回清晰错误，不启动旧进程', async () => {
     deepMemo.initialize({
         services: { chatDataService: null },
-        config: {
-            DeepMemoBackend: 'central',
-            DeepMemoLegacyFallback: false
-        },
         logger: {
             warn() {}
         }
@@ -424,7 +418,8 @@ test('调用参数 rerank=false 可在全局默认开启时强制跳过精排', 
 
     assert.equal(capturedRequest.resultLimit, 1);
     assert.equal(rerankCalls, 0);
-    assert.equal(result, '[回忆片段1]:\nCDS 原始排名');
+    assert.match(result, /第0条回忆/);
+    assert.doesNotMatch(result, /CDS 原始排名/);
 });
 
 test('任一 Rerank 批次失败时按最终限制回退 CDS 原始排名', async () => {

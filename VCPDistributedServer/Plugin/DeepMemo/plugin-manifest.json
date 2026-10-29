@@ -13,8 +13,6 @@
     "script": "DeepMemoService.js"
   },
   "configSchema": {
-    "DeepMemoBackend": "string",
-    "DeepMemoLegacyFallback": "boolean",
     "DeepMemoExcludeCurrentTopic": "boolean",
     "DeepMemoCandidateLimit": "integer",
     "DeepMemoResultLimit": "integer",

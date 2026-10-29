@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const cheerio = require('cheerio');
+const { projectMemoryProtocols } = require('../../shared/memoryProtocolProjection');
 
 // --- 主逻辑 ---
 async function main() {
@@ -205,9 +206,13 @@ async function getTopicContent(vchatPath, agentInfo, topicId, userName) {
 
 // --- HTML 内容清理 ---
 function cleanHtmlContent(htmlContent) {
+    if (htmlContent && typeof htmlContent === 'object') htmlContent = htmlContent.text;
     if (!htmlContent || typeof htmlContent !== 'string') {
         return '';
     }
+
+    // 先投影协议，避免 HTML 解析器破坏工具边界。
+    htmlContent = projectMemoryProtocols(htmlContent);
 
     // 如果内容不包含 HTML 标签，直接返回
     if (!/<[^>]+>/.test(htmlContent)) {
@@ -257,4 +262,5 @@ function cleanHtmlContent(htmlContent) {
     }
 }
 
-main();
+if (require.main === module) main();
+module.exports = { cleanHtmlContent, getTopicContent };

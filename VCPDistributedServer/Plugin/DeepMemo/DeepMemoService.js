@@ -1,14 +1,11 @@
 'use strict';
 
-const path = require('path');
-const { spawn } = require('child_process');
+const { projectMemoryProtocols } = require('../../shared/memoryProtocolProjection');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const TurndownService = require('turndown');
 
 const DEFAULTS = Object.freeze({
-    backend: 'central',
-    legacyFallback: false,
     excludeCurrentTopic: true,
     maxMemoChars: 60_000,
     candidateLimit: 50,
@@ -41,11 +38,6 @@ function initialize(options = {}) {
 
 async function processToolCall(rawArgs = {}, executionContext = {}) {
     const args = normalizeArgs(rawArgs);
-    const trustedContext = normalizeExecutionContext(executionContext);
-    const legacyArgs = {
-        ...args,
-        maid: trustedContext.agentName || args.maid
-    };
     const query = combineQuery(args.keyword, runtime.config.queryPreset);
     if (!query) {
         throw new Error('[DeepMemo] 请求中缺少 keyword 参数。');
@@ -65,10 +57,6 @@ async function processToolCall(rawArgs = {}, executionContext = {}) {
             1_000_000,
             finalMaxChars * runtime.config.rerankCandidateMultiplier
         );
-    }
-
-    if (runtime.config.backend === 'legacy') {
-        return executeLegacy(legacyArgs);
     }
 
     try {
@@ -116,18 +104,15 @@ async function processToolCall(rawArgs = {}, executionContext = {}) {
             }
         }
 
-        const formatted = typeof response.formattedResult === 'string'
-            ? cleanMemoryOutput(response.formattedResult)
-            : '';
+        const hasMessages = response.windows.some(window => Array.isArray(window?.messages));
+        const formatted = hasMessages
+            ? formatMemoryWindows(selectWindowsWithinBudget(response.windows, finalResultLimit, finalMaxChars))
+            : cleanMemoryOutput(response.formattedResult);
         return formatted || `[DeepMemo] 未找到与关键词“${args.keyword}”相关的回忆。`;
     } catch (error) {
         runtime.logger.warn?.(
             `[DeepMemo] Central search failed (${error.code || 'CDS_ERROR'}): ${error.message}`
         );
-        if (runtime.config.legacyFallback) {
-            runtime.logger.warn?.('[DeepMemo] Falling back to the legacy executable.');
-            return executeLegacy(legacyArgs);
-        }
         throw new Error(`[DeepMemo] 中央聊天数据服务搜索失败：${error.message}`);
     }
 }
@@ -214,13 +199,6 @@ function normalizeExecutionContext(context) {
 
 function normalizeConfig(config) {
     return {
-        backend: String(config.DeepMemoBackend || DEFAULTS.backend).trim().toLowerCase() === 'legacy'
-            ? 'legacy'
-            : 'central',
-        legacyFallback: toBoolean(
-            config.DeepMemoLegacyFallback,
-            DEFAULTS.legacyFallback
-        ),
         excludeCurrentTopic: toBoolean(
             config.DeepMemoExcludeCurrentTopic,
             DEFAULTS.excludeCurrentTopic
@@ -289,13 +267,13 @@ function combineQuery(keyword, preset) {
 }
 
 function formatWindowDocument(window) {
-    const topic = firstNonEmptyString(window?.topicName);
+    const topic = cleanMemoryOutput(firstNonEmptyString(window?.topicName));
     const messages = Array.isArray(window?.messages)
         ? window.messages
             .map(message => {
-                const content = firstNonEmptyString(message?.contentText);
+                const content = cleanMemoryOutput(firstNonEmptyString(message?.contentRaw, message?.contentText));
                 if (!content) return '';
-                const name = firstNonEmptyString(message?.speakerName)
+                const name = cleanMemoryOutput(firstNonEmptyString(message?.speakerName))
                     || (message?.role === 'user' ? '用户' : 'Assistant');
                 return `${name}: ${content}`;
             })
@@ -435,70 +413,9 @@ function selectWindowsWithinBudget(windows, resultLimit, maxChars) {
     return selected;
 }
 
-function executeLegacy(args) {
-    const executable = path.join(__dirname, 'deepmemo_rust.exe');
-    const payload = JSON.stringify({
-        maid: args.maid,
-        keyword: args.keyword,
-        window_size: args.windowSize
-    });
-
-    return new Promise((resolve, reject) => {
-        const child = spawn(executable, [], {
-            cwd: __dirname,
-            windowsHide: true,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-        let stdout = '';
-        let stderr = '';
-        let settled = false;
-        const timeout = setTimeout(() => {
-            child.kill();
-            finish(reject, new Error('[DeepMemo] 旧版回退执行超时。'));
-        }, 180_000);
-
-        const finish = (handler, value) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            handler(value);
-        };
-
-        child.stdout.setEncoding('utf8');
-        child.stderr.setEncoding('utf8');
-        child.stdout.on('data', chunk => {
-            stdout += chunk;
-        });
-        child.stderr.on('data', chunk => {
-            stderr += chunk;
-        });
-        child.once('error', error => finish(
-            reject,
-            new Error(`[DeepMemo] 无法启动旧版回退程序：${error.message}`)
-        ));
-        child.once('exit', code => {
-            if (code !== 0) {
-                finish(reject, new Error(
-                    `[DeepMemo] 旧版回退程序执行失败：${stderr.trim() || `exit ${code}`}`
-                ));
-                return;
-            }
-            try {
-                const parsed = JSON.parse(stdout.trim());
-                if (parsed.status !== 'success') {
-                    throw new Error(parsed.error || 'Legacy DeepMemo reported an error.');
-                }
-                finish(resolve, String(parsed.result || ''));
-            } catch (error) {
-                finish(reject, new Error(`[DeepMemo] 旧版回退响应无效：${error.message}`));
-            }
-        });
-        child.stdin.end(payload);
-    });
-}
-
 function cleanMemoryOutput(content) {
     if (typeof content !== 'string' || !content.trim()) return '';
+    content = projectMemoryProtocols(content);
 
     if (!/<[a-z][\s\S]*?>/i.test(content)) {
         return stripLeakedCss(content)
