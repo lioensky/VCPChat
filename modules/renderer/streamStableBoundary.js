@@ -1,3 +1,4 @@
+import { collectToolBatchRanges } from './toolBatchRegions.js';
 import { collectToolResultRanges, collectCodeDomainsOutsideToolResults, findToolResultEnd, findToolResultRangeAt, indexOfOutsideToolResults } from './toolResultRegions.js';
 import { findToolRequestEnd } from './toolRequestScanner.js';
 
@@ -454,6 +455,11 @@ function findRoleDividerSectionEnd(text, startIndex, toolResultRanges = null) {
 }
 
 export function findExplicitStablePrefix(text, startOffset = 0) {
+    const batches = collectToolBatchRanges(text).filter(batch => batch.closed && batch.end > startOffset);
+    if (batches.length) {
+        const end = batches[batches.length - 1].end;
+        return end + findExplicitStablePrefix(text.slice(end), 0);
+    }
     // 仅稳定区判定信任此独立行：VCP 用它宣布本轮工具回执已经结束。
     // 必须先于工具结果/代码/HTML 扫描，载荷里的不配对字面量不能阻止封口。
     // 这不是工具结果配对或安全隔离规则；完整渲染仍使用原来的数据域扫描器。

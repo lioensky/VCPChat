@@ -1,3 +1,5 @@
+import { collectToolBatchRanges } from './renderer/toolBatchRegions.js';
+import { sanitizeToolDataHtml } from './renderer/toolDataHtml.js';
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
 import {
@@ -862,7 +864,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function preprocessFullContent(text, scopeId) {
         // Step 1: Ensure any raw HTML documents are properly fenced first. This is critical.
-        let processed = ensureHtmlFenced(text);
+        const batchHtml = new Map();
+        let cursor = 0;
+        let source = '';
+        for (const batch of collectToolBatchRanges(text)) {
+            const placeholder = `<!--VCPVIEWERBATCH${batchHtml.size}TOKEN-->`;
+            const renderRemainder = value => {
+                let html = '', offset = 0;
+                const plain = text => text.trim() ? `<div class="vcp-tool-batch-text">${escapeHtml(text).replace(/\r?\n/g, '<br>')}</div>` : '';
+                for (const match of value.matchAll(/\[本轮工具调用摘要:\]([\s\S]*?)\[本轮工具调用摘要结束\]/g)) {
+                    html += plain(value.slice(offset, match.index));
+                    html += sanitizeToolDataHtml(transformSpecialBlocksForViewer(match[0]), document);
+                    offset = match.index + match[0].length;
+                }
+                return html + plain(value.slice(offset));
+            };
+            let bodyHtml = '';
+            let bodyCursor = batch.contentStart;
+            for (const range of collectClosedToolResultRanges(text.slice(batch.start, batch.end))) {
+                const start = batch.start + range.start;
+                const end = batch.start + range.end;
+                const preceding = text.slice(bodyCursor, start);
+                bodyHtml += renderRemainder(preceding);
+                bodyHtml += sanitizeToolDataHtml(transformSpecialBlocksForViewer(text.slice(start, end)), document);
+                bodyCursor = end;
+            }
+            const remainder = text.slice(bodyCursor, batch.contentEnd);
+            bodyHtml += renderRemainder(remainder);
+            batchHtml.set(placeholder, `<div data-vcp-block-type="tool-batch">${bodyHtml}</div>`);
+            source += text.slice(cursor, batch.start) + `\n\n${placeholder}\n\n`;
+            cursor = batch.end;
+        }
+        source += text.slice(cursor);
+        let processed = ensureHtmlFenced(source);
 
         const codeBlockMap = new Map();
         let placeholderId = 0;
@@ -938,7 +972,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        return processed;
+        return { text: processed, batchHtml };
+    }
+
+    function renderViewerContent(text, scopeId) {
+        const processed = preprocessFullContent(text, scopeId);
+        let html = window.marked.parse(processed.text);
+        for (const [placeholder, batch] of processed.batchHtml) {
+            html = html.split(placeholder).join(batch);
+        }
+        return html;
     }
 
     // --- End: Ported functions ---
@@ -1014,6 +1057,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const scripts = Array.from(containerElement.querySelectorAll('script'));
         scripts.forEach(oldScript => {
+            if (oldScript.closest('[data-vcp-block-type="tool-batch"], .vcp-tool-result-bubble')) return;
             try {
                 if (oldScript.type && oldScript.type !== 'text/javascript' && oldScript.type !== 'application/javascript') {
                     return;
@@ -1453,8 +1497,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 originalRawContent = existingTextarea.value; // Get updated raw content
 
                 // Re-render content using the full pipeline
-                const processedContent = preprocessFullContent(originalRawContent, scopeId);
-                const renderedHtml = window.marked.parse(processedContent);
+                const renderedHtml = renderViewerContent(originalRawContent, scopeId);
                 contentDiv.innerHTML = renderedHtml;
                 enhanceRenderedContent(contentDiv); // This already includes syntax highlighting etc.
 
@@ -1559,6 +1602,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // First pass: Separate Mermaid and Draw.io blocks from regular code blocks
         container.querySelectorAll('pre code').forEach((codeBlock) => {
+            if (codeBlock.closest('[data-vcp-block-type="tool-batch"], .vcp-tool-result-bubble')) {
+                window.hljs?.highlightElement(codeBlock);
+                return;
+            }
             const languageClass = Array.from(codeBlock.classList).find(c => c.startsWith('language-'));
             const language = languageClass ? languageClass.replace('language-', '') : '';
             const code = codeBlock.textContent || '';
@@ -1961,8 +2008,7 @@ ${codeContent}
                 }
                 originalRawContent = decodedText;
 
-                const processedContent = preprocessFullContent(originalRawContent, scopeId);
-                const renderedHtml = window.marked.parse(processedContent);
+                const renderedHtml = renderViewerContent(originalRawContent, scopeId);
                 contentDiv.innerHTML = renderedHtml;
 
                 // Wait for content enhancements (including synchronous Pele rendering) and images.

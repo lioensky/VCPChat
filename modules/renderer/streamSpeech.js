@@ -1,10 +1,12 @@
+import { stripToolBatches } from './toolBatchRegions.js';
 import { findExplicitStablePrefix } from './streamStableBoundary.js';
 import { collectToolResultRanges } from './toolResultRegions.js';
 import { replaceToolRequestBlocks, findUnclosedToolRequest } from './toolRequestScanner.js';
 
 // 只处理已经提交的完整稳定区；未闭合的隐藏结构在终态也不能泄漏到语音。
 export function cleanSpeechSource(value) {
-    let text = String(value || '');
+    // 整批回执（含摘要、记录 ID 和框外说明）都不是助手语音正文。
+    let text = stripToolBatches(String(value || ''));
     const ranges = collectToolResultRanges(text);
     for (let i = ranges.length - 1; i >= 0; i--) {
         text = text.slice(0, ranges[i].start) + '\n' + text.slice(ranges[i].end);

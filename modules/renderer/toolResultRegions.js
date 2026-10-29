@@ -1,5 +1,24 @@
 // modules/renderer/toolResultRegions.js
 import { collectMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
+import { collectToolBatchRanges } from './toolBatchRegions.js';
+
+/** 安全域：原子批次整体优先，旧结果只在批次之外参与配对。 */
+export function collectToolDataRanges(text) {
+    if (typeof text !== 'string') return [];
+    const batches = collectToolBatchRanges(text);
+    if (!batches.length) return collectToolResultRanges(text);
+    const ranges = [];
+    let cursor = 0;
+    for (const batch of batches) {
+        ranges.push(...collectToolResultRanges(text.slice(cursor, batch.start))
+            .map(range => ({ ...range, start: range.start + cursor, end: range.end + cursor })));
+        ranges.push(batch);
+        cursor = batch.end;
+    }
+    ranges.push(...collectToolResultRanges(text.slice(cursor))
+        .map(range => ({ ...range, start: range.start + cursor, end: range.end + cursor })));
+    return ranges;
+}
 
 /**
  * VCPToolResult 是后端一次性注入的权威数据域，优先级高于 AI 生成的任何语法。
@@ -59,6 +78,35 @@ export function findToolResultEnd(text, startIndex) {
  * @returns {Array<{start: number, end: number, closed: boolean}>} 按源码顺序排列、互不重叠
  */
 export function collectToolResultRanges(text) {
+    if (typeof text !== 'string') return [];
+    const batches = collectToolBatchRanges(text);
+    if (!batches.length) return collectLegacyToolResultRanges(text);
+    const ranges = [];
+    const append = (source, offset, recover = false) => {
+        const local = collectLegacyToolResultRanges(source);
+        for (const range of local) {
+            // 后端批次是硬边界，载荷中的不配对旧标记不得吞掉后续正文。
+            if (recover && !range.closed) {
+                const lastEnd = source.lastIndexOf(TOOL_RESULT_END_MARKER);
+                if (lastEnd >= range.start) {
+                    range.end = lastEnd + TOOL_RESULT_END_MARKER.length;
+                    range.closed = true;
+                }
+            }
+            ranges.push({ ...range, start: range.start + offset, end: range.end + offset });
+        }
+    };
+    let cursor = 0;
+    for (const batch of batches) {
+        append(text.slice(cursor, batch.start), cursor);
+        append(text.slice(batch.contentStart, batch.contentEnd), batch.contentStart, batch.closed);
+        cursor = batch.end;
+    }
+    append(text.slice(cursor), cursor);
+    return ranges;
+}
+
+function collectLegacyToolResultRanges(text) {
     const ranges = [];
     if (typeof text !== 'string' || !text.includes(TOOL_RESULT_START_MARKER)) return ranges;
 
@@ -110,7 +158,7 @@ export function indexOfOutsideToolResults(text, token, fromIndex, ranges) {
  * 只对工具结果区间之外的片段应用 transform，工具结果原样保留。
  * 片段以工具结果为硬边界，transform 内“剥离到文末”之类的行为不会越过工具结果。
  */
-export function transformOutsideToolResults(text, transform, ranges = collectToolResultRanges(text)) {
+export function transformOutsideToolResults(text, transform, ranges = collectToolDataRanges(text)) {
     if (typeof text !== 'string' || ranges.length === 0) return transform(text);
 
     let result = '';

@@ -1,3 +1,6 @@
+import { sanitizeToolDataHtml } from './renderer/toolDataHtml.js';
+import { stripToolBatches } from './renderer/toolBatchRegions.js';
+import { collectToolDataRanges } from './renderer/toolResultRegions.js';
 import { isContextCheckpoint } from './chat/contextCompactionState.js';
 import { createProjectForgeTopicSurface } from './renderer/projectForgeTopicSurface.js';
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
@@ -599,7 +602,10 @@ function renderSafeToolResultMarkdown(markdownText) {
     }
 
     try {
-        return mainRendererReferences.markedInstance.parse(sealedMarkdown, TOOL_RESULT_SAFE_MARKDOWN_OPTIONS);
+        return sanitizeToolDataHtml(
+            mainRendererReferences.markedInstance.parse(sealedMarkdown, TOOL_RESULT_SAFE_MARKDOWN_OPTIONS),
+            mainRendererReferences.document || mainRendererReferences.chatMessagesDiv?.ownerDocument
+        );
     } catch (e) {
         return `<pre class="vcp-tool-result-raw-content">${escapeHtml(sealedMarkdown)}</pre>`;
     }
@@ -1114,60 +1120,8 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, tool
     };
 
     // Process Tool Call Summaries
-    const renderToolCallSummaryBlock = (rawContent) => {
-        const content = restoreBlocks(rawContent || '').trim();
-        const entries = content
-            .split(/[；;。]\s*/u)
-            .map(item => item.trim())
-            .filter(Boolean);
+    const renderToolCallSummaryBlock = (rawContent) => renderToolCallSummaryHtml(restoreBlocks(rawContent || ''));
 
-        const getStatusInfo = (entry) => {
-            if (/拒绝|被拒|denied|rejected|refused/i.test(entry)) {
-                return { key: 'rejected', label: '拒绝' };
-            }
-            if (/失败|错误|异常|error|failed/i.test(entry)) {
-                return { key: 'failure', label: '失败' };
-            }
-            if (/超时|timeout/i.test(entry)) {
-                return { key: 'timeout', label: '超时' };
-            }
-            if (/成功|完成|success|succeeded|ok/i.test(entry)) {
-                return { key: 'success', label: '成功' };
-            }
-            if (/取消|中止|cancel/i.test(entry)) {
-                return { key: 'cancelled', label: '取消' };
-            }
-            if (/跳过|skip/i.test(entry)) {
-                return { key: 'skipped', label: '跳过' };
-            }
-            return { key: 'unknown', label: '未知' };
-        };
-
-        const renderEntry = (entry) => {
-            const statusInfo = getStatusInfo(entry);
-            const toolNameMatch = entry.match(/^(.+?)\s*调用/u);
-            const toolName = (toolNameMatch?.[1] || entry.replace(/调用.*/u, '') || 'Tool').trim();
-            return `<span class="vcp-tool-call-summary-chip status-${statusInfo.key}">` +
-                `<span class="vcp-tool-call-summary-tool">${escapeHtml(toolName)}</span>` +
-                `<span class="vcp-tool-call-summary-status">${escapeHtml(statusInfo.label)}</span>` +
-                `</span>`;
-        };
-
-        let html = `<div class="vcp-tool-call-summary-bubble" data-vcp-block-type="tool-call-summary" data-vcp-preserve-children="true">`;
-        html += `<div class="vcp-tool-call-summary-header">`;
-        html += `<span class="vcp-tool-call-summary-icon">🧾</span>`;
-        html += `<span class="vcp-tool-call-summary-title">本轮工具调用摘要</span>`;
-        html += `</div>`;
-
-        if (entries.length > 0) {
-            html += `<div class="vcp-tool-call-summary-list">${entries.map(renderEntry).join('')}</div>`;
-        } else {
-            html += `<div class="vcp-tool-call-summary-raw">${escapeHtml(content || '无摘要内容')}</div>`;
-        }
-
-        html += `</div>`;
-        return `\n\n${html}\n\n`;
-    };
 
     const transformToolCallSummariesInRoleSections = (source) => {
         if (typeof source !== 'string' || !source.includes('[本轮工具调用摘要:]') || !source.includes('<<<[ROLE_DIVIDE_')) {
@@ -1487,7 +1441,7 @@ function extractSpeakableTextFromContentElement(contentElement) {
         '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .vcp-desktop-push-placeholder, .highlighted-tag, .highlighted-alert-tag, style, script'
     ).forEach(el => el.remove());
 
-    let speakableText = contentClone.innerText || contentClone.textContent || '';
+    let speakableText = stripToolBatches(contentClone.innerText || contentClone.textContent || '');
 
     // DOM 块删除是主路径；下面是协议文本残留的防御性兜底。
     // 工具结果优先级最高且嵌套感知，最先整体剥离；其内部的工具请求/推送标记随之移除。
@@ -1633,7 +1587,7 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
     // 不是可执行的 assistant HTML 岛；其中任意 style/script/HTML/注释都只是工具数据。
     // 必须先于 HTML 注释保护：否则工具结果之前的 <!-- 可能与工具数据中的 --> 配对，
     // 把起始标记吞进注释，使剩余载荷暴露给消息级 CSS 提取器。
-    const toolResultRanges = collectToolResultRanges(content);
+    const toolResultRanges = collectToolDataRanges(content);
     let textWithProtectedBlocks = toolResultRanges.length > 0
         ? replaceToolResultRanges(content, toolResultRanges, (match) => {
             const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
@@ -1929,7 +1883,7 @@ function shouldBypassRenderHtmlCache(text, options = {}) {
 
     // 大工具结果 HTML 含运行时 data-content-id，其完整文本由消息级 Map 持有，
     // 不能跨消息/内容 revision 复用缓存 HTML，否则按钮会引用已释放的条目。
-    if (text.includes('[[VCP调用结果信息汇总:') || text.includes('<<<[TOOL_REQUEST]>>>')) return true;
+    if (text.includes('<<<[VCP_TOOL_BATCH_START:') || text.includes('[[VCP调用结果信息汇总:') || text.includes('<<<[TOOL_REQUEST]>>>')) return true;
 
     // scoped CSS 有 scopeId 与 document.head 注入副作用，第一版保守跳过。
     // 同时用大小写无关的 HTML/CSS 风险识别覆盖 <STYLE>、结构化 HTML 与内联 style 场景。
@@ -2420,7 +2374,7 @@ function renderToolResultBlock(fullMatch, ordinal = -1, deferred = true) {
         let processedValue;
 
         if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
-            processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+            processedValue = `<a href="${escapeHtml(value)}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${escapeHtml(value)}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
         } else if (isMarkdownField) {
             // 🟢 架构级修复：工具结果内容使用独立的 Markdown 渲染
             // 由于工具结果块已经从外部文本中完全隔离，这里可以安全地使用 Markdown 解析器
@@ -2493,17 +2447,66 @@ function renderToolResultBlock(fullMatch, ordinal = -1, deferred = true) {
  * @param {Map|null} toolResultMap - 占位符到原始工具结果文本的映射
  * @returns {string} 恢复后的 HTML
  */
+function renderToolCallSummaryHtml(rawContent) {
+    const statuses = [
+        [/拒绝|被拒|denied|rejected|refused/i, 'rejected', '拒绝'],
+        [/失败|错误|异常|error|failed/i, 'failure', '失败'],
+        [/超时|timeout/i, 'timeout', '超时'],
+        [/成功|完成|success|succeeded|ok/i, 'success', '成功'],
+        [/取消|中止|cancel/i, 'cancelled', '取消'],
+        [/跳过|skip/i, 'skipped', '跳过'],
+    ];
+    const entries = String(rawContent || '').trim().split(/[；;。]\s*/u).map(value => value.trim()).filter(Boolean);
+    const chips = entries.map(entry => {
+        const [, key, label] = statuses.find(([pattern]) => pattern.test(entry)) || [null, 'unknown', '未知'];
+        const name = (entry.match(/^(.+?)\s*调用/u)?.[1] || entry.replace(/调用.*/u, '') || 'Tool').trim();
+        return `<span class="vcp-tool-call-summary-chip status-${key}"><span class="vcp-tool-call-summary-tool">${escapeHtml(name)}</span><span class="vcp-tool-call-summary-status">${label}</span></span>`;
+    }).join('');
+    return `<div class="vcp-tool-call-summary-bubble" data-vcp-block-type="tool-call-summary" data-vcp-preserve-children="true"><div class="vcp-tool-call-summary-header"><span class="vcp-tool-call-summary-icon">🧾</span><span class="vcp-tool-call-summary-title">本轮工具调用摘要</span></div>${chips ? `<div class="vcp-tool-call-summary-list">${chips}</div>` : '<div class="vcp-tool-call-summary-raw">无摘要内容</div>'}</div>`;
+}
+
+function renderToolBatchBody(body, ranges, firstOrdinal = 0) {
+    let cursor = 0;
+    let html = '';
+    const plain = source => {
+        let result = '';
+        let offset = 0;
+        for (const match of source.matchAll(new RegExp(TOOL_CALL_SUMMARY_REGEX.source, 'g'))) {
+            const preceding = source.slice(offset, match.index);
+            if (preceding.trim()) result += `<pre>${escapeHtml(preceding)}</pre>`;
+            result += renderToolCallSummaryHtml(match[1]);
+            offset = match.index + match[0].length;
+        }
+        const tail = source.slice(offset);
+        return result + (tail.trim() ? `<pre>${escapeHtml(tail)}</pre>` : '');
+    };
+    let ordinal = firstOrdinal;
+    for (const range of ranges) {
+        html += plain(body.slice(cursor, range.start));
+        html += renderToolResultBlock(body.slice(range.start, range.end), ordinal++);
+        cursor = range.end;
+    }
+    html += plain(body.slice(cursor));
+    return `<div data-vcp-block-type="tool-batch" data-vcp-preserve-children="true">${html}</div>`;
+}
+
 function restoreRenderedToolResults(html, toolResultMap) {
     if (!toolResultMap || toolResultMap.size === 0 || typeof html !== 'string') return html;
 
+    let resultOrdinal = 0;
     // P1-5：工具结果占位符使用 HTML 注释格式，单遍匹配即可恢复。
     // 同时兼容 marked 将注释占位符包裹成 <p><!--VCP_TOOL_RESULT_n--></p> 的情况。
     return html.replace(/<p>\s*(<!--VCP_TOOL_RESULT_(\d+)-->)\s*<\/p>|<!--VCP_TOOL_RESULT_(\d+)-->/g, (match, wrappedPlaceholder, wrappedId, bareId) => {
         const placeholder = wrappedPlaceholder || `<!--VCP_TOOL_RESULT_${bareId}-->`;
         const rawMatch = toolResultMap.get(placeholder);
         if (!rawMatch) return match;
+        if (rawMatch.type === 'batch') {
+            const result = renderToolBatchBody(rawMatch.body, rawMatch.results, resultOrdinal);
+            resultOrdinal += rawMatch.results.length;
+            return result;
+        }
         // 占位符 ID 按源文本中出现顺序从 0 递增，可直接作为序号。
-        const ordinal = Number.parseInt(wrappedId ?? bareId, 10);
+        const ordinal = resultOrdinal++;
         return `\n\n${renderToolResultBlock(rawMatch, ordinal)}\n\n`;
     });
 }

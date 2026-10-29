@@ -297,7 +297,7 @@ function processScripts(containerElement, visibilityOptimizer) {
     // They must never be promoted back into executable scripts, even if malformed upstream HTML
     // happens to produce a real <script> element inside <pre>/<code> or preview containers.
     const isDisplayOnlyCodeScript = (scriptElement) => Boolean(
-        scriptElement?.closest?.('pre, code, .vcp-html-preview-container, .vcp-stream-code-block')
+        scriptElement?.closest?.('pre, code, .vcp-html-preview-container, .vcp-stream-code-block, [data-vcp-tool-data], [data-vcp-block-type="tool-batch"], .vcp-tool-result-bubble, .vcp-tool-use-bubble')
     );
 
     // Separate executable scripts from display-only code examples.

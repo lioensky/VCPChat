@@ -226,7 +226,7 @@ export function createChartEmbedHost({ root, api, maxInstances = 4 }) {
                 if (auto) slot.dataset.chartAuto = 'true';
                 continue;
             }
-            if (slot.closest('[data-vcp-block-type="tool-result"], [data-vcp-block-type="tool-use"]')) continue;
+            if (slot.closest('[data-vcp-tool-data], [data-vcp-block-type="tool-batch"], [data-vcp-block-type="tool-result"], [data-vcp-block-type="tool-use"]')) continue;
             slots.add(slot);
             slot.dataset.chartAuto = String(auto);
             slot.style.height = `${Math.min(900, Math.max(180, Number(slot.dataset.chartHeight) || 360))}px`;

@@ -317,6 +317,7 @@ class ContextSanitizer {
         if (typeof content !== 'string') return false;
 
         return (
+            content.includes('<<<[VCP_TOOL_BATCH_START:') ||
             (content.includes('<<<[TOOL_REQUEST]>>>') && content.includes('<<<[END_TOOL_REQUEST]>>>')) ||
             (content.includes('<<<DailyNoteStart>>>') && content.includes('<<<DailyNoteEnd>>>'))
         );

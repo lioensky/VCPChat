@@ -1,7 +1,7 @@
 import {
     TOOL_RESULT_START_MARKER,
     TOOL_RESULT_END_MARKER,
-    collectToolResultRanges,
+    collectToolDataRanges as collectToolResultRanges,
     collectCodeDomainsOutsideToolResults,
     findToolResultRangeAt,
 } from './toolResultRegions.js';

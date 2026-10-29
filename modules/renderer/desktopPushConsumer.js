@@ -1,3 +1,4 @@
+import { collectToolBatchRanges } from './toolBatchRegions.js';
 import { TOOL_RESULT_START_MARKER, TOOL_RESULT_END_MARKER } from './toolResultRegions.js';
 
 const START_TAG = '<<<[DESKTOP_PUSH]>>>';
@@ -113,7 +114,18 @@ export function createDesktopPushConsumer({
             for (const emittedChar of text) trackToolResultChar(state, emittedChar);
         };
 
-        for (const char of textToAppend) {
+        const batches = collectToolBatchRanges(textToAppend);
+        let batchIndex = 0;
+        for (let offset = 0; offset < textToAppend.length; offset++) {
+            const batch = batches[batchIndex];
+            if (batch && offset === batch.start) {
+                // 后端整批原子到达；载荷不能开启或关闭推送，也不计入旧结果深度。
+                outputText += textToAppend.slice(batch.start, batch.end);
+                offset = batch.end - 1;
+                batchIndex++;
+                continue;
+            }
+            const char = textToAppend[offset];
             if (!state.active && state.toolResultDepth > 0) {
                 // 工具结果数据域内不识别任何推送标签。
                 emit(char);

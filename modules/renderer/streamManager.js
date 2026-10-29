@@ -1,3 +1,4 @@
+import { collectToolBatchRanges } from './toolBatchRegions.js';
 import { findExplicitStablePrefix } from './streamStableBoundary.js';
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
@@ -1694,6 +1695,12 @@ function trackToolResultRegion(messageId, accumulatedText, chunkLength) {
  * 区间追踪必须对每个 chunk 都执行，不能被长度判断短路，否则会漏记起始标记。
  */
 function shouldBypassSmoothQueue(messageId, textToAppend, accumulatedText) {
+    if (collectToolBatchRanges(textToAppend).length > 0) {
+        const state = getOrCreateStreamSegmentState(messageId);
+        state.toolResultDepth = 0;
+        state.toolResultScannedTo = accumulatedText.length;
+        return true;
+    }
     const touchesToolResult = trackToolResultRegion(messageId, accumulatedText, textToAppend.length);
     return touchesToolResult || textToAppend.length >= SMOOTH_STREAM_BURST_CHUNK_CHARS;
 }

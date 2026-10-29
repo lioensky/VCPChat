@@ -13,6 +13,7 @@
  * - 业务细节（特殊块转换、HTML fenced 等）通过依赖注入提供
  */
 
+import { collectToolBatchRanges } from './toolBatchRegions.js';
 import { PIPELINE_MODES } from '../chat/contentModes.js';
 import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
 import { stripEmotionTags } from '../emotion/emotionTags.js';
@@ -342,7 +343,7 @@ function createContentPipeline(deps = {}) {
         const ranges = collectClosedToolResultRanges(text);
         if (ranges.length === 0) return text;
 
-        ctx.state.toolResultMap = new Map();
+        ctx.state.toolResultMap ||= new Map();
         let result = '';
         let cursor = 0;
         for (const range of ranges) {
@@ -465,6 +466,29 @@ function createContentPipeline(deps = {}) {
 
     function runFullRenderPipeline(inputText, options = {}) {
         const ctx = createContext(inputText, { ...options, mode: PIPELINE_MODES.FULL_RENDER });
+
+        // 后端批次先于所有内容修正封存，原始字节与边界不被内部语法改变。
+        const batches = collectToolBatchRanges(ctx.text);
+        if (batches.length) {
+            ctx.state.toolResultMap = new Map();
+            let cursor = 0;
+            let sealed = '';
+            for (const batch of batches) {
+                const placeholder = `<!--VCP_TOOL_RESULT_${ctx.state.toolResultPlaceholderId++}-->`;
+                ctx.state.toolResultMap.set(placeholder, {
+                    type: 'batch',
+                    body: ctx.text.slice(batch.contentStart, batch.contentEnd),
+                    results: collectClosedToolResultRanges(ctx.text.slice(batch.start, batch.end))
+                        .map(range => ({
+                            start: range.start - (batch.contentStart - batch.start),
+                            end: range.end - (batch.contentStart - batch.start),
+                        })),
+                });
+                sealed += ctx.text.slice(cursor, batch.start) + `\n\n${placeholder}\n\n`;
+                cursor = batch.end;
+            }
+            ctx.text = sealed + ctx.text.slice(cursor);
+        }
 
         if ((options.messageRole || 'assistant') === 'assistant') {
             step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));

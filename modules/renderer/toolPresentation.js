@@ -467,6 +467,14 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
         applying = true;
         capture(content);
         unwrap(content);
+        // 批次只承担数据隔离，不成为新的可视层级或打断请求/结果配对。
+        content.querySelectorAll('[data-vcp-block-type="tool-batch"]').forEach(batch => {
+            for (const child of batch.children) {
+                child.dataset.vcpToolData = 'true';
+                child.dataset.vcpBlockType ||= 'tool-batch-data';
+            }
+            batch.replaceWith(...batch.childNodes);
+        });
         content.querySelectorAll('[data-vcp-tool-wrapper]').forEach(node => delete node.dataset.vcpToolWrapper);
         const p = profile(incomingProfile);
         content.dataset.vcpToolPresentation = p.style;
