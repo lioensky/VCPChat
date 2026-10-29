@@ -58,11 +58,15 @@ test('compact topic drawer stays beside the unchanged agent rail and inside the 
                     const r = el.getBoundingClientRect();
                     return { top: r.top, bottom: r.bottom, height: r.height };
                 });
-                await page.evaluate(() => {
+                await page.evaluate(async () => {
                     document.querySelector('.sidebar').classList.add('compact-topics-open');
-                    document.querySelector('#tabContentTopics').classList.add('compact-drawer-open');
+                    const panel = document.querySelector('#tabContentTopics');
+                    panel.classList.add('compact-drawer-open');
+                    // 并发负载下固定等待可能一帧都没产出，量到入场动画第 0 帧。
+                    // 先让动画起步，再等实际完成；取消动画不应导致等待失败。
+                    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    await Promise.all(panel.getAnimations().map(animation => animation.finished.catch(() => {})));
                 });
-                await new Promise(resolve => setTimeout(resolve, 350));
                 const state = await page.evaluate(() => {
                     const rail = document.querySelector('.sidebar').getBoundingClientRect();
                     const panel = document.querySelector('#tabContentTopics');

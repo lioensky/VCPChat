@@ -367,38 +367,58 @@ test('click-through mode: the mouse passes the pet, hits are ignored, the talk b
     handlers.closeAll();
 });
 
-test('dropping the pet near a screen edge slides it flush; Alt or a far drop leaves it', async () => {
+test('dropping the pet near a screen edge slides it flush; Alt or a far drop leaves it', async (t) => {
     const { handlers, fake, open, fromPet } = await loadHandlers();
+    // 断言失败也要释放动画定时器和窗口监听器，避免测试进程挂住、不打印汇总。
+    t.after(() => handlers.closeAll());
     const pet = await open();
     const figure = { x: 40, y: 100, width: 200, height: 300 };
-    const dropAt = (x, y, report) => {
+    const dropAt = async (x, y, report) => {
         const [wx, wy] = pet.getPosition();
         fake.screen.cursor = { x: wx, y: wy };
         fake.listeners.get('deskpet:drag-start')(fromPet(pet), { x: wx, y: wy });
         fake.screen.cursor = { x, y };
+        // 松手前停住超过速度采样窗（100ms），避免瞬移被算成高速投掷。
+        await sleep(130);
         fake.listeners.get('deskpet:drag-end')(fromPet(pet), report);
+    };
+    // 滑动按帧推进：并发负载下固定 sleep 会量到中间态。
+    // 连续 6 次采样位置不变视为停稳，最多采样 80 次（名义 4 秒）。
+    const settleMotion = async () => {
+        let last = null;
+        let stable = 0;
+        for (let i = 0; i < 80; i++) {
+            await sleep(50);
+            const now = pet.getPosition();
+            if (last && now[0] === last[0] && now[1] === last[1]) {
+                if (++stable >= 5) return;
+            } else {
+                stable = 0;
+            }
+            last = now;
+        }
+        assert.fail(`桌宠运动未停稳，最后位置：${last}`);
     };
     // 角色左边离屏幕左边 15：滑过去贴齐；脚底离工作区底边也近：一起落到任务栏上
     const bottom = 1000 - figure.y - figure.height;
-    dropAt(-25, bottom - 10, { figure });
-    await sleep(200);
+    await dropAt(-25, bottom - 10, { figure });
+    await settleMotion();
     assert.deepEqual(pet.getPosition(), [-40, bottom]);
     // 按着 Alt 松手：不吸
-    dropAt(-25, bottom - 10, { figure, free: true });
-    await sleep(200);
+    await dropAt(-25, bottom - 10, { figure, free: true });
+    await settleMotion();
     assert.deepEqual(pet.getPosition(), [-25, bottom - 10]);
     // 离边很远：不动；出去了但不到四成（离边超过吸附距离）：也不动
-    dropAt(500, 300, { figure });
-    await sleep(200);
+    await dropAt(500, 300, { figure });
+    await settleMotion();
     assert.deepEqual(pet.getPosition(), [500, 300]);
-    dropAt(-100, 300, { figure });
-    await sleep(200);
+    await dropAt(-100, 300, { figure });
+    await settleMotion();
     assert.deepEqual(pet.getPosition(), [-100, 300]);
     // 页面没报包围盒（老页面、后端没起来）：照旧放下
-    dropAt(-25, 300);
-    await sleep(200);
+    await dropAt(-25, 300);
+    await settleMotion();
     assert.deepEqual(pet.getPosition(), [-25, 300]);
-    handlers.closeAll();
 });
 
 test('a pending tool approval reaches the pet of the agent that asked, and only main answers it', async (t) => {
@@ -545,13 +565,13 @@ test('a pet flung on release slides on and lands on the taskbar; a slow drop sta
     const pet = await open();
     const figure = { x: 40, y: 100, width: 200, height: 300 };
     const floorY = 1000 - figure.y - figure.height;
-    const drag = async (path, report) => {
+    const drag = async (path, report, step = 20) => {
         const [wx, wy] = pet.getPosition();
         fake.screen.cursor = { x: wx, y: wy };
         fake.listeners.get('deskpet:drag-start')(fromPet(pet), { x: wx, y: wy });
         for (const [dx, dy] of path) {
             fake.screen.cursor = { x: wx + dx, y: wy + dy };
-            await sleep(20);
+            await sleep(step);
         }
         fake.listeners.get('deskpet:drag-end')(fromPet(pet), report);
     };
@@ -561,8 +581,9 @@ test('a pet flung on release slides on and lands on the taskbar; a slow drop sta
     await sleep(100);
     const [sx, sy] = pet.getPosition();
     assert.ok(sy < floorY - 50, '放在半空也不掉');
-    // 往左上快速一甩（默认位置在屏幕右边，往左才有地方滑）
-    await drag([[0, 0], [-40, -10], [-80, -20], [-120, -30]], { figure });
+    // 往左上快速一甩（默认位置在屏幕右边，往左才有地方滑）。
+    // 每步 80px / 10ms：名义 8000px/s，调度变慢 4 倍仍高于投掷阈值（900）。
+    await drag([[0, 0], [-80, -20], [-160, -40], [-240, -60]], { figure }, 10);
     for (let i = 0; i < 150 && pet.getPosition()[1] !== floorY; i++) await sleep(20);
     const [tx, ty] = pet.getPosition();
     assert.equal(ty, floorY, '落在任务栏上');

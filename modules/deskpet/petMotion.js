@@ -30,18 +30,27 @@ function createPetMotion(ctx) {
     // 走完最后一帧先 stop() 再 done(最后一帧)
     function playFrames(pet, frames, { stop, halted = () => false, done }) {
         const size = ctx.geometry.sizeOf(pet);
-        return setInterval(() => {
+        let finished = false;
+        const finish = () => {
+            finished = true;
+            // 只清自己的句柄；共享字段可能已经指向后来启动的动画。
+            clearInterval(id);
+            stop?.();
+        };
+        const id = setInterval(() => {
+            if (finished) return;
             const next = frames.shift();
             if (!next || pet.win.isDestroyed() || pet.drag || halted()) {
-                stop();
+                finish();
                 return;
             }
             ctx.geometry.applyBounds(pet, { ...next, ...size }, { verify: false });
             if (!frames.length) {
-                stop();
+                finish();
                 done?.(next);
             }
         }, DRAG_TICK_MS);
+        return id;
     }
 
     // 甩出去（modules/deskpet/throwMotion.js）：松手时光标还在快速移动就带着速度滑出去、落到任务栏上，
@@ -50,14 +59,10 @@ function createPetMotion(ctx) {
         const win = pet.win.getBounds();
         const frames = throwMotion.throwPath(win, figure, ctx.geometry.workAreaAt(win), throwMotion.releaseVelocity(samples, Date.now()), DRAG_TICK_MS);
         if (!frames) return false;
-        stopSnap(pet);
-        pet.snap = playFrames(pet, frames, {
-            stop: () => stopSnap(pet),
-            done: (last) => {
-                // 甩走了就不再藏在边里（拿起来时 pet.tuck 已清，这里把存下的也清掉）
-                ctx.savePetState(pet.agentId, { x: last.x, y: last.y, tuck: null }).catch(() => {});
-                pet.win.webContents.send('deskpet:landed');
-            },
+        startSnap(pet, frames, (last) => {
+            // 甩走了就不再藏在边里（拿起来时 pet.tuck 已清，这里把存下的也清掉）
+            ctx.savePetState(pet.agentId, { x: last.x, y: last.y, tuck: null }).catch(() => {});
+            pet.win.webContents.send('deskpet:landed');
         });
         return true;
     }
@@ -69,6 +74,18 @@ function createPetMotion(ctx) {
         pet.snap = null;
     }
 
+    // 共享字段只记录最新动画；旧回调既不能清掉新句柄，也不能再写旧位置。
+    function startSnap(pet, frames, done) {
+        stopSnap(pet);
+        const id = playFrames(pet, frames, {
+            halted: () => pet.snap !== id,
+            stop: () => { if (pet.snap === id) stopSnap(pet); },
+            done,
+        });
+        pet.snap = id;
+        return id;
+    }
+
     // 窗口滑到 to（几帧，先快后慢）；滑完 done
     function slideTo(pet, to, done) {
         stopSnap(pet);
@@ -77,7 +94,7 @@ function createPetMotion(ctx) {
             done?.();
             return;
         }
-        pet.snap = playFrames(pet, edgeSnap.snapFrames(win, to), { stop: () => stopSnap(pet), done: () => done?.() });
+        startSnap(pet, edgeSnap.snapFrames(win, to), () => done?.());
     }
 
     function snapToEdge(pet, figure, { free = false } = {}) {

@@ -2,7 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
-const load = async path => import('data:text/javascript;base64,' + Buffer.from(fs.readFileSync(path, 'utf8')).toString('base64'));
+import path from 'node:path';
+
+// data: URL 不能解析相对导入；递归内联当前被测模块的相对依赖，明确按 ESM 加载。
+const inlineUrl = file => {
+    const abs = path.resolve(file);
+    const source = fs.readFileSync(abs, 'utf8').replace(
+        /(\bfrom\s*|\bimport\s*\(\s*)(['"])(\.{1,2}\/[^'"]+)\2/g,
+        (_, lead, quote, spec) => `${lead}${quote}${inlineUrl(path.resolve(path.dirname(abs), spec))}${quote}`);
+    return 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
+};
+const load = async file => import(inlineUrl(file));
 const { createToolPresentation, resolveToolPresentationProfile } = await load('modules/renderer/toolPresentation.js');
 const schema = await load('modules/settings/schema/sidebar-surfaces.js');
 

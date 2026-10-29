@@ -161,11 +161,14 @@ test('every declared build script and test of the bundled features exists', () =
     }
 });
 
-test('core code does not reference the desk pet; it only reaches it through the feature loader', () => {
+test('core code does not depend on the desk pet; it only reaches it through the feature loader', () => {
     const owned = ['modules/deskpet/', 'DeskPetmodules/', 'assets/deskpet/', 'scripts/deskpet', 'tests/', 'docs/', 'vendor/', 'VCPDistributedServer/Plugin/'];
     let matches = '';
     try {
-        matches = execFileSync('git', ['grep', '--untracked', '-I', '-l', '-i', '-E', 'deskpet|桌宠', '--', '*.js', '*.mjs', '*.cjs', '*.html', '*.css'], { cwd: projectRoot, encoding: 'utf8' });
+        // IPC 通道名和注释不代表模块依赖；这里只禁止绕过功能加载器的直接加载。
+        matches = execFileSync('git', ['grep', '--untracked', '-I', '-l', '-i', '-E',
+            `require[[:space:]]*\\([[:space:]]*['"][^'"]*deskpet(/|['"])|from[[:space:]]+['"][^'"]*deskpet(/|['"])|import[[:space:]]*\\([[:space:]]*['"][^'"]*deskpet(/|['"])|import[[:space:]]+['"][^'"]*deskpet(/|['"])`,
+            '--', '*.js', '*.mjs', '*.cjs'], { cwd: projectRoot, encoding: 'utf8' });
     } catch (error) {
         if (error.status !== 1) throw error; // 1 = 没有匹配
     }

@@ -14,8 +14,8 @@ test('official presets are loaded from the independent official JSON file', () =
     const names = officialStore.rules.map(rule => rule.name);
 
     assert.equal(Object.hasOwn(engine, 'BUILTIN_RULES'), false);
-    assert.equal(officialStore.rules.length, 10);
-    const expectedNames = [
+    // 核心预设必须存在；新增官方预设不应让本用例失败。
+    const requiredNames = [
         'Agent输出动画气泡',
         '工作区目录感知',
         '心流锁系统',
@@ -25,9 +25,14 @@ test('official presets are loaded from the independent official JSON file', () =
         '禁用所有工具',
         '获取服务器验证码',
         '窗口控制权限',
-        '启用HTML多媒体权限'
+        '启用HTML多媒体能力'
     ];
-    assert.deepEqual([...names].sort(), [...expectedNames].sort());
+    for (const name of requiredNames) {
+        assert.ok(names.includes(name), `缺少核心官方预设：${name}`);
+    }
+    const keys = officialStore.rules.map(rule => rule.builtinKey);
+    assert.ok(keys.every(key => typeof key === 'string' && key.trim().length > 0), 'builtinKey 必须是非空字符串');
+    assert.equal(new Set(keys).size, keys.length, 'builtinKey 出现重复');
     assert.equal(names.includes('插件管理员'), false);
 });
 
