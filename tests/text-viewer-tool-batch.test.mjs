@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { JSDOM } from 'jsdom';
 import { collectToolBatchRanges } from '../modules/renderer/toolBatchRegions.js';
 import { sanitizeToolDataHtml } from '../modules/renderer/toolDataHtml.js';
+import { splitToolBatchDomains, composeToolBatchHtml } from '../modules/renderer/toolBatchDomains.js';
 import { replaceMarkdownCodeDomains } from '../modules/renderer/markdownCodeDomainScanner.js';
 import {
     TOOL_RESULT_START_MARKER,
@@ -24,11 +25,11 @@ test('reading mode restores cards after Markdown without nested code or visible 
         const render = new Function(
             'document', 'window', 'collectToolBatchRanges', 'sanitizeToolDataHtml',
             'replaceMarkdownCodeDomains', 'TOOL_RESULT_START_MARKER', 'TOOL_RESULT_END_MARKER',
-            'collectClosedToolResultRanges', 'parseJevToolUse',
+            'collectClosedToolResultRanges', 'parseJevToolUse', 'splitToolBatchDomains', 'composeToolBatchHtml',
             functions + '\nreturn renderViewerContent;'
         )(dom.window.document, { marked }, collectToolBatchRanges, sanitizeToolDataHtml,
             replaceMarkdownCodeDomains, TOOL_RESULT_START_MARKER, TOOL_RESULT_END_MARKER,
-            collectClosedToolResultRanges, parseJevToolUse);
+            collectClosedToolResultRanges, parseJevToolUse, splitToolBatchDomains, composeToolBatchHtml);
         const id = '2026-10-29T12:51:34.979Z';
         const text = [
             '# 前文', '',
@@ -58,6 +59,13 @@ test('reading mode restores cards after Markdown without nested code or visible 
         assert.doesNotMatch(root.textContent, /tcr-example|VCP_TOOL_BATCH|VCPVIEWERBATCH/);
         assert.match(root.querySelector('h2').textContent, /后文/);
         assert.match(text, /tcr-example/);
+        const receipt = text.slice(text.indexOf('<<<[VCP_TOOL_BATCH_START:'), text.indexOf('<<<[VCP_TOOL_BATCH_END:') + `<<<[VCP_TOOL_BATCH_END:${id}]>>>`.length);
+        for (const opener of ['```js\nopen', '<!-- open', '<pre>open', '<div><b>open']) {
+            root.innerHTML = render(opener + '\n' + receipt + '\n\n## 独立后文', 'viewer-test');
+            assert.ok(root.querySelector('.vcp-tool-result-bubble'), opener);
+            assert.equal(root.querySelector('.vcp-tool-result-bubble').closest('pre, code, b'), null, opener);
+            assert.equal(root.querySelector('h2')?.textContent, '独立后文', opener);
+        }
     } finally {
         dom.window.close();
     }

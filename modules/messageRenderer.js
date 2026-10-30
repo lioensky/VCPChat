@@ -1,5 +1,6 @@
 import { sanitizeToolDataHtml } from './renderer/toolDataHtml.js';
-import { stripToolBatches } from './renderer/toolBatchRegions.js';
+import { stripToolBatches, collectToolBatchRanges } from './renderer/toolBatchRegions.js';
+import { splitToolBatchDomains, transformToolBatchText, composeToolBatchHtml } from './renderer/toolBatchDomains.js';
 import { collectToolDataRanges } from './renderer/toolResultRegions.js';
 import { isContextCheckpoint } from './chat/contextCompactionState.js';
 import { createProjectForgeTopicSurface } from './renderer/projectForgeTopicSurface.js';
@@ -948,13 +949,13 @@ function applyFrontendRegexRules(text, rules, role, depth) {
         return text;
     }
 
-    let processedText = text;
-
-    activeRules.forEach(rule => {
-        processedText = applyRegexRule(processedText, rule);
+    return transformToolBatchText(text, source => {
+        let processedText = source;
+        activeRules.forEach(rule => {
+            processedText = applyRegexRule(processedText, rule);
+        });
+        return processedText;
     });
-
-    return processedText;
 }
 
 /**
@@ -1491,9 +1492,19 @@ function processAndInjectScopedCss(content, scopeId, options = {}) {
         return '<!-- VCP-SCOPED-STYLE-EXTRACTED -->';
     });
 
-    if (injectStyles && cssContent.length > 0) {
+    if (options.cssChunks) {
+        if (cssContent.trim()) {
+            try {
+                options.cssChunks.push(contentProcessor.scopeCss(cssContent, scopeId));
+            } catch (error) {
+                console.warn('[ScopedCSS] Rejected invalid domain CSS:', error);
+            }
+        }
+        return { processedContent, styleInjected };
+    }
+    if (injectStyles && (cssContent.length > 0 || options.scopedCssOverride)) {
         try {
-            const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
+            const scopedCss = options.scopedCssOverride ?? contentProcessor.scopeCss(cssContent, scopeId);
             if (!scopedCss.trim()) {
                 if (options.messageItem) {
                     options.messageItem.dataset.vcpScopedStyleState = 'rejected';
@@ -1558,6 +1569,27 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
     if (options.injectStyles !== false && messageItem) {
         const root = messageItem.closest('[data-vcp-projectforge-root]') || mainRendererReferences?.chatMessagesDiv;
         projectForgeTopicSurface.observe(root, { id: messageItem.dataset.messageId, role: 'assistant', content });
+    }
+    if (scopeId && collectToolBatchRanges(content).length) {
+        const cssChunks = [];
+        const processed = transformToolBatchText(content, source =>
+            processAssistantScopedHtmlContent(source, scopeId, null, {
+                ...options, injectStyles: false, cssChunks,
+            }));
+        if (options.injectStyles !== false) {
+            removeOwnedMessageScopeStyle(scopeId);
+            if (cssChunks.length) {
+                processAndInjectScopedCss('', scopeId, {
+                    ...options, messageItem, scopedCssOverride: cssChunks.join('\n'),
+                });
+            }
+        }
+        if (messageItem) {
+            messageItem.dataset.vcpHtmlScopeCandidate = 'true';
+            if (cssChunks.length) delete messageItem.dataset.vcpInlineHtmlScoped;
+            else messageItem.dataset.vcpInlineHtmlScoped = 'true';
+        }
+        return processed;
     }
     if (!scopeId || !containsAssistantHtmlNeedingScope(content)) {
         // 规范终稿可能移除了流式预览阶段出现过的 style；此时必须撤销旧消息级样式。
@@ -1970,6 +2002,16 @@ function renderMarkdownToHtmlUncached(text, options = {}) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
+    if (!options.batchDomain && collectToolBatchRanges(text).length) {
+        let ordinal = 0;
+        return composeToolBatchHtml(splitToolBatchDomains(text), domain => {
+            const html = renderMarkdownToHtmlUncached(domain.source, {
+                ...options, batchDomain: true, resultOrdinal: ordinal,
+            });
+            ordinal += collectClosedToolResultRanges(domain.source).length;
+            return html;
+        }, mainRendererReferences.document || mainRendererReferences.chatMessagesDiv?.ownerDocument);
+    }
     const globalSettings = options.settings || mainRendererReferences.globalSettingsRef.get();
     const {
         messageRole = 'assistant',
@@ -1980,7 +2022,7 @@ function renderMarkdownToHtmlUncached(text, options = {}) {
     const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
     let html = markedInstance.parse(protectedText);
     html = restoreLatexBlocks(html, latexMap);
-    html = restoreRenderedToolResults(html, toolResultMap);
+    html = restoreRenderedToolResults(html, toolResultMap, options.resultOrdinal || 0);
     return html;
 }
 
@@ -2176,6 +2218,13 @@ function findUnclosedStreamThoughtChain(text) {
 }
 
 function parseStreamTailMarkdown(text) {
+    if (collectToolBatchRanges(text).length) {
+        return composeToolBatchHtml(splitToolBatchDomains(text), domain =>
+            domain.type === 'text'
+                ? parseStreamTailMarkdown(domain.source)
+                : renderMarkdownToHtmlUncached(domain.source, { batchDomain: true }),
+            mainRendererReferences.document || mainRendererReferences.chatMessagesDiv?.ownerDocument);
+    }
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
@@ -2490,10 +2539,10 @@ function renderToolBatchBody(body, ranges, firstOrdinal = 0) {
     return `<div data-vcp-block-type="tool-batch" data-vcp-preserve-children="true">${html}</div>`;
 }
 
-function restoreRenderedToolResults(html, toolResultMap) {
+function restoreRenderedToolResults(html, toolResultMap, firstOrdinal = 0) {
     if (!toolResultMap || toolResultMap.size === 0 || typeof html !== 'string') return html;
 
-    let resultOrdinal = 0;
+    let resultOrdinal = firstOrdinal;
     // P1-5：工具结果占位符使用 HTML 注释格式，单遍匹配即可恢复。
     // 同时兼容 marked 将注释占位符包裹成 <p><!--VCP_TOOL_RESULT_n--></p> 的情况。
     return html.replace(/<p>\s*(<!--VCP_TOOL_RESULT_(\d+)-->)\s*<\/p>|<!--VCP_TOOL_RESULT_(\d+)-->/g, (match, wrappedPlaceholder, wrappedId, bareId) => {

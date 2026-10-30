@@ -1,4 +1,5 @@
 import { collectToolBatchRanges } from './renderer/toolBatchRegions.js';
+import { splitToolBatchDomains, composeToolBatchHtml } from './renderer/toolBatchDomains.js';
 import { sanitizeToolDataHtml } from './renderer/toolDataHtml.js';
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
 import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
@@ -975,7 +976,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         return { text: processed, batchHtml };
     }
 
-    function renderViewerContent(text, scopeId) {
+    function renderViewerContent(text, scopeId, batchDomain = false) {
+        if (!batchDomain && collectToolBatchRanges(text).length) {
+            document.querySelectorAll('style[data-vcp-scope-id]').forEach(node => {
+                if (node.getAttribute('data-vcp-scope-id') === scopeId) node.remove();
+            });
+            return composeToolBatchHtml(splitToolBatchDomains(text),
+                domain => renderViewerContent(domain.source, scopeId, true), document);
+        }
         const processed = preprocessFullContent(text, scopeId);
         let html = window.marked.parse(processed.text);
         for (const [placeholder, batch] of processed.batchHtml) {

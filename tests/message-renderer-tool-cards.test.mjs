@@ -170,6 +170,7 @@ async function createRendererFixture(messageContent, appearanceProfile, markdown
         messageItem,
         historyRef,
         settingsRef,
+        selectedRef,
         restoreGlobals() {
             globalThis.window = previousGlobals.window;
             globalThis.document = previousGlobals.document;
@@ -570,6 +571,83 @@ test('smooth streaming commits an atomic role-wrapped batch without exposing con
         });
         assert.match(fixture.renderer.extractSpeakableTextFromContentElement(content), /完成正文/);
         assert.doesNotMatch(fixture.renderer.extractSpeakableTextFromContentElement(content), /record-stream|evil|bad/);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+
+test('batch boundaries reset Markdown, protocol and HTML parser state in both directions', async () => {
+    const id = '2026-10-29T21:25:17.192+08:00';
+    const receipt = `<<<[ROLE_DIVIDE_USER]>>>\n<<<[VCP_TOOL_BATCH_START:${id}]>>>\n`
+        + '[[VCP调用结果信息汇总:\n- 工具名称: BoundaryDemo\n- 执行状态: SUCCESS\n- 返回内容: ```\n</pre> --> </think> $$\nVCP调用结果结束]]\n'
+        + `<<<[VCP_TOOL_BATCH_END:${id}]>>>\n<<<[END_ROLE_DIVIDE_USER]>>>`;
+    for (const opener of ['```js\nopen', '<!-- open', '<pre>open', '<div><b>open', '<think>\nopen', '$$\nopen']) {
+        const text = opener + '\n' + receipt + '\n\n## 后文独立标题';
+        const fixture = await createRendererFixture(text, { toolPresentation: 'legacy', toolExpansion: 'none' });
+        try {
+            await new Promise(resolve => setTimeout(resolve, 30));
+            const content = fixture.messageItem.querySelector('.md-content');
+            const card = content.querySelector('.vcp-tool-result-bubble');
+            assert.ok(card, opener);
+            assert.equal(card.closest('pre, code, think, b'), null, opener);
+            assert.equal(content.querySelector('h2')?.textContent, '后文独立标题', opener);
+            assert.equal(content.querySelectorAll('.vcp-role-divider').length, 2, opener);
+            assert.doesNotMatch(content.textContent, /VCP_TOOL_BATCH|ROLE_DIVIDE/);
+            assert.equal(fixture.historyRef.get()[0].content, text);
+        } finally {
+            await disposeFixture(fixture);
+        }
+    }
+});
+
+test('multiple batch domains keep global result ordinals and independent styles', async () => {
+    const receipt = id => `<<<[VCP_TOOL_BATCH_START:${id}]>>>\n`
+        + '[[VCP调用结果信息汇总:\n- 工具名称: Demo\n- 执行状态: SUCCESS\n- 返回内容: payload\nVCP调用结果结束]]\n'
+        + `<<<[VCP_TOOL_BATCH_END:${id}]>>>`;
+    const text = '<style>.before{color:red}</style>\n' + receipt('one')
+        + '\n<style>.after{color:blue}</style>\n' + receipt('two') + '\n正文';
+    const fixture = await createRendererFixture(text, { toolPresentation: 'legacy', toolExpansion: 'none' });
+    try {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        const content = fixture.messageItem.querySelector('.md-content');
+        assert.deepEqual([...content.querySelectorAll('.vcp-tool-result-bubble')].map(node => node.dataset.vcpToolResultIndex), ['0', '1']);
+        const styles = fixture.dom.window.document.head.querySelector('style[data-vcp-scope-id]')?.textContent || '';
+        assert.match(styles, /\.before/);
+        assert.match(styles, /\.after/);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});
+
+
+test('frontend regex and CSS extraction cannot match through a receipt', async () => {
+    const batch = '<<<[ROLE_DIVIDE_USER]>>>\n<<<[VCP_TOOL_BATCH_START:rules]>>>\n'
+        + '[[VCP调用结果信息汇总:\n- 工具名称: ProtectedTool\n- 执行状态: SUCCESS\n- 返回内容: secret\nVCP调用结果结束]]\n'
+        + '<<<[VCP_TOOL_BATCH_END:rules]>>>\n<<<[END_ROLE_DIVIDE_USER]>>>';
+    const fixture = await createRendererFixture('', { toolPresentation: 'legacy', toolExpansion: 'none' });
+    try {
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const selected = fixture.selectedRef.get();
+        fixture.selectedRef.set({
+            ...selected,
+            config: {
+                stripRegexes: [
+                    { findPattern: '/BEGIN[\\s\\S]*END/g', replaceWith: 'CROSSED' },
+                    { findPattern: '/ProtectedTool/g', replaceWith: 'CHANGED' },
+                ].map(rule => ({ ...rule, applyToFrontend: true, applyToRoles: ['assistant'] })),
+            },
+        });
+        const source = 'BEGIN\n<style>.cross{color:red}\n' + batch + '\n</style>\nEND\n\n## 正文';
+        fixture.historyRef.get()[0].content = source;
+        fixture.renderer.updateMessageContent('tool-card-message', source);
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const content = fixture.messageItem.querySelector('.md-content');
+        assert.equal(content.querySelector('.vcp-tool-result-name')?.textContent, 'ProtectedTool');
+        assert.doesNotMatch(content.textContent, /CROSSED|CHANGED/);
+        assert.equal(content.querySelector('h2')?.textContent, '正文');
+        assert.equal(fixture.dom.window.document.head.querySelector('style[data-vcp-scope-id]'), null);
+        assert.equal(fixture.historyRef.get()[0].content, source);
     } finally {
         await disposeFixture(fixture);
     }
