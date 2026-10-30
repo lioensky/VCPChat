@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 try {
     $data = [Console]::In.ReadToEnd() | ConvertFrom-Json
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
-    [xml]$xaml = @'
+    $xamlText = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Width="620" SizeToContent="Height" WindowStartupLocation="CenterScreen"
@@ -106,6 +106,26 @@ try {
  </Border>
 </Window>
 '@
+    # Colors only: never interpolate user text or execute theme content.
+    if ($null -ne $data.theme) {
+        $allowed = @('#141E1B', '#202D29', '#0D1613', '#EDF3F1', '#D5E1DC',
+                     '#B7C7C2', '#8AA297', '#627B6F', '#35483F', '#34483F',
+                     '#86E5BA', '#10251A')
+        $palette = @{}
+        foreach ($entry in $data.theme.PSObject.Properties) {
+            if ($allowed -ccontains $entry.Name -and
+                [string]$entry.Value -cmatch '^#[0-9A-Fa-f]{6}$') {
+                $palette[$entry.Name] = [string]$entry.Value
+            }
+        }
+        # Single pass avoids replacing one newly mapped color a second time.
+        $xamlText = [regex]::Replace($xamlText, '#[0-9A-Fa-f]{6}', {
+            param($match)
+            if ($palette.ContainsKey($match.Value)) { $palette[$match.Value] }
+            else { $match.Value }
+        })
+    }
+    [xml]$xaml = $xamlText
     $reader = New-Object System.Xml.XmlNodeReader $xaml
     $window = [Windows.Markup.XamlReader]::Load($reader)
     $heading = $window.FindName('Heading')
@@ -194,13 +214,27 @@ try {
         if ($remaining -le 0) { & $finish 'cancel' '' }
     }
     $timer.Add_Tick($tick)
+    # One-shot foreground pulse, not a permanently topmost dialog.
+    $foregroundTimer = New-Object Windows.Threading.DispatcherTimer
+    $foregroundTimer.Interval = [TimeSpan]::FromMilliseconds(200)
+    $foregroundTimer.Add_Tick({
+        $foregroundTimer.Stop()
+        $window.Topmost = $false
+    })
+    $script:foregroundRaised = $false
     $window.Add_ContentRendered({
+        if (-not $script:foregroundRaised) {
+            $script:foregroundRaised = $true
+            $window.Topmost = $true
+            [void]$window.Activate()
+            $foregroundTimer.Start()
+        }
         [void]$reply.Focus()
         $reply.SelectAll()
         & $tick
         if (-not $script:finished) { $timer.Start() }
     })
-    $window.Add_Closed({ $timer.Stop(); $clock.Stop() })
+    $window.Add_Closed({ $foregroundTimer.Stop(); $timer.Stop(); $clock.Stop() })
     [void]$window.ShowDialog()
     [Console]::Out.WriteLine(($script:outcome | ConvertTo-Json -Compress))
 } catch {

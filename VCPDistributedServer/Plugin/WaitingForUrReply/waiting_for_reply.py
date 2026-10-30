@@ -144,9 +144,11 @@ class UserInputHandler:
         no_reply = "（对方未回复明确内容）"
         if timeout <= 0:
             return no_reply
+        from dialog_theme import read_dialog_theme
         payload = json.dumps({
             "prompt": prompt, "options": options, "timeout": timeout,
             "placeholder": placeholder, "title": title,
+            "theme": read_dialog_theme(),
         }, ensure_ascii=False)
         # 使用系统 Windows PowerShell，避免 PATH 中的同名程序；WPF 需要 STA。
         executable = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) /
