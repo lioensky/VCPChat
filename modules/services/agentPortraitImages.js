@@ -7,9 +7,9 @@ const fsp = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
 
-// 立绘顶部铺满侧栏宽度、高 248px：宽 1600 够 800px 宽的侧栏在 2 倍缩放下用，高至少 600 给横图留够
-const DISPLAY_WIDTH = 1600;
-const DISPLAY_HEIGHT = 600;
+// 1080p边界：横图1920×1080，竖图1080×1920，inside等比缩小，不裁切、不放大。正常PNG/JPEG已由portraitOptimizer原地规范化。
+const DISPLAY_WIDTH = 1920;
+const DISPLAY_HEIGHT = 1080;
 const pending = new Map();
 // 已确认不用缩小的原图（按路径、修改时间和大小记），免得每次都读一遍图片头
 const keepOriginal = new Set();
@@ -46,7 +46,7 @@ function cachePrefix(filePath) {
 
 function cacheKey(filePath, stat) {
     const prefix = cachePrefix(filePath);
-    return { prefix, name: `${prefix}${Math.round(stat.mtimeMs)}-${stat.size}.webp` };
+    return { prefix, name: `${prefix}1080p-v2-${Math.round(stat.mtimeMs)}-${stat.size}.webp` };
 }
 
 let sharpModule = null;
@@ -69,7 +69,10 @@ async function createDisplayImage(filePath, target, prefix) {
     if (!meta.width || !meta.height || (meta.pages || 1) > 1) return null;
     // 手机照片常带 EXIF 方向：方向 5-8 摆正以后宽高对调，要按摆正后的尺寸算，否则缩出来的图被裁歪
     const [width, height] = (meta.orientation || 1) >= 5 ? [meta.height, meta.width] : [meta.width, meta.height];
-    const scale = Math.max(DISPLAY_WIDTH / width, DISPLAY_HEIGHT / height);
+    const scale = Math.min(
+        (width > height ? DISPLAY_WIDTH : DISPLAY_HEIGHT) / width,
+        (width > height ? DISPLAY_HEIGHT : DISPLAY_WIDTH) / height
+    );
     if (scale >= 1) return null;
     await fs.ensureDir(path.dirname(target));
     const temp = `${target}.${process.pid}.tmp`;

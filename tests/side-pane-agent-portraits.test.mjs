@@ -96,21 +96,22 @@ test('a large portrait is served as a cached display-size copy, small ones and u
 
     const first = await getPortraits('Big');
     const cached = fileURLToPath(first.default.replace(/\?v=\d+$/, ''));
-    assert.equal(path.dirname(cached), path.join(root, 'PortraitCache'));
+    assert.equal(path.dirname(cached), dir);
+    assert.equal(fs.existsSync(path.join(dir, 'portrait.png')), false);
     const meta = await sharp(cached).metadata();
-    assert.deepEqual([meta.format, meta.width, meta.height, meta.hasAlpha], ['webp', 1600, 2400, true]);
+    assert.deepEqual([meta.format, meta.width, meta.height, meta.hasAlpha], ['webp', 1080, 1620, true]);
     assert.match(first.light, /\/Big\/portrait\.light\.avif\?v=\d+$/);
     assert.match(first.broken, /\/Big\/portrait\.broken\.png\?v=\d+$/);
     assert.deepEqual(await getPortraits('Big'), first);
 
     // 换了原图：生成新的缩小图，旧的删掉
-    await solid(5000, 5000).png().toFile(path.join(dir, 'portrait.png'));
+    await solid(5000, 5000).webp().toFile(cached);
     const later = new Date(Date.now() + 5000);
-    fs.utimesSync(path.join(dir, 'portrait.png'), later, later);
+    fs.utimesSync(cached, later, later);
     const second = await getPortraits('Big');
     assert.notEqual(second.default, first.default);
-    assert.equal(fs.existsSync(cached), false);
-    assert.equal((await sharp(fileURLToPath(second.default.replace(/\?v=\d+$/, ''))).metadata()).width, 1600);
+    assert.equal(fs.existsSync(cached), true, '同路径WebP被规范化替换');
+    assert.equal((await sharp(fileURLToPath(second.default.replace(/\?v=\d+$/, ''))).metadata()).width, 1080);
 });
 
 test('animated PNGs and videos are served as they are, so the animation is kept', { skip: sharpUnavailable }, async () => {
@@ -145,7 +146,7 @@ test('a phone photo with an EXIF rotation is scaled by its upright size and keep
         .toFile(path.join(dir, 'portrait.jpg'));
     const portraits = await getPortraits('Rotated');
     const meta = await sharp(fileURLToPath(portraits.default.replace(/\?v=\d+$/, ''))).metadata();
-    assert.deepEqual([meta.width, meta.height], [1600, 2400]);
+    assert.deepEqual([meta.width, meta.height], [1080, 1620]);
 });
 
 const png = { type: 'image/png', buffer: new Uint8Array([1, 2, 3]).buffer };
@@ -203,7 +204,7 @@ test('removing a portrait, changing its format or deleting the agent drops its c
     await big(path.join(dir, 'portrait.light.png'));
     const first = await getPortraits('Cached');
     const light = cachedOf(first.light);
-    assert.equal(path.dirname(light), path.join(root, 'PortraitCache'));
+    assert.equal(path.dirname(light), dir);
 
     await remove('Cached', 'light');
     assert.equal(fs.existsSync(light), false, '删掉的立绘不留缩小图');
@@ -212,7 +213,8 @@ test('removing a portrait, changing its format or deleting the agent drops its c
     const oldDefault = cachedOf(first.default);
     const jpeg = await sharp({ create: { width: 4000, height: 6000, channels: 3, background: { r: 10, g: 10, b: 10 } } }).jpeg().toBuffer();
     assert.equal((await save('Cached', 'default', { type: 'image/jpeg', buffer: jpeg })).success, true);
-    assert.equal(fs.existsSync(oldDefault), false);
+    assert.equal(fs.existsSync(oldDefault), true, '新导入同样保存为portrait.webp');
+    assert.equal((await sharp(oldDefault).metadata()).width, 1080);
     const current = cachedOf((await getPortraits('Cached')).default);
     assert.ok(fs.existsSync(current));
 
