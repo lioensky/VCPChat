@@ -117,9 +117,12 @@ async function continueWritingForContext(params) {
 
     // 获取与普通单聊一致的合并后高级回复规则。
     // IPC 返回官方预置 + 用户覆盖；权限预置默认关闭，不会因 Flowlock 后台运行而隐式授权。
-    let tavernRules = [];
+    const conversationSnapshot = typeof chatAPI.resolveConversationContext === 'function'
+        ? await chatAPI.resolveConversationContext({ type: 'agent', id: agentId }) : null;
+    if (conversationSnapshot && !conversationSnapshot.success) throw new Error(conversationSnapshot.error);
+    let tavernRules = conversationSnapshot?.rules || [];
     const tavernEngine = window.TavernRulesEngine;
-    if (typeof chatAPI.tavernGetRules === 'function') {
+    if (!conversationSnapshot && typeof chatAPI.tavernGetRules === 'function') {
         try {
             const tavernResult = await chatAPI.tavernGetRules();
             if (tavernResult?.success && Array.isArray(tavernResult.store?.rules)) {
@@ -207,6 +210,14 @@ async function continueWritingForContext(params) {
         const tavernSystemOnly = tavernEngine.applySystemSuffix('', tavernRules, 'agent');
         if (tavernSystemOnly.trim()) {
             messagesForVCP.unshift({ role: 'system', content: tavernSystemOnly });
+        }
+    }
+
+    for (const message of messagesForVCP) {
+        if (message.role === 'system' && typeof message.content === 'string' &&
+            message.content.includes('{{VCPChatWorkSpace') && chatAPI.expandWorkspacePlaceholders) {
+            const expanded = await chatAPI.expandWorkspacePlaceholders(message.content, conversationSnapshot);
+            if (expanded?.success) message.content = expanded.text;
         }
     }
 

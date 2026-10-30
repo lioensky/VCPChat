@@ -47,11 +47,11 @@ const WORKSPACE_PLACEHOLDER_HINT = '{{VCPChatWorkSpace';
 
 // {{VCPChatWorkSpace}} / {{VCPChatWorkSpace:文件夹名}}：展开为工作区目录树。
 // 延迟 require，避免与主进程模块初始化顺序耦合；失败时保留原文，不阻断群聊。
-async function expandWorkspacePlaceholdersInPrompt(text) {
+async function expandWorkspacePlaceholdersInPrompt(text, snapshot = null) {
     if (typeof text !== 'string' || !text.includes(WORKSPACE_PLACEHOLDER_HINT)) return text;
     try {
         const { expandPlaceholders } = require('../modules/ipc/workspaceHandlers');
-        return typeof expandPlaceholders === 'function' ? await expandPlaceholders(text) : text;
+        return typeof expandPlaceholders === 'function' ? await expandPlaceholders(text, snapshot) : text;
     } catch (error) {
         console.warn('[GroupChat] 工作区占位符展开失败，保留原文:', error?.message || error);
         return text;
@@ -679,7 +679,26 @@ async function getAgentGroupConfig(groupId) {
  * @param {object} configData - 要保存的配置数据
  * @returns {Promise<object>} - 包含成功状态的对象
  */
-async function saveAgentGroupConfig(groupId, configData) {
+const groupConfigQueues = new Map();
+function mutateGroupConfig(groupId, mutate) {
+    const previous = groupConfigQueues.get(groupId) || Promise.resolve();
+    const task = previous.catch(() => {}).then(async () => {
+        const current = await getAgentGroupConfig(groupId);
+        if (!current || current.error) throw new Error(current?.error || '群配置不存在');
+        return saveAgentGroupConfigUnlocked(groupId, await mutate(current));
+    });
+    groupConfigQueues.set(groupId, task);
+    const cleanup = () => { if (groupConfigQueues.get(groupId) === task) groupConfigQueues.delete(groupId); };
+    task.then(cleanup, cleanup);
+    return task;
+}
+function saveAgentGroupConfig(groupId, configData) {
+    return mutateGroupConfig(groupId, current => ({
+        ...configData,
+        conversationOverrides: current.conversationOverrides,
+    }));
+}
+async function saveAgentGroupConfigUnlocked(groupId, configData) {
     if (!mainAppPaths.AGENT_GROUPS_DIR) {
         return { success: false, error: 'GroupChat module paths not initialized.' };
     }
@@ -822,9 +841,8 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
     const userNameForMessage = userMessage.name || globalVcpSettings.userName || '用户';
 
     // VCPChatTarven (高级回复) - 收集生效的群聊规则
-    const tavernRules = (typeof tavernHandlers.getActiveRules === 'function')
-        ? tavernHandlers.getActiveRules()
-        : [];
+    const conversationSnapshot = await require('../modules/services/conversationContext').resolve({ type: 'group', id: groupId });
+    const tavernRules = conversationSnapshot.rules;
 
     // user_suffix 规则只追加到本轮提交给 AI 的用户文本上，不写入历史
     if (Array.isArray(tavernRules) && tavernRules.length > 0 &&
@@ -949,7 +967,7 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
             combinedSystemPrompt = tavernEngine.applySystemSuffix(combinedSystemPrompt, tavernRules, 'group');
         }
         // 最后展开工作区占位符，使 Tavern 预设规则中的占位符同样生效。
-        combinedSystemPrompt = await expandWorkspacePlaceholdersInPrompt(combinedSystemPrompt);
+        combinedSystemPrompt = await expandWorkspacePlaceholdersInPrompt(combinedSystemPrompt, conversationSnapshot);
 
         // 2. 构建上下文结构 (每次循环都基于最新的 groupHistory)
         // 历史仍完整持久化；窗口仅限制本次发送给模型的最近楼层。
@@ -1586,9 +1604,8 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     const messageIdForAgentResponse = `msg_group_invited_${groupId}_${topicId}_${invitedAgentId}_${Date.now()}`;
 
     // VCPChatTarven (高级回复) - 收集生效的群聊规则
-    const tavernRulesInvite = (typeof tavernHandlers.getActiveRules === 'function')
-        ? tavernHandlers.getActiveRules()
-        : [];
+    const conversationSnapshot = await require('../modules/services/conversationContext').resolve({ type: 'group', id: groupId });
+    const tavernRulesInvite = conversationSnapshot.rules;
 
     // 1. 构建 SystemPrompt
     let combinedSystemPrompt = agentConfig.systemPrompt || `你是${agentName}。`;
@@ -1615,7 +1632,7 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
         combinedSystemPrompt = tavernEngine.applySystemSuffix(combinedSystemPrompt, tavernRulesInvite, 'group');
     }
     // 最后展开工作区占位符，使 Tavern 预设规则中的占位符同样生效。
-    combinedSystemPrompt = await expandWorkspacePlaceholdersInPrompt(combinedSystemPrompt);
+    combinedSystemPrompt = await expandWorkspacePlaceholdersInPrompt(combinedSystemPrompt, conversationSnapshot);
 
     // 2. 构建上下文结构 (基于最新的 groupHistory)
     // 历史仍完整持久化；窗口仅限制本次发送给模型的最近楼层。
@@ -2616,6 +2633,7 @@ module.exports = {
     createNewTopicForGroup,
     deleteGroupTopic,
     saveGroupTopicTitle,
+    mutateGroupConfig,
     regenerateGroupTopicTitle,
     getGroupChatHistory,
 };

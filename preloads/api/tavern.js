@@ -9,6 +9,9 @@ module.exports = {
     handlers: ['modules/ipc/tavernHandlers.js'],
     roles: ['chat'],
     api: {
+        resolveConversationContext: invoke('conversation:resolve-context', 'owner'),
+        updateConversationOverride: invoke('conversation:update-override', 'owner', 'patch'),
+        tavernToggleRuleEnabled: invoke('tavern:toggle-rule-enabled', 'key'),
         tavernGetRules: invoke('tavern:get-rules'),
         tavernSaveRules: invoke('tavern:save-rules', 'store'),
         tavernSetRuleEnabled: invoke('tavern:set-rule-enabled', 'ruleId', 'enabled'),

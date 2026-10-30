@@ -59,11 +59,11 @@ function getPromptSettings() {
 }
 
 /** 展开文本中的 {{VCPChatWorkSpace}} / {{VCPChatWorkSpace:文件夹名}}；无占位符时原样返回。 */
-function expandPlaceholders(text) {
+function expandPlaceholders(text, snapshot = null) {
     return expandWorkspacePlaceholders(text, {
         index: workspaceIndex,
-        activeWorkspaceId: getActiveWorkspaceId(),
-        settings: promptSettings,
+        activeWorkspaceId: snapshot ? snapshot.activeWorkspaceId : getActiveWorkspaceId(),
+        settings: snapshot?.promptSettings || promptSettings,
     });
 }
 
@@ -204,10 +204,10 @@ function initialize({ settingsManager, logger = console, ipcMain: injectedIpcMai
         }
     });
 
-    ipcMain.handle('workspaces:expand-placeholders', async (_event, text) => {
+    ipcMain.handle('workspaces:expand-placeholders', async (_event, text, snapshot = null) => {
         try {
             if (typeof text !== 'string') return { success: false, error: '文本必须是字符串。' };
-            return { success: true, text: await expandPlaceholders(text) };
+            return { success: true, text: await expandPlaceholders(text, snapshot) };
         } catch (error) {
             return { success: false, error: error.message };
         }

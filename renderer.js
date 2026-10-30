@@ -639,6 +639,10 @@ mainChatSettingsPresentationOwner.configureStartup({
             attachedFiles: mainChatAttachmentOwner.ref,
             updateAttachmentPreview: mainChatAttachmentOwner.syncPreview,
             getCurrentAgentId: () => currentSelectedItemRef.get()?.id,
+            getConversationOwner: () => {
+                const item = currentSelectedItemRef.get();
+                return item ? { type: item.type, id: item.id } : null;
+            },
             getCurrentTopicId: currentTopicIdRef.get,
             uiHelper: uiHelperFunctions,
             listenerOwner: mainChatDomListenerOwner,

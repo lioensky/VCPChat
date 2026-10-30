@@ -301,11 +301,11 @@ function applyContextRules(messages, rules, engine) {
 // 无占位符时不发 IPC；展开失败保留原文，不阻断发送。
 const WORKSPACE_PLACEHOLDER_HINT = '{{VCPChatWorkSpace';
 
-async function expandWorkspacePlaceholdersInPrompt(electronAPI, text) {
+async function expandWorkspacePlaceholdersInPrompt(electronAPI, text, snapshot = null) {
     if (typeof text !== 'string' || !text.includes(WORKSPACE_PLACEHOLDER_HINT)) return text;
     if (typeof electronAPI?.expandWorkspacePlaceholders !== 'function') return text;
     try {
-        const result = await electronAPI.expandWorkspacePlaceholders(text);
+        const result = await electronAPI.expandWorkspacePlaceholders(text, snapshot);
         if (result?.success && typeof result.text === 'string') return result.text;
         console.warn('[SingleChatRequestOrchestrator] 工作区占位符展开失败，保留原文:', result?.error);
     } catch (error) {
@@ -343,10 +343,15 @@ function createSingleChatRequestOrchestrator({
             throw new Error('Single chat context requires agentId and topicId');
         }
 
+        let snapshot = null;
+        if (typeof electronAPI.resolveConversationContext === 'function') {
+            snapshot = await electronAPI.resolveConversationContext({ type: 'agent', id: context.agentId });
+            if (!snapshot?.success) throw new Error(snapshot?.error || '无法解析会话配置');
+        }
         const engine = resolveTavernEngine(tavernEngine);
         const rules = Array.isArray(tavernRules)
             ? tavernRules
-            : await loadTavernRules(electronAPI);
+            : snapshot ? snapshot.rules : await loadTavernRules(electronAPI);
         const contentBuilder = buildMessageContent || buildDefaultMessageContent;
         const effectiveHistory = effectiveContextHistory(history);
         const messages = [];
@@ -405,7 +410,8 @@ function createSingleChatRequestOrchestrator({
         // 先追加 Tavern system_suffix，再展开工作区占位符，使预设规则中的占位符同样生效。
         const systemPrompt = await expandWorkspacePlaceholdersInPrompt(
             electronAPI,
-            applySystemRules(systemParts.join('\n\n'), rules, engine)
+            applySystemRules(systemParts.join('\n\n'), rules, engine),
+            snapshot
         );
         if (systemPrompt.trim()) {
             messages.unshift({ role: 'system', content: systemPrompt });

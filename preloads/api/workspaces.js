@@ -18,7 +18,7 @@ module.exports = {
         selectWorkspaceDirectory: invoke('workspaces:select-directory'),
 
         // {{VCPChatWorkSpace}} / {{VCPChatWorkSpace:文件夹名}} 占位符
-        expandWorkspacePlaceholders: invoke('workspaces:expand-placeholders', 'text'),
+        expandWorkspacePlaceholders: invoke('workspaces:expand-placeholders', (text, snapshot = null) => [text, snapshot]),
         getWorkspacePromptSettings: invoke('workspaces:get-prompt-settings'),
         setWorkspacePromptSettings: invoke('workspaces:set-prompt-settings', 'patch'),
     },

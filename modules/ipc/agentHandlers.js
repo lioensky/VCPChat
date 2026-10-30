@@ -433,6 +433,7 @@ function initialize(context) {
             // CRITICAL: Always remove stripRegexes from the object to be saved to config.json
             const configToSave = { ...config };
             delete configToSave.stripRegexes;
+            delete configToSave.conversationOverrides;
 
             if (agentConfigManager) {
                 // 使用AgentConfigManager进行安全的配置更新

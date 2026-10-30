@@ -977,9 +977,11 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
         // VCPChatTarven (高级回复) - 收集当前生效的规则,
         // 让"重新回复"与正常发送消息保持完全一致的注入行为
-        const tavernRules = (ownerWindow.TavernManager && typeof ownerWindow.TavernManager.getActiveRulesForScope === 'function')
-            ? (ownerWindow.TavernManager.getActiveRulesForScope('agent') || [])
-            : [];
+        const conversationSnapshot = typeof electronAPI.resolveConversationContext === 'function'
+            ? await electronAPI.resolveConversationContext({ type: 'agent', id: currentSelectedItemVal.id }) : null;
+        if (conversationSnapshot && !conversationSnapshot.success) throw new Error(conversationSnapshot.error);
+        const tavernRules = conversationSnapshot?.rules ||
+            (await electronAPI.tavernGetRules?.())?.store?.rules || [];
         const tavernEngine = ownerWindow.TavernRulesEngine;
 
         const messagesForVCP = await Promise.all(historyForRegeneration.map(async (msg, index) => {
@@ -1238,6 +1240,14 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             const systemOnly = tavernEngine ? tavernEngine.applySystemSuffix(emotionTagPrompt, tavernRules, 'agent') : emotionTagPrompt;
             if (systemOnly && systemOnly.trim()) {
                 messagesForVCP.unshift({ role: 'system', content: systemOnly });
+            }
+        }
+
+        for (const message of messagesForVCP) {
+            if (message.role === 'system' && typeof message.content === 'string' &&
+                message.content.includes('{{VCPChatWorkSpace') && electronAPI.expandWorkspacePlaceholders) {
+                const expanded = await electronAPI.expandWorkspacePlaceholders(message.content, conversationSnapshot);
+                if (expanded?.success) message.content = expanded.text;
             }
         }
 

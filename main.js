@@ -1964,6 +1964,20 @@ if (!gotTheLock) {
         desktopRemoteHandlers.initialize({ mainWindow });
         reportLauncherProgress('workspace-ready', 0.76, '工作空间与功能模块已连接');
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
+        require('./modules/services/conversationContext').initialize({
+            load: owner => owner.type === 'agent'
+                ? agentConfigManager.readAgentConfig(owner.id)
+                : groupChat.getAgentGroupConfig(owner.id),
+            update: (owner, mutate) => owner.type === 'agent'
+                ? agentConfigManager.updateAgentConfig(owner.id, mutate)
+                : groupChat.mutateGroupConfig(owner.id, mutate),
+            workspace: () => ({
+                workspaces: workspaceHandlers.workspaceService.list(),
+                activeWorkspaceId: workspaceHandlers.getActiveWorkspaceId(),
+                promptSettings: workspaceHandlers.getPromptSettings(),
+            }),
+            rules: () => tavernHandlers.readStore(),
+        });
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
         voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
         localSttHandlers.initialize({ appDataRoot: APP_DATA_ROOT_IN_PROJECT });

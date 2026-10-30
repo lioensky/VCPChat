@@ -353,9 +353,39 @@ function initializeInputEnhancer(refs) {
     let currentSuggestions = [];
     let mentionSequence = 0;
     let workspaceCache = { at: 0, list: [], activeAlias: null };
+    const getOwner = () => refs.getConversationOwner?.() || null;
+    const ownerKey = owner => owner ? `${owner.type}:${owner.id}` : '';
+    const readWorkspaceState = async (owner = getOwner()) => {
+        if (localElectronAPI.resolveConversationContext) {
+            const result = await localElectronAPI.resolveConversationContext(owner);
+            if (!result?.success) throw new Error(result?.error || '读取工作区失败');
+            return result;
+        }
+        return localElectronAPI.listWorkspaces();
+    };
+    const channel = window.VCPStateChannels?.get?.('conversation.current')
+        || window.VCPStateChannels?.create?.('conversation.current', { itemId: null, itemType: null, topicId: null, historyRevision: 0 });
+    if (channel?.subscribe) {
+        let selectionKey = ownerKey(getOwner());
+        ownedDisposers.push(channel.subscribe(value => {
+            const nextKey = value?.itemId ? `${value.itemType}:${value.itemId}` : '';
+            if (selectionKey === nextKey) return;
+            selectionKey = nextKey;
+            workspaceCache = { at: 0, list: [], activeAlias: null };
+            mentionSequence++;
+            closeWorkspaceMenu();
+            void refreshWorkspacePicker();
+            window.TavernManager?.hidePopover?.();
+        }, { immediate: false }));
+    }
+    addListener(window, 'vcp-conversation-overrides-changed', () => {
+        workspaceCache = { at: 0, list: [], activeAlias: null };
+        void refreshWorkspacePicker();
+    });
     // 输入框工作区按钮切换后立即失效缓存，下一次 @ 使用新的搜索范围。
     addListener(window, 'vcp-active-workspace-changed', () => {
         workspaceCache = { at: 0, list: [], activeAlias: null };
+        void refreshWorkspacePicker();
     });
     const WORKSPACE_CACHE_MS = 5000;
     const MAX_SUGGESTIONS = 50;
@@ -373,14 +403,17 @@ function initializeInputEnhancer(refs) {
 
     async function loadWorkspaces() {
         if (typeof localElectronAPI.listWorkspaces !== 'function') return [];
-        if (Date.now() - workspaceCache.at < WORKSPACE_CACHE_MS) return workspaceCache.list;
+        const owner = getOwner();
+        const key = ownerKey(owner);
+        if (workspaceCache.owner === key && Date.now() - workspaceCache.at < WORKSPACE_CACHE_MS) return workspaceCache.list;
         try {
-            const result = await localElectronAPI.listWorkspaces();
+            const result = await readWorkspaceState(owner);
+            if (key !== ownerKey(getOwner())) return [];
             const list = Array.isArray(result?.workspaces)
                 ? result.workspaces.filter(ws => ws && ws.enabled !== false && typeof ws.alias === 'string')
                 : [];
             const active = list.find(ws => ws.id === result?.activeWorkspaceId);
-            workspaceCache = { at: Date.now(), list, activeAlias: active ? active.alias : null };
+            workspaceCache = { at: Date.now(), owner: key, list, activeAlias: active ? active.alias : null };
         } catch (error) {
             console.warn('[InputEnhancer] Failed to list workspaces:', error);
             workspaceCache = { at: Date.now(), list: [], activeAlias: null };
@@ -524,7 +557,7 @@ function initializeInputEnhancer(refs) {
         }
     }, true);
 
-    // --- 输入框"当前工作区"按钮：全局一个，只决定 @关键词 的默认搜索范围 ---
+    // --- 当前对象的工作区选择：决定 @ 默认搜索范围和无名占位符目标 ---
     const workspacePickerBtn = document.getElementById('workspacePickerBtn');
     let workspaceMenu = null;
 
@@ -551,11 +584,13 @@ function initializeInputEnhancer(refs) {
     async function refreshWorkspacePicker() {
         if (!workspacePickerBtn || typeof localElectronAPI.listWorkspaces !== 'function') return null;
         try {
-            const result = await localElectronAPI.listWorkspaces();
-            if (!isActive()) return null;
+            const owner = getOwner();
+            const result = await readWorkspaceState(owner);
+            if (!isActive() || ownerKey(owner) !== ownerKey(getOwner())) return null;
             const workspaces = Array.isArray(result?.workspaces) ? result.workspaces.filter(ws => ws.enabled !== false) : [];
             renderWorkspacePickerLabel(workspaces, result?.activeWorkspaceId || null);
-            return { workspaces, activeWorkspaceId: result?.activeWorkspaceId || null };
+            if (result.workspaceInvalid) workspacePickerBtn.title = '绑定的工作区已删除或停用，请重新选择';
+            return { ...result, owner, workspaces, activeWorkspaceId: result?.activeWorkspaceId || null };
         } catch (error) {
             console.warn('[InputEnhancer] Failed to refresh workspace picker:', error);
             return null;
@@ -572,12 +607,18 @@ function initializeInputEnhancer(refs) {
         }, 150);
     }
 
-    async function selectActiveWorkspace(workspaceId) {
+    async function selectActiveWorkspace(workspaceId, owner = getOwner()) {
         closeWorkspaceMenu({ restoreFocus: true });
         if (typeof localElectronAPI.setActiveWorkspace !== 'function') return;
-        const result = await localElectronAPI.setActiveWorkspace(workspaceId);
-        if (!isActive()) return;
-        if (result?.success === false) console.warn('[InputEnhancer] Failed to set active workspace:', result.error);
+        const result = owner && localElectronAPI.updateConversationOverride
+            ? await localElectronAPI.updateConversationOverride(owner, { kind: 'workspace', value: workspaceId })
+            : await localElectronAPI.setActiveWorkspace(workspaceId);
+        if (!isActive() || ownerKey(owner) !== ownerKey(getOwner())) return;
+        if (result?.success === false) {
+            refs.uiHelper?.showToastNotification?.(result.error || '保存失败', 'error');
+            return;
+        }
+
         const workspaces = Array.isArray(result?.workspaces) ? result.workspaces.filter(ws => ws.enabled !== false) : [];
         renderWorkspacePickerLabel(workspaces, result?.activeWorkspaceId || null);
         window.dispatchEvent(new CustomEvent('vcp-active-workspace-changed', {
@@ -618,14 +659,15 @@ function initializeInputEnhancer(refs) {
             return item;
         };
 
-        addItem('全部工作区', '@ 搜索所有已启用的工作区', {
+
+        addItem('全部工作区', '@ 搜索全部；无名占位符不指定工作区', {
             checked: !state.activeWorkspaceId,
-            onSelect: () => selectActiveWorkspace(null),
+            onSelect: () => selectActiveWorkspace(null, state.owner),
         });
         for (const ws of state.workspaces) {
             addItem(ws.alias, ws.path, {
                 checked: ws.id === state.activeWorkspaceId,
-                onSelect: () => selectActiveWorkspace(ws.id),
+                onSelect: () => selectActiveWorkspace(ws.id, state.owner),
             });
         }
         const separator = document.createElement('div');

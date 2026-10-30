@@ -95,6 +95,12 @@
         },
 
         // ====================== Popover ======================
+        getConversationOwner() {
+            const value = window.VCPStateChannels?.get?.('conversation.current')?.get?.();
+            return value?.itemId && ['agent', 'group'].includes(value.itemType)
+                ? { type: value.itemType, id: value.itemId } : null;
+        },
+
         async togglePopover(anchorEl) {
             if (this.popoverEl) {
                 const sameAnchor = !anchorEl || anchorEl === this.popoverAnchorEl;
@@ -102,7 +108,19 @@
                 // 同一入口再次触发 = 关闭；换了入口（加号 ↔ 发送按钮）则在新的一侧重新打开
                 if (sameAnchor) return;
             }
+            const owner = this.getConversationOwner();
             await this.loadStore();
+            this.overrideOwner = owner;
+            if (owner && getApi()?.resolveConversationContext) {
+                const snapshot = await getApi().resolveConversationContext(owner);
+                const current = this.getConversationOwner();
+                if (current?.id !== owner.id || current?.type !== owner.type) return;
+                if (!snapshot?.success) {
+                    window.uiHelperFunctions?.showToastNotification?.(snapshot?.error || '读取覆盖失败', 'error');
+                    return;
+                }
+                this.store = { ...this.store, rules: snapshot.rules };
+            }
             this.showPopover(anchorEl);
         },
 
@@ -115,7 +133,7 @@
             popover.setAttribute('aria-label', '高级回复');
             popover.innerHTML = `
                 <div class="tavern-popover-header">
-                    <span class="tavern-popover-title">高级回复</span>
+                    <span class="tavern-popover-title">${this.overrideOwner ? '高级回复 · 当前对象覆盖' : '高级回复 · 全局默认'}</span>
                     <div class="tavern-popover-actions">
                         <button type="button" class="tavern-icon-btn" data-action="close" title="关闭">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -311,6 +329,101 @@
                     </label>
                 `;
                 const checkbox = row.querySelector('input[type="checkbox"]');
+                if (this.overrideOwner) {
+                    row.querySelector('.tavern-switch').remove();
+                    const capsule = document.createElement('div');
+                    capsule.className = 'tavern-override-capsule';
+                    capsule.setAttribute('role', 'radiogroup');
+                    capsule.setAttribute('aria-label', `${rule.name || '规则'}的局部覆盖`);
+                    const values = ['inherit', 'true', 'false'];
+                    const labels = ['全局', '开启', '关闭'];
+                    let selected = rule.overrideEnabled == null ? 'inherit' : String(rule.overrideEnabled);
+                    let busy = false;
+                    const buttons = values.map((value, index) => {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'tavern-override-segment';
+                        button.dataset.value = value;
+                        button.setAttribute('role', 'radio');
+                        button.textContent = labels[index];
+                        button.title = index === 0
+                            ? `跟随全局：当前${rule.globalEnabled ? '开启' : '关闭'}`
+                            : `仅当前对象${labels[index]}`;
+                        capsule.appendChild(button);
+                        return button;
+                    });
+                    const paint = value => {
+                        capsule.dataset.value = value;
+                        capsule.dataset.globalEnabled = String(rule.globalEnabled === true);
+                        buttons[0].title = `全局当前${rule.globalEnabled ? '开启' : '关闭'}；` +
+                            (value === 'inherit' ? '再次点击切换全局开关，影响所有跟随者' : '点击切换为跟随全局，不修改全局开关');
+                        buttons[0].setAttribute('aria-label', buttons[0].title);
+                        capsule.style.setProperty('--segment-index', values.indexOf(value));
+                        buttons.forEach((button, index) => {
+                            const checked = values[index] === value;
+                            button.setAttribute('aria-checked', String(checked));
+                            button.tabIndex = checked ? 0 : -1;
+                        });
+                    };
+                    const owner = { ...this.overrideOwner };
+                    const choose = async (value, activate = false) => {
+                        const toggleGlobal = activate && value === 'inherit' && selected === 'inherit';
+                        if (busy || value === selected && !toggleGlobal) return;
+                        busy = true;
+                        paint(value);
+                        capsule.setAttribute('aria-busy', 'true');
+                        buttons.forEach(button => { button.setAttribute('aria-disabled', 'true'); });
+                        try {
+                            const result = toggleGlobal
+                                ? await getApi().tavernToggleRuleEnabled(rule.overrideKey)
+                                : await getApi().updateConversationOverride(owner, {
+                                    kind: 'rule', key: rule.overrideKey,
+                                    value: value === 'inherit' ? null : value === 'true',
+                                });
+                            if (!result?.success) throw new Error(result?.error || '保存失败');
+                            if (toggleGlobal) {
+                                const globalRule = result.store?.rules?.find(r =>
+                                    `${r.source}:${r.id}` === rule.overrideKey);
+                                if (!globalRule) throw new Error('全局规则回执缺失，请重新打开浮窗');
+                                rule.globalEnabled = globalRule.enabled !== false;
+                            }
+                            selected = value;
+                            rule.overrideEnabled = value === 'inherit' ? null : value === 'true';
+                            rule.enabled = rule.overrideEnabled == null ? rule.globalEnabled : rule.overrideEnabled;
+                            window.dispatchEvent(new CustomEvent('vcp-conversation-overrides-changed', { detail: { owner } }));
+                        } catch (error) {
+                            window.uiHelperFunctions?.showToastNotification?.(error.message, 'error');
+                        } finally {
+                            busy = false;
+                            paint(selected);
+                            capsule.removeAttribute('aria-busy');
+                            buttons.forEach(button => { button.removeAttribute('aria-disabled'); });
+                            if (capsule.contains(document.activeElement)) {
+                                buttons[values.indexOf(selected)].focus();
+                            }
+                        }
+                    };
+                    buttons.forEach((button, index) => {
+                        button.addEventListener('click', () => { void choose(values[index], true); });
+                        button.addEventListener('keydown', event => {
+                            if (busy) return;
+                            let next;
+                            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % 3;
+                            else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (index + 2) % 3;
+                            else if (event.key === 'Home') next = 0;
+                            else if (event.key === 'End') next = 2;
+                            else return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            buttons[next].focus();
+                            void choose(values[next]);
+                        });
+                    });
+                    paint(selected);
+                    row.appendChild(capsule);
+                    body.appendChild(row);
+                    return;
+                }
                 row.addEventListener('click', (e) => {
                     if (e.target.closest('.tavern-switch')) return;
                     checkbox.click();
@@ -353,6 +466,7 @@
 
         // ====================== Manager Modal ======================
         async openManagerModal() {
+            this.overrideOwner = null;
             await this.loadStore();
             this.selectedRuleId = (this.store.rules && this.store.rules[0]) ? this.store.rules[0].id : null;
             this._buildManagerModal();
@@ -369,7 +483,7 @@
             modal.innerHTML = `
                 <div class="modal-content tavern-modal-content">
                     <span class="close-button" data-action="close">×</span>
-                    <h2>高级回复 - 规则管理</h2>
+                    <h2>高级回复 - 全局规则与默认启停</h2>
                     <div class="tavern-manager-layout">
                         <div class="tavern-manager-list-panel">
                             <div class="tavern-manager-list-toolbar">

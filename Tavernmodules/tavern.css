@@ -7,7 +7,12 @@
     width: min(100%, calc(100vw - 16px));
     max-height: calc(100dvh - 16px);
     box-sizing: border-box;
-    background: var(--vcp-ui-composer-input, var(--vcp-ui-color-menu, var(--secondary-bg, #2a2d3a)));
+    background: var(--next-shell-bg, var(--panel-bg, color-mix(in srgb, var(--vcp-ui-composer-input, #2a2d3a) 72%, transparent)));
+    background-image: var(--next-material-sheen, none);
+    background-size: auto;
+    background-blend-mode: normal;
+    backdrop-filter: blur(10px) saturate(112%);
+    -webkit-backdrop-filter: blur(10px) saturate(112%);
     color: var(--vcp-ui-color-foreground, var(--primary-text, #fff));
     border: 1px solid var(--vcp-ui-border, var(--vcp-ui-composer-border, var(--border-color, rgba(255, 255, 255, 0.1))));
     border-radius: 16px;
@@ -784,4 +789,79 @@ body[data-vcp-theme="light"] .tavern-popover-header .tavern-icon-btn:hover {
     opacity: 0.9;
     background: var(--secondary-bg, #2a2d3a) !important;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+/* 当前对象三态覆盖：全局 / 开启 / 关闭 */
+.tavern-popover .tavern-override-capsule {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    flex: 0 0 126px;
+    height: 24px;
+    padding: 2px;
+    box-sizing: border-box;
+    border: 1px solid var(--vcp-ui-border, var(--border-color, #7774));
+    border-radius: 999px;
+    background: var(--vcp-ui-fill-0, rgba(127, 127, 127, 0.12));
+}
+.tavern-popover .tavern-override-capsule::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    left: 2px;
+    top: 2px;
+    bottom: 2px;
+    width: calc((100% - 4px) / 3);
+    border-radius: 999px;
+    background: var(--vcp-ui-color-hover, rgba(127, 127, 127, 0.25));
+    box-shadow: 0 1px 3px #0002;
+    transform: translateX(calc(var(--segment-index, 0) * 100%));
+    transition: transform 160ms ease, background-color 160ms ease;
+}
+.tavern-popover .tavern-override-capsule[data-value="true"]::before {
+    background: color-mix(in srgb, var(--button-bg, #4a90e2) 28%, transparent);
+}
+.tavern-popover .tavern-override-segment {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
+    font: inherit;
+    font-size: 10px;
+    line-height: 18px;
+    cursor: pointer;
+    box-shadow: none;
+}
+.tavern-popover .tavern-override-segment[aria-checked="true"] {
+    color: var(--vcp-ui-color-foreground, var(--primary-text, #fff));
+    font-weight: 600;
+}
+.tavern-popover .tavern-override-segment:focus-visible {
+    outline: 2px solid var(--vcp-ui-focus-ring, var(--button-bg, #4a90e2));
+    outline-offset: 1px;
+}
+.tavern-popover .tavern-override-capsule[aria-busy="true"] {
+    opacity: 0.65;
+}
+.tavern-popover .tavern-override-segment[aria-disabled="true"] {
+    cursor: wait;
+}
+@media (prefers-reduced-motion: reduce) {
+    .tavern-popover .tavern-override-capsule::before { transition: none; }
+}
+.tavern-popover .tavern-override-capsule[data-global-enabled="true"] {
+    --tavern-global-color: var(--success-color, #239b65);
+}
+.tavern-popover .tavern-override-capsule[data-global-enabled="false"] {
+    --tavern-global-color: var(--danger-color, #d9534f);
+}
+.tavern-popover .tavern-override-segment[data-value="inherit"] {
+    color: var(--tavern-global-color);
+    background: color-mix(in srgb, var(--tavern-global-color) 12%, transparent);
+}
+.tavern-popover .tavern-override-capsule[data-value="inherit"]::before {
+    background: color-mix(in srgb, var(--tavern-global-color) 24%, transparent);
 }

@@ -10,6 +10,12 @@ let TAVERN_USER_CONFIG_FILE = null;
 let TAVERN_OFFICIAL_CONFIG_FILE = null;
 let ipcHandlersRegistered = false;
 let cachedStore = null;
+let mutationQueue = Promise.resolve();
+function mutateRules(action) {
+    const task = mutationQueue.catch(() => {}).then(action);
+    mutationQueue = task;
+    return task;
+}
 let cachedUserMtime = 0;
 let cachedOfficialMtime = 0;
 
@@ -132,17 +138,35 @@ function initialize(context) {
     });
 
     ipcMain.handle('tavern:save-rules', async (_event, store) => {
-        return await writeStore(store);
+        return await mutateRules(() => writeStore(store));
     });
 
-    ipcMain.handle('tavern:set-rule-enabled', async (_event, ruleId, enabled) => {
-        const store = await readStore();
+    ipcMain.handle('tavern:toggle-rule-enabled', async (_event, key) => mutateRules(async () => {
+        const store = structuredClone(await readStore());
+        const target = store.rules.find(rule => `${rule.source}:${rule.id}` === key);
+        if (!target) return { success: false, error: 'Rule not found.' };
+        target.enabled = target.enabled === false;
+        return writeStore(store);
+    }));
+
+    ipcMain.handle('tavern:set-rule-enabled', async (_event, ruleId, enabled) => mutateRules(async () => {
+        const store = structuredClone(await readStore());
         const target = (store.rules || []).find(r => r.id === ruleId);
         if (!target) {
             return { success: false, error: 'Rule not found.' };
         }
         target.enabled = !!enabled;
         return await writeStore(store);
+    }));
+
+    const conversationContext = require('../services/conversationContext');
+    ipcMain.handle('conversation:resolve-context', async (_event, owner) => {
+        try { return await conversationContext.resolve(owner); }
+        catch (error) { return { success: false, error: error.message }; }
+    });
+    ipcMain.handle('conversation:update-override', async (_event, owner, patch) => {
+        try { return await conversationContext.update(owner, patch); }
+        catch (error) { return { success: false, error: error.message }; }
     });
 
     ipcHandlersRegistered = true;
@@ -164,6 +188,7 @@ function getActiveRules() {
 module.exports = {
     initialize,
     getActiveRules,
+    readStore,
     // 重新导出引擎方法，方便其他主进程模块直接用
     engine: tavernEngine
 };

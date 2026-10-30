@@ -50,6 +50,15 @@ async function fixture(t, mode, stream) {
     };
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), sandbox, { filename });
     const api = module.exports;
+    localRequire('../modules/services/conversationContext').initialize({
+        load: owner => {
+            assert.equal(owner.type, 'group');
+            return api.getAgentGroupConfig(owner.id);
+        },
+        update: (owner, mutate) => api.mutateGroupConfig(owner.id, mutate),
+        workspace: () => ({ workspaces: [], activeWorkspaceId: null }),
+        rules: async () => ({ rules: [] }),
+    });
     const settingsFile = path.join(root, 'settings.json');
     await fsp.writeFile(settingsFile, JSON.stringify({
         vcpServerUrl: 'http://localhost:1234/v1/chat/completions', vcpApiKey: 'test',

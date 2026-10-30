@@ -394,7 +394,12 @@
 html body .tavern-popover {
     border: 1px solid var(--vcp-ui-composer-border);
     border-radius: 16px;
-    background: var(--vcp-ui-composer-input);
+    background: var(--next-shell-bg, var(--panel-bg, color-mix(in srgb, var(--vcp-ui-composer-input) 72%, transparent)));
+    background-image: var(--next-material-sheen, none);
+    background-size: auto;
+    background-blend-mode: normal;
+    backdrop-filter: blur(10px) saturate(112%);
+    -webkit-backdrop-filter: blur(10px) saturate(112%);
     box-shadow: var(--vcp-ui-composer-popover-shadow);
 }
 
