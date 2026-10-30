@@ -666,6 +666,7 @@
             showTimer = null;
             activeTarget = null;
             host.hidden = true;
+            host.style.removeProperty('z-index');
         };
         const position = () => {
             if (!activeTarget || host.hidden) return;
@@ -689,6 +690,15 @@
         const show = target => {
             if (!target?.isConnected || isExcluded(target)) return;
             activeTarget = target;
+            // Body portal does not inherit its anchor's stacking context.
+            // Lift only Tavern-owned hints; do not raise all tooltips above dialogs.
+            const tavern = target.closest('.tavern-popover');
+            if (tavern) {
+                const layer = Number.parseInt(window.getComputedStyle(tavern).zIndex, 10);
+                host.style.zIndex = String((Number.isFinite(layer) ? layer : 5000) + 1);
+            } else {
+                host.style.removeProperty('z-index');
+            }
             bubble.textContent = target.dataset.tooltip || '';
             host.hidden = false;
             requestAnimationFrame(position);
