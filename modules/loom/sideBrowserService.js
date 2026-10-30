@@ -206,6 +206,7 @@ class SideBrowserService {
         const result = await instance.view.webContents.executeJavaScriptInIsolatedWorld(999, [{
             code: 'globalThis.__vcpLoomWebAgentRuntime.snapshot()',
         }], true);
+        instance.webAgentAdapter?.updateDocumentState(result);
         return { ...result, appId: APP_ID, targetId: instance.tabId, tabs: this.list(), assistance: instance.assistance };
     }
 

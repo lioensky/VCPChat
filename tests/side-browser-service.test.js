@@ -102,3 +102,32 @@ test('agent navigation rejects privileged protocols', () => {
     }
     assert.equal(webUrl('https://example.com'), 'https://example.com/');
 });
+
+test('pageInfo synchronizes adapter snapshot identity before strict actions', async () => {
+    const h = fixture();
+    const instance = h.service.resolve('browser:1');
+    let snapshotId = 0;
+    instance.view.webContents.executeJavaScriptInIsolatedWorld = async () => ({
+        markdown: 'page',
+        runtimeInstanceId: instance.webAgentAdapter.runtimeInstanceId,
+        documentGeneration: 1,
+        snapshotId: ++snapshotId,
+    });
+    const first = await h.service.pageInfo('browser:1');
+    assert.equal(instance.webAgentAdapter.snapshotId, first.snapshotId);
+    await h.service.execute('click', {
+        targetId: 'browser:1', target: '#button',
+        runtimeInstanceId: first.runtimeInstanceId,
+        documentGeneration: first.documentGeneration, snapshotId: first.snapshotId,
+    }, { strict: true });
+    const second = await h.service.pageInfo('browser:1');
+    assert.equal(instance.webAgentAdapter.snapshotId, second.snapshotId);
+    const before = h.calls.length;
+    await assert.rejects(h.service.execute('click', {
+        targetId: 'browser:1', target: '#button', snapshotId: first.snapshotId,
+    }, { strict: true }), { code: 'SNAPSHOT_MISMATCH' });
+    assert.equal(h.calls.length, before, 'stale context must fail before page dispatch');
+    await h.service.execute('click', {
+        targetId: 'browser:1', target: '#button', snapshotId: second.snapshotId,
+    }, { strict: true });
+});

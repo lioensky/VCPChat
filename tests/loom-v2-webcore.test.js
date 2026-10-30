@@ -373,3 +373,33 @@ test('长文本容器仅 style/class 持续动画也可稳定', async () => {
         assert.equal(response.code, 'WAIT_CONDITION_MET');
     } finally { clearInterval(timer); fixture.dom.window.close(); }
 });
+
+test('原生点击后同标签文档切换返回需新快照，不重复点击或宣称验证成功', async () => {
+    const fixture = page('<button id="target">打开详情</button>');
+    try {
+        const calls = [];
+        const adapter = adapterFor(fixture.runtime, fixture.document, calls);
+        let generation = 1;
+        adapter.getTargetIdentity = async () => ({ targetId: 7, runtimeInstanceId: `runtime-${generation}` });
+        adapter.getDocumentState = async () => ({ documentGeneration: generation, snapshotId: 1 });
+        const original = adapter.executePageOperation;
+        adapter.executePageOperation = async (command, params, request) => {
+            if (command === 'page_verify_action') {
+                generation++;
+                const error = new Error('runtimeInstanceId 已失效');
+                error.code = 'RUNTIME_INSTANCE_MISMATCH';
+                throw error;
+            }
+            return original(command, params, request);
+        };
+        const runtime = core.createRuntime(adapter);
+        const response = await runtime.execute({ command: 'click', params: { target: 'target' } });
+        assert.equal(response.status, 'success', JSON.stringify(response));
+        const receipt = response.result;
+        assert.equal(receipt.code, 'ACTION_DISPATCHED_DOCUMENT_CHANGED');
+        assert.equal(receipt.result.verified, null);
+        assert.equal(receipt.result.navigationObserved, true);
+        assert.equal(receipt.result.retrySafe, false);
+        assert.equal(calls.filter(call => call === 'mouse-sequence').length, 1);
+    } finally { fixture.dom.window.close(); }
+});
