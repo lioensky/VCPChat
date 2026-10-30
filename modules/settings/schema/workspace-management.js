@@ -144,41 +144,24 @@ function buildWorkspacePanel(doc) {
     rebuildAllButton.id = 'rebuildWorkspacesBtn';
     actions.append(addButton, rebuildAllButton);
 
-    const defaultLabel = doc.createElement('fieldset');
-    const defaultLegend = doc.createElement('legend');
-    defaultLegend.textContent = '全局默认工作区';
-    const defaultSelect = doc.createElement('fieldset');
-    defaultLabel.append(defaultLegend, defaultSelect);
     const prompt = buildPromptSettingsBlock(doc);
 
-    row.append(intro, defaultLabel, list, actions, prompt.block, status);
+    row.append(intro, list, actions, prompt.block, status);
 
     // 面板内的编辑不属于全局设置表单，阻止事件冒泡触发表单脏标记 / 自动保存。
     for (const type of ['input', 'change']) {
         row.addEventListener(type, event => event.stopPropagation());
     }
 
-    queueMicrotask(() => hydrateWorkspacePanel(doc, { list, status, addButton, rebuildAllButton, prompt, defaultSelect }));
+    queueMicrotask(() => hydrateWorkspacePanel(doc, { list, status, addButton, rebuildAllButton, prompt }));
     return row;
 }
 
 function hydrateWorkspacePanel(doc, refs) {
     const api = getApi(doc);
     if (!api) return; // 测试 / 非聊天窗口：只保留结构
-    const { list, status, addButton, rebuildAllButton, prompt, defaultSelect } = refs;
+    const { list, status, addButton, rebuildAllButton, prompt } = refs;
     let refreshTimer = null;
-    if (refs.defaultSelect) {
-        refs.defaultSelect.addEventListener('change', async () => {
-            refs.defaultSelect.disabled = true;
-            try {
-                const result = await api.setActiveWorkspace(refs.defaultSelect.querySelector('input:checked')?.value || null);
-                if (!result?.success) throw new Error(result?.error || '保存失败');
-                doc.defaultView?.dispatchEvent(new doc.defaultView.CustomEvent('vcp-active-workspace-changed'));
-                setStatus('全局默认工作区已保存。');
-            } catch (error) { setStatus(error.message, true); }
-            finally { refs.defaultSelect.disabled = false; void refresh(); }
-        });
-    }
 
     const setStatus = (message, isError = false) => {
         status.textContent = message || '';
@@ -304,20 +287,6 @@ function hydrateWorkspacePanel(doc, refs) {
             const result = await api.listWorkspaces();
             if (result?.success) {
                 render(result.workspaces || []);
-                if (refs.defaultSelect) {
-                    refs.defaultSelect.replaceChildren();
-                    for (const ws of [{ id: '', alias: '全部工作区' }, ...(result.workspaces || []).filter(ws => ws.enabled)]) {
-                        const label = doc.createElement('label');
-                        label.className = 'vcp-workspace-enable';
-                        const input = doc.createElement('input');
-                        input.type = 'radio';
-                        input.name = 'workspaceGlobalDefault';
-                        input.value = ws.id;
-                        input.checked = ws.id === (result.activeWorkspaceId || '');
-                        label.append(input, doc.createTextNode(ws.alias));
-                        refs.defaultSelect.append(label);
-                    }
-                }
             }
         } catch (error) {
             setStatus(`读取工作区失败：${error.message}`, true);
