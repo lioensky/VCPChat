@@ -94,7 +94,7 @@
         requestAnimationFrame(refreshDiffLayout);
     }
 
-    function onLeaveGitTab() {}
+    function onLeaveGitTab() { closeFileMenu(); }
 
     // ============================ 状态刷新与变更推送 ============================
 
@@ -581,9 +581,89 @@
 
     function hideOpOutput() { $('git-op-output').hidden = true; }
 
+    let fileMenu = null;
+    let menuOrigin = null;
+
+    function closeFileMenu(restoreFocus = false) {
+        fileMenu?.remove();
+        fileMenu = null;
+        if (restoreFocus) menuOrigin?.focus();
+        menuOrigin = null;
+    }
+
+    function showFileMenu(event) {
+        const row = event.target.closest('.git-row');
+        if (!row || !git.workspaceId) return;
+        event.preventDefault();
+        closeFileMenu();
+        const workspaceId = git.workspaceId;
+        const relPath = row.dataset.path;
+        const prefix = git.status?.prefix || '';
+        const sourcePath = prefix && relPath.startsWith(`${prefix}/`)
+            ? relPath.slice(prefix.length + 1) : (prefix ? null : relPath);
+        const deleted = findEntry(row.dataset.group, relPath)?.status === 'D';
+        menuOrigin = row.querySelector('.git-open');
+        const menu = document.createElement('div');
+        fileMenu = menu;
+        menu.className = 'pf-git-file-menu';
+        menu.setAttribute('role', 'menu');
+        const actions = [
+            ['open', '跳转到文件', deleted || !sourcePath || !window.ProjectForgeSource],
+            ['reveal', '在资源管理器中显示', deleted || !api.gitRevealPath],
+        ];
+        for (const [action, label, disabled] of actions) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.action = action;
+            button.textContent = label;
+            button.disabled = Boolean(disabled);
+            button.setAttribute('role', 'menuitem');
+            button.addEventListener('click', async () => {
+                closeFileMenu();
+                try {
+                    if (action === 'open') await window.ProjectForgeSource.open(workspaceId, sourcePath);
+                    else await gitCall(api.gitRevealPath(workspaceId, relPath, 'repo'));
+                } catch (error) {
+                    toast(`${label}失败：${error.message}`, 'error');
+                }
+            });
+            menu.appendChild(button);
+        }
+        document.body.appendChild(menu);
+        const originRect = menuOrigin.getBoundingClientRect();
+        const x = event.clientX || originRect.left;
+        const y = event.clientY || originRect.bottom;
+        menu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - menu.offsetWidth))}px`;
+        menu.style.top = `${Math.max(0, Math.min(y, window.innerHeight - menu.offsetHeight))}px`;
+        menu.querySelector('button:not(:disabled)')?.focus();
+        menu.addEventListener('keydown', e => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+            e.preventDefault();
+            const items = [...menu.querySelectorAll('button:not(:disabled)')];
+            if (!items.length) return;
+            const index = items.indexOf(document.activeElement);
+            const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+                : (index + (e.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
+            items[next].focus();
+        });
+    }
+
     // ============================ 事件交互绑定 ============================
 
     function bindGitEvents() {
+        $('git-groups').addEventListener('contextmenu', showFileMenu);
+        document.addEventListener('pointerdown', e => {
+            if (fileMenu && !fileMenu.contains(e.target)) closeFileMenu();
+        });
+        document.addEventListener('keydown', e => {
+            if (fileMenu && e.key === 'Escape') {
+                e.preventDefault();
+                closeFileMenu(true);
+            }
+        });
+        window.addEventListener('blur', () => closeFileMenu());
+        window.addEventListener('resize', () => closeFileMenu());
+        document.addEventListener('scroll', () => closeFileMenu(), true);
         $('git-workspace-select').addEventListener('change', e => {
             const nextId = e.target.value;
             if (!nextId || nextId === git.workspaceId) return;

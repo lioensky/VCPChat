@@ -848,3 +848,33 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
     .side-track, .side-page, .side-tab::after, .git-group-toggle .chev, .source-chev { transition: none; }
     .icon-btn.spinning { animation: none; }
 }
+/* Git 文件导航菜单 */
+.pf-git-file-menu {
+    position: fixed;
+    z-index: 10000;
+    min-width: 190px;
+    padding: 5px;
+    border: 1px solid var(--pf-border, #555);
+    border-radius: 8px;
+    background: var(--pf-bg, #202126);
+    color: var(--pf-text, #eee);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .3);
+}
+.pf-git-file-menu button {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.pf-git-file-menu button:not(:disabled):hover,
+.pf-git-file-menu button:focus-visible {
+    background: var(--pf-hover, rgba(128, 128, 128, .2));
+    outline: 1px solid var(--pf-accent, #d99b24);
+}
+.pf-git-file-menu button:disabled { opacity: .4; cursor: default; }

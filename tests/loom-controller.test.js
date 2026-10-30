@@ -106,6 +106,25 @@ function createFakeManager() {
         },
         async executeWebAgentAction(appId, actionId, params, options) {
             calls.push(['executeWebAgentAction', appId, actionId, params, options]);
+            if (['capture_screenshot', 'screenshot_capture', 'get_screenshot', 'screenshot'].includes(actionId)) {
+                return {
+                    appId,
+                    actionId: 'screenshot_capture',
+                    executedAt: '2026-08-06T00:00:00.000Z',
+                    response: {
+                        status: 'success',
+                        code: 'SCREENSHOT_CAPTURED',
+                        result: {
+                            code: 'SCREENSHOT_CAPTURED',
+                            result: {
+                                dataUrl: 'data:image/png;base64,c2NyZWVuc2hvdA==',
+                                mimeType: 'image/png',
+                                byteLength: 10,
+                            },
+                        },
+                    },
+                };
+            }
             if (actionId === 'page_get_image') {
                 return {
                     appId,
@@ -420,6 +439,27 @@ async function run() {
     assert.strictEqual(imageCall[3].snapshotId, '1');
     assert.strictEqual(imageCall[3].quality, '85');
     assert.deepStrictEqual(imageCall[4], { strict: true });
+
+    function assertScreenshotReceipt(receipt) {
+        const images = receipt.content.filter(part => part.type === 'image_url');
+        assert.strictEqual(images.length, 1);
+        assert.strictEqual(images[0].image_url.url, 'data:image/png;base64,c2NyZWVuc2hvdA==');
+        const text = receipt.content.filter(part => part.type === 'text').map(part => part.text).join('\n');
+        assert(!text.includes('data:image/'), '正文不能含图片载荷');
+        assert(!JSON.stringify(receipt.details).includes('c2NyZWVuc2hvdA=='), 'details不能重复携带图片');
+        assert(text.includes('image/png'), '正文应保留截图元数据');
+    }
+    assertScreenshotReceipt(await loomController.processToolCall({
+        command: 'capture_screenshot', appId: 'test-app',
+    }));
+    for (const actionId of ['capture_screenshot', 'screenshot_capture', 'get_screenshot', 'screenshot']) {
+        assertScreenshotReceipt(await loomController.processToolCall({
+            command: 'ExecuteAction', appId: 'test-app', actionId,
+        }));
+    }
+    assertScreenshotReceipt(await loomController.processToolCall({
+        appId: 'test-app', command1: 'capture_screenshot', command2: 'GetPageInfo',
+    }));
 
     const action = await loomController.processToolCall({
         command: 'ExecuteAction',

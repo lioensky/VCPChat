@@ -948,6 +948,33 @@
         }, true);
     }
 
+    // Git 等分页只传工作区与工作区相对路径，不另建编辑器。
+    window.ProjectForgeSource = Object.freeze({
+        async open(workspaceId, relPath) {
+            if (!src.enabled || src.saving) return;
+            if (isDirty() && !(await confirmDiscard())) return;
+            const requestSeq = ++src.openSeq;
+            const data = await srcCall(api.sourceReadFile(workspaceId, relPath));
+            if (requestSeq !== src.openSeq) return;
+            // 先读成功再切换，删除/不存在的文件不会清空当前编辑内容。
+            src.started = true;
+            src.listSeq += 1;
+            src.openSeq += 1;
+            src.workspaceId = workspaceId;
+            src.expanded = loadExpanded(workspaceId);
+            localStorage.setItem(WS_KEY, workspaceId);
+            $('source-search').value = '';
+            closeFile();
+            const displaySeq = src.openSeq;
+            window.ProjectForgeSideTabs.switchTo('source');
+            // 工作区列表初始化沿用已有入口；started 已置位，onEnter 不会重复加载。
+            await loadWorkspaces();
+            if (displaySeq !== src.openSeq || src.workspaceId !== workspaceId) return;
+            showFile(data);
+            requestAnimationFrame(() => src.editor?.refresh());
+        },
+    });
+
     // ============================ 初始化 ============================
 
     document.addEventListener('DOMContentLoaded', () => {

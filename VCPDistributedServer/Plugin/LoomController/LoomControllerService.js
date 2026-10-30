@@ -824,6 +824,19 @@ async function executeAction(args) {
         options
     );
     const response = execution.response || {};
+    const routed = response.result;
+    const image = routed?.result || routed;
+    const dataUrl = firstNonEmptyString(image?.dataUrl, image?.url);
+    const hasImage = dataUrl.startsWith('data:image/');
+    // 图片只进入多模态块；正文与 details 共用去载荷后的结构。
+    let receiptResponse = response;
+    if (hasImage) {
+        const { dataUrl: _dataUrl, url: _url, ...metadata } = image;
+        receiptResponse = {
+            ...response,
+            result: routed?.result ? { ...routed, result: metadata } : metadata,
+        };
+    }
     const text = [
         `# LoomAPP 页面动作已执行`,
         '',
@@ -836,13 +849,18 @@ async function executeAction(args) {
         '',
         '## 结构化结果',
         '```json',
-        jsonText(response.result ?? response),
+        jsonText(receiptResponse.result ?? receiptResponse),
         '```',
     ].join('\n');
-    return textResult(text, {
+    const result = textResult(text, {
         command: 'ExecuteAction',
         ...execution,
+        response: receiptResponse,
     });
+    if (hasImage) {
+        result.content.push({ type: 'image_url', image_url: { url: dataUrl } });
+    }
+    return result;
 }
 
 async function editAppSources(args) {
