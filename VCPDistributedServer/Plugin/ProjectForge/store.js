@@ -214,14 +214,19 @@ class ProjectStore {
         return this.db.prepare(sql).all(...params);
     }
 
-    updateProject(id, patch) {
+    /** touch=false：不刷新 updated_at（不代表施工进展的变更，如用户验收，不改变"最近活动"排序）。 */
+    updateProject(id, patch, { touch = true } = {}) {
         const fields = [];
         const params = [];
         for (const [key, column] of [['name', 'name'], ['status', 'status'], ['report', 'report'], ['reportBy', 'report_by'], ['root', 'root'], ['workspaceAlias', 'workspace_alias'], ['deletedAt', 'deleted_at']]) {
             if (Object.prototype.hasOwnProperty.call(patch, key)) { fields.push(`${column} = ?`); params.push(patch[key]); }
         }
-        fields.push('updated_at = ?');
-        params.push(nowIso(), id);
+        if (touch) {
+            fields.push('updated_at = ?');
+            params.push(nowIso());
+        }
+        if (!fields.length) return this.getProject(id, { includeDeleted: true });
+        params.push(id);
         this.db.prepare(`UPDATE projects SET ${fields.join(', ')} WHERE id = ?`).run(...params);
         return this.getProject(id, { includeDeleted: true });
     }

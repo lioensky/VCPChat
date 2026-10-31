@@ -461,3 +461,37 @@ test('工程查询：默认最新 10 个、自定义数量、工作区搜索与 
         }
     }
 });
+test('GUI手动验收：保留报告与作者、留痕通知、重复幂等及非法状态拒绝', async () => {
+    const pid = await newProject('manual-accept');
+    assert.throws(() => forge.gui.acceptProject(pid, '莱恩'), /只有待验收/);
+    assert.throws(() => forge.gui.acceptProject('missing'), /不存在/);
+    await call({ command: 'SubmitReport', projectId: pid, conclusion: '原施工报告', maid: 'Kerr' });
+    const before = forge.gui.getProject(pid);
+    const events = [];
+    const listener = e => events.push(e);
+    forge.events.on('changed', listener);
+    try {
+        assert.deepEqual(forge.gui.acceptProject(pid, '莱恩'), { accepted: true, projectId: pid });
+        const after = forge.gui.getProject(pid);
+        assert.equal(after.project.status, 'accepted');
+        assert.ok(after.project.report.startsWith(before.project.report));
+        assert.match(after.project.report, /已由用户手动验收该工程/);
+        assert.match(after.project.report, /署名：莱恩 · 时间：\d{4}-/);
+        assert.equal(after.project.report_by, before.project.report_by);
+        assert.deepEqual(after.todos, before.todos);
+        assert.equal(after.project.updated_at, before.project.updated_at, '验收不应刷新 updated_at，否则列表重排');
+        assert.equal(events.length, 1);
+        assert.equal(events[0].action, 'gui:accept');
+        forge.gui.acceptProject(pid, '另一个署名');
+        assert.equal(forge.gui.getProject(pid).project.report, after.project.report);
+        assert.equal(events.length, 1);
+        forge.gui.deleteProject(pid, '莱恩');
+        assert.throws(() => forge.gui.acceptProject(pid), /已删除/);
+    } finally {
+        forge.events.off('changed', listener);
+    }
+    const blank = await newProject('manual-accept-blank');
+    await call({ command: 'SubmitReport', projectId: blank, conclusion: '待验收' });
+    forge.gui.acceptProject(blank);
+    assert.match(forge.gui.getProject(blank).project.report, /署名：用户/);
+});

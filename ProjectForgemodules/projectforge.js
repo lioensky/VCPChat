@@ -56,9 +56,12 @@ function toast(message, type = 'info') {
     toastTimer = setTimeout(() => { el.hidden = true; }, type === 'error' ? 5000 : 2600);
 }
 
-function statusBadge(project) {
+function statusBadge(project, interactive = false) {
     if (project.deleted_at) return '<span class="badge deleted">已删除</span>';
     const s = project.status || 'active';
+    if (interactive && s === 'review') {
+        return `<button type="button" class="badge review project-accept" data-id="${escapeHtml(project.id)}" title="点击后再次确认，手动验收工程">待验收</button>`;
+    }
     return `<span class="badge ${escapeHtml(s)}">${escapeHtml(STATUS_LABEL[s] || s)}</span>`;
 }
 
@@ -201,9 +204,11 @@ function renderProjectList() {
         ul.innerHTML = '<li class="muted" style="padding:12px">没有工程。Agent 通过 ProjectForge CreateProject 创建后会出现在这里。</li>';
         return;
     }
+    // 整表重绘（验收、删除、changed 推送的自动刷新）保留用户当前的滚动位置
+    const scrollTop = ul.scrollTop;
     ul.innerHTML = list.map(p => `
         <li class="project-item${p.id === state.currentId ? ' active' : ''}${p.deleted_at ? ' deleted' : ''}" data-id="${escapeHtml(p.id)}">
-            <div class="row"><span class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>${statusBadge(p)}</div>
+            <div class="row"><span class="name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>${statusBadge(p, true)}</div>
             <div class="sub"><code>${escapeHtml(p.id)}</code> · ${escapeHtml(p.workspace_alias || '-')} · Todo ${escapeHtml(p.progress?.text || '无')}</div>
             <div class="sub meta-line">
                 <span>${p.stats?.nodeCount || 0} 次变动 · 最近 ${escapeHtml(fmtTime(p.stats?.lastAt || p.updated_at))}</span>
@@ -220,6 +225,7 @@ function renderProjectList() {
             </div>
             ${progressBar(p.progress)}
         </li>`).join('');
+    ul.scrollTop = scrollTop; // 同步回写，避免下一帧才恢复导致闪回顶部
 }
 
 // ============================ 工程详情 ============================
@@ -595,6 +601,24 @@ function bindEvents() {
     $('project-search').addEventListener('input', debounce(renderProjectList, 120));
     $('include-deleted').addEventListener('change', loadProjects);
 
+    let activeAcceptButton = null;
+    let acceptTimer = null;
+    const accepting = new Set();
+    function collapseAccept() {
+        clearTimeout(acceptTimer);
+        if (activeAcceptButton && !activeAcceptButton.disabled) {
+            activeAcceptButton.textContent = '待验收';
+            activeAcceptButton.classList.remove('confirming');
+        }
+        activeAcceptButton = null;
+    }
+    document.addEventListener('click', e => {
+        if (activeAcceptButton && !activeAcceptButton.contains(e.target)) collapseAccept();
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') collapseAccept();
+    });
+
     let activeDeleteWrap = null;
     let activeDeleteTimer = null;
 
@@ -616,6 +640,40 @@ function bindEvents() {
     });
 
     $('project-list').addEventListener('click', async e => {
+        const acceptBtn = e.target.closest('.project-accept');
+        if (acceptBtn) {
+            e.stopPropagation();
+            const projectId = acceptBtn.dataset.id;
+            if (!projectId || accepting.has(projectId)) return;
+            if (activeAcceptButton !== acceptBtn) {
+                collapseAccept();
+                collapseActiveDelete();
+                activeAcceptButton = acceptBtn;
+                acceptBtn.textContent = '确认验收？';
+                acceptBtn.classList.add('confirming');
+                acceptTimer = setTimeout(collapseAccept, 3000);
+                return;
+            }
+            clearTimeout(acceptTimer);
+            activeAcceptButton = null;
+            accepting.add(projectId);
+            acceptBtn.disabled = true;
+            acceptBtn.textContent = '验收中…';
+            try {
+                await call(api.projectForgeAcceptProject(projectId, getSignature()));
+                toast('已由用户手动验收该工程', 'success');
+                await loadProjects();
+                if (state.currentId === projectId) await selectProject(projectId, { keepTab: true });
+            } catch (err) {
+                toast(`验收失败：${err.message}`, 'error');
+                acceptBtn.disabled = false;
+                acceptBtn.textContent = '待验收';
+                acceptBtn.classList.remove('confirming');
+            } finally {
+                accepting.delete(projectId);
+            }
+            return;
+        }
         const trigger = e.target.closest('.project-delete-trigger');
         if (trigger) {
             e.stopPropagation();

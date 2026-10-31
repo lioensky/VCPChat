@@ -182,6 +182,10 @@ button, input, select { font: inherit; color: inherit; }
 }
 .badge.active { color: var(--pf-accent); border-color: var(--pf-accent); }
 .badge.review { color: var(--pf-warn); border-color: var(--pf-warn); }
+.project-accept { background: transparent; cursor: pointer; flex-shrink: 0; }
+.project-accept:hover, .project-accept.confirming { background: color-mix(in srgb, var(--pf-warn) 18%, transparent); }
+.project-accept:focus-visible { outline: 2px solid var(--pf-warn); outline-offset: 2px; }
+.project-accept:disabled { opacity: 0.65; cursor: wait; }
 .badge.accepted { color: var(--pf-ok); border-color: var(--pf-ok); }
 .badge.deleted { color: var(--pf-danger); border-color: var(--pf-danger); }
 .badge.op-create { color: var(--pf-ok); }

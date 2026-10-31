@@ -2115,6 +2115,21 @@ const gui = {
             return { status: 'ok', ...plan, batchId, nodeId: newNodeId, maid };
         });
     },
+    acceptProject(projectId, signature = '') {
+        const id = String(projectId || '').trim();
+        const project = guiProjectOf(id);
+        if (project.deleted_at) throw new Error(`${P} 已删除工程不能验收。`);
+        if (project.status === 'accepted') return { accepted: true, projectId: id };
+        if (project.status !== 'review') throw new Error(`${P} 只有待验收工程可以手动验收，请刷新列表。`);
+        const user = String(signature || '').trim() || '用户';
+        const record = `## 用户手动验收\n\n已由用户手动验收该工程。\n\n署名：${user} · 时间：${new Date().toISOString()}`;
+        store().updateProject(id, {
+            status: 'accepted',
+            report: [project.report, record].filter(Boolean).join('\n\n---\n\n'),
+        }, { touch: false }); // 验收不是施工进展：保持 updated_at，工程留在列表原位
+        emitProjectChanged({ action: 'gui:accept', projectId: id, maid: user });
+        return { accepted: true, projectId: id };
+    },
     deleteProject(projectId, maid = '') {
         const id = String(projectId || '').trim();
         if (!id) throw new Error(`${P} 删除工程需要指定 projectId。`);
