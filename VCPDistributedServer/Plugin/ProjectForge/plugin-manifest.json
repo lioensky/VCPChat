@@ -80,7 +80,7 @@
       },
       {
         "command": "ReadCode",
-        "description": "读取工程文件，默认带行号（showLine=false 关闭）。path：单个文件，可写成 src/a.js:40-80 指定行范围；lines：行范围（head:N、tail:N、M-N、N）；paths：多个文件（换行或逗号分隔，每项都可带 :M-N）；glob：通配批量读取（如 shots/*.png）。图片/音视频以多模态 image_url 返回，PDF/Word/Excel 自动提取文本。find：在所选文件中查找文本，返回每处命中的行号、所在函数和上下文（用于同名代码消歧）。\n按符号读取（覆盖 C/C++、Go、Java、Rust、Python、C#、Lua、JS/TS 等 11 门主流语言）：path=src/a.js#Store.putBlob，或 path + symbol=Store.putBlob（Rust 可写 Store::put_blob）；paths 中每项也可写 文件#符号。默认读取含紧邻前置注释 / JSDoc / 装饰器的完整定义；range=body 从签名行起；context=N 前后各多读 N 行。同名多处时列出候选，加 pick=序号 或 line=近似行号 消歧。",
+        "description": "读取工程文件，默认带行号（showLine=false 关闭）。path：单个文件，可写成 src/a.js:40-80 指定行范围；lines：行范围（head:N、tail:N、M-N、N）；paths：多个文件（换行或逗号分隔，每项都可带 :M-N）；glob：通配批量读取（如 shots/*.png）。图片/音视频以多模态 image_url 返回，PDF/Word/Excel 自动提取文本。find：在所选文件中查找文本（多个关键词写 a|b，各自按字面量匹配后取并集；\\| 匹配字面竖线，|| 始终按字面量；多行查询不拆分），返回每处命中的行号、所在函数和上下文（用于同名代码消歧）。\n按符号读取（覆盖 C/C++、Go、Java、Rust、Python、C#、Lua、JS/TS 等 11 门主流语言）：path=src/a.js#Store.putBlob，或 path + symbol=Store.putBlob（Rust 可写 Store::put_blob）；paths 中每项也可写 文件#符号。默认读取含紧邻前置注释 / JSDoc / 装饰器的完整定义；range=body 从签名行起；context=N 前后各多读 N 行。同名多处时列出候选，加 pick=序号 或 line=近似行号 消歧。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ReadCode「末」,\nprojectId:「始」p1a2b「末」,\npaths:「始」src/login.js:1-60\nsrc/validate.js「末」\n<<<[END_TOOL_REQUEST]>>>\n\n批量读截图:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ReadCode「末」,\nprojectId:「始」p1a2b「末」,\nglob:「始」artifacts/shots/*.png「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
