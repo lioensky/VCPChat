@@ -49,6 +49,11 @@
   "capabilities": {
     "invocationCommands": [
       {
+        "command": "EvalSymbol",
+        "description": "可信工程的函数试跑器（不是安全沙箱）。必需 projectId、path=文件#符号；复用 AST 定位，可用 symbol、pick、line 消歧。JS/CJS/ESM 调用真实模块的可访问导出函数/对象方法，Python 按包导入调用函数，Rust 仅运行已有标准 #[test]，不支持临时 harness。args 为 JSON 参数数组；kwargs 为 Python JSON 关键字参数对象；setup 为对应语言异步准备函数体，返回参数数组，与 args 互斥，不能修改目标模块词法作用域。timeoutMs 为总截止时间：JS/Py 默认5000、Rust100000，上限110000。Rust 可选 package、features；运行目标歧义用 testPick（不要与 AST pick 混用）。工程根 .projectforge-eval.json 可配置 node/python/cargo 可执行文件；Python 优先配置、工程 .venv、PATH，失败不换环境。Rust 使用离线 Cargo 编译再精确匹配测试，零/ignored 测试绝不报通过。返回 returned 仅代表函数返回，passed 仅代表实际测试通过；typed-v1 返回值和有界日志在 details 中，默认简报。模块加载/setup 都可能写盘联网；只允许可写工程，默认不生成施工快照，不保证被测代码无副作用或结果可重复。",
+        "example": "command=EvalSymbol, projectId=p123, path=src/math.py#normalize, args=[[3,4]], timeoutMs=5000"
+      },
+      {
         "command": "ListWorkspaces",
         "description": "列出已登记的工作区（别名、路径、是否启用、当前工作区）。工程只能建在已启用的工作区内。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ListWorkspaces「末」\n<<<[END_TOOL_REQUEST]>>>"

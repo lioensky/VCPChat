@@ -19,6 +19,7 @@ const { TicketStore, parsePickSpec } = require('./tickets');
 const { IndexerClient } = require('./indexerClient');
 const SR = require('./symbolResolver');
 const LG = require('./linkGraph');
+const ES = require('./evalSymbol');
 const { isPathInside, toPosixRelative } = require('../../shared/fileKit/paths');
 const A = require('./args');
 const T = require('../../shared/fileKit/text');
@@ -146,6 +147,7 @@ async function stopIndexer() {
 }
 
 async function cleanup() {
+    await ES.cleanup();
     closeStore();
     await stopIndexer();
 }
@@ -1857,7 +1859,41 @@ async function getNodeDiff(args) {
 
 // ============================ 分发 ============================
 
+async function evalSymbolCmd(args) {
+    const ctx = projectOf(args, { write: true });
+    const parsed = SR.splitPathSymbol(A.str(args, 'path'));
+    const ref = parsed.symbol || A.str(args, 'symbol');
+    if (!ref) throw new Error('EvalSymbol requires path=file#symbol');
+    const file = fileOf(ctx, parsed.path, { write: true });
+    const [realRoot, realFile] = await Promise.all([
+        fsp.realpath(ctx.rootInfo.root), fsp.realpath(file.abs),
+    ]);
+    if (!isPathInside(realFile, realRoot)) throw new Error('EvalSymbol target resolves outside project root');
+    const resolved = await resolveSymbolInFile(file, ref, {
+        pick: A.pick(args, 'pick'), line: A.pick(args, 'line'),
+    });
+    if (resolved.res.status !== 'ok') {
+        return textResult(renderSymbolMiss(file, resolved.res, 'EvalSymbol'), {
+            command: 'EvalSymbol', status: resolved.res.status,
+            candidates: resolved.res.candidates, suggestions: resolved.res.suggestions,
+        });
+    }
+    if (resolved.outline.hasError) return textResult('EvalSymbol: source contains syntax errors; execution rejected', {
+        command: 'EvalSymbol', status: 'syntax_error',
+    });
+    const result = await ES.evaluate({
+        root: ctx.rootInfo.root, file: realFile,
+        symbol: resolved.res.symbol.qualified,
+        sourceHash: resolved.disk.hash, args,
+    });
+    return textResult(ES.render(result, file.rel), {
+        command: 'EvalSymbol', projectId: ctx.project.id, path: file.rel,
+        valueEncoding: 'typed-v1', ...result,
+    });
+}
+
 const COMMANDS = {
+    evalsymbol: evalSymbolCmd,
     listworkspaces: listWorkspaces,
     createproject: createProject,
     listprojects: listProjects,
@@ -1884,7 +1920,7 @@ const COMMANDS = {
     trace: traceCmd,
 };
 
-const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、SearchProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace';
+const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、SearchProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace、EvalSymbol';
 
 const MUTATING_COMMANDS = new Set([
     'createproject', 'updatetodos', 'submitreport', 'deleteprojects',
