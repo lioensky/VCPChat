@@ -924,17 +924,26 @@ function extractExcerpt(markdown, title = '', maxLen = 140) {
     return fit(body.join(' ').replace(/\s+/g, ' ').trim());
 }
 
-// 优先使用列表自带的 excerpt/summary（后端日后补上即自动生效），否则只为该帖懒加载正文
-function getPaperExcerpt(post) {
+// 头版导语：优先使用列表自带的 excerpt/summary（后端日后补上即自动生效），否则懒加载正文。
+// 正文第一行 # 标题是完整的，可顺便修复列表标题被文件名截断的问题，不增加请求。
+function extractFullTitle(markdown) {
+    const m = String(markdown || '').match(/^\s{0,3}#\s+(.+)$/m);
+    return m ? splitTitleKicker(m[1]).title : '';
+}
+
+function getPaperLead(post) {
     const direct = post.excerpt || post.summary;
-    if (direct) return Promise.resolve(String(direct));
+    if (direct) return Promise.resolve({ excerpt: String(direct), title: '' });
     const key = `${post.uid}:${post.mtime || post.lastReplyAt || post.timestamp || ''}`;
     if (!paperExcerptCache.has(key)) {
         paperExcerptCache.set(key, apiFetch(`/post/${post.uid}`)
-            .then(data => extractExcerpt(data?.content, post.title))
+            .then(data => ({
+                excerpt: extractExcerpt(data?.content, post.title, 300),
+                title: extractFullTitle(data?.content),
+            }))
             .catch(() => {
                 paperExcerptCache.delete(key);
-                return '';
+                return { excerpt: '', title: '' };
             }));
     }
     return paperExcerptCache.get(key);
@@ -960,7 +969,11 @@ function loadPaperWeather() {
             const hourly = Array.isArray(w?.hourly) ? w.hourly : [];
             let text = '';
             let temp = '';
-            if (hourly.length) {
+            if (w?.now && (w.now.text || w.now.temp != null)) {
+                // 实况优先：后端 getFreshWeather 已过滤掉超过 3 小时的观测
+                text = w.now.text || '';
+                temp = w.now.temp != null ? `${w.now.temp}℃` : '';
+            } else if (hourly.length) {
                 const h = hourly.reduce((best, x) => (
                     Math.abs(new Date(x.fxTime) - now) < Math.abs(new Date(best.fxTime) - now) ? x : best
                 ));
@@ -1054,8 +1067,14 @@ function createPaperCard(post, tier, index) {
 
     if (tier === 'hero') {
         const excerptEl = el.querySelector('.paper-excerpt');
-        getPaperExcerpt(post).then(text => {
+        const titleEl = el.querySelector('.paper-title');
+        getPaperLead(post).then(({ excerpt: text, title: full }) => {
             if (!excerptEl.isConnected) return;
+            // 仅当正文标题确为列表标题的完整版时才替换
+            if (full && full.length > displayTitle.length && full.startsWith(displayTitle.slice(0, 8))) {
+                titleEl.textContent = full;
+                titleEl.title = full;
+            }
             excerptEl.classList.remove('is-loading');
             if (text) excerptEl.textContent = text;
             else excerptEl.remove();

@@ -1449,3 +1449,19 @@ html[data-vcp-embedded-app="true"] .app-container { padding-top: 60px; }
     cursor: pointer;
 }
 .paper-more:hover { color: var(--text-primary); background: var(--glass-shine); }
+
+/* 头版摘要：填满被侧栏拉高的剩余空间；高度由版面决定（flex-basis 0），文字异步填入时不产生位移 */
+.paper-hero .paper-excerpt {
+    display: block;
+    flex: 1 1 0;
+    height: auto;
+    min-height: 5.4em;
+    -webkit-line-clamp: unset;
+    font-size: 0.98rem;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2em), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 2em), transparent);
+}
+.paper-hero .paper-excerpt.is-loading {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
