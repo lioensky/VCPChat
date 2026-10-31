@@ -52,20 +52,107 @@ export function normalizeBrowserInput(input) {
     }
 }
 
-const SEARCH_URL = 'https://www.bing.com/search?q=';
+export const BROWSER_ENGINE_STORAGE_KEY = 'vcp.sideBrowser.engine';
+export const DEFAULT_BROWSER_ENGINE = 'bing';
+export const BROWSER_ENGINES = Object.freeze({
+    bing: Object.freeze({ id: 'bing', label: 'Bing', homeUrl: 'https://www.bing.com/', searchUrl: 'https://www.bing.com/search?q=' }),
+    google: Object.freeze({ id: 'google', label: 'Google', homeUrl: 'https://www.google.com/', searchUrl: 'https://www.google.com/search?q=' }),
+    baidu: Object.freeze({ id: 'baidu', label: 'Baidu', homeUrl: 'https://www.baidu.com/', searchUrl: 'https://www.baidu.com/s?wd=' }),
+    duckduckgo: Object.freeze({ id: 'duckduckgo', label: 'DuckDuckGo', homeUrl: 'https://duckduckgo.com/', searchUrl: 'https://duckduckgo.com/?q=' }),
+});
+const ENGINE_ORDER = Object.freeze(['bing', 'google', 'baidu', 'duckduckgo']);
+
+export function normalizeBrowserEngine(engine, fallback = DEFAULT_BROWSER_ENGINE) {
+    const key = String(engine ?? '').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, key) ? key : fallback;
+}
+
+export function getBrowserEngineSpec(engine) {
+    return BROWSER_ENGINES[normalizeBrowserEngine(engine)];
+}
+
+/**
+ * Inspects the current page URL: if it is a blank page, an engine home page, or an engine search result page,
+ * returns the appropriate URL for the newly selected engine (preserving the search query if present).
+ * Returns null if the user is browsing an unrelated web page so we never clobber their active reading.
+ */
+export function resolveEngineSwitchNavigationUrl(currentUrl, nextEngine) {
+    const spec = getBrowserEngineSpec(nextEngine);
+    const raw = String(currentUrl ?? '').trim();
+    if (!raw || raw === 'about:blank') return spec.homeUrl;
+    let parsed;
+    try {
+        parsed = new URL(raw);
+    } catch {
+        return null;
+    }
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.replace(/\/+$/, '') || '/';
+    const isBing = host === 'bing.com' || host.endsWith('.bing.com');
+    const isGoogle = host === 'google.com' || host.endsWith('.google.com') || host.includes('.google.');
+    const isBaidu = host === 'baidu.com' || host.endsWith('.baidu.com');
+    const isDdg = host === 'duckduckgo.com' || host.endsWith('.duckduckgo.com');
+
+    if ((isBing || isGoogle || isBaidu || isDdg) && path === '/') {
+        const q = isDdg ? (parsed.searchParams.get('q') || '').trim() : '';
+        return q ? `${spec.searchUrl}${encodeURIComponent(q)}` : spec.homeUrl;
+    }
+    if (isBing && path === '/search') {
+        const q = (parsed.searchParams.get('q') || '').trim();
+        return q ? `${spec.searchUrl}${encodeURIComponent(q)}` : spec.homeUrl;
+    }
+    if (isGoogle && path === '/search') {
+        const q = (parsed.searchParams.get('q') || '').trim();
+        return q ? `${spec.searchUrl}${encodeURIComponent(q)}` : spec.homeUrl;
+    }
+    if (isBaidu && path === '/s') {
+        const q = (parsed.searchParams.get('wd') || parsed.searchParams.get('word') || '').trim();
+        return q ? `${spec.searchUrl}${encodeURIComponent(q)}` : spec.homeUrl;
+    }
+    return null;
+}
+
+function safeGetLocalStorage(win) {
+    try {
+        return win?.localStorage || null;
+    } catch {
+        return null;
+    }
+}
+
+export function readPreferredBrowserEngine(storage = safeGetLocalStorage(typeof globalThis !== 'undefined' ? globalThis : null)) {
+    try {
+        const resolved = typeof storage === 'function' ? storage() : storage;
+        return normalizeBrowserEngine(resolved?.getItem?.(BROWSER_ENGINE_STORAGE_KEY));
+    } catch {
+        return DEFAULT_BROWSER_ENGINE;
+    }
+}
+
+export function writePreferredBrowserEngine(engine, storage = safeGetLocalStorage(typeof globalThis !== 'undefined' ? globalThis : null)) {
+    const normalized = normalizeBrowserEngine(engine);
+    try {
+        const resolved = typeof storage === 'function' ? storage() : storage;
+        resolved?.setItem?.(BROWSER_ENGINE_STORAGE_KEY, normalized);
+    } catch {
+        // storage unavailable in sandboxed or headless test environments
+    }
+    return normalized;
+}
 
 /**
  * Like normalizeBrowserInput, but text that is not an address becomes a web search.
  * An unsupported scheme (javascript:, chrome:, ...) is still an error rather than a search.
  * @returns {{ url: string } | { error: string } | null} null for empty input
  */
-export function resolveBrowserAddress(input) {
+export function resolveBrowserAddress(input, engine = DEFAULT_BROWSER_ENGINE) {
     const result = normalizeBrowserInput(input);
     if (!result?.error) return result;
     const text = String(input).trim();
     const hasPort = /^[^\s/@]+:\d+(?:[/?#]|$)/.test(text);
     if (/^[a-z][a-z0-9+.-]*:\S/i.test(text) && !hasPort) return result;
-    return { url: `${SEARCH_URL}${encodeURIComponent(text)}` };
+    const spec = getBrowserEngineSpec(engine);
+    return { url: `${spec.searchUrl}${encodeURIComponent(text)}` };
 }
 
 // Chromium net error codes -200..-299 are certificate problems
@@ -79,8 +166,30 @@ export function createBrowserSideProvider({
 } = {}) {
     const kind = 'browser';
     let sequence = 0;
-    /** @type {Map<string, { isBlank: () => boolean }>} */
+    let memoryEngine = DEFAULT_BROWSER_ENGINE;
+    const providerStorage = {
+        getItem(key) {
+            const ls = safeGetLocalStorage(doc?.defaultView) || safeGetLocalStorage(globalThis);
+            if (ls) {
+                try { return ls.getItem(key); } catch { /* fallback */ }
+            }
+            return key === BROWSER_ENGINE_STORAGE_KEY ? memoryEngine : null;
+        },
+        setItem(key, value) {
+            if (key === BROWSER_ENGINE_STORAGE_KEY) memoryEngine = value;
+            const ls = safeGetLocalStorage(doc?.defaultView) || safeGetLocalStorage(globalThis);
+            if (ls) {
+                try { ls.setItem(key, value); } catch { /* fallback */ }
+            }
+        }
+    };
+    /** @type {Map<string, { isBlank: () => boolean, syncEngineUi?: () => void }>} */
     const mounted = new Map();
+    const syncAllMountedEngineUi = () => {
+        for (const entry of mounted.values()) {
+            entry.syncEngineUi?.();
+        }
+    };
 
     const toast = (message, type = 'info') => {
         const fn = notify
@@ -137,10 +246,20 @@ export function createBrowserSideProvider({
 
         async handleAgentRequest({ action, params = {} }) {
             if (action === 'open') {
-                const handle = await openBrowserTab({ url: params.url, forceNew: true });
+                const engine = params.engine
+                    ? writePreferredBrowserEngine(params.engine, providerStorage)
+                    : readPreferredBrowserEngine(providerStorage);
+                if (params.engine) syncAllMountedEngineUi();
+                const spec = getBrowserEngineSpec(engine);
+                const explicitUrl = params.usePreferredEngine ? '' : params.url;
+                const resolvedUrl = explicitUrl
+                    || (typeof params.query === 'string' && params.query.trim()
+                        ? `${spec.searchUrl}${encodeURIComponent(params.query.trim())}`
+                        : spec.homeUrl);
+                const handle = await openBrowserTab({ url: resolvedUrl, forceNew: true });
                 if (!handle) throw new Error('侧栏浏览器未能打开。');
                 await handle.whenRegistered();
-                return { targetId: handle.getTargetId() };
+                return { targetId: handle.getTargetId(), engine, url: resolvedUrl };
             }
             const tab = sidePaneController.getSnapshot().tabs.find(t => t.kind === kind && t.id === params.targetId);
             if (!tab) throw new Error('浏览器标签不存在。');
@@ -213,6 +332,11 @@ export function createBrowserSideProvider({
             const backBtn = iconButton('arrow_back', '后退');
             const forwardBtn = iconButton('arrow_forward', '前进');
             const reloadBtn = iconButton('refresh', '刷新');
+            const getEngine = () => readPreferredBrowserEngine(providerStorage);
+            const engineBtn = el('button', 'side-browser-btn side-browser-engine-btn', {
+                type: 'button',
+                'data-action': 'cycle-engine',
+            });
             const address = el('input', 'side-browser-address', {
                 type: 'text',
                 spellcheck: 'false',
@@ -220,6 +344,14 @@ export function createBrowserSideProvider({
                 placeholder: '搜索或输入网址',
                 'aria-label': '地址栏'
             });
+            const syncEngineUi = () => {
+                const spec = getBrowserEngineSpec(getEngine());
+                engineBtn.textContent = spec.label;
+                engineBtn.title = `当前搜索引擎：${spec.label}（点击切换 Bing / Google / Baidu / DuckDuckGo，右键打开 ${spec.label} 主页）`;
+                engineBtn.setAttribute('aria-label', `切换搜索引擎（当前：${spec.label}）`);
+                address.placeholder = `使用 ${spec.label} 搜索或输入网址`;
+            };
+            syncEngineUi();
             const moreBtn = iconButton('more_horiz', '更多浏览器操作');
             const menu = el('div', 'side-browser-menu', { role: 'menu' });
             menu.hidden = true;
@@ -235,7 +367,7 @@ export function createBrowserSideProvider({
             menu.append(openExternalItem, devtoolsItem, clearDataItem);
             // 前进后退和刷新收进一个胶囊，地址栏、更多各自一颗：三块等高的圆角件
             const nav = el('div', 'side-browser-nav');
-            nav.append(backBtn, forwardBtn, el('span', 'side-browser-nav-divider', { 'aria-hidden': 'true' }), reloadBtn);
+            nav.append(backBtn, forwardBtn, el('span', 'side-browser-nav-divider', { 'aria-hidden': 'true' }), reloadBtn, el('span', 'side-browser-nav-divider', { 'aria-hidden': 'true' }), engineBtn);
             moreBtn.classList.add('side-browser-more');
             toolbar.append(nav, address, moreBtn);
 
@@ -481,7 +613,7 @@ export function createBrowserSideProvider({
             }
 
             const submitAddress = () => {
-                const result = resolveBrowserAddress(address.value);
+                const result = resolveBrowserAddress(address.value, getEngine());
                 if (!result) return;
                 if (result.error) {
                     toast(result.error, 'warning');
@@ -547,6 +679,23 @@ export function createBrowserSideProvider({
                 }
                 else reload();
             });
+            own.listen(engineBtn, 'click', () => {
+                const current = getEngine();
+                const next = ENGINE_ORDER[(ENGINE_ORDER.indexOf(current) + 1) % ENGINE_ORDER.length];
+                writePreferredBrowserEngine(next, providerStorage);
+                syncAllMountedEngineUi();
+                const activeTargetUrl = pendingUrl || currentUrl;
+                const switchUrl = (!hasPage() && !pendingUrl)
+                    ? getBrowserEngineSpec(next).homeUrl
+                    : resolveEngineSwitchNavigationUrl(activeTargetUrl, next);
+                if (switchUrl) {
+                    navigate(switchUrl);
+                }
+            });
+            own.listen(engineBtn, 'contextmenu', (event) => {
+                event.preventDefault();
+                navigate(getBrowserEngineSpec(getEngine()).homeUrl);
+            });
             own.listen(moreBtn, 'click', () => {
                 if (menu.hidden) openMenu();
                 else closeMenu();
@@ -579,7 +728,7 @@ export function createBrowserSideProvider({
                 if (result?.url) navigate(result.url);
             }
 
-            const entry = { isBlank: () => !hasPage() && !pendingUrl };
+            const entry = { isBlank: () => !hasPage() && !pendingUrl, syncEngineUi };
             mounted.set(tab.id, entry);
             own.own(() => {
                 // A canceled mount may finish after a new page has reused its id.
@@ -609,14 +758,26 @@ export function createBrowserSideProvider({
                     assistanceBox.hidden = false;
                     webview?.focus?.();
                 },
-                resume() { void api?.browserActiveTarget?.(tab.id); },
+                resume() {
+                    syncEngineUi();
+                    void api?.browserActiveTarget?.(tab.id);
+                },
                 suspend() {},
                 focus() {
+                    syncEngineUi();
                     if (!hasPage()) address.focus();
                     else void api?.browserActiveTarget?.(tab.id);
                 },
                 getUrl() {
                     return currentUrl;
+                },
+                getEngine() {
+                    return getEngine();
+                },
+                setEngine(nextEngine) {
+                    const saved = writePreferredBrowserEngine(nextEngine, providerStorage);
+                    syncAllMountedEngineUi();
+                    return saved;
                 },
                 navigate(input) {
                     const result = normalizeBrowserInput(input);

@@ -2,7 +2,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { SideBrowserService, webUrl } = require('../modules/loom/sideBrowserService');
+const { SideBrowserService, webUrl, resolveBrowserOpenRequest } = require('../modules/loom/sideBrowserService');
+const { sanitizeBrowserUserAgent } = require('../modules/ipc/browserHandlers');
 const protocol = require('../modules/loom/webcore/web-agent-protocol');
 
 function fixture() {
@@ -130,4 +131,19 @@ test('pageInfo synchronizes adapter snapshot identity before strict actions', as
     await h.service.execute('click', {
         targetId: 'browser:1', target: '#button', snapshotId: second.snapshotId,
     }, { strict: true });
+});
+
+test('resolveBrowserOpenRequest supports flexible engine/query and sanitizeBrowserUserAgent strips Electron tokens', () => {
+    assert.deepEqual(resolveBrowserOpenRequest({}), { url: 'https://www.bing.com/', usePreferredEngine: true });
+    assert.deepEqual(resolveBrowserOpenRequest({ engine: 'google' }), { url: 'https://www.google.com/', engine: 'google' });
+    assert.deepEqual(resolveBrowserOpenRequest({ engine: 'google', query: 'vcp loom' }), {
+        url: 'https://www.google.com/search?q=vcp%20loom',
+        engine: 'google',
+        query: 'vcp loom',
+    });
+    assert.throws(() => resolveBrowserOpenRequest({ engine: 'unknown' }), { code: 'INVALID_REQUEST' });
+
+    const rawUa = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) vcp-chat-desktop/1.0.0 Chrome/152.0.7977.167 Electron/44.9.3 Safari/537.36';
+    const cleanUa = sanitizeBrowserUserAgent(rawUa);
+    assert.equal(cleanUa, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.7977.167 Safari/537.36');
 });

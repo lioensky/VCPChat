@@ -121,6 +121,15 @@ function matchSidePaneShortcut(input, { mac = process.platform === 'darwin' } = 
 
 const isAllowedSender = createApplicationSenderGuard({ getMainWebContents: () => resolveWindowWebContents(getMainWindow) });
 
+function sanitizeBrowserUserAgent(rawUa) {
+    if (typeof rawUa !== 'string' || !rawUa.trim()) return '';
+    return rawUa
+        .replace(/\s+Electron\/[^\s]+/gi, '')
+        .replace(/\s+vcp-chat-desktop\/[^\s]+/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
 function getGuestSession() {
     if (!guestSession) guestSession = session.fromPartition(BROWSER_PARTITION);
     return guestSession;
@@ -129,6 +138,10 @@ function getGuestSession() {
 function configureGuestSession(ses) {
     if (configuredSessions.has(ses)) return;
     configuredSessions.add(ses);
+    if (typeof ses.getUserAgent === 'function' && typeof ses.setUserAgent === 'function') {
+        const cleanUa = sanitizeBrowserUserAgent(ses.getUserAgent());
+        if (cleanUa) ses.setUserAgent(cleanUa);
+    }
     ses.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     ses.setPermissionCheckHandler(() => false);
     ses.webRequest?.onBeforeRequest?.((details, callback) => {
@@ -288,4 +301,5 @@ module.exports = {
     isAllowedGuestUrl,
     isAllowedPopupUrl,
     matchSidePaneShortcut,
+    sanitizeBrowserUserAgent,
 };

@@ -82,6 +82,13 @@ html .side-browser-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
 
 html .side-browser-btn.side-browser-more:where(.vcp-ui-scope, .vcp-ui-scope *) { width: var(--side-browser-pill-h); }
 
+html .side-browser-btn.side-browser-engine-btn:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    width: auto;
+    padding: 0 8px;
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    font-weight: 500;
+}
+
 /* lucide 图标的尺寸只认 --vcp-ui-icon-size（fonts.css），光写 font-size 不生效 */
 html .side-browser-btn .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 16px; }
 
