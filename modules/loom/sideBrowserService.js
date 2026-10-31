@@ -8,6 +8,13 @@ const { createElectronWebAgentAdapter } = require('./webcore/electron-adapter');
 
 const APP_ID = 'vcpchat-browser';
 const MAX_TABS = 12;
+const BROWSER_ENGINES = Object.freeze({
+    bing: Object.freeze({ id: 'bing', homeUrl: 'https://www.bing.com/', searchUrl: 'https://www.bing.com/search?q=' }),
+    google: Object.freeze({ id: 'google', homeUrl: 'https://www.google.com/', searchUrl: 'https://www.google.com/search?q=' }),
+    baidu: Object.freeze({ id: 'baidu', homeUrl: 'https://www.baidu.com/', searchUrl: 'https://www.baidu.com/s?wd=' }),
+    duckduckgo: Object.freeze({ id: 'duckduckgo', homeUrl: 'https://duckduckgo.com/', searchUrl: 'https://duckduckgo.com/?q=' }),
+});
+
 const MANIFEST = Object.freeze({
     id: APP_ID, name: 'VCPChat 协作浏览器', description: '用户与 Agent 共享的侧栏浏览器',
     startUrl: 'https://www.bing.com/', enabled: true, builtin: true,
@@ -23,6 +30,30 @@ function webUrl(value) {
     try { url = new URL(String(value || '')); } catch { throw fail('INVALID_REQUEST', '请输入完整 HTTP/HTTPS 网址。'); }
     if (!['http:', 'https:'].includes(url.protocol)) throw fail('INVALID_REQUEST', '协作浏览器仅允许 HTTP/HTTPS 网址。');
     return url.href;
+}
+
+function resolveBrowserOpenRequest(options = {}) {
+    const rawEngine = typeof options.engine === 'string' ? options.engine.trim().toLowerCase() : '';
+    if (rawEngine && !Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, rawEngine)) {
+        throw fail('INVALID_REQUEST', `不支持的搜索引擎 "${options.engine}"；可选值：bing、google、baidu、duckduckgo。`);
+    }
+    const spec = rawEngine ? BROWSER_ENGINES[rawEngine] : null;
+    const rawQuery = typeof options.query === 'string' ? options.query.trim() : '';
+    if (options.url !== undefined && options.url !== null && String(options.url).trim() !== '') {
+        return { url: webUrl(options.url), ...(spec ? { engine: spec.id } : {}) };
+    }
+    if (rawQuery) {
+        const targetSpec = spec || BROWSER_ENGINES.bing;
+        return {
+            url: `${targetSpec.searchUrl}${encodeURIComponent(rawQuery)}`,
+            ...(spec ? { engine: spec.id } : {}),
+            query: rawQuery,
+        };
+    }
+    if (spec) {
+        return { url: spec.homeUrl, engine: spec.id };
+    }
+    return { url: MANIFEST.startUrl, usePreferredEngine: true };
 }
 
 class SideBrowserService {
@@ -177,9 +208,9 @@ class SideBrowserService {
     }
 
     async open(options = {}) {
-        const url = webUrl(options.url || MANIFEST.startUrl);
+        const openReq = resolveBrowserOpenRequest(options);
         if (this.targets.size >= MAX_TABS) throw fail('BROWSER_TAB_LIMIT', '浏览器标签数量已达上限。');
-        const result = await this.request('open', { url });
+        const result = await this.request('open', openReq);
         const instance = this.resolve(result?.targetId);
         this.activeId = instance.tabId;
         await this.manager.ensureWebAgentRuntime(instance);
@@ -262,4 +293,4 @@ class SideBrowserService {
     }
 }
 
-module.exports = { SideBrowserService, APP_ID, MANIFEST, MAX_TABS, webUrl };
+module.exports = { SideBrowserService, APP_ID, MANIFEST, MAX_TABS, BROWSER_ENGINES, webUrl, resolveBrowserOpenRequest };
