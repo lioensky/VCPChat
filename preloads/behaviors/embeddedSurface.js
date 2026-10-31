@@ -24,7 +24,8 @@ function installEmbeddedSurface(ctx) {
             html[data-vcp-embedded-app="true"] :is(
                 #minimize-btn, #maximize-btn, #close-btn,
                 #minimize-theme-btn, #maximize-theme-btn, #close-theme-btn,
-                #minimize-translator-btn, #maximize-translator-btn, #close-translator-btn
+                #minimize-translator-btn, #maximize-translator-btn, #close-translator-btn,
+                #minimize-forum-btn, #maximize-forum-btn, #close-forum-btn
             ) { display: none; }
         `;
         (document.head || document.documentElement).append(style);

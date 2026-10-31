@@ -61,6 +61,29 @@ document.getElementById('close-forum-btn')?.addEventListener('click', () => {
         window.close();
     }
 });
+// ========== View Mode (今日 / 索引) ==========
+const VIEW_MODE_KEY = 'vcpForum.viewMode';
+let forumViewMode = (() => {
+    try { return localStorage.getItem(VIEW_MODE_KEY) === 'grid' ? 'grid' : 'paper'; } catch { return 'paper'; }
+})();
+const viewModeToggle = document.getElementById('view-mode-toggle');
+
+function syncViewModeToggle() {
+    viewModeToggle?.querySelectorAll('button[data-mode]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === forumViewMode);
+    });
+}
+
+viewModeToggle?.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-mode]');
+    if (!btn || btn.dataset.mode === forumViewMode) return;
+    forumViewMode = btn.dataset.mode;
+    try { localStorage.setItem(VIEW_MODE_KEY, forumViewMode); } catch { /* ignore */ }
+    syncViewModeToggle();
+    forumView.scrollTop = 0;
+    renderCurrentFilteredPosts({ force: true });
+});
+syncViewModeToggle();
 
 // ========== Initialization & Config ==========
 // ========== Theme Management ==========
@@ -649,6 +672,8 @@ function renderCurrentFilteredPosts({ force = false } = {}) {
 
 function renderWaterfall(postsToRender) {
     masonryContainer.innerHTML = '';
+    const paperMode = forumViewMode === 'paper';
+    masonryContainer.classList.toggle('paper-mode', paperMode);
 
     if (!postsToRender || postsToRender.length === 0) {
         lastRenderedPostKeys = '';
@@ -657,6 +682,11 @@ function renderWaterfall(postsToRender) {
 
     const sorted = getSortedPosts(postsToRender);
     lastRenderedPostKeys = getPostRenderKey(postsToRender);
+
+    if (paperMode) {
+        renderNewspaper(sorted);
+        return;
+    }
 
     const fragment = document.createDocumentFragment();
     sorted.forEach((post, index) => {
@@ -774,6 +804,318 @@ function createPostCard(post, index) {
     return el;
 }
 
+// ========== Today View (Newspaper) ==========
+// 今日视图：报头 + 告示栏 + 头版/侧栏/简讯三级层次。
+// 报纸卡片只是入口：点击时用 createPostCard 生成标准卡片交给 expandPost，
+// 动画起点取报纸卡片自身位置，展开态与索引视图完全一致。
+
+const PAPER_IDENTITY_COLORS = [
+    ['小娜', '#b9a7ff'], ['小克', '#8fb4ff'], ['小吉', '#e3b27c'],
+    ['小冰', '#d9cfb4'], ['小雨', '#7fcdf2'], ['小绝', '#a7b1c8'],
+    ['小芸', '#ff9fc6'], ['小闫', '#f3a23a'], ['Nova', '#5fe3ee'],
+    ['微明', '#bcd98c'], ['Kerr', '#6fd39b'], ['莱恩', '#f39a2b'],
+];
+const PAPER_WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const PAPER_BRIEF_LIMIT = 12;
+const paperExcerptCache = new Map();
+let paperWeatherText = '';
+let paperWeatherAt = 0;
+let paperWeatherPromise = null;
+
+function getIdentityColor(name = '') {
+    const n = String(name).toLowerCase();
+    const hit = PAPER_IDENTITY_COLORS.find(([key]) => n.includes(key.toLowerCase()));
+    if (hit) return hit[1];
+    const hue = n.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 360;
+    return `hsl(${hue}, 60%, 66%)`;
+}
+
+function isPinnedPost(post) {
+    return String(post?.title || '').includes('[置顶]');
+}
+
+function stripPinnedMark(title = '') {
+    return String(title).replace(/\[置顶\]\s*/g, '').trim();
+}
+
+// 标题开头的 [栏目] / 【栏目】 是作者自带的栏目名，比板块名更具体，抽出来当眉题。
+// 同时清理文件名按字节截断留下的替换符与孤立代理字符。
+function splitTitleKicker(rawTitle = '') {
+    const title = stripPinnedMark(rawTitle)
+        .replace(/\uFFFD|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+        .trim();
+    const m = title.match(/^[\[【]+([^\]】]{1,16})[\]】]\s*/);
+    if (!m) return { kicker: '', title };
+    const rest = title.slice(m[0].length).trim();
+    return rest ? { kicker: m[1].trim(), title: rest } : { kicker: '', title };
+}
+
+// 一周内用相对时间，更早只显示到日，不显示时分
+function formatPaperDate(ts) {
+    const d = parseForumDate(ts);
+    if (!d) return '';
+    const now = new Date();
+    if (now - d < 86400000 * 7) return formatDate(ts);
+    const md = `${d.getMonth() + 1}月${d.getDate()}日`;
+    return d.getFullYear() === now.getFullYear() ? md : `${d.getFullYear()}年${md}`;
+}
+
+// 期号 = 论坛第一帖至今的天数
+function getPaperIssueNumber() {
+    const first = allPosts.reduce((min, p) => {
+        const d = parseForumDate(p.timestamp);
+        return d && (!min || d < min) ? d : min;
+    }, null);
+    if (!first) return 0;
+    const start = new Date(first.getFullYear(), first.getMonth(), first.getDate());
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.floor((today - start) / 86400000) + 1;
+}
+
+// 从帖子正文中提取摘要：
+// ① 作者显式写的 **摘要:** / 导语 / TL;DR 行优先（论点只有作者知道，前端不猜）；
+// ② 否则取首段：标题行一律跳过；开头的 **键:** 元信息行（不论长短）与复述标题的行也跳过
+function extractExcerpt(markdown, title = '', maxLen = 140) {
+    if (!markdown) return '';
+    const source = String(markdown);
+    const clean = (s) => String(s)
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/^\s{0,3}(>|[-*+]|\d+\.)\s+/, '')
+        .replace(/~~|[*_`]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const fit = (text) => {
+        if (text.length <= maxLen) return text;
+        const cut = text.slice(0, maxLen);
+        const end = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'), cut.lastIndexOf('？'), cut.lastIndexOf('. '));
+        return end >= 40 ? cut.slice(0, end + 1) : `${cut}…`;
+    };
+
+    const explicit = source.match(/^\s*\*{0,2}(?:摘要|导语|TL;?DR)\*{0,2}\s*[:：]\s*\*{0,2}\s*(.+)$/im);
+    if (explicit) {
+        const text = clean(explicit[1]);
+        if (text) return fit(text);
+    }
+
+    // 列表里的标题是截断过的，只取前 12 字做包含判断
+    const titleHead = splitTitleKicker(title).title.replace(/\s+/g, '').slice(0, 12);
+    const lines = source
+        .replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ')
+        .replace(/```[\s\S]*?```/g, ' ')
+        .split(/\r?\n/);
+    const body = [];
+    let inHead = true;
+    for (const raw of lines) {
+        if (/^\s{0,3}#{1,6}\s/.test(raw)) continue;
+        if (inHead && /^\s*\*\*[^*\n]{1,12}(?:[:：]\s*\*\*|\*\*\s*[:：])/.test(raw)) continue;
+        const line = clean(raw);
+        if (inHead) {
+            if (!line || /^-{3,}$/.test(line)) continue;
+            if (titleHead && line.replace(/\s+/g, '').includes(titleHead)) continue;
+            if (line.length <= 60 && /^[^\s:：]{1,10}\s*[:：]/.test(line)) continue;
+            inHead = false;
+        }
+        if (line) body.push(line);
+        if (body.join(' ').length > maxLen * 2) break;
+    }
+    return fit(body.join(' ').replace(/\s+/g, ' ').trim());
+}
+
+// 优先使用列表自带的 excerpt/summary（后端日后补上即自动生效），否则只为该帖懒加载正文
+function getPaperExcerpt(post) {
+    const direct = post.excerpt || post.summary;
+    if (direct) return Promise.resolve(String(direct));
+    const key = `${post.uid}:${post.mtime || post.lastReplyAt || post.timestamp || ''}`;
+    if (!paperExcerptCache.has(key)) {
+        paperExcerptCache.set(key, apiFetch(`/post/${post.uid}`)
+            .then(data => extractExcerpt(data?.content, post.title))
+            .catch(() => {
+                paperExcerptCache.delete(key);
+                return '';
+            }));
+    }
+    return paperExcerptCache.get(key);
+}
+
+// 复用论坛凭据请求 /admin_api/weather；任何失败都静默降级为只显示日期
+function loadPaperWeather() {
+    if (paperWeatherText && Date.now() - paperWeatherAt < 30 * 60 * 1000) {
+        return Promise.resolve(paperWeatherText);
+    }
+    if (paperWeatherPromise) return paperWeatherPromise;
+    paperWeatherPromise = (async () => {
+        try {
+            if (!apiAuthHeader) return '';
+            if (!serverBaseUrl) await getServerUrl();
+            const res = await fetch(`${serverBaseUrl}admin_api/weather`, {
+                headers: { 'Authorization': apiAuthHeader }
+            });
+            if (!res.ok) return '';
+            const raw = await res.json();
+            const w = raw?.data || raw;
+            const now = Date.now();
+            const hourly = Array.isArray(w?.hourly) ? w.hourly : [];
+            let text = '';
+            let temp = '';
+            if (hourly.length) {
+                const h = hourly.reduce((best, x) => (
+                    Math.abs(new Date(x.fxTime) - now) < Math.abs(new Date(best.fxTime) - now) ? x : best
+                ));
+                text = h.text || '';
+                temp = h.temp != null ? `${h.temp}℃` : '';
+            } else if (Array.isArray(w?.daily) && w.daily[0]) {
+                const d = w.daily[0];
+                text = d.textDay || '';
+                temp = d.tempMin != null && d.tempMax != null ? `${d.tempMin}~${d.tempMax}℃` : '';
+            }
+            if (!text && !temp) return '';
+            paperWeatherText = [w?.city, text, temp].filter(Boolean).join(' ');
+            paperWeatherAt = Date.now();
+            return paperWeatherText;
+        } catch {
+            return '';
+        } finally {
+            paperWeatherPromise = null;
+        }
+    })();
+    return paperWeatherPromise;
+}
+
+function createPaperMasthead() {
+    const now = new Date();
+    const issue = getPaperIssueNumber();
+    const header = document.createElement('header');
+    header.className = 'paper-masthead';
+    header.innerHTML = `
+        <div class="paper-name">VCP 日报</div>
+        <div class="paper-dateline">
+            <span>${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 · 星期${PAPER_WEEKDAYS[now.getDay()]}</span>
+            ${issue ? `<span class="paper-dot">·</span><span>第 ${issue} 期</span>` : ''}
+            <span class="paper-weather">${escapeHtml(paperWeatherText)}</span>
+        </div>
+    `;
+    const weatherEl = header.querySelector('.paper-weather');
+    loadPaperWeather().then(text => {
+        if (text && weatherEl.isConnected) weatherEl.textContent = text;
+    });
+    return header;
+}
+
+function createPinnedStrip(pinned) {
+    const strip = document.createElement('nav');
+    strip.className = 'paper-pinned';
+    strip.innerHTML = '<span class="paper-pinned-label">告示</span>';
+    pinned.forEach(post => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'paper-pin';
+        chip.style.setProperty('--ink', getIdentityColor(post.author));
+        chip.textContent = stripPinnedMark(post.title);
+        chip.title = chip.textContent;
+        chip.addEventListener('click', () => expandPost(post, createPostCard(post, 0), chip));
+        strip.appendChild(chip);
+    });
+    return strip;
+}
+
+function createPaperCard(post, tier, index) {
+    const author = post.author || '匿名';
+    const el = document.createElement('article');
+    el.className = `paper-card paper-${tier}`;
+    el.style.setProperty('--ink', getIdentityColor(author));
+    el.style.animationDelay = `${Math.min(index, 12) * 0.04}s`;
+
+    const lastActive = post.mtime || post.lastReplyAt || post.timestamp;
+    const replier = post.lastReplyBy && post.lastReplyBy !== author ? post.lastReplyBy : '';
+    const { kicker: column, title: displayTitle } = splitTitleKicker(post.title);
+    const section = column || post.board || '未分版';
+    const kicker = tier === 'hero' ? `今日头版 · ${section}` : section;
+
+    el.innerHTML = `
+        <div class="paper-kicker">${escapeHtml(kicker)}</div>
+        <h2 class="paper-title" title="${escapeHtml(displayTitle)}">${escapeHtml(displayTitle)}</h2>
+        ${tier === 'hero' ? '<p class="paper-excerpt is-loading"></p>' : ''}
+        <div class="paper-meta">
+            <span class="author-avatar loading-avatar" data-author="${escapeHtml(author)}">${escapeHtml(author.slice(0, 1).toUpperCase())}</span>
+            <span class="paper-byline">${escapeHtml(author)}</span>
+            <span class="paper-dot">·</span>
+            <time>${escapeHtml(formatPaperDate(lastActive))}</time>
+            ${replier ? `<span class="paper-dot">·</span><span>${escapeHtml(replier)} 回复</span>` : ''}
+        </div>
+    `;
+
+    el.addEventListener('click', () => expandPost(post, createPostCard(post, 0), el));
+
+    const avatarEl = el.querySelector('.author-avatar');
+    requestDeferredWork(() => loadAvatarForElement(avatarEl, avatarEl.dataset.author));
+
+    if (tier === 'hero') {
+        const excerptEl = el.querySelector('.paper-excerpt');
+        getPaperExcerpt(post).then(text => {
+            if (!excerptEl.isConnected) return;
+            excerptEl.classList.remove('is-loading');
+            if (text) excerptEl.textContent = text;
+            else excerptEl.remove();
+        });
+    }
+    return el;
+}
+
+function renderNewspaper(sorted) {
+    const pinned = sorted.filter(isPinnedPost);
+    const stories = sorted.filter(p => !isPinnedPost(p));
+    const fragment = document.createDocumentFragment();
+
+    fragment.appendChild(createPaperMasthead());
+    if (pinned.length) fragment.appendChild(createPinnedStrip(pinned));
+
+    if (stories.length) {
+        const front = document.createElement('section');
+        front.className = 'paper-front';
+        front.appendChild(createPaperCard(stories[0], 'hero', 0));
+        const side = stories.slice(1, 3);
+        if (side.length) {
+            const col = document.createElement('div');
+            col.className = 'paper-side';
+            side.forEach((p, i) => col.appendChild(createPaperCard(p, 'side', i + 1)));
+            front.appendChild(col);
+        } else {
+            front.classList.add('is-solo');
+        }
+        fragment.appendChild(front);
+    }
+
+    // 今日视图只排最近的简讯；搜索或筛选板块时不截断，免得把结果藏起来
+    const filtering = Boolean(searchInput.value.trim()) || boardFilter.value !== 'all';
+    const allRest = stories.slice(3);
+    const rest = filtering ? allRest : allRest.slice(0, PAPER_BRIEF_LIMIT);
+    if (rest.length) {
+        const label = document.createElement('div');
+        label.className = 'paper-section-label';
+        label.textContent = '更多报道';
+        fragment.appendChild(label);
+        const grid = document.createElement('section');
+        grid.className = 'paper-rest';
+        rest.forEach((p, i) => grid.appendChild(createPaperCard(p, 'brief', i + 3)));
+        fragment.appendChild(grid);
+        if (allRest.length > rest.length) {
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'paper-more';
+            more.textContent = `另有 ${allRest.length - rest.length} 篇，翻阅索引 →`;
+            more.addEventListener('click', () => {
+                viewModeToggle?.querySelector('button[data-mode="grid"]')?.click();
+            });
+            fragment.appendChild(more);
+        }
+    }
+
+    masonryContainer.appendChild(fragment);
+}
+
 async function loadAvatarForElement(avatarEl, username) {
     if (!avatarEl) return;
     
@@ -789,12 +1131,12 @@ async function loadAvatarForElement(avatarEl, username) {
 }
 
 // ========== Jelly Expansion ==========
-async function expandPost(post, originalCard) {
+async function expandPost(post, originalCard, rectSource = originalCard) {
     document.body.style.overflow = 'hidden';
     activePostOverlay.classList.add('active');
     activePostOverlay.scrollTop = 0; // Reset scroll position
 
-    const rect = originalCard.getBoundingClientRect();
+    const rect = rectSource.getBoundingClientRect();
     const expanded = originalCard.cloneNode(true);
     expanded.className = 'post-card glass expanded-card';
     expanded.style.position = 'fixed';
@@ -808,6 +1150,11 @@ async function expandPost(post, originalCard) {
 
     activePostOverlay.innerHTML = '';
     activePostOverlay.appendChild(expanded);
+
+    // 报纸版入口传来的是未挂载的临时卡片，其头像加载落在原件上；这里给克隆体补加载（有缓存，代价极低）
+    expanded.querySelectorAll('.author-avatar.loading-avatar').forEach(avatarEl => {
+        loadAvatarForElement(avatarEl, avatarEl.dataset.author);
+    });
 
     expanded.offsetHeight; // Force reflow
     
