@@ -206,3 +206,8 @@ test('a message edited to the same length that now changes files gets its file l
     assert.equal(root.querySelectorAll('.vcp-file-changes').length, 1);
     controller.dispose();
 });
+test('parallel FileOperator all-success cluster confirms every requested file without guessing result order', () => {
+    const text = [write('C:/a.js'), write('C:/b.js'), RES('SUCCESS'), RES('SUCCESS')].join('\n');
+    assert.deepEqual(extractFileChanges(text), [{path:'C:/a.js',op:'write'},{path:'C:/b.js',op:'write'}]);
+    assert.deepEqual(extractFileChanges([write('C:/a.js'),write('C:/b.js'),RES('SUCCESS')].join('\n')),[]);
+});

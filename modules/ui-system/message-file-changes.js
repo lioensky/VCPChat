@@ -246,7 +246,8 @@ export function classifyToolFileOperations(text) {
         return match;
     });
     const results = toolResultsOf(source,['fileoperator','projectforge']);
-    return Object.entries(requests).flatMap(([tool,calls]) => {
+    const consumed = new Set();
+    const classified = Object.entries(requests).flatMap(([tool,calls]) => {
         const outcomes = results.filter(result => result.tool === tool);
         const paired = outcomes.length === calls.length;
         return calls.map((call,index) => {
@@ -256,11 +257,61 @@ export function classifyToolFileOperations(text) {
                 && (!calls[index+1] || candidate.end <= calls[index+1].start)
                 && (!outcomes[index-1] || outcomes[index-1].end <= call.start);
             const result = bounded ? candidate : null;
+            if (result) consumed.add(result);
             const state = result?.state || (outcomes.length === 0 ? 'pending' : 'unknown');
             const operations = state !== 'succeeded' ? [] : tool === 'fileoperator' ? call.candidates : forgeOperationsOfResult(result.body,lookup(call.fields,'projectId','project','id'));
-            return {tool,state,operations,candidates:call.candidates};
+            return {tool,state,operations,candidates:call.candidates, order: result?.start ?? call.start};
         });
     });
+    // ProjectForge 成功回执自带实际文件路径，不必靠调用顺序猜哪一个请求成功。
+    // 仅在本次请求簇内确定工程归属；不跨越后续请求借用旧工程。
+    const calls = requests.projectforge;
+    const writeCommands = new Set(['createfile', 'editcode', 'resolveedit', 'removefile', 'movefile', 'movecode', 'copycode', 'rollback']);
+    for (const result of results) {
+        if (consumed.has(result) || result.tool !== 'projectforge' || !result.ok) continue;
+
+        const recentCalls = calls.filter(call => call.end <= result.start);
+        const lastCall = recentCalls.at(-1);
+        if (!lastCall) continue;
+        // 同批后续回执前没有新请求，沿用最近的请求簇。
+        const clusterBoundary = results.filter(entry => entry.end <= lastCall.start)
+            .reduce((end, entry) => Math.max(end, entry.end), 0);
+        const cluster = recentCalls.filter(call => call.start >= clusterBoundary);
+        const writers = cluster.filter(call => writeCommands.has(lookup(call.fields, 'command').toLowerCase()));
+        if (!writers.length) continue;
+        const ids = new Set(writers.map(call => lookup(call.fields, 'projectId', 'project', 'id')));
+        const explicitId = /^- 节点[^\n]* · 工程 `([^`\n]+)`/mu.exec(result.body)?.[1];
+        const projectId = explicitId && ids.has(explicitId) ? explicitId
+            : !explicitId && ids.size === 1 ? [...ids][0] : '';
+        if (!projectId) continue;
+        const operations = forgeOperationsOfResult(result.body, projectId);
+        if (operations.length) classified.push({ tool: 'projectforge', state: 'succeeded', operations, candidates: [], order: result.start });
+    }
+    // FileOperator 回执不总带路径：仅对封闭、全成功的同工具请求簇作集合确认，
+    // 不按回执顺序猜单条归属。成功失败混杂时继续保守忽略。
+    const fileCalls = requests.fileoperator;
+    for (let index = 0; index < fileCalls.length;) {
+        const first = fileCalls[index];
+        const boundary = results.find(result => result.start >= first.end)?.start ?? source.length;
+        let next = index + 1;
+        while (next < fileCalls.length && fileCalls[next].start < boundary) next++;
+        const cluster = fileCalls.slice(index, next);
+        const end = fileCalls[next]?.start ?? source.length;
+        const receipts = results.filter(result => result.tool === 'fileoperator'
+            && result.start >= cluster.at(-1).end && result.end <= end);
+        if (cluster.length > 1 && receipts.length === cluster.length
+            && receipts.every(result => result.ok)) {
+            for (const call of cluster) {
+                const entry = classified.find(item => item.candidates === call.candidates);
+                if (entry && entry.state !== 'succeeded') {
+                    entry.state = 'succeeded';
+                    entry.operations = call.candidates;
+                }
+            }
+        }
+        index = next;
+    }
+    return classified.sort((a, b) => a.order - b.order).map(({ order, ...entry }) => entry);
 }
 
 export function extractFileChanges(text) {
@@ -328,6 +379,7 @@ export function createMessageFileChanges({
     // 没有文件改动的消息记下 id 和当时的内容（引用历史里同一个字符串）：class 再变（hover、展开等）不用重新提取；
     // 只记长度的话，编辑后长度没变、却多了文件改动的消息会被跳过
     const noChanges = new Map();
+    const renderedContent = new WeakMap();
 
     // 一批 mutation 共用一份历史索引和工程根：长历史加载时不再每条消息线性 find、再扫一遍全历史
     function createBatch() {
@@ -344,11 +396,15 @@ export function createMessageFileChanges({
     function render(item, batch = createBatch()) {
         if (!item.classList?.contains('message-item') || !item.classList.contains('assistant') || item.classList.contains('streaming')) return;
         const wrapper = item.querySelector(':scope > .details-and-bubble-wrapper');
-        if (!wrapper || wrapper.querySelector(':scope > .vcp-file-changes')) return;
+        if (!wrapper) return;
         const id = item.dataset.messageId;
         if (!id) return;
         const record = batch.find(id);
         const raw = typeof record?.content === 'string' ? record.content : '';
+        const existing = wrapper.querySelector(':scope > .vcp-file-changes');
+        if (existing && renderedContent.get(existing) === raw) return;
+        const wasOpen = existing?.open || false;
+        existing?.remove();
         if (noChanges.get(id) === raw) return;
         const changes = extractFileChanges(raw);
         if (changes.length === 0) { noChanges.set(id, raw); return; }
@@ -358,6 +414,8 @@ export function createMessageFileChanges({
 
         const details = doc.createElement('details');
         details.className = 'vcp-file-changes';
+        details.open = wasOpen;
+        renderedContent.set(details, raw);
         const summary = doc.createElement('summary');
         summary.textContent = summarizeFileChanges(changes);
         details.appendChild(summary);

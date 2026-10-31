@@ -201,3 +201,31 @@ test('ProjectForge: Rollback lists the files it restored, recreated or trashed',
     ].join('\n');
     assert.deepEqual(extractFileChanges(dryRun), []);
 });
+test('parallel Forge receipts use successful paths with reversed results and partial failure', () => {
+    const req = path => forge(`command:「始」EditCode「末」,\nprojectId:「始」pqug7「末」,\npath:「始」${path}「末」`);
+    const result = path => RESULT('ProjectForge', OK, `## ✅ 已写入 · \`${path}\`\n- 节点 \`n8\` · 批次 \`b8\` · 工程 \`pqug7\` · @Kerr\n### Diff (+2 -1)`);
+    const text = [req('a.js'), req('b.js'), req('failed.js'), result('b.js'), RESULT('ProjectForge', '❌ ERROR', '失败'), result('a.js')].join('\n');
+    assert.deepEqual(extractFileChanges(text).map(c => c.path), ['b.js', 'a.js']);
+});
+
+test('parallel Forge calls in different projects require explicit project identity', () => {
+    const req = id => forge(`command:「始」EditCode「末」,\nprojectId:「始」${id}「末」,\npath:「始」same.js「末」`);
+    const text = [req('pone'), req('ptwo'),
+        RESULT('ProjectForge', OK, '## ✅ 已写入 · `same.js`\n- 节点 `n9` · 工程 `ptwo` · @Kerr\n### Diff (+1 -0)'),
+        RESULT('ProjectForge', OK, '## ✅ 已写入 · `unknown.js`\n### Diff (+1 -0)')].join('\n');
+    assert.deepEqual(extractFileChanges(text), [{path:'same.js',projectId:'ptwo',op:'edit',added:1,removed:0}]);
+});
+
+test('existing summary refreshes and preserves expanded state', async () => {
+    const messages = [{id:'m1',role:'assistant',content:editCodeCall('a.js',1,0)}];
+    const app = mountMessage(messages, 'm1');
+    await wait();
+    app.root.querySelector('details').open = true;
+    messages[0].content += '\n' + editCodeCall('b.js',2,0);
+    app.root.querySelector('.message-item').classList.add('updated');
+    await wait();
+    assert.equal(app.root.querySelector('summary').textContent, '本轮改动 2 个文件');
+    assert.equal(app.root.querySelector('details').open, true);
+    assert.equal(app.root.querySelectorAll('details').length, 1);
+    app.controller.dispose();
+});
