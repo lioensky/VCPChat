@@ -117,6 +117,25 @@ test('ForgeTax大厅委托专用服务，资源与桥接文件齐全', async () 
         assert.ok(fs.existsSync(path.join(root, 'Gamemodules/forge-tax', name)));
     }
 });
+test('Tavern-SRPG大厅委托专用服务，资源与桥接文件齐全', async () => {
+    let opened = 0;
+    const before = windows.length;
+    Module._load = function(request, parent, isMain) {
+        if (request.endsWith('/srpg/service.cjs')) {
+            return { async openWindow() { opened++; } };
+        }
+        return original.call(this, request, parent, isMain);
+    };
+    try {
+        assert.equal((await launch(sender(), 'srpg')).success, true);
+        assert.equal((await launch(sender(), 'srpg')).success, true);
+        assert.equal(opened, 2);
+        assert.equal(windows.length, before);
+    } finally { Module._load = original; }
+    for (const name of ['index.html', 'ui.js', 'style.css', 'service.cjs', 'preload.cjs', 'session-store.cjs', 'tool-result.cjs']) {
+        assert.ok(fs.existsSync(path.join(root, 'Gamemodules/srpg', name)));
+    }
+});
 test('斗地主窗口复用且资源完整，牌桌IPC拒绝大厅与其他窗口', async () => {
     const before = windows.length;
     assert.equal((await launch(sender(), 'doudizhu')).success, true);

@@ -1,0 +1,729 @@
+/* Tavern-SRPG
+ * 颜色都从 SillyTavern 主题派生（文字色 / 强调色 / 背景色），浅色和深色主题都能用。
+ */
+
+/* ================================================================ 聊天中的战斗记录卡片 */
+.tsrpg-chat-report {
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 16%, transparent);
+    border-left: 3px solid var(--SmartThemeQuoteColor, #e18a24);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 5%, transparent);
+    overflow: hidden;
+}
+.tsrpg-chat-report > summary { padding: 10px 12px; cursor: pointer; color: var(--SmartThemeBodyColor, #ddd); font-weight: bold; overflow-wrap: anywhere; }
+.tsrpg-chat-report > summary:hover { background: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 6%, transparent); }
+.tsrpg-chat-report-hint { margin-left: 10px; font-weight: normal; opacity: 0.6; font-size: 0.75em; }
+.tsrpg-chat-report-content { padding: 8px 12px; border-top: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 12%, transparent); }
+.tsrpg-chat-report-content > :first-child { margin-top: 0; }
+.tsrpg-chat-report-content > :last-child { margin-bottom: 0; }
+
+/* ================================================================ 面板与设计变量 */
+.tsrpg-panel {
+    --tsrpg-bg: var(--SmartThemeBlurTintColor, rgba(23, 23, 23, 0.95));
+    --tsrpg-fg: var(--SmartThemeBodyColor, #ddd);
+    --tsrpg-accent: var(--SmartThemeQuoteColor, #e18a24);
+    --tsrpg-muted: color-mix(in srgb, var(--tsrpg-fg) 62%, transparent);
+    --tsrpg-border: color-mix(in srgb, var(--tsrpg-fg) 15%, transparent);
+    --tsrpg-line: color-mix(in srgb, var(--tsrpg-fg) 10%, transparent);
+    --tsrpg-surface: color-mix(in srgb, var(--tsrpg-fg) 4.5%, transparent);
+    --tsrpg-surface-2: color-mix(in srgb, var(--tsrpg-fg) 8%, transparent);
+    --tsrpg-hover: color-mix(in srgb, var(--tsrpg-fg) 12%, transparent);
+    --tsrpg-accent-soft: color-mix(in srgb, var(--tsrpg-accent) 16%, transparent);
+    --tsrpg-accent-strong: color-mix(in srgb, var(--tsrpg-accent) 82%, #000);
+    --tsrpg-danger: #e5534b;
+    --tsrpg-ok: #3fb950;
+    --tsrpg-warn-color: #e8912d;
+    --tsrpg-radius: 10px;
+    --tsrpg-radius-sm: 7px;
+    --tsrpg-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    position: fixed;
+    max-width: 100vw;
+    max-height: 100vh;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    background: var(--tsrpg-bg);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px));
+    color: var(--tsrpg-fg);
+    border: 1px solid var(--tsrpg-border);
+    border-radius: 14px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.tsrpg-panel[hidden] { display: none !important; }
+.tsrpg-panel *, .tsrpg-panel *::before, .tsrpg-panel *::after { box-sizing: border-box; }
+.tsrpg-panel input[type="checkbox"], .tsrpg-panel input[type="radio"] { accent-color: var(--tsrpg-accent); }
+
+/* 完整窗口 */
+.tsrpg-panel.float {
+    top: 70px;
+    right: 20px;
+    width: min(460px, calc(100vw - 20px));
+    height: min(760px, calc(100vh - 90px));
+    min-width: 320px;
+    min-height: 300px;
+    resize: both;
+}
+
+/* 战斗小窗：高度随地图和操作内容变化 */
+.tsrpg-panel.compact {
+    top: 70px;
+    right: 20px;
+    width: min(460px, calc(100vw - 20px));
+    height: auto;
+    max-height: calc(100dvh - 90px);
+    min-width: 0;
+    resize: none;
+}
+.tsrpg-panel.compact .tsrpg-tabs { display: none; }
+.tsrpg-panel.compact .tsrpg-title { flex: 1; }
+.tsrpg-panel.compact .tsrpg-header { flex-wrap: nowrap; touch-action: none; }
+.tsrpg-panel.compact .tsrpg-body { flex: 0 1 auto; min-height: 0; padding: 10px; }
+.tsrpg-panel.compact .tsrpg-board-wrap { max-width: 100%; margin: 0 auto; }
+.tsrpg-panel.compact .tsrpg-actions { margin: 8px 0; }
+.tsrpg-panel.compact.tsrpg-reaction-open { min-height: min(600px, calc(100dvh - 90px)); }
+.tsrpg-panel.compact .tsrpg-topbar { margin-bottom: 8px; }
+
+/* ================================================================ 标题栏与标签页 */
+.tsrpg-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 6px 12px;
+    background: color-mix(in srgb, var(--tsrpg-fg) 5%, transparent);
+    border-bottom: 1px solid var(--tsrpg-border);
+    cursor: move;
+    user-select: none;
+    flex-wrap: wrap;
+}
+.tsrpg-title { font-weight: 700; white-space: nowrap; letter-spacing: 0.02em; display: flex; align-items: center; gap: 4px; }
+.tsrpg-title i { color: var(--tsrpg-accent); font-size: 1.1em; }
+.tsrpg-tabs { display: flex; gap: 2px; flex: 1; flex-wrap: wrap; }
+.tsrpg-tab {
+    position: relative;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--tsrpg-muted);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 13px;
+    transition: background 0.15s, color 0.15s;
+}
+.tsrpg-tab:hover { color: var(--tsrpg-fg); background: var(--tsrpg-hover); }
+.tsrpg-tab.active { color: var(--tsrpg-fg); background: var(--tsrpg-accent-soft); font-weight: 600; }
+.tsrpg-tab.active i { color: var(--tsrpg-accent); }
+.tsrpg-panel .tsrpg-icon-btn { width: 32px !important; height: 30px; padding: 0 !important; }
+.tsrpg-panel .tsrpg-sync-btn { position: relative; overflow: visible; }
+.tsrpg-panel .tsrpg-sync-btn[hidden] { display: none !important; }
+.tsrpg-panel .tsrpg-sync-btn.working { color: var(--tsrpg-accent); border-color: var(--tsrpg-accent); }
+.tsrpg-sync-badge { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--tsrpg-accent); color: #fff; font-size: 10px; line-height: 16px; text-align: center; font-weight: bold; pointer-events: none; }
+.tsrpg-sync-badge[hidden] { display: none; }
+
+.tsrpg-body { flex: 1; overflow: auto; padding: 12px 14px; position: relative; }
+
+/* 细滚动条 */
+.tsrpg-panel, .tsrpg-panel * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--tsrpg-fg) 25%, transparent) transparent; }
+.tsrpg-panel ::-webkit-scrollbar { width: 8px; height: 8px; }
+.tsrpg-panel ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--tsrpg-fg) 22%, transparent); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+.tsrpg-panel ::-webkit-scrollbar-track { background: transparent; }
+
+/* ================================================================ 基础控件 */
+.tsrpg-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.tsrpg-row > .text_pole { flex: 1; margin: 0; }
+.tsrpg-spacer { flex: 1; }
+.tsrpg-muted { color: var(--tsrpg-muted); font-size: 0.9em; }
+.tsrpg-warn { color: var(--tsrpg-warn-color); }
+.tsrpg-desc { margin: 4px 0 10px; font-style: italic; color: var(--tsrpg-muted); }
+.tsrpg-link { color: var(--tsrpg-accent); cursor: pointer; text-decoration: none; margin-left: 6px; border-bottom: 1px dashed currentColor; }
+.tsrpg-link:hover { filter: brightness(1.15); }
+.tsrpg-empty {
+    padding: 36px 20px;
+    margin: 8px 0;
+    text-align: center;
+    color: var(--tsrpg-muted);
+    border: 1px dashed var(--tsrpg-border);
+    border-radius: var(--tsrpg-radius);
+    background: var(--tsrpg-surface);
+}
+
+/* 按钮：普通 / 主要 / 危险 / 选中；不依赖主题里 menu_button 的样子 */
+.tsrpg-panel .tsrpg-btn, .tsrpg-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    min-height: 30px;
+    width: auto !important;
+    white-space: nowrap;
+    border-radius: var(--tsrpg-radius-sm);
+    border: 1px solid var(--tsrpg-border);
+    background: var(--tsrpg-surface-2);
+    color: var(--tsrpg-fg);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s, filter 0.15s;
+}
+.tsrpg-panel .tsrpg-btn:hover { background: var(--tsrpg-hover); border-color: color-mix(in srgb, var(--tsrpg-fg) 25%, transparent); }
+.tsrpg-panel .tsrpg-btn:active { transform: translateY(1px); }
+.tsrpg-panel .tsrpg-btn:focus-visible { outline: 2px solid var(--tsrpg-accent); outline-offset: 2px; }
+.tsrpg-panel .tsrpg-btn i { font-size: 0.95em; opacity: 0.9; }
+.tsrpg-panel .tsrpg-btn.primary { background: var(--tsrpg-accent-strong); border-color: transparent; color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25); }
+.tsrpg-panel .tsrpg-btn.primary:hover { filter: brightness(1.12); background: var(--tsrpg-accent-strong); }
+.tsrpg-panel .tsrpg-btn.active { background: var(--tsrpg-accent-soft); border-color: var(--tsrpg-accent); color: var(--tsrpg-fg); }
+.tsrpg-panel .tsrpg-btn.danger { color: var(--tsrpg-danger); }
+.tsrpg-panel .tsrpg-btn.danger:hover { background: color-mix(in srgb, var(--tsrpg-danger) 18%, transparent); border-color: color-mix(in srgb, var(--tsrpg-danger) 50%, transparent); }
+.tsrpg-panel .tsrpg-btn[disabled] { opacity: 0.4; pointer-events: none; }
+.tsrpg-btn > span:empty { display: none; }
+
+/* 按钮组：相邻按钮连成一块 */
+.tsrpg-btn-group { display: inline-flex; align-items: stretch; flex-wrap: nowrap; }
+.tsrpg-btn-group > .tsrpg-btn { border-radius: 0; margin-left: -1px !important; }
+.tsrpg-btn-group > .tsrpg-btn:first-child { border-radius: var(--tsrpg-radius-sm) 0 0 var(--tsrpg-radius-sm); margin-left: 0 !important; }
+.tsrpg-btn-group > .tsrpg-btn:last-child { border-radius: 0 var(--tsrpg-radius-sm) var(--tsrpg-radius-sm) 0; }
+.tsrpg-btn-group > .tsrpg-btn:only-child { border-radius: var(--tsrpg-radius-sm); }
+.tsrpg-btn-group > .tsrpg-btn.primary { position: relative; z-index: 1; }
+.tsrpg-btn-group.tools > .tsrpg-btn { padding: 0 10px !important; }
+.tsrpg-btn-group.tools > .tsrpg-btn > span { display: none; }
+
+/* 输入框 */
+.tsrpg-panel .text_pole {
+    min-height: 30px;
+    margin: 0;
+    padding: 4px 9px;
+    border-radius: var(--tsrpg-radius-sm);
+    border: 1px solid var(--tsrpg-border);
+    background: color-mix(in srgb, var(--tsrpg-fg) 4%, transparent);
+    color: var(--tsrpg-fg);
+    font: inherit;
+    font-size: 13px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tsrpg-panel textarea.text_pole { line-height: 1.5; resize: vertical; }
+.tsrpg-panel .text_pole:hover { border-color: color-mix(in srgb, var(--tsrpg-fg) 25%, transparent); }
+.tsrpg-panel .text_pole:focus { outline: none; border-color: var(--tsrpg-accent); box-shadow: 0 0 0 3px var(--tsrpg-accent-soft); }
+.tsrpg-panel select.text_pole { cursor: pointer; }
+.tsrpg-panel select.text_pole option, .tsrpg-panel select.text_pole optgroup { background: var(--SmartThemeBlurTintColor, #222); color: var(--tsrpg-fg); }
+.tsrpg-panel input[type="color"] { width: 44px; height: 30px; padding: 2px; border: 1px solid var(--tsrpg-border); border-radius: var(--tsrpg-radius-sm); background: none; cursor: pointer; }
+
+.tsrpg-field { display: flex; flex-direction: column; gap: 3px; margin: 4px 0; min-width: 0; }
+.tsrpg-field .text_pole { margin: 0; }
+.tsrpg-label { font-size: 12px; font-weight: 500; color: var(--tsrpg-muted); }
+.tsrpg-hint { font-size: 11.5px; line-height: 1.4; color: var(--tsrpg-muted); }
+.tsrpg-body div.tsrpg-label { display: block; margin: 12px 0 2px; font-size: 13px; font-weight: 600; color: var(--tsrpg-fg); }
+.tsrpg-check { display: inline-flex; align-items: center; gap: 7px; margin: 4px 14px 4px 0; cursor: pointer; }
+.tsrpg-check input { margin: 0; width: 15px; height: 15px; }
+.tsrpg-checks { display: flex; flex-wrap: wrap; }
+.tsrpg-grid2, .tsrpg-grid3, .tsrpg-grid4, .tsrpg-grid5, .tsrpg-grid6, .tsrpg-grid7 { display: grid; gap: 6px 12px; }
+.tsrpg-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tsrpg-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tsrpg-grid4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tsrpg-grid5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tsrpg-grid6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.tsrpg-grid7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+
+/* 标签与小徽章 */
+.tsrpg-tag { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; line-height: 1.6; padding: 0 7px; border-radius: 999px; border: 1px solid var(--tsrpg-border); background: var(--tsrpg-surface); white-space: nowrap; }
+.tsrpg-tag.dead { color: var(--tsrpg-danger); border-color: color-mix(in srgb, var(--tsrpg-danger) 50%, transparent); }
+.tsrpg-tag.key { color: #e0b030; border-color: color-mix(in srgb, #e0b030 55%, transparent); }
+.tsrpg-chip { font-size: 11.5px; padding: 0 7px; line-height: 1.7; border-radius: 999px; background: color-mix(in srgb, var(--tsrpg-ok) 18%, transparent); border: 1px solid color-mix(in srgb, var(--tsrpg-ok) 45%, transparent); }
+.tsrpg-chip.debuff { background: color-mix(in srgb, var(--tsrpg-danger) 16%, transparent); border-color: color-mix(in srgb, var(--tsrpg-danger) 45%, transparent); }
+.tsrpg-statuses { display: flex; flex-wrap: wrap; gap: 4px; }
+.tsrpg-swatch { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; font-size: 13px; flex: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25); }
+
+/* ================================================================ 卡片与分节 */
+.tsrpg-section-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-weight: 650;
+    font-size: 14px;
+    margin: 16px 0 8px;
+}
+.tsrpg-section-title > i:first-child { color: var(--tsrpg-accent); width: 1.1em; text-align: center; }
+.tsrpg-section-title > small { font-weight: normal; }
+.tsrpg-section-title > .tsrpg-btn { font-weight: 500; }
+
+/* 通用卡片：表单分组、技能、资料卡、设计结果等都用同一种外观 */
+.tsrpg-group, .tsrpg-skill-editor, .tsrpg-skill, .tsrpg-owner, .tsrpg-profile, .tsrpg-design-box, .tsrpg-side-card,
+.tsrpg-manual-panel, .tsrpg-engagement, .tsrpg-proposals, .tsrpg-multi-bindings {
+    border: 1px solid var(--tsrpg-border);
+    border-radius: var(--tsrpg-radius);
+    background: var(--tsrpg-surface);
+    padding: 10px 12px;
+    margin: 10px 0;
+}
+.tsrpg-group > .tsrpg-section-title:first-child, .tsrpg-skill-editor > .tsrpg-section-title:first-child, .tsrpg-side-card > .tsrpg-section-title:first-child,
+.tsrpg-owner > .tsrpg-section-title:first-child, .tsrpg-proposals > .tsrpg-section-title:first-child, .tsrpg-engagement > .tsrpg-section-title:first-child,
+.tsrpg-design-box > .tsrpg-section-title:first-child {
+    margin: -2px 0 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--tsrpg-line);
+}
+/* 卡片里的子项（技能、增援波次等）再浅一层 */
+.tsrpg-group .tsrpg-skill, .tsrpg-skill-editor .tsrpg-skill { background: var(--tsrpg-surface); margin: 8px 0; }
+.tsrpg-form-title { font-size: 17px; font-weight: 700; }
+.tsrpg-profile-note { margin: 0 0 8px; font-size: 12.5px; padding: 6px 10px; border-radius: var(--tsrpg-radius-sm); background: var(--tsrpg-surface); }
+.tsrpg-profile-note i { color: var(--tsrpg-accent); }
+
+details.tsrpg-design-box, details.tsrpg-side-card, details.tsrpg-multi-bindings { display: block; }
+details.tsrpg-design-box > summary, details.tsrpg-side-card > summary, details.tsrpg-multi-bindings > summary {
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+details.tsrpg-design-box > summary::-webkit-details-marker, details.tsrpg-side-card > summary::-webkit-details-marker, details.tsrpg-multi-bindings > summary::-webkit-details-marker { display: none; }
+details.tsrpg-design-box > summary::before, details.tsrpg-side-card > summary::before, details.tsrpg-multi-bindings > summary::before {
+    content: '▸';
+    color: var(--tsrpg-muted);
+    transition: transform 0.15s;
+    width: 0.8em;
+}
+details[open].tsrpg-design-box > summary::before, details[open].tsrpg-side-card > summary::before, details[open].tsrpg-multi-bindings > summary::before { transform: rotate(90deg); }
+details.tsrpg-design-box > summary i, details.tsrpg-side-card > summary i { color: var(--tsrpg-accent); }
+details[open].tsrpg-design-box > :not(summary), details[open].tsrpg-side-card > :not(summary) { margin-top: 8px; }
+.tsrpg-design-box:not(details) { display: flex; flex-direction: column; gap: 6px; }
+.tsrpg-multi-bindings .tsrpg-check { display: flex; margin: 6px 0; }
+
+/* ================================================================ 棋盘 */
+.tsrpg-board-wrap { overflow: auto; max-width: 100%; padding: 2px; }
+.tsrpg-board {
+    display: grid;
+    gap: 1px;
+    width: max-content;
+    padding: 4px;
+    background: #10131a;
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 8px 22px rgba(0, 0, 0, 0.28);
+    user-select: none;
+}
+.tsrpg-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: calc(var(--cell) * 0.45);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+}
+.tsrpg-sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0.42; pointer-events: none; }
+.tsrpg-cell::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; transition: background 0.12s; }
+.tsrpg-cell:hover::after { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85); }
+.tsrpg-cell.m-reach::after { background: rgba(59, 130, 246, 0.42); box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.75); }
+.tsrpg-cell.m-reach-foe::after { background: rgba(255, 152, 0, 0.3); }
+.tsrpg-cell.m-threat::after { background: rgba(229, 57, 53, 0.3); }
+.tsrpg-cell.m-target::after { background: rgba(229, 57, 53, 0.5); box-shadow: inset 0 0 0 2px #ff5252; animation: tsrpg-pulse 1s infinite alternate; }
+.tsrpg-cell.m-skill::after { background: rgba(156, 39, 176, 0.38); }
+.tsrpg-cell.m-heal::after { background: rgba(76, 175, 80, 0.42); }
+.tsrpg-cell.m-area::after { background: rgba(255, 235, 59, 0.55) !important; box-shadow: inset 0 0 0 2px #fdd835; }
+.tsrpg-cell.m-sel::after { box-shadow: inset 0 0 0 3px #fff; }
+.tsrpg-cell.m-spawn { outline: 2px dashed rgba(229, 57, 53, 0.8); outline-offset: -3px; }
+.tsrpg-cell.m-spawn-soon { outline: 3px dashed #ff1744; outline-offset: -3px; animation: tsrpg-pulse 0.8s infinite alternate; }
+.tsrpg-cell.m-spawn::before, .tsrpg-cell.m-spawn-soon::before { content: '⚑'; position: absolute; top: 0; right: 2px; font-size: 11px; color: #ff1744; text-shadow: 0 0 2px #000; z-index: 2; }
+@keyframes tsrpg-pulse { from { opacity: 0.6; } to { opacity: 1; } }
+
+/* 战争迷雾 */
+.tsrpg-cell.m-fog { background-image: repeating-linear-gradient(135deg, rgba(8, 12, 20, 0.66) 0 5px, rgba(8, 12, 20, 0.54) 5px 10px) !important; }
+.tsrpg-cell.m-fog .tsrpg-sym { opacity: 0.22; }
+
+/* 棋子：阵营决定形状，顶部高光增加立体感 */
+.tsrpg-token {
+    position: relative;
+    z-index: 1;
+    width: 80%;
+    height: 80%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: calc(var(--cell, 32px) * 0.38);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(255, 255, 255, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.18);
+    pointer-events: none;
+    overflow: visible;
+    transition: transform 0.15s;
+}
+.tsrpg-token::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.42), transparent 58%); pointer-events: none; }
+.tsrpg-token-icon { position: relative; z-index: 1; line-height: 1; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25); }
+.tsrpg-token.side-enemy { border-radius: 22%; }
+.tsrpg-token.side-ally { border-radius: 50% 50% 22% 22%; }
+.tsrpg-token.acted { filter: grayscale(0.85) brightness(0.72); }
+.tsrpg-token.object { border-radius: 4px; width: 88%; height: 88%; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.3); }
+.tsrpg-token.object.acted { filter: none; }
+.tsrpg-token.selected { box-shadow: 0 0 0 3px #fff, 0 0 14px 4px var(--tsrpg-accent, #e18a24); transform: scale(1.06); }
+.tsrpg-token.ghost { opacity: 0.6; filter: grayscale(0.7); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85); outline: 1px dashed rgba(255, 255, 255, 0.9); outline-offset: 1px; }
+.tsrpg-token.preview-ko { animation: tsrpg-danger 0.7s ease-in-out infinite alternate; }
+.tsrpg-status { position: absolute; top: -6px; left: -6px; z-index: 2; display: flex; gap: 1px; font-size: 10px; line-height: 1; padding: 1px 3px; border-radius: 5px; background: rgba(0, 0, 0, 0.78); color: #fff; }
+.tsrpg-status .up { color: #69f0ae; }
+.tsrpg-status .down { color: #ff5252; }
+.tsrpg-key { position: absolute; top: -7px; right: -7px; z-index: 2; font-size: 13px; color: #ffd54f; text-shadow: 0 0 3px #000, 0 0 2px #000; }
+.tsrpg-hpbar { position: absolute; z-index: 2; left: 4%; right: 4%; bottom: -6px; height: 5px; background: rgba(0, 0, 0, 0.78); border-radius: 3px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7); }
+.tsrpg-hpbar > .fill { height: 100%; background: linear-gradient(180deg, #81c784, #43a047); }
+.tsrpg-token.side-enemy .tsrpg-hpbar > .fill { background: linear-gradient(180deg, #ef7d7a, #e53935); }
+.tsrpg-hpbar > .ghost, .tsrpg-hpbar > .trail, .tsrpg-hpbar > .gain { position: absolute; top: 0; bottom: 0; }
+.tsrpg-hpbar > .ghost.loss { background: #ffeb3b; animation: tsrpg-blink 0.6s ease-in-out infinite alternate; }
+.tsrpg-hpbar > .ghost.gain { background: #b9f6ca; animation: tsrpg-blink 0.6s ease-in-out infinite alternate; }
+.tsrpg-hpbar > .trail { background: #fff59d; animation: tsrpg-trail 0.5s 0.12s ease-in forwards; }
+.tsrpg-hpbar > .gain { background: #b9f6ca; }
+
+/* 列表、卡片标题等处的小棋子：只显示图标 */
+.tsrpg-list-item .tsrpg-token, .tsrpg-palette-item .tsrpg-token, .tsrpg-fc-name .tsrpg-token, .tsrpg-fc-row .tsrpg-token, .tsrpg-mini-unit .tsrpg-token,
+.tsrpg-card-title .tsrpg-token, .tsrpg-type-user .tsrpg-token, .tsrpg-design-body .tsrpg-row > .tsrpg-token {
+    width: 22px; height: 22px; font-size: 12px; flex: none; --cell: 28px; transform: none;
+}
+.tsrpg-card-title .tsrpg-token { width: 26px; height: 26px; font-size: 13px; }
+.tsrpg-fc-name .tsrpg-token > :not(.tsrpg-token-icon), .tsrpg-fc-row .tsrpg-token > :not(.tsrpg-token-icon), .tsrpg-mini-unit .tsrpg-token > :not(.tsrpg-token-icon),
+.tsrpg-card-title .tsrpg-token > :not(.tsrpg-token-icon) { display: none; }
+.tsrpg-fc-name .tsrpg-token.acted, .tsrpg-fc-row .tsrpg-token.acted, .tsrpg-mini-unit .tsrpg-token.acted, .tsrpg-card-title .tsrpg-token.acted { filter: none; }
+.tsrpg-design-body .tsrpg-board .tsrpg-token { width: 80%; height: 80%; font-size: calc(var(--cell) * 0.38); }
+
+/* 行动过程动画 */
+.tsrpg-cell.m-acting .tsrpg-token { animation: tsrpg-acting 0.3s ease-in-out; outline: 2px solid #fff; }
+.tsrpg-cell.m-lunge { z-index: 6; }
+.tsrpg-cell.m-lunge .tsrpg-token { animation: tsrpg-lunge 0.34s ease-out; outline: 2px solid #fff; }
+.tsrpg-cell.m-impact { z-index: 5; animation: tsrpg-impact 0.35s ease-out; }
+.tsrpg-cell.m-impact .tsrpg-token { animation: tsrpg-shake 0.34s ease-out; }
+.tsrpg-cell.m-guard { z-index: 5; box-shadow: inset 0 0 0 3px #64b5f6; }
+.tsrpg-cell.m-guard .tsrpg-token { animation: tsrpg-guard 0.4s ease-out; }
+.tsrpg-cell.m-ko .tsrpg-token { animation: tsrpg-ko 0.7s ease-in forwards; }
+.tsrpg-damage-number { position: absolute; inset: 0; z-index: 8; display: flex; justify-content: center; align-items: center; font-weight: 900; font-size: max(13px, calc(var(--cell, 32px) * 0.5)); color: #fff; text-shadow: 0 1px 3px #000, 1px 0 3px #000, -1px 0 3px #000; pointer-events: none; animation: tsrpg-number 0.55s cubic-bezier(.2, 1.4, .4, 1) both; }
+.tsrpg-damage-number.dmg { color: #fff3e0; -webkit-text-stroke: 0.5px #b71c1c; }
+.tsrpg-damage-number.heal { color: #69f0ae; }
+.tsrpg-damage-number.miss { color: #cfd8dc; font-style: italic; font-size: max(11px, calc(var(--cell, 32px) * 0.36)); }
+.tsrpg-damage-number.info { color: #ffe082; font-size: max(11px, calc(var(--cell, 32px) * 0.36)); }
+@keyframes tsrpg-acting { 50% { transform: scale(1.15); } }
+@keyframes tsrpg-lunge { 45% { transform: translate(calc(var(--lx, 0) * 42%), calc(var(--ly, 0) * 42%)) scale(1.12); } }
+@keyframes tsrpg-shake { 20% { transform: translateX(-14%); } 40% { transform: translateX(11%); } 60% { transform: translateX(-7%); } 80% { transform: translateX(3%); } }
+@keyframes tsrpg-guard { 30% { transform: scale(0.9); box-shadow: 0 0 0 3px #64b5f6, 0 0 12px 4px #64b5f6; } }
+@keyframes tsrpg-ko { 25% { transform: scale(1.12); filter: brightness(2); } to { transform: scale(0.55) rotate(-14deg); opacity: 0.1; filter: grayscale(1); } }
+@keyframes tsrpg-impact { 50% { box-shadow: inset 0 0 0 4px #ffeb3b; filter: brightness(1.8); } }
+@keyframes tsrpg-number { 0% { transform: translateY(8px) scale(0.5); opacity: 0; } 40% { transform: translateY(-4px) scale(1.3); opacity: 1; } 100% { transform: translateY(-12px) scale(1); opacity: 1; } }
+@keyframes tsrpg-blink { from { opacity: 0.3; } to { opacity: 1; } }
+@keyframes tsrpg-trail { to { width: 0; } }
+@keyframes tsrpg-danger { from { box-shadow: 0 0 0 2px #ff1744, 0 0 4px 1px #ff1744; } to { box-shadow: 0 0 0 2px #ff1744, 0 0 14px 5px #ff1744; } }
+
+/* ================================================================ 战场布局 */
+.tsrpg-topbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--tsrpg-line);
+}
+.tsrpg-topbar-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 160px; }
+.tsrpg-map-name { font-size: 16px; font-weight: 700; }
+.tsrpg-turn { font-variant-numeric: tabular-nums; color: var(--tsrpg-muted); }
+.tsrpg-mission {
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    border-radius: var(--tsrpg-radius);
+    background: linear-gradient(90deg, var(--tsrpg-accent-soft), transparent 85%);
+    border: 1px solid color-mix(in srgb, var(--tsrpg-accent) 30%, transparent);
+    border-left: 4px solid var(--tsrpg-accent);
+}
+.tsrpg-mission > i { color: var(--tsrpg-accent); }
+.tsrpg-mission .tsrpg-muted { margin-top: 2px; }
+.tsrpg-result { font-weight: 700; padding: 1px 10px; border-radius: 999px; }
+.tsrpg-result.victory { background: #2e7d32; color: #fff; }
+.tsrpg-result.defeat { background: #c62828; color: #fff; }
+
+.tsrpg-battle { display: flex; gap: 14px; align-items: flex-start; }
+.tsrpg-battle > .tsrpg-board-wrap { flex: 1 1 auto; max-height: calc(100% - 10px); display: flex; justify-content: center; }
+.tsrpg-side { flex: 0 0 310px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.tsrpg-side > * { margin: 0; }
+.tsrpg-side textarea { margin: 0; resize: vertical; }
+.tsrpg-side-card { padding: 10px 12px; }
+.tsrpg-side-card > .tsrpg-row:last-child { margin-bottom: 0; }
+.tsrpg-side-hint { padding: 14px 12px; border-radius: var(--tsrpg-radius); border: 1px dashed var(--tsrpg-border); color: var(--tsrpg-muted); text-align: center; font-size: 13px; }
+.tsrpg-side-hint i { color: var(--tsrpg-accent); }
+
+/* 单位卡片 */
+.tsrpg-card {
+    position: relative;
+    border: 1px solid var(--tsrpg-border);
+    border-radius: var(--tsrpg-radius);
+    background: var(--tsrpg-surface);
+    padding: 10px 12px 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    overflow: hidden;
+}
+.tsrpg-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #2f6fd6; }
+.tsrpg-card.side-enemy::before { background: #c62828; }
+.tsrpg-card.side-ally::before { background: #2e9d4a; }
+.tsrpg-card-title { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tsrpg-card-title > b { font-size: 15px; }
+.tsrpg-hp { position: relative; height: 18px; background: rgba(0, 0, 0, 0.45); border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4); }
+.tsrpg-hp > div { height: 100%; background: linear-gradient(180deg, #81c784, #388e3c); }
+.tsrpg-card.side-enemy .tsrpg-hp > div { background: linear-gradient(180deg, #ef7d7a, #c62828); }
+.tsrpg-hp > span { position: absolute; inset: 0; text-align: center; font-size: 11.5px; font-weight: 600; line-height: 18px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.tsrpg-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
+.tsrpg-stats > div { display: flex; flex-direction: column; background: var(--tsrpg-surface-2); border-radius: 6px; padding: 3px 0; }
+.tsrpg-stats small { font-size: 10.5px; color: var(--tsrpg-muted); letter-spacing: 0.02em; }
+.tsrpg-stats b { font-variant-numeric: tabular-nums; }
+.tsrpg-stats b.up { color: var(--tsrpg-ok); }
+.tsrpg-stats b.down { color: var(--tsrpg-danger); }
+.tsrpg-skills { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+
+/* 行动按钮、预览、待发送列表 */
+.tsrpg-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tsrpg-side > .tsrpg-actions { padding: 10px 12px; border-radius: var(--tsrpg-radius); border: 1px solid color-mix(in srgb, var(--tsrpg-accent) 40%, transparent); background: var(--tsrpg-surface); }
+.tsrpg-side > .tsrpg-warn { padding: 8px 12px; border-radius: var(--tsrpg-radius); border: 1px solid color-mix(in srgb, var(--tsrpg-warn-color) 45%, transparent); background: color-mix(in srgb, var(--tsrpg-warn-color) 10%, transparent); }
+.tsrpg-actions > .tsrpg-muted { width: 100%; }
+.tsrpg-preview:empty, .tsrpg-hoverinfo:empty { display: none; }
+.tsrpg-preview { padding: 7px 10px; border-radius: var(--tsrpg-radius-sm); background: var(--tsrpg-accent-soft); border: 1px solid color-mix(in srgb, var(--tsrpg-accent) 30%, transparent); font-size: 13px; }
+.tsrpg-hoverinfo { display: flex; flex-direction: column; gap: 4px; }
+.tsrpg-events { max-height: 220px; overflow: auto; border-radius: var(--tsrpg-radius-sm); background: color-mix(in srgb, var(--tsrpg-fg) 3%, transparent); border: 1px solid var(--tsrpg-line); padding: 4px 8px; font-size: 12.5px; margin-bottom: 8px; }
+.tsrpg-event { padding: 4px 0; border-bottom: 1px solid var(--tsrpg-line); }
+.tsrpg-event:last-child { border-bottom: none; }
+.tsrpg-event.muted { opacity: 0.45; }
+.tsrpg-log summary { color: var(--tsrpg-muted); }
+.tsrpg-busy { padding: 8px 10px; border-radius: var(--tsrpg-radius-sm); background: var(--tsrpg-accent-soft); border: 1px solid color-mix(in srgb, var(--tsrpg-accent) 35%, transparent); font-weight: 600; }
+.tsrpg-process-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* 交战确认 / 受击选择 */
+.tsrpg-engagement { border-color: color-mix(in srgb, var(--tsrpg-accent) 55%, transparent); display: flex; flex-direction: column; gap: 8px; }
+.tsrpg-exchange-card { padding: 8px 10px; border: 1px solid var(--tsrpg-line); border-radius: var(--tsrpg-radius-sm); background: color-mix(in srgb, var(--tsrpg-fg) 3%, transparent); margin: 4px 0; font-size: 13px; }
+.tsrpg-forecast { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: start; }
+.tsrpg-fc-vs { align-self: center; font-size: 18px; color: var(--tsrpg-accent); }
+.tsrpg-fc-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tsrpg-fc-side > small { color: var(--tsrpg-muted); line-height: 1.3; }
+.tsrpg-fc-side.right { text-align: right; }
+.tsrpg-fc-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tsrpg-fc-side.right .tsrpg-fc-name { flex-direction: row-reverse; }
+.tsrpg-fc-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tsrpg-fbar { position: relative; height: 18px; min-width: 80px; background: rgba(0, 0, 0, 0.6); border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7); overflow: hidden; }
+.tsrpg-fbar-keep { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(180deg, #81c784, #388e3c); }
+.tsrpg-fbar.side-enemy .tsrpg-fbar-keep { background: linear-gradient(180deg, #ef7d7a, #c62828); }
+.tsrpg-fbar.side-ally .tsrpg-fbar-keep { background: linear-gradient(180deg, #8fd5a6, #2e9d4a); }
+.tsrpg-fbar-loss, .tsrpg-fbar-gain { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; }
+.tsrpg-fbar-loss { background: repeating-linear-gradient(135deg, #ffeb3b 0 5px, #ff9800 5px 10px); animation: tsrpg-blink 0.7s ease-in-out infinite alternate; }
+.tsrpg-fbar-gain { background: repeating-linear-gradient(135deg, #b9f6ca 0 5px, #69f0ae 5px 10px); animation: tsrpg-blink 0.7s ease-in-out infinite alternate; }
+.tsrpg-fbar-loss > span, .tsrpg-fbar-gain > span { font-size: 12px; font-weight: 900; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; white-space: nowrap; }
+.tsrpg-fbar-text { position: absolute; inset: 0; font-size: 11px; line-height: 18px; text-align: center; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; white-space: nowrap; }
+.tsrpg-fbar.ko { box-shadow: inset 0 0 0 1px #ff1744, 0 0 6px rgba(255, 23, 68, 0.6); }
+.tsrpg-fbar.ko .tsrpg-fbar-loss { background: repeating-linear-gradient(135deg, #ff5252 0 5px, #b71c1c 5px 10px); }
+.tsrpg-fc-hp { margin-left: auto; color: var(--tsrpg-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tsrpg-fc-side.right .tsrpg-fc-hp { margin-left: 0; margin-right: auto; }
+.tsrpg-fc-tough { white-space: nowrap; opacity: 0.85; }
+.tsrpg-fc-tag { font-size: 12px; color: var(--tsrpg-muted); }
+.tsrpg-multi-forecast { display: flex; flex-direction: column; gap: 6px; }
+.tsrpg-fc-row { display: grid; grid-template-columns: auto minmax(3em, auto) minmax(80px, 1fr); gap: 2px 6px; align-items: center; }
+.tsrpg-fc-row > small { grid-column: 2 / -1; color: var(--tsrpg-muted); }
+.tsrpg-edge { margin-top: 6px; font-size: 12.5px; color: #e8912d; }
+.tsrpg-option { border: 1px solid var(--tsrpg-border); border-radius: var(--tsrpg-radius); background: var(--tsrpg-surface); padding: 8px 10px; margin: 8px 0; }
+.tsrpg-option .tsrpg-exchange-card { border: none; background: none; padding: 0; margin: 6px 0 0; }
+.tsrpg-option-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.tsrpg-option-buttons { display: flex; gap: 4px; flex-wrap: wrap; }
+.tsrpg-option-foot { justify-content: flex-end; margin-top: 4px; }
+.tsrpg-mini-unit { display: grid; grid-template-columns: auto auto minmax(80px, 1fr) auto; gap: 6px; align-items: center; margin-top: 8px; }
+
+/* 手动修改、回溯、战斗管理 */
+.tsrpg-manual-panel { display: flex; flex-direction: column; gap: 6px; border-color: color-mix(in srgb, var(--tsrpg-accent) 55%, transparent); }
+.tsrpg-battle-management { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--tsrpg-line); }
+.tsrpg-battle-management > summary { cursor: pointer; color: var(--tsrpg-muted); font-size: 12.5px; }
+.tsrpg-battle-management > .tsrpg-btn { margin-top: 8px !important; margin-right: 6px !important; }
+.tsrpg-end-battle-buttons { justify-content: space-between; gap: 16px; }
+.tsrpg-checkpoints { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.tsrpg-checkpoint { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--tsrpg-border); border-radius: var(--tsrpg-radius-sm); background: var(--tsrpg-surface); }
+
+/* LLM 提议的战场变化 */
+.tsrpg-proposals { border-color: color-mix(in srgb, var(--tsrpg-accent) 55%, transparent); background: var(--tsrpg-accent-soft); }
+.tsrpg-proposal { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; padding: 3px 0; cursor: pointer; }
+.tsrpg-proposal input { margin-top: 3px; }
+.tsrpg-proposal.bad { opacity: 0.75; cursor: default; }
+
+/* ================================================================ 编辑器 */
+.tsrpg-editor { display: flex; gap: 14px; align-items: flex-start; }
+.tsrpg-list {
+    flex: 0 0 190px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    position: sticky;
+    top: 0;
+    padding: 8px;
+    border-radius: var(--tsrpg-radius);
+    background: var(--tsrpg-surface);
+    border: 1px solid var(--tsrpg-border);
+}
+.tsrpg-list > .tsrpg-btn, .tsrpg-list > .tsrpg-row .tsrpg-btn { justify-content: flex-start; }
+.tsrpg-list > .tsrpg-row { margin: 0 0 4px; }
+.tsrpg-list-group { margin: 10px 4px 2px; font-size: 11.5px; font-weight: 600; color: var(--tsrpg-muted); letter-spacing: 0.04em; }
+.tsrpg-list-item { position: relative; display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: var(--tsrpg-radius-sm); cursor: pointer; transition: background 0.12s; }
+.tsrpg-list-item:hover { background: var(--tsrpg-hover); }
+.tsrpg-list-item.active { background: var(--tsrpg-accent-soft); font-weight: 600; }
+.tsrpg-list-item.active::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 3px; background: var(--tsrpg-accent); }
+.tsrpg-list-item > span:nth-child(2) { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tsrpg-form { flex: 1; min-width: 0; }
+.tsrpg-form > div > .tsrpg-row:first-child { margin-top: 0; }
+/* 编辑器左侧列表与右侧表单各自滚动，互不牵连 */
+.tsrpg-body:has(> .tsrpg-editor) { display: flex; flex-direction: column; overflow: hidden; }
+.tsrpg-body:has(> .tsrpg-editor) > :not(.tsrpg-editor) { flex: none; }
+.tsrpg-body > .tsrpg-editor { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+.tsrpg-editor > .tsrpg-list { position: static; min-height: 0; overflow-y: auto; overscroll-behavior: contain; align-self: flex-start; max-height: 100%; }
+.tsrpg-editor > .tsrpg-form { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+.tsrpg-skill-picker { align-items: flex-end; }
+.tsrpg-skill-picker > .tsrpg-field { flex: 1; min-width: 0; }
+.tsrpg-effect { display: grid; grid-template-columns: minmax(130px, 1.3fr) minmax(90px, 1fr) minmax(80px, 0.8fr) 2fr auto; gap: 6px; align-items: center; margin: 4px 0; padding: 4px 6px; border-radius: var(--tsrpg-radius-sm); background: color-mix(in srgb, var(--tsrpg-fg) 3%, transparent); }
+.tsrpg-effect .text_pole { margin: 0; }
+.tsrpg-inline { display: flex; align-items: center; gap: 4px; }
+.tsrpg-inline .text_pole { width: 70px; flex: none; }
+.tsrpg-inline small { white-space: nowrap; color: var(--tsrpg-muted); }
+.tsrpg-effect-help { font-size: 11.5px; }
+.tsrpg-toolbar { margin-top: 12px; }
+.tsrpg-palette { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.tsrpg-palette-item { display: flex; align-items: center; gap: 6px; padding: 3px 9px 3px 3px; border-radius: 999px; border: 1px solid var(--tsrpg-border); background: var(--tsrpg-surface); cursor: pointer; font-size: 13px; transition: background 0.12s; }
+.tsrpg-palette-item:hover { background: var(--tsrpg-hover); }
+.tsrpg-palette-item.active { border-color: var(--tsrpg-accent); background: var(--tsrpg-accent-soft); }
+.tsrpg-palette-item .tsrpg-swatch { border-radius: 50%; }
+
+/* 兵种与克制 */
+.tsrpg-type-badge { display: inline-block; font-size: 11.5px; font-weight: 600; line-height: 1.6; padding: 0 8px; border-radius: 999px; white-space: nowrap; }
+.tsrpg-vs-table { display: grid; gap: 4px; margin: 4px 0 8px; }
+.tsrpg-vs-row { display: grid; grid-template-columns: minmax(70px, 1.2fr) repeat(3, minmax(0, 1fr)) 34px; gap: 6px; align-items: center; padding: 3px 6px; border-radius: var(--tsrpg-radius-sm); }
+.tsrpg-vs-row.head { font-size: 12px; color: var(--tsrpg-muted); }
+.tsrpg-vs-row.set { background: var(--tsrpg-accent-soft); }
+.tsrpg-vs-row .text_pole { margin: 0; min-width: 0; }
+.tsrpg-matrix-wrap { margin-top: 14px; overflow-x: auto; }
+.tsrpg-matrix { border-collapse: separate; border-spacing: 3px; font-size: 12.5px; }
+.tsrpg-matrix th, .tsrpg-matrix td { padding: 4px 8px; text-align: center; white-space: nowrap; border-radius: 6px; }
+.tsrpg-matrix td { cursor: pointer; background: var(--tsrpg-surface-2); font-variant-numeric: tabular-nums; }
+.tsrpg-matrix td:hover { filter: brightness(1.15); }
+.tsrpg-matrix td.adv { background: rgba(229, 115, 115, 0.34); }
+.tsrpg-matrix td.dis { background: rgba(100, 181, 246, 0.3); }
+.tsrpg-matrix td.cur { box-shadow: inset 0 0 0 2px var(--tsrpg-accent); }
+.tsrpg-type-user { display: inline-flex; align-items: center; gap: 4px; }
+
+/* 资料卡页 */
+.tsrpg-owner { border-color: color-mix(in srgb, var(--tsrpg-accent) 40%, transparent); }
+.tsrpg-active-profile { margin: 4px 0 8px; }
+.tsrpg-profile { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; transition: border-color 0.15s; }
+.tsrpg-profile:hover { border-color: color-mix(in srgb, var(--tsrpg-fg) 25%, transparent); }
+.tsrpg-profile.active { border-color: var(--tsrpg-accent); background: var(--tsrpg-accent-soft); }
+.tsrpg-macros { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 2px 12px; margin: 4px 0; }
+.tsrpg-macros code { user-select: all; }
+
+/* ================================================================ 弹窗 */
+.tsrpg-overlay { position: absolute; inset: 0; z-index: 10; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 14px; animation: tsrpg-fade 0.15s ease-out; }
+.tsrpg-dialog {
+    width: min(720px, 100%);
+    max-height: 100%;
+    overflow: auto;
+    background: var(--tsrpg-bg);
+    border: 1px solid var(--tsrpg-border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: tsrpg-pop 0.18s ease-out;
+}
+.tsrpg-dialog .tsrpg-section-title { margin-top: 0; font-size: 15px; }
+.tsrpg-dialog > .tsrpg-row:last-child { margin-bottom: 0; justify-content: flex-end; }
+.tsrpg-preview-text { width: 100%; font-family: inherit; }
+@keyframes tsrpg-fade { from { opacity: 0; } }
+@keyframes tsrpg-pop { from { transform: translateY(6px) scale(0.98); opacity: 0; } }
+
+/* ================================================================ AI 设计与剧情联动 */
+.tsrpg-book-list { display: flex; flex-wrap: wrap; gap: 2px 14px; max-height: 140px; overflow-y: auto; padding: 4px 8px; border-radius: var(--tsrpg-radius-sm); background: color-mix(in srgb, var(--tsrpg-fg) 3%, transparent); }
+.tsrpg-design-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: var(--tsrpg-radius-sm); border: 1px solid var(--tsrpg-line); background: color-mix(in srgb, var(--tsrpg-fg) 2.5%, transparent); transition: border-color 0.12s; }
+.tsrpg-design-item:hover { border-color: var(--tsrpg-border); }
+.tsrpg-design-item > label { padding-top: 3px; cursor: pointer; }
+.tsrpg-design-item.imported { opacity: 0.6; }
+.tsrpg-design-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.tsrpg-design-warnings ul { margin: 4px 0 0 18px; padding: 0; font-size: 12.5px; }
+.tsrpg-design-result { border-color: color-mix(in srgb, var(--tsrpg-accent) 45%, transparent); }
+.tsrpg-sync-box { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--tsrpg-border); border-radius: var(--tsrpg-radius-sm); }
+.tsrpg-sync-progress { font-weight: 600; }
+.tsrpg-sync-range { align-items: center; gap: 6px; margin: 0; }
+.tsrpg-sync-num { width: 76px; }
+.tsrpg-sync-num input { margin: 0; }
+.tsrpg-story-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.tsrpg-story-item { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; padding: 8px 10px; border: 1px solid var(--tsrpg-border); border-radius: var(--tsrpg-radius-sm); background: color-mix(in srgb, var(--tsrpg-fg) 2.5%, transparent); }
+.tsrpg-story-item.s-ready { border-color: var(--tsrpg-accent); background: var(--tsrpg-accent-soft); }
+.tsrpg-story-item.s-applied { opacity: 0.75; }
+.tsrpg-story-item.s-error { border-color: color-mix(in srgb, var(--tsrpg-danger) 60%, transparent); }
+.tsrpg-story-item > .tsrpg-row { flex: none; flex-wrap: nowrap; margin: 0; }
+.tsrpg-story-item i { color: var(--tsrpg-accent); }
+.tsrpg-growth-lines { margin: 2px 0 0 18px; padding: 0; font-size: 13px; }
+
+/* ================================================================ 悬浮按钮 */
+.tsrpg-fab {
+    position: fixed;
+    z-index: 3001;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    color: var(--SmartThemeBodyColor, #eee);
+    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.9));
+    border: 2px solid var(--SmartThemeQuoteColor, #e18a24);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px));
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.tsrpg-fab:hover { transform: scale(1.08); }
+.tsrpg-fab[hidden] { display: none; }
+.tsrpg-fab.active { box-shadow: 0 0 0 4px color-mix(in srgb, var(--SmartThemeQuoteColor, #e18a24) 35%, transparent), 0 6px 18px rgba(0, 0, 0, 0.45); }
+.tsrpg-fab-badge { position: absolute; top: -4px; right: -4px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: #e53935; color: #fff; font-size: 11px; line-height: 19px; text-align: center; font-weight: bold; box-shadow: 0 0 0 2px var(--SmartThemeBlurTintColor, #222); }
+.tsrpg-fab-badge[hidden] { display: none; }
+
+/* ================================================================ 窄面板：上下排列 */
+.tsrpg-panel.narrow .tsrpg-title span, .tsrpg-panel.narrow .tsrpg-tab span { display: none; }
+.tsrpg-panel.narrow .tsrpg-tab { padding: 5px 9px; }
+.tsrpg-panel.narrow .tsrpg-body { padding: 10px; }
+.tsrpg-panel.narrow .tsrpg-battle, .tsrpg-panel.narrow .tsrpg-editor { flex-direction: column; }
+.tsrpg-panel.narrow .tsrpg-side, .tsrpg-panel.narrow .tsrpg-list { flex: none; width: 100%; position: static; }
+.tsrpg-panel.narrow .tsrpg-battle > .tsrpg-board-wrap { align-self: center; max-width: 100%; }
+.tsrpg-panel.narrow .tsrpg-list { flex-direction: row; flex-wrap: wrap; max-height: 170px; overflow: auto; }
+.tsrpg-panel.narrow .tsrpg-list-group { width: 100%; margin-top: 4px; }
+.tsrpg-panel.narrow .tsrpg-list-item { flex: 0 1 auto; }
+.tsrpg-panel.narrow .tsrpg-grid3, .tsrpg-panel.narrow .tsrpg-grid4, .tsrpg-panel.narrow .tsrpg-grid5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tsrpg-panel.narrow .tsrpg-grid6, .tsrpg-panel.narrow .tsrpg-grid7 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tsrpg-panel.narrow .tsrpg-effect { grid-template-columns: 1fr 1fr; }
+.tsrpg-panel.narrow .tsrpg-effect-help { display: none; }
+.tsrpg-panel.narrow .tsrpg-topbar { gap: 6px; }
+.tsrpg-panel.narrow .tsrpg-topbar .tsrpg-btn:not(.primary) > span { display: none; }
+
+/* 窄屏 */
+@media (max-width: 700px) {
+    .tsrpg-panel:not(.compact) { inset: 0 !important; width: 100vw !important; height: 100dvh !important; max-width: 100vw; border-radius: 0; resize: none; }
+    .tsrpg-battle, .tsrpg-editor { flex-direction: column; }
+    .tsrpg-side, .tsrpg-list { flex: none; width: 100%; position: static; }
+    .tsrpg-grid3, .tsrpg-grid4, .tsrpg-grid5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tsrpg-grid6, .tsrpg-grid7 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .tsrpg-tab span { display: none; }
+    .tsrpg-panel .tsrpg-tab, .tsrpg-panel.narrow .tsrpg-tab { padding: 5px 6px; }
+    .tsrpg-panel .tsrpg-title span { display: none; }
+    .tsrpg-effect { grid-template-columns: 1fr 1fr; }
+    .tsrpg-effect-help { display: none; }
+    .tsrpg-story-item { flex-direction: column; }
+    .tsrpg-panel .tsrpg-btn { min-height: 34px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tsrpg-cell.m-acting .tsrpg-token, .tsrpg-cell.m-lunge .tsrpg-token, .tsrpg-cell.m-impact, .tsrpg-cell.m-impact .tsrpg-token,
+    .tsrpg-cell.m-guard .tsrpg-token, .tsrpg-damage-number, .tsrpg-hpbar > .ghost, .tsrpg-hpbar > .trail, .tsrpg-token.preview-ko,
+    .tsrpg-fbar-loss, .tsrpg-fbar-gain, .tsrpg-overlay, .tsrpg-dialog { animation: none; }
+    .tsrpg-cell.m-ko .tsrpg-token { animation: none; opacity: 0.3; }
+}

@@ -1,0 +1,67 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "TavernSRPG",
+  "displayName": "Tavern-SRPG 战棋沙盘遥控器",
+  "version": "1.0.0",
+  "description": "《火焰之纹章：万缕千丝》伴侣战棋战术沙盘。与 VCPgame 大厅中的 Tavern-SRPG 窗口实时同源同步，支持读取完整网格地图与单位状态、战棋行动结算、手动同步 NS2 实机 HP/位置/地形、以及天刻之白沙悔棋回溯。",
+  "author": "Yunwu & Nova",
+  "pluginType": "hybridservice",
+  "entryPoint": { "type": "nodejs", "script": "tavern-srpg-service.js" },
+  "communication": { "protocol": "direct", "timeout": 60000 },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "GetState",
+        "description": "读取当前战棋沙盘的完整状态：ASCII 坐标网格地图、地形图例、所有单位 HP/属性/韧性/技能冷却、最近敌我距离、待描写战报以及天刻回溯存档点列表。"
+      },
+      {
+        "commandIdentifier": "OpenWindow",
+        "description": "打开或聚焦 VCPChat 独立战棋战术沙盘窗口，不重置当前对局。"
+      },
+      {
+        "commandIdentifier": "StartBattle",
+        "description": "开始或恢复战役。默认无损恢复现有对局；传 overwrite=true 或指定 mapId/mapName（如 'map_fe_kai_ch1'）可开启新战役。"
+      },
+      {
+        "commandIdentifier": "Move",
+        "description": "按战棋寻路规则移动单位。参数：unit（编号如 P1 或名称如 '凯伊'）、x（1-based列）、y（1-based行）。"
+      },
+      {
+        "commandIdentifier": "Attack",
+        "description": "发动普通攻击（可选先移动到 x,y）。参数：unit、target（如 E1 或 '敌方前锋A'）、x?、y?、reaction?（counter/defend/none）。"
+      },
+      {
+        "commandIdentifier": "Skill",
+        "description": "释放技能（含 MAP 范围技如落星冥焰狱、破邪闪击）。参数：unit、skill（技能名或ID）、target?（目标单位）或 tx,ty（1-based目标格坐标）、x?,y?（施放前移动坐标）。"
+      },
+      {
+        "commandIdentifier": "Wait",
+        "description": "单位原地或移动到 (x,y) 后待命结束行动。参数：unit、x?、y?。"
+      },
+      {
+        "commandIdentifier": "EndTurn",
+        "description": "结束我方阶段，自动结算敌方与友军回合，并在新回合我方阶段开始时生成天刻回溯存档点。"
+      },
+      {
+        "commandIdentifier": "Manual",
+        "description": "【NS2实机伴侣核心指令】无视移动限制直接同步实机战况。参数：type='move'|'stat'|'spawn'|'remove'|'restore'|'terrain'|'fog'|'defeatEnemies'。改血量/属性传 type='stat', unit='凯伊', key='hp', value=22；瞬移传 type='move', unit='P1', x=5, y=4；放置新单位传 type='spawn', defId='敌方前锋', x=9, y=3；可附 note 记录实机原因（如'NS2暴击秒杀'）。"
+      },
+      {
+        "commandIdentifier": "BatchCommands",
+        "description": "批量执行多行战场变化指令（commandsText 多行文本，支持 damage/heal/status/unstatus/move/retreat/spawn/terrain/end），适合一次对齐多处实机战况。"
+      },
+      {
+        "commandIdentifier": "Rewind",
+        "description": "【天刻之白沙】回溯棋盘到指定存档点。参数：checkpointId（如 'cp1'、'latest' 回到本回合初、'start' 回到开战初）。回溯前的进度会自动备份。"
+      },
+      {
+        "commandIdentifier": "ImportDesign",
+        "description": "导入 JSON 格式的新单位、新兵种、新地形或新战役地图（designJson），支持 overwrite=true 立即切换到新导入的地图开战。"
+      },
+      {
+        "commandIdentifier": "Serial",
+        "description": "支持 command1/unit1/x1/y1, command2/... 从 1 连续编号的串行批处理（最多 32 步），整串原子排队并一次广播刷新前端窗口。"
+      }
+    ]
+  }
+}
