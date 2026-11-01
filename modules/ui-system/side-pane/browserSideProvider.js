@@ -363,8 +363,33 @@ export function createBrowserSideProvider({
             };
             const openExternalItem = menuItem('open_in_new', '在默认浏览器中打开', 'open-external');
             const devtoolsItem = menuItem('bug_report', '打开调试工具', 'devtools');
-            const clearDataItem = menuItem('delete', '清除浏览数据', 'clear-data');
-            menu.append(openExternalItem, devtoolsItem, clearDataItem);
+            const clearDataItem = menuItem('delete', '清除浏览缓存', 'clear-data');
+            const confirmBox = el('div', 'side-browser-clear-confirm', { role: 'group', 'aria-label': '确认清除浏览缓存' });
+            confirmBox.hidden = true;
+            const confirmDesc = el('div', 'side-browser-clear-confirm-desc');
+            confirmDesc.textContent = '将清理：网页静态缓存、Service Worker 与离线缓存、着色器缓存。\n将保留：Cookies、LocalStorage、IndexedDB 等全部账号登录状态。';
+            const confirmActions = el('div', 'side-browser-clear-confirm-actions');
+            const confirmCancelBtn = el('button', 'side-browser-menu-item side-browser-clear-cancel', {
+                type: 'button',
+                role: 'menuitem',
+                'data-action': 'cancel-clear-data',
+            });
+            confirmCancelBtn.textContent = '取消';
+            const confirmOkBtn = el('button', 'side-browser-menu-item side-browser-clear-ok', {
+                type: 'button',
+                role: 'menuitem',
+                'data-action': 'confirm-clear-data',
+            });
+            confirmOkBtn.textContent = '确认清理缓存';
+            confirmActions.append(confirmCancelBtn, confirmOkBtn);
+            confirmBox.append(confirmDesc, confirmActions);
+            const setClearConfirmVisible = (visible) => {
+                openExternalItem.hidden = visible;
+                devtoolsItem.hidden = visible;
+                clearDataItem.hidden = visible;
+                confirmBox.hidden = !visible;
+            };
+            menu.append(openExternalItem, devtoolsItem, clearDataItem, confirmBox);
             // 前进后退和刷新收进一个胶囊，地址栏、更多各自一颗：三块等高的圆角件
             const nav = el('div', 'side-browser-nav');
             nav.append(backBtn, forwardBtn, el('span', 'side-browser-nav-divider', { 'aria-hidden': 'true' }), reloadBtn, el('span', 'side-browser-nav-divider', { 'aria-hidden': 'true' }), engineBtn);
@@ -628,15 +653,17 @@ export function createBrowserSideProvider({
             moreBtn.setAttribute('aria-haspopup', 'menu');
             moreBtn.setAttribute('aria-expanded', 'false');
             const closeMenu = ({ restoreFocus = false } = {}) => {
+                setClearConfirmVisible(false);
                 menu.hidden = true;
                 moreBtn.setAttribute('aria-expanded', 'false');
                 if (restoreFocus) moreBtn.focus();
             };
             const openMenu = () => {
+                setClearConfirmVisible(false);
                 syncControls();
                 menu.hidden = false;
                 moreBtn.setAttribute('aria-expanded', 'true');
-                menu.querySelector('[role="menuitem"]:not([disabled])')?.focus();
+                menu.querySelector('[role="menuitem"]:not([disabled]):not([hidden])')?.focus();
             };
             // 地址栏里打了一半就点走：回到当前页面的网址（setAddress 在聚焦时不改它，没有这一步会一直留着半截文字）。
             // 切到别的窗口（比如去复制网址）也会触发 blur，那时整个文档都没焦点，打了一半的字要留着
@@ -650,7 +677,7 @@ export function createBrowserSideProvider({
                     closeMenu({ restoreFocus: true });
                     return;
                 }
-                moveMenuFocus(event, Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])')));
+                moveMenuFocus(event, Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled]):not([hidden])')).filter(node => !node.closest('[hidden]')));
             });
             const onDocumentPointerDown = (event) => {
                 if (!menu.hidden && !menu.contains(event.target) && !moreBtn.contains(event.target)) closeMenu();
@@ -703,16 +730,25 @@ export function createBrowserSideProvider({
             own.listen(menu, 'click', async (event) => {
                 const item = event.target.closest('[data-action]');
                 if (!item || item.disabled) return;
-                closeMenu({ restoreFocus: menu.contains(doc.activeElement) });
                 const action = item.getAttribute('data-action');
+                if (action === 'clear-data') {
+                    setClearConfirmVisible(true);
+                    confirmCancelBtn.focus();
+                    return;
+                }
+                if (action === 'cancel-clear-data') {
+                    closeMenu({ restoreFocus: true });
+                    return;
+                }
+                closeMenu({ restoreFocus: menu.contains(doc.activeElement) });
                 if (action === 'open-external') {
                     const res = await api?.browserOpenExternal?.(currentUrl);
                     if (res && !res.success) toast(res.error || '无法在默认浏览器中打开', 'warning');
                 } else if (action === 'devtools') {
                     if (canUseGuest()) webview.openDevTools();
-                } else if (action === 'clear-data') {
+                } else if (action === 'confirm-clear-data') {
                     const res = await api?.browserClearData?.();
-                    toast(res?.success ? '已清除浏览数据' : (res?.error || '清除浏览数据失败'), res?.success ? 'success' : 'warning');
+                    toast(res?.success ? '已清除浏览缓存（登录状态已保留）' : (res?.error || '清除浏览缓存失败'), res?.success ? 'success' : 'warning');
                 }
             });
 

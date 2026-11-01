@@ -254,13 +254,53 @@ html .side-browser-menu-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
 
 html .side-browser-menu-item .vcp-ui-icon:where(.vcp-ui-scope, .vcp-ui-scope *) { --vcp-ui-icon-size: 16px; }
 
-html .side-browser-menu-item:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
+html .side-browser-menu-item:hover:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-browser-menu-item:focus-visible:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
     background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
+    outline: none;
+}
+
+html .side-browser-clear-confirm-actions .side-browser-menu-item:focus:not(:disabled):where(.vcp-ui-scope, .vcp-ui-scope *) {
+    background: var(--vcp-ui-port-color-rgba-127-127-127-0-16);
+    border-color: color-mix(in srgb, var(--vcp-ui-text-primary, currentColor) 36%, transparent);
+    outline: none;
 }
 
 html .side-browser-menu-item:disabled:where(.vcp-ui-scope, .vcp-ui-scope *) {
     opacity: 0.4;
     cursor: default;
+}
+
+html .side-browser-menu-item[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *),
+html .side-browser-clear-confirm[hidden]:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: none;
+}
+
+html .side-browser-clear-confirm:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 248px;
+    padding: 6px 8px;
+}
+
+html .side-browser-clear-confirm-desc:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    font-size: calc(var(--vcp-ui-font-size) - 2px);
+    line-height: 1.5;
+    opacity: 0.85;
+    white-space: pre-line;
+}
+
+html .side-browser-clear-confirm-actions:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+html .side-browser-clear-confirm-actions .side-browser-menu-item:where(.vcp-ui-scope, .vcp-ui-scope *) {
+    justify-content: center;
+    padding: 5px 10px;
+    border: 1px solid var(--zcode-panel-border, var(--vcp-ui-port-color-rgba-255-255-255-0-1));
 }
 
 

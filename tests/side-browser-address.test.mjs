@@ -196,7 +196,19 @@ test('the more menu is keyboard reachable: focus moves in, arrows move, Escape a
     const { createBrowserSideProvider } = await import('../modules/ui-system/side-pane/browserSideProvider.js');
     const dom = new JSDOM('<div id="view"></div>');
     const doc = dom.window.document;
-    const provider = createBrowserSideProvider({ document: doc, api: null, sidePaneController: { updateTab() {} }, notify: () => {} });
+    let clearedCount = 0;
+    const toasts = [];
+    const provider = createBrowserSideProvider({
+        document: doc,
+        api: {
+            browserClearData: async () => {
+                clearedCount += 1;
+                return { success: true };
+            },
+        },
+        sidePaneController: { updateTab() {} },
+        notify: (msg) => { toasts.push(msg); },
+    });
     const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: {} }, doc.getElementById('view'));
     try {
         handle.navigate('https://example.com/');
@@ -224,6 +236,33 @@ test('the more menu is keyboard reachable: focus moves in, arrows move, Escape a
         assert.equal(menu.hidden, true);
         assert.equal(doc.activeElement, more);
         assert.equal(more.getAttribute('aria-expanded'), 'false');
+
+        more.click();
+        const clearItem = menu.querySelector('[data-action="clear-data"]');
+        const confirmBox = menu.querySelector('.side-browser-clear-confirm');
+        const confirmDesc = menu.querySelector('.side-browser-clear-confirm-desc');
+        const cancelBtn = menu.querySelector('[data-action="cancel-clear-data"]');
+        const confirmBtn = menu.querySelector('[data-action="confirm-clear-data"]');
+        assert.equal(confirmBox.hidden, true);
+        clearItem.click();
+        assert.equal(menu.hidden, false);
+        assert.equal(confirmBox.hidden, false);
+        assert.equal(clearedCount, 0, 'does not clear before confirmation');
+        assert.match(confirmDesc.textContent, /将清理：.*Service Worker/);
+        assert.match(confirmDesc.textContent, /将保留：.*Cookies/);
+        assert.equal(doc.activeElement, cancelBtn, 'focus defaults to cancel button');
+
+        cancelBtn.click();
+        assert.equal(menu.hidden, true);
+        assert.equal(clearedCount, 0, 'cancelling does not clear');
+
+        more.click();
+        clearItem.click();
+        confirmBtn.click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(clearedCount, 1, 'confirming triggers browserClearData once');
+        assert.equal(menu.hidden, true);
+        assert.match(toasts[0] || '', /已清除浏览缓存（登录状态已保留）/);
     } finally {
         handle.dispose();
         dom.window.close();
