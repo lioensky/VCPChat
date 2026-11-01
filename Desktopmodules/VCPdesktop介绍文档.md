@@ -252,6 +252,8 @@ musicAPI.send('music-remote-command', 'next')  // 切歌
 
 ---
 
+> 完整的挂件运行时 API、DesktopRemote 七条命令参数与持久化行为，见 [挂件运行时与远控参考.md](./挂件运行时与远控参考.md)。
+
 ## 性能优化
 
 ### 窗口可见性冻结

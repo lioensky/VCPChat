@@ -237,6 +237,8 @@ vcpAPI.weather().then(function(data) {
 
 ---
 
+> widgetFS、metrics、metricWidgets、styleAutomation、performanceManager、DesktopRemote 全部参数与持久化分层，见 [挂件运行时与远控参考.md](./挂件运行时与远控参考.md)。
+
 ## 六、三期规划：全局 Widget API Provider
 
 ### 核心思想

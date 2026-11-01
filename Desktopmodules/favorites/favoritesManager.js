@@ -29,7 +29,8 @@
         const saveId = widgetData.savedId || `fav_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
         // 获取widget的HTML内容
-        const htmlContent = widgetData.contentBuffer || widgetData.contentContainer.innerHTML;
+        // 取挂件原始源码，挂件脚本改写 contentBuffer 不影响写盘
+        const htmlContent = widget.getSource(widgetData);
         console.log(`[Desktop] performSave: id=${saveId}, name=${name}, htmlLen=${htmlContent.length}`);
 
         // 截图
@@ -120,7 +121,8 @@
                     }
                     widgetData.savedId = favoriteId;
                     widgetData.savedName = result.name || favoriteId;
-                    widgetData.contentBuffer = result.html;
+                    widgetData.savedDirUrl = result.dirUrl || null;
+                    widget.setSource(widgetData, result.html);
                     widgetData.contentContainer.innerHTML = result.html;
                     widget.processInlineStyles(widgetData);
                     widgetData.isConstructing = false;
@@ -157,7 +159,10 @@
             try {
                 const result = await desktopApi.desktopLoadWidget(widgetData.savedId);
                 if (result?.success && result.html) {
-                    widgetData.contentBuffer = result.html;
+                    // 先回收旧脚本的定时器与监听，再重新执行，避免刷新后叠加
+                    widget.disposeRuntime(widgetData, { keepObserver: true });
+                    widget.setSource(widgetData, result.html);
+                    if (result.dirUrl) widgetData.savedDirUrl = result.dirUrl;
                     widgetData.contentContainer.innerHTML = result.html;
                     widget.processInlineStyles(widgetData);
                     widget.autoResize(widgetData);

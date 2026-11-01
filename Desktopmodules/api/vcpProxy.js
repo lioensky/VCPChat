@@ -33,6 +33,8 @@
                     _vcpApiCredentials = {
                         vcpServerUrl: result.vcpServerUrl,
                         vcpApiKey: result.vcpApiKey,
+                        // 可选，来自 AppData/settings.json 的 desktopWidgetModel
+                        defaultModel: typeof result.desktopWidgetModel === 'string' ? result.desktopWidgetModel : '',
                     };
                     console.log('[VCPdesktop] VCP Chat API credentials loaded');
                 } else {
@@ -104,12 +106,16 @@
         };
 
         // 仅在用户指定时添加可选参数
-        if (model) requestBody.model = model;
+        const finalModel = model || _vcpApiCredentials.defaultModel || '';
+        if (finalModel) requestBody.model = finalModel;
         if (temperature !== undefined) requestBody.temperature = temperature;
         if (max_tokens !== undefined) requestBody.max_tokens = max_tokens;
 
         // 合并用户自定义的额外参数
         Object.assign(requestBody, extraOptions);
+        // 本函数只解析非流式响应，消息体也以第一个参数为准
+        requestBody.messages = messages;
+        requestBody.stream = false;
 
         try {
             const response = await fetch(_vcpApiCredentials.vcpServerUrl, {
@@ -129,6 +135,9 @@
                 } catch (e) {
                     const errorText = await response.text();
                     if (errorText) errorMsg += ': ' + errorText.substring(0, 200);
+                }
+                if (!finalModel) {
+                    errorMsg += '（未指定模型：请在 options.model 传入，或在 AppData/settings.json 设置 desktopWidgetModel）';
                 }
                 return { success: false, error: errorMsg };
             }
