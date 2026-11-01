@@ -23,6 +23,7 @@ const gameWindows = new Map();
 const LOCAL_GAMES = Object.freeze({
     neon: { title: 'VCP Neon Striker', page: 'Gamemodules/vcp-neon-game/index.html' },
     forgeTax: { title: 'ForgeTax · 锻造模拟器', page: 'Gamemodules/forge-tax/index.html' },
+    srpg: { title: 'Tavern-SRPG · 万缕千丝战棋战术沙盘', page: 'Gamemodules/srpg/index.html' },
     doudizhu: { title: 'Vgame · 斗地主', page: 'Gamemodules/doudizhu/index.html' },
 });
 
@@ -48,6 +49,10 @@ async function openGame(gameId) {
     }
     if (gameId === 'forgeTax') {
         await require('../../Gamemodules/forge-tax/service.cjs').openWindow();
+        return { success: true, gameId };
+    }
+    if (gameId === 'srpg') {
+        await require('../../Gamemodules/srpg/service.cjs').openWindow();
         return { success: true, gameId };
     }
     if (gameId === 'blade') {
