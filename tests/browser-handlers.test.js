@@ -12,7 +12,10 @@ const guestSession = new EventEmitter();
 guestSession.cleared = 0;
 guestSession.setPermissionRequestHandler = (fn) => { guestSession.requestHandler = fn; };
 guestSession.setPermissionCheckHandler = (fn) => { guestSession.checkHandler = fn; };
-guestSession.clearStorageData = async () => { guestSession.cleared += 1; };
+guestSession.clearStorageData = async (options) => {
+    guestSession.cleared += 1;
+    guestSession.lastClearStorageOptions = options;
+};
 guestSession.clearCache = async () => { guestSession.cleared += 1; };
 guestSession.webRequest = { onBeforeRequest: (fn) => { guestSession.beforeRequest = fn; } };
 
@@ -159,6 +162,12 @@ test('initialize denies guest permissions and only serves the main window', asyn
     assert.equal(guestSession.cleared, 0);
     assert.deepEqual(await clear(mainPage), { success: true });
     assert.equal(guestSession.cleared, 2);
+    assert.deepEqual(guestSession.lastClearStorageOptions, {
+        storages: browserHandlers.SAFE_CLEAR_STORAGE_TYPES,
+    });
+    assert.equal(browserHandlers.SAFE_CLEAR_STORAGE_TYPES.includes('cookies'), false);
+    assert.equal(browserHandlers.SAFE_CLEAR_STORAGE_TYPES.includes('localstorage'), false);
+    assert.equal(browserHandlers.SAFE_CLEAR_STORAGE_TYPES.includes('indexdb'), false);
 
     browserHandlers.dispose();
     assert.equal(handlers.size, 0);

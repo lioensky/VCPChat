@@ -16,7 +16,7 @@
     "invocationCommands": [
       {
         "command": "OpenVCPChatBrowser",
-        "description": "打开用户可见的共享侧栏浏览器。url 为完整 HTTP/HTTPS 地址；返回 appId、targetId、当前页面快照及网页/串行命令操作指南，无需先二次查询。后续按回执操作，不含应用或 Skill 管理。快照读取失败会保留已打开标签并提示仅重试读取。登录/验证码请求用户协助，不绕过验证。",
+        "description": "打开用户可见的共享侧栏浏览器。url 为完整 HTTP/HTTPS 地址（可选；省略时支持传 engine=bing/google/baidu/duckduckgo 与可选搜索词 query，或跟随用户侧栏默认搜索引擎）；返回 appId、targetId、当前页面快照及网页/串行命令操作指南，无需先二次查询。后续按回执操作，不含应用或 Skill 管理。快照读取失败会保留已打开标签并提示仅重试读取。登录/验证码请求用户协助，不绕过验证。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」OpenVCPChatBrowser「末」,\nurl:「始」https://www.bing.com/search?q=VCP「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
@@ -33,7 +33,7 @@
       },
       {
         "command": "open_url",
-        "description": "通过 WebCore target_open 在官方侧栏浏览器中新建标签并打开 URL。appId=vcpchat-browser，url 必填。等价打开入口为 OpenVCPChatBrowser。"
+        "description": "通过 WebCore target_open 在官方侧栏浏览器中新建标签并打开 URL。appId=vcpchat-browser，支持传 url，或传 engine（bing/google/baidu/duckduckgo）与 query。等价打开入口为 OpenVCPChatBrowser。"
       },
       {
         "command": "RequestBrowserAssistance",

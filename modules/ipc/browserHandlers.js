@@ -28,6 +28,14 @@ const POPUP_PROTOCOLS = new Set(['http:', 'https:']);
 const POPUP_ACTIVATION_MS = 3000;
 const ACTIVATION_INPUTS = new Set(['mouseDown', 'keyDown', 'rawKeyDown', 'touchStart', 'gestureTap']);
 const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:']);
+// 清除浏览数据时只清理静态与离线缓存，保护 cookies / localstorage / indexdb 登录态
+const SAFE_CLEAR_STORAGE_TYPES = Object.freeze([
+    'serviceworkers',
+    'cachestorage',
+    'shadercache',
+    'websql',
+    'filesystem',
+]);
 const CHANNELS = ['browser:open-external', 'browser:clear-data', 'browser:register-target',
     'browser:unregister-target', 'browser:agent-response', 'browser:active-target', 'browser:complete-assistance'];
 const ownedGuests = new WeakMap();
@@ -121,6 +129,15 @@ function matchSidePaneShortcut(input, { mac = process.platform === 'darwin' } = 
 
 const isAllowedSender = createApplicationSenderGuard({ getMainWebContents: () => resolveWindowWebContents(getMainWindow) });
 
+function sanitizeBrowserUserAgent(rawUa) {
+    if (typeof rawUa !== 'string' || !rawUa.trim()) return '';
+    return rawUa
+        .replace(/\s+Electron\/[^\s]+/gi, '')
+        .replace(/\s+vcp-chat-desktop\/[^\s]+/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
 function getGuestSession() {
     if (!guestSession) guestSession = session.fromPartition(BROWSER_PARTITION);
     return guestSession;
@@ -129,6 +146,10 @@ function getGuestSession() {
 function configureGuestSession(ses) {
     if (configuredSessions.has(ses)) return;
     configuredSessions.add(ses);
+    if (typeof ses.getUserAgent === 'function' && typeof ses.setUserAgent === 'function') {
+        const cleanUa = sanitizeBrowserUserAgent(ses.getUserAgent());
+        if (cleanUa) ses.setUserAgent(cleanUa);
+    }
     ses.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     ses.setPermissionCheckHandler(() => false);
     ses.webRequest?.onBeforeRequest?.((details, callback) => {
@@ -265,7 +286,7 @@ function initialize({ mainWindow = null, getMainWindow: getWindow = null, ipcMai
         if (!isAllowedSender(event)) return { success: false, error: 'Unauthorized sender' };
         try {
             const ses = getGuestSession();
-            await ses.clearStorageData();
+            await ses.clearStorageData({ storages: SAFE_CLEAR_STORAGE_TYPES });
             await ses.clearCache();
             return { success: true };
         } catch (error) {
@@ -287,5 +308,7 @@ module.exports = {
     isAllowedGuestRequest,
     isAllowedGuestUrl,
     isAllowedPopupUrl,
+    SAFE_CLEAR_STORAGE_TYPES,
     matchSidePaneShortcut,
+    sanitizeBrowserUserAgent,
 };

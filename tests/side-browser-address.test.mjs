@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeBrowserInput, resolveBrowserAddress } from '../modules/ui-system/side-pane/browserSideProvider.js';
+import {
+    normalizeBrowserInput,
+    resolveBrowserAddress,
+    resolveEngineSwitchNavigationUrl,
+    readPreferredBrowserEngine,
+    writePreferredBrowserEngine
+} from '../modules/ui-system/side-pane/browserSideProvider.js';
 
 test('addresses open as before', () => {
     assert.deepEqual(resolveBrowserAddress('example.com'), { url: 'https://example.com/' });
@@ -190,7 +196,19 @@ test('the more menu is keyboard reachable: focus moves in, arrows move, Escape a
     const { createBrowserSideProvider } = await import('../modules/ui-system/side-pane/browserSideProvider.js');
     const dom = new JSDOM('<div id="view"></div>');
     const doc = dom.window.document;
-    const provider = createBrowserSideProvider({ document: doc, api: null, sidePaneController: { updateTab() {} }, notify: () => {} });
+    let clearedCount = 0;
+    const toasts = [];
+    const provider = createBrowserSideProvider({
+        document: doc,
+        api: {
+            browserClearData: async () => {
+                clearedCount += 1;
+                return { success: true };
+            },
+        },
+        sidePaneController: { updateTab() {} },
+        notify: (msg) => { toasts.push(msg); },
+    });
     const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: {} }, doc.getElementById('view'));
     try {
         handle.navigate('https://example.com/');
@@ -218,6 +236,33 @@ test('the more menu is keyboard reachable: focus moves in, arrows move, Escape a
         assert.equal(menu.hidden, true);
         assert.equal(doc.activeElement, more);
         assert.equal(more.getAttribute('aria-expanded'), 'false');
+
+        more.click();
+        const clearItem = menu.querySelector('[data-action="clear-data"]');
+        const confirmBox = menu.querySelector('.side-browser-clear-confirm');
+        const confirmDesc = menu.querySelector('.side-browser-clear-confirm-desc');
+        const cancelBtn = menu.querySelector('[data-action="cancel-clear-data"]');
+        const confirmBtn = menu.querySelector('[data-action="confirm-clear-data"]');
+        assert.equal(confirmBox.hidden, true);
+        clearItem.click();
+        assert.equal(menu.hidden, false);
+        assert.equal(confirmBox.hidden, false);
+        assert.equal(clearedCount, 0, 'does not clear before confirmation');
+        assert.match(confirmDesc.textContent, /将清理：.*Service Worker/);
+        assert.match(confirmDesc.textContent, /将保留：.*Cookies/);
+        assert.equal(doc.activeElement, cancelBtn, 'focus defaults to cancel button');
+
+        cancelBtn.click();
+        assert.equal(menu.hidden, true);
+        assert.equal(clearedCount, 0, 'cancelling does not clear');
+
+        more.click();
+        clearItem.click();
+        confirmBtn.click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(clearedCount, 1, 'confirming triggers browserClearData once');
+        assert.equal(menu.hidden, true);
+        assert.match(toasts[0] || '', /已清除浏览缓存（登录状态已保留）/);
     } finally {
         handle.dispose();
         dom.window.close();
@@ -288,5 +333,66 @@ test('switching to another window keeps the half-typed address', async () => {
     address.blur();
     assert.equal(address.value, 'https://exa');
     handle.dispose();
+    dom.window.close();
+});
+
+test('configurable search engines: resolveBrowserAddress, UI cycle button persistence and agent request', async () => {
+    assert.deepEqual(resolveBrowserAddress('vcp 工具', 'google'), { url: 'https://www.google.com/search?q=vcp%20%E5%B7%A5%E5%85%B7' });
+    assert.deepEqual(resolveBrowserAddress('vcp', 'baidu'), { url: 'https://www.baidu.com/s?wd=vcp' });
+    assert.deepEqual(resolveBrowserAddress('vcp', 'duckduckgo'), { url: 'https://duckduckgo.com/?q=vcp' });
+
+    const { JSDOM } = await import('jsdom');
+    const { createBrowserSideProvider } = await import('../modules/ui-system/side-pane/browserSideProvider.js');
+    const dom = new JSDOM('<div id="view"></div>', { url: 'https://vcp.local/' });
+    const doc = dom.window.document;
+    const updates = [];
+    const provider = createBrowserSideProvider({
+        document: doc,
+        api: null,
+        sidePaneController: { updateTab: (id, patch) => updates.push({ id, ...patch }) },
+        notify: () => {}
+    });
+    const view = doc.getElementById('view');
+    const handle = await provider.mountTab({ id: 'browser:1', kind: 'browser', payload: {} }, view);
+    const engineBtn = view.querySelector('[data-action="cycle-engine"]');
+    assert.equal(engineBtn.textContent, 'Bing');
+    assert.equal(handle.getEngine(), 'bing');
+
+    const view2 = doc.createElement('div');
+    doc.body.appendChild(view2);
+    const handle2 = await provider.mountTab({ id: 'browser:2', kind: 'browser', payload: { url: 'https://github.com/leanprover-community/mathlib4' } }, view2);
+    const engineBtn2 = view2.querySelector('[data-action="cycle-engine"]');
+
+    // 1. 连续点击：从空白页切 Google -> 再切 Baidu -> 再切 DuckDuckGo -> 再切回 Bing，每次都顺滑跳转对应主页！
+    engineBtn.click();
+    assert.equal(engineBtn.textContent, 'Google');
+    assert.equal(readPreferredBrowserEngine(dom.window.localStorage), 'google');
+    assert.equal(engineBtn2.textContent, 'Google', 'other open tabs sync their engine badge immediately');
+    assert.equal(handle.getUrl(), 'https://www.google.com/');
+    assert.equal(handle2.getUrl(), 'https://github.com/leanprover-community/mathlib4', 'unrelated web pages are never clobbered');
+
+    engineBtn.click();
+    assert.equal(engineBtn.textContent, 'Baidu');
+    assert.equal(handle.getUrl(), 'https://www.baidu.com/');
+
+    engineBtn.click();
+    assert.equal(engineBtn.textContent, 'DuckDuckGo');
+    assert.equal(handle.getUrl(), 'https://duckduckgo.com/');
+
+    engineBtn.click();
+    assert.equal(engineBtn.textContent, 'Bing');
+    assert.equal(handle.getUrl(), 'https://www.bing.com/');
+
+    // 2. 在搜索结果页点击切换引擎：自动保留当前搜索关键词切换到新引擎搜索！
+    handle.navigate('https://www.bing.com/search?q=Lean%204');
+    engineBtn.click(); // Bing -> Google
+    assert.equal(handle.getUrl(), 'https://www.google.com/search?q=Lean%204');
+    engineBtn.click(); // Google -> Baidu
+    assert.equal(handle.getUrl(), 'https://www.baidu.com/s?wd=Lean%204');
+    assert.equal(resolveEngineSwitchNavigationUrl('https://arxiv.org/list/math.AP/recent', 'google'), null);
+
+    writePreferredBrowserEngine('bing', dom.window.localStorage);
+    handle.dispose();
+    handle2.dispose();
     dom.window.close();
 });
