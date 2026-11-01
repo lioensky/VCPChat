@@ -3,8 +3,11 @@
 
 import { scopeCss } from './renderer/contentProcessor.js';
 
+import { collectToolDataRanges } from './renderer/toolResultRegions.js';
+import { replaceToolRequestBlocks, findEarliestUnclosedToolBlock } from './renderer/toolRequestScanner.js';
+import { collectMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
+
 const STYLE_REGEX = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
 
 const searchManager = {
     // --- Properties ---
@@ -104,7 +107,7 @@ const searchManager = {
     async openModal() {
         // 🟢 确保模态框已实例化，并始终通过 uiHelper 广播可见性事件以维护 OverlayCoordinator 租约
         this.uiHelper?.openModal?.('globalSearchModal');
-        
+
         if (this.elements.modal) {
             this.elements.modal.style.display = 'flex';
             this.elements.input?.focus();
@@ -187,7 +190,7 @@ const searchManager = {
         if (this.elements.input) this.elements.input.value = '';
         if (this.elements.resultsContainer) this.elements.resultsContainer.innerHTML = '';
         if (this.elements.paginationContainer) this.elements.paginationContainer.innerHTML = '';
-        
+
         this.state.currentQuery = '';
         this.state.searchResults = [];
         this.state.currentPage = 1;
@@ -224,6 +227,41 @@ const searchManager = {
         return processedContent;
     },
 
+    renderSearchContent(content, scopeId) {
+        // 与主消息渲染器共用协议边界：结果/原子批次优先，支持嵌套、
+        // ESCAPE 字段以及未闭合流尾。必须在提取 CSS 或写入 DOM 前隔离。
+        const ranges = [...collectToolDataRanges(content)];
+        replaceToolRequestBlocks(content, (raw, _body, start, end) => {
+            ranges.push({ start, end });
+            return raw;
+        });
+        const unclosed = findEarliestUnclosedToolBlock(content);
+        if (unclosed) ranges.push({ start: unclosed.startIndex, end: content.length });
+        ranges.push(...collectMarkdownCodeDomains(content));
+        ranges.sort((a, b) => a.start - b.start || b.end - a.end);
+
+        // 合并相交域；载荷中的代码围栏不得把工具块重新暴露给 HTML/CSS。
+        const sealedRanges = [];
+        for (const range of ranges) {
+            const previous = sealedRanges[sealedRanges.length - 1];
+            if (previous && range.start < previous.end) {
+                previous.end = Math.max(previous.end, range.end);
+            } else {
+                sealedRanges.push({ start: range.start, end: range.end });
+            }
+        }
+
+        let html = '';
+        let cursor = 0;
+        for (const range of sealedRanges) {
+            html += this.processAndInjectScopedCss(content.slice(cursor, range.start), scopeId);
+            // 不使用可被原文伪造的占位符，也不对转义后的源码做二次 HTML 解释。
+            html += `<pre class="search-code-block"><code>${this.escapeHtml(content.slice(range.start, range.end))}</code></pre>`;
+            cursor = range.end;
+        }
+        return html + this.processAndInjectScopedCss(content.slice(cursor), scopeId);
+    },
+
     async performSearch(query) {
         if (this.state.isFetching) {
             console.log('[SearchManager] Search already in progress.');
@@ -251,7 +289,7 @@ const searchManager = {
             if ((!agents || agents.error) || (!groups || groups.error)) {
                 throw new Error(`Failed to fetch data. AgentError: ${agents?.error}, GroupError: ${groups?.error}`);
             }
-            
+
             this.state.allAgents = agents.reduce((acc, agent) => { acc[agent.id] = agent; return acc; }, {});
             this.state.allGroups = groups.reduce((acc, group) => { acc[group.id] = group; return acc; }, {});
 
@@ -343,7 +381,7 @@ const searchManager = {
                     // 支持多行搜索：将搜索查询和内容都标准化处理
                     const normalizedContent = content.toLowerCase().replace(/\s+/g, ' ').trim();
                     const normalizedQuery = lowerCaseQuery.replace(/\s+/g, ' ').trim();
-                    
+
                     // 如果查询包含换行符，进行精确的多行匹配
                     let isMatch = false;
                     if (lowerCaseQuery.includes('\n')) {
@@ -396,40 +434,17 @@ const searchManager = {
         paginatedResults.forEach(message => {
             const itemEl = document.createElement('div');
             itemEl.classList.add('search-result-item');
-            
+
             const scopeId = this.generateUniqueId();
             itemEl.id = scopeId;
-            
+
             itemEl.addEventListener('click', () => this.navigateToMessage(message));
 
             const contentText = (typeof message.content === 'object' && message.content !== null && message.content.text)
                 ? message.content.text
                 : String(message.content || '');
 
-            // ========== 🔧 修复的核心逻辑 ==========
-            let processedContent = contentText;
-            const codeBlocks = [];
-            
-            // 1️⃣ 提取代码块并用占位符替换
-            processedContent = processedContent.replace(CODE_FENCE_REGEX, (match, codeContent) => {
-                const placeholder = `__VCP_CODE_BLOCK_${codeBlocks.length}__`;
-                codeBlocks.push(codeContent); // 只保存代码内容，不保存 ``` 标记
-                return placeholder;
-            });
-            
-            // 2️⃣ 提取并注入 Scoped CSS（针对非代码块区域）
-            processedContent = this.processAndInjectScopedCss(processedContent, scopeId);
-            
-            // 3️⃣ 恢复代码块：转义后包装成 <pre><code>
-            codeBlocks.forEach((code, i) => {
-                const placeholder = `__VCP_CODE_BLOCK_${i}__`;
-                const escapedCode = this.escapeHtml(code.trim());
-                processedContent = processedContent.replace(
-                    placeholder,
-                    `<pre class="search-code-block"><code>${escapedCode}</code></pre>`
-                );
-            });
-            // ========== 修复结束 ==========
+            const processedContent = this.renderSearchContent(contentText, scopeId);
 
             const contextEl = document.createElement('div');
             contextEl.classList.add('context');
@@ -440,7 +455,7 @@ const searchManager = {
 
             // 4️⃣ 直接渲染 HTML（div 气泡会正常显示，代码块已经被安全处理）
             contentWrapperEl.innerHTML = `<span class="name">${this.escapeHtml(message.name || message.role)}: </span><span class="message-body">${processedContent}</span>`;
-            
+
             // 5️⃣ 在 DOM 层面高亮搜索词（避免破坏 HTML 结构）
             const query = this.state.currentQuery;
             if (query) {
@@ -462,9 +477,9 @@ const searchManager = {
      */
     highlightTextInElement(element, query) {
         if (!element || !query) return;
-        
+
         const lowerQuery = query.toLowerCase().replace(/\s+/g, ' ').trim();
-        
+
         // 使用 TreeWalker 遍历所有文本节点
         const walker = document.createTreeWalker(
             element,
@@ -472,23 +487,23 @@ const searchManager = {
             null,
             false
         );
-        
+
         const textNodes = [];
         let node;
         while ((node = walker.nextNode())) {
             textNodes.push(node);
         }
-        
+
         textNodes.forEach(textNode => {
             const text = textNode.textContent;
             const lowerText = text.toLowerCase();
-            
+
             if (!lowerText.includes(lowerQuery)) return;
-            
+
             const fragment = document.createDocumentFragment();
             let lastIndex = 0;
             let searchIndex = 0;
-            
+
             while ((searchIndex = lowerText.indexOf(lowerQuery, lastIndex)) !== -1) {
                 // 添加匹配前的文本
                 if (searchIndex > lastIndex) {
@@ -501,15 +516,15 @@ const searchManager = {
                 strong.className = 'search-highlight';
                 strong.textContent = text.slice(searchIndex, searchIndex + lowerQuery.length);
                 fragment.appendChild(strong);
-                
+
                 lastIndex = searchIndex + lowerQuery.length;
             }
-            
+
             // 添加剩余文本
             if (lastIndex < text.length) {
                 fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
             }
-            
+
             textNode.parentNode.replaceChild(fragment, textNode);
         });
     },
@@ -553,11 +568,11 @@ const searchManager = {
         this.closeModal();
 
         const { itemId, itemType, topicId, itemName, itemAvatar } = message.context;
-        
-        const itemConfig = (itemType === 'agent') 
-            ? this.state.allAgents[itemId] 
+
+        const itemConfig = (itemType === 'agent')
+            ? this.state.allAgents[itemId]
             : this.state.allGroups[itemId];
-            
+
         if (!itemConfig) {
             console.error(`[SearchManager] Could not find config for ${itemType} with ID ${itemId}`);
             this.uiHelper.showToastNotification('无法导航：找不到对应的项目配置。', 'error');
