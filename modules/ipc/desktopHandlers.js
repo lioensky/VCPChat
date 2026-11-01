@@ -60,6 +60,21 @@ function isSafeWidgetId(value) {
     return typeof value === 'string' && /^[a-zA-Z0-9_-]+$/.test(value);
 }
 
+/**
+ * 把挂件 ID 解析为 DESKTOP_WIDGETS_DIR 下的直接子目录。
+ * 只拒绝会逃出挂件库的输入（路径分隔符、'.'、'..'、盘符、空值），
+ * 不限制字符集，已有的中文名或带点号的手建文件夹照常可用。
+ * @param {string} id
+ * @returns {string|null} 绝对路径；输入不安全时返回 null
+ */
+function resolveWidgetDir(id) {
+    if (typeof id !== 'string' || !id || id === '.' || id === '..') return null;
+    if (/[\\/]/.test(id) || id !== path.basename(id)) return null;
+    const root = path.resolve(DESKTOP_WIDGETS_DIR);
+    const dir = path.resolve(root, id);
+    return path.dirname(dir) === root ? dir : null;
+}
+
 function isSafePluginFolderName(value) {
     return typeof value === 'string'
         && value.length > 0
@@ -1175,6 +1190,17 @@ function initialize(params) {
 
                     console.log(`[DesktopHandlers] Auto-archived stream widget to Library: ${detectedName} (${widgetId}) at ${widgetDir}`);
 
+                    // 在线时告诉画布：该挂件的归档 ID 就是 widgetId，收藏时复用此目录而不是另建 fav_*
+                    if (isWindowVisible && desktopWindow && !desktopWindow.isDestroyed()) {
+                        desktopWindow.webContents.send('desktop-push-to-canvas', {
+                            action: 'archived',
+                            widgetId,
+                            savedId: widgetId,
+                            name: meta.name,
+                            dirUrl: require('url').pathToFileURL(widgetDir).href,
+                        });
+                    }
+
                     // 异步更新 CATALOG.md
                     generateCatalog().catch(err => {
                         console.warn('[DesktopHandlers] CATALOG.md update failed:', err.message);
@@ -1251,14 +1277,17 @@ function initialize(params) {
     // 保存/更新收藏
     ipcMain.handle('desktop-save-widget', async (event, data) => {
         try {
-            const { id, name, html, thumbnail } = data;
+            const { id, name, html, thumbnail, preserveMeta } = data;
             console.log(`[DesktopHandlers] desktop-save-widget called: id=${id}, name=${name}, html length=${html?.length}, has thumbnail=${!!thumbnail}`);
             if (!id || !name || !html) {
                 console.error('[DesktopHandlers] Missing required params:', { id: !!id, name: !!name, html: !!html });
                 return { success: false, error: '缺少必要参数' };
             }
 
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
+            const widgetDir = resolveWidgetDir(id);
+            if (!widgetDir) {
+                return { success: false, error: `不安全的挂件 ID: ${id}` };
+            }
             await fs.ensureDir(widgetDir);
 
             // 保存 HTML 内容
@@ -1280,6 +1309,12 @@ function initialize(params) {
                 try {
                     const existingMeta = await fs.readJson(metaPath);
                     meta.createdAt = existingMeta.createdAt || meta.createdAt;
+                    // 只更新内容或缩略图时，保留原有来源、星标与名称
+                    if (preserveMeta) {
+                        if (existingMeta.origin) meta.origin = existingMeta.origin;
+                        if (existingMeta.pinned !== undefined) meta.pinned = existingMeta.pinned;
+                        if (existingMeta.name) meta.name = existingMeta.name;
+                    }
                 } catch (e) { /* ignore */ }
             }
 
@@ -1334,7 +1369,10 @@ function initialize(params) {
                 return { success: false, error: `不允许覆盖核心文件: ${safeName}` };
             }
 
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
+            const widgetDir = resolveWidgetDir(widgetId);
+            if (!widgetDir) {
+                return { success: false, error: `不安全的挂件 ID: ${widgetId}` };
+            }
             await fs.ensureDir(widgetDir);
 
             const filePath = path.join(widgetDir, safeName);
@@ -1367,7 +1405,11 @@ function initialize(params) {
                 return { success: false, error: `不安全的文件名: ${fileName}` };
             }
 
-            const filePath = path.join(DESKTOP_WIDGETS_DIR, widgetId, safeName);
+            const widgetDir = resolveWidgetDir(widgetId);
+            if (!widgetDir) {
+                return { success: false, error: `不安全的挂件 ID: ${widgetId}` };
+            }
+            const filePath = path.join(widgetDir, safeName);
             if (!await fs.pathExists(filePath)) {
                 return { success: false, error: 'File not found.' };
             }
@@ -1400,7 +1442,10 @@ function initialize(params) {
                 return { success: false, error: '缺少 widgetId' };
             }
 
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
+            const widgetDir = resolveWidgetDir(widgetId);
+            if (!widgetDir) {
+                return { success: false, error: `不安全的挂件 ID: ${widgetId}` };
+            }
             if (!await fs.pathExists(widgetDir)) {
                 return { success: true, files: [] };
             }
@@ -1434,7 +1479,10 @@ function initialize(params) {
     // 加载收藏（读取 HTML 内容）
     ipcMain.handle('desktop-load-widget', async (event, id) => {
         try {
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
+            const widgetDir = resolveWidgetDir(id);
+            if (!widgetDir) {
+                return { success: false, error: `不安全的挂件 ID: ${id}` };
+            }
             const htmlPath = path.join(widgetDir, 'widget.html');
             const metaPath = path.join(widgetDir, 'meta.json');
 
@@ -1451,7 +1499,8 @@ function initialize(params) {
                 } catch (e) { /* ignore */ }
             }
 
-            return { success: true, html, name, id };
+            // dirUrl 供渲染端把挂件内相对路径的 <script src> 解析到挂件目录
+            return { success: true, html, name, id, dirUrl: require('url').pathToFileURL(widgetDir).href };
         } catch (err) {
             console.error('[DesktopHandlers] Load widget error:', err);
             return { success: false, error: err.message };
@@ -1461,7 +1510,10 @@ function initialize(params) {
     // 删除收藏
     ipcMain.handle('desktop-delete-widget', async (event, id) => {
         try {
-            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
+            const widgetDir = resolveWidgetDir(id);
+            if (!widgetDir) {
+                return { success: false, error: `不安全的挂件 ID: ${id}` };
+            }
             if (await fs.pathExists(widgetDir)) {
                 await fs.remove(widgetDir);
                 console.log(`[DesktopHandlers] Widget deleted: ${id}`);
@@ -1589,6 +1641,7 @@ function initialize(params) {
 
             let vcpServerUrl = '';
             let vcpApiKey = '';
+            let desktopWidgetModel = '';
             let username = '';
             let password = '';
 
@@ -1597,6 +1650,10 @@ function initialize(params) {
                     const settings = await fs.readJson(settingsPath);
                     vcpServerUrl = settings.vcpServerUrl || '';
                     vcpApiKey = settings.vcpApiKey || '';
+                    // 可选：桌面挂件 vcpAPI.post 未指定 model 时使用的默认模型
+                    if (typeof settings.desktopWidgetModel === 'string') {
+                        desktopWidgetModel = settings.desktopWidgetModel.trim();
+                    }
                 } catch (e) { /* ignore */ }
             }
 
@@ -1622,6 +1679,7 @@ function initialize(params) {
                 apiBaseUrl,
                 vcpServerUrl,
                 vcpApiKey,
+                desktopWidgetModel,
                 username,
                 password,
             };
@@ -2538,8 +2596,8 @@ function initialize(params) {
 function triggerAutoSpawnOnWindow(targetWin, delayMs = 350) {
     if (!targetWin || targetWin.isDestroyed() || pendingAutoSpawnQueue.length === 0) return;
 
-    const itemsToSpawn = pendingAutoSpawnQueue.splice(0, 3);
-    pendingAutoSpawnQueue = [];
+    // 队列上限为 5，全部取出上屏；下方网格按 3 列自动换行排布
+    const itemsToSpawn = pendingAutoSpawnQueue.splice(0);
 
     setTimeout(() => {
         if (!targetWin || targetWin.isDestroyed()) return;
@@ -2565,6 +2623,14 @@ function triggerAutoSpawnOnWindow(targetWin, delayMs = 350) {
             targetWin.webContents.send('desktop-push-to-canvas', {
                 action: 'finalize',
                 widgetId: item.widgetId
+            });
+            // 队列里的挂件入队前已归档，同样回写归档 ID
+            targetWin.webContents.send('desktop-push-to-canvas', {
+                action: 'archived',
+                widgetId: item.widgetId,
+                savedId: item.widgetId,
+                name: item.name,
+                dirUrl: require('url').pathToFileURL(path.join(DESKTOP_WIDGETS_DIR, item.widgetId)).href,
             });
         });
     }, delayMs);

@@ -186,10 +186,10 @@
                     }
 
                     const widgetData = widget.create(widgetId, {
-                        x: options.x || 100,
-                        y: options.y || 100,
-                        width: options.width || 320,
-                        height: options.height || 200,
+                        x: options.x ?? 100,
+                        y: options.y ?? 100,
+                        width: options.width ?? 320,
+                        height: options.height ?? 200,
                     });
                     if (!widgetData) {
                         throw new Error(`Widget "${widgetId}" is being removed. Try again shortly.`);
@@ -291,9 +291,19 @@
                         status.update('connected', `挂件渲染完成: ${widgetId}`);
                         break;
                     case 'replace':
-                        widget.replaceInWidgets(data.targetSelector, content);
+                        widget.replaceInWidgets(data.targetSelector, content, data.widgetId || null);
                         status.update('streaming', `替换内容: ${data.targetSelector}`);
                         break;
+                    case 'archived': {
+                        // 主进程已把推送挂件归档到 DesktopWidgets/{savedId}/，让挂件知道自己的归档目录
+                        const archivedData = state.widgets.get(widgetId);
+                        if (archivedData && !archivedData.savedId && data.savedId) {
+                            archivedData.savedId = data.savedId;
+                            archivedData.savedName = data.name || archivedData.savedName || data.savedId;
+                            if (data.dirUrl) archivedData.savedDirUrl = data.dirUrl;
+                        }
+                        break;
+                    }
                     case 'remove':
                         widget.remove(widgetId);
                         break;
@@ -382,7 +392,7 @@
     async function _autoSaveWidget(widgetId, saveName, widgetData) {
         try {
             const savedId = `saved-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-            const htmlContent = widgetData.contentBuffer || widgetData.contentContainer?.innerHTML || '';
+            const htmlContent = widget.getSource(widgetData);
 
             if (!htmlContent || !desktopApi?.desktopSaveWidget) {
                 return null;
@@ -448,12 +458,14 @@
             });
 
             if (captureResult?.success && captureResult.thumbnail) {
-                const htmlContent = widgetData.contentBuffer || widgetData.contentContainer?.innerHTML || '';
+                const htmlContent = widget.getSource(widgetData);
                 await desktopApi.desktopSaveWidget({
                     id: savedId,
                     name: widgetData.savedName || 'AI Widget',
                     html: htmlContent,
                     thumbnail: captureResult.thumbnail,
+                    // 只补截图：保留原有 origin / pinned / name
+                    preserveMeta: true,
                 });
             }
         } catch (error) {

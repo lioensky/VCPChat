@@ -610,10 +610,12 @@ async function _handleCreateWidget(commandPayload, desktopWin) {
         scriptCode,
         builtinWidgetKey,
         metricComponent,
+        preSavedId,
+        options: rawOptions,
     } = commandPayload;
 
     if (!htmlContent && !builtinWidgetKey && !metricComponent) {
-        throw new Error('htmlContent parameter is required for CreateWidget.');
+        throw new Error("CreateWidget requires one of 'htmlContent', 'builtinWidgetKey' or 'metricComponent'.");
     }
 
     const targetWin = await ensureDesktopWindow(desktopWin, {
@@ -622,7 +624,10 @@ async function _handleCreateWidget(commandPayload, desktopWin) {
     });
 
     const finalWidgetId = widgetId || `remote-widget-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-    const options = {};
+    // 调用方 options 为底（内置挂件 spawn 会用到），显式坐标与尺寸覆盖其上
+    const options = (rawOptions && typeof rawOptions === 'object' && !Array.isArray(rawOptions))
+        ? { ...rawOptions }
+        : {};
     if (typeof x === 'number') options.x = x;
     if (typeof y === 'number') options.y = y;
     if (typeof width === 'number') options.width = width;
@@ -671,7 +676,7 @@ async function _handleCreateWidget(commandPayload, desktopWin) {
         options,
         autoSave: hasScriptCode ? true : !!autoSave,
         saveName: saveName || (hasScriptCode ? 'AI Widget' : null),
-        preSavedId: savedId || null,
+        preSavedId: savedId || (typeof preSavedId === 'string' && preSavedId ? preSavedId : null),
         builtinWidgetKey: builtinWidgetKey || null,
         metricComponent: metricComponent || null,
     }, {
@@ -682,8 +687,8 @@ async function _handleCreateWidget(commandPayload, desktopWin) {
     if (responseData?.timedOut) {
         let timeoutReport = '### Widget Creation Queued\n\n';
         timeoutReport += `- widgetId: \`${finalWidgetId}\`\n`;
-        timeoutReport += `- position: (${options.x || 100}, ${options.y || 100})\n`;
-        timeoutReport += `- size: ${options.width || 320} x ${options.height || 200}\n`;
+        timeoutReport += `- position: (${options.x ?? 100}, ${options.y ?? 100})\n`;
+        timeoutReport += `- size: ${options.width ?? 320} x ${options.height ?? 200}\n`;
         timeoutReport += '- status: renderer response timed out, but request was dispatched.';
         return {
             status: 'success',
@@ -693,8 +698,8 @@ async function _handleCreateWidget(commandPayload, desktopWin) {
 
     let mdReport = '### Widget Created\n\n';
     mdReport += `- widgetId: \`${responseData?.widgetId || finalWidgetId}\`\n`;
-    mdReport += `- position: (${options.x || 100}, ${options.y || 100})\n`;
-    mdReport += `- size: ${options.width || 320} x ${options.height || 200}\n`;
+    mdReport += `- position: (${options.x ?? 100}, ${options.y ?? 100})\n`;
+    mdReport += `- size: ${options.width ?? 320} x ${options.height ?? 200}\n`;
 
     const finalSavedId = savedId || responseData?.savedId;
     const finalSavedName = saveName || responseData?.savedName;
