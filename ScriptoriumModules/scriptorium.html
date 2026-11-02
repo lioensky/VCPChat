@@ -3,10 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:; font-src 'self' data: blob: file: http: https:; connect-src 'self' blob: data: https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:; font-src 'self' data: blob: file: http: https:; connect-src 'self' blob: data: https:; frame-src 'self' data: blob: file: scriptorium-page:;">
     <title>VCP Scriptorium · 共笔文坊</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="scriptorium.css">
+    <link rel="stylesheet" href="scriptorium-file-views.css">
+    <link rel="stylesheet" href="scriptorium-pdf-view.css">
+    <link rel="stylesheet" href="scriptorium-table-view.css">
 </head>
 <body class="home-state">
     <header class="scriptorium-titlebar">
@@ -1184,5 +1187,15 @@
     <script src="scriptorium-deck-adapter.js"></script>
     <script src="scriptorium-shell.js"></script>
     <script src="scriptorium.js"></script>
+
+    <!-- 原位打开的文件视图（网页、PDF、表格、文本、图片）与 Markdown 文件 -->
+    <script src="../modules/scriptorium/fileTypes.js"></script>
+    <script src="scriptorium-file-views.js"></script>
+    <script src="scriptorium-markdown-file.js"></script>
+    <script src="scriptorium-web-page.js"></script>
+    <script src="scriptorium-pdf-view.js"></script>
+    <script src="scriptorium-table-view.js"></script>
+    <script src="scriptorium-text-view.js"></script>
+    <script src="scriptorium-image-view.js"></script>
 </body>
 </html>

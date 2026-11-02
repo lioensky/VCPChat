@@ -1,0 +1,108 @@
+/* 文坊中的 PDF（scriptorium-pdf-view.js）。外框、栏头和通用控件见 scriptorium-file-views.css。
+   纸面是 PDF 的内容，用浅色方案下的系统色 Canvas / CanvasText；选中的对象显示为一层淡底，右下角的小方块用于调整大小。 */
+
+.scriptorium-pdf-marks { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; gap: 1px; padding: 8px 8px 16px; }
+.scriptorium-pdf-marks .scriptorium-row { grid-template-columns: minmax(0, 1fr); }
+
+/* 栏头：工具、插入、导出、撤销重做、选中对象的字号和颜色、提示、查找、页码、缩放。放不下时折成两行；提示最先收缩。 */
+.scriptorium-pdf-head { flex: none; flex-wrap: wrap; min-height: 40px; gap: 2px 4px; padding-block: 5px; overflow: visible; }
+.scriptorium-pdf-head > .scriptorium-seg { margin-right: 2px; }
+.scriptorium-pdf-head > .scriptorium-pdf-hint { flex: 1000 1 0; }
+.scriptorium-pdf-head > .scriptorium-pdf-find { margin-left: auto; }
+.scriptorium-pdf-props { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.scriptorium-pdf-props[hidden] { display: none; }
+.scriptorium-pdf-size { min-width: 22px; text-align: center; color: var(--scriptorium-file-text-2); font: var(--scriptorium-file-fs-small) var(--scriptorium-file-font); }
+.scriptorium-pdf-swatches { margin-inline: 4px; flex-wrap: nowrap; }
+.scriptorium-pdf-swatches button { width: 20px; height: 20px; }
+.scriptorium-pdf-hint { min-width: 0; padding-left: 6px; overflow: hidden; white-space: nowrap; color: var(--scriptorium-file-text-3); font-size: var(--scriptorium-file-fs-meta); mask-image: linear-gradient(to right, black calc(100% - var(--scriptorium-file-fade)), transparent); }
+.scriptorium-pdf-hint[hidden] { display: none; }
+.scriptorium-pdf-find { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-right: 4px; }
+.scriptorium-pdf-find input { width: 104px; height: 26px; padding: 0 8px; border: 1px solid var(--scriptorium-file-line); border-radius: 7px; background: var(--scriptorium-file-bg); color: var(--scriptorium-file-text); font: var(--scriptorium-file-fs-small) var(--scriptorium-file-font); outline: none; }
+.scriptorium-pdf-find input:focus { border-color: var(--scriptorium-file-select); }
+.scriptorium-pdf-find input::-webkit-search-cancel-button { display: none; }
+.scriptorium-pdf-find small { color: var(--scriptorium-file-text-3); font: var(--scriptorium-file-fs-meta) var(--scriptorium-file-font); white-space: nowrap; }
+.scriptorium-pdf-find small:empty { display: none; }
+.scriptorium-pdf-pageno { flex: none; padding-inline: 6px; color: var(--scriptorium-file-text-3); font: var(--scriptorium-file-fs-meta) var(--scriptorium-file-font); white-space: nowrap; }
+
+/* 页面：一页一页竖着排，比栏宽时可以横着滑。 */
+.scriptorium-pdf-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--scriptorium-file-deep); }
+.scriptorium-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 16px; box-sizing: border-box; width: max-content; min-width: 100%; padding: 24px; }
+.scriptorium-pdf-page { position: relative; flex: none; color-scheme: light; background: Canvas; color: CanvasText; overflow: hidden;
+    --user-unit: 1; --total-scale-factor: calc(var(--scale-factor) * var(--user-unit)); }
+.scriptorium-pdf-page > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.scriptorium-pdf-fields, .scriptorium-pdf-objs { position: absolute; inset: 0; pointer-events: none; }
+.scriptorium-pdf-fields > *, .scriptorium-pdf-objs > * { pointer-events: auto; }
+.scriptorium-pdf-work:not([data-tool="select"]) .scriptorium-pdf-page { cursor: crosshair; user-select: none; }
+.scriptorium-pdf-work:is([data-tool="text"], [data-tool="date"]) .scriptorium-pdf-page { cursor: text; }
+.scriptorium-pdf-work:not([data-tool="select"]) .textLayer { pointer-events: none; }
+
+/* pdf.js 的文字层（照 pdfjs-dist 5.7 web/pdf_viewer.css 里 .textLayer 那几条）：字是透明的，只为了能选中、复制、查找。 */
+.scriptorium-pdf-page .textLayer { position: absolute; text-align: initial; inset: 0; overflow: clip; opacity: 1; line-height: 1; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 0;
+    --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+.scriptorium-pdf-page .textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.scriptorium-pdf-page .textLayer > :not(.markedContent), .scriptorium-pdf-page .textLayer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height));
+    --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.scriptorium-pdf-page .textLayer .markedContent { display: contents; }
+.scriptorium-pdf-page .textLayer span[role="img"] { user-select: none; cursor: default; }
+.scriptorium-pdf-page .textLayer ::selection { background: color-mix(in srgb, var(--scriptorium-file-select) 40%, transparent); }
+.scriptorium-pdf-page .textLayer br::selection { background: transparent; }
+.scriptorium-pdf-page .textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
+.scriptorium-pdf-page .textLayer .scriptorium-pdf-hit { background: color-mix(in srgb, var(--scriptorium-file-mark) 30%, transparent); }
+.scriptorium-pdf-page .textLayer .scriptorium-pdf-hit.here { background: color-mix(in srgb, var(--scriptorium-file-mark) 60%, transparent); }
+
+/* 表单：盖在 PDF 的栏上，淡淡一层底色。 */
+.scriptorium-pdf-field { position: absolute; box-sizing: border-box; margin: 0; padding: 0 3px; border: 0; border-radius: 0; background: color-mix(in srgb, var(--scriptorium-file-select) 16%, transparent); color: CanvasText; font-family: Helvetica, Arial, "Microsoft YaHei", sans-serif; outline: none; }
+.scriptorium-pdf-field:focus { background: color-mix(in srgb, var(--scriptorium-file-select) 28%, transparent); }
+textarea.scriptorium-pdf-field { resize: none; padding-top: 2px; }
+.scriptorium-pdf-field:is(.check, .radio) { appearance: auto; accent-color: CanvasText; }
+.scriptorium-pdf-field:disabled { background: transparent; }
+
+/* 放上去的东西 */
+.scriptorium-pdf-obj { position: absolute; box-sizing: border-box; cursor: move; touch-action: none; }
+.scriptorium-pdf-obj.text { white-space: pre; line-height: 1.25; padding: 0; outline: none; }
+.scriptorium-pdf-obj.cover > .w { position: absolute; white-space: pre; line-height: 1.25; outline: none; }
+.scriptorium-pdf-obj.image > img { display: block; width: 100%; height: 100%; user-select: none; }
+.scriptorium-pdf-obj.rect { border-style: solid; }
+.scriptorium-pdf-obj.mark { opacity: .35; mix-blend-mode: multiply; }
+.scriptorium-pdf-obj :is(svg) { display: block; width: 100%; height: 100%; overflow: visible; }
+.scriptorium-pdf-obj polyline { fill: none; stroke: currentColor; stroke-width: var(--w, 1.5px); vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+.scriptorium-pdf-obj.on, .scriptorium-pdf-obj.ghost { box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--scriptorium-file-select) 18%, transparent); }
+.scriptorium-pdf-obj.mark.on { box-shadow: none; opacity: .55; }
+.scriptorium-pdf-obj.editing { cursor: text; }
+.scriptorium-pdf-obj.editing :is(.w), .scriptorium-pdf-obj.text.editing { caret-color: CanvasText; }
+.scriptorium-pdf-obj > .h { position: absolute; right: -4px; bottom: -4px; width: 8px; height: 8px; background: var(--scriptorium-file-accent); cursor: nwse-resize; }
+.scriptorium-pdf-obj.redact.on { box-shadow: none; opacity: .7; } /* 黑块上淡底看不见：选中时整块淡一点（不加框） */
+/* 页码、水印：只是预览（存的时候 edit.js 照同样的位置写进去），不接指针。 */
+.scriptorium-pdf-stamp { position: absolute; pointer-events: none; white-space: nowrap; line-height: 1; }
+.scriptorium-pdf-stamp.wm { left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-30deg); }
+.scriptorium-pdf-stamp.pn { left: 50%; transform: translateX(-50%); }
+.scriptorium-pdf-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; white-space: pre; padding: 0; pointer-events: none; }
+
+/* “篇章”面板：页面缩略图。选中显示为淡底；拖动时用一道细线标出放置位置。 */
+.scriptorium-pdf-thumbs { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; justify-items: center; gap: 6px; padding: 8px 8px 16px; }
+.scriptorium-pdf-thumb { position: relative; display: grid; justify-items: center; gap: 4px; width: 100%; box-sizing: border-box; padding: 8px 6px 4px; border-radius: 7px; cursor: pointer; }
+.scriptorium-pdf-thumb:hover { background: var(--scriptorium-file-hover); }
+.scriptorium-pdf-thumb[aria-selected="true"] { background: color-mix(in srgb, var(--scriptorium-file-select) 14%, transparent); }
+.scriptorium-pdf-thumb .pic { display: block; width: min(100%, 132px); color-scheme: light; background: Canvas; }
+.scriptorium-pdf-thumb .pic > canvas { display: block; width: 100%; height: 100%; }
+.scriptorium-pdf-thumb small { color: var(--scriptorium-file-text-3); font: var(--scriptorium-file-fs-meta) var(--scriptorium-file-font); }
+.scriptorium-pdf-thumb.here small { color: var(--scriptorium-file-text); }
+.scriptorium-pdf-thumb:is(.drop-before, .drop-after)::before { content: ""; position: absolute; left: 8px; right: 8px; height: 2px; background: var(--scriptorium-file-select); }
+.scriptorium-pdf-thumb.drop-before::before { top: -4px; }
+.scriptorium-pdf-thumb.drop-after::before { bottom: -4px; }
+
+/* 签名对话框 */
+.scriptorium-pdf-sign { width: min(520px, 100%); }
+.scriptorium-pdf-sign-pane { display: grid; gap: 8px; }
+.scriptorium-pdf-sign-pane[hidden] { display: none; }
+.scriptorium-pdf-pad { width: 100%; aspect-ratio: 8 / 3; border: 1px solid var(--scriptorium-file-line); border-radius: 7px; color-scheme: light; background: Canvas; cursor: crosshair; touch-action: none; }
+.scriptorium-pdf-sign-row { display: flex; align-items: center; gap: 8px; }
+.scriptorium-pdf-sign-row .grow { flex: 1; }
+.scriptorium-pdf-sign-input { height: 30px; padding: 0 10px; border: 1px solid var(--scriptorium-file-line); border-radius: 7px; background: var(--scriptorium-file-bg); color: var(--scriptorium-file-text); font: var(--scriptorium-file-fs-ui) var(--scriptorium-file-font); outline: none; }
+.scriptorium-pdf-sign-input:focus { border-color: var(--scriptorium-file-select); }
+.scriptorium-pdf-sign-typed { min-height: 72px; display: flex; align-items: center; padding: 0 16px; border-radius: 7px; color-scheme: light; background: Canvas; color: CanvasText; font: 40px KaiTi, STKaiti, "Kaiti SC", serif; white-space: nowrap; overflow: hidden; }
+.scriptorium-pdf-sign-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; max-height: 260px; overflow: auto; }
+.scriptorium-pdf-sign-item { display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid var(--scriptorium-file-line-soft); border-radius: 7px; }
+.scriptorium-pdf-sign-item > button:first-child { flex: 1; min-width: 0; height: 56px; padding: 4px; border: 0; border-radius: 4px; color-scheme: light; background: Canvas; cursor: pointer; }
+.scriptorium-pdf-sign-item > button:first-child:hover { opacity: .85; }
+.scriptorium-pdf-sign-item img { display: block; max-width: 100%; max-height: 100%; margin: auto; }

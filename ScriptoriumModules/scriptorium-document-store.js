@@ -133,7 +133,8 @@
             state.currentPath = metadata.filePath || null;
             state.currentName = String(metadata.name || defaultNameFor(normalized));
             const extension = core.extensionForKind(normalized.manifest.scene.kind);
-            if (!state.currentName.toLowerCase().endsWith(extension)) {
+            // 从 .md 原位打开的文稿保存回原文件（modules/scriptorium/markdownFiles），保留原文件名。
+            if (!normalized.manifest.markdownFile && !state.currentName.toLowerCase().endsWith(extension)) {
                 state.currentName = `${
                     state.currentName.replace(/\.[^.]+$/, '')
                 }${extension}`;

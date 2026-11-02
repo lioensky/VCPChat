@@ -593,6 +593,10 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                     : [],
                 scene: createSceneConfig(manifest.scene || {}),
                 import: manifest.import || null,
+                // 原位打开的 .md：原文件的编码、换行和所在文件夹，保存回 .md 时使用（modules/scriptorium/markdownFiles）。
+                ...(manifest.markdownFile && typeof manifest.markdownFile === 'object'
+                    ? { markdownFile: manifest.markdownFile }
+                    : {}),
             },
             source: {
                 format: sourceFormat,
