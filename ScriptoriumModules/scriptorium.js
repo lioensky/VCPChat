@@ -983,6 +983,12 @@
             async (request) => {
                 const requestId = request?.requestId;
                 try {
+                    // 网页、PDF、表格、文本、图片、白板显示时，Agent 的读取与截图作用于该文件（scriptorium-file-agent.js）。
+                    const fileAnswer = await window.ScriptoriumFileAgent?.answer(request);
+                    if (fileAnswer) {
+                        persistencePort.respondAgentRequest({ requestId, result: fileAnswer });
+                        return;
+                    }
                     const endpoint = request?.endpoint === 'current'
                         || !request?.endpoint
                         ? agentPort.current()

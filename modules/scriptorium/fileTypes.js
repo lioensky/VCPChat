@@ -104,6 +104,7 @@
         Object.freeze({ kind: 'web-page', name: '网页', exts: ['.html', '.htm'], overlay: true }),
         Object.freeze({ kind: 'pdf', name: 'PDF', exts: ['.pdf'], overlay: true }),
         Object.freeze({ kind: 'table', name: '表格', exts: ['.csv', '.tsv', '.xlsx', '.xlsm'], overlay: true }),
+        Object.freeze({ kind: 'board', name: '白板', exts: ['.excalidraw'], overlay: true }),
         Object.freeze({ kind: 'image', name: '图片', exts: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif'], overlay: true }),
         Object.freeze({ kind: 'text', name: '文本', exts: Object.keys(LANGUAGES), overlay: true }),
     ]);

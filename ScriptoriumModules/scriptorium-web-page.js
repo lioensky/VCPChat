@@ -356,6 +356,16 @@
         save: () => save(),
         reload: () => reload({ discard: true }),
         active: () => Boolean(page),
+        // 供 Agent 读取：网页框中排版后的文字（由主进程从框中读取，包括脚本生成的内容）、当前源码（含未保存的修改）与截图范围。
+        agent: Object.freeze({
+            text: async () => {
+                const result = await api().page('frame-text');
+                if (!result?.success) throw new Error(result?.error || '未能读取网页的文字。');
+                return result.text;
+            },
+            source: () => editor?.getValue() ?? '',
+            surface: () => (mode === 'source' ? sourceHost : stage),
+        }),
         doc: () => (page ? Object.freeze({ kind: 'web-page', filePath: page.filePath, name: page.name, generation: page.generation,
             dirty: dirty(), saving: page.saving, revision: 0 }) : null),
         _state: () => ({ page: page && { ...page }, dirty: dirty(), zoom, view: mode }),

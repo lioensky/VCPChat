@@ -10,6 +10,7 @@
 // 无法访问文坊页面及其接口和存储。
 //
 // 源码：scriptorium:page 读取、保存（只限 .html / .htm，并须在 fileAccess 允许的范围内），文件被外部修改时通知页面。
+// frame-text：网页框中排版后的文字，供 Agent 读取（ScriptoriumModules/scriptorium-file-agent.js）。
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -270,6 +271,12 @@ async function watchPage(sender, file) {
     return { success: true };
 }
 
+function pageFrame(sender) {
+    const frame = sender.mainFrame.framesInSubtree.find((item) => item.name === FRAME_NAME);
+    if (!frame) throw new Error('网页尚未显示。');
+    return frame;
+}
+
 function register(ipcMain, deps) {
     ipcMain.removeHandler('scriptorium:page');
     ipcMain.handle('scriptorium:page', async (event, payload = {}) => {
@@ -283,6 +290,8 @@ function register(ipcMain, deps) {
                 case 'save': return await savePage({ ...payload, senderId: event.sender.id });
                 case 'watch': return await watchPage(event.sender, payload.file);
                 case 'check': await watchers.get(event.sender.id)?.check(); return { success: true };
+                // 网页框中排版后的文字，包括脚本生成的内容（供 Agent 读取）。
+                case 'frame-text': return { success: true, text: await pageFrame(event.sender).executeJavaScript('document.body ? document.body.innerText : ""') };
                 default: return { success: false, error: '未知的网页操作。' };
             }
         } catch (error) {
