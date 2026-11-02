@@ -45,7 +45,9 @@
                     reason: metadata.reason || 'session-open',
                 });
                 const activeAdapter = context.resolveAdapter(normalized);
-                context.activateAdapter(activeAdapter);
+                // 直接进人要用的工作面。原来总是先整篇建一遍编辑面，阅读模式下再建一遍阅读面，长文档白花几秒。
+                const openSurface = window.UTTUScriptoriumUI?.openSurface?.(metadata.filePath) || 'edit';
+                context.activateAdapter(activeAdapter, { renderFollows: openSurface === 'edit' || openSurface === 'read' });
 
                 // 导入的 Markdown/HTML 可能把网络字体声明放在混合源码的
                 // <style> 中。必须在首次 Surface 渲染前完成受控下载、工程
@@ -96,7 +98,7 @@
                 }
 
                 const editActivated = context.surfacePort?.switchMode?.(
-                    'edit',
+                    openSurface, // VCP
                     { force: true }
                 );
                 if (!editActivated) {
@@ -104,10 +106,8 @@
                 }
                 context.historyPort.capture({ reason: 'document-opened' });
                 context.lineagePort?.load?.(normalized);
-                notificationPort.show?.(
-                    metadata.imported
-                        ? '导入工程已建立'
-                        : '文档已展开',
+                if (metadata.imported) notificationPort.show?.( // 打开 .md 不弹“文档已展开”，文件夹里来回点会堆一串
+                    '导入工程已建立', // 打开成功不弹提示（frontend-rules.md）
                     'success'
                 );
                 return true;
@@ -189,7 +189,8 @@
                 '打开另一份文档前，可以保存当前修改，或舍弃这些修改。',
                 async () => {
                     try {
-                        return openResult(await persistencePort.chooseOpen());
+                        // 要 await，否则坏文件解包失败时错误绕过 catch，既没有提示也没有返回 false。
+                        return await openResult(await persistencePort.chooseOpen());
                     } catch (error) {
                         notificationPort.show?.(
                             `打开失败：${error.message}`,
@@ -207,7 +208,7 @@
                 '导入文档会建立一份新工程。可以先保存当前修改。',
                 async () => {
                     try {
-                        return openResult(await persistencePort.chooseImport());
+                        return await openResult(await persistencePort.chooseImport());
                     } catch (error) {
                         notificationPort.show?.(
                             `导入失败：${error.message}`,
@@ -225,7 +226,7 @@
                 '载入另一份文档前，可以保存当前修改。',
                 async () => {
                     try {
-                        return openResult(
+                        return await openResult(
                             await persistencePort.readPath(filePath)
                         );
                     } catch (error) {

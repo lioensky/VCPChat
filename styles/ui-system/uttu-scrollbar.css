@@ -1,0 +1,130 @@
+/* Trading scrollbar-theme.css, using the shared VCP tokens.
+   Injected at user origin in documents; linked inside open ShadowRoots.
+   :host and * also match shadow hosts and descendants without an html ancestor. */
+html, :host, * {
+  scrollbar-width: auto !important;
+  scrollbar-color: auto !important;
+}
+
+html::-webkit-scrollbar, :host::-webkit-scrollbar, *::-webkit-scrollbar {
+  width: var(--uttu-scrollbar-size, 12px) !important;
+  height: var(--uttu-scrollbar-size, 12px) !important;
+}
+
+/* Light pages in VCP's frames (scrollbarTheme.js marks the root when the page background is light). */
+:root[data-uttu-light-page] {
+  --uttu-scrollbar-thumb: var(--uttu-scrollbar-thumb-on-light);
+  --uttu-scrollbar-thumb-hover: var(--uttu-scrollbar-thumb-on-light-hover);
+  --uttu-scrollbar-thumb-active: var(--uttu-scrollbar-thumb-on-light-active);
+}
+
+html::-webkit-scrollbar-track, :host::-webkit-scrollbar-track, *::-webkit-scrollbar-track {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+html::-webkit-scrollbar-thumb, :host::-webkit-scrollbar-thumb, *::-webkit-scrollbar-thumb {
+  min-height: 28px !important;
+  min-width: 28px !important;
+  border: var(--uttu-scrollbar-inset, 3px) solid transparent !important;
+  border-radius: var(--uttu-r-m) !important;
+  background: var(--uttu-scrollbar-thumb) padding-box !important;
+}
+
+.is-scrollbar-hover::-webkit-scrollbar-thumb,
+html::-webkit-scrollbar-thumb:hover, :host::-webkit-scrollbar-thumb:hover, *::-webkit-scrollbar-thumb:hover {
+  background: var(--uttu-scrollbar-thumb-hover) padding-box !important;
+}
+
+.is-scroll-dragging::-webkit-scrollbar-thumb,
+html::-webkit-scrollbar-thumb:active, :host::-webkit-scrollbar-thumb:active, *::-webkit-scrollbar-thumb:active {
+  background: var(--uttu-scrollbar-thumb-active) padding-box !important;
+}
+
+html::-webkit-scrollbar-button, :host::-webkit-scrollbar-button, *::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border: 0 !important;
+  padding: 0 !important;
+  background: none !important;
+  -webkit-appearance: none !important;
+}
+
+html::-webkit-scrollbar-corner, :host::-webkit-scrollbar-corner, *::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+/* Main reading scrollers keep the scrollbar's place when the content is short (admin pages jump on
+   switches). Without it the centred column of 文坊's reader moved 6px sideways between a short and a long document
+   (the bar is 12px), and again when a document first filled in. */
+#read-host, #render-host, .uttu-pdf-scroll, .uttu-table-scroll { scrollbar-gutter: stable !important; }
+
+/* Hidden exception table. Keep original selectors; do not change upstream CSS.
+   Each row names every source of the corresponding hidden scrollbar. */
+
+/* Desktopmodules/uttu-lobby/lobby-ui.css: horizontal activity strip. */
+.lobby-ui-activity-viewport { scrollbar-width: none !important; }
+.lobby-ui-activity-viewport::-webkit-scrollbar { display: none !important; }
+
+/* styles/compact-sidebar.css + styles/layout.css: avatar-only agent list. */
+.sidebar.avatar-only #tabContentAgents .sidebar-list-scroll { scrollbar-width: none !important; }
+.sidebar.avatar-only #tabContentAgents .sidebar-list-scroll::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* styles/setting/settings-sidebar-tabs.css: outer tab panes; inner lists scroll. */
+#tabContentAgents.sidebar-tab-content.active,
+#tabContentTopics.sidebar-tab-content.active { scrollbar-width: none !important; }
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* styles/setting/settings-sidebar-tabs.css: hidden tab-pane buttons and resizers.
+   All scrollbar buttons are also hidden by the shared rule above. */
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar-button,
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar-button:single-button,
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar-button:start,
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar-button:end,
+#tabContentAgents.sidebar-tab-content.active::-webkit-resizer,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar-button,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar-button:single-button,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar-button:start,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar-button:end,
+#tabContentTopics.sidebar-tab-content.active::-webkit-resizer {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* styles/two-column-sidebar.css: avatar navigation rail. */
+.sidebar-rail-scroll { scrollbar-width: none !important; }
+.sidebar-rail-scroll::-webkit-scrollbar { display: none !important; }
+
+/* styles/ui-system/turn-navigator.css: turn-navigation strip. */
+html .vcp-turn-nav-scroll:where(.vcp-ui-scope, .vcp-ui-scope *) { scrollbar-width: none !important; }
+html .vcp-turn-nav-scroll:where(.vcp-ui-scope, .vcp-ui-scope *)::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* VCPDistributedServer/Plugin/PTYShellExecutor/gui/ShellViewer.css: xterm viewport. */
+.xterm .xterm-viewport::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+}
+
+/* Desktopmodules/builtinWidgets/weatherWidget.js: horizontal forecast strip. */
+.vw-forecast::-webkit-scrollbar { height: 0 !important; }
+
+/* vendor/webawesome-runtime/dist-cdn/chunks/chunk.MO2KS3JW.js: wa-tab-group nav.
+   The common stylesheet is also linked inside Web Awesome open ShadowRoots. */
+.tab-group-top .nav, .tab-group-bottom .nav { scrollbar-width: none !important; }
+.tab-group-top .nav::-webkit-scrollbar, .tab-group-bottom .nav::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+}

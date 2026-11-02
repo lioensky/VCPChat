@@ -17,11 +17,12 @@ function decodeXml(value) {
         .replace(/&#(\d+);/g, (_match, decimal) =>
             String.fromCodePoint(Number.parseInt(decimal, 10))
         )
-        .replace(/</gi, '<')
-        .replace(/>/gi, '>')
-        .replace(/"/gi, '"')
-        .replace(/'/gi, "'")
-        .replace(/&/gi, '&');
+        // 上游这几行的实体名丢了（/</gi → '<'，等于没解码），这里补回。
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&apos;/gi, "'")
+        .replace(/&amp;/gi, '&');
 }
 
 function escapeHtml(value) {

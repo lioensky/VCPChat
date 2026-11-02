@@ -1,0 +1,651 @@
+/* 文坊的 扩展层，在 scriptorium.css 之后加载，只加不改上游。
+   外壳（顶栏、活动栏、面板、检查器、栏头）跟 VCP 主题走；文档本身的颜色只由文档样式决定（编辑面和预览是同一张纸）。 */
+
+/* themes.css 的颜色全引用 --uttu-* 令牌，令牌只在主窗口经 ui-system/index.css 引入；文坊要自己引。 */
+@import url('../styles/ui-system/uttu-tokens.css');
+/* 编辑器控件（样张组件库）：顶栏、活动栏、面板、浮条、检查器都用它。 */
+@import url('../styles/ui-system/uttu-controls.css');
+
+/* --- 外壳的颜色、字体和材质 --- */
+:root {
+    --scriptorium-ui: var(--uttu-font-body);
+    --scriptorium-glass: var(--uttu-ink-1);
+    --scriptorium-glass-solid: var(--uttu-ink-2);
+    --scriptorium-hairline: var(--uttu-line-soft);
+    --scriptorium-accent-soft: color-mix(in srgb, var(--uttu-select) 9%, transparent);
+    --scriptorium-accent-mid: color-mix(in srgb, var(--uttu-select) 28%, transparent);
+    --scriptorium-shadow: none;
+}
+:is(.scriptorium-titlebar, .uttu-arail, .outline-panel, .uttu-insp, .uttu-pane-head, .welcome-state, .focus-mode-dock,
+    .toast-region, .uttu-menu, .selection-format-bar, [class$="-dialog"], [class$="-backdrop"]) {
+    --highlight-text: var(--uttu-select);
+    --scriptorium-serif: "PT Serif", "MiSans", "Noto Sans SC", "Microsoft YaHei", serif;
+}
+body.uttu-v2 {
+    background: var(--uttu-ink-1);
+    color: var(--uttu-text);
+    font-family: var(--uttu-font-body);
+    --scriptorium-titlebar-height: 44px;
+    --scriptorium-deck-height: 0px;
+    --scriptorium-status-height: 0px;
+    grid-template-rows: 44px minmax(0, 1fr);
+}
+/* 上游的功能区和状态栏不显示（按钮留在 DOM 里供转发和格式同步）。 */
+body.uttu-v2 :is(.command-deck, .document-statusbar, .start-menu-dropdown, .panel-resizer) { display: none !important; }
+body.uttu-v2 > .scriptorium-titlebar { grid-row: 1; }
+body.uttu-v2 > .scriptorium-stage { grid-row: 2; }
+/* 多标签（uttu-scriptorium-tabs.js）。标签在顶栏左边、文档名的位置，不再单独占一行；
+   开着文档时总有一个（预览的那个），文档名藏起来。选中的是色块本身提亮一档（--uttu-pick-ring），不画框；预览标签（单击打开、
+   会被下一次单击换掉的）名字暗一档，双击、改了、Ctrl P 打开的才是固定标签。没存的带一个点；× 悬停或选中时才显出来；
+   名字放不下末尾渐隐。放不下时先把没选中的标签缩到 --uttu-tab-min，选中的不缩，再放不下才横着滚；
+   滚动时哪一头还有东西哪一头渐隐，滚到头不渐隐。 */
+body.uttu-has-tabs #uttu-title { display: none; }
+@property --uttu-tabs-fade-l { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --uttu-tabs-fade-r { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@keyframes uttu-tabs-fade-l { from { --uttu-tabs-fade-l: 0px; } 4%, to { --uttu-tabs-fade-l: 2em; } }
+@keyframes uttu-tabs-fade-r { from, 96% { --uttu-tabs-fade-r: 2em; } to { --uttu-tabs-fade-r: 0px; } }
+.uttu-top-l .uttu-tabs { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; height: 44px; overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 2em;
+  mask-image: linear-gradient(to right, transparent, black var(--uttu-tabs-fade-l), black calc(100% - var(--uttu-tabs-fade-r)), transparent);
+  animation: uttu-tabs-fade-l linear both, uttu-tabs-fade-r linear both; animation-timeline: scroll(self inline), scroll(self inline); }
+.uttu-tabs[hidden] { display: none; }
+.uttu-tab { position: relative; flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; min-width: var(--uttu-tab-min); max-width: 320px; height: 28px;
+  --uttu-tab-min: 92px; padding: 0 4px 0 10px; border-radius: var(--uttu-r-s);
+  color: var(--uttu-text-2); font: 600 var(--uttu-fs-label)/1 var(--uttu-font-body); white-space: nowrap; cursor: pointer; user-select: none; }
+.uttu-tab:hover { color: var(--uttu-text); }
+.uttu-tab[aria-selected="true"] { flex-shrink: 0; box-shadow: var(--uttu-pick-ring); color: var(--uttu-text); }
+.uttu-tab.preview { color: var(--uttu-text-3); font-weight: 500; }
+.uttu-tab.preview[aria-selected="true"] { color: var(--uttu-text-2); }
+.uttu-tab-name { min-width: 0; overflow: hidden; text-overflow: clip;
+  mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-tab-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--uttu-text-2); }
+.uttu-tab-dot[hidden] { display: none; }
+.uttu-tab-x { flex: none; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: var(--uttu-r-xs);
+  background: none; color: var(--uttu-text-3); cursor: pointer; opacity: 0; }
+.uttu-tab-x svg { width: 12px; height: 12px; }
+.uttu-tab:hover .uttu-tab-x, .uttu-tab[aria-selected="true"] .uttu-tab-x { opacity: .75; }
+.uttu-tab-x:hover { opacity: 1; color: var(--uttu-text); background: var(--uttu-ink-3); }
+:is(button, [role="button"], [role="tab"], a, summary, select, input[type="checkbox"]):focus-visible { outline: none; }
+input[type="checkbox"], input[type="range"] { accent-color: var(--uttu-terra); }
+.toast { border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-2); color: var(--uttu-text); font: var(--uttu-fs-small)/1.6 var(--uttu-font-body); box-shadow: none; }
+.toast.error { border-color: var(--uttu-bad); }
+.uttu-floating-menu { position: fixed; z-index: 2100; }
+/* 文件右键菜单十几项：窗口放得下就整份摆出来，不在 440 高处出滚动条。 */
+.uttu-floating-menu.uttu-menu { max-height: calc(100vh - 16px); }
+/* 停在右栏（窄）时顶栏挤：“转成工程”只留在文件菜单里。 */
+
+/* 最后一个脚本跑完才排版。上游的原样版面排一遍约 0.2 秒，紧接着就被 VCP 这层改掉，还会闪出来。 */
+body:not(.uttu-built) { display: none; }
+
+/* --- 顶栏：文件菜单、标签、所在文件夹，占满余下的宽度；靠右是保存状态、阅读 编辑 源码、专注、检查器、窗口按钮 ---
+   原来三列 1fr auto 1fr 让视图切换居中，右列空着四百多像素，标签、文件夹、保存状态挤在左列按比例一起缩，全被裁。
+   现在按优先级让：保存状态不缩，文件夹先缩到没有，标签再缩。 */
+.scriptorium-titlebar.uttu-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 6px;
+    border-bottom: 1px solid var(--uttu-line-soft);
+    background: var(--uttu-ink-1);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+.uttu-topbar > :not(.uttu-top-l, .uttu-top-c, .uttu-top-r) { display: none !important; }
+.uttu-top-l, .uttu-top-r { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.uttu-top-r { justify-content: flex-end; }
+.uttu-top-l > *, .uttu-top-c > *, .uttu-top-r > * { -webkit-app-region: no-drag; }
+.uttu-top-l .uttu-file-btn { margin-right: 6px; color: var(--uttu-text); }
+.uttu-top-l .uttu-title-edit { flex: 0 1 auto; }
+.uttu-top-l .uttu-saved { flex: none; margin-left: auto; }
+.uttu-agent { display: inline-flex; align-items: center; gap: 6px; flex: none; border: 0; background: none; padding: 3px 6px; border-radius: 5px; color: var(--uttu-mark); font: var(--uttu-fs-small) var(--uttu-font-body); white-space: nowrap; cursor: pointer; animation: uttu-ctl-fade var(--uttu-t-swap) var(--uttu-ease); }
+.uttu-agent:hover { background: var(--uttu-ink-3); }
+.uttu-agent[hidden] { display: none; }
+.uttu-top-r .titlebar-divider { width: 1px; height: 18px; margin: 0 6px; background: var(--uttu-line-soft); }
+.uttu-top-r .window-button { width: 36px; height: 30px; border: 0; border-radius: var(--uttu-r-s); background: none; color: var(--uttu-text-2); box-shadow: none; }
+.uttu-top-r .window-button:hover { background: var(--uttu-ink-3); color: var(--uttu-text); }
+.uttu-top-r .window-button.close-button:hover { background: var(--uttu-bad); color: var(--uttu-text); }
+.uttu-top-r .window-button svg { width: 15px; height: 15px; }
+/* Ctrl P 快速打开：窗口顶上居中一个框 */
+.uttu-qo { position: fixed; z-index: 80; top: 64px; left: 50%; width: min(560px, calc(100vw - 32px)); transform: translateX(-50%);
+  display: grid; gap: 6px; padding: 8px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-m);
+  background: var(--uttu-ink-1); box-shadow: 0 18px 48px rgba(0, 0, 0, .45); font: var(--uttu-fs-label)/1.4 var(--uttu-font-body); }
+.uttu-qo[hidden] { display: none; }
+.uttu-qo-input { height: 32px; padding: 0 10px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); outline: none;
+  background: var(--uttu-ink-0); color: var(--uttu-text); font: inherit; }
+.uttu-qo-input:focus { border-color: var(--uttu-select); }
+.uttu-qo-list { display: grid; max-height: min(420px, 60vh); overflow: auto; }
+.uttu-qo-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding: 6px 8px;
+  border: 0; border-radius: var(--uttu-r-s); background: none; color: var(--uttu-text-2); font: inherit; text-align: left; cursor: pointer; }
+.uttu-qo-row .nm { color: var(--uttu-text); white-space: nowrap; }
+.uttu-qo-row small { min-width: 0; overflow: hidden; white-space: nowrap; color: var(--uttu-text-3); font-size: var(--uttu-fs-small);
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent); }
+.uttu-qo-row em { font-style: normal; font-size: var(--uttu-fs-mini); color: var(--uttu-umber); }
+.uttu-qo-row:hover, .uttu-qo-row[aria-selected="true"] { box-shadow: var(--uttu-pick-ring); color: var(--uttu-text); }
+.uttu-qo-none, .uttu-qo-foot { margin: 4px 8px; font-size: var(--uttu-fs-small); color: var(--uttu-text-3); }
+.uttu-qo-foot[hidden] { display: none; }
+/* 阅读面上选中文字时浮条只留“批注”“问”（uttu-scriptorium-edit.js）；按钮自己的 display 会盖过 hidden */
+.uttu-bubble .uttu-tbar > [hidden] { display: none !important; }
+/* 大 .md 的第一屏，叠在阅读区上，整篇排好就撤（uttu-scriptorium-markdown.js firstPaint） */
+.uttu-pane-body > .render-host.uttu-md-firstpaint { z-index: 2; pointer-events: none; }
+/* 从 .md 打开时顶栏右边的“转成工程”（uttu-scriptorium-markdown.js） */
+body.uttu-empty .uttu-top-c, body.uttu-empty :is(.uttu-saved, #uttu-top-focus) { visibility: hidden; }
+body.uttu-empty .uttu-top-r > .uttu-tb { visibility: hidden; }
+
+/* --- 主体：活动栏 | 左侧面板 | 编辑和预览 | 右侧检查器 --- */
+body.uttu-v2 .scriptorium-stage {
+    --uttu-rail: 44px;
+    --uttu-l: 0px;
+    --uttu-r: 0px;
+    --uttu-side: 0px;
+    grid-template-columns: var(--uttu-rail) var(--uttu-l) minmax(0, 1fr) var(--uttu-side) var(--uttu-r);
+    /* 侧栏直接开合，不做动画：栏宽每变一帧，整篇文档都要重排一次，很卡。 */
+    transition: none;
+}
+/* 面板开着时的宽度：拖过就用布局里记下的（脚本把 --uttu-l-open / --uttu-r-open 写在 body 上），没拖过用默认。 */
+body.uttu-v2.uttu-left-open .scriptorium-stage { --uttu-l: var(--uttu-l-open, 240px); }
+body.uttu-v2.uttu-right-open .scriptorium-stage { --uttu-r: var(--uttu-r-open, 288px); }
+body.uttu-v2 :is(.outline-panel, .uttu-insp) { position: relative; }
+/* 拖动条贴着面板内侧边界；平时看不见，悬停或拖动时边界显出一道细线。双击回到默认宽度。 */
+.uttu-panel-resize { position: absolute; top: 0; bottom: 0; z-index: 5; width: 6px; cursor: col-resize; touch-action: none; }
+.uttu-panel-resize.left { right: 0; background-position: right center; }
+.uttu-panel-resize.right { left: 0; background-position: left center; }
+.uttu-panel-resize:is(:hover, :active) { background-image: linear-gradient(var(--uttu-text-3), var(--uttu-text-3)); background-size: 1px 100%; background-repeat: no-repeat; }
+body.uttu-v2 .outline-panel > .uttu-panel-resize { display: block !important; }
+body:not(.uttu-left-open) .outline-panel > .uttu-panel-resize,
+body:not(.uttu-right-open) .uttu-insp > .uttu-panel-resize,
+body.uttu-panel-resizing { cursor: col-resize; user-select: none; }
+body.uttu-v2 .scriptorium-stage > .uttu-arail { grid-column: 1; grid-row: 1; }
+body.uttu-v2 .scriptorium-stage > .outline-panel { grid-column: 2; grid-row: 1; }
+/* 停在右栏时，左栏点活动栏开合、拖边界改宽都没反应。上游在 900 像素以下把左栏写死成 320 宽
+   （scriptorium.css 的 @media (max-width: 900px)），右栏里的文坊常落在 761–900 之间（比“窄”宽，又碰上那条）：
+   那一列跟着开合和拖动在变，面板自己却一直 320 宽，盖在正文上。不窄时面板就填满自己那一列，多出来的裁掉。 */
+body.uttu-v2:not(.uttu-narrow) .scriptorium-stage > .outline-panel { width: auto; overflow: hidden; }
+body.uttu-v2 .scriptorium-stage > .writing-chamber { grid-column: 3; grid-row: 1; }
+body.uttu-v2 .scriptorium-stage > .uttu-side { grid-column: 4; grid-row: 1; }
+body.uttu-v2 .scriptorium-stage > .uttu-insp { grid-column: 5; grid-row: 1; }
+
+/* 双栏看两份（uttu-scriptorium-side.js）：编辑区和检查器之间多一列，右边只读地摆另一份。默认和左边对半，
+   拖过就用记下的宽度（脚本把 --uttu-side-open 写在 body 上）。窄、专注时不摆。不做开合动画。 */
+body.uttu-v2.uttu-side-open .scriptorium-stage { --uttu-side: var(--uttu-side-open, minmax(0, 1fr)); }
+.uttu-side { position: relative; display: grid; grid-template-rows: 38px minmax(0, 1fr); min-width: 0; min-height: 0;
+  border-left: 1px solid var(--uttu-line-soft); background: var(--uttu-ink-0); }
+.uttu-side[hidden], body.uttu-narrow .uttu-side, body.focus-mode .uttu-side { display: none; }
+.uttu-side-label { min-width: 0; overflow: hidden; text-overflow: clip;
+  mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-side-head .uttu-side-swap { width: auto; padding: 0 8px; font-size: var(--uttu-fs-label); white-space: nowrap; }
+.uttu-side-body { min-width: 0; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+.uttu-side-body:has(> .uttu-side-frame) { overflow: hidden; scrollbar-gutter: auto; }
+.uttu-side-frame { display: block; width: 100%; height: 100%; border: 0; color-scheme: light; background: Canvas; }
+.uttu-side-frame[data-scheme="dark"] { color-scheme: dark; background: var(--uttu-ink-0); }
+.uttu-side-md { max-width: 46em; margin: 0 auto; padding: 28px 32px 72px; color: var(--uttu-text); font: 15px/1.75 var(--uttu-font-body); overflow-wrap: anywhere; }
+.uttu-side-md :is(h1, h2, h3, h4) { margin: 1.4em 0 .5em; color: var(--uttu-text); font-weight: 600; line-height: 1.35; }
+.uttu-side-md h1 { font-size: 1.5em; }
+.uttu-side-md h2 { font-size: 1.25em; padding-top: .6em; border-top: 1px solid var(--uttu-line-soft); }
+.uttu-side-md h3 { font-size: 1.08em; }
+.uttu-side-md :is(p, ul, ol, blockquote, pre, table) { margin: 0 0 .8em; }
+.uttu-side-md :is(ul, ol) { padding-left: 1.4em; }
+.uttu-side-md li + li { margin-top: .25em; }
+.uttu-side-md a { color: var(--uttu-link); text-decoration: underline; cursor: pointer; }
+.uttu-side-md code { padding: 1px 4px; border-radius: var(--uttu-r-xs); background: var(--uttu-ink-2);
+  color: color-mix(in srgb, var(--uttu-text) 84%, var(--uttu-mark)); font: .9em var(--uttu-font-mono); }
+.uttu-side-md pre { padding: 12px 14px; border-radius: var(--uttu-r-s); background: var(--uttu-ink-1); overflow: auto; }
+.uttu-side-md pre code { padding: 0; background: none; color: var(--uttu-text-2); }
+.uttu-side-md blockquote { padding-left: 12px; border-left: 2px solid var(--uttu-line); color: var(--uttu-text-2); }
+.uttu-side-md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.uttu-side-md :is(th, td) { padding: 5px 10px; border: 1px solid var(--uttu-line-soft); }
+.uttu-side-md hr { border: 0; border-top: 1px solid var(--uttu-line-soft); margin: 1.4em 0; }
+.uttu-side-md img { max-width: 100%; }
+.uttu-side-plain { margin: 0; white-space: pre-wrap; color: var(--uttu-text-2); font: 13px/1.6 var(--uttu-font-mono); }
+
+/* 左侧面板（上游 #outline-panel）：面板头 + 一页内容 */
+body.uttu-v2 .outline-panel {
+    display: flex !important;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 0;
+    background: var(--uttu-ink-1);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+body.uttu-v2.uttu-left-open .outline-panel { border-right: 1px solid var(--uttu-line-soft); }
+body.uttu-v2 .outline-panel > * { display: none !important; }
+body.uttu-v2 .outline-panel > .uttu-left-head { display: flex !important; flex: none; }
+.uttu-left-tools { display: inline-flex; align-items: center; gap: 2px; }
+body.uttu-v2[data-uttu-left="lib"] .outline-panel > .uttu-lib { display: grid !important; }
+body.uttu-v2 .outline-panel > .uttu-explorer.on { display: flex !important; }
+body.uttu-v2[data-uttu-left="outline"]:not(.uttu-empty, .uttu-kind-deck) .outline-panel > .uttu-outline { display: grid !important; }
+body.uttu-v2[data-uttu-left="outline"].uttu-kind-deck:not(.uttu-empty) .outline-panel > .slide-navigator { display: grid !important; }
+body.uttu-v2[data-uttu-left="outline"].uttu-empty .outline-panel > .uttu-left-empty { display: block !important; }
+body.uttu-v2[data-uttu-left="find"] .outline-panel > .uttu-findp { display: grid !important; }
+body.uttu-v2 .outline-panel > :is(.uttu-outline, .slide-navigator, .uttu-lib, .uttu-findp) { flex: 1 1 auto; min-height: 0; overflow: auto; border-top: 0; }
+body.uttu-v2 .outline-panel > .uttu-explorer { flex: 1 1 auto; min-height: 0; overflow: hidden; border-top: 0; }
+/* 资源管理器：几块并列，每块一个头（点头折起），头右边是这一块的按钮。
+   像 VS Code 的资源管理器：展开的几块分着面板的高度、各自滚动，所以每块的头都一直看得见。工作区占剩下的高度（至少 120），
+   别的几块是内容那么高、最多四成。没有展开收起的动画。 */
+.uttu-explorer { flex-direction: column; padding: 4px 0 0; }
+.uttu-xsec { display: flex; flex-direction: column; flex: none; max-height: 40%; min-width: 0; min-height: 30px; }
+.uttu-xsec.main:has(> .uttu-xsec-body:not([hidden])) { flex: 1 1 0; min-height: 150px; max-height: none; }
+.uttu-xsec + .uttu-xsec { border-top: 1px solid var(--uttu-line-soft); }
+.uttu-xsec:last-child { padding-bottom: 8px; }
+.uttu-xsec-head { flex: none; display: flex; align-items: center; gap: 2px; min-width: 0; height: 30px; padding: 0 4px 0 2px; background: var(--uttu-ink-1); }
+.uttu-xsec-toggle { flex: 1 1 auto; display: flex; align-items: center; gap: 4px; min-width: 0; height: 26px; padding: 0 6px; border: 0; border-radius: var(--uttu-r-xs); background: none; color: var(--uttu-text-2); cursor: pointer; text-align: left; }
+.uttu-xsec-toggle:hover { background: var(--uttu-ink-2); }
+.uttu-xsec-toggle:active { opacity: .6; }
+.uttu-xsec-toggle:is(:focus, :focus-visible) { outline: none; }
+.uttu-xsec-toggle svg { flex: none; width: 12px; height: 12px; color: var(--uttu-text-3); transform: rotate(-90deg); }
+.uttu-xsec-toggle[aria-expanded="true"] svg { transform: none; }
+.uttu-xsec-toggle b { min-width: 0; overflow: hidden; white-space: nowrap; font: 600 var(--uttu-fs-meta) var(--uttu-font-body); letter-spacing: .08em; }
+.uttu-xsec-toggle small { flex: none; font: var(--uttu-fs-mini) var(--uttu-font-body); color: var(--uttu-text-3); }
+.uttu-xsec-tools { flex: none; display: inline-flex; align-items: center; gap: 1px; }
+.uttu-xsec-tools .uttu-tb { width: 24px; height: 24px; }
+.uttu-xsec-tools .uttu-tb svg { width: 14px; height: 14px; }
+.uttu-xsec-tools .uttu-xsec-text { width: auto; padding: 0 6px; font-size: var(--uttu-fs-mini); color: var(--uttu-text-3); }
+.uttu-xsec-body { display: grid; align-content: start; gap: 6px; min-width: 0; min-height: 0; overflow: auto; padding: 2px 6px 10px; }
+.uttu-xsec-body[hidden] { display: none; }
+.uttu-xsec-body > .uttu-lib { display: grid; padding: 0; }
+/* 搜索页的“所有文件”：替换行和命中列表换成文件结果（uttu-scriptorium-folder.js）。 */
+.uttu-findp.files > :not(.uttu-search:first-child, .uttu-seg, .uttu-find-files) { display: none !important; }
+.uttu-findp:not(.files) > .uttu-find-files { display: none; }
+.uttu-insp-rule { width: 100%; margin: 14px 0 12px; border: 0; border-top: 1px solid var(--uttu-line-soft); }
+.uttu-xsec-body > .uttu-specp { display: grid; padding: 0; }
+.uttu-xsec-body .uttu-left-note { padding: 4px 6px; }
+.uttu-tree-root span { font-weight: 600; }
+.uttu-tree-root small { margin-left: auto; flex: none; font-size: var(--uttu-fs-mini); color: var(--uttu-text-3); }
+.uttu-tree .uttu-tree-empty { padding-left: 28px; font-size: var(--uttu-fs-meta); }
+.uttu-tree-row.file.other { color: var(--uttu-text-2); }
+/* 拖到文件夹上要挪进去：那一行提亮一档（和选中一样的画法，不画框）。 */
+.uttu-tree-row.uttu-drop-into { background: var(--uttu-ink-3); }
+.uttu-tab.uttu-tab-drop { background: var(--uttu-ink-3); }
+.uttu-tree-row .uttu-inline-name, .uttu-row .uttu-inline-name { flex: 1; min-width: 0; height: 24px; }
+.uttu-tab .uttu-inline-name { width: 140px; height: 22px; }
+#uttu-title + .uttu-inline-name { width: min(280px, 40vw); height: 26px; }
+.uttu-folder-replace { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; min-width: 0; }
+.uttu-folder-replace > .uttu-search { flex: 1; min-width: 0; width: auto; }
+.uttu-tag-cloud { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 2px 4px; }
+/* 标签（第二轮 E2）：一个个小签，后面淡字写几份；选中的那个提亮一档。 */
+.uttu-tag-chip { display: inline-flex; align-items: baseline; gap: 4px; max-width: 100%; padding: 2px 7px; border: 0; border-radius: var(--uttu-r-xs); background: var(--uttu-ink-2); color: var(--uttu-text-2); font: var(--uttu-fs-meta) var(--uttu-font-body); cursor: pointer; }
+.uttu-tag-chip:hover { color: var(--uttu-text); }
+.uttu-tag-chip[aria-pressed="true"] { background: var(--uttu-ink-3); color: var(--uttu-text); }
+.uttu-tag-chip:is(:focus, :focus-visible) { outline: none; }
+.uttu-tag-chip span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+.uttu-tag-chip small { color: var(--uttu-text-3); font-size: var(--uttu-fs-mini); }
+.uttu-tag-files { display: grid; gap: 1px; }
+.uttu-recent-row { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); padding-block: 5px; }
+.uttu-recent-row small { overflow: hidden; white-space: nowrap; text-overflow: clip;
+    mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent);
+    animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-xsec-toggle b { text-overflow: clip; mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent);
+    animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-left-note { margin: 0; padding: 10px 12px; color: var(--uttu-text-3); font-size: var(--uttu-fs-small); line-height: 1.6; }
+.uttu-phead .uttu-tb svg { width: 15px; height: 15px; }
+
+/* 文库：搜索、种类、按改动时间排的一列 */
+.uttu-lib { align-content: start; gap: 8px; padding: 10px 8px 16px; }
+.uttu-lib > :is(.uttu-search, .uttu-seg) { margin: 0 4px; width: auto; }
+.uttu-lib-rows { display: grid; gap: 1px; }
+.uttu-lib-rows .uttu-left-note { padding-inline: 4px; }
+/* 文库管理：行里改名的输入框和行一样高；列表下面一行字说明右键能管理。 */
+.uttu-lib-rename { width: 100%; height: 30px; box-sizing: border-box; margin: 0; padding: 0 8px; border: 1px solid var(--uttu-line); border-radius: 6px; background: var(--uttu-ink-2); color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); outline: none; }
+/* 文件夹页：文库页顶上切“文库 | 文件夹”，文件夹是只列 Markdown 的目录树。 */
+.uttu-lib > [hidden], .uttu-folder [hidden] { display: none !important; }
+.uttu-lib > .uttu-lib-src { margin: 0 4px; width: auto; }
+.uttu-folder, .uttu-folder-open { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.uttu-folder-empty { display: grid; gap: 8px; margin: 0 4px; min-width: 0; }
+.uttu-folder-empty .uttu-left-note { padding: 0; }
+.uttu-folder-choose { justify-self: start; }
+.uttu-folder-grp { margin-top: 6px; font: 600 9.5px var(--uttu-font-body); letter-spacing: .36em; text-transform: uppercase; color: var(--uttu-umber); }
+.uttu-folder-recent { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.uttu-folder-recent small { min-width: 0; font-family: var(--uttu-font-mono); overflow: hidden; text-overflow: clip;
+  mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-folder-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 4px; margin: 0 4px; }
+.uttu-folder-head b, .uttu-folder-head small { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: clip;
+  mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-folder-head b { font-size: var(--uttu-fs-ui); font-weight: 600; color: var(--uttu-text); }
+.uttu-folder-head small { grid-column: 1 / -1; font: var(--uttu-fs-mini) var(--uttu-font-mono); color: var(--uttu-text-3); }
+.uttu-folder-head .uttu-folder-act { width: auto; height: 24px; padding: 0 8px; font-size: var(--uttu-fs-meta); color: var(--uttu-text-2); }
+.uttu-folder-open > .uttu-search { margin: 0 4px; width: auto; }
+/* 打开的是笔记文件夹：头下一行“新建待办”“新建备忘” */
+/* 搜索框和“名字 | 全文”一行；全文结果每份文件下面一行一处 */
+.uttu-tree-row.file small { margin-left: auto; flex: none; font-size: var(--uttu-fs-mini); color: var(--uttu-text-3); }
+.uttu-tree-row.uttu-hit-row { align-items: baseline; padding-left: 30px; font-size: var(--uttu-fs-meta); color: var(--uttu-text-2); }
+.uttu-tree-row.uttu-hit-row small { flex: none; min-width: 2.5em; font: var(--uttu-fs-mini) var(--uttu-font-mono); color: var(--uttu-text-3); }
+.uttu-tree-row.uttu-hit-row mark { background: color-mix(in srgb, var(--uttu-select) 30%, transparent); color: var(--uttu-text); border-radius: 2px; }
+.uttu-tree { display: grid; min-width: 0; }
+.uttu-tree .uttu-left-note { padding-inline: 8px; }
+.uttu-tree-row { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding: 4px 8px 4px calc(8px + var(--depth, 0) * 14px);
+  border: 0; border-radius: var(--uttu-r-s); background: none; color: var(--uttu-text-2); font: var(--uttu-fs-ui) var(--uttu-font-body);
+  text-align: left; white-space: nowrap; cursor: pointer; }
+.uttu-tree-row span { min-width: 0; overflow: hidden; text-overflow: clip;
+  mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-tree-row svg { flex: none; width: 14px; height: 14px; color: var(--uttu-text-3); }
+.uttu-tree-row.dir svg { transform: rotate(-90deg); }
+.uttu-tree-row.dir[aria-expanded="true"] svg { transform: none; }
+.uttu-tree-row.file { color: var(--uttu-text); }
+.uttu-tree-row:hover { background: var(--uttu-ink-2); }
+.uttu-tree-row[aria-current="true"] { background: var(--uttu-ink-3); }
+/* .md 被别处改了、删了，或有恢复副本时，顶栏下面居中一条提示，带一两个按钮（uttu-scriptorium-markdown.js）。 */
+.uttu-md-banner { position: fixed; top: 52px; left: 50%; z-index: 40; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  max-width: min(640px, calc(100vw - 32px)); padding: 10px 12px 10px 16px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-m);
+  background: var(--uttu-ink-2); color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); box-shadow: 0 10px 28px rgba(0, 0, 0, .35); }
+.uttu-md-banner[hidden] { display: none; }
+.uttu-md-banner-text { flex: 1 1 260px; min-width: 0; }
+.uttu-md-banner[data-kind="conflict"] { border-color: var(--uttu-mark); }
+/* 两边差在哪（uttu-scriptorium-diff.js）：浮在中间，只列不一样的几段；磁盘那边淡红底、我这边淡绿底，相同的省掉写行数。 */
+.uttu-diffbox { position: fixed; z-index: 90; top: 72px; left: 50%; transform: translateX(-50%); width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 120px);
+    display: flex; flex-direction: column; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-m); background: var(--uttu-ink-1); color: var(--uttu-text); }
+.uttu-diffbox-head { display: flex; align-items: center; gap: 14px; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--uttu-line-soft); font-size: var(--uttu-fs-small); color: var(--uttu-text-2); }
+.uttu-diffbox-head b { margin-right: auto; color: var(--uttu-text); font-weight: 600; }
+.uttu-diffbox-head i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 2px; }
+.uttu-diffbox i.disk, .uttu-diffbox-body .disk { background: color-mix(in srgb, var(--uttu-bad) 16%, transparent); }
+.uttu-diffbox i.mine, .uttu-diffbox-body .mine { background: color-mix(in srgb, var(--uttu-ok) 16%, transparent); }
+.uttu-diffbox-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px 0; font: 12.5px/1.6 var(--uttu-font-mono); }
+.uttu-diffbox-body > div { display: grid; grid-template-columns: 3.2em minmax(0, 1fr); gap: 8px; padding: 0 14px; }
+.uttu-diffbox-body > div b { font: 600 var(--uttu-fs-mini) var(--uttu-font-body); color: var(--uttu-text-3); padding-top: 2px; }
+.uttu-diffbox-body code { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.uttu-diffbox-body .gap { color: var(--uttu-text-3); font: var(--uttu-fs-mini) var(--uttu-font-body); padding-block: 2px; }
+.uttu-diffbox-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--uttu-line-soft); }
+/* 顶栏标签后面：它在哪个文件夹（淡字）。一行里最次要的，宽度不够时先缩到没有。 */
+.uttu-where { flex: 0 1000 auto; min-width: 0; padding: 3px 2px; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); white-space: nowrap; overflow: hidden; text-overflow: clip;
+  mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-where[hidden] { display: none; }
+/* 篇章：节标题可以拖动 */
+.uttu-outline { align-content: start; padding: 8px 8px 16px; }
+.uttu-outline-list { display: grid; gap: 1px; }
+.uttu-outline-list > button { position: relative; display: block; width: 100%; border: 0; border-radius: 6px; background: none; padding: 6px 8px 6px 12px; color: var(--uttu-text-2); font: var(--uttu-fs-ui) var(--uttu-font-body); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: clip; cursor: pointer; }
+.uttu-outline-list > button.l1 { padding-left: 26px; color: var(--uttu-text-3); }
+.uttu-outline-list > button.l2 { padding-left: 40px; color: var(--uttu-text-3); font-size: var(--uttu-fs-small); }
+.uttu-outline-list > button:hover { background: var(--uttu-ink-2); color: var(--uttu-text); }
+.uttu-outline-list > button:active { opacity: .6; }
+.uttu-outline-list > button[draggable="true"] { cursor: grab; }
+/* 当前一节：选中框。 */
+.uttu-outline-list > button[aria-current="true"] { color: var(--uttu-text); box-shadow: var(--uttu-pick-ring); }
+.uttu-outline-list > button.dragging { opacity: .4; }
+.uttu-outline-list > button:is(.drop-before, .drop-after)::after { content: ""; position: absolute; left: 8px; right: 8px; height: 2px; background: var(--uttu-select); }
+.uttu-outline-list > button.drop-before::after { top: 0; }
+.uttu-outline-list > button.drop-after::after { bottom: 0; }
+.uttu-outline-tip { padding: 10px 12px 0; font-size: var(--uttu-fs-meta); }
+.uttu-outline-tip[hidden] { display: none; }
+/* 演示：上游的页面缩略图 */
+body.uttu-v2 .outline-panel > .slide-navigator { align-content: start; gap: 10px; padding: 10px 10px 16px; }
+/* 查找：查找、替换、每一处和它所在的小节 */
+.uttu-findp { align-content: start; gap: 8px; padding: 10px 10px 16px; }
+.uttu-findp .uttu-search[hidden] { display: none; }
+.uttu-find-row { display: flex; align-items: center; gap: 2px; min-height: 28px; }
+.uttu-find-row small { padding-left: 4px; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); font-variant-numeric: tabular-nums; }
+.uttu-find-row .grow { flex: 1; }
+.uttu-find-row .uttu-tb { width: 26px; height: 26px; }
+.uttu-find-row .uttu-tb svg { width: 14px; height: 14px; }
+.uttu-find-row svg.up { transform: rotate(180deg); }
+.uttu-find-row [hidden] { display: none; }
+.uttu-hits { display: grid; gap: 1px; }
+.uttu-hit { display: grid; gap: 1px; border: 0; background: none; padding: 6px 8px; border-radius: 6px; text-align: left; color: var(--uttu-text-2); font: var(--uttu-fs-small)/1.5 var(--uttu-font-body); cursor: pointer; min-width: 0; }
+.uttu-hit span { overflow: hidden; text-overflow: clip; mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); white-space: nowrap; }
+.uttu-hit:hover { background: var(--uttu-ink-2); color: var(--uttu-text); }
+.uttu-hit[aria-current="true"] { background: var(--uttu-ink-3); color: var(--uttu-text); }
+.uttu-hit small { color: var(--uttu-text-3); font-size: var(--uttu-fs-mini); overflow: hidden; text-overflow: clip; mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); white-space: nowrap; }
+.uttu-hit mark { background: color-mix(in srgb, var(--uttu-mark) 30%, transparent); color: var(--uttu-text); border-radius: 2px; }
+
+/* 右侧检查器 */
+.uttu-insp { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--uttu-ink-1); color: var(--uttu-text); }
+body.uttu-right-open .uttu-insp { border-left: 1px solid var(--uttu-line-soft); }
+.uttu-insp-head { box-sizing: border-box; height: 38px; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid var(--uttu-line-soft); }
+.uttu-insp-head > * { flex: 1; min-width: 0; }
+.uttu-insp-page { min-height: 0; overflow: auto; padding: 14px 12px 20px; display: grid; align-content: start; gap: 16px; font-size: var(--uttu-fs-ui); }
+.uttu-insp-page[hidden] { display: none; }
+.uttu-insp-page .note { margin: 0; color: var(--uttu-text-3); font-size: var(--uttu-fs-small); line-height: 1.6; }
+.uttu-insp-page .note[hidden], .uttu-insp-page [hidden] { display: none; }
+.uttu-insp-group { display: grid; gap: 16px; }
+.uttu-insp-page .uttu-link-btn { justify-self: start; }
+/* “链接”页：链出、反向链接两组，一行一处，名字一行、所在行一行，放不下末尾渐隐。 */
+.uttu-links { display: grid; gap: 2px; min-width: 0; }
+.uttu-links-reload { position: relative; z-index: 1; justify-self: end; width: 26px; height: 24px; margin-bottom: -22px; }
+.uttu-links-h { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 4px; }
+.uttu-links-h:first-of-type { margin-top: 0; }
+.uttu-links-h b { color: var(--uttu-text); font-weight: 600; font-size: var(--uttu-fs-label); }
+.uttu-links-h small { color: var(--uttu-text-3); font-size: var(--uttu-fs-small); }
+.uttu-links-file { margin: 6px 0 0; color: var(--uttu-text-2); font: var(--uttu-fs-small)/1.5 var(--uttu-font-mono); overflow-wrap: anywhere; }
+.uttu-links-note { margin: 0; color: var(--uttu-text-3); font-size: var(--uttu-fs-small); line-height: 1.6; }
+.uttu-links-row { display: grid; gap: 1px; width: 100%; min-width: 0; padding: 5px 8px; border: 0; border-radius: var(--uttu-r-s);
+  background: none; color: var(--uttu-text); text-align: left; cursor: pointer; font: var(--uttu-fs-ui)/1.5 var(--uttu-font-body); }
+.uttu-links-row:hover { background: var(--uttu-ink-3); }
+.uttu-links-row.dim { color: var(--uttu-text-3); cursor: default; }
+.uttu-links-row.dim:hover { background: none; }
+.uttu-links-row :is(.nm, small) { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip;
+  mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); }
+.uttu-links-row small { color: var(--uttu-text-3); font-size: var(--uttu-fs-small); }
+.uttu-insp-meta { display: grid; gap: 4px; color: var(--uttu-text-3); font-size: var(--uttu-fs-small); }
+.uttu-insp-meta code { font: var(--uttu-fs-meta) var(--uttu-font-mono); color: var(--uttu-text-2); overflow-wrap: anywhere; }
+.uttu-cmt-head { display: flex; align-items: center; gap: 8px; color: var(--uttu-text-3); font-size: var(--uttu-fs-small); }
+.uttu-cmt-head .grow { flex: 1; }
+.uttu-cmts { display: grid; gap: 8px; }
+.uttu-cmt .target { color: var(--uttu-text-2); font-size: var(--uttu-fs-small); }
+.uttu-cmt .crop { display: block; width: 100%; max-height: 110px; object-fit: contain; object-position: left top; background: var(--uttu-ink-0); }
+/* 网页、图片、PDF、表格、文本：检查器只有批注、文脉两页；文脉是文件改动记录，不是上游文脉。 */
+body.uttu-overlay .uttu-insp [data-t]:is([data-t="format"], [data-t="doc"], [data-t="links"]) { display: none; }
+body.uttu-overlay .uttu-insp-page :is(.lineage-panel, .uttu-lineage-bar) { display: none; }
+.uttu-file-history { display: none; }
+body.uttu-overlay .uttu-file-history { display: grid; gap: 8px; align-content: start; padding: 12px; }
+.uttu-file-diff { max-height: 220px; overflow: auto; font: var(--uttu-fs-mini)/1.6 var(--uttu-font-mono); }
+.uttu-file-diff[hidden] { display: none; }
+.uttu-file-diff div { padding: 1px 6px; white-space: pre-wrap; word-break: break-all; }
+.uttu-file-diff .old { background: var(--uttu-code-deleted); }
+.uttu-file-diff .new { background: var(--uttu-code-added); }
+.uttu-cmt .foot .uttu-link-btn { font-size: var(--uttu-fs-meta); }
+/* 文脉：上游面板（刻点、待审、自动允许）换成 VCP 的样子 */
+/* 设置：文坊自己的设置都在这一处。 */
+.uttu-settings { gap: 0; padding: 0; }
+.uttu-settings h4 { align-items: center; gap: 0; height: 44px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--uttu-line-soft); }
+.uttu-settings h4 .grow { flex: 1; }
+.uttu-settings-group { display: grid; justify-items: start; gap: 6px; padding: 10px 16px 12px; }
+.uttu-settings-group + .uttu-settings-group { border-top: 1px solid var(--uttu-line-soft); }
+.uttu-settings-group .lab { color: var(--uttu-text-3); font-size: var(--uttu-fs-small); }
+.uttu-settings .uttu-chk.child { margin-left: 24px; }
+.uttu-lineage-bar { display: flex; gap: 8px; padding: 12px 12px 4px; }
+.uttu-insp-page[data-t="lineage"] { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 0; }
+.uttu-insp-page[data-t="lineage"][hidden] { display: none; }
+.uttu-insp-page .lineage-summary { display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 12px; border: 0; color: var(--uttu-text-3); font: var(--uttu-fs-small) var(--uttu-font-body); }
+.uttu-insp-page .lineage-summary strong { color: var(--uttu-text); font-weight: 600; }
+.uttu-insp-page .lineage-live { display: none; }
+.uttu-insp-page .lineage-flow { padding: 4px 8px 12px; }
+.uttu-insp-page .lineage-empty { color: var(--uttu-text-3); font: var(--uttu-fs-small)/1.6 var(--uttu-font-body); }
+.uttu-insp-page .lineage-empty .empty-orbit { display: none; }
+.uttu-insp-page .lineage-empty strong { color: var(--uttu-text-2); font-weight: 500; }
+/* 文脉：上游的节点和逻辑不动，只换呈现：直角、扁平、字号走令牌，和批注卡一个样子。自动允许挪进设置。 */
+.uttu-insp-page .checkpoint-item { margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--uttu-line-soft); border-radius: var(--uttu-r-s); background: var(--uttu-ink-2); box-shadow: none; transform: none; }
+.uttu-insp-page .checkpoint-item:hover, .uttu-insp-page .checkpoint-item:focus-visible { border-color: var(--uttu-line); background: var(--uttu-ink-3); box-shadow: none; transform: none; }
+.uttu-insp-page .checkpoint-item::before, .uttu-insp-page .lineage-flow::before, .uttu-insp-page .lineage-flow::after { display: none; }
+.uttu-insp-page .checkpoint-item h3 { margin: 4px 0 2px; color: var(--uttu-text); font: 600 var(--uttu-fs-ui) var(--uttu-font-body); }
+.uttu-insp-page .checkpoint-item p { margin: 0; color: var(--uttu-text-2); font: var(--uttu-fs-small)/1.5 var(--uttu-font-body); }
+.uttu-insp-page .checkpoint-meta { gap: 6px; color: var(--uttu-text-3); font: var(--uttu-fs-meta) var(--uttu-font-body); }
+.uttu-insp-page .checkpoint-identity { gap: 6px; }
+.uttu-insp-page .checkpoint-avatar { width: 18px; height: 18px; font-size: var(--uttu-fs-mini); box-shadow: none; }
+.uttu-insp-page :is(.checkpoint-source, .checkpoint-item.agent .checkpoint-source, .checkpoint-meta time) { color: var(--uttu-text-3); font: var(--uttu-fs-meta) var(--uttu-font-body); letter-spacing: 0; text-transform: none; }
+.uttu-insp-page .checkpoint-status { padding: 0; border: 0; border-radius: 0; background: none; color: var(--uttu-text-3); font: var(--uttu-fs-meta) var(--uttu-font-body); }
+.uttu-insp-page :is(.checkpoint-item.pending, .checkpoint-item.pending.high-risk) .checkpoint-status { background: none; color: var(--uttu-mark); }
+.uttu-insp-page .pr-card-actions { gap: 6px; }
+.uttu-insp-page .pr-card-actions button { height: 24px; padding-inline: 8px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-xs); background: none; color: var(--uttu-text-2); font: var(--uttu-fs-small) var(--uttu-font-body); }
+.uttu-insp-page .pr-card-actions button:hover { border-color: var(--uttu-select); color: var(--uttu-text); }
+.uttu-insp-page .agent-approval-policy { display: none; margin: 0; padding: 10px 12px 14px; border: 0; border-top: 1px solid var(--uttu-line-soft); border-radius: 0; background: none; color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); }
+.uttu-insp-page .agent-approval-policy small { color: var(--uttu-text-3); }
+
+/* 停在右栏里（窄）：活动栏留着，两侧面板盖在内容上，点外面收起。 */
+body.uttu-narrow .scriptorium-stage { grid-template-columns: var(--uttu-rail) 0 minmax(0, 1fr) 0 0; }
+body.uttu-narrow .scriptorium-stage > :is(.outline-panel, .uttu-insp) { position: absolute; top: 0; bottom: 0; z-index: 30; grid-column: auto; width: min(280px, 82vw); visibility: hidden; }
+/* 浮着的面板也能拖宽，拖过的宽度记在 --uttu-l-open / --uttu-r-open 上。 */
+body.uttu-narrow .scriptorium-stage > .outline-panel { width: min(var(--uttu-l-open, 280px), calc(100vw - 80px)); }
+body.uttu-narrow .scriptorium-stage > .uttu-insp { width: min(var(--uttu-r-open, 280px), calc(100vw - 80px)); }
+body.uttu-narrow .scriptorium-stage > .outline-panel { left: var(--uttu-rail); border-right: 1px solid var(--uttu-line); }
+body.uttu-narrow .scriptorium-stage > .uttu-insp { right: 0; border-left: 1px solid var(--uttu-line); }
+body.uttu-narrow.uttu-left-open .scriptorium-stage > .outline-panel,
+body.uttu-narrow.uttu-right-open .scriptorium-stage > .uttu-insp { visibility: visible; }
+/* 网页没有所见即所得，顶栏只留“阅读”“源码”。改 CSS 时编辑栏头的一句。 */
+body.uttu-page-mode .uttu-view-seg [data-v="edit"] { display: none; }
+body.uttu-narrow .uttu-saved:not(.dirty) { display: none; }
+
+/* --- 中间：编辑栏 | 分隔条 | 预览栏；每栏顶上自己一行小工具 --- */
+body.uttu-v2 .writing-chamber { overflow: hidden; background: var(--uttu-ink-1); scrollbar-gutter: auto; }
+body.uttu-v2 .writing-chamber::before, body.uttu-v2 .writing-chamber::after, body.uttu-v2 .chamber-aura { display: none; }
+body.uttu-v2 .document-workspace.uttu-panes {
+    --uttu-split: 50%;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--uttu-ink-1);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+body.uttu-v2 .document-workspace.uttu-panes[hidden] { display: none; }
+body.uttu-v2 .document-workspace::before { display: none; }
+.uttu-pane { display: grid; grid-template-rows: 38px minmax(0, 1fr); min-width: 0; min-height: 0; container-type: inline-size; }
+.uttu-pane.ed { flex: 0 0 var(--uttu-split); }
+.uttu-pane.pv { flex: 1 1 0; }
+body.uttu-view-edit .uttu-pane.ed { flex: 1 1 auto; }
+body.uttu-view-edit :is(.uttu-pane.pv, .uttu-panes > .uttu-split),
+body.uttu-view-preview :is(.uttu-pane.ed, .uttu-panes > .uttu-split) { display: none; }
+.uttu-pane-head { display: flex; align-items: center; gap: 2px; padding: 0 6px 0 8px; border-bottom: 1px solid var(--uttu-line-soft); background: var(--uttu-ink-1); min-width: 0; overflow: hidden; white-space: nowrap; }
+.uttu-pane-head > .uttu-seg { margin-right: 6px; }
+.uttu-pane-head .grow { flex: 1; }
+.uttu-pane-tools { display: flex; align-items: center; flex: 1; min-width: 0; }
+.uttu-pane-tools > .uttu-tbar { flex: 1; }
+.uttu-pane-tools > .uttu-tbar[hidden] { display: none; }
+.uttu-pane-label { padding-left: 4px; color: var(--uttu-text-2); font-size: var(--uttu-fs-ui); }
+.uttu-pane-label small { margin-left: 8px; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); }
+.uttu-pane-head .note-s { padding-inline: 6px; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); }
+.uttu-pane-head .tgrp { display: contents; }
+.uttu-pane-head .uttu-tb.more { display: none; }
+@container (max-width: 580px) {
+    .uttu-pane-head .tgrp.opt { display: none; }
+    .uttu-pane-head .uttu-tb.more { display: grid; }
+}
+/* 两栏并排时栏头要对齐，不能折行，放不下时按优先级让：说明文字，栏名后的小字，次要按钮收进 ⋯，“插入”只留图标，最后是“预览”两个字。 */
+.uttu-tbar:is([data-for="source"], [data-for="css"]) .uttu-tb.more { display: none; }
+@container (max-width: 400px) {
+    .uttu-pane-head .note-s { display: none; }
+}
+@container (max-width: 300px) {
+    .uttu-pane-label small { display: none; }
+    .uttu-pane-head .tgrp.opt-s { display: none; }
+    .uttu-tbar:is([data-for="source"], [data-for="css"]) .uttu-tb.more { display: grid; }
+}
+@container (max-width: 240px) {
+    .uttu-pane-head .uttu-pane-label { display: none; }
+    .uttu-tbar[data-for="source"] .uttu-tb-drop > span { display: none; }
+}
+.uttu-pane-body { position: relative; min-height: 0; overflow: hidden; }
+.uttu-pane-body > :is(.render-host, .source-host) { position: absolute; inset: 0; height: auto; }
+.uttu-pane-body > .render-host { overflow: auto; }
+/* 所见编辑面铺文档自己的纸色（uttu-scriptorium.js 的 paintPaper）；文档没写字色时按深色墨字算，和预览的默认纸一致。 */
+body.uttu-v2 #page-stream { color: #1d2421; }
+/* 上游的“右侧源码”（左边连续编辑、右边源码）不再用：编辑栏里直接切源码，双栏时右边是预览。 */
+body.uttu-v2 #source-right-host { display: none !important; }
+/* 源码、CSS 编辑器是代码，跟 VCP 主题走；上游源码面的说明头藏起，格式化和自动换行挪进栏头。 */
+body.uttu-v2 .source-host { padding: 0; background: var(--uttu-ink-1); grid-template-rows: minmax(0, 1fr); }
+body.uttu-v2 .source-host > .source-header { display: none; }
+body.uttu-v2 .source-editor-shell { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+
+/* --- 没打开文档时（上游首页）：新建、打开文件、最近 --- */
+body.uttu-v2 .welcome-state.uttu-empty-state {
+    align-items: flex-start;
+    justify-content: center;
+    gap: 14px;
+    max-width: 560px;
+    padding: 32px clamp(20px, 8%, 72px);
+    text-align: left;
+}
+.uttu-empty-state > :not(.uttu-empty-head, .uttu-empty-group, .recent-documents) { display: none !important; }
+.uttu-empty-head { display: grid; gap: 10px; }
+.uttu-empty-head h4 { margin: 0; color: var(--uttu-text); font: 600 calc(18px * var(--uttu-scale)) var(--uttu-font-body); }
+.uttu-empty-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.uttu-empty-group { margin-top: 10px; }
+.uttu-empty-state .recent-documents { display: grid; justify-content: stretch; gap: 1px; width: min(460px, 100%); max-width: none; margin: 0; }
+.uttu-empty-state .recent-document { max-width: none; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--uttu-text); font: var(--uttu-fs-label) var(--uttu-font-body); }
+.uttu-empty-state .recent-document:hover { background: var(--uttu-ink-2); color: var(--uttu-text); }
+
+/* --- 专注模式（上游 body.focus-mode）：只留文档，右上角一行“退出专注” --- */
+body.uttu-v2.focus-mode { grid-template-rows: minmax(0, 1fr); }
+body.uttu-v2.focus-mode :is(.scriptorium-titlebar, .uttu-arail, .outline-panel, .uttu-insp, .uttu-pane-head) { display: none !important; }
+body.uttu-v2.focus-mode > .scriptorium-stage { grid-row: 1; grid-template-columns: 0 0 minmax(0, 1fr) 0 0; }
+body.uttu-v2.focus-mode .uttu-pane { grid-template-rows: minmax(0, 1fr); }
+body.uttu-v2 .focus-mode-dock { top: 10px; right: 14px; gap: 0; padding: 0; border: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+body.uttu-v2.uttu-board-mode .focus-mode-dock { top: auto; right: auto; bottom: 24px; left: 50%; transform: translateX(-50%); } /* 白板右上角是素材库 */
+body.uttu-v2 .focus-mode-dock .focus-document-title { display: none; }
+body.uttu-v2 #focus-exit-btn { height: auto; padding: 2px 4px; border: 0; background: none; color: var(--uttu-text-3); font: var(--uttu-fs-small) var(--uttu-font-body); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--uttu-line); }
+body.uttu-v2 #focus-exit-btn svg { display: none; }
+body.uttu-v2 #focus-exit-btn > span { font-size: 0; }
+body.uttu-v2 #focus-exit-btn > span::after { content: "退出专注（Esc）"; font-size: var(--uttu-fs-small); }
+
+/* --- 放映（演示）：预览栏全屏，黑底，一次一页 --- */
+.uttu-pane.pv:fullscreen { background: #000; grid-template-rows: minmax(0, 1fr); }
+.uttu-pane.pv:fullscreen > .uttu-pane-head { display: none; }
+body.uttu-presenting .uttu-pane.pv > .uttu-pane-body { background: #000; cursor: pointer; }
+body.uttu-presenting #read-host { display: grid; place-items: center; overflow: hidden; background: #000; }
+
+/* --- 停在主窗口右栏（preloads/docx.js 打上 data-vcp-embedded-app）--- */
+html[data-vcp-embedded-app="true"], html[data-vcp-embedded-app="true"] body { background: transparent; }
+html[data-vcp-embedded-app="true"] .scriptorium-titlebar { -webkit-app-region: no-drag; }
+html[data-vcp-embedded-app="true"] :is(.titlebar-divider, .window-button) { display: none !important; }
+/* 文坊独立窗口是第四种界面：和 Chat、交易一样没有窗口按钮，最小化、全屏、退出在 Esc 菜单里；顶栏照旧能拖着移动窗口。 */
+:is(.titlebar-divider, .window-button) { display: none !important; }
+/* 拖进来的文件打不开时底部中间的一行字（preloads/docx.js）。 */
+.uttu-drop-note { position: fixed; left: 50%; bottom: 32px; z-index: 60; transform: translateX(-50%); max-width: min(560px, calc(100vw - 32px));
+  padding: 8px 14px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-m); background: var(--uttu-ink-2); color: var(--uttu-text);
+  font: var(--uttu-fs-ui) var(--uttu-font-body); text-align: center; pointer-events: none; }
+.uttu-drop-note[hidden] { display: none; }
+
+/* --- 文库（上游文档库树）、篇章（上游目录）的字号和配色；细节由 uttu-scriptorium-panels.js 补 --- */
+.library-root-copy strong { font: 600 var(--uttu-fs-label)/1.4 var(--uttu-font-body); }
+.library-root-copy small { color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); }
+.library-root-icon { font: 600 12px/1 var(--uttu-font-letter); }
+.library-node-name { font-size: var(--uttu-fs-ui); }
+.library-directory-count { font-size: var(--uttu-fs-mini); }
+.library-file-copy strong { color: var(--uttu-text); font: 500 var(--uttu-fs-ui)/1.5 var(--uttu-font-body); }
+.library-file-copy small { color: var(--uttu-text-3); font-size: var(--uttu-fs-mini); }
+.library-root-empty { color: var(--uttu-text-3); font-size: var(--uttu-fs-small); }
+.library-file .library-file-badge { border-color: var(--uttu-line); color: var(--uttu-text-2); }
+.library-file:is([data-extension="vdocx"], [data-extension="docx"]) .library-file-badge { color: var(--uttu-select); }
+.library-file:is([data-extension="vpptx"], [data-extension="pptx"]) .library-file-badge { border-color: color-mix(in srgb, var(--uttu-terra) 55%, var(--uttu-line)); color: var(--uttu-terra-hi); }
+
+/* 文脉（上游文脉面板）搬进检查器“文脉”页：去掉它自己的标题和玻璃底。 */
+.uttu-insp-page .lineage-panel { position: static; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 100%; border: 0; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.uttu-insp-page[data-t="lineage"] { padding: 0; }
+.uttu-insp-page .lineage-header { display: none; }
+
+/* Mermaid：系统开了“减少动态效果”时，上游的全局规则给所有元素加 transition-duration: .01ms；Mermaid 在过渡进行中量尺寸，
+   算出约 2000×2000 的画布，节点缩成一排小方块。图的 id 都以 vdoc-mermaid- 开头（scriptorium-render-primitives），
+   渲染时的临时容器是 d 加 id：这两处里面都不要过渡。对话那边同样的问题见 styles/ui-system/uttu-messages.css。 */
+:is([id^="vdoc-mermaid-"], [id^="dvdoc-mermaid-"]),
+:is([id^="vdoc-mermaid-"], [id^="dvdoc-mermaid-"]) * { transition: none !important; }
+
+/* --- 网页：.html 原样显示在沙盒 iframe 里，编辑栏是它的源码。
+   开着网页时上游的文稿和首页藏在后面；检查器（格式、批注、文脉）只管文稿，收起；篇章、查找页换成一句说明。 --- */
+body.uttu-page-mode :is(#document-workspace, #welcome-state) { display: none !important; }
+.uttu-page-work { display: flex; width: 100%; height: 100%; min-height: 0; background: var(--uttu-ink-1); }
+.uttu-page-work[hidden] { display: none; }
+.uttu-page-source .CodeMirror { position: absolute; inset: 0; height: auto; font: var(--uttu-fs-small)/1.72 var(--uttu-font-mono); }
+.uttu-page-frame-host { overflow: hidden; }
+/* 网页没写底色时和浏览器一样是白底：iframe 按浅色方案画，Canvas 是浅色方案的底色。 */
+.uttu-page-frame { display: block; width: 100%; height: 100%; border: 0; transform-origin: 0 0; color-scheme: light; background: Canvas; }
+/* 网页声明只用深色时（uttu-scriptorium-page.js darkPage）框也是深底：框里换页的一瞬间不闪白。 */
+.uttu-page-frame[data-scheme="dark"] { color-scheme: dark; }
+.uttu-page-conflict, .uttu-page-blocked { display: inline-flex; align-items: center; gap: 6px; min-width: 0; margin-right: 6px; color: var(--uttu-text-2); font-size: var(--uttu-fs-meta); }
+.uttu-page-conflict > span, .uttu-page-blocked > span { min-width: 0; overflow: hidden; white-space: nowrap; }
+.uttu-page-conflict[hidden], .uttu-page-blocked[hidden] { display: none; }
+body.uttu-v2.uttu-page-mode .uttu-agent { display: none !important; }
+.uttu-page-stage { position: relative; }
+.uttu-page-frame-host { position: absolute; inset: 0; }
+body.uttu-v2.uttu-page-mode[data-uttu-left="outline"] .outline-panel > :is(.uttu-outline, .slide-navigator, .uttu-findp, .uttu-left-empty) { display: none !important; }
+body.uttu-v2.uttu-page-mode[data-uttu-left="outline"] .outline-panel > .uttu-left-page-note { display: block !important; }
+
+/* 左栏“样张”（uttu-scriptorium-specimens.js）：两行的行，标题和文件名。 */
+body.uttu-v2[data-uttu-left="specimen"] .outline-panel > .uttu-specp { display: grid !important; }
+body.uttu-v2 .outline-panel > .uttu-specp { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; padding: 10px 8px 16px; }
+.uttu-specp-rows { display: grid; gap: 1px; }
+.uttu-specp-more { display: flex; align-items: center; gap: 4px; color: var(--uttu-text-3); }
+.uttu-specp-more svg { flex: none; width: 12px; height: 12px; transform: rotate(-90deg); }
+.uttu-specp-more[aria-expanded="true"] svg { transform: none; }

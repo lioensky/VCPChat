@@ -133,6 +133,8 @@
             return response({
                 title: model.manifest.title,
                 name: current.currentName,
+                // 打开的是哪份文件（右栏弹出成窗口、Agent 在原文档上改都要用）。
+                filePath: current.currentPath || null,
                 dirty: current.dirty,
                 scene: core.createSceneConfig(model.manifest.scene),
                 activeSlideIndex: currentAdapter.kind === 'deck'
@@ -1280,6 +1282,8 @@
                     : undefined,
                 page: payload.page,
                 presentation: payload.presentation,
+                // 版式（长页 continuous / 文稿 flow），见 vdoc-core 的 createSceneConfig。
+                pagination: payload.pagination,
             });
             const creator = normalizeAuthor(payload.maid || payload.author);
             if (!creator) {

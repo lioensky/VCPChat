@@ -1,0 +1,15 @@
+/* 看大图、放映。提示块的样式在阅读视图的影子根里（脚本里那张表）。
+   都是一下子盖上、一下子收起，不做动画。只用 --uttu-* 令牌；放映的纸色、字色取自这份文档的阅读视图（脚本设 --uttu-show-paper / --uttu-show-ink）。 */
+
+.uttu-lightbox { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; align-content: center; gap: 10px; padding: 24px; box-sizing: border-box;
+    background: color-mix(in srgb, var(--uttu-ink-0) 88%, transparent); cursor: zoom-out; }
+.uttu-lightbox[hidden] { display: none; }
+.uttu-lightbox > img { max-width: 100%; max-height: calc(100vh - 88px); object-fit: contain; }
+.uttu-lightbox-cap { margin: 0; color: var(--uttu-text-2); font-size: var(--uttu-fs-small); text-align: center; }
+.uttu-lightbox-cap[hidden] { display: none; }
+
+.uttu-show { position: fixed; inset: 0; z-index: 85; overflow: hidden; background: var(--uttu-show-paper, Canvas); color: var(--uttu-show-ink, CanvasText); cursor: default; outline: none; }
+.uttu-show[hidden] { display: none; }
+.uttu-show-stage { position: absolute; inset: 0; }
+.uttu-show-count { position: absolute; right: 18px; bottom: 12px; font: var(--uttu-fs-meta) var(--uttu-font-num); opacity: .45; }
+.uttu-show-hint { position: absolute; left: 18px; bottom: 12px; font-size: var(--uttu-fs-meta); opacity: .35; }

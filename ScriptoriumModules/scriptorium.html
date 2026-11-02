@@ -3,10 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:; font-src 'self' data: blob: file: http: https:; connect-src 'self' blob: data: https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:; font-src 'self' data: blob: file: http: https:; connect-src 'self' blob: data: https:; frame-src uttu-page:;">
     <title>VCP Scriptorium · 共笔文坊</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="scriptorium.css">
+    <!-- 文坊的 扩展层（右栏停靠、外观） -->
+    <link rel="stylesheet" href="uttu-scriptorium.css">
+    <link rel="stylesheet" href="uttu-scriptorium-pdf.css"> <!-- PDF 查看和编辑（第二轮 E4） -->
+    <link rel="stylesheet" href="uttu-scriptorium-table.css"> <!-- 表格只读查看（第二轮 E5） -->
+    <link rel="stylesheet" href="uttu-scriptorium-show.css"> <!-- 看大图、放映（第二轮 E3） -->
+    <link rel="stylesheet" href="uttu-scriptorium-views.css"> <!-- 文本和图片 -->
+    <link rel="stylesheet" href="uttu-scriptorium-dialogs.css"> <!-- 上游对话框的样子 -->
+    <!-- 等待指示（顶栏“正在写”那几颗点） -->
+    <link rel="stylesheet" href="../styles/ui-system/uttu-wait.css">
+    <!-- 跟着设置里的字号走 -->
+    <script src="../modules/uttu/uttuAppearanceTokens.js"></script>
 </head>
 <body class="home-state">
     <header class="scriptorium-titlebar">
@@ -286,7 +297,7 @@
                 <div id="document-library-tree" class="document-library-tree"
                     role="tree" aria-label="笔记、文档和演示目录">
                     <div class="library-loading" role="status">
-                        正在整理文档目录…
+                        正在整理文档目录
                     </div>
                 </div>
                 <footer class="library-formats">
@@ -399,7 +410,7 @@
             <div id="loading-state" class="loading-state" hidden>
                 <span class="loading-glyph"></span>
                 <strong>正在展开文稿</strong>
-                <small>解析文档结构、字体与样式…</small>
+                <small>解析文档结构、字体与样式</small>
             </div>
         </section>
 
@@ -672,7 +683,7 @@
                 <svg viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01"/><path d="M10.3 4.6 3.5 17a2 2 0 0 0 1.8 3h13.4a2 2 0 0 0 1.8-3L13.7 4.6a2 2 0 0 0-3.4 0Z"/></svg>
             </div>
             <span class="dialog-kicker">UNSAVED MANUSCRIPT</span>
-            <h2 id="unsaved-dialog-title">墨迹尚未落定</h2>
+            <h2 id="unsaved-dialog-title">有未保存的修改</h2> <!-- 文案 -->
             <p id="unsaved-dialog-message">当前文稿仍有未保存修改。保存后继续，或舍弃这些修改。</p>
             <div class="unsaved-document-name" id="unsaved-document-name">未命名文稿.vdocx</div>
             <div class="dialog-actions unsaved-dialog-actions">
@@ -698,7 +709,7 @@
             <div id="media-local-list" class="media-local-list" hidden
                 aria-label="待插入本地媒体及描述"></div>
             <div id="media-src-fields">
-                <div class="media-source-separator"><span>或者插入单个 src</span></div>
+                <div class="media-source-separator"><span>或者填写单个地址</span></div> <!-- 文案 -->
                 <label class="media-field">
                     <span>媒体类型</span>
                     <select id="media-kind-select" aria-label="媒体类型">
@@ -709,9 +720,9 @@
                     </select>
                 </label>
                 <label class="media-field">
-                    <span>媒体 src</span>
+                    <span>媒体地址</span> <!-- 文案 -->
                     <input id="media-src-input" type="text" required
-                        placeholder="https://example.com/media.png 或 data:image/..."
+                        placeholder="https://example.com/media.png 或 data:image/"
                         autocomplete="off" spellcheck="false">
                 </label>
                 <label class="media-field">
@@ -805,7 +816,7 @@
 
     <nav id="object-context-menu" class="object-context-menu" role="menu"
         aria-label="视觉对象操作" hidden>
-        <button type="button" data-object-action="edit" role="menuitem">编辑对象属性…</button>
+        <button type="button" data-object-action="edit" role="menuitem">编辑对象属性</button>
         <span class="object-menu-separator"></span>
         <button type="button" data-object-action="layout-block"
             data-object-flow-only role="menuitem">独占一行</button>
@@ -948,8 +959,8 @@
     <div id="checkpoint-dialog" class="dialog-backdrop" hidden>
         <form class="checkpoint-dialog">
             <span class="dialog-kicker">CREATE CHECKPOINT</span>
-            <h2>为这一刻留下名字</h2>
-            <p>刻点会记录当前 VDOCX 源码与排版状态，成为人机共建文脉中的可回望节点。</p>
+            <h2>保存刻点</h2> <!-- 文案 -->
+            <p>刻点记录当前源码和排版，之后可在文脉页回到这一版。</p>
             <input id="checkpoint-name-input" type="text" maxlength="80" placeholder="例如：第二章结构定稿" autocomplete="off">
             <textarea id="checkpoint-note-input" maxlength="240" placeholder="可选：记下这一版发生了什么"></textarea>
             <div class="dialog-actions">
@@ -1035,7 +1046,7 @@
             </div>
             <span class="dialog-kicker">DISABLE PROGRAMMABLE CONTENT REVIEW</span>
             <h2 id="security-review-dialog-title">确认关闭安全审查？</h2>
-            <p>关闭后，文档内脚本将不再因 Node.js、动态求值、宿主导航等 refuse 规则而停止执行。恶意文档可能读取页面状态、持续占用资源或尝试逃逸运行边界。</p>
+            <p>关闭后，文档内脚本将不再因 Node.js、动态求值、宿主导航等拒绝规则而停止执行。恶意文档可能读取页面状态、持续占用资源或尝试逃逸运行边界。</p>
             <ul>
                 <li>此设置只保存在本机，不写入文档工程。</li>
                 <li>Agent PR 与人工审批流程仍然保留。</li>
@@ -1095,7 +1106,7 @@
             </div>
             <footer class="lineage-detail-footer">
                 <div>
-                    <strong id="lineage-snapshot-status">检查内部版本快照…</strong>
+                    <strong id="lineage-snapshot-status">检查内部版本快照</strong>
                     <span>回溯会先保存当前版本，再基于该节点的工程内嵌快照建立一个新的文脉节点，不删除后续历史。</span>
                 </div>
                 <button id="lineage-restore-btn" type="button" class="dialog-danger" disabled>回溯到此节点</button>
@@ -1118,7 +1129,9 @@
 
     <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
     <link rel="stylesheet" href="../node_modules/codemirror/theme/material-darker.css">
+    <link rel="stylesheet" href="../styles/ui-system/uttu-code-scheme.css"> <!-- 源码区用代码配色（主题 uttu-code） -->
     <script src="../node_modules/codemirror/lib/codemirror.js"></script>
+    <script src="../node_modules/codemirror/mode/meta.js"></script> <!-- 代码围栏写 js、css、html 简称时也按语言上色 -->
     <script src="../node_modules/codemirror/mode/xml/xml.js"></script>
     <script src="../node_modules/codemirror/mode/markdown/markdown.js"></script>
     <script src="../node_modules/codemirror/mode/css/css.js"></script>
@@ -1126,6 +1139,12 @@
     <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
     <script src="../node_modules/codemirror/addon/edit/closebrackets.js"></script>
     <script src="../node_modules/codemirror/addon/edit/closetag.js"></script>
+    <script src="../node_modules/codemirror/addon/edit/continuelist.js"></script>
+    <script src="../node_modules/codemirror/addon/edit/matchbrackets.js"></script>
+    <script src="../node_modules/codemirror/addon/comment/comment.js"></script>
+    <script src="../node_modules/codemirror/addon/search/searchcursor.js"></script>
+    <script src="../node_modules/codemirror/keymap/sublime.js"></script>
+    <script src="uttu-scriptorium-editing.js"></script> <!-- 编辑区的按键 -->
     <script src="../vendor/katex.min.js"></script>
     <script src="../vendor/pele.global.js"></script>
     <script src="../vendor/anime.min.js"></script>
@@ -1136,6 +1155,7 @@
     <script src="scriptorium-pretext-bridge.js"></script>
     <script src="scriptorium-programmable-content.js"></script>
     <script src="vdoc-core.js"></script>
+    <script src="uttu-frontmatter.js"></script><!-- YAML 属性段，混合编译器调它 -->
     <script src="vdoc-hybrid-compiler.js"></script>
     <script src="vdoc-container.js"></script>
     <script src="vdoc-style-library.js"></script>
@@ -1184,5 +1204,48 @@
     <script src="scriptorium-deck-adapter.js"></script>
     <script src="scriptorium-shell.js"></script>
     <script src="scriptorium.js"></script>
+    <!-- 文坊的 扩展层（文档样式库和新建面板、界面结构、编辑工具、左侧三页、右侧检查器、Mermaid 配色、数据图表块） -->
+    <script src="uttu-doc-themes.js"></script>
+    <script src="../modules/uttu/mermaidTheme.js"></script>
+    <script src="../modules/uttu/dataChart.js"></script>
+    <script src="uttu-scriptorium-frames.js"></script> <!-- 预览框的滚动条 -->
+    <script src="uttu-scriptorium.js"></script>
+    <script src="uttu-scriptorium-edit.js"></script>
+    <script src="uttu-scriptorium-explorer.js"></script> <!-- 左栏资源管理器 -->
+    <script src="uttu-scriptorium-panels.js"></script>
+    <script src="uttu-scriptorium-inspector.js"></script>
+    <script src="uttu-scriptorium-markdown.js"></script>
+    <script src="uttu-scriptorium-folder.js"></script>
+    <script src="uttu-scriptorium-properties.js"></script>
+    <script src="uttu-scriptorium-quickopen.js"></script>
+    <script src="uttu-scriptorium-tabs.js"></script> <!-- 多标签 -->
+    <script src="uttu-scriptorium-side.js"></script> <!-- 双栏看两份 -->
+    <script src="uttu-scriptorium-wiki.js"></script> <!-- [[双链]] -->
+    <script src="uttu-scriptorium-links.js"></script> <!-- 检查器“链接”页 -->
+    <script src="uttu-scriptorium-pick.js"></script> <!-- 统一批注 -->
+    <script src="uttu-scriptorium-refs.js"></script> <!-- 文稿里的组件引用 -->
+    <script src="uttu-scriptorium-page.js"></script> <!-- .html 当网页开 -->
+    <script src="uttu-scriptorium-page-edit.js"></script> <!-- 网页元素直接改 -->
+    <script src="uttu-scriptorium-filemenu.js"></script> <!-- 文件右键菜单 -->
+    <script src="uttu-scriptorium-commands.js"></script> <!-- 命令面板、快捷键表 -->
+    <script src="uttu-scriptorium-assets.js"></script> <!-- 往 .md 里粘贴、拖进图片 -->
+    <script src="uttu-scriptorium-linkcheck.js"></script> <!-- 阅读视图里标出失效链接 -->
+    <script src="uttu-scriptorium-linkpick.js"></script> <!-- 链接补全 -->
+    <script src="uttu-scriptorium-headings.js"></script> <!-- 标题的右键菜单 -->
+    <script src="uttu-scriptorium-diff.js"></script> <!-- 两边都改了时看差在哪 -->
+    <script src="uttu-scriptorium-tasks.js"></script> <!-- 待办（第二轮 E1） -->
+    <script src="uttu-scriptorium-tags.js"></script> <!-- 标签（第二轮 E2） -->
+    <script src="uttu-scriptorium-pdf.js"></script> <!-- PDF 查看和编辑（第二轮 E4） -->
+    <script src="uttu-scriptorium-table.js"></script> <!-- 表格只读查看（第二轮 E5） -->
+    <script src="uttu-scriptorium-show.js"></script> <!-- 提示块、看大图、放映（第二轮 E3） -->
+    <script src="../modules/uttu/scriptoriumTypes.js"></script> <!-- 文件类型登记表 -->
+    <script src="uttu-scriptorium-text.js"></script> <!-- 文本和代码就地打开 -->
+    <script src="uttu-scriptorium-image.js"></script> <!-- 图片就地打开 -->
+    <script src="uttu-scriptorium-board.js"></script> <!-- 白板 -->
+    <script src="uttu-scriptorium-design.js"></script> <!-- 设计画布 -->
+    <script src="uttu-scriptorium-media.js"></script> <!-- 音视频 -->
+    <script src="uttu-scriptorium-notebook.js"></script> <!-- Jupyter 笔记本 -->
+    <script src="uttu-scriptorium-settings.js"></script> <!-- 文坊的设置 -->
+    <script src="uttu-scriptorium-agent.js"></script> <!-- Agent 命令跟着最上面的视图走 -->
 </body>
 </html>

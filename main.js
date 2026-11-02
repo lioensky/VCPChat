@@ -121,6 +121,8 @@ const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPd
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
 const { ScriptoriumAgentControlService } = require('./modules/services/scriptoriumAgentControlService');
+const webPages = require('./modules/uttu/webPages'); // 文坊里的网页：uttu-page:// 协议要在 app ready 之前登记
+protocol.registerSchemesAsPrivileged([webPages.PRIVILEGE]);
 const { GlobalJevService } = require('./modules/services/globalJevService');
 // docxHandlers 依赖链较重（mammoth/cheerio/marked/jszip 等），冷启动不加载。
 // 仅在首次真正使用文坊时（IPC 打开、V 桌面图标、Agent 调用）按需加载。
@@ -199,8 +201,11 @@ const docxHandlers = {
         loadDocxHandlers().then((handlers) => handlers.writeProjectArtifact(...args)),
     getSystemFonts: (...args) =>
         loadDocxHandlers().then((handlers) => handlers.getSystemFonts(...args)),
+    openScriptorium: (...args) =>
+        loadDocxHandlers().then((handlers) => handlers.openScriptorium(...args)),
     getDocxWindow: () => docxHandlersModule?.getDocxWindow() || null,
 };
+require('./modules/uttu/dropOpen').register(ipcMain, { openScriptorium: docxHandlers.openScriptorium }); // 拖进文坊的文件
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 const { createEmbeddedAppSessionManager } = require('./modules/services/embeddedAppSessionManager');
@@ -317,6 +322,7 @@ if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoo
 const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
     ? path.resolve(isolatedAppDataRoot)
     : path.join(PROJECT_ROOT, 'AppData');
+require('./modules/uttu/notesInScriptorium').configure({ appDataRoot: APP_DATA_ROOT_IN_PROJECT, open: docxHandlers.openScriptorium }); // 文坊左栏的“笔记”
 // 应用功能模块：停用的不加载；它们声明的自定义协议必须在 app ready 之前登记
 const appFeatures = createAppFeatures({ projectRoot: PROJECT_ROOT, appDataRoot: APP_DATA_ROOT_IN_PROJECT });
 appFeatures.registerSchemes(protocol);
@@ -1196,6 +1202,7 @@ if (!gotTheLock) {
 
 
     app.whenReady().then(async () => { // Make the function async
+        webPages.installProtocol();
         reportLauncherProgress('electron-ready', 0.16, 'Electron 核心已就绪');
         // 全局处理普通 VChat 窗口的新窗口请求。VCP Loom 的远程 WebContentsView
         // 会由 VCPLoomManager 设置自己的隔离导航策略，因此不在这里提前覆盖。

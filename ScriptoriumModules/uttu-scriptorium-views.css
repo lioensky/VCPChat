@@ -1,0 +1,131 @@
+/* 文坊里的文本和图片。只用 --uttu-* 令牌。
+   和网页、PDF、表格一样盖在文稿上面；顶栏的 阅读 / 编辑 / 源码 对它们没有意义，藏起来。 */
+
+body:is(.uttu-text-mode, .uttu-image-mode, .uttu-board-mode, .uttu-design-mode, .uttu-media-mode, .uttu-notebook-mode) :is(#document-workspace, #welcome-state) { display: none !important; }
+body.uttu-v2:is(.uttu-text-mode, .uttu-image-mode, .uttu-board-mode, .uttu-design-mode, .uttu-media-mode, .uttu-notebook-mode) :is(.uttu-agent, .uttu-view-seg) { display: none !important; }
+body.uttu-v2:is(.uttu-text-mode, .uttu-notebook-mode, .uttu-image-mode, .uttu-board-mode, .uttu-design-mode, .uttu-media-mode)[data-uttu-left="outline"] .outline-panel > :is(.uttu-outline, .slide-navigator, .uttu-findp, .uttu-left-empty) { display: none !important; }
+body.uttu-v2:is(.uttu-text-mode, .uttu-notebook-mode, .uttu-image-mode, .uttu-board-mode, .uttu-design-mode, .uttu-media-mode)[data-uttu-left="outline"] .outline-panel > .uttu-left-view-note { display: block !important; }
+.uttu-notebook-paper ::highlight(scriptorium-find-match) { background: var(--uttu-select-soft, #5a4a22); }
+.uttu-notebook-paper ::highlight(scriptorium-find-current) { background: var(--uttu-select); color: var(--uttu-ink-0); }
+
+:is(.uttu-text-work, .uttu-image-work, .uttu-board-work, .uttu-design-work, .uttu-media-work, .uttu-notebook-work) { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: var(--uttu-ink-1); }
+:is(.uttu-text-work, .uttu-image-work, .uttu-board-work, .uttu-design-work, .uttu-media-work, .uttu-notebook-work)[hidden] { display: none; }
+:is(.uttu-text-work, .uttu-image-work, .uttu-board-work, .uttu-design-work, .uttu-media-work, .uttu-notebook-work) > .uttu-pane-head { flex: none; box-sizing: border-box; min-height: 38px; flex-wrap: wrap; gap: 2px 6px; overflow: visible; }
+:is(.uttu-text-work, .uttu-image-work, .uttu-board-work, .uttu-design-work, .uttu-media-work, .uttu-notebook-work) { container-type: inline-size; }
+@container (max-width: 460px) {
+    .uttu-image-work .uttu-pane-label small { display: none; }
+}
+
+.uttu-text-source { flex: 1; }
+.uttu-text-source .CodeMirror { position: absolute; inset: 0; height: auto; font: var(--uttu-fs-small)/1.72 var(--uttu-font-mono); }
+
+.uttu-image-place { min-width: 44px; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); font-variant-numeric: tabular-nums; text-align: center; }
+:is(.uttu-image-work, .uttu-media-work) .uttu-tb { font-size: var(--uttu-fs-title); }
+.uttu-image-scroll { flex: 1; min-height: 0; overflow: auto; display: grid; padding: 24px; background: var(--uttu-ink-0); }
+.uttu-image-stage { position: relative; width: fit-content; height: fit-content; margin: auto; line-height: 0; }
+.uttu-image-stage img { display: block; max-width: none; user-select: none; }
+.uttu-image-scroll.fit { overflow: hidden; }
+
+/* 白板。画布是官方的，这里把它的变量换成 VCP 的：直角、赤陶、MiSans。 */
+.uttu-board-selection { display: inline-flex; gap: 2px; margin-left: 6px; }
+.uttu-board-selection[hidden] { display: none; }
+.uttu-board-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.uttu-board-host { position: absolute; inset: 0; }
+.uttu-board-host .excalidraw,
+.uttu-board-host .excalidraw.theme--dark { --ui-font: var(--uttu-font-body); --border-radius-md: 0; --border-radius-lg: 0; --color-primary: var(--uttu-terra); --color-primary-darker: var(--uttu-terra); --color-primary-darkest: var(--uttu-terra); --color-primary-hover: var(--uttu-terra-hi); --color-primary-light: color-mix(in srgb, var(--uttu-terra) 35%, transparent); --color-surface-primary-container: color-mix(in srgb, var(--uttu-terra) 35%, transparent); --color-primary-light-darker: color-mix(in srgb, var(--uttu-terra) 45%, transparent); --color-on-primary-container: var(--uttu-on-terra); --color-brand-hover: var(--uttu-terra-hi); --color-brand-active: var(--uttu-terra); --color-logo-text: var(--uttu-text); --color-selection: var(--uttu-terra); --select-highlight-color: var(--uttu-select); --focus-highlight-color: var(--uttu-select); --color-border-outline: var(--uttu-line); --color-border-outline-variant: var(--uttu-line-soft); --island-bg-color: var(--uttu-ink-2); --default-bg-color: var(--uttu-ink-1); --popup-bg-color: var(--uttu-ink-2); --sidebar-bg-color: var(--uttu-ink-2); --shadow-island: none; --button-gray-1: var(--uttu-ink-3); --button-gray-2: var(--uttu-ink-3); --button-gray-3: var(--uttu-ink-3); }
+/* 素材库的“浏览”是外部网站，本机的素材库照常。“嵌入网页”在文坊的内容安全策略下载不进来，放着只会是个空框；
+   官方给它和 Mermaid 用了同一个 data-testid，只能按位置藏（第二项），smoke-scriptorium-board 盯着别的项还在。 */
+.uttu-board-host .excalidraw .library-menu-browse-button,
+.uttu-board-host .excalidraw .App-toolbar__extra-tools-dropdown .dropdown-menu-container > :nth-child(2) { display: none; }
+.uttu-board-host .excalidraw :is(.Island, .App-toolbar) { box-shadow: 0 0 0 1px var(--uttu-line); }
+/* 原色画布时界面还是深色、画布不反色（uttu-scriptorium-board.js applyLook）；官方的右键菜单藏起来，文坊的菜单照着它列（mirrorMenu）。 */
+.uttu-board-stage.uttu-board-plain .excalidraw.theme--dark { --theme-filter: none; }
+.uttu-board-stage.uttu-board-clean .excalidraw :is(.App-menu_top, .layer-ui__wrapper__footer, .disable-zen-mode) { visibility: hidden; } /* 隐藏工具 */
+.uttu-board-host .excalidraw .popover:has(> .context-menu) { visibility: hidden; }
+body.uttu-board-mode .uttu-insp [data-t="comments"] { display: none; } /* 白板没有批注，写在板上就是批注 */
+.uttu-board-color { position: fixed; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.uttu-text-note, .uttu-page-edit-hint { margin-left: 10px; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); white-space: nowrap; }
+.uttu-text-note[hidden], .uttu-page-edit-hint[hidden] { display: none; }
+.uttu-table-stats { margin-left: 10px; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.uttu-table-stats:empty { display: none; }
+
+/* 设计画布。--k 是画布缩放：画框名字、手柄按屏幕大小画，不跟着缩。 */
+.uttu-design-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; outline: none; background: var(--uttu-ink-0); cursor: default; }
+.uttu-design-stage.panning { cursor: grabbing; }
+.uttu-design-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.uttu-design-frame { position: absolute; box-sizing: content-box; box-shadow: 0 0 0 calc(1px / var(--k)) var(--uttu-line); background: #fff; }
+.uttu-design-frame.on { box-shadow: 0 0 0 calc(1.5px / var(--k)) var(--uttu-terra); }
+.uttu-design-frame .name { position: absolute; left: 0; bottom: 100%; width: calc(100% * var(--k)); transform: scale(calc(1 / var(--k))); transform-origin: 0 100%; padding-bottom: 4px; overflow: hidden; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); line-height: 1.4; white-space: nowrap; user-select: none; }
+.uttu-design-frame.on .name { color: var(--uttu-text); }
+.uttu-design-frame .body { position: absolute; inset: 0; overflow: hidden; }
+.uttu-design-page { display: block; width: 100%; height: 100%; border: 0; color-scheme: light; background: Canvas; pointer-events: none; }
+.uttu-design-frame .note { display: grid; place-items: center; height: 100%; color: #666; font-size: calc(14px / var(--k)); }
+.uttu-design-frame .handle { position: absolute; display: none; width: calc(9px / var(--k)); height: calc(9px / var(--k)); margin: calc(-4.5px / var(--k)); background: var(--uttu-terra); }
+.uttu-design-frame.on .handle { display: block; }
+.uttu-design-frame .handle.n, .uttu-design-frame .handle.s { left: 50%; cursor: ns-resize; }
+.uttu-design-frame .handle.e, .uttu-design-frame .handle.w { top: 50%; cursor: ew-resize; }
+.uttu-design-frame .handle.n, .uttu-design-frame .handle.ne, .uttu-design-frame .handle.nw { top: 0; }
+.uttu-design-frame .handle.s, .uttu-design-frame .handle.se, .uttu-design-frame .handle.sw { top: 100%; }
+.uttu-design-frame .handle.w, .uttu-design-frame .handle.nw, .uttu-design-frame .handle.sw { left: 0; }
+.uttu-design-frame .handle.e, .uttu-design-frame .handle.ne, .uttu-design-frame .handle.se { left: 100%; }
+.uttu-design-frame .handle.ne, .uttu-design-frame .handle.sw { cursor: nesw-resize; }
+.uttu-design-frame .handle.nw, .uttu-design-frame .handle.se { cursor: nwse-resize; }
+.uttu-design-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--uttu-text-3); pointer-events: none; }
+.uttu-design-empty[hidden] { display: none; }
+.uttu-design-stage > .uttu-pick-mark[hidden] { display: none; }
+
+/* 批注：色块画在文坊这一层，文件本身不动。截片段时藏起来。 */
+.uttu-pick-layer { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
+.uttu-pick-layer.on { pointer-events: auto; }
+.uttu-pick-mark { position: absolute; background: color-mix(in srgb, var(--uttu-terra) 22%, transparent); pointer-events: none; }
+.uttu-pick-mark.region { box-shadow: inset 0 0 0 1px var(--uttu-terra); }
+.uttu-pick-num { position: absolute; left: 0; top: 0; min-width: 18px; height: 18px; padding: 0 4px; background: var(--uttu-terra); color: var(--uttu-on-terra); font: var(--uttu-fs-mini)/18px var(--uttu-font-body); font-variant-numeric: tabular-nums; text-align: center; }
+.uttu-pick-mark > .uttu-pick-num { transform: translateY(-100%); } /* 编号放在对象外面，不盖字 */
+.uttu-pick-mark.at-top > .uttu-pick-num { transform: none; }
+.uttu-pick-bubble { position: fixed; z-index: 45; }
+.uttu-pick-tool { margin-left: 10px; }
+.uttu-pick-line { background: color-mix(in srgb, var(--uttu-terra) 22%, transparent); }
+body.uttu-pick-shooting :is(.uttu-pick-mark, .uttu-pick-bubble, .uttu-pick-focus, .uttu-ref-bar) { visibility: hidden; }
+/* 网页的修改模式（uttu-scriptorium-page-edit.js） */
+.uttu-pick-layer.editing { outline: none; cursor: default; }
+.uttu-pick-layer.editing.moving { cursor: move; }
+.uttu-pick-mark.sel { background: none; box-shadow: 0 0 0 1px var(--uttu-terra); }
+.uttu-page-editbar { position: absolute; z-index: 4; display: flex; align-items: center; gap: 2px; max-width: calc(100% - 8px); padding: 2px; border: 1px solid var(--uttu-line); background: var(--uttu-ink-2); color: var(--uttu-text-2); font-size: var(--uttu-fs-meta); white-space: nowrap; }
+.uttu-page-editbar[hidden], .uttu-page-editbar [hidden] { display: none; }
+.uttu-page-editbar .tag { padding: 0 6px; color: var(--uttu-text-3); font-family: var(--uttu-font-mono, monospace); }
+.uttu-page-editbar .tools { display: flex; align-items: center; gap: 2px; }
+.uttu-page-editbar .note { padding: 0 6px; }
+.uttu-page-editbar .size { min-width: 22px; text-align: center; font-variant-numeric: tabular-nums; }
+.uttu-page-swatch { display: flex; align-items: center; gap: 4px; padding: 0 6px; cursor: pointer; }
+.uttu-page-swatch input { width: 16px; height: 16px; padding: 0; border: 1px solid var(--uttu-line); background: none; cursor: pointer; }
+.uttu-page-swatch input::-webkit-color-swatch-wrapper { padding: 0; }
+.uttu-page-swatch input::-webkit-color-swatch { border: 0; }
+/* 引用（uttu-scriptorium-refs.js）：右键时亮起引用的那一块；组件角上的两个按钮。 */
+.uttu-pick-focus { position: fixed; z-index: 44; background: color-mix(in srgb, var(--uttu-terra) 14%, transparent); box-shadow: inset 0 0 0 1px var(--uttu-terra); pointer-events: none; }
+.uttu-pick-focus[hidden] { display: none; }
+.uttu-ref-bar { position: fixed; z-index: 44; padding: 2px; border: 1px solid var(--uttu-line); background: var(--uttu-ink-2); }
+.uttu-ref-bar[hidden] { display: none; }
+
+/* 音视频（uttu-scriptorium-media.js） */
+.uttu-media-stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 24px; background: var(--uttu-ink-0); }
+.uttu-media-stage video { display: block; max-width: 100%; max-height: 100%; background: #000; }
+.uttu-media-stage video[hidden], .uttu-media-failed[hidden] { display: none; }
+.uttu-media-work.audio .uttu-media-stage video { width: min(560px, 100%); height: 54px; background: none; }
+
+/* Jupyter 笔记本（uttu-scriptorium-notebook.js） */
+.uttu-notebook-scroll { flex: 1; min-height: 0; overflow: auto; background: var(--uttu-ink-0); }
+.uttu-notebook-paper { box-sizing: border-box; max-width: 60rem; margin: 0 auto; padding: 32px 40px 64px; display: grid; gap: 14px; color: var(--uttu-text); font: var(--uttu-fs-body, 15px)/1.7 var(--uttu-font-body); }
+.uttu-nb-cell { position: relative; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 4em; }
+.uttu-nb-cell.code { padding-left: 52px; }
+.uttu-nb-count { position: absolute; left: 0; top: 8px; width: 44px; color: var(--uttu-text-3); font: var(--uttu-fs-meta) var(--uttu-font-mono); text-align: right; }
+.uttu-nb-source, .uttu-nb-raw { margin: 0; padding: 8px 12px; overflow-x: auto; background: var(--uttu-ink-1); border: 1px solid var(--uttu-line-soft); font: var(--uttu-fs-small)/1.6 var(--uttu-font-mono); }
+.uttu-nb-out { margin: 8px 0 0; padding: 0 12px; overflow-x: auto; color: var(--uttu-text-2); font: var(--uttu-fs-small)/1.6 var(--uttu-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.uttu-nb-out.err { color: var(--uttu-bad); }
+.uttu-nb-cell > img { display: block; max-width: 100%; margin-top: 8px; }
+.uttu-nb-html { margin-top: 8px; overflow-x: auto; font-size: var(--uttu-fs-small); }
+.uttu-nb-html table, .uttu-nb-md table { border-collapse: collapse; }
+.uttu-nb-html :is(th, td), .uttu-nb-md :is(th, td) { padding: 3px 10px; border: 1px solid var(--uttu-line-soft); }
+.uttu-nb-md > :first-child { margin-top: 0; }
+.uttu-nb-md > :last-child { margin-bottom: 0; }
+.uttu-nb-md img { max-width: 100%; }
+.uttu-nb-md pre { overflow-x: auto; }

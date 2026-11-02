@@ -33,13 +33,42 @@
         return (hash >>> 0).toString(16).padStart(8, '0');
     }
 
+    // the line breaks of a source are found once and looked up by binary search. Before, every
+    // call sliced and split the whole text up to the offset (three calls per heading), so opening grew with the square
+    // of the size: a 0.7 MB Markdown file took 34 s. Same results as before, a CRLF cut after its \r included.
+    let lineBreaksSource = null;
+    let lineBreaks = [];
+    function lineBreaksOf(text) {
+        if (text !== lineBreaksSource) {
+            const breaks = [];
+            const pattern = /\r\n?|\n/g;
+            let match;
+            while ((match = pattern.exec(text))) breaks.push(match.index, match.index + match[0].length);
+            lineBreaksSource = text;
+            lineBreaks = breaks;
+        }
+        return lineBreaks;
+    }
+
     function lineAndColumnAt(source, offset) {
-        const prefix = String(source || '').slice(0, Math.max(0, offset));
-        const lines = prefix.split(/\r\n?|\n/);
-        return {
-            line: lines.length,
-            column: (lines.at(-1) || '').length + 1,
-        };
+        const text = String(source || '');
+        const wanted = Math.max(0, offset);
+        const end = Number.isNaN(wanted) ? 0 : Math.min(Math.trunc(wanted), text.length);
+        const breaks = lineBreaksOf(text);
+        let low = 0;
+        let high = breaks.length / 2;
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if (breaks[middle * 2 + 1] <= end) low = middle + 1;
+            else high = middle;
+        }
+        let line = low + 1;
+        let lineStart = low ? breaks[low * 2 - 1] : 0;
+        if (low < breaks.length / 2 && breaks[low * 2] < end) { // the text stops between \r and \n
+            line += 1;
+            lineStart = end;
+        }
+        return { line, column: end - lineStart + 1 };
     }
 
     function diagnostic(level, ruleId, message, source, offset = 0, extra = {}) {
@@ -345,7 +374,20 @@
 </figure>`;
     }
 
+    // ```chart 图ID 是数据图表块，编译成占位的图，
+    // 渲染时由 modules/uttu/dataChart.js 画成 SVG。图 ID 写进岛属性：截图能按岛滚到它，分页时整块不拆；不含脚本。
+    function chartMarkup(region) {
+        const id = String(region.info || '').trim().split(/\s+/)[1] || '';
+        const body = fencedBody(region);
+        return `<figure class="vdoc-chart" data-vdoc-chart="${encodeSource(body)}"${
+            id ? ` ${ISLAND_ATTRIBUTE}="${escapeHtml(id)}"` : ''
+        }>
+    <pre class="vdoc-chart-source">${escapeHtml(body)}</pre>
+</figure>`;
+    }
+
     function codeMarkup(region) {
+        if (/^chart(?:\s|$)/i.test(String(region.info || '').trim())) return chartMarkup(region); // 数据图表块
         const language = String(region.info || '')
             .split(/\s+/, 1)[0]
             .replace(/[^\w.+-]/g, '');
@@ -543,6 +585,8 @@
             output += source.slice(cursor, region.start);
             if (region.type === 'island' || region.type === 'style') {
                 output += `\n\n${reserve(registry, region, region.source)}\n\n`;
+            } else if (region.type === 'frontmatter') {
+                output += `\n\n${reserve(registry, region, global.UTTUFrontmatter.markup(region))}\n\n`;
             } else if (region.type === 'mermaid') {
                 output += `\n\n${reserve(registry, region, mermaidMarkup(region))}\n\n`;
             } else if (region.type === 'code') {
@@ -596,17 +640,23 @@
         return null;
     }
 
+    // one pass over the text instead of two whole-text replaces per protected region, which grew
+    // with the square of the size (a 1 MB Markdown file spent 5 s here). The old loop went through the regions in
+    // number order, so a token is replaced when it is in the given text or inside a lower-numbered region's html.
+    // Same result as the old loop for what the compiler registers: whole elements built from each region's own source
+    // (checked on 30 000 random cases). They differ only for hand-made fragments: a region html holding its own token,
+    // or a bare "<p>" that joins with the text around it into a new "<p>token</p>".
     function restoreProtectedHtml(html, registry) {
-        let restored = String(html || '');
-        registry.forEach((entry) => {
-            const wrappedParagraph = new RegExp(
-                `<p>\\s*${entry.token}\\s*</p>`,
-                'g'
-            );
-            restored = restored.replace(wrappedParagraph, () => entry.html);
-            restored = restored.replaceAll(entry.token, () => entry.html);
-        });
-        return restored;
+        const expand = (text, after) => text.replace(
+            new RegExp(`<p>\\s*${TOKEN_PREFIX}(\\d+)_END\\s*</p>|${TOKEN_PREFIX}(\\d+)_END`, 'g'),
+            (match, wrapped, plain) => {
+                const index = Number(wrapped ?? plain);
+                const entry = registry[index];
+                if (!entry || index <= after || entry.token !== `${TOKEN_PREFIX}${index}_END`) return match;
+                return expand(String(entry.html), index);
+            }
+        );
+        return expand(String(html || ''), -1);
     }
 
     function dependenciesFromHtml(html) {
@@ -827,6 +877,7 @@
     function renderEditRegion(source, region, parse, diagnostics) {
         const raw = source.slice(region.sourceRange.start, region.sourceRange.end);
         if (region.type === 'island' || region.type === 'style') return raw;
+        if (region.type === 'frontmatter') return global.UTTUFrontmatter?.markup?.(global.UTTUFrontmatter.scan(raw)) || '';
         if (region.type === 'mermaid' || region.type === 'code') {
             const fence = scanFences(raw)[0];
             return fence
@@ -1101,10 +1152,11 @@
             add('markdown', cursor, source.length, source.slice(cursor));
         }
         if (!blocks.length && source.length) add('markdown', 0, source.length, source);
+        const semanticHtmlHash = simpleHash(html); // once, not once per block (was quadratic)
         return blocks.map((block) => ({
             ...block,
             compilerVersion: COMPILER_VERSION,
-            semanticHtmlHash: simpleHash(html),
+            semanticHtmlHash,
         }));
     }
 
@@ -1116,6 +1168,9 @@
         const codeDomains = [...fences, ...inlineCodeRegions]
             .sort((left, right) => left.start - right.start);
         const htmlCommentRegions = scanHtmlCommentRegions(source, codeDomains);
+        // YAML front matter at the start becomes a table of properties (uttu-frontmatter.js)
+        const frontmatter = global.UTTUFrontmatter?.scan?.(source);
+        const frontmatterRegions = frontmatter ? [frontmatter] : [];
         fences.filter((region) => !region.closed).forEach((region) => {
             diagnostics.push(diagnostic(
                 'warn',
@@ -1128,13 +1183,16 @@
         const islands = scanIslands(source, [
             ...codeDomains,
             ...htmlCommentRegions,
+            ...frontmatterRegions,
         ], diagnostics);
         const styleBlocks = scanStyleBlocks(source, [
             ...codeDomains,
             ...htmlCommentRegions,
             ...islands,
+            ...frontmatterRegions,
         ]);
         const structuralRegions = [
+            ...frontmatterRegions,
             ...islands,
             ...styleBlocks,
             ...fences,

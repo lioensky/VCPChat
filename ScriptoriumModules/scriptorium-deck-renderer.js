@@ -1,6 +1,10 @@
 'use strict';
 
 (() => {
+    // resolve the shared shadow stylesheet relative to this script (also loadable outside a page, as in tests).
+    const scrollbarHref = typeof document !== 'undefined' && document.currentScript?.src
+        ? new URL('../styles/ui-system/uttu-scrollbar.css', document.currentScript.src).href
+        : '../styles/ui-system/uttu-scrollbar.css';
     function createDeckRenderer(context = {}) {
         const primitives = context.primitives;
         const pagination = context.pagination;
@@ -207,6 +211,11 @@ ${primitives.editDecorationsCss()}
             host.className = 'slide-thumbnail-host';
             host.setAttribute('aria-hidden', 'true');
             const root = host.attachShadow({ mode: 'open' });
+            // thumbnails also have an independent open ShadowRoot.
+            const scrollbarStyle = document.createElement('link');
+            scrollbarStyle.rel = 'stylesheet';
+            scrollbarStyle.href = scrollbarHref;
+            root.append(scrollbarStyle);
             const style = primitives.createStyle(`
 :host {
     position: relative;

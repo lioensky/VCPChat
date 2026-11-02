@@ -293,7 +293,10 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 gap: normalizePageLength(input.page?.gap, '24px'),
             },
             pagination: {
-                mode: isDeck ? 'explicit' : 'flow',
+                // 文稿可以选“长页”（continuous）：不分纸张，阅读也是一整页长卷，适合屏幕上看的讲解和图解。
+                mode: isDeck
+                    ? 'explicit'
+                    : (input.pagination?.mode === 'continuous' ? 'continuous' : 'flow'),
                 keepHeadingsWithNext: !isDeck,
                 widows: isDeck ? 1 : 2,
                 orphans: isDeck ? 1 : 2,
@@ -347,6 +350,8 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                     kind: options.kind,
                     page: options.page,
                     presentation: options.presentation,
+                    // 版式（见 createSceneConfig 的 pagination.mode）。
+                    pagination: options.pagination,
                 }),
             },
             source: {
@@ -593,6 +598,8 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                     : [],
                 scene: createSceneConfig(manifest.scene || {}),
                 import: manifest.import || null,
+                // 文坊 扩展层的附加数据跟着文档存。
+                ...(manifest.uttu && typeof manifest.uttu === 'object' ? { uttu: manifest.uttu } : {}),
             },
             source: {
                 format: sourceFormat,

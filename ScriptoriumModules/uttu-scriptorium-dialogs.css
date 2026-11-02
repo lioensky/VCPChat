@@ -1,0 +1,60 @@
+/* 上游对话框的 VCP 呈现。节点和逻辑是上游的，这里只换样子：
+   直角、不模糊、字号走令牌、控件三档高度，和 uttu-dlg 一个样子。英文小标题和常驻说明藏起来。选择器带 body.uttu-v2，压过 scriptorium.css。 */
+
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop) { background: color-mix(in srgb, var(--uttu-ink-0) 62%, transparent); backdrop-filter: none; -webkit-backdrop-filter: none; }
+body.uttu-v2 :is(.checkpoint-dialog, .unsaved-dialog, .security-review-dialog, .settings-dialog, .style-library-dialog, .svg-asset-manager-dialog, .svg-asset-picker, .object-inspector-dialog, .pr-review-dialog, .lineage-detail-dialog) { border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-m); background: var(--uttu-ink-2); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; color: var(--uttu-text); font: var(--uttu-fs-label) var(--uttu-font-body); }
+body.uttu-v2 :is(.checkpoint-dialog, .unsaved-dialog, .security-review-dialog) { padding: 16px 16px 14px; text-align: left; }
+
+/* 英文小标题、提示图标、常驻说明 */
+body.uttu-v2 :is(.dialog-kicker, .unsaved-dialog-mark, .security-review-dialog-mark, .style-library-header p, .svg-asset-manager-header p, .object-inspector-header p, .object-inspector-help > p, .media-dialog > p, .style-preview-meta p) { display: none; }
+
+/* 标题：和 uttu-dlg 的 h4 同一档 */
+body.uttu-v2 :is(.checkpoint-dialog, .unsaved-dialog, .security-review-dialog, .style-library-header, .svg-asset-manager-header, .object-inspector-header, .pr-review-header, .lineage-detail-header, .settings-dialog-header) h2 { margin: 0; font: 600 var(--uttu-fs-title) var(--uttu-font-body); color: var(--uttu-text); }
+body.uttu-v2 :is(.style-library-header, .svg-asset-manager-header, .object-inspector-header, .pr-review-header, .lineage-detail-header, .settings-dialog-header) { align-items: center; min-height: 44px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--uttu-line-soft); background: none; }
+body.uttu-v2 :is(.pr-review-header, .lineage-detail-header) > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+body.uttu-v2 :is(.pr-review-header, .lineage-detail-header) p { margin: 0; color: var(--uttu-text-3); font-size: var(--uttu-fs-small); }
+body.uttu-v2 :is(.checkpoint-dialog, .unsaved-dialog, .security-review-dialog) > p,
+body.uttu-v2 .security-review-dialog > ul { margin: 10px 0 12px; color: var(--uttu-text-2); font-size: var(--uttu-fs-small); line-height: 1.7; }
+body.uttu-v2 :is(.object-inspector-fields h3, .pr-review-pane h3, .lineage-review-pane h3, .lineage-detail-body h3, .style-preview-meta h3, .svg-asset-editor-meta h3) { margin: 0; color: var(--uttu-text-2); font: 600 var(--uttu-fs-small) var(--uttu-font-body); letter-spacing: 0; }
+body.uttu-v2 :is(.style-preview-meta > span, .svg-asset-editor-meta span, .object-inspector-help strong) { color: var(--uttu-text-3); font: var(--uttu-fs-mini) var(--uttu-font-body); letter-spacing: 0; }
+
+/* 字段 */
+body.uttu-v2 :is(.media-field > span, .object-inspector-fields label > span, .svg-asset-editor-fields label > span, .pr-review-footer label > span, .object-source-field small, .media-source-separator span, #media-local-count) { color: var(--uttu-text-3); font-size: var(--uttu-fs-small); letter-spacing: 0; }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop, .svg-asset-picker) :is(input:not([type="checkbox"], [type="radio"], [type="color"], [type="range"], [type="file"]), select) { height: 28px; padding-inline: 8px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background-color: var(--uttu-ink-1); color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); box-shadow: none; }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop, .svg-asset-picker) select { padding-right: 24px; }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop, .svg-asset-picker) textarea { min-height: 64px; padding: 6px 8px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-1); color: var(--uttu-text); font: var(--uttu-fs-ui)/1.5 var(--uttu-font-body); box-shadow: none; }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop, .svg-asset-picker) textarea.object-code-input { font: var(--uttu-fs-small)/1.6 var(--uttu-font-mono); }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop, .svg-asset-picker) :is(input, select, textarea):focus { border-color: var(--uttu-select); box-shadow: none; outline: 0; }
+body.uttu-v2 .object-inspector-fields input[type="color"] { height: 28px; padding: 2px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-1); }
+body.uttu-v2 .object-inspector-fields input[type="range"] { height: 28px; border-radius: var(--uttu-r-s); }
+body.uttu-v2 .object-inspector-header { display: flex; }
+body.uttu-v2 .svg-asset-preview-frame { margin-bottom: 8px; }
+
+/* 按钮：栏内 28，主操作 32 */
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop, .svg-asset-picker) button:not(.style-card, .svg-asset-card, .svg-asset-manager-card, .svg-asset-import-card, .media-local-remove) { height: 28px; min-width: 0; padding: 0 12px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: transparent; color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); transform: none; transition: none; }
+body.uttu-v2 :is(.dialog-actions, .object-inspector-actions, .pr-review-actions, .style-preview-actions, .svg-asset-editor-actions, .lineage-detail-footer) button:not(.x) { height: 32px; padding: 0 14px; font-size: var(--uttu-fs-label); }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop, .svg-asset-picker) button:not(.style-card, .svg-asset-card, .svg-asset-manager-card, .svg-asset-import-card, .media-local-remove):is(:hover, :focus-visible) { border-color: var(--uttu-select); outline: 0; transform: none; }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop) button.dialog-confirm:not(.x) { border-color: var(--uttu-terra); background: var(--uttu-terra); color: var(--uttu-on-terra); font-weight: 700; }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop) button.dialog-confirm:not(.x):hover { border-color: var(--uttu-terra-hi); background: var(--uttu-terra-hi); }
+body.uttu-v2 #style-apply-btn:not(:disabled) { border-color: var(--uttu-terra); background: var(--uttu-terra); color: var(--uttu-on-terra); font-weight: 700; }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop) button.dialog-danger:not(.x) { border-color: color-mix(in srgb, var(--uttu-bad) 46%, var(--uttu-line)); background: transparent; color: var(--uttu-bad); }
+body.uttu-v2 :is(.dialog-backdrop, .style-library-backdrop) button:disabled { opacity: .4; }
+body.uttu-v2 .lineage-detail-tabs button.active:not(.x) { border-color: var(--uttu-select); background: var(--uttu-select); color: var(--uttu-ink-0); }
+body.uttu-v2 :is(.style-library-close, .svg-asset-manager-header > button, .pr-review-header > button, .lineage-detail-header > button, .settings-dialog-header > button):not(.x):not(.y) { width: 28px; padding: 0; border-color: transparent; color: var(--uttu-text-2); font-size: var(--uttu-fs-title); }
+
+/* 卡片：亮块选中，不上浮 */
+body.uttu-v2 :is(.style-card, .svg-asset-card, .svg-asset-manager-card) { border: 1px solid var(--uttu-line-soft); border-radius: var(--uttu-r-s); background: transparent; color: var(--uttu-text); transform: none; transition: none; }
+body.uttu-v2 :is(.style-card, .svg-asset-card, .svg-asset-manager-card):is(:hover, :focus-visible) { border-color: var(--uttu-select); background: transparent; outline: 0; transform: none; }
+body.uttu-v2 :is(.style-card, .svg-asset-card, .svg-asset-manager-card).active { border-color: var(--uttu-select); background: var(--uttu-select); color: var(--uttu-ink-0); }
+body.uttu-v2 .style-card strong { font: 600 var(--uttu-fs-label) var(--uttu-font-body); }
+body.uttu-v2 .style-card p { color: inherit; opacity: .72; font-size: var(--uttu-fs-small); }
+body.uttu-v2 :is(.style-card-category, .style-card-tags span) { color: inherit; opacity: .72; font: var(--uttu-fs-mini) var(--uttu-font-body); letter-spacing: 0; }
+body.uttu-v2 .svg-asset-card-copy strong { font: 600 var(--uttu-fs-small) var(--uttu-font-body); }
+body.uttu-v2 .svg-asset-card-copy small { color: inherit; opacity: .72; font-size: var(--uttu-fs-mini); }
+body.uttu-v2 .svg-asset-import-card { min-height: 32px; border: 1px dashed var(--uttu-line); border-radius: var(--uttu-r-s); background: transparent; color: var(--uttu-text-2); }
+body.uttu-v2 .svg-asset-import-card strong { font: var(--uttu-fs-ui) var(--uttu-font-body); }
+body.uttu-v2 .svg-asset-picker-header strong { font: 600 var(--uttu-fs-label) var(--uttu-font-body); }
+body.uttu-v2 .svg-asset-picker-header small { color: var(--uttu-text-3); font-size: var(--uttu-fs-mini); }
+
+/* 预览和状态 */
+body.uttu-v2 :is(.style-preview-frame, .object-preview-frame, .svg-asset-preview-frame, .pr-render-diff, .pr-source-diff, .lineage-detail-record, .object-source-diagnostics, .media-dialog-status, .unsaved-document-name) { border: 1px solid var(--uttu-line-soft); border-radius: var(--uttu-r-s); font-size: var(--uttu-fs-small); }

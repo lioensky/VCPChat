@@ -281,6 +281,9 @@
             currentCss,
             replaceCurrentCss,
             compile,
+            // the compile of the current revision if it has been done, without compiling (word count)
+            compiled: () => (compiledDocument && compiledRevision === documentPort.status().revision
+                && compiledDocumentId === documentPort.status().documentId ? compiledDocument : null),
             sourceState,
             renderEditSurface,
             renderReadSurface,

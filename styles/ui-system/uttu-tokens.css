@@ -1,0 +1,135 @@
+/* 样张 v9 的设计令牌；原值与注释保留，组件统一引用 --uttu-*。 */
+
+:root {
+  --uttu-ink-0: #14110e;
+  --uttu-ink-1: #1b1814;
+  --uttu-ink-2: #231f1a;
+  --uttu-ink-3: #2d2822;
+  --uttu-line: #3b342b;
+  --uttu-line-soft: #2f2a23;
+  --uttu-text: #ece3d3;
+  --uttu-text-2: #b4a893;
+  --uttu-text-3: #7d7262;
+  /* 选中用米白，主按钮用赤陶。 */
+  --uttu-select: #e3dbc9;
+  --uttu-terra: #c35f2c;
+  --uttu-terra-hi: #db7a43;
+  --uttu-terra-script: #9e3f24;    /* 写法二的手写底字：比赤陶深、偏红 */
+  --uttu-mark: #dea06c;
+  --uttu-umber: #9b795d;           /* 英文小标签色 */
+  --uttu-link: #8fb3c2;            /* 链接（网页、文件）：要一个和标题、代码都不一样的冷色，灰蓝 */
+  --uttu-ring: rgba(193, 187, 177, .58); /* 光环与小点 */
+  --uttu-ok: #93ad6b;
+  --uttu-warn: #d8a443;
+  --uttu-bad: #d4553e;
+  --uttu-scrollbar-thumb: rgba(166,141,111,.18);
+  --uttu-scrollbar-thumb-hover: rgba(184,145,103,.38);
+  --uttu-scrollbar-thumb-active: rgba(184,145,103,.5);
+  /* 滚动条宽 12、滑块两边各留 3，看得见的滑块 6。按住的范围是整条 12。 */
+  --uttu-scrollbar-size: 12px;
+  --uttu-scrollbar-inset: 3px;
+  /* 浅底页面（文坊里显示的浅色网页、浅色纸的预览框）上的滑块：上面三个暖灰在白底上几乎看不见，换成深一些的墨色。 */
+  --uttu-scrollbar-thumb-on-light: rgba(60,48,36,.26);
+  --uttu-scrollbar-thumb-on-light-hover: rgba(60,48,36,.42);
+  --uttu-scrollbar-thumb-on-light-active: rgba(60,48,36,.55);
+  /* 看不到底色时（文坊里不许跑脚本的预览框，深浅都有）：中间调的暖灰，深底、浅底上都看得见。 */
+  --uttu-scrollbar-thumb-any: rgba(140,128,114,.42);
+  --uttu-scrollbar-thumb-any-hover: rgba(140,128,114,.62);
+  --uttu-font-body: "MiSans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  /* 英文正文与标题 PT Serif，手写底字 Meddon，计数数字 Bodoni Moda；没装时落到系统字体。 */
+  --uttu-font-letter: "PT Serif", Georgia, "Times New Roman", serif;
+  --uttu-font-script: "Meddon", cursive;
+  --uttu-font-num: "Bodoni Moda", "Bodoni 72", serif;
+  --uttu-font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, "MiSans", "Microsoft YaHei", ui-monospace, monospace;
+  /* 正文字体：对话里的消息正文和输入框。设置里的“正文字体”改的是它（mainChatSettingsPresentationOwner.js）。
+     默认用清晰的系统黑体：英文 Segoe UI，
+     中文微软雅黑 UI（系统字体有微调，比网页字体锐利）；都没有时退回界面字体。“跟随界面字体”还是设置里的一项。 */
+  --uttu-font-reading: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", var(--uttu-font-body);
+  /* 字号：一个倍数加八档。1 倍时每档等于原来写死的数。
+     设置里的字号改的是 --uttu-scale；行高写倍数，跟着放大；图标、间距、行的像素高度不动。
+     装饰性英文小标签（9.5px、10.5px）、字标、图标里的字母不缩放。 */
+  --uttu-scale: 1;
+  --uttu-fs-mini:  calc(11px   * var(--uttu-scale)); /* 计数、角注 */
+  --uttu-fs-meta:  calc(11.5px * var(--uttu-scale)); /* 次要说明 */
+  --uttu-fs-small: calc(12px   * var(--uttu-scale)); /* 时间、说明文字 */
+  --uttu-fs-ui:    calc(12.5px * var(--uttu-scale)); /* 工具行、菜单、控件 */
+  --uttu-fs-label: calc(13px   * var(--uttu-scale)); /* 设置项名称、按钮 */
+  --uttu-fs-list:  calc(13.5px * var(--uttu-scale)); /* 话题标题 */
+  --uttu-fs-body:  calc(14px   * var(--uttu-scale)); /* 输入框（消息正文原来也是这档） */
+  --uttu-fs-reading: calc(13px * var(--uttu-scale)); /* 消息正文：要再小一些，比输入框小一档 */
+  --uttu-fs-title: calc(15px   * var(--uttu-scale)); /* 栏头、对话头 */
+  /* 圆角。默认直角；Chat 设置“外观 → 全局圆角”
+     选了直角以外的档（<html data-vcp-radius>，子窗口经 chatGutterSync 同步）才用回下面原来的值。
+     胶囊（999px）和圆（50%）不归这里：圆点、头像、开关照旧。 */
+  --uttu-r-xs: 0px;
+  --uttu-r-s: 0px;
+  --uttu-r-m: 0px;
+  /* 选中：色块本身提亮一档，不画框、不发光。
+     --uttu-pick-ring 的名字留着，各处规则不用改：它现在是铺满元素的一层提亮（inset 的大阴影画在底色上面、文字下面）；
+     自己有底色的按钮（赤陶）用 --uttu-pick-ring-out，同样是把自己的颜色提亮。
+     另一种选中框（bgmtoggle_itemselected：2 像素暖米色线加一圈暖橙光）留在 --uttu-pick-frame，只在原版就这么画的地方用。
+     不用“左边一道米白竖线”：放在圆角的行上会弯成括号。 */
+  --uttu-pick: #f3d5a9;
+  --uttu-pick-glow: #ffc281;
+  --uttu-pick-fill: color-mix(in srgb, var(--uttu-text) 8%, transparent);
+  --uttu-pick-ring: inset 0 0 0 999px var(--uttu-pick-fill);
+  --uttu-pick-ring-out: inset 0 0 0 999px color-mix(in srgb, var(--uttu-text) 12%, transparent);
+  --uttu-pick-frame: inset 0 0 0 2px var(--uttu-pick), inset 0 0 7px 2px color-mix(in srgb, var(--uttu-pick-glow) 55%, transparent),
+    0 0 7px color-mix(in srgb, var(--uttu-pick-glow) 70%, transparent);
+  --uttu-stroke: 1.5;
+  /* 动效：打开慢、关闭快（约 5:1），减速收尾；只用透明度、横移和渐显，不做按下位移。 */
+  --uttu-t-fast: 120ms;
+  --uttu-t-swap: 180ms;
+  --uttu-t-open: 320ms;
+  --uttu-t-close: 140ms;
+  --uttu-ease: cubic-bezier(.16, .84, .3, 1);
+  --uttu-ease-in: cubic-bezier(.5, 0, .9, .4);
+  /* 字母下落的位置曲线与透明度曲线。 */
+  --uttu-ease-drop: cubic-bezier(.25, .35, .65, 1);
+  --uttu-ease-fade: cubic-bezier(.42, 0, .58, 1);
+  /* 样张 .btn-primary 的文字色（不在原 :root 中）。 */
+  --uttu-on-terra: #fbe9dc;
+  /* “进行中”三个点：一颗一颗跳，跳完歇一下。 */
+  --uttu-dots-cycle: 1.8s;
+  --uttu-dots-step: .45s;
+  /* “进行中”的提示文字（思考中、Canvas 协同中、正在向桌面推送）：整段透明度起伏一轮的时长。 */
+  --uttu-breathe-cycle: 2.4s;
+}
+
+/* 设置里的字号：外观引擎把档位写在 <html data-vcp-font-scale> 上，这里换成 --uttu-scale，VCP 界面的字一起变。
+   上游残留的部件用的 --vcp-appearance-font-scale 也接到同一个倍数（这几条不在层里，盖过 styles/appearance.css）。
+   特大（xlarge，1.2）等设置面板换成四档控件时才能选到。
+   没有外观引擎的子窗口（文坊、笔记）收不到档位，保持 1 倍，D3 再接。 */
+html[data-vcp-font-scale="small"] { --uttu-scale: .92; }
+html[data-vcp-font-scale="large"] { --uttu-scale: 1.1; }
+html[data-vcp-font-scale="xlarge"] { --uttu-scale: 1.2; }
+html { --vcp-appearance-font-scale: var(--uttu-scale); }
+
+/* 圆角开关（见 :root 的说明）：只有设置里选了圆角，VCP 自己的部件才用回原来的圆角；上游部件本来就跟这个设置走。 */
+html:is([data-vcp-radius="small"], [data-vcp-radius="medium"], [data-vcp-radius="round"], [data-vcp-radius="custom"]) {
+  --uttu-r-xs: 4px;
+  --uttu-r-s: 6px;
+  --uttu-r-m: 10px;
+}
+
+/* 显示不全的文字：末尾渐隐，不用省略号。只有真的放不下时才渐隐：
+   放不下的元素横向可滚，滚动时间线才生效，--uttu-fade 才变成 2em；放得下时时间线无效，保持 0。用法（四行一起写）：
+     overflow: hidden; white-space: nowrap; text-overflow: clip;
+     mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent);
+     animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); */
+@property --uttu-fade { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@keyframes uttu-fade-detect { from, to { --uttu-fade: 2em; } }
+/* 多行版：限高 N 行（max-height: calc(N * 1lh)），放不下时底部一行渐隐。用法同上，方向换成 to bottom / scroll(self block)；
+   另加 padding-bottom: 3px：中文字形比行高略高，不留这点余量，一行字也会被当成放不下而整行淡掉。 */
+@property --uttu-fade-y { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@keyframes uttu-fade-detect-y { from, to { --uttu-fade-y: 1lh; } }
+
+/* 每颗点：快起、在上面停一下、快落，其余时间暗着。第 n 颗延迟 (n-1) × --uttu-dots-step。 */
+@keyframes uttu-dot-hop {
+  0% { opacity: .3; transform: none; }
+  6%, 20% { opacity: 1; transform: translateY(-2px); }
+  26%, 100% { opacity: .3; transform: none; }
+}
+
+/* 文字呼吸：亮、渐暗到四成、再亮回来，替代文字后面的动画点。 */
+@keyframes uttu-breathe { 50% { opacity: .4; } }

@@ -1,0 +1,208 @@
+/* 编辑器控件。
+   样张里的短类名在这里一律加 uttu- 前缀：.seg → .uttu-seg，.tb → .uttu-tb，.fmenu → .uttu-menu，以此类推。
+   只用 --uttu-* 令牌（uttu-tokens.css）；不画焦点框，按下只降透明度；按钮和菜单项文字后面不加“…”。 */
+
+.uttu-ctl, .uttu-ctl * { box-sizing: border-box; }
+:is(.uttu-seg, .uttu-tbar, .uttu-menu, .uttu-bubble, .uttu-arail, .uttu-dlg, .uttu-cmt, .uttu-tiles, .uttu-swatches) :is(button, [tabindex]):is(:focus, :focus-visible),
+:is(.uttu-tb, .uttu-tb-drop, .uttu-fsel, .uttu-chk, .uttu-btn, .uttu-link-btn, .uttu-row, .uttu-saved):is(:focus, :focus-visible) { outline: none; }
+
+@keyframes uttu-ctl-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes uttu-ctl-fade { from { opacity: 0; } }
+@keyframes uttu-ctl-swap { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+
+/* 按钮：胶囊。主按钮赤陶，次按钮一道细线；不能用时降透明度。 */
+.uttu-btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding-inline: 14px; border-radius: var(--uttu-r-s); border: 1px solid transparent; background: transparent; color: var(--uttu-text); font: var(--uttu-fs-label) var(--uttu-font-body); white-space: nowrap; cursor: pointer; transition: background var(--uttu-t-fast) var(--uttu-ease), border-color var(--uttu-t-fast) var(--uttu-ease), opacity var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-btn svg { width: 16px; height: 16px; }
+.uttu-btn.primary { background: var(--uttu-terra); color: var(--uttu-on-terra); font-weight: 700; }
+.uttu-btn.primary:hover { background: var(--uttu-terra-hi); }
+.uttu-btn.ghost { border-color: var(--uttu-line); }
+.uttu-btn.ghost:hover { border-color: var(--uttu-select); }
+.uttu-btn.small { height: 28px; padding-inline: 12px; font-size: var(--uttu-fs-ui); }
+.uttu-btn:active { opacity: .6; transition-duration: 0ms; }
+.uttu-btn:disabled { opacity: .4; cursor: default; }
+.uttu-link-btn { border: 0; background: none; padding: 0; color: var(--uttu-text-3); font: var(--uttu-fs-small) var(--uttu-font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--uttu-line); }
+.uttu-link-btn:hover { color: var(--uttu-text-2); }
+.uttu-eyebrow { font: 600 9.5px var(--uttu-font-body); letter-spacing: .36em; text-transform: uppercase; color: var(--uttu-umber); }
+
+/* 分段切换：一组里只选一个。选中是米白淡底、正文色。 */
+.uttu-seg { display: inline-flex; align-items: stretch; height: 28px; padding: 2px; gap: 2px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-1); flex: none; }
+.uttu-seg button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: var(--uttu-r-s); background: transparent; color: var(--uttu-text-3); padding-inline: 10px; font: var(--uttu-fs-ui) var(--uttu-font-body); white-space: nowrap; cursor: pointer; transition: background var(--uttu-t-fast) var(--uttu-ease), color var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-seg button:hover { color: var(--uttu-text); }
+.uttu-seg button[aria-pressed="true"] { background: color-mix(in srgb, var(--uttu-select) 14%, transparent); color: var(--uttu-text); }
+.uttu-seg button:active { opacity: .6; transition-duration: 0ms; }
+.uttu-seg button:disabled { opacity: .35; cursor: default; }
+.uttu-seg button small { color: var(--uttu-mark); font-size: var(--uttu-fs-mini); font-variant-numeric: tabular-nums; }
+.uttu-seg.sm { height: 24px; border-radius: var(--uttu-r-s); }
+.uttu-seg.sm button { padding-inline: 8px; font-size: var(--uttu-fs-small); border-radius: var(--uttu-r-xs); }
+.uttu-seg.full { display: flex; width: 100%; }
+.uttu-seg.full button { flex: 1; }
+
+/* 工具条：28 像素方钮，按用途分组、竖线隔开。B I U S 用 PT Serif 字形。 */
+.uttu-tbar { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.uttu-tbar .grow { flex: 1; }
+.uttu-tb { width: 28px; height: 28px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: var(--uttu-r-s); background: transparent; color: var(--uttu-text-2); cursor: pointer; transition: background var(--uttu-t-fast) var(--uttu-ease), color var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-tb:hover { background: var(--uttu-ink-3); color: var(--uttu-text); }
+.uttu-tb:active { opacity: .6; transition-duration: 0ms; }
+.uttu-tb[aria-pressed="true"], .uttu-tb[aria-expanded="true"] { background: color-mix(in srgb, var(--uttu-select) 14%, transparent); color: var(--uttu-text); }
+.uttu-tb:disabled { opacity: .35; cursor: default; background: transparent; }
+.uttu-tb svg { width: 17px; height: 17px; }
+.uttu-tb.g { font: 15px/1 var(--uttu-font-letter); }
+.uttu-tb.g.b { font-weight: 700; }
+.uttu-tb.g.i { font-style: italic; }
+.uttu-tb.g.u { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.uttu-tb.g.s { text-decoration: line-through; text-decoration-thickness: 1px; }
+.uttu-tb-sep { width: 1px; height: 16px; margin-inline: 5px; background: var(--uttu-line); flex: none; }
+.uttu-tb-drop { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px 0 8px; border: 0; border-radius: var(--uttu-r-s); background: transparent; color: var(--uttu-text-2); font: var(--uttu-fs-ui) var(--uttu-font-body); white-space: nowrap; cursor: pointer; flex: none; transition: background var(--uttu-t-fast) var(--uttu-ease), color var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-tb-drop:hover, .uttu-tb-drop[aria-expanded="true"] { background: var(--uttu-ink-3); color: var(--uttu-text); }
+.uttu-tb-drop[aria-pressed="true"] { background: color-mix(in srgb, var(--uttu-select) 14%, transparent); color: var(--uttu-text); }
+.uttu-tb-drop:active { opacity: .6; transition-duration: 0ms; }
+.uttu-tb-drop:disabled { opacity: .35; cursor: default; background: transparent; }
+.uttu-tb-drop svg { width: 12px; height: 12px; color: var(--uttu-text-3); }
+.uttu-tb-drop svg.lead { width: 15px; height: 15px; color: currentColor; }
+.uttu-tb-drop.plain { padding-inline: 8px; }
+
+/* 菜单：和文件链接的菜单同一个样子；补右侧快捷键、可勾选项、分组小标签、字形方块、不能用时写原因。 */
+.uttu-menu { position: absolute; z-index: 40; max-width: 320px; max-height: min(440px, calc(100% - 16px)); overflow: auto; display: grid; padding: 4px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-2); animation: uttu-ctl-rise var(--uttu-t-open) var(--uttu-ease); }
+.uttu-menu.still { animation: none; }
+.uttu-menu button { display: flex; align-items: center; gap: 10px; border: 0; background: none; color: var(--uttu-text); text-align: left; padding: 7px 10px; border-radius: var(--uttu-r-xs); font: var(--uttu-fs-ui) var(--uttu-font-body); cursor: pointer; white-space: nowrap; }
+.uttu-menu button:hover, .uttu-menu button.on { background: var(--uttu-ink-3); }
+.uttu-menu button:active { opacity: .6; }
+.uttu-menu button:disabled { opacity: .4; cursor: default; background: none; }
+.uttu-menu [aria-checked="true"] { background: var(--uttu-pick-fill); }
+.uttu-menu button > span:first-child { min-width: 0; overflow: hidden; white-space: nowrap; }
+.uttu-menu-search { position: sticky; top: 0; z-index: 1; height: 28px; margin-bottom: 4px; padding: 0 8px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-xs); outline: none; background: var(--uttu-ink-0); color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); }
+.uttu-menu-search:focus { border-color: var(--uttu-text-3); }
+.uttu-menu.searching :is(.grp, hr, .again) { display: none; }
+.uttu-menu button[hidden] { display: none; }
+.uttu-menu hr { border: 0; border-top: 1px solid var(--uttu-line-soft); margin: 4px 6px; }
+.uttu-menu .k { margin-left: auto; padding-left: 20px; font: var(--uttu-fs-meta) var(--uttu-font-mono); color: var(--uttu-text-3); }
+.uttu-menu .hint { margin-left: auto; padding-left: 16px; font-size: var(--uttu-fs-meta); color: var(--uttu-text-3); }
+.uttu-menu .grp { padding: 8px 10px 3px; font: 600 9.5px var(--uttu-font-body); letter-spacing: .36em; text-transform: uppercase; color: var(--uttu-umber); }
+.uttu-menu .gl { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border: 1px solid var(--uttu-line-soft); border-radius: var(--uttu-r-xs); font: 12px/1 var(--uttu-font-letter); color: var(--uttu-text-2); }
+.uttu-menu .gl svg { width: 14px; height: 14px; }
+.uttu-menu .empty { padding: 7px 10px; font-size: var(--uttu-fs-small); color: var(--uttu-text-3); }
+
+/* 面板头、分隔条 */
+.uttu-phead { display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--uttu-line-soft); white-space: nowrap; min-width: 0; color: var(--uttu-text); }
+.uttu-phead b { font-size: var(--uttu-fs-ui); font-weight: 600; }
+.uttu-phead small { color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); }
+.uttu-phead .grow { flex: 1; }
+.uttu-phead .uttu-tb { width: 26px; height: 26px; }
+.uttu-split { position: relative; flex: none; width: 9px; margin-inline: -4px; cursor: col-resize; z-index: 2; touch-action: none; }
+.uttu-split::before { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 1px; background: var(--uttu-line-soft); transition: background var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-split:hover::before, .uttu-split.drag::before { background: var(--uttu-select); }
+
+/* 选项卡片：要看着选的东西。上面一块小样，下面名字；选中描米白边。 */
+.uttu-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+.uttu-tile { display: grid; gap: 6px; padding: 5px 5px 7px; border: 1px solid var(--uttu-line-soft); border-radius: var(--uttu-r-s); background: transparent; color: var(--uttu-text-2); font: var(--uttu-fs-small) var(--uttu-font-body); text-align: left; cursor: pointer; transition: border-color var(--uttu-t-fast) var(--uttu-ease), color var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-tile:hover { border-color: var(--uttu-line); color: var(--uttu-text); }
+.uttu-tile[aria-pressed="true"] { border-color: var(--uttu-select); color: var(--uttu-text); }
+.uttu-tile:active { opacity: .6; transition-duration: 0ms; }
+.uttu-tile .pv { height: 44px; border-radius: var(--uttu-r-xs); padding: 7px 8px; display: grid; align-content: start; gap: 4px; overflow: hidden; }
+.uttu-tile .pv i { display: block; height: 3px; border-radius: 1px; background: currentColor; opacity: .5; }
+.uttu-tile .pv i:first-child { width: 55%; height: 5px; opacity: .9; }
+.uttu-tile .pv i:nth-child(3) { width: 70%; }
+.uttu-tile > span:last-child { padding-inline: 3px; }
+
+/* 表单行、下拉选择、色块、勾选 */
+.uttu-field { display: grid; gap: 6px; min-width: 0; }
+.uttu-field > .lab { font-size: var(--uttu-fs-small); color: var(--uttu-text-3); }
+.uttu-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.uttu-field-row.fit { grid-template-columns: minmax(0, 1fr) 72px; }
+.uttu-fsel { display: flex; align-items: center; justify-content: space-between; gap: 6px; height: 28px; padding: 0 6px 0 8px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-1); color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); min-width: 0; transition: border-color var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-fsel span { overflow: hidden; text-overflow: clip; mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); white-space: nowrap; }
+.uttu-fsel:hover, .uttu-fsel[aria-expanded="true"] { border-color: var(--uttu-select); }
+.uttu-fsel svg { width: 12px; height: 12px; color: var(--uttu-text-3); flex: none; }
+.uttu-swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.uttu-swatches button { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-xs); background: var(--c, transparent); color: var(--uttu-text-2); font: 12px var(--uttu-font-letter); cursor: pointer; }
+.uttu-swatches button[aria-pressed="true"] { border-color: var(--uttu-select); box-shadow: inset 0 0 0 2px var(--uttu-ink-1); }
+.uttu-chk { display: inline-flex; align-items: flex-start; gap: 8px; border: 0; background: none; padding: 2px 0; color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); cursor: pointer; text-align: left; }
+.uttu-chk .box { width: 16px; height: 16px; margin-top: 2px; flex: none; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-xs); display: grid; place-items: center; transition: border-color var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-chk .box svg { width: 13px; height: 13px; color: var(--uttu-select); visibility: hidden; }
+.uttu-chk[aria-checked="true"] .box { border-color: var(--uttu-select); }
+.uttu-chk[aria-checked="true"] .box svg { visibility: visible; }
+.uttu-chk:hover .box { border-color: var(--uttu-select); }
+.uttu-chk small { display: block; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); }
+
+/* 开关：胶囊底加一颗圆钮。
+   关：暗描边、灰钮；开：米白描边、米白钮，底色淡米白；钮只横移 14px，不缩放。
+   原生 checkbox 是业务节点，透明地盖满整个胶囊，点哪里都切换，键盘空格照样能用。 */
+.uttu-swt { position: relative; display: inline-block; width: 32px; height: 18px; flex: none; box-sizing: border-box; border: 1px solid var(--uttu-line); border-radius: 999px; background: var(--uttu-ink-1); cursor: pointer; transition: border-color var(--uttu-t-fast) var(--uttu-ease), background var(--uttu-t-fast) var(--uttu-ease), opacity var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-swt::after { content: ""; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--uttu-text-3); pointer-events: none; transition: transform var(--uttu-t-swap) var(--uttu-ease), background var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-swt > input { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); margin: 0; padding: 0; opacity: 0; cursor: inherit; appearance: none; -webkit-appearance: none; }
+.uttu-swt > input:is(:focus, :focus-visible) { outline: none; }
+.uttu-swt:hover { border-color: var(--uttu-text-3); }
+.uttu-swt:has(> input:checked) { border-color: var(--uttu-select); background: color-mix(in srgb, var(--uttu-select) 14%, transparent); }
+.uttu-swt:has(> input:checked)::after { transform: translateX(14px); background: var(--uttu-select); }
+.uttu-swt:active { opacity: .6; transition-duration: 0ms; }
+.uttu-swt:has(> input:disabled) { opacity: .35; cursor: default; }
+
+/* 滑杆：一道 2px 细线，已选的一段米白（--p 由脚本写）；把手是一颗米白小菱形（图标库的菱形点缀）。数值写在右边，等宽数字。 */
+.uttu-rng { display: inline-flex; align-items: center; gap: 10px; }
+.uttu-rng > input[type="range"] { --p: 50%; width: 180px; height: 18px; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; appearance: none; -webkit-appearance: none; }
+.uttu-rng > input[type="range"]:is(:focus, :focus-visible) { outline: none; }
+.uttu-rng > input[type="range"]::-webkit-slider-runnable-track { height: 2px; border-radius: 1px; background: linear-gradient(to right, var(--uttu-text-2) var(--p), var(--uttu-line) var(--p)); }
+.uttu-rng > input[type="range"]::-webkit-slider-thumb { width: 10px; height: 10px; margin-top: -4px; border: 0; border-radius: 1px; background: var(--uttu-select); transform: rotate(45deg); appearance: none; -webkit-appearance: none; }
+.uttu-rng > input[type="range"]:hover::-webkit-slider-thumb { background: var(--uttu-text); }
+.uttu-rng > input[type="range"]:active { opacity: .6; }
+.uttu-rng > input[type="range"]:disabled { opacity: .35; cursor: default; }
+.uttu-rng > output { min-width: 4.2em; color: var(--uttu-text-2); font: var(--uttu-fs-ui) var(--uttu-font-body); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* 搜索框和列表行 */
+.uttu-search { display: flex; align-items: center; gap: 6px; height: 30px; padding-inline: 8px; border: 1px solid var(--uttu-line-soft); border-radius: var(--uttu-r-s); color: var(--uttu-text-3); white-space: nowrap; min-width: 0; }
+.uttu-search svg { width: 14px; height: 14px; flex: none; }
+.uttu-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); }
+.uttu-search input::placeholder { color: var(--uttu-text-3); }
+.uttu-search:focus-within { border-color: color-mix(in srgb, var(--uttu-select) 55%, var(--uttu-line)); }
+.uttu-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 8px; border: 0; border-radius: var(--uttu-r-s); background: none; color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); text-align: left; cursor: pointer; }
+.uttu-row:hover { background: var(--uttu-ink-2); }
+.uttu-row[aria-current="true"] { background: var(--uttu-ink-3); }
+.uttu-row:active { opacity: .6; }
+.uttu-row .nm { overflow: hidden; text-overflow: clip; mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); animation: uttu-fade-detect linear both; animation-timeline: scroll(self inline); white-space: nowrap; }
+.uttu-row small { color: var(--uttu-text-3); font-size: var(--uttu-fs-mini); white-space: nowrap; }
+
+/* 选区浮条 */
+.uttu-bubble { position: absolute; z-index: 30; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-2); white-space: nowrap; animation: uttu-ctl-rise var(--uttu-t-swap) var(--uttu-ease); }
+.uttu-bubble.still { animation: none; }
+
+/* 可改名的标题、保存状态 */
+.uttu-title-edit { min-width: 0; padding: 3px 5px; border-radius: var(--uttu-r-xs); color: var(--uttu-text); font: 600 var(--uttu-fs-label) var(--uttu-font-body); white-space: nowrap; overflow: hidden; text-overflow: clip; outline: 0; cursor: text; }
+.uttu-title-edit:hover { background: var(--uttu-ink-2); }
+.uttu-title-edit[contenteditable="true"] { background: var(--uttu-ink-3); text-overflow: clip; }
+.uttu-title-edit.muted { color: var(--uttu-text-2); font-weight: 500; cursor: default; background: none; }
+.uttu-saved { border: 0; background: none; padding: 3px 6px; border-radius: var(--uttu-r-xs); color: var(--uttu-text-3); font: var(--uttu-fs-small) var(--uttu-font-body); white-space: nowrap; font-variant-numeric: tabular-nums; cursor: default; overflow: hidden; text-overflow: clip; min-width: 0; }
+.uttu-saved.dirty { color: var(--uttu-mark); }
+.uttu-saved.can { cursor: pointer; }
+.uttu-saved.can:hover { background: var(--uttu-ink-3); }
+
+/* 对话框 */
+.uttu-dlg-scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--uttu-ink-0) 62%, transparent); animation: uttu-ctl-fade var(--uttu-t-swap) var(--uttu-ease); }
+.uttu-dlg { width: min(440px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 14px; padding: 16px 16px 14px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-m); background: var(--uttu-ink-2); color: var(--uttu-text); font: var(--uttu-fs-label) var(--uttu-font-body); animation: uttu-ctl-rise var(--uttu-t-open) var(--uttu-ease); }
+.uttu-dlg h4 { margin: 0; font-size: var(--uttu-fs-title); display: flex; align-items: baseline; gap: 10px; }
+.uttu-dlg .acts { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* 活动栏：最左一列图标；打开的那个是正文色，套选中框（--uttu-pick-ring）。 */
+.uttu-arail { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 0; padding: 8px 0; background: var(--uttu-ink-1); border-right: 1px solid var(--uttu-line-soft); }
+.uttu-arail .uttu-tb { position: relative; width: 32px; height: 32px; }
+.uttu-arail .uttu-tb svg { width: 18px; height: 18px; }
+.uttu-arail .uttu-tb[aria-pressed="true"] { background: transparent; color: var(--uttu-text); box-shadow: var(--uttu-pick-ring); }
+.uttu-arail .grow { flex: 1; }
+.uttu-arail .sep { flex: none; width: 20px; height: 1px; margin: 4px 0; background: var(--uttu-line); }
+
+/* 批注卡 */
+.uttu-cmt { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--uttu-line-soft); border-radius: var(--uttu-r-s); background: var(--uttu-ink-2); color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); cursor: pointer; transition: border-color var(--uttu-t-fast) var(--uttu-ease); }
+.uttu-cmt.on { border-color: var(--uttu-select); }
+.uttu-cmt q { quotes: none; display: block; padding-left: 8px; border-left: 2px solid var(--uttu-mark); color: var(--uttu-text-3); font-size: var(--uttu-fs-small); white-space: nowrap; overflow: hidden; text-overflow: clip; }
+.uttu-cmt p { margin: 0; }
+.uttu-cmt textarea { width: 100%; min-height: 56px; resize: vertical; padding: 6px 8px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); outline: 0; background: var(--uttu-ink-1); color: var(--uttu-text); font: var(--uttu-fs-ui)/1.6 var(--uttu-font-body); }
+.uttu-cmt textarea:focus { border-color: color-mix(in srgb, var(--uttu-select) 55%, var(--uttu-line)); }
+.uttu-cmt .foot { display: flex; align-items: center; gap: 10px; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); }
+.uttu-cmt .foot .grow { flex: 1; }
+.uttu-cmt .foot .tag { color: var(--uttu-mark); }
+.uttu-cmt.done { opacity: .55; cursor: default; }
+
+/* 正在进行：三颗起伏的点（和话题栏“正在回复”同一套）。 */
+.uttu-dots { display: inline-flex; align-items: center; gap: 2px; }
+.uttu-dots i { width: 3px; height: 3px; border-radius: 50%; background: var(--uttu-mark); animation: uttu-dot-hop var(--uttu-dots-cycle) linear infinite; }
+.uttu-dots i:nth-child(2) { animation-delay: var(--uttu-dots-step); }
+.uttu-dots i:nth-child(3) { animation-delay: calc(var(--uttu-dots-step) * 2); }

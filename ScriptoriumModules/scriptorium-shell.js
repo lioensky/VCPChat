@@ -47,8 +47,20 @@
             return controller;
         }
 
-        function updateMetrics() {
-            const text = String(context.metricsPort?.text?.() || '');
+        // text() is null until the surface has compiled this revision (scriptorium.js metricsPort);
+        // ask again shortly, and after about three seconds let it compile by itself. The same text is not counted twice.
+        let metricsRetry = null;
+        let countedText = null;
+        function updateMetrics(attempt = 0) {
+            clearTimeout(metricsRetry);
+            const raw = context.metricsPort?.text?.(attempt >= 20);
+            if (raw === null) {
+                metricsRetry = setTimeout(() => updateMetrics(attempt + 1), 150);
+                return;
+            }
+            const text = String(raw || '');
+            if (text === countedText) return;
+            countedText = text;
             const compact = text.replace(/\s/gu, '');
             const cjkCharacters = (
                 text.match(/[\u3400-\u9fff\uf900-\ufaff]/gu) || []
@@ -126,6 +138,8 @@
         }
 
         function canUseFocusMode() {
+            // 白板、PDF、表格这些盖在文稿上的视图也能专注；上游只看后面的文稿，开着它们时点了没反应。
+            if (window.UTTUScriptoriumUI?.overlay?.()) return true;
             const status = context.documentPort.status();
             const documentModel = context.documentPort.document?.();
             const isDeck = documentModel?.manifest?.scene?.kind
@@ -135,7 +149,7 @@
             return status.ready
                 && workspaceVisible
                 && !isDeck
-                && (mode === 'edit' || mode === 'read');
+                && (mode === 'edit' || mode === 'read' || mode === 'source-html' || mode === 'source-css'); // 源码视图也算
         }
 
         function setFocusMode(active, options = {}) {

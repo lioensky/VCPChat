@@ -148,6 +148,7 @@
     "jszip": "^3.10.1",
     "lucide": "^1.25.0",
     "mammoth": "^1.9.1",
+    "parse5": "^7.3.0",
     "marked": "^12.0.0",
     "minimatch": "^9.0.0",
     "morphdom": "^2.7.7",

@@ -70,9 +70,20 @@
             return adapter.compile({ force });
         }
 
+        // 按 key 建一次表。原来每个壳都从头找，一万块的文档光这里就是一秒多。
+        const regionIndexes = new WeakMap();
         function regionForShell(shell) {
             const key = shell?.dataset?.vdocEditKey;
-            return compiled().editRegions.find((region) => region.key === key) || null;
+            const result = compiled();
+            let index = regionIndexes.get(result);
+            if (!index) {
+                index = new Map();
+                for (const region of result.editRegions) {
+                    if (!index.has(region.key)) index.set(region.key, region);
+                }
+                regionIndexes.set(result, index);
+            }
+            return index.get(key) || null;
         }
 
         function sourceForRegion(region) {

@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
+// 数据图表块的解析和只改数据（UpdateChartData）。
+const DataChart = require('../../../modules/uttu/dataChart');
 
 let runtime = {
     control: null,
@@ -641,6 +643,12 @@ async function getVisualContext(args, executionContext = {}) {
             : internalSlideIndex(args.slideIndex),
         format: args.format || args.imageFormat,
         quality: args.quality,
+        // 截图前先滚到这一节（标题文字）或这个可编程岛（data-vdoc-island），只对文稿。
+        section: args.section || args.heading,
+        island: args.island,
+        // 白板只看这些元素或这一块（文坊 uttu-scriptorium-board.js）。
+        ids: parseArray(args.ids, 'ids', null),
+        region: parseObject(args.region, 'region', null),
         stabilizationMs: args.stabilizationMs
             ?? args.renderStabilizationMs
             ?? args.visualDelayMs
@@ -650,6 +658,26 @@ async function getVisualContext(args, executionContext = {}) {
     return externalizePageNumbers(result, {
         deck: endpoint === 'pptx'
             || result?.details?.documentKind === 'pptx',
+    });
+}
+
+// 白板按元素读写。
+async function getBoard(args) {
+    return call(args, 'getBoard', {
+        ids: parseArray(args.ids, 'ids', null),
+        region: parseObject(args.region, 'region', null),
+        sinceRevision: args.sinceRevision,
+        limit: args.limit,
+    });
+}
+
+async function updateBoard(args) {
+    return call(args, 'updateBoard', {
+        expectedRevision: args.expectedRevision,
+        add: parseArray(args.add, 'add'),
+        update: parseArray(args.update, 'update'),
+        delete: parseArray(args.delete, 'delete'),
+        background: args.background,
     });
 }
 
@@ -922,7 +950,169 @@ async function createProject(args, executionContext = {}) {
         summary: args.summary,
         conflictPolicy: args.conflictPolicy || 'rename',
         expectedFileHash: args.expectedFileHash,
-        openAfterCreate: booleanOf(args.openAfterCreate, false),
+        // 版式、样式库，新建后默认在右栏打开（ScriptoriumAgentControlService.createProjectArtifact）。
+        layout: args.layout,
+        theme: args.theme,
+        openAfterCreate: booleanOf(args.openAfterCreate, true),
+        // 临时演示和小工具存进文库的“临时”里，不混进正式文稿。
+        temporary: booleanOf(args.temporary, false),
+    });
+}
+
+// 找回已有文档、在原文档上继续改。
+async function listDocuments() {
+    const result = await requireControl().listDocuments();
+    const documents = Array.isArray(result.documents) ? result.documents : [];
+    return {
+        content: [{
+            type: 'text',
+            text: [
+                '# 文坊文档目录',
+                '',
+                `目录：${result.root}`,
+                '',
+                documents.length
+                    ? '要改其中一份时用 OpenDocument 打开它，在原文档上改。'
+                    : '目录里还没有文档。',
+                '',
+                ...documents.map((item) => `- ${item.fileName}（${item.temporary ? '临时' : ''}${item.projectType === 'pptx' ? '演示' : '文档'}，`
+                    + `${Math.max(1, Math.round(item.size / 1024))} KB，修改于 ${item.modifiedAt}）`),
+            ].join('\n'),
+        }],
+        details: result,
+    };
+}
+
+async function openDocument(args) {
+    const result = await requireControl().openDocument({
+        fileName: args.fileName || args.name,
+        path: args.path || args.filePath,
+    });
+    const text = result.opened && result.projectType === 'web-page'
+        ? [
+            '# 已在文坊打开网页',
+            '',
+            `- 文件：${result.fileName}`,
+            '',
+            '网页是给用户看的：GetSource、SubmitSourcePr 这些仍作用于后面的文稿。要改网页就直接改这个文件，文坊会自己刷新。',
+        ]
+        : result.opened
+        ? [
+            '# 已在文坊打开',
+            '',
+            `- 文件：${result.fileName}`,
+            `- 修订：${result.revision ?? '—'}`,
+            '',
+            '之后的读取和提交都作用于这份文档。',
+        ]
+        : [
+            '# 已请求打开，但还没切过去',
+            '',
+            `- 文件：${result.fileName}`,
+            '',
+            '当前文档可能有未保存的修改，正在等用户确认。先不要提交修改，稍后用 GetDocumentInfo 确认 filePath。',
+        ];
+    return {
+        content: [{
+            type: 'text',
+            text: text.join('\n'),
+        }],
+        details: result,
+    };
+}
+
+// 数据图表块只改数据：读出源码、找到 ```chart 图ID、
+// 换掉 data 那一段，再按 SubmitSourcePr 提交（同一条自动合入或审批、文脉快照、回退）。图形部分一个字节不动。
+async function readFlowSource(requestId) {
+    const pages = [];
+    let startLine = 1;
+    let revision = null;
+    for (let page = 1; page <= 100; page += 1) {
+        const result = await requireControl().call({
+            requestId: `${requestId}:chart-source-${page}`,
+            endpoint: 'docx',
+            method: 'getSource',
+            payload: { sourceKind: 'markdown-hybrid', startLine, endLine: startLine + 1999 },
+        });
+        if (!result || result.success === false) {
+            throw new Error(`[ScriptoriumCollaborator] 读不到当前文稿的源码：${result?.message || result?.code || '未知原因'}`);
+        }
+        if (revision !== null && result.revision !== revision) {
+            throw new Error('[ScriptoriumCollaborator] 读源码时文档被改了，请重试。');
+        }
+        revision = result.revision;
+        pages.push(result.source);
+        if (result.endLine >= result.totalLines) break;
+        startLine = result.endLine + 1;
+    }
+    return { source: pages.join('\n'), revision };
+}
+
+async function updateChartData(args, executionContext = {}) {
+    const chartId = String(args.chart || args.chartId || args.island || '').trim();
+    if (!chartId) throw new Error('[ScriptoriumCollaborator] UpdateChartData 缺少 chart（图表 ID）。');
+    const maid = authorFromMaid(args, executionContext);
+    const requestId = requestIdOf(args, executionContext);
+    const { source, revision } = await readFlowSource(requestId);
+    const blocks = DataChart.findBlocks(source);
+    const matches = blocks.filter((block) => block.id === chartId);
+    if (!matches.length) {
+        const ids = blocks.map((block) => block.id).filter(Boolean);
+        throw new Error(`[ScriptoriumCollaborator] 当前文档里没有图表 ${chartId}。`
+            + `${ids.length ? `现有图表：${ids.join('、')}。` : '文档里还没有 ```chart 图表块。'}`);
+    }
+    if (matches.length > 1) {
+        throw new Error(`[ScriptoriumCollaborator] 图表 ID ${chartId} 出现了 ${matches.length} 次，`
+            + '先用 SubmitSourcePr 改成不重复的 ID。');
+    }
+    const block = matches[0];
+    const updated = DataChart.updateBody(block.body, {
+        data: args.data,
+        rows: args.rows,
+        removeX: args.removeX,
+        keepLast: args.keepLast,
+    });
+    if (updated.error) throw new Error(`[ScriptoriumCollaborator] 图表 ${chartId}：${updated.error}`);
+    if (updated.body === block.body) {
+        return resultText('Scriptorium · UpdateChartData', {
+            success: true,
+            changed: false,
+            chart: chartId,
+            rows: updated.after,
+            revision,
+            message: '数据和原来一样，没有提交。',
+        });
+    }
+    const summary = String(args.summary || '').trim() || `更新图表数据：${chartId}`;
+    const result = await requireControl().call({
+        requestId,
+        endpoint: 'docx',
+        method: 'submitSourcePr',
+        payload: {
+            requestId,
+            sourceKind: 'markdown-hybrid',
+            replacements: [{ target: block.body, replace: updated.body, startLine: block.bodyLine }],
+            expectedRevision: args.expectedRevision ?? revision,
+            maid,
+            author: maid,
+            summary,
+        },
+    });
+    // 回执里的提案、已执行操作都带着整段新旧图表文本（数据多时很长），Agent 用不上，去掉。
+    const { operation, ...receipt } = result || {};
+    if (receipt.pr) {
+        const { proposal, operation: prOperation, changeSet, ...pr } = receipt.pr;
+        receipt.pr = pr;
+    }
+    if (receipt.result && typeof receipt.result === 'object') {
+        const { operation: applied, ...rest } = receipt.result;
+        receipt.result = rest;
+    }
+    return resultText('Scriptorium · UpdateChartData', {
+        ...receipt,
+        chart: chartId,
+        rows: `${updated.before} → ${updated.after}`,
+        summary,
     });
 }
 
@@ -950,6 +1140,10 @@ async function processSingleToolCall(args, executionContext = {}) {
         case 'getviewportimage':
         case 'getslidevisual':
             return getVisualContext(args, executionContext);
+        case 'getboard':
+            return getBoard(args);
+        case 'updateboard':
+            return updateBoard(args);
         case 'getprhistory':
             return getPrHistory(args);
         case 'liststylepacks':
@@ -978,6 +1172,8 @@ async function processSingleToolCall(args, executionContext = {}) {
             return deleteSvgAssetPack(args, executionContext);
         case 'submitsourcepr':
             return submitSourcePr(args, executionContext);
+        case 'updatechartdata':
+            return updateChartData(args, executionContext);
         case 'addslide':
             return mutateSlide(args, 'addSlide', executionContext);
         case 'insertslide':
@@ -991,6 +1187,10 @@ async function processSingleToolCall(args, executionContext = {}) {
         case 'createscriptoriumproject':
         case 'createproject':
             return createProject(args, executionContext);
+        case 'listdocuments':
+            return listDocuments();
+        case 'opendocument':
+            return openDocument(args);
         case 'getstorageinfo':
             return resultText(
                 'Scriptorium 工程存储约定',
@@ -998,7 +1198,7 @@ async function processSingleToolCall(args, executionContext = {}) {
             );
         default:
             throw new Error(
-                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、ListStylePacks、GetStylePack、UpsertStylePack、DeleteStylePack、ListSvgAssetPacks、ListSvgAssets、GetSvgAsset、GetSvgAssetPack、UpsertSvgAssetPack、DeleteSvgAssetPack、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
+                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetBoard、UpdateBoard、GetPrHistory、ListStylePacks、GetStylePack、UpsertStylePack、DeleteStylePack、ListSvgAssetPacks、ListSvgAssets、GetSvgAsset、GetSvgAssetPack、UpsertSvgAssetPack、DeleteSvgAssetPack、SubmitSourcePr、UpdateChartData、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、ListDocuments、OpenDocument、GetStorageInfo。'
             );
     }
 }

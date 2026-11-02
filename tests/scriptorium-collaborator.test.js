@@ -731,6 +731,31 @@ async function run() {
         /缺少 maid 署名字段/
     );
 
+    // 白板命令收到的是工具参数里的 JSON 文本。
+    await collaborator.processToolCall({
+        command: 'UpdateBoard',
+        expectedRevision: '5381-#ffffff',
+        add: '[{"id":"a","type":"rectangle","x":0,"y":0,"width":10,"height":10}]',
+        delete: '["b"]',
+    });
+    const boardWrite = control.calls.find((entry) => entry.request?.method === 'updateBoard');
+    assert.strictEqual(boardWrite.request.payload.expectedRevision, '5381-#ffffff');
+    assert.strictEqual(boardWrite.request.payload.add[0].id, 'a');
+    assert.deepStrictEqual(boardWrite.request.payload.delete, ['b']);
+    assert.deepStrictEqual(boardWrite.request.payload.update, []);
+    await collaborator.processToolCall({
+        command: 'GetBoard',
+        region: '{"x":0,"y":0,"width":100,"height":100}',
+        ids: '["a"]',
+    });
+    const boardRead = control.calls.find((entry) => entry.request?.method === 'getBoard');
+    assert.strictEqual(boardRead.request.payload.region.width, 100);
+    assert.deepStrictEqual(boardRead.request.payload.ids, ['a']);
+    await assert.rejects(
+        collaborator.processToolCall({ command: 'GetBoard', ids: 'not json' }),
+        /ids 必须是 JSON 数组/
+    );
+
     collaborator._test.resetForTests();
     console.log('Scriptorium collaborator tests passed');
 }

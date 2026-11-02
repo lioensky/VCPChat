@@ -1,6 +1,10 @@
 'use strict';
 
 (() => {
+    // resolve the shared shadow stylesheet relative to this script (also loadable outside a page, as in tests).
+    const scrollbarHref = typeof document !== 'undefined' && document.currentScript?.src
+        ? new URL('../styles/ui-system/uttu-scrollbar.css', document.currentScript.src).href
+        : '../styles/ui-system/uttu-scrollbar.css';
     function createRenderPrimitives(context = {}) {
         const core = context.core;
         const styleLibrary = context.styleLibrary;
@@ -18,12 +22,22 @@
 
         function ensureShadowRoot(host) {
             if (!host) throw new TypeError('A surface host is required.');
-            return host.shadowRoot || host.attachShadow({ mode: 'open' });
+            const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
+            // keep one common stylesheet through surface content replacement.
+            if (!root.querySelector('link[data-uttu-scrollbar]')) {
+                const scrollbarStyle = document.createElement('link');
+                scrollbarStyle.rel = 'stylesheet';
+                scrollbarStyle.href = scrollbarHref;
+                scrollbarStyle.dataset.uttuScrollbar = '';
+                root.append(scrollbarStyle);
+            }
+            return root;
         }
 
         function replaceShadowContent(host, ...nodes) {
             const root = ensureShadowRoot(host);
-            root.replaceChildren(...nodes);
+            // retain the style link when replacing the rendered surface.
+            root.replaceChildren(root.querySelector('link[data-uttu-scrollbar]'), ...nodes);
             return root;
         }
 
@@ -456,6 +470,8 @@ ${markdownBaseCss('.vdoc-runtime')}
         }
 
         async function renderMermaid(root) {
+            // 数据图表块和 Mermaid 同一时机画（各渲染处都调这里），见 modules/uttu/dataChart.js。
+            window.UTTUDataChart?.renderAll?.(root);
             const nodes = [...(root?.querySelectorAll?.(
                 '[data-vdoc-mermaid]'
             ) || [])].filter((node) =>
@@ -475,6 +491,8 @@ ${markdownBaseCss('.vdoc-runtime')}
                     || `mermaid-${hybridCompiler.simpleHash(source)}`;
                 node.dataset.vdocMermaidRendering = 'true';
                 node.classList.add('pele-diagram');
+                // 配色跟图所在处的底色走（modules/uttu/mermaidTheme.js）：编辑面是深色工作区、阅读面是纸色，墨底文档两面都深。
+                window.UTTUMermaidTheme?.applyPele?.(node, false);
                 try {
                     if (source.length > 100000) {
                         throw new Error('图表源码超过 100,000 字符限制。');

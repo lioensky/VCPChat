@@ -321,7 +321,7 @@
                 return false;
             }
             try {
-                setStatus('正在读取媒体元数据…', 'loading');
+                setStatus('正在读取媒体元数据', 'loading');
                 let node;
                 if (localItems.length) {
                     node = document.createElement('section');

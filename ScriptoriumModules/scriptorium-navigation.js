@@ -12,7 +12,7 @@
             if (disposed) throw new Error('Navigation controller has been disposed.');
         }
 
-        function setAdapter(nextAdapter, nextStrategy = null) {
+        function setAdapter(nextAdapter, nextStrategy = null, options = {}) {
             assertActive();
             if (!nextAdapter || typeof nextAdapter.outline !== 'function') {
                 throw new TypeError('Navigation requires a document adapter.');
@@ -21,7 +21,8 @@
             strategy = nextStrategy
                 || context.strategies?.[nextAdapter.kind]
                 || null;
-            render();
+            // 工作面画完会再画一次目录（onRendered），这里先画等于多编译一遍整篇。
+            if (!options.renderFollows) render();
             return adapter;
         }
 
@@ -173,9 +174,6 @@
             const headings = items.filter((item) =>
                 item.kind === 'heading'
             );
-            const paragraphs = items.filter((item) =>
-                item.kind === 'paragraph'
-            );
             if (elements['outline-count']) {
                 elements['outline-count'].textContent =
                     `${headings.length} 节`;
@@ -183,9 +181,7 @@
             elements['outline-tree']?.replaceChildren(
                 ...headings.map(ports.createItem)
             );
-            elements['paragraph-index']?.replaceChildren(
-                ...paragraphs.map(ports.createItem)
-            );
+            // 段落这一栏没有入口，不建。一万段的文档平白多五万多个节点，打开时每次建两遍。
             if (elements['outline-empty']) {
                 elements['outline-empty'].hidden = items.length > 0;
             }

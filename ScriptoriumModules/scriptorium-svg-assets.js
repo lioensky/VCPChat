@@ -94,6 +94,7 @@
             return initializationPromise;
         }
 
+        // 去掉 body 的 grid。网格行高由内容决定，svg 的 height:100% 落空，缩略图只露出上半截。
         function previewMarkup(asset, options = {}) {
             const source = String(asset?.source || '')
                 .replace(/<\/style/gi, '<\\/style');
@@ -104,7 +105,7 @@
 <meta charset="utf-8">
 <style>
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}
-body{display:grid;place-items:center;padding:8px;box-sizing:border-box}
+body{padding:8px;box-sizing:border-box}
 svg{display:block;width:100%;height:100%;max-width:100%;max-height:100%;overflow:visible}
 ${
     pause
@@ -117,6 +118,15 @@ svg{pointer-events:none}`
 <body>${source}</body>
 </html>`;
         }
+
+        // 预览露出来才建。素材面板藏着时启动也要建 14 个 iframe，页面的 load 事件都在等它们。
+        const previewWatcher = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                if (!entry.isIntersecting) continue;
+                previewWatcher.unobserve(entry.target);
+                entry.target.srcdoc = entry.target.uttuMarkup;
+            }
+        });
 
         function assetCard(asset, options = {}) {
             const button = document.createElement('button');
@@ -140,7 +150,8 @@ svg{pointer-events:none}`
             preview.sandbox = '';
             preview.tabIndex = -1;
             preview.setAttribute('aria-hidden', 'true');
-            preview.srcdoc = previewMarkup(asset);
+            preview.uttuMarkup = previewMarkup(asset); // 见 previewWatcher
+            previewWatcher.observe(preview);
 
             const copy = document.createElement('span');
             copy.className = 'svg-asset-card-copy';

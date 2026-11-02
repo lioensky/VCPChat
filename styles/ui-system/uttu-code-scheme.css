@@ -1,0 +1,158 @@
+/* 代码配色：文坊源码区的 CodeMirror 主题 uttu-code（scriptorium.html 引这个文件），和工具调用展开后的代码字段。
+   默认是 VS Code 深色（Dark+）的字色，底色不换，所以默认不定义 --uttu-code-bg；
+   <html data-uttu-code-scheme> 换成别的几套时各自定义底色。 */
+/* ui-lint-disable color */
+:root {
+    /* VS Code 深色（Dark+） */
+    --uttu-code-fg: #d4d4d4;
+    --uttu-code-gutter: #858585;
+    --uttu-code-keyword: #569cd6;
+    --uttu-code-type: #4ec9b0;
+    --uttu-code-function: #dcdcaa;
+    --uttu-code-string: #ce9178;
+    --uttu-code-number: #b5cea8;
+    --uttu-code-regexp: #d16969;
+    --uttu-code-comment: #6a9955;
+    --uttu-code-variable: #9cdcfe;
+    --uttu-code-meta: #c586c0;
+    --uttu-code-selector: #d7ba7d;
+    --uttu-code-tag: #808080;
+    --uttu-code-tag-name: #569cd6;
+    --uttu-code-attr: #9cdcfe;
+    --uttu-code-heading: #569cd6;
+    --uttu-code-added: rgba(155, 185, 85, 0.2);
+    --uttu-code-deleted: rgba(255, 0, 0, 0.2);
+    --uttu-code-selection: #264f78;
+    --uttu-code-cursor: #aeafad;
+}
+:root[data-uttu-code-scheme="vscode-light"] {
+    --uttu-code-bg: #ffffff;
+    --uttu-code-fg: #000000;
+    --uttu-code-gutter: #237893;
+    --uttu-code-keyword: #0000ff;
+    --uttu-code-type: #267f99;
+    --uttu-code-function: #795e26;
+    --uttu-code-string: #a31515;
+    --uttu-code-number: #098658;
+    --uttu-code-regexp: #811f3f;
+    --uttu-code-comment: #008000;
+    --uttu-code-variable: #001080;
+    --uttu-code-meta: #af00db;
+    --uttu-code-selector: #800000;
+    --uttu-code-tag: #800000;
+    --uttu-code-tag-name: #800000;
+    --uttu-code-attr: #e50000;
+    --uttu-code-heading: #800000;
+    --uttu-code-added: rgba(155, 185, 85, 0.25);
+    --uttu-code-deleted: rgba(255, 0, 0, 0.18);
+    --uttu-code-selection: #add6ff;
+    --uttu-code-cursor: #000000;
+}
+:root[data-uttu-code-scheme="one-dark"] {
+    --uttu-code-bg: #282c34;
+    --uttu-code-fg: #abb2bf;
+    --uttu-code-gutter: #636d83;
+    --uttu-code-keyword: #c678dd;
+    --uttu-code-type: #e5c07b;
+    --uttu-code-function: #61afef;
+    --uttu-code-string: #98c379;
+    --uttu-code-number: #d19a66;
+    --uttu-code-regexp: #56b6c2;
+    --uttu-code-comment: #7f848e;
+    --uttu-code-variable: #e06c75;
+    --uttu-code-meta: #61afef;
+    --uttu-code-selector: #d19a66;
+    --uttu-code-tag: #abb2bf;
+    --uttu-code-tag-name: #e06c75;
+    --uttu-code-attr: #d19a66;
+    --uttu-code-heading: #e06c75;
+    --uttu-code-added: rgba(152, 195, 121, 0.16);
+    --uttu-code-deleted: rgba(224, 108, 117, 0.16);
+    --uttu-code-selection: #3e4451;
+    --uttu-code-cursor: #528bff;
+}
+:root[data-uttu-code-scheme="github-dark"] {
+    --uttu-code-bg: #0d1117;
+    --uttu-code-fg: #e6edf3;
+    --uttu-code-gutter: #6e7681;
+    --uttu-code-keyword: #ff7b72;
+    --uttu-code-type: #ffa657;
+    --uttu-code-function: #d2a8ff;
+    --uttu-code-string: #a5d6ff;
+    --uttu-code-number: #79c0ff;
+    --uttu-code-regexp: #7ee787;
+    --uttu-code-comment: #8b949e;
+    --uttu-code-variable: #ffa657;
+    --uttu-code-meta: #79c0ff;
+    --uttu-code-selector: #7ee787;
+    --uttu-code-tag: #e6edf3;
+    --uttu-code-tag-name: #7ee787;
+    --uttu-code-attr: #79c0ff;
+    --uttu-code-heading: #79c0ff;
+    --uttu-code-added: rgba(46, 160, 67, 0.18);
+    --uttu-code-deleted: rgba(248, 81, 73, 0.18);
+    --uttu-code-selection: rgba(56, 139, 253, 0.4);
+    --uttu-code-cursor: #e6edf3;
+}
+/* ui-lint-enable color */
+
+/* highlight.js 的记号 → 令牌：工具调用的代码字段和改动对比。 */
+:root :is(.vcp-tool-call-value, .uttu-diff) { color: var(--uttu-code-fg); }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-keyword, .hljs-literal, .hljs-doctag, .hljs-variable.language_, .hljs-section) { color: var(--uttu-code-keyword); }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-name { color: var(--uttu-code-tag-name); }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-built_in, .hljs-type, .hljs-title.class_, .hljs-title.class_.inherited__) { color: var(--uttu-code-type); }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-title, .hljs-title.function_) { color: var(--uttu-code-function); }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-string, .hljs-meta .hljs-string, .hljs-link) { color: var(--uttu-code-string); }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-number { color: var(--uttu-code-number); }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-regexp { color: var(--uttu-code-regexp); }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-comment, .hljs-quote) { color: var(--uttu-code-comment); font-style: normal; }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-variable, .hljs-template-variable, .hljs-property, .hljs-params) { color: var(--uttu-code-variable); }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-attr, .hljs-attribute) { color: var(--uttu-code-attr); }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-meta, .hljs-meta .hljs-keyword) { color: var(--uttu-code-meta); }
+:root :is(.vcp-tool-call-value, .uttu-diff) :is(.hljs-selector-tag, .hljs-selector-class, .hljs-selector-id, .hljs-selector-attr, .hljs-selector-pseudo, .hljs-symbol, .hljs-bullet) { color: var(--uttu-code-selector); }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-tag { color: var(--uttu-code-tag); }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-subst { color: var(--uttu-code-fg); }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-addition { color: var(--uttu-code-number); }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-deletion { color: var(--uttu-code-string); }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-emphasis { font-style: italic; }
+:root :is(.vcp-tool-call-value, .uttu-diff) .hljs-strong { font-weight: 700; }
+
+/* 工具调用展开后的代码字段（toolActivityGroup.js 认得出语言的上色，认不出的也用代码的前景色和底色）。 */
+html body .chat-messages .vcp-tool-call-value { color: var(--uttu-code-fg); }
+html body .chat-messages .vcp-tool-call-value.is-code {
+    padding: 4px 8px;
+    border-radius: var(--uttu-r-s);
+    background: var(--uttu-code-bg, color-mix(in srgb, var(--uttu-ink-0) 60%, transparent));
+}
+
+/* CodeMirror 5 的主题 uttu-code：文坊源码区（scriptorium-source-editor.js）用它。记号对应照 VS Code 的 Markdown、HTML、CSS、
+   JavaScript 着色：标题加粗，标签名、属性名、属性值、选择器、CSS 属性各一种颜色。底色没定义时（默认那套）用
+   界面原来的深底。前面加 html body，压过 scriptorium.css 里文坊源码区的通用底色。 */
+html body .CodeMirror.cm-s-uttu-code { background: var(--uttu-code-bg, var(--uttu-ink-1)); color: var(--uttu-code-fg); }
+html body .cm-s-uttu-code .CodeMirror-gutters { background: var(--uttu-code-bg, var(--uttu-ink-1)); border-right: 0; }
+html body .cm-s-uttu-code .CodeMirror-linenumber { color: var(--uttu-code-gutter); }
+html body .cm-s-uttu-code .CodeMirror-cursor { border-left-color: var(--uttu-code-cursor); }
+html body .cm-s-uttu-code :is(.CodeMirror-selected, .CodeMirror-line::selection, .CodeMirror-line > span::selection, .CodeMirror-line > span > span::selection) { background: var(--uttu-code-selection); }
+html body .cm-s-uttu-code.CodeMirror-focused .CodeMirror-selected { background: var(--uttu-code-selection); }
+html body .cm-s-uttu-code :is(.cm-keyword, .cm-atom) { color: var(--uttu-code-keyword); }
+html body .cm-s-uttu-code .cm-tag { color: var(--uttu-code-tag-name); }
+html body .cm-s-uttu-code .cm-bracket { color: var(--uttu-code-tag); }
+html body .cm-s-uttu-code .cm-attribute { color: var(--uttu-code-attr); }
+html body .cm-s-uttu-code :is(.cm-string, .cm-string-2) { color: var(--uttu-code-string); }
+html body .cm-s-uttu-code .cm-number { color: var(--uttu-code-number); }
+html body .cm-s-uttu-code .cm-comment { color: var(--uttu-code-comment); font-style: normal; }
+html body .cm-s-uttu-code .cm-def { color: var(--uttu-code-variable); }
+html body .cm-s-uttu-code :is(.cm-variable-2, .cm-variable-3, .cm-type) { color: var(--uttu-code-type); }
+html body .cm-s-uttu-code .cm-variable { color: var(--uttu-code-variable); }
+html body .cm-s-uttu-code .cm-property { color: var(--uttu-code-attr); }
+html body .cm-s-uttu-code :is(.cm-qualifier, .cm-builtin) { color: var(--uttu-code-selector); }
+html body .cm-s-uttu-code .cm-meta { color: var(--uttu-code-meta); }
+html body .cm-s-uttu-code .cm-operator { color: var(--uttu-code-fg); }
+html body .cm-s-uttu-code .cm-header { color: var(--uttu-code-heading); font-weight: 700; }
+html body .cm-s-uttu-code .cm-strong { font-weight: 700; }
+html body .cm-s-uttu-code .cm-em { font-style: italic; }
+html body .cm-s-uttu-code :is(.cm-link, .cm-url) { color: var(--uttu-code-string); text-decoration: none; }
+html body .cm-s-uttu-code .cm-quote { color: var(--uttu-code-comment); }
+html body .cm-s-uttu-code .cm-hr { color: var(--uttu-code-tag); }
+html body .cm-s-uttu-code .cm-error { color: var(--uttu-code-regexp); background: none; }
+html body .cm-s-uttu-code .CodeMirror-matchingbracket { color: var(--uttu-code-fg) !important; outline: 1px solid var(--uttu-code-gutter); }

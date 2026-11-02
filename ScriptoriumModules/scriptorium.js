@@ -59,10 +59,31 @@
         );
     }
 
+    // .html opens as a web page (uttu-scriptorium-page.js), not imported. The main process answers
+    // kind 'web-page' for it; openPath routes it before the unsaved-changes question (the document behind stays as is).
+    // PDF and tables open the same way (kind 'overlay'); every such view is registered on UTTUScriptoriumUI.
+    const uttuPageTook = async (result) => {
+        if (result?.kind !== 'web-page' && result?.kind !== 'overlay') return false;
+        if (result.asText) window.UTTUScriptoriumTypes?.markText(result.filePath);
+        await window.UTTUScriptoriumUI?.routeOverlay?.(result.filePath);
+        return true;
+    };
+    const uttuRoute = (path) => window.UTTUScriptoriumUI?.routeOverlay?.(path) ?? null;
     const persistencePort = Object.freeze({
-        chooseOpen: () => nativeApi.chooseOpen(),
+        chooseOpen: async () => { // same first paint as readPath below
+            const result = await nativeApi.chooseOpen();
+            if (await uttuPageTook(result)) return { success: false };
+            await window.UTTUScriptoriumMarkdown?.firstPaint?.(result);
+            return result;
+        },
         chooseImport: () => nativeApi.chooseImport(),
-        readPath: (path) => nativeApi.readPath(path),
+        // a large .md shows its opening first (uttu-scriptorium-markdown.js firstPaint)
+        readPath: async (path) => {
+            const result = await nativeApi.readPath(path);
+            if (await uttuPageTook(result)) return { success: false };
+            await window.UTTUScriptoriumMarkdown?.firstPaint?.(result);
+            return result;
+        },
         readExternalResource: (payload) =>
             nativeApi.readExternalResource(payload),
         resolveFontStylesheet: (payload) =>
@@ -293,7 +314,9 @@
             styleLibrary,
             hybridCompiler,
             settingsPort,
-            resourceResolver: () => documentPort.resourceResolver(),
+            // .md 里的相对图片按文件所在文件夹换成本机地址（uttu-scriptorium-markdown.js）。
+            resourceResolver: () => window.UTTUScriptoriumMarkdown?.resolver?.(documentPort.resourceResolver())
+                ?? documentPort.resourceResolver(),
         });
 
     const flowAdapter =
@@ -454,7 +477,7 @@
             : flowAdapter;
     }
 
-    function activateAdapter(adapter) {
+    function activateAdapter(adapter, options = {}) {
         if (!adapter) return null;
         activeEditor?.flush?.();
         activeAdapter?.disposeSurface?.();
@@ -470,7 +493,7 @@
         sourceRightPort?.setAdapter(adapter);
         exportPort?.setAdapter(adapter);
         mediaPort?.setAdapter(adapter);
-        navigationPort?.setAdapter(adapter);
+        navigationPort?.setAdapter(adapter, null, options); // renderFollows
         formattingPort?.setEditorPort(activeEditor);
         stylePort?.setEditorPort(activeEditor);
         lineageUiPort?.setAdapter(adapter);
@@ -519,10 +542,166 @@
         createDeck: (...args) => sessionPort?.createDeck(...args),
         showHome: (...args) => sessionPort?.showHome(...args),
         open: (...args) => sessionPort?.open(...args),
-        openPath: (...args) => sessionPort?.openPath(...args),
+        openPath: (...args) => window.UTTUScriptoriumUI.noteOpen(args[0], uttuRoute(args[0]) ?? sessionPort?.openPath(...args)), // web pages
         import: (...args) => sessionPort?.import(...args),
         save: (...args) => sessionPort?.save(...args),
         close: (...args) => sessionPort?.close(...args),
+    });
+    // 扩展层延后读工作面时页面可能已释放（渲染协调器会抛错），读不到就当没有。
+    function quiet(read) {
+        try {
+            return read() || null;
+        } catch (_) {
+            return null;
+        }
+    }
+    // 文坊的 扩展层（uttu-scriptorium.js）用选好的版式、样式和起步模板新建文档，或给当前文稿换样式和版式。
+    // 名字不能用 ScriptoriumSession：上游的会话模块占着这个全局，覆盖了文坊初始化会中断。
+    window.UTTUScriptoriumSession = Object.freeze({
+        create: sessionFacade.create,
+        syncFocus: () => shell?.syncFocusModeControls(), // 视图开关时重新判断能不能专注
+        // 文库（左侧面板）：读目录、打开一份。
+        openPath: sessionFacade.openPath,
+        listLibrary: () => persistencePort.listDocumentLibrary(),
+        // 文库管理（改名、复制一份、移到回收站、在文件夹里显示、临时转正式），主进程只认文库目录里的文档。
+        libraryAction: (payload) => nativeApi?.libraryAction?.(payload),
+        current() {
+            const status = documentPort.status();
+            const model = status.ready ? documentPort.document() : null;
+            if (!model) return null;
+            return Object.freeze({
+                kind: model.manifest.scene.kind,
+                filePath: status.currentPath || null,
+                dirty: status.dirty,
+                saving: status.saving,
+                revision: status.revision,
+                // +1 each time a document is opened, the same file reopened included (not on edits or saves)
+                generation: status.generation,
+                documentCss: String(model.source?.documentCss || ''),
+                paginationMode: model.manifest.scene.pagination?.mode || 'flow',
+                defaultCss: core.createDocument().source.documentCss,
+                // 从 .md 打开的文档：所在文件夹、相对图片能读到的范围（modules/uttu/markdownFiles）。
+                markdownFile: model.manifest.uttu?.markdownFile || null,
+            });
+        },
+        restyle({ documentCss, paginationMode } = {}) {
+            if (!documentPort.status().ready) return false;
+            const result = documentPort.mutate((model) => {
+                if (model.manifest.scene.kind === core.PROJECT_KINDS.SLIDE_DECK) return false;
+                if (typeof documentCss === 'string') model.source.documentCss = core.sanitizeCss(documentCss);
+                if (paginationMode) {
+                    model.manifest.scene = core.createSceneConfig({
+                        ...model.manifest.scene,
+                        pagination: { mode: paginationMode },
+                    });
+                }
+                return true;
+            }, { reason: 'uttu-restyle' });
+            if (result) historyPort.capture?.({ reason: 'uttu-restyle' });
+            renderFacade.invalidate('uttu-restyle');
+            renderFacade.renderCurrent({ force: true });
+            return result;
+        },
+        // 第二版布局要的几个口子。
+        // 工作面：edit / read / source-html / source-css；双栏时编辑面和阅读面同时显示。
+        // 读的几个口子在页面关掉、渲染协调器释放以后返回 null，不抛错（扩展层有延后执行的量尺寸）。
+        surface: () => quiet(() => shell?.surfacePort?.mode?.()),
+        switchSurface: (mode, options) => shell?.surfacePort?.switchMode?.(mode, options) ?? false,
+        editRoot: () => quiet(() => shell?.surfacePort?.editRoot?.()),
+        readRoot: () => quiet(() => shell?.surfacePort?.readRoot?.()),
+        // 源码面的 CodeMirror：挪了位置、改了大小以后要 refresh，不然行号栏宽度算错、盖住正文。
+        sourceEditor: () => quiet(() => shell?.surfacePort?.sourceEditor?.()),
+        // 画阅读面当预览，但不改当前工作面：渲染协调器画完阅读面会把自己的模式记成 read，这里改回去。
+        renderPreview(options = {}) {
+            if (!documentPort.status().ready) return false;
+            const mode = renderFacade.status()?.mode || 'edit';
+            try {
+                renderFacade.renderRead({ force: options.force === true });
+            } finally {
+                if (mode !== 'read') renderFacade.setMode(mode);
+            }
+            return true;
+        },
+        zoom: () => renderFacade.status()?.zoom || 100,
+        setZoom: (value) => renderFacade.setZoom(value),
+        subscribe: (listener) => documentPort.subscribe('*', listener),
+        // 文稿源码（Markdown 混合源码）。改完重画当前工作面，源码编辑器也从模型重新载入。
+        source() {
+            const model = documentPort.status().ready ? documentPort.document() : null;
+            return model && model.manifest.scene.kind !== core.PROJECT_KINDS.SLIDE_DECK ? String(model.source.content || '') : null;
+        },
+        replaceSource(next, reason = 'uttu-source') {
+            if (typeof next !== 'string' || !documentPort.status().ready) return false;
+            editorFacade.flush();
+            const changed = documentPort.mutate((model) => {
+                if (model.manifest.scene.kind === core.PROJECT_KINDS.SLIDE_DECK) return false;
+                if (model.source.content === next) return false;
+                model.source.content = next;
+                return true;
+            }, { reason });
+            if (!changed) return false;
+            historyPort.capture?.({ reason });
+            renderFacade.invalidate(reason);
+            const mode = shell?.surfacePort?.mode?.() || 'edit';
+            shell?.surfacePort?.switchMode?.(mode, { force: true });
+            return true;
+        },
+        // 格式命令（粗体、列表、对齐……）走上游格式控制器，和功能区按钮同一条路。
+        format: (command, value, options = {}) =>
+            formattingPort?.execute?.(command, value, { preferSaved: true, ...options }) ?? false,
+        // 在光标处插入一段 Markdown（插入菜单、空行打 /）。replaceBefore：光标前面刚打的“/查询词”一起去掉。
+        insertMarkdown(markdown, options = {}) {
+            const text = String(markdown || '').trim();
+            if (!text || !documentPort.status().ready || activeAdapter?.kind !== 'flow') return false;
+            editorFacade.flush();
+            let offset = Number(activeEditor?.insertionOffset?.());
+            const before = String(options.replaceBefore || '');
+            const changed = documentPort.mutate((model) => {
+                const source = String(model.source.content || '');
+                if (!Number.isFinite(offset)) offset = source.length;
+                offset = Math.max(0, Math.min(source.length, offset));
+                let start = offset;
+                if (before && source.slice(offset - before.length, offset) === before) start = offset - before.length;
+                const head = source.slice(0, start).replace(/[ \t]+$/, '');
+                const tail = source.slice(offset);
+                const lead = !head || /\n\s*\n$/.test(head) ? '' : (/\n$/.test(head) ? '\n' : '\n\n');
+                const trail = !tail || /^\s*\n\s*\n/.test(tail) ? '' : (/^\n/.test(tail) ? '\n' : '\n\n');
+                model.source.content = `${head}${lead}${text}${trail}${tail}`;
+                return true;
+            }, { reason: 'uttu-insert' });
+            if (!changed) return false;
+            historyPort.capture?.({ reason: 'uttu-insert' });
+            renderFacade.invalidate('uttu-insert');
+            renderFacade.renderEdit({ force: true });
+            return true;
+        },
+        insertionOffset: () => activeEditor?.insertionOffset?.() ?? null,
+        // 把光标放回源码里这个位置。弹窗抢走焦点后，编辑中的那一段已经收起。
+        focusOffset(offset) {
+            const view = activeEditor?.captureViewState?.();
+            return view ? activeEditor.restoreViewState({ ...view, sourceOffset: offset, focused: true }) : false;
+        },
+        // 编辑面里选中的文字在源码里的位置（加链接用）；没选中、跨块时为 null。
+        sourceSelection() {
+            const selection = activeEditor?.sourceSelection?.();
+            return selection ? { start: selection.sourceStart, end: selection.sourceEnd, text: selection.selected } : null;
+        },
+        // 批注存在 manifest.uttu.comments（vdoc-core 的 normalizeDocument 保留 manifest.uttu）。
+        comments() {
+            const model = documentPort.status().ready ? documentPort.document() : null;
+            const list = model?.manifest?.uttu?.comments;
+            return Array.isArray(list) ? JSON.parse(JSON.stringify(list)) : [];
+        },
+        setComments(list) {
+            if (!documentPort.status().ready || !Array.isArray(list)) return false;
+            const changed = documentPort.mutate((model) => {
+                model.manifest.uttu = { ...(model.manifest.uttu || {}), comments: JSON.parse(JSON.stringify(list)) };
+                return true;
+            }, { reason: 'uttu-comments' });
+            // 撤销、重做按整份快照来回：批注不进快照的话，撤一步文字会把刚写的批注一起丢掉。
+            if (changed) historyPort.capture?.({ reason: 'uttu-comments' });
+            return changed;
+        },
     });
     const exportFacade = Object.freeze({
         execute: (...args) => exportPort?.execute(...args),
@@ -539,19 +718,34 @@
     const styleFacade = Object.freeze({
         close: (...args) => stylePort?.close(...args),
     });
+    // the word count compiled the whole document again on every status change (saving, activity,
+    // each keystroke): over two seconds each time for a 1 MB Markdown file. A flow document now counts the compile its
+    // surface already made for this revision (flow adapter compiled()); until there is one, text() answers null and the
+    // shell asks again shortly (scriptorium-shell.js updateMetrics), and only text(true) still compiles by itself.
+    // The text of one compile is kept, so status changes without an edit cost nothing.
+    let metricsCompiled = null;
+    let metricsText = '';
     const metricsPort = Object.freeze({
-        text() {
+        text(compileIfNeeded = false) {
             const documentModel = documentPort.document();
             if (!documentModel) return '';
-            const html = documentModel.manifest?.scene?.kind
-                === core.PROJECT_KINDS.SLIDE_DECK
-                ? (documentModel.source?.slides || [])
-                    .map((slide) => core.splitSlideSource(slide.source).html)
-                    .join('\n')
-                : hybridCompiler.compile(
+            const deck = documentModel.manifest?.scene?.kind === core.PROJECT_KINDS.SLIDE_DECK;
+            if (!deck) {
+                const compiled = activeAdapter?.kind === 'flow' ? activeAdapter.compiled?.() : null;
+                if (!compiled && !compileIfNeeded) return null;
+                if (compiled && compiled === metricsCompiled) return metricsText;
+                const template = document.createElement('template');
+                template.innerHTML = compiled ? compiled.html : hybridCompiler.compile(
                     String(documentModel.source?.content || ''),
                     { sanitizeHtml: core.sanitizeHtml }
                 ).html;
+                metricsCompiled = compiled;
+                metricsText = template.content.textContent || '';
+                return metricsText;
+            }
+            const html = (documentModel.source?.slides || [])
+                .map((slide) => core.splitSlideSource(slide.source).html)
+                .join('\n');
             const template = document.createElement('template');
             template.innerHTML = html;
             return template.content.textContent || '';
@@ -894,6 +1088,7 @@
                 elements['selection-font-family'],
             ].forEach((select) => {
                 if (!select) return;
+                const current = select.value; // 列表可能在文档开好之后才到
                 select.replaceChildren(...fonts.map((font) => {
                     const option = document.createElement('option');
                     option.value = font;
@@ -901,6 +1096,7 @@
                     option.style.fontFamily = `"${font}"`;
                     return option;
                 }));
+                if (current) select.value = current;
             });
             elements['font-status'].textContent =
                 `${fonts.length} 种系统字体可用`;
@@ -912,19 +1108,39 @@
         }
     }
 
+    // Agent 改一份 .md 之前，文脉里要有“改之前”那一版可以回溯。合入时记下的快照是
+    // 改完的样子；第一次被改之前、或者用户自己改过还没记，最新一版快照和现在的正文对不上，就先记一版（快照是现在的样子）。
+    // .md 的文脉存在 AppData（modules/uttu/markdownFiles uttu-md-lineage），关了重开还在。
+    function keepBeforeAgentChange() {
+        const model = documentPort.document();
+        if (!model?.manifest?.uttu?.markdownFile) return;
+        const latest = lineagePort.list().find((record) => record.snapshot);
+        let latestSource = null;
+        try { latestSource = latest ? JSON.parse(latest.snapshot)?.source?.content ?? null : null; } catch (_) { latestSource = null; }
+        if (latestSource === String(model.source?.content ?? '')) return;
+        lineagePort.add({ name: '改之前', summary: 'Agent 改之前的样子', source: 'human', status: 'applied' });
+    }
+
     async function onInitialize() {
         pathRequestDisposer = persistencePort.onOpenPathRequest(
-            (path) => sessionPort.openPath(path)
+            (path) => sessionFacade.openPath(path) // through the facade, so a web page opens as one
         );
         agentRequestDisposer = persistencePort.onAgentRequest(
             async (request) => {
                 const requestId = request?.requestId;
                 try {
+                    // 网页、PDF、表格开着时 Agent 命令答它们，不答藏在后面的文稿（uttu-scriptorium-agent.js）。
+                    const uttuAnswer = await window.UTTUScriptoriumAgent?.answer(request);
+                    if (uttuAnswer) {
+                        persistencePort.respondAgentRequest({ requestId, result: uttuAnswer });
+                        return;
+                    }
                     const endpoint = request?.endpoint === 'current'
                         || !request?.endpoint
                         ? agentPort.current()
                         : agentPort[request.endpoint];
                     const method = endpoint?.[request?.method];
+                    if (request?.method === 'submitSourcePr') keepBeforeAgentChange();
                     if (typeof method !== 'function') {
                         throw new Error(
                             `未知 Agent 方法：${request?.method || '—'}`
@@ -956,8 +1172,8 @@
                 });
                 sessionPort.persistCheckpoint('AI 刻点');
             });
+        void loadFonts(); // 字体列表只有字体菜单用，页面就绪不等它
         await Promise.all([
-            loadFonts(),
             sessionPort.renderRecent(),
             libraryPort.refresh(),
             stylePort.initialize(),

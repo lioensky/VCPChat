@@ -33,11 +33,12 @@
                 ? `
 .vdoc-flow-runtime {
     box-sizing: border-box;
-    width: min(calc(100% - 48px), 1440px);
-    max-width: calc(100% - 48px);
+    /* 留白按这一栏的宽度算。原来按窗口宽，窄窗口里两栏并排时正文只剩一百多像素，标题一个字一行。 */
+    width: min(calc(100% - min(48px, 5cqi)), 1440px);
+    max-width: calc(100% - min(48px, 5cqi));
     min-height: calc(100% - 64px);
     margin: 0 auto;
-    padding: clamp(28px, 4vw, 64px) clamp(22px, 5vw, 72px) 96px;
+    padding: clamp(28px, 4vw, 64px) clamp(12px, 6.7cqi, 72px) 96px;
     color: var(--primary-text, #f2f0e9);
     background: transparent;
     zoom: var(--vdoc-zoom, 1);
@@ -195,7 +196,7 @@
     content: "\\200B";
 }
 .vdoc-md-live-preview:empty::before {
-    content: "输入 Markdown…";
+    content: "输入 Markdown";
     color: color-mix(in srgb, currentColor 38%, transparent);
     pointer-events: none;
 }
@@ -262,8 +263,9 @@ ${primitives.editDecorationsCss()}
         var(--vdoc-page-gap) + var(--vdoc-zoom-height-compensation, 0px)
     ) !important;
     overflow: hidden;
-    color: #1d2421;
-    background: #fffdf8;
+    /* 纸面跟文档样式走（深色文档不再被印到白纸上）；没定义时仍是原来的米白纸、深字。 */
+    color: var(--vdoc-ink, #1d2421);
+    background: var(--vdoc-paper, #fffdf8);
     box-shadow: 0 18px 55px rgba(0, 0, 0, .34);
     transform: scale(var(--vdoc-zoom, 1));
     transform-origin: top center;
@@ -424,22 +426,46 @@ ${primitives.editDecorationsCss()}
 
         function renderRead(options = {}) {
             const { adapter, target, compiled } = options;
+            // 长页（pagination.mode === 'continuous'）不分纸张：阅读用编辑面的连续版式，内容是不带编辑标记的成品 HTML。
+            const continuous = model().manifest.scene?.pagination?.mode === 'continuous';
             const { root, runtime } = createSurface(
                 target,
-                'read',
+                continuous ? 'edit' : 'read',
                 options
             );
             const resolvedHtml = primitives.resolveResources(compiled.html);
             let paginationHtml = resolvedHtml;
-            const paginate = () => pagination.paginate(
-                paginationHtml,
-                runtime,
-                {
-                    ensureIds: (html) => html,
-                    scene: model().manifest.scene,
-                    zoom: options.zoom,
+            // 长文档的阅读面只排看得见的部分。每 200 块包成一段挂 content-visibility，
+            // 直接挂在一万多个块上时打开快了，滚动每帧却要 130 毫秒。
+            const chunkLongRead = () => {
+                const blocks = [...runtime.children];
+                if (blocks.length < 600) return;
+                runtime.replaceChildren(); // 先整体摘下来：一块块从挂着的父节点上挪要五秒多
+                const chunks = [];
+                for (let at = 0; at < blocks.length; at += 200) {
+                    const chunk = document.createElement('div');
+                    chunk.className = 'uttu-read-chunk';
+                    chunk.append(...blocks.slice(at, at + 200));
+                    chunks.push(chunk);
                 }
-            );
+                runtime.replaceChildren(...chunks);
+                const long = document.createElement('style');
+                long.textContent = '.uttu-read-chunk { display: flow-root; content-visibility: auto; contain-intrinsic-size: auto 8000px; }';
+                root.append(long);
+            };
+            const paginate = () => (continuous
+                ? (pagination.renderContinuous(paginationHtml, runtime, { ensureIds: (html) => html }),
+                    chunkLongRead(),
+                    { pages: [], warnings: [] })
+                : pagination.paginate(
+                    paginationHtml,
+                    runtime,
+                    {
+                        ensureIds: (html) => html,
+                        scene: model().manifest.scene,
+                        zoom: options.zoom,
+                    }
+                ));
             let result = paginate();
             primitives.renderMath(root);
             const mermaidReady = Promise.resolve(

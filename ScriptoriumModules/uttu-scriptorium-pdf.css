@@ -1,0 +1,123 @@
+/* 文坊里的 PDF。
+   界面颜色只用 --uttu-* 令牌；纸面本身是 PDF 的内容，用浅色配色下的系统色 Canvas / CanvasText（和网页预览框一样，不写十六进制）。
+   选中的东西是一层淡底，不加框、不发光；右下角一颗小方块拖大小。 */
+
+body.uttu-pdf-mode :is(#document-workspace, #welcome-state) { display: none !important; }
+body.uttu-v2.uttu-pdf-mode :is(.uttu-agent, .uttu-view-seg) { display: none !important; }
+body.uttu-v2.uttu-pdf-mode[data-uttu-left="outline"] .outline-panel > .uttu-pdf-thumbs { display: grid !important; }
+body.uttu-v2.uttu-pdf-mode[data-uttu-left="outline"] .outline-panel > :is(.uttu-outline, .slide-navigator, .uttu-left-empty) { display: none !important; }
+/* 左栏可以换成书签（PDF 自带的目录）。 */
+body.uttu-v2.uttu-pdf-mode[data-uttu-left="outline"][data-uttu-pdf-left="marks"] .outline-panel > .uttu-pdf-thumbs { display: none !important; }
+body.uttu-v2.uttu-pdf-mode[data-uttu-left="outline"][data-uttu-pdf-left="marks"] .outline-panel > .uttu-pdf-marks { display: grid !important; }
+.uttu-pdf-marks { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; gap: 1px; padding: 8px 8px 16px; }
+.uttu-pdf-marks .uttu-row { grid-template-columns: minmax(0, 1fr); }
+body.uttu-v2.uttu-pdf-mode[data-uttu-left="find"] .outline-panel > .uttu-left-pdf-note { display: block !important; }
+
+.uttu-pdf-work { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: var(--uttu-ink-1); }
+.uttu-pdf-work[hidden] { display: none; }
+
+/* 栏头：工具、插入、撤销重做、选中时的字号颜色、提示、查找、页码、缩放。放不下时折成两行，什么都不藏；
+   原来是看不见滚动条的横向滑动，右边的缩放被裁掉也看不出来。提示最先让，只占余下的宽度，不把别的挤到下一行。 */
+.uttu-pdf-head { flex: none; flex-wrap: wrap; min-height: 40px; gap: 2px 4px; padding-block: 5px; overflow: visible; }
+.uttu-pdf-head > .uttu-seg { margin-right: 2px; }
+.uttu-pdf-head > .uttu-pdf-hint { flex: 1000 1 0; }
+.uttu-pdf-head > .uttu-pdf-find { margin-left: auto; }
+.uttu-pdf-props { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.uttu-pdf-props[hidden] { display: none; }
+.uttu-pdf-size { min-width: 22px; text-align: center; color: var(--uttu-text-2); font: var(--uttu-fs-small) var(--uttu-font-num); }
+.uttu-pdf-swatches { margin-inline: 4px; flex-wrap: nowrap; }
+.uttu-pdf-swatches button { width: 20px; height: 20px; }
+.uttu-pdf-hint { min-width: 0; padding-left: 6px; overflow: hidden; white-space: nowrap; color: var(--uttu-text-3); font-size: var(--uttu-fs-meta); mask-image: linear-gradient(to right, black calc(100% - var(--uttu-fade)), transparent); }
+.uttu-pdf-hint[hidden] { display: none; }
+.uttu-pdf-conflict { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-right: 6px; color: var(--uttu-text-2); font-size: var(--uttu-fs-meta); }
+.uttu-pdf-conflict[hidden] { display: none; }
+.uttu-pdf-find { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-right: 4px; }
+.uttu-pdf-find input { width: 120px; height: 26px; padding: 0 8px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-1); color: var(--uttu-text); font: var(--uttu-fs-small) var(--uttu-font-body); outline: none; }
+.uttu-pdf-find input:focus { border-color: var(--uttu-select); }
+.uttu-pdf-find input::-webkit-search-cancel-button { display: none; }
+.uttu-pdf-find small { color: var(--uttu-text-3); font: var(--uttu-fs-meta) var(--uttu-font-num); white-space: nowrap; }
+.uttu-pdf-find small:empty { display: none; }
+.uttu-pdf-pageno { flex: none; padding-inline: 6px; color: var(--uttu-text-3); font: var(--uttu-fs-meta) var(--uttu-font-num); white-space: nowrap; }
+
+/* 页面：一页一页竖着排，比栏宽时可以横着滑。 */
+.uttu-pdf-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--uttu-ink-0); }
+.uttu-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 16px; box-sizing: border-box; width: max-content; min-width: 100%; padding: 24px; }
+.uttu-pdf-page { position: relative; flex: none; color-scheme: light; background: Canvas; color: CanvasText; overflow: hidden;
+    --user-unit: 1; --total-scale-factor: calc(var(--scale-factor) * var(--user-unit)); }
+.uttu-pdf-page > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.uttu-pdf-fields, .uttu-pdf-objs { position: absolute; inset: 0; pointer-events: none; }
+.uttu-pdf-fields > *, .uttu-pdf-objs > * { pointer-events: auto; }
+.uttu-pdf-work:not([data-tool="select"]) .uttu-pdf-page { cursor: crosshair; user-select: none; }
+.uttu-pdf-work:is([data-tool="text"], [data-tool="date"]) .uttu-pdf-page { cursor: text; }
+.uttu-pdf-work:not([data-tool="select"]) .textLayer { pointer-events: none; }
+
+/* pdf.js 的文字层（照 pdfjs-dist 5.7 web/pdf_viewer.css 里 .textLayer 那几条）：字是透明的，只为了能选中、复制、查找。 */
+.uttu-pdf-page .textLayer { position: absolute; text-align: initial; inset: 0; overflow: clip; opacity: 1; line-height: 1; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 0;
+    --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+.uttu-pdf-page .textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.uttu-pdf-page .textLayer > :not(.markedContent), .uttu-pdf-page .textLayer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height));
+    --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.uttu-pdf-page .textLayer .markedContent { display: contents; }
+.uttu-pdf-page .textLayer span[role="img"] { user-select: none; cursor: default; }
+.uttu-pdf-page .textLayer ::selection { background: color-mix(in srgb, var(--uttu-link) 40%, transparent); }
+.uttu-pdf-page .textLayer br::selection { background: transparent; }
+.uttu-pdf-page .textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
+.uttu-pdf-page .textLayer .uttu-pdf-hit { background: color-mix(in srgb, var(--uttu-mark) 30%, transparent); }
+.uttu-pdf-page .textLayer .uttu-pdf-hit.here { background: color-mix(in srgb, var(--uttu-mark) 60%, transparent); }
+
+/* 表单：盖在 PDF 的栏上，淡淡一层底色。 */
+.uttu-pdf-field { position: absolute; box-sizing: border-box; margin: 0; padding: 0 3px; border: 0; border-radius: 0; background: color-mix(in srgb, var(--uttu-link) 16%, transparent); color: CanvasText; font-family: Helvetica, Arial, "Microsoft YaHei", sans-serif; outline: none; }
+.uttu-pdf-field:focus { background: color-mix(in srgb, var(--uttu-link) 28%, transparent); }
+textarea.uttu-pdf-field { resize: none; padding-top: 2px; }
+.uttu-pdf-field:is(.check, .radio) { appearance: auto; accent-color: CanvasText; }
+.uttu-pdf-field:disabled { background: transparent; }
+
+/* 放上去的东西 */
+.uttu-pdf-obj { position: absolute; box-sizing: border-box; cursor: move; touch-action: none; }
+.uttu-pdf-obj.text { white-space: pre; line-height: 1.25; padding: 0; outline: none; }
+.uttu-pdf-obj.cover > .w { position: absolute; white-space: pre; line-height: 1.25; outline: none; }
+.uttu-pdf-obj.image > img { display: block; width: 100%; height: 100%; user-select: none; }
+.uttu-pdf-obj.rect { border-style: solid; }
+.uttu-pdf-obj.mark { opacity: .35; mix-blend-mode: multiply; }
+.uttu-pdf-obj :is(svg) { display: block; width: 100%; height: 100%; overflow: visible; }
+.uttu-pdf-obj polyline { fill: none; stroke: currentColor; stroke-width: var(--w, 1.5px); vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+.uttu-pdf-obj.on, .uttu-pdf-obj.ghost { box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--uttu-link) 18%, transparent); }
+.uttu-pdf-obj.mark.on { box-shadow: none; opacity: .55; }
+.uttu-pdf-obj.editing { cursor: text; }
+.uttu-pdf-obj.editing :is(.w), .uttu-pdf-obj.text.editing { caret-color: CanvasText; }
+.uttu-pdf-obj > .h { position: absolute; right: -4px; bottom: -4px; width: 8px; height: 8px; background: var(--uttu-terra); cursor: nwse-resize; }
+.uttu-pdf-obj.redact.on { box-shadow: none; opacity: .7; } /* 黑块上淡底看不见：选中时整块淡一点（不加框） */
+/* 页码、水印：只是预览（存的时候 edit.js 照同样的位置写进去），不接指针。 */
+.uttu-pdf-stamp { position: absolute; pointer-events: none; white-space: nowrap; line-height: 1; }
+.uttu-pdf-stamp.wm { left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-30deg); }
+.uttu-pdf-stamp.pn { left: 50%; transform: translateX(-50%); }
+.uttu-pdf-measure { position: absolute; left: -10000px; top: 0; visibility: hidden; white-space: pre; padding: 0; pointer-events: none; }
+
+/* 左栏：页面缩略图。选中是淡底；拖动时一道细线标出放在哪。 */
+.uttu-pdf-thumbs { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; justify-items: center; gap: 6px; padding: 8px 8px 16px; }
+.uttu-pdf-thumb { position: relative; display: grid; justify-items: center; gap: 4px; width: 100%; box-sizing: border-box; padding: 8px 6px 4px; border-radius: var(--uttu-r-s); cursor: pointer; }
+.uttu-pdf-thumb:hover { background: var(--uttu-ink-3); }
+.uttu-pdf-thumb[aria-selected="true"] { background: color-mix(in srgb, var(--uttu-select) 14%, transparent); }
+.uttu-pdf-thumb .pic { display: block; width: min(100%, 132px); color-scheme: light; background: Canvas; }
+.uttu-pdf-thumb .pic > canvas { display: block; width: 100%; height: 100%; }
+.uttu-pdf-thumb small { color: var(--uttu-text-3); font: var(--uttu-fs-meta) var(--uttu-font-num); }
+.uttu-pdf-thumb.here small { color: var(--uttu-text); }
+.uttu-pdf-thumb:is(.drop-before, .drop-after)::before { content: ""; position: absolute; left: 8px; right: 8px; height: 2px; background: var(--uttu-select); }
+.uttu-pdf-thumb.drop-before::before { top: -4px; }
+.uttu-pdf-thumb.drop-after::before { bottom: -4px; }
+
+/* 签名对话框 */
+.uttu-pdf-sign { width: min(520px, 100%); }
+.uttu-pdf-sign-pane { display: grid; gap: 8px; }
+.uttu-pdf-sign-pane[hidden] { display: none; }
+.uttu-pdf-pad { width: 100%; aspect-ratio: 8 / 3; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); color-scheme: light; background: Canvas; cursor: crosshair; touch-action: none; }
+.uttu-pdf-sign-row { display: flex; align-items: center; gap: 8px; }
+.uttu-pdf-sign-row .grow { flex: 1; }
+.uttu-pdf-sign-input { height: 30px; padding: 0 10px; border: 1px solid var(--uttu-line); border-radius: var(--uttu-r-s); background: var(--uttu-ink-1); color: var(--uttu-text); font: var(--uttu-fs-ui) var(--uttu-font-body); outline: none; }
+.uttu-pdf-sign-input:focus { border-color: var(--uttu-select); }
+.uttu-pdf-sign-typed { min-height: 72px; display: flex; align-items: center; padding: 0 16px; border-radius: var(--uttu-r-s); color-scheme: light; background: Canvas; color: CanvasText; font: 40px var(--uttu-font-script), KaiTi, STKaiti, "Kaiti SC", serif; white-space: nowrap; overflow: hidden; }
+.uttu-pdf-sign-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; max-height: 260px; overflow: auto; }
+.uttu-pdf-sign-item { display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid var(--uttu-line-soft); border-radius: var(--uttu-r-s); }
+.uttu-pdf-sign-item > button:first-child { flex: 1; min-width: 0; height: 56px; padding: 4px; border: 0; border-radius: var(--uttu-r-xs); color-scheme: light; background: Canvas; cursor: pointer; }
+.uttu-pdf-sign-item > button:first-child:hover { opacity: .85; }
+.uttu-pdf-sign-item img { display: block; max-width: 100%; max-height: 100%; margin: auto; }

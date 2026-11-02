@@ -467,7 +467,8 @@
                 elements['source-editor'],
                 {
                     mode: 'markdown',
-                    theme: 'material-darker',
+                    theme: 'uttu-code', // 代码配色令牌（styles/ui-system/uttu-code-scheme.css），设置里可选
+
                     lineNumbers: true,
                     lineWrapping: true,
                     indentUnit: 4,
