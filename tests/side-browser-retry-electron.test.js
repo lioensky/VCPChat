@@ -128,7 +128,7 @@ if (!runFromNode(__filename)) {
                     id: 'browser:slow', payload: { url: ${JSON.stringify(slowUrl)} }
                 }, document.getElementById('view'));
             })()`);
-            await poll('document.querySelector(".side-browser-nav button:last-child").getAttribute("aria-label") === "停止加载"');
+            await poll('document.querySelector(".side-browser-nav button:nth-last-of-type(2)").getAttribute("aria-label") === "停止加载"');
             const until = Date.now() + 10000;
             while (!requests.includes(slowPath)) {
                 assert.ok(Date.now() < until, 'the initial slow request must reach the server');
@@ -138,13 +138,13 @@ if (!runFromNode(__filename)) {
             let target;
             title = `Recovered-${action}`;
             if (action === 'stop-reload') {
-                await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-nav button:last-child").click()');
-                await poll('document.querySelector(".side-browser-nav button:last-child").getAttribute("aria-label") === "刷新"');
+                await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-nav button:nth-last-of-type(2)").click()');
+                await poll('document.querySelector(".side-browser-nav button:nth-last-of-type(2)").getAttribute("aria-label") === "刷新"');
                 assert.equal(await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-address").value'), slowUrl,
                     'cancelling before the first commit retains the requested address');
                 const requestStart = requests.length;
                 slowResponding = true;
-                await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-nav button:last-child").click()');
+                await windowRef.webContents.executeJavaScript('document.querySelector(".side-browser-nav button:nth-last-of-type(2)").click()');
                 target = slowUrl;
                 await poll(`document.querySelector('webview').getTitle() === ${JSON.stringify(title)}`);
                 assert.ok(requests.slice(requestStart).includes(slowPath), 'refresh must request the cancelled target again');
