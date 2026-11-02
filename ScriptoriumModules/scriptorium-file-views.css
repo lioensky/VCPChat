@@ -59,7 +59,7 @@ body.scriptorium-file-view-open .outline-header { align-items: flex-end; }
 body.scriptorium-file-view-open .outline-header .outline-count { margin-left: 10px; }
 
 /* ---------- 视图外框 ---------- */
-:is(.scriptorium-text-work, .scriptorium-image-work, .scriptorium-page-work, .scriptorium-pdf-work, .scriptorium-table-work) {
+:is(.scriptorium-text-work, .scriptorium-image-work, .scriptorium-board-work, .scriptorium-page-work, .scriptorium-pdf-work, .scriptorium-table-work) {
     position: absolute;
     inset: 12px;
     z-index: 2;
@@ -78,14 +78,14 @@ body.scriptorium-file-view-open .outline-header .outline-count { margin-left: 10
     font-family: var(--scriptorium-file-font);
     container-type: inline-size;
 }
-:is(.scriptorium-text-work, .scriptorium-image-work, .scriptorium-page-work, .scriptorium-pdf-work, .scriptorium-table-work)[hidden] { display: none; }
-body.light-theme :is(.scriptorium-text-work, .scriptorium-image-work, .scriptorium-page-work, .scriptorium-pdf-work, .scriptorium-table-work) {
+:is(.scriptorium-text-work, .scriptorium-image-work, .scriptorium-board-work, .scriptorium-page-work, .scriptorium-pdf-work, .scriptorium-table-work)[hidden] { display: none; }
+body.light-theme :is(.scriptorium-text-work, .scriptorium-image-work, .scriptorium-board-work, .scriptorium-page-work, .scriptorium-pdf-work, .scriptorium-table-work) {
     border-color: rgba(210, 203, 192, .88);
     border-left-color: rgba(33, 103, 92, .72);
     background: linear-gradient(180deg, rgba(252, 250, 244, .88) 0%, rgba(247, 243, 234, .84) 100%);
     box-shadow: 0 10px 30px rgba(27, 33, 31, .09), inset 0 1px 0 rgba(255, 255, 255, .82);
 }
-body.focus-mode :is(.scriptorium-text-work, .scriptorium-image-work, .scriptorium-page-work, .scriptorium-pdf-work, .scriptorium-table-work) { inset: 0; border-radius: 0; }
+body.focus-mode :is(.scriptorium-text-work, .scriptorium-image-work, .scriptorium-board-work, .scriptorium-page-work, .scriptorium-pdf-work, .scriptorium-table-work) { inset: 0; border-radius: 0; }
 
 /* 栏头：视图名称、状态和工具 */
 .scriptorium-pane-head {
@@ -389,6 +389,13 @@ body.focus-mode :is(.scriptorium-text-work, .scriptorium-image-work, .scriptoriu
 .scriptorium-split:hover, .scriptorium-split.drag { background: var(--highlight-text); }
 .scriptorium-page-frame { display: block; width: 100%; height: 100%; border: 0; transform-origin: 0 0; color-scheme: light; background: #fff; }
 .scriptorium-page-frame[data-scheme="dark"] { color-scheme: dark; background: #000; }
+
+/* ---------- 白板 ---------- */
+.scriptorium-board-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.scriptorium-board-host { position: absolute; inset: 0; }
+/* 素材库的“浏览”指向外部网站；“嵌入网页”在页面的内容安全策略下无法载入。官方为它和 Mermaid 使用同一个 data-testid，只能按位置隐藏（第二项）。 */
+.scriptorium-board-host .excalidraw .library-menu-browse-button,
+.scriptorium-board-host .excalidraw .App-toolbar__extra-tools-dropdown .dropdown-menu-container > :nth-child(2) { display: none; }
 
 /* ---------- 文本与代码 ---------- */
 .scriptorium-text-source .CodeMirror { position: absolute; inset: 0; height: auto; }

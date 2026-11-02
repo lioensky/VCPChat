@@ -2143,6 +2143,8 @@
         saveAs: true,
         reload: () => reload({ discard: true }),
         active: () => Boolean(S),
+        // 供 Agent 读取：提取的文字（与“导出为 Markdown 初稿”相同）与截图范围。
+        agent: Object.freeze({ text: async () => (await markdownOf(S)).text, surface: () => scroller }),
         doc: () => (S ? Object.freeze({ kind: 'pdf', filePath: S.filePath, name: S.name, generation: S.generation,
             dirty: dirty(), saving: S.saving, revision: 0 }) : null),
         // 测试用

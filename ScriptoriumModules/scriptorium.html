@@ -261,6 +261,12 @@
             </span>
             <span><strong>新演示</strong><small>VPPTX 演示</small></span>
         </button>
+        <button id="new-board-btn" type="button" role="menuitem" title="新建 Excalidraw 白板">
+            <span class="start-menu-icon">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="m7 15 3-4 3 3 4-5"/></svg>
+            </span>
+            <span><strong>新白板</strong><small>Excalidraw 白板</small></span>
+        </button>
         <span class="start-menu-separator" aria-hidden="true"></span>
         <button id="home-btn" type="button" role="menuitem" title="回到 Scriptorium 首页">
             <span class="start-menu-icon">
@@ -1188,7 +1194,7 @@
     <script src="scriptorium-shell.js"></script>
     <script src="scriptorium.js"></script>
 
-    <!-- 原位打开的文件视图（网页、PDF、表格、文本、图片）与 Markdown 文件 -->
+    <!-- 原位打开的文件视图（网页、PDF、表格、文本、图片、白板）、Markdown 文件，以及 Agent 对这些文件的读写 -->
     <script src="../modules/scriptorium/fileTypes.js"></script>
     <script src="scriptorium-file-views.js"></script>
     <script src="scriptorium-markdown-file.js"></script>
@@ -1197,5 +1203,7 @@
     <script src="scriptorium-table-view.js"></script>
     <script src="scriptorium-text-view.js"></script>
     <script src="scriptorium-image-view.js"></script>
+    <script src="scriptorium-board.js"></script>
+    <script src="scriptorium-file-agent.js"></script>
 </body>
 </html>

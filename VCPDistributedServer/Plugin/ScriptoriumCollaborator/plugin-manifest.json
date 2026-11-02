@@ -23,7 +23,7 @@
       },
       {
         "command": "GetDocumentInfo",
-        "description": "获取当前 Scriptorium 窗口文档的标题、类型、修订号、保存状态、当前幻灯片和总页数。\n参数：command 固定为 GetDocumentInfo；endpoint 可选 docx、pptx 或 common。",
+        "description": "获取当前 Scriptorium 窗口文档的标题、类型、修订号、保存状态、当前幻灯片和总页数。文坊中打开网页、PDF、表格、文本、图片或白板时，GetDocumentInfo、GetRenderedText、GetSource、SearchSource、GetVisualContext 作用于该文件，documentKind 为文件类型，filePath 为文件路径；修改文稿的命令会被拒绝并说明原因。\n参数：command 固定为 GetDocumentInfo；endpoint 可选 docx、pptx 或 common。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetDocumentInfo「末」,\nendpoint:「始」common「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
@@ -58,8 +58,18 @@
       },
       {
         "command": "GetVisualContext",
-        "description": "获取当前人类可见阅读区域或指定 PPTX 页面的渲染后多模态信息。严格返回 OpenAI content 数组：先返回 type=text 且 text 为标准 Markdown 的语义摘要，再返回 type=image_url 且 image_url.url=data:image/...;base64,... 的实际截图；Markdown 文本与图片字段同时存在、互不冲突，AI 可直接阅读文本和图像。PPTX 的 slideIndex 与回执 activeSlideIndex 均是从 1 开始的人类页码。\n参数：command 固定为 GetVisualContext；endpoint 可选 docx/pptx；scope 可选 viewport/slide；slideIndex 可选；format 可选 jpeg/png；quality 可选 1-100。\n支持 VCP 标准编号串行格式 command1/参数1、command2/参数2，并按编号严格顺序执行；未编号的 endpoint、maid 等字段由各步骤继承。支持 wait/sleep/delay 显式等待，waitMs 默认 1000ms、最大 30000ms。指定 PPTX 页面后，运行时完成页面选择，按 stabilizationMs/renderStabilizationMs/visualDelayMs/captureDelayMs/screenshotDelayMs 指定的时长等待，并经过最后两帧布局稳定后截图；默认由调用示例显式使用 750ms。复杂网络图片、字体或长动画若需要更长时间，应在串行指令中增加 wait 步骤，不能把截图视为所有异步资源已永久稳定的证明。任一步失败会停止后续步骤，但响应会保留此前所有成功步骤的完整 Markdown 文本和图片回执，并以 partial_failure 和 failedStep 标明失败位置与原因。",
+        "description": "获取当前人类可见阅读区域或指定 PPTX 页面的渲染后多模态信息。严格返回 OpenAI content 数组：先返回 type=text 且 text 为标准 Markdown 的语义摘要，再返回 type=image_url 且 image_url.url=data:image/...;base64,... 的实际截图；Markdown 文本与图片字段同时存在、互不冲突，AI 可直接阅读文本和图像。PPTX 的 slideIndex 与回执 activeSlideIndex 均是从 1 开始的人类页码。\n文坊中打开网页、PDF、表格、文本或图片时，截取该文件的显示区域；打开白板时不截取窗口，而是将白板内容导出为图片，不改变用户眼前的画面。\n参数：command 固定为 GetVisualContext；endpoint 可选 docx/pptx；scope 可选 viewport/slide；slideIndex 可选；format 可选 jpeg/png；quality 可选 1-100；白板另有 ids（JSON 数组）、region（JSON 对象）可选，只导出这些元素或这一区域。\n支持 VCP 标准编号串行格式 command1/参数1、command2/参数2，并按编号严格顺序执行；未编号的 endpoint、maid 等字段由各步骤继承。支持 wait/sleep/delay 显式等待，waitMs 默认 1000ms、最大 30000ms。指定 PPTX 页面后，运行时完成页面选择，按 stabilizationMs/renderStabilizationMs/visualDelayMs/captureDelayMs/screenshotDelayMs 指定的时长等待，并经过最后两帧布局稳定后截图；默认由调用示例显式使用 750ms。复杂网络图片、字体或长动画若需要更长时间，应在串行指令中增加 wait 步骤，不能把截图视为所有异步资源已永久稳定的证明。任一步失败会停止后续步骤，但响应会保留此前所有成功步骤的完整 Markdown 文本和图片回执，并以 partial_failure 和 failedStep 标明失败位置与原因。",
         "example": "连续获取多页 PPT 图片：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\nendpoint:「始」pptx「末」,\nscope:「始」slide「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」,\nvisualDelayMs:「始」750「末」,\ncommand1:「始」GetVisualContext「末」,\nslideIndex1:「始」1「末」,\ncommand2:「始」GetVisualContext「末」,\nslideIndex2:「始」2「末」,\ncommand3:「始」GetVisualContext「末」,\nslideIndex3:「始」3「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetBoard",
+        "description": "读取当前白板（.excalidraw）的元素，可按需只取一部分。每个元素包含 id、type、坐标与尺寸；容器中的文字记为 label，独立文字记为 text，箭头连接的元素记为 start、end；由 Agent 新建的元素标有 by: agent。回执中的 revision 为当前修订号，修改时需带上。仅在文坊中打开白板时可用。\n参数均可选，可组合使用：ids（JSON 数组）；region（JSON 对象，如 {\"x\":0,\"y\":0,\"width\":800,\"height\":600}，返回与该区域相交的元素）；sinceRevision（只返回该修订之后发生变化的元素，包括用户手动修改的，removed 列出被删除的 id；只保留最近 24 次修订）；limit（默认 200，最多 1000）。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetBoard「末」,\nregion:「始」{\"x\":0,\"y\":0,\"width\":800,\"height\":600}「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "UpdateBoard",
+        "description": "按元素修改当前白板，不整板替换。修改立即显示在画布上并进入白板的撤销记录，用户可用 Ctrl+Z 撤销；文件由用户保存（回执 saved 为 false）。\n参数：expectedRevision 必填，填写 GetBoard 返回的 revision，白板已变化时拒绝本次修改。add、update、delete、background 至少一项；background 为画布背景色（如 #fff9db），其余三项为 JSON 数组：\n- add：官方元素骨架。type 为 rectangle/ellipse/diamond/text/arrow/line；位置写 x、y，或写 below、right 加另一张卡片的 id，由工具计算坐标并留出 100 的间距（gap 可调整）；id 由调用方指定，便于后续引用。框中的文字写 label:{\"text\":\"…\",\"fontSize\":16}。未写 width 时按文字确定宽度，同一批中字号相同的卡片等宽；未写 height 时框高随文字；折行由工具完成。需要尺寸一致时写明 width、height。独立文字写 text。箭头两端都连接元素时只写 start:{\"id\":\"…\"}、end:{\"id\":\"…\"}，位置自动计算，可连接白板上已有的元素和同一批新建的元素；label:{\"text\":\"…\"} 为箭头上的文字，strokeStyle 写 dashed 为虚线。两端不连接元素的箭头才写 x、y、width、height（终点相对起点的位移）。\n- update：[{\"id\":\"…\", 要修改的字段}]。可修改 x、y、width、height、angle、strokeColor、backgroundColor、fillStyle、strokeWidth、strokeStyle、roughness、opacity、fontSize、fontFamily、textAlign、verticalAlign、link、locked、groupIds、points；独立文字修改 text，框中文字修改 label。框移动时，连接的箭头随之移动。\n- delete：id 数组。框中的文字一并删除，连接的箭头保留并断开。\n回执 crowded 列出本次修改涉及的重叠（两个框相互压住，或箭头穿过有文字的卡片）；loose 列出本次新增、尚未与其他元素建立关系的卡片（连有箭头、位于无文字的分区框内或已编组的视为已建立关系）。修改后可用 GetVisualContext 带 ids 或 region 查看结果。\n白板适合表达想法之间的关系：先后、因果用箭头连接；组成、并列从一张卡片分叉，或放入无文字的大框作为分区；对比左右并排；前提、代价用虚线。每条箭头用一两个词说明关系。字号分层（如标题 28、主干 22、细节 16），一张卡片表达一个意思。用户写的内容不应修改或删除。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」UpdateBoard「末」,\nexpectedRevision:「始」1234567-#ffffff「末」,\nadd:「始」[{\"id\":\"a\",\"type\":\"rectangle\",\"x\":0,\"y\":0,\"label\":{\"text\":\"读取配置\",\"fontSize\":22}},{\"id\":\"b\",\"type\":\"rectangle\",\"right\":\"a\",\"label\":{\"text\":\"启动服务\",\"fontSize\":22}},{\"type\":\"arrow\",\"start\":{\"id\":\"a\"},\"end\":{\"id\":\"b\"},\"label\":{\"text\":\"然后\"}}]「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "GetPrHistory",

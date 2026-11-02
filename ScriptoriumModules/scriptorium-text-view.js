@@ -281,6 +281,8 @@
         save: () => save(),
         reload: () => reload({ discard: true }),
         active: () => Boolean(file),
+        // 供 Agent 读取（scriptorium-file-agent.js）：当前内容（含未保存的修改）与截图范围。
+        agent: Object.freeze({ text: () => editor?.getValue() ?? '', source: () => editor?.getValue() ?? '', surface: () => work }),
         doc: () => (file ? Object.freeze({ kind: 'text', filePath: file.filePath, name: file.name, generation: file.generation,
             dirty: dirty(), saving: file.saving, readOnly: Boolean(file.readOnly), revision: 0 }) : null),
         _state: () => ({ file: file && { ...file }, dirty: dirty(), language: file ? Types.languageOf(file.filePath).name : '', mode: editor?.getOption('mode') ?? null }),

@@ -1,10 +1,12 @@
 'use strict';
-// 文坊中的文本、代码和图片。通信名 scriptorium:view，所有命令先经过 fileAccess.allowed。
+// 文坊中的文本、代码、图片和白板。通信名 scriptorium:view，所有命令先经过 fileAccess.allowed。
 // - read：按原样读取文本（UTF-8、UTF-16、GB18030，见 textEncoding.js），含 NUL 的视为二进制不打开，上限 32 MB。
+//   白板（.excalidraw，ScriptoriumModules/scriptorium-board.js）同样是文本，走同样的 read、save；其中可嵌入图片，上限 40 MB。
 //   换行统一为 \n，原来的换行、编码和 BOM 记录下来，保存时还原。扩展名未登记的文件也会尝试按文本读取（looksLikeText）。
 // - save：先写临时文件再一步替换；修改时间不一致时返回 conflict，由页面询问保留哪一边，force 时照常保存。
 // - image：图片的大小和修改时间，以及同一文件夹内的其他图片（用于上一张、下一张）。
 // - watch / check：监视正在显示的那份（文件夹通知加 2 秒轮询），外部修改后发送 scriptorium:view-changed。
+// - board-new：在文库的 Boards 文件夹中新建一个空白板。board-library-read / -write：白板的素材库，保存在 AppData/Scriptorium。
 const fs = require('fs');
 const path = require('path');
 const { kindOf } = require('../fileTypes');
@@ -13,6 +15,7 @@ const { allowed } = require('../fileAccess');
 const { decodeText, encodeText } = require('../textEncoding');
 
 const MAX_BYTES = 32 * 1024 * 1024;
+const MAX_BOARD_BYTES = 40 * 1024 * 1024;
 let deps = null;
 
 async function mustAllow(file, what) {
@@ -35,7 +38,7 @@ async function looksLikeText(file) {
 
 async function readText(file) {
     const resolved = await mustAllow(file, '文件');
-    const limit = MAX_BYTES;
+    const limit = kindOf(resolved) === 'board' ? MAX_BOARD_BYTES : MAX_BYTES;
     const stat = await fs.promises.stat(resolved);
     if (!stat.isFile()) throw new Error('找不到这个文件。');
     if (stat.size > limit) throw new Error(`文件超过 ${limit / 1048576} MB，文坊不打开。`);
@@ -133,6 +136,29 @@ async function watch(sender, file) {
     return { success: true };
 }
 
+const boardLibraryFile = () => path.join(deps.dataDir(), 'scriptorium-board-library.json');
+const readJson = (file) => fs.promises.readFile(file, 'utf8').then(JSON.parse).catch(() => null);
+async function writeJson(file, value) {
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await writeAtomically(file, Buffer.from(JSON.stringify(value), 'utf8'));
+}
+const EMPTY_BOARD = `${JSON.stringify({ type: 'excalidraw', version: 2, source: 'vcp-scriptorium', elements: [], appState: {}, files: {} }, null, 2)}\n`;
+function freePath(dir, base, extension) {
+    for (let index = 0; index < 1000; index += 1) {
+        const candidate = path.join(dir, `${base}${index ? ` (${index})` : ''}${extension}`);
+        if (!fs.existsSync(candidate)) return candidate;
+    }
+    throw new Error('未能分配文件名。');
+}
+async function newBoard() {
+    const dir = path.join(deps.libraryDir(), 'Boards');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const file = freePath(dir, '未命名白板', '.excalidraw');
+    await writeAtomically(file, Buffer.from(EMPTY_BOARD, 'utf8'));
+    await Promise.resolve(deps?.rememberRecentFile?.(file)).catch(() => {});
+    return { success: true, filePath: file };
+}
+
 function register(ipcMain, value) {
     deps = value;
     ipcMain.removeHandler('scriptorium:view');
@@ -144,6 +170,9 @@ function register(ipcMain, value) {
                 case 'image': return await imageInfo(payload.file);
                 case 'watch': return await watch(event.sender, payload.file);
                 case 'check': await watchers.get(event.sender.id)?.check(); return { success: true };
+                case 'board-new': return await newBoard();
+                case 'board-library-read': return { success: true, items: (await readJson(boardLibraryFile()))?.items || [] };
+                case 'board-library-write': await writeJson(boardLibraryFile(), { items: Array.isArray(payload.items) ? payload.items : [] }); return { success: true };
                 default: return { success: false, error: '未知的操作。' };
             }
         } catch (error) {

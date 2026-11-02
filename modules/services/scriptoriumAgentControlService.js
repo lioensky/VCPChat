@@ -193,8 +193,32 @@ class ScriptoriumAgentControlService {
                     ?? request.visualDelayMs
                     ?? request.captureDelayMs
                     ?? request.screenshotDelayMs,
+                // 白板：只看这些元素或这一区域（ScriptoriumModules/scriptorium-board.js）。
+                ids: request.ids,
+                region: request.region,
             },
         });
+        // 白板将内容导出为图片（scriptorium-file-agent.js），不截取窗口。
+        const { imageDataUrl, ...semanticFields } = semantic || {};
+        if (imageDataUrl) {
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: [
+                            '# Scriptorium 白板',
+                            '',
+                            `- 文件：${semantic.title || semantic.name || '未命名'}`,
+                            `- 修订：${semantic.revision}`,
+                            '',
+                            semantic.renderedText || '',
+                        ].join('\n'),
+                    },
+                    { type: 'image_url', image_url: { url: imageDataUrl } },
+                ],
+                details: { ...semanticFields, imageFormat: 'png' },
+            };
+        }
         const captureRect = semantic?.captureRect;
         const rect = captureRect && Number.isFinite(Number(captureRect.width))
             && Number.isFinite(Number(captureRect.height))

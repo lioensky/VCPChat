@@ -806,6 +806,16 @@
         save: () => save(),
         reload: () => reload({ discard: true }),
         active: () => Boolean(T),
+        // 供 Agent 读取：当前工作表的前 500 行（制表符分隔）与截图范围。
+        agent: Object.freeze({
+            text: () => {
+                const { name, rows } = sheet();
+                const shown = rows.slice(0, 500).map((row) => row.join('\t'));
+                if (rows.length > shown.length) shown.push(`（其后还有 ${rows.length - shown.length} 行）`);
+                return `工作表 ${name}，${rows.length} 行\n${shown.join('\n')}`;
+            },
+            surface: () => scroller,
+        }),
         doc: () => (T ? Object.freeze({ kind: 'table', filePath: T.filePath, name: T.name, generation: T.generation, dirty: T.dirty, saving: T.saving, revision: T.revision, readOnly: !editable() }) : null),
         // 测试用
         _state: () => (T ? { filePath: T.filePath, sheets: T.sheets.map((item) => item.name), sheet: sheetIndex, header, sort: { ...sort },

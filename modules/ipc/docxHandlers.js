@@ -39,6 +39,7 @@ const AGENT_ENDPOINT_METHODS = Object.freeze({
         'deleteStylePack', 'listSvgAssetPacks', 'listSvgAssets',
         'getSvgAsset', 'getSvgAssetPack', 'upsertSvgAssetPack',
         'deleteSvgAssetPack', 'submitSourcePr', 'buildProjectArtifact',
+        'getBoard', 'updateBoard', // 白板（ScriptoriumModules/scriptorium-board.js）
     ]),
     docx: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',

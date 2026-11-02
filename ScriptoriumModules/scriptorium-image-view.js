@@ -156,6 +156,10 @@
         save: async () => true, // 只查看，不修改
         reload,
         active: () => Boolean(image),
+        agent: Object.freeze({
+            text: () => (image ? `图片 ${image.name}，${picture.naturalWidth} × ${picture.naturalHeight}，${sizeText(image.size)}` : ''),
+            surface: () => scroller,
+        }),
         doc: () => (image ? Object.freeze({ kind: 'image', filePath: image.filePath, name: image.name, generation: image.generation,
             dirty: false, saving: false, revision: 0, readOnly: true }) : null),
         _state: () => ({ image: image && { ...image }, zoom, natural: [picture.naturalWidth, picture.naturalHeight], src: picture.getAttribute('src') }),
