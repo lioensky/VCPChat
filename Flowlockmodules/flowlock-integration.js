@@ -54,24 +54,6 @@ function normalizeFlowlockHeartbeatPrompt(prompt) {
     return `${FLOWLOCK_SYSTEM_PROMPT_PREFIX}${normalized ? ` ${normalized}` : ''}`;
 }
 
-function attachFlowlockTimestampMetadata(vcpMessage, historyMessage) {
-    if (
-        !historyMessage?.id
-        || typeof historyMessage.timestamp !== 'number'
-        || !Number.isFinite(historyMessage.timestamp)
-    ) {
-        return vcpMessage;
-    }
-
-    return {
-        ...vcpMessage,
-        __vcpchatTimestampMeta: {
-            messageId: historyMessage.id,
-            role: historyMessage.role,
-            timestamp: historyMessage.timestamp
-        }
-    };
-}
 
 /**
  * 按指定 Agent/Topic 执行后台续写
@@ -115,24 +97,6 @@ async function continueWritingForContext(params) {
         });
     }
 
-    // 获取与普通单聊一致的合并后高级回复规则。
-    // IPC 返回官方预置 + 用户覆盖；权限预置默认关闭，不会因 Flowlock 后台运行而隐式授权。
-    const conversationSnapshot = typeof chatAPI.resolveConversationContext === 'function'
-        ? await chatAPI.resolveConversationContext({ type: 'agent', id: agentId }) : null;
-    if (conversationSnapshot && !conversationSnapshot.success) throw new Error(conversationSnapshot.error);
-    let tavernRules = conversationSnapshot?.rules || [];
-    const tavernEngine = window.TavernRulesEngine;
-    if (!conversationSnapshot && typeof chatAPI.tavernGetRules === 'function') {
-        try {
-            const tavernResult = await chatAPI.tavernGetRules();
-            if (tavernResult?.success && Array.isArray(tavernResult.store?.rules)) {
-                tavernRules = tavernResult.store.rules;
-            }
-        } catch (error) {
-            console.warn('[Flowlock] Failed to load advanced reply rules:', error);
-        }
-    }
-
     // 确定提示词
     let temporaryPrompt = prompt;
     if (!temporaryPrompt || !temporaryPrompt.trim()) {
@@ -147,94 +111,11 @@ async function continueWritingForContext(params) {
 
     // 所有 Flowlock 心跳消息必须使用系统提示标记；已有前缀时不重复添加。
     temporaryPrompt = normalizeFlowlockHeartbeatPrompt(temporaryPrompt);
-    if (tavernEngine && tavernRules.length > 0) {
-        temporaryPrompt = tavernEngine.applyUserSuffix(temporaryPrompt, tavernRules, 'agent');
-    }
-
-    // 构建 VCP 消息
-    const messagesForVCP = await Promise.all(historyForVCP.map(async msg => {
-        let currentMessageTextContent = '';
-        if (typeof msg.content === 'string') {
-            currentMessageTextContent = msg.content;
-        } else if (msg.content && typeof msg.content === 'object') {
-            if (typeof msg.content.text === 'string') {
-                currentMessageTextContent = msg.content.text;
-            } else if (Array.isArray(msg.content)) {
-                currentMessageTextContent = msg.content
-                    .filter(item => item.type === 'text' && item.text)
-                    .map(item => item.text)
-                    .join('\n');
-            }
-        }
-        return attachFlowlockTimestampMetadata(
-            {
-                role: msg.role, content: currentMessageTextContent,
-                ...(msg.role === 'user' && msg.contextCompaction?.kind === 'vchat-context-checkpoint'
-                    && msg.contextCompaction?.version === 1 ? { __vcpContextCheckpoint: true } : {}),
-            },
-            msg
-        );
-    }));
-
-    // 心跳仍使用 user role 进入现有续写链路，但内容前缀使后端可可靠识别其系统来源。
-    messagesForVCP.push({ role: 'user', content: temporaryPrompt });
-
-    // 注入系统提示词
-    if (agentConfig && agentConfig.systemPrompt) {
-        let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || agentId);
-        const prependedContent = [];
-
-        if (agentConfig.agentDataPath && topicId) {
-            const historyPath = `${agentConfig.agentDataPath}\\topics\\${topicId}\\history.json`;
-            prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
-        }
-
-        if (agentConfig.topics && topicId) {
-            const currentTopicObj = agentConfig.topics.find(t => t.id === topicId);
-            if (currentTopicObj && currentTopicObj.createdAt) {
-                const date = new Date(currentTopicObj.createdAt);
-                const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-                prependedContent.push(`当前话题创建于: ${formattedDate}`);
-            }
-        }
-
-        if (prependedContent.length > 0) {
-            systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
-        }
-
-        if (tavernEngine && tavernRules.length > 0) {
-            systemPromptContent = tavernEngine.applySystemSuffix(systemPromptContent, tavernRules, 'agent');
-        }
-        messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
-    } else if (tavernEngine && tavernRules.length > 0) {
-        const tavernSystemOnly = tavernEngine.applySystemSuffix('', tavernRules, 'agent');
-        if (tavernSystemOnly.trim()) {
-            messagesForVCP.unshift({ role: 'system', content: tavernSystemOnly });
-        }
-    }
-
-    for (const message of messagesForVCP) {
-        if (message.role === 'system' && typeof message.content === 'string' &&
-            message.content.includes('{{VCPChatWorkSpace') && chatAPI.expandWorkspacePlaceholders) {
-            const expanded = await chatAPI.expandWorkspacePlaceholders(message.content, conversationSnapshot);
-            if (expanded?.success) message.content = expanded.text;
-        }
-    }
-
-    if (
-        tavernEngine &&
-        tavernRules.some(rule => rule.type === 'context_inject' && rule.enabled !== false)
-    ) {
-        const systemMessages = messagesForVCP.filter(message => message.role === 'system');
-        const nonSystemMessages = messagesForVCP.filter(message => message.role !== 'system');
-        const injectedMessages = tavernEngine.applyContextInject(
-            nonSystemMessages,
-            tavernRules,
-            'agent'
-        );
-        messagesForVCP.length = 0;
-        messagesForVCP.push(...systemMessages, ...injectedMessages);
-    }
+    const { assembleRequestMessages } = await import('../modules/chat/chatContextPipeline.js');
+    const { messagesForVCP } = await assembleRequestMessages({
+        electronAPI: chatAPI, agentConfig: agentConfig || {}, history: historyForVCP,
+        context: { agentId, topicId }, temporaryPrompt,
+    });
 
     const useStreaming = (agentConfig?.streamOutput !== false);
     const modelConfigForVCP = {

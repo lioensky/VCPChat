@@ -51,7 +51,9 @@ function loadFlowlockIntegration({ history, onSend, continueWritingPrompt = '请
         path.join(__dirname, '..', 'Flowlockmodules', 'flowlock-integration.js'),
         'utf8'
     );
-    vm.runInContext(source, context, { filename: 'flowlock-integration.js' });
+    // Route the classic-script dynamic import to the real pipeline in the host realm.
+    context.loadPipeline = () => import(require('node:url').pathToFileURL(path.resolve('modules/chat/chatContextPipeline.js')).href);
+    vm.runInContext(source.replace("import('../modules/chat/chatContextPipeline.js')", 'loadPipeline()'), context, { filename: 'flowlock-integration.js' });
     window.initializeFlowlockIntegration({
         chatManager: { loadChatHistory: async () => {}, isReady: () => true },
         historyMutationAuthority: { replace: async () => {} },
@@ -99,7 +101,7 @@ test('Flowlock preserves history timestamps for OneRing and ends with a user hea
     });
     assert.equal(sentMessages[3].__vcpchatTimestampMeta, undefined);
     assert.equal(sentMessages.at(-1).role, 'user');
-    assert.match(sentMessages.at(-1).content, /^\[系统提示:\] 请继续$/);
+    assert.match(sentMessages.at(-1).content[0].text, /^\[系统提示:\] 请继续$/);
 });
 
 test('Flowlock default includes one system prefix and the stop instruction', async () => {
@@ -110,7 +112,7 @@ test('Flowlock default includes one system prefix and the stop instruction', asy
         onSend: (_url, _key, messages) => { sentMessages = messages; }
     });
     await run();
-    const content = sentMessages.at(-1).content;
+    const content = sentMessages.at(-1).content[0].text;
     assert.equal(content, '[系统提示:] 请继续。若当前已无值得继续推进的任务或话题，请输出 [[Flowlock::Stop]] 关闭心流锁心跳。');
     assert.equal(content.split('[系统提示:]').length - 1, 1);
 });

@@ -4,7 +4,7 @@
 
 import { handleSaveGlobalSettings } from './global-settings-manager.js';
 import { syncDependentRows } from './ui-system/settings/dependent-rows.js';
-import { effectiveContextHistory, isContextCheckpoint } from './chat/contextCompactionState.js';
+import { assembleRequestMessages } from './chat/chatContextPipeline.js';
 import { shouldCompactContext } from './chat/contextCompactionService.js';
 import { installAppFeatures } from './renderer/appFeatures.js';
 
@@ -258,59 +258,12 @@ export function setupEventListeners(deps) {
 
         try {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
-            let historySnapshotForVCP = effectiveContextHistory(currentChatHistory.filter(msg => msg.id !== thinkingMessage.id));
-
-            // 只有当有提示词时才添加临时用户消息
-            // 如果 temporaryPrompt 为空，说明是无AI消息且无输入的情况，让AI基于现有上下文自然开始
-            if (temporaryPrompt && temporaryPrompt.trim()) {
-                const temporaryUserMessage = { role: 'user', content: temporaryPrompt };
-                historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
-            }
-
-            const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
-                let currentMessageTextContent = '';
-                if (typeof msg.content === 'string') {
-                    currentMessageTextContent = msg.content;
-                } else if (msg.content && typeof msg.content === 'object') {
-                    if (typeof msg.content.text === 'string') {
-                        currentMessageTextContent = msg.content.text;
-                    } else if (Array.isArray(msg.content)) {
-                        currentMessageTextContent = msg.content
-                            .filter(item => item.type === 'text' && item.text)
-                            .map(item => item.text)
-                            .join('\n');
-                    }
-                }
-                return {
-                    role: msg.role, content: currentMessageTextContent,
-                    ...(isContextCheckpoint(msg) ? { __vcpContextCheckpoint: true } : {}),
-                };
-            }));
-
-            if (agentConfig && agentConfig.systemPrompt) {
-                let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentSelectedItem.id);
-                const prependedContent = [];
-
-                if (agentConfig.agentDataPath && currentTopicId) {
-                    const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicId}\\history.json`;
-                    prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
-                }
-
-                if (agentConfig.topics && currentTopicId) {
-                    const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicId);
-                    if (currentTopicObj && currentTopicObj.createdAt) {
-                        const date = new Date(currentTopicObj.createdAt);
-                        const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-                        prependedContent.push(`当前话题创建于: ${formattedDate}`);
-                    }
-                }
-
-                if (prependedContent.length > 0) {
-                    systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
-                }
-
-                messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
-            }
+            const { messagesForVCP } = await assembleRequestMessages({
+                electronAPI: chatAPI, agentConfig,
+                history: currentChatHistory.filter(msg => msg.id !== thinkingMessage.id),
+                context: { agentId: currentSelectedItem.id, topicId: currentTopicId },
+                temporaryPrompt,
+            });
 
             const useStreaming = (agentConfig?.streamOutput !== false);
             const modelConfigForVCP = {

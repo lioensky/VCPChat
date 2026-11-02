@@ -1,5 +1,6 @@
 // modules/renderer/messageContextMenu.js
 import { effectiveContextHistory, isContextCheckpoint } from '../chat/contextCompactionState.js';
+import { assembleRequestMessages } from '../chat/chatContextPipeline.js';
 
 /** Creates one context-menu state owner for one MessageRenderer instance. */
 export function createMessageContextMenu() {
@@ -852,19 +853,6 @@ function describeLiveReferenceForContext(data) {
     return '笔记区实时文件，可直接修改';
 }
 
-function attachTimestampMetaToVcpMessage(vcpMessage, historyMessage) {
-    if (!vcpMessage || !historyMessage || !historyMessage.id || typeof historyMessage.timestamp !== 'number') {
-        return vcpMessage;
-    }
-    return {
-        ...vcpMessage,
-        __vcpchatTimestampMeta: {
-            messageId: historyMessage.id,
-            role: historyMessage.role,
-            timestamp: historyMessage.timestamp
-        }
-    };
-}
 
 async function handleRegenerateResponse(originalAssistantMessage) {
     const { electronAPI, uiHelper } = mainRefs;
@@ -975,21 +963,7 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             return;
         }
 
-        // VCPChatTarven (高级回复) - 收集当前生效的规则,
-        // 让"重新回复"与正常发送消息保持完全一致的注入行为
-        const conversationSnapshot = typeof electronAPI.resolveConversationContext === 'function'
-            ? await electronAPI.resolveConversationContext({ type: 'agent', id: currentSelectedItemVal.id }) : null;
-        if (conversationSnapshot && !conversationSnapshot.success) throw new Error(conversationSnapshot.error);
-        const tavernRules = conversationSnapshot?.rules ||
-            (await electronAPI.tavernGetRules?.())?.store?.rules || [];
-        const tavernEngine = ownerWindow.TavernRulesEngine;
-
-        const messagesForVCP = await Promise.all(historyForRegeneration.map(async (msg, index) => {
-            if (isContextCheckpoint(msg)) {
-                return attachTimestampMetaToVcpMessage({
-                    role: 'user', content: msg.content, __vcpContextCheckpoint: true,
-                }, msg);
-            }
+        const buildRegenerationContent = async ({ message: msg, index }) => {
             let vcpImageAttachmentsPayload = [];
             let vcpAudioAttachmentsPayload = [];
             let vcpVideoAttachmentsPayload = [];
@@ -1073,14 +1047,6 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 currentMessageTextContent = originalText;
             }
 
-            // VCPChatTarven: 仅在最后一条 user 消息尾部追加 user_suffix(只作用于本次 VCP 提交,不写入历史)
-            if (isLastUserMessage && tavernEngine) {
-                currentMessageTextContent = tavernEngine.applyUserSuffix(
-                    currentMessageTextContent || '',
-                    tavernRules,
-                    'agent'
-                );
-            }
 
             if (msg.attachments && msg.attachments.length > 0) {
                 // --- IMAGE PROCESSING ---
@@ -1189,83 +1155,20 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                  finalContentPartsForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
             }
 
-            return attachTimestampMetaToVcpMessage(
-                { role: msg.role, content: finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content },
-                msg
-            );
-        }));
+            return finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content;
+        };
 
-        // 和新消息一样：有差分立绘时追加表情标记说明，重新生成的回复也带情绪标签（差分关着时不加）
-        const emotionTagPrompt = await import('../ui-system/side-pane/portrait-features.js')
-            .then(features => (features.PORTRAIT_EXPRESSIONS_ENABLED
-                ? import('../emotion/emotionPrompt.js')
-                    .then(module => module.resolveEmotionTagPrompt(electronAPI, currentSelectedItemVal.id, agentConfig))
-                : ''))
-            .catch(() => '');
-
-        if (agentConfig.systemPrompt) {
-            let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name);
-            const prependedContent = [];
-
-            // 注入聊天记录文件路径
-            if (agentConfig.agentDataPath && currentTopicIdVal) {
-                const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
-                prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
-            }
-
-            // 注入话题创建时间
-            if (agentConfig.topics && currentTopicIdVal) {
-                const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicIdVal);
-                if (currentTopicObj && currentTopicObj.createdAt) {
-                    const date = new Date(currentTopicObj.createdAt);
-                    const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-                    prependedContent.push(`当前话题创建于: ${formattedDate}`);
-                }
-            }
-
-            if (prependedContent.length > 0) {
-                systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
-            }
-
-            if (emotionTagPrompt) systemPromptContent = `${systemPromptContent.trim()}\n\n${emotionTagPrompt}`;
-
-            // VCPChatTarven: 在系统提示词尾部追加 system_suffix
-            if (tavernEngine) {
-                systemPromptContent = tavernEngine.applySystemSuffix(systemPromptContent, tavernRules, 'agent');
-            }
-
-            messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
-        } else {
-            // 没有 systemPrompt,但仍可能存在 system_suffix 规则
-            const systemOnly = tavernEngine ? tavernEngine.applySystemSuffix(emotionTagPrompt, tavernRules, 'agent') : emotionTagPrompt;
-            if (systemOnly && systemOnly.trim()) {
-                messagesForVCP.unshift({ role: 'system', content: systemOnly });
-            }
-        }
-
-        for (const message of messagesForVCP) {
-            if (message.role === 'system' && typeof message.content === 'string' &&
-                message.content.includes('{{VCPChatWorkSpace') && electronAPI.expandWorkspacePlaceholders) {
-                const expanded = await electronAPI.expandWorkspacePlaceholders(message.content, conversationSnapshot);
-                if (expanded?.success) message.content = expanded.text;
-            }
-        }
-
-        // VCPChatTarven: 应用 context_inject 规则(按深度插入消息;system 不参与深度计算)
-        if (tavernEngine && Array.isArray(tavernRules) && tavernRules.some(r => r.type === 'context_inject' && r.enabled !== false)) {
-            const systemMsgs = messagesForVCP.filter(m => m.role === 'system');
-            const nonSystemMsgs = messagesForVCP.filter(m => m.role !== 'system');
-            const injected = tavernEngine.applyContextInject(nonSystemMsgs, tavernRules, 'agent', {
-                makeMessage: (role, text) => ({
-                    role,
-                    content: [{ type: 'text', text }],
-                    __tavernInjected: true
-                })
-            });
-            messagesForVCP.length = 0;
-            messagesForVCP.push(...systemMsgs, ...injected);
-        }
-
+        const context = {
+            agentId: currentSelectedItemVal.id,
+            topicId: currentTopicIdVal,
+            isGroupMessage: false,
+        };
+        const { messagesForVCP } = await assembleRequestMessages({
+            electronAPI, tavernEngine: ownerWindow.TavernRulesEngine, agentConfig,
+            history: historyForRegeneration, context,
+            currentUserMessage: [...historyForRegeneration].reverse().find(msg => msg.role === 'user'),
+            buildMessageContent: buildRegenerationContent,
+        });
         const modelConfigForVCP = {
             model: agentConfig.model,
             temperature: parseFloat(agentConfig.temperature),
@@ -1274,12 +1177,6 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             top_p: agentConfig.top_p ? parseFloat(agentConfig.top_p) : undefined,
             top_k: agentConfig.top_k ? parseInt(agentConfig.top_k) : undefined,
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
-        };
-
-        const context = {
-            agentId: currentSelectedItemVal.id,
-            topicId: currentTopicIdVal,
-            isGroupMessage: false
         };
         streamingRequested = modelConfigForVCP.stream;
         streamContext = context;

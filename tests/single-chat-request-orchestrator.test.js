@@ -12,21 +12,7 @@ let modulePromise = null;
 async function loadOrchestratorModule() {
     if (!modulePromise) {
         globalThis.TavernRulesEngine = engine;
-        const source = fs.readFileSync(
-            'modules/chat/singleChatRequestOrchestrator.js',
-            'utf8'
-        ).replace(/^import\s+['"]\.\.\/tavernRulesEngine\.js['"];\s*/m, '')
-            // data: URL 没有基准路径，相对 import 要换成绝对文件 URL 才能解析。
-            .replace(
-                /(['"])\.\.\/renderer\/toolResultRegions\.js\1/,
-                JSON.stringify(pathToFileURL(path.resolve('modules/renderer/toolResultRegions.js')).href)
-            ).replace(
-                /(['"])\.\/contextCompactionState\.js\1/,
-                JSON.stringify(pathToFileURL(path.resolve('modules/chat/contextCompactionState.js')).href)
-            );
-        modulePromise = import(
-            `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
-        );
+        modulePromise = import(pathToFileURL(path.resolve('modules/chat/singleChatRequestOrchestrator.js')).href);
     }
     return modulePromise;
 }

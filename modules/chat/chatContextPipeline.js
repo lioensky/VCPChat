@@ -1,0 +1,459 @@
+import '../tavernRulesEngine.js';
+import { stripHiddenToolResults } from '../renderer/toolResultRegions.js';
+import { effectiveContextHistory, isContextCheckpoint } from './contextCompactionState.js';
+
+function requireDependency(value, name) {
+    if (!value) throw new Error(`SingleChatRequestOrchestrator requires ${name}`);
+    return value;
+}
+
+function normalizeText(value) {
+    return typeof value === 'string' ? value : (value == null ? '' : String(value));
+}
+
+function normalizeContentParts(content) {
+    if (Array.isArray(content)) {
+        return content.map(part => ({ ...part }));
+    }
+    if (content && typeof content === 'object' && typeof content.text === 'string') {
+        return [{ type: 'text', text: content.text }];
+    }
+    return [{ type: 'text', text: normalizeText(content) }];
+}
+
+function updateFirstTextPart(content, transform) {
+    const parts = normalizeContentParts(content);
+    const textIndex = parts.findIndex(part => part?.type === 'text');
+    if (textIndex >= 0) {
+        parts[textIndex] = {
+            ...parts[textIndex],
+            text: transform(normalizeText(parts[textIndex].text)),
+        };
+    } else {
+        parts.unshift({ type: 'text', text: transform('') });
+    }
+    return parts;
+}
+
+function attachTimestampMetadata(vcpMessage, historyMessage) {
+    if (
+        !historyMessage?.id
+        || typeof historyMessage.timestamp !== 'number'
+        || !Number.isFinite(historyMessage.timestamp)
+    ) {
+        return vcpMessage;
+    }
+
+    return {
+        ...vcpMessage,
+        __vcpchatTimestampMeta: {
+            messageId: historyMessage.id,
+            role: historyMessage.role,
+            timestamp: historyMessage.timestamp,
+        },
+    };
+}
+
+function getAttachmentData(attachment) {
+    return {
+        ...(attachment || {}),
+        ...((attachment && attachment._fileManagerData) || {}),
+    };
+}
+
+function getAttachmentPath(attachment, data) {
+    // Every stored attachment receives a complete file:// internalPath from
+    // fileManager. Preserve that URL regardless of attachment type so Agent
+    // tools can locate images, documents, presentations, media and unknown
+    // files alike. `src` is the UI-facing alias of the same capability.
+    return attachment?.src
+        || attachment?.internalPath
+        || data?.internalPath
+        || attachment?.name
+        || data?.name
+        || '未知文件';
+}
+
+function getAttachmentType(attachment, data) {
+    return attachment?.type || data?.type || 'application/octet-stream';
+}
+
+function isLiveReferenceAttachment(attachment, data) {
+    return attachment?.isLiveReference === true || data?.isLiveReference === true;
+}
+
+// 实时引用标签：工作区文件附带工作区别名与相对路径，帮助 AI 理解项目结构。
+function describeLiveReference(data) {
+    const ref = data?.workspaceRef;
+    if (data?.liveSource === 'workspace' || ref) {
+        const location = ref?.alias && ref?.relPath ? ` ${ref.alias}: ${ref.relPath}` : '';
+        return `工作区${location}，实时文件，可直接修改`;
+    }
+    return '笔记区实时文件，可直接修改';
+}
+
+// @笔记实时引用：每次构建上下文都从笔记区真实文件重新读取，保证内容与用户最新编辑一致。
+async function refreshLiveReferenceText(electronAPI, attachment, data) {
+    if (!isLiveReferenceAttachment(attachment, data)) return null;
+    if (!electronAPI || typeof electronAPI.getTextContent !== 'function') return null;
+    const source = data?.sourcePath || data?.internalPath || attachment?.internalPath || attachment?.src;
+    if (!source) return null;
+    try {
+        const result = await electronAPI.getTextContent(source, getAttachmentType(attachment, data));
+        return result && typeof result.text === 'string' ? result.text : null;
+    } catch (error) {
+        console.warn(
+            `[SingleChatRequestOrchestrator] 刷新实时笔记 ${attachment?.name || source} 失败，使用快照内容:`,
+            error
+        );
+        return null;
+    }
+}
+
+function appendAttachmentContext(text, attachment, data, liveText = null) {
+    const path = getAttachmentPath(attachment, data);
+    const name = attachment?.name || data?.name || '未知文件';
+    const type = getAttachmentType(attachment, data);
+    const imageFrames = data?.imageFrames || attachment?.imageFrames;
+    const extractedText = typeof liveText === 'string'
+        ? liveText
+        : (data?.extractedText || attachment?.extractedText);
+
+    if (isLiveReferenceAttachment(attachment, data)) {
+        return `${text}\n\n[附加文件: ${path} (${describeLiveReference(data)})]\n${extractedText || ''}\n[/附加文件结束: ${name}]`;
+    }
+
+    if (Array.isArray(imageFrames) && imageFrames.length > 0) {
+        const totalPages = data?.pdfMeta?.totalPages;
+        const pageHint = totalPages
+            ? `(扫描版/图像型PDF，已内联 ${imageFrames.length} 页高清多模态图像/共 ${totalPages} 页)`
+            : `(扫描版/图像型PDF，已提供 ${imageFrames.length} 页多模态图像)`;
+        const summary = extractedText ? `\n${extractedText}` : '';
+        return `${text}\n\n[附加文件: ${path} ${pageHint}]${summary}`;
+    }
+    if (extractedText) {
+        return `${text}\n\n[附加文件: ${path}]\n${extractedText}\n[/附加文件结束: ${name}]`;
+    }
+    if (type.startsWith('image/')) {
+        return `${text}\n\n[附加图片: ${path}]`;
+    }
+    return `${text}\n\n[附加文件: ${path}]`;
+}
+
+async function readAttachmentFrames(electronAPI, attachment, data) {
+    const embeddedFrames = data?.imageFrames || attachment?.imageFrames;
+    if (Array.isArray(embeddedFrames) && embeddedFrames.length > 0) {
+        return {
+            type: 'image/jpeg',
+            frames: embeddedFrames,
+        };
+    }
+
+    const type = getAttachmentType(attachment, data);
+    const supportsInlinePayload = type.startsWith('image/')
+        || type.startsWith('audio/')
+        || type.startsWith('video/');
+    if (!supportsInlinePayload || typeof electronAPI.getFileAsBase64 !== 'function') {
+        return null;
+    }
+
+    const source = attachment?.src || attachment?.internalPath || data?.internalPath;
+    if (!source) return null;
+
+    try {
+        const result = await electronAPI.getFileAsBase64(source);
+        if (!result?.success || !Array.isArray(result.base64Frames)) {
+            console.warn(
+                `[SingleChatRequestOrchestrator] 跳过无法读取的附件 ${attachment?.name || source}:`,
+                result?.error || '无法读取附件内容'
+            );
+            return null;
+        }
+        return {
+            type: type.startsWith('image/') ? 'image/jpeg' : type,
+            frames: result.base64Frames,
+        };
+    } catch (error) {
+        console.warn(
+            `[SingleChatRequestOrchestrator] 读取附件 ${attachment?.name || source} 时发生异常，已跳过:`,
+            error
+        );
+        return null;
+    }
+}
+
+async function buildDefaultMessageContent({ message, electronAPI }) {
+    const originalParts = normalizeContentParts(message?.content);
+    let text = stripHiddenToolResults(originalParts.filter(part => part?.type === 'text').map(part => normalizeText(part.text)).join('\n'));
+    const attachments = Array.isArray(message?.attachments) ? message.attachments : [];
+    const mediaParts = originalParts.filter(part => part?.type !== 'text');
+
+    for (const attachment of attachments) {
+        const data = getAttachmentData(attachment);
+        const liveText = await refreshLiveReferenceText(electronAPI, attachment, data);
+        text = appendAttachmentContext(text, attachment, data, liveText);
+        const framePayload = await readAttachmentFrames(electronAPI, attachment, data);
+        if (!framePayload) continue;
+
+        for (const frame of framePayload.frames) {
+            mediaParts.push({
+                type: 'image_url',
+                image_url: {
+                    url: `data:${framePayload.type};base64,${frame}`,
+                },
+            });
+        }
+    }
+
+    const parts = [];
+    if (text.trim()) parts.push({ type: 'text', text });
+    parts.push(...mediaParts);
+    if (parts.length === 0 && message?.role === 'user') {
+        parts.push({ type: 'text', text: '(用户发送了附件，但无文本或可内联内容)' });
+    }
+    return parts;
+}
+
+function buildModelConfig(agentConfig = {}, overrides = {}) {
+    const streamSetting = agentConfig.streamOutput;
+    const stream = streamSetting === undefined
+        ? true
+        : streamSetting === true || streamSetting === 'true';
+
+    return {
+        model: agentConfig.model || 'gemini-pro',
+        ...(agentConfig.temperature !== undefined
+            && agentConfig.temperature !== null
+            && agentConfig.temperature !== ''
+            ? { temperature: Number.parseFloat(agentConfig.temperature) }
+            : {}),
+        ...(agentConfig.maxOutputTokens
+            ? { max_tokens: Number.parseInt(agentConfig.maxOutputTokens, 10) }
+            : {}),
+        ...(agentConfig.contextTokenLimit !== undefined
+            && agentConfig.contextTokenLimit !== null
+            && agentConfig.contextTokenLimit !== ''
+            ? { contextTokenLimit: Number.parseInt(agentConfig.contextTokenLimit, 10) }
+            : {}),
+        ...(agentConfig.top_p !== undefined
+            && agentConfig.top_p !== null
+            && agentConfig.top_p !== ''
+            ? { top_p: Number.parseFloat(agentConfig.top_p) }
+            : {}),
+        ...(agentConfig.top_k !== undefined
+            && agentConfig.top_k !== null
+            && agentConfig.top_k !== ''
+            ? { top_k: Number.parseInt(agentConfig.top_k, 10) }
+            : {}),
+        stream,
+        ...overrides,
+    };
+}
+
+async function loadTavernRules(electronAPI) {
+    if (typeof electronAPI.tavernGetRules !== 'function') return [];
+    try {
+        const result = await electronAPI.tavernGetRules();
+        if (!result?.success || !Array.isArray(result.store?.rules)) {
+            if (result?.error) {
+                console.warn('[SingleChatRequestOrchestrator] Failed to load Tavern rules:', result.error);
+            }
+            return [];
+        }
+        return result.store.rules;
+    } catch (error) {
+        console.warn(
+            '[SingleChatRequestOrchestrator] Tavern rules unavailable; continuing without injection:',
+            error
+        );
+        return [];
+    }
+}
+
+function resolveTavernEngine(explicitEngine) {
+    return explicitEngine || globalThis.TavernRulesEngine || null;
+}
+
+function applySystemRules(systemPrompt, rules, engine) {
+    if (!engine || rules.length === 0) return systemPrompt;
+    return engine.applySystemSuffix(systemPrompt, rules, 'agent');
+}
+
+function applyUserRules(content, rules, engine) {
+    if (!engine || rules.length === 0) return normalizeContentParts(content);
+    return updateFirstTextPart(content, text => engine.applyUserSuffix(text, rules, 'agent'));
+}
+
+function applyContextRules(messages, rules, engine) {
+    if (!engine || rules.length === 0) return messages;
+    const systemMessages = messages.filter(message => message.role === 'system');
+    const conversationMessages = messages.filter(message => message.role !== 'system');
+    const injected = engine.applyContextInject(conversationMessages, rules, 'agent', {
+        makeMessage: (role, text) => ({
+            role,
+            content: [{ type: 'text', text }],
+            __tavernInjected: true,
+        }),
+    });
+    return [...systemMessages, ...injected];
+}
+
+// {{VCPChatWorkSpace}} / {{VCPChatWorkSpace:文件夹名}}：由主进程按工作区索引展开为目录树。
+// 无占位符时不发 IPC；展开失败保留原文，不阻断发送。
+const WORKSPACE_PLACEHOLDER_HINT = '{{VCPChatWorkSpace';
+
+async function expandWorkspacePlaceholdersInPrompt(electronAPI, text, snapshot = null) {
+    if (typeof text !== 'string' || !text.includes(WORKSPACE_PLACEHOLDER_HINT)) return text;
+    if (typeof electronAPI?.expandWorkspacePlaceholders !== 'function') return text;
+    try {
+        const result = await electronAPI.expandWorkspacePlaceholders(text, snapshot);
+        if (result?.success && typeof result.text === 'string') return result.text;
+        console.warn('[SingleChatRequestOrchestrator] 工作区占位符展开失败，保留原文:', result?.error);
+    } catch (error) {
+        console.warn('[SingleChatRequestOrchestrator] 工作区占位符展开异常，保留原文:', error);
+    }
+    return text;
+}
+
+// The entry point is intentionally mode-independent: intent chooses history, not prompt bytes.
+async function assembleRequestMessages({
+    electronAPI, tavernEngine = null, agentConfig = {}, history,
+    context = {}, currentUserMessageId, currentUserMessage = null,
+    temporaryPrompt, conversationSnapshot,
+    systemPromptAppend, systemPromptPrefix,
+    transformMessageText = null, buildMessageContent = null,
+    postProcessMessageContent = null, tavernRules = null,
+} = {}) {
+    requireDependency(electronAPI, 'electronAPI');
+    if (!Array.isArray(history)) throw new TypeError('Single chat history must be an array');
+    if (!context.agentId) throw new Error('Context assembly requires agentId');
+    if (temporaryPrompt && temporaryPrompt.trim()) {
+        currentUserMessage = { role: 'user', content: temporaryPrompt };
+        history = [...history, currentUserMessage];
+    }
+        let snapshot = conversationSnapshot;
+        if (snapshot === undefined && typeof electronAPI.resolveConversationContext === 'function') {
+            snapshot = await electronAPI.resolveConversationContext({ type: 'agent', id: context.agentId });
+            if (!snapshot?.success) throw new Error(snapshot?.error || '无法解析会话配置');
+        }
+        if (snapshot !== undefined && snapshot !== null && !snapshot.success) {
+            throw new Error(snapshot.error || '无法解析会话配置');
+        }
+        const engine = resolveTavernEngine(tavernEngine);
+        const rules = Array.isArray(tavernRules)
+            ? tavernRules
+            : snapshot ? (Array.isArray(snapshot.rules) ? snapshot.rules : []) : await loadTavernRules(electronAPI);
+        const contentBuilder = buildMessageContent || buildDefaultMessageContent;
+        const effectiveHistory = effectiveContextHistory(history);
+        const messages = [];
+
+        for (let index = 0; index < effectiveHistory.length; index += 1) {
+            const historyMessage = effectiveHistory[index];
+            let content = isContextCheckpoint(historyMessage)
+                ? [{ type: 'text', text: normalizeText(historyMessage.content) }]
+                : await contentBuilder({
+                message: historyMessage,
+                index,
+                history: effectiveHistory,
+                electronAPI,
+            });
+            content = normalizeContentParts(content);
+
+            if (!isContextCheckpoint(historyMessage) && typeof transformMessageText === 'function') {
+                content = updateFirstTextPart(content, text => transformMessageText({
+                    text,
+                    message: historyMessage,
+                    index,
+                    history: effectiveHistory,
+                }));
+            }
+            if (!isContextCheckpoint(historyMessage) && historyMessage.role === 'user' && (historyMessage === currentUserMessage || (currentUserMessageId != null && historyMessage.id === currentUserMessageId))) {
+                content = applyUserRules(content, rules, engine);
+            }
+            if (!isContextCheckpoint(historyMessage) && typeof postProcessMessageContent === 'function') {
+                content = normalizeContentParts(await postProcessMessageContent({
+                    content,
+                    message: historyMessage,
+                    index,
+                    history: effectiveHistory,
+                    electronAPI,
+                }));
+            }
+
+            messages.push(attachTimestampMetadata({
+                role: historyMessage.role,
+                content,
+                ...(isContextCheckpoint(historyMessage) ? { __vcpContextCheckpoint: true } : {}),
+                ...(historyMessage.name ? { name: historyMessage.name } : {}),
+                ...(historyMessage.tool_calls ? { tool_calls: historyMessage.tool_calls } : {}),
+                ...(historyMessage.tool_call_id ? { tool_call_id: historyMessage.tool_call_id } : {}),
+            }, historyMessage));
+        }
+
+        const agentName = agentConfig.name || context.agentName || context.agentId;
+        const baseSystemPrompt = normalizeText(agentConfig.systemPrompt)
+            .replace(/\{\{AgentName\}\}/g, agentName);
+        const prefix = systemPromptPrefix === undefined
+            ? buildConversationSystemPrefix(agentConfig, context.topicId) : systemPromptPrefix;
+        const append = systemPromptAppend === undefined
+            ? await resolveRequestEmotionPrompt(electronAPI, context.agentId, agentConfig) : systemPromptAppend;
+        const systemParts = [
+            normalizeText(prefix).trim(),
+            baseSystemPrompt.trim(),
+            normalizeText(append).trim(),
+        ].filter(Boolean);
+        // 先追加 Tavern system_suffix，再展开工作区占位符，使预设规则中的占位符同样生效。
+        const systemPrompt = await expandWorkspacePlaceholdersInPrompt(
+            electronAPI,
+            applySystemRules(systemParts.join('\n\n'), rules, engine),
+            snapshot
+        );
+        if (systemPrompt.trim()) {
+            messages.unshift({ role: 'system', content: systemPrompt });
+        }
+
+        const messagesForVCP = applyContextRules(messages, rules, engine);
+        return { messagesForVCP, conversationSnapshot: snapshot };
+}
+
+function buildConversationSystemPrefix(agentConfig, topicId) {
+    if (!agentConfig.systemPrompt) return '';
+    const lines = [];
+    if (agentConfig.agentDataPath && topicId) {
+        lines.push(`当前聊天记录文件路径: ${agentConfig.agentDataPath}\\topics\\${topicId}\\history.json`);
+    }
+    const topic = agentConfig.topics?.find(item => item.id === topicId);
+    if (topic?.createdAt) {
+        const date = new Date(topic.createdAt);
+        if (Number.isFinite(date.getTime())) {
+            const pad = value => String(value).padStart(2, '0');
+            lines.push(`当前话题创建于: ${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`);
+        }
+    }
+    return lines.join('\n');
+}
+
+async function resolveRequestEmotionPrompt(api, agentId, agentConfig) {
+    if (typeof api.getAgentPortraits !== 'function') return '';
+    try {
+        const features = await import('../ui-system/side-pane/portrait-features.js');
+        if (!features.PORTRAIT_EXPRESSIONS_ENABLED) return '';
+        const { resolveEmotionTagPrompt } = await import('../emotion/emotionPrompt.js');
+        return await resolveEmotionTagPrompt(api, agentId, agentConfig);
+    } catch (error) {
+        console.warn('[ChatContextPipeline] Failed to prepare emotion prompt:', error);
+        return '';
+    }
+}
+
+export {
+    attachTimestampMetadata,
+    expandWorkspacePlaceholdersInPrompt,
+    describeLiveReference,
+    buildDefaultMessageContent,
+    buildModelConfig,
+    assembleRequestMessages,
+    buildConversationSystemPrefix,
+    normalizeContentParts,
+    updateFirstTextPart,
+};

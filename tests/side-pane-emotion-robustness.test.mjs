@@ -148,9 +148,9 @@ test('the emotion tag prompt is decided in one place and regenerate uses it too'
     assert.equal(await resolveEmotionTagPrompt(api(withVariants), 'Nova', { systemPrompt: '自己写了 <!--emo:x-->' }), '');
     assert.equal(await resolveEmotionTagPrompt({ getAgentPortraits: async () => { throw new Error('gone'); } }, 'Nova', {}), '');
 
-    // 重新生成自己拼系统提示词：它也得经过同一个函数，不然重新生成的回复没有情绪标签
     const source = fs.readFileSync(new URL('../modules/renderer/messageContextMenu.js', import.meta.url), 'utf8');
-    const regenerate = source.slice(source.indexOf('async function handleRegenerateResponse'));
-    assert.match(regenerate, /resolveEmotionTagPrompt\(electronAPI, currentSelectedItemVal\.id, agentConfig\)/);
-    assert.match(regenerate, /systemPromptContent = `\$\{systemPromptContent\.trim\(\)\}\\n\\n\$\{emotionTagPrompt\}`/);
+    const pipeline = fs.readFileSync(new URL('../modules/chat/chatContextPipeline.js', import.meta.url), 'utf8');
+    assert.match(source, /await assembleRequestMessages\(/);
+    assert.match(pipeline, /resolveEmotionTagPrompt\(api, agentId, agentConfig\)/);
+    assert.doesNotMatch(source, /systemPromptContent/);
 });
