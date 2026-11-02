@@ -1,0 +1,32 @@
+/* 文坊中的表格（scriptorium-table-view.js）。外框、栏头和通用控件见 scriptorium-file-views.css。
+   每行 28 像素（与脚本中的 ROW 一致）；表头和行号固定不动；选中的格子显示为淡底。查找框沿用 PDF 视图的样式（.scriptorium-pdf-find）。 */
+
+.scriptorium-table-head { flex: none; flex-wrap: wrap; min-height: 40px; gap: 2px 6px; padding-block: 5px; overflow: visible; } /* 放不下时折成两行，与 PDF 一致 */
+.scriptorium-table-head .scriptorium-tb-drop span { max-width: 200px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--scriptorium-file-fade)), transparent); }
+.scriptorium-table-head .scriptorium-tb-drop[hidden] { display: none; }
+.scriptorium-table-info { flex: none; padding-left: 4px; color: var(--scriptorium-file-text-3); font-size: var(--scriptorium-file-fs-meta); white-space: nowrap; }
+.scriptorium-table-headerchk { flex: none; align-items: center; font-size: var(--scriptorium-file-fs-small); white-space: nowrap; }
+.scriptorium-table-headerchk .box { margin-top: 0; }
+
+.scriptorium-table-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; outline: none; background: var(--scriptorium-file-bg); }
+.scriptorium-table-sizer { position: relative; min-width: 100%; }
+.scriptorium-table-row { position: absolute; left: 0; display: flex; height: 28px; min-width: 100%; box-sizing: border-box; border-bottom: 1px solid var(--scriptorium-file-line-soft); font-size: var(--scriptorium-file-fs-small); line-height: 27px; color: var(--scriptorium-file-text); }
+.scriptorium-table-row:hover > .c { background: var(--scriptorium-file-raised); }
+.scriptorium-table-row > span { flex: none; box-sizing: border-box; padding: 0 8px; overflow: hidden; white-space: nowrap; border-right: 1px solid var(--scriptorium-file-line-soft); user-select: text; }
+.scriptorium-table-row > .c > i { display: block; font-style: normal; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - 12px), transparent); }
+.scriptorium-table-row > .c.num { text-align: right; font-family: var(--scriptorium-file-font); }
+.scriptorium-table-row > .c.num > i { mask-image: none; }
+.scriptorium-table-row > .c.on { background: color-mix(in srgb, var(--scriptorium-file-select) 16%, transparent); }
+.scriptorium-table-row > .n { position: sticky; left: 0; z-index: 1; width: var(--scriptorium-table-n, 48px); text-align: right; color: var(--scriptorium-file-text-3); font: var(--scriptorium-file-fs-meta)/27px var(--scriptorium-file-font); background: var(--scriptorium-file-bg); user-select: none; }
+.scriptorium-table-th { position: sticky; top: 0; z-index: 2; background: var(--scriptorium-file-raised); color: var(--scriptorium-file-text-2); font-weight: 600; }
+.scriptorium-table-th > .c { cursor: pointer; user-select: none; }
+.scriptorium-table-th > .c:hover { color: var(--scriptorium-file-text); }
+.scriptorium-table-th > .n { z-index: 3; background: var(--scriptorium-file-raised); }
+.scriptorium-table-editor { position: absolute; z-index: 1; box-sizing: border-box; height: 27px; margin: 0; padding: 0 8px; border: 0; outline: 0; resize: none; overflow: hidden; background: var(--scriptorium-file-hover); box-shadow: inset 0 0 0 1px var(--scriptorium-file-select); color: var(--scriptorium-file-text); font: inherit; font-size: var(--scriptorium-file-fs-small); line-height: 27px; }
+.scriptorium-table-editor[hidden] { display: none; }
+.scriptorium-table-empty { position: absolute; top: 72px; left: 0; right: 0; text-align: center; }
+.scriptorium-table-empty[hidden] { display: none; }
+
+.scriptorium-table-sheets { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; gap: 1px; padding: 8px 8px 16px; }
+.scriptorium-table-sheets .scriptorium-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.scriptorium-table-sheets .scriptorium-row small { color: var(--scriptorium-file-text-3); font: var(--scriptorium-file-fs-meta) var(--scriptorium-file-font); }

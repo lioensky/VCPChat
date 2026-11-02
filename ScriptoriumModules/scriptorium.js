@@ -59,10 +59,26 @@
         );
     }
 
+    // 网页、PDF、表格、文本等由文件视图打开（scriptorium-file-views.js）：主进程对这些文件返回 kind 'web-page' 或 'overlay'，
+    // 这里交给对应视图，后面的文档保持不动。打开的是文档、而上面的视图有未保存的修改时，先询问；选择留在此处则不打开。
+    const openedByFileView = async (result) => {
+        const views = window.ScriptoriumFileViews;
+        if (!views || !result?.success) return false;
+        if (result.kind !== 'web-page' && result.kind !== 'overlay') return !await views.settle(result.filePath);
+        if (result.asText) window.ScriptoriumFileTypes?.markText(result.filePath);
+        await views.routeOverlay(result.filePath);
+        return true;
+    };
     const persistencePort = Object.freeze({
-        chooseOpen: () => nativeApi.chooseOpen(),
+        chooseOpen: async () => {
+            const result = await nativeApi.chooseOpen();
+            return await openedByFileView(result) ? { success: false } : result;
+        },
         chooseImport: () => nativeApi.chooseImport(),
-        readPath: (path) => nativeApi.readPath(path),
+        readPath: async (path) => {
+            const result = await nativeApi.readPath(path);
+            return await openedByFileView(result) ? { success: false } : result;
+        },
         readExternalResource: (payload) =>
             nativeApi.readExternalResource(payload),
         resolveFontStylesheet: (payload) =>
@@ -293,7 +309,9 @@
             styleLibrary,
             hybridCompiler,
             settingsPort,
-            resourceResolver: () => documentPort.resourceResolver(),
+            // 原位打开的 .md：相对路径的图片按文件所在文件夹解析（scriptorium-markdown-file.js）。
+            resourceResolver: () => window.ScriptoriumMarkdownFile?.resolver?.(documentPort.resourceResolver())
+                ?? documentPort.resourceResolver(),
         });
 
     const flowAdapter =
@@ -519,10 +537,55 @@
         createDeck: (...args) => sessionPort?.createDeck(...args),
         showHome: (...args) => sessionPort?.showHome(...args),
         open: (...args) => sessionPort?.open(...args),
-        openPath: (...args) => sessionPort?.openPath(...args),
+        // 由文件视图负责的文件交给视图打开（scriptorium-file-views.js）。
+        openPath: async (...args) => {
+            const routed = await window.ScriptoriumFileViews?.routeOverlay(args[0]);
+            return routed ?? sessionPort?.openPath(...args);
+        },
         import: (...args) => sessionPort?.import(...args),
         save: (...args) => sessionPort?.save(...args),
         close: (...args) => sessionPort?.close(...args),
+    });
+    // 文件视图读取的当前文档信息（scriptorium-file-views.js、scriptorium-markdown-file.js）。
+    window.ScriptoriumFileSession = Object.freeze({
+        openPath: sessionFacade.openPath,
+        current() {
+            const status = documentPort.status();
+            const model = status.ready ? documentPort.document() : null;
+            if (!model) return null;
+            return Object.freeze({
+                kind: model.manifest.scene.kind,
+                filePath: status.currentPath || null,
+                name: status.currentPath ? String(status.currentPath).split(/[\\/]/).pop() : '',
+                dirty: status.dirty,
+                saving: status.saving,
+                revision: status.revision,
+                generation: status.generation,
+                markdownFile: model.manifest.markdownFile || null,
+            });
+        },
+        subscribe: (listener) => documentPort.subscribe('*', listener),
+        // 文稿正文（Markdown 混合源码）；替换后重绘当前工作面，源码编辑器也从模型重新载入。
+        source() {
+            const model = documentPort.status().ready ? documentPort.document() : null;
+            return model && model.manifest.scene.kind !== core.PROJECT_KINDS.SLIDE_DECK ? String(model.source.content || '') : null;
+        },
+        replaceSource(next, reason = 'file-view-source') {
+            if (typeof next !== 'string' || !documentPort.status().ready) return false;
+            editorFacade.flush();
+            const changed = documentPort.mutate((model) => {
+                if (model.manifest.scene.kind === core.PROJECT_KINDS.SLIDE_DECK) return false;
+                if (model.source.content === next) return false;
+                model.source.content = next;
+                return true;
+            }, { reason });
+            if (!changed) return false;
+            historyPort.capture?.({ reason });
+            renderFacade.invalidate(reason);
+            const mode = shell?.surfacePort?.mode?.() || 'edit';
+            shell?.surfacePort?.switchMode?.(mode, { force: true });
+            return true;
+        },
     });
     const exportFacade = Object.freeze({
         execute: (...args) => exportPort?.execute(...args),

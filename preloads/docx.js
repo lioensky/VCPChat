@@ -9,6 +9,12 @@ function subscribe(channel, callback) {
     return () => ipcRenderer.removeListener(channel, listener);
 }
 
+// 主进程抛出的错误经 invoke 返回时带有“Error invoking remote method '…': Error:”前缀，提示中只保留原文。
+const plainInvoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args).catch((error) => {
+    throw new Error(String(error?.message || error).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ''));
+});
+const command = (channel) => (name, payload = {}) => plainInvoke(channel, { ...payload, command: name });
+
 const scriptoriumAPI = Object.freeze({
     openWindow: (options = {}) => ipcRenderer.invoke('open-docx-window', options),
     chooseOpen: () => ipcRenderer.invoke('docx:choose-open'),
@@ -57,6 +63,19 @@ const scriptoriumAPI = Object.freeze({
     onWindowUnmaximized: (callback) => subscribe('window-unmaximized', callback),
     onOpenPathRequest: (callback) => subscribe('docx:open-path-request', callback),
 
+    // 原位打开的文件（modules/scriptorium）：各类文件视图按命令调用，主进程按 fileAccess 允许的范围读写。
+    markdownOpenLink: (payload) => plainInvoke('scriptorium:markdown-link', payload),
+    markdownFile: command('scriptorium:markdown-file'),
+    onMarkdownEvent: (callback) => subscribe('scriptorium:markdown-event', callback),
+    files: command('scriptorium:file'),
+    page: command('scriptorium:page'),
+    onPageChanged: (callback) => subscribe('scriptorium:page-changed', callback),
+    onPageBlocked: (callback) => subscribe('scriptorium:page-blocked', callback),
+    pdf: command('scriptorium:pdf'),
+    sheet: command('scriptorium:sheet'),
+    view: command('scriptorium:view'),
+    onViewChanged: (callback) => subscribe('scriptorium:view-changed', callback),
+
     // Agent 双端桥：主进程负责授权与路由，渲染端只执行已验证的结构化请求。
     onAgentCheckpointProposed: (callback) => subscribe('docx:agent-checkpoint-proposed', callback),
     onAgentRequest: (callback) => subscribe('scriptorium:agent-request', callback),
@@ -67,3 +86,41 @@ contextBridge.exposeInMainWorld('scriptoriumAPI', scriptoriumAPI);
 
 // 兼容尚未迁移的调用方；新文坊渲染器只使用 scriptoriumAPI。
 contextBridge.exposeInMainWorld('docxAPI', scriptoriumAPI);
+
+// 拖进文坊窗口的文件（modules/scriptorium/dropOpen.js）：在这个文坊中打开。
+// 页面本身不处理文件拖放（否则拖入的文件会替换整个页面），所以带文件的拖动都在这里接收；无法打开时显示一行说明，三秒后消失。
+(() => {
+    const { webUtils } = require('electron');
+    const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+    let noteElement = null;
+    let noteTimer = 0;
+    const note = (text) => {
+        if (!text || !document.body) return;
+        if (!noteElement) {
+            noteElement = document.createElement('div');
+            noteElement.className = 'scriptorium-drop-note';
+            noteElement.setAttribute('role', 'status');
+            document.body.append(noteElement);
+        }
+        noteElement.textContent = text;
+        noteElement.hidden = false;
+        clearTimeout(noteTimer);
+        noteTimer = setTimeout(() => { noteElement.hidden = true; }, 3000);
+    };
+    window.addEventListener('dragover', (event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+    }, true);
+    window.addEventListener('drop', (event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const paths = Array.from(event.dataTransfer.files || []).map((file) => {
+            try { return webUtils.getPathForFile(file); } catch (_) { return ''; }
+        }).filter(Boolean);
+        void ipcRenderer.invoke('scriptorium:drop', { paths })
+            .then((result) => note(result?.message))
+            .catch((error) => note(`未能打开：${error?.message || error}`));
+    }, true);
+})();
