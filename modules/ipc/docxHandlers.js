@@ -11,6 +11,8 @@ const windowService = require('../services/windowService');
 const WINDOW_APP_IDS = require('../services/windowAppIds');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
 const scriptoriumImportService = require('../services/scriptoriumImportService');
+// Markdown、网页、PDF、表格、文本等文件原位打开（modules/scriptorium）。
+const fileViews = require('../scriptorium/fileViews');
 const {
     ScriptoriumFontCacheService,
 } = require('../services/scriptoriumFontCacheService');
@@ -889,16 +891,17 @@ async function readDocument(filePath) {
 async function chooseAndReadDocument(event) {
     const owner = BrowserWindow.fromWebContents(event.sender) || docxWindow || mainWindow;
     const result = await dialog.showOpenDialog(owner, {
-        title: '打开 VCP 富文档工程',
+        title: '打开文件',
         properties: ['openFile'],
-        filters: [
+        filters: fileViews.openFilters([
             { name: 'VCP 富文档工程', extensions: ['vdocx', 'vpptx'] },
-        ],
+        ]),
     });
     if (result.canceled || !result.filePaths.length) {
         return { success: false, canceled: true };
     }
-    return readDocument(result.filePaths[0]);
+    return await fileViews.open(result.filePaths[0], { sender: event.sender, grant: true })
+        || readDocument(result.filePaths[0]);
 }
 
 async function chooseAndImportDocument(event) {
@@ -952,6 +955,7 @@ async function atomicWrite(filePath, bytes) {
 }
 
 async function saveDocument(event, payload = {}) {
+    if (fileViews.saves(payload.filePath)) return fileViews.save(event, payload); // 从 .md 原位打开的文稿保存回 .md
     let targetPath = payload.filePath;
     const requestedExtension = path.extname(targetPath || payload.suggestedName || '').toLowerCase();
     const projectExtension = requestedExtension === '.vpptx' ? '.vpptx' : '.vdocx';
@@ -1329,7 +1333,8 @@ function initialize(params) {
     ipcMain.on('scriptorium:agent-response', handleAgentResponse);
     ipcMain.handle('docx:choose-open', chooseAndReadDocument);
     ipcMain.handle('scriptorium:choose-import', chooseAndImportDocument);
-    ipcMain.handle('docx:read-path', (_event, filePath) => readDocument(filePath));
+    ipcMain.handle('docx:read-path', async (event, filePath) =>
+        await fileViews.open(filePath, { sender: event.sender }) || readDocument(filePath));
     ipcMain.handle('docx:read-external-resource', readExternalResource);
     ipcMain.handle(
         'scriptorium:resolve-font-stylesheet',
@@ -1350,6 +1355,18 @@ function initialize(params) {
     ipcMain.handle('scriptorium:svg-assets-load', readSvgAssetPacks);
     ipcMain.handle('scriptorium:svg-assets-save', writeSvgAssetPacks);
     ipcMain.handle('docx:fonts-list', (_event, forceRefresh = false) => getSystemFonts(forceRefresh));
+    fileViews.register(ipcMain, {
+        shell: require('electron').shell,
+        dialog,
+        ownerOf: (event) => (event?.sender && BrowserWindow.fromWebContents(event.sender)) || docxWindow || mainWindow,
+        dataDir: () => path.dirname(recentFilePath),
+        libraryDir: () => documentLibraryRoots.find((root) => root.id === 'documents')?.path,
+        libraryRoots: () => documentLibraryRoots.map((root) => root.path),
+        recentFiles: readRecentFiles,
+        rememberRecentFile,
+        atomicWrite,
+        importable: (filePath) => OPEN_EXTENSIONS.has(path.extname(String(filePath || '')).toLowerCase()),
+    });
 }
 
 module.exports = {
