@@ -1,6 +1,16 @@
-// 显式模型控制：编号严格匹配当前目录；临时参数层，不触碰持久换装。
+// 显式模型控制：名字映射到当前目录ID；临时参数层，不触碰持久换装。
 export function controlTokens(variant) {
-    return typeof variant === 'string' ? [...new Set(variant.toLowerCase().split(/[+,，]/).filter(Boolean))].slice(0, 8) : [];
+    return typeof variant === 'string' ? [...new Set(variant.toLowerCase().split(/[+,，]/).map(token => token.trim()).filter(Boolean))].slice(0, 8) : [];
+}
+
+export function resolveControlTokens(variant, items = []) {
+    const tokens = controlTokens(variant);
+    const ids = new Set(items.map(item => item.id));
+    return [...new Set(tokens.flatMap(token => {
+        if (ids.has(token)) return [token]; // 旧历史中的ID仍可回放
+        const matches = items.filter(item => String(item.controlName || item.name || '').toLowerCase() === token);
+        return matches.length === 1 ? [matches[0].id] : [];
+    }))];
 }
 
 export function dueModelControls(tags, revealEnd) {

@@ -22,11 +22,22 @@ const PENDING = Object.freeze({ pending: true });
 
 /** 解析一个注释体（<!-- 和 --> 之间的部分）；不是情绪标签或情绪认不出时返回 null */
 export function parseEmotionTagBody(body) {
-    const match = TAG_BODY.exec(String(body ?? ''));
+    const source = String(body ?? '');
+    // 保留原英文子表情与无效强度容错；完整可读名称走下面的尾部数字解析。
+    const legacy = TAG_BODY.exec(source);
+    if (legacy && (!legacy[2] || !legacy[3] || /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(legacy[3])
+        || /^(?:[em][a-f0-9]+)(?:[+,，](?:[em][a-f0-9]+|nod|shake|tilt|cheer|bow))*$/i.test(legacy[2]))) {
+        const emotion = normalizeEmotion(legacy[1]);
+        return emotion ? { emotion, variant: legacy[2] ? legacy[2].toLowerCase() : null, intensity: clampIntensity(legacy[3], 0.7) } : null;
+    }
+    const match = /^\s*emo\s*[:：]\s*([^\s/<>]+)\s*\/\s*([^<>\r\n]+?)\s*$/i.exec(source);
     if (!match) return null;
     const emotion = normalizeEmotion(match[1]);
     if (!emotion) return null;
-    return { emotion, variant: match[2] ? match[2].toLowerCase() : null, intensity: clampIntensity(match[3], 0.7) };
+    const tail = /\s+([+-]?(?:\d+(?:\.\d+)?|\.\d+))$/.exec(match[2]);
+    const variant = (tail ? match[2].slice(0, tail.index) : match[2]).trim();
+    if (!variant || /[!]/.test(variant)) return null;
+    return { emotion, variant: variant.toLowerCase(), intensity: clampIntensity(tail?.[1], 0.7) };
 }
 
 /**

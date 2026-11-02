@@ -7,7 +7,7 @@ const { capabilityPrompt } = require('./live2dCapabilities');
 // 桌宠能演的动作写在情绪标记的斜杠后面（DeskPetmodules/gestures.js），标记本身哪里都会去掉。
 const GESTURE_PROMPT = [
     '【桌宠动作】桌面上的你还会做动作：想配合动作时，把动作名写在情绪标记的斜杠后面，例如 <!--emo:happy/nod 0.8-->。',
-    '通用动作：nod（点头）shake（摇头）tilt（歪头）cheer（开心地跳一下）bow（鞠躬）；如提供模型能力编号也可调用。只按需使用，不要每句都写。',
+    '通用动作：nod（点头）shake（摇头）tilt（歪头）cheer（开心地跳一下）bow（鞠躬）；如提供模型能力名称，也可直接填写完整名称（保留内部空格）。一次选一个即可，只按需使用，不要每句都写。',
 ].join('\n');
 
 function createPetStream(ctx) {

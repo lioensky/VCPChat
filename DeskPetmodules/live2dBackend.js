@@ -9,7 +9,7 @@ import { createLifeMotion } from './lifeMotion.js';
 import { createWardrobeLayer } from './live2dWardrobe.js';
 import { resolveDanceProfile, createDanceScheduler, createDanceParameterLayer, createDanceMotionLease } from './danceProfile.js';
 import { zoneOf, hasZones } from './hitAreas.js';
-import { createModelControlLayer, controlTokens } from './modelControls.js';
+import { createModelControlLayer, resolveControlTokens } from './modelControls.js';
 import { pickExpression as mapExpression, pickMotion as mapMotion, pickTap, modelNameOf } from './expressionMap.js';
 import { paramTargets } from './emotionLook.js';
 import { createPixiStage, createFigureFit, createAlphaProbe, tickerControls, loadScript, fetchJson, userFacing } from './petStage.js';
@@ -237,7 +237,7 @@ async function mountLive2DModel(app, assets, env, { Live2DModel, coreVersion, we
             stopDanceMotion();
             danceScheduler.clear();
             danceGesture = null;
-            const tokens = controlTokens(variant);
+            const tokens = resolveControlTokens(variant, catalog?.items);
             controls.play(tokens, intensity);
             const motion = catalog?.items?.find(item => item.kind === 'motion' && tokens.includes(item.id));
             if (motion && motionGroups.includes(motion.group)) {

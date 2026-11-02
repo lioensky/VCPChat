@@ -64,22 +64,37 @@ async function readCapabilities(modelPath) {
             });
         }
     }
+    assignControlNames(items);
     return { items, expressions, motions };
+}
+
+// 名字中的协议字符清理为分隔空格；数字尾缀加括号，避免误认强度。
+function assignControlNames(items) {
+    const used = new Set(['nod', 'shake', 'tilt', 'cheer', 'bow', ...items.map(item => item.id.toLowerCase())]);
+    for (const item of items) {
+        let base = labelOf(item.name).replace(/[+,，/<>!\r\n]/g, ' ').replace(/\s+/g, ' ').trim() || (item.kind === 'motion' ? '动画' : '表情');
+        base = base.replace(/\s+([+-]?(?:\d+(?:\.\d+)?|\.\d+))$/, '（$1）');
+        let name = base, n = 2;
+        while (used.has(name.toLowerCase())) name = `${base}（${n++}）`;
+        used.add(name.toLowerCase());
+        item.controlName = name;
+    }
+    return items;
 }
 
 function capabilityPrompt(catalog) {
     const items = catalog?.items || [];
     if (!items.length) return '';
     const lines = [
-        '【模型能力】情绪标记斜杠后可写下列编号，多个用 + 连接，可与通用动作组合；末尾强度可省略（默认0.7，范围0到1）。例如 <!--emo:happy/nod 0.8-->。只按需调用，不编造编号；表情和姿态短暂显示后自动恢复，不改变服装。',
+        '【模型能力】斜杠后直接写下列完整名称，保留名称内部空格，一次选一个即可；末尾强度可省略（默认0.7，范围0到1）。只按需调用，不编造名称；表情和姿态短暂显示后自动恢复，不改变服装。',
     ];
     for (const [kind, title] of [['expression', '表情/姿态'], ['motion', '动画']]) {
         const rows = items.filter(item => item.kind === kind);
-        if (rows.length) lines.push(`${title}：${rows.map(item => `${item.id}=${labelOf(item.name)}`).join('、')}`);
+        if (rows.length) lines.push(`${title}：${rows.map(item => `${item.controlName || labelOf(item.name)}`).join('、')}`);
     }
     const example = items.find(item => item.kind === 'expression') || items[0];
-    lines.push(`调用示例：<!--emo:happy/${example.id} 0.8-->`);
+    lines.push(`调用示例：<!--emo:happy/${example.controlName || labelOf(example.name)} 0.8-->`);
     return lines.join('\n');
 }
 
-module.exports = { readCapabilities, capabilityPrompt };
+module.exports = { readCapabilities, capabilityPrompt, assignControlNames };
