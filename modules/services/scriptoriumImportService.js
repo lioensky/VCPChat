@@ -1,13 +1,16 @@
 'use strict';
 
 const path = require('path');
-const { marked } = require('marked');
-const mammoth = require('mammoth');
-const JSZip = require('jszip');
-const cheerio = require('cheerio');
-const hljs = require('../../vendor/highlight.min.js');
-const TurndownService = require('turndown');
-const scriptoriumPptxImportService = require('./scriptoriumPptxImportService');
+// 这些库只在导入文档时用，用到时才加载。文坊第一次打开时主进程同步加载 docxHandlers，
+// 原来连带加载这些库（约 470 个文件），文件刚写入或久未读时主进程要卡住数秒。
+const lazily = (load) => { let value; return () => (value ??= load()); };
+const marked = lazily(() => require('marked').marked);
+const mammoth = lazily(() => require('mammoth'));
+const JSZip = lazily(() => require('jszip'));
+const cheerio = lazily(() => require('cheerio'));
+const hljs = lazily(() => require('../../vendor/highlight.min.js'));
+const TurndownService = lazily(() => require('turndown'));
+const pptxImport = lazily(() => require('./scriptoriumPptxImportService'));
 
 const IMPORTER_VERSION = 5;
 const MARKDOWN_DOCUMENT_STYLE = `
@@ -121,7 +124,7 @@ function restoreMarkdownMath(html, placeholders) {
 }
 
 function normalizeMarkdownDocumentHtml(html) {
-    const $ = cheerio.load(
+    const $ = cheerio().load(
         `<main data-vdoc-markdown-root>${String(html || '')}</main>`,
         null,
         false
@@ -143,12 +146,12 @@ function normalizeMarkdownDocumentHtml(html) {
         ).trim().toLowerCase();
 
         const supportedLanguage = declaredLanguage
-            && hljs.getLanguage(declaredLanguage)
+            && hljs().getLanguage(declaredLanguage)
             ? declaredLanguage
             : 'plaintext';
         // 未声明或无法识别的围栏语言按纯文本处理。自动猜测会把普通文字
         // 误判为 SCSS、SQL 等语言，使同一源码在高亮库升级后产生不同结果。
-        const highlighted = hljs.highlight(source, {
+        const highlighted = hljs().highlight(source, {
             language: supportedLanguage,
             ignoreIllegals: true,
         });
@@ -173,7 +176,7 @@ function normalizeMarkdownDocumentHtml(html) {
 
 function convertMarkdown(markdown) {
     const { protectedText, placeholders } = protectMarkdownMath(markdown);
-    const html = marked.parse(protectedText, {
+    const html = marked().parse(protectedText, {
         gfm: true,
         breaks: false,
         async: false,
@@ -197,7 +200,7 @@ function convertPlainText(text) {
 }
 
 function normalizeDocxIndentForMarkdown(html) {
-    const $ = cheerio.load(
+    const $ = cheerio().load(
         `<main data-vdoc-indent-root>${String(html || '')}</main>`,
         null,
         false
@@ -228,7 +231,7 @@ function normalizeDocxIndentForMarkdown(html) {
 }
 
 function htmlToHybridMarkdown(html) {
-    const turndown = new TurndownService({
+    const turndown = new (TurndownService())({
         headingStyle: 'atx',
         bulletListMarker: '-',
         codeBlockStyle: 'fenced',
@@ -606,7 +609,7 @@ function buildDocxStyleMap(styles) {
 }
 
 function applyDocxParagraphSemantics(html, paragraphs) {
-    const $ = cheerio.load(`<main data-vdoc-import-root>${String(html || '')}</main>`, null, false);
+    const $ = cheerio().load(`<main data-vdoc-import-root>${String(html || '')}</main>`, null, false);
     const candidates = $('main[data-vdoc-import-root]').find('p,h1,h2,h3,h4,h5,h6,li,blockquote');
     let paragraphIndex = 0;
     candidates.each((_index, element) => {
@@ -671,7 +674,7 @@ function normalizeMammothHtml(html) {
 }
 
 async function inspectDocx(buffer) {
-    const zip = await JSZip.loadAsync(buffer);
+    const zip = await JSZip().loadAsync(buffer);
     const [stylesXml, documentXml] = await Promise.all([
         zip.file('word/styles.xml')?.async('string') || '',
         zip.file('word/document.xml')?.async('string') || '',
@@ -685,7 +688,7 @@ async function inspectDocx(buffer) {
 
 async function convertDocx(buffer) {
     const inspection = await inspectDocx(buffer);
-    const result = await mammoth.convertToHtml(
+    const result = await mammoth().convertToHtml(
         { buffer },
         {
             styleMap: inspection.styleMap,
@@ -737,7 +740,7 @@ async function importBuffer(filePath, buffer) {
         source = htmlToHybridMarkdown(converted.html);
         warnings = converted.warnings;
     } else if (kind === 'pptx') {
-        const converted = await scriptoriumPptxImportService.convertPptx(buffer);
+        const converted = await pptxImport().convertPptx(buffer);
         slides = converted.slides;
         page = converted.page;
         warnings = converted.warnings;
