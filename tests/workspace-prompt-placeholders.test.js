@@ -104,6 +104,58 @@ test('bare {{VCPChatWorkSpace}} uses the active workspace or explains its absenc
     assert.match(withoutActive, /当前未选择工作区/);
 });
 
+test('missing or inactive workspace guidance is idempotent', async t => {
+    const { root, index, ws } = createIndex(t);
+    for (const activeWorkspaceId of [null, 'missing-workspace', ws.id]) {
+        if (activeWorkspaceId === ws.id) index.configure([{ id: ws.id, path: root, alias: 'demo', enabled: false }]);
+        for (const text of ['{{VCPChatWorkSpace}}', '前缀\n{{VCPChatWorkSpace: }}\n后缀']) {
+            const options = { index, activeWorkspaceId };
+            const firstPass = await expandWorkspacePlaceholders(text, options);
+            assert.match(firstPass, /当前未选择工作区/);
+            assert.equal(hasWorkspacePlaceholder(firstPass), false);
+            const secondPass = await expandWorkspacePlaceholders(firstPass, options);
+            assert.strictEqual(secondPass, firstPass);
+        }
+    }
+});
+
+test('generated fallback, error and tree text cannot introduce expandable DSL', async t => {
+    const token = '{{VCPChatWorkSpace:文件夹名}}';
+    const state = { config: { id: 'demo', alias: token } };
+    const readyTree = {
+        status: 'ready', alias: token, path: `/root/${token}`,
+        fileCount: 1, depth: 6, requestedDepth: 6,
+        text: `${token}/file.txt`,
+    };
+    const cases = [
+        { label: 'missing service', index: null },
+        { label: 'unknown name', index: { findByName: () => null } },
+        { label: 'missing tree', index: { findByName: () => state, renderTree: async () => null } },
+        {
+            label: 'unavailable index',
+            index: { findByName: () => state, renderTree: async () => ({ status: 'error', alias: token, error: token }) },
+        },
+        {
+            label: 'thrown error',
+            index: { findByName: () => { throw new Error(`失败 ${token} {{VCPChatWorkSpace}}`); } },
+        },
+        { label: 'tree data', index: { findByName: () => state, renderTree: async () => readyTree } },
+    ];
+    for (const { label, index } of cases) {
+        await t.test(label, async () => {
+            const options = { index };
+            const firstPass = await expandWorkspacePlaceholders('前缀\n{{VCPChatWorkSpace:demo}}\n后缀', options);
+            assert.equal(hasWorkspacePlaceholder(firstPass), false);
+            assert.ok(firstPass.startsWith('前缀\n'));
+            assert.ok(firstPass.endsWith('\n后缀'));
+            assert.strictEqual(await expandWorkspacePlaceholders(firstPass, options), firstPass);
+            if (['unavailable index', 'thrown error', 'tree data'].includes(label)) {
+                assert.ok(firstPass.includes('｛｛VCPChatWorkSpace:文件夹名｝｝'));
+            }
+        });
+    }
+});
+
 test('unknown names, disabled setting, duplicates and missing index', async t => {
     const { index } = createIndex(t);
     assert.equal(

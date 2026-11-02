@@ -78,7 +78,7 @@ async function renderOne(name, { index, activeWorkspaceId, settings }) {
             ? index.getEnabled().find(item => item.config.id === activeWorkspaceId) || null
             : null;
         if (!state) {
-            return '[VCPChat 当前未选择工作区：请在输入框的工作区按钮中选择，或改用 {{VCPChatWorkSpace:文件夹名}}]';
+            return '[VCPChat 当前未选择工作区：请在输入框的工作区按钮中选择，或使用带双花括号的 VCPChatWorkSpace:文件夹名 指定工作区]';
         }
     }
 
@@ -95,6 +95,9 @@ async function renderOne(name, { index, activeWorkspaceId, settings }) {
 
 /**
  * 展开文本中的所有工作区占位符。同一文件夹名在一次调用内只渲染一次。
+ * 输出契约：生成的降级文案、错误信息及目录数据不得携带可再次展开的自身 DSL。
+ * 在替换边界将其中的工作区占位符改为全角花括号，避免重复展开改变提示词。
+ * 此约束只处理生成内容；停用时仍原样透传输入，不递归展开生成内容。
  * @param {string} text
  * @param {{ index: import('./workspaceIndex').WorkspaceIndex | null, activeWorkspaceId?: string|null, settings?: object }} options
  */
@@ -115,6 +118,11 @@ async function expandWorkspacePlaceholders(text, { index, activeWorkspaceId = nu
         } catch (error) {
             rendered.set(name, `[VCPChat 工作区展开失败: ${error?.message || error}]`);
         }
+    }
+    // 使用独立正则，避免在外层替换期间修改共享正则的匹配状态。
+    const generatedPattern = new RegExp(PLACEHOLDER_PATTERN.source, 'g');
+    for (const [name, output] of rendered) {
+        rendered.set(name, output.replace(generatedPattern, token => `｛｛${token.slice(2, -2)}｝｝`));
     }
     return text.replace(PLACEHOLDER_PATTERN, (_whole, name) => rendered.get((name || '').trim()) ?? '');
 }
