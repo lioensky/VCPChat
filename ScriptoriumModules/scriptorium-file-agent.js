@@ -1,5 +1,6 @@
 // Agent 请求跟随当前显示的文件。网页、PDF、表格、文本、图片、白板显示在文稿之上时（ScriptoriumFileViews.registerOverlay），
-// 原有的 Agent 接口仍会作用于后面的文稿：读到的是另一个文件，截图只有被遮住的区域，SubmitSourcePr 也会合入后面的文稿。
+// 原有的 Agent 接口仍会作用于后面的文稿：后面没有文稿时返回“文档尚未就绪”；后面有文稿时读到的是那份文稿，
+// 截图的画面是上面的文件、附带的文字说明却属于后面的文稿；SubmitSourcePr 也会提交到后面的文稿。
 // scriptorium.js 收到请求时先询问这里：有文件视图显示时由这里应答；文稿在最上面时返回 null，按原有流程处理。
 // 样式包、SVG 资产等与当前文件无关的命令也返回 null。
 // 各视图提供 agent：text()（显示的文字）、surface()（截图范围）；有源码的另提供 source()，白板另提供 picture() 与 board。
