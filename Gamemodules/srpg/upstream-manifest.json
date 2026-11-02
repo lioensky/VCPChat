@@ -1,0 +1,12 @@
+{
+    "display_name": "Tavern-SRPG",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "freezer",
+    "version": "0.26.0",
+    "homePage": "https://github.com/DoubleOpenFreezer/Tavern-SRPG",
+    "auto_update": false
+}
