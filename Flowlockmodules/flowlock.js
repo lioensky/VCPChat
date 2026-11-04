@@ -602,8 +602,8 @@ class FlowlockManager {
             });
         } catch (error) {
             if (this.sessions.get(agentId) !== session || session.status !== 'active') return;
-            console.error(`[Flowlock] Agent ${agentId} continue writing failed:`, error);
-            session.lastError = error.message;
+            console.error(`[Flowlock] Agent ${agentId} continue writing failed (topic=${session.topicId}, round=${session.round}, messageId=${messageId}):`, error);
+            session.lastError = error?.message || String(error);
             session.activeMessageId = null;
 
             if (session.contextCompactionLease) {
@@ -616,11 +616,17 @@ class FlowlockManager {
             session.retryCount++;
             if (session.retryCount >= session.maxRetries) {
                 session.completionReason = 'max_retries_exceeded';
-                await this.stop(agentId);
+                console.error(`[Flowlock] Agent ${agentId} max retries reached (${session.retryCount}/${session.maxRetries}), stopping:`, session.lastError);
+                this.uiHelper?.showToastNotification?.(
+                    `Agent "${session.agentName || agentId}" 心流锁续写失败次数过多，已自动停止，请查看控制台错误`,
+                    'error'
+                );
+                await this.stop(agentId, { silent: true });
                 return;
             }
 
-            // 重试
+            // 重试：保留原始异常，并记录重试次数，避免心跳失败无迹可查。
+            console.warn(`[Flowlock] Agent ${agentId} heartbeat retry ${session.retryCount}/${session.maxRetries} in ${session.defaultDelaySeconds}s:`, error);
             this.scheduleNextRound(agentId, session.defaultDelaySeconds * 1000);
         }
     }
