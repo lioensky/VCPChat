@@ -926,8 +926,9 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
     background: var(--pf-panel); font-size: 12px;
 }
 .bp-lane-file { color: #6fd3ff; overflow-wrap: anywhere; word-break: break-all; }
+.bp-lane-delta { margin-left: auto; font-size: 11px; white-space: nowrap; }
 .bp-lane-count {
-    margin-left: auto; flex: 0 0 auto; min-width: 20px; text-align: center;
+    flex: 0 0 auto; min-width: 20px; text-align: center;
     padding: 0 6px; border-radius: 999px; background: rgba(111, 211, 255, 0.12); color: #6fd3ff;
     font-size: 11px;
 }

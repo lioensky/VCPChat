@@ -138,14 +138,18 @@ async function renderBlueprintDynamic(pane, projectId) {
     const durationTxt = created && st.lastAt ? bpDuration(new Date(st.lastAt) - new Date(created)) : '-';
     const statusTxt = STATUS_LABEL[detail.project?.status] || detail.project?.status || '-';
 
-    const lanesHtml = [...lanes.entries()].map(([file, nodes]) =>
-        '<div class="bp-lane">' +
+    const lanesHtml = [...lanes.entries()].map(([file, nodes]) => {
+        const laneAdded = nodes.reduce((s, n) => s + (n.added || 0), 0);
+        const laneRemoved = nodes.reduce((s, n) => s + (n.removed || 0), 0);
+        return '<div class="bp-lane">' +
             '<div class="bp-lane-head" title="' + escapeHtml(file) + '">' +
                 '<span class="bp-lane-file">' + escapeHtml(bpShortPath(file)) + '</span>' +
+                '<span class="bp-lane-delta"><span class="plus">+' + laneAdded + '</span>/<span class="minus">-' + laneRemoved + '</span></span>' +
                 '<span class="bp-lane-count">' + nodes.length + '</span>' +
             '</div>' +
             '<div class="bp-lane-body">' + nodes.map(n => bpCardHtml(n, freshIds.has(n.id))).join('') + '</div>' +
-        '</div>').join('');
+        '</div>';
+    }).join('');
 
     pane.innerHTML =
         '<div class="bp-dyn">' +
