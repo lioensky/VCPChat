@@ -604,7 +604,7 @@ async function renderBlueprint({ force = false } = {}) {
             <button class="bp-mode-btn${mode === 'manual' ? ' active' : ''}" data-bp-mode="manual" type="button">精绘图</button>
         </div>` : '';
     if (mode === 'manual' && hasManual) {
-        pane.innerHTML = `${toggleHtml}<iframe class="bp-frame" src="../${escapeHtml(manual.relPath)}?t=${Date.now()}" title="工程图纸"></iframe>`;
+        pane.innerHTML = `${toggleHtml}<iframe class="bp-frame" src="../${escapeHtml(manual.relPath)}?t=${Date.now()}" title="改动脉络"></iframe>`;
     } else {
         pane.innerHTML = `${toggleHtml}<div class="bp-host"></div>`;
         await renderBlueprintDynamic(pane.querySelector('.bp-host'), projectId);
