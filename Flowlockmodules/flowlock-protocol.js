@@ -196,14 +196,16 @@
         // 后续扫描一律读取“工具结果已遮蔽”的文本（等长、保留换行，偏移不变）。
         // 否则工具数据里的 TOOL_REQUEST / DESKTOP_PUSH / 思维链 / 反引号会从工具结果内部
         // 开启一个块并越过工具结果边界，遮蔽其后真实的 Flowlock 指令。
-        const scanText = chars.join('');
+        let scanText = chars.join('');
         maskDelimitedBlocks(scanText, chars, TOKENS.toolRequestStart, TOKENS.toolRequestEnd, findToolRequestEnd);
         maskToolCallSummaries(scanText, chars);
         maskDelimitedBlocks(scanText, chars, TOKENS.desktopStart, TOKENS.desktopEnd);
-        maskDelimitedBlocks(scanText, chars, TOKENS.thoughtStart, TOKENS.thoughtEnd);
-        maskConventionalThoughts(scanText, chars);
+        scanText = chars.join('');
         maskCodeFences(scanText, chars);
         maskInlineCode(scanText, chars);
+        scanText = chars.join('');
+        maskDelimitedBlocks(scanText, chars, TOKENS.thoughtStart, TOKENS.thoughtEnd);
+        maskConventionalThoughts(scanText, chars);
 
         return chars.join('');
     }

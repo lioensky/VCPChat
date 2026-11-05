@@ -152,8 +152,26 @@ export function createEmotionTagScanner() {
             let nextAt = -1;
             let opener = null;
             for (const candidate of OPENERS) {
-                const at = buffer.indexOf(candidate, cursor);
-                if (at !== -1 && (nextAt === -1 || at < nextAt)) { nextAt = at; opener = candidate; }
+                let searchFrom = cursor;
+                while (searchFrom < buffer.length) {
+                    const at = buffer.indexOf(candidate, searchFrom);
+                    if (at === -1) break;
+                    // 反引号紧邻包裹的字面量（如 `<think>`）不开启区域
+                    if (buffer[at - 1] === '`' || buffer[at + candidate.length] === '`') {
+                        searchFrom = at + candidate.length;
+                        continue;
+                    }
+                    // 思维链标签要求位于行首（左侧仅空白），避免正文句中提及 `<think>` 时吞没整条回复
+                    if (candidate === '<think>' || candidate === '<thinking>') {
+                        const lineStart = at === 0 ? 0 : buffer.lastIndexOf('\n', at - 1) + 1;
+                        if (!/^[ \t]*$/.test(buffer.slice(lineStart, at))) {
+                            searchFrom = at + candidate.length;
+                            continue;
+                        }
+                    }
+                    if (nextAt === -1 || at < nextAt) { nextAt = at; opener = candidate; }
+                    break;
+                }
             }
             if (nextAt === -1) {
                 const keep = final ? 0 : heldTailLength(buffer.slice(cursor), OPENERS);
