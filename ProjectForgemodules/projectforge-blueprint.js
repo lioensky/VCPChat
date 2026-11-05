@@ -61,7 +61,7 @@ function bpDuration(ms) {
 }
 
 function bpCardHtml(n, fresh, todoMap) {
-    const reason = String(n.reason || n.summary || '').trim();
+    const reason = String(n.reason || n._batchReason || n.summary || '').trim();
     const todo = (n.todo_id && todoMap) ? todoMap.get(n.todo_id) : null;
     let todoBadge = '';
     if (todo) {
@@ -111,9 +111,9 @@ async function renderBlueprintDynamic(pane, projectId) {
         results.forEach(([id, nodes]) => cache.byBatch.set(id, nodes));
     }
 
-    // 展平节点（正序）
+    // 展平节点（正序）；注入批次 reason 兜底——顶层 reason 落在批次上，节点只存单步 reasonN，缺省时卡片显示批次原因
     const flat = [];
-    timeline.forEach(b => (cache.byBatch.get(b.id) || []).forEach(n => flat.push(n)));
+    timeline.forEach(b => (cache.byBatch.get(b.id) || []).forEach(n => flat.push({ ...n, _batchReason: b.reason || '' })));
 
     if (!flat.length) {
         if (timeline.length && fetchFail === missing.length && missing.length) {
