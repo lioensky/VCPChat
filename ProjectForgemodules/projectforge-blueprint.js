@@ -63,7 +63,12 @@ function bpDuration(ms) {
 function bpCardHtml(n, fresh, todoMap) {
     const reason = String(n.reason || n.summary || '').trim();
     const todo = (n.todo_id && todoMap) ? todoMap.get(n.todo_id) : null;
-    const todoBadge = todo ? '<span class="bp-todo" title="todo #' + todo.seq + ' ' + escapeHtml(todo.title || '') + '">#' + todo.seq + '</span>' : '';
+    let todoBadge = '';
+    if (todo) {
+        const tTitle = String(todo.title || '').trim();
+        const tShort = tTitle.length > 11 ? tTitle.slice(0, 11) + '…' : tTitle;
+        todoBadge = '<span class="bp-todo" title="todo #' + todo.seq + ' ' + escapeHtml(tTitle) + '">#' + todo.seq + ' ' + escapeHtml(tShort) + '</span>';
+    }
     let whyHtml = '';
     if (n.op === 'external') {
         whyHtml = '<div class="bp-why bp-warn">工程外动刀 · 无快照保护</div>';

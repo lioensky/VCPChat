@@ -972,8 +972,8 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
     font-family: ui-monospace, monospace; font-size: 11px;
 }
 .bp-todo {
-    flex: 0 0 auto; min-width: 18px; text-align: center;
-    padding: 0 6px; border-radius: 5px;
+    flex: 0 1 auto; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    padding: 1px 7px; border-radius: 5px;
     background: rgba(76, 175, 125, 0.15); color: rgba(96, 220, 155, 1);
     font-size: 11px; font-family: ui-monospace, monospace;
 }
