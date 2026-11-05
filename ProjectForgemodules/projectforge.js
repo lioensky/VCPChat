@@ -582,6 +582,27 @@ async function revertCurrent(mode) {
 function switchTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === name));
+    if (name === 'blueprint') renderBlueprint();
+}
+
+/** 工程图纸：懒加载当前工程的图纸 HTML（Agent 收尾时生成于插件 blueprints/ 目录）。 */
+async function renderBlueprint({ force = false } = {}) {
+    const pane = $('pane-blueprint');
+    const projectId = state.currentId;
+    if (!projectId) { pane.innerHTML = '<p class="muted">未选择工程。</p>'; return; }
+    if (!force && pane.dataset.loadedFor === projectId) return;
+    pane.dataset.loadedFor = projectId;
+    pane.innerHTML = '<p class="muted">读取工程图纸中…</p>';
+    try {
+        const info = await call(api.projectForgeGetBlueprint(projectId));
+        if (!info?.exists) {
+            pane.innerHTML = `<div class="bp-empty"><p class="muted">本工程还没有图纸。</p><p class="muted">图纸由 Agent 工程收尾时生成，落盘于 <code>VCPDistributedServer/Plugin/ProjectForge/blueprints/${escapeHtml(projectId)}.html</code></p></div>`;
+            return;
+        }
+        pane.innerHTML = `<iframe class="bp-frame" src="../${escapeHtml(info.relPath)}?t=${Date.now()}" title="工程图纸"></iframe>`;
+    } catch (error) {
+        pane.innerHTML = `<p class="muted">图纸读取失败：${escapeHtml(error.message)}</p>`;
+    }
 }
 
 function debounce(fn, wait) {
