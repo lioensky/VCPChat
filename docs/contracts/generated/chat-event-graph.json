@@ -35447,14 +35447,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gameHandlers.js",
-          "line": 230,
+          "line": 233,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gameHandlers.js",
-          "line": 230,
+          "line": 233,
           "kind": "event-listener",
           "match": "handle('vcp-game:continue'"
         },
@@ -35509,14 +35509,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gameHandlers.js",
-          "line": 243,
+          "line": 250,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gameHandlers.js",
-          "line": 243,
+          "line": 250,
           "kind": "event-listener",
           "match": "ipcMain.handle('vcp-game:launch'"
         },
@@ -35678,14 +35678,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gameHandlers.js",
-          "line": 235,
+          "line": 242,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gameHandlers.js",
-          "line": 235,
+          "line": 242,
           "kind": "event-listener",
           "match": "handle('vcp-game:stop'"
         },
@@ -35709,14 +35709,14 @@
       "consumers": [
         {
           "file": "modules/ipc/gameHandlers.js",
-          "line": 225,
+          "line": 228,
           "kind": "event-listener"
         }
       ],
       "evidence": [
         {
           "file": "modules/ipc/gameHandlers.js",
-          "line": 225,
+          "line": 228,
           "kind": "event-listener",
           "match": "handle('vcp-game:submit'"
         },
@@ -38645,7 +38645,7 @@
     },
     {
       "file": "modules/ipc/gameHandlers.js",
-      "line": 254,
+      "line": 261,
       "reason": "dynamic event listener name: channel",
       "kind": "event-listener",
       "match": "ipcMain.handle(channel",

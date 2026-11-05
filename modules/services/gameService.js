@@ -87,12 +87,54 @@ class GameService {
         await this.write(record);
         return { matchId, observation: rules.observation(record.state, 0) };
     }
-    async nextMatch(previousMatchId) {
+    validateSeatModelUpdate(currentSeats, nextSeats) {
+        if (!Array.isArray(nextSeats) || nextSeats.length !== currentSeats.length) {
+            throw error('INVALID_SEATS', '座位数量不匹配。');
+        }
+        return currentSeats.map((current, index) => {
+            const candidate = nextSeats[index];
+            if (!candidate || candidate.kind !== current.kind) {
+                throw error('INVALID_SEATS', '不能在原牌桌直接变更座位类型。');
+            }
+            if (current.kind !== 'agent') return structuredClone(current);
+            if (candidate.agentId !== current.agentId) {
+                throw error('INVALID_SEATS', '更换出战角色请点击「开新桌」；同阵容换模型可直接生效。');
+            }
+            const model = candidate.model === undefined || candidate.model === null
+                ? ''
+                : String(candidate.model).trim();
+            if (model.length > 200 || /[\r\n\0]/.test(model)) {
+                throw error('INVALID_SEATS', '所选模型名称无效。');
+            }
+            const effectiveModel = typeof candidate.effectiveModel === 'string' && candidate.effectiveModel.trim()
+                ? candidate.effectiveModel.trim()
+                : (model || current.effectiveModel || '');
+            return {
+                kind: 'agent',
+                agentId: current.agentId,
+                name: candidate.name || current.name,
+                ...(model ? { model } : {}),
+                ...(effectiveModel ? { effectiveModel } : {}),
+            };
+        });
+    }
+    async updateSeats(matchId, seats) {
+        return this.serial(matchId, async () => {
+            const record = await this.read(matchId);
+            record.seats = this.validateSeatModelUpdate(record.seats, seats);
+            await this.write(record);
+            return structuredClone(record.seats);
+        });
+    }
+    async nextMatch(previousMatchId, { seats } = {}) {
         return this.serial(previousMatchId, async () => {
             const previous = await this.read(previousMatchId);
             if (previous.state.phase !== 'finished') {
                 throw error('MATCH_NOT_FINISHED', '当前对局尚未结束，不能开始下一局。');
             }
+            const resolvedSeats = seats
+                ? this.validateSeatModelUpdate(previous.seats, seats)
+                : structuredClone(previous.seats);
             // Deterministic successor survives a crash between child save and parent link.
             const hex = createHash('sha256').update(`vgame-next:${previousMatchId}`).digest('hex').slice(0, 32);
             const matchId = `match-${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
@@ -103,9 +145,13 @@ class GameService {
                     || record.groupId !== previous.groupId || record.topicId !== previous.topicId) {
                     throw error('SUCCESSOR_CONFLICT', '下一局存档关联不一致。');
                 }
+                if (seats && stable(record.seats) !== stable(resolvedSeats)) {
+                    record.seats = resolvedSeats;
+                    await this.write(record);
+                }
             } catch (failure) {
                 if (failure.code !== 'ENOENT') throw failure;
-                const spectatorTable = previous.seats.every(seat => seat?.kind === 'agent');
+                const spectatorTable = resolvedSeats.every(seat => seat?.kind === 'agent');
                 const nextMaxRedeals = Number.isInteger(previous.state.maxRedeals)
                     ? previous.state.maxRedeals
                     : (spectatorTable ? 2 : null);
@@ -114,7 +160,7 @@ class GameService {
                 state.events.push(event);
                 record = {
                     schemaVersion: 1, gameTypeId: 'doudizhu', matchId, previousMatchId,
-                    seats: structuredClone(previous.seats),
+                    seats: resolvedSeats,
                     groupId: previous.groupId, topicId: previous.topicId,
                     state, submissions: {}, pendingEvents: [event], createdAt: Date.now(),
                 };

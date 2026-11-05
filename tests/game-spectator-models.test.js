@@ -113,7 +113,7 @@ test('三AI斗蛐蛐全自动对局：0/1/2全座位工具署名落子、单座�
     assert.equal(bySeat.get(2).explicitOverride, 'model-override');
     assert.equal(defaultProfiles.alpha.model, 'model-alpha-default');
 
-    // Next match preserves all 3 AI seats and their model overrides.
+    // Next match preserves all 3 AI seats and their model overrides when no new models are passed.
     const next = await runtime.nextTable(table.matchId);
     const nextRecord = await service.read(next.matchId);
     assert.deepEqual(
@@ -122,6 +122,44 @@ test('三AI斗蛐蛐全自动对局：0/1/2全座位工具署名落子、单座�
             { id: 'alpha', model: 'model-favorite', effective: 'model-favorite' },
             { id: 'beta', model: null, effective: 'model-beta-default' },
             { id: 'gamma', model: 'model-override', effective: 'model-override' },
+        ],
+    );
+
+    // Mid-match live model switch updates seat models immediately, and nextTable applies newly chosen models.
+    await runtime.updateSeatModels(next.matchId, {
+        agentIds: ['alpha', 'beta', 'gamma'],
+        agentModels: ['', 'model-hot', 'model-switched'],
+    });
+    const updatedMidGame = await service.read(next.matchId);
+    assert.deepEqual(
+        updatedMidGame.seats.map(s => ({ id: s.agentId, model: s.model || null, effective: s.effectiveModel })),
+        [
+            { id: 'alpha', model: null, effective: 'model-alpha-default' },
+            { id: 'beta', model: 'model-hot', effective: 'model-hot' },
+            { id: 'gamma', model: 'model-switched', effective: 'model-switched' },
+        ],
+    );
+
+    await assert.rejects(
+        runtime.updateSeatModels(next.matchId, {
+            agentIds: ['alpha', 'gamma', 'beta'],
+            agentModels: ['', '', ''],
+        }),
+        { code: 'SEAT_ROSTER_CHANGED' },
+    );
+
+    await runtime.continue(next.matchId);
+    const third = await runtime.nextTable(next.matchId, {
+        agentIds: ['alpha', 'beta', 'gamma'],
+        agentModels: ['model-favorite', '', 'model-switched'],
+    });
+    const thirdRecord = await service.read(third.matchId);
+    assert.deepEqual(
+        thirdRecord.seats.map(s => ({ id: s.agentId, model: s.model || null, effective: s.effectiveModel })),
+        [
+            { id: 'alpha', model: 'model-favorite', effective: 'model-favorite' },
+            { id: 'beta', model: null, effective: 'model-beta-default' },
+            { id: 'gamma', model: 'model-switched', effective: 'model-switched' },
         ],
     );
 });
@@ -163,6 +201,15 @@ test('斗地主前端UI：默认三AI观战、独立选模型与自定义输入�
     const w = dom.window;
 
     const createPayloads = [];
+    const observeUpdates = [];
+    const nextPayloads = [];
+    let mockSeats = [
+        { kind: 'agent', agentId: 'alpha', name: 'Alpha', model: 'model-favorite', effectiveModel: 'model-favorite' },
+        { kind: 'agent', agentId: 'beta', name: 'beta', effectiveModel: 'model-beta-default' },
+        { kind: 'agent', agentId: 'gamma', name: 'Gamma', model: 'my-custom-llm', effectiveModel: 'my-custom-llm' },
+    ];
+    let mockPhase = 'bidding';
+    let mockRunning = true;
     w.utilityAPI = {
         listGameAgents: async () => ({
             success: true,
@@ -174,43 +221,53 @@ test('斗地主前端UI：默认三AI观战、独立选模型与自定义输入�
             ],
             favoriteModels: ['model-favorite'],
             hotModels: ['model-hot'],
-            models: ['model-favorite', 'model-hot', 'model-alpha-default'],
+            models: ['model-favorite', 'model-hot', 'model-switched', 'model-alpha-default'],
         }),
         createGameTable: async payload => {
             createPayloads.push(payload);
             return { success: true, matchId: 'match-11111111-1111-1111-1111-111111111111' };
         },
-        observeGameTable: async () => ({
-            success: true,
-            isSpectator: true,
-            seats: [
-                { kind: 'agent', agentId: 'alpha', name: 'Alpha', model: 'model-favorite', effectiveModel: 'model-favorite' },
-                { kind: 'agent', agentId: 'beta', name: 'beta', effectiveModel: 'model-beta-default' },
-                { kind: 'agent', agentId: 'gamma', name: 'Gamma', model: 'my-custom-llm', effectiveModel: 'my-custom-llm' },
-            ],
-            spectator: {
-                hands: [['RJ', 'BJ'], ['HA'], ['S3']],
-                bottom: ['SA', 'HK', 'DQ'],
-            },
-            observation: {
-                matchId: 'match-11111111-1111-1111-1111-111111111111',
-                decisionId: 'match-11111111-1111-1111-1111-111111111111:0',
-                revision: 0,
-                phase: 'bidding',
-                turn: 0,
-                dealNumber: 1,
-                highestBid: 0,
-                landlord: null,
-                bottom: [],
-                remaining: [2, 1, 1],
-                target: null,
-                winner: null,
-                hand: ['RJ', 'BJ'],
-                canPass: false,
-                events: [],
-            },
-            runtime: { running: true, status: 'requesting', reason: null, seat: 0 },
-        }),
+        nextGameTable: async payload => {
+            nextPayloads.push(payload);
+            return { success: true, matchId: 'match-22222222-2222-2222-2222-222222222222' };
+        },
+        observeGameTable: async payload => {
+            if (Array.isArray(payload?.agentModels)) {
+                observeUpdates.push(payload);
+                mockSeats = mockSeats.map((seat, idx) => ({
+                    ...seat,
+                    model: payload.agentModels[idx] || undefined,
+                    effectiveModel: payload.agentModels[idx] || 'model-default',
+                }));
+            }
+            return {
+                success: true,
+                isSpectator: true,
+                seats: mockSeats,
+                spectator: {
+                    hands: [['RJ', 'BJ'], ['HA'], ['S3']],
+                    bottom: ['SA', 'HK', 'DQ'],
+                },
+                observation: {
+                    matchId: payload.matchId,
+                    decisionId: `${payload.matchId}:0`,
+                    revision: 0,
+                    phase: mockPhase,
+                    turn: 0,
+                    dealNumber: 1,
+                    highestBid: 0,
+                    landlord: 0,
+                    bottom: [],
+                    remaining: [2, 1, 1],
+                    target: null,
+                    winner: mockPhase === 'finished' ? 'landlord' : null,
+                    hand: ['RJ', 'BJ'],
+                    canPass: false,
+                    events: [],
+                },
+                runtime: { running: mockRunning, status: mockRunning ? 'requesting' : 'finished', reason: null, seat: mockRunning ? 0 : null },
+            };
+        },
     };
 
     try {
@@ -265,6 +322,40 @@ test('斗地主前端UI：默认三AI观战、独立选模型与自定义输入�
         await new Promise(resolve => setTimeout(resolve, 20));
         assert.match(w.document.getElementById('seats').textContent, /暗牌盲猜中/);
         assert.doesNotMatch(w.document.getElementById('seats').textContent, /大王/);
+
+        // Changing seat 2 model dropdown mid-game immediately pushes update & repaints seat chip
+        m2.value = 'model-switched';
+        m2.dispatchEvent(new w.Event('change'));
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(observeUpdates.length, 1);
+        assert.deepEqual(JSON.parse(JSON.stringify(observeUpdates[0])), {
+            matchId: 'match-11111111-1111-1111-1111-111111111111',
+            agentIds: ['alpha', 'beta', 'gamma'],
+            agentModels: ['model-favorite', '', 'model-switched'],
+        });
+        assert.match(w.document.getElementById('seats').textContent, /model-switched/);
+
+        // Resume restores dropdown controls from saved table seats
+        m0.value = '';
+        w.document.getElementById('resume').click();
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(m0.value, 'model-favorite');
+        assert.equal(m2.value, 'model-switched');
+
+        // When match finishes, clicking 「再来一局（保留上下文）」 passes the updated seat models
+        mockPhase = 'finished';
+        mockRunning = false;
+        m0.value = 'model-hot';
+        m0.dispatchEvent(new w.Event('change'));
+        await new Promise(resolve => setTimeout(resolve, 20));
+        w.document.getElementById('next').click();
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(nextPayloads.length, 1);
+        assert.deepEqual(JSON.parse(JSON.stringify(nextPayloads[0])), {
+            matchId: 'match-11111111-1111-1111-1111-111111111111',
+            agentIds: ['alpha', 'beta', 'gamma'],
+            agentModels: ['model-hot', '', 'model-switched'],
+        });
     } finally {
         w.dispatchEvent(new w.Event('pagehide'));
         w.close();

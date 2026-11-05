@@ -27,7 +27,7 @@ class GameRuntime {
         Object.assign(this, { gameService, groupChat, loadAgent });
         this.maintenance = false;
         this.resourceOperations = 0;
-        for (const name of ['openTable', 'nextTable', 'submitHuman']) {
+        for (const name of ['openTable', 'nextTable', 'updateSeatModels', 'submitHuman']) {
             const operation = this[name].bind(this);
             this[name] = async (...args) => {
                 this.assertAvailable();
@@ -111,7 +111,60 @@ class GameRuntime {
         });
         return { ...match, groupId: group.id, topicId: group.topics[0].id };
     }
-    async nextTable(matchId) {
+    async resolveUpdatedSeats(existingSeats, { agentIds, agentModels } = {}) {
+        if (!Array.isArray(agentModels)) return null;
+        const agentSeatIndices = existingSeats
+            .map((seat, index) => (seat?.kind === 'agent' ? index : -1))
+            .filter(index => index >= 0);
+        if (Array.isArray(agentIds)) {
+            if (agentIds.length !== agentSeatIndices.length
+                || agentSeatIndices.some((seatIdx, slotIdx) => existingSeats[seatIdx].agentId !== agentIds[slotIdx])) {
+                throw Object.assign(
+                    new Error('更换出战角色或切换模式请点击「开新桌」；同阵容换模型可直接生效。'),
+                    { code: 'SEAT_ROSTER_CHANGED' },
+                );
+            }
+        }
+        if (agentModels.length !== agentSeatIndices.length) {
+            throw new Error('所选模型数量与AI座位数不匹配。');
+        }
+        const overrides = agentModels.map(raw => {
+            if (raw === undefined || raw === null || raw === '') return '';
+            if (typeof raw !== 'string') throw new Error('所选模型名称无效。');
+            const trimmed = raw.trim();
+            if (!trimmed) return '';
+            if (trimmed.length > 200 || /[\r\n\0]/.test(trimmed)) {
+                throw new Error('所选模型名称无效。');
+            }
+            return trimmed;
+        });
+        const nextSeats = structuredClone(existingSeats);
+        await Promise.all(agentSeatIndices.map(async (seatIdx, slotIdx) => {
+            const current = existingSeats[seatIdx];
+            const override = overrides[slotIdx];
+            const agent = await this.loadAgent(current.agentId);
+            const defaultModel = typeof agent?.model === 'string' ? agent.model.trim() : '';
+            if (!agent || agent.error || !(override || defaultModel)) {
+                throw new Error('所选Agent不存在或尚未配置模型。');
+            }
+            nextSeats[seatIdx] = {
+                kind: 'agent',
+                agentId: current.agentId,
+                name: current.name || agent.name || current.agentId,
+                ...(override ? { model: override } : {}),
+                effectiveModel: override || defaultModel,
+            };
+        }));
+        return nextSeats;
+    }
+    async updateSeatModels(matchId, options = {}) {
+        this.assertAvailable();
+        const record = await this.gameService.read(matchId);
+        const seats = await this.resolveUpdatedSeats(record.seats, options);
+        if (!seats) return record.seats;
+        return this.gameService.updateSeats(matchId, seats);
+    }
+    async nextTable(matchId, options = {}) {
         this.assertAvailable();
         if (this.getState(matchId).running) {
             throw Object.assign(new Error('当前回复尚未结束，请稍后再来一局。'), { code: 'REQUEST_ACTIVE' });
@@ -124,8 +177,9 @@ class GameRuntime {
         if (group?.mode !== 'game' || !group.topics?.some(topic => topic.id === previous.topicId)) {
             throw Object.assign(new Error('原游戏后台会话不可用。'), { code: 'SESSION_UNAVAILABLE' });
         }
+        const seats = await this.resolveUpdatedSeats(previous.seats, options);
         await this.orchestrator.syncEvents(matchId);
-        const table = await this.gameService.nextMatch(matchId);
+        const table = await this.gameService.nextMatch(matchId, seats ? { seats } : {});
         await this.orchestrator.syncEvents(table.matchId);
         return table;
     }

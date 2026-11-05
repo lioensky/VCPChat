@@ -15,12 +15,27 @@
     let runtimeRunning = false;
     let setupMode = 'spectate'; // 'spectate' (3 AI) | 'human' (1 human + 2 AI)
     let activeSpectatorMatch = true;
+    let currentSeats = [];
     let revealHands = true;
     let catalog = { agents: [], models: [], favoriteModels: [], hotModels: [] };
 
+    const fallbackStore = new Map();
+    const readStore = key => {
+        try { return localStorage.getItem(key); }
+        catch { return fallbackStore.get(key) ?? null; }
+    };
+    const writeStore = (key, value) => {
+        fallbackStore.set(key, String(value));
+        try { localStorage.setItem(key, String(value)); } catch { /* opaque origin fallback */ }
+    };
+    const removeStore = key => {
+        fallbackStore.delete(key);
+        try { localStorage.removeItem(key); } catch { /* opaque origin fallback */ }
+    };
+
     function rememberPending() {
-        if (pending) localStorage.setItem(PENDING_SAVE, JSON.stringify(pending));
-        else localStorage.removeItem(PENDING_SAVE);
+        if (pending) writeStore(PENDING_SAVE, JSON.stringify(pending));
+        else removeStore(PENDING_SAVE);
     }
     const status = text => { $('status').textContent = text; };
 
@@ -131,6 +146,77 @@
         return modelSelect.value.trim();
     }
 
+    function collectSeatModelPayload(spectate = setupMode === 'spectate') {
+        const slotKeys = spectate ? ['zero', 'one', 'two'] : ['one', 'two'];
+        return {
+            agentIds: slotKeys.map(key => $(`agent-${key}`).value),
+            agentModels: slotKeys.map(key => readChosenModel(key)),
+        };
+    }
+
+    function uiMatchesCurrentRoster() {
+        if (!matchId || !Array.isArray(currentSeats) || !currentSeats.length) return false;
+        const matchSpectate = currentSeats.every(seat => seat?.kind === 'agent');
+        if ((setupMode === 'spectate') !== matchSpectate) return false;
+        const slotKeys = matchSpectate ? ['zero', 'one', 'two'] : ['one', 'two'];
+        const matchAgentIds = currentSeats.filter(seat => seat?.kind === 'agent').map(seat => seat.agentId);
+        return slotKeys.length === matchAgentIds.length
+            && slotKeys.every((key, idx) => $(`agent-${key}`).value === matchAgentIds[idx]);
+    }
+
+    function syncControlsFromSeats(seats) {
+        if (!Array.isArray(seats) || !seats.length) return;
+        const spectate = seats.every(seat => seat?.kind === 'agent');
+        setupMode = spectate ? 'spectate' : 'human';
+        syncModeUI();
+        if (!spectate && seats[0]?.name) $('user-name').value = seats[0].name;
+        const slotKeys = spectate ? ['zero', 'one', 'two'] : ['one', 'two'];
+        const agentSeats = seats.filter(seat => seat?.kind === 'agent');
+        slotKeys.forEach((key, idx) => {
+            const seat = agentSeats[idx];
+            if (!seat) return;
+            const agentSelect = $(`agent-${key}`);
+            if ([...agentSelect.options].some(opt => opt.value === seat.agentId)) {
+                agentSelect.value = seat.agentId;
+            }
+            populateModelSelect(key, false);
+            const modelSelect = $(`model-${key}`);
+            const customInput = $(`custom-model-${key}`);
+            const override = typeof seat.model === 'string' ? seat.model.trim() : '';
+            if (!override) {
+                modelSelect.value = '';
+                customInput.value = '';
+                customInput.hidden = true;
+            } else if ([...modelSelect.options].some(opt => opt.value === override)) {
+                modelSelect.value = override;
+                customInput.value = '';
+                customInput.hidden = true;
+            } else {
+                modelSelect.value = CUSTOM_MODEL_VALUE;
+                customInput.value = override;
+                customInput.hidden = false;
+            }
+        });
+    }
+
+    async function syncActiveMatchModels() {
+        if (!matchId || busy || disposed) return;
+        if (!uiMatchesCurrentRoster()) {
+            status('已修改角色或模式设置，请点击「开新桌」开启新牌局。');
+            return;
+        }
+        try {
+            const requestedMatch = matchId;
+            const payload = collectSeatModelPayload(activeSpectatorMatch);
+            const result = await call('observeGameTable', { matchId: requestedMatch, ...payload });
+            if (!disposed && matchId === requestedMatch) {
+                painted = '';
+                paint(result);
+                status('本局座位模型已实时切换，下一回合与「再来一局」立即生效。');
+            }
+        } catch (error) { status(error.message); }
+    }
+
     function selectDefaultAgents(agents) {
         if (!agents.length) return;
         for (const [index, key] of ['zero', 'one', 'two'].entries()) {
@@ -187,8 +273,9 @@
     function paint(result) {
         observation = result.observation;
         runtimeRunning = result.runtime.running === true;
+        currentSeats = Array.isArray(result.seats) ? result.seats : [];
         activeSpectatorMatch = result.isSpectator === true
-            || (Array.isArray(result.seats) && result.seats.every(seat => seat?.kind === 'agent'));
+            || (currentSeats.length > 0 && currentSeats.every(seat => seat?.kind === 'agent'));
         $('spectator-banner').hidden = !activeSpectatorMatch;
         $('human-zone').hidden = activeSpectatorMatch;
 
@@ -316,7 +403,7 @@
                     landlord: `成为地主（底牌 ${(event.bottom || []).map(label).join(' ')}）`,
                     redeal: `全员不叫，重新洗牌发牌（第 ${event.dealNumber} 副）`,
                     finished: `对局结束 · ${event.winner === 'landlord' ? '地主' : '农民'}获胜`,
-                    'new-match': '新一局开始，保留原桌交流上下文与模型配置',
+                    'new-match': '新一局开始，保留原桌交流上下文',
                 })[event.type] || event.type;
                 node.append(document.createTextNode(`${event.id} · ${name}：${summary}`));
                 if (event.speech) {
@@ -432,8 +519,24 @@
         listen($(`model-${key}`), () => {
             const customInput = $(`custom-model-${key}`);
             customInput.hidden = $(`model-${key}`).value !== CUSTOM_MODEL_VALUE;
-            if (!customInput.hidden) customInput.focus();
+            if (!customInput.hidden) {
+                customInput.focus();
+                if (customInput.value.trim()) void syncActiveMatchModels();
+            } else {
+                void syncActiveMatchModels();
+            }
         }, 'change');
+        listen($(`custom-model-${key}`), () => {
+            if ($(`model-${key}`).value === CUSTOM_MODEL_VALUE && $(`custom-model-${key}`).value.trim()) {
+                void syncActiveMatchModels();
+            }
+        }, 'change');
+        listen($(`custom-model-${key}`), event => {
+            if (event.key === 'Enter' && $(`model-${key}`).value === CUSTOM_MODEL_VALUE && $(`custom-model-${key}`).value.trim()) {
+                event.preventDefault();
+                void syncActiveMatchModels();
+            }
+        }, 'keydown');
     }
 
     listen($('create'), async () => {
@@ -441,9 +544,7 @@
         busy = true; controls();
         try {
             const spectate = setupMode === 'spectate';
-            const slotKeys = spectate ? ['zero', 'one', 'two'] : ['one', 'two'];
-            const agentIds = slotKeys.map(key => $(`agent-${key}`).value);
-            const agentModels = slotKeys.map(key => readChosenModel(key));
+            const { agentIds, agentModels } = collectSeatModelPayload(spectate);
             const result = await call('createGameTable', {
                 mode: spectate ? 'spectate' : 'human',
                 agentIds,
@@ -453,7 +554,7 @@
             });
             matchId = result.matchId; painted = ''; selected.clear();
             activeSpectatorMatch = spectate;
-            try { localStorage.setItem(SAVE, matchId); } catch {}
+            writeStore(SAVE, matchId);
             await refresh();
         } catch (error) { status(error.message); }
         finally { busy = false; controls(); }
@@ -463,10 +564,11 @@
         if (busy || pending || observation?.phase !== 'finished' || runtimeRunning) return;
         busy = true; controls();
         try {
-            const table = await call('nextGameTable', { matchId });
+            const payload = collectSeatModelPayload(setupMode === 'spectate');
+            const table = await call('nextGameTable', { matchId, ...payload });
             matchId = table.matchId; painted = ''; selected.clear();
             $('speech').value = ''; $('emote').value = '';
-            try { localStorage.setItem(SAVE, matchId); } catch {}
+            writeStore(SAVE, matchId);
             await refresh();
         } catch (error) { status(error.message); }
         finally { busy = false; controls(); }
@@ -475,21 +577,33 @@
     listen($('resume'), async () => {
         if (busy || pending) return;
         try {
-            const saved = localStorage.getItem(SAVE);
+            const saved = readStore(SAVE);
             if (!saved) throw new Error('没有上次牌桌记录。');
-            const storedPending = localStorage.getItem(PENDING_SAVE);
+            const storedPending = readStore(PENDING_SAVE);
             const restored = storedPending ? JSON.parse(storedPending) : null;
             pending = restored?.matchId === saved ? restored : null;
-            matchId = saved; painted = ''; await refresh();
+            matchId = saved; painted = '';
+            const result = await call('observeGameTable', { matchId: saved });
+            if (!disposed && matchId === saved) {
+                syncControlsFromSeats(result.seats);
+                paint(result);
+            }
         } catch (error) { status(error.message); }
     });
 
-    for (const [id, method] of [['continue', 'continueGameTable'], ['stop', 'stopGameTable']]) {
-        listen($(id), async () => {
-            try { if (matchId) { await call(method, { matchId }); await refresh(); } }
-            catch (error) { status(error.message); }
-        });
-    }
+    listen($('continue'), async () => {
+        try {
+            if (!matchId) return;
+            const extra = uiMatchesCurrentRoster() ? collectSeatModelPayload(activeSpectatorMatch) : {};
+            await call('continueGameTable', { matchId, ...extra });
+            await refresh();
+        } catch (error) { status(error.message); }
+    });
+
+    listen($('stop'), async () => {
+        try { if (matchId) { await call('stopGameTable', { matchId }); await refresh(); } }
+        catch (error) { status(error.message); }
+    });
 
     document.querySelectorAll('[data-bid]').forEach(button => listen(button, () => submit({ type: 'bid', bid: Number(button.dataset.bid) })));
     listen($('play'), () => submit({ type: 'play', cards: [...selected] }));

@@ -1494,7 +1494,7 @@
       },
       {
         "file": "modules/ipc/gameHandlers.js",
-        "line": 254,
+        "line": 261,
         "kind": "event-listener",
         "match": "ipcMain.handle(channel"
       }

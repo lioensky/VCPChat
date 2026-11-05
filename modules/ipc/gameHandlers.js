@@ -198,11 +198,14 @@ function registerTableHandlers() {
         return table;
     });
     handle('vcp-game:next', async request => {
-        const table = await gameRuntime.nextTable(request.matchId);
+        const table = await gameRuntime.nextTable(request.matchId, request);
         scheduleMatch(table.matchId);
         return table;
     });
     handle('vcp-game:observe', async request => {
+        if (Array.isArray(request?.agentModels)) {
+            await gameRuntime.updateSeatModels(request.matchId, request);
+        }
         const record = await gameRuntime.gameService.read(request.matchId);
         const isSpectator = record.seats.every(seat => seat?.kind === 'agent');
         return {
@@ -228,7 +231,11 @@ function registerTableHandlers() {
         return { result };
     });
     handle('vcp-game:continue', async request => {
-        await gameRuntime.gameService.read(request.matchId);
+        if (Array.isArray(request?.agentModels)) {
+            await gameRuntime.updateSeatModels(request.matchId, request);
+        } else {
+            await gameRuntime.gameService.read(request.matchId);
+        }
         scheduleMatch(request.matchId);
         return {};
     });

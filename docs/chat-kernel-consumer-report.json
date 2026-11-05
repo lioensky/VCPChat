@@ -14976,7 +14976,7 @@
       "electronReferences": 0,
       "timers": 1,
       "listeners": 3,
-      "mutableMaps": 0
+      "mutableMaps": 1
     },
     "Gamemodules/forge-tax/audio.js": {
       "windowReferences": 0,
