@@ -9,6 +9,7 @@
     const Types = window.ScriptoriumFileTypes;
     if (!UI?.on || !Types) return;
     const { make, button } = UI;
+    const Model = window.ScriptoriumBoardModel;
     const api = () => window.scriptoriumAPI;
     const session = () => window.ScriptoriumFileSession;
     const isBoard = (file) => Types.kindOf(file) === 'board';
@@ -51,7 +52,27 @@
     const stage = make('div', 'scriptorium-board-stage');
     const host = make('div', 'scriptorium-board-host');
     stage.append(host);
+    const htmlLayer = window.ScriptoriumBoardHtml.create({ stage, model: Model, onEdit: (id) => void editHtmlDialog(id) });
+    head.append(button('scriptorium-file-button', '保存白板', '保存', () => void save()),
+        button('scriptorium-file-button', '返回文坊首页', '首页', () => UI.forward('home-btn')),
+        button('scriptorium-file-button', '添加 HTML 节点', '+ HTML', () => void editHtmlDialog(null)),
+        button('scriptorium-file-button', '白板另存为', '另存为', () => void save({ saveAs: true })));
     work.append(head, stage);
+    const lineage = window.ScriptoriumBoardLineage.create({
+        parent: work,
+        snapshot: () => sceneData(),
+        revision: () => stamp(),
+        changed: () => { if (file && scene) settle(); },
+        apply: update,
+        save: () => save(),
+        restore: async (data) => { applyToScene(data); await nextFrames(); settle(); },
+        error: (error) => UI.toast(error.message, 'error', 5000),
+    });
+    head.append(button('scriptorium-file-button', '白板文脉与审批设置', '文脉', () => lineage.toggle()),
+        button('scriptorium-file-button', '重命名白板', '重命名', () => void renameDialog()),
+        button('scriptorium-file-button', '打开所在文件夹', '定位文件', () => {
+            if (file) void api().view('board-reveal', { file: file.filePath }).catch((error) => UI.toast(error.message, 'error'));
+        }));
     const workspace = document.getElementById('document-workspace');
     (workspace?.parentElement || document.body).append(work);
 
@@ -78,7 +99,8 @@
     // ---------- 场景 ----------
     const live = () => X.getNonDeletedElements(scene.getSceneElementsIncludingDeleted());
     const stamp = () => `${X.hashElementsVersion(live())}-${scene.getAppState().viewBackgroundColor}`;
-    const serialize = () => X.serializeAsJSON(scene.getSceneElementsIncludingDeleted(), scene.getAppState(), scene.getFiles(), 'local');
+    const sceneData = () => JSON.parse(X.serializeAsJSON(scene.getSceneElementsIncludingDeleted(), scene.getAppState(), scene.getFiles(), 'local'));
+    const serialize = () => JSON.stringify({ ...sceneData(), vcpBoard: lineage.serialize() }, null, 2);
     function parse(text) {
         if (!String(text).trim()) return { elements: [], appState: {}, files: {} };
         const data = JSON.parse(text);
@@ -97,11 +119,13 @@
         if (!file || !scene || loading) return;
         const value = remember();
         const was = dirty;
-        dirty = value !== file.saved;
+        dirty = value !== file.saved || lineage.revision() !== file.savedMeta;
+        label.textContent = `${file.name} · ${file.saving ? '正在保存' : dirty ? '未保存' : '已保存'}`;
         if (dirty !== was) UI.sync?.();
     }
     // 拖动时 onChange 持续触发，停下后才计为一次修改。
     function changed() {
+        if (scene) htmlLayer.sync(live(), scene.getAppState());
         clearTimeout(settleTimer);
         settleTimer = setTimeout(settle, 120);
     }
@@ -144,6 +168,7 @@
         if (restored.elements.length) scene?.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, maxZoom: 1, animate: false });
     }
     function unmountCanvas() {
+        htmlLayer.clear();
         unmount?.();
         unmount = null;
         scene = null;
@@ -152,7 +177,9 @@
     function baseline() {
         snapshots = [];
         file.saved = remember();
+        file.savedMeta = lineage.revision();
         dirty = false;
+        label.textContent = `${file.name} · 已保存`;
     }
 
     function leave() {
@@ -160,6 +187,7 @@
         clearTimeout(settleTimer);
         unmountCanvas();
         file = null;
+        lineage.load(null);
         dirty = false;
         snapshots = [];
         document.body.classList.remove('scriptorium-board-mode');
@@ -197,6 +225,7 @@
         document.body.classList.add('scriptorium-board-mode');
         work.hidden = false;
         loading = true;
+        lineage.load(data.vcpBoard);
         UI.sync?.();
         await mount(data);
         loading = false;
@@ -215,18 +244,20 @@
         return null;
     }
 
-    async function save({ force = false } = {}) {
+    async function save({ force = false, saveAs = false } = {}) {
         if (!file || !scene) return false;
         settle();
-        if (!dirty && !force) return true;
+        if (!dirty && !force && !saveAs) return true;
+        if (file.saving) return false;
         const target = file;
         const savedStamp = stamp();
+        const savedMeta = lineage.revision();
         const text = serialize();
         target.saving = true;
         UI.sync?.();
         let result;
         try {
-            result = await api().view('save', { file: target.filePath, text, mtime: target.mtime, eol: 'lf', bom: false, force });
+            result = await api().view(saveAs ? 'board-save-as' : 'save', { file: target.filePath, text, mtime: target.mtime, eol: 'lf', bom: false, force });
         } catch (error) {
             result = { success: false, error: error.message };
         }
@@ -238,14 +269,23 @@
             return false;
         }
         if (!result?.success) {
-            UI.toast(`未能保存：${result?.error || '写入失败'}`, 'error', 5000);
+            if (!result?.canceled) UI.toast(`未能保存：${result?.error || '写入失败'}`, 'error', 5000);
             UI.sync?.();
             return false;
         }
+        if (result.filePath && !same(file.filePath, result.filePath)) {
+            file.filePath = result.filePath;
+            file.name = result.name;
+            file.generation = ++generation;
+            await api().view('watch', { file: file.filePath });
+            if (file !== target) return true;
+        }
         file.mtime = result.mtime;
         file.saved = savedStamp;
+        file.savedMeta = savedMeta;
         conflict.hidden = true;
-        dirty = stamp() !== savedStamp;
+        dirty = stamp() !== savedStamp || lineage.revision() !== savedMeta;
+        label.textContent = `${file.name} · ${dirty ? '未保存' : '已保存'}`;
         UI.sync?.();
         return true;
     }
@@ -274,9 +314,11 @@
         }
         file.mtime = result.mtime;
         conflict.hidden = true;
+        lineage.load(data.vcpBoard);
         applyToScene(data);
         await nextFrames();
         file.saved = remember();
+        file.savedMeta = lineage.revision();
         dirty = false;
         UI.sync?.();
     }
@@ -313,6 +355,11 @@
         if (element.link) out.link = element.link;
         if (element.locked) out.locked = true;
         if (element.customData?.scriptoriumBy === 'agent') out.by = 'agent';
+        if (element.customData?.vcpHtml) {
+            out.type = 'html';
+            out.title = element.customData.vcpHtml.title;
+            out.sourceLength = element.customData.vcpHtml.source.length;
+        }
         return out;
     }
     const labelsOf = (all) => new Map(all.filter((element) => element.containerId).map((element) => [element.containerId, element.originalText ?? element.text]));
@@ -404,7 +451,7 @@
     }
     function fitCard(item, width) {
         const size = Number(item.label.fontSize) || 20;
-        const lines = evenLines(item.label.text, size, innerWidth(width));
+        const lines = String(item.label.text).split('\n').flatMap((line) => wrapAt(line, size, innerWidth(width)));
         return { ...item, width, height: item.height === undefined ? cardHeight(lines, size) : Number(item.height), label: { ...item.label, text: lines.join('\n') } };
     }
     function fitCards(add, byId) {
@@ -438,7 +485,16 @@
     // 转换后丢弃这些替身，只把绑定记录到真实元素上。
     function convert(asked, byId) {
         const routed = new Set(); // 两端都连接元素且未写坐标的箭头：先放置，待框的尺寸确定后由 followArrows 连接到框边
+        const htmlById = new Map();
         const add = asked.map((item) => {
+            if (item?.type === 'html') {
+                const id = String(item.id || `html-${crypto.randomUUID()}`);
+                const node = Model.htmlNode(item);
+                htmlById.set(id, node);
+                return { type: 'rectangle', id, x: item.x ?? 0, y: item.y ?? 0,
+                    width: node.width, height: node.height, backgroundColor: '#ffffff', fillStyle: 'solid',
+                    strokeColor: item.strokeColor || '#7c8fa3', roughness: 0 };
+            }
             if (!['arrow', 'line'].includes(item?.type) || item.points) return item;
             if (item.start?.id && item.end?.id && item.x === undefined && item.y === undefined) {
                 const id = item.id ? String(item.id) : `arrow-${crypto.randomUUID().slice(0, 8)}`;
@@ -456,7 +512,8 @@
         });
         const out = X.convertToExcalidrawElements([...standIns, ...add], { regenerateIds: false });
         const bound = new Map(out.filter((element) => referred.has(element.id)).map((element) => [element.id, element.boundElements || []]));
-        return { created: out.filter((element) => !referred.has(element.id)), bound, routed };
+        return { created: out.filter((element) => !referred.has(element.id)).map((element) =>
+            htmlById.has(element.id) ? { ...element, customData: { ...element.customData, vcpHtml: htmlById.get(element.id) } } : element), bound, routed };
     }
     // 框移动后，连接的箭头随之移动（官方的跟随逻辑不在公开接口中）。两点直箭头按两端框的中心重新连接到框边，留 6 像素；折线不变。
     function edgeToward(box, point) {
@@ -540,6 +597,8 @@
     }
     async function update(payload = {}) {
         if (!scene) throw new Error('白板尚未打开。');
+        const editingFile = file;
+        const editingScene = scene;
         settle();
         const current = stamp();
         if (String(payload.expectedRevision ?? '') !== current) {
@@ -565,6 +624,7 @@
         // 官方按手写字体测量文字来折行；字体未载入时按备用字体测量，载入后文字变宽会顶到框边。
         const words = JSON.stringify([add, patches]).slice(0, 20000);
         await Promise.all(['Excalifont', 'Xiaolai'].map((family) => document.fonts.load(`20px "${family}"`, words).catch(() => null)));
+        if (file !== editingFile || scene !== editingScene) throw new Error('白板已切换，本次未修改。');
         if (stamp() !== current) throw new Error('白板刚刚发生变化，本次未修改。请用 GetBoard 重新读取后再提交。');
         const { created, bound, routed } = convert(fitCards(add, byId), byId);
         const gone = new Set(removals);
@@ -575,6 +635,14 @@
             if (gone.has(element.id)) return touched(element, { isDeleted: true });
             const patch = {};
             const asked = patchOf.get(element.id);
+            if (asked && element.customData?.vcpHtml && (asked.source !== undefined || asked.title !== undefined || asked.replacements !== undefined)) {
+                const old = element.customData.vcpHtml;
+                if (asked.source !== undefined && asked.replacements !== undefined) throw new Error('source 与 replacements 不能同时提供。');
+                patch.customData = { ...element.customData, vcpHtml: { ...old,
+                    title: asked.title === undefined ? old.title : String(asked.title).slice(0, 160),
+                    source: asked.replacements !== undefined ? Model.patchSource(old.source, asked.replacements)
+                        : asked.source === undefined ? old.source : Model.source(asked.source) } };
+            }
             for (const [key, value] of Object.entries(asked || {})) if (PATCHABLE.has(key)) patch[key] = value;
             if (asked?.text !== undefined && element.type === 'text') Object.assign(patch, { text: String(asked.text), originalText: String(asked.text) });
             const owner = element.containerId ? patchOf.get(element.containerId) : null;
@@ -630,6 +698,10 @@
     // 白板将内容导出为图片，不截取窗口，也不改变用户眼前的画面。空白板返回 null，按窗口截图。
     function picture(payload = {}) {
         const all = live();
+        if (all.some((element) => element.customData?.vcpHtml)) {
+            if (payload.ids?.length || payload.region) throw new Error('含 HTML 的白板目前只支持实际视口截图，请不带 ids 或 region。');
+            return null;
+        }
         if (!all.length) return null;
         let chosen = all;
         if (Array.isArray(payload.ids) && payload.ids.length) {
@@ -642,6 +714,41 @@
         }
         if (!chosen.length) throw new Error('指定范围内没有元素。');
         return pictureOf(chosen);
+    }
+
+    function getNodeSource(payload = {}) {
+        const node = live().find((element) => element.id === String(payload.id))?.customData?.vcpHtml;
+        if (!node) throw new Error('找不到这个 HTML 节点。');
+        const lines = node.source.split('\n');
+        const startLine = Math.max(1, Math.trunc(Number(payload.startLine) || 1));
+        const endLine = Math.min(lines.length, Math.trunc(Number(payload.endLine) || lines.length), startLine + 1999);
+        return { id: payload.id, revision: stamp(), title: node.title, sourceKind: 'html',
+            startLine, endLine, totalLines: lines.length, source: lines.slice(startLine - 1, endLine).join('\n') };
+    }
+    async function editHtmlDialog(id) {
+        if (!scene) return;
+        const baseRevision = stamp();
+        const original = id ? live().find((element) => element.id === id)?.customData?.vcpHtml?.source
+            : '<div style="padding:24px;font:20px sans-serif">HTML 动画节点</div>';
+        if (typeof original !== 'string') throw new Error('HTML 节点已经被删除。');
+        const scrim = make('div', 'scriptorium-dlg-scrim');
+        const dialog = make('div', 'scriptorium-dlg scriptorium-board-source-dialog');
+        const title = make('h4');
+        title.textContent = id ? '编辑 HTML 节点' : '新 HTML 节点';
+        const input = document.createElement('textarea');
+        input.value = original;
+        input.setAttribute('aria-label', 'HTML 节点源码');
+        const acts = make('div', 'acts');
+        acts.append(button('scriptorium-file-button', '', '取消', () => scrim.remove()),
+            button('scriptorium-file-button primary', '', '应用', () => {
+                void update({ expectedRevision: baseRevision,
+                    ...(id ? { update: [{ id, source: input.value }] } : { add: [{ id: `html-${crypto.randomUUID()}`, type: 'html', source: input.value }] })
+                }).then(() => scrim.remove()).catch((error) => UI.toast(error.message, 'error', 5000));
+            }));
+        dialog.append(title, input, acts);
+        scrim.append(dialog);
+        document.body.append(scrim);
+        input.focus();
     }
 
     // ---------- 键盘与新建 ----------
@@ -662,14 +769,111 @@
         });
     });
 
-    async function create() {
-        try {
-            const result = await api().view('board-new');
-            if (!result?.success) throw new Error(result?.error || '创建失败');
-            await session()?.openPath?.(result.filePath);
-        } catch (error) {
-            UI.toast(`未能新建白板：${error.message}`, 'error', 5000);
+    const creationJobs = new Map();
+    function createArtifact(payload = {}) {
+        const key = String(payload.requestId || '');
+        if (key && creationJobs.has(key)) return creationJobs.get(key);
+        const task = buildBoardArtifact(payload);
+        if (key) {
+            creationJobs.set(key, task);
+            task.catch(() => { if (creationJobs.get(key) === task) creationJobs.delete(key); });
+            if (creationJobs.size > 128) creationJobs.delete(creationJobs.keys().next().value);
         }
+        return task;
+    }
+    async function buildBoardArtifact(payload = {}) {
+        X = await loadVendor();
+        const asked = listOf(payload.elements ?? payload.add, 'elements');
+        await Promise.all(['Excalifont', 'Xiaolai'].map((family) => document.fonts.load(`20px "${family}"`).catch(() => null)));
+        const { created, routed } = convert(fitCards(asked, new Map()), new Map());
+        const fixed = X.restoreElements(created, null, { refreshDimensions: true, repairBindings: true });
+        const elements = followArrows(fixed, new Set(), routed).map((element) => ({
+            ...element, customData: { ...element.customData, scriptoriumBy: 'agent' },
+        }));
+        const initial = { type: 'excalidraw', version: 2, source: 'vcp-scriptorium',
+            elements, appState: { viewBackgroundColor: payload.background || '#ffffff' }, files: {} };
+        const result = await api().view('board-new', { name: payload.name || payload.title, scene: initial });
+        if (!result?.success) throw new Error(result?.error || '创建失败');
+        let opened = false;
+        if (payload.openAfterCreate !== false) opened = Boolean(await session()?.openPath?.(result.filePath));
+        return { ...result, saved: true, opened, elementCount: created.filter((element) => !element.containerId).length };
+    }
+    async function agentSave(payload = {}) {
+        if (String(payload.expectedRevision ?? '') !== stamp()) throw new Error('白板修订已变化，请重新读取。');
+        const saved = await save();
+        return { success: saved, saved, revision: stamp(), filePath: file?.filePath };
+    }
+    async function renameDialog() {
+        if (!file || file.saving) return;
+        const target = file;
+        const scrim = make('div', 'scriptorium-dlg-scrim');
+        const form = make('form', 'scriptorium-dlg');
+        const title = make('h4');
+        title.textContent = '重命名白板';
+        const input = document.createElement('input');
+        input.value = file.name.replace(/\.excalidraw$/i, '');
+        input.required = true;
+        input.setAttribute('aria-label', '新白板名称');
+        const submit = button('scriptorium-file-button primary', '', '重命名', null);
+        submit.type = 'submit';
+        form.append(title, input, button('scriptorium-file-button', '', '取消', () => scrim.remove()), submit);
+        scrim.append(form);
+        document.body.append(scrim);
+        input.focus();
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (submit.disabled || target !== file || file.saving) return;
+            submit.disabled = true;
+            target.saving = true;
+            try {
+                const result = await api().view('board-rename', { file: target.filePath, mtime: target.mtime, name: input.value });
+                if (!result.success) throw new Error(result.error);
+                if (file === target) {
+                    file.filePath = result.filePath;
+                    file.name = result.name;
+                    file.mtime = result.mtime ?? file.mtime;
+                    file.generation = ++generation;
+                    await api().view('watch', { file: file.filePath });
+                }
+                scrim.remove();
+            } catch (error) { UI.toast(error.message, 'error', 5000); }
+            finally { target.saving = false; submit.disabled = false; UI.sync(); }
+        });
+    }
+    async function create() {
+        const scrim = make('div', 'scriptorium-dlg-scrim');
+        const form = make('form', 'scriptorium-dlg');
+        const title = make('h4');
+        title.textContent = '新白板';
+        const field = make('label', 'scriptorium-field');
+        const caption = make('span', 'lab');
+        caption.textContent = '白板名称';
+        const input = document.createElement('input');
+        input.value = '未命名白板';
+        input.required = true;
+        input.maxLength = 120;
+        input.setAttribute('aria-label', '白板名称');
+        field.append(caption, input);
+        const actions = make('div', 'acts');
+        const submit = button('scriptorium-file-button primary', '', '创建', null);
+        submit.type = 'submit';
+        actions.append(button('scriptorium-file-button', '', '取消', () => scrim.remove()), submit);
+        form.append(title, field, actions);
+        scrim.append(form);
+        document.body.append(scrim);
+        input.focus();
+        input.select();
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (submit.disabled) return;
+            submit.disabled = true;
+            try {
+                await createArtifact({ name: input.value });
+                scrim.remove();
+            } catch (error) {
+                UI.toast(`未能新建白板：${error.message}`, 'error', 5000);
+            } finally { submit.disabled = false; }
+        });
     }
     // “开始”菜单中的“新白板”：与“新文档”“新演示”一样，点击后收起菜单。
     document.getElementById('new-board-btn')?.addEventListener('click', () => {
@@ -682,14 +886,16 @@
 
     const view = Object.freeze({
         claims: isBoard,
+        createArtifact,
         open,
         route,
         leave,
         create,
-        save: () => save(),
+        saveAs: true,
+        save,
         reload: () => reload({ discard: true }),
         active: () => Boolean(file),
-        agent: Object.freeze({ text, surface: () => stage, picture, board: Object.freeze({ read, update }) }),
+        agent: Object.freeze({ text, surface: () => stage, picture, board: Object.freeze({ read, update: (payload) => lineage.submit(payload), getNodeSource, save: agentSave, history: () => lineage.history() }) }),
         // 画布载入完成才算打开。
         doc: () => (file && !loading ? Object.freeze({ kind: 'board', filePath: file.filePath, name: file.name, generation: file.generation,
             dirty, saving: file.saving, revision: snapshots.at(-1)?.stamp || 0 }) : null),

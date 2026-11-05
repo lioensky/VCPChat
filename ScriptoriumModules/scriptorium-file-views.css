@@ -392,7 +392,8 @@ body.focus-mode :is(.scriptorium-text-work, .scriptorium-image-work, .scriptoriu
 
 /* ---------- 白板 ---------- */
 .scriptorium-board-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-.scriptorium-board-host { position: absolute; inset: 0; }
+.scriptorium-board-host { position: absolute; inset: 0; z-index: 0; }
+.scriptorium-board-html-layer { z-index: 1; }
 /* 素材库的“浏览”指向外部网站；“嵌入网页”在页面的内容安全策略下无法载入。官方为它和 Mermaid 使用同一个 data-testid，只能按位置隐藏（第二项）。 */
 .scriptorium-board-host .excalidraw .library-menu-browse-button,
 .scriptorium-board-host .excalidraw .App-toolbar__extra-tools-dropdown .dropdown-menu-container > :nth-child(2) { display: none; }
@@ -412,3 +413,27 @@ body.focus-mode :is(.scriptorium-text-work, .scriptorium-image-work, .scriptoriu
 @container (max-width: 460px) {
     .scriptorium-image-work .scriptorium-pane-label small { display: none; }
 }
+/* HTML 节点只在交互模式拦截鼠标，其余事件交还画布。 */
+.scriptorium-board-html-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.scriptorium-board-html-node { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+.scriptorium-board-html-node iframe { display: block; width: 100%; height: 100%; border: 0; border-radius: 6px; background: transparent; }
+.scriptorium-board-html-tools { position: absolute; right: 6px; top: 6px; display: flex; gap: 4px; padding: 4px; border-radius: 8px; background: rgba(30, 35, 42, .72); backdrop-filter: blur(10px); visibility: hidden; pointer-events: none; }
+.scriptorium-board-html-node.tools-visible .scriptorium-board-html-tools { visibility: visible; pointer-events: auto; }
+.scriptorium-board-html-tools button { padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 5px; color: var(--primary-text); background: var(--scriptorium-glass-solid); cursor: pointer; }
+.scriptorium-board-source-dialog { width: min(900px, calc(100vw - 40px)); }
+.scriptorium-board-source-dialog textarea { width: 100%; height: min(55vh, 520px); box-sizing: border-box; resize: vertical; color: var(--primary-text); background: var(--input-bg); font: 13px/1.6 Consolas, monospace; }
+.scriptorium-board-lineage { position: absolute; right: 12px; top: 56px; bottom: 12px; z-index: 5; width: min(380px, 85%); padding: 12px; overflow: auto; border: 1px solid var(--border-color); border-radius: 10px; background: var(--scriptorium-glass-solid); }
+.scriptorium-board-lineage[hidden] { display: none; }
+.scriptorium-board-lineage-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.scriptorium-board-lineage-row span { flex: 1 0 100%; overflow-wrap: anywhere; }
+.scriptorium-board-lineage button { cursor: pointer; padding: 4px 8px; }
+/* 白板专用外壳，不加载第二份场景；离开白板时自动还原文坊布局。 */
+body.scriptorium-board-mode .scriptorium-stage { grid-template-columns: 0 0 minmax(0, 1fr) 0 0 !important; }
+body.scriptorium-board-mode :is(#outline-panel, #lineage-panel, #lineage-resizer, #outline-resizer, .command-deck, #lineage-toggle-btn) { display: none !important; }
+body.scriptorium-board-mode .scriptorium-board-work { inset: 0; border: 0; border-radius: 0; }
+body.scriptorium-board-mode .writing-chamber { grid-column: 1 / -1; grid-row: 1; min-width: 0; }
+body.scriptorium-board-mode .scriptorium-stage > .panel-resizer { display: none !important; }
+/* 隐藏工具栏不能只隐藏元素：保留四轨契约并显式定位，避免主区域落入旧工具栏轨道。 */
+body.scriptorium-board-mode { grid-template-rows: var(--scriptorium-titlebar-height) 0 minmax(0, 1fr) var(--scriptorium-status-height); }
+body.scriptorium-board-mode > .scriptorium-stage { grid-row: 3; grid-column: 1; }
+body.scriptorium-board-mode > .document-statusbar { grid-row: 4; grid-column: 1; }

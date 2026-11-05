@@ -47,6 +47,8 @@ let requestCount = 0;
 const answers = new Map();
 function agent(method, payload = {}) {
     const requestId = `board-test-${++requestCount}`;
+    if (method === 'updateBoard') payload = { requestId, author: { name: 'Kerr', type: 'agent' },
+        summary: '测试白板编辑', save: false, ...payload };
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => { answers.delete(requestId); reject(new Error(`Agent 请求超时：${method}`)); }, 20000);
         answers.set(requestId, (response) => {
@@ -94,6 +96,16 @@ app.whenReady().then(async () => {
         await open('plan.excalidraw');
         await until(`window.ScriptoriumBoardView.doc()?.kind === 'board'`, '白板打开');
         assert.equal(await page(`return document.getElementById('document-title').textContent;`), 'plan.excalidraw');
+        const geometry = await page(`const stage=document.querySelector('.scriptorium-board-stage').getBoundingClientRect();const head=document.querySelector('.scriptorium-pane-head').getBoundingClientRect();return {height:stage.height,top:stage.top,headBottom:head.bottom,viewport:innerHeight};`);
+        assert.ok(geometry.height > geometry.viewport * 0.6, JSON.stringify(geometry));
+        assert.ok(geometry.top >= geometry.headBottom - 1, '画布不能覆盖白板工具栏');
+        windowRef.setSize(800, 585);
+        await delay(300);
+        const compact = await page(`const stage=document.querySelector('.scriptorium-board-stage').getBoundingClientRect();const head=document.querySelector('.scriptorium-pane-head').getBoundingClientRect();return {height:stage.height,top:stage.top,headBottom:head.bottom,viewport:innerHeight};`);
+        assert.ok(compact.height > compact.viewport * 0.6, JSON.stringify(compact));
+        assert.ok(compact.top >= compact.headBottom - 1, '小窗口画布不能覆盖工具栏');
+        windowRef.setSize(1440, 900);
+        await delay(300);
         const empty = await agent('getBoard');
         assert.equal(empty.documentKind, 'board');
         assert.equal(empty.total, 0);
@@ -125,7 +137,10 @@ app.whenReady().then(async () => {
         assert.deepEqual(onlyA.elements.map((element) => element.id), ['a']);
 
         // 修订号不一致时拒绝修改，白板不变。
-        await assert.rejects(agent('updateBoard', { expectedRevision: empty.revision, delete: ['a'] }), /白板已变化/);
+        const conflicted = await agent('updateBoard', { expectedRevision: empty.revision, delete: ['a'] });
+        assert.equal(conflicted.success, false);
+        assert.equal(conflicted.status, 'conflict');
+        assert.match(conflicted.message, /白板已变化/);
         assert.equal((await agent('getBoard')).total, 3);
 
         // 移动卡片后，连接的箭头随之移动。
@@ -168,8 +183,88 @@ app.whenReady().then(async () => {
 
         // “开始”菜单中的“新白板”：在文库的 Boards 文件夹中新建并打开。
         await page(`document.getElementById('new-board-btn').click(); return true;`);
+        await until(`document.querySelector('input[aria-label="白板名称"]')`, '白板命名');
+        await page(`document.querySelector('input[aria-label="白板名称"]').closest('form').requestSubmit(); return true;`);
         await until(`window.ScriptoriumBoardView.doc()?.name === '未命名白板.excalidraw'`, '新白板打开');
         assert.ok(fs.existsSync(path.join(library, 'Boards', '未命名白板.excalidraw')));
+
+        const artifact = await agent('createBoard', {
+            name: 'HTML测试白板',
+            elements: [{ id: 'html-demo', type: 'html', x: 0, y: 0,
+                source: '<div class="demo" style="height:100%;background:#182030">初始</div><script>document.querySelector(".demo").textContent="脚本已执行";</script>' },
+                { id: 'hub-create', type: 'rectangle', x: -340, y: 80, width: 240, label: { text: '白板全面升维', fontSize: 22 } },
+                { id: 'flow-create', type: 'arrow', start: { id: 'hub-create' }, end: { id: 'html-demo' }, label: { text: '创生节点' } }],
+        });
+        assert.equal(artifact.saved, true);
+        assert.equal(artifact.opened, true);
+        await until(`document.querySelector('.scriptorium-board-html-node iframe')`, 'HTML节点显示');
+        const htmlBoard = await agent('getBoard');
+        assert.equal(htmlBoard.elements.find(element => element.id === 'html-demo').type, 'html');
+        const createdArrow = htmlBoard.elements.find(element => element.id === 'flow-create');
+        assert.ok(createdArrow.width > 20, JSON.stringify(createdArrow));
+        assert.equal(createdArrow.start, 'hub-create');
+        assert.equal(createdArrow.end, 'html-demo');
+        const diskArrow = JSON.parse(fs.readFileSync(artifact.filePath, 'utf8')).elements.find(element => element.id === 'flow-create');
+        assert.ok(Math.hypot(...diskArrow.points[1]) > 20, '落盘前箭头就必须完成布局');
+        const src = await agent('getBoardNodeSource', { id: 'html-demo' });
+        assert.match(src.source, /初始/);
+        await delay(300);
+        const frame = windowRef.webContents.mainFrame.framesInSubtree.find((item) => item.url.startsWith('scriptorium-page://board-'));
+        assert.ok(frame, 'HTML iframe存在');
+        assert.equal(await page(`return getComputedStyle(document.querySelector('.scriptorium-board-html-tools')).visibility;`), 'hidden');
+        await page(`const stage=document.querySelector('.scriptorium-board-stage');const r=document.querySelector('.scriptorium-board-html-node').getBoundingClientRect();stage.dispatchEvent(new PointerEvent('pointermove',{clientX:r.x+r.width/2,clientY:r.y+r.height/2,bubbles:true}));return true;`);
+        assert.equal(await page(`return getComputedStyle(document.querySelector('.scriptorium-board-html-tools')).visibility;`), 'visible');
+        assert.equal(await page(`const button=document.querySelector('.scriptorium-board-html-tools button');const r=button.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===button;`), true, 'HTML交互按钮必须实际可见且可点击');
+        assert.equal(await frame.executeJavaScript('document.querySelector(".demo").textContent'), '脚本已执行');
+        assert.equal(await frame.executeJavaScript('typeof window.scriptoriumAPI'), 'undefined');
+        assert.ok(await frame.executeJavaScript('Math.abs(document.querySelector(".demo").getBoundingClientRect().height-innerHeight)<1'), '百分比高度必须撑满iframe');
+        await page(`document.querySelector('.scriptorium-board-html-tools button').click();return true;`);
+        assert.equal(await page(`return document.querySelector('.scriptorium-board-html-tools button').textContent;`), '✕ 退出');
+        assert.equal(await page(`return document.querySelector('.scriptorium-board-html-node iframe').style.pointerEvents;`), 'auto');
+        await page(`document.querySelector('.scriptorium-board-html-tools button').click();document.querySelector('.scriptorium-board-stage').dispatchEvent(new PointerEvent('pointerleave'));return true;`);
+        assert.equal(await page(`return document.querySelector('.scriptorium-board-html-node iframe').style.pointerEvents;`), 'none');
+        assert.equal(await page(`return getComputedStyle(document.querySelector('.scriptorium-board-html-tools')).visibility;`), 'hidden');
+        assert.equal(await frame.executeJavaScript('(()=>{try{return Boolean(parent.scriptoriumAPI)}catch(e){return false}})()'), false);
+        const edit = await agent('updateBoard', { expectedRevision: htmlBoard.revision, save: true,
+            update: [{ id: 'html-demo', replacements: [{ target: '初始', replace: '修改后' }] }] });
+        assert.equal(edit.saved, true);
+        const persisted = JSON.parse(fs.readFileSync(artifact.filePath, 'utf8'));
+        assert.match(persisted.elements.find((item) => item.id === 'html-demo').customData.vcpHtml.source, /修改后/);
+        assert.ok(persisted.vcpBoard.records.some((record) => record.status === 'applied' && record.source === 'agent'));
+        const history = await agent('getBoardHistory');
+        assert.equal(history.autoAllow, true);
+        assert.ok(history.records.some((record) => record.receipt?.automatic === true));
+        const visualHtml = await agent('getVisualContext');
+        assert.equal(visualHtml.scope, 'viewport');
+        assert.ok(visualHtml.captureRect.width > 0);
+        await page(`const toggle = document.querySelector('.scriptorium-board-lineage input'); toggle.checked=false; toggle.dispatchEvent(new Event('change')); return true;`);
+        const beforePending = await agent('getBoard');
+        const pending = await agent('updateBoard', { expectedRevision: beforePending.revision, save: true,
+            update: [{ id: 'html-demo', replacements: [{ target: '修改后', replace: '人工批准后' }] }] });
+        assert.equal(pending.status, 'pending');
+        assert.match((await agent('getBoardNodeSource', { id: 'html-demo' })).source, /修改后/);
+        await page(`const buttons = [...document.querySelectorAll('.scriptorium-board-lineage-row button')]; buttons.find(b=>b.textContent==='允许').click(); return true;`);
+        await until(`window.ScriptoriumBoardView.agent.board.getNodeSource({id:'html-demo'}).source.includes('人工批准后') && !window.ScriptoriumBoardView.doc().dirty`, '人工审批并保存');
+        await page(`const toggle = document.querySelector('.scriptorium-board-lineage input'); toggle.checked=true; toggle.dispatchEvent(new Event('change')); return true;`);
+        await open('notes.txt');
+        await until(`window.ScriptoriumFileViews.doc()?.name === 'notes.txt'`, '切换文本完成');
+        await page(`return window.ScriptoriumFileSession.openPath(${JSON.stringify(artifact.filePath)});`);
+        await until(`window.ScriptoriumBoardView.doc()?.name === 'HTML测试白板.excalidraw'`, '重开HTML白板');
+        assert.match((await agent('getBoardNodeSource', { id: 'html-demo' })).source, /人工批准后/);
+        assert.ok((await agent('getBoardHistory')).records.some(record => record.receipt?.automatic === false));
+        const libraryResult = await page('return window.scriptoriumAPI.listDocumentLibrary();');
+        const boardsRoot = libraryResult.roots.find(root => root.id === 'boards');
+        assert.ok(boardsRoot.children.some(entry => entry.name === 'HTML测试白板.excalidraw'));
+        assert.ok(!libraryResult.roots.find(root => root.id === 'documents').children.some(entry => entry.name === 'Boards'));
+        await page(`document.querySelector('button[aria-label="重命名白板"]').click(); return true;`);
+        await page(`const input=document.querySelector('input[aria-label="新白板名称"]');input.value='改名后的白板';input.closest('form').requestSubmit();return true;`);
+        await until(`window.ScriptoriumBoardView.doc()?.name==='改名后的白板.excalidraw' && !window.ScriptoriumBoardView.doc()?.saving`, '重命名完成');
+        assert.equal(fs.existsSync(artifact.filePath), false);
+        assert.ok(fs.existsSync(path.join(library, 'Boards', '改名后的白板.excalidraw')));
+        const beforeRestore = (await agent('getBoardHistory')).records.length;
+        await page(`window.confirm=()=>true;const rows=[...document.querySelectorAll('.scriptorium-board-lineage-row')];rows.find(row=>row.textContent.includes('修改前基线')).querySelector('button').click();return true;`);
+        await until(`window.ScriptoriumBoardView.agent.board.getNodeSource({id:'html-demo'}).source.includes('初始') && !window.ScriptoriumBoardView.doc().dirty`, '回溯并保存');
+        assert.ok((await agent('getBoardHistory')).records.length >= beforeRestore + 2);
 
         assert.deepEqual(errors, [], '页面没有报错');
         console.log('Scriptorium board Electron test passed');

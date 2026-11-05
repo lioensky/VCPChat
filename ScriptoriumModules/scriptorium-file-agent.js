@@ -12,7 +12,7 @@
     const WRITES = new Set(['submitSourcePr', 'addSlide', 'insertSlide', 'deleteSlide', 'updatePresentationConfig', 'updateSceneConfig']);
     const DOCUMENT_ONLY = new Set(['getOutline', 'getSection', 'getFullText', 'getViewportSource', 'getPrHistory',
         'getSlideCount', 'getSlide', 'getActiveSlide', 'selectSlide']);
-    const BOARD_ONLY = new Set(['getBoard', 'updateBoard']);
+    const BOARD_ONLY = new Set(['getBoard', 'updateBoard', 'saveBoard', 'getBoardNodeSource', 'getBoardHistory']);
     const MAX_LINES = 2000; // 与 GetSource 单次上限一致
     const MAX_VISUAL_TEXT = 4000;
 
@@ -68,6 +68,7 @@
         const doc = view?.doc?.();
         const method = request?.method;
         const payload = request?.payload || {};
+        if (method === 'createBoard') return { success: true, ...await window.ScriptoriumBoardView.createArtifact(payload) };
         if (BOARD_ONLY.has(method) && doc?.kind !== 'board') {
             throw new Error(`当前打开的${doc ? `是${namedKind(doc)}` : '不是白板'}。请先在文坊中打开 .excalidraw 文件。`);
         }
@@ -86,6 +87,9 @@
             case 'getVisualContext': return { ...base, ...await visual(view, payload) };
             case 'getBoard': return { ...base, ...view.agent.board.read(payload) };
             case 'updateBoard': return { ...base, ...await view.agent.board.update(payload) };
+            case 'saveBoard': return { ...base, ...await view.agent.board.save(payload) };
+            case 'getBoardNodeSource': return { ...base, ...view.agent.board.getNodeSource(payload) };
+            case 'getBoardHistory': return { ...base, ...view.agent.board.history() };
             default: return null;
         }
     }

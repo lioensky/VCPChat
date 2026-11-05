@@ -24,9 +24,9 @@ const MAX_RESOURCE_REDIRECTS = 5;
 const PROJECT_EXTENSIONS = new Set(['.vdocx', '.vpptx']);
 const EXPORT_FORMATS = new Set(['html-flow', 'html-paged', 'pdf']);
 const IMPORT_EXTENSIONS = new Set(scriptoriumImportService.SUPPORTED_EXTENSIONS);
-const OPEN_EXTENSIONS = new Set([...PROJECT_EXTENSIONS, ...IMPORT_EXTENSIONS]);
+const OPEN_EXTENSIONS = new Set([...PROJECT_EXTENSIONS, ...IMPORT_EXTENSIONS, '.excalidraw']);
 const LIBRARY_EXTENSIONS = new Set([
-    '.vdocx', '.vpptx', '.docx', '.pptx', '.txt', '.html', '.md',
+    '.vdocx', '.vpptx', '.docx', '.pptx', '.txt', '.html', '.md', '.excalidraw',
 ]);
 const RECENT_LIMIT = 12;
 const AGENT_REQUEST_TIMEOUT_MS = 30000;
@@ -39,7 +39,7 @@ const AGENT_ENDPOINT_METHODS = Object.freeze({
         'deleteStylePack', 'listSvgAssetPacks', 'listSvgAssets',
         'getSvgAsset', 'getSvgAssetPack', 'upsertSvgAssetPack',
         'deleteSvgAssetPack', 'submitSourcePr', 'buildProjectArtifact',
-        'getBoard', 'updateBoard', // 白板（ScriptoriumModules/scriptorium-board.js）
+        'getBoard', 'updateBoard', 'createBoard', 'saveBoard', 'getBoardNodeSource', 'getBoardHistory', // 白板
     ]),
     docx: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
@@ -69,6 +69,7 @@ const AGENT_MUTATION_METHODS = new Set([
 const AGENT_DIRECT_MUTATION_METHODS = new Set([
     'upsertStylePack', 'deleteStylePack',
     'upsertSvgAssetPack', 'deleteSvgAssetPack',
+    'createBoard', 'updateBoard',
 ]);
 
 let docxWindow = null;
@@ -563,7 +564,10 @@ async function readDocumentLibrary() {
     const roots = [];
     for (const root of documentLibraryRoots) {
         await fs.ensureDir(root.path);
-        const children = await scanDocumentLibraryDirectory(root.path);
+        let children = await scanDocumentLibraryDirectory(root.path);
+        // Boards 独立展示，保留既有物理目录，不在用户文档中重复列出。
+        if (root.id === 'documents') children = children.filter((entry) =>
+            !(entry.type === 'directory' && entry.name.toLowerCase() === 'boards'));
         roots.push({
             id: root.id,
             label: root.label,
@@ -1302,6 +1306,12 @@ function initialize(params) {
                 'ScriptoriumDocument',
                 'VDOCX'
             ),
+        },
+        {
+            id: 'boards',
+            label: '用户白板',
+            description: 'Excalidraw 与可编程 HTML 白板',
+            path: path.join(params.appDataRoot, 'ScriptoriumDocument', 'VDOCX', 'Boards'),
         },
         {
             id: 'presentations',

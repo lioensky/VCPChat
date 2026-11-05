@@ -666,14 +666,19 @@ async function getBoard(args) {
     });
 }
 
-async function updateBoard(args) {
+async function updateBoard(args, executionContext = {}) {
+    const author = authorFromMaid(args, executionContext);
     return call(args, 'updateBoard', {
         expectedRevision: args.expectedRevision,
+        requestId: requestIdOf(args, executionContext),
+        author, maid: author,
+        summary: String(args.summary || '更新白板').trim(),
+        save: booleanOf(args.save, true),
         add: parseArray(args.add, 'add'),
         update: parseArray(args.update, 'update'),
         delete: parseArray(args.delete, 'delete'),
         background: args.background,
-    });
+    }, 'common', executionContext);
 }
 
 async function getPrHistory(args) {
@@ -976,7 +981,24 @@ async function processSingleToolCall(args, executionContext = {}) {
         case 'getboard':
             return getBoard(args);
         case 'updateboard':
-            return updateBoard(args);
+            return updateBoard(args, executionContext);
+        case 'createboard': {
+            const author = authorFromMaid(args, executionContext);
+            return call(args, 'createBoard', {
+                name: args.name || args.title,
+                elements: parseArray(args.elements ?? args.add, 'elements'),
+                background: args.background,
+                author,
+                requestId: requestIdOf(args, executionContext),
+                openAfterCreate: booleanOf(args.openAfterCreate, true),
+            }, 'common', executionContext);
+        }
+        case 'saveboard':
+            return call(args, 'saveBoard', { expectedRevision: args.expectedRevision });
+        case 'getboardnodesource':
+            return call(args, 'getBoardNodeSource', { id: args.id, startLine: args.startLine, endLine: args.endLine });
+        case 'getboardhistory':
+            return call(args, 'getBoardHistory');
         case 'getprhistory':
             return getPrHistory(args);
         case 'liststylepacks':

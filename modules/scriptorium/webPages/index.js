@@ -59,6 +59,23 @@ const inside = (target, root) => {
 };
 
 // 令牌 → 范围（真实路径）。同一范围始终使用同一令牌，网页内的相对链接和刷新不会改变地址。
+const inlinePages = new Map();
+const inlineOwners = new WeakSet();
+function createInlinePage(sender, html) {
+    const token = crypto.randomBytes(24).toString('hex');
+    inlinePages.set(token, { senderId: sender.id, html: String(html) });
+    if (!inlineOwners.has(sender)) {
+        inlineOwners.add(sender);
+        sender.once('destroyed', () => {
+            for (const [key, value] of inlinePages) if (value.senderId === sender.id) inlinePages.delete(key);
+        });
+    }
+    return `${SCHEME}://board-${token}/index.html`;
+}
+function removeInlinePage(sender, url) {
+    const token = new URL(url).host.replace(/^board-/, '');
+    if (inlinePages.get(token)?.senderId === sender.id) inlinePages.delete(token);
+}
 const grants = new Map();
 const tokens = new Map();
 async function grant(file) {
@@ -134,6 +151,13 @@ function installProtocol(protocolApi = protocol, appApi = require('electron').ap
     if (appApi) guardFrames(appApi);
     protocolApi.handle(SCHEME, async (request) => {
         if (request.method !== 'GET' && request.method !== 'HEAD') return respond(405, '', 'text/plain');
+        const requested = new URL(request.url);
+        if (requested.host.startsWith('board-')) {
+            const page = inlinePages.get(requested.host.slice(6));
+            if (!page || requested.pathname !== '/index.html') return respond(404, '', 'text/plain');
+            const policy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+            return respond(200, page.html, 'text/html', { 'content-security-policy': policy });
+        }
         const found = await resolveRequest(request.url);
         if (!found) return respond(404, '', 'text/plain');
         try {
@@ -300,4 +324,4 @@ function register(ipcMain, deps) {
     });
 }
 
-module.exports = { SCHEME, PRIVILEGE, CSP, TYPES, FRAME_NAME, handles, grant, resolveRequest, installProtocol, guardFrames, describe, readPage, savePage, register };
+module.exports = { createInlinePage, removeInlinePage, SCHEME, PRIVILEGE, CSP, TYPES, FRAME_NAME, handles, grant, resolveRequest, installProtocol, guardFrames, describe, readPage, savePage, register };

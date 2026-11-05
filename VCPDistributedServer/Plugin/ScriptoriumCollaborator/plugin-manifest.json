@@ -62,13 +62,33 @@
         "example": "连续获取多页 PPT 图片：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\nendpoint:「始」pptx「末」,\nscope:「始」slide「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」,\nvisualDelayMs:「始」750「末」,\ncommand1:「始」GetVisualContext「末」,\nslideIndex1:「始」1「末」,\ncommand2:「始」GetVisualContext「末」,\nslideIndex2:「始」2「末」,\ncommand3:「始」GetVisualContext「末」,\nslideIndex3:「始」3「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
+        "command": "CreateBoard",
+        "description": "完整创建并保存白板。maid署名必填；name/title为文件名称；elements为JSON元素骨架数组，支持rectangle/ellipse/diamond/text/arrow/line/html。HTML节点提供id、type=html、source（完整HTML/CSS/内联JS片段，512KB以内）、width/height（80至4096）、x/y、title。脚本隔离运行，当前仅支持内联脚本与CSS动画，禁止联网、宿主API和外部脚本。openAfterCreate默认true。创建返回实际filePath与saved；重名自动编号。",
+        "example": "command=CreateBoard, maid=Kerr, name=思考白板, elements=[{\"id\":\"demo\",\"type\":\"html\",\"source\":\"<div>演示</div>\"}]"
+      },
+      {
+        "command": "SaveBoard",
+        "description": "保存当前白板及文脉。expectedRevision必填，使用GetBoard最新revision。返回saved，不绕过外部文件冲突。",
+        "example": "command=SaveBoard, expectedRevision=最新修订"
+      },
+      {
+        "command": "GetBoardNodeSource",
+        "description": "读取指定HTML节点源码。id必填；startLine/endLine可选，单次最多2000行。返回source、revision和实际行号。局部编辑使用UpdateBoard的update:[{id,replacements:[{target,replace}]}]；target必须唯一，多个替换基于原始快照，不允许重叠。",
+        "example": "command=GetBoardNodeSource, id=demo"
+      },
+      {
+        "command": "GetBoardHistory",
+        "description": "读取白板文脉与autoAllow状态，返回提案署名、摘要、审批回执和状态，不展开快照。白板默认自动允许，只有人类能在白板文脉面板关闭。",
+        "example": "command=GetBoardHistory"
+      },
+      {
         "command": "GetBoard",
         "description": "读取当前白板（.excalidraw）的元素，可按需只取一部分。每个元素包含 id、type、坐标与尺寸；容器中的文字记为 label，独立文字记为 text，箭头连接的元素记为 start、end；由 Agent 新建的元素标有 by: agent。回执中的 revision 为当前修订号，修改时需带上。仅在文坊中打开白板时可用。\n参数均可选，可组合使用：ids（JSON 数组）；region（JSON 对象，如 {\"x\":0,\"y\":0,\"width\":800,\"height\":600}，返回与该区域相交的元素）；sinceRevision（只返回该修订之后发生变化的元素，包括用户手动修改的，removed 列出被删除的 id；只保留最近 24 次修订）；limit（默认 200，最多 1000）。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetBoard「末」,\nregion:「始」{\"x\":0,\"y\":0,\"width\":800,\"height\":600}「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "UpdateBoard",
-        "description": "按元素修改当前白板，不整板替换。修改立即显示在画布上并进入白板的撤销记录，用户可用 Ctrl+Z 撤销；文件由用户保存（回执 saved 为 false）。\n参数：expectedRevision 必填，填写 GetBoard 返回的 revision，白板已变化时拒绝本次修改。add、update、delete、background 至少一项；background 为画布背景色（如 #fff9db），其余三项为 JSON 数组：\n- add：官方元素骨架。type 为 rectangle/ellipse/diamond/text/arrow/line；位置写 x、y，或写 below、right 加另一张卡片的 id，由工具计算坐标并留出 100 的间距（gap 可调整）；id 由调用方指定，便于后续引用。框中的文字写 label:{\"text\":\"…\",\"fontSize\":16}。未写 width 时按文字确定宽度，同一批中字号相同的卡片等宽；未写 height 时框高随文字；折行由工具完成。需要尺寸一致时写明 width、height。独立文字写 text。箭头两端都连接元素时只写 start:{\"id\":\"…\"}、end:{\"id\":\"…\"}，位置自动计算，可连接白板上已有的元素和同一批新建的元素；label:{\"text\":\"…\"} 为箭头上的文字，strokeStyle 写 dashed 为虚线。两端不连接元素的箭头才写 x、y、width、height（终点相对起点的位移）。\n- update：[{\"id\":\"…\", 要修改的字段}]。可修改 x、y、width、height、angle、strokeColor、backgroundColor、fillStyle、strokeWidth、strokeStyle、roughness、opacity、fontSize、fontFamily、textAlign、verticalAlign、link、locked、groupIds、points；独立文字修改 text，框中文字修改 label。框移动时，连接的箭头随之移动。\n- delete：id 数组。框中的文字一并删除，连接的箭头保留并断开。\n回执 crowded 列出本次修改涉及的重叠（两个框相互压住，或箭头穿过有文字的卡片）；loose 列出本次新增、尚未与其他元素建立关系的卡片（连有箭头、位于无文字的分区框内或已编组的视为已建立关系）。修改后可用 GetVisualContext 带 ids 或 region 查看结果。\n白板适合表达想法之间的关系：先后、因果用箭头连接；组成、并列从一张卡片分叉，或放入无文字的大框作为分区；对比左右并排；前提、代价用虚线。每条箭头用一两个词说明关系。字号分层（如标题 28、主干 22、细节 16），一张卡片表达一个意思。用户写的内容不应修改或删除。",
+        "description": "按元素修改当前白板，不整板替换。修改立即显示在画布上并进入白板的撤销记录，用户可用 Ctrl+Z 撤销；白板默认自动允许并保存，save=false可仅应用不保存；maid署名必填，summary建议提供，requestId用于幂等。人类关闭白板文脉中的自动允许后返回pending，待人类批准才修改。GetBoardHistory可查回执。add支持type=html，提供source、title、width、height；HTML节点update支持source整体替换或replacements:[{target,replace}]精确局部替换，两者互斥，target必须唯一。HTML源码使用GetBoardNodeSource读取。\n参数：expectedRevision 必填，填写 GetBoard 返回的 revision，白板已变化时拒绝本次修改。add、update、delete、background 至少一项；background 为画布背景色（如 #fff9db），其余三项为 JSON 数组：\n- add：官方元素骨架。type 为 rectangle/ellipse/diamond/text/arrow/line；位置写 x、y，或写 below、right 加另一张卡片的 id，由工具计算坐标并留出 100 的间距（gap 可调整）；id 由调用方指定，便于后续引用。框中的文字写 label:{\"text\":\"…\",\"fontSize\":16}。未写 width 时按文字确定宽度，同一批中字号相同的卡片等宽；未写 height 时框高随文字；折行由工具完成。需要尺寸一致时写明 width、height。独立文字写 text。箭头两端都连接元素时只写 start:{\"id\":\"…\"}、end:{\"id\":\"…\"}，位置自动计算，可连接白板上已有的元素和同一批新建的元素；label:{\"text\":\"…\"} 为箭头上的文字，strokeStyle 写 dashed 为虚线。两端不连接元素的箭头才写 x、y、width、height（终点相对起点的位移）。\n- update：[{\"id\":\"…\", 要修改的字段}]。可修改 x、y、width、height、angle、strokeColor、backgroundColor、fillStyle、strokeWidth、strokeStyle、roughness、opacity、fontSize、fontFamily、textAlign、verticalAlign、link、locked、groupIds、points；独立文字修改 text，框中文字修改 label。框移动时，连接的箭头随之移动。\n- delete：id 数组。框中的文字一并删除，连接的箭头保留并断开。\n回执 crowded 列出本次修改涉及的重叠（两个框相互压住，或箭头穿过有文字的卡片）；loose 列出本次新增、尚未与其他元素建立关系的卡片（连有箭头、位于无文字的分区框内或已编组的视为已建立关系）。修改后可用 GetVisualContext 带 ids 或 region 查看结果。\n白板适合表达想法之间的关系：先后、因果用箭头连接；组成、并列从一张卡片分叉，或放入无文字的大框作为分区；对比左右并排；前提、代价用虚线。每条箭头用一两个词说明关系。字号分层（如标题 28、主干 22、细节 16），一张卡片表达一个意思。用户写的内容不应修改或删除。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」UpdateBoard「末」,\nexpectedRevision:「始」1234567-#ffffff「末」,\nadd:「始」[{\"id\":\"a\",\"type\":\"rectangle\",\"x\":0,\"y\":0,\"label\":{\"text\":\"读取配置\",\"fontSize\":22}},{\"id\":\"b\",\"type\":\"rectangle\",\"right\":\"a\",\"label\":{\"text\":\"启动服务\",\"fontSize\":22}},{\"type\":\"arrow\",\"start\":{\"id\":\"a\"},\"end\":{\"id\":\"b\"},\"label\":{\"text\":\"然后\"}}]「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {

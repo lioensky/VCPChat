@@ -734,6 +734,7 @@ async function run() {
     // 白板命令收到的是工具参数中的 JSON 文本。
     await collaborator.processToolCall({
         command: 'UpdateBoard',
+        maid: 'Kerr',
         expectedRevision: '5381-#ffffff',
         add: '[{"id":"a","type":"rectangle","x":0,"y":0,"width":10,"height":10}]',
         delete: '["b"]',

@@ -11,6 +11,7 @@
         notes: 'N',
         documents: 'D',
         presentations: 'P',
+        boards: 'B',
         fonts: 'F',
         styles: 'S',
         graphics: 'G',
@@ -130,8 +131,8 @@
 
                 const badge = documentRef.createElement('span');
                 badge.className = 'library-file-badge';
-                badge.textContent = String(entry.extension || 'FILE')
-                    .toUpperCase();
+                const extension = String(entry.extension || 'FILE').toUpperCase();
+                badge.textContent = extension.replace(/^\./, '') === 'EXCALIDRAW' ? 'BOARD' : extension;
 
                 const copy = documentRef.createElement('span');
                 copy.className = 'library-file-copy';

@@ -66,7 +66,12 @@ async function saveText(payload, senderId) {
     }
     let text = String(payload.text ?? '');
     if (payload.eol === 'crlf') text = text.replace(/\r?\n/g, '\r\n');
-    await writeAtomically(resolved, encodeText(text, { encoding: payload.encoding, bom: payload.bom }));
+    const bytes = encodeText(text, { encoding: payload.encoding, bom: payload.bom });
+    if (kindOf(resolved) === 'board') {
+        boardBytes(text);
+        if (bytes.length > MAX_BOARD_BYTES) throw new Error('白板及文脉超过 40 MB，未覆盖原文件。');
+    }
+    await writeAtomically(resolved, bytes);
     const after = await fs.promises.stat(resolved);
     watchers.get(senderId)?.saved(after.mtimeMs);
     return { success: true, mtime: after.mtimeMs };
@@ -150,13 +155,55 @@ function freePath(dir, base, extension) {
     }
     throw new Error('未能分配文件名。');
 }
-async function newBoard() {
+function boardBytes(value) {
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    const data = JSON.parse(text);
+    if (data?.type !== 'excalidraw' || !Array.isArray(data.elements)) throw new Error('不是有效的 Excalidraw 白板。');
+    const bytes = Buffer.from(text, 'utf8');
+    if (bytes.length > MAX_BOARD_BYTES) throw new Error('白板超过 40 MB。');
+    return bytes;
+}
+function boardName(value) {
+    const base = String(value || '未命名白板').replace(/\.excalidraw$/i, '').trim();
+    if (!base || /[<>:"/\\|?*\u0000-\u001f]/.test(base) || /[. ]$/.test(base)
+        || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(base)) throw new Error('白板名称包含无效字符。');
+    return base;
+}
+async function newBoard(payload = {}) {
+    const bytes = boardBytes(payload.scene ?? EMPTY_BOARD);
+    const base = boardName(payload.name || payload.title);
     const dir = path.join(deps.libraryDir(), 'Boards');
     await fs.promises.mkdir(dir, { recursive: true });
-    const file = freePath(dir, '未命名白板', '.excalidraw');
-    await writeAtomically(file, Buffer.from(EMPTY_BOARD, 'utf8'));
-    await Promise.resolve(deps?.rememberRecentFile?.(file)).catch(() => {});
-    return { success: true, filePath: file };
+    // 独占创建避免并发新建覆盖同名文件。
+    for (let index = 0; index < 1000; index += 1) {
+        const file = path.join(dir, `${base}${index ? ` (${index})` : ''}.excalidraw`);
+        try {
+            await fs.promises.writeFile(file, bytes, { flag: 'wx' });
+        } catch (error) {
+            if (error.code === 'EEXIST') continue;
+            throw error;
+        }
+        await Promise.resolve(deps?.rememberRecentFile?.(file)).catch(() => {});
+        const stat = await fs.promises.stat(file);
+        return { success: true, filePath: file, name: path.basename(file), mtime: stat.mtimeMs };
+    }
+    throw new Error('未能分配白板名称。');
+}
+async function saveBoardAs(payload, event) {
+    const source = await mustAllow(payload.file, '白板');
+    if (kindOf(source) !== 'board') throw new Error('只能另存白板。');
+    const bytes = boardBytes(payload.text);
+    const result = await deps.dialog.showSaveDialog(deps.ownerOf(event), {
+        title: '白板另存为',
+        defaultPath: source,
+        filters: [{ name: 'Excalidraw 白板', extensions: ['excalidraw'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    const target = /\.excalidraw$/i.test(result.filePath) ? result.filePath : `${result.filePath}.excalidraw`;
+    await writeAtomically(target, bytes);
+    await deps.rememberRecentFile(target);
+    const stat = await fs.promises.stat(target);
+    return { success: true, filePath: target, name: path.basename(target), mtime: stat.mtimeMs };
 }
 
 function register(ipcMain, value) {
@@ -170,7 +217,34 @@ function register(ipcMain, value) {
                 case 'image': return await imageInfo(payload.file);
                 case 'watch': return await watch(event.sender, payload.file);
                 case 'check': await watchers.get(event.sender.id)?.check(); return { success: true };
-                case 'board-new': return await newBoard();
+                case 'board-html-page': {
+                    const html = String(payload.html || '');
+                    if (Buffer.byteLength(html) > 600 * 1024) throw new Error('节点页面过大。');
+                    return { success: true, url: require('../webPages').createInlinePage(event.sender, html) };
+                }
+                case 'board-html-release':
+                    require('../webPages').removeInlinePage(event.sender, payload.url);
+                    return { success: true };
+                case 'board-new': return await newBoard(payload);
+                case 'board-save-as': return await saveBoardAs(payload, event);
+                case 'board-rename': {
+                    const source = await mustAllow(payload.file, '白板');
+                    if (kindOf(source) !== 'board') throw new Error('只能重命名白板。');
+                    const target = path.join(path.dirname(source), `${boardName(payload.name)}.excalidraw`);
+                    if (target === source) return { success: true, filePath: source, name: path.basename(source) };
+                    const stat = await fs.promises.stat(source);
+                    if (Math.abs(stat.mtimeMs - Number(payload.mtime)) > 1) throw new Error('文件已在别处修改，请重新读取后改名。');
+                    await fs.promises.copyFile(source, target, fs.constants.COPYFILE_EXCL);
+                    try { await fs.promises.unlink(source); }
+                    catch (error) { await fs.promises.rm(target, { force: true }).catch(() => {}); throw error; }
+                    await deps.rememberRecentFile(target);
+                    return { success: true, filePath: target, name: path.basename(target), mtime: (await fs.promises.stat(target)).mtimeMs };
+                }
+                case 'board-reveal': {
+                    const target = await mustAllow(payload.file, '白板');
+                    deps.shell.showItemInFolder(target);
+                    return { success: true };
+                }
                 case 'board-library-read': return { success: true, items: (await readJson(boardLibraryFile()))?.items || [] };
                 case 'board-library-write': await writeJson(boardLibraryFile(), { items: Array.isArray(payload.items) ? payload.items : [] }); return { success: true };
                 default: return { success: false, error: '未知的操作。' };
