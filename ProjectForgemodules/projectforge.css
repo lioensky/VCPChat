@@ -930,7 +930,7 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
 /* 泳道：左文件头 + 右卡片网格 的两栏看板 */
 .bp-lane {
     flex: 0 0 auto; width: 100%;
-    display: grid; grid-template-columns: 218px 1fr; gap: 12px; align-items: stretch;
+    display: grid; grid-template-columns: 236px 1fr; gap: 12px; align-items: stretch;
     padding: 10px; border-radius: 12px;
     border: 1px solid var(--pf-border); background: var(--pf-panel);
 }
@@ -977,7 +977,7 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
     background: rgba(76, 175, 125, 0.15); color: rgba(96, 220, 155, 1);
     font-size: 11px; font-family: ui-monospace, monospace;
 }
-.bp-op { font-weight: 600; }
+.bp-op { font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
 .bp-create .bp-op { color: rgba(60, 200, 130, 1); }
 .bp-edit .bp-op { color: rgba(255, 180, 70, 1); }
 .bp-remove .bp-op { color: var(--pf-danger, #e57373); }
