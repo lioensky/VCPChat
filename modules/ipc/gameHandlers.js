@@ -8,6 +8,7 @@ const HALL = path.join(ROOT, 'Gamemodules/game.html');
 let registered = false;
 let gameRuntime = null;
 let listGameAgents = null;
+let listGameModels = null;
 // VTrade 对决: the page and the rounds live in the VTrade plugin on VCPToolBox; VChat opens the page and invites Agents.
 let vtrade = null;
 function vtradeFeature() {
@@ -19,6 +20,7 @@ function vtradeFeature() {
 }
 // How long after Chat starts to look for VTrade rounds waiting on Agents.
 const VTRADE_RESUME_MS = 15000;
+const { clampGameAgentConfig, GAME_TURN_MAX_OUTPUT_TOKENS } = require('../game/gameRuntime');
 const gameWindows = new Map();
 const LOCAL_GAMES = Object.freeze({
     neon: { title: 'VCP Neon Striker', page: 'Gamemodules/vcp-neon-game/index.html' },
@@ -115,11 +117,12 @@ async function openGame(gameId) {
     }
 }
 
-function configureRuntime({ gameService, groupChat, loadAgent, listAgents }) {
+function configureRuntime({ gameService, groupChat, loadAgent, listAgents, listModels }) {
     listGameAgents = listAgents;
+    if (typeof listModels === 'function') listGameModels = listModels;
     if (gameRuntime) return gameRuntime;
     const { GameRuntime } = require('../game/gameRuntime');
-    const runAgent = async ({ groupId, topicId, agentId, invitePrompt }) => {
+    const runAgent = async ({ groupId, topicId, agentId, invitePrompt }, agentLoader = loadAgent) => {
         let requestError = null;
         await groupChat.handleInviteAgentToSpeak(
             groupId, topicId, agentId,
@@ -128,7 +131,7 @@ function configureRuntime({ gameService, groupChat, loadAgent, listAgents }) {
                     requestError = new Error(String(event.error || '游戏请求已中止。'));
                 }
             },
-            loadAgent,
+            agentLoader,
             { invitePrompt, skipSummary: true },
         );
         if (requestError) throw requestError;
@@ -136,7 +139,11 @@ function configureRuntime({ gameService, groupChat, loadAgent, listAgents }) {
     gameRuntime = new GameRuntime({
         gameService, groupChat, loadAgent,
         toolInstructions: async () => '',
-        runAgent,
+        // Seat overrides and the turn budget belong only to the Dou Dizhu runtime.
+        runAgent: decision => runAgent(decision, async id => {
+            const cfg = await loadAgent(id);
+            return id === decision.agentId ? clampGameAgentConfig(cfg, decision.model) : cfg;
+        }),
     });
     const { VTradeOrchestrator } = require('../game/vtrade/orchestrator');
     vtradeFeature().orchestrator = new VTradeOrchestrator({
@@ -171,7 +178,20 @@ function registerTableHandlers() {
         try { return { success: true, ...await operation(request) }; }
         catch (error) { return { success: false, error: error.message, code: error.code }; }
     });
-    handle('vcp-game:agents', async () => ({ agents: await listGameAgents() }));
+    handle('vcp-game:agents', async request => {
+        const [agents, catalog] = await Promise.all([
+            listGameAgents(),
+            typeof listGameModels === 'function'
+                ? listGameModels({ forceRefresh: Boolean(request?.refreshModels) }).catch(() => ({}))
+                : Promise.resolve({}),
+        ]);
+        return {
+            agents,
+            models: Array.isArray(catalog?.models) ? catalog.models : [],
+            favoriteModels: Array.isArray(catalog?.favoriteModels) ? catalog.favoriteModels : [],
+            hotModels: Array.isArray(catalog?.hotModels) ? catalog.hotModels : [],
+        };
+    });
     handle('vcp-game:create', async request => {
         const table = await gameRuntime.openTable(request);
         scheduleMatch(table.matchId);
@@ -184,6 +204,7 @@ function registerTableHandlers() {
     });
     handle('vcp-game:observe', async request => {
         const record = await gameRuntime.gameService.read(request.matchId);
+        const isSpectator = record.seats.every(seat => seat?.kind === 'agent');
         return {
             observation: {
                 matchId: record.matchId,
@@ -191,6 +212,13 @@ function registerTableHandlers() {
                 ...require('../game/doudizhu/rules').observation(record.state, 0),
             },
             seats: record.seats,
+            isSpectator,
+            ...(isSpectator ? {
+                spectator: {
+                    hands: record.state.hands.map(hand => [...hand]),
+                    bottom: [...record.state.bottom],
+                },
+            } : {}),
             runtime: gameRuntime.getState(request.matchId),
         };
     });
@@ -234,4 +262,8 @@ function initialize() {
     registered = true;
 }
 
-module.exports = { initialize, isHallSender, configureRuntime, getRuntime: () => gameRuntime };
+module.exports = {
+    initialize, isHallSender, configureRuntime,
+    clampGameAgentConfig, GAME_TURN_MAX_OUTPUT_TOKENS,
+    getRuntime: () => gameRuntime,
+};

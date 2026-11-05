@@ -58,21 +58,30 @@ class GameService {
             await fs.rename(temporary, destination);
         } finally { await fs.rm(temporary, { force: true }); }
     }
-    async createMatch({ seats, groupId, topicId, firstSeat = 0 }) {
-        if (!Array.isArray(seats) || seats.length !== 3 || seats[0]?.kind !== 'human'
-            || seats.slice(1).some(seat => seat?.kind !== 'agent'
-                || typeof seat.agentId !== 'string' || !seat.agentId)
-            || seats[1].agentId === seats[2].agentId) {
-            throw error('INVALID_SEATS', '需要一个用户和两个不同的Agent座位。');
+    async createMatch({ seats, groupId, topicId, firstSeat = 0, maxRedeals }) {
+        const validAgentSeat = seat => seat?.kind === 'agent'
+            && typeof seat.agentId === 'string' && Boolean(seat.agentId)
+            && (seat.model === undefined || seat.model === null
+                || (typeof seat.model === 'string' && seat.model.trim().length > 0 && seat.model.length <= 200));
+        const humanTable = Array.isArray(seats) && seats.length === 3
+            && seats[0]?.kind === 'human'
+            && validAgentSeat(seats[1]) && validAgentSeat(seats[2])
+            && seats[1].agentId !== seats[2].agentId;
+        const spectatorTable = Array.isArray(seats) && seats.length === 3
+            && seats.every(validAgentSeat)
+            && new Set(seats.map(seat => seat.agentId)).size === 3;
+        if (!humanTable && !spectatorTable) {
+            throw error('INVALID_SEATS', '需要一个用户加两个不同的Agent，或三个不同的Agent座位。');
         }
         if (typeof groupId !== 'string' || !groupId || typeof topicId !== 'string' || !topicId) {
             throw error('INVALID_SESSION', '开局需要绑定后台会话。');
         }
+        const resolvedMaxRedeals = maxRedeals !== undefined ? maxRedeals : (spectatorTable ? 2 : null);
         const matchId = `match-${randomUUID()}`;
         const record = {
             schemaVersion: 1, gameTypeId: 'doudizhu', matchId,
             seats: structuredClone(seats), groupId, topicId,
-            state: rules.create({ firstSeat, integer: this.integer }),
+            state: rules.create({ firstSeat, integer: this.integer, maxRedeals: resolvedMaxRedeals }),
             submissions: {}, pendingEvents: [], createdAt: Date.now(),
         };
         await this.write(record);
@@ -96,7 +105,11 @@ class GameService {
                 }
             } catch (failure) {
                 if (failure.code !== 'ENOENT') throw failure;
-                const state = rules.create({ firstSeat: 0, integer: this.integer });
+                const spectatorTable = previous.seats.every(seat => seat?.kind === 'agent');
+                const nextMaxRedeals = Number.isInteger(previous.state.maxRedeals)
+                    ? previous.state.maxRedeals
+                    : (spectatorTable ? 2 : null);
+                const state = rules.create({ firstSeat: 0, integer: this.integer, maxRedeals: nextMaxRedeals });
                 const event = { id: 'event-1', phase: 'bidding', type: 'new-match', matchId, previousMatchId };
                 state.events.push(event);
                 record = {
