@@ -81,4 +81,69 @@ function sortCards(ids) {
         return BY_ID.get(a).rank - BY_ID.get(b).rank || a.localeCompare(b);
     });
 }
-module.exports = { RULES_VERSION, DECK, classify, beats, sortCards };
+// Existence only, not strategy: rank-equivalent physical cards need not be enumerated.
+function canBeat(hand, previous) {
+    if (!previous) return hand.length > 0;
+    if (previous.type === 'rocket') return false;
+    const groups = new Map();
+    for (const id of hand) {
+        const rank = BY_ID.get(id)?.rank;
+        if (rank === undefined) throw new TypeError('Unknown card ID.');
+        if (!groups.has(rank)) groups.set(rank, []);
+        groups.get(rank).push(id);
+    }
+    const accepts = cards => beats(classify(cards), previous);
+    if (groups.has(16) && groups.has(17) && accepts([groups.get(16)[0], groups.get(17)[0]])) return true;
+    for (const cards of groups.values()) {
+        if (cards.length === 4 && accepts(cards)) return true;
+    }
+    if (previous.type === 'bomb' || hand.length < previous.size) return false;
+
+    // Build a stronger body, then search only its small wing pool.
+    const shapes = {
+        single: [1, 1, 0, 0], pair: [2, 1, 0, 0], triple: [3, 1, 0, 0],
+        'triple-single': [3, 1, 1, 1], 'triple-pair': [3, 1, 1, 2],
+        straight: [1, previous.chain, 0, 0],
+        'pair-chain': [2, previous.chain, 0, 0],
+        'triple-chain': [3, previous.chain, 0, 0],
+        'four-singles': [4, 1, 2, 1], 'four-pairs': [4, 1, 2, 2],
+        'airplane-singles': [3, previous.chain, previous.chain, 1],
+        'airplane-pairs': [3, previous.chain, previous.chain, 2],
+    };
+    const shape = shapes[previous.type];
+    if (!shape) return false;
+    const [copies, length, wingCount, wingUnit] = shape;
+    for (let high = previous.main + 1; high <= (length > 1 ? 14 : 17); high++) {
+        const ranks = Array.from({ length }, (_, i) => high - length + 1 + i);
+        if (ranks.some(rank => (groups.get(rank)?.length || 0) < copies)) continue;
+        const body = ranks.flatMap(rank => groups.get(rank).slice(0, copies));
+        if (!wingCount) {
+            if (accepts(body)) return true;
+            continue;
+        }
+        const pool = [...groups.entries()].filter(([rank]) => !ranks.includes(rank)).map(([, cards]) => cards);
+        const suffix = new Array(pool.length + 1).fill(0);
+        for (let i = pool.length - 1; i >= 0; i--) {
+            suffix[i] = suffix[i + 1] + (wingUnit === 2 ? Number(pool[i].length >= 2) : pool[i].length);
+        }
+        const wings = [];
+        const search = (index, remaining) => {
+            if (remaining === 0) return accepts([...body, ...wings]);
+            if (index === pool.length || suffix[index] < remaining) return false;
+            const cards = pool[index];
+            const max = wingUnit === 2 ? Math.min(remaining, Number(cards.length >= 2))
+                : Math.min(remaining, cards.length);
+            for (let count = max; count >= 0; count--) {
+                const before = wings.length;
+                wings.push(...cards.slice(0, count * wingUnit));
+                const found = search(index + 1, remaining - count);
+                wings.length = before;
+                if (found) return true;
+            }
+            return false;
+        };
+        if (search(0, wingCount)) return true;
+    }
+    return false;
+}
+module.exports = { RULES_VERSION, DECK, classify, beats, sortCards, canBeat };

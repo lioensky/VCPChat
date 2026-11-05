@@ -202,6 +202,7 @@ function registerTableHandlers() {
         scheduleMatch(table.matchId);
         return table;
     });
+    handle('vcp-game:settings', request => gameRuntime.updateAutoPass(request.matchId, request.autoPass));
     handle('vcp-game:observe', async request => {
         if (Array.isArray(request?.agentModels)) {
             await gameRuntime.updateSeatModels(request.matchId, request);

@@ -201,6 +201,9 @@ test('斗地主前端UI：默认三AI观战、独立选模型与自定义输入�
     const w = dom.window;
 
     const createPayloads = [];
+    let mockAutoPass = true;
+    let settingsFailure = false;
+    const settingsUpdates = [];
     const observeUpdates = [];
     const nextPayloads = [];
     let mockSeats = [
@@ -223,6 +226,12 @@ test('斗地主前端UI：默认三AI观战、独立选模型与自定义输入�
             hotModels: ['model-hot'],
             models: ['model-favorite', 'model-hot', 'model-switched', 'model-alpha-default'],
         }),
+        updateGameSettings: async payload => {
+            settingsUpdates.push(payload);
+            if (settingsFailure) return {success:false,error:'settings offline'};
+            mockAutoPass = payload.autoPass;
+            return {success:true,autoPass:mockAutoPass};
+        },
         createGameTable: async payload => {
             createPayloads.push(payload);
             return { success: true, matchId: 'match-11111111-1111-1111-1111-111111111111' };
@@ -253,6 +262,7 @@ test('斗地主前端UI：默认三AI观战、独立选模型与自定义输入�
                     decisionId: `${payload.matchId}:0`,
                     revision: 0,
                     phase: mockPhase,
+                    autoPass: mockAutoPass,
                     turn: 0,
                     dealNumber: 1,
                     highestBid: 0,
@@ -304,8 +314,25 @@ test('斗地主前端UI：默认三AI观战、独立选模型与自定义输入�
         await new Promise(resolve => setTimeout(resolve, 20));
 
         assert.equal(createPayloads.length, 1);
+        const autoPassSwitch = w.document.getElementById('auto-pass');
+        assert.equal(autoPassSwitch.checked, true);
+        autoPassSwitch.checked = false;
+        autoPassSwitch.dispatchEvent(new w.Event('change'));
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(settingsUpdates.length, 1);
+        assert.equal(settingsUpdates[0].autoPass, false);
+        assert.equal(autoPassSwitch.checked, false);
+        assert.equal(autoPassSwitch.disabled, false);
+        settingsFailure = true;
+        autoPassSwitch.checked = true;
+        autoPassSwitch.dispatchEvent(new w.Event('change'));
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(autoPassSwitch.checked, false);
+        assert.equal(autoPassSwitch.disabled, false);
+        settingsFailure = false;
         assert.deepEqual(JSON.parse(JSON.stringify(createPayloads[0])), {
             mode: 'spectate',
+            autoPass: true,
             agentIds: ['alpha', 'beta', 'gamma'],
             agentModels: ['model-favorite', '', 'my-custom-llm'],
             userName: '莱恩',

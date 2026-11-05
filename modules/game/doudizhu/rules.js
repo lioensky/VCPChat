@@ -1,6 +1,6 @@
 'use strict';
 const { randomInt } = require('node:crypto');
-const { DECK, RULES_VERSION, classify, beats, sortCards } = require('./cards');
+const { DECK, RULES_VERSION, classify, beats, sortCards, canBeat } = require('./cards');
 
 function fail(code, message) {
     const error = new Error(message);
@@ -19,13 +19,14 @@ function deal(integer = randomInt) {
         bottom: deck.slice(51),
     };
 }
-function create({ firstSeat = 0, integer = randomInt, maxRedeals = null } = {}) {
+function create({ firstSeat = 0, integer = randomInt, maxRedeals = null, autoPass = true } = {}) {
+    if (typeof autoPass !== 'boolean') throw new TypeError('autoPass must be boolean.');
     if (![0, 1, 2].includes(firstSeat)) throw new RangeError('Invalid first seat.');
     if (maxRedeals !== null && (!Number.isInteger(maxRedeals) || maxRedeals < 0)) {
         throw new RangeError('Invalid maxRedeals.');
     }
     return {
-        rulesVersion: RULES_VERSION, revision: 0, phase: 'bidding',
+        rulesVersion: RULES_VERSION, revision: 0, phase: 'bidding', autoPass,
         turn: firstSeat, firstSeat, dealNumber: 1,
         ...(maxRedeals !== null ? { maxRedeals } : {}),
         ...deal(integer), bids: [], highestBid: 0, bidder: null,
@@ -59,6 +60,15 @@ function apply(state, seat, action, { integer = randomInt } = {}) {
         const event = { id: `event-${next.events.length + 1}`, ...fields };
         next.events.push(event);
         events.push(event);
+    };
+    const pass = (passingSeat, fields = {}) => {
+        next.passes += 1;
+        publish({ phase: 'playing', seat: passingSeat, type: 'pass', ...fields });
+        if (next.passes === 2) {
+            next.turn = next.target.seat;
+            next.target = null;
+            next.passes = 0;
+        } else next.turn = (passingSeat + 1) % 3;
     };
     if (state.phase === 'bidding') {
         if (action.type !== 'bid' || !Number.isInteger(action.bid) || action.bid < 0 || action.bid > 3
@@ -95,13 +105,7 @@ function apply(state, seat, action, { integer = randomInt } = {}) {
     } else if (state.phase === 'playing') {
         if (action.type === 'pass') {
             if (!state.target || state.target.seat === seat) fail('CANNOT_PASS', '新一轮首出不能不出。');
-            next.passes += 1;
-            publish({ phase: 'playing', seat, type: 'pass', ...words });
-            if (next.passes === 2) {
-                next.turn = state.target.seat;
-                next.target = null;
-                next.passes = 0;
-            } else next.turn = (seat + 1) % 3;
+            pass(seat, words);
         } else if (action.type === 'play') {
             const combination = classify(action.cards);
             if (!combination) fail('INVALID_COMBINATION', '不是合法牌型，或包含重复/未知实体牌。');
@@ -125,12 +129,18 @@ function apply(state, seat, action, { integer = randomInt } = {}) {
             } else next.turn = (seat + 1) % 3;
         } else fail('INVALID_ACTION', '出牌阶段仅支持play或pass。');
     } else fail('INVALID_PHASE', '未知对局阶段。');
+    // Resolve forced passes before persistence and before any human/Agent invitation.
+    // At most two seats can pass before the target is cleared.
+    while (next.autoPass !== false && next.phase === 'playing' && next.target && next.turn !== next.target.seat
+        && !canBeat(next.hands[next.turn], next.target.combination)) {
+        pass(next.turn, { automatic: true });
+    }
     next.revision += 1;
     return { state: next, events };
 }
 function publicView(state) {
     return structuredClone({
-        rulesVersion: state.rulesVersion, revision: state.revision,
+        rulesVersion: state.rulesVersion, revision: state.revision, autoPass: state.autoPass !== false,
         phase: state.phase, turn: state.turn, dealNumber: state.dealNumber,
         bids: state.bids, highestBid: state.highestBid, landlord: state.landlord,
         bottom: state.landlord === null ? [] : state.bottom,

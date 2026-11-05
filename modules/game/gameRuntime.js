@@ -27,7 +27,7 @@ class GameRuntime {
         Object.assign(this, { gameService, groupChat, loadAgent });
         this.maintenance = false;
         this.resourceOperations = 0;
-        for (const name of ['openTable', 'nextTable', 'updateSeatModels', 'submitHuman']) {
+        for (const name of ['openTable', 'nextTable', 'updateSeatModels', 'updateAutoPass', 'submitHuman']) {
             const operation = this[name].bind(this);
             this[name] = async (...args) => {
                 this.assertAvailable();
@@ -59,7 +59,8 @@ class GameRuntime {
             }),
         });
     }
-    async openTable({ mode, agentIds, agentModels, userName = '用户', contextMessageWindowSize = 100 } = {}) {
+    async openTable({ mode, agentIds, agentModels, userName = '用户', contextMessageWindowSize = 100, autoPass = true } = {}) {
+        if (typeof autoPass !== 'boolean') throw new TypeError('autoPass must be boolean.');
         this.assertAvailable();
         const spectate = mode === 'spectate' || (mode === undefined && Array.isArray(agentIds) && agentIds.length === 3);
         const expectedCount = spectate ? 3 : 2;
@@ -107,7 +108,7 @@ class GameRuntime {
             : [{ kind: 'human', name: String(userName).slice(0, 100) }, ...agentSeats];
         const match = await this.gameService.createMatch({
             groupId: group.id, topicId: group.topics[0].id,
-            seats,
+            seats, autoPass,
         });
         return { ...match, groupId: group.id, topicId: group.topics[0].id };
     }
@@ -156,6 +157,9 @@ class GameRuntime {
             };
         }));
         return nextSeats;
+    }
+    async updateAutoPass(matchId, autoPass) {
+        return this.gameService.updateAutoPass(matchId, autoPass);
     }
     async updateSeatModels(matchId, options = {}) {
         this.assertAvailable();

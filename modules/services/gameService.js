@@ -58,7 +58,7 @@ class GameService {
             await fs.rename(temporary, destination);
         } finally { await fs.rm(temporary, { force: true }); }
     }
-    async createMatch({ seats, groupId, topicId, firstSeat = 0, maxRedeals }) {
+    async createMatch({ seats, groupId, topicId, firstSeat = 0, maxRedeals, autoPass = true }) {
         const validAgentSeat = seat => seat?.kind === 'agent'
             && typeof seat.agentId === 'string' && Boolean(seat.agentId)
             && (seat.model === undefined || seat.model === null
@@ -81,7 +81,7 @@ class GameService {
         const record = {
             schemaVersion: 1, gameTypeId: 'doudizhu', matchId,
             seats: structuredClone(seats), groupId, topicId,
-            state: rules.create({ firstSeat, integer: this.integer, maxRedeals: resolvedMaxRedeals }),
+            state: rules.create({ firstSeat, integer: this.integer, maxRedeals: resolvedMaxRedeals, autoPass }),
             submissions: {}, pendingEvents: [], createdAt: Date.now(),
         };
         await this.write(record);
@@ -116,6 +116,15 @@ class GameService {
                 ...(model ? { model } : {}),
                 ...(effectiveModel ? { effectiveModel } : {}),
             };
+        });
+    }
+    async updateAutoPass(matchId, autoPass) {
+        if (typeof autoPass !== 'boolean') throw error('INVALID_SETTINGS', '自动过牌设置须为布尔值。');
+        return this.serial(matchId, async () => {
+            const record = await this.read(matchId);
+            record.state.autoPass = autoPass;
+            await this.write(record);
+            return { autoPass };
         });
     }
     async updateSeats(matchId, seats) {
@@ -155,7 +164,8 @@ class GameService {
                 const nextMaxRedeals = Number.isInteger(previous.state.maxRedeals)
                     ? previous.state.maxRedeals
                     : (spectatorTable ? 2 : null);
-                const state = rules.create({ firstSeat: 0, integer: this.integer, maxRedeals: nextMaxRedeals });
+                const state = rules.create({ firstSeat: 0, integer: this.integer, maxRedeals: nextMaxRedeals,
+                    autoPass: previous.state.autoPass !== false });
                 const event = { id: 'event-1', phase: 'bidding', type: 'new-match', matchId, previousMatchId };
                 state.events.push(event);
                 record = {

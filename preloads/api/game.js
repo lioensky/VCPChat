@@ -13,6 +13,7 @@ module.exports = {
         createGameTable: invoke('vcp-game:create', 'request'),
         nextGameTable: invoke('vcp-game:next', 'request'),
         observeGameTable: invoke('vcp-game:observe', 'request'),
+        updateGameSettings: invoke('vcp-game:settings', 'request'),
         submitGameAction: invoke('vcp-game:submit', 'request'),
         continueGameTable: invoke('vcp-game:continue', 'request'),
         stopGameTable: invoke('vcp-game:stop', 'request'),

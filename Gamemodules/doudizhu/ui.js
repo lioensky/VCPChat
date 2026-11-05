@@ -13,6 +13,7 @@
     let matchId = null, observation = null, selected = new Set(), busy = false;
     let pending = null, timer = null, disposed = false, painted = '';
     let runtimeRunning = false;
+    let settingsSaving = false;
     let setupMode = 'spectate'; // 'spectate' (3 AI) | 'human' (1 human + 2 AI)
     let activeSpectatorMatch = true;
     let currentSeats = [];
@@ -254,6 +255,7 @@
     }
 
     function controls() {
+        $('auto-pass').disabled = busy || pending !== null || settingsSaving;
         const humanTurn = !activeSpectatorMatch && observation?.turn === 0 && !busy && !pending;
         document.querySelectorAll('[data-bid]').forEach(button => {
             const bid = Number(button.dataset.bid);
@@ -262,9 +264,9 @@
         });
         $('play').disabled = !humanTurn || observation?.phase !== 'playing' || selected.size === 0;
         $('pass').disabled = !humanTurn || !observation?.canPass;
-        $('create').disabled = busy || pending !== null || runtimeRunning;
+        $('create').disabled = busy || pending !== null || runtimeRunning || settingsSaving;
         $('next').disabled = busy || pending !== null || !observation
-            || observation.phase !== 'finished' || runtimeRunning;
+            || observation.phase !== 'finished' || runtimeRunning || settingsSaving;
         $('retry').hidden = pending === null;
         $('retry').disabled = busy;
         syncRevealButton();
@@ -272,6 +274,7 @@
 
     function paint(result) {
         observation = result.observation;
+        if (!settingsSaving) $('auto-pass').checked = observation.autoPass !== false;
         runtimeRunning = result.runtime.running === true;
         currentSeats = Array.isArray(result.seats) ? result.seats : [];
         activeSpectatorMatch = result.isSpectator === true
@@ -498,6 +501,25 @@
         void sendPending();
     }
 
+    listen($('auto-pass'), async () => {
+        if (!matchId || settingsSaving) return;
+        const requestedMatch = matchId;
+        const autoPass = $('auto-pass').checked;
+        settingsSaving = true; controls();
+        try {
+            await call('updateGameSettings', { matchId: requestedMatch, autoPass });
+            if (!disposed && matchId === requestedMatch) {
+                status(autoPass ? '自动过牌已开启，下一次行动结算生效。' : '自动过牌已关闭，保留所有行动与聊天回合。');
+            }
+        } catch (error) {
+            if (matchId === requestedMatch) $('auto-pass').checked = observation?.autoPass !== false;
+            status(error.message);
+        } finally {
+            settingsSaving = false;
+            controls();
+            if (!disposed && matchId === requestedMatch) void refresh().catch(error => status(error.message));
+        }
+    }, 'change');
     listen($('mode-spectate'), () => { setupMode = 'spectate'; syncModeUI(); });
     listen($('mode-human'), () => { setupMode = 'human'; syncModeUI(); });
     listen($('toggle-reveal'), () => {
@@ -550,6 +572,7 @@
                 agentIds,
                 agentModels,
                 userName: $('user-name').value,
+                autoPass: $('auto-pass').checked,
                 contextMessageWindowSize: Number($('context-size').value),
             });
             matchId = result.matchId; painted = ''; selected.clear();
