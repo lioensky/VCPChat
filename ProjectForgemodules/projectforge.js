@@ -250,6 +250,7 @@ async function selectProject(projectId, { keepTab = false } = {}) {
     renderTimeline();
     renderFiles();
     renderReport();
+    if (document.querySelector('.tab.active')?.dataset.tab === 'blueprint') renderBlueprint({ force: true });
     if (!keepTab) switchTab('overview');
     $('history-results').innerHTML = '<p class="muted">输入条件后搜索本工程的变动历史。</p>';
 }
@@ -585,24 +586,35 @@ function switchTab(name) {
     if (name === 'blueprint') renderBlueprint();
 }
 
-/** 工程图纸：懒加载当前工程的图纸 HTML（Agent 收尾时生成于插件 blueprints/ 目录）。 */
+/** 工程图纸：动态画布（v 工程数据库实时投影，随施工自动生长）+ 手工精绘图（blueprints/{id}.html 存在时可切换）。 */
 async function renderBlueprint({ force = false } = {}) {
     const pane = $('pane-blueprint');
     const projectId = state.currentId;
     if (!projectId) { pane.innerHTML = '<p class="muted">未选择工程。</p>'; return; }
     if (!force && pane.dataset.loadedFor === projectId) return;
     pane.dataset.loadedFor = projectId;
-    pane.innerHTML = '<p class="muted">读取工程图纸中…</p>';
-    try {
-        const info = await call(api.projectForgeGetBlueprint(projectId));
-        if (!info?.exists) {
-            pane.innerHTML = `<div class="bp-empty"><p class="muted">本工程还没有图纸。</p><p class="muted">图纸由 Agent 工程收尾时生成，落盘于 <code>VCPDistributedServer/Plugin/ProjectForge/blueprints/${escapeHtml(projectId)}.html</code></p></div>`;
-            return;
-        }
-        pane.innerHTML = `<iframe class="bp-frame" src="../${escapeHtml(info.relPath)}?t=${Date.now()}" title="工程图纸"></iframe>`;
-    } catch (error) {
-        pane.innerHTML = `<p class="muted">图纸读取失败：${escapeHtml(error.message)}</p>`;
+    let manual = null;
+    try { manual = await call(api.projectForgeGetBlueprint(projectId)); } catch (_e) { manual = null; }
+    const hasManual = !!(manual && manual.exists);
+    // bpGetViewMode / bpSetViewMode / renderBlueprintDynamic 来自 projectforge-blueprint.js（跨模块全局，与本文件其余兄弟模块同架构）
+    const mode = bpGetViewMode(projectId, hasManual);
+    const toggleHtml = hasManual ? `
+        <div class="bp-mode-bar">
+            <button class="bp-mode-btn${mode === 'dynamic' ? ' active' : ''}" data-bp-mode="dynamic" type="button">动态画布</button>
+            <button class="bp-mode-btn${mode === 'manual' ? ' active' : ''}" data-bp-mode="manual" type="button">精绘图</button>
+        </div>` : '';
+    if (mode === 'manual' && hasManual) {
+        pane.innerHTML = `${toggleHtml}<iframe class="bp-frame" src="../${escapeHtml(manual.relPath)}?t=${Date.now()}" title="工程图纸"></iframe>`;
+    } else {
+        pane.innerHTML = `${toggleHtml}<div class="bp-host"></div>`;
+        await renderBlueprintDynamic(pane.querySelector('.bp-host'), projectId);
     }
+    pane.querySelectorAll('.bp-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            bpSetViewMode(projectId, btn.dataset.bpMode);
+            renderBlueprint({ force: true });
+        });
+    });
 }
 
 function debounce(fn, wait) {
