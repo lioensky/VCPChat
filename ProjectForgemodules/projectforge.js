@@ -250,6 +250,7 @@ async function selectProject(projectId, { keepTab = false } = {}) {
     renderTimeline();
     renderFiles();
     renderReport();
+    if (document.querySelector('.tab.active')?.dataset.tab === 'blueprint') renderBlueprint({ force: true });
     if (!keepTab) switchTab('overview');
     $('history-results').innerHTML = '<p class="muted">输入条件后搜索本工程的变动历史。</p>';
 }
@@ -582,6 +583,38 @@ async function revertCurrent(mode) {
 function switchTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === name));
+    if (name === 'blueprint') renderBlueprint();
+}
+
+/** 工程图纸：动态画布（v 工程数据库实时投影，随施工自动生长）+ 手工精绘图（blueprints/{id}.html 存在时可切换）。 */
+async function renderBlueprint({ force = false } = {}) {
+    const pane = $('pane-blueprint');
+    const projectId = state.currentId;
+    if (!projectId) { pane.innerHTML = '<p class="muted">未选择工程。</p>'; return; }
+    if (!force && pane.dataset.loadedFor === projectId) return;
+    pane.dataset.loadedFor = projectId;
+    let manual = null;
+    try { manual = await call(api.projectForgeGetBlueprint(projectId)); } catch (_e) { manual = null; }
+    const hasManual = !!(manual && manual.exists);
+    // bpGetViewMode / bpSetViewMode / renderBlueprintDynamic 来自 projectforge-blueprint.js（跨模块全局，与本文件其余兄弟模块同架构）
+    const mode = bpGetViewMode(projectId, hasManual);
+    const toggleHtml = hasManual ? `
+        <div class="bp-mode-bar">
+            <button class="bp-mode-btn${mode === 'dynamic' ? ' active' : ''}" data-bp-mode="dynamic" type="button">动态画布</button>
+            <button class="bp-mode-btn${mode === 'manual' ? ' active' : ''}" data-bp-mode="manual" type="button">精绘图</button>
+        </div>` : '';
+    if (mode === 'manual' && hasManual) {
+        pane.innerHTML = `${toggleHtml}<iframe class="bp-frame" src="../${escapeHtml(manual.relPath)}?t=${Date.now()}" title="改动脉络"></iframe>`;
+    } else {
+        pane.innerHTML = `${toggleHtml}<div class="bp-host"></div>`;
+        await renderBlueprintDynamic(pane.querySelector('.bp-host'), projectId);
+    }
+    pane.querySelectorAll('.bp-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            bpSetViewMode(projectId, btn.dataset.bpMode);
+            renderBlueprint({ force: true });
+        });
+    });
 }
 
 function debounce(fn, wait) {
