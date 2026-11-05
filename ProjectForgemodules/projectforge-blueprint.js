@@ -60,19 +60,21 @@ function bpDuration(ms) {
     return Math.floor(h / 24) + ' 天';
 }
 
-function bpCardHtml(n, fresh) {
+function bpCardHtml(n, fresh, todoMap) {
     const reason = String(n.reason || n.summary || '').trim();
-    const shortReason = reason.length > 90 ? reason.slice(0, 90) + '…' : reason;
+    const todo = (n.todo_id && todoMap) ? todoMap.get(n.todo_id) : null;
+    const todoBadge = todo ? '<span class="bp-todo" title="todo #' + todo.seq + ' ' + escapeHtml(todo.title || '') + '">#' + todo.seq + '</span>' : '';
     let whyHtml = '';
     if (n.op === 'external') {
         whyHtml = '<div class="bp-why bp-warn">工程外动刀 · 无快照保护</div>';
     } else if (reason) {
         const prefix = (n.op === 'edit' || n.op === 'rollback') ? '为什么修：' : '';
-        whyHtml = '<div class="bp-why" title="' + escapeHtml(reason) + '">' + escapeHtml(prefix + shortReason) + '</div>';
+        whyHtml = '<div class="bp-why" title="' + escapeHtml(reason) + '">' + escapeHtml(prefix + reason) + '</div>';
     }
     return '<div class="bp-card ' + bpOpClass(n.op) + (fresh ? ' bp-pop' : '') + '" data-node="' + n.id + '" title="点击查看节点详情">' +
         '<div class="bp-card-head">' +
             '<span class="bp-nid">n' + n.id + '</span>' +
+            todoBadge +
             '<span class="bp-op">' + escapeHtml(bpOpLabel(n.op)) + '</span>' +
             (n.op === 'rollback' ? '<span class="bp-rollback-badge" title="此节点后被回退">⟲</span>' : '') +
             '<span class="bp-delta"><span class="plus">+' + n.added + '</span>/<span class="minus">-' + n.removed + '</span></span>' +
@@ -122,6 +124,9 @@ async function renderBlueprintDynamic(pane, projectId) {
     const freshIds = new Set();
     if (!firstRender) flat.forEach(n => { if (!cache.rendered.has(n.id)) freshIds.add(n.id); });
 
+    // todoId → todo 映射（卡片挂 #seq 步骤徽章）
+    const todoMap = new Map((detail.todos || []).map(t => [t.id, t]));
+
     // 泳道：按文件分组，保持首次出现顺序（时间序，避免重渲染时泳道跳动）
     const lanes = new Map();
     flat.forEach(n => {
@@ -147,7 +152,7 @@ async function renderBlueprintDynamic(pane, projectId) {
                 '<span class="bp-lane-delta"><span class="plus">+' + laneAdded + '</span>/<span class="minus">-' + laneRemoved + '</span></span>' +
                 '<span class="bp-lane-count">' + nodes.length + '</span>' +
             '</div>' +
-            '<div class="bp-lane-body">' + nodes.map(n => bpCardHtml(n, freshIds.has(n.id))).join('') + '</div>' +
+            '<div class="bp-lane-body">' + nodes.map(n => bpCardHtml(n, freshIds.has(n.id), todoMap)).join('') + '</div>' +
         '</div>';
     }).join('');
 

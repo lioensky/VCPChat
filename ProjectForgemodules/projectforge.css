@@ -909,7 +909,7 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
 .bp-live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6fd3ff; margin-left: auto; }
 .bp-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #6fd3ff; animation: bpPulse 1.6s ease-in-out infinite; }
 .bp-canvas {
-    flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; align-items: flex-start;
+    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px;
     overflow: auto; padding: 12px; border-radius: 10px;
     border: 1px solid var(--pf-border);
     background:
@@ -919,7 +919,7 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
     background-size: 22px 22px, 22px 22px, auto;
 }
 .bp-canvas.bp-solo { display: grid; place-items: center; }
-.bp-lane { flex: 0 0 auto; width: 250px; display: flex; flex-direction: column; gap: 8px; }
+.bp-lane { flex: 0 0 auto; width: 100%; display: flex; flex-direction: column; gap: 8px; }
 .bp-lane-head {
     display: flex; align-items: center; gap: 8px; padding: 6px 10px;
     border-radius: 8px; border: 1px solid var(--pf-border);
@@ -932,11 +932,18 @@ html[data-vcp-embedded-app="true"] #title-bar .divider { display: none; }
     padding: 0 6px; border-radius: 999px; background: rgba(111, 211, 255, 0.12); color: #6fd3ff;
     font-size: 11px;
 }
-.bp-lane-body { display: flex; flex-direction: column; gap: 8px; }
+.bp-lane-body { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; }
 .bp-card {
+    flex: 1 1 240px; min-width: 220px; max-width: 100%;
     padding: 8px 10px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--pf-border); border-left-width: 3px;
     background: var(--pf-panel); transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.bp-todo {
+    flex: 0 0 auto; min-width: 18px; text-align: center;
+    padding: 0 6px; border-radius: 5px;
+    background: rgba(76, 175, 125, 0.15); color: rgba(96, 220, 155, 1);
+    font-size: 11px; font-family: ui-monospace, monospace;
 }
 .bp-card:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); }
 .bp-card.bp-create { border-left-color: rgba(60, 200, 130, 0.9); }
