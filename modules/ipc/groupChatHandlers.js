@@ -73,14 +73,73 @@ function initialize(mainWindow, context) {
     });
 
     if (gameService) {
+        let modelCache = { fetchedAt: 0, ids: [] };
+        const readAllAgentConfigs = async () => {
+            const entries = await fs.readdir(AGENT_DIR, { withFileTypes: true });
+            const configs = await Promise.all(entries.filter(entry => entry.isDirectory())
+                .map(entry => getAgentConfigById(entry.name)));
+            return configs.filter(config => !config.error);
+        };
         require('./gameHandlers').configureRuntime({
             gameService, groupChat, loadAgent: getAgentConfigById,
             listAgents: async () => {
-                const entries = await fs.readdir(AGENT_DIR, { withFileTypes: true });
-                const configs = await Promise.all(entries.filter(entry => entry.isDirectory())
-                    .map(entry => getAgentConfigById(entry.name)));
-                return configs.filter(config => !config.error && config.model)
-                    .map(config => ({ id: config.id, name: config.name || config.id, avatarUrl: config.avatarUrl }));
+                const configs = await readAllAgentConfigs();
+                return configs.filter(config => config.model)
+                    .map(config => ({
+                        id: config.id,
+                        name: config.name || config.id,
+                        avatarUrl: config.avatarUrl,
+                        model: typeof config.model === 'string' ? config.model.trim() : '',
+                    }));
+            },
+            listModels: async ({ forceRefresh = false } = {}) => {
+                const modelUsageTracker = require('../modelUsageTracker');
+                const [favoriteModels, hotModels, agentConfigs] = await Promise.all([
+                    modelUsageTracker.getFavoriteModels().catch(() => []),
+                    modelUsageTracker.getHotModels(15).catch(() => []),
+                    readAllAgentConfigs().catch(() => []),
+                ]);
+                const now = Date.now();
+                if (forceRefresh || !modelCache.ids.length || now - modelCache.fetchedAt > 30000) {
+                    try {
+                        const settingsPath = path.join(path.dirname(USER_DATA_DIR), 'settings.json');
+                        const settings = await fs.pathExists(settingsPath) ? await fs.readJson(settingsPath) : {};
+                        if (settings?.vcpServerUrl) {
+                            const parsed = new URL(settings.vcpServerUrl);
+                            const modelsUrl = new URL('/v1/models', `${parsed.protocol}//${parsed.host}`).toString();
+                            const headers = settings.vcpApiKey
+                                ? { Authorization: `Bearer ${settings.vcpApiKey}` }
+                                : {};
+                            const response = await fetch(modelsUrl, {
+                                headers,
+                                signal: AbortSignal.timeout(4000),
+                            });
+                            if (response.ok) {
+                                const payload = await response.json();
+                                const remoteIds = (Array.isArray(payload?.data) ? payload.data : [])
+                                    .map(item => (typeof item?.id === 'string' ? item.id.trim() : ''))
+                                    .filter(Boolean);
+                                if (remoteIds.length) {
+                                    modelCache = { fetchedAt: now, ids: remoteIds };
+                                }
+                            }
+                        }
+                    } catch {
+                        // Fall back to cached / local agent models without blocking table setup.
+                    }
+                }
+                const clean = list => [...new Set((Array.isArray(list) ? list : [])
+                    .map(id => (typeof id === 'string' ? id.trim() : ''))
+                    .filter(Boolean))];
+                const agentModels = agentConfigs
+                    .map(cfg => (typeof cfg.model === 'string' ? cfg.model.trim() : ''))
+                    .filter(Boolean);
+                const models = clean([...favoriteModels, ...hotModels, ...agentModels, ...modelCache.ids]);
+                return {
+                    models,
+                    favoriteModels: clean(favoriteModels),
+                    hotModels: clean(hotModels),
+                };
             },
         });
     }

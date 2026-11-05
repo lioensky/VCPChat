@@ -83,9 +83,11 @@ class GameSessionOrchestrator {
             if (session.stop) break;
             session.status = 'requesting';
             session.seat = seat;
+            const seatConfig = record.seats[seat];
             await this.runAgent({
                 matchId, groupId: record.groupId, topicId: record.topicId,
-                agentId: record.seats[seat].agentId, seat,
+                agentId: seatConfig.agentId, seat,
+                ...(seatConfig.model ? { model: seatConfig.model } : {}),
                 observation, reminder: attempts > 0,
             });
             attempts++;

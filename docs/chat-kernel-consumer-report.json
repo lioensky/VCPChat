@@ -15,12 +15,7 @@
   "productionFiles": [
     "Agenttaskmodules/task.html",
     "Agenttaskmodules/task.js",
-    "AppData/DesktopWidgets/fav_1774097780990_zmjekv/widget.html",
-    "AppData/DesktopWidgets/fav_1774100012124_6i7gmw/widget.html",
-    "AppData/DesktopWidgets/fav_1774141828170_n6x2ed/widget.html",
-    "AppData/LoomApps/bing-mobile-native-clean/inject.js",
     "AppData/LoomApps/example-mobile/inject.js",
-    "AppData/LoomApps/taobao-mobile-clean/inject.js",
     "Canvasmodules/canvas.html",
     "Canvasmodules/canvas.js",
     "Chartmodules/chart-runtime.js",
@@ -147,6 +142,36 @@
     "Gamemodules/forge-tax/ui.js",
     "Gamemodules/game.html",
     "Gamemodules/game.js",
+    "Gamemodules/srpg/index.html",
+    "Gamemodules/srpg/src/ai-api.js",
+    "Gamemodules/srpg/src/commander.js",
+    "Gamemodules/srpg/src/commands.js",
+    "Gamemodules/srpg/src/context.js",
+    "Gamemodules/srpg/src/defaults.js",
+    "Gamemodules/srpg/src/designer.js",
+    "Gamemodules/srpg/src/engine.js",
+    "Gamemodules/srpg/src/exchange.js",
+    "Gamemodules/srpg/src/history.js",
+    "Gamemodules/srpg/src/llm.js",
+    "Gamemodules/srpg/src/manual.js",
+    "Gamemodules/srpg/src/narrator.js",
+    "Gamemodules/srpg/src/profiles.js",
+    "Gamemodules/srpg/src/st.js",
+    "Gamemodules/srpg/src/story.js",
+    "Gamemodules/srpg/src/ui/action-process.js",
+    "Gamemodules/srpg/src/ui/battle.js",
+    "Gamemodules/srpg/src/ui/chat-messages.js",
+    "Gamemodules/srpg/src/ui/designer-tab.js",
+    "Gamemodules/srpg/src/ui/dom.js",
+    "Gamemodules/srpg/src/ui/editors.js",
+    "Gamemodules/srpg/src/ui/files.js",
+    "Gamemodules/srpg/src/ui/llm-flow.js",
+    "Gamemodules/srpg/src/ui/panel.js",
+    "Gamemodules/srpg/src/ui/profiles-tab.js",
+    "Gamemodules/srpg/src/ui/settings.js",
+    "Gamemodules/srpg/src/ui/story-flow.js",
+    "Gamemodules/srpg/src/unit-lore.js",
+    "Gamemodules/srpg/ui.js",
     "Gamemodules/vcp-neon-game/index.html",
     "Gamemodules/vcp-neon-game/js/audio.js",
     "Gamemodules/vcp-neon-game/js/config.js",
@@ -241,6 +266,10 @@
     "ScriptoriumModules/font-font-test.html",
     "ScriptoriumModules/scriptorium-agent-port.js",
     "ScriptoriumModules/scriptorium-async.js",
+    "ScriptoriumModules/scriptorium-board-html.js",
+    "ScriptoriumModules/scriptorium-board-lineage.js",
+    "ScriptoriumModules/scriptorium-board-model.js",
+    "ScriptoriumModules/scriptorium-board.js",
     "ScriptoriumModules/scriptorium-deck-adapter.js",
     "ScriptoriumModules/scriptorium-deck-editor.js",
     "ScriptoriumModules/scriptorium-deck-export.js",
@@ -250,21 +279,26 @@
     "ScriptoriumModules/scriptorium-edit-history.js",
     "ScriptoriumModules/scriptorium-export-resources.js",
     "ScriptoriumModules/scriptorium-export.js",
+    "ScriptoriumModules/scriptorium-file-agent.js",
+    "ScriptoriumModules/scriptorium-file-views.js",
     "ScriptoriumModules/scriptorium-find.js",
     "ScriptoriumModules/scriptorium-flow-adapter.js",
     "ScriptoriumModules/scriptorium-flow-editor.js",
     "ScriptoriumModules/scriptorium-flow-export.js",
     "ScriptoriumModules/scriptorium-flow-renderer.js",
     "ScriptoriumModules/scriptorium-formatting.js",
+    "ScriptoriumModules/scriptorium-image-view.js",
     "ScriptoriumModules/scriptorium-input-sync.js",
     "ScriptoriumModules/scriptorium-library.js",
     "ScriptoriumModules/scriptorium-lineage-store.js",
     "ScriptoriumModules/scriptorium-lineage-ui.js",
+    "ScriptoriumModules/scriptorium-markdown-file.js",
     "ScriptoriumModules/scriptorium-media.js",
     "ScriptoriumModules/scriptorium-navigation.js",
     "ScriptoriumModules/scriptorium-network-fonts.js",
     "ScriptoriumModules/scriptorium-objects.js",
     "ScriptoriumModules/scriptorium-pagination.js",
+    "ScriptoriumModules/scriptorium-pdf-view.js",
     "ScriptoriumModules/scriptorium-pr-diff.js",
     "ScriptoriumModules/scriptorium-pretext-bridge.js",
     "ScriptoriumModules/scriptorium-programmable-content.js",
@@ -279,7 +313,10 @@
     "ScriptoriumModules/scriptorium-source-editor.js",
     "ScriptoriumModules/scriptorium-style-ui.js",
     "ScriptoriumModules/scriptorium-svg-assets.js",
+    "ScriptoriumModules/scriptorium-table-view.js",
+    "ScriptoriumModules/scriptorium-text-view.js",
     "ScriptoriumModules/scriptorium-visibility.js",
+    "ScriptoriumModules/scriptorium-web-page.js",
     "ScriptoriumModules/scriptorium.html",
     "ScriptoriumModules/scriptorium.js",
     "ScriptoriumModules/vdoc-container.js",
@@ -340,6 +377,9 @@
     "VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService.js",
     "VCPDistributedServer/Plugin/ProjectForge/args.js",
     "VCPDistributedServer/Plugin/ProjectForge/engine.js",
+    "VCPDistributedServer/Plugin/ProjectForge/evalProcess.js",
+    "VCPDistributedServer/Plugin/ProjectForge/evalRust.js",
+    "VCPDistributedServer/Plugin/ProjectForge/evalSymbol.js",
     "VCPDistributedServer/Plugin/ProjectForge/gui-revert-file.js",
     "VCPDistributedServer/Plugin/ProjectForge/indexerClient.js",
     "VCPDistributedServer/Plugin/ProjectForge/linkGraph.js",
@@ -352,6 +392,7 @@
     "VCPDistributedServer/Plugin/PromptSponsor/prompt-sponsor.js",
     "VCPDistributedServer/Plugin/ScreenPilot/ScreenPilotService.js",
     "VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService.js",
+    "VCPDistributedServer/Plugin/TavernSRPG/tavern-srpg-service.js",
     "VCPDistributedServer/Plugin/TopicMemo/TopicMemo.js",
     "VCPDistributedServer/Plugin/TopicSponsor/topicsponsor-service.js",
     "VCPDistributedServer/Plugin/TopicSponsor/topicsponsor.js",
@@ -476,6 +517,7 @@
     "modules/bootstrap/update-manager.js",
     "modules/chat/chartEmbedTransform.js",
     "modules/chat/chatContext.js",
+    "modules/chat/chatContextPipeline.js",
     "modules/chat/chatDomRenderer.js",
     "modules/chat/chatEventContract.js",
     "modules/chat/chatHistoryMutationAuthority.js",
@@ -517,6 +559,7 @@
     "modules/deskpet/idleRunner.js",
     "modules/deskpet/index.js",
     "modules/deskpet/live2dCapabilities.js",
+    "modules/deskpet/live2dTextureOptimizer.js",
     "modules/deskpet/live2dWardrobe.js",
     "modules/deskpet/outfits.js",
     "modules/deskpet/petAssets.js",
@@ -727,6 +770,7 @@
     "modules/renderer/streamSpeechOwner.js",
     "modules/renderer/streamStableBoundary.js",
     "modules/renderer/surfaceTaskOwner.js",
+    "modules/renderer/toolBatchDomains.js",
     "modules/renderer/toolBatchRegions.js",
     "modules/renderer/toolDataHtml.js",
     "modules/renderer/toolPresentation.js",
@@ -737,6 +781,19 @@
     "modules/renderer/ttsSurfaceOwner.js",
     "modules/renderer/visibilityOptimizer.js",
     "modules/renderer/windowStreamRuntime.js",
+    "modules/scriptorium/atomicReplace.js",
+    "modules/scriptorium/dropOpen.js",
+    "modules/scriptorium/fileAccess/index.js",
+    "modules/scriptorium/fileTypes.js",
+    "modules/scriptorium/fileViews.js",
+    "modules/scriptorium/markdownFiles/index.js",
+    "modules/scriptorium/pdfFiles/edit.js",
+    "modules/scriptorium/pdfFiles/fonts.js",
+    "modules/scriptorium/pdfFiles/index.js",
+    "modules/scriptorium/sheetFiles/index.js",
+    "modules/scriptorium/textEncoding.js",
+    "modules/scriptorium/viewFiles/index.js",
+    "modules/scriptorium/webPages/index.js",
     "modules/searchManager.js",
     "modules/services/agentPortraitImages.js",
     "modules/services/attachmentDialogState.js",
@@ -762,6 +819,7 @@
     "modules/services/networkNotesCacheStore.js",
     "modules/services/pdfAttachmentService.js",
     "modules/services/pluginAgentOperationService.js",
+    "modules/services/portraitOptimizer.js",
     "modules/services/preloadPaths.js",
     "modules/services/scriptoriumAgentControlService.js",
     "modules/services/scriptoriumFontCacheService.js",
@@ -1093,6 +1151,7 @@
     "tests/chat-back-to-bottom.test.mjs",
     "tests/chat-bubble-backdrop.test.mjs",
     "tests/chat-composer-inset.test.mjs",
+    "tests/chat-context-pipeline.test.mjs",
     "tests/chat-context.test.mjs",
     "tests/chat-dom-renderer.test.mjs",
     "tests/chat-event-contract.test.mjs",
@@ -1259,7 +1318,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 381,
+          "line": 334,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "attemptTopicSummarizationIfNeeded",
@@ -1267,7 +1326,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 460,
+          "line": 413,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1275,7 +1334,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 476,
+          "line": 429,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "handleSendMessage",
@@ -1283,7 +1342,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 910,
+          "line": 863,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -1291,7 +1350,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1007,
+          "line": 960,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -1299,7 +1358,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1008,
+          "line": 961,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -1307,7 +1366,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1520,
+          "line": 1473,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -1315,7 +1374,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1521,
+          "line": 1474,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "createNewTopicForItem",
@@ -1339,7 +1398,7 @@
         },
         {
           "file": "modules/searchManager.js",
-          "line": 568,
+          "line": 583,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "selectItem",
@@ -1347,7 +1406,7 @@
         },
         {
           "file": "modules/searchManager.js",
-          "line": 570,
+          "line": 585,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "selectTopic",
@@ -2553,7 +2612,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 821,
+          "line": 804,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentSelectedItem",
@@ -2561,7 +2620,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 822,
+          "line": 805,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2569,7 +2628,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 823,
+          "line": 806,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentItemAvatar",
@@ -2577,7 +2636,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 824,
+          "line": 807,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentItemAvatarColor",
@@ -2585,7 +2644,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 887,
+          "line": 870,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2593,7 +2652,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 893,
+          "line": 876,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2601,7 +2660,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 902,
+          "line": 885,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2609,7 +2668,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 909,
+          "line": 892,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2617,7 +2676,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 913,
+          "line": 896,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2625,7 +2684,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 924,
+          "line": 907,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2633,7 +2692,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 928,
+          "line": 911,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2641,7 +2700,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 936,
+          "line": 919,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2649,7 +2708,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1027,
+          "line": 1010,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2657,7 +2716,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1029,
+          "line": 1012,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2665,7 +2724,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1065,
+          "line": 1048,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2673,7 +2732,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1113,
+          "line": 1096,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2681,7 +2740,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1114,
+          "line": 1097,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2689,7 +2748,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1115,
+          "line": 1098,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2697,7 +2756,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1138,
+          "line": 1121,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2705,7 +2764,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1149,
+          "line": 1132,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2713,7 +2772,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1155,
+          "line": 1138,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2721,7 +2780,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1161,
+          "line": 1144,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2729,7 +2788,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1174,
+          "line": 1157,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2737,7 +2796,23 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1177,
+          "line": 1160,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1167,
+          "surface": "shared-renderer",
+          "access": "explicit-provider",
+          "member": "removeMessageById",
+          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
+        },
+        {
+          "file": "modules/chatManager.js",
+          "line": 1180,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -2753,23 +2828,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1197,
-          "surface": "shared-renderer",
-          "access": "explicit-provider",
-          "member": "removeMessageById",
-          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
-        },
-        {
-          "file": "modules/chatManager.js",
-          "line": 1201,
-          "surface": "shared-renderer",
-          "access": "explicit-provider",
-          "member": "removeMessageById",
-          "snippet": "if (messageRenderer) messageRenderer.removeMessageById('loading_history');"
-        },
-        {
-          "file": "modules/chatManager.js",
-          "line": 1242,
+          "line": 1225,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2777,7 +2836,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1272,
+          "line": 1255,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2785,7 +2844,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1329,
+          "line": 1312,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageUI",
@@ -2793,7 +2852,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1330,
+          "line": 1313,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageUI",
@@ -2801,7 +2860,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1430,
+          "line": 1413,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageUI",
@@ -2809,7 +2868,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1431,
+          "line": 1414,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageUI",
@@ -2817,7 +2876,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1534,
+          "line": 1517,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "summarizeTopicFromMessages",
@@ -2825,7 +2884,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1535,
+          "line": 1518,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "summarizeTopicFromMessages",
@@ -2833,7 +2892,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 1986,
+          "line": 1949,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -2841,7 +2900,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2245,
+          "line": 2208,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2849,7 +2908,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2246,
+          "line": 2209,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "clearChat",
@@ -2857,7 +2916,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2359,
+          "line": 2322,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "setCurrentTopicId",
@@ -2865,7 +2924,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2530,
+          "line": 2493,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "removeMessageById",
@@ -2873,7 +2932,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2541,
+          "line": 2504,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageContent",
@@ -2881,7 +2940,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2542,
+          "line": 2505,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "updateMessageContent",
@@ -2889,7 +2948,7 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2557,
+          "line": 2520,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -2897,7 +2956,7 @@
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 353,
+          "line": 306,
           "surface": "main-window",
           "access": "explicit-provider",
           "member": "renderMessage",
@@ -3111,7 +3170,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 2555,
+          "line": 2604,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -3119,7 +3178,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3124,
+          "line": 3173,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -3127,7 +3186,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3126,
+          "line": 3175,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -3135,7 +3194,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3139,
+          "line": 3188,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "attachStreamProjection",
@@ -3143,7 +3202,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3998,
+          "line": 4047,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -3151,7 +3210,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3999,
+          "line": 4048,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageActive",
@@ -3159,7 +3218,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4300,
+          "line": 4349,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "startStreamingMessage",
@@ -3167,7 +3226,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4304,
+          "line": 4353,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "discardStreamingMessage",
@@ -3175,7 +3234,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4309,
+          "line": 4358,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "appendStreamChunk",
@@ -3183,7 +3242,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4313,
+          "line": 4362,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "projectStreamTerminal",
@@ -3191,7 +3250,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4953,
+          "line": 5002,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -3199,7 +3258,7 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 4954,
+          "line": 5003,
           "surface": "shared-renderer",
           "access": "explicit-provider",
           "member": "isMessageInitialized",
@@ -3334,21 +3393,21 @@
         },
         {
           "file": "Flowlockmodules/flowlock.js",
-          "line": 760,
+          "line": 766,
           "surface": "flowlock",
           "member": "snapshot",
           "snippet": "const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;"
         },
         {
           "file": "Flowlockmodules/flowlock.js",
-          "line": 776,
+          "line": 782,
           "surface": "flowlock",
           "member": "snapshot",
           "snippet": "const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;"
         },
         {
           "file": "Flowlockmodules/flowlock.js",
-          "line": 792,
+          "line": 798,
           "surface": "flowlock",
           "member": "snapshot",
           "snippet": "const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;"
@@ -3376,63 +3435,63 @@
       "production": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 782,
+          "line": 792,
           "surface": "internal-app",
           "member": "subscribeWindowState",
           "snippet": "releaseWindowState = window.MainChatCommands?.subscribeWindowState?.(syncWindowControl) || null;"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 811,
+          "line": 821,
           "surface": "internal-app",
           "member": "toggleTheme",
           "snippet": "toggleTheme: () => window.MainChatCommands?.toggleTheme?.(),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 868,
+          "line": 878,
           "surface": "internal-app",
           "member": "openThemes",
           "snippet": "listen(document.getElementById('nextUiThemeStoreBtn'), 'click', () => window.MainChatCommands?.openThemes?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 869,
+          "line": 879,
           "surface": "internal-app",
           "member": "toggleTheme",
           "snippet": "listen(document.getElementById('nextUiThemeBtn'), 'click', () => window.MainChatCommands?.toggleTheme?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 870,
+          "line": 880,
           "surface": "internal-app",
           "member": "openSettings",
           "snippet": "listen(document.getElementById('nextUiSettingsBtn'), 'click', () => window.MainChatCommands?.openSettings?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 871,
+          "line": 881,
           "surface": "internal-app",
           "member": "minimizeToTray",
           "snippet": "listen(document.getElementById('nextUiMinimizeToTrayBtn'), 'click', () => window.MainChatCommands?.minimizeToTray?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 872,
+          "line": 882,
           "surface": "internal-app",
           "member": "minimize",
           "snippet": "listen(document.getElementById('nextUiMinimizeBtn'), 'click', () => window.MainChatCommands?.minimize?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 873,
+          "line": 883,
           "surface": "internal-app",
           "member": "toggleMaximize",
           "snippet": "listen(document.getElementById('nextUiMaximizeBtn'), 'click', () => window.MainChatCommands?.toggleMaximize?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 874,
+          "line": 884,
           "surface": "internal-app",
           "member": "close",
           "snippet": "listen(document.getElementById('nextUiCloseBtn'), 'click', () => window.MainChatCommands?.close?.());"
@@ -3454,21 +3513,21 @@
       "production": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 808,
+          "line": 818,
           "surface": "internal-app",
           "member": "open",
           "snippet": "openAppearance: trigger => window.VCPAppearanceStudio?.open?.({ trigger }),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 810,
+          "line": 820,
           "surface": "internal-app",
           "member": "setThemeMode",
           "snippet": "setThemeMode: mode => window.VCPAppearanceStudio?.setThemeMode?.(mode, { source: 'account-menu' }),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 812,
+          "line": 822,
           "surface": "internal-app",
           "member": "syncAccountMenuValue",
           "snippet": "syncAppearance: () => window.VCPAppearanceStudio?.syncAccountMenuValue?.(),"
@@ -3761,7 +3820,7 @@
       "definitions": [
         {
           "file": "modules/text-viewer.js",
-          "line": 1103,
+          "line": 1111,
           "syntax": "dot-assignment",
           "snippet": "window.__vcpExternalLibsLoading = [];"
         }
@@ -3769,37 +3828,37 @@
       "production": [
         {
           "file": "modules/text-viewer.js",
-          "line": 1102,
+          "line": 1110,
           "surface": "shared-renderer",
           "snippet": "if (!window.__vcpExternalLibsLoading) {"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 1105,
+          "line": 1113,
           "surface": "shared-renderer",
           "snippet": "window.__vcpExternalLibsLoading.push(loadPromise);"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 1141,
+          "line": 1149,
           "surface": "shared-renderer",
           "snippet": "window.__vcpExternalLibsLoading && window.__vcpExternalLibsLoading.length > 0;"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 1141,
+          "line": 1149,
           "surface": "shared-renderer",
           "snippet": "window.__vcpExternalLibsLoading && window.__vcpExternalLibsLoading.length > 0;"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 1150,
+          "line": 1158,
           "surface": "shared-renderer",
           "snippet": "if (window.__vcpExternalLibsLoading) {"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 1151,
+          "line": 1159,
           "surface": "shared-renderer",
           "snippet": "await Promise.all(window.__vcpExternalLibsLoading);"
         }
@@ -3811,7 +3870,7 @@
       "definitions": [
         {
           "file": "Desktopmodules/api/vcpProxy.js",
-          "line": 178,
+          "line": 187,
           "syntax": "dot-assignment",
           "snippet": "window.__vcpProxyFetch = proxyFetch;"
         }
@@ -3831,13 +3890,13 @@
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 644,
+          "line": 696,
           "surface": "shared-renderer",
           "snippet": "fetch: function(endpoint, opts) { return window.__vcpProxyFetch(endpoint, opts); },"
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 646,
+          "line": 698,
           "surface": "shared-renderer",
           "snippet": "weather: function() { return window.__vcpProxyFetch('/admin_api/weather'); },"
         }
@@ -3849,7 +3908,7 @@
       "definitions": [
         {
           "file": "Desktopmodules/api/vcpProxy.js",
-          "line": 179,
+          "line": 188,
           "syntax": "dot-assignment",
           "snippet": "window.__vcpProxyPost = vcpPost;"
         }
@@ -3857,7 +3916,7 @@
       "production": [
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 645,
+          "line": 697,
           "surface": "shared-renderer",
           "snippet": "post: function(messages, opts) { return window.__vcpProxyPost(messages, opts); },"
         }
@@ -4097,7 +4156,7 @@
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 826,
+          "line": 899,
           "surface": "shared-renderer",
           "snippet": "if (/anime/i.test(url) && window.anime) return true;"
         },
@@ -4193,7 +4252,7 @@
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 1056,
+          "line": 1064,
           "surface": "shared-renderer",
           "snippet": "if (!containerElement || !window.anime) return;"
         }
@@ -4265,13 +4324,13 @@
         },
         {
           "file": "modules/inputEnhancer.js",
-          "line": 847,
+          "line": 845,
           "surface": "shared-renderer",
           "snippet": "if (typeof window !== 'undefined' && window.chatVoiceComposer?.init) {"
         },
         {
           "file": "modules/inputEnhancer.js",
-          "line": 849,
+          "line": 847,
           "surface": "shared-renderer",
           "snippet": "window.chatVoiceComposer.init({"
         }
@@ -4642,25 +4701,25 @@
       "production": [
         {
           "file": "Forummodules/forum.js",
-          "line": 75,
+          "line": 98,
           "surface": "shared-renderer",
           "snippet": "if (window.emoticonManager && emoticonPanel) {"
         },
         {
           "file": "Forummodules/forum.js",
-          "line": 76,
+          "line": 99,
           "surface": "shared-renderer",
           "snippet": "await window.emoticonManager.initialize({ emoticonPanel });"
         },
         {
           "file": "Forummodules/forum.js",
-          "line": 1471,
+          "line": 1837,
           "surface": "shared-renderer",
           "snippet": "window.emoticonManager.togglePanel(replyEmoticonBtn, textInput);"
         },
         {
           "file": "Forummodules/forum.js",
-          "line": 1645,
+          "line": 2011,
           "surface": "shared-renderer",
           "snippet": "window.emoticonManager.togglePanel(createPostEmoticonBtn, postContentInput);"
         },
@@ -4689,6 +4748,19 @@
           "snippet": "window.emoticonManager.togglePanel(emoticonTriggerBtn);"
         }
       ],
+      "tests": []
+    },
+    "EXCALIDRAW_ASSET_PATH": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-board.js",
+          "line": 81,
+          "syntax": "dot-assignment",
+          "snippet": "window.EXCALIDRAW_ASSET_PATH = new URL('../vendor/excalidraw/', location.href).href; // 字体从本地加载，不访问官方 CDN"
+        }
+      ],
+      "production": [],
       "tests": []
     },
     "filterManager": {
@@ -4728,7 +4800,7 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 822,
+          "line": 832,
           "surface": "internal-app",
           "snippet": "filterManager: window.filterManager,"
         },
@@ -4770,7 +4842,7 @@
       "definitions": [
         {
           "file": "Flowlockmodules/flowlock.js",
-          "line": 870,
+          "line": 876,
           "syntax": "dot-assignment",
           "snippet": "window.flowlockManager = flowlockManager;"
         }
@@ -4796,133 +4868,133 @@
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 345,
+          "line": 227,
           "surface": "flowlock",
           "snippet": "await window.flowlockManager?.handleFinalizedMessage({"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 372,
+          "line": 254,
           "surface": "flowlock",
           "snippet": "if (!window.flowlockManager) return;"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 386,
+          "line": 268,
           "surface": "flowlock",
           "snippet": "if (window.flowlockManager.isAgentLocked(currentItem.id)) {"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 387,
+          "line": 269,
           "surface": "flowlock",
           "snippet": "await window.flowlockManager.stop(currentItem.id);"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 390,
+          "line": 272,
           "surface": "flowlock",
           "snippet": "await window.flowlockManager.start(currentItem.id, currentTopic, { startImmediately: false });"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 401,
+          "line": 283,
           "surface": "flowlock",
           "snippet": "if (!window.flowlockManager) return;"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 405,
+          "line": 287,
           "surface": "flowlock",
           "snippet": "if (window.flowlockManager.isAgentLocked(currentItem.id)) {"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 407,
+          "line": 289,
           "surface": "flowlock",
           "snippet": "await window.flowlockManager.stop(currentItem.id);"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 417,
+          "line": 299,
           "surface": "flowlock",
           "snippet": "await window.flowlockManager.start(currentItem.id, currentTopic, { startImmediately: true });"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 433,
+          "line": 315,
           "surface": "flowlock",
           "snippet": "if (!window.flowlockManager) return;"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 444,
+          "line": 326,
           "surface": "flowlock",
           "snippet": "if (window.flowlockManager.isAgentLocked(currentItem.id)) {"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 446,
+          "line": 328,
           "surface": "flowlock",
           "snippet": "await window.flowlockManager.stop(currentItem.id);"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 449,
+          "line": 331,
           "surface": "flowlock",
           "snippet": "await window.flowlockManager.start(currentItem.id, currentTopic, { startImmediately: true });"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 488,
+          "line": 370,
           "surface": "flowlock",
           "snippet": "if (window.flowlockManager) {"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 489,
+          "line": 371,
           "surface": "flowlock",
           "snippet": "window.flowlockManager.cleanup();"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 847,
+          "line": 830,
           "surface": "shared-renderer",
           "snippet": "window.flowlockManager?.syncCurrentHeaderIndicator?.();"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 871,
+          "line": 854,
           "surface": "shared-renderer",
           "snippet": "? window.flowlockManager?.getLockedTopicId?.(itemId)"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 985,
+          "line": 968,
           "surface": "shared-renderer",
           "snippet": "? window.flowlockManager?.getLockedTopicId?.(selectedItemForLock.id)"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2204,
+          "line": 2167,
           "surface": "shared-renderer",
           "snippet": "if (itemType === 'agent' && window.flowlockManager?.isAgentLocked?.(itemId)) {"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 2287,
+          "line": 2250,
           "surface": "shared-renderer",
           "snippet": "if (currentSelectedItem?.type === 'agent' && window.flowlockManager?.isAgentLocked?.(currentSelectedItem.id)) {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 489,
+          "line": 442,
           "surface": "main-window",
           "snippet": "if (window.flowlockManager?.isAgentLocked?.(currentSelectedItem?.id)) {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 1485,
+          "line": 1438,
           "surface": "main-window",
           "snippet": "if (window.flowlockManager?.isAgentLocked?.(refs.currentSelectedItem.get()?.id)) {"
         },
@@ -4991,37 +5063,37 @@
       "production": [
         {
           "file": "modules/event-listeners.js",
-          "line": 641,
+          "line": 594,
           "surface": "main-window",
           "snippet": "if (window.getDominantAvatarColor) {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 642,
+          "line": 595,
           "surface": "main-window",
           "snippet": "window.getDominantAvatarColor(previewUrl).then((avgColor) => {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 685,
+          "line": 638,
           "surface": "main-window",
           "snippet": "if (window.getDominantAvatarColor) {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 686,
+          "line": 639,
           "surface": "main-window",
           "snippet": "window.getDominantAvatarColor(userAvatarPreview.src).then((avgColor) => {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 869,
+          "line": 822,
           "surface": "main-window",
           "snippet": "if (window.getDominantAvatarColor) {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 870,
+          "line": 823,
           "surface": "main-window",
           "snippet": "window.getDominantAvatarColor(userAvatarPreview.src).then((avgColor) => {"
         },
@@ -5131,7 +5203,7 @@
       "definitions": [
         {
           "file": "modules/event-listeners.js",
-          "line": 409,
+          "line": 362,
           "syntax": "dot-assignment",
           "snippet": "window.handleContinueWriting = handleContinueWriting;"
         }
@@ -5164,7 +5236,7 @@
       "definitions": [
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 502,
+          "line": 384,
           "syntax": "dot-assignment",
           "snippet": "window.initializeFlowlockIntegration = initializeFlowlockIntegration;"
         }
@@ -5190,7 +5262,7 @@
       "definitions": [
         {
           "file": "modules/inputEnhancer.js",
-          "line": 1033,
+          "line": 1031,
           "syntax": "dot-assignment",
           "snippet": "window.inputEnhancer = {"
         }
@@ -5262,13 +5334,13 @@
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3943,
+          "line": 3992,
           "surface": "shared-renderer",
           "snippet": "const loadedItems = typeof window !== 'undefined' && window.itemListManager?.getLoadedItems"
         },
         {
           "file": "modules/messageRenderer.js",
-          "line": 3944,
+          "line": 3993,
           "surface": "shared-renderer",
           "snippet": "? window.itemListManager.getLoadedItems()"
         },
@@ -5420,67 +5492,67 @@
       "production": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 782,
+          "line": 792,
           "surface": "internal-app",
           "snippet": "releaseWindowState = window.MainChatCommands?.subscribeWindowState?.(syncWindowControl) || null;"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 811,
+          "line": 821,
           "surface": "internal-app",
           "snippet": "toggleTheme: () => window.MainChatCommands?.toggleTheme?.(),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 821,
+          "line": 831,
           "surface": "internal-app",
           "snippet": "commands: () => window.MainChatCommands,"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 850,
+          "line": 860,
           "surface": "internal-app",
           "snippet": "commands: () => window.MainChatCommands,"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 868,
+          "line": 878,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiThemeStoreBtn'), 'click', () => window.MainChatCommands?.openThemes?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 869,
+          "line": 879,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiThemeBtn'), 'click', () => window.MainChatCommands?.toggleTheme?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 870,
+          "line": 880,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiSettingsBtn'), 'click', () => window.MainChatCommands?.openSettings?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 871,
+          "line": 881,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiMinimizeToTrayBtn'), 'click', () => window.MainChatCommands?.minimizeToTray?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 872,
+          "line": 882,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiMinimizeBtn'), 'click', () => window.MainChatCommands?.minimize?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 873,
+          "line": 883,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiMaximizeBtn'), 'click', () => window.MainChatCommands?.toggleMaximize?.());"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 874,
+          "line": 884,
           "surface": "internal-app",
           "snippet": "listen(document.getElementById('nextUiCloseBtn'), 'click', () => window.MainChatCommands?.close?.());"
         }
@@ -5558,7 +5630,7 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 830,
+          "line": 840,
           "surface": "internal-app",
           "snippet": "getInternalApps: () => window.nextUiApps?.list?.() || [],"
         }
@@ -5845,19 +5917,19 @@
       "production": [
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 377,
+          "line": 429,
           "surface": "shared-renderer",
           "snippet": "if (window.pretextBridge && window.pretextBridge.isReady() && widgetData.contentBuffer && widgetId) {"
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 377,
+          "line": 429,
           "surface": "shared-renderer",
           "snippet": "if (window.pretextBridge && window.pretextBridge.isReady() && widgetData.contentBuffer && widgetId) {"
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 381,
+          "line": 433,
           "surface": "shared-renderer",
           "snippet": "const estimatedHeight = window.pretextBridge.estimateHeight(widgetId, plainText, 'widget', currentWidth);"
         },
@@ -6121,37 +6193,37 @@
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 2019,
+          "line": 2027,
           "surface": "shared-renderer",
           "snippet": "if (window.pretextBridge && window.pretextBridge.isReady()) {"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 2019,
+          "line": 2027,
           "surface": "shared-renderer",
           "snippet": "if (window.pretextBridge && window.pretextBridge.isReady()) {"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 2022,
+          "line": 2030,
           "surface": "shared-renderer",
           "snippet": "window.pretextBridge.estimateHeight(scopeId, originalRawContent, 'viewer', containerWidth);"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 2351,
+          "line": 2359,
           "surface": "shared-renderer",
           "snippet": "if (window.pretextBridge && window.pretextBridge.isReady() && scopeId) {"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 2351,
+          "line": 2359,
           "surface": "shared-renderer",
           "snippet": "if (window.pretextBridge && window.pretextBridge.isReady() && scopeId) {"
         },
         {
           "file": "modules/text-viewer.js",
-          "line": 2353,
+          "line": 2361,
           "surface": "shared-renderer",
           "snippet": "const updates = window.pretextBridge.recalculateAll(containerWidth);"
         },
@@ -6201,13 +6273,13 @@
       "production": [
         {
           "file": "ProjectForgemodules/projectforge-git.js",
-          "line": 705,
+          "line": 785,
           "surface": "shared-renderer",
           "snippet": "window.ProjectForgeSideTabs?.register('git', { onEnter: onEnterGitTab, onLeave: onLeaveGitTab });"
         },
         {
           "file": "ProjectForgemodules/projectforge-git.js",
-          "line": 713,
+          "line": 793,
           "surface": "shared-renderer",
           "snippet": "if (window.ProjectForgeSideTabs?.savedTab !== 'git') loadWorkspaces({ quiet: true });"
         },
@@ -6219,9 +6291,41 @@
         },
         {
           "file": "ProjectForgemodules/projectforge-source.js",
-          "line": 963,
+          "line": 969,
+          "surface": "shared-renderer",
+          "snippet": "window.ProjectForgeSideTabs.switchTo('source');"
+        },
+        {
+          "file": "ProjectForgemodules/projectforge-source.js",
+          "line": 990,
           "surface": "shared-renderer",
           "snippet": "window.ProjectForgeSideTabs?.register('source', { onEnter: onEnterSourceTab });"
+        }
+      ],
+      "tests": []
+    },
+    "ProjectForgeSource": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ProjectForgemodules/projectforge-source.js",
+          "line": 952,
+          "syntax": "dot-assignment",
+          "snippet": "window.ProjectForgeSource = Object.freeze({"
+        }
+      ],
+      "production": [
+        {
+          "file": "ProjectForgemodules/projectforge-git.js",
+          "line": 611,
+          "surface": "shared-renderer",
+          "snippet": "['open', '跳转到文件', deleted || !sourcePath || !window.ProjectForgeSource],"
+        },
+        {
+          "file": "ProjectForgemodules/projectforge-git.js",
+          "line": 624,
+          "surface": "shared-renderer",
+          "snippet": "if (action === 'open') await window.ProjectForgeSource.open(workspaceId, sourcePath);"
         }
       ],
       "tests": []
@@ -6319,7 +6423,7 @@
       "definitions": [
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 842,
+          "line": 905,
           "syntax": "dot-assignment",
           "snippet": "window.ScriptoriumAgent = agentPort;"
         }
@@ -6359,9 +6463,69 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 816,
+          "line": 879,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumAgentPort.createAgentController({"
+        }
+      ],
+      "tests": []
+    },
+    "ScriptoriumBoardHtml": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-board-html.js",
+          "line": 110,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumBoardHtml = Object.freeze({ create });"
+        }
+      ],
+      "production": [
+        {
+          "file": "ScriptoriumModules/scriptorium-board.js",
+          "line": 55,
+          "surface": "shared-renderer",
+          "snippet": "const htmlLayer = window.ScriptoriumBoardHtml.create({ stage, model: Model, onEdit: (id) => void editHtmlDialog(id) });"
+        }
+      ],
+      "tests": []
+    },
+    "ScriptoriumBoardLineage": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-board-lineage.js",
+          "line": 177,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumBoardLineage = Object.freeze({ create });"
+        }
+      ],
+      "production": [
+        {
+          "file": "ScriptoriumModules/scriptorium-board.js",
+          "line": 61,
+          "surface": "shared-renderer",
+          "snippet": "const lineage = window.ScriptoriumBoardLineage.create({"
+        }
+      ],
+      "tests": []
+    },
+    "ScriptoriumBoardView": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-board.js",
+          "line": 904,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumBoardView = view;"
+        }
+      ],
+      "production": [
+        {
+          "file": "ScriptoriumModules/scriptorium-file-agent.js",
+          "line": 71,
+          "surface": "shared-renderer",
+          "snippet": "if (method === 'createBoard') return { success: true, ...await window.ScriptoriumBoardView.createArtifact(payload) };"
         }
       ],
       "tests": []
@@ -6385,7 +6549,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 309,
+          "line": 327,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumDeckAdapter.createDeckAdapter({"
         }
@@ -6411,7 +6575,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 370,
+          "line": 388,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumDeckEditor.createDeckEditor({"
         }
@@ -6437,7 +6601,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 434,
+          "line": 452,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumDeckExport.createDeckExporter({"
         }
@@ -6463,7 +6627,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 407,
+          "line": 425,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumDeckRenderer.createDeckRenderer({"
         }
@@ -6475,7 +6639,7 @@
       "definitions": [
         {
           "file": "ScriptoriumModules/scriptorium-document-store.js",
-          "line": 307,
+          "line": 308,
           "syntax": "dot-assignment",
           "snippet": "window.ScriptoriumDocumentStore = Object.freeze({"
         }
@@ -6489,7 +6653,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 112,
+          "line": 128,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumDocumentStore.createDocumentStore({"
         }
@@ -6515,13 +6679,13 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 332,
+          "line": 350,
           "surface": "shared-renderer",
           "snippet": "selectionPrimitives: window.ScriptoriumDomSelection,"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 373,
+          "line": 391,
           "surface": "shared-renderer",
           "snippet": "selectionPrimitives: window.ScriptoriumDomSelection,"
         }
@@ -6547,7 +6711,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 218,
+          "line": 234,
           "surface": "shared-renderer",
           "snippet": "const historyPort = window.ScriptoriumEditHistory.createEditHistory({"
         }
@@ -6573,7 +6737,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 662,
+          "line": 725,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumExport.createExportController({"
         }
@@ -6593,9 +6757,165 @@
       "production": [
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 666,
+          "line": 729,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumExportResources,"
+        }
+      ],
+      "tests": []
+    },
+    "ScriptoriumFileAgent": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-file-agent.js",
+          "line": 97,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumFileAgent = Object.freeze({ answer });"
+        }
+      ],
+      "production": [
+        {
+          "file": "ScriptoriumModules/scriptorium.js",
+          "line": 987,
+          "surface": "shared-renderer",
+          "snippet": "const fileAnswer = await window.ScriptoriumFileAgent?.answer(request);"
+        }
+      ],
+      "tests": []
+    },
+    "ScriptoriumFileSession": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium.js",
+          "line": 550,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumFileSession = Object.freeze({"
+        }
+      ],
+      "production": [
+        {
+          "file": "ScriptoriumModules/scriptorium-board.js",
+          "line": 14,
+          "surface": "shared-renderer",
+          "snippet": "const session = () => window.ScriptoriumFileSession;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-file-views.js",
+          "line": 13,
+          "surface": "shared-renderer",
+          "snippet": "const session = () => window.ScriptoriumFileSession || null;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-image-view.js",
+          "line": 11,
+          "surface": "shared-renderer",
+          "snippet": "const session = () => window.ScriptoriumFileSession;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-markdown-file.js",
+          "line": 14,
+          "surface": "shared-renderer",
+          "snippet": "const session = () => window.ScriptoriumFileSession;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-pdf-view.js",
+          "line": 20,
+          "surface": "shared-renderer",
+          "snippet": "const session = () => window.ScriptoriumFileSession;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-table-view.js",
+          "line": 15,
+          "surface": "shared-renderer",
+          "snippet": "const session = () => window.ScriptoriumFileSession;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-text-view.js",
+          "line": 12,
+          "surface": "shared-renderer",
+          "snippet": "const session = () => window.ScriptoriumFileSession;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-web-page.js",
+          "line": 12,
+          "surface": "shared-renderer",
+          "snippet": "const session = () => window.ScriptoriumFileSession;"
+        }
+      ],
+      "tests": []
+    },
+    "ScriptoriumFileViews": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-file-views.js",
+          "line": 186,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumFileViews = UI;"
+        }
+      ],
+      "production": [
+        {
+          "file": "ScriptoriumModules/scriptorium-board.js",
+          "line": 8,
+          "surface": "shared-renderer",
+          "snippet": "const UI = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-file-agent.js",
+          "line": 9,
+          "surface": "shared-renderer",
+          "snippet": "const UI = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-image-view.js",
+          "line": 6,
+          "surface": "shared-renderer",
+          "snippet": "const UI = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-markdown-file.js",
+          "line": 10,
+          "surface": "shared-renderer",
+          "snippet": "const UI = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-pdf-view.js",
+          "line": 16,
+          "surface": "shared-renderer",
+          "snippet": "const UI = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-table-view.js",
+          "line": 11,
+          "surface": "shared-renderer",
+          "snippet": "const UI = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-text-view.js",
+          "line": 7,
+          "surface": "shared-renderer",
+          "snippet": "const UI = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium-web-page.js",
+          "line": 8,
+          "surface": "shared-renderer",
+          "snippet": "const UI = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium.js",
+          "line": 65,
+          "surface": "shared-renderer",
+          "snippet": "const views = window.ScriptoriumFileViews;"
+        },
+        {
+          "file": "ScriptoriumModules/scriptorium.js",
+          "line": 542,
+          "surface": "shared-renderer",
+          "snippet": "const routed = await window.ScriptoriumFileViews?.routeOverlay(args[0]);"
         }
       ],
       "tests": []
@@ -6619,7 +6939,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 686,
+          "line": 749,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumFind.createFindController({"
         }
@@ -6645,7 +6965,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 300,
+          "line": 318,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumFlowAdapter.createFlowAdapter({"
         }
@@ -6671,7 +6991,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 329,
+          "line": 347,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumFlowEditor.createFlowEditor({"
         }
@@ -6697,7 +7017,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 427,
+          "line": 445,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumFlowExport.createFlowExporter({"
         }
@@ -6723,7 +7043,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 394,
+          "line": 412,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumFlowRenderer.createFlowRenderer({"
         }
@@ -6749,11 +7069,24 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 714,
+          "line": 777,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumFormatting.createFormattingController({"
         }
       ],
+      "tests": []
+    },
+    "ScriptoriumImageView": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-image-view.js",
+          "line": 167,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumImageView = view;"
+        }
+      ],
+      "production": [],
       "tests": []
     },
     "ScriptoriumLineageStore": {
@@ -6775,7 +7108,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 230,
+          "line": 246,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumLineageStore.createLineageStore({"
         }
@@ -6801,9 +7134,29 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 789,
+          "line": 852,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumLineageUi.createLineageUiController({"
+        }
+      ],
+      "tests": []
+    },
+    "ScriptoriumMarkdownFile": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-markdown-file.js",
+          "line": 50,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumMarkdownFile = Object.freeze({"
+        }
+      ],
+      "production": [
+        {
+          "file": "ScriptoriumModules/scriptorium.js",
+          "line": 313,
+          "surface": "shared-renderer",
+          "snippet": "resourceResolver: () => window.ScriptoriumMarkdownFile?.resolver?.(documentPort.resourceResolver())"
         }
       ],
       "tests": []
@@ -6827,7 +7180,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 676,
+          "line": 739,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumMedia.createMediaController({"
         }
@@ -6853,19 +7206,19 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 693,
+          "line": 756,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumNavigation"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 696,
+          "line": 759,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumNavigation"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 703,
+          "line": 766,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumNavigation.createNavigationController({"
         }
@@ -6891,7 +7244,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 612,
+          "line": 675,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumNetworkFonts.createNetworkFontController({"
         }
@@ -6911,25 +7264,25 @@
       "production": [
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 482,
+          "line": 500,
           "surface": "shared-renderer",
           "snippet": "const result = window.ScriptoriumObjects.applyMutationToSource("
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 499,
+          "line": 517,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumObjects.normalizeObjectNode("
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 845,
+          "line": 908,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumObjects.createObjectController({"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 865,
+          "line": 928,
           "surface": "shared-renderer",
           "snippet": "objects: window.ScriptoriumObjects,"
         },
@@ -6940,6 +7293,19 @@
           "snippet": "const sanitizer = window.ScriptoriumObjects?.sanitizeSvgSource;"
         }
       ],
+      "tests": []
+    },
+    "ScriptoriumPdfView": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-pdf-view.js",
+          "line": 2158,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumPdfView = view;"
+        }
+      ],
+      "production": [],
       "tests": []
     },
     "ScriptoriumPrDiff": {
@@ -6961,13 +7327,13 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 780,
+          "line": 843,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumPrDiff.createPrDiffController({"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 825,
+          "line": 888,
           "surface": "shared-renderer",
           "snippet": "prDiff: window.ScriptoriumPrDiff,"
         }
@@ -7018,7 +7384,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 824,
+          "line": 887,
           "surface": "shared-renderer",
           "snippet": "programmableContent: window.ScriptoriumProgrammableContent,"
         }
@@ -7044,7 +7410,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 599,
+          "line": 662,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumRenderCoordinator.createRenderCoordinator({"
         }
@@ -7070,7 +7436,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 236,
+          "line": 252,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumRenderedText.createRenderedTextController({"
         }
@@ -7096,7 +7462,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 291,
+          "line": 307,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumRenderPrimitives.createRenderPrimitives({"
         }
@@ -7128,7 +7494,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 245,
+          "line": 261,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumRuntime.createRuntimeController({"
         }
@@ -7154,7 +7520,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 757,
+          "line": 820,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumSession.createSessionController({"
         }
@@ -7180,7 +7546,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 109,
+          "line": 125,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumSettings.createSettingsStore();"
         }
@@ -7206,7 +7572,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 561,
+          "line": 624,
           "surface": "shared-renderer",
           "snippet": "shell = window.ScriptoriumShell.createShell({"
         }
@@ -7232,13 +7598,13 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 621,
+          "line": 684,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumSourceEditor.createSourceEditorController({"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 648,
+          "line": 711,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumSourceEditor.createSourceEditorController({"
         }
@@ -7264,7 +7630,7 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 722,
+          "line": 785,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumStyleUi.createStyleUiController({"
         }
@@ -7290,11 +7656,37 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 862,
+          "line": 925,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumSvgAssets.createSvgAssetController({"
         }
       ],
+      "tests": []
+    },
+    "ScriptoriumTableView": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-table-view.js",
+          "line": 825,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumTableView = viewApi;"
+        }
+      ],
+      "production": [],
+      "tests": []
+    },
+    "ScriptoriumTextView": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-text-view.js",
+          "line": 290,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumTextView = view;"
+        }
+      ],
+      "production": [],
       "tests": []
     },
     "ScriptoriumVisibility": {
@@ -7346,27 +7738,47 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 253,
+          "line": 269,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumVisibility.pause(surface);"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 258,
+          "line": 274,
           "surface": "shared-renderer",
           "snippet": "window.ScriptoriumVisibility.resume(surface);"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 264,
+          "line": 280,
           "surface": "shared-renderer",
           "snippet": "&& window.ScriptoriumVisibility.isPaused(surface)"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 270,
+          "line": 286,
           "surface": "shared-renderer",
           "snippet": "const observer = window.ScriptoriumVisibility.observePages("
+        }
+      ],
+      "tests": []
+    },
+    "ScriptoriumWebPage": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "ScriptoriumModules/scriptorium-web-page.js",
+          "line": 373,
+          "syntax": "dot-assignment",
+          "snippet": "window.ScriptoriumWebPage = view;"
+        }
+      ],
+      "production": [
+        {
+          "file": "ScriptoriumModules/scriptorium-markdown-file.js",
+          "line": 137,
+          "surface": "shared-renderer",
+          "snippet": "const page = window.ScriptoriumWebPage;"
         }
       ],
       "tests": []
@@ -7613,6 +8025,19 @@
       ],
       "tests": []
     },
+    "SillyTavern": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "Gamemodules/srpg/ui.js",
+          "line": 104,
+          "syntax": "dot-assignment",
+          "snippet": "window.SillyTavern = {"
+        }
+      ],
+      "production": [],
+      "tests": []
+    },
     "startRecognition": {
       "classification": "legacy-or-feature-local-ambient",
       "definitions": [
@@ -7789,7 +8214,7 @@
       "definitions": [
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 780,
+          "line": 839,
           "syntax": "dot-assignment",
           "snippet": "window.TavernManager = TavernManager;"
         }
@@ -7797,19 +8222,19 @@
       "production": [
         {
           "file": "modules/event-listeners.js",
-          "line": 466,
+          "line": 419,
           "surface": "main-window",
           "snippet": "if (window.TavernManager && typeof window.TavernManager.togglePopover === 'function') {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 466,
+          "line": 419,
           "surface": "main-window",
           "snippet": "if (window.TavernManager && typeof window.TavernManager.togglePopover === 'function') {"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 467,
+          "line": 420,
           "surface": "main-window",
           "snippet": "window.TavernManager.togglePopover(sendMessageBtn);"
         },
@@ -7834,6 +8259,19 @@
       ],
       "tests": []
     },
+    "TavernSRPG": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "Gamemodules/srpg/ui.js",
+          "line": 110,
+          "syntax": "dot-assignment",
+          "snippet": "window.TavernSRPG = app;"
+        }
+      ],
+      "production": [],
+      "tests": []
+    },
     "testConnectionEvent": {
       "classification": "legacy-or-feature-local-ambient",
       "definitions": [
@@ -7842,6 +8280,19 @@
           "line": 44,
           "syntax": "dot-assignment",
           "snippet": "window.testConnectionEvent = () => {"
+        }
+      ],
+      "production": [],
+      "tests": []
+    },
+    "toastr": {
+      "classification": "legacy-or-feature-local-ambient",
+      "definitions": [
+        {
+          "file": "Gamemodules/srpg/ui.js",
+          "line": 23,
+          "syntax": "dot-assignment",
+          "snippet": "window.toastr = {"
         }
       ],
       "production": [],
@@ -8234,19 +8685,19 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 829,
+          "line": 839,
           "surface": "internal-app",
           "snippet": "getExternalApps: () => window.trayManager?.getApps?.() || [],"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 831,
+          "line": 841,
           "surface": "internal-app",
           "snippet": "getIcon: icon => window.trayManager?.getIcon?.(icon) || '',"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 832,
+          "line": 842,
           "surface": "internal-app",
           "snippet": "openExternal: app => window.trayManager?.launchApp?.(app),"
         },
@@ -8297,37 +8748,37 @@
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 379,
+          "line": 261,
           "surface": "flowlock",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 380,
+          "line": 262,
           "surface": "flowlock",
           "snippet": "window.uiHelperFunctions.showToastNotification('请先选择一个Agent和话题', 'warning');"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 410,
+          "line": 292,
           "surface": "flowlock",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 411,
+          "line": 293,
           "surface": "flowlock",
           "snippet": "window.uiHelperFunctions.showToastNotification('请先选择一个Agent和话题', 'warning');"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 438,
+          "line": 320,
           "surface": "flowlock",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "Flowlockmodules/flowlock-integration.js",
-          "line": 439,
+          "line": 321,
           "surface": "flowlock",
           "snippet": "window.uiHelperFunctions.showToastNotification('请先选择一个Agent和话题', 'warning');"
         },
@@ -8357,91 +8808,91 @@
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 361,
+          "line": 395,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions?.showToastNotification?.(error.message, 'error');"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 390,
+          "line": 449,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 391,
+          "line": 450,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions.showToastNotification("
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 553,
+          "line": 612,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 554,
+          "line": 613,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions.showToastNotification('顺序已更新并保存', 'success');"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 558,
+          "line": 617,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 559,
+          "line": 618,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions.showToastNotification(`保存顺序失败: ${result?.error || '未知错误'}`, 'error');"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 724,
+          "line": 783,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 725,
+          "line": 784,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions.showToastNotification('规则已保存', 'success');"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 730,
+          "line": 789,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.showToastNotification) {"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 731,
+          "line": 790,
           "surface": "shared-renderer",
           "snippet": "window.uiHelperFunctions.showToastNotification(`保存失败: ${result?.error || '未知错误'}`, 'error');"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 740,
+          "line": 799,
           "surface": "shared-renderer",
           "snippet": "const confirmFn = (window.uiHelperFunctions && typeof window.uiHelperFunctions.showConfirmDialog === 'function')"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 740,
+          "line": 799,
           "surface": "shared-renderer",
           "snippet": "const confirmFn = (window.uiHelperFunctions && typeof window.uiHelperFunctions.showConfirmDialog === 'function')"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 741,
+          "line": 800,
           "surface": "shared-renderer",
           "snippet": "? window.uiHelperFunctions.showConfirmDialog.bind(window.uiHelperFunctions)"
         },
         {
           "file": "Tavernmodules/tavern-manager.js",
-          "line": 741,
+          "line": 800,
           "surface": "shared-renderer",
           "snippet": "? window.uiHelperFunctions.showConfirmDialog.bind(window.uiHelperFunctions)"
         },
@@ -8495,25 +8946,25 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 415,
+          "line": 398,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.getCompiledRegex) {"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 416,
+          "line": 399,
           "surface": "shared-renderer",
           "snippet": "const compiled = window.uiHelperFunctions.getCompiledRegex(rule.findPattern);"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 420,
+          "line": 403,
           "surface": "shared-renderer",
           "snippet": "if (window.uiHelperFunctions?.regexFromString) {"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 421,
+          "line": 404,
           "surface": "shared-renderer",
           "snippet": "return window.uiHelperFunctions.regexFromString(rule.findPattern);"
         },
@@ -8627,37 +9078,37 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 776,
+          "line": 786,
           "surface": "internal-app",
           "snippet": "if (typeof window.uiHelperFunctions?.closeModal !== 'function') return false;"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 777,
+          "line": 787,
           "surface": "internal-app",
           "snippet": "window.uiHelperFunctions.closeModal('globalSettingsModal');"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 799,
+          "line": 809,
           "surface": "internal-app",
           "snippet": "filter: value => window.uiHelperFunctions?.filterAgentList?.(value),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 807,
+          "line": 817,
           "surface": "internal-app",
           "snippet": "openSettings: () => window.uiHelperFunctions?.openModal?.('globalSettingsModal'),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 823,
+          "line": 833,
           "surface": "internal-app",
           "snippet": "showToast: (message, variant) => window.uiHelperFunctions?.showToastNotification?.(message, variant),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 854,
+          "line": 864,
           "surface": "internal-app",
           "snippet": "showUnavailable: message => window.uiHelperFunctions?.showToastNotification?.("
         },
@@ -8876,7 +9327,7 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 814,
+          "line": 824,
           "surface": "internal-app",
           "snippet": "subscribeTheme: (listener, options) => window.uiManager?.subscribeTheme?.(listener, options),"
         },
@@ -9103,19 +9554,19 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 808,
+          "line": 818,
           "surface": "internal-app",
           "snippet": "openAppearance: trigger => window.VCPAppearanceStudio?.open?.({ trigger }),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 810,
+          "line": 820,
           "surface": "internal-app",
           "snippet": "setThemeMode: mode => window.VCPAppearanceStudio?.setThemeMode?.(mode, { source: 'account-menu' }),"
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 812,
+          "line": 822,
           "surface": "internal-app",
           "snippet": "syncAppearance: () => window.VCPAppearanceStudio?.syncAccountMenuValue?.(),"
         },
@@ -9209,31 +9660,31 @@
         },
         {
           "file": "modules/chatManager.js",
-          "line": 728,
+          "line": 711,
           "surface": "shared-renderer",
           "snippet": "if (window.vcpChatHeader) window.vcpChatHeader.clear('选择一个 Agent 或群组开始聊天');"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 728,
+          "line": 711,
           "surface": "shared-renderer",
           "snippet": "if (window.vcpChatHeader) window.vcpChatHeader.clear('选择一个 Agent 或群组开始聊天');"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 840,
+          "line": 823,
           "surface": "shared-renderer",
           "snippet": "if (window.vcpChatHeader) window.vcpChatHeader.setTitle({ classic: classicTitle, capsule: `${itemName}${itemTypeLabel}` });"
         },
         {
           "file": "modules/chatManager.js",
-          "line": 840,
+          "line": 823,
           "surface": "shared-renderer",
           "snippet": "if (window.vcpChatHeader) window.vcpChatHeader.setTitle({ classic: classicTitle, capsule: `${itemName}${itemTypeLabel}` });"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 930,
+          "line": 883,
           "surface": "main-window",
           "snippet": "if (!window.vcpChatHeader?.isCapsule?.()) return;"
         },
@@ -9343,13 +9794,13 @@
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 464,
+          "line": 476,
           "syntax": "dot-assignment",
           "snippet": "window.VCPDesktop = window.VCPDesktop || {};"
         },
         {
           "file": "Desktopmodules/api/vcpProxy.js",
-          "line": 184,
+          "line": 193,
           "syntax": "dot-assignment",
           "snippet": "window.VCPDesktop = window.VCPDesktop || {};"
         },
@@ -9451,7 +9902,7 @@
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 833,
+          "line": 906,
           "syntax": "dot-assignment",
           "snippet": "window.VCPDesktop = window.VCPDesktop || {};"
         },
@@ -9469,7 +9920,7 @@
         },
         {
           "file": "Desktopmodules/favorites/favoritesManager.js",
-          "line": 202,
+          "line": 207,
           "syntax": "dot-assignment",
           "snippet": "window.VCPDesktop = window.VCPDesktop || {};"
         },
@@ -9615,97 +10066,97 @@
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 326,
+          "line": 336,
           "surface": "shared-renderer",
           "snippet": "if (widgetData.savedId === savedId && window.VCPDesktop?.favorites?.refresh) {"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 327,
+          "line": 337,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.favorites.refresh(widgetId);"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 332,
+          "line": 342,
           "surface": "shared-renderer",
           "snippet": "if (window.VCPDesktop.status) {"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 337,
+          "line": 347,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.status.update('connected', message);"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 338,
+          "line": 348,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.status.show();"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 339,
+          "line": 349,
           "surface": "shared-renderer",
           "snippet": "setTimeout(() => window.VCPDesktop.status.hide(), 3000);"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 361,
+          "line": 371,
           "surface": "shared-renderer",
           "snippet": "if (window.VCPDesktop.wallpaper) {"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 362,
+          "line": 372,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.wallpaper.apply(wallpaperConfig);"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 365,
+          "line": 375,
           "surface": "shared-renderer",
           "snippet": "if (window.VCPDesktop.globalSettings?.save) {"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 366,
+          "line": 376,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.globalSettings.save();"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 419,
+          "line": 429,
           "surface": "shared-renderer",
           "snippet": "if (window.VCPDesktop?.sidebar?.refresh) {"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 420,
+          "line": 430,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.sidebar.refresh();"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 421,
+          "line": 431,
           "surface": "shared-renderer",
           "snippet": "} else if (window.VCPDesktop?.favorites?.loadList) {"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 422,
+          "line": 432,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.favorites.loadList();"
         },
         {
           "file": "Desktopmodules/api/ipcBridge.js",
-          "line": 465,
+          "line": 477,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.ipc = {"
         },
         {
           "file": "Desktopmodules/api/vcpProxy.js",
-          "line": 185,
+          "line": 194,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.vcpApi = {"
         },
@@ -10251,37 +10702,37 @@
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 150,
+          "line": 177,
           "surface": "shared-renderer",
           "snippet": "if (window.VCPDesktop.contextMenu) {"
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 151,
+          "line": 178,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.contextMenu.show(e.clientX, e.clientY, widgetId);"
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 655,
+          "line": 707,
           "surface": "shared-renderer",
           "snippet": "var _wd = window.VCPDesktop.state.widgets.get('${widgetId}');"
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 670,
+          "line": 722,
           "surface": "shared-renderer",
           "snippet": "var _wd = window.VCPDesktop.state.widgets.get('${widgetId}');"
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 682,
+          "line": 734,
           "surface": "shared-renderer",
           "snippet": "var _wd = window.VCPDesktop.state.widgets.get('${widgetId}');"
         },
         {
           "file": "Desktopmodules/core/widgetManager.js",
-          "line": 834,
+          "line": 907,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.widget = {"
         },
@@ -10527,7 +10978,7 @@
         },
         {
           "file": "Desktopmodules/favorites/favoritesManager.js",
-          "line": 203,
+          "line": 208,
           "surface": "shared-renderer",
           "snippet": "window.VCPDesktop.favorites = {"
         },
@@ -11581,7 +12032,7 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 813,
+          "line": 823,
           "surface": "internal-app",
           "snippet": "setIcon: (element, icon) => window.VCPIcons?.set?.(element, icon),"
         },
@@ -11649,19 +12100,19 @@
         },
         {
           "file": "Flowlockmodules/flowlock.js",
-          "line": 760,
+          "line": 766,
           "surface": "flowlock",
           "snippet": "const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;"
         },
         {
           "file": "Flowlockmodules/flowlock.js",
-          "line": 776,
+          "line": 782,
           "surface": "flowlock",
           "snippet": "const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;"
         },
         {
           "file": "Flowlockmodules/flowlock.js",
-          "line": 792,
+          "line": 798,
           "surface": "flowlock",
           "snippet": "const currentItem = window.VCPMainChatState?.snapshot?.()?.selectedItem;"
         },
@@ -11679,7 +12130,7 @@
       "definitions": [
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 981,
+          "line": 991,
           "syntax": "dot-assignment",
           "snippet": "window.VCPNextShellController = Object.freeze({"
         }
@@ -11798,7 +12249,7 @@
         },
         {
           "file": "modules/ui-system/next-shell/next-shell-controller.js",
-          "line": 848,
+          "line": 858,
           "surface": "internal-app",
           "snippet": "getUi: () => window.VCPUI,"
         },
@@ -11836,19 +12287,19 @@
       "production": [
         {
           "file": "modules/event-listeners.js",
-          "line": 564,
+          "line": 517,
           "surface": "main-window",
           "snippet": "if (window.VCPUISettingsBridge?.addNetworkPathInput?.()) return;"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 737,
+          "line": 690,
           "surface": "main-window",
           "snippet": "if (window.VCPUISettingsBridge?.getRustAssistantService?.()) return;"
         },
         {
           "file": "modules/event-listeners.js",
-          "line": 766,
+          "line": 719,
           "surface": "main-window",
           "snippet": "if (window.VCPUISettingsBridge?.getRustAssistantService?.()) return;"
         },
@@ -12076,7 +12527,7 @@
       "definitions": [
         {
           "file": "ScriptoriumModules/vdoc-core.js",
-          "line": 657,
+          "line": 661,
           "syntax": "dot-assignment",
           "snippet": "window.VDocCore = Object.freeze({"
         }
@@ -12156,19 +12607,19 @@
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 823,
+          "line": 886,
           "surface": "shared-renderer",
           "snippet": "svgAssetLibrary: window.VDocSvgAssetLibrary,"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 839,
+          "line": 902,
           "surface": "shared-renderer",
           "snippet": "window.VDocSvgAssetLibrary.exportUserPacks()"
         },
         {
           "file": "ScriptoriumModules/scriptorium.js",
-          "line": 864,
+          "line": 927,
           "surface": "shared-renderer",
           "snippet": "library: window.VDocSvgAssetLibrary,"
         }
@@ -13559,52 +14010,12 @@
       "listeners": 18,
       "mutableMaps": 1
     },
-    "AppData/DesktopWidgets/fav_1774097780990_zmjekv/widget.html": {
-      "windowReferences": 0,
-      "documentReferences": 4,
-      "electronReferences": 0,
-      "timers": 1,
-      "listeners": 0,
-      "mutableMaps": 0
-    },
-    "AppData/DesktopWidgets/fav_1774100012124_6i7gmw/widget.html": {
-      "windowReferences": 0,
-      "documentReferences": 2,
-      "electronReferences": 0,
-      "timers": 1,
-      "listeners": 0,
-      "mutableMaps": 0
-    },
-    "AppData/DesktopWidgets/fav_1774141828170_n6x2ed/widget.html": {
-      "windowReferences": 0,
-      "documentReferences": 10,
-      "electronReferences": 0,
-      "timers": 5,
-      "listeners": 4,
-      "mutableMaps": 0
-    },
-    "AppData/LoomApps/bing-mobile-native-clean/inject.js": {
-      "windowReferences": 3,
-      "documentReferences": 14,
-      "electronReferences": 0,
-      "timers": 5,
-      "listeners": 1,
-      "mutableMaps": 0
-    },
     "AppData/LoomApps/example-mobile/inject.js": {
       "windowReferences": 0,
       "documentReferences": 37,
       "electronReferences": 0,
       "timers": 1,
       "listeners": 1,
-      "mutableMaps": 0
-    },
-    "AppData/LoomApps/taobao-mobile-clean/inject.js": {
-      "windowReferences": 0,
-      "documentReferences": 0,
-      "electronReferences": 0,
-      "timers": 0,
-      "listeners": 0,
       "mutableMaps": 0
     },
     "Canvasmodules/canvas.html": {
@@ -14376,8 +14787,8 @@
       "mutableMaps": 0
     },
     "Desktopmodules/core/widgetManager.js": {
-      "windowReferences": 30,
-      "documentReferences": 16,
+      "windowReferences": 31,
+      "documentReferences": 18,
       "electronReferences": 1,
       "timers": 14,
       "listeners": 7,
@@ -14512,9 +14923,9 @@
       "mutableMaps": 1
     },
     "Flowlockmodules/flowlock-integration.js": {
-      "windowReferences": 35,
-      "documentReferences": 2,
-      "electronReferences": 5,
+      "windowReferences": 34,
+      "documentReferences": 3,
+      "electronReferences": 6,
       "timers": 0,
       "listeners": 4,
       "mutableMaps": 0
@@ -14536,7 +14947,7 @@
       "mutableMaps": 2
     },
     "Forummodules/forum.html": {
-      "windowReferences": 0,
+      "windowReferences": 1,
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 0,
@@ -14545,11 +14956,11 @@
     },
     "Forummodules/forum.js": {
       "windowReferences": 14,
-      "documentReferences": 71,
+      "documentReferences": 82,
       "electronReferences": 1,
       "timers": 6,
-      "listeners": 39,
-      "mutableMaps": 4
+      "listeners": 43,
+      "mutableMaps": 5
     },
     "Gamemodules/doudizhu/index.html": {
       "windowReferences": 0,
@@ -14561,11 +14972,11 @@
     },
     "Gamemodules/doudizhu/ui.js": {
       "windowReferences": 2,
-      "documentReferences": 8,
+      "documentReferences": 29,
       "electronReferences": 0,
       "timers": 1,
       "listeners": 3,
-      "mutableMaps": 0
+      "mutableMaps": 1
     },
     "Gamemodules/forge-tax/audio.js": {
       "windowReferences": 0,
@@ -14612,6 +15023,246 @@
       "documentReferences": 26,
       "electronReferences": 1,
       "timers": 0,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/index.html": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/ai-api.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/commander.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
+    "Gamemodules/srpg/src/commands.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Gamemodules/srpg/src/context.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Gamemodules/srpg/src/defaults.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/designer.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Gamemodules/srpg/src/engine.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 6
+    },
+    "Gamemodules/srpg/src/exchange.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/history.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/llm.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/manual.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/narrator.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/profiles.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/st.js": {
+      "windowReferences": 1,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "Gamemodules/srpg/src/story.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/ui/action-process.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/ui/battle.js": {
+      "windowReferences": 0,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 4
+    },
+    "Gamemodules/srpg/src/ui/chat-messages.js": {
+      "windowReferences": 0,
+      "documentReferences": 6,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/ui/designer-tab.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 2,
+      "mutableMaps": 3
+    },
+    "Gamemodules/srpg/src/ui/dom.js": {
+      "windowReferences": 1,
+      "documentReferences": 3,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 4,
+      "mutableMaps": 1
+    },
+    "Gamemodules/srpg/src/ui/editors.js": {
+      "windowReferences": 1,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 1,
+      "mutableMaps": 4
+    },
+    "Gamemodules/srpg/src/ui/files.js": {
+      "windowReferences": 0,
+      "documentReferences": 1,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 1,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/ui/llm-flow.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 3
+    },
+    "Gamemodules/srpg/src/ui/panel.js": {
+      "windowReferences": 25,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 8,
+      "mutableMaps": 1
+    },
+    "Gamemodules/srpg/src/ui/profiles-tab.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/ui/settings.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/ui/story-flow.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/src/unit-lore.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "Gamemodules/srpg/ui.js": {
+      "windowReferences": 4,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 2,
       "listeners": 3,
       "mutableMaps": 0
     },
@@ -15240,11 +15891,11 @@
       "mutableMaps": 2
     },
     "ProjectForgemodules/projectforge-git.js": {
-      "windowReferences": 6,
-      "documentReferences": 6,
+      "windowReferences": 12,
+      "documentReferences": 13,
       "electronReferences": 0,
       "timers": 1,
-      "listeners": 13,
+      "listeners": 21,
       "mutableMaps": 1
     },
     "ProjectForgemodules/projectforge-sidetabs.js": {
@@ -15256,10 +15907,10 @@
       "mutableMaps": 1
     },
     "ProjectForgemodules/projectforge-source.js": {
-      "windowReferences": 4,
+      "windowReferences": 6,
       "documentReferences": 5,
       "electronReferences": 0,
-      "timers": 4,
+      "timers": 5,
       "listeners": 19,
       "mutableMaps": 1
     },
@@ -15273,10 +15924,10 @@
     },
     "ProjectForgemodules/projectforge.js": {
       "windowReferences": 7,
-      "documentReferences": 13,
+      "documentReferences": 15,
       "electronReferences": 1,
-      "timers": 3,
-      "listeners": 24,
+      "timers": 4,
+      "listeners": 26,
       "mutableMaps": 0
     },
     "Promptmodules/modular-prompt-module.js": {
@@ -15367,6 +16018,38 @@
       "listeners": 0,
       "mutableMaps": 2
     },
+    "ScriptoriumModules/scriptorium-board-html.js": {
+      "windowReferences": 6,
+      "documentReferences": 5,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 4,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-board-lineage.js": {
+      "windowReferences": 2,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 3,
+      "mutableMaps": 1
+    },
+    "ScriptoriumModules/scriptorium-board-model.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-board.js": {
+      "windowReferences": 11,
+      "documentReferences": 26,
+      "electronReferences": 0,
+      "timers": 6,
+      "listeners": 5,
+      "mutableMaps": 14
+    },
     "ScriptoriumModules/scriptorium-deck-adapter.js": {
       "windowReferences": 1,
       "documentReferences": 4,
@@ -15439,6 +16122,22 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "ScriptoriumModules/scriptorium-file-agent.js": {
+      "windowReferences": 4,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-file-views.js": {
+      "windowReferences": 8,
+      "documentReferences": 29,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 14,
+      "mutableMaps": 1
+    },
     "ScriptoriumModules/scriptorium-find.js": {
       "windowReferences": 4,
       "documentReferences": 2,
@@ -15487,6 +16186,14 @@
       "listeners": 9,
       "mutableMaps": 0
     },
+    "ScriptoriumModules/scriptorium-image-view.js": {
+      "windowReferences": 7,
+      "documentReferences": 6,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 3,
+      "mutableMaps": 0
+    },
     "ScriptoriumModules/scriptorium-input-sync.js": {
       "windowReferences": 8,
       "documentReferences": 0,
@@ -15518,6 +16225,14 @@
       "timers": 1,
       "listeners": 20,
       "mutableMaps": 2
+    },
+    "ScriptoriumModules/scriptorium-markdown-file.js": {
+      "windowReferences": 5,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 1,
+      "mutableMaps": 0
     },
     "ScriptoriumModules/scriptorium-media.js": {
       "windowReferences": 4,
@@ -15558,6 +16273,14 @@
       "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-pdf-view.js": {
+      "windowReferences": 9,
+      "documentReferences": 27,
+      "electronReferences": 0,
+      "timers": 9,
+      "listeners": 36,
+      "mutableMaps": 5
     },
     "ScriptoriumModules/scriptorium-pr-diff.js": {
       "windowReferences": 1,
@@ -15671,12 +16394,36 @@
       "listeners": 20,
       "mutableMaps": 0
     },
+    "ScriptoriumModules/scriptorium-table-view.js": {
+      "windowReferences": 7,
+      "documentReferences": 14,
+      "electronReferences": 0,
+      "timers": 4,
+      "listeners": 14,
+      "mutableMaps": 2
+    },
+    "ScriptoriumModules/scriptorium-text-view.js": {
+      "windowReferences": 10,
+      "documentReferences": 9,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 2,
+      "mutableMaps": 1
+    },
     "ScriptoriumModules/scriptorium-visibility.js": {
       "windowReferences": 1,
       "documentReferences": 0,
       "electronReferences": 0,
       "timers": 5,
       "listeners": 0,
+      "mutableMaps": 0
+    },
+    "ScriptoriumModules/scriptorium-web-page.js": {
+      "windowReferences": 8,
+      "documentReferences": 8,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 7,
       "mutableMaps": 0
     },
     "ScriptoriumModules/scriptorium.html": {
@@ -15688,8 +16435,8 @@
       "mutableMaps": 0
     },
     "ScriptoriumModules/scriptorium.js": {
-      "windowReferences": 91,
-      "documentReferences": 7,
+      "windowReferences": 97,
+      "documentReferences": 9,
       "electronReferences": 0,
       "timers": 0,
       "listeners": 2,
@@ -15737,10 +16484,10 @@
     },
     "Tavernmodules/tavern-manager.js": {
       "windowReferences": 29,
-      "documentReferences": 14,
+      "documentReferences": 15,
       "electronReferences": 1,
       "timers": 1,
-      "listeners": 19,
+      "listeners": 20,
       "mutableMaps": 1
     },
     "Themesmodules/themes.html": {
@@ -16141,7 +16888,7 @@
       "electronReferences": 0,
       "timers": 0,
       "listeners": 0,
-      "mutableMaps": 3
+      "mutableMaps": 5
     },
     "VCPDistributedServer/Plugin/ProjectForge/args.js": {
       "windowReferences": 0,
@@ -16158,6 +16905,30 @@
       "timers": 0,
       "listeners": 0,
       "mutableMaps": 1
+    },
+    "VCPDistributedServer/Plugin/ProjectForge/evalProcess.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 3,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/ProjectForge/evalRust.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/ProjectForge/evalSymbol.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
     },
     "VCPDistributedServer/Plugin/ProjectForge/gui-revert-file.js": {
       "windowReferences": 0,
@@ -16252,6 +17023,14 @@
       "documentReferences": 1,
       "electronReferences": 0,
       "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "VCPDistributedServer/Plugin/TavernSRPG/tavern-srpg-service.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
     },
@@ -17247,6 +18026,14 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "modules/chat/chatContextPipeline.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 26,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/chat/chatDomRenderer.js": {
       "windowReferences": 0,
       "documentReferences": 0,
@@ -17434,7 +18221,7 @@
     "modules/chat/singleChatRequestOrchestrator.js": {
       "windowReferences": 0,
       "documentReferences": 0,
-      "electronReferences": 26,
+      "electronReferences": 5,
       "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
@@ -17490,7 +18277,7 @@
     "modules/chatManager.js": {
       "windowReferences": 18,
       "documentReferences": 16,
-      "electronReferences": 44,
+      "electronReferences": 43,
       "timers": 3,
       "listeners": 0,
       "mutableMaps": 5
@@ -17568,6 +18355,14 @@
       "mutableMaps": 0
     },
     "modules/deskpet/live2dCapabilities.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/deskpet/live2dTextureOptimizer.js": {
       "windowReferences": 0,
       "documentReferences": 0,
       "electronReferences": 0,
@@ -17922,7 +18717,7 @@
     "modules/event-listeners.js": {
       "windowReferences": 31,
       "documentReferences": 73,
-      "electronReferences": 8,
+      "electronReferences": 9,
       "timers": 1,
       "listeners": 45,
       "mutableMaps": 0
@@ -18537,7 +19332,7 @@
     },
     "modules/loom/webcore/web-agent-page-runtime-core.js": {
       "windowReferences": 5,
-      "documentReferences": 9,
+      "documentReferences": 10,
       "electronReferences": 0,
       "timers": 7,
       "listeners": 0,
@@ -18625,7 +19420,7 @@
     },
     "modules/messageRenderer.js": {
       "windowReferences": 13,
-      "documentReferences": 15,
+      "documentReferences": 17,
       "electronReferences": 18,
       "timers": 10,
       "listeners": 7,
@@ -18938,7 +19733,7 @@
     "modules/renderer/messageContextMenu.js": {
       "windowReferences": 2,
       "documentReferences": 1,
-      "electronReferences": 46,
+      "electronReferences": 41,
       "timers": 2,
       "listeners": 3,
       "mutableMaps": 0
@@ -19255,6 +20050,14 @@
       "listeners": 0,
       "mutableMaps": 0
     },
+    "modules/renderer/toolBatchDomains.js": {
+      "windowReferences": 0,
+      "documentReferences": 6,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
     "modules/renderer/toolBatchRegions.js": {
       "windowReferences": 0,
       "documentReferences": 0,
@@ -19334,6 +20137,110 @@
       "timers": 0,
       "listeners": 0,
       "mutableMaps": 0
+    },
+    "modules/scriptorium/atomicReplace.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 1,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/scriptorium/dropOpen.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/scriptorium/fileAccess/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/scriptorium/fileTypes.js": {
+      "windowReferences": 2,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/scriptorium/fileViews.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/scriptorium/markdownFiles/index.js": {
+      "windowReferences": 1,
+      "documentReferences": 4,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 4
+    },
+    "modules/scriptorium/pdfFiles/edit.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/scriptorium/pdfFiles/fonts.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/scriptorium/pdfFiles/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
+    },
+    "modules/scriptorium/sheetFiles/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/scriptorium/textEncoding.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 0
+    },
+    "modules/scriptorium/viewFiles/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 1
+    },
+    "modules/scriptorium/webPages/index.js": {
+      "windowReferences": 0,
+      "documentReferences": 2,
+      "electronReferences": 0,
+      "timers": 2,
+      "listeners": 0,
+      "mutableMaps": 4
     },
     "modules/searchManager.js": {
       "windowReferences": 1,
@@ -19534,6 +20441,14 @@
       "timers": 0,
       "listeners": 0,
       "mutableMaps": 4
+    },
+    "modules/services/portraitOptimizer.js": {
+      "windowReferences": 0,
+      "documentReferences": 0,
+      "electronReferences": 0,
+      "timers": 0,
+      "listeners": 0,
+      "mutableMaps": 2
     },
     "modules/services/preloadPaths.js": {
       "windowReferences": 0,
@@ -19796,7 +20711,7 @@
       "documentReferences": 0,
       "electronReferences": 2,
       "timers": 1,
-      "listeners": 12,
+      "listeners": 11,
       "mutableMaps": 0
     },
     "modules/settings/store.js": {
@@ -19865,7 +20780,7 @@
     },
     "modules/text-viewer.js": {
       "windowReferences": 49,
-      "documentReferences": 77,
+      "documentReferences": 79,
       "electronReferences": 2,
       "timers": 5,
       "listeners": 31,
@@ -20256,7 +21171,7 @@
       "mutableMaps": 0
     },
     "modules/ui-system/next-shell/next-shell-controller.js": {
-      "windowReferences": 74,
+      "windowReferences": 75,
       "documentReferences": 47,
       "electronReferences": 2,
       "timers": 8,
@@ -22008,11 +22923,11 @@
       "mutableMaps": 0
     },
     "preloads/docx.js": {
-      "windowReferences": 8,
-      "documentReferences": 2,
+      "windowReferences": 10,
+      "documentReferences": 5,
       "electronReferences": 0,
-      "timers": 0,
-      "listeners": 0,
+      "timers": 1,
+      "listeners": 2,
       "mutableMaps": 0
     },
     "preloads/loom-page.js": {

@@ -9,7 +9,7 @@ module.exports = {
         removeGameResources: invoke('vcp-game:remove-resources', 'request'),
         listGameRecords: invoke('vcp-game:records'),
         getGameRecord: invoke('vcp-game:record', 'request'),
-        listGameAgents: invoke('vcp-game:agents'),
+        listGameAgents: invoke('vcp-game:agents', request => (request === undefined ? [] : [request])),
         createGameTable: invoke('vcp-game:create', 'request'),
         nextGameTable: invoke('vcp-game:next', 'request'),
         observeGameTable: invoke('vcp-game:observe', 'request'),

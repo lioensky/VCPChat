@@ -50,7 +50,7 @@ function fakeElectron() {
     return { electron, handlers, listeners, windows };
 }
 
-async function loadHandlers() {
+async function loadHandlers(t) {
     const fake = fakeElectron();
     const originalLoad = Module._load;
     Module._load = function load(request, ...rest) {
@@ -66,6 +66,13 @@ async function loadHandlers() {
         Module._load = originalLoad;
     }
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'deskpet-'));
+    t.after(async () => {
+        try {
+            await handlers.closeAll();
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
     const agentDir = path.join(root, 'Agents');
     fs.mkdirSync(path.join(agentDir, 'Nova'), { recursive: true });
     fs.writeFileSync(path.join(agentDir, 'Nova', 'config.json'), JSON.stringify({ name: 'Nova' }));
@@ -79,8 +86,8 @@ async function loadHandlers() {
     return { handlers, fake, mainWindow };
 }
 
-test('stream events reach only the open pet, as plain text', async () => {
-    const { handlers, fake } = await loadHandlers();
+test('stream events reach only the open pet, as plain text', async t => {
+    const { handlers, fake } = await loadHandlers(t);
     const toggle = fake.handlers.get('deskpet:toggle');
     const opened = await toggle({ sender: fake.windows[0].webContents }, 'Nova');
     assert.equal(opened.success, true);
@@ -107,11 +114,10 @@ test('stream events reach only the open pet, as plain text', async () => {
         { type: 'end', messageId: 'm1' },
         { type: 'error', messageId: 'm2', error: 'VCP请求失败: 服务器返回状态 500. 错误: overloaded' },
     ]);
-    handlers.closeAll();
 });
 
-test('the tag prompt is added only while the pet is open and not already present', async () => {
-    const { handlers, fake } = await loadHandlers();
+test('the tag prompt is added only while the pet is open and not already present', async t => {
+    const { handlers, fake } = await loadHandlers(t);
     const messages = [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }];
     assert.equal(handlers.appendProtocolToMessages(messages, 'Nova'), messages);
     await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
@@ -124,11 +130,10 @@ test('the tag prompt is added only while the pet is open and not already present
     assert.equal(tagsOnly[0].content.split('【桌宠动作】')[0].trim(), '我会写 <!--emo:happy--> 标记');
     const already = [{ role: 'system', content: '我会写 <!--emo:happy/nod--> 标记' }];
     assert.equal(handlers.appendProtocolToMessages(already, 'Nova'), already);
-    handlers.closeAll();
 });
 
-test('text typed on the pet is handed to the main window and the result comes back', async () => {
-    const { handlers, fake, mainWindow } = await loadHandlers();
+test('text typed on the pet is handed to the main window and the result comes back', async t => {
+    const { handlers, fake, mainWindow } = await loadHandlers(t);
     await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
     const pet = fake.windows.at(-1);
     const pending = fake.handlers.get('deskpet:send')({ sender: pet.webContents }, '  早上好  ');
@@ -142,11 +147,10 @@ test('text typed on the pet is handed to the main window and the result comes ba
     // 输入条上按了「+」：主窗口先开新话题再发
     fake.handlers.get('deskpet:send')({ sender: pet.webContents }, '换个话题', { newTopic: true });
     assert.equal(mainWindow.sent.filter((s) => s.channel === 'deskpet:send-request').at(-1).payload.newTopic, true);
-    handlers.closeAll();
 });
 
-test('hiding a pet keeps it alive and the header toggle brings it back', async () => {
-    const { handlers, fake } = await loadHandlers();
+test('hiding a pet keeps it alive and the header toggle brings it back', async t => {
+    const { handlers, fake } = await loadHandlers(t);
     const toggle = fake.handlers.get('deskpet:toggle');
     await toggle({ sender: fake.windows[0].webContents }, 'Nova');
     const pet = fake.windows.at(-1);
@@ -159,27 +163,26 @@ test('hiding a pet keeps it alive and the header toggle brings it back', async (
     const closed = await toggle({ sender: fake.windows[0].webContents }, 'Nova');
     assert.equal(pet.isDestroyed(), true);
     assert.deepEqual(closed.openAgents, []);
-    handlers.closeAll();
 });
 
-test('on Windows the pet is a focusable tool window, so the first press reaches the page', async () => {
+test('on Windows the pet is a focusable tool window, so the first press reaches the page', async t => {
     const platform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
     let loaded;
     try {
-        loaded = await loadHandlers();
+        loaded = await loadHandlers(t);
+        const { fake } = loaded;
+        await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
+        const pet = fake.windows.at(-1);
+        // 不可聚焦的窗口被点时 Chromium 吞掉按下（MA_NOACTIVATEANDEAT），拖动和单击都收不到
+        assert.notEqual(pet.options.focusable, false);
+        assert.equal(pet.options.type, 'toolbar', '工具窗口不进任务栏和 Alt+Tab');
+        const fromPet = { sender: pet.webContents };
+        fake.listeners.get('deskpet:set-interactive')(fromPet, true);
+        fake.listeners.get('deskpet:set-interactive')(fromPet, false);
+        assert.notEqual(pet.focusable, false, '输入框关上后也不能变回不可聚焦');
     } finally {
         Object.defineProperty(process, 'platform', platform);
+        await loaded?.handlers.closeAll();
     }
-    const { handlers, fake } = loaded;
-    await fake.handlers.get('deskpet:toggle')({ sender: fake.windows[0].webContents }, 'Nova');
-    const pet = fake.windows.at(-1);
-    // 不可聚焦的窗口被点时 Chromium 吞掉按下（MA_NOACTIVATEANDEAT），拖动和单击都收不到
-    assert.notEqual(pet.options.focusable, false);
-    assert.equal(pet.options.type, 'toolbar', '工具窗口不进任务栏和 Alt+Tab');
-    const fromPet = { sender: pet.webContents };
-    fake.listeners.get('deskpet:set-interactive')(fromPet, true);
-    fake.listeners.get('deskpet:set-interactive')(fromPet, false);
-    assert.notEqual(pet.focusable, false, '输入框关上后也不能变回不可聚焦');
-    handlers.closeAll();
 });

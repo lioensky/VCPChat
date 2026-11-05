@@ -20,7 +20,7 @@ class GameToolAdapter {
                 stateChanged: false,
             });
         }
-        if (!binding || ![1, 2].includes(binding.seat)
+        if (!binding || ![0, 1, 2].includes(binding.seat)
             || typeof binding.matchId !== 'string' || typeof binding.decisionId !== 'string'
             || !Number.isInteger(binding.revision)) {
             throw new Error('游戏工具缺少可信适配或桌内署名解析得到的有效决策绑定。');

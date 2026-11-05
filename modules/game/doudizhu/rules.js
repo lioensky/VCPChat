@@ -19,11 +19,15 @@ function deal(integer = randomInt) {
         bottom: deck.slice(51),
     };
 }
-function create({ firstSeat = 0, integer = randomInt } = {}) {
+function create({ firstSeat = 0, integer = randomInt, maxRedeals = null } = {}) {
     if (![0, 1, 2].includes(firstSeat)) throw new RangeError('Invalid first seat.');
+    if (maxRedeals !== null && (!Number.isInteger(maxRedeals) || maxRedeals < 0)) {
+        throw new RangeError('Invalid maxRedeals.');
+    }
     return {
         rulesVersion: RULES_VERSION, revision: 0, phase: 'bidding',
         turn: firstSeat, firstSeat, dealNumber: 1,
+        ...(maxRedeals !== null ? { maxRedeals } : {}),
         ...deal(integer), bids: [], highestBid: 0, bidder: null,
         landlord: null, target: null, passes: 0, winner: null,
         events: [],
@@ -68,6 +72,10 @@ function apply(state, seat, action, { integer = randomInt } = {}) {
         }
         publish({ phase: 'bidding', seat, type: 'bid', bid: action.bid, ...words });
         if (action.bid === 3 || next.bids.length === 3) {
+            if (next.bidder === null && Number.isInteger(state.maxRedeals) && state.dealNumber > state.maxRedeals) {
+                next.highestBid = 1;
+                next.bidder = state.firstSeat;
+            }
             if (next.bidder === null) {
                 Object.assign(next, deal(integer), {
                     bids: [], highestBid: 0, bidder: null,
