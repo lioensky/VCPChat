@@ -148,9 +148,11 @@ async function renderBlueprintDynamic(pane, projectId) {
         const laneRemoved = nodes.reduce((s, n) => s + (n.removed || 0), 0);
         return '<div class="bp-lane">' +
             '<div class="bp-lane-head" title="' + escapeHtml(file) + '">' +
-                '<span class="bp-lane-file">' + escapeHtml(bpShortPath(file)) + '</span>' +
-                '<span class="bp-lane-delta"><span class="plus">+' + laneAdded + '</span>/<span class="minus">-' + laneRemoved + '</span></span>' +
-                '<span class="bp-lane-count">' + nodes.length + '</span>' +
+                '<span class="bp-lane-file">' + escapeHtml(bpShortPath(file, 30)) + '</span>' +
+                '<span class="bp-lane-meta">' +
+                    '<span class="bp-lane-count">' + nodes.length + ' 操作</span>' +
+                    '<span class="bp-lane-delta"><span class="plus">+' + laneAdded + '</span> <span class="minus">-' + laneRemoved + '</span></span>' +
+                '</span>' +
             '</div>' +
             '<div class="bp-lane-body">' + nodes.map(n => bpCardHtml(n, freshIds.has(n.id), todoMap)).join('') + '</div>' +
         '</div>';
