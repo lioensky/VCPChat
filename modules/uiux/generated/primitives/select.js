@@ -6,6 +6,8 @@ function ensureStyles() {
     style.id = STYLE_ID;
     style.textContent = `.vcp-uiux-select{position:relative;display:inline-flex;min-width:218px}.vcp-uiux-select>.vcp-uiux-select-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}.vcp-uiux-select>.vcp-uiux-select-trigger{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,var(--vcp-color-border,#c8ccd4));border-radius:10px;background:var(--dsw-alias-bg-layer-1,var(--vcp-color-surface,#fff));color:var(--dsw-alias-label-primary,#0f1115);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:22px;cursor:pointer}.vcp-uiux-select>.vcp-uiux-select-trigger:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,var(--vcp-color-focus,#4c8dff));outline-offset:2px}.vcp-uiux-select>.vcp-uiux-menu-list,.vcp-uiux-primitive-menu{box-sizing:border-box;z-index:1100;min-width:218px;padding:4px;background:var(--dsw-specific-menu,#fff);border:1px solid var(--dsw-alias-border-inverted,rgba(0,0,0,0));border-radius:12px;box-shadow:rgba(0,0,0,.2) 0 0 1px,rgba(0,0,0,.02) 0 0 4px,rgba(0,0,0,.08) 0 12px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Helvetica Neue',Helvetica,Arial,sans-serif}.vcp-uiux-menu-viewport{display:flex;flex-direction:column;min-height:0}.vcp-uiux-menu-item-wrap{position:relative}.vcp-uiux-primitive-menu .vcp-uiux-menu-item{display:flex;align-items:center;width:100%;min-height:40px;padding:8px 10px;gap:8px;border:0;border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary,#0f1115);font:inherit;font-size:14px;line-height:22px;text-align:left;cursor:pointer}.vcp-uiux-primitive-menu .vcp-uiux-menu-item:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(38,49,72,.06))}.vcp-uiux-primitive-menu .vcp-uiux-menu-item:focus-visible{outline:none}.vcp-uiux-primitive-menu .vcp-uiux-menu-item:disabled{opacity:.4;cursor:not-allowed}.vcp-uiux-menu-item-label{display:flex;flex:1;min-width:0;max-width:280px;flex-direction:column;gap:2px}.vcp-uiux-menu-item-name{color:var(--dsw-alias-label-primary,#0f1115);font-size:13px;line-height:20px}.vcp-uiux-menu-item-description{color:var(--dsw-alias-label-caption,#adb2b8);font-size:12px;line-height:16px}.vcp-uiux-menu-item-check{display:inline-flex;flex:none;width:16px;height:16px;align-items:center;justify-content:center;color:var(--dsw-alias-label-primary,#0f1115)}.vcp-uiux-field-description{margin-top:4px;color:var(--dsw-alias-label-secondary,var(--vcp-color-muted,#68707d));font-size:12px;line-height:18px}.vcp-uiux-field-error{margin-top:4px;color:var(--dsw-alias-label-danger,var(--vcp-color-danger,#c62828));font-size:12px;line-height:18px}`;
     style.textContent += `.vcp-uiux-menu-item-content{display:flex;flex-direction:column;gap:2px}.vcp-uiux-menu-group-label{padding:6px 10px 4px;color:var(--dsw-alias-label-caption,#8b919b);font-size:11px;line-height:16px;font-weight:600}`;
+    // Select must scroll even when the separate Menu primitive has never mounted.
+    style.textContent += `.vcp-uiux-select-menu{max-height:calc(100vh - 24px);overflow:hidden}.vcp-uiux-select-menu>.vcp-uiux-menu-viewport{max-height:min(320px,calc(100vh - 36px));overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable}.vcp-uiux-select-menu>.vcp-uiux-menu-viewport>*{flex-shrink:0}`;
     (document.head || document.documentElement).append(style);
 }
 /**
@@ -31,7 +33,7 @@ export function mountSelect(select, props = {}, scope) {
     if (props.label)
         trigger.setAttribute('aria-label', props.label);
     const menu = document.createElement('div');
-    menu.className = 'vcp-uiux-menu-list vcp-uiux-primitive-menu vcp-uiux-menu-scrollable';
+    menu.className = 'vcp-uiux-menu-list vcp-uiux-primitive-menu vcp-uiux-menu-scrollable vcp-uiux-select-menu';
     menu.setAttribute('role', 'menu');
     menu.hidden = true;
     const viewport = document.createElement('div');
@@ -93,6 +95,13 @@ export function mountSelect(select, props = {}, scope) {
         menu.hidden = false;
         trigger.setAttribute('aria-expanded', 'true');
         placePortal();
+        const selected = viewport.querySelector('[data-selected="true"]');
+        if (selected) {
+            const row = selected.getBoundingClientRect();
+            const bounds = viewport.getBoundingClientRect();
+            if (row.top < bounds.top) viewport.scrollTop -= bounds.top - row.top;
+            else if (row.bottom > bounds.bottom) viewport.scrollTop += row.bottom - bounds.bottom;
+        }
     };
     const onTrigger = () => trigger.getAttribute('aria-expanded') === 'true' ? close() : open();
     const onChange = () => sync();
