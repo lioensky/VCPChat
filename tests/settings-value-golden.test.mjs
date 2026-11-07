@@ -172,7 +172,8 @@ function legacyCollect({ doc, currentSettings, settingsManager, getAppearance, n
         mainChatVoiceSendPhrase: getElementById('mainChatVoiceSendPhrase')?.value.trim() || '',
         voiceLocalSettings: {
             sovitsUrl: getElementById('voiceLocalSovitsUrl')?.value.trim() || '',
-            sovitsKey: getElementById('voiceLocalSovitsKey')?.value || ''
+            sovitsKey: getElementById('voiceLocalSovitsKey')?.value || '',
+            cacheEnabled: getElementById('voiceLocalCacheEnabled')?.checked !== false
         },
         voiceNetworkSettings: {
             providerUrl: getElementById('voiceNetworkProviderUrl')?.value.trim() || '',

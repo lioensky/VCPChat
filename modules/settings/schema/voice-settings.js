@@ -1,7 +1,8 @@
 // schema/voice-settings — "语音设置" 分区（M1）。
 // 语音工作模式是单选组（M5-c pass5 起分段结构由渲染器直出，运行期只绑
 // 行为）；输入模式为语言行胶囊 select；其余为 text/url/password 行。
-import { section, radioGroup, radio, select, text, number, card, custom } from './kernel.js';
+import { section, radioGroup, radio, select, text, number, card, custom, switchField } from './kernel.js';
+import { buildTtsCachePanel } from './tts-cache-panel.js';
 import { buildLocalSttPanel } from './local-stt-panel.js';
 
 export const voiceSettingsSection = section('voice-settings', '语音设置', [
@@ -121,6 +122,13 @@ export const voiceSettingsSection = section('voice-settings', '语音设置', [
         placeholder: '例如: http://127.0.0.1:9880',
         save: { valuePath: 'voiceLocalSettings.sovitsUrl', trim: true, falsy: '' },
     }),
+    switchField('voiceLocalCacheEnabled', {
+        label: '缓存本地合成音频',
+        checked: true,
+        hint: '默认开启，重启后仍可复用。关闭并保存后，本地 GSV 跳过缓存读写，但保留已有文件；不影响网络 MiMo 缓存。',
+        save: { valuePath: 'voiceLocalSettings.cacheEnabled' },
+    }),
+    custom('ttsCachePanel', buildTtsCachePanel),
     text('voiceLocalSovitsKey', {
         inputType: 'password',
         label: '本地 GSV.CPP Key:',

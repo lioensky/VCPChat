@@ -10,6 +10,7 @@ module.exports = {
     api: {
         // Sovits TTS
         sovitsGetModels: invoke('sovits-get-models', (forceRefresh = false) => [forceRefresh]),
+        sovitsClearAudioCache: invoke('sovits-clear-audio-cache'),
         sovitsSpeak: send('sovits-speak', 'options'),
         sovitsStop: send('sovits-stop'),
         onPlayTtsAudio: on('play-tts-audio'),

@@ -69,6 +69,8 @@ function initialize(mainWindow, settingsManager) {
     internalMainWindow = mainWindow; // Save reference to mainWindow
     internalSettingsManager = settingsManager || null;
 
+    ipcMain.handle('sovits-clear-audio-cache', async () => getSovitsTTS().clearAudioCache());
+
     ipcMain.handle('sovits-get-models', async (event, forceRefresh) => {
         const instance = getSovitsTTS();
         if (!instance) return null;

@@ -54,6 +54,8 @@ class SovitsTTS {
         // value 中保存文件签名，用户替换同名文件后不会继续使用旧数据。
         this.cloneAudioMemory = new Map();
         this.gsvStore = new GsvPresetStore();
+        this.cacheEpoch = 0;
+        this.cacheIo = Promise.resolve();
         this.initCacheDir();
     }
 
@@ -76,6 +78,7 @@ class SovitsTTS {
 
         return {
             voiceMode,
+            cacheEnabled: localConfig.cacheEnabled !== false,
             baseUrl: (configuredUrl || (voiceMode === 'network' ? DEFAULT_MIMO_API_URL : DEFAULT_SOVITS_API_BASE_URL))
                 .replace(/\/+$/, ''),
             apiKey: voiceMode === 'network'
@@ -281,6 +284,37 @@ class SovitsTTS {
         return headers;
     }
 
+    queueCacheIo(action) {
+        const work = this.cacheIo.then(action);
+        this.cacheIo = work.catch(() => {});
+        return work;
+    }
+
+    async clearAudioCache() {
+        ++this.cacheEpoch;
+        return this.queueCacheIo(async () => {
+            let removed = 0;
+            let entries;
+            try { entries = await fs.readdir(TTS_CACHE_DIR, { withFileTypes: true }); }
+            catch (error) { if (error.code === 'ENOENT') return { removed }; throw error; }
+            for (const entry of entries) {
+                // Only generated hash-named audio files; never recurse or follow symlinks.
+                if (!entry.isFile() || !/^(?:[a-f0-9]{32}|[a-f0-9]{64})\.(?:wav|mp3)$/i.test(entry.name)) continue;
+                try { await fs.unlink(path.join(TTS_CACHE_DIR, entry.name)); removed++; }
+                catch (error) { if (error.code !== 'ENOENT') throw error; }
+            }
+            return { removed };
+        });
+    }
+
+    async writeAudioCache(file, audio, epoch) {
+        return this.queueCacheIo(async () => {
+            if (epoch !== this.cacheEpoch) return;
+            await fs.mkdir(TTS_CACHE_DIR, { recursive: true });
+            await fs.writeFile(file, audio);
+        });
+    }
+
     async initCacheDir() {
         try {
             await Promise.all([
@@ -402,6 +436,7 @@ class SovitsTTS {
      * @returns {Promise<{audioBuffer: Buffer, streamed: boolean}|null>} 音频结果
      */
     async textToSpeech(text, voice, speed, directorPrompts = [], onAudioChunk = null) {
+        const cacheEpoch = this.cacheEpoch;
         const runtimeConfig = await this.getRuntimeConfig();
         if (runtimeConfig.voiceMode === 'local') {
             try {
@@ -410,15 +445,18 @@ class SovitsTTS {
                 await this.gsvStore.audio(preset);
                 const identity = JSON.stringify(['gsv-v1', runtimeConfig.baseUrl, preset, text, Number(speed) || 1]);
                 const cacheFile = path.join(TTS_CACHE_DIR, `${gsvDigest(identity)}.wav`);
-                try { return { audioBuffer: await fs.readFile(cacheFile), streamed: false }; }
-                catch (error) { if (error.code !== 'ENOENT') throw error; }
+                if (runtimeConfig.cacheEnabled) {
+                    try { return { audioBuffer: await fs.readFile(cacheFile), streamed: false }; }
+                    catch (error) { if (error.code !== 'ENOENT') throw error; }
+                }
                 const audioBuffer = await synthesizeGsv({
                     store: this.gsvStore, preset, baseUrl: runtimeConfig.baseUrl,
                     apiKey: runtimeConfig.apiKey, text, speed: Number(speed) || 1
                 });
-                await fs.mkdir(TTS_CACHE_DIR, { recursive: true });
-                try { await fs.writeFile(cacheFile, audioBuffer); }
-                catch (error) { console.warn('[GSV] Cache write failed:', error.message); }
+                if (runtimeConfig.cacheEnabled) {
+                    try { await this.writeAudioCache(cacheFile, audioBuffer, cacheEpoch); }
+                    catch (error) { console.warn('[GSV] Cache write failed:', error.message); }
+                }
                 return { audioBuffer, streamed: false };
             } catch (error) {
                 console.error('[GSV] Synthesis failed:', error.message);
@@ -452,7 +490,7 @@ class SovitsTTS {
                     directorPrompts,
                     onAudioChunk
                 );
-                await fs.writeFile(cacheFilePath, audioBuffer);
+                await this.writeAudioCache(cacheFilePath, audioBuffer, cacheEpoch);
                 return { audioBuffer, streamed: typeof onAudioChunk === 'function' };
             }
 
