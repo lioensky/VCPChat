@@ -116,13 +116,14 @@ export const voiceSettingsSection = section('voice-settings', '语音设置', [
     }),
     text('voiceLocalSovitsUrl', {
         inputType: 'url',
-        label: '本地 SoVITS URL:',
+        label: '本地 GSV.CPP V5 URL:',
+        hint: '默认 http://127.0.0.1:9880；音色在 sovits5cppmanager 中创建，保存于 AppData/sovits5cpp。',
         placeholder: '例如: http://127.0.0.1:9880',
         save: { valuePath: 'voiceLocalSettings.sovitsUrl', trim: true, falsy: '' },
     }),
     text('voiceLocalSovitsKey', {
         inputType: 'password',
-        label: '本地 SoVITS Key:',
+        label: '本地 GSV.CPP Key:',
         placeholder: '如无可留空',
         save: { valuePath: 'voiceLocalSettings.sovitsKey', falsy: '' },
     }),

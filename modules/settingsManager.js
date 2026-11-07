@@ -1032,7 +1032,7 @@ const settingsManager = (() => {
             const primaryOptions = createOptionGroups('不使用语音', currentPrimaryVoice);
             const secondaryOptions = createOptionGroups('不使用', currentSecondaryVoice);
             if (optionList.length === 0) {
-                const emptyLabel = isNetworkMode ? '未找到 MiMo 音色' : '未找到模型,请启动Sovits';
+                const emptyLabel = isNetworkMode ? '未找到 MiMo 音色' : '暂无预设，请在 sovits5cppmanager 创建';
                 primaryOptions.push(createOption('', emptyLabel, { disabled: true }));
                 secondaryOptions.push(createOption('', emptyLabel, { disabled: true }));
             }
@@ -1053,7 +1053,7 @@ const settingsManager = (() => {
             commitOptions(agentTtsVoicePrimarySelect, [primaryErrorOption]);
             commitOptions(agentTtsVoiceSecondarySelect, [secondaryErrorOption]);
             ensureThemedTtsSelects();
-            uiHelper.showToastNotification(isNetworkMode ? '获取网络音色失败' : '获取Sovits语音模型失败', 'error');
+            uiHelper.showToastNotification(isNetworkMode ? '获取网络音色失败' : '读取 GSV 本地声音预设失败', 'error');
         }
     }
 

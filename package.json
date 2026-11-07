@@ -6,6 +6,7 @@
   "scripts": {
     "postinstall": "node scripts/app-features.cjs install",
     "start": "electron .",
+    "sovits5cppmanager": "node sovits5cppmanager/server.js",
     "doctor": "node scripts/vcpchat-doctor.mjs",
     "start:managed": "node scripts/vcpchat-dev-launcher.mjs",
     "vcpchat": "node scripts/vcpchat.mjs",
@@ -227,6 +228,7 @@
       "VCPDistributedServer/Plugin/PowerShellExecutor/gui/**/*",
       "assets/",
       "modules/**/*",
+      "sovits5cppmanager/**/*",
       "Groupmodules/**/*",
       "DeskPetmodules/**/*",
       "Flowlockmodules/**/*",

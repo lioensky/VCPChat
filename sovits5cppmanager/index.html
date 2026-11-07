@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>sovits5cppmanager</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#111a20;color:#e4eeef;font:15px system-ui}main{max-width:1100px;margin:32px auto;padding:20px}h1{color:#98e5c0}a{color:#98d6ff}section{background:#1c2932;padding:24px;border-radius:16px;margin:18px 0}.grid{display:grid;grid-template-columns:1fr 2fr;gap:20px}label{display:block;margin:12px 0}input,select,textarea,button{font:inherit;border:1px solid #425762;border-radius:7px;padding:9px;background:#101e26;color:inherit}input,select,textarea{width:100%;margin-top:5px}button{cursor:pointer;margin:5px}button:hover{border-color:#98e5c0}textarea{min-height:90px}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}#status{white-space:pre-wrap;color:#ffe09a}small{color:#b8c8cd}audio{width:100%;margin-top:15px}@media(max-width:700px){.grid,.row{grid-template-columns:1fr}}
+</style><script src="/app.js" defer></script></head>
+<body><main><h1>sovits5cppmanager</h1><p>参考音频决定音色与演绎，参考文本负责准确对齐。无需训练，不等于无需参考。</p>
+<nav><a href="https://github.com/KakaruHayate/gsv.cpp" target="_blank" rel="noreferrer">GitHub 项目</a> · <a href="https://huggingface.co/KakaruHayate/GSV.CPP/tree/main/windows" target="_blank" rel="noreferrer">Windows 一键包</a></nav>
+<p id="status" role="status"></p><div class="grid"><section><h2>暴露的声音预设</h2><div id="list"></div><button id="new" type="button">＋ 新建</button><p><small>保存后在 VChat 的 Agent 音色选择器中刷新。数据：AppData/sovits5cpp/presets.json。</small></p></section>
+<section><form id="editor"><h2>声音档案</h2><input name="id" type="hidden"><input name="audio" type="hidden">
+<label>暴露模型名<input name="name" required maxlength="120" placeholder="例如 Kerr · 默认"></label>
+<label>参考音频（3–10 秒标准 PCM WAV）<input id="file" type="file" accept=".wav"></label><small id="audioInfo">尚未导入</small>
+<label>参考文本<textarea name="promptText" required placeholder="必须与参考音频实际说出的内容一致"></textarea></label>
+<div class="row"><label>情绪标签<input name="emotion" value="默认"></label><label>引擎 voice<input name="engineVoice" value="default" required></label></div>
+<div class="row"><label>参考音频语言<select name="promptLang"></select></label><label>目标文本语言<select name="textLang"></select></label></div>
+<div class="row"><label>预设语速<input name="speed" type="number" min="0.1" max="3" step="0.1" value="1"></label><label>采样步数<select name="sampleSteps"><option>4</option><option>8</option><option>16</option><option>32</option></select></label></div>
+<small>Turbo 通常选 4，Dev 通常选 32。实际语速 = 预设语速 × Agent 语速，结果须为 0.1–3。情绪仅作元数据，不会作为文本指令发送给引擎。</small>
+<p><button type="submit">保存预设</button><button id="delete" type="button">删除当前预设</button></p></form>
+<hr><label>试听引擎 URL<input id="baseUrl" value="http://127.0.0.1:9880"></label><label>试听文本<textarea id="previewText">你好，今天也一起把事情做好吧。</textarea></label><button id="preview" type="button">试听已保存预设</button><audio id="player" controls></audio>
+</section></div><section><h2>路径与使用约定</h2><p>引擎安装路径以及 TEMP/TMP 必须全英文。导入音频会按内容哈希重命名，中文原文件名无需手动修改。引擎返回中文临时路径时会明确报错。</p><p>管理器不负责下载、启动或关闭 GSV 引擎。先启动一键包中的 API 服务，再试听。第一阶段不解析 &lt;&lt;开心&gt;&gt; 等正文标签；请为不同参考音频创建独立预设。</p></section></main></body></html>
