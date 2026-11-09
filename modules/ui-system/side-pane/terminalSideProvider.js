@@ -178,6 +178,21 @@ export function createTerminalSideProvider({
             term.loadAddon(session.fitAddon);
         }
 
+        // 滚动条滑块与轨道拖拽放行：
+        // xterm 的 SelectionService 在 .xterm 根节点监听了 mousedown，并对所有 button===0 调用 e.preventDefault()
+        // 以便驱动自己的划词选区循环；但这会扼杀 Blink/Chromium 引擎的原生滚动条拖拽会话。
+        // 在外层 screen 的捕获阶段拦截：若鼠标左键落在 .xterm-viewport 的滚动条槽区域内，直接 stopPropagation，
+        // 阻止事件冒泡到 .xterm，完整放行原生滚动条拖拽与轨道跳页。
+        const onScreenMouseDownCapture = (event) => {
+            if (event.button !== 0) return;
+            const viewport = screen.querySelector('.xterm-viewport');
+            if (!viewport) return;
+            const rect = viewport.getBoundingClientRect();
+            if (event.clientX >= rect.left + viewport.clientWidth && event.clientX <= rect.right) {
+                event.stopPropagation();
+            }
+        };
+        screen.addEventListener('mousedown', onScreenMouseDownCapture, true);
         const setStatus = (text, state = 'pending', title = '') => {
             session.status = { text, state, title };
             session.view?.render();

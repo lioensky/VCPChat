@@ -728,42 +728,48 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
         case 'regenerate':
             // 重新回复
             if (message.role === 'assistant') {
-                // 获取全局设置来检查保险机制是否开启
-                const globalSettings = mainRendererReferences.globalSettingsRef.get();
-                const enableConfirmation = globalSettings.enableRegenerateConfirmation !== false;
-
-                if (enableConfirmation) {
-                    // 检查当前消息是否是最后一条消息
-                    const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
-                    const lastAssistantMessage = [...currentChatHistoryArray]
-                        .reverse()
-                        .find(msg => msg.role === 'assistant');
-
-                    const isLastMessage = lastAssistantMessage && lastAssistantMessage.id === message.id;
-
-                    // 如果不是最后一条消息，显示警告对话框
-                    if (!isLastMessage) {
-                        const confirmRegenerate = await uiHelper.showConfirmDialog(
-                            `当前消息不是最后一条消息，确定要重新生成此消息的回复吗？`,
-                            '重新生成确认',
-                            '确定',
-                            '取消',
-                            false
-                        );
-
-                        if (!confirmRegenerate) {
-                            uiHelper.showToastNotification("重新回复操作已取消", "info");
-                            return;
-                        }
-                    }
-                }
-
                 if (message.isGroupMessage) {
                     // 群聊重新回复逻辑
                     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
                     const currentTopicId = mainRendererReferences.currentTopicIdRef.get();
 
                     if (currentSelectedItem.type === 'group' && currentTopicId && message.id && message.agentId) {
+                        const globalSettings = mainRendererReferences.globalSettingsRef.get();
+                        const enableConfirmation = globalSettings.enableRegenerateConfirmation !== false;
+                        if (enableConfirmation) {
+                            const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get() || [];
+                            const targetIndex = currentChatHistoryArray.findIndex(msg => msg && msg.id === message.id);
+                            const subsequentCount = targetIndex === -1
+                                ? 0
+                                : currentChatHistoryArray.slice(targetIndex + 1).filter(msg => Boolean(msg)).length;
+
+                            if (subsequentCount > 0) {
+                                const confirmRegenerate = await uiHelper.showConfirmDialog(
+                                    `该消息后已有 ${subsequentCount} 条后续发言，重新回复将移除当前消息并在群聊末尾重新生成。是否继续？`,
+                                    '重新回复确认',
+                                    '继续',
+                                    '取消',
+                                    false
+                                );
+
+                                if (!confirmRegenerate) {
+                                    uiHelper.showToastNotification("重新回复操作已取消", "info");
+                                    return;
+                                }
+
+                                const activeItem = mainRendererReferences.currentSelectedItemRef?.get?.();
+                                const activeTopicId = mainRendererReferences.currentTopicIdRef?.get?.();
+                                if (
+                                    !activeItem
+                                    || activeItem.type !== 'group'
+                                    || activeItem.id !== currentSelectedItem.id
+                                    || activeTopicId !== currentTopicId
+                                ) {
+                                    return;
+                                }
+                            }
+                        }
+
                         // 调用群聊重新回复的IPC接口
                         if (mainRendererReferences.electronAPI && mainRendererReferences.electronAPI.redoGroupChatMessage) {
                             mainRendererReferences.electronAPI.redoGroupChatMessage(
@@ -780,10 +786,9 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
                         uiHelper.showToastNotification("无法重新回复：缺少群聊上下文信息。", "error");
                     }
                 } else {
-                    // 非群聊重新回复逻辑（原有逻辑）
+                    // 非群聊重新回复逻辑（条件二次确认已统一收口于 handleRegenerateResponse 内部）
                     if (typeof callbacks.handleRegenerateResponse === 'function') {
-                        callbacks.handleRegenerateResponse(message);
-                        uiHelper.showToastNotification("已开始重新生成回复", "success");
+                        await callbacks.handleRegenerateResponse(message);
                     } else {
                         uiHelper.showToastNotification("重新回复功能暂时不可用", "warning");
                     }
