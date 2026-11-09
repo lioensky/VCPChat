@@ -97,3 +97,38 @@ test('real CLI emits one standard text array for list and invalid JSON', () => {
         }
     }
 });
+test('shorthand get/name/id infer read and trim selectors', async t => {
+    const dir = await fixture(t, [rule('a', '甲', 'AAA')]);
+    for (const args of [{ get: ' 甲 ' }, { get: 'a' }, { name: '甲' }, { id: 'a' }, { command: 'read', get: '甲' }]) {
+        assert.ok(body(await execute(args, dir)).endsWith('AAA'));
+    }
+});
+test('get prefers exact name over id and preserves duplicate-name disambiguation', async t => {
+    const dir = await fixture(t, [rule('a', '甲', 'AAA'), rule('b', 'a', 'BBB'), rule('c', '重名', 'CCC')], [rule('d', '重名', 'DDD')]);
+    assert.ok(body(await execute({ get: 'a' }, dir)).endsWith('BBB'));
+    const duplicate = body(await execute({ get: '重名' }, dir));
+    assert.match(duplicate, /请指定 id/);
+    assert.doesNotMatch(duplicate, /CCC|DDD/);
+    assert.ok(body(await execute({ id: 'd' }, dir)).endsWith('DDD'));
+    assert.match(body(await execute({ get: '缺失' }, dir)), /未找到/);
+});
+test('shorthand rejects invalid and conflicting selectors and explicit unknown commands', async t => {
+    const dir = await fixture(t);
+    for (const args of [
+        { get: '' }, { get: 2 }, { get: null }, { name: '' }, { id: false },
+        { get: 'a', name: '甲' }, { get: 'a', id: 'a' },
+        { command: 'delete', get: 'a' }, { command: 2, get: 'a' }
+    ]) {
+        assert.match(body(await execute(args, dir)), /读取失败/);
+    }
+});
+test('shorthand CLI retains stdio envelope and text array', () => {
+    const script = path.join(__dirname, '../VCPDistributedServer/Plugin/VAbility/v-ability.js');
+    const run = spawnSync(process.execPath, [script], {
+        input: JSON.stringify({ get: '__vability_missing_test__' }), encoding: 'utf8', timeout: 5000
+    });
+    assert.equal(run.status, 0);
+    const payload = JSON.parse(run.stdout);
+    assert.equal(payload.status, 'success');
+    assert.match(body(payload.result.content), /未找到/);
+});

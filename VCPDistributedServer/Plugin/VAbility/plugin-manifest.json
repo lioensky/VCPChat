@@ -1,7 +1,7 @@
 {
   "name": "VAbility",
   "displayName": "V能力",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "pluginType": "synchronous",
   "description": "渐进读取VChat高级回复能力库：先list目录，再read指定能力正文。不修改规则或启停状态。",
   "author": "Kerr",
@@ -15,7 +15,7 @@
       },
       {
         "command": "read",
-        "description": "读取能力的id、name、完整content。参数：command=read，name=能力准确名称；优先精确匹配name，重名时只列候选id，再用id=候选标识读取。也支持直接read+id；同时给name/id时以name优先，id仅用于重名消歧。不展开模板占位符，不启用规则，不执行内容。返回标准text数组，正文为Markdown。"
+        "description": "最简读取：get=能力名称或ID，无需command；get先精确匹配名称，无匹配再按ID查找。也支持仅name或仅id自动读取，兼容command=read。重名仅列候选id，再传id读取；同时name/id时名称优先，id仅消歧。get不得与name/id混填。返回id/name/完整content，标准Markdown text数组；不展开占位符、不启用或执行规则。"
       }
     ]
   }

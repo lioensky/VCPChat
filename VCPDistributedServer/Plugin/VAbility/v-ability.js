@@ -48,30 +48,43 @@ function catalog(abilities) {
 async function execute(args, appData = APP_DATA) {
     try {
         if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('参数必须是对象。');
-        const command = typeof args.command === 'string' ? args.command.trim().toLowerCase() : '';
-        if (!['list', 'read'].includes(command)) throw new Error('command 必须为 list 或 read。');
+        if (args.command !== undefined && typeof args.command !== 'string') {
+            throw new Error('command 必须为字符串。');
+        }
+        const requested = args.command?.trim().toLowerCase();
+        const command = requested || (args.get !== undefined || args.name !== undefined || args.id !== undefined ? 'read' : '');
+        if (!['list', 'read'].includes(command)) throw new Error('使用 command=list 列目录，或 get=名称/ID 读取能力。');
         let name;
         let id;
+        let get;
         if (command === 'read') {
-            for (const key of ['name', 'id']) {
+            for (const key of ['name', 'id', 'get']) {
                 if (args[key] !== undefined && (typeof args[key] !== 'string' || !args[key].trim())) {
                     throw new Error(`${key} 必须为非空字符串。`);
                 }
             }
             name = args.name?.trim();
             id = args.id?.trim();
-            if (!name && !id) throw new Error('read 需要 name；重名时使用返回的 id。');
+            get = args.get?.trim();
+            if (get && (name || id)) throw new Error('get 与 name/id 请择一使用。');
+            if (!name && !id && !get) throw new Error('读取需要 get、name 或 id。');
         }
         const abilities = await loadAbilities(appData);
         if (command === 'list') {
-            return text(`## V能力目录\n\n共 ${abilities.length} 项。使用 read + name 读取正文；重名时用 id。\n\n${catalog(abilities) || '暂无能力。'}`);
+            return text(`## V能力目录\n\n共 ${abilities.length} 项。使用 get=名称或ID 读取正文；重名时用候选 id。\n\n${catalog(abilities) || '暂无能力。'}`);
         }
         // Name is authoritative when supplied; id only narrows duplicate names.
-        let matches = name ? abilities.filter(a => a.name === name) : abilities.filter(a => a.id === id);
+        let matches;
+        if (get) {
+            matches = abilities.filter(a => a.name === get);
+            if (!matches.length) matches = abilities.filter(a => a.id === get);
+        } else {
+            matches = name ? abilities.filter(a => a.name === name) : abilities.filter(a => a.id === id);
+        }
         if (name && matches.length > 1 && id) matches = matches.filter(a => a.id === id);
         if (!matches.length) return text('## 未找到能力\n\n请使用 list 核对 name 或 id；名称采用精确匹配。');
         if (matches.length > 1) {
-            return text(`## 能力重名，请指定 id\n\n${catalog(matches)}\n\n使用 read + id 读取其中一项；本次不展开 content。`);
+            return text(`## 能力重名，请指定 id\n\n${catalog(matches)}\n\n使用 id=候选标识 读取其中一项，无需 command；本次不展开 content。`);
         }
         const ability = matches[0];
         return text(`## ${inline(ability.name)}\n\n- **id:** ${inline(ability.id)}\n- **name:** ${inline(ability.name)}\n\n### content\n\n${ability.content}`);
