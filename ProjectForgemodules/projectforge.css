@@ -94,12 +94,31 @@ button, input, select { font: inherit; color: inherit; }
 .layout {
     height: calc(100% - 48px);
     display: grid;
-    grid-template-columns: 300px 1fr;
-    gap: 10px;
+    grid-template-columns: minmax(0, var(--pf-sidebar-width, 300px)) 10px minmax(0, 1fr);
+    gap: 0;
     padding: 0 10px 10px;
 }
 
-#project-sidebar { display: flex; flex-direction: column; min-height: 0; }
+#project-sidebar { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+#main-panel { min-width: 0; }
+#project-sidebar-resizer {
+    cursor: col-resize;
+    touch-action: none;
+    position: relative;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent;
+    -webkit-app-region: no-drag;
+}
+#project-sidebar-resizer:focus,
+#project-sidebar-resizer:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
+.layout.pf-resizing, .layout.pf-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
 .sidebar-head { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--pf-border); }
 .sidebar-head input[type=search],
 .filter-bar input, .filter-bar select, .revert-bar input {
