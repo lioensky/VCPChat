@@ -466,8 +466,8 @@ function showContextMenu(event, messageItem, message) {
             regenerateOption.classList.add('context-menu-item', 'regenerate-text');
             regenerateOption.innerHTML = `<i class="fas fa-sync-alt"></i> 重新回复`;
             regenerateOption.onclick = () => {
-                handleRegenerateResponse(message);
                 closeContextMenu();
+                handleRegenerateResponse(message);
             };
             menu.appendChild(regenerateOption);
         }
@@ -477,18 +477,44 @@ function showContextMenu(event, messageItem, message) {
             const redoGroupOption = ownerDocument.createElement('div');
             redoGroupOption.classList.add('context-menu-item', 'regenerate-text');
             redoGroupOption.innerHTML = `<i class="fas fa-sync-alt"></i> 重新回复`;
-            redoGroupOption.onclick = () => {
+            redoGroupOption.onclick = async () => {
+                closeContextMenu();
                 const { electronAPI, uiHelper } = mainRefs;
                 const currentSelectedItem = mainRefs.currentSelectedItemRef.get();
                 const currentTopicId = mainRefs.currentTopicIdRef.get();
 
                 if (currentSelectedItem.type === 'group' && currentTopicId && message.id && message.agentId) {
+                    const historySnapshot = mainRefs.currentChatHistoryRef?.get?.() || [];
+                    const tailState = evaluateRegenerateTailState(historySnapshot, message.id);
+                    const enableConfirmation = mainRefs.globalSettingsRef?.get?.()?.enableRegenerateConfirmation !== false;
+
+                    if (enableConfirmation && tailState.found && !tailState.isLatestSubstantive) {
+                        const confirmed = await uiHelper.showConfirmDialog(
+                            `该消息后已有 ${tailState.subsequentCount} 条后续发言，重新回复将移除当前消息并在群聊末尾重新生成。是否继续？`,
+                            '重新回复确认',
+                            '继续',
+                            '取消',
+                            false
+                        );
+                        if (!confirmed) return;
+
+                        const activeItem = mainRefs.currentSelectedItemRef?.get?.();
+                        const activeTopicId = mainRefs.currentTopicIdRef?.get?.();
+                        if (
+                            !activeItem
+                            || activeItem.type !== 'group'
+                            || activeItem.id !== currentSelectedItem.id
+                            || activeTopicId !== currentTopicId
+                        ) {
+                            return;
+                        }
+                    }
+
                     // 调用新的IPC接口
                     electronAPI.redoGroupChatMessage(currentSelectedItem.id, currentTopicId, message.id, message.agentId);
                 } else {
                     uiHelper.showToastNotification("无法重新回复：缺少群聊上下文信息。", "error");
                 }
-                closeContextMenu();
             };
             menu.appendChild(redoGroupOption);
         }
@@ -854,13 +880,37 @@ function describeLiveReferenceForContext(data) {
 }
 
 
+function evaluateRegenerateTailState(historyArray, targetMessageId) {
+    if (!Array.isArray(historyArray) || !targetMessageId) {
+        return { found: false, index: -1, isLatestSubstantive: true, subsequentCount: 0 };
+    }
+    const index = historyArray.findIndex(msg => msg && msg.id === targetMessageId);
+    if (index === -1) {
+        return { found: false, index: -1, isLatestSubstantive: true, subsequentCount: 0 };
+    }
+
+    let subsequentCount = 0;
+    for (let i = index + 1; i < historyArray.length; i++) {
+        const msg = historyArray[i];
+        if (!msg) continue;
+        subsequentCount++;
+    }
+
+    return {
+        found: true,
+        index,
+        isLatestSubstantive: subsequentCount === 0,
+        subsequentCount,
+    };
+}
+
 async function handleRegenerateResponse(originalAssistantMessage) {
     const { electronAPI, uiHelper } = mainRefs;
     if (contextMenuDependencies.isContextCompacting?.()) {
         uiHelper.showToastNotification('上下文正在压缩，请稍候', 'warning');
         return;
     }
-    const currentChatHistoryArray = mainRefs.currentChatHistoryRef.get();
+    let currentChatHistoryArray = mainRefs.currentChatHistoryRef.get();
     const currentSelectedItemVal = mainRefs.currentSelectedItemRef.get();
     const currentTopicIdVal = mainRefs.currentTopicIdRef.get();
     const globalSettingsVal = mainRefs.globalSettingsRef.get();
@@ -873,14 +923,53 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         return;
     }
 
-    const originalMessageIndex = currentChatHistoryArray.findIndex(msg => msg.id === originalAssistantMessage.id);
+    let originalMessageIndex = currentChatHistoryArray.findIndex(msg => msg.id === originalAssistantMessage.id);
     if (originalMessageIndex === -1) return;
 
-    const effectiveHistory = effectiveContextHistory(currentChatHistoryArray);
+    let effectiveHistory = effectiveContextHistory(currentChatHistoryArray);
     if (!effectiveHistory.includes(currentChatHistoryArray[originalMessageIndex])) {
         uiHelper.showToastNotification('该回复已归入压缩快照；如需重新回复，请先从该消息创建分支', 'warning');
         return;
     }
+
+    const tailState = evaluateRegenerateTailState(currentChatHistoryArray, originalAssistantMessage.id);
+    const enableConfirmation = globalSettingsVal?.enableRegenerateConfirmation !== false;
+    if (enableConfirmation && tailState.found && !tailState.isLatestSubstantive) {
+        const confirmed = await uiHelper.showConfirmDialog(
+            `该消息后还有 ${tailState.subsequentCount} 条对话记录，重新回复将一并清除后续内容并重新生成。是否继续？`,
+            '重新回复确认',
+            '继续',
+            '取消',
+            false
+        );
+        if (!confirmed) return;
+
+        if (contextMenuDependencies.isContextCompacting?.()) {
+            uiHelper.showToastNotification('上下文正在压缩，请稍候', 'warning');
+            return;
+        }
+        const activeItem = mainRefs.currentSelectedItemRef?.get?.();
+        const activeTopicId = mainRefs.currentTopicIdRef?.get?.();
+        if (
+            !activeItem
+            || activeItem.type !== 'agent'
+            || activeItem.id !== currentSelectedItemVal.id
+            || activeTopicId !== currentTopicIdVal
+        ) {
+            return;
+        }
+
+        currentChatHistoryArray = mainRefs.currentChatHistoryRef.get();
+        originalMessageIndex = currentChatHistoryArray.findIndex(msg => msg.id === originalAssistantMessage.id);
+        if (originalMessageIndex === -1) return;
+
+        effectiveHistory = effectiveContextHistory(currentChatHistoryArray);
+        if (!effectiveHistory.includes(currentChatHistoryArray[originalMessageIndex])) {
+            uiHelper.showToastNotification('该回复已归入压缩快照；如需重新回复，请先从该消息创建分支', 'warning');
+            return;
+        }
+    }
+
     const historyForRegeneration = effectiveContextHistory(currentChatHistoryArray.slice(0, originalMessageIndex));
 
     // Remove original and subsequent messages from DOM and history
