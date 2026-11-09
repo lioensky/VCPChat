@@ -250,7 +250,24 @@ export function createSideChatMessageActions({
         }
 
         if (isAssistant && message.id && typeof regenerate === 'function' && !unfinished && !busy) {
-            add('regenerate', 'fa-sync-alt', '重新回复', () => regenerate(message.id), 'regenerate-text');
+            add('regenerate', 'fa-sync-alt', '重新回复', async () => {
+                const history = getHistory?.() || [];
+                const targetIndex = history.findIndex(item => item?.id === message.id);
+                if (targetIndex === -1) return;
+                const subsequentCount = history.slice(targetIndex + 1).filter(item => Boolean(item)).length;
+                if (subsequentCount > 0 && typeof uiHelper?.showConfirmDialog === 'function') {
+                    const confirmed = await uiHelper.showConfirmDialog(
+                        `该消息后还有 ${subsequentCount} 条对话记录，重新回复将一并清除后续内容并重新生成。是否继续？`,
+                        '重新回复确认',
+                        '继续',
+                        '取消',
+                        false
+                    );
+                    if (!confirmed || store.isDisposed || isBusy?.()) return;
+                }
+                if (store.isDisposed || isBusy?.()) return;
+                regenerate(message.id);
+            }, 'regenerate-text');
         }
 
         const commands = win?.VCPContributions?.commands;
