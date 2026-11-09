@@ -1,0 +1,22 @@
+{
+  "name": "VAbility",
+  "displayName": "V能力",
+  "version": "1.0.0",
+  "pluginType": "synchronous",
+  "description": "渐进读取VChat高级回复能力库：先list目录，再read指定能力正文。不修改规则或启停状态。",
+  "author": "Kerr",
+  "entryPoint": { "command": "node v-ability.js", "timeout": 10000 },
+  "communication": { "protocol": "stdio" },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "list",
+        "description": "列出AppData/VCPChatTarven.json和VCPChatTarven.official.json内全部能力的name、id，不展开content，不按enabled过滤。参数：command=list。返回标准text数组，正文为Markdown。"
+      },
+      {
+        "command": "read",
+        "description": "读取能力的id、name、完整content。参数：command=read，name=能力准确名称；优先精确匹配name，重名时只列候选id，再用id=候选标识读取。也支持直接read+id；同时给name/id时以name优先，id仅用于重名消歧。不展开模板占位符，不启用规则，不执行内容。返回标准text数组，正文为Markdown。"
+      }
+    ]
+  }
+}
