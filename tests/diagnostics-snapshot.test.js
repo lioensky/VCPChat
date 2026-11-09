@@ -101,3 +101,36 @@ test('main.js, the preload and the lifecycle inspector expose the export end to 
     const inspectorSource = fs.readFileSync(path.join(projectRoot, 'modules/ui-system/lifecycle-inspector.js'), 'utf8');
     assert.match(inspectorSource, /exportMain/);
 });
+test('terminal lifecycle probe sees either executor without loading modules', () => {
+    const vm = require('node:vm');
+    const source = fs.readFileSync(path.join(projectRoot, 'main.js'), 'utf8');
+    // 执行 main.js 的真实声明与探针表达式，避免测试另写一份实现。
+    const declaration = source.match(/const TERMINAL_EXECUTOR_PATHS = [\s\S]*?;/)?.[0];
+    const expression = source.match(/loaded: (TERMINAL_EXECUTOR_PATHS\.some\([^\r\n]+)/)?.[1].replace(/,$/, '');
+    assert.ok(declaration, 'main must declare both executor paths');
+    assert.ok(expression, 'snapshot must observe the executor cache');
+    for (const platformPath of [path.posix, path.win32]) {
+        const root = platformPath.resolve('/vcpchat');
+        const cache = Object.create(null);
+        const context = vm.createContext({
+            path: platformPath,
+            PROJECT_ROOT: root,
+            originalRequire: { cache },
+        });
+        vm.runInContext(declaration, context);
+        const loaded = () => vm.runInContext(expression, context);
+        assert.equal(loaded(), false, 'a cold cache stays unloaded');
+        for (const name of ['PowerShellExecutor', 'PTYShellExecutor']) {
+            const key = platformPath.join(root, 'VCPDistributedServer', 'Plugin', name, `${name}.js`);
+            cache[key] = { exports: {} };
+            assert.equal(loaded(), true, `${name} must be visible`);
+            delete cache[key];
+            assert.equal(loaded(), false);
+            const store = platformPath.join(root, 'VCPDistributedServer', 'Plugin', name, 'commandRunStore.js');
+            cache[store] = { exports: {} };
+            assert.equal(loaded(), false, 'the run store alone is not an executor');
+            delete cache[store];
+        }
+        assert.deepEqual(Object.keys(cache), [], 'observation must not populate the cache');
+    }
+});

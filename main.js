@@ -331,7 +331,9 @@ const NATIVE_SPLASH_READY_FILE = app.isPackaged
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
 const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
-const TERMINAL_EXECUTOR_PATH = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js');
+// 诊断只观察缓存，不加载执行器；Windows 与非 Windows 的后端都必须计入。
+const TERMINAL_EXECUTOR_PATHS = ['PowerShellExecutor', 'PTYShellExecutor'].map(name =>
+    path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', name, `${name}.js`));
 const USER_AVATAR_FILE = path.join(USER_DATA_DIR, 'user_avatar.png'); // Standardized user avatar file
 const MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
 const MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
@@ -1913,7 +1915,7 @@ if (!gotTheLock) {
                 launch: launchMarks.snapshot(),
                 // 终端执行器是否已在主进程加载：侧栏终端第一次用到才 require；分布式服务器开着时它的插件加载也会拉起它
                 terminalExecutor: {
-                    loaded: Boolean(originalRequire.cache[TERMINAL_EXECUTOR_PATH]),
+                    loaded: TERMINAL_EXECUTOR_PATHS.some(executorPath => Boolean(originalRequire.cache[executorPath])),
                     distributedServer: Boolean(distributedServer),
                 },
             };
