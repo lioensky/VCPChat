@@ -1,4 +1,4 @@
-﻿// renderer_modules/config.js
+// renderer_modules/config.js
 // VCPHumanToolBox工具定义
 // author:lionsky & infinite-vector
 
@@ -985,12 +985,27 @@ export const tools = {
     },
     'TopicSponsor': {
         displayName: '话题发起人 (TopicSponsor)',
-        description: '发起、查询和管理聊天话题。[前端分布式插件: TopicSponsor]',
+        description: '单聊与群聊地址簿发现、话题创建、历史审阅及跨话题留言协同。[宿主直连服务: TopicSponsor]',
         commands: {
+            'ListAgents': {
+                description: '列出所有单聊伙伴 (Agent) 的标准名称与 ID',
+                params: []
+            },
+            'ListGroups': {
+                description: '列出所有群组 (Group) 的标准名称与 ID',
+                params: []
+            },
+            'ListRecentTopics': {
+                description: '按 Agent 或群组名称/ID查询最新 5 个话题',
+                params: [
+                    { name: 'query', type: 'text', required: true, placeholder: '如：小克 或 开发讨论组' },
+                    { name: 'target_type', type: 'select', options: ['', 'agent', 'group'], description: '可选限定类型' }
+                ]
+            },
             'CreateTopic': {
                 description: '创建新话题并发起对话',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'maid', type: 'text', required: true, placeholder: '目标 Agent 完整名称或ID (如：小克)' },
                     { name: 'topic_name', type: 'text', required: true, placeholder: '话题名称' },
                     { name: 'initial_message', type: 'textarea', required: true, placeholder: '第一句话' }
                 ]
@@ -998,51 +1013,52 @@ export const tools = {
             'ReadUnlockedTopics': {
                 description: '读取未锁定话题及消息历史',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'maid', type: 'text', required: true, placeholder: '目标 Agent 或群组完整名称/ID (如：小克)' },
                     { name: 'include_read', type: 'select', options: ['false', 'true'], description: '是否包含已读' }
                 ]
             },
             'CheckNewTopics': {
                 description: '检查最近几天的新话题',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'maid', type: 'text', required: true, placeholder: '目标 Agent 或群组完整名称/ID (如：小克)' },
                     { name: 'days', type: 'number', required: false, placeholder: '3' }
                 ]
             },
             'CheckUnreadMessages': {
                 description: '检查未读消息',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' }
+                    { name: 'maid', type: 'text', required: true, placeholder: '目标 Agent 或群组完整名称/ID (如：小克)' }
                 ]
             },
             'ReplyToTopic': {
-                description: '在话题中回复消息',
+                description: '向指定单聊或群聊话题投递回复',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx' },
-                    { name: 'message', type: 'textarea', required: true },
-                    { name: 'sender_name', type: 'text', required: true, placeholder: '发送者名' }
+                    { name: 'topic_id', type: 'text', required: true, placeholder: '目标话题 topic_xxx' },
+                    { name: 'message', type: 'textarea', required: true, placeholder: '要投递的发言内容' },
+                    { name: 'sender_name', type: 'text', required: true, placeholder: '发言者名称 (如：小克)' },
+                    { name: 'source_topic_id', type: 'text', required: false, placeholder: '可选：来源话题ID，附带回信座标' }
                 ]
             },
             'CheckTopicOwnership': {
-                description: '验证话题所有权',
+                description: '验证单聊或群聊话题所有权',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
                     { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx' },
-                    { name: 'caller_name', type: 'text', required: true, placeholder: '调用者名' }
+                    { name: 'caller_name', type: 'text', required: true, placeholder: '调用者名' },
+                    { name: 'maid', type: 'text', required: false, placeholder: '可选：目标 Agent 或群组名（省略则自动寻址）' }
                 ]
             },
             'ListUnlockedTopics': {
                 description: '列出所有未锁定话题',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' }
+                    { name: 'maid', type: 'text', required: true, placeholder: '目标 Agent 或群组完整名称/ID (如：小克)' }
                 ]
             },
             'ReadTopicContent': {
-                description: '读取话题完整内容',
+                description: '读取单聊或群聊话题完整内容',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx' }
+                    { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx 或 group_topic_xxx' },
+                    { name: 'maid', type: 'text', required: false, placeholder: '可选：目标 Agent 或群组名（省略则自动反查）' },
+                    { name: 'format', type: 'select', options: ['markdown', 'json', 'raw'], description: '返回格式' }
                 ]
             }
         }

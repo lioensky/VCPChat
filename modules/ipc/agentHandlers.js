@@ -563,8 +563,12 @@ function initialize(context) {
 
     ipcMain.handle('create-agent', async (event, agentName, initialConfig = null) => {
         try {
-            const baseName = agentName.replace(/[^a-zA-Z0-9_-]/g, '_');
-            const agentId = `${baseName}_${Date.now()}`;
+            const now = Date.now();
+            const rawSanitized = String(agentName || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const hasAlnum = /[a-zA-Z0-9]/.test(rawSanitized);
+            const agentId = hasAlnum
+                ? `_Agent_${rawSanitized.replace(/^_+|_+$/g, '')}_${now}`
+                : `_Agent_${now}_${now + 1}`;
             const agentDir = path.join(AGENT_DIR, agentId);
 
             if (await fs.pathExists(agentDir)) {

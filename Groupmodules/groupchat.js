@@ -558,8 +558,12 @@ async function createAgentGroup(groupName, initialConfig = {}) {
         return { success: false, error: 'GroupChat module paths not initialized.' };
     }
     try {
-        const baseName = groupName.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const groupId = `${baseName}_${Date.now()}`; // 更简单的唯一ID
+        const now = Date.now();
+        const rawSanitized = String(groupName || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const hasAlnum = /[a-zA-Z0-9]/.test(rawSanitized);
+        const groupId = hasAlnum
+            ? `_Group_${rawSanitized.replace(/^_+|_+$/g, '')}_${now}`
+            : `_Group_${now}`; // 统一可读前缀，避免纯中文名坍缩为连续下划线
         const groupDir = path.join(mainAppPaths.AGENT_GROUPS_DIR, groupId);
 
         if (await fs.pathExists(groupDir)) {
