@@ -1192,6 +1192,11 @@ export const chatManager = (() => {
                 watcherLeaseToken
             );
             if (!isTopicSelectionCurrent()) return;
+            if (currentSelectedItem.type === 'agent' && window.flowlockManager?.claimPendingTopicForSelection) {
+                Promise.resolve(window.flowlockManager.claimPendingTopicForSelection(currentSelectedItem.id, topicId)).catch(err => {
+                    console.warn('[ChatManager] Lazy flowlock claim on selectTopic failed:', err);
+                });
+            }
             await _saveLastOpenState();
             notifySelectionCommitted();
         } catch (error) {
