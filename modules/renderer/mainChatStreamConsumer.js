@@ -1,4 +1,5 @@
 import { normalizeStreamChunk } from '../chat/contentRuntime.js';
+import { findToolReturnBoundary } from './toolReturnBoundary.js';
 
 const terminalTypes = new Set(['completed', 'failed', 'cancelled', 'discarded']);
 
@@ -31,8 +32,30 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
     let preparedType = null;
     const projection = capabilities.resolveProjection?.(messageId) || null;
     let accumulatedText = '';
-    let checkedBoundaryCount = 0;
+    let checkedBoundary = 0;
+    let checkingBoundary = false;
     let active = true;
+
+    function checkToolReturn() {
+        if (!active || checkingBoundary || context.isGroupMessage || context.groupId) return;
+        const boundary = findToolReturnBoundary(accumulatedText);
+        if (!boundary || boundary <= checkedBoundary) return;
+        checkedBoundary = boundary;
+        checkingBoundary = true;
+        const isCurrentBoundary = () => active && findToolReturnBoundary(accumulatedText) === boundary;
+        Promise.resolve().then(() => {
+            if (!isCurrentBoundary()) return;
+            return capabilities.onToolReturnBoundary?.({
+                messageId, context, text: accumulatedText,
+                isActive: isCurrentBoundary,
+            });
+        }).catch(error => capabilities.reportError?.('[ContextCompaction] Boundary check failed', error))
+            .finally(() => {
+                checkingBoundary = false;
+                // 较慢的预算查询期间若又完整返回了一批工具，只检查最新安全点。
+                checkToolReturn();
+            });
+    }
 
     return Object.freeze({
         surfaceGeneration: capabilities.getSurfaceGeneration?.(),
@@ -54,16 +77,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             if (event.type === 'chunk') {
                 (projection?.append || capabilities.append)(messageId, event.text, context, operationId);
                 accumulatedText += event.text;
-                if (!context.isGroupMessage && !context.groupId) {
-                    const boundaries = accumulatedText.match(/^[ \t]*<<<\[END_ROLE_DIVIDE_USER\]>>>[ \t]*(?=\r?$)/gm) || [];
-                    if (boundaries.length > checkedBoundaryCount) {
-                        checkedBoundaryCount = boundaries.length;
-                        Promise.resolve(capabilities.onToolReturnBoundary?.({
-                            messageId, context, text: accumulatedText,
-                            isActive: () => active,
-                        })).catch(error => capabilities.reportError?.('[ContextCompaction] Boundary check failed', error));
-                    }
-                }
+                checkToolReturn();
             }
             if (!terminal) return;
             const finalized = event.outcome?.persistence?.value;

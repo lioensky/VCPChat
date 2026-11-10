@@ -19,9 +19,10 @@ for (const mode of ['persist', 'dispose', 'group']) {
             afterPersist: async () => { effects.push('handover'); },
         });
         await consumer.prepare({ type: 'start', context });
-        consumer.consume({ type: 'chunk', text: 'tools returned\n<<<[END_ROLE_' });
+        consumer.consume({ type: 'chunk', text: '[[VCP调用结果信息汇总:tools returned\nVCP调用结果结' });
         assert.equal(boundaries.length, 0);
-        consumer.consume({ type: 'chunk', text: 'DIVIDE_USER]>>>\n' });
+        consumer.consume({ type: 'chunk', text: '束]]\n' });
+        await new Promise(resolve => setImmediate(resolve));
         if (mode === 'group') {
             assert.equal(boundaries.length, 0);
             consumer.dispose();
