@@ -223,3 +223,6 @@ OneRing 跨端溯源与跨话题传播预算留二期。
 - 受控验证包括acceptance/commit/advancing/relay-continuation写盘边界、取消后新消息与其他话题隔离、取消后重建实例再resume不复活；fetch为遵守AbortSignal的夹具，群聊历史为临时磁盘，不是完整Electron/真实后端工具E2E。
 - 已修改受跟踪JS语法检查11项通过；新增topic-active-stop.test.cjs额外语法检查通过。core.whitespace包含cr-at-eol的git diff --check通过。未改Git配置、未提交/暂存/部署到H:\MCP\VCPChat，未重启或修改真实聊天数据。
 - 明确遗留：没有先Stop直接删除触发消息的前置检查/第二次检查竞态尚未修复；无终稿旧uncertain的显式放弃UI及全面保存回执不明恢复未闭环。另列Todo #8，不以本轮绿测宣称完成。Todo #7源码完成但等待真实客户端验收。
+
+### 主动停止专项实机验收（2026-11-10 22:19）
+莱恩报告端到端手动测试4轮全部通过，要求更新Todo；据此Todo #7完成验收并标记done。该证据来自用户实测反馈，与此前46文件325/325自动化回归分别记录，不累计测试数量，也不据此推定部署方式或声称Kerr执行了部署/重启。上述“#7等待实机验收”状态由本节更新。Todo #8（未先Stop直接删除触发消息的竞态、无终稿旧uncertain恢复）仍待处理，不纳入本次验收。
