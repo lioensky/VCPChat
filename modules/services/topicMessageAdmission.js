@@ -33,6 +33,8 @@ class TopicMessageAdmission {
         this.waiters = new Set();
         this.rounds = new Map();
         this.relayAttempts = new Map();
+        // Stop is signalled outside the serial disk queue; IDs define its boundary.
+        this.cancelledEntryIds = new Set();
         this.tail = Promise.resolve();
         this.ready = false;
         this.closed = false;
@@ -121,9 +123,15 @@ class TopicMessageAdmission {
     }
 
     async save(next, standaloneLeases = this.standaloneLeases) {
-        await this.store.save(copy(next), copy(standaloneLeases));
+        this.savingEntries = next;
+        try { await this.store.save(copy(next), copy(standaloneLeases)); }
+        finally { this.savingEntries = null; }
         this.entries = next;
         this.standaloneLeases = standaloneLeases;
+        const retainedIds = new Set(next.map(entry => entry.entryId));
+        for (const id of this.cancelledEntryIds) {
+            if (!retainedIds.has(id)) this.cancelledEntryIds.delete(id);
+        }
         this.notify();
     }
 
@@ -299,6 +307,30 @@ class TopicMessageAdmission {
         });
     }
 
+    cancelPending(scope) {
+        this.assertReady();
+        const key = conversationKey(scope);
+        const ids = new Set([...this.entries, ...(this.savingEntries || [])]
+            .filter(entry => conversationKey(entry.scope) === key)
+            .map(entry => entry.entryId));
+        for (const id of ids) this.cancelledEntryIds.add(id);
+        const attempt = this.relayAttempts.get(key);
+        if (attempt && !attempt.dispatched) {
+            attempt.cancelled = true;
+            attempt.stopIds = new Set([...(attempt.stopIds || []), ...ids]);
+        }
+        // Capture before queuing: later submissions are not part of this Stop.
+        return this.run(async () => {
+            const token = this.leases.get(key);
+            const next = this.entries.filter(entry =>
+                !ids.has(entry.entryId) || (token && entry.leaseToken === token))
+                .map(entry => ids.has(entry.entryId)
+                    ? { ...entry, cancellationRequested: true } : entry);
+            await this.save(next);
+            return { success: true, cancelled: ids.size, activeRetained: Boolean(token) };
+        });
+    }
+
     resume(scope) {
         return this.run(async () => {
             this.assertReady();
@@ -447,10 +479,12 @@ class TopicMessageAdmission {
         return { success: true, accepted: true };
     }
 
-    async pauseCancelledRelay(scope) {
+    async pauseCancelledRelay(scope, attempt = null) {
         const key = conversationKey(scope);
-        const paused = this.entries.map(entry => conversationKey(entry.scope) === key
-            ? { ...entry, state: 'recovered', error: '用户取消中继，等待明确继续' } : entry);
+        const paused = attempt?.stopIds
+            ? this.entries.filter(entry => !attempt.stopIds.has(entry.entryId))
+            : this.entries.map(entry => conversationKey(entry.scope) === key
+                ? { ...entry, state: 'recovered', error: '用户取消中继，等待明确继续' } : entry);
         try { await this.save(paused); }
         catch (error) {
             // A rejected write may have reached disk. Never let a later submit
@@ -493,8 +527,10 @@ class TopicMessageAdmission {
                 && (this.rounds.get(key) || 0) >= this.maxAutoRounds;
             if (attempt.cancelled || budgetBlocked) {
                 const reason = attempt.cancelled ? '用户取消中继，等待明确继续' : '自动推进预算已耗尽，等待人类确认继续';
-                await this.save(remaining.map(entry => conversationKey(entry.scope) === key
-                    ? { ...entry, state: 'recovered', error: reason } : entry),
+                await this.save(attempt.stopIds
+                    ? remaining.filter(entry => !attempt.stopIds.has(entry.entryId))
+                    : remaining.map(entry => conversationKey(entry.scope) === key
+                        ? { ...entry, state: 'recovered', error: reason } : entry),
                     this.standaloneLeases.filter(lease =>
                         !(conversationKey(lease.scope) === key && lease.token === token)));
                 this.leases.delete(key);
@@ -557,8 +593,16 @@ class TopicMessageAdmission {
     async drain(scope, { relayFrom = null, relayAttempt = null } = {}) {
             const key = conversationKey(scope);
             const stopIfCancelled = async () => {
+                const cancelled = this.entries.filter(entry =>
+                    conversationKey(entry.scope) === key && this.cancelledEntryIds.has(entry.entryId));
+                if (cancelled.length) {
+                    const ids = new Set(cancelled.map(entry => entry.entryId));
+                    await this.save(this.entries.filter(entry => !ids.has(entry.entryId)));
+                    for (const id of ids) this.cancelledEntryIds.delete(id);
+                    return true;
+                }
                 if (!relayAttempt?.cancelled) return false;
-                await this.pauseCancelledRelay(scope);
+                await this.pauseCancelledRelay(scope, relayAttempt);
                 return true;
             };
             if (this.leases.has(key)) return;
@@ -622,8 +666,12 @@ class TopicMessageAdmission {
             const ids = new Set(batch.map(entry => entry.entryId));
             await this.save(this.entries.map(entry => ids.has(entry.entryId)
                 ? { ...entry, state: 'advancing', leaseToken: token } : entry));
+            if (batch.some(entry => this.cancelledEntryIds.has(entry.entryId))) {
+                await stopIfCancelled();
+                return;
+            }
             if (relayAttempt?.cancelled) {
-                await this.pauseCancelledRelay(scope);
+                await this.pauseCancelledRelay(scope, relayAttempt);
                 return;
             }
             // No await between this final decision and dispatch reservation.

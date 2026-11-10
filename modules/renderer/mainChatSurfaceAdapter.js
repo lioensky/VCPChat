@@ -158,6 +158,8 @@ export function createMainChatSurfaceAdapter({
         ...renderDependencies,
         chatDomRenderer: surface.renderer,
         streamStartCapability: message => streamServices.streamProjection.startStreamingMessage(message),
+        cancelStreamAdmissionRelay: messageId => streamServices.chatManager?.cancelStreamAdmissionRelay?.(messageId),
+        cancelStreamCapability: (messageId, reason) => bridge.cancelOperation(messageId, reason),
     });
     const streamCapabilities = createStreamCapabilities(root, streamServices);
     const bridge = createVcpStreamBridge({

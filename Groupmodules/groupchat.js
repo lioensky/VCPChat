@@ -1408,6 +1408,11 @@ ${canvasData.errors || 'No errors'}
                 clearTimeout(activeTimer);
                 if (fetchError.name === 'AbortError') {
                     console.log(`[GroupChat] VCP fetch for ${agentName} was aborted before stream began.`);
+                    groupHistory = await persistAgentResponse(groupId, topicId, {
+                        role: 'assistant', name: agentName, agentId, id: messageIdForAgentResponse,
+                        content: '', timestamp: Date.now(), finishReason: 'interrupted',
+                        isGroupMessage: true, groupId, topicId,
+                    });
                      if (typeof sendStreamChunkToRenderer === 'function') {
                          sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, interrupted: true });
                      }
@@ -2119,6 +2124,11 @@ ${canvasData.errors || 'No errors'}
             clearTimeout(activeTimer);
             if (fetchError.name === 'AbortError') {
                 console.log(`[GroupChat Invite] VCP fetch for ${agentName} was aborted before stream began.`);
+                groupHistory = await persistResponse(groupId, topicId, {
+                    role: 'assistant', name: agentName, agentId: invitedAgentId,
+                    id: messageIdForAgentResponse, content: '', timestamp: Date.now(),
+                    finishReason: 'interrupted', isGroupMessage: true, groupId, topicId,
+                });
                 if (typeof sendStreamChunkToRenderer === 'function') {
                     sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, interrupted: true });
                 }
@@ -2648,7 +2658,7 @@ async function redoGroupChatMessage(groupId, topicId, messageIdToDelete, agentId
 
 
 /**
- * 中断一个正在进行的群聊 VCP 请求，但不取消该轮剩余发言者。
+ * 主动中断当前群聊请求，同时取消该话题停止边界前的后续队列。
  * @param {string} messageId - 要中断的消息的 ID
  * @returns {{success: boolean, error?: string}}
  */
@@ -2660,8 +2670,9 @@ async function interruptGroupRequest(messageId) {
     }
 
     console.log(`[GroupChat] Interrupting local request for messageId: ${messageId}`);
+    const cancelledQueue = interruptGroupChatQueue(request.groupId, request.topicId);
     request.controller.abort();
-    await sendRemoteGroupInterrupt(messageId);
+    await Promise.all([cancelledQueue, sendRemoteGroupInterrupt(messageId)]);
     return { success: true, message: 'Interrupt signal sent locally and remote request attempted.' };
 }
 
@@ -2743,6 +2754,8 @@ async function interruptGroupChatQueue(groupId, topicId) {
         return { success: false, error: '群组 ID 和话题 ID 不能为空。' };
     }
 
+    const admissionCancellation = groupTopicAdmission?.cancelPending(
+        getGroupHistoryDescriptor(groupId, topicId));
     const queueKey = getGroupQueueKey(groupId, topicId);
     groupQueueCancellationVersions.set(
         queueKey,
@@ -2758,6 +2771,7 @@ async function interruptGroupChatQueue(groupId, topicId) {
     const jevResult = jevSessionOrchestrator
         ? await jevSessionOrchestrator.interrupt(groupId, topicId)
         : { success: true, wasRunning: false, currentReplyContinues: false };
+    await admissionCancellation;
     const currentReplyContinues = activeMessageIds.length > 0
         || jevResult.currentReplyContinues === true;
 

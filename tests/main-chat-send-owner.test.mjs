@@ -191,3 +191,40 @@ test('active reply with a draft sends to admission instead of interrupting; empt
     await owner.handleAction();
     assert.deepEqual(calls, ['send', ['interrupt', 'active']]);
 });
+
+test('user Stop freezes the active scope and never waits for cancellation disk ACK before local fallback', async () => {
+    const events = [];
+    let finishCancellation;
+    const selected = ref({ id: 'a', type: 'agent' });
+    const topic = ref('t');
+    const message = { id: 'active', role: 'assistant', isThinking: true,
+        agentId: 'a', topicId: 't', context: { agentId: 'a', topicId: 't' } };
+    const owner = createMainChatSendOwner({
+        button: button(),
+        messagesRoot: { querySelector: () => ({ isConnected: true, classList: { contains: () => true } }) },
+        historyRef: ref([message]), selectedItemRef: selected, topicIdRef: topic,
+        streamProjection: {},
+        chatAPI: { topicAdmissionCancelPending(scope) {
+            events.push(['cancel-pending', scope]);
+            return new Promise(resolve => { finishCancellation = resolve; });
+        } },
+        getChatManager: () => ({ cancelStreamAdmissionRelay: id => events.push(['cancel-relay', id]) }),
+        interruptHandler: { async interrupt(id) {
+            events.push(['interrupt', id]);
+            selected.set({ id: 'b', type: 'agent' }); topic.set('other');
+            return { success: false, error: 'offline' };
+        } },
+        getAdapter: () => ({ async cancelStream(id) { events.push(['local', id]); return { kind: 'cancelled' }; } }),
+        notify: () => {},
+    });
+    assert.equal(await owner.interrupt(), true);
+    assert.deepEqual(events, [
+        ['cancel-relay', 'active'],
+        ['cancel-pending', { itemType: 'agent', itemId: 'a', topicId: 't' }],
+        ['interrupt', 'active'],
+        ['local', 'active'],
+    ]);
+    finishCancellation({ success: true });
+    await Promise.resolve();
+    owner.dispose();
+});

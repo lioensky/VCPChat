@@ -116,6 +116,7 @@ async function createTopicMessageAdmissionHost({
         }, { requireExisting: true });
         return { success: true, messageId: terminal.id, history: result.history };
     });
+    register('topic-admission:cancel-pending', (_event, scope) => service.cancelPending(scope));
     register('topic-admission:withdraw', (_event, scope, entryId) => service.withdraw(scope, entryId));
     register('topic-admission:resume', (_event, scope) => service.resume(scope));
     register('topic-admission:reconcile', (_event, scope, entryId) => service.reconcile(scope, entryId));

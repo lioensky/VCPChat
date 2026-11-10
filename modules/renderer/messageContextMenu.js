@@ -155,7 +155,18 @@ function showContextMenu(event, messageItem, message) {
                     uiHelper.showToastNotification("无法发送群聊中止信号 (API不存在)。", "error");
                 }
             } else {
-                // --- 普通单聊中止逻辑 ---
+                // Explicit user Stop; automatic tool-return interruption never enters here.
+                contextMenuDependencies.cancelStreamAdmissionRelay?.(activeMessageId);
+                if (typeof electronAPI?.topicAdmissionCancelPending === 'function') {
+                    const scope = {
+                        itemType: 'agent',
+                        itemId: message.context?.agentId || message.agentId || currentSelectedItemVal.id,
+                        topicId: message.context?.topicId || message.topicId || currentTopicIdVal,
+                    };
+                    Promise.resolve(electronAPI.topicAdmissionCancelPending(scope)).then(receipt => {
+                        if (!receipt?.success) throw new Error(receipt?.error || receipt?.code || '取消未确认');
+                    }).catch(error => uiHelper.showToastNotification(`后续队列取消未确认：${error.message}`, 'error'));
+                }
                 console.log(`[ContextMenu] Attempting to interrupt AGENT message: ${activeMessageId}`);
                 if (contextMenuDependencies.interruptHandler && typeof contextMenuDependencies.interruptHandler.interrupt === 'function') {
                     const result = await contextMenuDependencies.interruptHandler.interrupt(activeMessageId);

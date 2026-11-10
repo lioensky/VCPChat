@@ -35,7 +35,13 @@ function fixture({ compress = false, pending = true, failCompact = false } = {})
                 events.push(outcome?.cancelled ? 'cancel' : 'relay');
                 return { success: true };
             },
-            async topicAdmissionFail() { assert.fail('relay cancellation must use durable pause'); },
+            async topicAdmissionRelease(_scope, token, outcome) {
+                assert.equal(token, 'old');
+                assert.equal(outcome.saved, true);
+                events.push('release');
+                return { success: true };
+            },
+            async topicAdmissionFail() { assert.fail('user Stop must not convert the round to retryable failure'); },
             async topicAdmissionUncertain() { events.push('uncertain'); return { success: true }; },
         },
         async getHistory() { events.push('history'); return []; },
@@ -97,7 +103,7 @@ test('explicit cancellation prevents relay continuation', async () => {
     f.sandbox.cancel();
     await f.finish();
     assert.equal(f.events.includes('relay'), false);
-    assert.equal(f.events.at(-1), 'cancel');
+    assert.equal(f.events.at(-1), 'release');
 });
 
 for (const extra of [{ isGroupMessage: true }, { groupId: 'g' }, { topicId: 'sidechat_123_abcd' }]) {

@@ -184,7 +184,7 @@ export const chatManager = (() => {
         try {
             if (disposed || intent.cancelled) {
                 // Do not regenerate after an explicit user cancellation.
-                const receipt = await electronAPI.topicAdmissionRelay(scope, intent.admissionToken, { saved: true, cancelled: true });
+                const receipt = await electronAPI.topicAdmissionRelease(scope, intent.admissionToken, { saved: true });
                 if (!receipt?.success) throw new Error(receipt?.error || receipt?.code || '取消中继失败');
                 return true;
             }
@@ -196,7 +196,7 @@ export const chatManager = (() => {
                 });
             }
             if (disposed || intent.cancelled) {
-                const receipt = await electronAPI.topicAdmissionRelay(scope, intent.admissionToken, { saved: true, cancelled: true });
+                const receipt = await electronAPI.topicAdmissionRelease(scope, intent.admissionToken, { saved: true });
                 if (!receipt?.success) throw new Error(receipt?.error || receipt?.code || '取消中继失败');
                 return true;
             }

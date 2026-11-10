@@ -23,6 +23,9 @@ async function fixture(t, mode, stream) {
         fetch: async (_url, options) => {
             requests.push(JSON.parse(options.body));
             await requestHook?.(requests.length);
+            if (options.signal?.aborted) {
+                throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+            }
             if (!stream) return new Response(JSON.stringify({
                 choices: [{ message: { content: 'RAW_PRIVATE_RESPONSE' } }],
             }), { headers: { 'Content-Type': 'application/json' } });
@@ -619,3 +622,52 @@ test('deleted group history is not recreated by send or invitation entry', async
     assert.equal(fs.existsSync(directory), false);
     assert.equal(f.requests.length, 0);
 });
+
+for (const mode of ['invite_only', 'sequential']) {
+    test(`${mode}: active Stop before headers cancels followers and saves interrupted terminal before release`, async t => {
+        const { TopicMessageAdmission } = require('../modules/services/topicMessageAdmission');
+        const f = await fixture(t, mode, true);
+        const scope = { itemType: 'group', itemId: f.groupId, topicId: f.topicId };
+        const admission = new TopicMessageAdmission({
+            store: { load: async () => [], save: async () => {} },
+            validate: async () => {},
+            commit: async () => assert.fail('cancelled follower entered history'),
+            advance: async () => assert.fail('cancelled follower generated a reply'),
+        });
+        await admission.initialize();
+        t.after(() => admission.dispose());
+        f.api.initializeRuntimeServices({ topicAdmission: admission });
+        if (mode === 'sequential') {
+            await f.api.mutateGroupConfig(f.groupId, config => ({
+                ...config, members: ['a', 'b'], sequentialSpeakerOrder: ['a', 'b'],
+            }));
+        }
+        f.setRequestHook(async () => {
+            f.setRequestHook(null); // Remote interrupt uses the same fetch fixture.
+            await admission.submit({
+                scope, message: { id: 'cancel-me', role: 'user', content: 'queued' },
+                triggerPolicy: 'reply',
+            });
+            const result = await f.api.interruptGroupRequest(f.requests[0].messageId);
+            assert.equal(result.success, true);
+        });
+        if (mode === 'invite_only') {
+            await f.invoke();
+        } else {
+            await f.api.handleGroupChatMessage(f.groupId, f.topicId,
+                { id: 'human-stop', content: { text: 'hello' } }, undefined,
+                async id => ({ id, name: `Agent ${id}`, model: 'test', streamOutput: true }));
+        }
+        await new Promise(resolve => setImmediate(resolve));
+        const history = await f.api.getGroupChatHistory(f.groupId, f.topicId);
+        const terminal = history.at(-1);
+        assert.equal(terminal.role, 'assistant');
+        assert.equal(terminal.finishReason, 'interrupted');
+        assert.equal(terminal.admissionTerminal, true);
+        assert.ok(terminal.admissionToken);
+        assert.equal(history.some(message => message.id === 'cancel-me'), false);
+        assert.equal(admission.leases.size, 0);
+        assert.deepEqual(admission.snapshot(scope), []);
+        assert.equal(f.requests.filter(body => Array.isArray(body.messages)).length, 1);
+    });
+}

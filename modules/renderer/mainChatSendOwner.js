@@ -92,7 +92,23 @@ export function createMainChatSendOwner({
         if (!activeMessage || disposed) return false;
         const selected = selectedItemRef.get();
         const isGroup = activeMessage.isGroupMessage === true || selected?.type === 'group';
-        if (!isGroup) getChatManager()?.cancelStreamAdmissionRelay?.(activeMessage.id);
+        if (!isGroup) {
+            getChatManager()?.cancelStreamAdmissionRelay?.(activeMessage.id);
+            if (typeof chatAPI?.topicAdmissionCancelPending === 'function') {
+                // Send before awaiting network Stop; never infer target after an await.
+                const scope = {
+                    itemType: 'agent', itemId: activeMessage.context?.agentId || activeMessage.agentId || selected?.id,
+                    topicId: activeMessage.context?.topicId || activeMessage.topicId || topicIdRef.get(),
+                };
+                Promise.resolve(chatAPI.topicAdmissionCancelPending(scope)).then(cancellation => {
+                    if (!cancellation?.success) {
+                        throw new Error(cancellation?.error || cancellation?.code || '未知错误');
+                    }
+                }).catch(error => {
+                    if (!disposed) notify?.(`后续队列取消未确认：${error.message}`, 'error');
+                });
+            }
+        }
         let result = { success: false, error: '无法发送中止请求。' };
         if (isGroup) {
             result = typeof chatAPI?.interruptGroupRequest === 'function'

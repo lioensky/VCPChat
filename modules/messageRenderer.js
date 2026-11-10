@@ -3184,6 +3184,8 @@ function initializeMessageRenderer(refs) {
         renderMessage: renderMessage,
         startStreamingMessage: mainRendererReferences.streamStartCapability || streamManager.startStreamingMessage,
         startStream: mainRendererReferences.streamStartCapability,
+        cancelStream: mainRendererReferences.cancelStreamCapability,
+        cancelStreamAdmissionRelay: mainRendererReferences.cancelStreamAdmissionRelay,
         discardStreamingMessage: streamManager.discardStreamingMessage,
         setContentAndProcessImages: imageHandler.setContentAndProcessImages,
         processRenderedContent: wrappedProcessRenderedContent,
