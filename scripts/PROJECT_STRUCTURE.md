@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-11-04 02:56:17  
+> 自动生成于：2026-11-10 14:47:33  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,24 +10,24 @@
 
 ## 文件统计
 
-- **总目录数**：244
-- **总文件数**：1722
+- **总目录数**：245
+- **总文件数**：1746
 - **文件类型数**：21
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 1079 |
+| JavaScript | `.js` | 1099 |
 | CSS | `.css` | 159 |
-| JSON | `.json` | 152 |
+| JSON | `.json` | 153 |
 | Rust | `.rs` | 115 |
 | Markdown | `.md` | 67 |
-| HTML | `.html` | 48 |
+| HTML | `.html` | 49 |
 | Python | `.py` | 28 |
 | JavaScript (CommonJS) | `.cjs` | 12 |
-| Batch Script | `.bat` | 9 |
+| Batch Script | `.bat` | 10 |
+| .example | `.example` | 9 |
 | TOML | `.toml` | 8 |
 | Plain Text | `.txt` | 8 |
-| .example | `.example` | 8 |
 | VBScript | `.vbs` | 7 |
 | YAML | `.yml` | 6 |
 | .ini | `.ini` | 4 |
@@ -37,7 +37,7 @@
 | Shell Script | `.sh` | 2 |
 | C# | `.cs` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1722** |
+| **合计** | - | **1746** |
 
 ## 目录结构树
 
@@ -535,6 +535,7 @@ VCPChat/
 │   │   ├── contextCompactionPrompts.js
 │   │   ├── contextCompactionService.js
 │   │   ├── contextCompactionState.js
+│   │   ├── contextCompactionStream.js
 │   │   ├── mainChatStateAuthority.js
 │   │   ├── memoryChatRepository.js
 │   │   ├── sideChatSessionService.js
@@ -544,6 +545,7 @@ VCPChat/
 │   │   ├── streamSession.js
 │   │   ├── streamTransientHistory.js
 │   │   ├── surfaceConversation.js
+│   │   ├── topicAdmissionSingleChat.js
 │   │   └── vcpStreamBridge.js
 │   ├── deskpet/
 │   │   ├── wake/
@@ -768,6 +770,7 @@ VCPChat/
 │   │   ├── toolRequestMarkers.js
 │   │   ├── toolRequestScanner.js
 │   │   ├── toolResultRegions.js
+│   │   ├── topicAdmissionQueueView.js
 │   │   ├── topicSelectionReadiness.js
 │   │   ├── ttsSurfaceOwner.js
 │   │   ├── visibilityOptimizer.js
@@ -827,6 +830,13 @@ VCPChat/
 │   │   ├── senderTaskRegistry.js
 │   │   ├── sourceService.js
 │   │   ├── themePreviewVariables.js
+│   │   ├── topicAdmissionGroup.js
+│   │   ├── topicConversationResolver.js
+│   │   ├── topicGenerationLease.js
+│   │   ├── topicMessageAdmission.js
+│   │   ├── topicMessageAdmissionHost.js
+│   │   ├── topicMessageAdmissionStore.js
+│   │   ├── topicSponsorDelivery.js
 │   │   ├── windowAppIds.js
 │   │   ├── windowPinService.js
 │   │   ├── windowService.js
@@ -850,6 +860,7 @@ VCPChat/
 │   │   │   ├── selection-assistant.js
 │   │   │   ├── server-connection.js
 │   │   │   ├── sidebar-surfaces.js
+│   │   │   ├── tts-cache-panel.js
 │   │   │   ├── user-identity.js
 │   │   │   ├── voice-settings.js
 │   │   │   └── workspace-management.js
@@ -1087,6 +1098,7 @@ VCPChat/
 │   │   │   └── sttWorker.js
 │   │   ├── audioRecorder.js
 │   │   ├── chatVoiceComposer.js
+│   │   ├── gsvPresets.js
 │   │   ├── passiveVoiceSentinel.js
 │   │   ├── speechDirectiveMatcher.js
 │   │   ├── voice-input-engine-adapter.js
@@ -1261,7 +1273,9 @@ VCPChat/
 │   ├── utility.js
 │   └── voice-input-capture.js
 ├── ProjectForgemodules/
+│   ├── projectforge-blueprint.js
 │   ├── projectforge-git.js
+│   ├── projectforge-layout.js
 │   ├── projectforge-sidetabs.js
 │   ├── projectforge-source.js
 │   ├── projectforge.css
@@ -1453,6 +1467,9 @@ VCPChat/
 │   ├── README.md
 │   ├── scriptorium-agent-port.js
 │   ├── scriptorium-async.js
+│   ├── scriptorium-board-html.js
+│   ├── scriptorium-board-lineage.js
+│   ├── scriptorium-board-model.js
 │   ├── scriptorium-board.js
 │   ├── scriptorium-deck-adapter.js
 │   ├── scriptorium-deck-editor.js
@@ -1513,6 +1530,12 @@ VCPChat/
 │   ├── vdoc-hybrid-compiler.js
 │   ├── vdoc-style-library.js
 │   └── vdoc-svg-asset-library.js
+├── sovits5cppmanager/
+│   ├── app.js
+│   ├── index.html
+│   ├── README.md
+│   ├── server.js
+│   └── start.bat
 ├── SovitsTest/
 │   ├── get_models.py
 │   ├── GSVI.py
@@ -1739,6 +1762,7 @@ VCPChat/
 │   │   │   ├── evalSymbol.js
 │   │   │   ├── evalWorker.cjs
 │   │   │   ├── evalWorker.py
+│   │   │   ├── exportReport.js
 │   │   │   ├── gui-revert-file.js
 │   │   │   ├── indexerClient.js
 │   │   │   ├── linkGraph.js
@@ -1805,10 +1829,14 @@ VCPChat/
 │   │   │   ├── plugin-manifest.json
 │   │   │   └── TopicMemo.js
 │   │   ├── TopicSponsor/
+│   │   │   ├── config.env.example
 │   │   │   ├── plugin-manifest.json
 │   │   │   ├── README.md
 │   │   │   ├── topicsponsor-service.js
 │   │   │   └── topicsponsor.js
+│   │   ├── VAbility/
+│   │   │   ├── plugin-manifest.json
+│   │   │   └── v-ability.js
 │   │   ├── VChatAutoTTS/
 │   │   │   ├── plugin.css
 │   │   │   ├── plugin.js
@@ -1973,9 +2001,6 @@ VCPChat/
 │   ├── voicechat.css
 │   ├── voicechat.html
 │   └── voicechat.js
-├── WebIndexTTS2/
-│   ├── README.md
-│   └── server.js
 ├── backup.py
 ├── check_theme_wallpapers.bat
 ├── main.html
