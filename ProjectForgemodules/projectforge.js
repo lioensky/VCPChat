@@ -259,10 +259,7 @@ function renderHeader() {
     const { project } = state.detail;
     const ri = project.rootInfo || {};
     $('project-header').innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-            <h2>${escapeHtml(project.name)} ${statusBadge(project)}</h2>
-            <button class="btn" type="button" data-export-report="${escapeHtml(project.id)}" style="flex-shrink:0">📄 导出报告</button>
-        </div>
+        <h2>${escapeHtml(project.name)} ${statusBadge(project)}</h2>
         <div class="header-meta">
             <span>ID <code>${escapeHtml(project.id)}</code></span>
             <span>工作区 ${escapeHtml(ri.workspaceAlias || project.workspace_alias || '-')}</span>
@@ -408,9 +405,12 @@ function renderFiles() {
 
 function renderReport() {
     const { project } = state.detail;
-    $('pane-report').innerHTML = project.report
-        ? `<div class="muted" style="margin-bottom:10px">提交者 ${maidHtml(project.report_by)} · 状态 ${statusBadge(project)}</div><div class="markdown">${renderMarkdownSafe(project.report)}</div>`
-        : '<p class="muted">尚未提交验收报告。</p>';
+    $('pane-report').innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+            <div class="muted">${project.report ? `提交者 ${maidHtml(project.report_by)} · ` : ''}状态 ${statusBadge(project)}</div>
+            <button class="btn" type="button" data-export-report="${escapeHtml(project.id)}" style="flex-shrink:0" title="导出完整工程履历，含起点、全部施工脉络与存档验收报告">📄 导出报告</button>
+        </div>
+        ${project.report ? `<div class="markdown">${renderMarkdownSafe(project.report)}</div>` : '<p class="muted">尚未提交验收报告。</p>'}`;
 }
 
 // ============================ 历史搜索 ============================
@@ -691,7 +691,7 @@ function bindEvents() {
     $('include-deleted').addEventListener('change', loadProjects);
 
     let exportingReport = false;
-    $('project-header').addEventListener('click', async e => {
+    $('pane-report').addEventListener('click', async e => {
         const button = e.target.closest('[data-export-report]');
         if (!button || exportingReport) return;
         const projectId = button.dataset.exportReport;
