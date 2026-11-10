@@ -2,6 +2,7 @@ import { readToolRequestField, replaceToolRequestBlocks, findUnclosedToolRequest
 import { collectToolResultRanges, collectCodeDomainsOutsideToolResults, isToolResultHidden } from '../renderer/toolResultRegions.js';
 import { extractAnchors, flattenContent } from './contextCompactionFidelity.js';
 import { extractOpenIssueWindows } from './contextCompactionContinuity.js';
+import { projectForgeHistory, inheritForgeStages, renderForgeStages } from './contextCompactionForge.js';
 
 export const COMPACTION_KIND = 'vchat-context-checkpoint';
 
@@ -22,6 +23,12 @@ export function effectiveContextHistory(history = []) {
         }
     }
     return history.slice(start).filter(message => message && !message.isThinking);
+}
+
+/** Request-boundary projection shared by sending, pre-send pricing and T2.
+ * Never use its savings to price an already running server tool loop. */
+export function projectContextHistory(history = []) {
+    return projectForgeHistory(effectiveContextHistory(history));
 }
 
 function removeRanges(text, ranges) {
@@ -168,8 +175,16 @@ export function prepareCompactionState(history = []) {
     const effective = effectiveContextHistory(history);
     const previous = isContextCheckpoint(effective[0]) ? effective[0] : null;
     const diaries = (previous?.contextCompaction.diaries || []).map(diary => ({ ...diary }));
-    const warnings = [...(previous?.contextCompaction.warnings || [])];
-    const messages = effective.map(message => {
+    const inherited = inheritForgeStages(history, previous?.contextCompaction.forgeState);
+    const warnings = [...(previous?.contextCompaction.warnings || []), ...inherited.warnings];
+    const inheritedState = { version: 1, stages: inherited.stages };
+    // Reserve inherited metadata first; never silently trim an older stage to admit a new fold.
+    const projection = projectForgeHistory(effective, {
+        maxLedgerChars: Math.max(0, 24000 - JSON.stringify(inheritedState).length),
+    });
+    const forgeStages = [...inherited.stages, ...projection.stages];
+    const forgeState = forgeStages.length ? { version: 1, stages: forgeStages } : undefined;
+    const messages = projection.history.map(message => {
         if (isContextCheckpoint(message)) {
             return { role: 'user', content: message.contextCompaction.checkpoint };
         }
@@ -191,6 +206,7 @@ export function prepareCompactionState(history = []) {
         messages, diaries, warnings: [...new Set(warnings)], sourceCount: effective.length,
         previousCheckpoint: previous ? previous.contextCompaction.checkpoint : null,
         previousAuditMissing,
+        ...(forgeState ? { forgeState, forgeText: renderForgeStages(forgeStages) } : {}),
     };
 }
 

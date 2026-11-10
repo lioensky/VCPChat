@@ -1,6 +1,6 @@
 import '../tavernRulesEngine.js';
 import { stripHiddenToolResults } from '../renderer/toolResultRegions.js';
-import { effectiveContextHistory, isContextCheckpoint } from './contextCompactionState.js';
+import { projectContextHistory, isContextCheckpoint } from './contextCompactionState.js';
 
 function requireDependency(value, name) {
     if (!value) throw new Error(`SingleChatRequestOrchestrator requires ${name}`);
@@ -344,7 +344,7 @@ async function assembleRequestMessages({
             ? tavernRules
             : snapshot ? (Array.isArray(snapshot.rules) ? snapshot.rules : []) : await loadTavernRules(electronAPI);
         const contentBuilder = buildMessageContent || buildDefaultMessageContent;
-        const effectiveHistory = effectiveContextHistory(history);
+        const effectiveHistory = projectContextHistory(history).history;
         const messages = [];
 
         for (let index = 0; index < effectiveHistory.length; index += 1) {

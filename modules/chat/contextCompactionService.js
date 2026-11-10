@@ -1,12 +1,23 @@
-import { effectiveContextHistory, prepareCompactionState } from './contextCompactionState.js';
+import { effectiveContextHistory, projectContextHistory, prepareCompactionState } from './contextCompactionState.js';
 import { readCompactionResponse } from './contextCompactionStream.js';
 import { compactionSettings, buildCompactionMessages, createCheckpointMessage } from './contextCompactionPrompts.js';
 
 const scopeKey = scope => `${scope.itemType || 'agent'}:${scope.itemId}:${scope.topicId}`;
 
-/** Conservative local estimate, not a tokenizer count. Includes attachment text and metadata. */
-export function estimateContextTokens(history, systemPrompt = '') {
-    const text = systemPrompt + JSON.stringify(effectiveContextHistory(history));
+/** Local text estimate, not provider usage or complete assembled-request pricing.
+ * At request boundaries price the same T1 history used by the sender.
+ * In-flight loops MUST pass forgeProjection:false: their server copy is already frozen. */
+export function estimateContextTokens(history, systemPrompt = '', { forgeProjection = true } = {}) {
+    const priced = forgeProjection ? projectContextHistory(history).history : effectiveContextHistory(history);
+    // contextCompaction is host-only persistence metadata; its rendered appendix
+    // is already in content. Charging both causes premature repeat compression.
+    const pricedText = priced.map(message => {
+        if (!message.contextCompaction) return message;
+        const copy = { ...message };
+        delete copy.contextCompaction;
+        return copy;
+    });
+    const text = systemPrompt + JSON.stringify(pricedText);
     let cost = 0;
     for (const character of text) cost += character.codePointAt(0) > 127 ? 1 : 0.3;
     return Math.ceil(cost);

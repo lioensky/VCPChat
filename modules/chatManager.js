@@ -114,7 +114,8 @@ export const chatManager = (() => {
                     const effective = effectiveContextHistory(history.filter(message => message.id !== messageId));
                     const limit = Number(config?.contextTokenLimit);
                     needsCompression = Number.isFinite(limit) && limit > 0
-                        && estimateContextTokens([...effective, { role: 'assistant', content: text }], config.systemPrompt || '') >= limit;
+                        // A client fold cannot shrink the server loop already in flight.
+                        && estimateContextTokens([...effective, { role: 'assistant', content: text }], config.systemPrompt || '', { forgeProjection: false }) >= limit;
                 }
             }
             if (disposed || boundaryCheck.cancelled || !isActive() || streamCompactionRequests.has(messageId)
