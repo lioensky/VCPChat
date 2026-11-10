@@ -261,7 +261,7 @@ function renderHeader() {
     $('project-header').innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
             <h2>${escapeHtml(project.name)} ${statusBadge(project)}</h2>
-            <button class="btn" type="button" data-export-report="${escapeHtml(project.id)}" style="flex-shrink:0">↓ 导出报告 .md</button>
+            <button class="btn" type="button" data-export-report="${escapeHtml(project.id)}" style="flex-shrink:0">📄 导出报告</button>
         </div>
         <div class="header-meta">
             <span>ID <code>${escapeHtml(project.id)}</code></span>
@@ -706,7 +706,7 @@ function bindEvents() {
         } finally {
             exportingReport = false;
             button.disabled = false;
-            button.textContent = '↓ 导出报告 .md';
+            button.textContent = '📄 导出报告';
         }
     });
 
