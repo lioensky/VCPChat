@@ -17,7 +17,25 @@ function createStreamCapabilities(root, services) {
         projectTerminal: (messageId, finishReason, context, payload) => (
             services.streamProjection.projectStreamTerminal(messageId, finishReason, context, payload)
         ),
-        persistTerminal: projected => services.historyPersistence.commit(projected),
+        async persistTerminal(projected) {
+            try {
+                return await services.historyPersistence.commit(projected);
+            } catch (error) {
+                const context = projected?.context;
+                if (context?.admissionToken && context.agentId && context.topicId) {
+                    try {
+                        const api = ownerDocument.defaultView?.chatAPI || ownerDocument.defaultView?.electronAPI;
+                        const receipt = await api.topicAdmissionUncertain({
+                            itemType: 'agent', itemId: context.agentId, topicId: context.topicId,
+                        }, context.admissionToken, error?.message || String(error));
+                        if (!receipt?.success) throw new Error(receipt?.error || receipt?.code || '保存待核实报告失败');
+                    } catch (diagnosticError) {
+                        reportError('[MainChatSurfaceAdapter] uncertain journal failed', diagnosticError);
+                    }
+                }
+                throw error;
+            }
+        },
         setPersistenceState(messageId, state, error = '') {
             const messageItem = root.querySelector(`.message-item[data-message-id="${messageId}"]`);
             if (!messageItem) return;
@@ -49,6 +67,19 @@ function createStreamCapabilities(root, services) {
         async afterPersist({ terminal, finalized, context, messageId }) {
             const finalizedContext = finalized?.context || context;
             const finalizedContent = finalized?.content || terminal.fullResponse || '';
+            if (services.chatManager?.hasStreamAdmissionRelay?.(messageId)) {
+                await services.chatManager.finishStreamAdmissionRelay({
+                    messageId, context: finalizedContext,
+                });
+                return;
+            }
+            if (finalizedContext?.admissionToken) {
+                const api = ownerDocument.defaultView?.chatAPI || ownerDocument.defaultView?.electronAPI;
+                const release = await api.topicAdmissionRelease({
+                    itemType: 'agent', itemId: finalizedContext.agentId, topicId: finalizedContext.topicId,
+                }, finalizedContext.admissionToken, { saved: true });
+                if (!release?.success) throw new Error(release?.error || release?.code || '入场租约释放失败');
+            }
             const selected = services.getSelection();
             const relevant = finalizedContext
                 && selected

@@ -143,6 +143,17 @@
       "wrap": false,
       "order": 12,
       "builtinKey": "fate-divination"
+    },
+    {
+      "id": "builtin_topic_sponsor",
+      "name": "多话题交互",
+      "type": "system_suffix",
+      "enabled": false,
+      "content": "—— TopicSponsor多话题交互能力——\n工具名：TopicSponsor\n  // 一、服务发现与路由寻址 (自主私信前置)\n  ListAgents()                                             // 只读列出全量注册 Agent (name/id/type)\n  ListGroups()                                             // 只读列出全量群聊 (name/id/type)\n  ListRecentTopics(query, target_type?:'agent'|'group')    // 查最新5个话题取topic_id；query传ID或名称(支持模糊匹配)\n\n  // 二、话题创生与心流派发\n  CreateTopic(topic_name, initial_message, maid?)\n  CreateFlowlockTopic(topic_name, initial_message, maid?, flowlock_heartbeat?:number, flowlock_prompt?)\n\n  // 三、感知与状态嗅探\n  ListUnlockedTopics(maid)\n  ReadUnlockedTopics(maid, include_read?:boolean)          // include_read 默认 false（仅未读）\n  CheckNewTopics(maid, days?:number)                      // days 默认 3\n  CheckUnreadMessages(maid)\n  CheckTopicOwnership(topic_id, caller_name, maid?)\n\n  // 四、跨域留言与内容审阅\n  ReadTopicContent(topic_id, maid?)                       // 读取指定话题完整历史流\n  ReplyToTopic(topic_id, message, sender_name|sender_id, source_topic_id?)",
+      "scope": "global",
+      "wrap": false,
+      "order": 13,
+      "builtinKey": "topic-sponsor"
     }
   ]
 }

@@ -15,10 +15,13 @@ export function createChatRepository(electronAPI) {
                 ? method('getGroupChatHistory')(itemId, topicId)
                 : method('getChatHistory')(itemId, topicId);
         },
-        saveHistory(itemId, itemType, topicId, history) {
+        persistAssistant(scope, message) {
+            return method('topicAdmissionPersistAssistant')(scope, message);
+        },
+        saveHistory(itemId, itemType, topicId, history, options) {
             return itemType === 'group'
-                ? method('saveGroupChatHistory')(itemId, topicId, history)
-                : method('saveChatHistory')(itemId, topicId, history);
+                ? method('saveGroupChatHistory')(itemId, topicId, history, options)
+                : method('saveChatHistory')(itemId, topicId, history, options);
         }
     });
 }

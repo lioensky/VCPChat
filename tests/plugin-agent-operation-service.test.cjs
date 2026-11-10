@@ -231,3 +231,37 @@ test('unique exact name outranks fuzzy matches and an explicit ID disambiguates 
     assert.deepEqual((await agentConfigManager.readAgentConfig('agent-b')).topics.map(topic => topic.id), [byId.topic_id]);
     assert.equal((await agentConfigManager.readAgentConfig('agent-a')).topics.length, 2);
 });
+
+test('TopicSponsor discovery lists canonical identities and five newest topics without history reads', async t => {
+    const { service, agentConfigManager } = await fixture(t);
+    const topics = Array.from({ length: 8 }, (_, i) => ({
+        id: `topic_${i}`, name: `标题${i}`, createdAt: i, locked: true, unread: false,
+    }));
+    await agentConfigManager.writeAgentConfig('cat-id', { name: '猫娘小克', systemPrompt: 'secret', topics });
+    const groupRoot = path.join(service.appDataRoot, 'AgentGroups');
+    await fs.outputJson(path.join(groupRoot, 'group-id', 'config.json'),
+        { name: 'Nova讨论群', secret: 'hidden', topics: [...topics].reverse() });
+    const call = args => service.processTopicCommand(args);
+    const agents = await call({ command: 'ListAgents', maid: 'irrelevant' });
+    assert.ok(agents.agents.some(a => a.id === 'cat-id' && a.name === '猫娘小克'));
+    assert.equal(JSON.stringify(agents).includes('secret'), false);
+    const groups = await call({ command: 'ListGroups' });
+    assert.deepEqual(groups.groups, [{ id: 'group-id', name: 'Nova讨论群', type: 'group' }]);
+    for (const query of ['小克', 'cat-id', '猫娘小克']) {
+        const result = await call({ command: 'ListRecentTopics', query });
+        assert.equal(result.owner.id, 'cat-id');
+        assert.equal(result.total, 8);
+        assert.deepEqual(result.topics.map(topic => topic.topic_id), ['topic_7', 'topic_6', 'topic_5', 'topic_4', 'topic_3']);
+        assert.equal(result.topics[0].title, '标题7');
+    }
+    assert.equal((await call({ command: 'ListRecentTopics', query: 'nOvA' })).owner.type, 'group');
+    await agentConfigManager.writeAgentConfig('cat-test', { name: '小克测试版', topics: [] });
+    await assert.rejects(call({ command: 'ListRecentTopics', query: '小克' }),
+        error => ['猫娘小克', 'cat-id', '小克测试版', 'cat-test'].every(s => error.message.includes(s)));
+    await assert.rejects(call({ command: 'ListRecentTopics', query: 'unknown' }), /未找到/);
+    await assert.rejects(call({ command: 'ListRecentTopics', query: '../escape' }), /非法/);
+    assert.deepEqual((await call({ command: 'ListRecentTopics', query: 'cat-test' })).topics, []);
+    await fs.outputJson(path.join(groupRoot, 'same-name', 'config.json'), { name: '猫娘小克', topics: [] });
+    await assert.rejects(call({ command: 'ListRecentTopics', query: '猫娘小克' }), /不唯一/);
+    assert.equal((await call({ command: 'ListRecentTopics', query: '小克', target_type: 'group' })).owner.id, 'same-name');
+});

@@ -514,6 +514,13 @@ function createContentPipeline(deps = {}) {
         // 4. 保护代码块
         step(ctx, 'protect-code-blocks', protectCodeBlocks);
 
+        // Only hide a complete reply-address footer at the end of assistant display text.
+        // Protected code/tool/thought domains remain data; history and request text are untouched.
+        if ((options.messageRole || 'assistant') === 'assistant') {
+            step(ctx, 'strip-topic-reply-footer', text =>
+                text.replace(/[ \t\r\n]*\[该发言发送自topic_[A-Za-z0-9_-]+话题\][ \t\r\n]*$/, ''));
+        }
+
         // 5. 在工具结果、工具请求、代码围栏仍为占位符时转换 Flowlock 控制块。
         // Flowlock 协议解析器还会自行排除思维链、桌面推送和行内代码，
         // 因此工具内容中的同名标记不会被误识别或渲染。

@@ -18,6 +18,8 @@ import { createMainChatThemeOwner } from './modules/renderer/mainChatThemeOwner.
 import { createMainChatSettingsPresentationOwner } from './modules/renderer/mainChatSettingsPresentationOwner.js';
 import { createMainChatAttachmentOwner } from './modules/renderer/mainChatAttachmentOwner.js';
 import { createMainChatSendOwner } from './modules/renderer/mainChatSendOwner.js';
+import { createTopicAdmissionQueueView } from './modules/renderer/topicAdmissionQueueView.js';
+import { prepareTopicAdmissionSingleChat } from './modules/chat/topicAdmissionSingleChat.js';
 import { createConversationTurnNavigator } from './modules/ui-system/conversation-turn-navigator.js';
 import { createChatBackToBottom } from './modules/ui-system/chat-back-to-bottom.js';
 import { createChatComposerInset } from './modules/ui-system/chat-composer-inset.js';
@@ -221,6 +223,8 @@ const mainChatAttachmentOwner = createMainChatAttachmentOwner({
     },
 });
 const mainChatSendOwner = createMainChatSendOwner({
+    hasDraft: () => ['agent', 'group'].includes(currentSelectedItemRef.get()?.type)
+        && Boolean(messageInput.value.trim() || mainChatAttachmentOwner.ref.get().length),
     button: sendMessageBtn,
     messagesRoot: chatMessagesDiv,
     historyRef: mainHistoryRef,
@@ -260,6 +264,7 @@ ownedRendererSubscriptions.add(topicListDomListenerOwner);
 ownedRendererSubscriptions.add(mainChatAttachmentOwner);
 ownedRendererSubscriptions.add(mainChatSendOwner);
 mainChatSendOwner.update();
+mainChatDomListenerOwner.add(messageInput, 'input', mainChatSendOwner.update);
 ownedRendererSubscriptions.add({
     async dispose() {
         const receipt = { promise: Promise.resolve() };
@@ -1234,6 +1239,110 @@ mainChatSettingsPresentationOwner.configureStartup({
         }
         },
     }));
+
+    const admissionQueueView = createTopicAdmissionQueueView({
+        parent: chatInputCard,
+        before: chatInputCard.firstChild,
+        api: chatAPI,
+        getScope: () => {
+            const selected = currentSelectedItemRef.get();
+            return selected?.id && currentTopicIdRef.get() ? {
+                itemType: selected.type, itemId: selected.id, topicId: currentTopicIdRef.get(),
+            } : null;
+        },
+        notify: (message, type) => uiHelperFunctions.showToastNotification(message, type),
+    });
+    const syncAdmissionHistory = async scope => {
+        const selected = currentSelectedItemRef.get();
+        if (selected?.id === scope.itemId && selected.type === scope.itemType
+            && currentTopicIdRef.get() === scope.topicId) {
+            await chatManager.syncHistoryFromFile(scope.itemId, scope.itemType, scope.topicId);
+        }
+    };
+    const stopAdmissionCommitted = chatAPI.onTopicAdmissionCommitted(({ scope }) => {
+        syncAdmissionHistory(scope).catch(error => console.error('[Admission] sync failed', error));
+    });
+    const stopAdmissionAdvance = chatAPI.onTopicAdmissionAdvance(request => {
+        void (async () => {
+            let acknowledged = false;
+            let placeholder = null;
+            let streaming = false;
+            const isVisible = () => {
+                const selected = currentSelectedItemRef.get();
+                return selected?.id === request.scope.itemId && selected.type === request.scope.itemType
+                    && currentTopicIdRef.get() === request.scope.topicId;
+            };
+            const removeThinking = async () => {
+                if (placeholder && isVisible()
+                    && currentChatHistoryRef.get().some(message => message.id === placeholder.id && message.isThinking)) {
+                    await messageRenderer.removeMessageById(placeholder.id, false);
+                }
+            };
+            try {
+                const operation = await prepareTopicAdmissionSingleChat({
+                    request, api: chatAPI, settings: mainChatSettingsOwner.get(),
+                    createRequestTextOptions: chatManager.createRequestTextOptions,
+                    persistAssistant: async (scope, message) => {
+                        const result = await chatRepository.persistAssistant(scope, message);
+                        if (!result?.success) throw new Error(result?.error || '终稿保存失败');
+                        return result;
+                    },
+                    onStarting: async value => {
+                        placeholder = value.message;
+                        streaming = value.streaming;
+                        await syncAdmissionHistory(request.scope);
+                        if (streaming) {
+                            await mainChatAdapter.startStream({ ...placeholder, streamOperationId: placeholder.id });
+                        } else if (isVisible()) {
+                            currentChatHistoryRef.set([...currentChatHistoryRef.get(), placeholder]);
+                            const item = await messageRenderer.renderMessage(placeholder);
+                            if (!isVisible()) item?.remove?.();
+                        }
+                        mainChatSendOwner.update();
+                    },
+                    onCommitted: async scope => {
+                        if (!streaming) await removeThinking();
+                        await syncAdmissionHistory(scope);
+                    },
+                    onFinalized: event => request.relayFrom
+                        ? window.flowlockManager?.handleFinalizedMessage?.(event)
+                        : undefined,
+                });
+                const receipt = await chatAPI.topicAdmissionAck(request.token);
+                if (!receipt?.success) return;
+                acknowledged = true;
+                window.flowlockManager?.adoptRelayMessage?.(
+                    request.scope.itemId, request.scope.topicId, operation.messageId, request.relayFrom);
+                await operation.start();
+            } catch (error) {
+                const detail = error.message || String(error);
+                if (placeholder) {
+                    if (streaming) {
+                        mainChatAdapter.acceptStreamEvent({
+                            type: 'error', messageId: placeholder.id, context: placeholder.context, error: detail,
+                        });
+                    } else {
+                        await removeThinking();
+                    }
+                    mainChatSendOwner.update();
+                }
+                // ACK transfers execution ownership; rejection after this point is not proof of no dispatch.
+                if (acknowledged) await chatAPI.topicAdmissionUncertain(request.scope, request.token, detail);
+                else await chatAPI.topicAdmissionAck(request.token, detail);
+                console.error('[Admission] advance paused', error);
+            }
+        })().catch(error => console.error('[Admission] failure reporting failed', error));
+    });
+    const stopAdmissionSelection = chatManager.onSelectionChange(() => admissionQueueView.selectionChanged());
+    ownedRendererSubscriptions.add({
+        dispose() {
+            stopAdmissionSelection();
+            stopAdmissionCommitted();
+            stopAdmissionAdvance();
+            admissionQueueView.dispose();
+        },
+    });
+    admissionQueueView.refresh().catch(error => console.error('[Admission] queue load failed', error));
 
     // --- Initialize Flowlock Module ---
     if (window.initializeFlowlockIntegration) {

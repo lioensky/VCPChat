@@ -49,6 +49,9 @@ const PROMPT_COMMANDS = new Set([
 ]);
 
 const TOPIC_COMMANDS = new Set([
+    'ListAgents',
+    'ListGroups',
+    'ListRecentTopics',
     'CreateTopic',
     'CreateFlowlockTopic',
     'ReadUnlockedTopics',
@@ -164,6 +167,7 @@ class PluginAgentOperationService {
         appDataRoot,
         logger = console,
         idempotencyTtlMs = 10 * 60 * 1000,
+        topicDelivery = null,
     } = {}) {
         if (!agentDir || !userDataDir || !agentConfigManager || !historyMutationQueue) {
             throw new TypeError('PluginAgentOperationService 缺少必需依赖。');
@@ -175,6 +179,7 @@ class PluginAgentOperationService {
         this.appDataRoot = appDataRoot || path.dirname(agentDir);
         this.logger = logger;
         this.idempotencyTtlMs = idempotencyTtlMs;
+        this.topicDelivery = topicDelivery;
         this.completedRequests = new Map();
         this.runningRequests = new Map();
     }
@@ -258,8 +263,11 @@ class PluginAgentOperationService {
         candidates.sort((a, b) => b.tier - a.tier);
 
         const best = candidates[0];
-        if (candidates.filter(candidate => candidate.tier === best.tier).length > 1) {
-            throw new Error(`Agent 名称匹配不唯一: ${requested}；请使用 Agent ID。`);
+        const tied = candidates.filter(candidate => candidate.tier === best.tier);
+        if (tied.length > 1) {
+            const choices = candidates.map(candidate =>
+                `- ${candidate.config.name}（ID: ${candidate.id}）`).join('\n');
+            throw new Error(`Agent 名称匹配不唯一: ${requested}；请使用完整名称或 Agent ID。\n候选：\n${choices}`);
         }
         const avatarUrl = await resolveAgentAvatarUrl(path.join(this.agentDir, best.id));
         return {
@@ -640,18 +648,79 @@ class PluginAgentOperationService {
         return { presets, presetPath: absolutePath, totalPresets: presets.length };
     }
 
+    async discoverTopics(command, args) {
+        const requestedType = args.target_type;
+        if (requestedType !== undefined && !['agent', 'group'].includes(requestedType)) {
+            throw new TypeError('target_type 必须为 agent 或 group');
+        }
+        const types = command === 'ListAgents' ? ['agent']
+            : command === 'ListGroups' ? ['group']
+                : requestedType ? [requestedType] : ['agent', 'group'];
+        const owners = [];
+        for (const type of types) {
+            const root = type === 'agent' ? this.agentDir : path.join(this.appDataRoot, 'AgentGroups');
+            let entries;
+            try { entries = await fs.readdir(root, { withFileTypes: true }); }
+            catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                let config;
+                try {
+                    config = type === 'agent'
+                        ? await this.agentConfigManager.readAgentConfig(entry.name)
+                        : await fs.readJson(path.join(root, entry.name, 'config.json'));
+                } catch (error) {
+                    this.logger.warn?.(`[TopicSponsor] 跳过无效 ${type} ${entry.name}: ${error.message}`);
+                    continue;
+                }
+                if (typeof config.name !== 'string' || !config.name.trim()) continue;
+                owners.push({ id: entry.name, name: config.name, type, topics: config.topics });
+            }
+        }
+        owners.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+        const identity = owner => ({ id: owner.id, name: owner.name, type: owner.type });
+        if (command !== 'ListRecentTopics') {
+            const items = owners.map(identity);
+            return { [command === 'ListAgents' ? 'agents' : 'groups']: items, total: items.length };
+        }
+        const query = validateId(args.query, 'query');
+        const lower = query.toLowerCase();
+        const exactIds = owners.filter(owner => owner.id === query);
+        const exactNames = owners.filter(owner => owner.name.toLowerCase() === lower);
+        const matches = exactIds.length ? exactIds : exactNames.length ? exactNames
+            : owners.filter(owner => owner.name.toLowerCase().includes(lower));
+        if (!matches.length) throw new Error(`未找到 Agent 或群: ${query}`);
+        if (matches.length > 1) {
+            throw new Error(`名称匹配不唯一: ${query}；请使用完整名称或 ID，可用 target_type 区分类型。\n候选：\n`
+                + matches.map(owner => `- ${owner.name}（${owner.type}, ID: ${owner.id}）`).join('\n'));
+        }
+        const owner = matches[0];
+        const topics = (Array.isArray(owner.topics) ? owner.topics : [])
+            .filter(topic => typeof topic?.id === 'string' && topic.id)
+            .map(topic => ({
+                topic_id: topic.id, title: topic.name || '',
+                created_at: Number.isFinite(topic.createdAt) ? topic.createdAt : 0,
+            }))
+            .sort((a, b) => b.created_at - a.created_at || a.topic_id.localeCompare(b.topic_id));
+        return { owner: identity(owner), topics: topics.slice(0, 5), total: topics.length, order: 'created_at_desc' };
+    }
     async processTopicCommand(args = {}, executionContext = {}) {
         const command = args.command || args.tool_name;
         this.assertCommand('topic', command);
         const requestId = executionContext.requestId || executionContext.vcpContext?.requestId;
         const mutating = ['CreateTopic', 'CreateFlowlockTopic', 'ReplyToTopic'].includes(command);
-        const execute = () => this.executeTopicCommand(command, args, requestId);
+        const execute = () => command === 'ReplyToTopic' && this.topicDelivery
+            ? this.topicDelivery(args, executionContext)
+            : this.executeTopicCommand(command, args, requestId);
         return mutating
             ? this.runIdempotent('topic', command, requestId, execute)
             : execute();
     }
 
     async executeTopicCommand(command, args, requestId) {
+        if (['ListAgents', 'ListGroups', 'ListRecentTopics'].includes(command)) {
+            return this.discoverTopics(command, args);
+        }
         const agent = await this.findAgent(args.maid);
         const topics = Array.isArray(agent.topics) ? agent.topics : [];
 

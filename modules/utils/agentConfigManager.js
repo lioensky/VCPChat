@@ -159,15 +159,18 @@ class AgentConfigManager extends EventEmitter {
         }
     }
 
-    async writeAgentConfig(agentId, config) {
+    async writeAgentConfig(agentId, config, { requireExisting = false } = {}) {
         const id = this.normalizeId(agentId);
         const { agentPath, configPath } = this.getAgentPaths(id);
         const tempFile = configPath + '.tmp';
         const backupFile = configPath + '.backup';
 
         try {
-            // 确保agent目录存在
-            await fs.ensureDir(agentPath);
+            if (requireExisting) {
+                if (!await fs.pathExists(configPath)) throw new Error('AGENT_DELETED');
+            } else {
+                await fs.ensureDir(agentPath);
+            }
 
             // 写入临时文件
             await fs.writeJson(tempFile, config, { spaces: 2 });
@@ -203,7 +206,18 @@ class AgentConfigManager extends EventEmitter {
         }
     }
 
-    async updateAgentConfig(agentId, updater) {
+    runAgentOperation(agentId, operation) {
+        const id = this.normalizeId(agentId);
+        if (typeof operation !== 'function') throw new TypeError('Agent operation required');
+        return new Promise((resolve, reject) => {
+            if (!this.queues.has(id)) this.queues.set(id, []);
+            this.queues.get(id).push({ operation, resolve, reject });
+            this.processQueue(id);
+        });
+    }
+
+    async updateAgentConfig(agentId, updater, { afterWrite } = {}) {
+        if (afterWrite !== undefined && typeof afterWrite !== 'function') throw new TypeError('afterWrite must be a function');
         const id = this.normalizeId(agentId);
         return new Promise((resolve, reject) => {
             // 为每个agent维护独立的队列
@@ -211,7 +225,7 @@ class AgentConfigManager extends EventEmitter {
                 this.queues.set(id, []);
             }
 
-            this.queues.get(id).push({ updater, resolve, reject });
+            this.queues.get(id).push({ updater, afterWrite, resolve, reject });
             this.processQueue(id);
         });
     }
@@ -223,23 +237,29 @@ class AgentConfigManager extends EventEmitter {
         }
 
         this.processing.set(agentId, true);
-        const { updater, resolve, reject } = queue.shift();
-
+        const { updater, operation, afterWrite, resolve, reject } = queue.shift();
+        let acquired = false;
         try {
             await this.acquireLock(agentId);
+            acquired = true;
 
+            if (operation) {
+                resolve(await operation());
+                return;
+            }
+            if (!await fs.pathExists(this.getAgentPaths(agentId).configPath)) throw new Error('AGENT_DELETED');
             const currentConfig = await this.readAgentConfig(agentId);
             const newConfig = typeof updater === 'function'
                 ? await updater(currentConfig)
                 : { ...currentConfig, ...updater };
 
-            await this.writeAgentConfig(agentId, newConfig);
-
+            await this.writeAgentConfig(agentId, newConfig, { requireExisting: true });
+            if (afterWrite) await afterWrite(newConfig);
             resolve({ success: true, config: newConfig });
         } catch (error) {
             reject(error);
         } finally {
-            await this.releaseLock(agentId);
+            if (acquired) await this.releaseLock(agentId);
             this.processing.set(agentId, false);
 
             // 继续处理队列

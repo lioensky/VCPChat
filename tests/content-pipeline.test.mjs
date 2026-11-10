@@ -75,3 +75,27 @@ test('emotion tags never reach the rendered text, while tool results and code ke
     const stream = pipeline.process('好的呀<!--emo:exc', { mode: PIPELINE_MODES.STREAM_FAST });
     assert.equal(stream.text, '好的呀');
 });
+
+test('assistant reply address is display-only and hidden only as a complete terminal footer', () => {
+    const pipeline = createContentPipeline({
+        getToolResultRegex: () => /unused/g,
+    });
+    const footer = '[该发言发送自topic_1794289544422话题]';
+    const raw = `正文\n\n${footer}\r\n`;
+    const render = (text, messageRole = 'assistant') =>
+        pipeline.process(text, { mode: PIPELINE_MODES.FULL_RENDER, messageRole });
+    assert.equal(render(raw).text, '正文');
+    assert.equal(raw, `正文\n\n${footer}\r\n`, 'source remains unchanged');
+    assert.equal(render(raw, 'user').text, raw);
+    assert.equal(render(raw, 'system').text, raw);
+    assert.equal(render(`${footer}\n后续正文`).text, `${footer}\n后续正文`);
+    assert.equal(render(`正文\n[该发言发送自topic_123话题`).text, '正文\n[该发言发送自topic_123话题');
+    assert.equal(render(footer).text, '');
+    assert.equal(render('正文\n[该发言发送自topic_123_ab-c话题]').text, '正文');
+    const code = `\`\`\`text\n${footer}\n\`\`\``;
+    assert.equal(render(code).text, code);
+    const inline = `示例：\`${footer}\``;
+    assert.equal(render(inline).text, inline);
+    const tool = `${TOOL_RESULT_START_MARKER}\n${footer}\n${TOOL_RESULT_END_MARKER}`;
+    assert.equal([...render(tool).state.toolResultMap.values()][0], tool);
+});

@@ -1402,6 +1402,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
         topicId: message.topicId || message.context?.topicId || refs.currentTopicIdRef.get(),
         isGroupMessage: message.isGroupMessage || message.context?.isGroupMessage || false,
         agentName: message.name || message.context?.agentName,
+        admissionToken: message.admissionToken || message.context?.admissionToken,
         avatarUrl: message.avatarUrl || message.context?.avatarUrl,
         avatarColor: message.avatarColor || message.context?.avatarColor,
         streamOperationId,

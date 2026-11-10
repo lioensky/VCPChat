@@ -275,6 +275,7 @@ class FlowlockManager {
         }
         existing.generation++;
         existing.contextCompactionLease = null;
+        existing.relayAdmissionToken = null;
         existing.topicId = topicId;
         existing.status = 'active';
         existing.activeMessageId = null;
@@ -502,7 +503,30 @@ class FlowlockManager {
         session.generation++;
         const lease = Object.freeze({ session, agentId, topicId, generation: session.generation });
         session.contextCompactionLease = lease;
+        session.relayAdmissionToken = null;
         return lease;
+    }
+
+    markRelaySuspension(lease, token) {
+        const session = lease && this.sessions.get(lease.agentId);
+        if (!session || session.contextCompactionLease !== lease
+            || session.generation !== lease.generation || session.status !== 'active') return false;
+        session.relayAdmissionToken = token;
+        return true;
+    }
+
+    adoptRelayMessage(agentId, topicId, messageId, relayFrom) {
+        const session = this.sessions.get(agentId);
+        const lease = session?.contextCompactionLease;
+        if (!relayFrom || session?.relayAdmissionToken !== relayFrom
+            || !lease || session.status !== 'active' || session.topicId !== topicId
+            || lease.session !== session || lease.generation !== session.generation) return false;
+        if (typeof messageId !== 'string' || !messageId) return false;
+        session.activeMessageId = messageId;
+        session.relayAdmissionToken = null;
+        session.contextCompactionLease = null;
+        session.lastError = null;
+        return true;
     }
 
     resumeAfterContextCompaction(lease) {
@@ -512,6 +536,7 @@ class FlowlockManager {
             || session.topicId !== lease.topicId || session.generation !== lease.generation
             || session.contextCompactionLease !== lease) return false;
         session.contextCompactionLease = null;
+        session.relayAdmissionToken = null;
         session.lastError = null;
         if (!session.activeMessageId) {
             this.scheduleNextRound(session.agentId,
@@ -602,6 +627,13 @@ class FlowlockManager {
             });
         } catch (error) {
             if (this.sessions.get(agentId) !== session || session.status !== 'active') return;
+            if (['TOPIC_BUSY', 'MESSAGES_PENDING'].includes(error?.code)) {
+                session.activeMessageId = null;
+                session.nextPrompt = prompt;
+                session.round = Math.max(0, session.round - 1);
+                this.scheduleNextRound(agentId, session.defaultDelaySeconds * 1000);
+                return;
+            }
             console.error(`[Flowlock] Agent ${agentId} continue writing failed (topic=${session.topicId}, round=${session.round}, messageId=${messageId}):`, error);
             session.lastError = error?.message || String(error);
             session.activeMessageId = null;

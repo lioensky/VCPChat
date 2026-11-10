@@ -164,3 +164,30 @@ test('spinning compaction button cancels instead of sending or interrupting anot
     assert.equal(sendButton.attributes['aria-busy'], 'false');
     assert.equal(sendButton.classList.contains('context-compacting'), false);
 });
+
+test('active reply with a draft sends to admission instead of interrupting; empty draft restores stop', async () => {
+    let draft = true;
+    const calls = [];
+    const sendButton = button();
+    const owner = createMainChatSendOwner({
+        button: sendButton,
+        messagesRoot: { querySelector: () => ({ isConnected: true, classList: { contains: () => true } }) },
+        historyRef: ref([{ id: 'active', role: 'assistant', isThinking: true }]),
+        selectedItemRef: ref({ id: 'a', type: 'agent' }),
+        topicIdRef: ref('topic'),
+        streamProjection: {},
+        chatAPI: {},
+        hasDraft: () => draft,
+        getChatManager: () => ({ handleSendMessage: async () => calls.push('send') }),
+        interruptHandler: { interrupt: async id => { calls.push(['interrupt', id]); return { success: true }; } },
+    });
+    owner.update();
+    assert.equal(sendButton.dataset.mode, 'send');
+    await owner.handleAction();
+    assert.deepEqual(calls, ['send']);
+    draft = false;
+    owner.update();
+    assert.equal(sendButton.dataset.mode, 'interrupt');
+    await owner.handleAction();
+    assert.deepEqual(calls, ['send', ['interrupt', 'active']]);
+});

@@ -355,6 +355,8 @@ let distributedServer = null; // To hold the distributed server instance
 let distributedServerStartPromise = null;
 let chatDataService = null; // Optional VCP-CDS shadow service.
 let historyMutationQueue = null;
+let topicAdmissionHost = null;
+let topicConversationResolver = null;
 let pluginAgentOperationService = null;
 let chartService = null;
 let gameService = null;
@@ -771,6 +773,9 @@ async function performQuitCleanup() {
         }
 
         workspaceHandlers.dispose();
+        await topicAdmissionHost?.dispose?.();
+        topicAdmissionHost = null;
+        topicConversationResolver = null;
         await historyMutationQueue?.dispose?.();
         historyMutationQueue = null;
         pluginAgentOperationService = null;
@@ -1263,7 +1268,29 @@ if (!gotTheLock) {
             fileWatcher,
             logger: console
         });
+        const { createTopicConversationResolver } = require('./modules/services/topicConversationResolver');
+        const { createTopicMessageAdmissionHost } = require('./modules/services/topicMessageAdmissionHost');
+        topicConversationResolver = createTopicConversationResolver({
+            agentDir: AGENT_DIR,
+            groupDir: path.join(APP_DATA_ROOT_IN_PROJECT, 'AgentGroups'),
+            userDataDir: USER_DATA_DIR,
+        });
+        topicAdmissionHost = await createTopicMessageAdmissionHost({
+            appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+            historyQueue: historyMutationQueue,
+            validate: scope => topicConversationResolver.validate(scope),
+            getMainWindow: () => mainWindow,
+            advanceGroup: request => groupChatHandlers.advanceTopicAdmission(request),
+            ipcMain,
+        });
+        const { createTopicSponsorDelivery } = require('./modules/services/topicSponsorDelivery');
+        const topicDelivery = createTopicSponsorDelivery({
+            admission: topicAdmissionHost.service,
+            resolver: topicConversationResolver,
+            findAgent: query => pluginAgentOperationService.findAgent(query),
+        });
         pluginAgentOperationService = new PluginAgentOperationService({
+            topicDelivery,
             agentDir: AGENT_DIR,
             userDataDir: USER_DATA_DIR,
             agentConfigManager,
@@ -1689,7 +1716,8 @@ if (!gotTheLock) {
             stopSelectionListener: assistantHandlers.stopSelectionListener,
             startSelectionListener: assistantHandlers.startSelectionListener,
             settingsManager: appSettingsManager,
-            agentConfigManager
+            agentConfigManager,
+            historyMutationQueue
         });
 
         await assistantHandlers.initialize({ SETTINGS_FILE });
@@ -1714,6 +1742,7 @@ if (!gotTheLock) {
             startSelectionListener: assistantHandlers.startSelectionListener,
             fileWatcher, // Inject fileWatcher here as well
             historyMutationQueue,
+            topicAdmission: topicAdmissionHost.service,
             jevService: globalJevService,
             gameService
         });

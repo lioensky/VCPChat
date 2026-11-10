@@ -1,4 +1,5 @@
 import { effectiveContextHistory, prepareCompactionState } from './contextCompactionState.js';
+import { readCompactionResponse } from './contextCompactionStream.js';
 import { compactionSettings, buildCompactionMessages, createCheckpointMessage } from './contextCompactionPrompts.js';
 
 const scopeKey = scope => `${scope.itemType || 'agent'}:${scope.itemId}:${scope.topicId}`;
@@ -37,23 +38,13 @@ export async function requestContextCompaction({ settings, state, signal, reques
         body: JSON.stringify({
             model: config.model,
             messages: buildCompactionMessages(state, settings),
-            stream: false,
+            stream: true,
             ...(requestId ? { requestId } : {}),
         }),
         signal,
     });
     if (!response.ok) throw new Error(`上下文压缩请求失败（HTTP ${response.status}）`);
-    const data = await response.json();
-    if (data?.error) throw new Error('压缩服务器返回错误，未生成快照，请检查模型配置或服务端日志');
-    const choice = data?.choices?.[0];
-    onResponse({
-        model: typeof data?.model === 'string' ? data.model : config.model,
-        finishReason: choice?.finish_reason ?? '未提供',
-        content: choice?.message?.content ?? '',
-    });
-    // Success is a returned report, not a model-authored protocol or finish reason.
-    // Tool metadata is never executed; reasoning is never substituted for the answer.
-    return choice?.message?.content || choice?.message?.refusal;
+    return readCompactionResponse(response, { signal, model: config.model, onResponse });
 }
 
 /** Topic-owned busy state; commit and UI projection remain explicit injected capabilities. */
@@ -61,7 +52,7 @@ export function createContextCompactionService({
     historyMutationAuthority,
     request = requestContextCompaction,
     onBusyChanged = () => {},
-    timeoutMs = 180000,
+    timeoutMs = 600000,
     flowlock = null,
     interruptRequest = null,
 } = {}) {
@@ -127,6 +118,7 @@ export function createContextCompactionService({
                 }),
                 deadline,
             ]);
+            clearTimeout(timer); // The request deadline must not abort durable history persistence.
             if (disposed || controller.signal.aborted) throw new Error('上下文压缩已取消');
             returnedContent = response;
             const message = createCheckpointMessage(state, response, settings);

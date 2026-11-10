@@ -41,39 +41,184 @@ export const chatManager = (() => {
     let contextCompactionService;
     let compactionFlowlock;
     const streamCompactionRequests = new Map();
+    const streamBoundaryChecks = new Map();
 
-    async function checkStreamContextBudget({ messageId, context, text, cancelStream }) {
-        if (disposed || context?.isGroupMessage || context?.groupId
-            || !context?.agentId || !context?.topicId || streamCompactionRequests.has(messageId)
-            || globalSettingsRef.get().enableContextCompaction !== true) return;
-        const scope = { itemId: context.agentId, itemType: 'agent', topicId: context.topicId };
-        const selected = currentSelectedItemRef.get();
-        const visible = selected?.id === scope.itemId && selected.type === 'agent'
-            && currentTopicIdRef.get() === scope.topicId;
-        const config = visible ? (selected.config || selected) : await electronAPI.getAgentConfig(scope.itemId);
-        const history = visible ? currentChatHistoryRef.get() : await getHistory(scope.itemId, 'agent', scope.topicId);
-        if (disposed || !Array.isArray(history) || streamCompactionRequests.has(messageId)) return;
-        const effective = effectiveContextHistory(history.filter(message => message.id !== messageId));
-        const limit = Number(config?.contextTokenLimit);
-        if (!Number.isFinite(limit) || limit <= 0
-            || estimateContextTokens([...effective, { role: 'assistant', content: text }], config.systemPrompt || '') < limit) return;
-        streamCompactionRequests.set(messageId, scope);
-        compactionFlowlock?.suspendForContextCompaction?.(scope.itemId, scope.topicId);
-        notifySendStateChanged();
-        // Same interruption gateway and local fallback as the normal Stop reply action.
+    function signalRelayCancellation(intent) {
+        if (!intent) return;
+        intent.cancelled = true;
+        if (!intent.relay || !intent.handoffStarted || intent.cancelSignal) return;
+        const scope = { itemType: 'agent', itemId: intent.itemId, topicId: intent.topicId };
         try {
-            const result = await interruptCapability?.interrupt?.(messageId);
-            if (!result?.success) await cancelStream?.(messageId, 'context-budget-exceeded');
+            if (typeof electronAPI.topicAdmissionCancelRelay !== 'function') {
+                throw new Error('宿主缺少进行中中继取消能力');
+            }
+            intent.cancelSignal = Promise.resolve(
+                electronAPI.topicAdmissionCancelRelay(scope, intent.admissionToken)
+            ).then(receipt => {
+                if (!receipt?.success) throw new Error(receipt?.error || receipt?.code || '中继取消未确认');
+                // accepted is a signal receipt, not a durable-pause acknowledgement.
+                return receipt;
+            }).catch(error => {
+                console.error('[AdmissionRelay] cancellation signal failed', error);
+                uiHelper?.showToastNotification?.(`中继取消未确认：${error.message}，请核对话题状态。`, 'error');
+            });
         } catch (error) {
-            await cancelStream?.(messageId, 'context-budget-exceeded');
+            console.error('[AdmissionRelay] cancellation signal failed', error);
+            uiHelper?.showToastNotification?.(`中继取消未确认：${error.message}，请核对话题状态。`, 'error');
+        }
+    }
+
+    function cancelStreamAdmissionRelay(messageId) {
+        const checking = streamBoundaryChecks.get(messageId);
+        const intent = streamCompactionRequests.get(messageId);
+        if (!messageId) return false;
+        if (checking) checking.cancelled = true;
+        else streamBoundaryChecks.set(messageId, { cancelled: true });
+        signalRelayCancellation(intent);
+        return true;
+    }
+
+    async function checkStreamContextBudget({ messageId, context, text, cancelStream, isActive = () => true }) {
+        if (disposed || !isActive() || context?.isGroupMessage || context?.groupId
+            || !context?.agentId || !context?.topicId
+            || /^sidechat_[0-9]+_[0-9a-f]+$/.test(context.topicId)
+            || streamCompactionRequests.has(messageId) || streamBoundaryChecks.has(messageId)) return;
+        const canRelay = Boolean(context.admissionToken
+            && typeof electronAPI.topicAdmissionRelay === 'function'
+            && typeof electronAPI.topicAdmissionList === 'function');
+        const compressionEnabled = globalSettingsRef.get().enableContextCompaction === true;
+        if (!canRelay && !compressionEnabled) return;
+        const boundaryCheck = { cancelled: false };
+        streamBoundaryChecks.set(messageId, boundaryCheck);
+        try {
+            const scope = { itemId: context.agentId, itemType: 'agent', topicId: context.topicId };
+            let hasPending = false;
+            if (canRelay) {
+                const receipt = await electronAPI.topicAdmissionList(scope);
+                if (!receipt?.success || !Array.isArray(receipt.entries)) {
+                    throw new Error(receipt?.error || '无法核对工具返回处暂挂消息');
+                }
+                const entries = receipt.entries.filter(entry => entry.scope?.itemType === 'agent'
+                    && entry.scope.itemId === scope.itemId && entry.scope.topicId === scope.topicId);
+                hasPending = !entries.some(entry => ['recovered', 'failed', 'uncertain'].includes(entry.state))
+                    && entries.some(entry => entry.state === 'queued' && !entry.kind && !entry.committed);
+            }
+            let needsCompression = false;
+            if (compressionEnabled) {
+                const selected = currentSelectedItemRef.get();
+                const visible = selected?.id === scope.itemId && selected.type === 'agent'
+                    && currentTopicIdRef.get() === scope.topicId;
+                const config = visible ? (selected.config || selected) : await electronAPI.getAgentConfig(scope.itemId);
+                const history = visible ? currentChatHistoryRef.get() : await getHistory(scope.itemId, 'agent', scope.topicId);
+                if (Array.isArray(history)) {
+                    const effective = effectiveContextHistory(history.filter(message => message.id !== messageId));
+                    const limit = Number(config?.contextTokenLimit);
+                    needsCompression = Number.isFinite(limit) && limit > 0
+                        && estimateContextTokens([...effective, { role: 'assistant', content: text }], config.systemPrompt || '') >= limit;
+                }
+            }
+            if (disposed || boundaryCheck.cancelled || !isActive() || streamCompactionRequests.has(messageId)
+                || (!hasPending && !needsCompression)) return;
+            // The adapter installs the durable handover before exposing this capability.
+            const relay = canRelay && typeof finishStreamAdmissionRelay === 'function';
+            streamCompactionRequests.set(messageId, {
+                ...scope, admissionToken: context.admissionToken,
+                relay, needsCompression, hasPending,
+            });
+            const flowlockLease = compactionFlowlock?.suspendForContextCompaction?.(scope.itemId, scope.topicId);
+            streamCompactionRequests.get(messageId).flowlockLease = flowlockLease || null;
+            if (relay && flowlockLease) {
+                compactionFlowlock?.markRelaySuspension?.(flowlockLease, context.admissionToken);
+            }
+            notifySendStateChanged();
+            let stopTimer;
+            const intent = streamCompactionRequests.get(messageId);
+            const stillOwned = () => !disposed && isActive()
+                && streamCompactionRequests.get(messageId) === intent;
+            try {
+                // Bound both the Stop acknowledgement and the remaining transport.
+                // The timer never grants admission: local cancellation still persists first.
+                const deadline = new Promise(resolve => {
+                    stopTimer = setTimeout(() => resolve({ success: false, timedOut: true }), INTERRUPT_SETTLE_MS);
+                });
+                const result = await Promise.race([
+                    Promise.resolve(interruptCapability?.interrupt?.(messageId)),
+                    deadline,
+                ]);
+                if (!result?.success) {
+                    if (stillOwned()) await cancelStream?.(messageId, 'tool-return-relay');
+                } else {
+                    await deadline;
+                    if (stillOwned()) await cancelStream?.(messageId, 'tool-return-relay-settle-timeout');
+                }
+            } catch (error) {
+                if (stillOwned()) await cancelStream?.(messageId, 'tool-return-relay');
+            } finally {
+                clearTimeout(stopTimer);
+            }
+        } finally {
+            if (!boundaryCheck.cancelled && streamBoundaryChecks.get(messageId) === boundaryCheck) {
+                streamBoundaryChecks.delete(messageId);
+            }
         }
     }
 
     function abandonStreamContextCompaction({ messageId, event }) {
+        const checking = streamBoundaryChecks.get(messageId);
+        if (checking) checking.cancelled = true;
+        streamBoundaryChecks.delete(messageId);
         if (!event?.outcome?.persistence?.error || !streamCompactionRequests.has(messageId)) return;
         streamCompactionRequests.delete(messageId);
         notifySendStateChanged();
         uiHelper?.showToastNotification?.('中止内容尚未保存，已取消自动压缩；心流保持挂起，请先处理保存失败。', 'error');
+    }
+
+    async function finishStreamAdmissionRelay({ messageId, context }) {
+        const intent = streamCompactionRequests.get(messageId);
+        if (!intent?.relay) return false;
+        if (intent.admissionToken !== context?.admissionToken
+            || intent.itemId !== context?.agentId || intent.topicId !== context?.topicId) {
+            throw new Error('中继归属与已保存终稿不匹配');
+        }
+        const scope = { itemType: 'agent', itemId: intent.itemId, topicId: intent.topicId };
+        try {
+            if (disposed || intent.cancelled) {
+                // Do not regenerate after an explicit user cancellation.
+                const receipt = await electronAPI.topicAdmissionRelay(scope, intent.admissionToken, { saved: true, cancelled: true });
+                if (!receipt?.success) throw new Error(receipt?.error || receipt?.code || '取消中继失败');
+                return true;
+            }
+            if (intent.needsCompression) {
+                const history = await getHistory(scope.itemId, 'agent', scope.topicId);
+                await contextCompactionService.compact({
+                    scope, history, settings: globalSettingsRef.get(),
+                    onCommitted: () => syncHistoryFromFile(scope.itemId, 'agent', scope.topicId),
+                });
+            }
+            if (disposed || intent.cancelled) {
+                const receipt = await electronAPI.topicAdmissionRelay(scope, intent.admissionToken, { saved: true, cancelled: true });
+                if (!receipt?.success) throw new Error(receipt?.error || receipt?.code || '取消中继失败');
+                return true;
+            }
+            intent.handoffStarted = true;
+            const receipt = await electronAPI.topicAdmissionRelay(scope, intent.admissionToken, { saved: true });
+            if (!receipt?.success) throw new Error(receipt?.error || receipt?.code || '工具返回中继交接失败');
+            return true;
+        } catch (error) {
+            try {
+                await electronAPI.topicAdmissionUncertain(scope, intent.admissionToken, error.message || String(error));
+            } catch (diagnosticError) {
+                console.error('[AdmissionRelay] diagnostic failed', diagnosticError);
+            }
+            throw error;
+        } finally {
+            streamCompactionRequests.delete(messageId);
+            notifySendStateChanged();
+        }
+    }
+
+    function hasStreamAdmissionRelay(messageId) {
+        return streamCompactionRequests.get(messageId)?.relay === true;
     }
 
     async function finishStreamContextCompaction({ messageId }) {
@@ -151,7 +296,7 @@ export const chatManager = (() => {
         for (const value of streamCompactionRequests.values()) {
             if (value.itemId === scope?.itemId && value.itemType === scope?.itemType
                 && value.topicId === scope?.topicId && !value.cancelled) {
-                value.cancelled = true;
+                signalRelayCancellation(value);
                 cancelled = true;
             }
         }
@@ -555,7 +700,15 @@ export const chatManager = (() => {
         compactionFlowlock = config.flowlockManager || null;
         contextCompactionService = createContextCompactionService({
             historyMutationAuthority,
-            flowlock: config.flowlockManager || null,
+            flowlock: {
+                suspendForContextCompaction: (...args) => compactionFlowlock?.suspendForContextCompaction?.(...args),
+                resumeAfterContextCompaction: lease => {
+                    const relaying = [...streamCompactionRequests.values()].some(intent =>
+                        intent.relay && intent.flowlockLease === lease);
+                    if (!relaying) return compactionFlowlock?.resumeAfterContextCompaction?.(lease);
+                    return false;
+                },
+            },
             interruptRequest: requestId => interruptCapability?.interrupt?.(requestId),
             onBusyChanged: () => notifySendStateChanged(),
         });
@@ -1539,6 +1692,31 @@ export const chatManager = (() => {
         }
     }
 
+    function createRequestTextOptions(agentConfig, history, currentUserMessageId) {
+        const rules = Array.isArray(agentConfig?.stripRegexes) ? agentConfig.stripRegexes : [];
+        const depths = buildTurnDepthMap(history);
+        return {
+            transformMessageText: ({ text, message }) => {
+                if (message.id === currentUserMessageId || !depths.has(message.id)) return text;
+                return applyRegexRules(text, rules, 'context', message.role, depths.get(message.id));
+            },
+            postProcessMessageContent: async ({ content: parts, message }) => {
+                if (message.id !== currentUserMessageId
+                    || !parts.some(part => part?.type === 'text' && part.text.includes(CANVAS_PLACEHOLDER))) return parts;
+                let replacement;
+                try {
+                    const canvas = await electronAPI.getLatestCanvasContent();
+                    replacement = canvas && !canvas.error
+                        ? `\n[Canvas Content]\n${canvas.content || ''}\n[Canvas Path]\n${canvas.path || 'No file path'}\n[Canvas Errors]\n${canvas.errors || 'No errors'}\n`
+                        : '\n[Canvas content could not be loaded]\n';
+                } catch (error) {
+                    console.error('Error fetching canvas content:', error);
+                    replacement = '\n[Error loading canvas content]\n';
+                }
+                return updateFirstTextPart(parts, text => text.replaceAll(CANVAS_PLACEHOLDER, replacement));
+            },
+        };
+    }
     async function handleSendMessage(request = null) {
         // 兼容渲染 Surface 的文本发送能力。AI 消息快捷按钮等调用方只提交
         // 一段独立文本；将其规范化为请求对象，避免错误回退到主输入框草稿，
@@ -1686,6 +1864,42 @@ export const chatManager = (() => {
             attachments: uiAttachments
         };
         
+        if (!request?.conversation && !request?.checkpointMessageId
+            && typeof electronAPI.topicAdmissionSubmit === 'function') {
+            try {
+                const accepted = await electronAPI.topicAdmissionSubmit({
+                    scope: {
+                        itemId: sendContext.agentId,
+                        itemType: 'agent',
+                        topicId: sendContext.topicId,
+                    },
+                    message: userMessage,
+                    requestId: userMessage.id,
+                    triggerPolicy: 'reply',
+                });
+                if (!accepted?.success) {
+                    throw new Error(accepted?.error || accepted?.code || '消息暂挂失败');
+                }
+                if (isSendContextCurrent() && input.value === content
+                    && (request || attachedFilesRef.get() === attachedFiles)) {
+                    if (!request) {
+                        input.value = '';
+                        attachedFilesRef.set([]);
+                        mainRendererFunctions.updateAttachmentPreview?.();
+                        uiHelper.autoResizeTextarea(input);
+                    }
+                }
+                notifySendState();
+                return accepted;
+            } catch (error) {
+                if (isSendContextCurrent()) {
+                    uiHelper.showToastNotification(`发送失败，草稿已保留：${error.message}`, 'error');
+                }
+                if (request?.propagateError) throw error;
+                return;
+            }
+        }
+
         const optimisticHistory = existingCheckpoint ? [...sendHistoryRef.get()] : [...sendHistoryRef.get(), userMessage];
         if (isSendContextCurrent()) {
             sendHistoryRef.set(optimisticHistory);
@@ -1879,15 +2093,7 @@ export const chatManager = (() => {
                 ...extraContextHistory,
                 ...sendHistory.filter(msg => !msg.isThinking)
             ];
-            const contextRegexRules = Array.isArray(agentConfig?.stripRegexes)
-                ? agentConfig.stripRegexes
-                : [];
-            const hasContextRegexRules = contextRegexRules.some(
-                rule => rule?.enabled !== false && rule.applyToContext
-            );
-            const contextDepthMap = hasContextRegexRules
-                ? buildTurnDepthMap(historySnapshotForVCP)
-                : null;
+            const requestTextOptions = createRequestTextOptions(agentConfig, historySnapshotForVCP, userMessage.id);
             const orchestrated = await singleChatRequestOrchestrator.buildRequest({
                 settings: globalSettings,
                 agentConfig,
@@ -1895,50 +2101,8 @@ export const chatManager = (() => {
                 messageId: thinkingMessage.id,
                 context: sendContext,
                 currentUserMessageId: userMessage.id,
-                transformMessageText: ({ text, message }) => {
-                    // Preserve the established behavior: context regexes apply
-                    // to prior context, while the just-submitted user text is
-                    // sent verbatim before Tavern user_suffix injection.
-                    if (
-                        message.id === userMessage.id
-                        || !hasContextRegexRules
-                        || !contextDepthMap
-                    ) {
-                        return text;
-                    }
-                    const depth = contextDepthMap.get(message.id);
-                    return depth === undefined
-                        ? text
-                        : applyRegexRules(text, contextRegexRules, 'context', message.role, depth);
-                },
+                ...requestTextOptions,
                 buildMessageContent: buildDefaultMessageContent,
-                postProcessMessageContent: async ({ content: parts, message }) => {
-                    if (
-                        message.id !== userMessage.id
-                        || !parts.some(part => part?.type === 'text' && part.text.includes(CANVAS_PLACEHOLDER))
-                    ) {
-                        return parts;
-                    }
-                    try {
-                        const canvasData = await electronAPI.getLatestCanvasContent();
-                        const replacement = canvasData && !canvasData.error
-                            ? `\n[Canvas Content]\n${canvasData.content || ''}\n[Canvas Path]\n${canvasData.path || 'No file path'}\n[Canvas Errors]\n${canvasData.errors || 'No errors'}\n`
-                            : '\n[Canvas content could not be loaded]\n';
-                        return updateFirstTextPart(
-                            parts,
-                            text => text.replace(new RegExp(CANVAS_PLACEHOLDER, 'g'), replacement)
-                        );
-                    } catch (error) {
-                        console.error('Error fetching canvas content:', error);
-                        return updateFirstTextPart(
-                            parts,
-                            text => text.replace(
-                                new RegExp(CANVAS_PLACEHOLDER, 'g'),
-                                '\n[Error loading canvas content]\n'
-                            )
-                        );
-                    }
-                },
             });
             const useStreaming = orchestrated.modelConfig.stream === true;
             if (request?.signal?.aborted) return await cancelPreparedSend();
@@ -2473,8 +2637,9 @@ export const chatManager = (() => {
 
         // 2. Handle DELETED and MODIFIED messages
         for (const oldMsg of oldHistory) {
-            if (protectedStreamingIds.has(oldMsg.id)) {
-                continue; // Protect the currently streaming message
+            if (protectedStreamingIds.has(oldMsg.id)
+                || (oldMsg.isThinking && oldMsg.admissionToken && !newHistoryMap.has(oldMsg.id))) {
+                continue; // Active local placeholders are not file-side deletions.
             }
             
             const newMsgData = newHistoryMap.get(oldMsg.id);
@@ -2504,11 +2669,10 @@ export const chatManager = (() => {
                     if (typeof messageRenderer.updateMessageContent === 'function') {
                         messageRenderer.updateMessageContent(oldMsg.id, newMsgData.content); // Update UI
                     }
-                    const indexToUpdate = historyInMem.findIndex(m => m.id === oldMsg.id);
-                    if (indexToUpdate > -1) {
-                        historyInMem[indexToUpdate] = newMsgData; // Update Memory
                     }
-                }
+                // Durable metadata can change without changing rendered text.
+                const indexToUpdate = historyInMem.findIndex(m => m.id === oldMsg.id);
+                if (indexToUpdate > -1) historyInMem[indexToUpdate] = newMsgData;
             }
         }
 
@@ -2589,7 +2753,11 @@ export const chatManager = (() => {
         isContextCompacting,
         cancelContextCompaction,
         prepareFlowlockContext,
+        createRequestTextOptions,
         checkStreamContextBudget,
+        hasStreamAdmissionRelay,
+        cancelStreamAdmissionRelay,
+        finishStreamAdmissionRelay,
         finishStreamContextCompaction,
         abandonStreamContextCompaction,
         sendMessage: handleSendMessage,

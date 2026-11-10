@@ -1398,7 +1398,8 @@ window.GroupRenderer = (() => {
     }
 
     async function handleSendGroupMessage() {
-        const content = mainRendererElements.messageInput.value.trim();
+        const rawDraft = mainRendererElements.messageInput.value;
+        const content = rawDraft.trim();
         const attachedFiles = mainRendererFunctions.getAttachedFiles(); // Get from renderer.js
 
         if (!content && attachedFiles.length === 0) return;
@@ -1476,65 +1477,38 @@ window.GroupRenderer = (() => {
             attachments: uiAttachments
         };
 
-        // 群聊用户消息必须先进入当前历史真源，再投影到 DOM。JEV 会在发送后
-        // 立即启动编排并连续触发历史文件同步；在主进程完成首次追加前，旧文件
-        // 快照不能获得删除这个乐观消息的权威。
-        pendingGroupUserMessageIds.add(userMessageForUI.id);
-        const currentHistory = currentChatHistoryRef?.get?.();
-        if (Array.isArray(currentHistory) && !currentHistory.some(message => message?.id === userMessageForUI.id)) {
-            currentChatHistoryRef.set([...currentHistory, userMessageForUI]);
-        }
-
-        messageRenderer.renderMessage(userMessageForUI); // Render user's own message in UI
-
-        mainRendererElements.messageInput.value = '';
-        mainRendererFunctions.clearAttachedFiles();
-        mainRendererFunctions.updateAttachmentPreview();
-        uiHelper.autoResizeTextarea(mainRendererElements.messageInput);
-        // mainRendererElements.messageInput.focus();
-
-        // Message object for IPC to backend (uses combined text content)
-        const userMessageForIPC = {
-            role: 'user',
-            name: userMessageForUI.name,
-            content: { // This 'content' object is what groupchat.js's handleGroupChatMessage expects for the current turn
-                text: combinedTextContent // Combined text for AI for this turn
-            },
-            originalUserText: content, // Pass the original user input separately for history saving
-            timestamp: userMessageForUI.timestamp,
-            id: userMessageForUI.id,
-            attachments: uiAttachments // Pass full attachment info for backend processing (includes _fileManagerData)
-        };
-
         try {
-            // `sendGroupChatMessage` in main.js will call `groupchat.js` which handles streaming via `vcp-group-stream-chunk`
-            const result = await electronAPI.sendGroupChatMessage(
-                currentSelected.id,
-                currentTopic,
-                userMessageForIPC // Pass the message object with combined text to IPC
-            );
-            pendingGroupUserMessageIds.delete(userMessageForUI.id);
-
-            if (result.error) {
-                // console.error("Sending group chat message failed (main process response):", result.error); // 根据用户要求移除此报错
-                // messageRenderer.renderMessage({ // 根据用户要求移除此报错
-                //     role: 'system',
-                //     content: `群聊消息发送失败: ${result.error}`,
-                //     timestamp: Date.now()
-                // });
-            } else {
-                // Success means the message was handed off to groupchat.js for processing.
-                // Responses will come via 'vcp-group-stream-chunk'.
-                console.log("Group message sent to main process for handling.");
+            if (typeof electronAPI.topicAdmissionSubmit !== 'function') {
+                throw new Error('中央消息入场服务不可用，草稿已保留');
             }
+            const result = await electronAPI.topicAdmissionSubmit({
+                scope: { itemType: 'group', itemId: currentSelected.id, topicId: currentTopic },
+                message: {
+                    ...userMessageForUI,
+                    content,
+                    isGroupMessage: true,
+                    groupId: currentSelected.id,
+                    topicId: currentTopic,
+                    _metadata: { groupRequestText: combinedTextContent },
+                },
+                requestId: userMessageForUI.id,
+                triggerPolicy: 'reply',
+            });
+            if (!result?.success) throw new Error(result?.error || result?.code || '群聊消息入队失败');
+            const selectedNow = currentSelectedItemRef.get();
+            if (selectedNow?.type === 'group' && selectedNow.id === currentSelected.id
+                && currentTopicIdRef.get() === currentTopic
+                && mainRendererElements.messageInput.value === rawDraft
+                && mainRendererFunctions.getAttachedFiles() === attachedFiles) {
+                mainRendererElements.messageInput.value = '';
+                mainRendererFunctions.clearAttachedFiles();
+                mainRendererFunctions.updateAttachmentPreview();
+                uiHelper?.autoResizeTextarea?.(mainRendererElements.messageInput);
+            }
+            return result;
         } catch (error) {
-            pendingGroupUserMessageIds.delete(userMessageForUI.id);
-            // console.error('发送群聊消息时出错:', error); // 根据用户要求移除此报错
-            // messageRenderer.renderMessage({ // 根据用户要求移除此报错
-            //     role: 'system',
-            //     content: `发送群聊消息时出错: ${error.message}`,
-            //     timestamp: Date.now()
-            // });
+            uiHelper?.showToastNotification?.(`群聊消息未入队：${error.message}`, 'error');
+            return { success: false, error: error.message };
         }
     }
 

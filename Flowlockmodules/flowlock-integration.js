@@ -61,6 +61,46 @@ function normalizeFlowlockHeartbeatPrompt(prompt) {
  * @param {Object} params - { agentId, topicId, prompt, messageId }
  */
 async function continueWritingForContext(params) {
+    const api = window.chatAPI || window.electronAPI;
+    if (typeof api.topicAdmissionAcquire !== 'function') {
+        return continueWritingForContextOwned(params);
+    }
+    const scope = { itemType: 'agent', itemId: params.agentId, topicId: params.topicId };
+    const token = params.messageId || `heartbeat_${params.agentId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const acquired = await api.topicAdmissionAcquire(scope, token);
+    if (!acquired?.success) {
+        throw Object.assign(new Error(`话题暂不可续写：${acquired?.code || acquired?.error || '占用中'}`), {
+            code: acquired?.code || 'ADMISSION_UNAVAILABLE',
+        });
+    }
+    let dispatched = false;
+    try {
+        const result = await continueWritingForContextOwned({
+            ...params, admissionToken: token,
+            onAdmissionDispatch: () => { dispatched = true; },
+        });
+        if (result?.nonStreamingSaved) {
+            const released = await api.topicAdmissionRelease(scope, token, { saved: true });
+            if (!released?.success) throw new Error(released?.error || released?.code || '心跳租约释放失败');
+        }
+        return result;
+    } catch (error) {
+        if (!dispatched) {
+            const released = await api.topicAdmissionRelease(scope, token, { saved: true });
+            if (!released?.success) console.error('[Flowlock] preparation lease release failed', released);
+        } else if (typeof api.topicAdmissionUncertain === 'function') {
+            try {
+                const report = await api.topicAdmissionUncertain(scope, token, error?.message || String(error));
+                if (!report?.success) console.error('[Flowlock] uncertainty journal rejected', report);
+            } catch (diagnosticError) {
+                console.error('[Flowlock] uncertainty journal failed', diagnosticError);
+            }
+        }
+        throw error;
+    }
+}
+
+async function continueWritingForContextOwned(params) {
     const { agentId, topicId, prompt, messageId } = params;
     const chatAPI = window.chatAPI || window.electronAPI;
     const globalSettings = settingsProvider?.get?.() || {};
@@ -150,6 +190,7 @@ async function continueWritingForContext(params) {
 
     // 构建上下文。后台流也必须带完整身份，streamManager 才能写入正确历史。
     const context = {
+        admissionToken: params.admissionToken,
         agentId: agentId,
         agentName: agentConfig?.name || agentId,
         topicId: topicId,
@@ -161,7 +202,7 @@ async function continueWritingForContext(params) {
     // Streaming lifecycle is now started by the VCP stream bridge when the
     // producer publishes its first owned event. This prevents Flowlock from
     // creating a second terminal state machine for the same message.
-    if (!useStreaming) {
+    if (!useStreaming && typeof chatAPI.topicAdmissionPersistAssistant !== 'function') {
         let historyWithThinking = await chatAPI.getChatHistory(agentId, topicId);
         if (!historyWithThinking || historyWithThinking.error) {
             historyWithThinking = [];
@@ -178,6 +219,7 @@ async function continueWritingForContext(params) {
     if (params.isCurrent && !params.isCurrent()) throw new Error('心流会话已停止、切换或挂起');
 
     // 发送到 VCP
+    params.onAdmissionDispatch?.();
     const vcpResponse = await chatAPI.sendToVCP(
         globalSettings.vcpServerUrl,
         globalSettings.vcpApiKey,
@@ -204,8 +246,36 @@ async function continueWritingForContext(params) {
                 avatarColor: agentConfig?.avatarCalculatedColor,
                 content: assistantMessageContent,
                 timestamp: Date.now(),
-                id: response.id || `flowlock_nonstream_${Date.now()}`
+                id: thinkingMessageId,
+                agentId,
+                admissionToken: params.admissionToken,
+                admissionTerminal: true,
+                isThinking: false,
+                finishReason: 'completed'
             };
+
+            if (typeof chatAPI.topicAdmissionPersistAssistant === 'function') {
+                const saved = await chatAPI.topicAdmissionPersistAssistant(
+                    { itemType: 'agent', itemId: agentId, topicId }, assistantMessage);
+                if (!saved?.success) throw new Error(saved?.error || '心跳终稿保存失败');
+                // UI/Flowlock effects cannot invalidate an already durable terminal.
+                try {
+                    if (isForCurrentView && chatManagerProvider?.loadChatHistory) {
+                        await chatManagerProvider.loadChatHistory(agentId, 'agent', topicId);
+                    }
+                } catch (effectError) {
+                    console.error('[Flowlock] post-commit history refresh failed', effectError);
+                }
+                try {
+                    await window.flowlockManager?.handleFinalizedMessage({
+                        type: 'end', messageId: thinkingMessageId, context,
+                        content: assistantMessageContent, finishReason: 'completed'
+                    });
+                } catch (effectError) {
+                    console.error('[Flowlock] post-commit finalization failed', effectError);
+                }
+                return { nonStreamingSaved: true };
+            }
 
             const historyForSave = await chatAPI.getChatHistory(agentId, topicId);
             if (historyForSave && !historyForSave.error) {
@@ -223,6 +293,7 @@ async function continueWritingForContext(params) {
                 }
             }
 
+            if (!Array.isArray(historyForSave)) throw new Error('心跳回复历史保存未完成');
             // 非流式回复不会产生 stream end 事件，直接进入统一完成入口。
             await window.flowlockManager?.handleFinalizedMessage({
                 type: 'end',
@@ -231,6 +302,9 @@ async function continueWritingForContext(params) {
                 content: assistantMessageContent,
                 finishReason: 'completed'
             });
+            return { nonStreamingSaved: true };
+        } else {
+            throw new Error('心跳回复格式无效');
         }
     } else {
         if (vcpResponse?.streamError) {

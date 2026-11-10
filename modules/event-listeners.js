@@ -184,6 +184,52 @@ export function setupEventListeners(deps) {
      * @param {string} additionalPrompt - Additional prompt text from the input box.
      */
     async function handleContinueWriting(additionalPrompt = '') {
+        if (typeof chatAPI.topicAdmissionAcquire !== 'function') {
+            return handleContinueWritingOwned(additionalPrompt);
+        }
+        const selected = refs.currentSelectedItem.get();
+        const topicId = refs.currentTopicId.get();
+        if (!selected?.id || selected.type !== 'agent' || !topicId) return;
+        if (chatManager.isContextCompacting?.()) {
+            uiHelperFunctions.showToastNotification('上下文正在压缩，请稍候', 'warning');
+            return;
+        }
+        const scope = { itemType: 'agent', itemId: selected.id, topicId };
+        const token = `manual_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const acquired = await chatAPI.topicAdmissionAcquire(scope, token);
+        if (!acquired?.success) {
+            uiHelperFunctions.showToastNotification(`话题暂不可续写：${acquired?.error || acquired?.code || '占用中'}`, 'info');
+            return;
+        }
+        // Navigation during IPC must not transfer the lease to the new selection.
+        if (refs.currentSelectedItem.get()?.id !== scope.itemId || refs.currentTopicId.get() !== scope.topicId) {
+            await chatAPI.topicAdmissionRelease(scope, token, { saved: true });
+            return;
+        }
+        let dispatched = false;
+        let saved = false;
+        try {
+            const result = await handleContinueWritingOwned(additionalPrompt, token, () => { dispatched = true; });
+            saved = result?.nonStreamingSaved === true;
+        } catch (error) {
+            if (dispatched && !saved && typeof chatAPI.topicAdmissionUncertain === 'function') {
+                try {
+                    const reported = await chatAPI.topicAdmissionUncertain(scope, token, error.message);
+                    if (!reported?.success) console.error('[ContinueWriting] uncertainty journal failed', reported);
+                } catch (reportError) {
+                    console.error('[ContinueWriting] uncertainty journal failed', reportError);
+                }
+            }
+            throw error;
+        } finally {
+            if (!dispatched || saved) {
+                const released = await chatAPI.topicAdmissionRelease(scope, token, { saved: true });
+                if (!released?.success) console.error('[ContinueWriting] lease release failed', released);
+            }
+        }
+    }
+
+    async function handleContinueWritingOwned(additionalPrompt = '', admissionToken = null, onDispatch = () => {}) {
         if (chatManager.isContextCompacting?.()) {
             uiHelperFunctions.showToastNotification('上下文正在压缩，请稍候', 'warning');
             return;
@@ -275,6 +321,7 @@ export function setupEventListeners(deps) {
             };
 
             const context = {
+                admissionToken,
                 agentId: currentSelectedItem.id,
                 agentName: currentSelectedItem.name || currentSelectedItem.id,
                 topicId: currentTopicId,
@@ -283,6 +330,7 @@ export function setupEventListeners(deps) {
                 avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
             };
 
+            onDispatch();
             const vcpResponse = await chatAPI.sendToVCP(
                 globalSettings.vcpServerUrl,
                 globalSettings.vcpApiKey,
@@ -294,67 +342,85 @@ export function setupEventListeners(deps) {
             );
 
             if (!useStreaming) {
-                const { response, context } = vcpResponse;
-                const isForActiveChat = context && context.agentId === currentSelectedItem.id && context.topicId === currentTopicId;
-
-                if (isForActiveChat) {
-                    messageRenderer?.removeMessageById(thinkingMessage.id);
+                // Never use response-supplied context to choose the persistence target.
+                const response = vcpResponse?.response || vcpResponse;
+                if (response?.error) throw new Error(`VCP错误: ${response.error}`);
+                const choice = response?.choices?.[0];
+                if (!choice?.message || typeof choice.message.content !== 'string') {
+                    throw new Error('续写未返回完整 assistant 终稿');
                 }
-
-                if (response.error) {
-                    if (isForActiveChat && messageRenderer) {
-                        messageRenderer.renderMessage({ role: 'system', notice: 'error', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
-                    }
-                    console.error(`[ContinueWriting] VCP Error:`, response.error);
-                } else if (response.choices && response.choices.length > 0) {
-                    const assistantMessageContent = response.choices[0].message.content;
-                    const assistantMessage = {
-                        role: 'assistant',
-                        name: context.agentName || context.agentId || 'AI',
-                        avatarUrl: currentSelectedItem.avatarUrl,
-                        avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
-                        content: assistantMessageContent,
-                        timestamp: Date.now(),
-                        id: response.id || `regen_nonstream_${Date.now()}`
-                    };
-
-                    const historyForSave = await chatAPI.getChatHistory(context.agentId, context.topicId);
-                    if (historyForSave && !historyForSave.error) {
-                        const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
-                        finalHistory.push(assistantMessage);
-                        await historyMutationAuthority.replace({
-                            itemId: context.agentId, itemType: 'agent', topicId: context.topicId,
-                            category: 'flowlock-non-stream-terminal',
-                        }, finalHistory);
-
-                        if (isForActiveChat) {
-                            currentChatHistory.length = 0;
-                            currentChatHistory.push(...finalHistory);
-                            messageRenderer?.renderMessage(assistantMessage);
-                            await chatManager.attemptTopicSummarizationIfNeeded();
+                const scope = { itemType: 'agent', itemId: currentSelectedItem.id, topicId: currentTopicId };
+                const assistantMessage = {
+                    role: 'assistant',
+                    name: context.agentName || context.agentId || 'AI',
+                    agentId: scope.itemId,
+                    avatarUrl: context.avatarUrl,
+                    avatarColor: context.avatarColor,
+                    content: choice.message.content,
+                    timestamp: Date.now(),
+                    id: thinkingMessage.id,
+                    admissionToken,
+                    admissionTerminal: true,
+                    isThinking: false,
+                    finishReason: choice.finish_reason || 'completed'
+                };
+                let finalHistory;
+                if (typeof chatAPI.topicAdmissionPersistAssistant === 'function') {
+                    const persisted = await chatAPI.topicAdmissionPersistAssistant(scope, assistantMessage);
+                    if (!persisted?.success) throw new Error(persisted?.error || '续写终稿保存失败');
+                    finalHistory = persisted.history;
+                } else {
+                    if (admissionToken) throw new Error('中央续写缺少原子终稿保存能力');
+                    // Legacy hosts only; never fall back after a rejected atomic commit.
+                    const latest = await chatAPI.getChatHistory(scope.itemId, scope.topicId);
+                    if (!Array.isArray(latest)) throw new Error('续写历史读取失败');
+                    finalHistory = latest.filter(msg => msg.id !== thinkingMessage.id);
+                    finalHistory.push(assistantMessage);
+                    await historyMutationAuthority.replace({
+                        ...scope, category: 'manual-continue-non-stream-terminal',
+                    }, finalHistory);
+                }
+                // UI failures cannot invalidate an already saved terminal.
+                try {
+                    if (refs.currentSelectedItem.get()?.id === scope.itemId
+                        && refs.currentTopicId.get() === scope.topicId) {
+                        if (Array.isArray(finalHistory)) {
+                            const activeHistory = refs.currentChatHistory.get();
+                            activeHistory.splice(0, activeHistory.length, ...finalHistory);
                         }
+                        messageRenderer?.removeMessageById(thinkingMessage.id);
+                        await messageRenderer?.renderMessage(assistantMessage);
+                        await chatManager.attemptTopicSummarizationIfNeeded();
                     }
+                } catch (uiError) {
+                    console.error('[ContinueWriting] post-commit UI failed', uiError);
                 }
-            } else {
-                if (vcpResponse && vcpResponse.streamError) {
-                    console.error("[ContinueWriting] Streaming setup failed:", vcpResponse.errorDetail || vcpResponse.error);
+                try { notifySendStateChanged?.(); } catch (uiError) {
+                    console.error('[ContinueWriting] post-commit state notification failed', uiError);
                 }
+                return { nonStreamingSaved: true };
             }
-
-            if (!useStreaming) {
-                notifySendStateChanged?.();
+            if (vcpResponse?.streamError) {
+                throw new Error(vcpResponse.errorDetail || vcpResponse.error || '续写流式请求启动失败');
             }
         } catch (error) {
             console.error('[ContinueWriting] 续写时出错:', error);
-            messageRenderer?.removeMessageById(thinkingMessage.id);
-            messageRenderer?.renderMessage({ role: 'system', notice: 'error', content: `错误: ${error.message}`, timestamp: Date.now() });
-            if (currentSelectedItem.id && currentTopicId) {
-                await historyMutationAuthority.replace({
-                    itemId: currentSelectedItem.id, itemType: currentSelectedItem.type, topicId: currentTopicId,
-                    category: 'flowlock-failure-cleanup',
-                }, currentChatHistory.filter(msg => !msg.isThinking));
+            // The placeholder is local only; cleanup must not overwrite newer history.
+            const placeholderIndex = currentChatHistory.findIndex(msg => msg.id === thinkingMessage.id);
+            if (placeholderIndex >= 0) currentChatHistory.splice(placeholderIndex, 1);
+            try {
+                if (refs.currentSelectedItem.get()?.id === currentSelectedItem.id
+                    && refs.currentTopicId.get() === currentTopicId) {
+                    messageRenderer?.removeMessageById(thinkingMessage.id);
+                    await messageRenderer?.renderMessage({
+                        role: 'system', notice: 'error', content: `错误: ${error.message}`, timestamp: Date.now()
+                    });
+                }
+                notifySendStateChanged?.();
+            } catch (uiError) {
+                console.error('[ContinueWriting] failure UI failed', uiError);
             }
-            notifySendStateChanged?.();
+            throw error;
         }
     }
 
@@ -450,7 +516,9 @@ export function setupEventListeners(deps) {
             }
 
             const currentInputText = messageInput.value.trim();
-            await handleContinueWriting(currentInputText);
+            await handleContinueWriting(currentInputText).catch(error => {
+                console.error('[ContinueWriting] button request failed', error);
+            });
         }
     });
 
@@ -1445,7 +1513,9 @@ export function setupEventListeners(deps) {
                 return;
             }
             const currentInputText = messageInput ? messageInput.value.trim() : '';
-            handleContinueWriting(currentInputText);
+            void handleContinueWriting(currentInputText).catch(error => {
+                console.error('[ContinueWriting] shortcut request failed', error);
+            });
         }
 
         if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {

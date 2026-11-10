@@ -13,8 +13,27 @@
   "communication": {
     "protocol": "direct"
   },
+  "configSchema": {
+    "REPLY_ADVANCE_ENABLED": "boolean",
+    "REPLY_INVITE_PROMPT": "string"
+  },
   "capabilities": {
     "invocationCommands": [
+      {
+        "command": "ListAgents",
+        "commandIdentifier": "ListAgents",
+        "description": "列出所有注册 Agent 的完整 name、id 和 type，只读地址簿，无需目标参数。"
+      },
+      {
+        "command": "ListGroups",
+        "commandIdentifier": "ListGroups",
+        "description": "列出所有群的 name、id 和 type，只读地址簿，无需目标参数。"
+      },
+      {
+        "command": "ListRecentTopics",
+        "commandIdentifier": "ListRecentTopics",
+        "description": "查询 Agent 或群最新创建的5个话题，只返回标题和地址，不检索正文。必需 query：真实ID或名称；优先完整ID、完整名称，否则忽略大小写包含匹配（小克可匹配猫娘小克）。多候选列出完整名称、类型、ID，不猜测；可选 target_type=agent|group 消歧。返回 owner、topics[{topic_id,title,created_at}]、total，按创建时间倒序，不过滤 locked/unread。找到topic_id后用ReplyToTopic留言；深入内容检索使用TopicMemo。"
+      },
       {
         "command": "CreateTopic",
         "commandIdentifier": "CreateTopic",
@@ -43,7 +62,7 @@
       {
         "command": "ReplyToTopic",
         "commandIdentifier": "ReplyToTopic",
-        "description": "功能: 在指定Agent的话题中添加回复消息。只能回复未锁定或标记为未读的话题。\n\n**参数说明:**\n1. `tool_name`: 「始」TopicSponsor「末」 (必需)\n2. `command`: 「始」ReplyToTopic「末」 (必需)\n3. `maid`: 「始」目标Agent的中文名「末」 (必需)\n4. `topic_id`: 「始」话题ID「末」 (必需)\n5. `message`: 「始」回复内容「末」 (必需)\n6. `sender_name`: 「始」发送者名称「末」 (必需)\n\n**调用格式:**\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」ReplyToTopic「末」,\nmaid:「始」HANNA「末」,\ntopic_id:「始」topic_1234567890「末」,\nmessage:「始」这是一条回复消息「末」,\nsender_name:「始」系统助手「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 向 Agent 或 Group 的已有话题投递注册 Agent 留言，经前端中央队列入场。接受后立即返回 queued，不等待目标生成。默认只留言；只有宿主配置 REPLY_ADVANCE_ENABLED=true 才请求推进，不接受调用参数覆盖开关。CreateTopic 不受此配置影响。\n\n参数：command=ReplyToTopic；topic_id、message 必需；sender_id 或 sender_name 必需；sender_id 为完整注册 ID，sender_name 支持忽略大小写的名称包含匹配（如小克匹配猫娘小克），解析后使用完整注册身份；歧义报错列出候选名称和 ID。目标仅通过 topic_id 定位，自动跨所有 Agent 和 Group 查找；无需提供目标归属或类型。maid/valet 是工具追踪署名，不参与目标定位；旧 target_id/target_type 参数不限制回复范围。source_topic_id 可选，仅追加纯文本回信地址。回复不受话题 locked/unread 状态限制；正在生成时由中央队列暂挂。游戏话题禁止公共投递。群聊使用原编排和选人规则，不擅自选人。普通回答不会自动回传，需回信时自行调用 TopicSponsor。\n\n示例参数：command: ReplyToTopic, topic_id: 真实单聊或群聊话题ID, sender_name: Kerr, message: 留言内容。返回 success/queued/entryId/message_id/target_id/target_type；queued 只表示接受，不表示落盘或生成完成。"
       },
       {
         "command": "CheckTopicOwnership",

@@ -2661,12 +2661,20 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
     const selectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const topicId = mainRendererReferences.currentTopicIdRef.get();
     if (selectedItem?.id && topicId && mainRendererReferences.historyMutationAuthority) {
-        void mainRendererReferences.historyMutationAuthority.replace({
+        void mainRendererReferences.historyMutationAuthority.mutate({
             itemId: selectedItem.id,
             itemType: selectedItem.type,
             topicId,
             category: targetHidden ? 'tool-result-hide' : 'tool-result-show',
-        }, history).catch(error => {
+        }, latest => {
+            const index = latest.findIndex(item => item.id === messageId);
+            if (index < 0) throw new Error('消息已删除，请刷新');
+            if (JSON.stringify(latest[index].content) !== JSON.stringify(message.content)) {
+                throw new Error('消息内容已变化，请刷新后重试');
+            }
+            latest[index] = { ...latest[index], content: updatedMessage.content };
+            return latest;
+        }).catch(error => {
             console.error('[MessageRenderer] Failed to persist tool result visibility state:', error);
             notify('工具结果状态已更新，但保存历史失败', 'error');
         });
@@ -2897,12 +2905,16 @@ function removeMessageById(messageId, saveHistory = false, root = mainRendererRe
             const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
             const currentTopicIdVal = mainRendererReferences.currentTopicIdRef.get();
             if (currentSelectedItemVal.id && currentTopicIdVal) {
-                void mainRendererReferences.historyMutationAuthority?.replace({
+                void mainRendererReferences.historyMutationAuthority?.mutate({
                     itemId: currentSelectedItemVal.id,
                     itemType: currentSelectedItemVal.type,
                     topicId: currentTopicIdVal,
                     category: 'message-remove',
-                }, currentChatHistoryArray).catch(error => console.error('[MessageRenderer] history mutation failed:', error));
+                }, latest => latest.filter(message => message.id !== messageId))
+                    .catch(error => {
+                        console.error('[MessageRenderer] history mutation failed:', error);
+                        mainRendererReferences.uiHelper?.showToastNotification?.('消息删除未保存，请刷新后重试', 'error');
+                    });
             }
         }
     }
@@ -3996,21 +4008,19 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                     const matchedItem = loadedItems.find(it => {
                         if (it.type !== 'agent' || !it.name) return false;
                         const itLower = it.name.toLowerCase();
-                        return itLower === senderLower || itLower.startsWith(senderLower) || itLower.includes(senderLower) || senderLower.includes(itLower);
+                        return message.agentId && message.agentId !== currentSelectedItem.id
+                            ? it.id === message.agentId
+                            : itLower === senderLower;
                     });
 
                     if (matchedItem && matchedItem.avatarUrl) {
                         avatarUrlToUse = matchedItem.avatarUrl;
                         avatarColorToUse = matchedItem.avatarColor || matchedItem.avatarCalculatedColor || avatarColorToUse;
-                    } else if (message.agentId && message.agentId !== currentSelectedItem.id) {
-                        // 防线 2: 若已知发送者 agentId，直接组装标准的 file:// 物理头像路径兜底
-                        avatarUrlToUse = `file:///D:/VCP/VCP_itself_2nd/VCPChat/AppData/Agents/${message.agentId}/avatar.png`;
                     }
                 }
 
-                // 优雅兜底：若前两道防线全未命中（极端异常角色），回退当前宿主头像以防默认灰色占位符影响视觉
-                avatarUrlToUse ||= currentSelectedItem.avatarUrl;
-                avatarColorToUse ||= currentSelectedItem.avatarColor;
+                // 无法解析的发送者保留中性占位，绝不冒用话题主人的头像。
+                avatarColorToUse ||= 'rgb(96,106,116)';
             } else {
                 avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor
                     || currentSelectedItem.avatarCalculatedColor

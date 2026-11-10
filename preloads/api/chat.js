@@ -24,7 +24,7 @@ module.exports = {
 
         // 聊天记录
         getChatHistory: invoke('get-chat-history', 'agentId', 'topicId'),
-        saveChatHistory: invoke('save-chat-history', 'agentId', 'topicId', 'history'),
+        saveChatHistory: invoke('save-chat-history', 'agentId', 'topicId', 'history', 'options'),
         getOriginalMessageContent: invoke('get-original-message-content', 'itemId', 'itemType', 'topicId', 'messageId'),
         onHistoryFileUpdated: on('history-file-updated'),
 
@@ -32,6 +32,24 @@ module.exports = {
         watcherBegin: invoke('watcher:begin'),
         watcherStart: invoke('watcher:start', (filePath, agentId, topicId, leaseToken = null) => [filePath, agentId, topicId, leaseToken]).roles('chat', 'utility'),
         watcherStop: invoke('watcher:stop', (leaseToken = null) => [leaseToken]).roles('chat', 'utility'),
+
+        // 中央消息入场与暂挂队列
+        topicAdmissionList: invoke('topic-admission:list', 'scope'),
+        topicAdmissionSubmit: invoke('topic-admission:submit', 'request'),
+        topicAdmissionPersistAssistant: invoke('topic-admission:persist-assistant', 'scope', 'message'),
+        topicAdmissionWithdraw: invoke('topic-admission:withdraw', 'scope', 'entryId'),
+        topicAdmissionResume: invoke('topic-admission:resume', 'scope'),
+        topicAdmissionReconcile: invoke('topic-admission:reconcile', 'scope', 'entryId'),
+        topicAdmissionAcquire: invoke('topic-admission:acquire', 'scope', 'token'),
+        topicAdmissionRelease: invoke('topic-admission:release', 'scope', 'token', 'outcome'),
+        topicAdmissionRelay: invoke('topic-admission:relay', 'scope', 'token', 'outcome'),
+        topicAdmissionCancelRelay: invoke('topic-admission:cancel-relay', 'scope', 'token'),
+        topicAdmissionAck: invoke('topic-admission:ack', 'token', 'error'),
+        topicAdmissionFail: invoke('topic-admission:fail', 'scope', 'token', 'error'),
+        topicAdmissionUncertain: invoke('topic-admission:uncertain', 'scope', 'token', 'error'),
+        onTopicAdmissionChanged: on('topic-admission:changed'),
+        onTopicAdmissionCommitted: on('topic-admission:committed'),
+        onTopicAdmissionAdvance: on('topic-admission:advance'),
 
         // 发送与流式响应
         sendToVCP: invoke('send-to-vcp', 'vcpUrl', 'vcpApiKey', 'messages', 'modelConfig', 'messageId', 'isGroupCall', 'context'),

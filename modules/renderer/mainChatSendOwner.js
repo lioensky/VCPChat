@@ -14,6 +14,7 @@ export function createMainChatSendOwner({
     getChatManager,
     messageRenderer,
     notify,
+    hasDraft = () => false,
 }) {
     const defaultButtonHtml = button?.innerHTML || '';
     let disposed = false;
@@ -71,7 +72,8 @@ export function createMainChatSendOwner({
             return true;
         }
         if (button.dataset.mode === 'compacting') button.disabled = false;
-        const mode = getInterruptibleMessage() ? 'interrupt' : 'send';
+        const active = getInterruptibleMessage();
+        const mode = active && !hasDraft() ? 'interrupt' : 'send';
         button.dataset.mode = mode;
         button.classList.toggle('interrupt-mode', mode === 'interrupt');
         // The send control is the main-chat composer status surface. Keep its
@@ -90,6 +92,7 @@ export function createMainChatSendOwner({
         if (!activeMessage || disposed) return false;
         const selected = selectedItemRef.get();
         const isGroup = activeMessage.isGroupMessage === true || selected?.type === 'group';
+        if (!isGroup) getChatManager()?.cancelStreamAdmissionRelay?.(activeMessage.id);
         let result = { success: false, error: '无法发送中止请求。' };
         if (isGroup) {
             result = typeof chatAPI?.interruptGroupRequest === 'function'
@@ -135,7 +138,7 @@ export function createMainChatSendOwner({
                 else notify?.('压缩结果正在保存，无法撤销已开始的写入。', 'info');
                 return cancelled === true;
             }
-            if (getInterruptibleMessage()) return interrupt();
+            if (getInterruptibleMessage() && !hasDraft()) return interrupt();
             await getChatManager()?.handleSendMessage?.();
             return true;
         },

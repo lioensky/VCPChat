@@ -88,7 +88,9 @@ test('JEV 用户与 Agent 消息通过共享历史队列原子追加', () => {
 
     assert.match(engine, /groupHistoryMutationQueue\.mutate\(/);
     assert.match(engine, /groupHistory = await appendGroupHistoryMessage\(groupId, topicId, userMessageEntry\)/);
-    assert.match(engine, /const persistResponse = gameRequest\s*\? async \(\) => groupHistory\s*: appendGroupHistoryMessage/);
+    assert.match(engine, /const persistResponse = gameRequest\s*\? async \(\) => groupHistory\s*: async/);
+    assert.match(engine, /const history = await appendGroupHistoryMessage\(targetGroupId, targetTopicId, terminal\);\s*options\.admissionLifecycle\?\.committed\(\);\s*return history;/);
+    assert.match(engine, /admissionToken: token, admissionTerminal: true/);
     assert.match(engine, /await persistResponse\(groupId, topicId, finalAiResponseEntry\)/);
     assert.match(engine, /await persistResponse\(groupId, topicId, aiResponseEntry\)/);
 });

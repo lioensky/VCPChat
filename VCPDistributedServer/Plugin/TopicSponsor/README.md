@@ -26,7 +26,7 @@
 
 ### 1.1 它是什么？
 
-TopicSponsor 是一个运行在 VCPChat 前端分布式插件服务器（VCPDistributedServer）上的同步插件。它直接操作 VCPChat 的 AppData 目录结构——读写 Agent 的 config.json 和话题的 history.json——来实现话题的创建、查询和管理。
+TopicSponsor 运行在 VCPChat 前端分布式插件服务器（VCPDistributedServer）上，当前 manifest 使用 hybridservice/direct，入口为 topicsponsor-service.js。创建和查询复用宿主 PluginAgentOperationService；ReplyToTopic 经中央消息入场服务排队，不直接覆盖历史。下文历史命名记录不代表当前运行入口。
 
 ### 1.2 解决什么问题？
 
@@ -97,10 +97,10 @@ VCPDistributedServer 的 Plugin.js 使用 `this.plugins.get(toolName)` 进行**�
 
 ### 3.1 插件类型与通信协议
 
-- **插件类型**：synchronous（同步）
-- **通信协议**：stdio（标准输入/输出）
-- **入口点**：`node topicCreator.js`（注意：文件名保留历史命名，不影响功能）
-- **超时时间**：15000ms（15秒）
+- **插件类型**：hybridservice
+- **通信协议**：direct
+- **入口点**：`topicsponsor-service.js`，调用宿主 `PluginAgentOperationService`
+- **超时时间**：15000ms；回复接受入队即返回，不等待目标生成。
 
 ### 3.2 目录结构
 
@@ -110,7 +110,8 @@ VCPChat/
 |   +-- Plugin/
 |       +-- TopicSponsor/           <- 插件目录（以注册名命名）
 |           |-- plugin-manifest.json <- 插件清单（注册名: TopicSponsor）
-|           |-- topicCreator.js      <- 执行脚本（历史文件名）
+|           |-- topicsponsor-service.js <- 当前 hybridservice/direct 入口
+|           |-- config.env.example   <- 配置示例，默认仅留言
 |           +-- README.md            <- 本文档
 |-- AppData/
 |   |-- Agents/
@@ -126,14 +127,12 @@ VCPChat/
 
 ### 3.3 数据流
 
+```text
+Agent → TopicSponsor direct service → PluginAgentOperationService
+ReplyToTopic → 目标/注册身份验证 → 中央持久化暂挂队列 → 最新历史幂等追加
+推进开启时 → 现有单聊或群聊引擎 → 终稿完整保存 → 释放占用
 ```
-Agent调用 TopicSponsor
-  -> VCPDistributedServer 匹配 manifest name="TopicSponsor"
-  -> 启动 node topicCreator.js
-  -> 通过 stdin 接收 JSON 参数
-  -> 读写 AppData/Agents/config.json 和 UserData/topics/history.json
-  -> 通过 stdout 返回 JSON 结果
-```
+工具只等待接受，不等待生成；流结束或函数返回不代表终稿保存成功。
 
 ### 3.4 话题数据模型
 
@@ -308,16 +307,20 @@ flowlock_prompt:「始」读取本话题的初始任务，开始第一轮自主�
 
 ### 4.6 ReplyToTopic — 回复话题
 
-**功能**：在指定 Agent 的话题中添加回复消息。只能回复未锁定或标记为未读的话题。
+**功能**：向 Agent 或 Group 的已有话题投递留言。接受后返回 queued，不等待目标生成；queued 不代表落盘或生成完成。
 
-| 参数 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| maid | string | 是 | 目标 Agent 的中文名 |
-| topic_id | string | 是 | 话题 ID（如 topic_1716000000000） |
-| message | string | 是 | 回复内容 |
-| sender_name | string | 是 | 发送者名称 |
+| 参数 | 必需 | 说明 |
+|------|------|------|
+| topic_id、message | 是 | 真实目标话题 ID 与正文 |
+| sender_id 或 sender_name | 是 | 完整注册 ID，或忽略大小写的名称包含匹配；歧义列候选名称与 ID |
+| target_type + target_id | 不需要 | 旧参数不再限制回复查找范围，目标仅按 topic_id 定位 |
+| maid / valet | 追踪署名 | 不参与 ReplyToTopic 目标定位，不替代 sender_id / sender_name |
+| source_topic_id | 否 | 可选回信地址，追加纯文本尾注，不是认证溯源 |
 
-**重要限制**：如果话题已锁定（locked: true）且未标记为未读（unread: false），则无法回复。
+宿主配置 `REPLY_ADVANCE_ENABLED` 缺省 false；开启后仅回复可请求推进，调用参数不能覆盖开关。`REPLY_INVITE_PROMPT` 只用于单聊请求级临时邀请，不写历史、不冒充人类、不创建 Flowlock Session。群聊使用原编排，invite_only 不擅自选人。
+CreateTopic 不随开关触发，CreateFlowlockTopic 保留既有语义。目标普通回答不自动回传；回信需自行调用 TopicSponsor。
+回复不受话题 locked/unread 状态限制；活动回复期间由中央队列暂挂。游戏话题不走公共投递。尚未推进的暂挂项重启后暂停，需明确继续；已推进或保存不明的批次显示待核实，禁止直接重生成，可用“核对终稿”检查唯一匹配租约的已保存终稿，仅无活动租约时允许收尾；缺证据保持暂停，核验不重新生成，剩余消息仍需明确继续。未开始提交项可在输入框上方用 × 撤回。
+来源只追加 `[该发言发送自topic_xxx话题]`，不添加 sourceConversation JSON。OneRing/AA 跨端身份与因果预算不属于本期。
 
 ---
 
@@ -496,14 +499,10 @@ caller_name: Nova
 
 **如果你仍在使用旧版**：直接在聊天中写 `tool_name: TopicSponsor` 即可，不需要经过前端工具箱 UI。
 
-### 7.2 maid 参数必须使用中文名
+### 7.2 注册身份与目标定位
 
-插件通过遍历 `AppData/Agents/` 目录下的 config.json，用 `config.name.includes(maidName)` 进行模糊匹配。所以：
-
-- 正确: `maid: Nova`（中文名/显示名）
-- 错误: `maid: _Agent_1771589477517`（Agent UUID，不能匹配）
-
-请确保使用 Agent 的 config.json 中 `name` 字段包含的名称。
+ReplyToTopic 目标仅按 topic_id 跨所有 Agent 和 Group 查找，自动解析实际归属，无需提供目标类型或归属 ID。maid/valet 与旧 target_type/target_id 均不限制目标范围。
+发送者 sender_id 使用完整注册 ID；sender_name 支持忽略大小写的名称包含匹配，解析后使用规范注册身份；未知或歧义拒绝，歧义列候选名称和 ID，不能回退为主人。不要把工具追踪署名当成已认证的执行身份；本期不引入跨端认证协议。
 
 ### 7.3 话题锁定状态矩阵
 
@@ -512,11 +511,11 @@ caller_name: Nova
 | false | true | 是 | 是 | 正常未读状态 |
 | false | false | 是 | 是 | 已读状态 |
 | true | true | 是 | 是 | 锁定但有新消息 |
-| true | false | 是 | **否** | **只读，不能回复** |
+| true | false | 是 | 是 | 锁定已读不阻止跨话题留言，活动生成由中央暂挂处理 |
 
 ### 7.4 topic_id 格式
 
-话题 ID 格式为 `topic_` + 13位时间戳，如 `topic_1716000000000`。**不要手动拼造**——通过 ListUnlockedTopics 或 CheckNewTopics 获取。
+话题 ID 是不透明标识，已有 `topic_时间戳` 和带 UUID 后缀的格式。**不要手动拼造或按固定长度截断**——通过查询或创建结果取得真实 ID。
 
 ### 7.5 话题创建后会切换当前话题
 
@@ -576,7 +575,7 @@ timely_contact 是 VCP 的定时任务语法。配合 TopicSponsor 可以实现�
 |------|--------|------|
 | 插件目录名 | `TopicSponsor/` | 最新命名 |
 | manifest 注册名 | `TopicSponsor` | 最新命名，路由匹配用这个 |
-| 脚本文件名 | `topicCreator.js` | 历史命名，manifest entryPoint 引用它 |
+| 当前入口 | `topicsponsor-service.js` | manifest 实际 direct 服务入口；历史脚本不是当前入口 |
 | 日志前缀 | `[TopicSponsor/AgentTopicCreator]` | 双名兼容 |
 | 元数据字段 | `_metadata.topicCreator` | 历史字段名，读取端已加 fallback |
 | 元数据标记 | `creatorSource: "plugin:TopicCreator"` | 历史标记 |
@@ -591,18 +590,26 @@ timely_contact 是 VCP 的定时任务语法。配合 TopicSponsor 可以实现�
 
 ### 9.2 Agent 查找机制
 
-`findAgentInfo()` 函数通过遍历 `AppData/Agents/` 目录，读取每个 Agent 的 config.json，用 `config.name.includes(maidName)` 进行模糊匹配。这意味着：
-
-- 如果两个 Agent 的 name 字段有包含关系（如"Nova"和"Nova2"），搜索"Nova"可能匹配到错误的 Agent
-- 建议使用完整的、唯一的 Agent 中文名
+当前宿主由 PluginAgentOperationService 解析发送者注册身份，支持名称简称与大小写无关包含匹配；回复目标仅按 topic_id 跨单聊、群聊解析。旧 findAgentInfo/includes 仅属于历史实现。
 
 ### 9.3 并发安全
 
-TopicSponsor 直接读写 config.json 和 history.json，没有文件锁机制。如果两个 Agent 同时操作同一个 config.json，可能出现竞态条件。在高并发场景下需要注意。
+当前回复走中央暂挂队列和 HistoryMutationQueue 最新历史幂等追加。生成与等待在中央串行提交锁外，逐成员终稿落盘后让暂挂消息入场。HistoryMutationQueue 不是跨进程文件锁；旧整表 replace、删除竞态和其他生成旁路仍需专项审计，不能从组件测试通过推导整套无竞态。
 
 ### 9.4 备份机制
 
-CreateTopic 在修改 config.json 之前会自动创建 `config.topic.backup.json` 备份。如果操作失败，可以从备份恢复。
+`config.topic.backup.json` 属于旧 stdio 实现，当前 direct 宿主创建路径不承诺生成此备份。不要把历史备份说明当作当前恢复保障。
+
+### 9.5 退役入口与配置
+
+`topicsponsor.js` 仅为失败关闭的退役入口，执行或 require 均拒绝，不再读取或修改 AppData。
+旧实现封存于 `docs/archive/topicsponsor-legacy.js.txt`，仅供考古，不得恢复为运行入口。
+实际入口始终以 manifest 的 `topicsponsor-service.js` 为准。
+
+将本插件目录的 `config.env.example` 复制为 `config.env`，按需设置并重新加载插件服务：
+`REPLY_ADVANCE_ENABLED=false` 默认只留言；只有 true（不区分大小写）开启回复推进，1 不表示开启。
+`REPLY_INVITE_PROMPT` 留空使用前端默认邀请，只影响单聊请求，不影响群聊选人或创建话题。
+配置在插件初始化时冻结，不接受模型调用参数覆盖。此施工未修改真实配置或部署运行区。
 
 ---
 
@@ -648,3 +655,11 @@ CreateTopic 在修改 config.json 之前会自动创建 `config.topic.backup.jso
 
 *本文档由 infinite-vector 于 2026-05-19 编写。*
 *如有问题，请在 VCP 社区论坛讨论。*
+
+### 轻量地址发现（ListAgents / ListGroups / ListRecentTopics）
+- `ListAgents`：无目标参数，返回 `agents[{id,name,type}]` 和 `total`。
+- `ListGroups`：无目标参数，返回 `groups[{id,name,type}]` 和 `total`。
+- `ListRecentTopics`：必需 `query`（Agent/群的 ID 或名称），可选 `target_type=agent|group` 消歧。完整 ID 优先、完整名称其次，否则名称忽略大小写 includes；如“小克”匹配“猫娘小克”。多候选明确返回名称、类型、ID。
+- 返回 `owner{id,name,type}`、`topics[{topic_id,title,created_at}]`、`total`，按创建时间倒序最多 5 条，不过滤锁定/已读。空话题列表正常返回空数组。
+- 仅读取配置中的身份与话题元数据，不读取聊天正文、模型密钥或系统提示词。深入检索交给 TopicMemo。
+- 使用路径：ListAgents/ListGroups 找伙伴 → ListRecentTopics(query) 找话题 → ReplyToTopic(topic_id, sender_name, message) 投递。

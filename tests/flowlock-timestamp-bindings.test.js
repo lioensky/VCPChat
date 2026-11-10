@@ -7,7 +7,8 @@ const vm = require('node:vm');
 function loadFlowlockIntegration({
     history, onSend, continueWritingPrompt = '请继续',
     baseURI = require('node:url').pathToFileURL(path.resolve(__dirname, '../main.html')).href,
-    onImport = () => {}
+    onImport = () => {}, apiOverrides = {}, mutationOverrides = {}, managerOverrides = {},
+    onFinalized = async () => {}
 }) {
     let continueWritingForContext;
     const chatAPI = {
@@ -24,6 +25,7 @@ function loadFlowlockIntegration({
             return {};
         }
     };
+    Object.assign(chatAPI, apiOverrides);
     const window = {
         chatAPI,
         electronAPI: chatAPI,
@@ -35,6 +37,7 @@ function loadFlowlockIntegration({
                 continueWritingForContext = continuation;
             },
             recoverPendingRequests: async () => {},
+            handleFinalizedMessage: onFinalized,
             cleanup: () => {}
         },
         addEventListener: () => {}
@@ -68,8 +71,8 @@ function loadFlowlockIntegration({
         filename: new URL('Flowlockmodules/flowlock-integration.js', baseURI).href
     });
     window.initializeFlowlockIntegration({
-        chatManager: { loadChatHistory: async () => {}, isReady: () => true },
-        historyMutationAuthority: { replace: async () => {} },
+        chatManager: { loadChatHistory: async () => {}, isReady: () => true, ...managerOverrides },
+        historyMutationAuthority: { replace: async () => {}, ...mutationOverrides },
         settings: {
             get: () => ({
                 vcpServerUrl: 'http://127.0.0.1:6005/v1/chat/completions',
@@ -148,3 +151,98 @@ test('Flowlock anchors pipeline imports to the document across installation path
         assert.ok(!imports[0].includes('/Flowlockmodules/modules/'));
     }
 });
+
+test('Flowlock admission busy rejects before reading history or sending a request', async () => {
+    const calls = [];
+    const continuation = loadFlowlockIntegration({
+        history: [], onSend: () => calls.push('send'),
+        apiOverrides: {
+            topicAdmissionAcquire: async (scope, token) => {
+                calls.push(['acquire', scope, token]);
+                return { success: false, code: 'TOPIC_BUSY' };
+            },
+            getChatHistory: async () => { calls.push('read'); return []; },
+        },
+    });
+    await assert.rejects(continuation(), error => error.code === 'TOPIC_BUSY');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][1].topicId, 'topic-1');
+    assert.equal(calls[0][2], 'flowlock-request-1');
+});
+
+test('Flowlock preparation failure releases its exact admission lease', async () => {
+    const calls = [];
+    const continuation = loadFlowlockIntegration({
+        history: [], onSend: () => calls.push('send'),
+        apiOverrides: {
+            topicAdmissionAcquire: async () => ({ success: true }),
+            getChatHistory: async () => { throw new Error('read failed'); },
+            topicAdmissionRelease: async (...args) => {
+                calls.push(args);
+                return { success: true };
+            },
+        },
+    });
+    await assert.rejects(continuation(), /read failed/);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0].itemId, 'agent-1');
+    assert.equal(calls[0][1], 'flowlock-request-1');
+    assert.equal(calls[0][2].saved, true);
+});
+
+for (const mode of ['saved', 'save-rejected', 'save-threw', 'ui-failed']) {
+    test(`Flowlock nonstream atomic terminal lifecycle: ${mode}`, async () => {
+        const calls = [];
+        const failure = new Error('terminal disk failed');
+        const history = [{ id: 'original', role: 'user', content: 'question' }];
+        const before = JSON.stringify(history);
+        const run = loadFlowlockIntegration({
+            history, onSend() {},
+            onFinalized: async value => {
+                calls.push(['finalized', value.messageId]);
+            },
+            mutationOverrides: {
+                replace: async () => assert.fail('atomic Flowlock must never replace a history snapshot'),
+            },
+            managerOverrides: {
+                loadChatHistory: async () => {
+                    calls.push(['ui']);
+                    if (mode === 'ui-failed') throw new Error('controlled UI failure');
+                },
+            },
+            apiOverrides: {
+                getAgentConfig: async () => ({
+                    name: 'Nova', model: 'test-model', streamOutput: false, systemPrompt: 'Nova',
+                }),
+                topicAdmissionAcquire: async () => { calls.push(['acquire']); return { success: true }; },
+                sendToVCP: async () => {
+                    calls.push(['send']);
+                    return { choices: [{ message: { content: 'atomic reply' } }] };
+                },
+                topicAdmissionPersistAssistant: async (scope, message) => {
+                    calls.push(['persist', JSON.parse(JSON.stringify(scope)), JSON.parse(JSON.stringify(message))]);
+                    if (mode === 'save-threw') throw failure;
+                    return mode === 'save-rejected'
+                        ? { success: false, error: failure.message } : { success: true };
+                },
+                topicAdmissionRelease: async () => { calls.push(['release']); return { success: true }; },
+                topicAdmissionUncertain: async () => { calls.push(['uncertain']); return { success: true }; },
+            },
+        });
+        if (mode.startsWith('save-')) {
+            await assert.rejects(run(), /terminal disk failed/);
+            assert.deepEqual(calls.map(call => call[0]), ['acquire', 'send', 'persist', 'uncertain']);
+        } else {
+            assert.equal((await run()).nonStreamingSaved, true);
+            assert.deepEqual(calls.map(call => call[0]), ['acquire', 'send', 'persist', 'ui', 'finalized', 'release']);
+            assert.equal(calls.find(call => call[0] === 'finalized')[1], 'flowlock-request-1');
+        }
+        const [, scope, message] = calls.find(call => call[0] === 'persist');
+        assert.deepEqual(scope, { itemType: 'agent', itemId: 'agent-1', topicId: 'topic-1' });
+        assert.equal(message.id, 'flowlock-request-1');
+        assert.equal(message.admissionToken, 'flowlock-request-1');
+        assert.equal(message.admissionTerminal, true);
+        assert.equal(message.content, 'atomic reply');
+        assert.equal(JSON.stringify(history), before);
+    });
+}

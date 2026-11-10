@@ -421,7 +421,7 @@ function initialize(context) {
     ipcMain.handle('save-agent-config', async (event, agentId, config) => {
         try {
             const agentDir = path.join(AGENT_DIR, agentId);
-            await fs.ensureDir(agentDir);
+            if (!await fs.pathExists(path.join(agentDir, 'config.json'))) throw new Error('AGENT_DELETED');
             const regexPath = path.join(agentDir, 'regex_rules.json');
 
             // Handle stripRegexes separately if the property exists in the incoming config
@@ -474,6 +474,8 @@ function initialize(context) {
     });
 
     ipcMain.handle('save-avatar', async (event, agentId, avatarData) => {
+        if (!agentConfigManager?.runAgentOperation) return { error: 'Agent对象队列不可用' };
+        return agentConfigManager.runAgentOperation(agentId, async () => {
         const listenerWasActive = context.getSelectionListenerStatus();
         if (listenerWasActive) context.stopSelectionListener();
         try {
@@ -482,7 +484,7 @@ function initialize(context) {
             }
 
             const agentDir = path.join(AGENT_DIR_CACHE, agentId);
-            await fs.ensureDir(agentDir);
+            if (!await fs.pathExists(path.join(agentDir, 'config.json'))) throw new Error('AGENT_DELETED');
 
             // 1. 获取 Agent 配置（用于重命名头像文件）
             let agentConfig = {};
@@ -556,6 +558,7 @@ function initialize(context) {
         } finally {
             if (listenerWasActive) context.startSelectionListener();
         }
+        });
     });
 
     ipcMain.handle('create-agent', async (event, agentName, initialConfig = null) => {
@@ -615,6 +618,9 @@ function initialize(context) {
     });
 
     ipcMain.handle('delete-agent', async (event, agentId) => {
+        if (!agentConfigManager?.runAgentOperation) return { error: 'Agent对象队列不可用' };
+        if (!context.historyMutationQueue?.runOwner) return { error: '历史删除屏障不可用' };
+        return agentConfigManager.runAgentOperation(agentId, async () => {
         try {
             const agentDir = path.join(AGENT_DIR, agentId);
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
@@ -627,14 +633,16 @@ function initialize(context) {
                 .map(name => path.join(agentDir, name));
             if (await fs.pathExists(agentDir)) await fs.remove(agentDir);
             await forgetPortraitDisplayImages(portraitFiles, portraitCacheDir());
-            if (await fs.pathExists(userDataAgentDir)) await fs.remove(userDataAgentDir);
+            await context.historyMutationQueue.runOwner(agentId, () => fs.remove(userDataAgentDir));
             await clearTrajectoriesOfOwner({ agentId }); // 侧栏「调用轨迹」按话题落盘的请求记录，助手没了就一起删
+            agentConfigManager.clearCache(agentId);
             invalidateCaches();
             return { success: true, message: `Agent ${agentId} 已删除。` };
         } catch (error) {
             console.error(`删除Agent ${agentId} 失败:`, error);
             return { error: error.message };
         }
+        });
     });
 
     ipcMain.handle('save-user-avatar', async (event, avatarData) => {

@@ -9,6 +9,7 @@ const buildMessage = event => {
         role: 'assistant',
         name: context.agentName,
         agentId: context.agentId,
+        admissionToken: context.admissionToken,
         avatarUrl: context.avatarUrl,
         avatarColor: context.avatarColor,
         content: event.type === 'agent_thinking' ? '思考中...' : '',
@@ -31,6 +32,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
     const projection = capabilities.resolveProjection?.(messageId) || null;
     let accumulatedText = '';
     let checkedBoundaryCount = 0;
+    let active = true;
 
     return Object.freeze({
         surfaceGeneration: capabilities.getSurfaceGeneration?.(),
@@ -44,6 +46,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
         },
         consume(event) {
             const terminal = terminalTypes.has(event.type);
+            if (terminal) active = false;
             if (projection?.suppressed) {
                 if (terminal) projection.settle?.({ event, finalized: event.outcome?.persistence?.value, context, messageId });
                 return;
@@ -57,6 +60,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                         checkedBoundaryCount = boundaries.length;
                         Promise.resolve(capabilities.onToolReturnBoundary?.({
                             messageId, context, text: accumulatedText,
+                            isActive: () => active,
                         })).catch(error => capabilities.reportError?.('[ContextCompaction] Boundary check failed', error));
                     }
                 }
@@ -77,6 +81,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             capabilities.onSettled?.({ event: settledEvent, finalized, context, messageId });
         },
         async persist(value) {
+            active = false;
             if (projection?.suppressed) return null;
             const terminal = value.terminal || {};
             if (terminal.phase === 'projection') {
@@ -124,6 +129,6 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             }
             return finalized;
         },
-        dispose() { projection?.release?.(); },
+        dispose() { active = false; projection?.release?.(); },
     });
 }

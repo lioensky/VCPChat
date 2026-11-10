@@ -269,3 +269,53 @@ test('heartbeat import failures retain diagnostics and notify when retries are e
         assert.ok(!notifications.some(n => n.type === 'info'));
     } finally { manager.cleanup(); }
 });
+test('relay adoption transfers active reply without starting a heartbeat', async () => {
+    const { manager } = createFlowlockEnvironment();
+    await manager.start('agent-test', 'topic-test', { startImmediately: false });
+    const session = manager.sessions.get('agent-test');
+    session.activeMessageId = 'old';
+    const lease = manager.suspendForContextCompaction('agent-test', 'topic-test');
+    assert.ok(lease);
+    assert.equal(manager.markRelaySuspension(lease, 'old-token'), true);
+    assert.equal(manager.adoptRelayMessage('agent-test', 'topic-test', 'new', 'wrong-token'), false);
+    assert.equal(manager.adoptRelayMessage('agent-test', 'wrong-topic', 'new', 'old-token'), false);
+    assert.equal(manager.adoptRelayMessage('agent-test', 'topic-test', 'new', 'old-token'), true);
+    assert.equal(session.activeMessageId, 'new');
+    assert.equal(session.contextCompactionLease, null);
+    assert.equal(session.pendingTimer, null);
+    assert.equal(manager.resumeAfterContextCompaction(lease), false);
+    assert.equal(manager.adoptRelayMessage('agent-test', 'topic-test', 'duplicate'), false);
+    await manager.stopAll();
+});
+
+test('relay adoption cannot create or revive a stopped or restarted session', async () => {
+    const { manager } = createFlowlockEnvironment();
+    assert.equal(manager.adoptRelayMessage('agent-test', 'topic-test', 'new'), false);
+    await manager.start('agent-test', 'topic-test', { startImmediately: false });
+    manager.suspendForContextCompaction('agent-test', 'topic-test');
+    await manager.stop('agent-test');
+    assert.equal(manager.adoptRelayMessage('agent-test', 'topic-test', 'late'), false);
+    await manager.start('agent-test', 'topic-test', { startImmediately: false });
+    assert.equal(manager.adoptRelayMessage('agent-test', 'topic-test', 'late'), false);
+    await manager.stopAll();
+});
+test('old relay cannot adopt a restarted or handed-off session that is suspended again', async () => {
+    const { manager } = createFlowlockEnvironment();
+    try {
+        await manager.start('agent-test', 'topic-test', { startImmediately: false });
+        const oldLease = manager.suspendForContextCompaction('agent-test', 'topic-test');
+        manager.markRelaySuspension(oldLease, 'old-token');
+        await manager.stop('agent-test');
+        await manager.start('agent-test', 'topic-test', { startImmediately: false });
+        const newLease = manager.suspendForContextCompaction('agent-test', 'topic-test');
+        assert.equal(manager.markRelaySuspension(oldLease, 'old-token'), false);
+        assert.equal(manager.adoptRelayMessage('agent-test', 'topic-test', 'late', 'old-token'), false);
+        assert.equal(manager.markRelaySuspension(newLease, 'new-token'), true);
+        await manager.handoffToClaim({
+            agentId: 'agent-test', topicId: 'topic-test', heartbeatSeconds: 60, requestId: 'new-claim',
+        });
+        manager.suspendForContextCompaction('agent-test', 'topic-test');
+        assert.equal(manager.adoptRelayMessage('agent-test', 'topic-test', 'late', 'new-token'), false);
+        assert.equal(manager.sessions.get('agent-test').activeMessageId, null);
+    } finally { manager.cleanup(); }
+});

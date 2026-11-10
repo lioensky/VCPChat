@@ -627,12 +627,14 @@ function initialize(mainWindow, context) {
         }
     });
 
-    ipcMain.handle('save-chat-history', async (event, agentId, topicId, history) => {
+    ipcMain.handle('save-chat-history', async (event, agentId, topicId, history, options) => {
         if (!agentId || !topicId || !Array.isArray(history)) {
             return { success: false, error: `保存Agent ${agentId} 聊天历史失败: 参数无效。` };
         }
         try {
-            await historyMutationQueue.replace({ itemId: agentId, itemType: 'agent', topicId }, history);
+            await historyMutationQueue.replace(
+                { itemId: agentId, itemType: 'agent', topicId }, history,
+                { requireExisting: true, expectedHistory: options?.expectedHistory });
             return { success: true };
         } catch (error) {
             console.error(`保存Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
@@ -701,15 +703,15 @@ function initialize(mainWindow, context) {
                     creatorSource: "ui"
                 };
 
-                await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
+                const update = await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
                     ...existingConfig,
                     topics: [newTopic, ...(existingConfig.topics || [])]
-                }));
-                const updatedConfig = await agentConfigManager.readAgentConfig(agentId);
-
-                const topicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', newTopicId);
-                await fs.ensureDir(topicHistoryDir);
-                await fs.writeJson(path.join(topicHistoryDir, 'history.json'), [], { spaces: 2 });
+                }), { afterWrite: async () => {
+                    const topicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', newTopicId);
+                    await fs.ensureDir(topicHistoryDir);
+                    await fs.writeJson(path.join(topicHistoryDir, 'history.json'), [], { spaces: 2 });
+                } });
+                const updatedConfig = update.config;
 
                 return { success: true, topicId: newTopicId, topicName: newTopic.name, topics: updatedConfig.topics };
             } else {
@@ -750,19 +752,19 @@ function initialize(mainWindow, context) {
                     }
                     remainingTopics = filtered;
                     return { ...existingConfig, topics: filtered };
-                });
-
-                if (replacementCreated) {
-                    const replacementTopicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', replacementTopicId);
-                    await fs.ensureDir(replacementTopicHistoryDir);
-                    const historyPath = path.join(replacementTopicHistoryDir, 'history.json');
-                    if (!await fs.pathExists(historyPath)) {
-                        await fs.writeJson(historyPath, [], { spaces: 2 });
+                }, { afterWrite: async () => {
+                    if (replacementCreated) {
+                        const replacementTopicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', replacementTopicId);
+                        await fs.ensureDir(replacementTopicHistoryDir);
+                        const historyPath = path.join(replacementTopicHistoryDir, 'history.json');
+                        if (!await fs.pathExists(historyPath)) await fs.writeJson(historyPath, [], { spaces: 2 });
                     }
-                }
-
-                const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
-                if (await fs.pathExists(topicDataDir)) await fs.remove(topicDataDir);
+                    const topicDataDir = path.join(USER_DATA_DIR, agentId, 'topics', topicIdToDelete);
+                    await historyMutationQueue.run(
+                        { itemId: agentId, itemType: 'agent', topicId: topicIdToDelete },
+                        () => fs.remove(topicDataDir)
+                    );
+                } });
                 const topicBackupPath = path.join(AGENT_DIR, agentId, 'config.topic.backup.json');
                 if (await fs.pathExists(topicBackupPath)) {
                     try {

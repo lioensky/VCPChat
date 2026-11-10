@@ -212,6 +212,7 @@ function createFixture(options = {}) {
             return { success: true };
         },
     };
+    if (options.topicAdmissionSubmit) electronAPI.topicAdmissionSubmit = options.topicAdmissionSubmit;
     const singleChatRequestOrchestrator = {
         async buildRequest({ settings, agentConfig, history, messageId, context }) {
             return {
@@ -1235,4 +1236,90 @@ test('cancelling queued stream compaction prevents compression after partial rep
         await fixture.chatManager.dispose();
         fixture.dom.window.close();
     }
+});
+
+async function selectAdmissionFixture(fixture, id = 'agent-a') {
+    const selecting = fixture.chatManager.selectItem(id, 'agent', id, null, fixture.configs[id]);
+    await new Promise(resolve => setImmediate(resolve));
+    fixture.topicRequests.get(id).resolve(fixture.configs[id].topics);
+    await selecting;
+}
+
+test('admission send consumes accepted draft without writing history or starting model', async () => {
+    const requests = [];
+    const fixture = createFixture({
+        topicAdmissionSubmit: async request => {
+            requests.push(structuredClone(request));
+            return { success: true, queued: true, entryId: 'entry' };
+        },
+    });
+    try {
+        await selectAdmissionFixture(fixture);
+        const input = fixture.window.document.getElementById('messageInput');
+        input.value = 'queue this';
+        fixture.attachmentRef.append({
+            file: { type: 'text/plain', size: 3 }, originalName: 'note.txt',
+            localPath: '/tmp/note.txt', _fileManagerData: { extractedText: 'abc' },
+        });
+        const before = fixture.historySaveCount();
+        await fixture.chatManager.handleSendMessage();
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0].scope.topicId, 'topic-a');
+        assert.equal(requests[0].message.attachments[0]._fileManagerData.extractedText, 'abc');
+        assert.equal(requests[0].triggerPolicy, 'reply');
+        assert.equal(input.value, '');
+        assert.equal(fixture.state().attachedFiles.length, 0);
+        assert.equal(fixture.historySaveCount(), before);
+        assert.equal(fixture.sentRequests.length, 0);
+        assert.deepEqual(fixture.state().history.map(message => message.id), ['a-message']);
+    } finally { fixture.dom.window.close(); }
+});
+
+test('admission rejection preserves draft and attachments without optimistic history', async () => {
+    const fixture = createFixture({
+        topicAdmissionSubmit: async () => ({ success: false, error: 'journal unavailable' }),
+    });
+    try {
+        await selectAdmissionFixture(fixture);
+        const input = fixture.window.document.getElementById('messageInput');
+        input.value = 'retain';
+        const attachment = { file: { type: 'text/plain', size: 1 }, originalName: 'a', localPath: '/tmp/a' };
+        fixture.attachmentRef.append(attachment);
+        await fixture.chatManager.handleSendMessage();
+        assert.equal(input.value, 'retain');
+        assert.equal(fixture.state().attachedFiles.length, 1);
+        assert.deepEqual(fixture.state().history.map(message => message.id), ['a-message']);
+        assert.equal(fixture.sentRequests.length, 0);
+    } finally { fixture.dom.window.close(); }
+});
+
+test('late admission acceptance cannot consume another topic draft', async () => {
+    const gate = deferred();
+    const entered = deferred();
+    const requests = [];
+    const fixture = createFixture({
+        topicAdmissionSubmit: async request => {
+            requests.push(structuredClone(request));
+            entered.resolve();
+            await gate.promise;
+            return { success: true, queued: true };
+        },
+    });
+    try {
+        await selectAdmissionFixture(fixture);
+        const input = fixture.window.document.getElementById('messageInput');
+        input.value = 'for A';
+        const sending = fixture.chatManager.handleSendMessage();
+        await entered.promise;
+        await selectAdmissionFixture(fixture, 'agent-b');
+        input.value = 'for B';
+        gate.resolve();
+        await sending;
+        assert.equal(requests[0].scope.itemId, 'agent-a');
+        assert.equal(requests[0].message.content, 'for A');
+        assert.equal(input.value, 'for B');
+        assert.equal(fixture.state().selected.id, 'agent-b');
+        assert.deepEqual(fixture.state().history.map(message => message.id), ['b-message']);
+        assert.equal(fixture.sentRequests.length, 0);
+    } finally { fixture.dom.window.close(); }
 });

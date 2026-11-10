@@ -27,14 +27,15 @@ export function createChatHistoryMutationAuthority({ repository } = {}) {
         return current;
     };
 
-    const commit = async (descriptor, history) => {
+    const commit = async (descriptor, history, expectedHistory) => {
         if (!Array.isArray(history)) throw new TypeError('History mutation commit requires an array');
         const snapshot = structuredClone(history);
         const result = await repository.saveHistory(
             descriptor.itemId,
             descriptor.itemType || 'agent',
             descriptor.topicId,
-            snapshot
+            snapshot,
+            expectedHistory === undefined ? undefined : { expectedHistory }
         );
         if (result?.success === false) throw new Error(result.error || 'History mutation commit failed');
         return Object.freeze({
@@ -60,8 +61,9 @@ export function createChatHistoryMutationAuthority({ repository } = {}) {
                     descriptor.topicId
                 );
                 if (!Array.isArray(current)) throw new Error(current?.error || 'History mutation read failed');
-                const next = await transform(structuredClone(current));
-                return commit(descriptor, next);
+                const baseline = structuredClone(current);
+                const next = await transform(structuredClone(baseline));
+                return commit(descriptor, next, baseline);
             });
         },
         diagnostics() {
