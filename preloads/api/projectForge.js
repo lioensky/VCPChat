@@ -12,6 +12,8 @@ module.exports = {
     api: {
         projectForgeListProjects: invoke('project-forge:list-projects', 'options'),
         projectForgeGetProject: invoke('project-forge:get-project', 'projectId'),
+        projectForgeGetTimeline: invoke('project-forge:get-timeline', 'projectId', 'options'),
+        projectForgeExportReport: invoke('project-forge:export-report', 'projectId'),
         projectForgeSearchHistory: invoke('project-forge:search-history', 'filters'),
         projectForgeGetBatch: invoke('project-forge:get-batch', 'projectId', 'batchId'),
         projectForgeGetNode: invoke('project-forge:get-node', 'projectId', 'nodeId'),

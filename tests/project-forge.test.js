@@ -495,3 +495,43 @@ test('GUI手动验收：保留报告与作者、留痕通知、重复幂等及�
     forge.gui.acceptProject(blank);
     assert.match(forge.gui.getProject(blank).project.report, /署名：用户/);
 });
+
+test('脉络首屏100批、游标渐进与报告完整性相互独立', async () => {
+    const pid = await newProject('full-report');
+    const s = forge._test.getRuntime().store;
+    const ids = [];
+    s.transaction(() => {
+        for (let i = 0; i < 205; i++) {
+            const batchId = s.createBatch(pid, i ? 'edit' : 'external', `原因${i}`, i ? 'Kerr' : null);
+            ids.push(batchId);
+            s.addNode({ projectId: pid, batchId, filePath: `file-${i}.js`, op: 'edit', summary: `节点${i}`, added: 1 });
+        }
+    });
+    const detail = forge.gui.getProject(pid);
+    assert.equal(detail.timeline.length, 100);
+    assert.equal(detail.timelineHasMore, true);
+    const newer = s.createBatch(pid, 'edit', '分页期间新增', 'Nova');
+    s.addNode({ projectId: pid, batchId: newer, filePath: 'new.js', op: 'create' });
+    const second = forge.gui.getTimeline(pid, { beforeBatch: detail.timelineBeforeBatch });
+    assert.equal(second.timeline.length, 100);
+    const third = forge.gui.getTimeline(pid, { beforeBatch: second.timelineBeforeBatch });
+    assert.equal(third.timeline.length, 5);
+    assert.equal(third.timelineHasMore, false);
+    assert.deepEqual([...detail.timeline, ...second.timeline, ...third.timeline].map(b => b.id), [...ids].reverse());
+    assert.throws(() => forge.gui.getTimeline(pid, { beforeBatch: 'bad' }), /游标/);
+    const result = await call({ command: 'SubmitReport', projectId: pid, conclusion: '完整报告', maid: 'Kerr' });
+    const stored = forge.gui.getProject(pid).project;
+    assert.match(stored.report, /file-0\.js/);
+    assert.match(stored.report, /file-204\.js/);
+    assert.equal((stored.report.match(/^- b\d+ ·/gm) || []).length, 206);
+    assert.match(textOf(result), /分页期间新增/);
+    const exported = forge.gui.exportReport(pid);
+    assert.equal((exported.markdown.match(/^### b/gm) || []).length, 206);
+    assert.match(exported.markdown, /file-0\.js/);
+    assert.match(exported.markdown, /外部改动（未署名）/);
+    assert.equal(forge.gui.getProject(pid).project.updated_at, stored.updated_at);
+    assert.equal(forge.gui.getProject(pid).project.status, 'review');
+    assert.throws(() => forge.gui.exportReport('missing'), /不存在/);
+    forge.gui.deleteProject(pid, '莱恩');
+    assert.match(forge.gui.exportReport(pid).markdown, /删除时间/);
+});

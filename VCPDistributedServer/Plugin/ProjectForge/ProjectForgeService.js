@@ -210,6 +210,11 @@ function whoOf(maid, kind) {
 function renderTimeline(rows) {
     if (!rows.length) return '- （暂无改动）';
     return rows.map(r => {
+        if (Array.isArray(r.nodes)) {
+            const escape = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\|/g, '&#124;').replace(/\r?\n/g, '<br>');
+            return `- b${r.id} · ${escape(KIND_LABEL[r.kind] || r.kind)} · ${escape(whoOf(r.maid, r.kind))} · ${escape(r.created_at)} · ${escape(r.reason || '（未记录原因）')}\n` +
+                (r.nodes.length ? r.nodes.map(n => `  - n${n.id} · ${escape(n.created_at)} · ${escape(n.op)} · ${escape(n.file_path)} · ${escape(n.reason || n.summary || '（未记录原因）')} · +${n.added}/-${n.removed}`).join('\n') : '  - 无文件节点');
+        }
         const files = String(r.files || '').split(',').filter(Boolean);
         const shown = files.slice(0, 5).map(f => `\`${f}\``).join('、') + (files.length > 5 ? ` 等 ${files.length} 个` : '');
         return `- \`b${r.id}\` · ${KIND_LABEL[r.kind] || r.kind} · ${whoOf(r.maid, r.kind)} · ${fmtTime(r.created_at)} · ${r.reason || '（未记录原因）'}\n  - ${shown} (+${r.added}/-${r.removed})`;
@@ -547,7 +552,7 @@ async function submitReport(args) {
         '## 参与者',
         renderContributors(s.contributors(project.id)),
         '## 开发脉络',
-        renderTimeline(s.timeline(project.id, { limit: 100 })),
+        renderTimeline(s.exportHistory(project.id)),
         '## 结论',
         conclusion,
         '## 遗留问题',
@@ -1993,7 +1998,22 @@ const gui = {
             .map(guiProjectSummary);
     },
 
-    getProject(projectId, { timelineLimit = 200 } = {}) {
+    exportReport(projectId) {
+        const s = store();
+        const snapshot = s.transaction(() => {
+            const project = guiProjectOf(String(projectId || '').trim());
+            return {
+                project,
+                todos: s.listTodos(project.id),
+                contributors: s.contributors(project.id),
+                batches: s.exportHistory(project.id),
+            };
+        });
+        const { buildReport, reportFilename } = require('./exportReport');
+        return { filename: reportFilename(snapshot.project), markdown: buildReport(snapshot) };
+    },
+
+    getProject(projectId, { timelineLimit = 100 } = {}) {
         const s = store();
         const project = guiProjectOf(projectId);
         return {
@@ -2001,9 +2021,23 @@ const gui = {
             todos: s.listTodos(project.id),
             contributors: s.contributors(project.id),
             files: s.changedFiles(project.id),
-            timeline: s.timeline(project.id, { limit: timelineLimit }).map(r => ({
-                ...r, files: String(r.files || '').split(',').filter(Boolean),
-            })),
+            ...gui.getTimeline(project.id, { limit: timelineLimit }),
+        };
+    },
+
+    getTimeline(projectId, { limit = 100, beforeBatch = null } = {}) {
+        const project = guiProjectOf(String(projectId || '').trim());
+        const pageSize = Math.min(Math.max(Math.trunc(Number(limit)) || 100, 1), 100);
+        const cursor = beforeBatch === null ? null : Number(beforeBatch);
+        if (cursor !== null && (!Number.isSafeInteger(cursor) || cursor <= 0)) throw new Error('非法脉络游标。');
+        const rows = store().timeline(project.id, { limit: pageSize + 1, beforeBatch: cursor });
+        const timeline = rows.slice(0, pageSize).map(r => ({
+            ...r, files: String(r.files || '').split(',').filter(Boolean),
+        }));
+        return {
+            timeline,
+            timelineHasMore: rows.length > pageSize,
+            timelineBeforeBatch: timeline.at(-1)?.id || null,
         };
     },
 

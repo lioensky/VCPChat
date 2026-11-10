@@ -4,7 +4,7 @@
 // GUI 只读；唯一的写操作是带署名的单文件回退。
 'use strict';
 
-const { ipcMain: defaultIpcMain } = require('electron');
+const { ipcMain: defaultIpcMain, dialog, BrowserWindow } = require('electron');
 // main.js 传入经 sidePaneIpcPolicy 包装过的 ipcMain（先查调用方窗口）；不传就用 Electron 的
 let ipcMain = defaultIpcMain;
 const path = require('path');
@@ -14,6 +14,8 @@ const PLUGIN_DIR = path.join(__dirname, '..', '..', 'VCPDistributedServer', 'Plu
 const CHANNELS = [
     'project-forge:list-projects',
     'project-forge:get-project',
+    'project-forge:get-timeline',
+    'project-forge:export-report',
     'project-forge:search-history',
     'project-forge:get-batch',
     'project-forge:get-node',
@@ -90,6 +92,26 @@ function initialize({ workspaceService = null, subscriptions = null, ipcMain: in
 
     ipcMain.handle('project-forge:list-projects', wrap((options = {}) => forge().listProjects(options)));
     ipcMain.handle('project-forge:get-project', wrap(projectId => forge().getProject(String(projectId || ''))));
+    ipcMain.handle('project-forge:get-timeline', wrap((projectId, options = {}) => forge().getTimeline(projectId, options || {})));
+    ipcMain.handle('project-forge:export-report', async (event, projectId) => {
+        try {
+            const report = forge().exportReport(String(projectId || ''));
+            const options = {
+                title: '导出工程履历报告',
+                defaultPath: report.filename,
+                filters: [{ name: 'Markdown', extensions: ['md'] }],
+            };
+            const owner = BrowserWindow.fromWebContents(event.sender);
+            const result = owner
+                ? await dialog.showSaveDialog(owner, options)
+                : await dialog.showSaveDialog(options);
+            if (result.canceled || !result.filePath) return { success: true, data: { canceled: true } };
+            await fs.promises.writeFile(result.filePath, report.markdown, 'utf8');
+            return { success: true, data: { canceled: false, filePath: result.filePath } };
+        } catch (error) {
+            return { success: false, error: error?.message || String(error) };
+        }
+    });
     ipcMain.handle('project-forge:search-history', wrap((filters = {}) => forge().searchHistory(filters || {})));
     ipcMain.handle('project-forge:get-batch', wrap((projectId, batchId) => forge().getBatchNodes(String(projectId || ''), batchId)));
     ipcMain.handle('project-forge:get-node', wrap((projectId, nodeId) => forge().getNodeDetail(String(projectId || ''), nodeId)));

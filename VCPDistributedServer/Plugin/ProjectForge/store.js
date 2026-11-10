@@ -360,6 +360,16 @@ class ProjectStore {
             AND EXISTS (SELECT 1 FROM nodes n WHERE n.batch_id = b.id) ORDER BY b.id DESC LIMIT 1`).get(projectId) || null;
     }
 
+    exportHistory(projectId) {
+        const batches = this.db.prepare('SELECT * FROM batches WHERE project_id = ? ORDER BY created_at, id').all(projectId);
+        const nodes = this.db.prepare('SELECT * FROM nodes WHERE project_id = ? ORDER BY created_at, id').all(projectId);
+        const byBatch = new Map(batches.map(b => [b.id, { ...b, nodes: [] }]));
+        for (const node of nodes) {
+            const batch = byBatch.get(node.batch_id);
+            if (batch) batch.nodes.push(node);
+        }
+        return [...byBatch.values()];
+    }
     /**
      * 开发脉络：按批次倒序，每批附带 reason、类型、涉及文件与增删行数。
      * 只列出产生过节点的批次。
