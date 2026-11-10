@@ -12,31 +12,43 @@ async function main() {
         // 1. 获取 AppData 路径
         const VchatDataURL = path.join(__dirname, '..', '..', '..', 'AppData');
 
-        // 2. 获取 maid 参数
-        const maidName = args.maid;
-        if (!maidName) {
-            throw new Error("请求中缺少 'maid' 参数。");
-        }
+        // 2. 获取命令与目标参数（支持 Agent / Group 双轨及 GetTopicContent 免 maid 反查）
+        const command = args.command || (args.topic_id ? 'GetTopicContent' : 'ListTopics');
+        const maidName = args.maid || args.group || args.query;
+        const topicId = args.topic_id;
 
-        // 3. 查找 Agent 信息
-        const agentInfo = await findAgentInfo(VchatDataURL, maidName);
+        let agentInfo = null;
+        if (maidName) {
+            agentInfo = await findAgentInfo(VchatDataURL, maidName);
+        }
+        if (!agentInfo && command === 'GetTopicContent' && topicId) {
+            agentInfo = await findOwnerByTopicId(VchatDataURL, topicId);
+        }
         if (!agentInfo) {
-            throw new Error(`未找到名为 "${maidName}" 的Agent。`);
+            if (!maidName) {
+                throw new Error("请求中缺少 'maid' 参数。");
+            }
+            throw new Error(`未找到名为 "${maidName}" 的Agent或群组。`);
         }
 
-        // 4. 获取用户名
+        // 3. 获取用户名
         const userName = await findUserName(VchatDataURL);
 
-        // 5. 根据 command 执行不同操作
-        const command = args.command || 'ListTopics';
+        // 4. 根据 command 执行不同操作
         let result;
 
         if (command === 'ListTopics') {
             result = await listTopics(agentInfo);
         } else if (command === 'GetTopicContent') {
-            const topicId = args.topic_id;
             if (!topicId) {
                 throw new Error("请求中缺少 'topic_id' 参数。");
+            }
+            // 若传入的 maid 下无此 topicId，自动尝试全局反查兜底
+            if (!agentInfo.topics.some(t => t && t.id === topicId)) {
+                const resolvedOwner = await findOwnerByTopicId(VchatDataURL, topicId);
+                if (resolvedOwner) {
+                    agentInfo = resolvedOwner;
+                }
             }
             result = await getTopicContent(VchatDataURL, agentInfo, topicId, userName);
         } else {
@@ -83,30 +95,63 @@ function parseToolArgs(input) {
     return args;
 }
 
-async function findAgentInfo(vchatPath, maidName) {
-    const agentsDir = path.join(vchatPath, 'Agents');
-    try {
-        const agentFolders = await fs.readdir(agentsDir);
-        for (const folder of agentFolders) {
-            const configPath = path.join(agentsDir, folder, 'config.json');
+async function loadAllOwners(vchatPath) {
+    const roots = [
+        { dir: path.join(vchatPath, 'Agents'), type: 'agent' },
+        { dir: path.join(vchatPath, 'AgentGroups'), type: 'group' },
+    ];
+    const owners = [];
+    for (const { dir, type } of roots) {
+        let folders = [];
+        try {
+            folders = await fs.readdir(dir);
+        } catch (e) {
+            if (e.code === 'ENOENT') continue;
+            if (type === 'agent') throw new Error("无法读取 Agents 目录。");
+            continue;
+        }
+        for (const folder of folders) {
+            const configPath = path.join(dir, folder, 'config.json');
             try {
                 const content = await fs.readFile(configPath, 'utf-8');
                 const config = JSON.parse(content);
-                if (config.name && config.name.includes(maidName)) {
-                    return {
+                if (config && typeof config.name === 'string') {
+                    owners.push({
                         name: config.name,
                         uuid: folder,
-                        topics: config.topics || []
-                    };
+                        type,
+                        topics: Array.isArray(config.topics) ? config.topics : []
+                    });
                 }
             } catch (e) {
                 // 忽略无效的 config.json 文件
             }
         }
-        return null;
-    } catch (error) {
-        throw new Error("无法读取 Agents 目录。");
     }
+    return owners;
+}
+
+async function findAgentInfo(vchatPath, maidName) {
+    const requested = String(maidName || '').trim();
+    const requestedLower = requested.toLowerCase();
+    const owners = await loadAllOwners(vchatPath);
+
+    // 优先精确 ID 匹配 -> 精确全名匹配 -> 忽略大小写包含匹配
+    const exactId = owners.find(o => o.uuid === requested);
+    if (exactId) return exactId;
+
+    const exactName = owners.find(o => o.name.toLowerCase() === requestedLower);
+    if (exactName) return exactName;
+
+    const partial = owners.find(o =>
+        o.name.toLowerCase().includes(requestedLower) || requestedLower.includes(o.name.toLowerCase())
+    );
+    return partial || null;
+}
+
+async function findOwnerByTopicId(vchatPath, topicId) {
+    const owners = await loadAllOwners(vchatPath);
+    return owners.find(o => o.topics.some(t => t && t.id === topicId)) || null;
 }
 
 async function findUserName(vchatPath) {
@@ -192,7 +237,9 @@ async function getTopicContent(vchatPath, agentInfo, topicId, userName) {
 
     history.forEach((entry, index) => {
         if (entry.role && entry.content) {
-            const speakerName = entry.role === 'user' ? userName : agentInfo.name;
+            const speakerName = entry.role === 'user'
+                ? (entry.name || userName)
+                : (entry.name || entry.speakerName || entry._metadata?.speaker_name || agentInfo.name);
             const cleanContent = cleanHtmlContent(entry.content);
 
             if (cleanContent) {
@@ -263,4 +310,4 @@ function cleanHtmlContent(htmlContent) {
 }
 
 if (require.main === module) main();
-module.exports = { cleanHtmlContent, getTopicContent };
+module.exports = { cleanHtmlContent, getTopicContent, findAgentInfo, findOwnerByTopicId, listTopics };

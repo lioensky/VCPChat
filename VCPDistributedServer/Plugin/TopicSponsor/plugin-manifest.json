@@ -67,17 +67,17 @@
       {
         "command": "CheckTopicOwnership",
         "commandIdentifier": "CheckTopicOwnership",
-        "description": "功能: 检查话题是否为当前调用者创建的，用于验证操作权限。\n\n**参数说明:**\n1. `tool_name`: 「始」TopicSponsor「末」 (必需)\n2. `command`: 「始」CheckTopicOwnership「末」 (必需)\n3. `maid`: 「始」目标Agent的中文名「末」 (必需)\n4. `topic_id`: 「始」话题ID「末」 (必需)\n5. `caller_name`: 「始」调用者名称「末」 (必需)\n\n**调用格式:**\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」CheckTopicOwnership「末」,\nmaid:「始」HANNA「末」,\ntopic_id:「始」topic_1234567890「末」,\ncaller_name:「始」HANNA「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 检查单聊或群聊话题是否为当前调用者创建的，用于验证操作权限。\n\n**参数说明:**\n1. `tool_name`: 「始」TopicSponsor「末」 (必需)\n2. `command`: 「始」CheckTopicOwnership「末」 (必需)\n3. `topic_id`: 「始」话题ID「末」 (必需)\n4. `caller_name`: 「始」调用者名称「末」 (必需)\n5. `maid`: 「始」目标Agent或群组的名称/ID「末」 (可选，省略时按 topic_id 全域自动寻址)\n\n**调用格式:**\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」CheckTopicOwnership「末」,\ntopic_id:「始」topic_1234567890「末」,\ncaller_name:「始」HANNA「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "ListUnlockedTopics",
         "commandIdentifier": "ListUnlockedTopics",
-        "description": "功能: 查询指定Agent是否有处于unlocked状态的话题，并列出这些话题的基本信息。\n\n**参数说明:**\n1. `tool_name`: 「始」TopicSponsor「末」 (必需)\n2. `command`: 「始」ListUnlockedTopics「末」 (必需)\n3. `maid`: 「始」目标Agent的中文名「末」 (必需)\n\n**调用格式:**\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」ListUnlockedTopics「末」,\nmaid:「始」HANNA「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 查询指定Agent或群组是否有处于unlocked状态的话题，并列出这些话题的基本信息。\n\n**参数说明:**\n1. `tool_name`: 「始」TopicSponsor「末」 (必需)\n2. `command`: 「始」ListUnlockedTopics「末」 (必需)\n3. `maid`: 「始」目标Agent或群组的名称/ID「末」 (必需)\n\n**调用格式:**\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」ListUnlockedTopics「末」,\nmaid:「始」HANNA「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "ReadTopicContent",
         "commandIdentifier": "ReadTopicContent",
-        "description": "功能: 读取指定话题ID的完整会话内容，包括所有消息历史。\n\n**参数说明:**\n1. `tool_name`: 「始」TopicSponsor「末」 (必需)\n2. `command`: 「始」ReadTopicContent「末」 (必需)\n3. `maid`: 「始」目标Agent的中文名「末」 (必需)\n4. `topic_id`: 「始」话题ID「末」 (必需)\n\n**调用格式:**\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」ReadTopicContent「末」,\nmaid:「始」HANNA「末」,\ntopic_id:「始」topic_1234567890「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: 读取指定单聊（Agent）或群聊（Group）话题ID的完整会话内容，包括所有消息历史。\n\n**参数说明:**\n1. `tool_name`: 「始」TopicSponsor「末」 (必需)\n2. `command`: 「始」ReadTopicContent「末」 (必需)\n3. `topic_id`: 「始」话题ID「末」 (必需)\n4. `maid`: 「始」目标Agent或群组的名称/ID「末」 (可选，省略时自动跨所有Agent与Group反查定位；若传入调用方自身署名但 topic_id 属于群聊或其他伙伴，亦会自动纠偏定位)\n5. `format`: 「始」markdown|json|raw「末」 (可选，默认 markdown)\n\n**调用格式:**\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」ReadTopicContent「末」,\ntopic_id:「始」topic_1234567890「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   },

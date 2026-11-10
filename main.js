@@ -1291,6 +1291,7 @@ if (!gotTheLock) {
         });
         pluginAgentOperationService = new PluginAgentOperationService({
             topicDelivery,
+            topicResolver: topicConversationResolver,
             agentDir: AGENT_DIR,
             userDataDir: USER_DATA_DIR,
             agentConfigManager,

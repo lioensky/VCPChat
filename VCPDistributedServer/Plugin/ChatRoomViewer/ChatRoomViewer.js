@@ -614,18 +614,18 @@ async function getCurrentNodeInfo() {
         const mainDir = getVCPChatMainDirectory();
         const agentsDir = path.join(mainDir, 'AppData', 'Agents');
         
-        // 获取所有Agent目录
+        // 获取所有Agent目录（兼容 _Agent_ 前缀与新版动态命名目录）
         const agentDirs = await fs.readdir(agentsDir, { withFileTypes: true });
-        const validAgents = agentDirs.filter(dir => dir.isDirectory() && dir.name.startsWith('_Agent_'));
+        const validAgents = agentDirs.filter(dir => dir.isDirectory());
         
         if (validAgents.length > 0) {
-            // 使用第一个有效的Agent ID作为节点信息
-            const agentDirName = validAgents[0].name;
-            const parts = agentDirName.match(/_Agent_(\d+)_(\d+)/);
+            const preferredDir = validAgents.find(dir => dir.name.startsWith('_Agent_')) || validAgents[0];
+            const agentDirName = preferredDir.name;
+            const parts = agentDirName.match(/_Agent_(\d+)_(\d+)/) || agentDirName.match(/_(\d{10,})$/);
             
             if (parts) {
                 const nodeId = parts[1];
-                const timestamp = parts[2];
+                const timestamp = parts[2] || parts[1];
                 
                 return {
                     nodeId: agentDirName,
@@ -793,10 +793,11 @@ async function getCurrentSessionWatcher() {
         let latestFile = null;
         let latestTime = 0;
         
+        const reservedUserDataDirs = new Set(['attachments', 'backups']);
         const agentDirs = await fs.readdir(userDataDir, { withFileTypes: true });
         
         for (const agentDir of agentDirs) {
-            if (agentDir.isDirectory() && agentDir.name.startsWith('_Agent_')) {
+            if (agentDir.isDirectory() && !reservedUserDataDirs.has(agentDir.name)) {
                 const topicsDir = path.join(userDataDir, agentDir.name, 'topics');
                 try {
                     const topicDirs = await fs.readdir(topicsDir, { withFileTypes: true });
@@ -1051,17 +1052,27 @@ async function generateGroupSessionWatcher() {
         let latestGroupFile = null;
         let latestTime = 0;
         
+        const agentGroupsDir = path.join(mainDir, 'AppData', 'AgentGroups');
+        let knownGroupIds = new Set();
+        try {
+            const groupConfigDirs = await fs.readdir(agentGroupsDir, { withFileTypes: true });
+            knownGroupIds = new Set(groupConfigDirs.filter(d => d.isDirectory()).map(d => d.name));
+        } catch {
+            knownGroupIds = new Set();
+        }
+
         const dirs = await fs.readdir(groupDataDir, { withFileTypes: true });
         
-        // 寻找群聊相关的目录结构
+        // 寻找群聊相关的目录结构（匹配 AgentGroups 登记的群组 ID 或 group_topic_ 历史前缀）
         for (const dir of dirs) {
             if (dir.isDirectory()) {
+                const isKnownGroup = knownGroupIds.has(dir.name);
                 const groupTopicsDir = path.join(groupDataDir, dir.name, 'topics');
                 try {
                     const topicDirs = await fs.readdir(groupTopicsDir, { withFileTypes: true });
                     
                     for (const topicDir of topicDirs) {
-                        if (topicDir.isDirectory() && topicDir.name.startsWith('group_topic_')) {
+                        if (topicDir.isDirectory() && (isKnownGroup || topicDir.name.startsWith('group_topic_'))) {
                             const historyPath = path.join(groupTopicsDir, topicDir.name, 'history.json');
                             try {
                                 const stats = await fs.stat(historyPath);
@@ -1126,9 +1137,9 @@ async function getAllAgentsInfo() {
         const mainDir = getVCPChatMainDirectory();
         const agentsDir = path.join(mainDir, 'AppData', 'Agents');
         
-        // 获取所有Agent目录
+        // 获取所有Agent目录（兼容全部包含 config.json 的 Agent 目录，不再硬编码 _Agent_ 前缀）
         const agentDirs = await fs.readdir(agentsDir, { withFileTypes: true });
-        const validAgents = agentDirs.filter(dir => dir.isDirectory() && dir.name.startsWith('_Agent_'));
+        const validAgents = agentDirs.filter(dir => dir.isDirectory());
         
         const agentsInfo = [];
         

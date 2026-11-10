@@ -265,3 +265,105 @@ test('TopicSponsor discovery lists canonical identities and five newest topics w
     await assert.rejects(call({ command: 'ListRecentTopics', query: '猫娘小克' }), /不唯一/);
     assert.equal((await call({ command: 'ListRecentTopics', query: '小克', target_type: 'group' })).owner.id, 'same-name');
 });
+
+test('TopicSponsor ReadTopicContent 与审阅命令支持群聊、无 _Agent_ 前缀目录及免/误填 maid 按 topic_id 自动穿透', async t => {
+    const { service, agentConfigManager, historyMutationQueue } = await fixture(t);
+
+    // 1. 模拟无 _Agent_ 前缀的中文 Agent 目录（如 ____1792051189604）
+    const customAgentId = '____1792051189604';
+    await agentConfigManager.writeAgentConfig(customAgentId, {
+        name: '迪欧尼亚',
+        topics: [{ id: 'topic_dionia_1', name: '日常讨论', createdAt: Date.now(), locked: false, unread: true }],
+    });
+    await historyMutationQueue.replace(
+        { itemId: customAgentId, itemType: 'agent', topicId: 'topic_dionia_1' },
+        [
+            { id: 'm1', role: 'user', name: 'User', content: '早安', timestamp: 1000 },
+            { id: 'm2', role: 'assistant', name: '迪欧尼亚', content: '早安[[VCP调用结果信息汇总: hidden VCP调用结果结束]]', timestamp: 2000 },
+        ]
+    );
+
+    // 2. 模拟群聊目录（如 ________1773831250136）
+    const groupId = '________1773831250136';
+    const groupRoot = path.join(service.appDataRoot, 'AgentGroups');
+    await fs.outputJson(path.join(groupRoot, groupId, 'config.json'), {
+        id: groupId,
+        name: '开发讨论组',
+        mode: 'sequential',
+        topics: [{ id: 'topic_group_1', name: '架构联调讨论', createdAt: Date.now() }],
+    });
+    await historyMutationQueue.replace(
+        { itemId: groupId, itemType: 'group', topicId: 'topic_group_1' },
+        [
+            { id: 'gm1', role: 'user', name: 'User', content: '大家来看看群聊穿透问题', timestamp: 3000 },
+            { id: 'gm2', role: 'assistant', speakerName: '小克', content: '[小克的发言]:\n收到，马上排查！', timestamp: 4000 },
+            { id: 'gm3', role: 'assistant', _metadata: { speaker_name: '小娜' }, content: '[小娜的发言]:\n单测已就绪。', timestamp: 5000 },
+        ]
+    );
+
+    // 用例 A：免填 maid，仅凭群聊 topic_id 直接读取群聊历史（Markdown & JSON）
+    const groupMd = await service.processTopicCommand({
+        command: 'ReadTopicContent',
+        topic_id: 'topic_group_1',
+    });
+    assert.equal(groupMd.owner_type, 'group');
+    assert.equal(groupMd.agent_name, '开发讨论组');
+    assert.equal(groupMd.group_id, groupId);
+    assert.equal(groupMd.message_count, 3);
+    assert.match(groupMd.content, /Agent: 小克/);
+    assert.match(groupMd.content, /Agent: 小娜/);
+
+    const groupJson = await service.processTopicCommand({
+        command: 'ReadTopicContent',
+        maid: '讨论组',
+        topic_id: 'topic_group_1',
+        format: 'json',
+    });
+    assert.equal(groupJson.owner_type, 'group');
+    assert.deepEqual(groupJson.messages.map(m => m.name), ['User', '小克', '小娜']);
+
+    // 用例 B：调用方误将自身署名填作 maid（如 maid: '小娜'），但传入了群聊或其他 Agent 的唯一 topic_id -> 智能纠偏定位
+    const fallbackGroup = await service.processTopicCommand({
+        command: 'ReadTopicContent',
+        maid: '小娜',
+        topic_id: 'topic_group_1',
+    });
+    assert.equal(fallbackGroup.agent_id, groupId);
+    assert.equal(fallbackGroup.owner_type, 'group');
+
+    const customAgentRead = await service.processTopicCommand({
+        command: 'ReadTopicContent',
+        topic_id: 'topic_dionia_1',
+    });
+    assert.equal(customAgentRead.agent_id, customAgentId);
+    assert.equal(customAgentRead.agent_name, '迪欧尼亚');
+    assert.equal(customAgentRead.content.includes('VCP调用结果信息汇总'), false, '必须隐去工具回执汇总块');
+
+    // 用例 C：群聊支持 ListUnlockedTopics / CheckNewTopics / CheckTopicOwnership
+    const groupUnlocked = await service.processTopicCommand({
+        command: 'ListUnlockedTopics',
+        maid: '开发讨论组',
+    });
+    assert.equal(groupUnlocked.owner_type, 'group');
+    assert.equal(groupUnlocked.unlocked_topics_count, 1);
+    assert.equal(groupUnlocked.topics[0].topic_id, 'topic_group_1');
+
+    const groupOwnership = await service.processTopicCommand({
+        command: 'CheckTopicOwnership',
+        topic_id: 'topic_group_1',
+        caller_name: 'User',
+    });
+    assert.equal(groupOwnership.is_owner, true);
+    assert.equal(groupOwnership.owner_type, 'group');
+
+    // 用例 D：当调用方署名 maid 存在前缀歧义（如 '汉娜' 同时前缀匹配 '汉娜一号' 与 '汉娜二号'），但传入了唯一 topic_id -> 凭唯一 topic_id 精准定位
+    await agentConfigManager.writeAgentConfig('hanna-1', { name: '汉娜一号', topics: [] });
+    await agentConfigManager.writeAgentConfig('hanna-2', { name: '汉娜二号', topics: [] });
+    const ambiguousMaidWithUniqueTopic = await service.processTopicCommand({
+        command: 'ReadTopicContent',
+        maid: '汉娜',
+        topic_id: 'topic_group_1',
+    });
+    assert.equal(ambiguousMaidWithUniqueTopic.agent_id, groupId);
+    assert.equal(ambiguousMaidWithUniqueTopic.owner_type, 'group');
+});

@@ -168,6 +168,7 @@ class PluginAgentOperationService {
         logger = console,
         idempotencyTtlMs = 10 * 60 * 1000,
         topicDelivery = null,
+        topicResolver = null,
     } = {}) {
         if (!agentDir || !userDataDir || !agentConfigManager || !historyMutationQueue) {
             throw new TypeError('PluginAgentOperationService 缺少必需依赖。');
@@ -177,9 +178,11 @@ class PluginAgentOperationService {
         this.agentConfigManager = agentConfigManager;
         this.historyMutationQueue = historyMutationQueue;
         this.appDataRoot = appDataRoot || path.dirname(agentDir);
+        this.groupDir = path.join(this.appDataRoot, 'AgentGroups');
         this.logger = logger;
         this.idempotencyTtlMs = idempotencyTtlMs;
         this.topicDelivery = topicDelivery;
+        this.topicResolver = topicResolver;
         this.completedRequests = new Map();
         this.runningRequests = new Map();
     }
@@ -273,8 +276,176 @@ class PluginAgentOperationService {
         return {
             ...best.config,
             id: best.id,
+            type: 'agent',
             avatarUrl: avatarUrl || best.config.avatarUrl || null
         };
+    }
+
+    async listAllOwners(requestedType = null) {
+        if (requestedType !== null && requestedType !== undefined && !['agent', 'group'].includes(requestedType)) {
+            throw new TypeError('target_type 必须为 agent 或 group');
+        }
+        const types = requestedType ? [requestedType] : ['agent', 'group'];
+        const owners = [];
+        for (const type of types) {
+            const root = type === 'agent' ? this.agentDir : this.groupDir;
+            let entries;
+            try {
+                entries = await fs.readdir(root, { withFileTypes: true });
+            } catch (error) {
+                if (error.code === 'ENOENT') continue;
+                throw error;
+            }
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                try {
+                    const config = type === 'agent'
+                        ? await this.agentConfigManager.readAgentConfig(entry.name)
+                        : await fs.readJson(path.join(root, entry.name, 'config.json'));
+                    if (!config || typeof config !== 'object') continue;
+                    owners.push({
+                        ...config,
+                        id: entry.name,
+                        name: typeof config.name === 'string' && config.name.trim() ? config.name.trim() : entry.name,
+                        type,
+                        topics: Array.isArray(config.topics) ? config.topics : [],
+                    });
+                } catch (error) {
+                    this.logger.warn?.(`[TopicSponsor] 跳过无效 ${type} ${entry.name}: ${error.message}`);
+                }
+            }
+        }
+        return owners;
+    }
+
+    async findOwner(query, requestedType = null) {
+        const requested = validateId(query, 'Agent');
+        const requestedLower = requested.toLowerCase();
+        const owners = await this.listAllOwners(requestedType);
+
+        const exactIdMatches = owners.filter(owner => owner.id === requested);
+        if (exactIdMatches.length === 1) {
+            const matched = exactIdMatches[0];
+            if (matched.type === 'agent') {
+                const avatarUrl = await resolveAgentAvatarUrl(path.join(this.agentDir, matched.id));
+                return { ...matched, avatarUrl: avatarUrl || matched.avatarUrl || null };
+            }
+            return matched;
+        }
+
+        const candidates = [];
+        for (const owner of owners) {
+            if (typeof owner.name !== 'string') continue;
+            const candidateLower = owner.name.toLowerCase();
+            let tier = 0;
+            if (candidateLower === requestedLower) {
+                tier = 3;
+            } else if (candidateLower.startsWith(requestedLower)) {
+                tier = 2;
+            } else if (candidateLower.includes(requestedLower) || requestedLower.includes(candidateLower)) {
+                tier = 1;
+            }
+            if (tier > 0) {
+                candidates.push({ owner, tier });
+            }
+        }
+
+        if (candidates.length === 0) {
+            throw new Error(`未找到 Agent 或群: ${requested}`);
+        }
+
+        candidates.sort((a, b) => b.tier - a.tier);
+        const best = candidates[0];
+        const tied = candidates.filter(candidate => candidate.tier === best.tier);
+        if (tied.length > 1) {
+            const choices = tied.map(candidate =>
+                `- ${candidate.owner.name}（${candidate.owner.type}, ID: ${candidate.owner.id}）`).join('\n');
+            throw new Error(`名称匹配不唯一: ${requested}；请使用完整名称或 ID，可用 target_type 区分类型。\n候选：\n${choices}`);
+        }
+
+        const winner = best.owner;
+        if (winner.type === 'agent') {
+            const avatarUrl = await resolveAgentAvatarUrl(path.join(this.agentDir, winner.id));
+            return { ...winner, avatarUrl: avatarUrl || winner.avatarUrl || null };
+        }
+        return winner;
+    }
+
+    async resolveOwnerByTopicId(topicId, requestedType = null) {
+        const validTopicId = validateId(topicId, 'topic_id');
+        const owners = await this.listAllOwners(requestedType);
+        const matches = [];
+        for (const owner of owners) {
+            const topic = owner.topics.find(item => item && item.id === validTopicId);
+            if (topic) {
+                matches.push({ owner, selectedTopic: topic, topicId: validTopicId });
+            }
+        }
+        if (matches.length === 0) {
+            throw new Error(`话题 ${validTopicId} 不存在。`);
+        }
+        if (matches.length > 1) {
+            const choices = matches.map(m => `- ${m.owner.name}（${m.owner.type}, ID: ${m.owner.id}）`).join('\n');
+            throw new Error(`话题ID归属不唯一: ${validTopicId}；请指定 maid 或 target_type。\n候选：\n${choices}`);
+        }
+        const winner = matches[0];
+        if (winner.owner.type === 'agent') {
+            const avatarUrl = await resolveAgentAvatarUrl(path.join(this.agentDir, winner.owner.id));
+            winner.owner = { ...winner.owner, avatarUrl: avatarUrl || winner.owner.avatarUrl || null };
+        }
+        return winner;
+    }
+
+    async resolveTopicTarget(args = {}, { requireTopicId = false } = {}) {
+        const requestedType = args.target_type;
+        const rawOwnerQuery = args.maid ?? args.group ?? args.owner ?? args.query;
+        const hasOwnerQuery = rawOwnerQuery !== undefined && rawOwnerQuery !== null && String(rawOwnerQuery).trim() !== '';
+        const topicId = args.topic_id ? validateId(args.topic_id, 'topic_id') : null;
+
+        if (requireTopicId && !topicId) {
+            throw new TypeError('topic_id 不能为空。');
+        }
+
+        if (topicId && !hasOwnerQuery) {
+            return this.resolveOwnerByTopicId(topicId, requestedType);
+        }
+
+        if (hasOwnerQuery) {
+            let owner = null;
+            let ownerLookupError = null;
+            try {
+                owner = await this.findOwner(rawOwnerQuery, requestedType);
+            } catch (error) {
+                ownerLookupError = error;
+                // 若存在路径穿越等非法字符或非法 target_type 参数，立即阻断；若仅是名称不唯一但提供了明确 topicId，允许后续尝试按唯一 topicId 消歧
+                if (/非法|target_type 必须为/.test(error.message) || (!topicId && /不唯一/.test(error.message))) {
+                    throw error;
+                }
+            }
+
+            if (owner) {
+                if (!topicId) {
+                    return { owner, selectedTopic: null, topicId: null };
+                }
+                const selectedTopic = owner.topics.find(topic => topic && topic.id === topicId);
+                if (selectedTopic) {
+                    return { owner, selectedTopic, topicId };
+                }
+                try {
+                    return await this.resolveOwnerByTopicId(topicId, requestedType);
+                } catch {
+                    throw new Error(`话题 ${topicId} 不存在。`);
+                }
+            }
+
+            if (topicId) {
+                return this.resolveOwnerByTopicId(topicId, requestedType);
+            }
+            throw ownerLookupError || new Error(`未找到目标: ${rawOwnerQuery}`);
+        }
+
+        const fallbackOwner = await this.findOwner(rawOwnerQuery, requestedType);
+        return { owner: fallbackOwner, selectedTopic: null, topicId };
     }
 
     async readAgent(agentId) {
@@ -721,10 +892,9 @@ class PluginAgentOperationService {
         if (['ListAgents', 'ListGroups', 'ListRecentTopics'].includes(command)) {
             return this.discoverTopics(command, args);
         }
-        const agent = await this.findAgent(args.maid);
-        const topics = Array.isArray(agent.topics) ? agent.topics : [];
 
         if (command === 'CreateTopic' || command === 'CreateFlowlockTopic') {
+            const agent = await this.findAgent(args.maid);
             if (typeof args.topic_name !== 'string' || !args.topic_name.trim()) {
                 throw new TypeError('topic_name 不能为空。');
             }
@@ -790,11 +960,18 @@ class PluginAgentOperationService {
             }
         }
 
+        const requireTopicId = ['ReplyToTopic', 'ReadTopicContent', 'CheckTopicOwnership'].includes(command);
+        const { owner: agent, selectedTopic, topicId } = await this.resolveTopicTarget(args, { requireTopicId });
+        const topics = Array.isArray(agent.topics) ? agent.topics : [];
+        const scopeType = agent.type === 'group' ? 'group' : 'agent';
+        const isTopicUnlocked = topic => scopeType === 'group' ? topic.locked !== true : topic.locked === false;
+
         if (command === 'ReplyToTopic') {
-            const topicId = validateId(args.topic_id, 'topic_id');
-            const topic = topics.find(item => item.id === topicId);
+            const topic = selectedTopic || topics.find(item => item.id === topicId);
             if (!topic) throw new Error(`话题 ${topicId} 不存在。`);
-            if (topic.locked && !topic.unread) throw new Error(`话题 ${topicId} 不允许插件回复。`);
+            if (scopeType === 'agent' && topic.locked && !topic.unread) {
+                throw new Error(`话题 ${topicId} 不允许插件回复。`);
+            }
             if (typeof args.message !== 'string' || !args.message) throw new TypeError('message 不能为空。');
             if (typeof args.sender_name !== 'string' || !args.sender_name.trim()) {
                 throw new TypeError('sender_name 不能为空。');
@@ -804,7 +981,7 @@ class PluginAgentOperationService {
             if (rawSenderName !== agent.name) {
                 try {
                     senderAgent = await this.findAgent(rawSenderName);
-                } catch (_) {
+                } catch {
                     // 若 sender_name 是外部未注册角色，保持 null 并优雅回退
                 }
             }
@@ -821,7 +998,7 @@ class PluginAgentOperationService {
             }, senderAgent);
 
             await this.historyMutationQueue.mutate(
-                { itemId: agent.id, itemType: 'agent', topicId },
+                { itemId: agent.id, itemType: scopeType, topicId },
                 history => [...history, message]
             );
             return {
@@ -833,15 +1010,18 @@ class PluginAgentOperationService {
                 timestamp: message.timestamp,
                 agent_name: agent.name,
                 agent_id: agent.id,
+                owner_type: scopeType,
             };
         }
 
         if (command === 'CheckNewTopics') {
             const days = Math.max(0, Number(args.days) || 3);
             const cutoff = Date.now() - days * 86400000;
-            const matched = topics.filter(topic => topic.locked === false && topic.createdAt > cutoff);
+            const matched = topics.filter(topic => isTopicUnlocked(topic) && topic.createdAt > cutoff);
             return {
                 agent_name: agent.name,
+                agent_id: agent.id,
+                owner_type: scopeType,
                 has_new_topics: matched.length > 0,
                 new_topics_count: matched.length,
                 topics: matched.map(topic => ({
@@ -854,26 +1034,29 @@ class PluginAgentOperationService {
             };
         }
 
-        const topicId = args.topic_id ? validateId(args.topic_id, 'topic_id') : null;
-        const selectedTopic = topicId ? topics.find(topic => topic.id === topicId) : null;
         if (topicId && !selectedTopic) throw new Error(`话题 ${topicId} 不存在。`);
 
         if (command === 'ReadTopicContent') {
             const rawMessages = await this.historyMutationQueue.read(
-                { itemId: agent.id, itemType: 'agent', topicId }
+                { itemId: agent.id, itemType: scopeType, topicId }
             );
             // 默认返回 Markdown（复用官方导出话题标准），显式指定 format: 'json' / 'clean' / 'raw' 时返回结构化对象
             const format = String(args.format || 'markdown').toLowerCase();
+            const topicLocked = selectedTopic.locked !== undefined
+                ? selectedTopic.locked
+                : (scopeType === 'group' ? false : true);
 
             // 逃生通道：若显式传入 format: 'raw'，则保留底层全量原始对象
             if (format === 'raw') {
                 return {
                     agent_name: agent.name,
                     agent_id: agent.id,
+                    owner_type: scopeType,
+                    ...(scopeType === 'group' ? { group_name: agent.name, group_id: agent.id } : {}),
                     topic_id: topicId,
                     topic_name: selectedTopic.name,
                     topic_info: {
-                        locked: selectedTopic.locked !== undefined ? selectedTopic.locked : true,
+                        locked: topicLocked,
                         unread: selectedTopic.unread === true,
                         created_at: selectedTopic.createdAt,
                     },
@@ -882,7 +1065,7 @@ class PluginAgentOperationService {
                 };
             }
 
-            // 剥离 [[VCP调用结果信息汇总...]] 物理块，避免自指与渲染断裂
+            // 归拢正文视图：隐去工具回执汇总块，保持跨话题上下文澄澈连贯
             const stripToolPayload = (text) => {
                 if (typeof text !== 'string') return text;
                 return text.replace(/\[\[VCP调用结果信息汇总[\s\S]*?VCP调用结果结束\]\]/g, '').trim();
@@ -890,17 +1073,21 @@ class PluginAgentOperationService {
 
             const sanitizedMessages = rawMessages.map(msg => {
                 const cleanedContent = stripToolPayload(msg.content);
+                const resolvedSender = msg.name
+                    || msg.speakerName
+                    || msg._metadata?.speaker_name
+                    || (msg.role === 'assistant' ? agent.name : 'User');
                 return {
                     id: msg.id,
                     role: msg.role,
-                    name: msg.name,
+                    name: resolvedSender,
                     content: cleanedContent,
                     timestamp: msg.timestamp,
                     attachments: Array.isArray(msg.attachments) ? msg.attachments.map(att => ({
                         name: att.name || 'attachment',
                         type: att.type || 'file',
                         size: att.size || 0
-                        // 彻底剔除 extractedText 与 _fileManagerData
+                        // 仅保留轻量附件元信息摘要
                     })) : []
                 };
             });
@@ -908,7 +1095,7 @@ class PluginAgentOperationService {
             // 默认或显式 markdown: 复用官方“导出此话题(完整)”标准排版，具备时序、发信人和消息锚点
             if (format === 'markdown' || format === 'md') {
                 let markdownContent = `# 话题: ${selectedTopic.name || '未命名话题'}\n\n`;
-                markdownContent += `> 模式: 跨话题读取 (已脱毒清洗)\n\n`;
+                markdownContent += `> 模式: 跨话题读取 (精炼正文视图)\n\n`;
 
                 sanitizedMessages.forEach((msg, index) => {
                     const sender = msg.name || (msg.role === 'assistant' ? agent.name : 'User');
@@ -931,10 +1118,12 @@ class PluginAgentOperationService {
                 return {
                     agent_name: agent.name,
                     agent_id: agent.id,
+                    owner_type: scopeType,
+                    ...(scopeType === 'group' ? { group_name: agent.name, group_id: agent.id } : {}),
                     topic_id: topicId,
                     topic_name: selectedTopic.name,
                     topic_info: {
-                        locked: selectedTopic.locked !== undefined ? selectedTopic.locked : true,
+                        locked: topicLocked,
                         unread: selectedTopic.unread === true,
                         created_at: selectedTopic.createdAt,
                     },
@@ -948,10 +1137,12 @@ class PluginAgentOperationService {
             return {
                 agent_name: agent.name,
                 agent_id: agent.id,
+                owner_type: scopeType,
+                ...(scopeType === 'group' ? { group_name: agent.name, group_id: agent.id } : {}),
                 topic_id: topicId,
                 topic_name: selectedTopic.name,
                 topic_info: {
-                    locked: selectedTopic.locked !== undefined ? selectedTopic.locked : true,
+                    locked: topicLocked,
                     unread: selectedTopic.unread === true,
                     created_at: selectedTopic.createdAt,
                 },
@@ -964,10 +1155,11 @@ class PluginAgentOperationService {
             let creatorName = selectedTopic?._creator?.agentName || 'unknown';
             if (creatorName === 'unknown') {
                 const history = await this.historyMutationQueue.read(
-                    { itemId: agent.id, itemType: 'agent', topicId }
+                    { itemId: agent.id, itemType: scopeType, topicId }
                 );
                 creatorName = history[0]?._metadata?.topicSponsor
                     || history[0]?._metadata?.topicCreator
+                    || history[0]?._metadata?.speaker_name
                     || history[0]?.name
                     || 'unknown';
             }
@@ -975,19 +1167,20 @@ class PluginAgentOperationService {
                 is_owner: creatorName === args.caller_name,
                 creator_name: creatorName,
                 topic_name: selectedTopic.name,
+                owner_type: scopeType,
             };
         }
 
         const unlocked = topics.filter(topic =>
-            topic.locked === false
-            && (command !== 'ReadUnlockedTopics' || args.include_read === true || topic.unread === true)
+            isTopicUnlocked(topic)
+            && (command !== 'ReadUnlockedTopics' || args.include_read === true || topic.unread === true || scopeType === 'group')
         );
         const details = [];
         for (const topic of command === 'CheckUnreadMessages'
             ? topics.filter(item => item.unread === true)
             : unlocked) {
             const history = await this.historyMutationQueue.read(
-                { itemId: agent.id, itemType: 'agent', topicId: topic.id }
+                { itemId: agent.id, itemType: scopeType, topicId: topic.id }
             );
             details.push({
                 topic_id: topic.id,
@@ -1003,12 +1196,19 @@ class PluginAgentOperationService {
             });
         }
         if (command === 'CheckUnreadMessages') {
-            return { agent_name: agent.name, has_unread: details.length > 0, unread_topics: details };
+            return {
+                agent_name: agent.name,
+                agent_id: agent.id,
+                owner_type: scopeType,
+                has_unread: details.length > 0,
+                unread_topics: details,
+            };
         }
         if (command === 'ListUnlockedTopics') {
             return {
                 agent_name: agent.name,
                 agent_id: agent.id,
+                owner_type: scopeType,
                 has_unlocked_topics: details.length > 0,
                 unlocked_topics_count: details.length,
                 topics: details,
@@ -1017,6 +1217,7 @@ class PluginAgentOperationService {
         return {
             agent_name: agent.name,
             agent_id: agent.id,
+            owner_type: scopeType,
             topics: details,
             total_topics: details.length,
         };
