@@ -208,9 +208,29 @@ class FlowlockManager {
      * 在最终回复边界认领 TopicSponsor 创建的请求，并原子交接唯一 Session。
      * 主进程是请求状态真源；前端只消费主进程返回的可信 claim。
      */
+    /**
+     * 检查目标 Agent 当前是否正处于生成中或上下文压缩/中继挂起期。
+     * 若跨主体派单完结时目标 Agent 正忙，则礼让延后认领，待目标 Agent 自身当前轮完结后再安全交接。
+     */
+    isAgentBusyForHandoff(agentId, completingMessageId = null) {
+        const existing = this.sessions.get(agentId);
+        if (!existing || existing.status !== 'active') return false;
+        if (existing.contextCompactionLease || existing.relayAdmissionToken) return true;
+        if (existing.activeMessageId && existing.activeMessageId !== completingMessageId) return true;
+        return false;
+    }
+
     async claimAndHandoffPendingTopic(agentId, constraints = {}) {
         if (!agentId || !this.electronAPI?.claimPendingFlowlockTopic) {
             return { success: false, code: 'UNAVAILABLE' };
+        }
+
+        const completingMessageId = typeof constraints?.completingMessageId === 'string'
+            ? constraints.completingMessageId
+            : null;
+        if (this.isAgentBusyForHandoff(agentId, completingMessageId)) {
+            console.log(`[Flowlock] Deferring pending topic claim for busy agent ${agentId}.`);
+            return { success: false, code: 'AGENT_BUSY_DEFERRED' };
         }
 
         const result = await this.electronAPI.claimPendingFlowlockTopic(agentId, constraints);
@@ -265,10 +285,11 @@ class FlowlockManager {
             created.nextPrompt = prompt || null;
             created.nextDelaySeconds = heartbeatSeconds;
             this.scheduleNextRound(agentId, heartbeatSeconds * 1000);
+            this.refreshTopicListIfSelected(agentId);
             return;
         }
 
-        // 最终消息已经落盘后才调用本方法，因此可以安全结束本轮并迁移。
+        // 最终消息已经落盘且通过忙碌守卫后才调用本方法，因此可以安全结束本轮并迁移。
         if (existing.pendingTimer) {
             clearTimeout(existing.pendingTimer);
             existing.pendingTimer = null;
@@ -292,16 +313,100 @@ class FlowlockManager {
         this.updateSidebarIndicator(agentId, true);
         this.updateCurrentHeaderIndicator(agentId, true);
         this.scheduleNextRound(agentId, heartbeatSeconds * 1000);
+        this.refreshTopicListIfSelected(agentId);
 
+        const displayName = await this.resolveAgentDisplayName(agentId, existing.agentName);
         console.log(`[Flowlock] Agent ${agentId} handed off to topic ${topicId}, request ${requestId}.`);
         this.uiHelper?.showToastNotification?.(
-            `Agent "${agentId}" 心流锁已交接到新话题`,
+            `Agent "${displayName}" 心流锁已交接到新话题`,
             'success'
         );
     }
 
+    refreshTopicListIfSelected(agentId) {
+        try {
+            const currentSelected = window.VCPMainChatState?.snapshot?.()?.selectedItem;
+            if (currentSelected?.type === 'agent' && currentSelected.id === agentId) {
+                window.topicListManager?.loadTopicList?.();
+            }
+        } catch (refreshError) {
+            console.warn('[Flowlock] Failed to refresh topic list after claim:', refreshError);
+        }
+    }
+
     /**
-     * 页面重载后显式恢复 pending 请求。每个 Agent 仍由主进程执行唯一候选校验。
+     * 扫描并认领所有待处理的 TopicSponsor 心流请求（支持群聊派发与单聊跨伙伴派发）。
+     * 优先通过单次 listPendingFlowlockTopics 内存缓存探测，避免日常无 pending 时的双重 IPC 开销。
+     * @param {string|null} preferredAgentId - 当前完结消息所属的 Agent ID
+     * @param {string|null} completingMessageId - 当前完结的消息 ID
+     */
+    async claimAllPendingTopics(preferredAgentId = null, completingMessageId = null) {
+        let directClaimed = false;
+        let anyClaimed = false;
+
+        if (!this.electronAPI?.listPendingFlowlockTopics) {
+            if (preferredAgentId) {
+                const direct = await this.claimAndHandoffPendingTopic(preferredAgentId, { completingMessageId });
+                if (direct?.success) {
+                    directClaimed = true;
+                    anyClaimed = true;
+                }
+            }
+            return { success: anyClaimed, directClaimed };
+        }
+
+        try {
+            const result = await this.electronAPI.listPendingFlowlockTopics();
+            if (!result?.success || !Array.isArray(result.requests) || result.requests.length === 0) {
+                return { success: false, directClaimed: false };
+            }
+
+            const orderedAgents = [];
+            const seenAgents = new Set();
+            if (preferredAgentId && result.requests.some(req => req?.agentId === preferredAgentId)) {
+                orderedAgents.push(preferredAgentId);
+                seenAgents.add(preferredAgentId);
+            }
+            for (const req of result.requests) {
+                if (req?.agentId && req?.requestId && !this.claimedRequestIds.has(req.requestId) && !seenAgents.has(req.agentId)) {
+                    orderedAgents.push(req.agentId);
+                    seenAgents.add(req.agentId);
+                }
+            }
+
+            for (const targetAgentId of orderedAgents) {
+                const constraints = targetAgentId === preferredAgentId && completingMessageId
+                    ? { completingMessageId }
+                    : {};
+                const handoff = await this.claimAndHandoffPendingTopic(targetAgentId, constraints);
+                if (handoff?.success) {
+                    anyClaimed = true;
+                    if (targetAgentId === preferredAgentId) {
+                        directClaimed = true;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[Flowlock] Failed to scan cross-agent pending topics:', error);
+        }
+        return { success: anyClaimed, directClaimed };
+    }
+
+    /**
+     * 当用户手动切换到指定 Agent 的指定 Topic 时，若该话题存在未消费的 pending 心流请求，则按 topicId 精准认领点火。
+     */
+    async claimPendingTopicForSelection(agentId, topicId) {
+        if (!agentId || !topicId) {
+            return { success: false, code: 'INVALID_ARGS' };
+        }
+        if (this.isTopicLocked(agentId, topicId)) {
+            return { success: true, alreadyLocked: true };
+        }
+        return this.claimAndHandoffPendingTopic(agentId, { topicId });
+    }
+
+    /**
+     * 页面重载后显式恢复 pending 请求。若同一 Agent 存在多个历史积压请求，自动认领最新创建的一条并归档旧残留。
      */
     async recoverPendingRequests() {
         if (!this.electronAPI?.listPendingFlowlockTopics) return;
@@ -316,11 +421,11 @@ class FlowlockManager {
         }
 
         for (const [agentId, requests] of byAgent) {
-            if (requests.length !== 1) {
-                console.warn(`[Flowlock] Recovery conflict for ${agentId}: ${requests.length} pending requests.`);
-                continue;
+            if (requests.length === 1) {
+                await this.claimAndHandoffPendingTopic(agentId, { requestId: requests[0].requestId });
+            } else if (requests.length > 1) {
+                await this.claimAndHandoffPendingTopic(agentId);
             }
-            await this.claimAndHandoffPendingTopic(agentId, { requestId: requests[0].requestId });
         }
     }
 
@@ -330,30 +435,39 @@ class FlowlockManager {
      * @param {Object} event - { type, messageId, context, content, finishReason, error }
      */
     async handleFinalizedMessage(event) {
-        const { type, messageId, context, content, finishReason, error } = event;
+        const { type, messageId, context, content, finishReason, error } = event || {};
 
-        if (!context || !context.agentId || !context.topicId || context.isGroupMessage) {
+        if (!context || !context.topicId) {
             return;
         }
 
-        const suspendedSession = this.sessions.get(context.agentId);
-        if (suspendedSession?.contextCompactionLease && suspendedSession.topicId === context.topicId) {
-            if (!suspendedSession.activeMessageId || suspendedSession.activeMessageId === messageId) {
-                suspendedSession.lastCompletedAt = Date.now();
-                suspendedSession.activeMessageId = null;
+        if (!context.isGroupMessage && context.agentId) {
+            const suspendedSession = this.sessions.get(context.agentId);
+            if (suspendedSession?.contextCompactionLease && suspendedSession.topicId === context.topicId) {
+                if (!suspendedSession.activeMessageId || suspendedSession.activeMessageId === messageId) {
+                    suspendedSession.lastCompletedAt = Date.now();
+                    suspendedSession.activeMessageId = null;
+                }
+                return;
             }
-            return;
         }
 
         const isUpstreamError = typeof content === 'string' && /^\s*\[ERROR\]/i.test(content);
 
         // TopicSponsor 请求只能在当前 assistant 最终回复完整落盘后认领。
-        // 错误完成不消费请求，保留为 pending 供后续明确恢复。
+        // 支持单聊自建、单聊跨伙伴派发以及群聊向私聊派发；错误完成不消费请求，保留为 pending 供后续恢复。
         if (type !== 'error' && finishReason !== 'error' && !isUpstreamError) {
-            const handoff = await this.claimAndHandoffPendingTopic(context.agentId);
-            if (handoff?.success) {
+            const handoff = await this.claimAllPendingTopics(
+                context.isGroupMessage ? null : context.agentId,
+                messageId || null
+            );
+            if (!context.isGroupMessage && handoff?.directClaimed) {
                 return;
             }
+        }
+
+        if (context.isGroupMessage || !context.agentId) {
+            return;
         }
 
         const protocol = type !== 'error' && finishReason !== 'error' && !isUpstreamError && typeof content === 'string'

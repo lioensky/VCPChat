@@ -1304,9 +1304,7 @@ mainChatSettingsPresentationOwner.configureStartup({
                         if (!streaming) await removeThinking();
                         await syncAdmissionHistory(scope);
                     },
-                    onFinalized: event => request.relayFrom
-                        ? window.flowlockManager?.handleFinalizedMessage?.(event)
-                        : undefined,
+                    onFinalized: event => window.flowlockManager?.handleFinalizedMessage?.(event),
                 });
                 const receipt = await chatAPI.topicAdmissionAck(request.token);
                 if (!receipt?.success) return;

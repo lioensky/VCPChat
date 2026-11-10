@@ -11,6 +11,18 @@ export function createNonStreamingEventConsumer({ renderTarget, messageRenderer,
                 if (relevant) await messageRenderer.renderFullMessageProjection?.(
                     event.messageId, event.fullResponse || '', event.context?.agentName, event.context?.agentId, renderTarget.root
                 );
+                try {
+                    await globalThis.window?.flowlockManager?.handleFinalizedMessage?.({
+                        type: 'end',
+                        messageId: event.messageId,
+                        context: event.context,
+                        content: event.fullResponse || '',
+                        finishReason: 'completed',
+                        error: null,
+                    });
+                } catch (error) {
+                    console.error('[NonStreamingEventConsumer] Flowlock finalization failed:', error);
+                }
                 return true;
             }
             if (type === 'remove_message') {
