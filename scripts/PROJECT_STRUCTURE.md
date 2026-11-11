@@ -1,7 +1,5 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-11-10 14:47:33  
-
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
 > 筛选文件类型：`.bash`、`.bat`、`.c`、`.cc`、`.cfg`、`.cjs`、`.cmd`、`.conf`、`.cpp`、`.cs`、`.css`、`.cxx`、`.example`、`.go`、`.h`、`.hpp`、`.htm`、`.html`、`.hxx`、`.ini`、`.ipynb`、`.java`、`.js`、`.json`、`.json5`、`.jsonc`、`.jsx`、`.kt`、`.kts`、`.less`、`.lock`、`.lua`、`.md`、`.mjs`、`.php`、`.properties`、`.ps1`、`.psd1`、`.psm1`、`.py`、`.pyi`、`.r`、`.rb`、`.rs`、`.rst`、`.sass`、`.scss`、`.sh`、`.sql`、`.svelte`、`.swift`、`.toml`、`.ts`、`.tsx`、`.txt`、`.vbs`、`.vue`、`.xml`、`.yaml`、`.yml`、`.zsh`  
@@ -11,12 +9,12 @@
 ## 文件统计
 
 - **总目录数**：245
-- **总文件数**：1746
+- **总文件数**：1748
 - **文件类型数**：21
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 1099 |
+| JavaScript | `.js` | 1101 |
 | CSS | `.css` | 159 |
 | JSON | `.json` | 153 |
 | Rust | `.rs` | 115 |
@@ -37,7 +35,7 @@
 | Shell Script | `.sh` | 2 |
 | C# | `.cs` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1746** |
+| **合计** | - | **1748** |
 
 ## 目录结构树
 
@@ -770,6 +768,7 @@ VCPChat/
 │   │   ├── toolRequestMarkers.js
 │   │   ├── toolRequestScanner.js
 │   │   ├── toolResultRegions.js
+│   │   ├── toolReturnBoundary.js
 │   │   ├── topicAdmissionQueueView.js
 │   │   ├── topicSelectionReadiness.js
 │   │   ├── ttsSurfaceOwner.js
@@ -830,6 +829,7 @@ VCPChat/
 │   │   ├── senderTaskRegistry.js
 │   │   ├── sourceService.js
 │   │   ├── themePreviewVariables.js
+│   │   ├── toolLoopHandoff.js
 │   │   ├── topicAdmissionGroup.js
 │   │   ├── topicConversationResolver.js
 │   │   ├── topicGenerationLease.js
