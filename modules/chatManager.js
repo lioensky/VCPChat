@@ -78,6 +78,30 @@ export const chatManager = (() => {
         return true;
     }
 
+    async function prepareStreamCompressionReady({ messageId, context, text, isActive = () => true }) {
+        if (disposed || !isActive() || !context?.admissionToken
+            || context.isGroupMessage || context.groupId || !context.agentId || !context.topicId
+            || /^sidechat_[0-9]+_[0-9a-f]+$/.test(context.topicId)
+            || typeof electronAPI.setToolLoopCompressionReady !== 'function') return;
+        let needed = false;
+        if (globalSettingsRef.get().enableContextCompaction === true) {
+            const selected = currentSelectedItemRef.get();
+            const visible = selected?.id === context.agentId && selected.type === 'agent'
+                && currentTopicIdRef.get() === context.topicId;
+            const config = visible ? (selected.config || selected) : await electronAPI.getAgentConfig(context.agentId);
+            const history = visible ? currentChatHistoryRef.get()
+                : await getHistory(context.agentId, 'agent', context.topicId);
+            const limit = Number(config?.contextTokenLimit);
+            if (Array.isArray(history) && Number.isFinite(limit) && limit > 0) {
+                const effective = effectiveContextHistory(history.filter(message => message.id !== messageId));
+                needed = estimateContextTokens([...effective, { role: 'assistant', content: text }], config.systemPrompt || '') >= limit;
+            }
+        }
+        if (!disposed && isActive() && !streamCompactionRequests.has(messageId)) {
+            await electronAPI.setToolLoopCompressionReady(messageId, needed);
+        }
+    }
+
     async function checkStreamContextBudget({ messageId, context, text, cancelStream, isActive = () => true }) {
         if (disposed || !isActive() || context?.isGroupMessage || context?.groupId
             || !context?.agentId || !context?.topicId
@@ -2760,6 +2784,7 @@ export const chatManager = (() => {
         prepareFlowlockContext,
         createRequestTextOptions,
         checkStreamContextBudget,
+        prepareStreamCompressionReady,
         hasStreamAdmissionRelay,
         cancelStreamAdmissionRelay,
         finishStreamAdmissionRelay,

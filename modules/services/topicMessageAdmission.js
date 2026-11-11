@@ -31,6 +31,7 @@ class TopicMessageAdmission {
         this.standaloneLeases = [];
         this.leases = new Map();
         this.waiters = new Set();
+        this.listeners = new Set();
         this.rounds = new Map();
         this.relayAttempts = new Map();
         // Stop is signalled outside the serial disk queue; IDs define its boundary.
@@ -111,7 +112,17 @@ class TopicMessageAdmission {
         if (!this.ready) throw new Error('Admission not initialized');
     }
 
+    subscribe(listener) {
+        this.listeners.add(listener);
+        listener(this.snapshot());
+        return () => this.listeners.delete(listener);
+    }
+
     notify() {
+        for (const listener of [...this.listeners]) {
+            try { listener(this.snapshot()); }
+            catch (error) { this.logger.warn?.('[Admission] subscriber failed', error); }
+        }
         for (const wake of [...this.waiters]) wake();
         try { this.publish(this.snapshot()); }
         catch (error) { this.logger.warn?.('[Admission] publish failed', error); }
@@ -701,6 +712,7 @@ class TopicMessageAdmission {
 
         async dispose() {
         this.closed = true;
+        this.listeners.clear();
         for (const wake of [...this.waiters]) wake(new Error('Admission disposed'));
         await this.tail.catch(() => {});
     }

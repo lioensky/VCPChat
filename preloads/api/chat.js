@@ -57,6 +57,7 @@ module.exports = {
         onVCPStreamEvent: on('vcp-stream-event'),
         onVCPStreamChunk: on('vcp-stream-chunk'),
         interruptVcpRequest: invoke('interrupt-vcp-request', 'data'),
+        setToolLoopCompressionReady: invoke('tool-loop:compression-ready', 'messageId', 'needed'),
 
         // 附件
         handleFilePaste: invoke('handle-file-paste', 'agentId', 'topicId', 'fileData'),

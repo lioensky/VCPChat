@@ -20,13 +20,14 @@ async function waitFor(predicate) {
 
 // Execute the real module and public IPC route, with isolated dependencies.
 // No source rewriting or test-only access to its private stream function.
-function route(fetchResponse, { settings = null, abortSignal = AbortSignal } = {}) {
+function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admission = null, token = null } = {}) {
     const handlers = new Map(), module = { exports: {} }, sent = [], warnings = [];
     const dependencies = new Map([
         ['electron', { ipcMain: { handle: (name, fn) => handlers.set(name, fn), on() {} }, dialog: {}, BrowserWindow: {} }],
         ['fs-extra', { pathExists: async () => settings !== null, readJson: async () => settings }],
         ['path', require('node:path')], ['crypto', require('node:crypto')],
         ['../services/senderTaskRegistry', require('../modules/services/senderTaskRegistry.js')],
+        ['../services/toolLoopHandoff', require('../modules/services/toolLoopHandoff.js')],
         ['../contextSanitizer', require('../modules/contextSanitizer.js')],
         // 真实的调用轨迹模块：没有配置记录目录时只返回空操作，不写盘
         ['../modelTrajectory', require('../modules/modelTrajectory.js')],
@@ -42,12 +43,13 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal } = {
         console: { log() {}, warn: (...args) => warnings.push(args.join(' ')), error() {} },
         TextDecoder, URL, fetch: fetchResponse, AbortSignal: abortSignal,
     })(load, module, module.exports);
-    module.exports.initialize(null, { USER_DATA_DIR: 'unused-isolated-fixture', APP_DATA_ROOT_IN_PROJECT: 'unused-isolated-fixture', historyMutationQueue: {} });
+    module.exports.initialize(null, { USER_DATA_DIR: 'unused-isolated-fixture', APP_DATA_ROOT_IN_PROJECT: 'unused-isolated-fixture', historyMutationQueue: {}, topicAdmission: admission });
     const sender = Object.assign(new EventEmitter(), { id: 501, isDestroyed: () => false, send: (channel, event) => sent.push({ channel, event }) });
-    const context = { agentId: 'fixture-agent', topicId: 'fixture-topic' };
+    const context = { agentId: 'fixture-agent', topicId: 'fixture-topic', admissionToken: token };
     return { sent, warnings, sender, context, tasks: () => module.exports.getVcpStreamTaskSnapshot(),
         start: (url = 'http://controlled.invalid/v1/chat/completions', messages = []) => handlers.get('send-to-vcp')({ sender }, url, '', messages, { stream: true }, 'same-message', false, context),
         interrupt: (caller = sender) => handlers.get('interrupt-vcp-request')({ sender: caller }, { messageId: 'same-message' }),
+        compression: (needed, caller = sender) => handlers.get('tool-loop:compression-ready')({ sender: caller }, 'same-message', needed),
         close: () => sender.emit('destroyed'),
     };
 }
@@ -327,4 +329,63 @@ test('the streamed request body does not ask the server for stream usage', async
         assert.equal(requestBody.requestId, 'same-message');
         assert.equal('stream_options' in requestBody, false);
     } finally { f.close(); }
+});
+for (const supported of [false, true]) {
+    test(`real IPC handoff demand uses capability and actual request ID: ${supported}`, async () => {
+        let publish, controller;
+        const calls = [];
+        const body = new ReadableStream({ start(value) { controller = value; } });
+        const f = route(async (url, options) => {
+            if (url.endsWith('/v1/interrupt')) {
+                calls.push(JSON.parse(options.body));
+                return { ok: true, json: async () => ({ success: true }) };
+            }
+            return { ok: true, body, headers: { get: () => supported ? '1' : null } };
+        }, {
+            token: 'lease-not-request-id',
+            admission: { subscribe(fn) { publish = fn; fn([]); } },
+        });
+        const scope = { itemType: 'agent', itemId: 'fixture-agent', topicId: 'fixture-topic' };
+        const pending = id => ({ scope, entryId: id, state: 'queued' });
+        try {
+            await f.start();
+            publish([pending('a')]); await tick(); await tick();
+            if (!supported) {
+                assert.equal(calls.length, 0);
+            } else {
+                await waitFor(() => calls.length === 1);
+                publish([pending('a'), pending('b')]);
+                publish([pending('b')]); await tick();
+                assert.equal(calls.length, 1);
+                assert.equal(f.compression(true, {}).code, 'STALE_REQUEST');
+                assert.equal(f.compression(true).success, true);
+                publish([]); await tick(); await tick();
+                assert.equal(calls.length, 1);
+                assert.equal(f.compression(false).success, true);
+                await waitFor(() => calls.length === 2);
+                assert.deepEqual(calls.map(x => x.action), ['prepare_handoff', 'cancel_handoff']);
+                assert.ok(calls.every(x => x.requestId === 'same-message'));
+                assert.equal(f.tasks().length, 1);
+            }
+            controller.enqueue(encode('data: [DONE]\n\n'));
+            await waitFor(() => !f.tasks().length);
+            assert.equal(f.compression(true).code, 'STALE_REQUEST');
+        } finally { f.close(); if (!body.locked) await body.cancel().catch(() => {}); }
+    });
+}
+test('failed ready control never invokes local stream cancellation', async () => {
+    let publish, controller, controls = 0;
+    const body = new ReadableStream({ start(value) { controller = value; } });
+    const f = route(async (url) => {
+        if (url.endsWith('/v1/interrupt')) { controls++; throw new Error('control offline'); }
+        return { ok: true, body, headers: { get: () => '1' } };
+    }, { token: 'lease', admission: { subscribe(fn) { publish = fn; fn([]); } } });
+    try {
+        await f.start();
+        publish([{ scope: { itemType: 'agent', itemId: 'fixture-agent', topicId: 'fixture-topic' }, state: 'queued' }]);
+        await waitFor(() => controls === 1); await tick();
+        assert.equal(f.tasks().length, 1);
+        controller.enqueue(encode('data: [DONE]\n\n'));
+        await waitFor(() => !f.tasks().length);
+    } finally { f.close(); if (!body.locked) await body.cancel().catch(() => {}); }
 });

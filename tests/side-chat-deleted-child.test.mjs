@@ -27,6 +27,7 @@ function setup() {
         ['electron', { ipcMain, dialog: {}, BrowserWindow: {} }],
         ['fs-extra', fse], ['path', path], ['crypto', require('node:crypto')],
         ['../services/senderTaskRegistry', require('../modules/services/senderTaskRegistry.js')],
+        ['../services/toolLoopHandoff', require('../modules/services/toolLoopHandoff.js')],
         ['../contextSanitizer', require('../modules/contextSanitizer.js')],
         ['../modelTrajectory', require('../modules/modelTrajectory.js')],
         ['../agentMood', require('../modules/agentMood.js')],

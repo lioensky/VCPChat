@@ -166,6 +166,7 @@ export function createMainChatSurfaceAdapter({
         createConsumer: initialEvent => createMainChatStreamConsumer(initialEvent, {
             ...streamCapabilities,
             resolveProjection: messageId => streamRoutes.claim(messageId),
+            onStreamContextGrowth: value => streamServices.chatManager?.prepareStreamCompressionReady?.(value),
             onToolReturnBoundary: value => streamServices.chatManager?.checkStreamContextBudget?.({
                 ...value,
                 cancelStream: (messageId, reason) => bridge.cancelOperation(messageId, reason),

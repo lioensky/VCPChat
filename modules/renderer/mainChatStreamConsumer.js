@@ -35,6 +35,41 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
     let checkedBoundary = 0;
     let checkingBoundary = false;
     let active = true;
+    let checkingDemand = false;
+    let demandVersion = 0;
+    let demandTimer = null;
+    let lastDemandCheck = -Infinity;
+
+    function deactivate() {
+        active = false;
+        clearTimeout(demandTimer);
+        demandTimer = null;
+    }
+
+    function checkDemand() {
+        if (!active || checkingDemand || demandTimer !== null || !capabilities.onStreamContextGrowth) return;
+        const delay = 100 - (Date.now() - lastDemandCheck);
+        if (delay > 0) {
+            demandTimer = setTimeout(() => {
+                demandTimer = null;
+                checkDemand();
+            }, delay);
+            return;
+        }
+        lastDemandCheck = Date.now();
+        checkingDemand = true;
+        const version = demandVersion;
+        Promise.resolve().then(() => {
+            if (!active) return;
+            return capabilities.onStreamContextGrowth({
+                messageId, context, text: accumulatedText, isActive: () => active,
+            });
+        }).catch(error => capabilities.reportError?.('[ContextCompaction] Ready check failed', error))
+            .finally(() => {
+                checkingDemand = false;
+                if (active && demandVersion !== version) checkDemand();
+            });
+    }
 
     function checkToolReturn() {
         if (!active || checkingBoundary || context.isGroupMessage || context.groupId) return;
@@ -69,7 +104,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
         },
         consume(event) {
             const terminal = terminalTypes.has(event.type);
-            if (terminal) active = false;
+            if (terminal) deactivate();
             if (projection?.suppressed) {
                 if (terminal) projection.settle?.({ event, finalized: event.outcome?.persistence?.value, context, messageId });
                 return;
@@ -77,6 +112,8 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             if (event.type === 'chunk') {
                 (projection?.append || capabilities.append)(messageId, event.text, context, operationId);
                 accumulatedText += event.text;
+                demandVersion += 1;
+                checkDemand();
                 checkToolReturn();
             }
             if (!terminal) return;
@@ -95,7 +132,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             capabilities.onSettled?.({ event: settledEvent, finalized, context, messageId });
         },
         async persist(value) {
-            active = false;
+            deactivate();
             if (projection?.suppressed) return null;
             const terminal = value.terminal || {};
             if (terminal.phase === 'projection') {
@@ -143,6 +180,6 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             }
             return finalized;
         },
-        dispose() { active = false; projection?.release?.(); },
+        dispose() { deactivate(); projection?.release?.(); },
     });
 }

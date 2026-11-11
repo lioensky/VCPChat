@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const contextSanitizer = require('../contextSanitizer');
 const { SenderTaskRegistry } = require('../services/senderTaskRegistry');
+const { createToolLoopHandoff } = require('../services/toolLoopHandoff');
 const {
     resolveRememberedAttachmentDirectory,
     rememberAttachmentDirectory
@@ -214,6 +215,23 @@ function initialize(mainWindow, context) {
         settingsManager,
         historyMutationQueue = new HistoryMutationQueue({ userDataDir: USER_DATA_DIR, fileWatcher })
     } = context;
+
+    const activeHandoffs = new Map();
+    const handoffs = createToolLoopHandoff({
+        async sendControl(payload, transport) {
+            const url = new URL('/v1/interrupt', transport.url);
+            const response = await fetch(url.toString(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${transport.apiKey}` },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(5000),
+            });
+            const receipt = await response.json();
+            return response.ok && receipt.success === true
+                ? receipt : { success: false, error: receipt.error || receipt.message || `HTTP ${response.status}` };
+        },
+    });
+    context.topicAdmission?.subscribe?.(entries => handoffs.updateEntries(entries));
 
     // Ensure the watcher is in a clean state on initialization
     if (fileWatcher) {
@@ -1110,10 +1128,13 @@ function initialize(mainWindow, context) {
         const streamChannel = 'vcp-stream-event'; // Use a single, unified channel for all stream events.
         const streamOperationId = `${messageId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
 
+        let handoff = null;
         let streamTask = null;
         let streamTaskDetached = false;
         let trajectoryCall = null; // 侧栏「调用轨迹」的记录句柄；记录器自己吞掉一切异常
         const finishStreamTask = () => {
+            handoff?.finish();
+            if (activeHandoffs.get(messageId)?.handle === handoff) activeHandoffs.delete(messageId);
             if (!streamTask) return;
             vcpStreamTasks.finish(event.sender, messageId);
             streamTask = null;
@@ -1411,6 +1432,16 @@ function initialize(mainWindow, context) {
                 return { error: `请求体序列化失败: ${serializeError.message}` };
             }
 
+            if (modelConfig.stream === true && !isGroupCall && context?.admissionToken
+                && context.agentId && context.topicId
+                && !/^sidechat_[0-9]+_[0-9a-f]+$/.test(context.topicId)) {
+                handoff = handoffs.register({
+                    requestId: messageId,
+                    scope: { itemType: 'agent', itemId: context.agentId, topicId: context.topicId },
+                    transport: { url: finalVcpUrl, apiKey: vcpApiKey },
+                });
+                activeHandoffs.set(messageId, { handle: handoff, sender: event.sender });
+            }
             const response = await fetch(finalVcpUrl, {
                 method: 'POST',
                 headers: {
@@ -1481,6 +1512,7 @@ function initialize(mainWindow, context) {
             }
 
             if (modelConfig.stream === true) {
+                handoff?.setSupported(response.headers?.get?.('x-vcp-tool-loop-handoff') === '1');
                 console.log(`VCP响应: 开始流式处理 for ${messageId} on channel ${streamChannel}`);
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
@@ -1610,7 +1642,19 @@ function initialize(mainWindow, context) {
     });
 
 
+    ipcMain.handle('tool-loop:compression-ready', (event, messageId, needed) => {
+        const reservation = activeHandoffs.get(messageId);
+        if (!reservation || reservation.sender !== event.sender) {
+            return { success: false, code: 'STALE_REQUEST' };
+        }
+        if (typeof needed !== 'boolean') return { success: false, code: 'INVALID_DEMAND' };
+        void reservation.handle.setCompression(needed);
+        return { success: true };
+    });
+
     ipcMain.handle('interrupt-vcp-request', async (event, { messageId }) => {
+        const reservation = activeHandoffs.get(messageId);
+        if (reservation?.sender === event.sender) reservation.handle.seal();
         let upstreamAccepted = false;
         try {
             const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');

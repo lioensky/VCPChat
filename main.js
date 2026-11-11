@@ -1760,7 +1760,8 @@ if (!gotTheLock) {
             fileWatcher, // 注入文件监控器
             agentConfigManager,
             settingsManager: appSettingsManager,
-            historyMutationQueue
+            historyMutationQueue,
+            topicAdmission: topicAdmissionHost.service
         });
         domainActivator.register('sideChat', {
             allowSender: sidePaneGuard('sideChat'),

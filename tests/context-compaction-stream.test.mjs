@@ -210,3 +210,43 @@ for (const saveFailure of [false, true]) {
         }
     });
 }
+test('compression ready runs before receipt and coalesces growth without overlapping checks', async () => {
+    const values = [];
+    let release;
+    const consumer = createMainChatStreamConsumer({
+        messageId: 'ready', context: { agentId: 'a', topicId: 't' },
+    }, {
+        append() {},
+        async onStreamContextGrowth(value) {
+            values.push(value);
+            if (values.length === 1) await new Promise(resolve => { release = resolve; });
+        },
+    });
+    consumer.consume({ type: 'chunk', text: 'first' });
+    await tick();
+    assert.equal(values.length, 1);
+    consumer.consume({ type: 'chunk', text: ' second' });
+    consumer.consume({ type: 'chunk', text: ' latest' });
+    await tick();
+    assert.equal(values.length, 1);
+    release();
+    await new Promise(resolve => setTimeout(resolve, 130));
+    assert.equal(values.length, 2);
+    assert.equal(values[1].text, 'first second latest');
+    consumer.consume({ type: 'chunk', text: ' pending' });
+    consumer.dispose();
+    assert.equal(values[1].isActive(), false);
+    await new Promise(resolve => setTimeout(resolve, 130));
+    assert.equal(values.length, 2);
+});
+test('terminal revokes an in-flight compression ready check', async () => {
+    let value;
+    const consumer = createMainChatStreamConsumer({ messageId: 'ready', context: {} }, {
+        append() {}, onStreamContextGrowth(input) { value = input; },
+    });
+    consumer.consume({ type: 'chunk', text: 'partial' });
+    await tick();
+    assert.equal(value.isActive(), true);
+    consumer.consume({ type: 'completed' });
+    assert.equal(value.isActive(), false);
+});
