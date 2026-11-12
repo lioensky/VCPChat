@@ -274,6 +274,37 @@ class JevClient {
         }
     }
 
+    _contextHeaders(state, questions, config) {
+        // Same lightweight weights as context compaction; not a tokenizer count
+        // or a guarantee of the provider's actual budget.
+        const count = value => {
+            let cost = 0;
+            for (const character of JSON.stringify(value)) {
+                cost += character.codePointAt(0) > 127 ? 1 : 0.3;
+            }
+            return Math.ceil(cost);
+        };
+        const total = count({ state, questions });
+        let largest = 0;
+        for (const [key, question] of Object.entries(questions)) {
+            largest = Math.max(largest, count({ state, questions: { [key]: question } }));
+        }
+        if (total > 240000 || largest > 240000) {
+            throw new JevClientError('Jev 上下文估算超过 240000 tokens，已取消请求。', {
+                code: 'JEV_CONTEXT_TOO_LARGE',
+                provider: config.provider
+            });
+        }
+        if (largest <= 32000 && total <= 64000) return {};
+        if (config.provider !== 'typesafe') {
+            throw new JevClientError('当前 Jev provider 未声明支持 TypeSafe 实验长上下文。', {
+                code: 'JEV_LONG_CONTEXT_UNSUPPORTED',
+                provider: config.provider
+            });
+        }
+        return { 'TypeSafe-Danger-Zone-Long-Context': 'true' };
+    }
+
     _buildHeaders(config, apiKey, extraHeaders = {}) {
         const headers = {
             Authorization: `Bearer ${apiKey}`,
@@ -353,7 +384,10 @@ class JevClient {
         };
         // 一次 decide（包括其全部重试）固定使用同一个 Key。
         const apiKey = this._selectApiKey(config.apiKeys);
-        const headers = this._buildHeaders(config, apiKey, options.headers);
+        const headers = this._buildHeaders(config, apiKey, {
+            ...options.headers,
+            ...this._contextHeaders(state, questions, config)
+        });
         const proxyAgent = this._getProxyAgent(config.proxyUrl);
         let lastError = null;
 
