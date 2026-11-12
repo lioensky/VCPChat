@@ -576,6 +576,8 @@ window.GroupRenderer = (() => {
         groupAvatarInput.value = ''; // Clear file input
         mainRendererFunctions.setCroppedFile?.('group', null);
         sequentialSpeakerOrderList?.replaceChildren();
+        memberTagsInputsDiv?.replaceChildren();
+        jevMemberStylesInputs?.replaceChildren();
 
         groupChatModeSelect.value = groupConfig.mode || 'sequential';
         const persistedNaturalSettings = groupConfig.modeSettings?.naturerandom || {};
@@ -596,7 +598,8 @@ window.GroupRenderer = (() => {
 
         const isCurrentLoad = () => generation === groupSettingsGeneration &&
             (!settingsSurface || settingsSurface.isCurrent(viewToken));
-        const membersLoaded = await populateGroupMembersSettings(groupConfig, isCurrentLoad);
+        const settingsScopeKey = `${groupId}:${generation}`;
+        const membersLoaded = await populateGroupMembersSettings(groupConfig, isCurrentLoad, settingsScopeKey);
         if (!isCurrentLoad() || !membersLoaded) return;
         toggleModeSettingsVisibility(groupConfig.mode);
 
@@ -686,13 +689,14 @@ window.GroupRenderer = (() => {
     }
 
 
-    async function populateGroupMembersSettings(groupConfig, isCurrentLoad = () => true) {
+    async function populateGroupMembersSettings(groupConfig, isCurrentLoad = () => true, scopeKey = '') {
         if (!groupMembersListDiv) {
             console.error("groupMembersListDiv not found for populating members.");
             return;
         }
         window.VCPGroupSettingsSlots.message(groupMembersListDiv, '加载Agent列表中...');
         window.VCPGroupSettingsSlots.message(memberTagsInputsDiv, '');
+        window.VCPGroupSettingsSlots.message(jevMemberStylesInputs, '');
 
         try {
             const agents = await electronAPI.getAgents();
@@ -705,19 +709,21 @@ window.GroupRenderer = (() => {
             window.VCPGroupSettingsSlots.renderMemberList({
                 container: groupMembersListDiv,
                 tagsContainer: memberTagsInputsDiv,
+                jevStylesContainer: jevMemberStylesInputs,
+                sequentialList: sequentialSpeakerOrderList,
                 agents,
                 groupConfig,
                 onChange: () => {
-                    updateMemberTagsInputs(groupConfig);
-                    updateSequentialSpeakerOrder(groupConfig);
-                    updateJevMemberStyles(groupConfig);
+                    updateMemberTagsInputs(groupConfig, scopeKey);
+                    updateSequentialSpeakerOrder(groupConfig, scopeKey);
+                    updateJevMemberStyles(groupConfig, scopeKey);
                     updateGroupSectionSummary('identity');
                     updateGroupSectionSummary('mode');
                 }
             });
-            updateMemberTagsInputs(groupConfig); // Initial population of tag inputs
-            updateSequentialSpeakerOrder(groupConfig);
-            updateJevMemberStyles(groupConfig);
+            updateMemberTagsInputs(groupConfig, scopeKey); // Initial population of tag inputs
+            updateSequentialSpeakerOrder(groupConfig, scopeKey);
+            updateJevMemberStyles(groupConfig, scopeKey);
             updateGroupSectionSummary('identity');
             updateGroupSectionSummary('mode');
             return true;
@@ -736,11 +742,13 @@ window.GroupRenderer = (() => {
         return window.VCPGroupSettingsSlots.readSequentialSpeakerOrder(sequentialSpeakerOrderList);
     }
 
-    function updateSequentialSpeakerOrder(groupConfig = {}) {
+    function updateSequentialSpeakerOrder(groupConfig = {}, scopeKey = '') {
         window.VCPGroupSettingsSlots.renderSequentialSpeakerOrder({
             list: sequentialSpeakerOrderList,
+            membersContainer: groupMembersListDiv,
             agents: availableAgentsForGroup,
             groupConfig,
+            scopeKey,
             onChanged: () => {
                 updateGroupSectionSummary('mode');
                 markGroupSettingsDirty();
@@ -748,12 +756,13 @@ window.GroupRenderer = (() => {
         });
     }
 
-    function updateMemberTagsInputs(groupConfig) {
+    function updateMemberTagsInputs(groupConfig, scopeKey = '') {
         window.VCPGroupSettingsSlots.renderMemberTags({
             container: memberTagsInputsDiv,
             membersContainer: groupMembersListDiv,
             agents: availableAgentsForGroup,
             groupConfig,
+            scopeKey,
             onChanged: () => {
                 updateGroupSectionSummary('mode');
                 markGroupSettingsDirty();
@@ -762,12 +771,13 @@ window.GroupRenderer = (() => {
     }
 
 
-    function updateJevMemberStyles(groupConfig = {}) {
+    function updateJevMemberStyles(groupConfig = {}, scopeKey = '') {
         window.VCPGroupSettingsSlots.renderJevMemberStyles({
             container: jevMemberStylesInputs,
             membersContainer: groupMembersListDiv,
             agents: availableAgentsForGroup,
             groupConfig,
+            scopeKey,
             onChanged: () => {
                 updateGroupSectionSummary('mode');
                 markGroupSettingsDirty();
@@ -946,10 +956,14 @@ window.GroupRenderer = (() => {
                 jev: {
                     ...(existingModeSettings.jev || {}),
                     ...formDraft.jev,
-                    memberStyles: {
-                        ...(existingModeSettings.jev?.memberStyles || {}),
-                        ...formDraft.jev.memberStyles
-                    }
+                    memberStyles: Object.fromEntries(
+                        selectedMemberIds.map(agentId => [
+                            agentId,
+                            Object.prototype.hasOwnProperty.call(formDraft.jev.memberStyles, agentId)
+                                ? formDraft.jev.memberStyles[agentId]
+                                : (existingModeSettings.jev?.memberStyles?.[agentId] || '')
+                        ])
+                    )
                 }
             },
             // 保留旧字段供旧版本读取；权威数据位于 modeSettings。
