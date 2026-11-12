@@ -1374,11 +1374,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     editorFindNext.disabled = total === 0;
   }
 
-  function collectEditorSearchMatches(query) {
+  function collectEditorSearchMatches(query, preserveIndex = false) {
     editorSearchMatches = [];
-    editorSearchIndex = -1;
+    if (!preserveIndex) {
+      editorSearchIndex = -1;
+    }
 
     if (!query) {
+      editorSearchIndex = -1;
       updateEditorFindStatus();
       return;
     }
@@ -1394,6 +1397,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       editorSearchMatches.push(matchIndex);
       fromIndex = matchIndex + Math.max(lowerQuery.length, 1);
+    }
+
+    if (editorSearchIndex >= editorSearchMatches.length) {
+      editorSearchIndex = editorSearchMatches.length > 0 ? 0 : -1;
     }
 
     updateEditorFindStatus();
@@ -1426,6 +1433,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (focusEditor) {
       noteContentInput.focus();
       noteContentInput.setSelectionRange(matchStart, matchEnd);
+    } else {
+      noteContentInput.setSelectionRange(matchStart, matchEnd);
     }
 
     updateEditorFindStatus();
@@ -1433,27 +1442,50 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function findEditorMatch(direction = 1) {
     const query = editorFindInput.value;
-    collectEditorSearchMatches(query);
+    if (!query) return;
+
+    const prevIndex = editorSearchIndex;
+    collectEditorSearchMatches(query, true);
 
     if (editorSearchMatches.length === 0) return;
 
     const selectionStart = noteContentInput.selectionStart;
-    if (direction >= 0) {
-      const nextIndex = editorSearchMatches.findIndex(
-        (matchIndex) =>
-          matchIndex >= selectionStart + (editorSearchIndex >= 0 ? 1 : 0)
-      );
-      selectEditorSearchMatch(nextIndex === -1 ? 0 : nextIndex);
-    } else {
-      let previousIndex = editorSearchMatches.length - 1;
-      for (let i = editorSearchMatches.length - 1; i >= 0; i--) {
-        if (editorSearchMatches[i] < selectionStart) {
-          previousIndex = i;
-          break;
-        }
+    let targetIndex;
+
+    // 如果当前选区正好对应上次选中的匹配项，按顺序循环切换到下一个或上一个
+    if (
+      prevIndex >= 0 &&
+      prevIndex < editorSearchMatches.length &&
+      editorSearchMatches[prevIndex] === selectionStart
+    ) {
+      if (direction >= 0) {
+        targetIndex = (prevIndex + 1) % editorSearchMatches.length;
+      } else {
+        targetIndex =
+          (prevIndex - 1 + editorSearchMatches.length) %
+          editorSearchMatches.length;
       }
-      selectEditorSearchMatch(previousIndex);
+    } else {
+      // 否则（光标被手动移动，或初次搜索），基于当前光标位置选择最近的匹配项
+      if (direction >= 0) {
+        const found = editorSearchMatches.findIndex(
+          (matchIndex) => matchIndex >= selectionStart
+        );
+        targetIndex = found === -1 ? 0 : found;
+      } else {
+        let found = -1;
+        for (let i = editorSearchMatches.length - 1; i >= 0; i--) {
+          if (editorSearchMatches[i] < selectionStart) {
+            found = i;
+            break;
+          }
+        }
+        targetIndex =
+          found === -1 ? editorSearchMatches.length - 1 : found;
+      }
     }
+
+    selectEditorSearchMatch(targetIndex);
   }
 
   function openEditorFindBar() {
