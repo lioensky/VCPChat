@@ -84,7 +84,7 @@ for (const streaming of [true, false]) {
             },
             currentSelectedItemRef: { get: () => ({ id: 'a', type: 'agent' }) },
             currentTopicIdRef: { get: () => 't' },
-            currentChatHistoryRef: { get: () => history, set: value => { history = value; } },
+            mainHistoryRef: { get: () => history, set: value => { history = value; } },
             mainChatAdapter: {
                 async startStream(value) {
                     calls.push('stream-thinking');

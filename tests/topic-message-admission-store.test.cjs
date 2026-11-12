@@ -57,72 +57,38 @@ test('v2 atomically preserves frozen messages and standalone leases; v1 migrates
     assert.deepEqual(await fs.readdir(root), ['journal.json']);
 });
 
-test('central v2 recovery converts standalone ownership to durable diagnostics without execution', async t => {
+test('disk restart clears interrupted ownership and staging without history replay', async t => {
     const { TopicMessageAdmission } = require('../modules/services/topicMessageAdmission');
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-lease-recover-'));
-    t.after(() => fs.remove(root));
-    const file = path.join(root, 'journal.json');
-    const store = createTopicMessageAdmissionStore(file);
-    const scope = { itemType: 'group', itemId: 'g', topicId: 't' };
-    await store.save([], [{ scope, token: 'interrupted', acquiredAt: 100 }]);
-    const service = new TopicMessageAdmission({
-        store, validate: async () => {},
-        commit: async () => assert.fail('recovery must not append messages'),
-        advance: async () => assert.fail('recovery must not generate'),
-    });
-    t.after(() => service.dispose());
-    await service.initialize();
-    assert.equal(service.leases.size, 0);
-    const entry = service.snapshot(scope)[0];
-    assert.equal(entry.kind, 'lease-diagnostic');
-    assert.equal(entry.state, 'uncertain');
-    assert.equal(entry.leaseToken, 'interrupted');
-    assert.equal((await service.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
-    const disk = await store.loadState();
-    assert.deepEqual(disk.standaloneLeases, []);
-    assert.equal(disk.entries[0].leaseToken, 'interrupted');
-    await service.submit({ scope, message: { id: 'later', role: 'user', content: 'wait' } });
-    await service.tail;
-    assert.equal(service.snapshot(scope).length, 2);
-    assert.equal((await store.loadState()).entries[0].state, 'uncertain');
-});
-
-test('actual acquisition survives disk restart without failure reporting and reconciles exact terminal', async t => {
-    const { TopicMessageAdmission } = require('../modules/services/topicMessageAdmission');
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-acquired-restart-'));
     t.after(() => fs.remove(root));
     const store = createTopicMessageAdmissionStore(path.join(root, 'journal.json'));
     const scope = { itemType: 'agent', itemId: 'a', topicId: 't' };
     const other = { ...scope, topicId: 'other' };
     const create = () => new TopicMessageAdmission({
         store, validate: async () => {},
-        commit: async () => assert.fail('no recovery chat writes'),
-        advance: async () => assert.fail('no recovery generation'),
-        verifyTerminal: async (target, token) => ({
-            verified: target.topicId === 't' && token === 'actual-owner',
-            messageId: 'durable-terminal',
-        }),
+        commit: async () => assert.fail('recovery must not append messages'),
+        advance: async () => assert.fail('recovery must not generate'),
     });
     const first = create();
-    t.after(() => first.dispose());
     await first.initialize();
-    await first.acquire(scope, 'actual-owner');
-    await first.submit({ scope: other, message: { id: 'other-message', role: 'assistant', content: 'other' } });
-    await first.tail;
-    assert.equal((await store.loadState()).standaloneLeases[0].token, 'actual-owner');
-    // No reportUncertain/release: simulate the ownership journal left by process exit.
+    await first.acquire(scope, 'interrupted');
+    await first.submit({ scope, message: { id: 'pending', role: 'user' } });
     await first.dispose();
+    const disk = await store.loadState();
+    assert.equal(disk.standaloneLeases[0].token, 'interrupted');
+    await store.save([...disk.entries, {
+        entryId: 'other-entry', scope: other, message: { id: 'other-message', role: 'user' },
+        state: 'queued',
+    }], disk.standaloneLeases);
     const recovered = create();
     t.after(() => recovered.dispose());
     await recovered.initialize();
-    const diagnostic = recovered.snapshot(scope)[0];
-    assert.equal(diagnostic.state, 'uncertain');
-    assert.equal(diagnostic.leaseToken, 'actual-owner');
-    assert.equal(recovered.leases.size, 0);
-    assert.equal((await recovered.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
-    assert.equal((await recovered.reconcile(scope, diagnostic.entryId)).messageId, 'durable-terminal');
     assert.deepEqual(recovered.snapshot(scope), []);
-    const disk = await store.loadState();
-    assert.deepEqual(disk.standaloneLeases, []);
-    assert.equal(disk.entries.some(entry => entry.leaseToken === 'actual-owner'), false);
+    assert.equal(recovered.snapshot(other)[0].state, 'recovered');
+    assert.equal(recovered.leases.size, 0);
+    const cleaned = await store.loadState();
+    assert.deepEqual(cleaned.standaloneLeases, []);
+    assert.equal(cleaned.entries.length, 1);
+    assert.equal(cleaned.entries[0].scope.topicId, 'other');
+    assert.equal((await recovered.acquire(scope, 'retry')).success, true);
 });

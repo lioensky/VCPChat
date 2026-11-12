@@ -58,22 +58,42 @@ function createStreamCapabilities(root, services) {
                 : null;
             services.notifySendStateChanged?.({ ...value, event });
         },
-        onSettled(value) {
-            // 最终 outcome 发布后的幂等兜底，覆盖持久化失败等异常路径。
+        async onSettled(value) {
             services.chatManager?.abandonStreamContextCompaction?.(value);
             services.notifySendStateChanged?.(value);
+            if (value.event?.type !== 'failed') return;
+            const context = value.context;
+            if (!context?.admissionToken || !context.agentId || !context.topicId) return;
+            try {
+                const api = ownerDocument.defaultView?.chatAPI || ownerDocument.defaultView?.electronAPI;
+                const receipt = await api.topicAdmissionUncertain({
+                    itemType: 'agent', itemId: context.agentId, topicId: context.topicId,
+                }, context.admissionToken, '流式生成失败');
+                if (!receipt?.success && receipt?.code !== 'STALE_LEASE') {
+                    throw new Error(receipt?.error || receipt?.code || '失败清理未确认');
+                }
+            } catch (error) { reportError('[MainChatSurfaceAdapter] failure cleanup failed', error); }
         },
         reportError,
         async afterPersist({ terminal, finalized, context, messageId }) {
             const finalizedContext = finalized?.context || context;
             const finalizedContent = finalized?.content || terminal.fullResponse || '';
-            if (services.chatManager?.hasStreamAdmissionRelay?.(messageId)) {
+            if (terminal.kind === 'failed' && finalizedContext?.admissionToken) {
+                services.chatManager?.cancelStreamAdmissionRelay?.(messageId);
+                const api = ownerDocument.defaultView?.chatAPI || ownerDocument.defaultView?.electronAPI;
+                const receipt = await api.topicAdmissionUncertain({
+                    itemType: 'agent', itemId: finalizedContext.agentId, topicId: finalizedContext.topicId,
+                }, finalizedContext.admissionToken, terminal.error?.message || terminal.error || '流式生成失败');
+                if (!receipt?.success && receipt?.code !== 'STALE_LEASE') {
+                    throw new Error(receipt?.error || receipt?.code || '失败清理未确认');
+                }
+            } else if (services.chatManager?.hasStreamAdmissionRelay?.(messageId)) {
                 await services.chatManager.finishStreamAdmissionRelay({
                     messageId, context: finalizedContext,
                 });
                 return;
             }
-            if (finalizedContext?.admissionToken) {
+            if (terminal.kind !== 'failed' && finalizedContext?.admissionToken) {
                 const api = ownerDocument.defaultView?.chatAPI || ownerDocument.defaultView?.electronAPI;
                 const release = await api.topicAdmissionRelease({
                     itemType: 'agent', itemId: finalizedContext.agentId, topicId: finalizedContext.topicId,

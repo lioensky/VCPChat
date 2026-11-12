@@ -145,54 +145,37 @@ test('automatic consecutive rounds stop at local budget', async () => {
     assert.equal(advances.length, 1);
 });
 
-test('committed batch survives restart without duplicate commit and cannot be withdrawn', async () => {
+test('interrupted committed batch is discarded on restart without replay', async () => {
     const first = await fixture();
     await first.service.submit({ scope, message: msg('persisted'), triggerPolicy: 'reply' });
     await tick();
-    assert.equal(first.advances.length, 1);
-    const entry = first.service.snapshot()[0];
-    assert.equal(entry.committed, true);
     const recovered = await fixture({ saved: first.disk() });
-    assert.equal((await recovered.service.withdraw(scope, entry.entryId)).code, 'ALREADY_COMMITTED');
-    assert.equal(recovered.service.snapshot(scope)[0].state, 'uncertain');
-    assert.equal((await recovered.service.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
-    await tick();
+    assert.deepEqual(recovered.service.snapshot(scope), []);
     assert.equal(recovered.history.length, 0);
     assert.equal(recovered.advances.length, 0);
-    assert.equal(recovered.service.snapshot(scope)[0].leaseToken, entry.leaseToken);
-    assert.match(recovered.service.snapshot(scope)[0].error, /终稿与工具执行结果待核实/);
+    assert.equal((await recovered.service.acquire(scope, 'retry')).success, true);
 });
 
-test('rejected advance is visible and resumes only explicitly', async () => {
+test('rejected advance clears staging without replaying committed history', async () => {
     const { service, history } = await fixture({
         advance: async () => { throw new Error('renderer unavailable'); },
     });
     await service.submit({ scope, message: msg('a'), triggerPolicy: 'reply' });
     await tick();
-    assert.equal(service.snapshot()[0].state, 'failed');
-    assert.equal(service.snapshot()[0].committed, true);
+    assert.deepEqual(service.snapshot(), []);
     assert.equal(history.length, 1);
-    await tick();
-    assert.equal(history.length, 1);
-    assert.equal((await service.resume(scope)).success, true);
-    await tick();
-    assert.equal(history.length, 1);
+    assert.equal((await service.acquire(scope, 'retry')).success, true);
 });
 
-test('explicit startup failure pauses batch; stale failure cannot revoke a resumed round', async () => {
-    const { service, advances, history } = await fixture();
+test('explicit failure clears topic; stale failure cannot revoke a new round', async () => {
+    const { service, advances } = await fixture();
     await service.submit({ scope, message: msg('a'), triggerPolicy: 'reply' });
     await tick();
     const oldToken = advances[0].token;
-    assert.equal((await service.fail(scope, oldToken, 'startup failed')).success, true);
-    assert.equal(service.snapshot()[0].state, 'failed');
-    await service.submit({ scope, message: msg('later') });
+    assert.equal((await service.fail(scope, oldToken, 'startup failed')).cleared, true);
+    assert.deepEqual(service.snapshot(), []);
+    await service.submit({ scope, message: msg('later'), triggerPolicy: 'reply' });
     await tick();
-    assert.equal(history.length, 1);
-    assert.equal(advances.length, 1);
-    await service.resume(scope);
-    await tick();
-    assert.equal(advances.length, 2);
     const newToken = advances[1].token;
     assert.notEqual(newToken, oldToken);
     assert.equal((await service.fail(scope, oldToken, 'late failure')).code, 'STALE_LEASE');
@@ -455,158 +438,87 @@ test('failed handoff restoration stays occupied and restarts paused', async () =
     assert.equal(service.snapshot(scope)[0].leaseToken, token);
     assert.equal((await service.acquire(scope, 'intruder')).code, 'TOPIC_BUSY');
     const recovered = await fixture({ saved: disk });
-    assert.equal(recovered.service.snapshot(scope)[0].state, 'uncertain');
+    assert.deepEqual(recovered.service.snapshot(scope), []);
     assert.equal(recovered.advances.length, 0);
-    await assert.rejects(recovered.service.acquireWhenIdle(scope, 'restart'),
-        error => error.code === 'ADMISSION_PAUSED');
+    assert.equal((await recovered.service.acquireWhenIdle(scope, 'restart')).success, true);
     phase = 'normal';
     await service.release(scope, token);
 });
-test('uncertain execution is durable and visible without releasing ownership or allowing retry', async () => {
-    const { service, advances, disk } = await fixture();
-    await service.submit({ scope, message: msg('human', 'user'), triggerPolicy: 'reply' });
+test('failure drops all topic staging, preserves history and isolates other ownership', async () => {
+    const { service, history, advances, disk } = await fixture();
+    await service.acquire(scope, 'failed');
+    await service.acquire(other, 'healthy');
+    await service.submit({ scope, message: msg('waiting-human', 'user'), triggerPolicy: 'reply' });
+    await service.submit({ scope, message: msg('waiting-letter') });
+    await service.submit({ scope: other, message: msg('other-letter') });
+    const waiting = service.acquireWhenIdle(scope, 'waiting-speaker');
+    const rejected = assert.rejects(waiting, error => error.code === 'ADMISSION_FAILED');
     await tick();
-    const token = advances[0].token;
-    assert.equal((await service.reportUncertain(scope, token, new Error('save unknown'))).retained, true);
-    assert.equal(service.snapshot(scope)[0].state, 'uncertain');
-    assert.equal(disk()[0].error, 'save unknown');
-    assert.equal((await service.resume(scope)).code, 'TOPIC_BUSY');
-    assert.equal((await service.acquire(scope, 'another')).code, 'TOPIC_BUSY');
-    assert.equal((await service.withdraw(scope, service.snapshot(scope)[0].entryId)).code, 'ALREADY_COMMITTED');
-    assert.equal((await service.release(scope, token, { saved: true })).success, true);
-    assert.equal(service.snapshot(scope).length, 0);
+    assert.equal((await service.reportUncertain(scope, 'failed', 'terminated')).cleared, true);
+    await rejected;
+    await tick();
+    assert.deepEqual(service.snapshot(scope), []);
+    assert.equal(disk().some(entry => entry.scope.topicId === scope.topicId), false);
+    assert.equal(history.length, 0);
+    assert.equal(advances.length, 0);
+    assert.equal((await service.acquire(other, 'intruder')).code, 'TOPIC_BUSY');
+    assert.equal(service.snapshot(other).length, 1);
+    assert.equal((await service.acquire(scope, 'retry')).success, true);
+    assert.equal((await service.reportUncertain(scope, 'failed', 'late')).code, 'STALE_LEASE');
+    assert.equal((await service.acquire(scope, 'intruder')).code, 'TOPIC_BUSY');
 });
 
-test('late uncertain report cannot alter a transferred batch', async () => {
+test('late failure cannot alter a transferred batch', async () => {
     const { service, advances } = await fixture();
     await service.submit({ scope, message: msg('human', 'user'), triggerPolicy: 'reply' });
     await tick();
     const token = advances[0].token;
     await service.transfer(scope, token, 'next-owner');
-    assert.equal((await service.reportUncertain(scope, token, 'late failure')).code, 'STALE_LEASE');
-    assert.equal(service.snapshot(scope)[0].state, 'advancing');
+    assert.equal((await service.reportUncertain(scope, token, 'late')).code, 'STALE_LEASE');
     assert.equal(service.snapshot(scope)[0].leaseToken, 'next-owner');
-    await service.release(scope, 'next-owner');
 });
 
-test('uncertain terminal survives repeated restarts without offering generation retry', async () => {
-    const first = await fixture();
-    await first.service.submit({ scope, message: msg('human', 'user'), triggerPolicy: 'reply' });
-    await tick();
-    await first.service.reportUncertain(scope, first.advances[0].token, 'terminal save unknown');
-    const recovered = await fixture({ saved: first.disk() });
-    assert.equal(recovered.service.snapshot(scope)[0].state, 'uncertain');
-    assert.equal(recovered.service.snapshot(scope)[0].error, 'terminal save unknown');
-    assert.equal((await recovered.service.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
-    await assert.rejects(recovered.service.acquireWhenIdle(scope, 'new-generation'),
-        error => error.code === 'ADMISSION_PAUSED');
-    const entry = recovered.service.snapshot(scope)[0];
-    assert.equal((await recovered.service.withdraw(scope, entry.entryId)).code, 'ALREADY_COMMITTED');
-    await recovered.service.submit({ scope, message: msg('later') });
-    await tick();
-    assert.equal(recovered.advances.length, 0);
-    assert.equal(recovered.history.length, 0);
-    const again = await fixture({ saved: recovered.disk() });
-    assert.equal(again.service.snapshot(scope)[0].state, 'uncertain');
-    assert.equal((await again.service.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
-    assert.equal(again.advances.length, 0);
-});
+for (const state of ['advancing', 'uncertain', 'failed']) {
+    test(`startup clears legacy ${state} and same-topic queued messages only`, async () => {
+        const entry = { entryId: 'old', scope, message: msg('old'), state,
+            committed: true, leaseToken: 'old-token' };
+        const queued = { entryId: 'queued', scope, message: msg('queued'), state: 'queued' };
+        const untouched = { entryId: 'other', scope: other, message: msg('other'), state: 'queued' };
+        const recovered = await fixture({ saved: [entry, queued, untouched] });
+        assert.deepEqual(recovered.service.snapshot(scope), []);
+        assert.equal(recovered.service.snapshot(other)[0].state, 'recovered');
+        assert.equal(recovered.disk().length, 1);
+        assert.equal(recovered.history.length, 0);
+        assert.equal(recovered.advances.length, 0);
+        assert.equal((await recovered.service.acquire(scope, 'retry')).success, true);
+        const again = await fixture({ saved: recovered.disk() });
+        assert.deepEqual(again.service.snapshot(scope), []);
+    });
+}
 
-test('standalone lease failure journals diagnostics without inserting a chat message', async () => {
-    const first = await fixture();
-    await first.service.acquire(scope, 'standalone');
-    await first.service.submit({ scope, message: msg('waiting') });
-    await first.service.reportUncertain(scope, 'standalone', 'independent save unknown');
-    await first.service.reportUncertain(scope, 'standalone', 'updated diagnosis');
-    const diagnostics = first.service.snapshot(scope).filter(entry => entry.kind === 'lease-diagnostic');
-    assert.equal(diagnostics.length, 1);
-    assert.equal(diagnostics[0].error, 'updated diagnosis');
-    assert.equal(first.history.length, 0);
-    const recovered = await fixture({ saved: first.disk() });
-    assert.equal((await recovered.service.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
-    assert.equal(recovered.advances.length, 0);
-    assert.equal((await recovered.service.withdraw(scope, diagnostics[0].entryId)).code, 'ALREADY_COMMITTED');
-    await first.service.release(scope, 'standalone', { saved: true });
-    await tick();
-    assert.deepEqual(first.history.map(item => item.message.id), ['waiting']);
-    assert.equal(first.service.snapshot(scope).some(entry => entry.kind === 'lease-diagnostic'), false);
-});
-
-test('recovered standalone diagnosis blocks queued human messages before its FIFO position', async () => {
-    const first = await fixture();
-    await first.service.acquire(scope, 'standalone');
-    await first.service.submit({ scope, message: msg('waiting-human', 'user'), triggerPolicy: 'reply' });
-    await first.service.reportUncertain(scope, 'standalone', 'previous execution unknown');
-    const recovered = await fixture({ saved: first.disk() });
-    await recovered.service.submit({ scope, message: msg('new-arrival'), triggerPolicy: 'reply' });
-    await recovered.service.submit({ scope: other, message: msg('other-topic') });
-    await tick();
-    assert.equal(recovered.advances.length, 0);
-    assert.deepEqual(recovered.history.map(item => item.message.id), ['other-topic']);
-    assert.equal(recovered.service.snapshot(scope).filter(entry => entry.kind !== 'lease-diagnostic')
-        .some(entry => entry.commitStarted), false);
-    assert.equal((await recovered.service.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
-});
-
-test('reconciliation requires evidence and idle ownership, then pauses remaining queue', async () => {
-    const first = await fixture();
-    await first.service.submit({ scope, message: msg('human', 'user'), triggerPolicy: 'reply' });
-    await tick();
-    const token = first.advances[0].token;
-    const entryId = first.service.snapshot(scope)[0].entryId;
-    await first.service.reportUncertain(scope, token, 'unknown');
-    assert.equal((await first.service.reconcile(scope, entryId)).code, 'TOPIC_BUSY');
-    let verified = false;
-    const checks = [];
-    const recovered = await fixture({
-        saved: first.disk(),
-        verifyTerminal: async (target, lease) => {
-            checks.push({ target, lease });
-            return verified ? { verified: true, messageId: 'saved-terminal' } : { verified: false };
+test('failed cleanup journal still clears runtime ownership and rejects waiters', async () => {
+    let disk = [];
+    let rejectSave = false;
+    const { service } = await fixture({ store: {
+        load: async () => [],
+        save: async next => {
+            if (rejectSave) throw new Error('disk offline');
+            disk = structuredClone(next);
         },
-    });
-    assert.equal((await recovered.service.reconcile(other, entryId)).code, 'NOT_UNCONFIRMED');
-    assert.equal((await recovered.service.reconcile(scope, entryId)).code, 'TERMINAL_UNCONFIRMED');
-    await recovered.service.submit({ scope, message: msg('queued-human', 'user'), triggerPolicy: 'reply' });
-    verified = true;
-    const result = await recovered.service.reconcile(scope, entryId);
-    assert.equal(result.messageId, 'saved-terminal');
-    assert.equal(checks.at(-1).lease, token);
-    assert.deepEqual(checks.at(-1).target, scope);
-    assert.equal(recovered.service.snapshot(scope)[0].state, 'recovered');
-    await recovered.service.submit({ scope, message: msg('later') });
+    } });
+    await service.acquire(scope, 'failed');
+    await service.submit({ scope, message: msg('pending') });
+    const waiting = service.acquireWhenIdle(scope, 'waiting');
+    const rejected = assert.rejects(waiting, error => error.code === 'ADMISSION_FAILED');
     await tick();
-    assert.equal(recovered.advances.length, 0);
-    assert.equal(recovered.history.length, 0);
-    assert.equal((await recovered.service.reconcile(scope, entryId)).code, 'NOT_UNCONFIRMED');
-    await recovered.service.resume(scope);
-    await tick();
-    assert.equal(recovered.advances.length, 1);
-    assert.deepEqual(recovered.history.map(item => item.message.id), ['queued-human']);
-});
-
-test('reconciliation verifier and journal failures cannot discard an uncertain batch', async () => {
-    const saved = [{
-        entryId: 'uncertain-entry', scope, message: msg('human', 'user'),
-        state: 'uncertain', committed: true, commitStarted: true, leaseToken: 'lease',
-    }];
-    const unavailable = await fixture({ saved });
-    assert.equal((await unavailable.service.reconcile(scope, 'uncertain-entry')).code, 'VERIFICATION_UNAVAILABLE');
-    const failed = await fixture({
-        saved,
-        verifyTerminal: async () => { throw new Error('history unavailable'); },
-    });
-    await assert.rejects(failed.service.reconcile(scope, 'uncertain-entry'), /history unavailable/);
-    assert.equal(failed.service.snapshot(scope).length, 1);
-    const journal = await fixture({
-        store: {
-            load: async () => structuredClone(saved),
-            save: async () => { throw new Error('journal unavailable'); },
-        },
-        verifyTerminal: async () => ({ verified: true, messageId: 'terminal' }),
-    });
-    await assert.rejects(journal.service.reconcile(scope, 'uncertain-entry'), /journal unavailable/);
-    assert.equal(journal.service.snapshot(scope)[0].state, 'uncertain');
+    rejectSave = true;
+    await assert.rejects(service.reportUncertain(scope, 'failed', 'terminated'), /disk offline/);
+    await rejected;
+    assert.deepEqual(service.snapshot(scope), []);
+    assert.equal(service.leases.size, 0);
+    rejectSave = false;
+    assert.equal((await service.acquire(scope, 'retry')).success, true);
+    assert.equal(disk.length, 0);
 });
 
 test('admission records real deferral separately from durable acceptance', async () => {

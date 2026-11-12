@@ -51,11 +51,11 @@ test('host IPC enforces sender, commits in admission order and acknowledges adva
     assert.equal((await invoke('ack', advance.token)).code, 'STALE_REQUEST');
     assert.equal((await handlers.get('topic-admission:uncertain')({ sender: {} }, scope, advance.token, 'disk full')).code, 'FORBIDDEN');
     assert.equal((await invoke('uncertain', scope, 'old-token', 'late failure')).code, 'STALE_LEASE');
-    assert.equal((await invoke('uncertain', scope, advance.token, 'disk full')).retained, true);
-    assert.equal((await invoke('list', scope)).entries[0].state, 'uncertain');
-    assert.equal((await invoke('acquire', scope, 'intruder')).code, 'TOPIC_BUSY');
-    assert.equal((await invoke('resume', scope)).code, 'TOPIC_BUSY');
-    assert.equal((await invoke('release', scope, advance.token)).success, true);
+    assert.equal((await invoke('uncertain', scope, advance.token, 'disk full')).cleared, true);
+    assert.deepEqual((await invoke('list', scope)).entries, []);
+    assert.equal((await invoke('acquire', scope, 'retry')).success, true);
+    assert.equal((await invoke('uncertain', scope, advance.token, 'late')).code, 'STALE_LEASE');
+    assert.equal((await invoke('release', scope, 'retry')).success, true);
     assert.deepEqual((await invoke('list')).entries, []);
 });
 for (const connected of [false, true]) {
@@ -86,7 +86,7 @@ for (const connected of [false, true]) {
         });
         const deadline = Date.now() + 3000;
         while (connected ? !(calls.length && !host.service.snapshot().length)
-            : host.service.snapshot()[0]?.state !== 'failed') {
+            : host.service.snapshot().length || host.service.leases.size) {
             assert.ok(Date.now() < deadline, 'group routing must reach its terminal admission state');
             await new Promise(resolve => setTimeout(resolve, 5));
         }
@@ -96,8 +96,8 @@ for (const connected of [false, true]) {
             assert.equal(calls.length, 1);
             assert.deepEqual(host.service.snapshot(), []);
         } else {
-            assert.equal(host.service.snapshot()[0].state, 'failed');
-            assert.match(host.service.snapshot()[0].error, /群聊推进运行时尚未接通/);
+            assert.deepEqual(host.service.snapshot(), []);
+            assert.equal((await host.service.acquire(scope, 'retry')).success, true);
         }
     });
 }
@@ -174,18 +174,14 @@ for (const mode of ['missing', 'wrong-token', 'thinking', 'ambiguous', 'valid'])
         assert.equal((await handler({ sender: contents }, { ...scope, topicId: 'wrong' }, 'batch')).code,
             'NOT_UNCONFIRMED');
         const result = await handler({ sender: contents }, scope, 'batch');
-        assert.equal(result.success, mode === 'valid');
-        if (mode === 'valid') {
-            assert.equal(result.messageId, 'terminal');
-            assert.deepEqual(host.service.snapshot(scope), []);
-        } else {
-            assert.equal(result.code, 'TERMINAL_UNCONFIRMED');
-            assert.equal(host.service.snapshot(scope)[0].state, 'uncertain');
-        }
+        assert.equal(result.code, 'NOT_UNCONFIRMED');
+        assert.deepEqual(host.service.snapshot(scope), []);
+        assert.equal((await host.service.acquire(scope, 'retry')).success, true);
+        await host.service.release(scope, 'retry');
         assert.deepEqual(await queue.read(scope), history);
         assert.equal(events.some(event => event.channel === 'topic-admission:advance'), false);
         const journal = await fs.readJson(path.join(root, 'TopicMessageQueue', 'pending.json'));
-        assert.equal(journal.entries.length, mode === 'valid' ? 0 : 1);
+        assert.equal(journal.entries.length, 0);
     });
 }
 test('relay IPC admits silent letters on disk and dispatches exactly one continuation under main-window authority', async t => {

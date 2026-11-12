@@ -1274,7 +1274,7 @@ mainChatSettingsPresentationOwner.configureStartup({
             };
             const removeThinking = async () => {
                 if (placeholder && isVisible()
-                    && currentChatHistoryRef.get().some(message => message.id === placeholder.id && message.isThinking)) {
+                    && mainHistoryRef.get().some(message => message.id === placeholder.id && message.isThinking)) {
                     await messageRenderer.removeMessageById(placeholder.id, false);
                 }
             };
@@ -1294,7 +1294,7 @@ mainChatSettingsPresentationOwner.configureStartup({
                         if (streaming) {
                             await mainChatAdapter.startStream({ ...placeholder, streamOperationId: placeholder.id });
                         } else if (isVisible()) {
-                            currentChatHistoryRef.set([...currentChatHistoryRef.get(), placeholder]);
+                            mainHistoryRef.set([...mainHistoryRef.get(), placeholder]);
                             const item = await messageRenderer.renderMessage(placeholder);
                             if (!isVisible()) item?.remove?.();
                         }
