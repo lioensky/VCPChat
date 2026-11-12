@@ -650,11 +650,34 @@ class SettingsManager extends EventEmitter {
         }, 5000);
     }
 
+    _resolveWatchDir(dirPath) {
+        try {
+            if (typeof nodeFs.realpathSync?.native === 'function') {
+                return nodeFs.realpathSync.native(dirPath);
+            }
+            if (typeof nodeFs.realpathSync === 'function') {
+                return nodeFs.realpathSync(dirPath);
+            }
+        } catch {
+            // Fall back to the original path if canonical resolution fails.
+        }
+        return dirPath;
+    }
+
     startExternalWatcher() {
         if (this.externalWatcher || !nodeFs.watch) return;
         try {
-            this.externalWatcher = nodeFs.watch(path.dirname(this.settingsPath), (_event, filename) => {
-                if (filename && String(filename) !== path.basename(this.settingsPath)) return;
+            const watchDir = this._resolveWatchDir(path.dirname(this.settingsPath));
+            const targetBase = process.platform === 'win32'
+                ? path.basename(this.settingsPath).toLowerCase()
+                : path.basename(this.settingsPath);
+            const watcher = nodeFs.watch(watchDir, (_event, filename) => {
+                if (filename) {
+                    const normalized = process.platform === 'win32'
+                        ? String(filename).toLowerCase()
+                        : String(filename);
+                    if (normalized !== targetBase) return;
+                }
                 clearTimeout(this.externalWatchTimer);
                 this.externalWatchTimer = setTimeout(async () => {
                     try {
@@ -674,6 +697,10 @@ class SettingsManager extends EventEmitter {
                     }
                 }, 80);
             });
+            watcher.on?.('error', (error) => {
+                this.emit('settings-external-error', error);
+            });
+            this.externalWatcher = watcher;
         } catch (error) {
             console.warn('Unable to watch settings file:', error?.message || error);
         }
@@ -682,8 +709,17 @@ class SettingsManager extends EventEmitter {
     stopExternalWatcher() {
         clearTimeout(this.externalWatchTimer);
         this.externalWatchTimer = null;
-        this.externalWatcher?.close?.();
-        this.externalWatcher = null;
+        if (this.externalWatcher) {
+            try {
+                this.externalWatcher.removeAllListeners?.('change');
+                this.externalWatcher.removeAllListeners?.('error');
+                this.externalWatcher.on?.('error', () => {});
+                this.externalWatcher.close?.();
+            } catch {
+                // Ignore watcher close failures during teardown.
+            }
+            this.externalWatcher = null;
+        }
     }
 
     // 自动备份机制

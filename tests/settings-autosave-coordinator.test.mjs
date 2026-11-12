@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -330,5 +332,55 @@ test('settings manager emits an external update after a file edit', async () => 
     } finally {
         manager.stopExternalWatcher();
         await fs.rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('settings manager canonicalizes Windows 8.3 short paths before starting fs.watch', async () => {
+    const longDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vcp-settings-long-8dot3-watch-dir-'));
+    let watchDirInput = longDir;
+    if (process.platform === 'win32') {
+        try {
+            const candidate = execSync(
+                `for %I in ("${longDir}") do @echo %~sI`,
+                { shell: 'cmd.exe', encoding: 'utf8' }
+            ).trim();
+            if (candidate && fsSync.existsSync(candidate)) {
+                watchDirInput = candidate;
+            }
+        } catch {
+            watchDirInput = longDir;
+        }
+    }
+
+    const watchedDirs = [];
+    const originalWatch = fsSync.watch;
+    fsSync.watch = function patchedWatch(targetDir, ...rest) {
+        watchedDirs.push(String(targetDir));
+        return originalWatch.call(this, targetDir, ...rest);
+    };
+
+    const filename = path.join(watchDirInput, 'settings.json');
+    const manager = new SettingsManager(filename);
+    try {
+        await manager.writeSettings(await manager.readSettings());
+        let resolveReceived;
+        const received = new Promise(resolve => { resolveReceived = resolve; });
+        manager.once('settings-external-updated', resolveReceived);
+        manager.startExternalWatcher();
+
+        const canonicalDir = fsSync.realpathSync.native(longDir);
+        assert.equal(watchedDirs.includes(canonicalDir), true);
+        for (const dir of watchedDirs) {
+            assert.equal(dir.includes('~'), false, `watched directory should not retain 8.3 short segment: ${dir}`);
+        }
+
+        const current = await manager.readSettings({ fresh: true });
+        await fs.writeFile(filename, JSON.stringify({ ...current, userName: 'ShortPathExternal' }));
+        const payload = await Promise.race([received, new Promise(resolve => setTimeout(() => resolve(null), 2000))]);
+        assert.equal(payload?.settings?.userName, 'ShortPathExternal');
+    } finally {
+        fsSync.watch = originalWatch;
+        manager.stopExternalWatcher();
+        await fs.rm(longDir, { recursive: true, force: true });
     }
 });
