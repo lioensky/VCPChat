@@ -772,9 +772,25 @@ mainChatSettingsPresentationOwner.configureStartup({
                     ? { ...selectedItem, config: nextConfig }
                     : { ...selectedItem, ...nextConfig });
             }
-            if (document.getElementById('tabContentTopics').classList.contains('active')) {
-                await window.topicListManager.loadTopicList();
-                if (!lifecycle.isActive()) return;
+            const topicsTabEl = document.getElementById('tabContentTopics');
+            const existingRow = topicsTabEl?.querySelector?.(`.topic-item[data-item-type="group"][data-item-id="${groupId}"][data-topic-id="${topicId}"]`);
+            if (existingRow) {
+                if (existingRow.__topicData && typeof existingRow.__topicData === 'object') {
+                    existingRow.__topicData.name = newTitle;
+                }
+                const isInlineEditing = Boolean(existingRow.querySelector('.topic-title-edit-input'));
+                if (!isInlineEditing) {
+                    const titleEl = existingRow.querySelector('.topic-title-display, .topic-name');
+                    if (titleEl) titleEl.textContent = newTitle;
+                    const avatarEl = existingRow.querySelector('img.avatar');
+                    if (avatarEl && selectedItem.name) avatarEl.alt = `${selectedItem.name} - ${newTitle}`;
+                }
+            } else if (topicsTabEl && (topicsTabEl.classList.contains('active') || topicsTabEl.classList.contains('compact-drawer-open'))) {
+                const isDragging = Boolean(topicsTabEl.querySelector('.sortable-drag-topic, .sortable-chosen-topic'));
+                if (!isDragging) {
+                    await window.topicListManager?.loadTopicList?.();
+                    if (!lifecycle.isActive()) return;
+                }
             }
         },
     });

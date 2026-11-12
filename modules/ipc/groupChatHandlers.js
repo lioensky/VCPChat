@@ -73,11 +73,18 @@ function initialize(mainWindow, context) {
         return { error: `Agent config for ${agentId} not found.` };
     };
 
+    const notifyGroupTopicUpdated = payload => {
+        if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('vcp-group-topic-updated', payload);
+        }
+    };
+
     groupChat.initializeRuntimeServices({
         historyMutationQueue,
         topicAdmission,
         jevService,
-        getAgentConfigById
+        getAgentConfigById,
+        notifyTopicUpdated: notifyGroupTopicUpdated
     });
 
     if (gameService) {

@@ -25,7 +25,9 @@ class JevGroupSessionOrchestrator {
         logger = console,
         random = Math.random,
         finalizeAdmission = null,
-        transferWaitingAdmission = null
+        transferWaitingAdmission = null,
+        onAgentTurnCompleted = null,
+        onSessionSettled = null
     } = {}) {
         if (!jevService) throw new TypeError('JevGroupSessionOrchestrator requires jevService.');
         if (typeof loadGroupConfig !== 'function') throw new TypeError('loadGroupConfig is required.');
@@ -42,6 +44,8 @@ class JevGroupSessionOrchestrator {
         this.random = random;
         this.finalizeAdmission = finalizeAdmission;
         this.transferWaitingAdmission = transferWaitingAdmission;
+        this.onAgentTurnCompleted = typeof onAgentTurnCompleted === 'function' ? onAgentTurnCompleted : null;
+        this.onSessionSettled = typeof onSessionSettled === 'function' ? onSessionSettled : null;
         this.sessions = new Map();
     }
 
@@ -317,9 +321,17 @@ class JevGroupSessionOrchestrator {
                 session.dirty = false;
                 session.forceContinue = false;
                 session.stopRequested = false;
+                const wasAborted = admissionFailure?.name === 'AbortError';
                 session.abortController = null;
                 session.runPromise = null;
                 this._emit(session, 'group_queue_state', { reason: 'idle' });
+                if (!wasAborted && this.onSessionSettled) {
+                    Promise.resolve(this.onSessionSettled({
+                        groupId: session.groupId,
+                        topicId: session.topicId,
+                        stopReason: session.stopReason
+                    })).catch(err => this.logger.warn('[JevGroupSession] onSessionSettled hook error:', err));
+                }
                 }
             });
     }
@@ -391,6 +403,13 @@ class JevGroupSessionOrchestrator {
                     reason: 'agent_completed',
                     completedAgentId: agentId
                 });
+                if (this.onAgentTurnCompleted) {
+                    Promise.resolve(this.onAgentTurnCompleted({
+                        groupId: session.groupId,
+                        topicId: session.topicId,
+                        agentId
+                    })).catch(err => this.logger.warn('[JevGroupSession] onAgentTurnCompleted hook error:', err));
+                }
                 if (session.stopRequested) {
                     session.stopReason = 'user_queue_stop';
                     this._emit(session, 'group_queue_stopped', {
