@@ -3,15 +3,27 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { JSDOM } = require('jsdom');
 
-const source = fs.readFileSync('modules/renderer/messageContextMenu.js', 'utf8');
+const moduleFile = path.resolve(__dirname, '../modules/renderer/messageContextMenu.js');
+const source = fs.readFileSync(moduleFile, 'utf8');
 
 async function setupContextMenuDom(html) {
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://vcpchat.local/' });
-    Object.assign(dom.window, await import('../modules/chat/contextCompactionState.js'));
+    const importRegex = /^import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"];?\s*$/gm;
+    for (const match of source.matchAll(importRegex)) {
+        const imported = await import(pathToFileURL(path.resolve(path.dirname(moduleFile), match[2])).href);
+        for (const rawSpec of match[1].split(',')) {
+            const spec = rawSpec.trim();
+            if (!spec) continue;
+            const [exportedName, localName] = spec.split(/\s+as\s+/).map(part => part.trim());
+            dom.window[localName || exportedName] = imported[exportedName];
+        }
+    }
     const executableSource = source
-        .replace(/^import .*contextCompactionState\.js';\s*/m, '')
+        .replace(/^import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
         .replace('export function createMessageContextMenu()', 'function createMessageContextMenu()')
         .concat('\nwindow.__messageEditTestApi = createMessageContextMenu();\n');
     dom.window.eval(executableSource);

@@ -3,13 +3,24 @@
 if (require('./helpers/electron-test-entry.cjs').runFromNode(__filename)) return;
 
 const assert = require('node:assert/strict');
-const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron');
+const fs = require('node:fs');
+const { app, BrowserWindow, ipcMain, nativeTheme, session } = require('electron');
 const path = require('node:path');
 
 const projectRoot = path.resolve(__dirname, '..');
 const GOOGLE_FONT_URL =
     'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng'
     + '&family=Noto+Serif+SC:wght@400;600;800&display=swap';
+const GOOGLE_FONT_BINARY_URL =
+    'https://fonts.gstatic.com/s/mashanzheng/v1/MaShanZheng-Fixture.woff2';
+const LOCAL_FIXTURE_WOFF2 = path.join(
+    projectRoot,
+    'vendor',
+    'excalidraw',
+    'fonts',
+    'Assistant',
+    'Assistant-Regular.woff2'
+);
 
 function delay(milliseconds) {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -20,6 +31,11 @@ function registerMinimalIpc() {
         nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
     );
     ipcMain.handle('docx:recent-list', () => []);
+    ipcMain.handle('scriptorium:document-library', () => ({
+        success: true,
+        extensions: ['vdocx', 'docx', 'vpptx', 'pptx', 'txt', 'html', 'md'],
+        roots: [],
+    }));
     ipcMain.handle('docx:fonts-list', () => ['Arial', 'Microsoft YaHei']);
     ipcMain.handle('load-agents-list', () => []);
     ipcMain.handle('load-user-avatar', () => null);
@@ -61,9 +77,54 @@ function registerMinimalIpc() {
     ipcMain.on('close-window', () => {});
 }
 
+function registerDeterministicGoogleFontProtocol(fontBytes) {
+    const fontCss = [
+        '@font-face {',
+        '  font-family: "Ma Shan Zheng";',
+        '  font-style: normal;',
+        '  font-weight: 400;',
+        '  font-display: swap;',
+        `  src: url("${GOOGLE_FONT_BINARY_URL}") format("woff2");`,
+        '}',
+        '@font-face {',
+        '  font-family: "Noto Serif SC";',
+        '  font-style: normal;',
+        '  font-weight: 400;',
+        '  font-display: swap;',
+        `  src: url("${GOOGLE_FONT_BINARY_URL}") format("woff2");`,
+        '}',
+    ].join('\n');
+
+    session.defaultSession.protocol.handle('https', (request) => {
+        if (request.url === GOOGLE_FONT_URL) {
+            return new Response(fontCss, {
+                status: 200,
+                headers: {
+                    'content-type': 'text/css; charset=utf-8',
+                    'access-control-allow-origin': '*',
+                },
+            });
+        }
+        if (request.url === GOOGLE_FONT_BINARY_URL) {
+            return new Response(fontBytes, {
+                status: 200,
+                headers: {
+                    'content-type': 'font/woff2',
+                    'access-control-allow-origin': '*',
+                },
+            });
+        }
+        return new Response('Unexpected external HTTPS request in isolated test', {
+            status: 404,
+        });
+    });
+}
+
 async function run() {
     await app.whenReady();
+    const fixtureFontBytes = fs.readFileSync(LOCAL_FIXTURE_WOFF2);
     registerMinimalIpc();
+    registerDeterministicGoogleFontProtocol(fixtureFontBytes);
 
     const windowRef = new BrowserWindow({
         width: 1280,
@@ -125,17 +186,24 @@ async function run() {
             let loadedFaceCount = 0;
             let fontLoadError = '';
             try {
-                const faces = await Promise.race([
-                    document.fonts.load(
-                        '32px "Ma Shan Zheng"',
-                        '网络字体内部渲染测试'
-                    ),
-                    new Promise((_, reject) => setTimeout(
-                        () => reject(new Error('字体加载等待超时')),
-                        12000
-                    ))
-                ]);
-                loadedFaceCount = faces.length;
+                const deadline = Date.now() + 12000;
+                while (Date.now() < deadline && loadedFaceCount === 0) {
+                    const faces = await Promise.race([
+                        document.fonts.load(
+                            '32px "Ma Shan Zheng"',
+                            '网络字体内部渲染测试'
+                        ),
+                        new Promise((_, reject) => setTimeout(
+                            () => reject(new Error('字体加载等待超时')),
+                            4000
+                        ))
+                    ]);
+                    if (faces.length > 0) {
+                        loadedFaceCount = faces.length;
+                        break;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 40));
+                }
             } catch (error) {
                 fontLoadError = error.message;
             }

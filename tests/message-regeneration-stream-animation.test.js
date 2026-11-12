@@ -3,9 +3,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { JSDOM } = require('jsdom');
 
-const source = fs.readFileSync('modules/renderer/messageContextMenu.js', 'utf8');
+const moduleFile = path.resolve(__dirname, '../modules/renderer/messageContextMenu.js');
+const source = fs.readFileSync(moduleFile, 'utf8');
 
 for (const scenario of ['agent-prompt', 'tavern-only', 'all-workspaces', 'conflict', 'busy', 'nonstream']) {
 test(`streaming regeneration expands workspace before transport: ${scenario}`, async () => {
@@ -13,11 +16,19 @@ test(`streaming regeneration expands workspace before transport: ${scenario}`, a
         '<!doctype html><div id="chat"></div>',
         { runScripts: 'outside-only', url: 'https://vcpchat.local/' }
     );
-    Object.assign(dom.window, await import('../modules/chat/contextCompactionState.js'));
-    Object.assign(dom.window, await import('../modules/chat/chatContextPipeline.js'));
+    const importRegex = /^import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"];?\s*$/gm;
+    for (const match of source.matchAll(importRegex)) {
+        const imported = await import(pathToFileURL(path.resolve(path.dirname(moduleFile), match[2])).href);
+        for (const rawSpec of match[1].split(',')) {
+            const spec = rawSpec.trim();
+            if (!spec) continue;
+            const [exportedName, localName] = spec.split(/\s+as\s+/).map(part => part.trim());
+            dom.window[localName || exportedName] = imported[exportedName];
+        }
+    }
     dom.window.structuredClone = structuredClone;
     const executableSource = source
-        .replace(/^import .*;\s*/gm, '')
+        .replace(/^import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
         .replace(
             'export function createMessageContextMenu()',
             'function createMessageContextMenu()'
