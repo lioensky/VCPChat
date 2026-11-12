@@ -20,6 +20,7 @@ class ChatDataServiceLifecycle extends EventEmitter {
         this.notifyEnabled = options.notifyEnabled !== false;
         this.tantivyEnabled = options.tantivyEnabled !== false;
         this.startupTimeoutMs = options.startupTimeoutMs || 30_000;
+        this.recoveryTimeoutMs = options.recoveryTimeoutMs || 180_000;
         this.maxRestarts = options.maxRestarts || 5;
         this.logger = options.logger || console;
 
@@ -90,115 +91,130 @@ class ChatDataServiceLifecycle extends EventEmitter {
         return new Promise((resolve, reject) => {
             let settled = false;
             let handshakeReceived = false;
+            let healthPending = false;
+            let recoveryStarted = false;
+            let stage = 'spawn';
+            const startedAt = Date.now();
             const args = [
                 '--app-data', this.appDataPath,
                 '--port', '0',
                 '--notify-enabled', String(this.notifyEnabled),
                 '--tantivy-enabled', String(this.tantivyEnabled)
             ];
-
             const child = spawn(this.binaryPath, args, {
                 cwd: path.dirname(this.binaryPath),
                 windowsHide: true,
+                env: { ...process.env, VCP_CDS_STARTUP_PROGRESS: '1' },
                 stdio: ['ignore', 'pipe', 'pipe']
             });
             this.process = child;
-
-            const timeout = setTimeout(() => {
+            let timeout;
+            const fail = (error, kill = true) => {
                 if (settled) return;
                 settled = true;
-                child.kill();
-                reject(new ChatDataServiceError('VCP-CDS startup timed out.', {
-                    code: 'STARTUP_TIMEOUT',
-                    retryable: true
-                }));
-            }, this.startupTimeoutMs);
-
+                clearTimeout(timeout);
+                // Persist before kill: exit may run before start()'s catch.
+                this.lastStartError = error;
+                if (kill) child.kill();
+                reject(error);
+            };
+            const armTimeout = (duration, recovering) => {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => {
+                    fail(new ChatDataServiceError(
+                        `VCP-CDS ${recovering ? 'recovery' : 'startup'} timed out at ${stage} after ${Date.now() - startedAt}ms.`,
+                        {
+                            code: recovering ? 'RECOVERY_TIMEOUT' : 'STARTUP_TIMEOUT',
+                            retryable: !recovering
+                        }
+                    ));
+                }, duration);
+            };
+            armTimeout(this.startupTimeoutMs, false);
+            const stages = new Set([
+                'database_open', 'integrity_check', 'integrity_complete',
+                'database_ready', 'watcher_start', 'watcher_ready'
+            ]);
             const stdout = readline.createInterface({ input: child.stdout });
             stdout.on('line', async line => {
-                if (handshakeReceived || settled || !line.trim()) return;
-                let handshake;
+                if (settled || healthPending || !line.trim()) return;
                 try {
-                    handshake = JSON.parse(line);
-                } catch (error) {
-                    settled = true;
-                    clearTimeout(timeout);
-                    child.kill();
-                    reject(new ChatDataServiceError('VCP-CDS emitted an invalid handshake.', {
-                        code: 'INVALID_HANDSHAKE',
-                        retryable: true,
-                        cause: error
-                    }));
-                    return;
-                }
-
-                try {
-                    validateHandshake(handshake);
+                    const frame = JSON.parse(line);
+                    if (frame?.type === 'startup_progress') {
+                        if (frame.protocolVersion !== PROTOCOL_VERSION || !stages.has(frame.stage)) {
+                            throw new ChatDataServiceError('Invalid VCP-CDS startup progress.', {
+                                code: 'INVALID_HANDSHAKE', retryable: false
+                            });
+                        }
+                        // Only the first database_open grants a recovery budget.
+                        // Repeated progress cannot extend this absolute deadline.
+                        if (!recoveryStarted && frame.stage !== 'database_open') {
+                            throw new ChatDataServiceError('VCP-CDS startup progress is out of order.', {
+                                code: 'INVALID_HANDSHAKE', retryable: false
+                            });
+                        }
+                        if (!recoveryStarted) {
+                            recoveryStarted = true;
+                            armTimeout(this.recoveryTimeoutMs, true);
+                        }
+                        stage = frame.stage;
+                        const progress = { stage, elapsedMs: Date.now() - startedAt };
+                        this.logger.info?.(`[VCP-CDS] startup stage=${stage} elapsedMs=${progress.elapsedMs}`);
+                        this.emit('startup-progress', progress);
+                        return;
+                    }
+                    validateHandshake(frame);
+                    healthPending = true;
+                    stage = 'health';
                     const client = new ChatDataServiceClient({
-                        port: handshake.port,
-                        authToken: handshake.authToken,
+                        port: frame.port,
+                        authToken: frame.authToken,
                         protocolVersion: PROTOCOL_VERSION
                     });
                     await client.health();
+                    if (settled || this.stopping || this.process !== child) return;
                     handshakeReceived = true;
-                    this.handshake = handshake;
-                    if (!settled) {
-                        settled = true;
-                        clearTimeout(timeout);
-                        resolve(client);
-                    }
+                    this.handshake = frame;
+                    settled = true;
+                    clearTimeout(timeout);
+                    resolve(client);
                 } catch (error) {
-                    if (!settled) {
-                        settled = true;
-                        clearTimeout(timeout);
-                        child.kill();
-                        reject(error);
-                    }
+                    fail(error instanceof ChatDataServiceError ? error : new ChatDataServiceError(
+                        'VCP-CDS emitted an invalid handshake.',
+                        { code: 'INVALID_HANDSHAKE', retryable: true, cause: error }
+                    ));
                 }
             });
-
             child.stderr.on('data', data => {
                 const line = data.toString().trim();
                 if (line) this.logger.info?.(`[VCP-CDS] ${line}`);
             });
-
             child.once('error', error => {
-                clearTimeout(timeout);
-                if (!settled) {
-                    settled = true;
-                    reject(new ChatDataServiceError('Failed to launch VCP-CDS.', {
-                        code: 'SPAWN_FAILED',
-                        retryable: true,
-                        cause: error
-                    }));
-                }
+                fail(new ChatDataServiceError('Failed to launch VCP-CDS.', {
+                    code: 'SPAWN_FAILED', retryable: true, cause: error
+                }), false);
             });
-
             child.once('exit', (code, signal) => {
                 clearTimeout(timeout);
-                if (this.stabilityTimer) {
-                    clearTimeout(this.stabilityTimer);
-                    this.stabilityTimer = null;
-                }
                 stdout.close();
                 const wasReady = handshakeReceived;
-                this.process = null;
-                this.client = null;
-                this.handshake = null;
-
-                if (!settled) {
-                    settled = true;
-                    reject(new ChatDataServiceError(
-                        `VCP-CDS exited before ready (code=${code}, signal=${signal}).`,
-                        { code: 'EARLY_EXIT', retryable: true }
-                    ));
+                if (this.process === child) {
+                    if (this.stabilityTimer) {
+                        clearTimeout(this.stabilityTimer);
+                        this.stabilityTimer = null;
+                    }
+                    this.process = null;
+                    this.client = null;
+                    this.handshake = null;
                 }
-
+                if (!settled) {
+                    fail(new ChatDataServiceError(
+                        `VCP-CDS exited before ready at ${stage} (code=${code}, signal=${signal}).`,
+                        { code: 'EARLY_EXIT', retryable: true }
+                    ), false);
+                }
                 this.emit('exit', { code, signal, wasReady, stopping: this.stopping });
                 if (!this.stopping && this.enabled) {
-                    // 确定性失败（retryable=false：版本/schema 不匹配、二进制缺失、
-                    // 配置错误）重启必然复现——直接熔断并给出可操作指引，
-                    // 不再杀-起循环 maxRestarts 次。
                     if (this._blockNonRetryableRestart(this.lastStartError)) return;
                     this._scheduleRestart();
                 }
@@ -222,7 +238,9 @@ class ChatDataServiceLifecycle extends EventEmitter {
         const code = error.code || 'UNKNOWN';
         const hint = code === 'PROTOCOL_MISMATCH' || code === 'SCHEMA_MISMATCH'
             ? 'CDS 二进制与插件协议版本不匹配——请重建（cargo build --release）并替换 bin 目录内的 CDS 可执行文件。'
-            : '请修复上述启动错误后重启应用。';
+            : code === 'RECOVERY_TIMEOUT'
+                ? '数据库恢复超出预算；保留数据库和 WAL，检查磁盘 I/O 与完整性检查耗时后再手动重试，避免重复终止恢复。'
+                : '请修复上述启动错误后重启应用。';
         this.logger.error?.(`[VCP-CDS] 启动失败且不可重试（${code}），本会话不再自动重启。${hint}`);
         this.emit('circuit-open', { attempts: this.restartAttempts, reason: code });
         return true;

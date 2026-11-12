@@ -402,11 +402,18 @@ impl Database {
             !has_service_meta || meta_optional_i64(&connection, "filesystem_dirty")? != Some(0);
         let integrity_checked = !previous_clean_shutdown || schema_migrated;
         if integrity_checked {
+            crate::startup::progress("integrity_check");
+            let integrity_started = std::time::Instant::now();
             let integrity: String =
                 connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
             if integrity != "ok" {
                 anyhow::bail!("SQLite quick_check failed: {integrity}");
             }
+            tracing::info!(
+                elapsed_ms = integrity_started.elapsed().as_millis(),
+                "startup integrity check completed"
+            );
+            crate::startup::progress("integrity_complete");
         }
         if schema_migrated {
             let transaction =
