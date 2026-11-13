@@ -65,6 +65,7 @@ let groupHistoryMutationQueue = null;
 let groupTopicAdmission = null;
 let groupJevService = null;
 let groupAgentConfigLoader = null;
+let groupTopicUpdatedNotifier = null;
 let jevSessionOrchestrator = null;
 const groupStreamCallbacks = new Map();
 const ordinaryGroupRuns = new Map();
@@ -172,7 +173,24 @@ function attachTimestampMetaToVcpMessage(vcpMessage, historyMessage) {
     };
 }
 
-function buildVcpChatExtensionsFromMessages(messages) {
+function buildTrustedGroupRequestContext(context = null, requestId = null) {
+    if (!context || typeof context !== 'object') return null;
+    const groupId = typeof context.groupId === 'string' ? context.groupId.trim() : '';
+    const topicId = typeof context.topicId === 'string' ? context.topicId.trim() : '';
+    if (!groupId || !topicId) return null;
+    return {
+        ...(typeof requestId === 'string' && requestId.trim() ? { requestId: requestId.trim() } : {}),
+        ...(typeof context.agentId === 'string' && context.agentId.trim() ? { agentId: context.agentId.trim() } : {}),
+        ...(typeof context.agentName === 'string' && context.agentName.trim() ? { agentName: context.agentName.trim() } : {}),
+        groupId,
+        topicId,
+        ownerType: 'group',
+        ownerId: groupId,
+        isGroupMessage: true
+    };
+}
+
+function buildVcpChatExtensionsFromMessages(messages, context = null, requestId = null) {
     const messageTimestampBindings = [];
     messages.forEach((message, index) => {
         const meta = message && message.__vcpchatTimestampMeta;
@@ -190,14 +208,18 @@ function buildVcpChatExtensionsFromMessages(messages) {
         });
     });
 
-    if (messageTimestampBindings.length === 0) {
+    const requestContext = buildTrustedGroupRequestContext(context, requestId);
+    if (messageTimestampBindings.length === 0 && !requestContext) {
         return null;
     }
 
     return {
         schemaVersion: 1,
-        messageMetadataMode: 'hash_only',
-        messageTimestampBindings
+        ...(requestContext ? { requestContext } : {}),
+        ...(messageTimestampBindings.length > 0 ? {
+            messageMetadataMode: 'hash_only',
+            messageTimestampBindings
+        } : {})
     };
 }
 
@@ -209,12 +231,13 @@ function stripInternalMessageMetadata(messages) {
     });
 }
 
-function buildGroupRequestBody(messagesForAI, modelConfig, messageId) {
-    const vcpchatExtensions = buildVcpChatExtensionsFromMessages(messagesForAI);
+function buildGroupRequestBody(messagesForAI, modelConfig, messageId, context = null) {
+    const vcpchatExtensions = buildVcpChatExtensionsFromMessages(messagesForAI, context, messageId);
     const requestBody = {
         messages: stripInternalMessageMetadata(messagesForAI),
         ...modelConfig,
-        messageId
+        messageId,
+        requestId: messageId
     };
     if (vcpchatExtensions) {
         requestBody.vcpchatExtensions = vcpchatExtensions;
@@ -239,13 +262,46 @@ function initializeRuntimeServices({
     historyMutationQueue = null,
     topicAdmission = null,
     jevService = null,
-    getAgentConfigById = null
+    getAgentConfigById = null,
+    notifyTopicUpdated = null
 } = {}) {
     groupHistoryMutationQueue = historyMutationQueue;
     groupTopicAdmission = topicAdmission;
     groupJevService = jevService;
     groupAgentConfigLoader = getAgentConfigById;
+    groupTopicUpdatedNotifier = typeof notifyTopicUpdated === 'function' ? notifyTopicUpdated : null;
     jevSessionOrchestrator = null;
+}
+
+function emitGroupTopicUpdated(payload) {
+    if (!payload || typeof groupTopicUpdatedNotifier !== 'function') return;
+    try {
+        groupTopicUpdatedNotifier(payload);
+    } catch (error) {
+        console.warn('[GroupChat] Failed to notify group topic update:', error);
+    }
+}
+
+async function maybeSummarizeGroupTopic(groupId, topicId) {
+    if (!groupId || !topicId) return;
+    const finalGroupConfigForSummary = await getAgentGroupConfig(groupId);
+    if (!finalGroupConfigForSummary || finalGroupConfigForSummary.error || finalGroupConfigForSummary.mode === 'game') {
+        return;
+    }
+    const finalGroupHistoryForSummary = await readLatestGroupHistory(groupId, topicId);
+    if (!Array.isArray(finalGroupHistoryForSummary) || finalGroupHistoryForSummary.length === 0) {
+        return;
+    }
+    const latestGlobalVcpSettingsForSummary = await getVcpGlobalSettings();
+    await topicTitleManager.triggerSummarizationIfNeeded(
+        groupId,
+        topicId,
+        finalGroupHistoryForSummary,
+        latestGlobalVcpSettingsForSummary,
+        finalGroupConfigForSummary,
+        emitGroupTopicUpdated,
+        saveGroupTopicTitle
+    );
 }
 
 function getGroupHistoryDescriptor(groupId, topicId) {
@@ -343,6 +399,8 @@ function ensureJevSessionOrchestrator() {
             event.context.topicId,
             event
         ),
+        onAgentTurnCompleted: ({ groupId, topicId }) => maybeSummarizeGroupTopic(groupId, topicId),
+        onSessionSettled: ({ groupId, topicId }) => maybeSummarizeGroupTopic(groupId, topicId),
         logger: console
     });
     return jevSessionOrchestrator;
@@ -1403,7 +1461,7 @@ ${canvasData.errors || 'No errors'}
                         model: modelConfigForAgent.model,
                         temperature: modelConfigForAgent.temperature,
                         stream: modelConfigForAgent.stream
-                    }, messageIdForAgentResponse)),
+                    }, messageIdForAgentResponse, { groupId, topicId, agentId, agentName, isGroupMessage: true })),
                     signal: controller.signal
                 });
             } catch (fetchError) {
@@ -1688,17 +1746,7 @@ ${canvasData.errors || 'No errors'}
 
     // 总结话题的逻辑现在移到函数末尾，无论是否有AI自动回复，都可能触发
     // （例如，用户发了多条消息，即使在邀请模式下没有AI回复，也可能达到总结条件）
-    const finalGroupConfigForSummary = await getAgentGroupConfig(groupId);
-    const finalGroupHistoryPathForSummary = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', topicId, 'history.json');
-    let finalGroupHistoryForSummary = [];
-    if (await fs.pathExists(finalGroupHistoryPathForSummary)) {
-        finalGroupHistoryForSummary = await fs.readJson(finalGroupHistoryPathForSummary);
-    }
-
-    if (finalGroupConfigForSummary && finalGroupHistoryForSummary.length > 0) {
-        const latestGlobalVcpSettingsForSummary = await getVcpGlobalSettings();
-        await topicTitleManager.triggerSummarizationIfNeeded(groupId, topicId, finalGroupHistoryForSummary, latestGlobalVcpSettingsForSummary, finalGroupConfigForSummary, sendStreamChunkToRenderer, saveGroupTopicTitle);
-    }
+    await maybeSummarizeGroupTopic(groupId, topicId);
 }
 
 
@@ -2119,7 +2167,7 @@ ${canvasData.errors || 'No errors'}
                     temperature: modelConfigForAgent.temperature,
                     stream: modelConfigForAgent.stream,
                     max_tokens: modelConfigForAgent.max_tokens
-                }, messageIdForAgentResponse)),
+                }, messageIdForAgentResponse, { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true })),
                 signal: controller.signal
             });
         } catch (fetchError) {
@@ -2358,17 +2406,7 @@ ${canvasData.errors || 'No errors'}
     if (gameRequest || options.skipSummary === true || queueContext.isAborted()) return;
 
     // 邀请发言后也尝试总结话题
-    const finalGroupConfigForSummary = await getAgentGroupConfig(groupId);
-    const finalGroupHistoryPathForSummary = path.join(mainAppPaths.USER_DATA_DIR, groupId, 'topics', topicId, 'history.json');
-    let finalGroupHistoryForSummary = [];
-    if (await fs.pathExists(finalGroupHistoryPathForSummary)) {
-        finalGroupHistoryForSummary = await fs.readJson(finalGroupHistoryPathForSummary);
-    }
-
-    if (finalGroupConfigForSummary && finalGroupHistoryForSummary.length > 0) {
-        const latestGlobalVcpSettingsForSummary = await getVcpGlobalSettings();
-        await topicTitleManager.triggerSummarizationIfNeeded(groupId, topicId, finalGroupHistoryForSummary, latestGlobalVcpSettingsForSummary, finalGroupConfigForSummary, sendStreamChunkToRenderer, saveGroupTopicTitle);
-    }
+    await maybeSummarizeGroupTopic(groupId, topicId);
 }
 
 // cleanSummarizedTitle, triggerTopicSummarizationIfNeeded, determineNatureRandomSpeakers
@@ -2572,18 +2610,30 @@ async function regenerateGroupTopicTitle(groupId, topicId) {
     }
 }
 
-async function saveGroupTopicTitle(groupId, topicId, newTitle) {
-    let groupConfig = await getAgentGroupConfig(groupId);
-    if (!groupConfig || !Array.isArray(groupConfig.topics)) {
-        return { success: false, error: `Group ${groupId} or its topics not found.` };
-    }
-    const topicIndex = groupConfig.topics.findIndex(t => t.id === topicId);
-    if (topicIndex === -1) {
-        return { success: false, error: `Topic ID ${topicId} not found in group ${groupId}.` };
-    }
-    groupConfig.topics[topicIndex].name = newTitle;
-    const result = await saveAgentGroupConfig(groupId, { topics: groupConfig.topics });
-    return result.success ? { success: true, topics: result.agentGroup.topics } : { success: false, error: result.error };
+async function saveGroupTopicTitle(groupId, topicId, newTitle, options = {}) {
+    return runGroupConfigOperation(groupId, async () => {
+        const groupConfig = await getAgentGroupConfig(groupId);
+        if (!groupConfig || groupConfig.error || !Array.isArray(groupConfig.topics)) {
+            return { success: false, error: groupConfig?.error || `Group ${groupId} or its topics not found.` };
+        }
+        const topicIndex = groupConfig.topics.findIndex(t => t.id === topicId);
+        if (topicIndex === -1) {
+            return { success: false, error: `Topic ID ${topicId} not found in group ${groupId}.` };
+        }
+        if (options.onlyIfDefault === true && typeof topicTitleManager.isDefaultTopicTitle === 'function') {
+            if (!topicTitleManager.isDefaultTopicTitle(groupConfig.topics[topicIndex].name)) {
+                return { success: false, skipped: true, topics: groupConfig.topics };
+            }
+        }
+        const nextTopics = groupConfig.topics.map((topic, index) => (
+            index === topicIndex ? { ...topic, name: newTitle } : topic
+        ));
+        const result = await saveAgentGroupConfigUnlocked(groupId, {
+            topics: nextTopics,
+            conversationOverrides: groupConfig.conversationOverrides
+        });
+        return result.success ? { success: true, topics: result.agentGroup.topics } : { success: false, error: result.error };
+    });
 }
 
 async function getGroupChatHistory(groupId, topicId) {

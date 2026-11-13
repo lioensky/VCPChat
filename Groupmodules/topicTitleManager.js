@@ -1,12 +1,62 @@
 // Groupmodules/topicTitleManager.js
 // 话题标题自动生成管理模块 - 从 groupchat.js 中独立出来，方便后续优化
 
-const fs = require('fs-extra');
 const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext } = require('../modules/modelTrajectory');
 
 // 话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
 const DEFAULT_TOPIC_NAMES = ["主要群聊"]; // 也可以包含 "新话题" 的模式匹配
+const inFlightSummaries = new Set();
+
+function isDefaultTopicTitle(title) {
+    if (typeof title !== 'string') return false;
+    const trimmed = title.trim();
+    if (!trimmed) return true;
+    return DEFAULT_TOPIC_NAMES.includes(trimmed) || trimmed.startsWith("新话题");
+}
+
+function getEffectiveHistory(groupHistory) {
+    return Array.isArray(groupHistory)
+        ? groupHistory.filter(msg => msg && msg.role !== 'system' && msg.isThinking !== true)
+        : [];
+}
+
+function extractPlainMessageText(msg) {
+    if (!msg) return '';
+    const raw = typeof msg.content === 'string'
+        ? msg.content
+        : (typeof msg.content?.text === 'string' ? msg.content.text : '');
+    const normalized = raw.replace(/\s+/g, ' ').trim();
+    if (normalized) return normalized;
+
+    if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+        for (const att of msg.attachments) {
+            const name = att?._fileManagerData?.name || att?.name || att?.localPath || '';
+            if (typeof name === 'string' && name.trim()) {
+                return name.trim();
+            }
+        }
+    }
+    return '';
+}
+
+/**
+ * 构建与单聊一致的降级备用标题：关于 "xxx..." (备用)
+ * @param {Array<object>} groupHistory - 聊天历史
+ * @returns {string|null}
+ */
+function buildFallbackTopicTitle(groupHistory) {
+    const effectiveHistory = getEffectiveHistory(groupHistory);
+    const userMessages = effectiveHistory.filter(msg => msg.role === 'user');
+    for (let i = userMessages.length - 1; i >= 0; i -= 1) {
+        const text = extractPlainMessageText(userMessages[i]);
+        if (text) {
+            const snippet = text.substring(0, 15);
+            return `关于 "${snippet}${text.length > 15 ? '...' : ''}" (备用)`;
+        }
+    }
+    return null;
+}
 
 /**
  * 清理和格式化从AI获取的话题标题
@@ -36,12 +86,10 @@ function cleanSummarizedTitle(rawTitle) {
  * @param {object} globalVcpSettings - 全局设置
  * @returns {string} 格式化后的对话内容
  */
-function buildSummaryContent(groupHistory, globalVcpSettings) {
-    const effectiveHistory = Array.isArray(groupHistory)
-        ? groupHistory.filter(msg => msg && msg.role !== 'system' && msg.isThinking !== true)
-        : [];
+function buildSummaryContent(groupHistory, globalVcpSettings = {}) {
+    const effectiveHistory = getEffectiveHistory(groupHistory);
     const recentMessagesContent = effectiveHistory.slice(-MIN_MESSAGES_FOR_SUMMARY).map(msg => {
-        const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings.userName || '用户') : 'AI成员');
+        const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings?.userName || '用户') : 'AI成员');
         // 确保从消息内容中提取文本，即使它是对象 { text: '...' }
         let contentText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
         // 如果消息有附件且包含提取的文本，也将其包含在内
@@ -78,14 +126,14 @@ function buildSummaryContent(groupHistory, globalVcpSettings) {
  * @param {object} [trace] - 调用轨迹归属 { groupId?, agentId?, topicId }，缺省时这次调用不记入侧栏「调用轨迹」
  * @returns {Promise<string|null>} AI 生成的原始标题，或 null
  */
-async function generateTitleFromAI(summaryContent, globalVcpSettings, trace = null) {
-    if (!globalVcpSettings.vcpUrl) {
+async function generateTitleFromAI(summaryContent, globalVcpSettings = {}, trace = null) {
+    if (!globalVcpSettings?.vcpUrl) {
         console.error("[TopicTitleManager] VCP URL not configured. Cannot summarize topic.");
         return null;
     }
 
     const summaryPrompt = `请根据以下群聊对话内容，仅返回一个简洁的话题标题。要求：1. 标题长度控制在10个汉字或20个英文字符以内。2. 标题本身不能包含任何标点符号、数字编号或任何非标题文字。3. 直接给出标题文字，不要添加任何解释或前缀。\n\n对话内容：\n${summaryContent}`;
-    const messagesForAISummary = [{ role: 'user', content: [{ type: 'text', text: summaryPrompt }] }];
+    const messagesForAISummary = [{ role: 'user', content: summaryPrompt }];
 
     // 添加超时控制
     const controller = new AbortController();
@@ -114,7 +162,7 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings, trace = nu
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
+                ...(globalVcpSettings.vcpApiKey ? { 'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}` } : {})
             },
             body: JSON.stringify(summaryRequest),
             signal: controller.signal
@@ -141,7 +189,10 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings, trace = nu
     const summaryResponseJson = await response.json();
     trajectoryCall.finish({ response: summaryResponseJson });
     if (summaryResponseJson.choices && summaryResponseJson.choices.length > 0) {
-        return summaryResponseJson.choices[0].message.content;
+        const rawContent = summaryResponseJson.choices[0]?.message?.content;
+        if (typeof rawContent === 'string' && rawContent.trim()) {
+            return rawContent;
+        }
     }
 
     console.warn('[TopicTitleManager] AI未能生成有效的总结标题或响应格式不符。Response:', summaryResponseJson);
@@ -157,9 +208,7 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings, trace = nu
  * @returns {Promise<string|null>} 清理后的标题，或 null
  */
 async function generateTitleForHistory(groupHistory, globalVcpSettings, trace = null) {
-    const effectiveHistory = Array.isArray(groupHistory)
-        ? groupHistory.filter(msg => msg && msg.role !== 'system' && msg.isThinking !== true)
-        : [];
+    const effectiveHistory = getEffectiveHistory(groupHistory);
 
     if (effectiveHistory.length === 0) return null;
 
@@ -178,11 +227,12 @@ async function generateTitleForHistory(groupHistory, globalVcpSettings, trace = 
  * @param {Array<object>} groupHistory - 当前话题的完整历史记录
  * @param {object} globalVcpSettings - 全局VCP设置
  * @param {object} groupConfig - 当前群组的配置
- * @param {function} sendStreamChunkToRenderer - 用于发送通知回渲染器的函数
- * @param {function} saveGroupTopicTitle - 保存话题标题的函数
+ * @param {function} notifyTopicUpdated - 用于通知渲染器话题标题已更新的回调 ({ groupId, topicId, newTitle, topics }) => void
+ * @param {function} saveGroupTopicTitle - 保存话题标题的函数 (groupId, topicId, newTitle, options?) => Promise<object>
  */
-async function triggerSummarizationIfNeeded(groupId, topicId, groupHistory, globalVcpSettings, groupConfig, sendStreamChunkToRenderer, saveGroupTopicTitle) {
-    if (!groupConfig || !groupConfig.topics) return;
+async function triggerSummarizationIfNeeded(groupId, topicId, groupHistory, globalVcpSettings, groupConfig, notifyTopicUpdated, saveGroupTopicTitle) {
+    if (!groupId || !topicId || !groupConfig || !Array.isArray(groupConfig.topics)) return;
+    if (groupConfig.mode === 'game') return;
 
     const currentTopic = groupConfig.topics.find(t => t.id === topicId);
     if (!currentTopic) {
@@ -190,55 +240,75 @@ async function triggerSummarizationIfNeeded(groupId, topicId, groupHistory, glob
         return;
     }
 
-    const isDefaultTitle = DEFAULT_TOPIC_NAMES.includes(currentTopic.name) || currentTopic.name.startsWith("新话题");
+    const effectiveHistory = getEffectiveHistory(groupHistory);
+    if (effectiveHistory.length < MIN_MESSAGES_FOR_SUMMARY || !isDefaultTopicTitle(currentTopic.name)) {
+        return;
+    }
 
-    if (groupHistory.length >= MIN_MESSAGES_FOR_SUMMARY && isDefaultTitle) {
-        console.log(`[TopicTitleManager] 话题 ${topicId} (${currentTopic.name}) 满足总结条件。消息数: ${groupHistory.length}`);
+    const lockKey = `${String(groupId)}\u0000${String(topicId)}`;
+    if (inFlightSummaries.has(lockKey)) {
+        return;
+    }
 
+    inFlightSummaries.add(lockKey);
+    try {
+        console.log(`[TopicTitleManager] 话题 ${topicId} (${currentTopic.name}) 满足总结条件。有效消息数: ${effectiveHistory.length}`);
+
+        let candidateTitle = null;
         try {
-            const summaryContent = buildSummaryContent(groupHistory, globalVcpSettings);
+            const summaryContent = buildSummaryContent(effectiveHistory, globalVcpSettings);
             const rawTitle = await generateTitleFromAI(summaryContent, globalVcpSettings, { groupId, topicId });
-
-            if (!rawTitle) return;
-
-            const newTitle = cleanSummarizedTitle(rawTitle);
-
-            // 检查新标题是否有效且与原标题不同
-            if (newTitle && newTitle !== "AI总结话题" && newTitle !== currentTopic.name) {
-                console.log(`[TopicTitleManager] 话题 ${topicId} 新标题: "${newTitle}" (原: "${currentTopic.name}")`);
-                const saveResult = await saveGroupTopicTitle(groupId, topicId, newTitle);
-                if (saveResult.success && sendStreamChunkToRenderer) {
-                    // 通知渲染器话题标题已更新
-                    sendStreamChunkToRenderer({
-                        type: 'topic_updated',
-                        context: {
-                            groupId,
-                            topicId,
-                            newTitle,
-                            topics: saveResult.topics,
-                            isGroupMessage: true
-                        }
-                    });
-                    console.log(`[TopicTitleManager] 已通知渲染器话题 ${topicId} 标题更新。`);
-                } else if (!saveResult.success) {
-                    console.error(`[TopicTitleManager] 保存新话题标题失败: ${saveResult.error}`);
+            if (rawTitle) {
+                const cleaned = cleanSummarizedTitle(rawTitle);
+                if (cleaned && cleaned !== "AI总结话题") {
+                    candidateTitle = cleaned;
+                } else {
+                    console.warn(`[TopicTitleManager] AI返回标题无效("${rawTitle}")，尝试使用备用标题降级。`);
                 }
-            } else if (newTitle === "AI总结话题") {
-                console.log(`[TopicTitleManager] AI未能有效总结话题 ${topicId} (返回默认值)，不更新标题。原始AI返回: "${rawTitle}"`);
-            } else if (newTitle === currentTopic.name) {
-                console.log(`[TopicTitleManager] AI总结的标题与原标题 "${currentTopic.name}" 相同，不更新。`);
-            } else {
-                console.log(`[TopicTitleManager] 生成的标题为空或无效，不更新: "${newTitle}"`);
             }
-        } catch (error) {
-            console.error('[TopicTitleManager] 调用VCP进行话题总结时出错:', error);
+        } catch (aiError) {
+            console.error('[TopicTitleManager] 调用VCP进行话题总结时出错，回退至备用标题:', aiError);
         }
+
+        if (!candidateTitle) {
+            candidateTitle = buildFallbackTopicTitle(effectiveHistory);
+            if (candidateTitle) {
+                console.log(`[TopicTitleManager] AI 总结未果，启用备用标题: "${candidateTitle}"`);
+            }
+        }
+
+        if (!candidateTitle || candidateTitle === currentTopic.name) {
+            return;
+        }
+
+        const saveResult = await saveGroupTopicTitle(groupId, topicId, candidateTitle, { onlyIfDefault: true });
+        if (saveResult?.skipped) {
+            console.log(`[TopicTitleManager] 话题 ${topicId} 在总结期间已被重命名，跳过自动覆盖。`);
+            return;
+        }
+        if (saveResult?.success) {
+            console.log(`[TopicTitleManager] 话题 ${topicId} 新标题已保存: "${candidateTitle}" (原: "${currentTopic.name}")`);
+            if (typeof notifyTopicUpdated === 'function') {
+                notifyTopicUpdated({
+                    groupId,
+                    topicId,
+                    newTitle: candidateTitle,
+                    topics: saveResult.topics
+                });
+            }
+        } else {
+            console.error(`[TopicTitleManager] 保存新话题标题失败: ${saveResult?.error}`);
+        }
+    } finally {
+        inFlightSummaries.delete(lockKey);
     }
 }
 
 module.exports = {
     cleanSummarizedTitle,
     buildSummaryContent,
+    buildFallbackTopicTitle,
+    isDefaultTopicTitle,
     generateTitleFromAI,
     generateTitleForHistory,
     triggerSummarizationIfNeeded,
