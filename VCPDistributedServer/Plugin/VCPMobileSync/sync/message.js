@@ -575,12 +575,13 @@ async function doPushSingleTopic(
       identity,
       "batch_push",
       committed.unchanged
-        ? { messageHashes: projected.messageHashes, deferredOwnerHashes }
+        ? { messageHashes: projected.messageHashes, baseSourceHash: sourceHash, deferredOwnerHashes }
         : {
             history: committed.history,
             sourceStats: committed.sourceStats,
             sourceHash: committed.sourceHash,
             messageHashes: projected.messageHashes,
+            baseSourceHash: sourceHash,
             deferredOwnerHashes,
           },
     );
@@ -881,6 +882,7 @@ async function ingestHistoryToDb(
     sourceStats: suppliedStats,
     sourceHash: suppliedSourceHash,
     messageHashes: suppliedMessageHashes,
+    baseSourceHash,
     deferredOwnerHashes,
   } = {},
 ) {
@@ -971,7 +973,29 @@ async function ingestHistoryToDb(
       clearHistoryTopicUnhealthy({ topicId, ownerType, ownerId });
       return { messageCount: 0, warningCount: 0, changed: false };
     }
-    const canonical = canonicalizeHistory(history, topicId, suppliedMessageHashes);
+    const existing = db
+      .prepare(
+        `SELECT msg_id, message_hash AS hash, updated_at, deleted_at FROM messages
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
+      )
+      .all(ownerType, ownerId, topicId);
+    const existingById = new Map(existing.map((row) => [row.msg_id, row]));
+    const reusedMessages = [];
+    // A sync push changes only its supplied IDs. The old file hash ties the
+    // remaining bodies to their indexed fingerprints without reprocessing them.
+    const reuseIndexedMessages = baseSourceHash !== undefined &&
+      previousSource?.source_hash === baseSourceHash && !sourceWasUnhealthy;
+    const changedHistory = reuseIndexedMessages
+      ? history.filter((message) => {
+          const indexed = existingById.get(message.id);
+          if (indexed?.deleted_at === null && !suppliedMessageHashes?.has(message.id)) {
+            reusedMessages.push(indexed);
+            return false;
+          }
+          return true;
+        })
+      : history;
+    const canonical = canonicalizeHistory(changedHistory, topicId, suppliedMessageHashes);
     if (canonical.topicIdRewrites > 0) {
       logger.logInfo(
         "message",
@@ -980,21 +1004,18 @@ async function ingestHistoryToDb(
       );
     }
     const now = Date.now();
-    const fingerprints = [];
+    const fingerprints = reusedMessages.map((row) => computeMessageLeafHash(row.msg_id, row.hash));
     let attachmentCount = 0;
 
     // Canonical messages are the only values allowed to influence wire hashes.
     const validMessages = canonical.frame.messages;
 
-    const liveIds = new Set(validMessages.map((message) => message.id));
+    const messageCount = validMessages.length + reusedMessages.length;
+    const liveIds = new Set([
+      ...validMessages.map((message) => message.id),
+      ...reusedMessages.map((row) => row.msg_id),
+    ]);
     const applyIndex = db.transaction(() => {
-      const existing = db
-        .prepare(
-          `SELECT msg_id, message_hash AS hash, updated_at, deleted_at FROM messages
-           WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
-        )
-        .all(ownerType, ownerId, topicId);
-      const existingById = new Map(existing.map((row) => [row.msg_id, row]));
       const topic = db
         .prepare(
           `SELECT content_hash FROM topics
@@ -1091,7 +1112,7 @@ async function ingestHistoryToDb(
         "ingest",
         topicId,
         "success",
-        `msgs=${validMessages.length} attachments=${attachmentCount}`,
+        `msgs=${messageCount} processed=${validMessages.length} reused=${reusedMessages.length} processedAttachments=${attachmentCount}`,
       );
     }
     // 启动 reconcile 由外层合并输出摘要，避免数十个话题分别触发
@@ -1106,7 +1127,7 @@ async function ingestHistoryToDb(
       );
     }
     return {
-      messageCount: validMessages.length,
+      messageCount,
       warningCount: canonical.warningCount,
       changed: true,
     };
