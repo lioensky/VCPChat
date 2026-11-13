@@ -549,7 +549,10 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
         const first = blocks[0], last = blocks[blocks.length - 1];
         if (first.parentElement !== last.parentElement) return;
         const members = [];
-        for (let node = first; node; node = node.nextSibling) { members.push(node); if (node === last) break; }
+        for (let node = first; node; node = node.nextSibling) {
+            if (node.nodeType !== 1 || (node.id !== 'vcp-root' && !node.querySelector?.('#vcp-root'))) members.push(node);
+            if (node === last) break;
+        }
         const failed = calls.filter(m=>callStatus(m) === 'failed').length;
         makeGroup(first.parentElement, members, content, p, {
             variant: 'turn', keyPrefix: 'turn:', title: `已处理 · ${calls.length} 次工具调用`, stats: failed ? `${failed} 个失败` : '',

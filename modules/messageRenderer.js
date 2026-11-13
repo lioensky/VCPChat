@@ -450,7 +450,7 @@ const MERMAID_CODE_REGEX = /<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\
 const MERMAID_FENCE_REGEX = /```(mermaid|flowchart|graph)[^\S\n]*\n([\s\S]*?)```/g;
 const CODE_FENCE_REGEX = /```[^\n]*([\s\S]*?)```/g;
 const THOUGHT_CHAIN_REGEX = /^[ \t]*\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\][ \t]*\r?\n([\s\S]*?)^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
-const CONVENTIONAL_THOUGHT_REGEX = /^[ \t]*<(think(?:ing)?)>[ \t]*(?:\r?\n)?([\s\S]*?)<\/\1>[ \t]*(?:\r?\n|$)/gim;
+const CONVENTIONAL_THOUGHT_REGEX = /^[ \t]*<(think(?:ing)?|thought(?:s)?)>[ \t]*(?:\r?\n)?([\s\S]*?)<\/(?:think(?:ing)?|thought(?:s)?)>[ \t]*(?:\r?\n|$)/gim;
 const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
 const DESKTOP_PUSH_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
 const DESKTOP_PUSH_PARTIAL_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
@@ -2145,7 +2145,7 @@ function findUnclosedStreamCodeFence(text) {
 function findUnclosedStreamThoughtChain(text) {
     if (
         typeof text !== 'string' ||
-        (!text.includes('[--- VCP元思考链') && !/<think(?:ing)?>/i.test(text))
+        (!text.includes('[--- VCP元思考链') && !/<(?:think(?:ing)?|thought(?:s)?)>/i.test(text))
     ) {
         return null;
     }
@@ -2179,7 +2179,7 @@ function findUnclosedStreamThoughtChain(text) {
                     /^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*$/
                 );
                 const conventionalStart = line.match(
-                    /^[ \t]*<(think(?:ing)?)>[ \t]*(.*)$/i
+                    /^[ \t]*<(think(?:ing)?|thought(?:s)?)>[ \t]*(.*)$/i
                 );
 
                 if (customStart) {
@@ -2187,7 +2187,7 @@ function findUnclosedStreamThoughtChain(text) {
                 } else if (conventionalStart) {
                     const type = conventionalStart[1].toLowerCase();
                     const trailingContent = conventionalStart[2] || '';
-                    const sameLineEndRegex = new RegExp(`<\\/${type}>[ \\t]*$`, 'i');
+                    const sameLineEndRegex = /<\/(?:think(?:ing)?|thought(?:s)?)>[ \t]*$/i;
                     if (!sameLineEndRegex.test(trailingContent)) {
                         activeThought = { startIndex: offset, type };
                     }
@@ -2195,7 +2195,7 @@ function findUnclosedStreamThoughtChain(text) {
             } else {
                 const isEnd = activeThought.type === 'custom'
                     ? /^[ \t]*\[--- 元思考链结束 ---\][ \t]*$/.test(line)
-                    : new RegExp(`<\\/${activeThought.type}>[ \\t]*$`, 'i').test(line);
+                    : /<\/(?:think(?:ing)?|thought(?:s)?)>[ \t]*$/i.test(line);
 
                 if (isEnd) {
                     activeThought = null;

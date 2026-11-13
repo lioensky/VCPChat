@@ -41,28 +41,71 @@ export const TOOL_RESULT_END_MARKER = 'VCP调用结果结束]]';
  * @param {number} startIndex 外层起始标记所在偏移
  * @returns {number} 外层结束标记之后的偏移；未闭合返回 -1
  */
-export function findToolResultEnd(text, startIndex) {
-    let depth = 1;
-    let cursor = startIndex + TOOL_RESULT_START_MARKER.length;
-    // 缓存下一个起始标记位置，避免每次迭代都从 cursor 重新扫描到文末。
-    let nextStart = text.indexOf(TOOL_RESULT_START_MARKER, cursor);
+function isLineLeadingBlank(text, index) {
+    const lineStart = text.lastIndexOf('\n', index - 1) + 1;
+    const prefix = text.slice(lineStart, index);
+    return /^(?:[ \t\r]|<!--VCP_THOUGHT_CHAIN_\d+-->|<<<\[(?:END_)?ROLE_DIVIDE_[A-Z]+\]>>>)*$/.test(prefix);
+}
 
+function isLineTrailingBlank(text, afterIndex) {
+    for (let i = afterIndex; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '\n' || ch === '\r') return true;
+        if (ch !== ' ' && ch !== '\t') return false;
+    }
+    return true;
+}
+
+function findNextProtocolToolResultStart(text, fromIndex) {
+    let cursor = Math.max(0, fromIndex);
+    while (cursor < text.length) {
+        const idx = text.indexOf(TOOL_RESULT_START_MARKER, cursor);
+        if (idx === -1) return -1;
+        if (isLineLeadingBlank(text, idx)) return idx;
+        cursor = idx + TOOL_RESULT_START_MARKER.length;
+    }
+    return -1;
+}
+
+function findNextProtocolToolResultEnd(text, fromIndex, openStartIndex) {
+    let cursor = Math.max(0, fromIndex);
     while (cursor <= text.length) {
-        const nextEnd = text.indexOf(TOOL_RESULT_END_MARKER, cursor);
+        const idx = text.indexOf(TOOL_RESULT_END_MARKER, cursor);
+        if (idx === -1) return -1;
+        const afterIdx = idx + TOOL_RESULT_END_MARKER.length;
+        if (isLineTrailingBlank(text, afterIdx)) {
+            const sameLineAsOpen = openStartIndex >= 0 && text.lastIndexOf('\n', idx - 1) < openStartIndex;
+            if (isLineLeadingBlank(text, idx) || sameLineAsOpen) {
+                return idx;
+            }
+        }
+        cursor = afterIdx;
+    }
+    return -1;
+}
+
+export function findToolResultEnd(text, startIndex) {
+    const openStack = [startIndex];
+    let cursor = startIndex + TOOL_RESULT_START_MARKER.length;
+    let nextStart = findNextProtocolToolResultStart(text, cursor);
+
+    while (cursor <= text.length && openStack.length > 0) {
+        const currentOpen = openStack[openStack.length - 1];
+        const nextEnd = findNextProtocolToolResultEnd(text, cursor, currentOpen);
         if (nextEnd === -1) return -1;
 
         if (nextStart !== -1 && nextStart < nextEnd) {
-            depth += 1;
+            openStack.push(nextStart);
             cursor = nextStart + TOOL_RESULT_START_MARKER.length;
-            nextStart = text.indexOf(TOOL_RESULT_START_MARKER, cursor);
+            nextStart = findNextProtocolToolResultStart(text, cursor);
             continue;
         }
 
-        depth -= 1;
+        openStack.pop();
         cursor = nextEnd + TOOL_RESULT_END_MARKER.length;
-        if (depth === 0) return cursor;
+        if (openStack.length === 0) return cursor;
         if (nextStart !== -1 && nextStart < cursor) {
-            nextStart = text.indexOf(TOOL_RESULT_START_MARKER, cursor);
+            nextStart = findNextProtocolToolResultStart(text, cursor);
         }
     }
 
@@ -112,7 +155,7 @@ function collectLegacyToolResultRanges(text) {
 
     let cursor = 0;
     while (cursor < text.length) {
-        const start = text.indexOf(TOOL_RESULT_START_MARKER, cursor);
+        const start = findNextProtocolToolResultStart(text, cursor);
         if (start === -1) break;
 
         const end = findToolResultEnd(text, start);
