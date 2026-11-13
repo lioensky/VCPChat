@@ -194,20 +194,17 @@ test("中央 pull 将 CDS item error 补全为 WireSyncError", async () => {
   }]);
 });
 
-test("中央 pull 保留 CDS 单帧预算错误的公开语义", async () => {
+test("中央 pull 逐话题转发并取消 CDS 客户端的单帧限额", async () => {
   const adapter = createClientAdapter({
-    async *requestNdjson() {
+    async *requestNdjson(_method, _route, _body, options) {
+      assert.equal(options.maxLineBytes, Infinity);
       yield {
         kind: "topic",
         topicId: "topic-a",
         ownerType: "agent",
         ownerId: "agent-a",
-        ok: false,
-        error: {
-          code: "BUDGET_EXCEEDED",
-          message: "CDS pull frame exceeds 32 MiB budget",
-          retryable: false,
-        },
+        ok: true,
+        messages: [],
       };
     },
   });
@@ -223,32 +220,28 @@ test("中央 pull 保留 CDS 单帧预算错误的公开语义", async () => {
     response,
   );
 
-  assert.deepEqual(response.frames()[0].error, {
-    code: "SYNC_BUDGET_EXCEEDED",
-    origin: "desktop_cds",
-    stage: "messages",
-    kind: "data",
-    retry: "after_user_action",
-    message: "CDS pull frame exceeds 32 MiB budget",
-    failedTopicIds: ["topic-a"],
-  });
+  assert.equal(response.frames()[0].ok, true);
+  assert.deepEqual(response.frames()[0].messages, []);
 });
 
-test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (t) => {
+test("中央 push 在一次 CDS 批调用中投影消息与墓碑，附件只传元数据", async (t) => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-central-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
   const hash = "b".repeat(64);
-  let pushedTopic = null;
+  let pushedTopics = null;
   const client = {
-    async request(method, route, topic) {
+    async request(method, route, { topics }) {
       assert.equal(method, "POST");
-      assert.equal(route, "/v3/sync/messages/push");
-      pushedTopic = topic;
+      assert.equal(route, "/v3/sync/messages/push-batch");
+      assert.equal(topics.length, 2);
+      pushedTopics = topics;
       return {
-        topicId: topic.topicId,
-        ownerType: topic.ownerType,
-        ownerId: topic.ownerId,
-        ok: true,
+        results: topics.map((topic) => ({
+          topicId: topic.topicId,
+          ownerType: topic.ownerType,
+          ownerId: topic.ownerId,
+          ok: true,
+        })),
       };
     },
   };
@@ -288,6 +281,14 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
       ],
       deletedMessages: [],
     })}\n`,
+    `${JSON.stringify({
+      kind: "topic",
+      topicId: "topic-b",
+      ownerType: "agent",
+      ownerId: "agent-a",
+      messages: [],
+      deletedMessages: [{ msgId: "deleted-message", deletedAt: 42 }],
+    })}\n`,
   ]);
   const response = new FakeResponse();
 
@@ -302,7 +303,17 @@ test("中央 push 逐 topic 投影附件元数据且不传输二进制", async (
       ownerId: "agent-a",
       ok: true,
     },
+    {
+      kind: "topic",
+      topicId: "topic-b",
+      ownerType: "agent",
+      ownerId: "agent-a",
+      ok: true,
+    },
   ]);
+  const pushedTopic = pushedTopics[0];
+  assert.deepEqual(pushedTopics[1].deletedMessages, [{ msgId: "deleted-message", deletedAt: 42 }]);
+  assert.deepEqual(pushedTopics[1].messages, []);
   assert.equal(pushedTopic.ownerType, "agent");
   assert.equal(pushedTopic.ownerId, "agent-a");
   assert.equal(pushedTopic.messages[0].updatedAt, 3);
@@ -318,17 +329,21 @@ test("中央 push 将 CDS 快照过期映射为可重新比对的统一错误", 
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-error-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
   const client = {
-    async request(_method, _route, { topicId, ownerType, ownerId }) {
+    async request(_method, route, { topics }) {
+      assert.equal(route, "/v3/sync/messages/push-batch");
+      const [{ topicId, ownerType, ownerId }] = topics;
       return {
-        topicId,
-        ownerType,
-        ownerId,
-        ok: false,
-        error: {
-          code: "SNAPSHOT_STALE",
-          message: "history changed concurrently",
-          retryable: false,
-        },
+        results: [{
+          topicId,
+          ownerType,
+          ownerId,
+          ok: false,
+          error: {
+            code: "SNAPSHOT_STALE",
+            message: "history changed concurrently",
+            retryable: false,
+          },
+        }],
       };
     },
   };
@@ -405,17 +420,12 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
   });
 });
 
-test("NDJSON reader 在 JSON parse 前拒绝越界单帧", async () => {
-  await assert.rejects(
-    async () => {
-      for await (const _line of readNdjsonLines(Readable.from(["ab", "cd"]), {
-        maxLineBytes: 3,
-      })) {
-        assert.fail("oversized line must not be yielded");
-      }
-    },
-    (error) => error?.code === "SYNC_BUDGET_EXCEEDED",
-  );
+test("NDJSON reader 按换行逐帧组合分散的网络块", async () => {
+  const lines = [];
+  for await (const line of readNdjsonLines(Readable.from(["ab", "cd\nef", "gh\nlast"]))) {
+    lines.push(line.toString());
+  }
+  assert.deepEqual(lines, ["abcd", "efgh", "last"]);
 });
 
 test("NDJSON writer 在已关闭或 write 内同步关闭时立即失败并清理监听", { timeout: 1000 }, async () => {

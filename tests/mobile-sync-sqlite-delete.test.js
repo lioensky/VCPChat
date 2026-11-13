@@ -1535,6 +1535,11 @@ test("中央 Owner Phase handler 完成前刷新 CDS 提交视图", async (t) =>
     {
       chatDataService: {
         client: {
+          async request(method, route) {
+            assert.equal(method, "GET");
+            assert.equal(route, "/v3/sync/version");
+            return { wireVersion: "1.6" };
+          },
           async reconcile() {
             reconcileCalls += 1;
             if (reconcileCalls === 1) await phaseReconcileGate;
@@ -1615,7 +1620,13 @@ test("Desktop 仅为未启动的 Messages 阶段记录 skipped", async (t) => {
     projectBasePath,
     {
       chatDataService: {
-        client: {},
+        client: {
+          request: async (method, route) => {
+            assert.equal(method, "GET");
+            assert.equal(route, "/v3/sync/version");
+            return { wireVersion: "1.6" };
+          },
+        },
         mobileSyncUseCentralIndex: true,
       },
     },
@@ -1687,7 +1698,14 @@ test("中央 Topic 删除错误保持 topic_metadata 阶段和失败 Topic", asy
     projectBasePath,
     {
       chatDataService: {
-        client: { reconcile: async () => ({ stats: {} }) },
+        client: {
+          reconcile: async () => ({ stats: {} }),
+          request: async (method, route) => {
+            assert.equal(method, "GET");
+            assert.equal(route, "/v3/sync/version");
+            return { wireVersion: "1.6" };
+          },
+        },
         mobileSyncUseCentralIndex: true,
       },
     },

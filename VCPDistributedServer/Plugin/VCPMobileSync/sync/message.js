@@ -342,7 +342,11 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
       );
 
       const { history } = await readHistoryStrict(historyPath);
-      const canonical = canonicalizeHistory(history, safeTopicId);
+      const wanted = new Set(messageIds);
+      const selectedHistory = wanted.size === 0
+        ? history
+        : history.filter((message) => wanted.has(message?.id));
+      const canonical = canonicalizeHistory(selectedHistory, safeTopicId);
       if (canonical.topicIdRewrites > 0) {
         getLogger().logInfo(
           "message",
@@ -350,10 +354,7 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
           "warn",
         );
       }
-      const wanted = new Set(messageIds);
-      const messages = wanted.size === 0
-        ? canonical.frame.messages
-        : canonical.frame.messages.filter((message) => wanted.has(message.id));
+      const messages = canonical.frame.messages;
       if (wanted.size > 0) {
         const actual = new Set(messages.map((message) => message.id));
         if (actual.size !== wanted.size || [...wanted].some((id) => !actual.has(id))) {
@@ -369,9 +370,11 @@ async function pullMessagesStreamRaw(topics, appDataPath, res) {
           .prepare(
             `SELECT msg_id, message_hash AS hash, updated_at FROM messages
              WHERE owner_type = ? AND owner_id = ? AND topic_id = ?
-               AND deleted_at IS NULL`,
+               AND deleted_at IS NULL${wanted.size > 0
+                ? " AND msg_id IN (SELECT value FROM json_each(?))"
+                : ""}`,
           )
-          .all(ownerType, ownerId, safeTopicId)
+          .all(ownerType, ownerId, safeTopicId, ...(wanted.size > 0 ? [JSON.stringify(messageIds)] : []))
           .map((indexRow) => [indexRow.msg_id, indexRow]),
       );
       if (wanted.size === 0) {
@@ -467,6 +470,7 @@ async function doPushSingleTopic(
   deletedMessages,
   appDataPath,
   row,
+  deferredOwnerHashes,
 ) {
   const db = getDb();
   const parentId = row.owner_id;
@@ -571,12 +575,14 @@ async function doPushSingleTopic(
       identity,
       "batch_push",
       committed.unchanged
-        ? { messageHashes: projected.messageHashes }
+        ? { messageHashes: projected.messageHashes, baseSourceHash: sourceHash, deferredOwnerHashes }
         : {
             history: committed.history,
             sourceStats: committed.sourceStats,
             sourceHash: committed.sourceHash,
             messageHashes: projected.messageHashes,
+            baseSourceHash: sourceHash,
+            deferredOwnerHashes,
           },
     );
 
@@ -614,6 +620,9 @@ async function pushMessagesStreamRaw(req, appDataPath, res) {
   const writer = new NdjsonWriter(res);
   const seenTopics = new Set();
   let topicCount = 0;
+  const deferredOwnerHashes = new Map();
+  const completedTopics = [];
+  let streamError = null;
 
   try {
     for await (const line of readNdjsonLines(req)) {
@@ -784,8 +793,9 @@ async function pushMessagesStreamRaw(req, appDataPath, res) {
           deletedMessages,
           appDataPath,
           row,
+          deferredOwnerHashes,
         );
-        await writer.write({
+        completedTopics.push({
           kind: "topic",
           topicId: safeTopicId,
           ownerType,
@@ -816,21 +826,34 @@ async function pushMessagesStreamRaw(req, appDataPath, res) {
       }
     }
 
-    logger.logOperation("messages", "upload_messages_batch_stream", "batch", "success",
-      `topics=${topicCount} success=${successCount} error=${errorCount}`);
   } catch (e) {
+    streamError = e;
     logger.logOperation("messages", "upload_messages_batch_stream", "global", "error", e.message);
-    if (!res.writableEnded) {
-      await writer.write(createStreamErrorFrame(e, {
-        code: "SYNC_STREAM_FAILED",
-        stage: "messages",
-      })).catch(() => {});
-    }
   } finally {
-    res.end();
-    // 延迟 1000ms 释放所有 writeIntentLock（文件监控器此时可安全摄入）
-    for (const key of addedIntentLocks) {
-      releaseWriteIntent(key);
+    try {
+      // Finalize accepted writes even if a later request frame failed.
+      for (const owner of deferredOwnerHashes.values()) {
+        refreshOwnerContentHash(owner);
+      }
+      if (streamError) throw streamError;
+      for (const result of completedTopics) {
+        await writer.write(result);
+      }
+      logger.logOperation("messages", "upload_messages_batch_stream", "batch", "success",
+        `topics=${topicCount} success=${successCount} error=${errorCount}`);
+    } catch (error) {
+      if (!res.writableEnded) {
+        await writer.write(createStreamErrorFrame(error, {
+          code: "SYNC_STREAM_FAILED",
+          stage: "messages",
+        })).catch(() => {});
+      }
+    } finally {
+      res.end();
+      // 延迟 1000ms 释放所有 writeIntentLock（文件监控器此时可安全摄入）
+      for (const key of addedIntentLocks) {
+        releaseWriteIntent(key);
+      }
     }
   }
 }
@@ -859,6 +882,8 @@ async function ingestHistoryToDb(
     sourceStats: suppliedStats,
     sourceHash: suppliedSourceHash,
     messageHashes: suppliedMessageHashes,
+    baseSourceHash,
+    deferredOwnerHashes,
   } = {},
 ) {
   const db = getDb();
@@ -948,7 +973,29 @@ async function ingestHistoryToDb(
       clearHistoryTopicUnhealthy({ topicId, ownerType, ownerId });
       return { messageCount: 0, warningCount: 0, changed: false };
     }
-    const canonical = canonicalizeHistory(history, topicId);
+    const existing = db
+      .prepare(
+        `SELECT msg_id, message_hash AS hash, updated_at, deleted_at FROM messages
+         WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
+      )
+      .all(ownerType, ownerId, topicId);
+    const existingById = new Map(existing.map((row) => [row.msg_id, row]));
+    const reusedMessages = [];
+    // A sync push changes only its supplied IDs. The old file hash ties the
+    // remaining bodies to their indexed fingerprints without reprocessing them.
+    const reuseIndexedMessages = baseSourceHash !== undefined &&
+      previousSource?.source_hash === baseSourceHash && !sourceWasUnhealthy;
+    const changedHistory = reuseIndexedMessages
+      ? history.filter((message) => {
+          const indexed = existingById.get(message.id);
+          if (indexed?.deleted_at === null && !suppliedMessageHashes?.has(message.id)) {
+            reusedMessages.push(indexed);
+            return false;
+          }
+          return true;
+        })
+      : history;
+    const canonical = canonicalizeHistory(changedHistory, topicId, suppliedMessageHashes);
     if (canonical.topicIdRewrites > 0) {
       logger.logInfo(
         "message",
@@ -957,21 +1004,18 @@ async function ingestHistoryToDb(
       );
     }
     const now = Date.now();
-    const fingerprints = [];
+    const fingerprints = reusedMessages.map((row) => computeMessageLeafHash(row.msg_id, row.hash));
     let attachmentCount = 0;
 
     // Canonical messages are the only values allowed to influence wire hashes.
     const validMessages = canonical.frame.messages;
 
-    const liveIds = new Set(validMessages.map((message) => message.id));
+    const messageCount = validMessages.length + reusedMessages.length;
+    const liveIds = new Set([
+      ...validMessages.map((message) => message.id),
+      ...reusedMessages.map((row) => row.msg_id),
+    ]);
     const applyIndex = db.transaction(() => {
-      const existing = db
-        .prepare(
-          `SELECT msg_id, message_hash AS hash, updated_at, deleted_at FROM messages
-           WHERE owner_type = ? AND owner_id = ? AND topic_id = ?`,
-        )
-        .all(ownerType, ownerId, topicId);
-      const existingById = new Map(existing.map((row) => [row.msg_id, row]));
       const topic = db
         .prepare(
           `SELECT content_hash FROM topics
@@ -1042,7 +1086,11 @@ async function ingestHistoryToDb(
           );
         }
         if (source !== "reconcile") {
-          refreshOwnerContentHash({ ownerType, ownerId });
+          if (deferredOwnerHashes) {
+            deferredOwnerHashes.set(`${ownerType}\0${ownerId}`, { ownerType, ownerId });
+          } else {
+            refreshOwnerContentHash({ ownerType, ownerId });
+          }
         }
       }
       upsertHistorySourceState({
@@ -1064,7 +1112,7 @@ async function ingestHistoryToDb(
         "ingest",
         topicId,
         "success",
-        `msgs=${validMessages.length} attachments=${attachmentCount}`,
+        `msgs=${messageCount} processed=${validMessages.length} reused=${reusedMessages.length} processedAttachments=${attachmentCount}`,
       );
     }
     // 启动 reconcile 由外层合并输出摘要，避免数十个话题分别触发
@@ -1079,7 +1127,7 @@ async function ingestHistoryToDb(
       );
     }
     return {
-      messageCount: validMessages.length,
+      messageCount,
       warningCount: canonical.warningCount,
       changed: true,
     };

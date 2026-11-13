@@ -13,6 +13,7 @@ function createClient(overrides = {}) {
   return {
     reconcile: async () => ({ stats: {} }),
     request: async (_method, path, body) => {
+      if (path === "/v3/sync/version") return { wireVersion: "1.6" };
       if (path === "/v3/sync/manifest") {
         return {
           type: "SYNC_MANIFEST_RESULT",
@@ -415,8 +416,10 @@ test("中央适配器拒绝畸形 CDS Phase 3 成功帧", async () => {
     {
       ...topicIdentity(),
       ok: true,
+      pullAll: false,
       pullMessageIds: [],
-      pushTopic: false,
+      pushMessageIds: [],
+      pushDeletedMessages: [],
       deleteMessages: [],
       error: {
         code: "INTERNAL_ERROR",
@@ -427,8 +430,10 @@ test("中央适配器拒绝畸形 CDS Phase 3 成功帧", async () => {
     {
       ...topicIdentity(),
       ok: true,
+      pullAll: false,
       pullMessageIds: [],
-      pushTopic: false,
+      pushMessageIds: [],
+      pushDeletedMessages: [],
     },
   ];
 
@@ -464,8 +469,10 @@ test("中央适配器严格保留 Phase 3 message tombstone 决策", async () =>
           {
             ...topicIdentity(),
             ok: true,
+            pullAll: false,
             pullMessageIds: ["message-pull"],
-            pushTopic: false,
+            pushMessageIds: ["message-push"],
+            pushDeletedMessages: [{ msgId: "message-push-delete", deletedAt: 456 }],
             deleteMessages: [{ msgId: "message-delete", deletedAt: 321 }],
           },
         ],
@@ -481,10 +488,31 @@ test("中央适配器严格保留 Phase 3 message tombstone 决策", async () =>
     ownerType: "agent",
     ownerId: "agent-a",
     ok: true,
+    pullAll: false,
     pullMessageIds: ["message-pull"],
-    pushTopic: false,
+    pushMessageIds: ["message-push"],
+    pushDeletedMessages: [{ msgId: "message-push-delete", deletedAt: 456 }],
     deleteMessages: [{ msgId: "message-delete", deletedAt: 321 }],
   });
+});
+
+test("中央适配器保留空话题的 pullAll 决策", async () => {
+  const decision = {
+    ...topicIdentity(),
+    ok: true,
+    pullAll: true,
+    pullMessageIds: [],
+    pushMessageIds: [],
+    pushDeletedMessages: [],
+    deleteMessages: [],
+  };
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      request: async () => ({ type: "SYNC_MESSAGE_DIFF_RESULT", results: [decision] }),
+    }),
+  });
+  const response = await adapter.handleMessageDiff({ topics: [topicState()] });
+  assert.deepEqual(response.results, [decision]);
 });
 
 test("中央适配器原样转发完整 Owner 与 Topic 墓碑", async () => {

@@ -2,7 +2,7 @@
 
 const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
-const { parseJsonWithoutDuplicateKeys } = require("../protocol");
+const { parseJsonWithoutDuplicateKeys, WIRE_PROTOCOL_VERSION } = require("../protocol");
 const { SyncProtocolError } = require("./canonical");
 const {
   requireCompoundTopicStates,
@@ -180,6 +180,29 @@ class CentralSyncAdapter {
       ...options,
       timeoutMs: null,
     });
+  }
+
+  async checkSyncVersion() {
+    let response;
+    try {
+      response = await this.requestCds("GET", "/v3/sync/version");
+    } catch (error) {
+      if (error?.status === 404) {
+        throw createSyncError(
+          "CDS_PROTOCOL_MISMATCH",
+          `VCP-CDS does not provide Wire ${WIRE_PROTOCOL_VERSION} sync; rebuild the CDS binary`,
+          { origin: "desktop_cds", stage: "startup" },
+        );
+      }
+      throw withCdsErrorContext(error, { stage: "startup" });
+    }
+    if (response?.wireVersion !== WIRE_PROTOCOL_VERSION) {
+      throw createSyncError(
+        "CDS_PROTOCOL_MISMATCH",
+        `VCP-CDS sync version mismatch: expected ${WIRE_PROTOCOL_VERSION}, received ${response?.wireVersion}`,
+        { origin: "desktop_cds", stage: "startup" },
+      );
+    }
   }
 
   async reconcile({ maxAttempts = 30, retryDelayMs = 500 } = {}) {
@@ -592,8 +615,10 @@ class CentralSyncAdapter {
             Object.keys(decision).sort().join("\0") !==
               "error\0ok\0ownerId\0ownerType\0topicId" ||
             !isCdsItemError(decision.error) ||
+            decision.pullAll !== undefined ||
             decision.pullMessageIds !== undefined ||
-            decision.pushTopic !== undefined ||
+            decision.pushMessageIds !== undefined ||
+            decision.pushDeletedMessages !== undefined ||
             decision.deleteMessages !== undefined
           ) {
             throw cdsProtocolError(
@@ -618,14 +643,31 @@ class CentralSyncAdapter {
         const deleteIds = Array.isArray(deleteMessages)
           ? deleteMessages.map((item) => item?.msgId)
           : [];
+        const pushDeletedMessages = decision.pushDeletedMessages;
+        const pushDeletedIds = Array.isArray(pushDeletedMessages)
+          ? pushDeletedMessages.map((item) => item?.msgId)
+          : [];
         if (
           Object.keys(decision).sort().join("\0") !==
-            "deleteMessages\0ok\0ownerId\0ownerType\0pullMessageIds\0pushTopic\0topicId" ||
+            "deleteMessages\0ok\0ownerId\0ownerType\0pullAll\0pullMessageIds\0pushDeletedMessages\0pushMessageIds\0topicId" ||
           decision.ok !== true ||
+          typeof decision.pullAll !== "boolean" ||
           !Array.isArray(decision.pullMessageIds) ||
           decision.pullMessageIds.some((id) => typeof id !== "string" || id.length === 0) ||
           new Set(decision.pullMessageIds).size !== decision.pullMessageIds.length ||
-          typeof decision.pushTopic !== "boolean" ||
+          !Array.isArray(decision.pushMessageIds) ||
+          decision.pushMessageIds.some((id) => typeof id !== "string" || id.length === 0) ||
+          new Set(decision.pushMessageIds).size !== decision.pushMessageIds.length ||
+          !Array.isArray(pushDeletedMessages) ||
+          pushDeletedMessages.some(
+            (item) =>
+              !isRecord(item) ||
+              typeof item.msgId !== "string" ||
+              item.msgId.length === 0 ||
+              !Number.isSafeInteger(item.deletedAt) ||
+              item.deletedAt < 0,
+          ) ||
+          new Set(pushDeletedIds).size !== pushDeletedIds.length ||
           !Array.isArray(deleteMessages) ||
           deleteMessages.some(
             (item) =>
@@ -637,6 +679,11 @@ class CentralSyncAdapter {
           ) ||
           new Set(deleteIds).size !== deleteIds.length ||
           deleteIds.some((msgId) => decision.pullMessageIds.includes(msgId)) ||
+          pushDeletedIds.some((msgId) => decision.pushMessageIds.includes(msgId)) ||
+          (decision.pullAll && (
+            decision.pullMessageIds.length > 0 || decision.pushMessageIds.length > 0 ||
+            pushDeletedMessages.length > 0 || deleteMessages.length > 0
+          )) ||
           decision.error !== undefined
         ) {
           throw cdsProtocolError(
@@ -648,8 +695,13 @@ class CentralSyncAdapter {
         results.push({
           ...resultIdentity,
           ok: true,
+          pullAll: decision.pullAll,
           pullMessageIds: decision.pullMessageIds,
-          pushTopic: decision.pushTopic,
+          pushMessageIds: decision.pushMessageIds,
+          pushDeletedMessages: pushDeletedMessages.map((item) => ({
+            msgId: item.msgId,
+            deletedAt: item.deletedAt,
+          })),
           deleteMessages: deleteMessages.map((item) => ({
             msgId: item.msgId,
             deletedAt: item.deletedAt,
@@ -741,7 +793,7 @@ class CentralSyncAdapter {
       "POST",
       "/v3/sync/messages/pull",
       { topics: normalizedTopics },
-      { signal: upstreamController.signal },
+      { signal: upstreamController.signal, maxLineBytes: Infinity },
     )) {
       if (rawFrame?.kind === "streamError") {
         if (!isCdsItemError(rawFrame.error) || Object.keys(rawFrame).length !== 2) {
@@ -866,6 +918,7 @@ class CentralSyncAdapter {
 
     const writer = new NdjsonWriter(res);
     const seen = new Set();
+    const topics = [];
     const avatarPaths = new Map();
     const resolveAgentAvatarPath = (agentId) => {
       if (!avatarPaths.has(agentId)) {
@@ -979,61 +1032,15 @@ class CentralSyncAdapter {
           });
           continue;
         }
-        const result = await this.requestCds(
-          "POST",
-          "/v3/sync/messages/push",
-          {
-            topicId,
-            ownerType: frame.ownerType,
-            ownerId: frame.ownerId,
-            messages: projected.messages.map((message) => ({
-              ...message,
-              contentHash: projected.messageHashes.get(message.id),
-            })),
-            deletedMessages: frame.deletedMessages,
-          },
-        );
-        if (
-          result?.topicId !== topicId ||
-          result?.ownerType !== ownerType ||
-          result?.ownerId !== ownerId ||
-          typeof result?.ok !== "boolean" ||
-          Object.keys(result).length !== (result.ok ? 4 : 5) ||
-          (result.ok ? result.error !== undefined : !isCdsItemError(result.error))
-        ) {
-          throw createSyncError(
-            "SYNC_PROTOCOL_INVALID",
-            `CDS returned an invalid push result for ${topicId}`,
-            { origin: "desktop_cds", stage: "messages", failedTopicIds: [topicId] },
-          );
-        }
-        if (!result.ok) {
-          throw withCdsErrorContext(
-            mapCdsItemError(
-              result.error,
-              result.error.code === "SNAPSHOT_STALE"
-                ? "SYNC_SNAPSHOT_STALE"
-                : "SYNC_MESSAGE_WRITE_FAILED",
-              {
-                origin: "desktop_cds",
-                stage: "messages",
-                failedTopicIds: [topicId],
-              },
-            ),
-            {
-              code: "SYNC_MESSAGE_WRITE_FAILED",
-              origin: "desktop_cds",
-              stage: "messages",
-              failedTopicIds: [topicId],
-            },
-          );
-        }
-        await writer.write({
-          kind: "topic",
+        topics.push({
           topicId,
           ownerType,
           ownerId,
-          ok: true,
+          messages: projected.messages.map((message) => ({
+            ...message,
+            contentHash: projected.messageHashes.get(message.id),
+          })),
+          deletedMessages: frame.deletedMessages,
         });
       } catch (error) {
         if (
@@ -1056,6 +1063,63 @@ class CentralSyncAdapter {
             origin: "desktop_cds",
             stage: "messages",
             failedTopicIds: [topicId],
+          }),
+        });
+      }
+    }
+    if (topics.length > 0) {
+      let response;
+      try {
+        response = await this.requestCds(
+          "POST",
+          "/v3/sync/messages/push-batch",
+          { topics },
+        );
+      } catch (error) {
+        throw withCdsErrorContext(error, {
+          code: "SYNC_MESSAGE_WRITE_FAILED",
+          stage: "messages",
+          failedTopicIds: topics.map((topic) => topic.topicId),
+        });
+      }
+      const pending = new Set(topics.map(topicIdentityKey));
+      if (!Array.isArray(response?.results) || response.results.length !== topics.length) {
+        throw cdsProtocolError("CDS push batch omitted topic results", "messages");
+      }
+      for (const result of response.results) {
+        const key = topicIdentityKey(result);
+        if (
+          !pending.delete(key) ||
+          typeof result.ok !== "boolean" ||
+          Object.keys(result).length !== (result.ok ? 4 : 5) ||
+          (result.ok ? result.error !== undefined : !isCdsItemError(result.error))
+        ) {
+          throw cdsProtocolError("CDS push batch returned an invalid topic result", "messages");
+        }
+      }
+      // CDS returns only after this request's Owner roots and search index are committed.
+      for (const result of response.results) {
+        const identity = {
+          topicId: result.topicId,
+          ownerType: result.ownerType,
+          ownerId: result.ownerId,
+        };
+        await writer.write({
+          kind: "topic",
+          ...identity,
+          ok: result.ok,
+          ...(result.ok ? {} : {
+            error: mapCdsItemError(
+              result.error,
+              result.error.code === "SNAPSHOT_STALE"
+                ? "SYNC_SNAPSHOT_STALE"
+                : "SYNC_MESSAGE_WRITE_FAILED",
+              {
+                origin: "desktop_cds",
+                stage: "messages",
+                failedTopicIds: [result.topicId],
+              },
+            ),
           }),
         });
       }

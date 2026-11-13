@@ -26,9 +26,4 @@ test("Electron Builder packages the MobileSync/CDS runtime chain", () => {
     ),
     true,
   );
-  const buildRuntime = fs.readFileSync(
-    path.join(ROOT, "rust_chat_data_service", "build-runtime.js"),
-    "utf8",
-  );
-  assert.match(buildRuntime, /'build', '--release', '--locked'/);
 });

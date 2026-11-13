@@ -283,7 +283,7 @@ function messageContentHash(message) {
   return computeMessageFingerprint(message);
 }
 
-function canonicalizeTopicFrame(value) {
+function canonicalizeTopicFrame(value, messageHashes) {
   if (!isPlainObject(value)) {
     throw new SyncProtocolError("NDJSON frame must be an object");
   }
@@ -345,7 +345,9 @@ function canonicalizeTopicFrame(value) {
       );
     }
     seen.add(message.id);
-    message.contentHash = messageContentHash(message);
+    message.contentHash = messageHashes?.has(message.id)
+      ? messageHashes.get(message.id)
+      : messageContentHash(message);
     return message;
   });
 
@@ -368,11 +370,11 @@ function canonicalizeTopicFrame(value) {
   };
 }
 
-function canonicalizeHistory(history, topicId) {
+function canonicalizeHistory(history, topicId, messageHashes) {
   if (!Array.isArray(history)) {
     throw new SyncProtocolError(`History root for ${topicId} must be an array`);
   }
-  return canonicalizeTopicFrame({ topicId, messages: history });
+  return canonicalizeTopicFrame({ topicId, messages: history }, messageHashes);
 }
 
 module.exports = {

@@ -186,7 +186,7 @@ test("CDS 缺席时只开放诊断 WebSocket并返回稳定错误", async (t) =>
         type: "VERSION_CHECK",
         versions: [
           { component: "mobile_app", version: "1.1.6" },
-          { component: "wire", version: "1.5" },
+          { component: "wire", version: "1.6" },
         ],
       }),
       (error) =>

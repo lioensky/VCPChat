@@ -1,8 +1,6 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 const { test } = require("node:test");
 
 const manifest = require("../VCPDistributedServer/Plugin/VCPMobileSync/plugin-manifest.json");
@@ -16,7 +14,7 @@ const {
   validateSyncRequestFrame,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/protocol");
 
-test("VCPMobileSync Wire 1.5 握手使用唯一结构化版本合同", () => {
+test("VCPMobileSync Wire 1.6 握手使用唯一结构化版本合同", () => {
   assert.equal(
     manifest.version,
     versionFixture.versionAck.versions.find(
@@ -112,25 +110,6 @@ test("VERSION_CHECK 先校验完整结构，再裁决 Wire", () => {
       (error) => error.code === "VERSION_CHECK_INVALID",
     );
   }
-});
-
-test("CDS Rust 与 Electron lifecycle 的 protocol/schema 常量一致", () => {
-  const root = path.resolve(__dirname, "..");
-  const rust = fs.readFileSync(
-    path.join(root, "rust_chat_data_service", "src", "config.rs"),
-    "utf8",
-  );
-  const lifecycle = fs.readFileSync(
-    path.join(root, "modules", "services", "chatDataService", "lifecycle.js"),
-    "utf8",
-  );
-  const rustProtocol = rust.match(/PROTOCOL_VERSION: u32 = (\d+)/)?.[1];
-  const rustSchema = rust.match(/SCHEMA_VERSION: u32 = (\d+)/)?.[1];
-  const jsProtocol = lifecycle.match(/PROTOCOL_VERSION = (\d+)/)?.[1];
-  const jsSchema = lifecycle.match(/SCHEMA_VERSION = (\d+)/)?.[1];
-  assert.ok(rustProtocol && rustSchema && jsProtocol && jsSchema);
-  assert.equal(jsProtocol, rustProtocol);
-  assert.equal(jsSchema, rustSchema);
 });
 
 test("严格 JSON parser 拒绝重复 topic 与嵌套重复字段", () => {

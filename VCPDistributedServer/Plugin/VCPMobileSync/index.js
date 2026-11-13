@@ -186,6 +186,7 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
         // 中央模式不再打开持久化 Legacy 索引。进程内兼容目录只服务于配置
         // 物理定位、当前进程删除保护和本机附件投影；权威同步状态仍由 CDS 维护。
         centralSync.requireClient();
+        await centralSync.checkSyncVersion();
         const physicalOwners = await scanPhysicalTopicTree(appDataPath);
         await repairTopicProjectionsFromDisk(
           appDataPath,

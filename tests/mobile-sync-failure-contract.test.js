@@ -201,8 +201,10 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
     ownerType: "agent",
     ownerId: "agent-a",
     ok: true,
+    pullAll: false,
     pullMessageIds: [],
-    pushTopic: true,
+    pushMessageIds: [],
+    pushDeletedMessages: [{ msgId: "message-1", deletedAt: 1 }],
     deleteMessages: [],
   });
   assert.deepEqual(topicResult(result, "topic-missing"), {
@@ -420,8 +422,10 @@ test("legacy manifest、hash 与 message diff 将 default 作为普通 Topic", (
         ownerType: "agent",
         ownerId: "agent-a",
         ok: true,
+        pullAll: false,
         pullMessageIds: [],
-        pushTopic: false,
+        pushMessageIds: [],
+        pushDeletedMessages: [],
         deleteMessages: [],
       }],
     },
