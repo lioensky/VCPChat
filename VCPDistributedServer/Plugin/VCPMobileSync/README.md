@@ -252,6 +252,8 @@ Owner、Topic、Message、Avatar、Tombstone 与 history source 状态由 VCP-CD
 
 ### Legacy 模式（`sync_state_v2.db`）
 
+群组同步 DTO 与配置 Hash 排除桌面专属的 `enableContextMessageWindow`、`contextMessageWindowSize`，与手机/CDS 的字段集合对齐。旧版 Legacy 用户升级时退出 VChat，手动删除插件目录下的 `sync_state_v2.db`，重新启动后自扫描重建索引；本次不增加索引迁移逻辑。
+
 | 表 | 主键 / 职责 |
 | :--- | :--- |
 | `owners` | `(owner_type, owner_id)`；Owner DTO Hash、持久化 Topic 聚合根、配置路径、时间与墓碑 |
