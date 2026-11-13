@@ -3,6 +3,33 @@
 
 (function installGroupSettingsSlots(global) {
     const defaultAvatar = 'assets/default_avatar.png';
+    const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+    const scopedTextDrafts = new WeakMap();
+    const scopedOrderDrafts = new WeakMap();
+
+    function resolveScopeToken(scopeKey, groupConfig) {
+        if (typeof scopeKey === 'string' && scopeKey) return scopeKey;
+        if (typeof groupConfig?.id === 'string' && groupConfig.id) return `group:${groupConfig.id}`;
+        return null;
+    }
+
+    function syncScopedTextDraft(container, selector, scopeToken) {
+        if (!scopeToken) {
+            scopedTextDrafts.delete(container);
+            return null;
+        }
+        let state = scopedTextDrafts.get(container);
+        if (!state || state.scopeToken !== scopeToken) {
+            state = { scopeToken, values: Object.create(null) };
+            scopedTextDrafts.set(container, state);
+            return state;
+        }
+        Array.from(container.querySelectorAll(selector)).forEach(input => {
+            const agentId = input.dataset.agentId;
+            if (agentId) state.values[agentId] = input.value;
+        });
+        return state;
+    }
 
     function clear(node) {
         node?.replaceChildren();
@@ -10,6 +37,8 @@
 
     function message(node, text, tag = 'p') {
         if (!node) return;
+        scopedTextDrafts.delete(node);
+        scopedOrderDrafts.delete(node);
         clear(node);
         const wrapper = node.ownerDocument.createElement(tag);
         wrapper.textContent = text;
@@ -74,10 +103,21 @@
             .filter(Boolean);
     }
 
-    function renderMemberList({ container, tagsContainer, agents, groupConfig, onChange }) {
+    function renderMemberList({ container, tagsContainer, jevStylesContainer, sequentialList, agents, groupConfig, onChange }) {
         if (!container) return;
         clear(container);
-        clear(tagsContainer);
+        if (tagsContainer) {
+            scopedTextDrafts.delete(tagsContainer);
+            clear(tagsContainer);
+        }
+        if (jevStylesContainer) {
+            scopedTextDrafts.delete(jevStylesContainer);
+            clear(jevStylesContainer);
+        }
+        if (sequentialList) {
+            scopedOrderDrafts.delete(sequentialList);
+            clear(sequentialList);
+        }
         const doc = container.ownerDocument;
         (agents || []).forEach(agent => {
             const row = doc.createElement('div');
@@ -222,17 +262,58 @@
         return item;
     }
 
-    function renderSequentialSpeakerOrder({ list, agents, groupConfig = {}, onChanged }) {
+    function renderSequentialSpeakerOrder({ list, membersContainer, agents, groupConfig = {}, scopeKey, onChanged }) {
         if (!list) return;
-        const selectedIds = readSelectedMemberIds(list.ownerDocument.getElementById('groupMembersList'));
+        const resolvedMembersContainer = membersContainer || list.ownerDocument.getElementById('groupMembersList');
+        const selectedIds = readSelectedMemberIds(resolvedMembersContainer);
         const selectedSet = new Set(selectedIds);
-        const draftOrder = readSequentialSpeakerOrder(list);
+        const scopeToken = resolveScopeToken(scopeKey, groupConfig);
+        const currentDomOrder = readSequentialSpeakerOrder(list);
         const savedOrder = groupConfig.modeSettings?.sequential?.speakerOrder || groupConfig.sequentialSpeakerOrder || [];
-        const preferredOrder = draftOrder.length ? draftOrder : savedOrder;
+
+        let orderState = scopeToken ? scopedOrderDrafts.get(list) : null;
+        let preferredOrder;
+        if (scopeToken) {
+            if (!orderState || orderState.scopeToken !== scopeToken) {
+                orderState = { scopeToken, order: [...savedOrder] };
+                scopedOrderDrafts.set(list, orderState);
+            } else if (currentDomOrder.length) {
+                const domSet = new Set(currentDomOrder);
+                orderState.order = [
+                    ...currentDomOrder,
+                    ...orderState.order.filter(id => !domSet.has(id))
+                ];
+            }
+            preferredOrder = orderState.order;
+        } else {
+            scopedOrderDrafts.delete(list);
+            preferredOrder = savedOrder;
+        }
+
         const normalizedOrder = [
             ...preferredOrder.filter((id, index) => selectedSet.has(id) && preferredOrder.indexOf(id) === index),
             ...selectedIds.filter(id => !preferredOrder.includes(id))
         ];
+        if (orderState) {
+            const normalizedSet = new Set(normalizedOrder);
+            orderState.order = [
+                ...normalizedOrder,
+                ...orderState.order.filter(id => !normalizedSet.has(id))
+            ];
+        }
+
+        const notifyOrderChanged = () => {
+            if (orderState) {
+                const latestDomOrder = readSequentialSpeakerOrder(list);
+                const latestSet = new Set(latestDomOrder);
+                orderState.order = [
+                    ...latestDomOrder,
+                    ...orderState.order.filter(id => !latestSet.has(id))
+                ];
+            }
+            onChanged?.();
+        };
+
         clear(list);
         if (!normalizedOrder.length) {
             const empty = list.ownerDocument.createElement('div');
@@ -243,13 +324,14 @@
         }
         normalizedOrder.forEach(id => {
             const agent = (agents || []).find(candidate => candidate.id === id);
-            if (agent) list.appendChild(createSequentialItem({ list, agent, onChanged }));
+            if (agent) list.appendChild(createSequentialItem({ list, agent, onChanged: notifyOrderChanged }));
         });
     }
 
-    function renderMemberTags({ container, membersContainer, agents, groupConfig = {}, onChanged }) {
+    function renderMemberTags({ container, membersContainer, agents, groupConfig = {}, scopeKey, onChanged }) {
         if (!container || !membersContainer) return;
-        const draftTags = Object.fromEntries(Array.from(container.querySelectorAll('input[type="text"]')).map(input => [input.dataset.agentId, input.value]));
+        const scopeToken = resolveScopeToken(scopeKey, groupConfig);
+        const draftState = syncScopedTextDraft(container, 'input[type="text"][data-agent-id]', scopeToken);
         clear(container);
         const persisted = groupConfig.modeSettings?.naturerandom?.memberTags || groupConfig.memberTags || {};
         const selectedIds = readSelectedMemberIds(membersContainer);
@@ -269,8 +351,15 @@
             input.id = `tags_for_${agentId}`;
             input.dataset.agentId = agentId;
             input.placeholder = '例如: 猫娘,小克,科学';
-            input.value = draftTags[agentId] ?? persisted[agentId] ?? '';
-            input.addEventListener('input', () => onChanged?.());
+            const initialValue = draftState && hasOwn(draftState.values, agentId)
+                ? draftState.values[agentId]
+                : (persisted[agentId] ?? '');
+            input.value = initialValue;
+            if (draftState) draftState.values[agentId] = initialValue;
+            input.addEventListener('input', () => {
+                if (draftState) draftState.values[agentId] = input.value;
+                onChanged?.();
+            });
             row.append(label, input);
             container.appendChild(row);
         });
@@ -281,12 +370,10 @@
             .map(input => [input.dataset.agentId, input.value.trim()]));
     }
 
-    function renderJevMemberStyles({ container, membersContainer, agents, groupConfig = {}, onChanged }) {
+    function renderJevMemberStyles({ container, membersContainer, agents, groupConfig = {}, scopeKey, onChanged }) {
         if (!container || !membersContainer) return;
-        const draftStyles = Object.fromEntries(
-            Array.from(container.querySelectorAll('textarea[data-agent-id]'))
-                .map(input => [input.dataset.agentId, input.value])
-        );
+        const scopeToken = resolveScopeToken(scopeKey, groupConfig);
+        const draftState = syncScopedTextDraft(container, 'textarea[data-agent-id]', scopeToken);
         const persisted = groupConfig.modeSettings?.jev?.memberStyles || {};
         const selectedIds = readSelectedMemberIds(membersContainer);
         const doc = container.ownerDocument;
@@ -305,8 +392,15 @@
             input.dataset.agentId = agentId;
             input.rows = 3;
             input.placeholder = '例如：熟悉 VCP 与新技术；遇到相关问题、需要补充新信息或被点名时积极回应，避免重复他人结论。';
-            input.value = draftStyles[agentId] ?? persisted[agentId] ?? '';
-            input.addEventListener('input', () => onChanged?.());
+            const initialValue = draftState && hasOwn(draftState.values, agentId)
+                ? draftState.values[agentId]
+                : (persisted[agentId] ?? '');
+            input.value = initialValue;
+            if (draftState) draftState.values[agentId] = initialValue;
+            input.addEventListener('input', () => {
+                if (draftState) draftState.values[agentId] = input.value;
+                onChanged?.();
+            });
             row.append(label, input);
             container.appendChild(row);
         });
@@ -452,5 +546,7 @@
         renderInviteButtons,
         clearInviteButtons,
     });
-    global.dispatchEvent(new CustomEvent('vcp-group-settings-slots-ready'));
-})(window);
+    if (typeof global.dispatchEvent === 'function' && typeof global.CustomEvent === 'function') {
+        global.dispatchEvent(new global.CustomEvent('vcp-group-settings-slots-ready'));
+    }
+})(typeof window !== 'undefined' ? window : globalThis);
