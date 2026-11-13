@@ -842,8 +842,6 @@ fn validate_entities_pull_request(request: &sync::EntitiesPullRequest) -> Servic
 }
 
 // 消息拉取只保留流式端点，以 kind=topic、ok=false 隔离单 Topic 失败。
-const MAX_SYNC_FRAME_BYTES: usize = 32 * 1024 * 1024;
-
 async fn sync_messages_pull_stream(
     State(state): State<AppState>,
     Json(request): Json<MessagesPullRequest>,
@@ -934,26 +932,17 @@ fn encode_pull_topic_frame_with_connection(
             ),
         );
     }
-    let bytes =
-        match sync::encode_pull_topic_frame(&mut read_connection, topic, MAX_SYNC_FRAME_BYTES) {
-            Ok(bytes) => bytes,
-            Err(sync::PullTopicFrameError::BudgetExceeded) => encode_pull_error_frame(
-                &topic_id,
-                owner_type,
-                &owner_id,
-                "BUDGET_EXCEEDED",
-                "CDS pull frame exceeds 32 MiB budget",
-                false,
-            ),
-            Err(sync::PullTopicFrameError::Failed(error)) => encode_pull_error_frame(
-                &topic_id,
-                owner_type,
-                &owner_id,
-                "MESSAGE_READ_FAILED",
-                &format!("{error:#}"),
-                false,
-            ),
-        };
+    let bytes = match sync::encode_pull_topic_frame(&mut read_connection, topic) {
+        Ok(bytes) => bytes,
+        Err(error) => encode_pull_error_frame(
+            &topic_id,
+            owner_type,
+            &owner_id,
+            "MESSAGE_READ_FAILED",
+            &format!("{error:#}"),
+            false,
+        ),
+    };
     (Some(read_connection), bytes)
 }
 

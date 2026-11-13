@@ -146,7 +146,7 @@ graph TD
   - **Fast-Path**：两端 `configHash` 与 `contentHash` 都一致时直接跳过。
   - **Detailed-Path**：仅 `contentHash` 不一致时，Mobile 发送 `SYNC_MESSAGE_DIFF_REQUEST` 携带显式 live/墓碑状态，Desktop 返回精确的 `pullMessageIds / pushMessageIds / pushDeletedMessages / deleteMessages`。Mobile 只上传选中的消息正文与墓碑。
   - **快照漂移**：Phase 2 完成后 Topic 配置再变化，或请求中的 live Topic 已消失/成为墓碑，Desktop 返回 `SYNC_SNAPSHOT_STALE`，Mobile 复用完整 attempt 重试。
-- **Phase 3 — NDJSON 流式吞吐**：消息拉取/推送使用 `application/x-ndjson` 逐 Topic 传输，单 NDJSON 帧上限 32 MiB。手机按消息差异集合读取正文，桌面利用整个 HTTP 请求合并 Owner 根与搜索索引更新。Legacy 下载先按消息 ID 筛选，再执行 canonical 投影；附件 warning 只统计实际传输的消息。Legacy 索引 schema 与消息指纹规则保持不变。
+- **Phase 3 — NDJSON 流式吞吐**：消息拉取/推送使用 `application/x-ndjson` 逐 Topic 传输，消息正文帧不设固定字节上限。手机下载逐话题解析，最多 4 个话题处理任务，以写队列背压控制在途数据。手机上传按消息差异集合读取正文，以 8 MiB 为 HTTP 组包目标，单个大 Topic 独占请求。CDS 模式仅合并本次 HTTP 请求的正文与收尾，不累计全会话正文。Legacy 下载先按消息 ID 筛选，再执行 canonical 投影；附件 warning 只统计实际传输的消息。Legacy 索引 schema 与消息指纹规则保持不变。
 
 ### 版本协商（Wire 1.6）
 
@@ -214,8 +214,8 @@ Owner、Topic、Message 与 Avatar 的外层协议都携带完整复合身份 `(
 | :--- | :--- | :--- | :--- |
 | `/entities/pull` | POST | 批量拉取 Owner/Topic DTO | body ≤ 10 MiB，精确键校验 |
 | `/entities/push` | POST | 批量推送 Owner/Topic DTO；支持 `X-Idempotency-Key`（TTL 5 分钟）；CDS 模式下成功项在响应前落库 | body ≤ 10 MiB |
-| `/messages/pull` | POST | 消息 NDJSON 流式拉取 | 请求 body ≤ 34 MiB；NDJSON 单帧 ≤ 32 MiB |
-| `/messages/push` | POST | 消息+墓碑 NDJSON 流式推送（直接消费请求流） | NDJSON 单帧 ≤ 32 MiB |
+| `/messages/pull` | POST | 消息 NDJSON 流式拉取 | ID 选择请求 body ≤ 34 MiB；正文逐 Topic 输出 |
+| `/messages/push` | POST | 消息+墓碑 NDJSON 流式推送（直接消费请求流） | 正文逐 Topic 成帧；单帧无固定字节上限 |
 | `/avatars/pull` | GET | 头像二进制下载（query 精确 `ownerType/ownerId`） | — |
 | `/avatars/push` | POST | 头像二进制上传 | raw body ≤ 20 MiB |
 

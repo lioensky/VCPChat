@@ -194,20 +194,17 @@ test("中央 pull 将 CDS item error 补全为 WireSyncError", async () => {
   }]);
 });
 
-test("中央 pull 保留 CDS 单帧预算错误的公开语义", async () => {
+test("中央 pull 逐话题转发并取消 CDS 客户端的单帧限额", async () => {
   const adapter = createClientAdapter({
-    async *requestNdjson() {
+    async *requestNdjson(_method, _route, _body, options) {
+      assert.equal(options.maxLineBytes, Infinity);
       yield {
         kind: "topic",
         topicId: "topic-a",
         ownerType: "agent",
         ownerId: "agent-a",
-        ok: false,
-        error: {
-          code: "BUDGET_EXCEEDED",
-          message: "CDS pull frame exceeds 32 MiB budget",
-          retryable: false,
-        },
+        ok: true,
+        messages: [],
       };
     },
   });
@@ -223,15 +220,8 @@ test("中央 pull 保留 CDS 单帧预算错误的公开语义", async () => {
     response,
   );
 
-  assert.deepEqual(response.frames()[0].error, {
-    code: "SYNC_BUDGET_EXCEEDED",
-    origin: "desktop_cds",
-    stage: "messages",
-    kind: "data",
-    retry: "after_user_action",
-    message: "CDS pull frame exceeds 32 MiB budget",
-    failedTopicIds: ["topic-a"],
-  });
+  assert.equal(response.frames()[0].ok, true);
+  assert.deepEqual(response.frames()[0].messages, []);
 });
 
 test("中央 push 在一次 CDS 批调用中投影消息与墓碑，附件只传元数据", async (t) => {
@@ -430,17 +420,12 @@ test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", as
   });
 });
 
-test("NDJSON reader 在 JSON parse 前拒绝越界单帧", async () => {
-  await assert.rejects(
-    async () => {
-      for await (const _line of readNdjsonLines(Readable.from(["ab", "cd"]), {
-        maxLineBytes: 3,
-      })) {
-        assert.fail("oversized line must not be yielded");
-      }
-    },
-    (error) => error?.code === "SYNC_BUDGET_EXCEEDED",
-  );
+test("NDJSON reader 按换行逐帧组合分散的网络块", async () => {
+  const lines = [];
+  for await (const line of readNdjsonLines(Readable.from(["ab", "cd\nef", "gh\nlast"]))) {
+    lines.push(line.toString());
+  }
+  assert.deepEqual(lines, ["abcd", "efgh", "last"]);
 });
 
 test("NDJSON writer 在已关闭或 write 内同步关闭时立即失败并清理监听", { timeout: 1000 }, async () => {

@@ -786,7 +786,7 @@ class CentralSyncAdapter {
       "POST",
       "/v3/sync/messages/pull",
       { topics: normalizedTopics },
-      { signal: upstreamController.signal },
+      { signal: upstreamController.signal, maxLineBytes: Infinity },
     )) {
       if (rawFrame?.kind === "streamError") {
         if (!isCdsItemError(rawFrame.error) || Object.keys(rawFrame).length !== 2) {

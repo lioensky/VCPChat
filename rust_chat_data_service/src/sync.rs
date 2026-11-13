@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
-    io::{self, Write},
+    io::Write,
     path::Path,
 };
 
@@ -415,43 +415,6 @@ struct MessagesPullFrame {
     pub legacy_attachment_warnings: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warning_samples: Vec<String>,
-}
-
-#[derive(Debug)]
-pub(crate) enum PullTopicFrameError {
-    BudgetExceeded,
-    Failed(anyhow::Error),
-}
-
-struct BoundedFrameBuffer {
-    bytes: Vec<u8>,
-    limit: usize,
-    exceeded: bool,
-}
-
-impl BoundedFrameBuffer {
-    fn new(limit: usize) -> Self {
-        Self {
-            bytes: Vec::new(),
-            limit,
-            exceeded: false,
-        }
-    }
-}
-
-impl Write for BoundedFrameBuffer {
-    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        if buffer.len() > self.limit.saturating_sub(self.bytes.len()) {
-            self.exceeded = true;
-            return Err(io::Error::other("CDS pull frame exceeds its byte budget"));
-        }
-        self.bytes.extend_from_slice(buffer);
-        Ok(buffer.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1419,21 +1382,16 @@ fn validate_message_diff_states(topics: &[MessageDiffState]) -> Result<()> {
 pub(crate) fn encode_pull_topic_frame(
     connection: &mut Connection,
     topic: MessagesPullTopic,
-    max_frame_bytes: usize,
-) -> std::result::Result<Vec<u8>, PullTopicFrameError> {
-    let mut output = BoundedFrameBuffer::new(max_frame_bytes);
-    let result = encode_pull_topic_frame_into(connection, topic, &mut output);
-    if output.exceeded {
-        return Err(PullTopicFrameError::BudgetExceeded);
-    }
-    result.map_err(PullTopicFrameError::Failed)?;
-    Ok(output.bytes)
+) -> Result<Vec<u8>> {
+    let mut output = Vec::new();
+    encode_pull_topic_frame_into(connection, topic, &mut output)?;
+    Ok(output)
 }
 
 fn encode_pull_topic_frame_into(
     connection: &mut Connection,
     topic: MessagesPullTopic,
-    output: &mut BoundedFrameBuffer,
+    output: &mut Vec<u8>,
 ) -> Result<()> {
     let MessagesPullTopic {
         topic_id,
@@ -1566,13 +1524,7 @@ fn pull_topic_messages(database: &Database, topic: MessagesPullTopic) -> Result<
     }
 
     let mut connection = database.connection.lock();
-    let bytes = match encode_pull_topic_frame(&mut connection, topic, usize::MAX) {
-        Ok(bytes) => bytes,
-        Err(PullTopicFrameError::BudgetExceeded) => {
-            anyhow::bail!("test pull frame unexpectedly exceeded its byte budget")
-        }
-        Err(PullTopicFrameError::Failed(error)) => return Err(error),
-    };
+    let bytes = encode_pull_topic_frame(&mut connection, topic)?;
     let decoded = serde_json::from_slice::<DecodedFrame>(&bytes)?;
     anyhow::ensure!(decoded.kind == "topic" && decoded.ok, "invalid pull frame");
     Ok(MessagesPullFrame {
@@ -2636,7 +2588,7 @@ mod tests {
         ManifestIdentity, ManifestItem, ManifestRequest, ManifestResponse, MessageDeletedState,
         MessageDiffRequest, MessageDiffResult, MessageDiffState, MessageLiveState,
         MessageVersionState, MessagesPullTopic, MessagesPushTopic, OwnerManifestState,
-        PullTopicFrameError, TopicDiffRequest, TopicDiffState, TopicManifestState,
+        TopicDiffRequest, TopicDiffState, TopicManifestState,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -3620,7 +3572,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pull_frame_budget_stops_before_later_rows_are_materialized() {
+    async fn pull_connection_is_reusable_after_invalid_message() {
         let (_temp, config, database, reconciler) = sync_fixture();
         let history_path = config
             .user_data_dir
@@ -3631,13 +3583,10 @@ mod tests {
                 {"id":"m1","role":"user","content":"x".repeat(4096),"timestamp":1},
                 {"id":"m2","role":"assistant","content":"valid before poison","timestamp":2}
             ]))
-            .expect("serialize pull budget history"),
+            .expect("serialize pull history"),
         )
-        .expect("write pull budget history");
-        reconciler
-            .reconcile()
-            .await
-            .expect("index pull budget history");
+        .expect("write pull history");
+        reconciler.reconcile().await.expect("index pull history");
         {
             let connection = database.connection.lock();
             connection
@@ -3659,9 +3608,11 @@ mod tests {
                 owner_id: "agent-a".to_string(),
                 message_ids: Vec::new(),
             },
-            256,
         );
-        assert!(matches!(result, Err(PullTopicFrameError::BudgetExceeded)));
+        assert!(result
+            .expect_err("invalid stored message must fail the topic frame")
+            .to_string()
+            .contains("stored message JSON is invalid"));
 
         let next_frame = encode_pull_topic_frame(
             &mut connection,
@@ -3671,9 +3622,8 @@ mod tests {
                 owner_id: "agent-a".to_string(),
                 message_ids: vec!["m1".to_string()],
             },
-            16 * 1024,
         )
-        .expect("reuse pull connection after bounded frame rollback");
+        .expect("reuse pull connection after failed frame rollback");
         let decoded: Value = serde_json::from_slice(&next_frame).expect("decode next pull frame");
         assert_eq!(decoded["messages"][0]["id"], "m1");
     }

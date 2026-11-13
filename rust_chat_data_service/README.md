@@ -213,7 +213,7 @@ POST /v1/shutdown
 
 `/v3/sync/messages/push` 每次提交一个完整 TopicKey，接受 VCPChat 原生投影消息及 `deletedMessages: [{msgId, deletedAt}]`。CDS 原子投影 `history.json`、严格摄取 SQLite，并在 `messages` 中为本地缺失消息保留 tombstone-only 行；重放保留最早删除时间。结果回显完整 TopicKey 和 `ok/error`。
 
-同步流预算为单帧 32 MiB、单 attempt 256 MiB、最多 10,000 Topic 和 100,000 Message。SQLite 阻塞读取在受控 blocking task 中执行，NDJSON Body 由 HTTP 消费节奏驱动，不在服务端预先累计完整响应。
+消息正文按 Topic 成帧，不设固定单帧字节或 attempt 总量上限。SQLite 阻塞读取在 blocking task 中逐话题执行，NDJSON Body 由 HTTP 消费节奏驱动，不预先累计完整下载响应。上传正文通过 `/v3/sync/messages/push-batch` 接收本次手机 HTTP 请求的 `{topics:[...]}`，逐话题写入并在批末合并 Owner Hash 与搜索索引更新；该接口不累计其他 HTTP 请求的正文。
 
 VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中央模式下：
 
