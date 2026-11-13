@@ -207,7 +207,7 @@ class ContextSanitizer {
         // 只有起止标记分别独占一行时才视为思维链协议。
         // 正文中的 `<think>…</think>` 示例、行内代码或标签说明必须原样保留。
         const THOUGHT_CHAIN_REGEX = /^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*\r?\n[\s\S]*?^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
-        const CONVENTIONAL_THOUGHT_REGEX = /^[ \t]*<think(?:ing)?>[ \t]*\r?\n[\s\S]*?^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
+        const CONVENTIONAL_THOUGHT_REGEX = /^[ \t]*<(?:think(?:ing)?|thought(?:s)?)>[ \t]*\r?\n[\s\S]*?^[ \t]*<\/(?:think(?:ing)?|thought(?:s)?)>[ \t]*(?:\r?\n|$)/gim;
         return content.replace(THOUGHT_CHAIN_REGEX, '').replace(CONVENTIONAL_THOUGHT_REGEX, '');
     }
 

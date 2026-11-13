@@ -133,3 +133,36 @@ test('tool result hidden state detection, toggling, and context stripping', asyn
     assert.ok(strippedMixed.includes('normal output'));
     assert.ok(!strippedMixed.includes('hidden output'));
 });
+
+test('unpaired inline code literal inside ReadFile output does not keep outer tool result open', async () => {
+    const { collectToolResultRanges, collectClosedToolResultRanges } = await loadRegions();
+    const snippet = "    if (typeof content !== 'string' || !content.includes('" + START + "')) return content;";
+    const text = [
+        wrapToolResult(snippet),
+        wrapToolResult('```powershell\nCHECK_OK\n```'),
+        '<div id="vcp-root">Final Body</div>',
+    ].join('\n\n');
+
+    const ranges = collectToolResultRanges(text);
+    const closed = collectClosedToolResultRanges(text);
+    assert.equal(ranges.length, 2);
+    assert.equal(closed.length, 2);
+    assert.ok(text.slice(ranges[1].end).includes('<div id="vcp-root">Final Body</div>'));
+});
+
+test('unpaired inline start literal inside a tool batch keeps sibling results separate', async () => {
+    const { collectToolResultRanges, collectClosedToolResultRanges } = await loadRegions();
+    const snippet = "const hasMarker = raw.includes('" + START + "');";
+    const batchText = [
+        '【工具返回批次开始｜时间：2026-11-14T00:00:00.000+08:00】',
+        wrapToolResult(snippet),
+        wrapToolResult('second tool output'),
+        '【工具返回批次结束｜时间：2026-11-14T00:00:00.000+08:00】',
+        '<div id="vcp-root">Visible Card</div>',
+    ].join('\n\n');
+
+    const ranges = collectToolResultRanges(batchText);
+    const closed = collectClosedToolResultRanges(batchText);
+    assert.equal(ranges.length, 2);
+    assert.equal(closed.length, 2);
+});

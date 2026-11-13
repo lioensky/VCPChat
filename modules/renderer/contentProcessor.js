@@ -746,14 +746,14 @@ function processAllPreBlocksInContentDiv(contentDiv) {
         // 这是为了在后续的上下文净化过程中，能够恢复原始内容，避免特殊字符被转义
         preElement.setAttribute('data-raw-content', blockText);
 
-        // Check for VCP Tool Request
-        if (blockText.includes('<<<[TOOL_REQUEST]>>>') && blockText.includes('<<<[END_TOOL_REQUEST]>>>')) {
-            const vcpContentMatch = blockText.match(/<<<\[TOOL_REQUEST\]>>>([\s\S]*?)<<<\[END_TOOL_REQUEST\]>>>/);
-            const actualVcpText = vcpContentMatch ? vcpContentMatch[1].trim() : "";
+        // Check for VCP Tool Request (only prettify standalone blocks; never swallow surrounding content)
+        const trimmedBlockText = blockText.trim();
+        if (trimmedBlockText.startsWith('<<<[TOOL_REQUEST]>>>') && trimmedBlockText.endsWith('<<<[END_TOOL_REQUEST]>>>')) {
+            const actualVcpText = trimmedBlockText.slice('<<<[TOOL_REQUEST]>>>'.length, trimmedBlockText.length - '<<<[END_TOOL_REQUEST]>>>'.length).trim();
             prettifySinglePreElement(preElement, 'vcptool', actualVcpText);
         }
         // Check for DailyNote
-        else if (blockText.includes('<<<DailyNoteStart>>>') && blockText.includes('<<<DailyNoteEnd>>>')) {
+        else if (trimmedBlockText.startsWith('<<<DailyNoteStart>>>') && trimmedBlockText.endsWith('<<<DailyNoteEnd>>>')) {
             const dailyNoteContentMatch = blockText.match(/<<<DailyNoteStart>>>([\s\S]*?)<<<DailyNoteEnd>>>/);
             const actualDailyNoteText = dailyNoteContentMatch ? dailyNoteContentMatch[1].trim() : "";
             prettifySinglePreElement(preElement, 'dailynote', actualDailyNoteText);
