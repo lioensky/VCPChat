@@ -305,7 +305,7 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
           type: "VERSION_ACK",
           versions: [
             { component: "desktop_plugin", version: "1.5.0" },
-            { component: "wire", version: "1.5" },
+            { component: "wire", version: "1.6" },
           ],
           backendMode: "legacy",
         };
@@ -329,7 +329,7 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
     type: "VERSION_CHECK",
     versions: [
       { component: "mobile_app", version: "1.1.6" },
-      { component: "wire", version: "1.5" },
+      { component: "wire", version: "1.6" },
     ],
   }));
   assert.equal((await nextFrame("VERSION_ACK")).type, "VERSION_ACK");
@@ -377,7 +377,7 @@ test("diagnostic WebSocket returns a CDS startup error before VERSION_ACK", asyn
     type: "VERSION_CHECK",
     versions: [
       { component: "mobile_app", version: "1.1.6" },
-      { component: "wire", version: "1.5" },
+      { component: "wire", version: "1.6" },
     ],
   }));
   assert.deepEqual(await nextFrame("SYNC_ERROR"), {

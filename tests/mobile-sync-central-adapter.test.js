@@ -13,6 +13,7 @@ function createClient(overrides = {}) {
   return {
     reconcile: async () => ({ stats: {} }),
     request: async (_method, path, body) => {
+      if (path === "/v3/sync/version") return { wireVersion: "1.6" };
       if (path === "/v3/sync/manifest") {
         return {
           type: "SYNC_MANIFEST_RESULT",
@@ -416,7 +417,8 @@ test("中央适配器拒绝畸形 CDS Phase 3 成功帧", async () => {
       ...topicIdentity(),
       ok: true,
       pullMessageIds: [],
-      pushTopic: false,
+      pushMessageIds: [],
+      pushDeletedMessages: [],
       deleteMessages: [],
       error: {
         code: "INTERNAL_ERROR",
@@ -428,7 +430,8 @@ test("中央适配器拒绝畸形 CDS Phase 3 成功帧", async () => {
       ...topicIdentity(),
       ok: true,
       pullMessageIds: [],
-      pushTopic: false,
+      pushMessageIds: [],
+      pushDeletedMessages: [],
     },
   ];
 
@@ -465,7 +468,8 @@ test("中央适配器严格保留 Phase 3 message tombstone 决策", async () =>
             ...topicIdentity(),
             ok: true,
             pullMessageIds: ["message-pull"],
-            pushTopic: false,
+            pushMessageIds: ["message-push"],
+            pushDeletedMessages: [{ msgId: "message-push-delete", deletedAt: 456 }],
             deleteMessages: [{ msgId: "message-delete", deletedAt: 321 }],
           },
         ],
@@ -482,7 +486,8 @@ test("中央适配器严格保留 Phase 3 message tombstone 决策", async () =>
     ownerId: "agent-a",
     ok: true,
     pullMessageIds: ["message-pull"],
-    pushTopic: false,
+    pushMessageIds: ["message-push"],
+    pushDeletedMessages: [{ msgId: "message-push-delete", deletedAt: 456 }],
     deleteMessages: [{ msgId: "message-delete", deletedAt: 321 }],
   });
 });

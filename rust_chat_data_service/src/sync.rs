@@ -13,8 +13,8 @@ use serde_json::{Map, Value};
 use crate::{
     domain::{AvatarKey, AvatarOwnerType, OwnerKey, OwnerType, TopicKey, TopicSource},
     ingest::{
-        normalize_history_values, sha256_hex, source_file_version, write_history_atomic,
-        Reconciler, SnapshotStale,
+        normalize_sync_message, sha256_hex, source_file_version, write_history_atomic,
+        CommittedHistoryVersion, Reconciler, SnapshotStale,
     },
     storage::{Database, IngestCommit, OwnerHashMode},
     sync_wire::{canonicalize_message, WireWarnings},
@@ -312,7 +312,8 @@ pub struct MessageDiffSuccess {
     pub owner_id: String,
     pub ok: bool,
     pub pull_message_ids: Vec<String>,
-    pub push_topic: bool,
+    pub push_message_ids: Vec<String>,
+    pub push_deleted_messages: Vec<MessageDeleteAction>,
     pub delete_messages: Vec<MessageDeleteAction>,
 }
 
@@ -337,7 +338,8 @@ impl MessageDiffResult {
     fn success(
         topic: TopicKey,
         pull_message_ids: Vec<String>,
-        push_topic: bool,
+        push_message_ids: Vec<String>,
+        push_deleted_messages: Vec<MessageDeleteAction>,
         delete_messages: Vec<MessageDeleteAction>,
     ) -> Self {
         Self::Success(MessageDiffSuccess {
@@ -346,7 +348,8 @@ impl MessageDiffResult {
             owner_id: topic.owner_id,
             ok: true,
             pull_message_ids,
-            push_topic,
+            push_message_ids,
+            push_deleted_messages,
             delete_messages,
         })
     }
@@ -520,6 +523,17 @@ pub struct MessagesPushTopic {
     pub messages: Vec<Value>,
     #[serde(default)]
     pub deleted_messages: Vec<MessageTombstoneInput>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MessagesPushBatchRequest {
+    pub topics: Vec<MessagesPushTopic>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessagesPushBatchResponse {
+    pub results: Vec<MessagesPushResult>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1276,14 +1290,16 @@ pub fn message_diff(
             results.push(MessageDiffResult::success(
                 requested_key,
                 Vec::new(),
-                false,
+                Vec::new(),
+                Vec::new(),
                 Vec::new(),
             ));
             continue;
         }
         let mut to_pull = Vec::new();
         let mut to_delete = Vec::new();
-        let mut to_push = false;
+        let mut to_push = Vec::new();
+        let mut push_deleted = Vec::new();
         let comparison = visit_message_states_committed(database, &requested_key, |item| {
             let remote = messages.remove(&item.msg_id);
             if let Some(deleted_at) = item.deleted_at {
@@ -1301,7 +1317,12 @@ pub fn message_diff(
                 .context("live indexed message is missing messageHash")?;
             match remote {
                 None => to_pull.push(item.msg_id),
-                Some(MessageVersionState::Deleted(_)) => to_push = true,
+                Some(MessageVersionState::Deleted(mobile)) => {
+                    push_deleted.push(MessageDeleteAction {
+                        msg_id: item.msg_id,
+                        deleted_at: mobile.deleted_at,
+                    });
+                }
                 Some(MessageVersionState::Live(mobile)) if mobile.message_hash == desktop_hash => {}
                 Some(MessageVersionState::Live(mobile))
                     if item.updated_at > mobile.updated_at
@@ -1310,7 +1331,7 @@ pub fn message_diff(
                 {
                     to_pull.push(item.msg_id);
                 }
-                Some(MessageVersionState::Live(_)) => to_push = true,
+                Some(MessageVersionState::Live(_)) => to_push.push(item.msg_id),
             }
             Ok(())
         });
@@ -1322,13 +1343,26 @@ pub fn message_diff(
             ));
             continue;
         }
-        to_push |= !messages.is_empty();
+        for (msg_id, state) in messages {
+            match state {
+                MessageVersionState::Live(_) => to_push.push(msg_id),
+                MessageVersionState::Deleted(mobile) => {
+                    push_deleted.push(MessageDeleteAction {
+                        msg_id,
+                        deleted_at: mobile.deleted_at,
+                    });
+                }
+            }
+        }
         to_pull.sort();
+        to_push.sort();
+        push_deleted.sort_by(|left, right| left.msg_id.cmp(&right.msg_id));
         to_delete.sort_by(|left, right| left.msg_id.cmp(&right.msg_id));
         results.push(MessageDiffResult::success(
             requested_key,
             to_pull,
             to_push,
+            push_deleted,
             to_delete,
         ));
     }
@@ -1553,20 +1587,30 @@ fn pull_topic_messages(database: &Database, topic: MessagesPullTopic) -> Result<
     })
 }
 
+#[cfg(test)]
 pub async fn push_topic_messages(
     reconciler: &Reconciler,
     topic: MessagesPushTopic,
 ) -> MessagesPushResult {
+    push_topic_messages_with_owner_hash_mode(reconciler, topic, OwnerHashMode::Immediate)
+}
+
+pub(crate) fn push_topic_messages_with_owner_hash_mode(
+    reconciler: &Reconciler,
+    topic: MessagesPushTopic,
+    owner_hash_mode: OwnerHashMode,
+) -> MessagesPushResult {
     let response_topic_id = topic.topic_id.clone();
     let response_owner_type = topic.owner_type;
     let response_owner_id = topic.owner_id.clone();
-    match push_topic(reconciler, topic).await {
-        Ok(commit) => MessagesPushResult {
+    let mut applied_commit = None;
+    match push_topic(reconciler, topic, owner_hash_mode, &mut applied_commit) {
+        Ok(()) => MessagesPushResult {
             topic_id: response_topic_id,
             owner_type: response_owner_type,
             owner_id: response_owner_id,
             ok: true,
-            ingest_commit: Some(commit),
+            ingest_commit: applied_commit,
             error: None,
         },
         Err(error) => MessagesPushResult {
@@ -1574,7 +1618,7 @@ pub async fn push_topic_messages(
             owner_type: response_owner_type,
             owner_id: response_owner_id,
             ok: false,
-            ingest_commit: None,
+            ingest_commit: applied_commit,
             error: Some(SyncItemError {
                 code: if error.downcast_ref::<SnapshotStale>().is_some() {
                     "SNAPSHOT_STALE"
@@ -1734,7 +1778,12 @@ fn merge_mobile_message(existing: &Value, incoming: &Value) -> Value {
     Value::Object(merged)
 }
 
-async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result<IngestCommit> {
+fn push_topic(
+    reconciler: &Reconciler,
+    topic: MessagesPushTopic,
+    owner_hash_mode: OwnerHashMode,
+    applied_commit: &mut Option<IngestCommit>,
+) -> Result<()> {
     let MessagesPushTopic {
         topic_id,
         owner_type,
@@ -1760,7 +1809,7 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
         explicit_tombstones.push((tombstone.msg_id.clone(), tombstone.deleted_at));
     }
     let mut live_ids = HashSet::new();
-    let mut message_hashes = HashMap::with_capacity(messages.len());
+    let mut message_projections = HashMap::with_capacity(messages.len());
     for message in &mut messages {
         let id = message
             .get("id")
@@ -1796,13 +1845,13 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
             .context("pushed message must be an object")?
             .remove("contentHash");
         let mut warnings = WireWarnings::default();
-        canonicalize_message(message.clone(), &topic_id, &mut warnings)
+        let canonical = canonicalize_message(message.clone(), &topic_id, &mut warnings)
             .with_context(|| format!("pushed message {id} is invalid"))?;
         anyhow::ensure!(
             warnings.count == 0,
             "pushed message {id} contains an invalid attachment"
         );
-        message_hashes.insert(id, content_hash);
+        message_projections.insert(id, (content_hash, canonical));
     }
     let key = resolve_topic(
         reconciler.database(),
@@ -1827,6 +1876,7 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
 
     let history_path = snapshot.source_path;
     let expected_source_hash = snapshot.source_hash;
+    let mut stored_normalized = snapshot.normalized_messages;
     let mut current = snapshot.messages;
     current.retain(|value| {
         value
@@ -1861,56 +1911,91 @@ async fn push_topic(reconciler: &Reconciler, topic: MessagesPushTopic) -> Result
         }
     }
     drop(positions);
+    let mut unchanged_ids = HashSet::new();
     for message in &mut current {
         if let Some(object) = message.as_object_mut() {
-            object.remove("contentHash");
+            let removed_wire_hash = object.remove("contentHash").is_some();
+            let id = object
+                .get("id")
+                .and_then(Value::as_str)
+                .context("merged message id is required")?;
+            if !message_projections.contains_key(id) && !removed_wire_hash {
+                unchanged_ids.insert(id.to_string());
+            }
         }
     }
 
     let history_bytes = serde_json::to_vec_pretty(&current)?;
-    let mut normalized = normalize_history_values(current, key.owner_type, &key.topic_id)
-        .context("projected history is not ingestible")?;
-    for message in &mut normalized {
-        if let Some(content_hash) = message_hashes.remove(&message.msg_id) {
-            message.message_hash = content_hash;
-        }
+    let mut normalized = Vec::with_capacity(current.len());
+    for (ordinal, value) in current.into_iter().enumerate() {
+        let Value::Object(object) = value else {
+            anyhow::bail!("merged history message must be an object");
+        };
+        let id = object
+            .get("id")
+            .and_then(Value::as_str)
+            .context("merged message id is required")?;
+        let message = if let Some((content_hash, canonical)) = message_projections.remove(id) {
+            normalize_sync_message(
+                object,
+                canonical,
+                ordinal,
+                key.owner_type,
+                &key.topic_id,
+                &content_hash,
+            )?
+        } else {
+            let mut message = stored_normalized
+                .remove(id)
+                .with_context(|| format!("stored normalized message {id} is missing"))?;
+            message.ordinal = ordinal as i64;
+            if !unchanged_ids.contains(id) {
+                message.metadata_json = serde_json::to_string(&object)?;
+            }
+            message
+        };
+        normalized.push(message);
     }
     anyhow::ensure!(
-        message_hashes.is_empty(),
+        message_projections.is_empty(),
         "pushed message hashes do not match the projected history"
     );
     let committed =
         write_history_atomic(&history_path, &history_bytes, Some(&expected_source_hash))?;
     drop(history_bytes);
-    let (mtime_ns, file_size, source_hash) = if let Some(committed) = committed {
-        (
-            committed.mtime_ns,
-            committed.file_size,
-            committed.source_hash,
-        )
+    let version = if let Some(committed) = committed {
+        committed
     } else {
         let (mtime_ns, file_size) = source_file_version(&history_path)
             .context("unchanged projected history metadata is unavailable")?;
-        (mtime_ns, file_size, expected_source_hash)
+        CommittedHistoryVersion {
+            mtime_ns,
+            file_size,
+            source_hash: expected_source_hash,
+        }
     };
-    let mut commit = reconciler.database().ingest_topic(
+    let commit = reconciler.database().ingest_sync_topic(
         &TopicSource {
             key: key.clone(),
             source_path: history_path.clone(),
         },
         &normalized,
-        mtime_ns,
-        file_size,
-        &source_hash,
-        OwnerHashMode::Immediate,
+        &version,
+        owner_hash_mode,
+        &unchanged_ids,
     )?;
+    // Keep the accepted write available to batch finalization even if the subsequent
+    // explicit tombstone timestamp update reports an error.
+    *applied_commit = Some(commit);
     if reconciler
         .database()
         .apply_explicit_message_tombstones(&key, &explicit_tombstones)?
     {
-        commit.changed = true;
+        if let Some(commit) = applied_commit {
+            commit.changed = true;
+        }
     }
-    Ok(commit)
+    Ok(())
 }
 
 fn local_manifest(
@@ -2809,8 +2894,13 @@ mod tests {
                 scenario["name"]
             );
             assert_eq!(
-                actual["pushTopic"], scenario["expected"]["pushTopic"],
-                "{} pushTopic",
+                actual["pushMessageIds"], scenario["expected"]["pushMessageIds"],
+                "{} pushMessageIds",
+                scenario["name"]
+            );
+            assert_eq!(
+                actual["pushDeletedMessages"], scenario["expected"]["pushDeletedMessages"],
+                "{} pushDeletedMessages",
                 scenario["name"]
             );
             assert_eq!(
@@ -3758,7 +3848,10 @@ mod tests {
         .expect("message diff");
         let decision = successful_message_decision(&response.results[0]);
         assert_eq!(decision.pull_message_ids, Vec::<String>::new());
-        assert!(decision.push_topic);
+        assert!(decision.push_message_ids.is_empty());
+        assert_eq!(decision.push_deleted_messages.len(), 1);
+        assert_eq!(decision.push_deleted_messages[0].msg_id, "desktop-live");
+        assert_eq!(decision.push_deleted_messages[0].deleted_at, 1);
         let to_delete = &decision.delete_messages;
         assert_eq!(to_delete.len(), 1);
         assert_eq!(to_delete[0].msg_id, "desktop-deleted");

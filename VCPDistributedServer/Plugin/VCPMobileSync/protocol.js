@@ -1,6 +1,6 @@
 "use strict";
 
-const WIRE_PROTOCOL_VERSION = "1.5";
+const WIRE_PROTOCOL_VERSION = "1.6";
 const BACKEND_MODES = new Set(["legacy", "cds"]);
 const SYNC_PHASES = new Set(["owner_metadata", "topic_metadata", "messages"]);
 const VERSION_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;

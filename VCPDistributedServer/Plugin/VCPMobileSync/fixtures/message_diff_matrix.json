@@ -88,7 +88,11 @@
       ],
       "expected": {
         "pullMessageIds": ["desktop-newer", "desktop-only-live", "desktop-tie-wins"],
-        "pushTopic": true,
+        "pushMessageIds": ["mobile-newer", "mobile-only-live", "mobile-tie-wins"],
+        "pushDeletedMessages": [
+          { "msgId": "desktop-live-mobile-deleted", "deletedAt": 60 },
+          { "msgId": "mobile-only-deleted", "deletedAt": 81 }
+        ],
         "deleteMessages": [
           { "msgId": "desktop-deleted-mobile-live", "deletedAt": 61 }
         ]
@@ -111,7 +115,8 @@
       ],
       "expected": {
         "pullMessageIds": [],
-        "pushTopic": false,
+        "pushMessageIds": [],
+        "pushDeletedMessages": [],
         "deleteMessages": []
       }
     },
@@ -128,7 +133,8 @@
       "desktopMessages": [],
       "expected": {
         "pullMessageIds": [],
-        "pushTopic": true,
+        "pushMessageIds": [],
+        "pushDeletedMessages": [{ "msgId": "mobile-only-deleted", "deletedAt": 91 }],
         "deleteMessages": []
       }
     }

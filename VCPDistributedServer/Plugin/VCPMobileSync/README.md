@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/Version-2.0.0-blue.svg?style=flat-square)](./plugin-manifest.json)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%20%7C%20Electron-brightgreen.svg?style=flat-square)](https://nodejs.org)
-[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.5-orange.svg?style=flat-square)](#同步协议)
+[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.6-orange.svg?style=flat-square)](#同步协议)
 
 VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，为桌面端与 VCPMobile 手机端之间提供**可诊断、失败即停**的双向增量同步。插件采用 CDS / Legacy 双模式的三阶段增量同步架构：实体配置、消息正文、墓碑、头像字节以及消息内附件元数据按各自契约传输；附件二进制始终保留在两端本机 CAS，不属于同步数据面。
 
@@ -115,7 +115,7 @@ pnpm exec electron-rebuild --only better-sqlite3
 
 CDS（`rust_chat_data_service`，二进制 `vcp_chat_data_service`）由 Electron 主进程 spawn，仅绑定回环地址。启动后通过 stdout 输出一次性握手信息（internal protocol 3 / schema 3 / 随机端口 / instanceId / authToken），之后日志走 stderr。Node 侧禁止直接打开 CDS 数据库文件。
 
-插件通过 HTTP 调用 CDS `/v3/sync/*` 接口（manifest / topic-diff / message-diff / entities / owners/reconcile / avatars / messages 共 11 条）。CDS 逐项错误固定为 `{code, message, retryable}`，插件中央适配器在公共边界补齐完整错误字段；`SERVICE_BUSY`（429）由适配器做有界退避，`PROTOCOL_MISMATCH` 重命名为 `CDS_PROTOCOL_MISMATCH` 以区别于 Mobile wire 版本不兼容。
+插件通过 HTTP 调用 CDS `/v3/sync/*` 接口。初始化先读取 `GET /v3/sync/version` 的 `{wireVersion:"1.6"}`；手机的一次消息上传 HTTP 请求在插件内完成投影后，整体提交至 `POST /v3/sync/messages/push-batch`。CDS 在批末统一更新涉及的 Owner 根与搜索索引，再返回逐话题结果。单话题 `/messages/push` 继续服务实时删除通知。CDS 逐项错误固定为 `{code, message, retryable}`，插件中央适配器在公共边界补齐完整错误字段；`SERVICE_BUSY`（429）由适配器做有界退避，`PROTOCOL_MISMATCH` 重命名为 `CDS_PROTOCOL_MISMATCH` 以区别于 Mobile wire 版本不兼容。
 
 CDS 启动失败时，插件仍开放带 Token 的 WebSocket 控制面，在 wire 版本校验通过后返回结构化 `CDS_*` 错误；HTTP 数据面保持关闭，且**不会自动降级到 Legacy**。
 
@@ -144,19 +144,19 @@ graph TD
   - `configHash`：实体自身元数据属性哈希。
   - `contentHash`：Topic 下所有历史消息指纹排序级联求得的 Merkle 聚合根。
   - **Fast-Path**：两端 `configHash` 与 `contentHash` 都一致时直接跳过。
-  - **Detailed-Path**：仅 `contentHash` 不一致时，Mobile 发送 `SYNC_MESSAGE_DIFF_REQUEST` 携带显式 live/墓碑状态，Desktop 返回 `pullMessageIds / pushTopic / deleteMessages`。
+  - **Detailed-Path**：仅 `contentHash` 不一致时，Mobile 发送 `SYNC_MESSAGE_DIFF_REQUEST` 携带显式 live/墓碑状态，Desktop 返回精确的 `pullMessageIds / pushMessageIds / pushDeletedMessages / deleteMessages`。Mobile 只上传选中的消息正文与墓碑。
   - **快照漂移**：Phase 2 完成后 Topic 配置再变化，或请求中的 live Topic 已消失/成为墓碑，Desktop 返回 `SYNC_SNAPSHOT_STALE`，Mobile 复用完整 attempt 重试。
-- **Phase 3 — NDJSON 流式吞吐**：消息拉取/推送使用 `application/x-ndjson` 逐 Topic 传输，避免全量缓冲导致 OOM。单 NDJSON 帧上限 32 MiB；单次同步 attempt 的总量预算（256 MiB / 10,000 Topic / 100,000 Message）由协议约定、移动端强制执行。
+- **Phase 3 — NDJSON 流式吞吐**：消息拉取/推送使用 `application/x-ndjson` 逐 Topic 传输，单 NDJSON 帧上限 32 MiB。手机按消息差异集合读取正文，桌面利用整个 HTTP 请求合并 Owner 根与搜索索引更新。Legacy 下载先按消息 ID 筛选，再执行 canonical 投影；附件 warning 只统计实际传输的消息。Legacy 索引 schema 与消息指纹规则保持不变。
 
-### 版本协商（Wire 1.5）
+### 版本协商（Wire 1.6）
 
 连接建立后首帧必须是版本协商：
 
 ```text
 VERSION_CHECK { versions: [{component:"mobile_app",version:<App>},
-                           {component:"wire",version:"1.5"}] }
+                           {component:"wire",version:"1.6"}] }
 VERSION_ACK   { versions: [{component:"desktop_plugin",version:"2.0.0"},
-                           {component:"wire",version:"1.5"}],
+                           {component:"wire",version:"1.6"}],
                 backendMode: "legacy" | "cds" }
 ```
 
@@ -171,7 +171,8 @@ VERSION_ACK   { versions: [{component:"desktop_plugin",version:"2.0.0"},
 
 ```text
 { ownerType, ownerId, topicId, ok: true,
-  pullMessageIds: string[], pushTopic: boolean, deleteMessages: MessageTombstone[] }
+  pullMessageIds: string[], pushMessageIds: string[],
+  pushDeletedMessages: MessageTombstone[], deleteMessages: MessageTombstone[] }
 { ownerType, ownerId, topicId, ok: false, error: WireSyncError }
 ```
 
@@ -321,8 +322,8 @@ WebSocket 连接会广播 `SYNC_LOG_EVENT` / `DESKTOP_PHASE_START` / `DESKTOP_PH
 ## 版本信息
 
 - **当前版本**：`2.0.0`
-- **适配标准**：wire protocol 1.5 / VCP-CDS internal protocol 3 / CDS schema 3 / 配对 VCPMobile 1.1.6
+- **适配标准**：wire protocol 1.6 / VCP-CDS internal protocol 3 / CDS schema 3；Mobile、插件与 CDS 同步接口须使用相同 Wire 版本。
 - **升级要求**：wire 协议采用精确匹配，不支持跨版本混跑；桌面端与 Mobile 必须成对升级、成对回滚
-- **CDS 版本纪律**：每次部署型 Rust 更新递增 internal protocol，并同步 Electron 生命周期的期望值；只有数据库结构变化才递增 schema
+- **CDS 版本纪律**：全局启动协议、同步 Wire 与数据库 schema 分别管理。本次保留 internal protocol 3 / schema 3，同步接口通过 `/v3/sync/version` 核对 Wire 1.6；更新源码后须在桌面仓库根目录运行 `node rust_chat_data_service/build-runtime.js` 重新构建 CDS，并重启桌面端。
 - **架构师 / 作者**：Nova
 - **开源许可**：VCP 闭环生态核心插件

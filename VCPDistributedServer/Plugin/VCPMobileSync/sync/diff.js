@@ -305,7 +305,8 @@ function handleSyncMessageDiff(payload, database = getDb()) {
           ...resultIdentity,
           ok: true,
           pullMessageIds: [],
-          pushTopic: false,
+          pushMessageIds: [],
+          pushDeletedMessages: [],
           deleteMessages: [],
         });
         fastPathCount++;
@@ -329,7 +330,8 @@ function handleSyncMessageDiff(payload, database = getDb()) {
 
       const pullMessageIds = [];
       const deleteMessages = [];
-      let pushTopic = false;
+      const pushMessageIds = [];
+      const pushDeletedMessages = [];
 
       for (const [msgId, remote] of remoteMap) {
         const local = localMap[msgId];
@@ -351,9 +353,7 @@ function handleSyncMessageDiff(payload, database = getDb()) {
         }
 
         if (localDeleted) {
-          // Mobile owns the tombstone timestamp, so let the existing push path
-          // send its durable delete instead of reviving the desktop live row.
-          pushTopic = true;
+          pushDeletedMessages.push({ msgId, deletedAt: local.deletedAt });
           continue;
         }
 
@@ -369,7 +369,7 @@ function handleSyncMessageDiff(payload, database = getDb()) {
           ) {
             pullMessageIds.push(msgId);
           } else {
-            pushTopic = true;
+            pushMessageIds.push(msgId);
           }
         }
       }
@@ -378,17 +378,25 @@ function handleSyncMessageDiff(payload, database = getDb()) {
       // the desktop persists the deletion fact for later peers.
       for (const msgId of Object.keys(localMap)) {
         if (!remoteMap.has(msgId)) {
-          pushTopic = true;
+          const local = localMap[msgId];
+          if (isMessageTombstone(local)) {
+            pushDeletedMessages.push({ msgId, deletedAt: local.deletedAt });
+          } else {
+            pushMessageIds.push(msgId);
+          }
         }
       }
 
       pullMessageIds.sort((left, right) => left.localeCompare(right));
+      pushMessageIds.sort((left, right) => left.localeCompare(right));
+      pushDeletedMessages.sort((left, right) => left.msgId.localeCompare(right.msgId));
       deleteMessages.sort((left, right) => left.msgId.localeCompare(right.msgId));
       results.push({
         ...resultIdentity,
         ok: true,
         pullMessageIds,
-        pushTopic,
+        pushMessageIds,
+        pushDeletedMessages,
         deleteMessages,
       });
       detailedCount++;
@@ -397,7 +405,7 @@ function handleSyncMessageDiff(payload, database = getDb()) {
         "diff",
         topicId,
         "success",
-        `pull=${pullMessageIds.length} pushTopic=${pushTopic} delete=${deleteMessages.length}`,
+        `pull=${pullMessageIds.length} push=${pushMessageIds.length} pushDelete=${pushDeletedMessages.length} delete=${deleteMessages.length}`,
       );
     } catch (e) {
       logger.logOperation("messages", "diff", topicId, "error", e.message);

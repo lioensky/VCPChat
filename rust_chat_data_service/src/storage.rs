@@ -18,6 +18,7 @@ use crate::{
         AvatarKey, AvatarOwnerType, AvatarRecord, MessageView, NormalizedMessage, OwnerKey,
         OwnerRecord, OwnerType, TopicDefinition, TopicKey, TopicSource,
     },
+    ingest::CommittedHistoryVersion,
     sync_wire::{
         aggregate_hash, message_leaf_hash, stored_message_fingerprint, topic_leaf_hash,
         unhealthy_topic_sentinel_hash,
@@ -231,6 +232,7 @@ pub(crate) struct SyncHistorySnapshot {
     pub(crate) source_path: PathBuf,
     pub(crate) source_hash: String,
     pub(crate) messages: Vec<Value>,
+    pub(crate) normalized_messages: HashMap<String, NormalizedMessage>,
     pub(crate) tombstone_ids: HashSet<String>,
 }
 
@@ -1339,6 +1341,49 @@ impl Database {
         source_hash: &str,
         owner_hash_mode: OwnerHashMode,
     ) -> Result<IngestCommit> {
+        self.ingest_topic_inner(
+            source,
+            messages,
+            &CommittedHistoryVersion {
+                mtime_ns,
+                file_size,
+                source_hash: source_hash.to_string(),
+            },
+            owner_hash_mode,
+            None,
+        )
+    }
+
+    /// Reuses unchanged rows from the sync snapshot held under the reconcile lock.
+    /// Only message bodies supplied by the delta need fresh comparison digests.
+    pub(crate) fn ingest_sync_topic(
+        &self,
+        source: &TopicSource,
+        messages: &[NormalizedMessage],
+        version: &CommittedHistoryVersion,
+        owner_hash_mode: OwnerHashMode,
+        unchanged_ids: &HashSet<String>,
+    ) -> Result<IngestCommit> {
+        self.ingest_topic_inner(
+            source,
+            messages,
+            version,
+            owner_hash_mode,
+            Some(unchanged_ids),
+        )
+    }
+
+    fn ingest_topic_inner(
+        &self,
+        source: &TopicSource,
+        messages: &[NormalizedMessage],
+        version: &CommittedHistoryVersion,
+        owner_hash_mode: OwnerHashMode,
+        unchanged_ids: Option<&HashSet<String>>,
+    ) -> Result<IngestCommit> {
+        let mtime_ns = version.mtime_ns;
+        let file_size = version.file_size;
+        let source_hash = version.source_hash.as_str();
         let now = now_ms();
         let mut connection = self.connection.lock();
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1418,14 +1463,17 @@ impl Database {
             });
         }
 
-        let existing = load_active_message_states(&transaction, &source.key)?;
+        let existing = load_active_message_states(&transaction, &source.key, unchanged_ids)?;
         // Physical history is detection input, not an undelete protocol.
         let tombstoned_ids = load_message_tombstone_ids(&transaction, &source.key)?;
         let message_digests = messages
             .iter()
-            .map(|message| MessageDigests {
-                content_text: text_digest(&message.content_text),
-                metadata_json: text_digest(&message.metadata_json),
+            .map(|message| {
+                let unchanged = unchanged_ids.is_some_and(|ids| ids.contains(&message.msg_id));
+                MessageDigests {
+                    content_text: (!unchanged).then(|| text_digest(&message.content_text)),
+                    metadata_json: (!unchanged).then(|| text_digest(&message.metadata_json)),
+                }
             })
             .collect::<Vec<_>>();
         let incoming_ids: HashSet<&str> = messages
@@ -1873,9 +1921,11 @@ impl Database {
         );
 
         let mut messages = Vec::new();
+        let mut normalized_messages = HashMap::new();
         {
             let mut statement = connection.prepare(
-                "SELECT msg_id, metadata_json
+                "SELECT msg_id, metadata_json, ordinal, role, speaker_name, speaker_agent_id,
+                        content_raw, content_text, timestamp, updated_at, message_hash
                  FROM messages
                  WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
                    AND deleted_at IS NULL
@@ -1883,12 +1933,27 @@ impl Database {
             )?;
             let rows = statement.query_map(
                 params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                |row| {
+                    Ok(NormalizedMessage {
+                        msg_id: row.get(0)?,
+                        metadata_json: row.get(1)?,
+                        ordinal: row.get(2)?,
+                        role: row.get(3)?,
+                        speaker_name: row.get(4)?,
+                        speaker_agent_id: row.get(5)?,
+                        content_raw: row.get(6)?,
+                        content_text: row.get(7)?,
+                        timestamp: row.get(8)?,
+                        updated_at: Some(row.get(9)?),
+                        message_hash: row.get(10)?,
+                    })
+                },
             )?;
             for row in rows {
-                let (msg_id, metadata_json) = row?;
+                let normalized = row?;
+                let msg_id = &normalized.msg_id;
                 anyhow::ensure!(!msg_id.is_empty(), "sync history message id is empty");
-                let message: Value = serde_json::from_str(&metadata_json)
+                let message: Value = serde_json::from_str(&normalized.metadata_json)
                     .with_context(|| format!("stored message {msg_id} metadata is invalid JSON"))?;
                 let message_id = message
                     .as_object()
@@ -1897,10 +1962,11 @@ impl Database {
                     .and_then(Value::as_str)
                     .with_context(|| format!("stored message {msg_id} metadata id is missing"))?;
                 anyhow::ensure!(
-                    message_id == msg_id,
+                    message_id == msg_id.as_str(),
                     "stored message metadata id {message_id} does not match database id {msg_id}"
                 );
                 messages.push(message);
+                normalized_messages.insert(normalized.msg_id.clone(), normalized);
             }
         }
 
@@ -1929,6 +1995,7 @@ impl Database {
             source_path: PathBuf::from(source_path),
             source_hash,
             messages,
+            normalized_messages,
             tombstone_ids,
         })
     }
@@ -2577,14 +2644,15 @@ struct ActiveMessageState {
     ordinal: i64,
     message_hash: String,
     updated_at: i64,
-    content_text_digest: [u8; 32],
+    content_text_digest: Option<[u8; 32]>,
     speaker_name: Option<String>,
-    metadata_json_digest: [u8; 32],
+    metadata_json_digest: Option<[u8; 32]>,
 }
 
 struct MessageDigests {
-    content_text: [u8; 32],
-    metadata_json: [u8; 32],
+    // None pairs with a known unchanged row on both sides of the sync comparison.
+    content_text: Option<[u8; 32]>,
+    metadata_json: Option<[u8; 32]>,
 }
 
 fn text_digest(value: &str) -> [u8; 32] {
@@ -2594,6 +2662,7 @@ fn text_digest(value: &str) -> [u8; 32] {
 fn load_active_message_states(
     transaction: &Transaction<'_>,
     key: &TopicKey,
+    unchanged_ids: Option<&HashSet<String>>,
 ) -> Result<HashMap<String, ActiveMessageState>> {
     let mut statement = transaction.prepare(
         "SELECT msg_id, row_id, ordinal, message_hash, updated_at,
@@ -2604,16 +2673,26 @@ fn load_active_message_states(
     let rows = statement.query_map(
         params![key.owner_type.as_str(), key.owner_id, key.topic_id],
         |row| {
+            let msg_id: String = row.get(0)?;
+            let unchanged = unchanged_ids.is_some_and(|ids| ids.contains(&msg_id));
             Ok((
-                row.get(0)?,
+                msg_id,
                 ActiveMessageState {
                     row_id: row.get(1)?,
                     ordinal: row.get(2)?,
                     message_hash: row.get(3)?,
                     updated_at: row.get(4)?,
-                    content_text_digest: text_digest(&row.get::<_, String>(5)?),
+                    content_text_digest: if unchanged {
+                        None
+                    } else {
+                        Some(text_digest(&row.get::<_, String>(5)?))
+                    },
                     speaker_name: row.get(6)?,
-                    metadata_json_digest: text_digest(&row.get::<_, String>(7)?),
+                    metadata_json_digest: if unchanged {
+                        None
+                    } else {
+                        Some(text_digest(&row.get::<_, String>(7)?))
+                    },
                 },
             ))
         },

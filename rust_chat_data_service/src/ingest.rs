@@ -1085,14 +1085,49 @@ fn normalize_message(
     topic_id: &str,
     seen_ids: &mut HashSet<String>,
 ) -> Result<NormalizedMessage> {
+    normalize_message_with_hash(object, ordinal, owner_type, topic_id, seen_ids, None)
+}
+
+pub(crate) fn normalize_sync_message(
+    object: Map<String, Value>,
+    canonical: Value,
+    ordinal: usize,
+    owner_type: OwnerType,
+    topic_id: &str,
+    content_hash: &str,
+) -> Result<NormalizedMessage> {
+    normalize_message_with_hash(
+        object,
+        ordinal,
+        owner_type,
+        topic_id,
+        &mut HashSet::new(),
+        Some((canonical, content_hash)),
+    )
+}
+
+fn normalize_message_with_hash(
+    object: Map<String, Value>,
+    ordinal: usize,
+    owner_type: OwnerType,
+    topic_id: &str,
+    seen_ids: &mut HashSet<String>,
+    sync_projection: Option<(Value, &str)>,
+) -> Result<NormalizedMessage> {
     let metadata_json = serde_json::to_string(&object)?;
     let speaker_name_fallback = string_value(object.get("speakerName"));
     let speaker_agent_id_fallback = string_value(object.get("agentID"));
-    let raw_message = Value::Object(object);
-    let mut warnings = WireWarnings::default();
-    let canonical = canonicalize_message(raw_message, topic_id, &mut warnings)
-        .with_context(|| format!("message at ordinal {ordinal} is not syncable"))?;
-    let message_hash = message_fingerprint(&canonical)?;
+    let (canonical, message_hash) = match sync_projection {
+        Some((canonical, hash)) => (canonical, hash.to_string()),
+        None => {
+            let raw_message = Value::Object(object);
+            let mut warnings = WireWarnings::default();
+            let canonical = canonicalize_message(raw_message, topic_id, &mut warnings)
+                .with_context(|| format!("message at ordinal {ordinal} is not syncable"))?;
+            let message_hash = message_fingerprint(&canonical)?;
+            (canonical, message_hash)
+        }
+    };
     let canonical = canonical
         .as_object()
         .context("canonical message must be an object")?;
