@@ -2,8 +2,7 @@
 
 const { projectMemoryProtocols } = require('../../shared/memoryProtocolProjection');
 const axios = require('axios');
-const cheerio = require('cheerio');
-const TurndownService = require('turndown');
+
 
 const DEFAULTS = Object.freeze({
     excludeCurrentTopic: true,
@@ -426,6 +425,11 @@ function cleanMemoryOutput(content) {
             .replace(/\n{3,}/g, '\n\n')
             .trim();
     }
+
+    // HTML-only dependencies: startup and plain-text memories do not need this graph.
+    // CommonJS caches successful loads; a failed load can be retried on the next call.
+    const cheerio = require('cheerio');
+    const TurndownService = require('turndown');
 
     // Parse even fragmentary HTML. Cheerio repairs malformed markup and decodes
     // entities, while explicit removal prevents CSS/JS/accessibility-only text

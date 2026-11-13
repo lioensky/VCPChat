@@ -4,6 +4,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const schedule = require('node-schedule');
 const dotenv = require('dotenv');
+const bootProfile = require('../modules/diagnostics/bootProfile');
 
 const PLUGIN_DIR = path.join(__dirname, 'Plugin');
 const manifestFileName = 'plugin-manifest.json';
@@ -321,6 +322,7 @@ class PluginManager {
             return;
         }
         console.log('[DistPluginManager] Initializing service plugins...');
+        let profileOrder = 0;
         for (const [name, manifest] of this.plugins) {
             if (!['service', 'hybridservice'].includes(manifest.pluginType)
                 || !manifest.entryPoint.script || manifest.communication?.protocol !== 'direct') continue;
@@ -329,20 +331,24 @@ class PluginManager {
             await new Promise(resolve => setImmediate(resolve));
             if (shouldStop()) return;
             try {
-                const serviceData = { manifest, module: require(path.join(manifest.basePath, manifest.entryPoint.script)) };
+                const profileLabel = `${++profileOrder}:${name}`;
+                const serviceData = { manifest, module: bootProfile.measureSync(
+                    `${profileLabel}:require`,
+                    () => require(path.join(manifest.basePath, manifest.entryPoint.script))
+                ) };
                 this.serviceModules.set(name, serviceData);
                 const pluginConfig = this._getPluginConfig(manifest);
                 await new Promise(resolve => setImmediate(resolve));
                 if (shouldStop()) return;
                 if (serviceData.module && typeof serviceData.module.initialize === 'function') {
-                    await serviceData.module.initialize({
+                    await bootProfile.measureAsync(`${profileLabel}:initialize`, () => serviceData.module.initialize({
                         app,
                         adminApiRouter,
                         projectBasePath,
                         config: pluginConfig,
                         services,
                         logger: console
-                    });
+                    }));
                 }
 
                 await new Promise(resolve => setImmediate(resolve));
@@ -352,13 +358,15 @@ class PluginManager {
                     // 服务插件允许在路由开放前执行异步准备（例如 VCPMobileSync
                     // 等待 VCP-CDS reconcile）。必须等待其完成，否则 HTTP 服务可能
                     // 已开始监听，但插件路由尚未挂载，客户端会在启动窗口收到 404。
-                    await serviceData.module.registerRoutes(app, pluginConfig, projectBasePath, services);
+                    await bootProfile.measureAsync(`${profileLabel}:registerRoutes`,
+                        () => serviceData.module.registerRoutes(app, pluginConfig, projectBasePath, services));
                 }
             } catch (e) {
                 console.error(`[DistPluginManager] Error initializing service plugin ${name}:`, e);
             }
         }
         console.log('[DistPluginManager] Service plugins initialized.');
+        bootProfile.report('service-plugins-settled');
     }
 
     _logStaticPluginSkip(pluginName, reason) {

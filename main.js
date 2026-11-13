@@ -45,19 +45,11 @@ function reportLauncherProgress(stage, progress, message) {
 
 reportLauncherProgress('process-started', 0.08, 'VChat 进程已启动');
 
-// --- 模块加载性能诊断 ---
-const originalRequire = require;
-require = function (id) {
-    const start = Date.now();
-    const result = originalRequire(id);
-    const duration = Date.now() - start;
-    if (duration > 50) { // 只显示超过 50ms 的模块
-        console.log(`⏱️ require('${id}') took ${duration}ms`);
-    }
-    return result;
-};
+// 启动窗口诊断：全局 CommonJS / IPC 探针，默认 60 秒后撤销。
+const bootProfile = require('./modules/diagnostics/bootProfile');
 
 const { app, BrowserWindow, webContents, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
+bootProfile.install(ipcMain);
 const { registerChartEmbedScheme, installChartEmbedProtocol } = require('./modules/services/chartEmbedProtocol');
 registerChartEmbedScheme(protocol);
 // 文坊中原位打开的网页（scriptorium-page:// 协议），须在 app ready 之前登记。
@@ -580,6 +572,8 @@ function startDistributedServerAfterRenderer() {
             if (distributedServer === server) distributedServer = null;
             console.error('[Main] Failed to initialize distributed server after renderer readiness:', error);
             return null;
+        } finally {
+            bootProfile.report('distributed-server-settled');
         }
     })();
 
