@@ -106,8 +106,26 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
         senderNameToUse = message.name || globalSettings.userName || '你';
     } else if (message.role === 'assistant') {
         if (message.isGroupMessage) {
-            avatarUrlToUse = message.avatarUrl || 'assets/default_avatar.png';
-            senderNameToUse = message.name || '群成员';
+            let resolvedGroupAvatar = message.avatarUrl || null;
+            let resolvedGroupName = message.name || null;
+            if ((!resolvedGroupAvatar || !resolvedGroupName) && (message.agentId || resolvedGroupName)) {
+                const loadedItems = typeof ownerWindow?.itemListManager?.getLoadedItems === 'function'
+                    ? ownerWindow.itemListManager.getLoadedItems()
+                    : [];
+                const senderLower = resolvedGroupName ? String(resolvedGroupName).toLowerCase() : '';
+                const matchedAgent = loadedItems.find(it => (
+                    it?.type === 'agent' && (
+                        (message.agentId && it.id === message.agentId)
+                        || (!message.agentId && senderLower && String(it.name || '').toLowerCase() === senderLower)
+                    )
+                ));
+                if (matchedAgent) {
+                    resolvedGroupAvatar ||= matchedAgent.avatarUrl || null;
+                    resolvedGroupName ||= matchedAgent.name || null;
+                }
+            }
+            avatarUrlToUse = resolvedGroupAvatar || 'assets/default_avatar.png';
+            senderNameToUse = resolvedGroupName || message.agentId || '群成员';
         } else if (message.avatarUrl || currentSelectedItem?.avatarUrl) {
             avatarUrlToUse = message.avatarUrl || currentSelectedItem.avatarUrl;
             senderNameToUse = message.name || currentSelectedItem?.name || 'AI';
@@ -143,7 +161,7 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
             nameTimeDiv.appendChild(timestampDiv);
         }
 
-        detailsAndBubbleWrapper = document.createElement('div');
+        detailsAndBubbleWrapper = ownerDocument.createElement('div');
         detailsAndBubbleWrapper.classList.add('details-and-bubble-wrapper');
         detailsAndBubbleWrapper.appendChild(nameTimeDiv);
         detailsAndBubbleWrapper.appendChild(contentDiv);

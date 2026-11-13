@@ -15,6 +15,8 @@ export function createMainChatSendOwner({
     messageRenderer,
     notify,
     hasDraft = () => false,
+    isGroupQueueActive = () => false,
+    clearGroupQueueActive = null,
 }) {
     const defaultButtonHtml = button?.innerHTML || '';
     let disposed = false;
@@ -57,6 +59,15 @@ export function createMainChatSendOwner({
         };
     };
 
+    const getActiveGroupQueueScope = () => {
+        const selected = selectedItemRef.get();
+        const topicId = topicIdRef.get();
+        if (selected?.type !== 'group' || !selected.id || !topicId) return null;
+        return isGroupQueueActive(selected.id, topicId) === true
+            ? { groupId: selected.id, topicId }
+            : null;
+    };
+
     const update = () => {
         if (disposed || !button) return false;
         const compacting = getChatManager()?.isContextCompacting?.() === true;
@@ -73,7 +84,8 @@ export function createMainChatSendOwner({
         }
         if (button.dataset.mode === 'compacting') button.disabled = false;
         const active = getInterruptibleMessage();
-        const mode = active && !hasDraft() ? 'interrupt' : 'send';
+        const activeQueue = active ? null : getActiveGroupQueueScope();
+        const mode = (active || activeQueue) && !hasDraft() ? 'interrupt' : 'send';
         button.dataset.mode = mode;
         button.classList.toggle('interrupt-mode', mode === 'interrupt');
         // The send control is the main-chat composer status surface. Keep its
@@ -88,8 +100,24 @@ export function createMainChatSendOwner({
     };
 
     const interrupt = async () => {
+        if (disposed) return false;
         const activeMessage = getInterruptibleMessage();
-        if (!activeMessage || disposed) return false;
+        if (!activeMessage) {
+            const activeQueue = getActiveGroupQueueScope();
+            if (!activeQueue) return false;
+            const queueResult = typeof chatAPI?.interruptGroupChatQueue === 'function'
+                ? await chatAPI.interruptGroupChatQueue(activeQueue.groupId, activeQueue.topicId)
+                : { success: false, error: '群聊队列中止接口不可用。' };
+            if (disposed) return false;
+            clearGroupQueueActive?.(activeQueue.groupId, activeQueue.topicId);
+            update();
+            if (queueResult?.success) {
+                notify?.(queueResult.message || '已停止后续群聊队列。', 'success');
+                return true;
+            }
+            notify?.(`中止失败：${queueResult?.error || '未知错误'}`, 'error');
+            return false;
+        }
         const selected = selectedItemRef.get();
         const isGroup = activeMessage.isGroupMessage === true || selected?.type === 'group';
         if (!isGroup) {
@@ -111,6 +139,10 @@ export function createMainChatSendOwner({
         }
         let result = { success: false, error: '无法发送中止请求。' };
         if (isGroup) {
+            clearGroupQueueActive?.(
+                activeMessage.groupId || activeMessage.context?.groupId || selected?.id,
+                activeMessage.topicId || activeMessage.context?.topicId || topicIdRef.get()
+            );
             result = typeof chatAPI?.interruptGroupRequest === 'function'
                 ? await chatAPI.interruptGroupRequest(activeMessage.id)
                 : { success: false, error: '群聊中止接口不可用。' };
@@ -154,7 +186,7 @@ export function createMainChatSendOwner({
                 else notify?.('压缩结果正在保存，无法撤销已开始的写入。', 'info');
                 return cancelled === true;
             }
-            if (getInterruptibleMessage() && !hasDraft()) return interrupt();
+            if ((getInterruptibleMessage() || getActiveGroupQueueScope()) && !hasDraft()) return interrupt();
             await getChatManager()?.handleSendMessage?.();
             return true;
         },

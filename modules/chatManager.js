@@ -985,7 +985,9 @@ export const chatManager = (() => {
         }
 
         if (itemType === 'group' && groupRenderer && typeof groupRenderer.handleSelectGroup === 'function') {
-            await groupRenderer.handleSelectGroup(itemId, itemName, itemAvatarUrl, itemFullConfig);
+            await groupRenderer.handleSelectGroup(itemId, itemName, itemAvatarUrl, itemFullConfig, {
+                managedByChatManager: true
+            });
             if (!isSelectionCurrent()) return;
         } else if (itemType === 'agent') {
             if (groupRenderer && typeof groupRenderer.clearInviteAgentButtons === 'function') {
@@ -1047,6 +1049,9 @@ export const chatManager = (() => {
                 if (messageRenderer) messageRenderer.setCurrentTopicId(topicToLoadId);
                 notifySelectionIntent();
                 await loadOwnedHistory(topicToLoadId);
+                if (itemType === 'group' && isSelectionCurrent()) {
+                    await groupRenderer?.refreshGroupInviteButtonsForSelection?.(itemId, topicToLoadId, itemFullConfig);
+                }
             } else if (topics && topics.error) {
                 if (!isSelectionCurrent()) return;
                 console.error(`加载 ${itemType} ${itemId} 的话题列表失败`, topics.error);
@@ -1216,6 +1221,14 @@ export const chatManager = (() => {
                 watcherLeaseToken
             );
             if (!isTopicSelectionCurrent()) return;
+            if (currentSelectedItem.type === 'group') {
+                await groupRenderer?.refreshGroupInviteButtonsForSelection?.(
+                    currentSelectedItem.id,
+                    topicId,
+                    currentSelectedItem.config || currentSelectedItem
+                );
+                if (!isTopicSelectionCurrent()) return;
+            }
             if (currentSelectedItem.type === 'agent' && window.flowlockManager?.claimPendingTopicForSelection) {
                 Promise.resolve(window.flowlockManager.claimPendingTopicForSelection(currentSelectedItem.id, topicId)).catch(err => {
                     console.warn('[ChatManager] Lazy flowlock claim on selectTopic failed:', err);

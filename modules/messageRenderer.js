@@ -3973,17 +3973,48 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         shouldApplyColorToName = true;
     } else if (message.role === 'assistant') {
         if (message.isGroupMessage) {
-            avatarColorToUse = message.avatarColor;
-            avatarUrlToUse = message.avatarUrl;
-            // 群组消息中的Agent，获取其自定义颜色
-            if (message.agentId) {
-                const agentConfig = currentSelectedItem?.config?.agents?.find(a => a.id === message.agentId);
-                if (agentConfig) {
-                    useThemeColors = agentConfig.useThemeColorsInChat || false;
-                    if (!useThemeColors) {
-                        customBorderColor = agentConfig.avatarBorderColor;
-                        customNameColor = agentConfig.nameTextColor;
-                    }
+            avatarColorToUse = message.avatarColor || null;
+            avatarUrlToUse = message.avatarUrl || null;
+
+            // 群组消息中的 Agent：从全局已加载列表或兼容配置中动态解析真实头像、计算主色与自定义边框/名称色
+            const ownerWindow = mainRendererReferences.window || mainRendererReferences.document?.defaultView;
+            const loadedItems = typeof ownerWindow?.itemListManager?.getLoadedItems === 'function'
+                ? ownerWindow.itemListManager.getLoadedItems()
+                : (typeof window !== 'undefined' && typeof window.itemListManager?.getLoadedItems === 'function'
+                    ? window.itemListManager.getLoadedItems()
+                    : []);
+            const senderLower = message.name ? String(message.name).toLowerCase() : '';
+            const matchedItem = loadedItems.find(it => {
+                if (!it || it.type !== 'agent') return false;
+                if (message.agentId && it.id === message.agentId) return true;
+                return !message.agentId && senderLower && String(it.name || '').toLowerCase() === senderLower;
+            });
+            const agentConfig = matchedItem?.config
+                || matchedItem
+                || currentSelectedItem?.config?.agents?.find(a => a.id === message.agentId)
+                || null;
+
+            const isMissingOrGroupAvatar = !avatarUrlToUse
+                || avatarUrlToUse === 'assets/default_avatar.png'
+                || (currentSelectedItem?.avatarUrl && avatarUrlToUse === currentSelectedItem.avatarUrl);
+            if (isMissingOrGroupAvatar && matchedItem?.avatarUrl) {
+                avatarUrlToUse = matchedItem.avatarUrl;
+                if (avatarImg) {
+                    avatarImg.src = avatarUrlToUse;
+                }
+            }
+            if (!avatarColorToUse && matchedItem) {
+                avatarColorToUse = matchedItem.avatarColor
+                    || matchedItem.avatarCalculatedColor
+                    || matchedItem.config?.avatarCalculatedColor
+                    || matchedItem.config?.avatarColor
+                    || null;
+            }
+            if (agentConfig) {
+                useThemeColors = agentConfig.useThemeColorsInChat || false;
+                if (!useThemeColors) {
+                    customBorderColor = agentConfig.avatarBorderColor || null;
+                    customNameColor = agentConfig.nameTextColor || null;
                 }
             }
         } else if (currentSelectedItem) {
@@ -4216,9 +4247,17 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
             avatarImg.style.borderColor = customBorderColor;
             avatarImg.style.borderWidth = '2px';
             avatarImg.style.borderStyle = 'solid';
+            if (customNameColor && senderNameDiv) {
+                senderNameDiv.style.color = customNameColor;
+            }
         } else if (avatarColorToUse) {
             // 没有自定义颜色或禁用时，使用计算的颜色
             applyColorToElements(avatarColorToUse);
+            if (customNameColor && senderNameDiv) {
+                senderNameDiv.style.color = customNameColor;
+            }
+        } else if (customNameColor && senderNameDiv) {
+            senderNameDiv.style.color = customNameColor;
         } else if (avatarUrlToUse && !avatarUrlToUse.includes('default_')) { // No persisted color, try to extract
             // 🟢 Non-blocking color calculation
             // Immediately apply a default border, which will be overridden if color extraction succeeds.
