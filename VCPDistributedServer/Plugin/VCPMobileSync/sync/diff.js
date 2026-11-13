@@ -304,6 +304,7 @@ function handleSyncMessageDiff(payload, database = getDb()) {
         results.push({
           ...resultIdentity,
           ok: true,
+          pullAll: false,
           pullMessageIds: [],
           pushMessageIds: [],
           pushDeletedMessages: [],
@@ -311,6 +312,22 @@ function handleSyncMessageDiff(payload, database = getDb()) {
         });
         fastPathCount++;
         // fast-path 的 topic 不输出单条日志，避免日志噪音
+        continue;
+      }
+
+      // Empty Mobile topics can use the existing full-topic HTTP pull without an ID list.
+      if (Object.keys(localState.messages).length === 0) {
+        results.push({
+          ...resultIdentity,
+          ok: true,
+          pullAll: true,
+          pullMessageIds: [],
+          pushMessageIds: [],
+          pushDeletedMessages: [],
+          deleteMessages: [],
+        });
+        detailedCount++;
+        logger.logOperation("messages", "diff", topicId, "success", "pullAll=true");
         continue;
       }
 
@@ -394,6 +411,7 @@ function handleSyncMessageDiff(payload, database = getDb()) {
       results.push({
         ...resultIdentity,
         ok: true,
+        pullAll: false,
         pullMessageIds,
         pushMessageIds,
         pushDeletedMessages,

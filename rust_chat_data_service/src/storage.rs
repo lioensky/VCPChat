@@ -1773,6 +1773,25 @@ impl Database {
         rows.collect::<rusqlite::Result<_>>().map_err(Into::into)
     }
 
+    pub fn topic_search_snapshot(&self, key: &TopicKey) -> Result<(i64, Vec<MessageView>)> {
+        // Keep the indexed revision tied to the exact message snapshot being rewritten.
+        let connection = self.connection.lock();
+        let revision = connection.query_row(
+            "SELECT content_revision FROM topics
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| row.get(0),
+        )?;
+        let messages = load_message_views(
+            &connection,
+            "WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
+             ORDER BY ordinal ASC",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+        )?;
+        Ok((revision, messages))
+    }
+
+    #[cfg(test)]
     pub fn active_messages_for_topic(&self, key: &TopicKey) -> Result<Vec<MessageView>> {
         let connection = self.connection.lock();
         load_message_views(

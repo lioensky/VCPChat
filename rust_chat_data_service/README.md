@@ -234,14 +234,16 @@ Topic 叶聚合根。物理 `history.json` 的原始 bytes SHA-256 只保存在
 canonical DTO 携带小写 64 位 `contentHash`，该值直接写入 `messages.message_hash`；
 写入物理 `history.json` 前会剥离该派生字段。
 
+搜索补索引、批末追加和重建共用现有索引写锁；在锁内检查已索引 revision，并完成索引提交与 revision 发布。整 Topic 重写使用同一数据库快照的消息和 revision，因此检索提前补齐的消息不会在上传批末再次追加。
+
 Topic 元数据 Push 的 targeted owner reconcile 会在原始 `topics` upsert 中使用 Wire
 `configHash + updatedAt`；普通 watcher/reconcile 仍从物理 `config.json` 计算配置指纹。
 
 ## 协议与失败语义
 
-- VCPMobileSync public wire 固定为 1.4；CDS Node/Rust 内部握手固定为 protocol 3。
+- VCPMobileSync public wire 为 1.6；CDS Node/Rust 内部握手保持 protocol 3。
 - Public wire 不支持跨版本混跑，桌面插件、CDS runtime 与 APK 必须配对发布和回滚。
-- Phase 3 decision 是严格判别联合：`{ok:true,pullMessageIds,pushTopic,deleteMessages}` 或 `{ok:false,error}`。
+- Phase 3 decision 为 `{ok:true,pullAll,pullMessageIds,pushMessageIds,pushDeletedMessages,deleteMessages}` 或 `{ok:false,error}`。聚合 Hash 一致时保持 no-op；手机消息状态完全为空且需要比对时返回 `pullAll:true`、四数组为空，直接跳过消息 ID 查询，复用 HTTP 空 `messageIds` 的全话题拉取。
 - 缺 Topic、重复 Topic、错误字段类型、无效历史、DB/HTTP/附件错误均终止当前 attempt；不得以空集合降级成成功。
 - Topic manifest 和 NDJSON 消息帧必须携带 `ownerType + ownerId + topicId` 复合身份；CDS 不接受路径模糊匹配或跨 Owner 同名 Topic 降级。
 - Desktop→Mobile 不新增附件二进制下载。合法 hash 仍随消息下发，Mobile 缺少 CAS 文件时保存为 `desktop_only` 占位。

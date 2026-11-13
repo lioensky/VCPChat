@@ -87,6 +87,7 @@
         }
       ],
       "expected": {
+        "pullAll": false,
         "pullMessageIds": ["desktop-newer", "desktop-only-live", "desktop-tie-wins"],
         "pushMessageIds": ["mobile-newer", "mobile-only-live", "mobile-tie-wins"],
         "pushDeletedMessages": [
@@ -114,6 +115,7 @@
         }
       ],
       "expected": {
+        "pullAll": false,
         "pullMessageIds": [],
         "pushMessageIds": [],
         "pushDeletedMessages": [],
@@ -132,9 +134,34 @@
       },
       "desktopMessages": [],
       "expected": {
+        "pullAll": false,
         "pullMessageIds": [],
         "pushMessageIds": [],
         "pushDeletedMessages": [{ "msgId": "mobile-only-deleted", "deletedAt": 91 }],
+        "deleteMessages": []
+      }
+    },
+    {
+      "name": "empty_mobile_topic_pulls_all_without_message_ids",
+      "ownerType": "agent",
+      "ownerId": "agent-c",
+      "topicId": "topic-first-pull",
+      "mobileContentHash": "",
+      "desktopContentHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "mobileMessages": {},
+      "desktopMessages": [
+        {
+          "msgId": "desktop-live",
+          "messageHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "updatedAt": 12
+        },
+        { "msgId": "desktop-deleted", "deletedAt": 13 }
+      ],
+      "expected": {
+        "pullAll": true,
+        "pullMessageIds": [],
+        "pushMessageIds": [],
+        "pushDeletedMessages": [],
         "deleteMessages": []
       }
     }

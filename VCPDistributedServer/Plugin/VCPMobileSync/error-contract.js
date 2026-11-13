@@ -123,8 +123,6 @@ const ERROR_DEFINITIONS = Object.freeze({
   VERSION_CHECK_INVALID: definition("handshake", "protocol", "after_user_action"),
   VERSION_ACK_INVALID: definition("handshake", "protocol", "after_user_action", "mobile_sync"),
   VERSION_CHECK_TIMEOUT: definition("handshake", "connection", "manual", "mobile_sync"),
-  MANIFEST_RESPONSE_TIMEOUT: definition("owner_metadata", "connection", "manual", "mobile_sync"),
-  TOPIC_HASH_RESPONSE_TIMEOUT: definition("topic_validation", "connection", "manual", "mobile_sync"),
   FINAL_ACK_TIMEOUT: definition("finalize", "connection", "manual", "mobile_sync"),
   WIRE_VERSION_MISMATCH: definition("handshake", "compatibility", "after_user_action"),
   MOBILE_SYNC_ERROR: definition("shutdown", "internal", "manual", "mobile_sync"),

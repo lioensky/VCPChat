@@ -144,7 +144,7 @@ graph TD
   - `configHash`：实体自身元数据属性哈希。
   - `contentHash`：Topic 下所有历史消息指纹排序级联求得的 Merkle 聚合根。
   - **Fast-Path**：两端 `configHash` 与 `contentHash` 都一致时直接跳过。
-  - **Detailed-Path**：仅 `contentHash` 不一致时，Mobile 发送 `SYNC_MESSAGE_DIFF_REQUEST` 携带显式 live/墓碑状态，Desktop 返回精确的 `pullMessageIds / pushMessageIds / pushDeletedMessages / deleteMessages`。Mobile 只上传选中的消息正文与墓碑。
+  - **Detailed-Path**：仅 `contentHash` 不一致时，Mobile 发送 `SYNC_MESSAGE_DIFF_REQUEST` 携带显式 live/墓碑状态。手机状态完全为空的话题返回 `pullAll:true`，省去桌面消息 ID 查询和清单，Mobile 用 HTTP 空 `messageIds` 全拉；其余返回 `pullAll:false` 和精确的 `pullMessageIds / pushMessageIds / pushDeletedMessages / deleteMessages`。Mobile 只上传选中的消息正文与墓碑。
   - **快照漂移**：Phase 2 完成后 Topic 配置再变化，或请求中的 live Topic 已消失/成为墓碑，Desktop 返回 `SYNC_SNAPSHOT_STALE`，Mobile 复用完整 attempt 重试。
 - **Phase 3 — NDJSON 流式吞吐**：消息拉取/推送使用 `application/x-ndjson` 逐 Topic 传输，消息正文帧不设固定字节上限。手机下载逐话题解析，最多 4 个话题处理任务，以写队列背压控制在途数据。手机上传按消息差异集合读取正文，以 8 MiB 为 HTTP 组包目标，单个大 Topic 独占请求。CDS 模式仅合并本次 HTTP 请求的正文与收尾，不累计全会话正文。Legacy 下载先按消息 ID 筛选，再执行 canonical 投影；附件 warning 只统计实际传输的消息。Legacy 索引 schema 与消息指纹规则保持不变。
 
@@ -171,12 +171,14 @@ VERSION_ACK   { versions: [{component:"desktop_plugin",version:"2.0.0"},
 
 ```text
 { ownerType, ownerId, topicId, ok: true,
-  pullMessageIds: string[], pushMessageIds: string[],
+  pullAll: boolean, pullMessageIds: string[], pushMessageIds: string[],
   pushDeletedMessages: MessageTombstone[], deleteMessages: MessageTombstone[] }
 { ownerType, ownerId, topicId, ok: false, error: WireSyncError }
 ```
 
-缺字段、错类型、重复身份、`ok:false` 或未知帧都会终止当前 attempt，不能进入完成态。`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放的 ACK 完成错误会话。
+`pullAll:true` 时四个逐消息差异数组为空；包含手机墓碑的状态继续精确仲裁。该字段纳入本次 Wire 1.6 草稿契约。缺字段、错类型、重复身份、`ok:false` 或未知帧都会终止当前 attempt，不能进入完成态。`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放的 ACK 完成错误会话。
+
+Mobile 等待 Manifest 与 Topic Hash 计算不设固定总时限，桌面前置索引刷新可以完成后再返回结果。
 
 ### 统一错误契约
 

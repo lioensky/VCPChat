@@ -311,6 +311,7 @@ pub struct MessageDiffSuccess {
     pub owner_type: OwnerType,
     pub owner_id: String,
     pub ok: bool,
+    pub pull_all: bool,
     pub pull_message_ids: Vec<String>,
     pub push_message_ids: Vec<String>,
     pub push_deleted_messages: Vec<MessageDeleteAction>,
@@ -337,6 +338,7 @@ pub struct MessageDeleteAction {
 impl MessageDiffResult {
     fn success(
         topic: TopicKey,
+        pull_all: bool,
         pull_message_ids: Vec<String>,
         push_message_ids: Vec<String>,
         push_deleted_messages: Vec<MessageDeleteAction>,
@@ -347,6 +349,7 @@ impl MessageDiffResult {
             owner_type: topic.owner_type,
             owner_id: topic.owner_id,
             ok: true,
+            pull_all,
             pull_message_ids,
             push_message_ids,
             push_deleted_messages,
@@ -1252,6 +1255,20 @@ pub fn message_diff(
         {
             results.push(MessageDiffResult::success(
                 requested_key,
+                false,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            ));
+            continue;
+        }
+        if messages.is_empty() && content_hash != local_topic.content_hash {
+            // An empty Mobile topic needs every live Desktop message. Keep the
+            // selection compact and let the existing HTTP pull enumerate them.
+            results.push(MessageDiffResult::success(
+                requested_key,
+                true,
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
@@ -1323,6 +1340,7 @@ pub fn message_diff(
         to_delete.sort_by(|left, right| left.msg_id.cmp(&right.msg_id));
         results.push(MessageDiffResult::success(
             requested_key,
+            false,
             to_pull,
             to_push,
             push_deleted,
@@ -2841,6 +2859,11 @@ mod tests {
             let decision = successful_message_decision(&response.results[0]);
             let actual = serde_json::to_value(decision).expect("serialize matrix decision");
             assert_eq!(
+                actual["pullAll"], scenario["expected"]["pullAll"],
+                "{} pullAll",
+                scenario["name"]
+            );
+            assert_eq!(
                 actual["pullMessageIds"], scenario["expected"]["pullMessageIds"],
                 "{} pullMessageIds",
                 scenario["name"]
@@ -3797,6 +3820,7 @@ mod tests {
         )
         .expect("message diff");
         let decision = successful_message_decision(&response.results[0]);
+        assert!(!decision.pull_all);
         assert_eq!(decision.pull_message_ids, Vec::<String>::new());
         assert!(decision.push_message_ids.is_empty());
         assert_eq!(decision.push_deleted_messages.len(), 1);

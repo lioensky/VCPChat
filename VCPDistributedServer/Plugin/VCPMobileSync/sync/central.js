@@ -615,6 +615,7 @@ class CentralSyncAdapter {
             Object.keys(decision).sort().join("\0") !==
               "error\0ok\0ownerId\0ownerType\0topicId" ||
             !isCdsItemError(decision.error) ||
+            decision.pullAll !== undefined ||
             decision.pullMessageIds !== undefined ||
             decision.pushMessageIds !== undefined ||
             decision.pushDeletedMessages !== undefined ||
@@ -648,8 +649,9 @@ class CentralSyncAdapter {
           : [];
         if (
           Object.keys(decision).sort().join("\0") !==
-            "deleteMessages\0ok\0ownerId\0ownerType\0pullMessageIds\0pushDeletedMessages\0pushMessageIds\0topicId" ||
+            "deleteMessages\0ok\0ownerId\0ownerType\0pullAll\0pullMessageIds\0pushDeletedMessages\0pushMessageIds\0topicId" ||
           decision.ok !== true ||
+          typeof decision.pullAll !== "boolean" ||
           !Array.isArray(decision.pullMessageIds) ||
           decision.pullMessageIds.some((id) => typeof id !== "string" || id.length === 0) ||
           new Set(decision.pullMessageIds).size !== decision.pullMessageIds.length ||
@@ -678,6 +680,10 @@ class CentralSyncAdapter {
           new Set(deleteIds).size !== deleteIds.length ||
           deleteIds.some((msgId) => decision.pullMessageIds.includes(msgId)) ||
           pushDeletedIds.some((msgId) => decision.pushMessageIds.includes(msgId)) ||
+          (decision.pullAll && (
+            decision.pullMessageIds.length > 0 || decision.pushMessageIds.length > 0 ||
+            pushDeletedMessages.length > 0 || deleteMessages.length > 0
+          )) ||
           decision.error !== undefined
         ) {
           throw cdsProtocolError(
@@ -689,6 +695,7 @@ class CentralSyncAdapter {
         results.push({
           ...resultIdentity,
           ok: true,
+          pullAll: decision.pullAll,
           pullMessageIds: decision.pullMessageIds,
           pushMessageIds: decision.pushMessageIds,
           pushDeletedMessages: pushDeletedMessages.map((item) => ({

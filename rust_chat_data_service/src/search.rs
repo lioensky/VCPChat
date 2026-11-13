@@ -357,8 +357,22 @@ impl SearchIndex {
             Rewrite { revision: i64 },
         }
 
+        let mut writer = self.writer.lock();
+        let full_rebuild = self
+            .needs_full_rebuild
+            .load(std::sync::atomic::Ordering::Acquire);
         let mut pending = HashMap::<TopicKey, PendingUpdate>::new();
         for commit in commits {
+            // Search/rebuild may already have indexed a commit while its sync batch
+            // was still ingesting other topics. Filter before merging append rows.
+            if !full_rebuild
+                && self
+                    .database
+                    .topic_revision_state(&commit.topic)?
+                    .is_some_and(|(_, indexed_revision)| indexed_revision >= commit.revision)
+            {
+                continue;
+            }
             match &commit.search_update {
                 SearchUpdate::None => {}
                 SearchUpdate::Append(row_ids) if !row_ids.is_empty() => {
@@ -403,11 +417,8 @@ impl SearchIndex {
         if pending.is_empty() {
             return Ok(());
         }
-        if self
-            .needs_full_rebuild
-            .load(std::sync::atomic::Ordering::Acquire)
-        {
-            self.reconcile_revisions()?;
+        if full_rebuild {
+            self.reconcile_revisions_with_writer(&mut writer)?;
             return Ok(());
         }
 
@@ -433,10 +444,10 @@ impl SearchIndex {
             "search append rows changed before indexing"
         );
 
-        let mut writer = self.writer.lock();
+        let mut indexed = Vec::with_capacity(updates.len());
         for (key, update) in &updates {
-            match update {
-                PendingUpdate::Append { row_ids, .. } => {
+            let revision = match update {
+                PendingUpdate::Append { revision, row_ids } => {
                     for row_id in row_ids {
                         let document = self.message_document(
                             append_messages
@@ -448,11 +459,12 @@ impl SearchIndex {
                             return Err(error.into());
                         }
                     }
+                    *revision
                 }
                 PendingUpdate::Rewrite { .. } => {
                     writer.delete_term(composite_topic_term(&self.fields, key));
-                    let messages = match self.database.active_messages_for_topic(key) {
-                        Ok(messages) => messages,
+                    let (revision, messages) = match self.database.topic_search_snapshot(key) {
+                        Ok(snapshot) => snapshot,
                         Err(error) => {
                             writer.rollback()?;
                             return Err(error);
@@ -464,43 +476,40 @@ impl SearchIndex {
                             return Err(error.into());
                         }
                     }
+                    revision
                 }
-            }
+            };
+            indexed.push((key.clone(), revision));
         }
         if let Err(error) = writer.commit() {
             writer.rollback()?;
             return Err(error.into());
         }
-        drop(writer);
+        // Publish the revision before another index writer can consume old append work.
         self.reader.reload()?;
-        let indexed = updates
-            .into_iter()
-            .map(|(key, update)| {
-                let revision = match update {
-                    PendingUpdate::Append { revision, .. }
-                    | PendingUpdate::Rewrite { revision } => revision,
-                };
-                (key, revision)
-            })
-            .collect::<Vec<_>>();
         self.database.mark_topics_indexed(&indexed)?;
         Ok(())
     }
 
-    fn rewrite_topics(&self, topics: &[(TopicKey, i64)], clear_all: bool) -> Result<()> {
+    fn rewrite_topics(
+        &self,
+        writer: &mut IndexWriter,
+        topics: &[(TopicKey, i64)],
+        clear_all: bool,
+    ) -> Result<()> {
         if topics.is_empty() && !clear_all {
             return Ok(());
         }
-        let mut writer = self.writer.lock();
         if clear_all {
             writer.delete_all_documents()?;
         }
+        let mut indexed = Vec::with_capacity(topics.len());
         for (key, _) in topics {
             if !clear_all {
                 writer.delete_term(composite_topic_term(&self.fields, key));
             }
-            let messages = match self.database.active_messages_for_topic(key) {
-                Ok(messages) => messages,
+            let (revision, messages) = match self.database.topic_search_snapshot(key) {
+                Ok(snapshot) => snapshot,
                 Err(error) => {
                     writer.rollback()?;
                     return Err(error);
@@ -512,18 +521,23 @@ impl SearchIndex {
                     return Err(error.into());
                 }
             }
+            indexed.push((key.clone(), revision));
         }
         if let Err(error) = writer.commit() {
             writer.rollback()?;
             return Err(error.into());
         }
-        drop(writer);
         self.reader.reload()?;
-        self.database.mark_topics_indexed(topics)?;
+        self.database.mark_topics_indexed(&indexed)?;
         Ok(())
     }
 
     pub fn reconcile_revisions(&self) -> Result<usize> {
+        let mut writer = self.writer.lock();
+        self.reconcile_revisions_with_writer(&mut writer)
+    }
+
+    fn reconcile_revisions_with_writer(&self, writer: &mut IndexWriter) -> Result<usize> {
         let full_rebuild = self
             .needs_full_rebuild
             .swap(false, std::sync::atomic::Ordering::AcqRel);
@@ -533,7 +547,7 @@ impl SearchIndex {
             self.database.topics_needing_index()?
         };
         let count = pending.len();
-        if let Err(error) = self.rewrite_topics(&pending, full_rebuild) {
+        if let Err(error) = self.rewrite_topics(writer, &pending, full_rebuild) {
             if full_rebuild {
                 self.needs_full_rebuild
                     .store(true, std::sync::atomic::Ordering::Release);
@@ -552,9 +566,10 @@ impl SearchIndex {
         }
 
         let result = (|| {
+            let mut writer = self.writer.lock();
             let topics = self.database.all_active_topic_revisions()?;
             let rebuilt = topics.len();
-            self.rewrite_topics(&topics, true)?;
+            self.rewrite_topics(&mut writer, &topics, true)?;
             self.needs_full_rebuild
                 .store(false, std::sync::atomic::Ordering::Release);
             Ok(rebuilt)
@@ -850,8 +865,139 @@ fn normalize_query_syntax(query: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_query_syntax, SearchRuntime};
-    use crate::storage::Database;
+    use super::{normalize_query_syntax, MessageSearchRequest, SearchRuntime};
+    use crate::{
+        domain::{OwnerKey, OwnerRecord, OwnerType, TopicDefinition, TopicKey, TopicSource},
+        ingest::{normalize_history_values, sha256_hex},
+        storage::{Database, OwnerHashMode, SearchUpdate},
+    };
+    use serde_json::json;
+
+    #[test]
+    fn reconciled_append_commits_are_not_indexed_twice() {
+        for use_rebuild in [false, true] {
+            let directory = tempfile::tempdir().expect("create search revision directory");
+            let database =
+                Database::open(&directory.path().join("chat.sqlite3")).expect("open database");
+            let key = TopicKey {
+                owner_type: OwnerType::Agent,
+                owner_id: "agent-a".to_string(),
+                topic_id: "topic-a".to_string(),
+            };
+            database
+                .upsert_owner(
+                    &OwnerRecord {
+                        key: OwnerKey {
+                            owner_type: key.owner_type,
+                            owner_id: key.owner_id.clone(),
+                        },
+                        display_name: "Agent".to_string(),
+                        config_path: directory.path().join("agent-a/config.json"),
+                        config_hash: "a".repeat(64),
+                        source_config_hash: None,
+                        topics: vec![TopicDefinition {
+                            topic_id: key.topic_id.clone(),
+                            display_name: Some("Topic".to_string()),
+                            created_at: Some(1),
+                            ordinal: 0,
+                            config_hash: "b".repeat(64),
+                            metadata: json!({}),
+                        }],
+                    },
+                    OwnerHashMode::Immediate,
+                )
+                .expect("create empty topic");
+            let source = TopicSource {
+                key: key.clone(),
+                source_path: directory.path().join("agent-a/topic-a/history.json"),
+            };
+            let runtime =
+                SearchRuntime::new(directory.path().join("search-index"), database.clone());
+            let request = MessageSearchRequest {
+                query: "needle".to_string(),
+                owner_type: key.owner_type,
+                owner_id: key.owner_id.clone(),
+                topic_id: Some(key.topic_id.clone()),
+                exclude_topic_id: None,
+                limit: 50,
+            };
+            assert!(runtime
+                .search_messages(&request)
+                .expect("index empty topic")
+                .is_empty());
+            assert_eq!(database.topic_revision_state(&key).unwrap(), Some((0, 0)));
+
+            let mut history = Vec::new();
+            let mut append = |id: &str| {
+                history.push(json!({
+                    "id": id, "role": "user", "content": "needle",
+                    "timestamp": history.len() + 1
+                }));
+                let bytes = serde_json::to_vec(&history).expect("serialize history");
+                let normalized =
+                    normalize_history_values(history.clone(), key.owner_type, &key.topic_id)
+                        .expect("normalize history");
+                database
+                    .ingest_topic(
+                        &source,
+                        &normalized,
+                        history.len() as i64,
+                        bytes.len() as i64,
+                        &sha256_hex(&bytes),
+                        OwnerHashMode::Immediate,
+                    )
+                    .expect("ingest pending append")
+            };
+            let first = append("first");
+            assert!(matches!(first.search_update, SearchUpdate::Append(_)));
+            if use_rebuild {
+                runtime
+                    .rebuild()
+                    .expect("rebuild before batch finalization");
+            } else {
+                assert_eq!(
+                    runtime
+                        .search_messages(&request)
+                        .expect("search before batch finalization")
+                        .len(),
+                    1
+                );
+            }
+            let second = append("second");
+            assert!(matches!(second.search_update, SearchUpdate::Append(_)));
+            runtime
+                .apply_ingest_commits_if_initialized(&[first, second])
+                .expect("finalize mixed already-indexed and pending appends");
+            let hits = runtime
+                .search_messages(&request)
+                .expect("search finalized batch");
+            let mut ids = hits
+                .iter()
+                .map(|hit| hit.message.msg_id.as_str())
+                .collect::<Vec<_>>();
+            ids.sort_unstable();
+            assert_eq!(ids, vec!["first", "second"]);
+            assert_eq!(
+                runtime
+                    .ensure_initialized()
+                    .unwrap()
+                    .reader
+                    .searcher()
+                    .num_docs(),
+                2
+            );
+
+            database
+                .apply_sync_topic_tombstone(&key, 100)
+                .expect("delete indexed topic");
+            assert!(runtime
+                .search_messages(&request)
+                .expect("reconcile deleted topic")
+                .is_empty());
+            let (content, indexed) = database.topic_revision_state(&key).unwrap().unwrap();
+            assert_eq!(content, indexed);
+        }
+    }
 
     #[test]
     fn search_runtime_stays_cold_until_search_capability_is_requested() {
