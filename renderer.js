@@ -214,6 +214,8 @@ let mainChatSurface = null;
 let mainChatAdapter = null;
 let nonStreamingEventConsumer = null;
 let mainChatEventBridge = null;
+const activeGroupQueueScopes = new Set();
+const toGroupQueueScopeKey = (groupId, topicId) => (groupId && topicId ? `${groupId}::${topicId}` : '');
 const ownedRendererSubscriptions = new Set();
 const mainChatDomListenerOwner = createDomListenerOwner();
 const topicListDomListenerOwner = createDomListenerOwner();
@@ -237,6 +239,8 @@ const mainChatSendOwner = createMainChatSendOwner({
     getChatManager: () => chatManager,
     messageRenderer,
     notify: (message, type) => uiHelperFunctions?.showToastNotification?.(message, type),
+    isGroupQueueActive: (groupId, topicId) => activeGroupQueueScopes.has(toGroupQueueScopeKey(groupId, topicId)),
+    clearGroupQueueActive: (groupId, topicId) => activeGroupQueueScopes.delete(toGroupQueueScopeKey(groupId, topicId)),
 });
 const mainChatSettingsPresentationOwner = createMainChatSettingsPresentationOwner({
     documentRef: document,
@@ -605,6 +609,7 @@ mainChatSettingsPresentationOwner.configureStartup({
             settings: mainChatSettingsOwner,
             createInternalRenderer: createOwnedInternalChatRenderer,
             disposeCapabilities: async () => {
+                activeGroupQueueScopes.clear();
                 await mainChatEventBridge?.dispose?.();
                 mainChatEventBridge = null;
                 await nonStreamingEventConsumer?.dispose?.();
@@ -629,6 +634,15 @@ mainChatSettingsPresentationOwner.configureStartup({
             renderTarget: mainChatDomRenderer,
             messageRenderer,
             viewAuthority: { isCurrent: isContextForCurrentChat },
+            disposeStream: (messageId, reason) => mainChatAdapter?.disposeStream?.(messageId, reason),
+            streamProjection: streamManager,
+            onGroupQueueStateChange: ({ groupId, topicId, active }) => {
+                const key = toGroupQueueScopeKey(groupId, topicId);
+                if (!key) return;
+                if (active) activeGroupQueueScopes.add(key);
+                else activeGroupQueueScopes.delete(key);
+            },
+            notifySendStateChanged: mainChatSendOwner.update,
         });
         releaseNextUiChatCapabilities = mainComposition.releaseCapabilities;
 

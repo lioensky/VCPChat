@@ -324,8 +324,11 @@ class JevGroupSessionOrchestrator {
                 const wasAborted = admissionFailure?.name === 'AbortError';
                 session.abortController = null;
                 session.runPromise = null;
+                const suppressSummaryOnStop = session.stopReason === 'user_request_stop'
+                    || session.lastTurnSummarizedRevision === session.historyRevision;
+                session.abortCurrentRequested = false;
                 this._emit(session, 'group_queue_state', { reason: 'idle' });
-                if (!wasAborted && this.onSessionSettled) {
+                if (!wasAborted && !suppressSummaryOnStop && this.onSessionSettled) {
                     Promise.resolve(this.onSessionSettled({
                         groupId: session.groupId,
                         topicId: session.topicId,
@@ -386,7 +389,7 @@ class JevGroupSessionOrchestrator {
                 this._assertActive(session);
                 const admissionToken = options.admissionToken || null;
                 options.admissionToken = null;
-                await this.runAgent({
+                const agentTurnResult = await this.runAgent({
                     admissionToken,
                     handoffOwner: options.handoffOwner,
                     groupId: session.groupId,
@@ -396,25 +399,38 @@ class JevGroupSessionOrchestrator {
                     signal: session.abortController.signal
                 });
                 this._assertActive(session);
-                session.speechCounts[agentId] = (session.speechCounts[agentId] || 0) + 1;
+                const turnAborted = Boolean(
+                    session.abortCurrentRequested
+                    || agentTurnResult?.interrupted === true
+                );
                 session.historyRevision += 1;
                 session.currentAgentId = null;
-                this._emit(session, 'group_queue_updated', {
-                    reason: 'agent_completed',
-                    completedAgentId: agentId
-                });
-                if (this.onAgentTurnCompleted) {
-                    Promise.resolve(this.onAgentTurnCompleted({
-                        groupId: session.groupId,
-                        topicId: session.topicId,
-                        agentId
-                    })).catch(err => this.logger.warn('[JevGroupSession] onAgentTurnCompleted hook error:', err));
+                if (!turnAborted) {
+                    session.speechCounts[agentId] = (session.speechCounts[agentId] || 0) + 1;
+                    this._emit(session, 'group_queue_updated', {
+                        reason: 'agent_completed',
+                        completedAgentId: agentId
+                    });
+                    if (this.onAgentTurnCompleted) {
+                        session.lastTurnSummarizedRevision = session.historyRevision;
+                        Promise.resolve(this.onAgentTurnCompleted({
+                            groupId: session.groupId,
+                            topicId: session.topicId,
+                            agentId
+                        })).catch(err => this.logger.warn('[JevGroupSession] onAgentTurnCompleted hook error:', err));
+                    }
+                } else {
+                    this._emit(session, 'group_queue_updated', {
+                        reason: 'agent_interrupted',
+                        interruptedAgentId: agentId
+                    });
                 }
                 if (session.stopRequested) {
-                    session.stopReason = 'user_queue_stop';
+                    session.stopReason = turnAborted ? 'user_request_stop' : 'user_queue_stop';
                     this._emit(session, 'group_queue_stopped', {
                         reason: session.stopReason,
-                        currentReplyCompleted: true
+                        currentReplyCompleted: !turnAborted,
+                        currentReplyInterrupted: turnAborted
                     });
                     return;
                 }
@@ -506,24 +522,30 @@ class JevGroupSessionOrchestrator {
         }
     }
 
-    async interrupt(groupId, topicId) {
+    async interrupt(groupId, topicId, options = {}) {
+        const abortCurrent = options?.abortCurrent === true;
         const session = this._getOrCreate(groupId, topicId);
         const wasRunning = Boolean(session.runPromise);
-        const currentReplyContinues = session.status === 'speaking' && Boolean(session.currentAgentId);
-        session.stopReason = currentReplyContinues
-            ? 'user_queue_stop_pending_current'
-            : 'user_queue_stop';
+        const isSpeaking = session.status === 'speaking' && Boolean(session.currentAgentId);
+        const currentReplyContinues = isSpeaking && !abortCurrent;
+        if (abortCurrent && isSpeaking) {
+            session.abortCurrentRequested = true;
+        }
+        session.stopReason = abortCurrent
+            ? 'user_request_stop'
+            : (currentReplyContinues ? 'user_queue_stop_pending_current' : 'user_queue_stop');
         session.stopRequested = true;
         session.queue = [];
         session.manualQueue = [];
 
-        // 裁决尚未产生可见消息，可以立即取消；已开始的 Agent 回复必须自然完成。
-        if (!currentReplyContinues) {
+        // 裁决尚未产生可见消息，可以立即取消；若未显式要求硬中断当前发言，已开始的 Agent 回复自然完成。
+        if (!isSpeaking) {
             session.abortController?.abort();
         }
         this._emit(session, 'group_queue_stopped', {
             reason: session.stopReason,
-            currentReplyContinues
+            currentReplyContinues,
+            ...(abortCurrent && isSpeaking ? { currentReplyInterrupted: true } : {})
         });
         return {
             success: true,

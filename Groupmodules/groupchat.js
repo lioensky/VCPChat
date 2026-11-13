@@ -96,6 +96,56 @@ function registerActiveGroupRequest(messageId, controller, groupId, topicId) {
     });
 }
 
+const GROUP_REMOTE_INTERRUPT_TIMEOUT_MS = 5000;
+
+function buildGroupStreamContext({ groupId, topicId, agentId, agentName, agentConfig }) {
+    return {
+        groupId,
+        topicId,
+        agentId,
+        agentName,
+        avatarUrl: agentConfig?.avatarUrl ?? null,
+        avatarColor: agentConfig?.avatarCalculatedColor ?? null,
+        isGroupMessage: true
+    };
+}
+
+function buildGroupAssistantHistoryEntry({
+    id,
+    groupId,
+    topicId,
+    agentId,
+    agentName,
+    agentConfig,
+    content = '',
+    modelResolution = null,
+    model = undefined,
+    interrupted = false,
+    finishReason = undefined,
+    timestamp = Date.now()
+}) {
+    const resolvedModel = model !== undefined ? model : modelResolution?.effectiveModel;
+    return {
+        role: 'assistant',
+        name: agentName,
+        agentId,
+        ...(resolvedModel ? {
+            model: resolvedModel,
+            modelSource: modelResolution?.usingUnifiedModel ? 'group_unified' : 'agent'
+        } : {}),
+        content,
+        timestamp,
+        id,
+        isGroupMessage: true,
+        groupId,
+        topicId,
+        avatarUrl: agentConfig?.avatarUrl ?? null,
+        avatarColor: agentConfig?.avatarCalculatedColor ?? null,
+        ...(interrupted ? { interrupted: true } : {}),
+        ...(finishReason ? { finishReason } : {})
+    };
+}
+
 async function sendRemoteGroupInterrupt(messageId) {
     try {
         const globalSettings = await getVcpGlobalSettings();
@@ -112,7 +162,10 @@ async function sendRemoteGroupInterrupt(messageId) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${globalSettings.vcpApiKey}`
             },
-            body: JSON.stringify({ messageId })
+            body: JSON.stringify({ requestId: messageId, messageId }),
+            ...(typeof AbortSignal?.timeout === 'function'
+                ? { signal: AbortSignal.timeout(GROUP_REMOTE_INTERRUPT_TIMEOUT_MS) }
+                : {})
         });
 
         if (response.ok) {
@@ -385,7 +438,7 @@ function ensureJevSessionOrchestrator() {
         },
         runAgent: async ({ groupId, topicId, agent, signal, admissionToken, handoffOwner }) => {
             const callback = groupStreamCallbacks.get(getGroupQueueKey(groupId, topicId));
-            await handleInviteAgentToSpeak(
+            return await handleInviteAgentToSpeak(
                 groupId,
                 topicId,
                 agent.id,
@@ -706,6 +759,9 @@ async function getAgentGroups() {
                     } else {
                         config.avatarUrl = null;
                     }
+                    if (mainAppPaths.USER_DATA_DIR && config.id) {
+                        config.agentDataPath = path.join(mainAppPaths.USER_DATA_DIR, config.id);
+                    }
                     // avatarCalculatedColor 应该已随config加载
                     agentGroups.push(config);
                 }
@@ -744,6 +800,9 @@ async function getAgentGroupConfig(groupId) {
                 config.avatarUrl = await versionedGroupAvatarUrl(groupDir, config.avatar);
             } else {
                 config.avatarUrl = null;
+            }
+            if (mainAppPaths.USER_DATA_DIR) {
+                config.agentDataPath = path.join(mainAppPaths.USER_DATA_DIR, groupId);
             }
             return config;
         }
@@ -799,7 +858,7 @@ async function saveAgentGroupConfigUnlocked(groupId, configData) {
         // avatarUrl 是动态生成的，不保存到文件
         // avatar 字段（文件名）应该在 configData 中，如果被修改的话
         // avatarCalculatedColor 也是动态获取的，但如果 main.js 决定持久化它，它应该在 configData 中
-        const { avatarUrl, ...dataToSave } = configData;
+        const { avatarUrl, agentDataPath: _ignoredGroupDataPath, ...dataToSave } = configData;
 
         const mergedModeSettings = {
             ...(existingConfig.modeSettings || {}),
@@ -842,6 +901,9 @@ async function saveAgentGroupConfigUnlocked(groupId, configData) {
             newConfigData.avatarUrl = `file://${path.join(groupDir, newConfigData.avatar)}?t=${Date.now()}`;
         } else {
             newConfigData.avatarUrl = null;
+        }
+        if (mainAppPaths.USER_DATA_DIR) {
+            newConfigData.agentDataPath = path.join(mainAppPaths.USER_DATA_DIR, groupId);
         }
         return { success: true, agentGroup: newConfigData };
     } catch (error) {
@@ -1357,13 +1419,28 @@ ${canvasData.errors || 'No errors'}
             console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
         }
         const modelResolution = resolveEffectiveModel(groupConfig, agentConfig);
+        const agentStreamContext = buildGroupStreamContext({
+            groupId,
+            topicId,
+            agentId,
+            agentName,
+            agentConfig
+        });
         if (!globalVcpSettings.vcpUrl) {
             const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：VCP URL 未配置。`;
             console.error(`[GroupChat] ${errorMsg}`);
-            const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
-            groupHistory.push(errorResponse);
+            const errorResponse = buildGroupAssistantHistoryEntry({
+                id: messageIdForAgentResponse,
+                groupId,
+                topicId,
+                agentId,
+                agentName,
+                agentConfig,
+                content: `[系统消息] ${errorMsg}`
+            });
+            groupHistory = await persistAgentResponse(groupId, topicId, errorResponse);
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: agentStreamContext });
             }
             continue; // 继续处理下一个需要发言的Agent
         }
@@ -1374,10 +1451,18 @@ ${canvasData.errors || 'No errors'}
                 : '当前成员未配置模型。';
             const errorMsg = `Agent ${agentName} (${agentId}) 无法响应：${modelHint}`;
             console.error(`[GroupChat] ${errorMsg}`);
-            const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
-            groupHistory.push(errorResponse);
+            const errorResponse = buildGroupAssistantHistoryEntry({
+                id: messageIdForAgentResponse,
+                groupId,
+                topicId,
+                agentId,
+                agentName,
+                agentConfig,
+                content: `[系统消息] ${errorMsg}`
+            });
+            groupHistory = await persistAgentResponse(groupId, topicId, errorResponse);
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: agentStreamContext });
             }
             continue; // 继续处理下一个需要发言的Agent
         }
@@ -1385,43 +1470,8 @@ ${canvasData.errors || 'No errors'}
         try {
             if (queueContext.isAborted()) break;
 
-            // Send 'agent_thinking' event before VCP call for ALL agents
-            console.log(`[GroupChat] Preparing to send 'agent_thinking' event for ${agentName} (msgId: ${messageIdForAgentResponse})`);
-            if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer({
-                    type: 'agent_thinking',
-                    messageId: messageIdForAgentResponse,
-                    context: {
-                        groupId,
-                        topicId,
-                        agentId,
-                        agentName,
-                        avatarUrl: agentConfig.avatarUrl,
-                        avatarColor: agentConfig.avatarCalculatedColor,
-                        isGroupMessage: true
-                    }
-                });
-                console.log(`[GroupChat] 'agent_thinking' event sent for ${agentName}.`);
-                // Short delay to allow renderer to process 'thinking' bubble
-                await new Promise(resolve => setTimeout(resolve, 200));
-                if (queueContext.isAborted()) {
-                    sendStreamChunkToRenderer({
-                        type: 'end',
-                        error: '群聊队列已中止',
-                        fullResponse: '',
-                        messageId: messageIdForAgentResponse,
-                        context: { groupId, topicId, agentId, agentName, isGroupMessage: true },
-                        interrupted: true,
-                        queueInterrupted: true
-                    });
-                    break;
-                }
-            } else {
-                console.error(`[GroupChat] sendStreamChunkToRenderer is not a function when sending 'agent_thinking' for ${agentName}!`);
-            }
-
             const modelConfigForAgent = {
-               model: modelResolution.effectiveModel,
+                model: modelResolution.effectiveModel,
                 temperature: parseFloat(agentConfig.temperature),
                 max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
                 stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
@@ -1434,11 +1484,64 @@ ${canvasData.errors || 'No errors'}
             const GROUP_CHUNK_IDLE_TIMEOUT_MS = 62000;
 
             const controller = new AbortController();
-            let activeTimer = setTimeout(() => {
+            let activeTimer = null;
+            // 在发送 agent_thinking 之前注册活动控制器，消除 200ms 缓冲窗内点击中止报 Request not found 的竞态
+            registerActiveGroupRequest(messageIdForAgentResponse, controller, groupId, topicId);
+
+            // Send 'agent_thinking' event before VCP call for ALL agents
+            console.log(`[GroupChat] Preparing to send 'agent_thinking' event for ${agentName} (msgId: ${messageIdForAgentResponse})`);
+            if (typeof sendStreamChunkToRenderer === 'function') {
+                sendStreamChunkToRenderer({
+                    type: 'agent_thinking',
+                    messageId: messageIdForAgentResponse,
+                    context: agentStreamContext
+                });
+                console.log(`[GroupChat] 'agent_thinking' event sent for ${agentName}.`);
+                // Short delay to allow renderer to process 'thinking' bubble
+                await new Promise(resolve => setTimeout(resolve, 200));
+                if (controller.signal.aborted || queueContext.isAborted()) {
+                    activeRequestControllers.delete(messageIdForAgentResponse);
+                    if (controller.signal.aborted) {
+                        groupHistory = await persistAgentResponse(groupId, topicId, buildGroupAssistantHistoryEntry({
+                            id: messageIdForAgentResponse,
+                            groupId,
+                            topicId,
+                            agentId,
+                            agentName,
+                            agentConfig,
+                            modelResolution,
+                            model: modelConfigForAgent.model,
+                            content: '',
+                            interrupted: true,
+                            finishReason: 'interrupted'
+                        }));
+                    }
+                    sendStreamChunkToRenderer({
+                        type: 'end',
+                        error: controller.signal.aborted ? '用户中止' : '群聊队列已中止',
+                        fullResponse: '',
+                        messageId: messageIdForAgentResponse,
+                        context: agentStreamContext,
+                        interrupted: true,
+                        queueInterrupted: !controller.signal.aborted
+                    });
+                    if (!controller.signal.aborted && typeof sendStreamChunkToRenderer === 'function') {
+                        sendStreamChunkToRenderer({
+                            type: 'remove_message',
+                            messageId: messageIdForAgentResponse,
+                            context: agentStreamContext
+                        });
+                    }
+                    break;
+                }
+            } else {
+                console.error(`[GroupChat] sendStreamChunkToRenderer is not a function when sending 'agent_thinking' for ${agentName}!`);
+            }
+
+            activeTimer = setTimeout(() => {
                 console.warn(`[GroupChat] TTFT 超时 (${GROUP_TTFT_TIMEOUT_MS}ms) 未收到响应头，主动中止: ${agentName}`);
                 controller.abort('ttft_timeout');
             }, GROUP_TTFT_TIMEOUT_MS);
-            registerActiveGroupRequest(messageIdForAgentResponse, controller, groupId, topicId);
 
             const trajectoryCall = beginTrajectoryCall({
                 sessionKey: sessionKeyFromContext({ groupId, topicId }),
@@ -1470,14 +1573,22 @@ ${canvasData.errors || 'No errors'}
                 clearTimeout(activeTimer);
                 if (fetchError.name === 'AbortError') {
                     console.log(`[GroupChat] VCP fetch for ${agentName} was aborted before stream began.`);
-                    groupHistory = await persistAgentResponse(groupId, topicId, {
-                        role: 'assistant', name: agentName, agentId, id: messageIdForAgentResponse,
-                        content: '', timestamp: Date.now(), finishReason: 'interrupted',
-                        isGroupMessage: true, groupId, topicId,
-                    });
-                     if (typeof sendStreamChunkToRenderer === 'function') {
-                         sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, interrupted: true });
-                     }
+                    groupHistory = await persistAgentResponse(groupId, topicId, buildGroupAssistantHistoryEntry({
+                        id: messageIdForAgentResponse,
+                        groupId,
+                        topicId,
+                        agentId,
+                        agentName,
+                        agentConfig,
+                        modelResolution,
+                        model: modelConfigForAgent.model,
+                        content: '',
+                        interrupted: true,
+                        finishReason: 'interrupted'
+                    }));
+                    if (typeof sendStreamChunkToRenderer === 'function') {
+                        sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: agentStreamContext, interrupted: true });
+                    }
                     activeRequestControllers.delete(messageIdForAgentResponse);
                     continue;
                 }
@@ -1487,19 +1598,29 @@ ${canvasData.errors || 'No errors'}
             }
 
             if (!response.ok) {
-            trajectoryCall.finish({ error: { name: 'HTTPError', message: `VCP request failed: ${response.status}` } });
+                trajectoryCall.finish({ error: { name: 'HTTPError', message: `VCP request failed: ${response.status}` } });
                 const errorText = await response.text();
                 console.error(`[GroupChat] VCP request failed for ${agentName}. Status: ${response.status}, Response Text:`, errorText);
                 let errorData = { message: `Server returned status ${response.status}`, details: errorText };
                 try { const parsedError = JSON.parse(errorText); if (typeof parsedError === 'object' && parsedError !== null) errorData = parsedError; } catch (e) { /* Not JSON */ }
 
                 const errorMessageToPropagate = `VCP request failed: ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : 'Unknown server error')}`;
-                const errorResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: `[System Message] ${errorMessageToPropagate}`, timestamp: Date.now(), id: messageIdForAgentResponse };
+                const errorResponseEntry = buildGroupAssistantHistoryEntry({
+                    id: messageIdForAgentResponse,
+                    groupId,
+                    topicId,
+                    agentId,
+                    agentName,
+                    agentConfig,
+                    modelResolution,
+                    model: modelConfigForAgent.model,
+                    content: `[System Message] ${errorMessageToPropagate}`
+                });
                 groupHistory = await persistAgentResponse(groupId, topicId, errorResponseEntry);
 
                 if (typeof sendStreamChunkToRenderer === 'function') {
                     // Finalize the 'thinking' bubble with an error message
-                    sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                    sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: agentStreamContext });
                 }
                 activeRequestControllers.delete(messageIdForAgentResponse);
                 continue; // Move to the next agent
@@ -1635,27 +1756,61 @@ ${canvasData.errors || 'No errors'}
                             // 看门狗熔断：reader 抛出的是 abort 的字符串原因，没有 .message；已收到的内容（可能含已执行的工具调用和结果）要留下
                             console.warn(`[GroupChat] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) stopped by the idle watchdog.`);
                             const partialContent = withWatchdogNote(accumulatedResponse, GROUP_CHUNK_IDLE_TIMEOUT_MS);
-                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: partialContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
+                            const finalAiResponseEntry = buildGroupAssistantHistoryEntry({
+                                id: messageIdForAgentResponse,
+                                groupId,
+                                topicId,
+                                agentId,
+                                agentName,
+                                agentConfig,
+                                modelResolution,
+                                model: modelConfigForAgent.model,
+                                content: partialContent,
+                                interrupted: true,
+                                finishReason: 'interrupted'
+                            });
                             groupHistory = await persistAgentResponse(groupId, topicId, finalAiResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
-                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: partialContent, interrupted: true });
+                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: agentStreamContext, fullResponse: partialContent, interrupted: true });
                             }
                         } else if (streamError.name === 'AbortError') {
                             console.log(`[GroupChat] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) was aborted by user.`);
                             // Even though it was aborted, we save the content received so far.
-                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
+                            const finalAiResponseEntry = buildGroupAssistantHistoryEntry({
+                                id: messageIdForAgentResponse,
+                                groupId,
+                                topicId,
+                                agentId,
+                                agentName,
+                                agentConfig,
+                                modelResolution,
+                                model: modelConfigForAgent.model,
+                                content: accumulatedResponse,
+                                interrupted: true,
+                                finishReason: 'interrupted'
+                            });
                             groupHistory = await persistAgentResponse(groupId, topicId, finalAiResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
                                 // Send 'end' event to finalize the UI with the partial content.
-                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse, interrupted: true });
+                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: agentStreamContext, fullResponse: accumulatedResponse, interrupted: true });
                             }
                         } else {
                             console.error(`[GroupChat] VCP stream reading error for ${agentName}:`, streamError);
                             const errorText = `[System Message] ${agentName} stream processing error: ${streamError.message}`;
-                            const streamErrorResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId };
+                            const streamErrorResponseEntry = buildGroupAssistantHistoryEntry({
+                                id: messageIdForAgentResponse,
+                                groupId,
+                                topicId,
+                                agentId,
+                                agentName,
+                                agentConfig,
+                                modelResolution,
+                                model: modelConfigForAgent.model,
+                                content: errorText
+                            });
                             groupHistory = await persistAgentResponse(groupId, topicId, streamErrorResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
-                                sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                                sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: agentStreamContext });
                             }
                         }
                     } finally {
@@ -1682,26 +1837,29 @@ ${canvasData.errors || 'No errors'}
                         type: 'full_response',
                         messageId: messageIdForAgentResponse,
                         fullResponse: aiResponseContent,
-                        context: {
-                            groupId,
-                            topicId,
-                            agentId,
-                            agentName,
-                            isGroupMessage: true
-                        }
+                        context: agentStreamContext
                     });
-               }
-               activeRequestControllers.delete(messageIdForAgentResponse);
-           }
+                }
+                activeRequestControllers.delete(messageIdForAgentResponse);
+            }
         } catch (error) {
             if (!(error instanceof Error)) error = new Error(getGroupErrorMessage(error), { cause: error });
             console.error(`[GroupChat] Error during response for Agent ${agentName}:`, error);
             const errorText = `[System Message] ${agentName} failed to respond: ${error.message}`;
-            const errorResponse = { role: 'assistant', name: agentName, agentId: agentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse };
+            const errorResponse = buildGroupAssistantHistoryEntry({
+                id: messageIdForAgentResponse,
+                groupId,
+                topicId,
+                agentId,
+                agentName,
+                agentConfig,
+                modelResolution,
+                content: errorText
+            });
             groupHistory = await persistAgentResponse(groupId, topicId, errorResponse);
             if (typeof sendStreamChunkToRenderer === 'function') {
                 // Finalize the 'thinking' bubble with an error
-                sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
+                sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: agentStreamContext });
             }
             activeRequestControllers.delete(messageIdForAgentResponse);
         }
@@ -2064,15 +2222,31 @@ ${canvasData.errors || 'No errors'}
         console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
     }
     const modelResolution = resolveEffectiveModel(groupConfig, agentConfig);
+    const invitedStreamContext = buildGroupStreamContext({
+        groupId,
+        topicId,
+        agentId: invitedAgentId,
+        agentName,
+        agentConfig
+    });
+    let invitedTurnInterrupted = false;
     if (!globalVcpSettings.vcpUrl) {
         const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：VCP URL 未配置。`;
         console.error(`[GroupChat Invite] ${errorMsg}`);
-        const errorResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
+        const errorResponse = buildGroupAssistantHistoryEntry({
+            id: messageIdForAgentResponse,
+            groupId,
+            topicId,
+            agentId: invitedAgentId,
+            agentName,
+            agentConfig,
+            content: `[系统消息] ${errorMsg}`
+        });
         groupHistory = await persistResponse(groupId, topicId, errorResponse);
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+            sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: invitedStreamContext });
         }
-        return;
+        return { interrupted: false, error: errorMsg };
     }
 
     if (!modelResolution.effectiveModel) {
@@ -2081,49 +2255,29 @@ ${canvasData.errors || 'No errors'}
             : '当前成员未配置模型。';
         const errorMsg = `Agent ${agentName} (${invitedAgentId}) 无法响应（邀请）：${modelHint}`;
         console.error(`[GroupChat Invite] ${errorMsg}`);
-        const errorResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: `[系统消息] ${errorMsg}`, timestamp: Date.now(), id: messageIdForAgentResponse };
+        const errorResponse = buildGroupAssistantHistoryEntry({
+            id: messageIdForAgentResponse,
+            groupId,
+            topicId,
+            agentId: invitedAgentId,
+            agentName,
+            agentConfig,
+            content: `[系统消息] ${errorMsg}`
+        });
         groupHistory = await persistResponse(groupId, topicId, errorResponse);
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+            sendStreamChunkToRenderer({ type: 'error', error: errorMsg, messageId: messageIdForAgentResponse, context: invitedStreamContext });
         }
-        return;
+        return { interrupted: false, error: errorMsg };
     }
 
     try {
-        if (queueContext.isAborted()) return;
-
-        // Always send 'agent_thinking' before the fetch call
-        if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer({
-                type: 'agent_thinking',
-                messageId: messageIdForAgentResponse,
-                context: {
-                    groupId,
-                    topicId,
-                    agentId: invitedAgentId,
-                    agentName,
-                    avatarUrl: agentConfig.avatarUrl,
-                    avatarColor: agentConfig.avatarCalculatedColor,
-                    isGroupMessage: true
-                }
-            });
-            await new Promise(resolve => setTimeout(resolve, 200)); // Give renderer time to create the bubble
-            if (queueContext.isAborted()) {
-                sendStreamChunkToRenderer({
-                    type: 'end',
-                    error: '群聊队列已中止',
-                    fullResponse: '',
-                    messageId: messageIdForAgentResponse,
-                    context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true },
-                    interrupted: true,
-                    queueInterrupted: true
-                });
-                return;
-            }
+        if (queueContext.isAborted() || options.signal?.aborted) {
+            return { interrupted: true };
         }
 
         const modelConfigForAgent = {
-           model: modelResolution.effectiveModel,
+            model: modelResolution.effectiveModel,
             temperature: parseFloat(agentConfig.temperature),
             max_tokens: agentConfig.maxOutputTokens ? parseInt(agentConfig.maxOutputTokens) : undefined,
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
@@ -2139,11 +2293,59 @@ ${canvasData.errors || 'No errors'}
         const abortFromSession = () => controller.abort();
         if (options.signal?.aborted) controller.abort();
         else options.signal?.addEventListener?.('abort', abortFromSession, { once: true });
-        let activeTimer = setTimeout(() => {
+        let activeTimer = null;
+        registerActiveGroupRequest(messageIdForAgentResponse, controller, groupId, topicId);
+
+        // Always send 'agent_thinking' before the fetch call
+        if (typeof sendStreamChunkToRenderer === 'function') {
+            sendStreamChunkToRenderer({
+                type: 'agent_thinking',
+                messageId: messageIdForAgentResponse,
+                context: invitedStreamContext
+            });
+            await new Promise(resolve => setTimeout(resolve, 200)); // Give renderer time to create the bubble
+            if (controller.signal.aborted || queueContext.isAborted()) {
+                options.signal?.removeEventListener?.('abort', abortFromSession);
+                activeRequestControllers.delete(messageIdForAgentResponse);
+                if (controller.signal.aborted) {
+                    groupHistory = await persistResponse(groupId, topicId, buildGroupAssistantHistoryEntry({
+                        id: messageIdForAgentResponse,
+                        groupId,
+                        topicId,
+                        agentId: invitedAgentId,
+                        agentName,
+                        agentConfig,
+                        modelResolution,
+                        model: modelConfigForAgent.model,
+                        content: '',
+                        interrupted: true,
+                        finishReason: 'interrupted'
+                    }));
+                }
+                sendStreamChunkToRenderer({
+                    type: 'end',
+                    error: controller.signal.aborted ? '用户中止' : '群聊队列已中止',
+                    fullResponse: '',
+                    messageId: messageIdForAgentResponse,
+                    context: invitedStreamContext,
+                    interrupted: true,
+                    queueInterrupted: !controller.signal.aborted
+                });
+                if (!controller.signal.aborted) {
+                    sendStreamChunkToRenderer({
+                        type: 'remove_message',
+                        messageId: messageIdForAgentResponse,
+                        context: invitedStreamContext
+                    });
+                }
+                return { interrupted: true };
+            }
+        }
+
+        activeTimer = setTimeout(() => {
             console.warn(`[GroupChat Invite] TTFT 超时 (${GROUP_TTFT_TIMEOUT_MS}ms) 未收到响应头，主动中止: ${agentName}`);
             controller.abort('ttft_timeout');
         }, GROUP_TTFT_TIMEOUT_MS);
-        registerActiveGroupRequest(messageIdForAgentResponse, controller, groupId, topicId);
 
         const trajectoryCall = (gameRequest ? () => ({ chunk() {}, finish() {} }) : beginTrajectoryCall)({
             sessionKey: sessionKeyFromContext({ groupId, topicId }),
@@ -2176,16 +2378,24 @@ ${canvasData.errors || 'No errors'}
             clearTimeout(activeTimer);
             if (fetchError.name === 'AbortError') {
                 console.log(`[GroupChat Invite] VCP fetch for ${agentName} was aborted before stream began.`);
-                groupHistory = await persistResponse(groupId, topicId, {
-                    role: 'assistant', name: agentName, agentId: invitedAgentId,
-                    id: messageIdForAgentResponse, content: '', timestamp: Date.now(),
-                    finishReason: 'interrupted', isGroupMessage: true, groupId, topicId,
-                });
+                groupHistory = await persistResponse(groupId, topicId, buildGroupAssistantHistoryEntry({
+                    id: messageIdForAgentResponse,
+                    groupId,
+                    topicId,
+                    agentId: invitedAgentId,
+                    agentName,
+                    agentConfig,
+                    modelResolution,
+                    model: modelConfigForAgent.model,
+                    content: '',
+                    interrupted: true,
+                    finishReason: 'interrupted'
+                }));
                 if (typeof sendStreamChunkToRenderer === 'function') {
-                    sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, interrupted: true });
+                    sendStreamChunkToRenderer({ type: 'end', error: '用户中止', fullResponse: '', messageId: messageIdForAgentResponse, context: invitedStreamContext, interrupted: true });
                 }
                 activeRequestControllers.delete(messageIdForAgentResponse);
-                return;
+                return { interrupted: true };
             }
             throw fetchError;
         } finally {
@@ -2194,21 +2404,31 @@ ${canvasData.errors || 'No errors'}
         }
 
         if (!response.ok) {
-        trajectoryCall.finish({ error: { name: 'HTTPError', message: `VCP request failed: ${response.status}` } });
+            trajectoryCall.finish({ error: { name: 'HTTPError', message: `VCP request failed: ${response.status}` } });
             const errorText = await response.text();
             console.error(`[GroupChat Invite] VCP request failed for ${agentName}. Status: ${response.status}, Response Text:`, errorText);
             let errorData = { message: `Server returned status ${response.status}`, details: errorText };
             try { const parsedError = JSON.parse(errorText); if (typeof parsedError === 'object' && parsedError !== null) errorData = parsedError; } catch (e) { /* Not JSON */ }
 
             const errorMessageToPropagate = `VCP request failed (invite): ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : 'Unknown server error')}`;
-            const errorResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: `[System Message] ${errorMessageToPropagate}`, timestamp: Date.now(), id: messageIdForAgentResponse };
+            const errorResponseEntry = buildGroupAssistantHistoryEntry({
+                id: messageIdForAgentResponse,
+                groupId,
+                topicId,
+                agentId: invitedAgentId,
+                agentName,
+                agentConfig,
+                modelResolution,
+                model: modelConfigForAgent.model,
+                content: `[System Message] ${errorMessageToPropagate}`
+            });
             groupHistory = await persistResponse(groupId, topicId, errorResponseEntry);
 
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: invitedStreamContext });
             }
             activeRequestControllers.delete(messageIdForAgentResponse);
-            return;
+            return { interrupted: false, error: errorMessageToPropagate };
         }
 
         if (modelConfigForAgent.stream) {
@@ -2336,26 +2556,62 @@ ${canvasData.errors || 'No errors'}
                     if (isWatchdogAbort(streamError, controller)) {
                         console.warn(`[GroupChat Invite] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) stopped by the idle watchdog.`);
                         const partialContent = withWatchdogNote(accumulatedResponse, GROUP_CHUNK_IDLE_TIMEOUT_MS);
-                        const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: partialContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
+                        invitedTurnInterrupted = true;
+                        const finalAiResponseEntry = buildGroupAssistantHistoryEntry({
+                            id: messageIdForAgentResponse,
+                            groupId,
+                            topicId,
+                            agentId: invitedAgentId,
+                            agentName,
+                            agentConfig,
+                            modelResolution,
+                            model: modelConfigForAgent.model,
+                            content: partialContent,
+                            interrupted: true,
+                            finishReason: 'interrupted'
+                        });
                         groupHistory = await persistResponse(groupId, topicId, finalAiResponseEntry);
                         if (typeof sendStreamChunkToRenderer === 'function') {
-                            sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: partialContent, interrupted: true });
+                            sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: invitedStreamContext, fullResponse: partialContent, interrupted: true });
                         }
                     } else if (streamError.name === 'AbortError') {
+                        invitedTurnInterrupted = true;
                         console.log(`[GroupChat Invite] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) was aborted by user.`);
                         // Save the content received so far upon abortion.
-                        const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
+                        const finalAiResponseEntry = buildGroupAssistantHistoryEntry({
+                            id: messageIdForAgentResponse,
+                            groupId,
+                            topicId,
+                            agentId: invitedAgentId,
+                            agentName,
+                            agentConfig,
+                            modelResolution,
+                            model: modelConfigForAgent.model,
+                            content: accumulatedResponse,
+                            interrupted: true,
+                            finishReason: 'interrupted'
+                        });
                         groupHistory = await persistResponse(groupId, topicId, finalAiResponseEntry);
                         if (typeof sendStreamChunkToRenderer === 'function') {
-                            sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse, interrupted: true });
+                            sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: invitedStreamContext, fullResponse: accumulatedResponse, interrupted: true });
                         }
                     } else {
                         console.error(`[GroupChat Invite] VCP stream reading error for ${agentName}:`, streamError);
                         const errorText = `[System Message] ${agentName} stream processing error (invite): ${streamError.message}`;
-                        const streamErrorResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId };
+                        const streamErrorResponseEntry = buildGroupAssistantHistoryEntry({
+                            id: messageIdForAgentResponse,
+                            groupId,
+                            topicId,
+                            agentId: invitedAgentId,
+                            agentName,
+                            agentConfig,
+                            modelResolution,
+                            model: modelConfigForAgent.model,
+                            content: errorText
+                        });
                         groupHistory = await persistResponse(groupId, topicId, streamErrorResponseEntry);
                         if (typeof sendStreamChunkToRenderer === 'function') {
-                            sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error (invite): ${streamError.message}`, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+                            sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error (invite): ${streamError.message}`, messageId: messageIdForAgentResponse, context: invitedStreamContext });
                         }
                     }
                 } finally {
@@ -2379,13 +2635,7 @@ ${canvasData.errors || 'No errors'}
                     type: 'full_response',
                     messageId: messageIdForAgentResponse,
                     fullResponse: aiResponseContent,
-                    context: {
-                        groupId,
-                        topicId,
-                        agentId: invitedAgentId,
-                        agentName,
-                        isGroupMessage: true
-                    }
+                    context: invitedStreamContext
                 });
             }
             activeRequestControllers.delete(messageIdForAgentResponse);
@@ -2395,18 +2645,30 @@ ${canvasData.errors || 'No errors'}
         if (!(error instanceof Error)) error = new Error(getGroupErrorMessage(error), { cause: error });
         console.error(`[GroupChat Invite] Error responding for agent ${agentName}:`, error);
         const errorText = `[System Message] ${agentName} failed to respond (invite): ${error.message}`;
-        const errorResponse = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: errorText, timestamp: Date.now(), id: messageIdForAgentResponse };
+        const errorResponse = buildGroupAssistantHistoryEntry({
+            id: messageIdForAgentResponse,
+            groupId,
+            topicId,
+            agentId: invitedAgentId,
+            agentName,
+            agentConfig,
+            modelResolution,
+            content: errorText
+        });
         groupHistory = await persistResponse(groupId, topicId, errorResponse);
         if (typeof sendStreamChunkToRenderer === 'function') {
-            sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true } });
+            sendStreamChunkToRenderer({ type: 'end', error: error.message, fullResponse: errorText, messageId: messageIdForAgentResponse, context: invitedStreamContext });
         }
         activeRequestControllers.delete(messageIdForAgentResponse);
     }
 
-    if (gameRequest || options.skipSummary === true || queueContext.isAborted()) return;
+    if (gameRequest || options.skipSummary === true || invitedTurnInterrupted || queueContext.isAborted()) {
+        return { interrupted: invitedTurnInterrupted };
+    }
 
     // 邀请发言后也尝试总结话题
     await maybeSummarizeGroupTopic(groupId, topicId);
+    return { interrupted: false };
 }
 
 // cleanSummarizedTitle, triggerTopicSummarizationIfNeeded, determineNatureRandomSpeakers
@@ -2716,6 +2978,25 @@ async function redoGroupChatMessage(groupId, topicId, messageIdToDelete, agentId
  * @param {string} messageId - 要中断的消息的 ID
  * @returns {{success: boolean, error?: string}}
  */
+async function stopGroupQueueAfterCurrentAbort(groupId, topicId, abortedMessageId) {
+    if (!groupId || !topicId) return;
+    const admissionCancellation = groupTopicAdmission?.cancelPending(
+        getGroupHistoryDescriptor(groupId, topicId)
+    );
+    const queueKey = getGroupQueueKey(groupId, topicId);
+    groupQueueCancellationVersions.set(
+        queueKey,
+        (groupQueueCancellationVersions.get(queueKey) || 0) + 1
+    );
+    const jevInterruption = jevSessionOrchestrator
+        ? jevSessionOrchestrator.interrupt(groupId, topicId, {
+            abortCurrent: true,
+            abortedMessageId
+        })
+        : Promise.resolve();
+    await Promise.all([admissionCancellation, jevInterruption]);
+}
+
 async function interruptGroupRequest(messageId) {
     const request = activeRequestControllers.get(messageId);
     if (!request) {
@@ -2724,9 +3005,13 @@ async function interruptGroupRequest(messageId) {
     }
 
     console.log(`[GroupChat] Interrupting local request for messageId: ${messageId}`);
-    const cancelledQueue = interruptGroupChatQueue(request.groupId, request.topicId);
+    const { groupId, topicId } = request;
+    // 先触发本地 Abort，再以 abortCurrent=true 通知队列与 JEV 编排器，避免误报 currentReplyContinues=true
     request.controller.abort();
-    await Promise.all([cancelledQueue, sendRemoteGroupInterrupt(messageId)]);
+    await Promise.all([
+        stopGroupQueueAfterCurrentAbort(groupId, topicId, messageId),
+        sendRemoteGroupInterrupt(messageId)
+    ]);
     return { success: true, message: 'Interrupt signal sent locally and remote request attempted.' };
 }
 

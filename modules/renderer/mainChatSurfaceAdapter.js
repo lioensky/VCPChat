@@ -222,6 +222,7 @@ export function createMainChatSurfaceAdapter({
             return streamServices.streamProjection.startStreamingMessage(message, messageItem);
         },
         cancelStream(messageId, reason) { return disposed ? Promise.resolve(null) : bridge.cancelOperation(messageId, reason); },
+        disposeStream(messageId, reason) { return disposed ? Promise.resolve(false) : bridge.disposeOperation(messageId, reason); },
         async dispose() {
             if (disposed) return;
             disposed = true;
