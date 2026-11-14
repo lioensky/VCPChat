@@ -1481,10 +1481,25 @@ window.itemListManager = (() => {
             return false;
         }
 
-        matchedItem.config = {
-            ...(matchedItem.config || {}),
-            ...partialConfig
-        };
+        if (matchedItem.config && typeof matchedItem.config === 'object') {
+            Object.assign(matchedItem.config, partialConfig);
+        } else {
+            matchedItem.config = { ...partialConfig };
+        }
+        if ('model' in partialConfig) {
+            matchedItem.model = partialConfig.model;
+        }
+
+        if (itemListUl) {
+            const li = Array.from(itemListUl.querySelectorAll('li[data-item-id][data-item-type]'))
+                .find(candidate => candidate.dataset.itemId === itemId && candidate.dataset.itemType === itemType);
+            if (li && li._itemData) {
+                li._itemData.config = matchedItem.config;
+                if ('model' in partialConfig) {
+                    li._itemData.model = partialConfig.model;
+                }
+            }
+        }
 
         return true;
     }
