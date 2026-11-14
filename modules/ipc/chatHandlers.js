@@ -153,55 +153,6 @@ function omitUnsetOptionalModelParams(modelConfig = {}) {
     return normalizedConfig;
 }
 
-const SENDER_LOST_ABORT_REASONS = new Set([
-    'sender-navigation',
-    'sender-render-process-gone',
-    'sender-destroyed',
-]);
-const MARKER_TOOL_REQ_OPEN = '<<<[' + 'TOOL_REQUEST]>>>';
-const MARKER_TOOL_REQ_CLOSE = '<<<[' + 'END_TOOL_REQUEST]>>>';
-const MARKER_ROLE_USER_OPEN = '<<<[' + 'ROLE_DIVIDE_USER]>>>';
-const MARKER_ROLE_USER_CLOSE = '<<<[' + 'END_ROLE_DIVIDE_USER]>>>';
-const MARKER_BATCH_OPEN = '<<<[' + 'VCP_TOOL_BATCH_START:';
-const MARKER_BATCH_CLOSE = '<<<[' + 'VCP_TOOL_BATCH_END:';
-const MARKER_RESULT_OPEN = '[[' + 'VCP调用结果信息汇总:';
-const MARKER_RESULT_CLOSE = 'VCP调用结果结束' + ']]';
-
-function extractStreamChunkText(chunk) {
-    if (!chunk || chunk.error === 'json_parse_error') return '';
-    if (typeof chunk?.choices?.[0]?.delta?.content === 'string') return chunk.choices[0].delta.content;
-    if (typeof chunk?.delta?.content === 'string') return chunk.delta.content;
-    if (typeof chunk?.content === 'string') return chunk.content;
-    if (typeof chunk === 'string') return chunk;
-    if (typeof chunk?.raw === 'string' && !chunk.error) return chunk.raw;
-    return '';
-}
-
-function findCompletedToolCheckpointBoundary(text) {
-    if (typeof text !== 'string' || !text) return 0;
-    const lastReqOpen = text.lastIndexOf(MARKER_TOOL_REQ_OPEN);
-    const lastReqClose = text.lastIndexOf(MARKER_TOOL_REQ_CLOSE);
-    if (lastReqOpen !== -1 && lastReqOpen > lastReqClose) return 0;
-
-    const lastRoleOpen = text.lastIndexOf(MARKER_ROLE_USER_OPEN);
-    const lastRoleClose = text.lastIndexOf(MARKER_ROLE_USER_CLOSE);
-    if (lastRoleOpen !== -1 && lastRoleOpen > lastRoleClose) return 0;
-
-    const lastBatchOpen = text.lastIndexOf(MARKER_BATCH_OPEN);
-    const lastBatchClose = text.lastIndexOf(MARKER_BATCH_CLOSE);
-    if (lastBatchOpen !== -1 && lastBatchOpen > lastBatchClose) return 0;
-
-    const lastResOpen = text.lastIndexOf(MARKER_RESULT_OPEN);
-    const lastResClose = text.lastIndexOf(MARKER_RESULT_CLOSE);
-    if (lastResOpen !== -1 && lastResOpen > lastResClose) return 0;
-
-    let boundary = 0;
-    if (lastRoleClose !== -1) boundary = Math.max(boundary, lastRoleClose + MARKER_ROLE_USER_CLOSE.length);
-    if (lastResClose !== -1) boundary = Math.max(boundary, lastResClose + MARKER_RESULT_CLOSE.length);
-    if (boundary <= 0 || lastReqOpen > boundary) return 0;
-    return boundary;
-}
-
 /**
  * Initializes chat and topic related IPC handlers.
  * @param {BrowserWindow} mainWindow The main window instance.
@@ -262,7 +213,6 @@ function initialize(mainWindow, context) {
         fileWatcher,
         agentConfigManager,
         settingsManager,
-        topicAdmission = null,
         historyMutationQueue = new HistoryMutationQueue({ userDataDir: USER_DATA_DIR, fileWatcher })
     } = context;
 
@@ -1570,65 +1520,6 @@ function initialize(mainWindow, context) {
                 async function processStream(reader, decoder) {
                     let buffer = '';
                     let bodyReachedEOF = false;
-                    let accumulatedStreamText = '';
-                    let lastCheckpointBoundary = 0;
-                    let checkpointChain = Promise.resolve();
-                    const streamStartedAt = Date.now();
-                    const canPersistMainStream = !isGroupCall
-                        && Boolean(context?.agentId && context?.topicId)
-                        && context.topicId !== 'assistant_chat'
-                        && !/^sidechat_[0-9]+_[0-9a-f]+$/.test(context.topicId);
-
-                    const enqueueStreamCheckpoint = (contentSnapshot, { isTerminalFallback = false, finishReason = 'tool_checkpoint' } = {}) => {
-                        if (!canPersistMainStream || !contentSnapshot?.trim()) return checkpointChain;
-                        const scope = { itemType: 'agent', itemId: context.agentId, topicId: context.topicId };
-                        checkpointChain = checkpointChain.then(async () => {
-                            await historyMutationQueue.mutate(scope, history => {
-                                const index = history.findIndex(item => item && item.id === messageId);
-                                if (index >= 0) {
-                                    if (history[index].role !== 'assistant' || history[index].admissionTerminal === true) {
-                                        return history;
-                                    }
-                                    history[index] = {
-                                        ...history[index],
-                                        content: contentSnapshot,
-                                        isThinking: false,
-                                        finishReason,
-                                        streamOperationId,
-                                        ...(isTerminalFallback && context.admissionToken ? { admissionTerminal: true } : {}),
-                                    };
-                                    return history;
-                                }
-                                const lastTimestamp = history.reduce((latest, item) => {
-                                    const value = Number(item?.timestamp);
-                                    return Number.isFinite(value) ? Math.max(latest, value) : latest;
-                                }, 0);
-                                history.push({
-                                    id: messageId,
-                                    role: 'assistant',
-                                    name: context.agentName || context.agentId,
-                                    agentId: context.agentId,
-                                    agentName: context.agentName || context.agentId,
-                                    ...(context.admissionToken ? { admissionToken: context.admissionToken } : {}),
-                                    avatarUrl: context.avatarUrl || null,
-                                    avatarColor: context.avatarColor || null,
-                                    content: contentSnapshot,
-                                    timestamp: Math.max(streamStartedAt, lastTimestamp + 1),
-                                    isThinking: false,
-                                    isGroupMessage: false,
-                                    topicId: context.topicId,
-                                    context,
-                                    streamOperationId,
-                                    finishReason,
-                                    ...(isTerminalFallback && context.admissionToken ? { admissionTerminal: true } : {}),
-                                });
-                                return history;
-                            }, { requireExisting: true });
-                        }).catch(checkpointErr => {
-                            console.warn(`[Main - sendToVCP] Stream checkpoint skipped for ${messageId}:`, checkpointErr?.message || checkpointErr);
-                        });
-                        return checkpointChain;
-                    };
 
                     try {
                         while (true) {
@@ -1650,7 +1541,6 @@ function initialize(mainWindow, context) {
                                     const jsonData = line.substring(5).trim();
                                     if (jsonData === '[DONE]') {
                                         console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
-                                        await checkpointChain;
                                         trajectoryCall.finish();
                                         const donePayload = { type: 'end', messageId: messageId, context };
                                         sendStreamPayload(donePayload);
@@ -1663,15 +1553,6 @@ function initialize(mainWindow, context) {
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
                                         trajectoryCall.chunk(parsedChunk);
-                                        const chunkText = extractStreamChunkText(parsedChunk);
-                                        if (chunkText) {
-                                            accumulatedStreamText += chunkText;
-                                            const boundary = findCompletedToolCheckpointBoundary(accumulatedStreamText);
-                                            if (boundary > lastCheckpointBoundary) {
-                                                lastCheckpointBoundary = boundary;
-                                                void enqueueStreamCheckpoint(accumulatedStreamText);
-                                            }
-                                        }
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         sendStreamPayload(dataPayload);
                                     } catch (e) {
@@ -1686,7 +1567,6 @@ function initialize(mainWindow, context) {
                                 // 流因连接关闭而结束，而不是[DONE]消息。
                                 // 缓冲区已被处理，现在发送最终的 'end' 信号。
                                 console.log(`VCP流结束 for messageId: ${messageId}`);
-                                await checkpointChain;
                                 trajectoryCall.finish();
                                 const endPayload = { type: 'end', messageId: messageId, context };
                                 sendStreamPayload(endPayload);
@@ -1695,34 +1575,10 @@ function initialize(mainWindow, context) {
                         }
                     } catch (streamError) {
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
-                        const abortReason = streamTask?.controller?.signal?.reason;
-                        const isAborted = streamError?.name === 'AbortError' || streamTask?.controller.signal.aborted === true;
-                        trajectoryCall.finish({ error: streamError, aborted: isAborted });
-                        const senderLost = SENDER_LOST_ABORT_REASONS.has(abortReason) || Boolean(event?.sender?.isDestroyed?.());
-                        if (senderLost && canPersistMainStream) {
-                            const scope = { itemType: 'agent', itemId: context.agentId, topicId: context.topicId };
-                            if (accumulatedStreamText.trim()) {
-                                const fallbackText = `${accumulatedStreamText}\n\n> [!WARNING]\n> **流式响应中断（页面刷新或窗口重载）**：已自动保存已接收的内容与工具记录。`;
-                                await enqueueStreamCheckpoint(fallbackText, {
-                                    isTerminalFallback: true,
-                                    finishReason: 'cancelled',
-                                });
-                                if (context.admissionToken && topicAdmission?.release) {
-                                    await Promise.resolve(
-                                        topicAdmission.release(scope, context.admissionToken, { saved: true })
-                                    ).catch(err => console.warn(`[Main - sendToVCP] Navigation lease release warning for ${messageId}:`, err?.message || err));
-                                }
-                            } else if (context.admissionToken && topicAdmission?.fail) {
-                                await Promise.resolve(
-                                    topicAdmission.fail(scope, context.admissionToken, '页面刷新中断了尚未输出内容的生成')
-                                ).catch(err => console.warn(`[Main - sendToVCP] Navigation lease fail warning for ${messageId}:`, err?.message || err));
-                            }
-                        } else {
-                            await checkpointChain;
-                            const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
-                            if (context) streamErrPayload.context = context;
-                            sendStreamPayload(streamErrPayload);
-                        }
+                        trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
+                        const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
+                        if (context) streamErrPayload.context = context;
+                        sendStreamPayload(streamErrPayload);
                     } finally {
                         finishStreamTask();
                         if (!bodyReachedEOF) {
@@ -2059,6 +1915,4 @@ function initialize(mainWindow, context) {
 module.exports = {
     initialize,
     getVcpStreamTaskSnapshot,
-    extractStreamChunkText,
-    findCompletedToolCheckpointBoundary,
 };
