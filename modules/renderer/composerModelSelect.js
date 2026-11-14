@@ -23,7 +23,7 @@
 .vcp-model-select-trigger svg { width: 12px; height: 12px; opacity: .7; flex: none; }
 `;
 
-    function init({ electronAPI, selectedItemRef, nameObserveTarget, sendMessageBtn }) {
+    function init({ electronAPI, selectedItemRef, nameObserveTarget, sendMessageBtn, chatManager }) {
         const actions = document.querySelector('.chat-input-actions');
         if (!actions || !electronAPI || !selectedItemRef) return { dispose() {} };
 
@@ -62,7 +62,29 @@
 
         const currentItem = () => selectedItemRef.get?.() || null;
         const isAgent = item => !!item && item.type === 'agent' && !!item.id;
-        const readModel = item => (item?.config?.model ?? item?.model ?? '') || '';
+        const readModel = item => {
+            if (!item) return '';
+            const pendingState = isAgent(item) ? saves.get(item.id) : null;
+            if (pendingState?.optimisticModel) return pendingState.optimisticModel;
+            return (item?.config?.model ?? item?.model ?? '') || '';
+        };
+
+        const syncAgentModelEverywhere = (agentId, modelId) => {
+            window.itemListManager?.updateLoadedItemConfig?.(agentId, 'agent', { model: modelId });
+            const latest = currentItem();
+            if (isAgent(latest) && latest.id === agentId) {
+                const next = { ...latest, model: modelId };
+                if (latest.config) next.config = { ...latest.config, model: modelId };
+                selectedItemRef.set(next);
+            }
+            const settingsInput = document.getElementById('agentModel');
+            if (settingsInput && document.getElementById('editingAgentId')?.value === agentId) {
+                if (settingsInput.value !== modelId) {
+                    settingsInput.value = modelId;
+                    settingsInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        };
 
         const refresh = () => {
             const item = currentItem();
@@ -81,21 +103,13 @@
                 while (state.pending !== null) {
                     const modelId = state.pending;
                     state.pending = null;
+                    state.optimisticModel = modelId;
+                    if (!disposed) refresh();
                     try {
                         const result = await electronAPI.saveAgentConfig(agentId, { model: modelId });
                         if (!result?.success) throw new Error(result?.error || 'save-failed');
                         if (disposed) continue;
-                        // 只发布已经保存成功的配置；保留当前项的其它最新字段。
-                        const latest = currentItem();
-                        if (isAgent(latest) && latest.id === agentId) {
-                            const next = { ...latest, model: modelId };
-                            if (latest.config) next.config = { ...latest.config, model: modelId };
-                            selectedItemRef.set(next);
-                        }
-                        const settingsInput = document.getElementById('agentModel');
-                        if (settingsInput && document.getElementById('editingAgentId')?.value === agentId) {
-                            settingsInput.value = modelId;
-                        }
+                        syncAgentModelEverywhere(agentId, modelId);
                     } catch (error) {
                         console.error('[ComposerModelSelect] 切换模型失败:', error);
                         if (!disposed) {
@@ -116,11 +130,17 @@
             if (existing) {
                 // 保存中的再次选择不能丢弃，包括切回尚未被替换的原模型。
                 existing.pending = modelId;
+                existing.optimisticModel = modelId;
+                refresh();
                 return;
             }
-            if (modelId === readModel(item)) return;
-            const state = { pending: modelId };
+            if (modelId === (item?.config?.model ?? item?.model ?? '')) {
+                refresh();
+                return;
+            }
+            const state = { pending: modelId, optimisticModel: modelId };
             saves.set(item.id, state);
+            refresh();
             void drainSaves(item.id, state);
         }
 
@@ -175,12 +195,31 @@
             else setTimeout(bindPopup, 0);
         }
 
-        // 切换 Agent / 保存设置后会刷新标题，借此同步显示
+        // 切换 Agent / 保存设置后会刷新标题与触发事件，多路订阅确保显示强一致
         let observer = null;
+        const scheduleRefresh = () => {
+            if (disposed) return;
+            refresh();
+            setTimeout(() => { if (!disposed) refresh(); }, 200);
+        };
         if (nameObserveTarget && typeof MutationObserver !== 'undefined') {
-            observer = new MutationObserver(() => { refresh(); setTimeout(refresh, 200); });
+            observer = new MutationObserver(scheduleRefresh);
             observer.observe(nameObserveTarget, { childList: true, characterData: true, subtree: true });
         }
+        const offSelectionIntent = chatManager?.onSelectionIntent?.(scheduleRefresh) || null;
+        const offSelectionChange = chatManager?.onSelectionChange?.(scheduleRefresh) || null;
+        const onSettingsSurfaceUpdated = () => {
+            if (disposed) return;
+            const item = currentItem();
+            const editingId = document.getElementById('editingAgentId')?.value;
+            const settingsModel = document.getElementById('agentModel')?.value?.trim?.();
+            if (isAgent(item) && editingId === item.id && settingsModel && !saves.has(item.id)) {
+                window.itemListManager?.updateLoadedItemConfig?.(item.id, 'agent', { model: settingsModel });
+            }
+            refresh();
+        };
+        document.addEventListener('vcp-settings-surface-updated', onSettingsSurfaceUpdated);
+        window.addEventListener('vcp-tool-presentation-changed', scheduleRefresh);
         window.addEventListener('focus', refresh);
         refresh();
 
@@ -192,6 +231,10 @@
                 for (const state of saves.values()) state.pending = null;
                 popup?.dispose();
                 popup = null;
+                offSelectionIntent?.();
+                offSelectionChange?.();
+                document.removeEventListener('vcp-settings-surface-updated', onSettingsSurfaceUpdated);
+                window.removeEventListener('vcp-tool-presentation-changed', scheduleRefresh);
                 window.removeEventListener('focus', refresh);
                 observer?.disconnect();
                 wrap.remove();

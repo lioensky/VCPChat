@@ -677,6 +677,7 @@ mainChatSettingsPresentationOwner.configureStartup({
             selectedItemRef: currentSelectedItemRef,
             nameObserveTarget: currentChatNameH3,
             sendMessageBtn,
+            chatManager,
         });
         ownedRendererSubscriptions.add({ dispose: () => composerModelSelect.dispose?.() });
     }
