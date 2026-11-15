@@ -25,8 +25,7 @@ pub struct PreparedTextEdit {
 
 impl TextSnapshot {
     /// A rejected or ambiguous plan has no output bytes and cannot become a commit.
-    /// 快路径：不解析 AST。词法/结构命中会把 `requires_expected_hash` 置位，
-    /// 由管线要求调用方补 expectedHash 之后才能变成可提交计划。
+    /// 快路径不解析 AST：词法/结构命中只先产出候选，选定后即可规划，无候选选择时返回歧义。
     pub fn prepare(
         &self,
         steps: &[crate::edit::Step],
@@ -229,19 +228,19 @@ mod tests {
     }
 
     #[test]
-    fn fast_path_marks_inferred_plans_without_parsing_ast() {
+    fn fast_path_plans_token_match_or_reports_ambiguity_without_parsing_ast() {
         let snapshot = TextSnapshot::decode(b"const a = 1;\n".to_vec()).unwrap();
         let steps: Vec<crate::edit::Step> = serde_json::from_value(serde_json::json!([
             {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;","pick":[1]}
         ])).unwrap();
         let plan = snapshot.prepare(&steps, false).unwrap().ok().unwrap();
-        assert!(plan.outcome.requires_expected_hash, "词法命中要显式授权");
+        assert_eq!(plan.outcome.status, "ok");
         assert_eq!(plan.bytes, b"const a = 2;\n");
         let ambiguous: Vec<crate::edit::Step> = serde_json::from_value(serde_json::json!([
             {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;"}
         ])).unwrap();
         let rejected = snapshot.prepare(&ambiguous, false).unwrap().err().unwrap();
         assert_eq!(rejected.status, "ambiguous");
-        assert!(!rejected.requires_expected_hash, "没有计划就没有授权要求");
+        assert_eq!(rejected.ambiguities[0].kind, "token");
     }
 }

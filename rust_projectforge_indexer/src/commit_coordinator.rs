@@ -33,9 +33,16 @@ pub fn resume(store:&mut Store,intent:&Intent,allowed_roots:&[PathBuf])->Result<
     let proposed=TextSnapshot::decode(bytes)?;
     if proposed.hash!=intent.after_hash {return Err("durable target identity mismatch".into());}
     if position==RecoveryPosition::Before {
-        // A failed replacement can have happened after rename. Leave the intent
-        // prepared so the next recovery inspection can distinguish that window.
-        crate::file_replace::replace_existing(&path,&intent.before_hash,&proposed.original)?;
+        // A failed replacement can have happened after rename. If the planned bytes
+        // did not land, preserve the audit snapshots, release the lock and report the
+        // conflict; an After image stays prepared for database catch-up on restart.
+        if let Err(error)=crate::file_replace::replace_existing(&path,&intent.before_hash,&proposed.original) {
+            if inspect_intent(intent,allowed_roots)? != RecoveryPosition::After {
+                store.conflict_intent(&intent.operation_id,
+                    "file replacement failed before planned bytes became durable")?;
+            }
+            return Err(format!("file replacement failed: {error}").into());
+        }
     }
     let checked=crate::project_path::resolve(Path::new(&intent.root),&intent.file_path,false)?;
     if !allowed_roots.iter().any(|r|r.canonicalize().is_ok_and(|r|checked.root.starts_with(r))) {
@@ -227,7 +234,7 @@ mod tests {
         assert_eq!(store.query("store.projectStats",&json!({"projectId":"p1"})).unwrap()["nodeCount"],0);
     }
     #[test]
-    fn external_content_is_preserved_and_resource_stays_blocked() {
+    fn external_content_is_preserved_and_resource_lock_is_released() {
         let dir=tempfile::tempdir().unwrap();
         let mut store=Store::open(&dir.path().join("pf.db")).unwrap();
         let file=dir.path().join("a.txt");
@@ -243,10 +250,25 @@ mod tests {
             dir.path(),"a.txt",&roots,&steps,false).unwrap() else {panic!("plan")};
         store.prepare_intent("edit",&format!("{:x}",Sha256::digest(b"request")),"p1",&ready,"test",None).unwrap();
         std::fs::write(&file,b"external").unwrap();
-        let intent=store.pending_intents().unwrap().remove(0);
+        let intent=store.prepared_intents().unwrap().remove(0);
         assert!(resume(&mut store,&intent,&roots).is_err());
         assert_eq!(std::fs::read(&file).unwrap(),b"external");
-        assert_eq!(store.intent_status("edit").unwrap().unwrap()["state"],"conflict");
+        let conflict=store.load_intent("edit").unwrap();
+        assert_eq!(conflict.state,"conflict");
+        assert_eq!(Store::blob(&store.db,&conflict.before_hash).unwrap(),b"before");
+        store.verify_intent_receipt("edit").unwrap();
+        assert!(store.prepared_intents().unwrap().is_empty());
+        assert!(store.pending_intents().unwrap().is_empty());
         assert_eq!(store.query("store.projectStats",&json!({"projectId":"p1"})).unwrap()["nodeCount"],0);
+        // The conflict was released immediately; the same file can be prepared anew.
+        let next_steps:Vec<crate::edit::Step>=serde_json::from_value(json!([
+            {"step":1,"op":"target","target":"external","replace":"repaired"}
+        ])).unwrap();
+        let crate::edit_pipeline::Preparation::Ready(next)=crate::edit_pipeline::prepare(
+            dir.path(),"a.txt",&roots,&next_steps,false).unwrap() else {panic!("next plan")};
+        store.prepare_intent("edit-2",&format!("{:x}",Sha256::digest(b"other request")),
+            "p1",&next,"test",None).unwrap();
+        assert_eq!(store.load_intent("edit-2").unwrap().state,"prepared");
+        assert_eq!(std::fs::read(&file).unwrap(),b"external");
     }
 }

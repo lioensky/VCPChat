@@ -87,7 +87,7 @@ fn anchored_range(idx: &Lines<'_>, start: usize, end: usize, step: &Step) -> Res
     }
     Err("expect anchor not found within drift budget".into())
 }
-/// 命中的证据层级，从强到弱。弱的层级只提供候选，不自行授权写入。
+/// 命中的证据层级，从强到弱。弱的层级只提供候选，需显式 pick 选择。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tier { Exact, Elision, Token, Structure }
 impl Tier {
@@ -99,8 +99,6 @@ impl Tier {
     }
     /// 逐字节字面量命中保持旧行为：唯一命中与 line 就近都可以直接执行。
     fn auto_apply(self) -> bool { matches!(self, Self::Exact) }
-    /// 词法/结构命中是推断性证据：必须由调用方提交 expectedHash 才允许写入。
-    fn needs_hash(self) -> bool { matches!(self, Self::Token | Self::Structure) }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -159,10 +157,6 @@ pub struct Outcome {
     pub placements:Vec<Placement>,
     pub errors: Vec<Issue>,
     pub ambiguities: Vec<Ambiguity>,
-    /// 计划落在 token/structure 这类推断性证据上时，写入前必须由调用方提交 expectedHash。
-    /// 这是进程内凭据，`#[serde(skip)]` 保证它不进入 JSON 回执。
-    #[serde(skip)]
-    pub requires_expected_hash: bool,
 }
 #[derive(Clone)]
 struct Patch { start: usize, end: usize, text: String, order: usize, step: usize }
@@ -226,14 +220,8 @@ fn conflicts(a: &Patch,b: &Patch) -> bool {
     if b.start == b.end { return a.start < b.start && b.start < a.end; }
     a.start < b.end && b.start < a.end
 }
-/// 单个步骤的规划结果：补丁本身，外加「这份计划是否只能靠推断性证据落地」。
-struct Plan { patches: Vec<Patch>, requires_expected_hash: bool }
-impl Plan {
-    /// 逐字节字面量 / 整行省略号：沿用旧的自动执行语义。
-    fn verified(patches: Vec<Patch>) -> Self { Self { patches, requires_expected_hash: false } }
-    /// 词法或结构命中：必须由调用方提交 expectedHash 才能写盘。
-    fn inferred(patches: Vec<Patch>) -> Self { Self { patches, requires_expected_hash: true } }
-}
+/// 单个步骤的规划结果：只含补丁本身。
+struct Plan { patches: Vec<Patch> }
 
 /// token 层的候选与工作量上限，防止在超大文件上做无界扫描。
 const MAX_TOKEN_HITS: usize = 1_000;
@@ -387,7 +375,7 @@ fn plan(idx: &Lines<'_>, st: &Step, order: usize, symbols: &[crate::symbols::Sym
             let replacement=if content.is_empty() {String::new()} else {
                 format!("{}{}",body(&content),if idx.text[..b].ends_with('\n') {"\n"} else {""})
             };
-            Ok(Ok(Plan::verified(vec![patch(a,b,replacement)])))
+            Ok(Ok(Plan { patches: vec![patch(a,b,replacement)] }))
         }
         Action::Symbol {symbol,content,body,pick,line} => {
             use crate::symbol_address::{select, range, Selection};
@@ -451,7 +439,7 @@ fn plan(idx: &Lines<'_>, st: &Step, order: usize, symbols: &[crate::symbols::Sym
             let replacement=if offset==idx.text.len() && idx.count>0 && !idx.text.ends_with('\n') {
                 format!("\n{}",body(&content))
             } else {format!("{}\n",body(&content))};
-            Ok(Ok(Plan::verified(vec![patch(offset,offset,replacement)])))
+            Ok(Ok(Plan { patches: vec![patch(offset,offset,replacement)] }))
         }
         Action::Target {target,replace,pick,all,line} => {
             let target=clean_input(target);
@@ -535,7 +523,7 @@ fn plan(idx: &Lines<'_>, st: &Step, order: usize, symbols: &[crate::symbols::Sym
                 }
                 selected.push(next);
             }
-            Ok(Ok(if tier.needs_hash() {Plan::inferred(selected)} else {Plan::verified(selected)}))
+            Ok(Ok(Plan { patches: selected }))
         }
     }
 }
@@ -574,7 +562,6 @@ pub fn run_with_symbols(original: &str,steps: &[Step],best_effort: bool,symbols:
     let mut applied=Vec::new();
     let mut planned_bytes=0usize;
     let mut overlap_budget=1_000_000usize;
-    let mut requires_expected_hash=false;
     for (order,st) in steps.iter().enumerate() {
         match plan(&idx,st,order,symbols) {
             Err(message)=>errors.push(Issue{step:st.step,message}),
@@ -593,14 +580,13 @@ pub fn run_with_symbols(original: &str,steps: &[Step],best_effort: bool,symbols:
                 } else {
                     planned_bytes += next_bytes.unwrap_or(0);
                     applied.push(st.step);
-                    requires_expected_hash |= planned.requires_expected_hash;
                     patches.extend(planned.patches);
                 }
             }
         }
     }
     let status=if !ambiguities.is_empty() {"ambiguous"} else if (!best_effort&&!errors.is_empty())||patches.is_empty() {"error"} else {"ok"};
-    if status!="ok" {return Ok(Outcome{status,text:None,changed:false,applied:vec![],placements:vec![],errors,ambiguities,requires_expected_hash});}
+    if status!="ok" {return Ok(Outcome{status,text:None,changed:false,applied:vec![],placements:vec![],errors,ambiguities});}
     patches.sort_by_key(|p|(p.start,p.end,p.order));
     let output_len=patches.iter().try_fold(text.len(),|n,p|n.checked_sub(p.end-p.start)?.checked_add(p.text.len()))
         .ok_or("output size overflow")?;
@@ -635,9 +621,7 @@ pub fn run_with_symbols(original: &str,steps: &[Step],best_effort: bool,symbols:
             placement.new_end_line=Some(new_lines.line(placement.new_end_byte-1));
         }
     }
-    // 推断性命中只有在真的改变内容时才需要授权：无变化的计划不会写盘。
-    Ok(Outcome{status,text:Some(output),changed,applied,placements,errors,ambiguities,
-        requires_expected_hash:requires_expected_hash&&changed})
+    Ok(Outcome{status,text:Some(output),changed,applied,placements,errors,ambiguities})
 }
 
 #[cfg(test)]
@@ -822,8 +806,8 @@ mod tests {
     }
 
     #[test]
-    fn token_layer_needs_explicit_pick_and_expected_hash() {
-        // 只有空白差异：字面量层不命中，词法层命中，但即使只有一个候选也不许自动执行。
+    fn token_layer_needs_explicit_pick_and_plans_without_expected_hash() {
+        // 只有空白差异：字面量层不命中，词法层命中，即使只有一个候选也先返回候选。
         let s=steps(serde_json::json!([
             {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;"}
         ]));
@@ -833,15 +817,17 @@ mod tests {
         assert_eq!(rejected.ambiguities[0].total,1);
         assert_eq!(rejected.ambiguities[0].candidates[0].kind,"token");
         assert!(rejected.ambiguities[0].candidates[0].scope.is_none(),"无 AST 时不许伪造 scope");
-        assert!(!rejected.requires_expected_hash,"没落计划就不谈授权");
+        // 多候选仍必须由 pick 消歧，不得猜测。
+        let repeated=run("const a = 1;\nconst a = 1;\n",&s,false).unwrap();
+        assert_eq!(repeated.status,"ambiguous");
+        assert_eq!(repeated.ambiguities[0].total,2);
+        // 选定 token 候选后可直接规划，不再要求外层 expectedHash。
         let s=steps(serde_json::json!([
             {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;","pick":[1]}
         ]));
         let applied=run("const a = 1;\nkeep\n",&s,false).unwrap();
+        assert_eq!(applied.status,"ok");
         assert_eq!(applied.text.as_deref(),Some("const a = 2;\nkeep\n"));
-        assert!(applied.requires_expected_hash,"词法命中必须带 expectedHash 才能写盘");
-        assert!(!serde_json::to_string(&applied).unwrap().contains("requires"),
-            "授权标记只走进程内，不进 JSON 回执");
     }
 
     #[test]
@@ -884,7 +870,6 @@ mod tests {
             "step":1,"op":"target","target":"Box.dup","replace":"dup() { return 2; }","pick":[1]}]));
         let applied=run_with_symbols(source,&s,false,&outline.symbols).unwrap();
         assert_eq!(applied.text.as_deref(),Some("class Box {\n  dup() { return 2; }\n}\n"));
-        assert!(applied.requires_expected_hash,"结构命中必须带 expectedHash 才能写盘");
         let s=steps(serde_json::json!([{
             "step":1,"op":"target","target":"dup() { return 1; }","replace":"dup() { return 3; }","pick":[1]}]));
         assert_eq!(run_with_symbols(source,&s,false,&outline.symbols).unwrap().text.as_deref(),
@@ -897,12 +882,10 @@ mod tests {
         let s=steps(serde_json::json!([{"step":1,"op":"target","target":"two","replace":"猫"}]));
         let exact=run("one\ntwo\n",&s,false).unwrap();
         assert_eq!(exact.text.as_deref(),Some("one\n猫\n"));
-        assert!(!exact.requires_expected_hash,"逐字节命中维持旧语义");
         let s=steps(serde_json::json!([
             {"step":1,"op":"target","target":"head\n...\ntail","replace":"new","pick":[1]}]));
         let elision=run("head\nmid\ntail\n",&s,false).unwrap();
         assert_eq!(elision.text.as_deref(),Some("new\n"));
-        assert!(!elision.requires_expected_hash,"省略号命中维持旧语义");
         let s=steps(serde_json::json!([{"step":1,"op":"target","target":"x","replace":"y"}]));
         let ambiguous=run("x x",&s,false).unwrap();
         assert_eq!(ambiguous.ambiguities[0].kind,"exact");

@@ -239,17 +239,17 @@ A阶段纯函数内核测试不等于B端到端完成；任何过渡RPC规划接
 工作树：`C:\Users\szou5\Desktop\code\work\vcpchat-pf-service`；分支 `feat/pf-rust-service-continue`；续接工程 `ptyfc`。用户再次要求快速推进主线、不做防御性框架、不堆测试、最后清理本次不必要临时痕迹；子代理不能验收关单。
 
 ### A–E 最终落点
-- 原生 EditCode 已覆盖旧行号/target/插入/符号地址、首尾省略以及 exact → elision → token → structure 四级候选。token/structure 推断写入必须提交当前 `expectedHash`，歧义票据持久绑定原快照，ResolveEdit 只在同一快照完成显式选择；JS 不接收待写盘字节。
-- 工程元数据与查询、Create/Remove/Move/MoveCode/CopyCode、整批 Rollback、GUI 单文件回退均接入同一个 Rust 服务。schema5 同事务迁移单/多文件日志；SHA256+gzip 原字节快照及 prepared/applied/conflict/committed/reconciled 状态由单一服务持久协调。
+- 原生 EditCode 已覆盖旧行号/target/插入/符号地址、首尾省略以及 exact → elision → token → structure 四级候选。歧义票据持久绑定原快照，ResolveEdit 只在同一快照完成显式选择（`source_hash` 仅在票据/服务内部闭环校验，不强迫外层调用者传 `expectedHash`）；JS 不接收待写盘字节。
+- 工程元数据与查询、Create/Remove/Move/MoveCode/CopyCode、整批 Rollback、GUI 单文件回退均接入同一个 Rust 服务。schema5 同事务迁移单/多文件日志（含清理旧持久冲突挂锁索引与触发器）；SHA256+gzip 原字节快照及 prepared/applied/conflict/committed 状态由单一服务持久协调。
 - 服务保持单写权威并提供有界只读连接池、队列/并发预算与可查询统计；GUI 热态只读请求不再被慢校验串行阻塞。原生 diff 提供有界统计、统一 diff 和明确截断元数据，不把大快照搬回 JS 重算。
 - 工具与 GUI 共用异步服务生命周期；可信 roots 变化在请求之间关闭旧所有者后重启。CreateProject 的目录创建、Python 校验进程树和启动前恢复都归 Rust 权威入口。
 - 旧 `store.js`、`engine.js`、`tickets.js` 已在迁移测试 fixture 后从源码树物理删除；生产门面只保留参数、展示、Electron/Node 生态桥。changed 通知由单一工具分发入口产生。
-- 多文件协调是持久恢复日志，不承诺 OS 级跨文件原子写；hash 复核不是文件系统 CAS。第三方内容保留为 conflict，显式 `acceptCurrent` reconcile 才放弃未完成意图并释放锁，不伪造成功履历。
+- 多文件协调是持久恢复日志，不承诺 OS 级跨文件原子写；hash 复核不是文件系统 CAS。遇第三方内容漂移、应用失败或启动恢复冲突时保留 `before` 审计快照、多文件按逆序补偿回滚本次已写部分（不覆盖第三方字节）、立即释放全部资源锁并直接报错返回，不设需要人工/Agent 解锁的持久挂起态。
 
-### F 最终交付与证据（2026-11-15 20:59）
-- 最终统一 runner：Rust `149 passed / 0 failed / 1 ignored`；默认 ignored 的真实 Node validator 另行显式执行 `1 passed`；8 份 Node/SQLite 服务套件 `48 passed / 0 failed / 0 skipped`。
-- 在原有业务链之外新增 15 条真实 SQLite 回归，覆盖 schema4→5/旧库迁移原子性、外键完整性、WAL 快照隔离与唯一写者、单文件意图事务回滚/幂等/冲突、三文件日志部分落盘恢复、第三方冲突、operation reconcile/purge 审计及资源锁释放、持久票据事务/外键/唯一解析操作约束。测试均使用磁盘临时库并核对重开状态，不用 mock 冒充数据库。
-- `node rust_projectforge_indexer/build-runtime.js` 已从当前源码完成 Windows x64 release 并更新本隔离工作树随包程序；随包与 `target/release` SHA256 同为 `0b3870d6686f1e7328fa3c92bc79404178cd924dc4c5f02a1065a6261d4fdf77`。未修改主工作树、运行区或生产库。
+### F 最终交付与证据（2026-11-15 22:29）
+- 最终统一 runner：Rust `145 passed / 0 failed / 1 ignored`；默认 ignored 的真实 Node validator 另行显式执行 `1 passed`（合计 `146 passed / 0 failed / 0 skipped`）；8 份 Node/SQLite 服务套件 `49 passed / 0 failed / 0 skipped`。
+- 在原有业务链之外保留真实 SQLite 回归，覆盖 schema4→5/旧库迁移原子性、外键完整性、WAL 快照隔离与唯一写者、单文件意图事务回滚/幂等/冲突即时释放锁、三文件日志部分落盘恢复、补偿回滚与第三方字节保留、持久票据事务/外键/唯一解析操作约束。测试均使用磁盘临时库并核对重开状态，不用 mock 冒充数据库。
+- `node rust_projectforge_indexer/build-runtime.js` 已从当前源码完成 Windows x64 release 并更新本隔离工作树随包程序；随包与 `target/release` SHA256 同为 `41aaf69d5815d9625fb9daada3c16c4043d5245f3b56ef4b349cbdcd448bf6db`。未修改主工作树、运行区或生产库。
 - [打包配置](<../package.json>) 已包含 ProjectForge 插件、共享 fileKit 与 GUI，并将插件及共享模块映射到 `app.asar.unpacked`。最终真实最小 asar + Electron BrowserWindow 冒烟 27/27 全绿：原生服务与校验 worker 从 unpacked 运行，GUI/utility preload/IPC 从 asar 加载，25 份外链脚本、6 份样式无资源或控制台错误，合法 JSON 提交、非法 JSON fatal 拒写且保留原字节。
 - `git diff --check` 通过；当前只保留既有 unused 警告，没有为风格顺手扩大业务改动。
 

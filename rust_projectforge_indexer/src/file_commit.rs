@@ -56,14 +56,14 @@ CREATE TABLE IF NOT EXISTS file_commit_changes (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_file_commit_change_resource_active
 ON file_commit_changes(resource_key)
-WHERE state IN ('prepared','applied','conflict');
+WHERE state IN ('prepared','applied');
 CREATE INDEX IF NOT EXISTS idx_file_commit_changes_project
 ON file_commit_changes(project_id, file_path);
 CREATE TRIGGER IF NOT EXISTS file_commit_change_guard_single
 BEFORE INSERT ON file_commit_changes
 WHEN EXISTS (
     SELECT 1 FROM file_commit_intents
-    WHERE resource_key=NEW.resource_key AND state IN ('prepared','conflict')
+    WHERE resource_key=NEW.resource_key AND state='prepared'
 )
 BEGIN
     SELECT RAISE(ABORT,'resource is locked by a pending file intent');
@@ -72,7 +72,7 @@ CREATE TRIGGER IF NOT EXISTS file_commit_intent_guard_multi
 BEFORE INSERT ON file_commit_intents
 WHEN EXISTS (
     SELECT 1 FROM file_commit_changes
-    WHERE resource_key=NEW.resource_key AND state IN ('prepared','applied','conflict')
+    WHERE resource_key=NEW.resource_key AND state IN ('prepared','applied')
 )
 BEGIN
     SELECT RAISE(ABORT,'resource is locked by a pending multi-file commit');
@@ -111,16 +111,6 @@ struct PlanRow {
     review: String,
     state: String,
     result: Option<String>,
-    error: Option<String>,
-}
-
-fn reconciled_result(encoded: Option<&str>) -> Option<Value> {
-    let value: Value = serde_json::from_str(encoded?).ok()?;
-    if value.get("status").and_then(Value::as_str) == Some("reconciled") {
-        Some(value)
-    } else {
-        None
-    }
 }
 
 #[derive(Debug)]
@@ -203,7 +193,7 @@ fn plan_header(store: &Store, operation_id: &str) -> Result<Option<PlanRow>> {
     Ok(store
         .db
         .query_row(
-            "SELECT request_hash,project_id,root,kind,reason,maid,review,state,result,error
+            "SELECT request_hash,project_id,root,kind,reason,maid,review,state,result
              FROM file_commit_plans WHERE operation_id=?",
             [operation_id],
             |r| {
@@ -217,7 +207,6 @@ fn plan_header(store: &Store, operation_id: &str) -> Result<Option<PlanRow>> {
                     review: r.get(6)?,
                     state: r.get(7)?,
                     result: r.get(8)?,
-                    error: r.get(9)?,
                 })
             },
         )
@@ -326,25 +315,37 @@ fn resource_key(path: &ProjectPath) -> Result<String> {
     }
 }
 
-fn classify(change: &ChangeRow, actual: Option<&[u8]>) -> RecoveryPosition {
+fn classify_image(
+    before_hash: Option<&str>,
+    after_hash: Option<&str>,
+    actual: Option<&[u8]>,
+) -> RecoveryPosition {
     let current = actual.map(digest);
-    match (&change.before_hash, &change.after_hash, actual) {
-        (None, Some(after), None) => RecoveryPosition::Before,
-        (None, Some(after), Some(_)) if current.as_deref() == Some(after.as_str()) => {
+    match (before_hash, after_hash, actual) {
+        (None, Some(_), None) => RecoveryPosition::Before,
+        (None, Some(after), Some(_)) if current.as_deref() == Some(after) => {
             RecoveryPosition::After
         }
         (Some(_), None, None) => RecoveryPosition::After,
-        (Some(before), None, Some(_)) if current.as_deref() == Some(before.as_str()) => {
+        (Some(before), None, Some(_)) if current.as_deref() == Some(before) => {
             RecoveryPosition::Before
         }
-        (Some(_), Some(after), Some(_)) if current.as_deref() == Some(after.as_str()) => {
+        (Some(_), Some(after), Some(_)) if current.as_deref() == Some(after) => {
             RecoveryPosition::After
         }
-        (Some(before), Some(_), Some(_)) if current.as_deref() == Some(before.as_str()) => {
+        (Some(before), Some(_), Some(_)) if current.as_deref() == Some(before) => {
             RecoveryPosition::Before
         }
         _ => RecoveryPosition::Conflict,
     }
+}
+
+fn classify(change: &ChangeRow, actual: Option<&[u8]>) -> RecoveryPosition {
+    classify_image(
+        change.before_hash.as_deref(),
+        change.after_hash.as_deref(),
+        actual,
+    )
 }
 
 fn normalize_changes(
@@ -416,6 +417,39 @@ fn normalize_changes(
         });
     }
     Ok(prepared)
+}
+
+fn preflight_changes(
+    root: &Path,
+    allowed_roots: &[PathBuf],
+    changes: &[PreparedChange],
+) -> Result<()> {
+    for change in changes {
+        let path = project_path::resolve(root, &change.path, true)
+            .map_err(|error| format!("pre-flight path {} is invalid: {error}", change.path))?;
+        if !allowed_path(&path, allowed_roots) {
+            return Err(format!(
+                "pre-flight path {} is outside trusted allowed roots",
+                change.path
+            )
+            .into());
+        }
+        let actual = read_image(&path.absolute)
+            .map_err(|error| format!("pre-flight target {} cannot be read: {error}", change.path))?;
+        if classify_image(
+            change.before_hash.as_deref(),
+            change.after_hash.as_deref(),
+            actual.as_deref(),
+        ) != RecoveryPosition::Before
+        {
+            return Err(format!(
+                "file commit pre-flight conflict at {}: target differs from planning snapshot",
+                change.path
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 fn operation_occupied(db: &Connection, operation_id: &str) -> Result<bool> {
@@ -552,37 +586,107 @@ fn mark_applied(store: &mut Store, operation_id: &str, ordinal: i64) -> Result<(
     Ok(())
 }
 
-fn mark_conflict(
+fn compensate_and_fail(
     store: &mut Store,
     operation_id: &str,
-    ordinal: Option<i64>,
+    root: &Path,
+    allowed_roots: &[PathBuf],
+    trigger_ordinal: Option<i64>,
     message: &str,
-) -> Result<()> {
-    let message: String = message.chars().take(2000).collect();
+) -> Result<Value> {
+    let changes = change_rows(store, operation_id)?;
+    let mut preserved = Vec::<String>::new();
+    // Undo only changes that are durably marked applied, newest first. A path
+    // whose bytes are no longer this plan's after image belongs to a third party
+    // and is never overwritten.
+    for change in changes.iter().rev() {
+        if change.state != "applied" {
+            continue;
+        }
+        let path = match project_path::resolve(root, &change.file_path, true) {
+            Ok(path) if allowed_path(&path, allowed_roots) => path,
+            Ok(_) => {
+                preserved.push(format!(
+                    "{}: path is no longer authorized; bytes preserved",
+                    change.file_path
+                ));
+                continue;
+            }
+            Err(error) => {
+                preserved.push(format!(
+                    "{}: path is unavailable; bytes preserved ({error})",
+                    change.file_path
+                ));
+                continue;
+            }
+        };
+        let actual = match read_image(&path.absolute) {
+            Ok(actual) => actual,
+            Err(error) => {
+                preserved.push(format!(
+                    "{}: current bytes cannot be inspected ({error})",
+                    change.file_path
+                ));
+                continue;
+            }
+        };
+        if classify(&change, actual.as_deref()) != RecoveryPosition::After {
+            preserved.push(format!(
+                "{}: third-party bytes preserved",
+                change.file_path
+            ));
+            continue;
+        }
+        let restored = match (change.before_hash.as_deref(), change.after_hash.as_deref()) {
+            (None, Some(after)) => crate::file_replace::remove_image(&path, after),
+            (Some(before), None) => match Store::blob(&store.db, before) {
+                Ok(bytes) => crate::file_replace::create_image(&path, &bytes),
+                Err(error) => Err(error.to_string()),
+            },
+            (Some(before), Some(after)) => match Store::blob(&store.db, before) {
+                Ok(bytes) => crate::file_replace::replace_image(&path, after, &bytes),
+                Err(error) => Err(error.to_string()),
+            },
+            _ => Err("change has no filesystem image transition".into()),
+        };
+        if let Err(error) = restored {
+            preserved.push(format!(
+                "{}: rollback failed; bytes preserved ({error})",
+                change.file_path
+            ));
+        }
+    }
+
+    let mut detail = format!("file commit conflict: {message}");
+    if let Some(ordinal) = trigger_ordinal {
+        detail.push_str(&format!(" (change {ordinal})"));
+    }
+    for note in preserved {
+        detail.push_str("; ");
+        detail.push_str(&note);
+    }
+    let detail: String = detail.chars().take(2000).collect();
     let tx = store
         .db
         .transaction_with_behavior(TransactionBehavior::Immediate)?;
     let ts = now(&tx)?;
-    if let Some(ordinal) = ordinal {
-        tx.execute(
-            "UPDATE file_commit_changes SET state='conflict',error=?,updated_at=?
-             WHERE operation_id=? AND ordinal=? AND state IN ('prepared','applied')",
-            params![message, ts, operation_id, ordinal],
-        )?;
-    }
     tx.execute(
         "UPDATE file_commit_plans SET state='conflict',error=?,updated_at=?
          WHERE operation_id=? AND state='prepared'",
-        params![message, ts, operation_id],
+        params![detail, ts, operation_id],
+    )?;
+    tx.execute(
+        "UPDATE file_commit_changes SET state='conflict',error=?,updated_at=?
+         WHERE operation_id=? AND state IN ('prepared','applied')",
+        params![detail, ts, operation_id],
     )?;
     tx.commit()?;
-    Ok(())
+    Err(detail.into())
 }
 
 fn apply_change(
     change: &ChangeRow,
     path: &ProjectPath,
-    before: Option<&[u8]>,
     after: Option<&[u8]>,
 ) -> std::result::Result<(), String> {
     match (change.before_hash.as_deref(), change.after_hash.as_deref()) {
@@ -614,19 +718,11 @@ fn resume_plan(
                 .ok_or("committed file commit plan missing result")?,
         )?);
     }
-    if let Some(result) = reconciled_result(header.result.as_deref()) {
-        return Ok(result);
-    }
     if header.state == "conflict" {
-        return Err(format!(
-            "file commit is in conflict; current contents preserved{}",
-            header
-                .error
-                .as_deref()
-                .map(|error| format!(": {error}"))
-                .unwrap_or_default()
-        )
-        .into());
+        return Err(
+            "file commit failed due to conflict; before snapshot preserved and resource lock released"
+                .into(),
+        );
     }
     if header.state != "prepared" {
         return Err("unknown file commit state".into());
@@ -640,31 +736,62 @@ fn resume_plan(
         )
         .optional()?;
     let Some(project_root) = project_root else {
-        mark_conflict(store, operation_id, None, "project deleted before recovery")?;
-        return Err("project deleted; file commit remains recoverable only by reconciliation".into());
+        return compensate_and_fail(
+            store,
+            operation_id,
+            Path::new(&header.root),
+            allowed_roots,
+            None,
+            "project deleted before recovery",
+        );
     };
     let root = match Path::new(&header.root).canonicalize() {
         Ok(root) => root,
         Err(error) => {
-            mark_conflict(store, operation_id, None, "commit root is no longer accessible")?;
-            return Err(format!("commit root is no longer accessible: {error}").into());
+            return compensate_and_fail(
+                store,
+                operation_id,
+                Path::new(&header.root),
+                allowed_roots,
+                None,
+                &format!("commit root is no longer accessible: {error}"),
+            );
         }
     };
-    let expected_root = Path::new(&project_root).canonicalize()?;
+    let expected_root = match Path::new(&project_root).canonicalize() {
+        Ok(root) => root,
+        Err(error) => {
+            return compensate_and_fail(
+                store,
+                operation_id,
+                &root,
+                allowed_roots,
+                None,
+                &format!("project root is no longer accessible: {error}"),
+            );
+        }
+    };
     if root != expected_root || !allowed_root(&root, allowed_roots) {
-        mark_conflict(
+        return compensate_and_fail(
             store,
             operation_id,
+            &root,
+            allowed_roots,
             None,
             "project root changed or is no longer authorized",
-        )?;
-        return Err("project root changed; file commit conflict preserved".into());
+        );
     }
 
     let changes = change_rows(store, operation_id)?;
     if changes.is_empty() {
-        mark_conflict(store, operation_id, None, "prepared commit has no file changes")?;
-        return Err("prepared file commit has no file changes".into());
+        return compensate_and_fail(
+            store,
+            operation_id,
+            &root,
+            allowed_roots,
+            None,
+            "prepared commit has no file changes",
+        );
     }
     let mut order: Vec<usize> = (0..changes.len()).collect();
     // Create/replace first and removals last: a move or rollback must not delete
@@ -676,108 +803,121 @@ fn resume_plan(
         let path = match project_path::resolve(&root, &change.file_path, true) {
             Ok(path) if allowed_path(&path, allowed_roots) => path,
             Ok(_) => {
-                mark_conflict(
+                return compensate_and_fail(
                     store,
                     operation_id,
+                    &root,
+                    allowed_roots,
                     Some(change.ordinal),
                     "commit path is outside trusted allowed roots",
-                )?;
-                return Err("commit path authorization changed; conflict preserved".into());
+                );
             }
             Err(error) => {
-                mark_conflict(
+                return compensate_and_fail(
                     store,
                     operation_id,
+                    &root,
+                    allowed_roots,
                     Some(change.ordinal),
-                    "commit path is no longer valid",
-                )?;
-                return Err(format!("commit path is no longer valid: {error}").into());
+                    &format!("commit path is no longer valid: {error}"),
+                );
             }
         };
         let actual = match read_image(&path.absolute) {
             Ok(actual) => actual,
             Err(error) => {
-                mark_conflict(
+                return compensate_and_fail(
                     store,
                     operation_id,
+                    &root,
+                    allowed_roots,
                     Some(change.ordinal),
-                    "current target cannot be inspected safely",
-                )?;
-                return Err(format!("current target inspection failed: {error}").into());
+                    &format!("current target cannot be inspected safely: {error}"),
+                );
             }
         };
         match classify(change, actual.as_deref()) {
             RecoveryPosition::After => {
-                mark_applied(store, operation_id, change.ordinal)?;
+                if let Err(error) = mark_applied(store, operation_id, change.ordinal) {
+                    return compensate_and_fail(
+                        store,
+                        operation_id,
+                        &root,
+                        allowed_roots,
+                        Some(change.ordinal),
+                        &format!("applied change could not be recorded: {error}"),
+                    );
+                }
             }
             RecoveryPosition::Conflict => {
-                mark_conflict(
+                return compensate_and_fail(
                     store,
                     operation_id,
+                    &root,
+                    allowed_roots,
                     Some(change.ordinal),
                     "current target is a third version; external contents preserved",
-                )?;
-                return Err(format!(
-                    "file commit conflict at {}; current contents preserved",
-                    change.file_path
-                )
-                .into());
+                );
             }
             RecoveryPosition::Before => {
-                let before = change
-                    .before_hash
-                    .as_deref()
-                    .map(|hash| Store::blob(&store.db, hash))
-                    .transpose()?;
-                let after = change
-                    .after_hash
-                    .as_deref()
-                    .map(|hash| Store::blob(&store.db, hash))
-                    .transpose()?;
-                if let Err(apply_error) =
-                    apply_change(change, &path, before.as_deref(), after.as_deref())
-                {
-                    let inspected = read_image(&path.absolute);
-                    match inspected {
-                        Ok(actual) if classify(change, actual.as_deref()) == RecoveryPosition::After => {
-                            mark_applied(store, operation_id, change.ordinal)?;
-                        }
-                        Ok(actual) if classify(change, actual.as_deref()) == RecoveryPosition::Before => {
-                            return Err(format!(
-                                "file commit apply failed and remains prepared: {apply_error}"
-                            )
-                            .into());
-                        }
-                        _ => {
-                            mark_conflict(
+                let after = match change.after_hash.as_deref() {
+                    Some(hash) => match Store::blob(&store.db, hash) {
+                        Ok(bytes) => Some(bytes),
+                        Err(error) => {
+                            return compensate_and_fail(
                                 store,
                                 operation_id,
+                                &root,
+                                allowed_roots,
                                 Some(change.ordinal),
-                                "apply failed after external drift",
-                            )?;
-                            return Err(format!(
-                                "file commit conflict during apply at {}; current contents preserved",
-                                change.file_path
-                            )
-                            .into());
+                                &format!("after snapshot cannot be loaded: {error}"),
+                            );
                         }
-                    }
-                } else {
-                    let actual = read_image(&path.absolute)?;
-                    if classify(change, actual.as_deref()) != RecoveryPosition::After {
-                        mark_conflict(
+                    },
+                    None => None,
+                };
+                if let Err(apply_error) = apply_change(change, &path, after.as_deref()) {
+                    return compensate_and_fail(
+                        store,
+                        operation_id,
+                        &root,
+                        allowed_roots,
+                        Some(change.ordinal),
+                        &format!("apply failed at {}: {apply_error}", change.file_path),
+                    );
+                }
+                let actual = match read_image(&path.absolute) {
+                    Ok(actual) => actual,
+                    Err(error) => {
+                        return compensate_and_fail(
                             store,
                             operation_id,
+                            &root,
+                            allowed_roots,
                             Some(change.ordinal),
-                            "post-apply image differs from durable plan",
-                        )?;
-                        return Err(format!(
-                            "file commit conflict after applying {}; current contents preserved",
-                            change.file_path
-                        )
-                        .into());
+                            &format!("applied target cannot be verified: {error}"),
+                        );
                     }
-                    mark_applied(store, operation_id, change.ordinal)?;
+                };
+                if classify(change, actual.as_deref()) != RecoveryPosition::After {
+                    return compensate_and_fail(
+                        store,
+                        operation_id,
+                        &root,
+                        allowed_roots,
+                        Some(change.ordinal),
+                        "post-apply image differs from durable plan",
+                    );
+                }
+                if let Err(error) = mark_applied(store, operation_id, change.ordinal) {
+                    return compensate_and_fail(
+                        store,
+                        operation_id,
+                        &root,
+                        allowed_roots,
+                        Some(change.ordinal),
+                        &format!("applied change could not be recorded: {error}"),
+                    );
                 }
             }
         }
@@ -786,44 +926,74 @@ fn resume_plan(
     let final_changes = change_rows(store, operation_id)?;
     for change in &final_changes {
         if change.state != "applied" {
-            return Err("file commit has an unapplied change after recovery".into());
-        }
-        let path = project_path::resolve(&root, &change.file_path, true)?;
-        if !allowed_path(&path, allowed_roots) {
-            mark_conflict(
+            return compensate_and_fail(
                 store,
                 operation_id,
+                &root,
+                allowed_roots,
                 Some(change.ordinal),
-                "authorization changed before finalization",
-            )?;
-            return Err("authorization changed before finalization".into());
+                "file commit has an unapplied change after recovery",
+            );
         }
-        let actual = match read_image(&path.absolute) {
-            Ok(actual) => actual,
-            Err(_) => {
-                mark_conflict(
+        let path = match project_path::resolve(&root, &change.file_path, true) {
+            Ok(path) if allowed_path(&path, allowed_roots) => path,
+            Ok(_) => {
+                return compensate_and_fail(
                     store,
                     operation_id,
+                    &root,
+                    allowed_roots,
                     Some(change.ordinal),
-                    "target cannot be verified before finalization",
-                )?;
-                return Err("target cannot be verified before finalization".into());
+                    "authorization changed before finalization",
+                );
+            }
+            Err(error) => {
+                return compensate_and_fail(
+                    store,
+                    operation_id,
+                    &root,
+                    allowed_roots,
+                    Some(change.ordinal),
+                    &format!("target path became invalid before finalization: {error}"),
+                );
+            }
+        };
+        let actual = match read_image(&path.absolute) {
+            Ok(actual) => actual,
+            Err(error) => {
+                return compensate_and_fail(
+                    store,
+                    operation_id,
+                    &root,
+                    allowed_roots,
+                    Some(change.ordinal),
+                    &format!("target cannot be verified before finalization: {error}"),
+                );
             }
         };
         if classify(change, actual.as_deref()) != RecoveryPosition::After {
-            mark_conflict(
+            return compensate_and_fail(
                 store,
                 operation_id,
+                &root,
+                allowed_roots,
                 Some(change.ordinal),
                 "target changed before history finalization; current contents preserved",
-            )?;
-            return Err(format!(
-                "file commit conflict before finalization at {}",
-                change.file_path
-            )
-            .into());
+            );
         }
     }
+    if !active_project(&store.db, &header.project_id)? {
+        return compensate_and_fail(
+            store,
+            operation_id,
+            &root,
+            allowed_roots,
+            None,
+            "project deleted before finalization",
+        );
+    }
+    // Once every file is durably at its after image, a database-only finalize
+    // failure leaves prepared/applied states intact for restart recovery.
     finalize(store, operation_id)
 }
 
@@ -894,7 +1064,7 @@ fn finalize(store: &mut Store, operation_id: &str) -> Result<Value> {
         .transaction_with_behavior(TransactionBehavior::Immediate)?;
     let plan: Option<PlanRow> = tx
         .query_row(
-            "SELECT request_hash,project_id,root,kind,reason,maid,review,state,result,error
+            "SELECT request_hash,project_id,root,kind,reason,maid,review,state,result
              FROM file_commit_plans WHERE operation_id=?",
             [operation_id],
             |r| {
@@ -908,7 +1078,6 @@ fn finalize(store: &mut Store, operation_id: &str) -> Result<Value> {
                     review: r.get(6)?,
                     state: r.get(7)?,
                     result: r.get(8)?,
-                    error: r.get(9)?,
                 })
             },
         )
@@ -1161,9 +1330,6 @@ pub fn commit(
         if existing.request_hash != request_hash {
             return Err("operationId reused with a different request".into());
         }
-        if let Some(result) = reconciled_result(existing.result.as_deref()) {
-            return Ok(result);
-        }
         return match existing.state.as_str() {
             "committed" => Ok(serde_json::from_str(
                 existing
@@ -1172,15 +1338,10 @@ pub fn commit(
                     .ok_or("committed file commit plan missing result")?,
             )?),
             "prepared" => resume_plan(store, operation_id, allowed_roots),
-            "conflict" => Err(format!(
-                "file commit requires conflict reconciliation{}",
-                existing
-                    .error
-                    .as_deref()
-                    .map(|error| format!(": {error}"))
-                    .unwrap_or_default()
-            )
-            .into()),
+            "conflict" => Err(
+                "operation ended in conflict (before snapshot preserved, resource lock released); retry with a new operationId"
+                    .into(),
+            ),
             _ => Err("unknown file commit state".into()),
         };
     }
@@ -1200,7 +1361,7 @@ pub fn commit(
         if let Some(result) = existing.get("result").filter(|value| !value.is_null()) {
             return Ok(result.clone());
         }
-        return Err("operation is pending in another native flow; query or reconcile it there".into());
+        return Err("operation is pending in another native flow; query its status there".into());
     }
 
     let root = checked_project_root(store, &plan, allowed_roots)?;
@@ -1208,6 +1369,7 @@ pub fn commit(
     if changes.is_empty() {
         return persist_unchanged(store, operation_id, request_hash, &plan, &root);
     }
+    preflight_changes(&root, allowed_roots, &changes)?;
     claim(store, operation_id, request_hash, &plan, &root, &changes)?;
     resume_plan(store, operation_id, allowed_roots)
 }
@@ -1221,13 +1383,8 @@ pub fn operation_status(store: &Store, operation_id: &str) -> Result<Option<Valu
             Some(encoded) => serde_json::from_str::<Value>(encoded)?,
             None => Value::Null,
         };
-        let state = if result.get("status").and_then(Value::as_str) == Some("reconciled") {
-            "reconciled".to_string()
-        } else {
-            plan.state
-        };
         return Ok(Some(json!({
-            "state": state,
+            "state": plan.state,
             "requestHash": plan.request_hash,
             "result": result,
         })));
@@ -1530,17 +1687,20 @@ mod tests {
         );
         let prepared = normalize_changes(&plan, &root, &roots).unwrap();
         claim(&mut store, "commit-conflict", &request, &plan, &root, &prepared).unwrap();
-        // A third party rewrote the target after the plan became durable.
-        fs::write(root.join("a.txt"), b"external\n").unwrap();
+        // The first target was written and durably marked applied; then a third
+        // party created the second target before recovery reached it.
+        fs::write(root.join("a.txt"), b"beta\n").unwrap();
+        mark_applied(&mut store, "commit-conflict", 1).unwrap();
+        fs::write(root.join("d.txt"), b"external\n").unwrap();
 
         drop(store);
         let mut store = Store::open(&dir.path().join("pf.db")).unwrap();
         let message = resume_all(&mut store, &roots).unwrap_err().to_string();
         assert!(message.contains("conflict"), "{message}");
-        // The third version is preserved and the pending create never ran.
-        assert_eq!(fs::read(root.join("a.txt")).unwrap(), b"external\n");
-        assert!(!root.join("d.txt").exists());
-        // No committed plan, batch, node or history row may be invented.
+        // The third version is preserved, while the applied file is compensated
+        // back to its before image.
+        assert_eq!(fs::read(root.join("a.txt")).unwrap(), b"alpha\n");
+        assert_eq!(fs::read(root.join("d.txt")).unwrap(), b"external\n");
         assert_eq!(
             text(
                 &store.db,
@@ -1566,27 +1726,49 @@ mod tests {
             0
         );
         assert_eq!(
-            text(
+            count(
                 &store.db,
-                "SELECT state FROM file_commit_changes
-                 WHERE operation_id='commit-conflict' AND ordinal=1"
+                "SELECT COUNT(*) FROM file_commit_changes
+                 WHERE operation_id='commit-conflict' AND state='conflict'"
             ),
-            "conflict"
+            2
         );
         assert_eq!(
-            text(
+            count(
                 &store.db,
-                "SELECT state FROM file_commit_changes
-                 WHERE operation_id='commit-conflict' AND ordinal=2"
+                "SELECT COUNT(*) FROM file_commit_changes
+                 WHERE operation_id='commit-conflict' AND state IN ('prepared','applied')"
             ),
-            "prepared"
+            0
         );
+        let (before, after): (Option<String>, Option<String>) = store
+            .db
+            .query_row(
+                "SELECT before_hash,after_hash FROM file_commit_changes
+                 WHERE operation_id='commit-conflict' AND ordinal=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(before.as_deref(), Some(digest(b"alpha\n").as_str()));
+        assert_eq!(after.as_deref(), Some(digest(b"beta\n").as_str()));
+        let (before, after): (Option<String>, Option<String>) = store
+            .db
+            .query_row(
+                "SELECT before_hash,after_hash FROM file_commit_changes
+                 WHERE operation_id='commit-conflict' AND ordinal=2",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(before, None);
+        assert_eq!(after.as_deref(), Some(digest(b"created\n").as_str()));
         let status = operation_status(&store, "commit-conflict").unwrap().unwrap();
         assert_eq!(status["state"], "conflict");
         assert_eq!(status["result"], json!(null));
 
         // Replaying the original request cannot turn a conflict into a commit.
-        assert!(commit(
+        let replay = commit(
             &mut store,
             "commit-conflict",
             &request,
@@ -1595,34 +1777,33 @@ mod tests {
                 vec![
                     change("a.txt", Some("alpha\n"), Some("beta\n"), "edit"),
                     change("d.txt", None, Some("created\n"), "create"),
-                ]
-            ),
-            &roots
-        )
-        .is_err());
-        assert_eq!(count(&store.db, "SELECT COUNT(*) FROM batches"), 0);
-
-        // The conflicted plan keeps the resource locked until reconciliation.
-        let blocked = commit(
-            &mut store,
-            "commit-conflict-2",
-            &digest(b"second request"),
-            build_plan(
-                &root,
-                vec![change("a.txt", Some("external\n"), Some("other\n"), "edit")],
+                ],
             ),
             &roots,
         )
         .unwrap_err()
         .to_string();
-        assert!(blocked.contains("file_commit_changes"), "{blocked}");
-        assert_eq!(
-            count(
-                &store.db,
-                "SELECT COUNT(*) FROM file_commit_plans WHERE operation_id='commit-conflict-2'"
+        assert!(replay.contains("resource lock released"), "{replay}");
+        assert_eq!(count(&store.db, "SELECT COUNT(*) FROM batches"), 0);
+        assert_eq!(count(&store.db, "SELECT COUNT(*) FROM nodes"), 0);
+
+        // Conflict state releases the path immediately: the same target can be
+        // committed under a new operationId without any reconciliation step.
+        let second = commit(
+            &mut store,
+            "commit-conflict-2",
+            &digest(b"retry request"),
+            build_plan(
+                &root,
+                vec![change("a.txt", Some("alpha\n"), Some("gamma\n"), "edit")],
             ),
-            0
-        );
-        assert_eq!(fs::read(root.join("a.txt")).unwrap(), b"external\n");
+            &roots,
+        )
+        .unwrap();
+        assert_eq!(second["status"], "ok");
+        assert_eq!(fs::read(root.join("a.txt")).unwrap(), b"gamma\n");
+        assert_eq!(fs::read(root.join("d.txt")).unwrap(), b"external\n");
+        assert_eq!(count(&store.db, "SELECT COUNT(*) FROM batches"), 1);
+        assert_eq!(count(&store.db, "SELECT COUNT(*) FROM nodes"), 1);
     }
 }

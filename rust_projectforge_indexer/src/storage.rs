@@ -141,6 +141,10 @@ impl Store {
         db.pragma_update(None, "synchronous", "FULL")?;
         let tx = db.transaction()?;
         tx.execute_batch(SCHEMA)?;
+        tx.execute_batch("DROP INDEX IF EXISTS idx_commit_resource_active;
+            DROP INDEX IF EXISTS idx_file_commit_change_resource_active;
+            DROP TRIGGER IF EXISTS file_commit_change_guard_single;
+            DROP TRIGGER IF EXISTS file_commit_intent_guard_multi;")?;
         for (table, column, definition) in [
             ("projects", "subpath", "TEXT NOT NULL DEFAULT ''"),
             ("projects", "created_by", "TEXT"), ("projects", "deleted_by", "TEXT"),
@@ -697,13 +701,12 @@ impl Store {
                     let id = id.as_str().filter(|s| !s.is_empty()).ok_or("invalid project id")?;
                     let active: bool = tx.query_row(
                         "SELECT EXISTS(SELECT 1 FROM file_commit_intents
-                            WHERE project_id=? AND state IN ('prepared','conflict')
+                            WHERE project_id=? AND state='prepared'
                             UNION ALL SELECT 1 FROM file_commit_plans
-                            WHERE project_id=? AND state IN ('prepared','conflict')
-                                AND json_extract(result,'$.status') IS NOT 'reconciled')",
+                            WHERE project_id=? AND state='prepared')",
                         params![id,id], |r| r.get(0))?;
                     if active {
-                        return Err(format!("cannot purge project with prepared/conflict file intent: {id}").into());
+                        return Err(format!("cannot purge project with prepared file intent: {id}").into());
                     }
                 }
                 let mut purged = Vec::new();

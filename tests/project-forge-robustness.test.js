@@ -115,7 +115,7 @@ const { review } = require(${JSON.stringify(realWorker)});
     }
 });
 
-test('Rollback：中途写入失败时保留 durable 计划，重启恢复后完成回退且失败时不留回退节点', async () => {
+test('Rollback：中途写入失败时补偿回滚已写部分并释放锁，解除只读后重启重试完成回退', async () => {
     const projectId = (await call({ command: 'CreateProject', name: 'lf2', dir: 'lf2' })).details.project.id;
     const a = path.join(wsRoot, 'lf2', 'a.txt');
     const b = path.join(wsRoot, 'lf2', 'b.txt');
@@ -133,15 +133,14 @@ test('Rollback：中途写入失败时保留 durable 计划，重启恢复后完
         await assert.rejects(
             call({ command: 'Rollback', projectId, toNode: `n${nb}`, reason: 'test' }),
             err => {
-                assert.match(err.message, /file commit apply failed and remains prepared|回退中途失败/);
+                assert.match(err.message, /file commit conflict: apply failed at b\.txt/);
                 assert.match(err.message, /os error 5|EPERM|拒绝访问/);
                 return true;
             },
         );
-        // Native commits keep the applied prefix and the durable prepared plan;
-        // they do not perform an in-place compensating rewrite. Recovery must
-        // still converge the same rollback after the failing target is writable.
-        assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a1\n', '已应用的回退内容等待 durable 计划收敛');
+        // 简化 conflict 模型：多文件写中途失败后立即补偿回滚已写部分并释放资源锁，
+        // 不留下半套落盘或持久挂起状态，解除外部阻塞后可直接重试。
+        assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a2\n', '已应用的 a.txt 必须被补偿回退到回退前快照');
         assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b2\n', '失败目标保持原内容');
         const hist = await call({ command: 'SearchHistory', projectId, limit: 50 });
         assert.ok(!hist.details.nodes.some(n => n.op === 'rollback'), '失败的回退不应留下 rollback 节点');
@@ -151,16 +150,14 @@ test('Rollback：中途写入失败时保留 durable 计划，重启恢复后完
 
     await forge.cleanup();
     forge.initialize(forgeOptions);
-    assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b2\n', '懒启动前不应假装恢复已完成');
-    // Use a read-only call to start the native service; startup recovery must
-    // finish the prepared plan before this query is served.
+    assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b2\n', '重启前不应假装回退已完成');
     const reopened = await call({ command: 'GetProject', projectId });
     assert.equal(reopened.details.project.id, projectId);
-    assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a1\n');
-    assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b1\n', 'ready 前必须完成 durable 回退');
-    // Retry is now a true no-op: recovery already wrote the final image.
+    assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a2\n');
+    assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b2\n');
+    // 资源锁已立即释放，解除只读后重试同一 Rollback 应直接成功。
     const ok = await call({ command: 'Rollback', projectId, toNode: `n${nb}`, reason: 'retry' });
-    assert.equal(ok.details.status, 'unchanged', textOf(ok));
+    assert.equal(ok.details.status, 'ok', textOf(ok));
     assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a1\n');
     assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b1\n');
 });

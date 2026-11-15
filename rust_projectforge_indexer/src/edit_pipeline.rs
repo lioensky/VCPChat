@@ -1,7 +1,7 @@
 //! Native planning orchestration. Not a commit endpoint.
 //! Allowed roots come from trusted service configuration, never from tool arguments.
 use std::path::Path;
-use crate::{edit::{Action, Outcome, Step}, project_path::{self, ProjectPath},
+use crate::{edit::{Outcome, Step}, project_path::{self, ProjectPath},
     text_snapshot::{PreparedTextEdit, TextSnapshot}, lang::Lang};
 
 pub struct ReadyEdit {
@@ -130,13 +130,7 @@ pub(crate) fn prepare_with_expected(
         }
     }
     match result {
-        Ok(plan)=>{
-            // 词法 / 结构命中属于推断性证据：没有 expectedHash 就没有可核对基准，拒绝写入。
-            if plan.outcome.requires_expected_hash && expected_hash.is_none() {
-                return Err("this edit matched by token or structure evidence; submit expectedHash (the current source hash) to authorize the write".into());
-            }
-            Ok(Preparation::Ready(ReadyEdit {path,snapshot,plan}))
-        }
+        Ok(plan)=>Ok(Preparation::Ready(ReadyEdit {path,snapshot,plan})),
         Err(outcome)=> {
             let rejected=RejectedPreparation {
                 status:outcome.status,
@@ -243,8 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn inferred_match_without_expected_hash_is_refused() {
-        use sha2::{Digest,Sha256};
+    fn token_match_plans_without_expected_hash_but_rejects_wrong_explicit_hash() {
         let dir=tempfile::tempdir().unwrap();
         let file=dir.path().join("a.js");
         let source=b"const a = 1;\n";
@@ -252,15 +245,15 @@ mod tests {
         let roots=vec![dir.path().to_path_buf()];
         let actions=steps(serde_json::json!([
             {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;","pick":[1]}]));
-        // Preparation 没有 Debug：用 .err().unwrap() 取拒绝原因。
-        let error=prepare_with_expected(dir.path(),"a.js",&roots,&actions,false,None).err().unwrap();
-        assert!(error.contains("expectedHash"),"{error}");
-        let hash=format!("{:x}",Sha256::digest(source));
         let Preparation::Ready(ready)=
-            prepare_with_expected(dir.path(),"a.js",&roots,&actions,false,Some(&hash)).unwrap()
-            else {panic!("expectedHash must authorize the inferred match")};
+            prepare_with_expected(dir.path(),"a.js",&roots,&actions,false,None).unwrap()
+            else {panic!("token match must plan without outer expectedHash")};
         assert_eq!(ready.plan.bytes,b"const a = 2;\n");
-        assert!(ready.plan.outcome.requires_expected_hash);
         assert_eq!(std::fs::read(&file).unwrap(),source.to_vec(),"planning never writes");
+        let wrong="0".repeat(64);
+        let error=prepare_with_expected(dir.path(),"a.js",&roots,&actions,false,Some(&wrong))
+            .err().unwrap();
+        assert!(error.contains("expectedHash"),"{error}");
+        assert_eq!(std::fs::read(&file).unwrap(),source.to_vec(),"failed planning never writes");
     }
 }

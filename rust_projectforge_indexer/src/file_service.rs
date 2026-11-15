@@ -554,15 +554,18 @@ fn inspect_status(status: &Value, request_hash: &str) -> Result<StatusAction> {
         return Err("operationId reused with different request".into());
     }
     match state {
-        "committed" | "ok" | "unchanged" | "planningRejected" | "syntaxRejected" | "reconciled" => {
+        "committed" | "ok" | "unchanged" | "planningRejected" | "syntaxRejected" => {
             let result = status_result(status)
                 .ok_or("terminal operation status is missing its result")?;
             Ok(StatusAction::Done(result))
         }
         "prepared" => Ok(StatusAction::Resume),
-        "conflict" => Err("operation is in conflict; manual reconciliation required".into()),
+        "conflict" => Err(
+            "operation ended in conflict (before snapshot preserved, resource lock released); retry with a new operationId"
+                .into(),
+        ),
         other => Err(format!(
-            "operation requires conflict reconciliation; refusing to replan ({other})"
+            "operation has an unrecognized state; refusing to replan ({other})"
         )
         .into()),
     }

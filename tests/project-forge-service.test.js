@@ -17,6 +17,14 @@ const requireBinary = process.env.PF_SERVICE_REQUIRE_BINARY === '1';
 if (requireBinary && !fs.existsSync(binaryPath)) throw new Error(`Required Rust binary missing: ${binaryPath}`);
 const hasBinary = fs.existsSync(binaryPath);
 
+test('ProjectForge manifest no longer advertises operation inspection or reconciliation', () => {
+    const manifest = require('../VCPDistributedServer/Plugin/ProjectForge/plugin-manifest.json');
+    const commands = manifest.capabilities.invocationCommands.map(item => item.command);
+    assert.ok(commands.includes('EditCode'));
+    assert.equal(commands.includes('InspectOperation'), false);
+    assert.equal(commands.includes('ReconcileOperation'), false);
+});
+
 // 旧 JS 存储层写过的表结构：历史库可以没有服务专表，但业务表必须在。
 const LEGACY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS projects (
@@ -289,6 +297,9 @@ test('real Rust native edit RPC: trusted config, validation, durable replay and 
         assert.equal(fs.readFileSync(file, 'utf8'), '{"value":1}\n');
         await client.close();
         client = new ProjectServiceClient({ dbPath, binaryPath, configPath });
+        await client.start();
+        assert.ok(client.capabilities.includes('nativeEditV1'));
+        assert.equal(client.capabilities.includes('operationReconcile'), false);
         const result = await client.request('edit.execute', command);
         assert.equal(result.status, 'ok');
         assert.deepEqual(result.applied, [1]);
@@ -404,24 +415,37 @@ test('real Rust native edit RPC: trusted config, validation, durable replay and 
         withSql(dbPath, db => db.transaction(() => {
             db.prepare('DELETE FROM service_operations WHERE id=?').run('best-effort');
             db.prepare('DELETE FROM batches WHERE id=?').run(partial.batchId);
-            db.prepare("UPDATE file_commit_intents SET state='conflict',result=NULL WHERE operation_id=?").run('best-effort');
+            db.prepare(`UPDATE file_state SET hash=(SELECT before_hash FROM file_commit_intents WHERE operation_id=?)
+                WHERE project_id='p1' AND file_path='a.json'`).run('best-effort');
+            db.prepare("UPDATE file_commit_intents SET state='prepared',result=NULL,error=NULL WHERE operation_id=?")
+                .run('best-effort');
         })());
         fs.writeFileSync(file, '{"thirdParty":true}\n');
         client = new ProjectServiceClient({ dbPath, binaryPath, configPath });
-        const inspected = await client.operationInspect('best-effort');
-        assert.equal(inspected.state, 'conflict');
-        assert.equal(inspected.files.length, 1);
-        await assert.rejects(client.operationReconcile({
-            operationId: 'best-effort', policy: 'acceptCurrent', files: [{ filePath: 'a.json', expectedHash: null }],
-        }), /does not match expectedHash/);
-        const reconciled = await client.operationReconcile({
-            operationId: 'best-effort', policy: 'acceptCurrent', files: inspected.files.map(f => ({ filePath: f.filePath, expectedHash: f.actualHash })),
+        await assert.rejects(client.start(), /conflict|changed|drift/i);
+        if (client.child) await once(client.child, 'exit');
+        await client.close();
+        const expectedBefore = crypto.createHash('sha256').update('{"value":2}\n').digest('hex');
+        const conflictRow = withSql(dbPath, db => {
+            const row = db.prepare(`SELECT state,before_hash,after_hash FROM file_commit_intents
+                WHERE operation_id='best-effort'`).get();
+            const blob = db.prepare('SELECT size FROM blobs WHERE hash=?').get(row.before_hash);
+            return { state: row.state, beforeHash: row.before_hash, afterHash: row.after_hash, blobSize: blob?.size };
         });
-        assert.equal(reconciled.committed, false);
-        assert.equal((await client.operationStatus('best-effort')).state, 'reconciled');
-        assert.deepEqual(await client.request('edit.execute', partialCommand), reconciled);
+        assert.equal(conflictRow.state, 'conflict');
+        assert.equal(conflictRow.beforeHash, expectedBefore);
+        assert.ok(Number.isInteger(conflictRow.blobSize) && conflictRow.blobSize > 0);
         assert.equal(fs.readFileSync(file, 'utf8'), '{"thirdParty":true}\n');
-        assert.match(require('../VCPDistributedServer/Plugin/ProjectForge/nativeEdit').renderEditResult(reconciled).result, /不是成功提交/);
+        // 冲突不留永久挂起态：重开服务即可启动，旧 opId 只报 conflict，资源锁已释放。
+        client = new ProjectServiceClient({ dbPath, binaryPath, configPath });
+        await client.start();
+        assert.equal((await client.operationStatus('best-effort')).state, 'conflict');
+        const repaired = await client.request('edit.execute', {
+            ...command, operationId: 'after-conflict',
+            steps: [{ step: 1, op: 'target', target: '"thirdParty":true', replace: '"repaired":true', reason: '冲突后新操作' }],
+        });
+        assert.equal(repaired.status, 'ok');
+        assert.equal(fs.readFileSync(file, 'utf8'), '{"repaired":true}\n');
     } finally {
         if (!client.closed) await client.close();
         fs.rmSync(dir, { recursive: true, force: true });
@@ -537,6 +561,7 @@ test('native old parameters and persistent tickets use the Rust service end to e
         assert.equal(fs.readFileSync(file, 'utf8'), 'let first=1;\nlet middle=3;\nlet second=2;\nlet last=4;\n');
         const drifted = await send('drift-ticket', { target: 'let', content: 'const' });
         fs.appendFileSync(file, '// external change\n');
+        // edit.resolve 不接收外层 expectedHash；票据内部 source_hash 会在外部篡改后拒绝写入。
         await assert.rejects(client.request('edit.resolve', {
             operationId: 'stale-resolve', ticketId: drifted.ticketId, pick: '1',
         }), /expectedHash|file changed/);
@@ -609,18 +634,15 @@ test('native host file lifecycle and GUI share the Rust owner', { skip: !hasBina
         });
         assert.equal(tokenAmb.details.status, 'ambiguous');
         assert.ok(/^[0-9a-f]{64}$/.test(tokenAmb.details.sourceHash));
-        await assert.rejects(call('EditCode', {
+        const pickedEdit = await call('EditCode', {
             path: 'tok.js', pick: 1,
             target: 'function greet(a, b) {\n  const x = "hi  world";\n  return x;\n}',
             content: 'function greet(a, b) {\n  const x = "bye  world";\n  return x;\n}',
-        }), /expectedHash/);
-        const withHashPick = await call('EditCode', {
-            path: 'tok.js', pick: 1, expectedHash: tokenAmb.details.sourceHash,
-            target: 'function greet(a, b) {\n  const x = "hi  world";\n  return x;\n}',
-            content: 'function greet(a, b) {\n  const x = "bye  world";\n  return x;\n}',
         });
-        assert.equal(withHashPick.details.status, 'ok');
-        const clippedDiff = await call('GetNodeDiff', { node: `n${withHashPick.details.nodeId}`, maxLines: 3 });
+        assert.equal(pickedEdit.details.status, 'ok');
+        assert.equal(fs.readFileSync(path.join(dir, 'tok.js'), 'utf8'),
+            'function greet(a, b) {\n  const x = "bye  world";\n  return x;\n}\n');
+        const clippedDiff = await call('GetNodeDiff', { node: `n${pickedEdit.details.nodeId}`, maxLines: 3 });
         assert.equal(clippedDiff.details.truncated, true);
         assert.ok(clippedDiff.details.shownLines > 0 && clippedDiff.details.shownLines <= 3);
         assert.equal(clippedDiff.details.diffs[0].hunksShown, 0);
@@ -706,91 +728,65 @@ test('native multi-file startup recovery preserves partial images and third-part
         assert.deepEqual(await client.request('file.execute', command), recovered.result);
         assert.equal((await client.request('store.projectStats', { projectId: 'p1' })).nodeCount, 2);
         await client.close();
-        // A third-party source image must survive, with no fabricated history.
+        // A third-party source image must survive, while the applied target is compensated.
         resetCrashWindow(recovered.result.batchId);
         fs.writeFileSync(path.join(root, 'a.txt'), 'third-party\n');
         client = new ProjectServiceClient({ dbPath, binaryPath, configPath });
         await assert.rejects(client.start(), /conflict|changed|drift/i);
+        if (client.child) await once(client.child, 'exit');
         await client.close();
         assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'third-party\n');
-        assert.equal(fs.readFileSync(path.join(root, 'b.txt'), 'utf8'), 'original\n');
+        assert.equal(fs.existsSync(path.join(root, 'b.txt')), false, '已应用目标必须补偿回滚');
+        const originalHash = crypto.createHash('sha256').update('original\n').digest('hex');
+        const conflictSnapshot = withSql(dbPath, db => {
+            const changes = db.prepare(`SELECT file_path,state,before_hash,after_hash
+                FROM file_commit_changes WHERE operation_id=? ORDER BY ordinal`).all(command.operationId);
+            const source = changes.find(change => change.file_path === 'a.txt');
+            const target = changes.find(change => change.file_path === 'b.txt');
+            const beforeBlob = db.prepare('SELECT size FROM blobs WHERE hash=?').get(source?.before_hash);
+            const afterBlob = db.prepare('SELECT size FROM blobs WHERE hash=?').get(target?.after_hash);
+            const nodes = db.prepare("SELECT COUNT(*) AS n FROM nodes WHERE project_id='p1'").get().n;
+            return { source, target, beforeBlobSize: beforeBlob?.size, afterBlobSize: afterBlob?.size, nodes };
+        });
+        assert.ok(conflictSnapshot.source && conflictSnapshot.target);
+        assert.equal(conflictSnapshot.source.state, 'conflict');
+        assert.equal(conflictSnapshot.target.state, 'conflict');
+        assert.equal(conflictSnapshot.source.before_hash, originalHash);
+        assert.equal(conflictSnapshot.target.after_hash, originalHash);
+        assert.ok(Number.isInteger(conflictSnapshot.beforeBlobSize) && conflictSnapshot.beforeBlobSize > 0);
+        assert.ok(Number.isInteger(conflictSnapshot.afterBlobSize) && conflictSnapshot.afterBlobSize > 0);
+        assert.equal(conflictSnapshot.nodes, 0);
+        // 冲突不留永久挂起态：服务可正常重启，旧 opId 报 conflict，资源锁已释放。
         client = new ProjectServiceClient({ dbPath, binaryPath, configPath });
         await client.start();
         assert.equal((await client.operationStatus(command.operationId)).state, 'conflict');
         assert.equal((await client.request('store.projectStats', { projectId: 'p1' })).nodeCount, 0);
-        const fileHash = relative => crypto.createHash('sha256')
-            .update(fs.readFileSync(path.join(root, relative))).digest('hex');
-        const thirdPartyHash = fileHash('a.txt');
-        const targetHash = fileHash('b.txt');
-        const inspected = await client.request('operation.inspect', { operationId: command.operationId });
-        assert.equal(inspected.state, 'conflict');
-        assert.equal(inspected.committed, false);
-        assert.equal(inspected.rootAuthorized, true);
-        const inspectedByPath = new Map(inspected.files.map(file => [file.filePath, file]));
-        assert.equal(inspectedByPath.get('a.txt').actualHash, thirdPartyHash);
-        assert.equal(inspectedByPath.get('b.txt').actualHash, targetHash);
-        assert.equal(inspectedByPath.get('b.txt').applied, true);
-        // Hash 失配必须在任何状态/锁变更前拒绝，第三方字节保持原样。
-        await assert.rejects(client.request('operation.reconcile', {
-            operationId: command.operationId, policy: 'acceptCurrent',
-            files: [
-                { filePath: 'a.txt', expectedHash: crypto.createHash('sha256').update('not-current\n').digest('hex') },
-                { filePath: 'b.txt', expectedHash: targetHash },
-            ],
-        }), /does not match expectedHash/i);
-        assert.equal((await client.operationStatus(command.operationId)).state, 'conflict');
+        const afterConflict = await client.request('file.execute', {
+            operationId: 'after-conflict', projectId: 'p1', kind: 'create',
+            filePath: 'a.txt', content: 'after conflict\n', overwrite: true,
+            reason: 'conflict lock release probe',
+        });
+        assert.equal(afterConflict.status, 'ok');
+        assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'after conflict\n');
+        // 热态 pre-flight 失败同样不挂锁：报错后同路径新操作立即可写。
         await assert.rejects(client.request('file.execute', {
-            operationId: 'premature-reuse', projectId: 'p1', kind: 'create',
-            filePath: 'a.txt', content: 'must not land\n', overwrite: true, reason: 'lock probe',
-        }), /UNIQUE|locked|resource|pending/i);
-        assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'third-party\n');
-        assert.equal(fs.readFileSync(path.join(root, 'b.txt'), 'utf8'), 'original\n');
-        const reconciled = await client.request('operation.reconcile', {
-            operationId: command.operationId, policy: 'acceptCurrent',
-            files: [
-                { filePath: 'a.txt', expectedHash: thirdPartyHash },
-                { filePath: 'b.txt', expectedHash: targetHash },
-            ],
+            operationId: 'preflight-fail', projectId: 'p1', kind: 'create',
+            filePath: 'a.txt', content: 'must not land\n', overwrite: false,
+            reason: 'preflight lock probe',
+        }), /already exists/);
+        assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'after conflict\n');
+        const afterPreflight = await client.request('file.execute', {
+            operationId: 'after-preflight', projectId: 'p1', kind: 'create',
+            filePath: 'a.txt', content: 'after preflight\n', overwrite: true,
+            reason: 'preflight lock release probe',
         });
-        assert.equal(reconciled.state, 'reconciled');
-        assert.equal(reconciled.status, 'reconciled');
-        assert.equal(reconciled.committed, false);
-        assert.equal(reconciled.snapshotsRetained, true);
-        assert.deepEqual(reconciled.appliedFiles, ['b.txt']);
-        assert.equal(reconciled.files.length, 2);
-        assert.ok(reconciled.files.find(file => file.filePath === 'a.txt').beforeHash);
-        assert.ok(reconciled.files.find(file => file.filePath === 'b.txt').afterHash);
-        assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'third-party\n');
-        assert.equal(fs.readFileSync(path.join(root, 'b.txt'), 'utf8'), 'original\n');
-        const terminal = await client.operationStatus(command.operationId);
-        assert.equal(terminal.state, 'reconciled');
-        assert.equal(terminal.result.committed, false);
-        const reconciledReplay = await client.request('operation.reconcile', {
-            operationId: command.operationId, policy: 'acceptCurrent',
-        });
-        assert.equal(reconciledReplay.status, 'reconciled');
-        // 原 opId 重放返回已 reconciled 结果，不得再次执行或伪造成功历史。
-        const replay = await client.request('file.execute', command);
-        assert.equal(replay.status, 'reconciled');
-        assert.equal(replay.committed, false);
-        assert.equal((await client.request('store.projectStats', { projectId: 'p1' })).nodeCount, 0);
-        // 处置后资源锁已释放，同路径新操作可以按当前字节重新规划。
-        const afterReconcile = await client.request('file.execute', {
-            operationId: 'after-reconcile', projectId: 'p1', kind: 'create',
-            filePath: 'a.txt', content: 'after reconcile\n', overwrite: true,
-            reason: 'post-reconcile lock release probe',
-        });
-        assert.equal(afterReconcile.status, 'ok');
-        assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'after reconcile\n');
-        await client.close();
-        client = new ProjectServiceClient({ dbPath, binaryPath, configPath });
-        assert.equal((await client.operationStatus(command.operationId)).state, 'reconciled');
-        assert.equal((await client.request('file.execute', command)).committed, false);
+        assert.equal(afterPreflight.status, 'ok');
+        assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'after preflight\n');
         const purged = await client.request('store.purgeProjects', {
-            operationId: 'purge-reconciled-project', ids: ['p1'],
+            operationId: 'purge-conflict-project', ids: ['p1'],
         });
         assert.deepEqual(purged.purged, ['p1']);
-        assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'after reconcile\n');
+        assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'after preflight\n');
     } finally {
         await client.close();
         fs.rmSync(dir, { recursive: true, force: true });

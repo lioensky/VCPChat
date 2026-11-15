@@ -12,7 +12,6 @@ const MUTATIONS = new Set([
     'store.createProject', 'store.recordBatch', 'store.updateProject', 'store.addTodos',
     'store.updateTodo', 'store.removeTodo', 'store.softDeleteProjects',
     'store.restoreProjects', 'store.purgeProjects', 'edit.execute', 'edit.resolve', 'file.execute',
-    'operation.reconcile',
 ]);
 
 class ServiceError extends Error {
@@ -48,6 +47,7 @@ class ProjectServiceClient {
         this.blocked = false;
         this.closed = false;
         this.ready = false;
+        this.capabilities = [];
     }
 
     start() {
@@ -97,6 +97,7 @@ class ProjectServiceClient {
                     settled = true;
                     clearTimeout(timer);
                     this.ready = true;
+                    this.capabilities = Array.isArray(message.capabilities) ? [...message.capabilities] : [];
                     resolve();
                     return;
                 }
@@ -197,10 +198,6 @@ class ProjectServiceClient {
     }
 
     operationStatus(operationId) { return this.request('operation.status', { operationId }); }
-    operationInspect(operationId) { return this.request('operation.inspect', { operationId }); }
-    operationReconcile({ operationId, files, policy }) {
-        return this.request('operation.reconcile', { operationId, policy, files });
-    }
 
     async close() {
         if (this.closed) return;

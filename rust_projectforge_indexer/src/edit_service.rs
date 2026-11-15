@@ -84,13 +84,13 @@ pub async fn execute(store: &mut Store, params: &Value, allowed_roots: &[PathBuf
             return Err("operationId reused with different request".into());
         }
         return match status["state"].as_str() {
-            Some("committed") | Some("planningRejected") | Some("syntaxRejected") | Some("reconciled") =>
+            Some("committed") | Some("planningRejected") | Some("syntaxRejected") =>
                 Ok(status["result"].clone()),
             Some("prepared") => {
                 let intent = store.load_intent(&request.operation_id)?;
                 crate::commit_coordinator::resume(store, &intent, allowed_roots)
             }
-            _ => Err("operation requires conflict reconciliation; refusing to replan".into()),
+            _ => Err("previous attempt with this operationId ended in conflict (before snapshot preserved, resource lock released); retry with a new operationId".into()),
         };
     }
     let project = store.query("store.getProject", &json!({"projectId":request.project_id}))?;

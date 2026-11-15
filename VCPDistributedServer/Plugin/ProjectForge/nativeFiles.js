@@ -252,8 +252,7 @@ function renderFileResult(command, result, context = {}) {
     const icon = status === 'ok' ? '✅'
         : status === 'unchanged' || status === 'noop' || status === 'dryRun' ? 'ℹ️'
             : '❌';
-    const title = status === 'reconciled' ? '意图已处置，保留核对时磁盘内容（非成功提交）'
-        : status === 'ok' ? (commandKey === 'removefile' ? '删除（履历可回退）' : '已提交')
+    const title = status === 'ok' ? (commandKey === 'removefile' ? '删除（履历可回退）' : '已提交')
         : status === 'unchanged' ? '内容无变化，未写入'
             : status === 'dryRun' ? '回退预演（dryRun）'
                 : status === 'conflict' ? '存在冲突，未执行'

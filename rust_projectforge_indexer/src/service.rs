@@ -21,8 +21,9 @@ pub fn run(path: &Path, config_path: Option<&Path>) -> Result<(), Box<dyn std::e
     let budget = config.as_ref().map(|config| config.query_budget).unwrap_or_default();
     let mut store = Store::open_with_read_concurrency(path, budget.max_read_concurrency)?;
     let reads = ReadPool::new(store.database_path().to_path_buf(), budget);
-    // Finish durable edits before advertising readiness. Existing conflicts are not
-    // retried: they retain their resource lock until explicit reconciliation.
+    // Finish durable edits before advertising readiness. A prepared intent or plan that
+    // conflicts during recovery keeps its before snapshot, is marked conflict, releases
+    // its lock immediately and returns an error; marked conflicts cannot block restart.
     match &config {
         Some(config) => {
             let intents=store.prepared_intents()?;
@@ -47,7 +48,7 @@ pub fn run(path: &Path, config_path: Option<&Path>) -> Result<(), Box<dyn std::e
         "type":"ready","service":"projectforge-storage","protocolVersion":1,
         "maxFrameBytes":transport::MAX_FRAME_BYTES,
         "capabilities":if config.is_some() {
-            vec!["businessQueries","atomicHistory","operationStatus","nativeEditV1","operationReconcile",
+            vec!["businessQueries","atomicHistory","operationStatus","nativeEditV1",
                 "boundedConcurrentQueries"]
         } else {vec!["businessQueries","atomicHistory","operationStatus","boundedConcurrentQueries"]},
         "budgets":reads.budget_json(),
@@ -63,14 +64,6 @@ pub fn run(path: &Path, config_path: Option<&Path>) -> Result<(), Box<dyn std::e
         let writer = scope.spawn(move || -> io::Result<()> {
             while let Ok((id, method, params)) = writer_rx.recv() {
                 let result = match method.as_str() {
-                    "operation.inspect" => match &config {
-                        Some(config) => crate::operation_reconcile::inspect(&store, &params, &config.allowed_roots),
-                        None => Err("operation inspection requires explicit trusted service configuration".into()),
-                    },
-                    "operation.reconcile" => match &config {
-                        Some(config) => crate::operation_reconcile::reconcile(&mut store, &params, &config.allowed_roots),
-                        None => Err("operation reconciliation requires explicit trusted service configuration".into()),
-                    },
                     "store.createProject" => store.mutate_authorized(&method, &params,
                         config.as_ref().map(|config| config.allowed_roots.as_slice())),
                     "store.recordBatch" | "store.updateProject"
@@ -202,7 +195,7 @@ fn is_mutation(method: &str) -> bool {
         "store.createProject" | "store.recordBatch" | "store.updateProject"
         | "store.addTodos" | "store.updateTodo" | "store.removeTodo"
         | "store.softDeleteProjects" | "store.restoreProjects" | "store.purgeProjects"
-        | "edit.execute" | "edit.resolve" | "file.execute" | "operation.reconcile")
+        | "edit.execute" | "edit.resolve" | "file.execute")
 }
 
 /// Bounded pool of read-only SQLite connections over the same WAL database. Reads never

@@ -26,7 +26,6 @@ const KIND_LABEL = { edit: '编辑', create: '新建', remove: '删除', move: '
 const MUTATING_COMMANDS = new Set([
     'createproject', 'updatetodos', 'submitreport', 'deleteprojects', 'restoreprojects', 'purgeprojects',
     'editcode', 'resolveedit', 'createfile', 'removefile', 'movefile', 'movecode', 'copycode', 'rollback',
-    'reconcileoperation',
 ]);
 
 function posInt(value, fallback) {
@@ -882,97 +881,6 @@ function createNativeService(options = {}) {
         if (params.to) values.push(params.to);
         for (const value of values) fileOf(ctx, value, { write: true });
     }
-    function operationIdOf(args) {
-        const operationId = A.str(args, 'operationId', 'operation', 'id');
-        if (!operationId) throw new Error(`${P} 需要 operationId（持久操作 ID）。`);
-        return operationId;
-    }
-    function expectedHashOf(value) {
-        if (value === null || value === undefined || String(value).trim().toLowerCase() === 'null') return null;
-        const hash = String(value).trim().toLowerCase();
-        if (!/^[0-9a-f]{64}$/.test(hash)) {
-            throw new Error(`${P} expectedHash 必须是 64 位小写 sha256，或用 null 表示文件当前不存在：${value}`);
-        }
-        return hash;
-    }
-    function reconcileFilesOf(args) {
-        const raw = A.pick(args, 'files', 'fileHashes', 'expected');
-        if (raw === undefined) {
-            const filePath = A.str(args, 'filePath', 'path', 'file');
-            if (!filePath) {
-                throw new Error(`${P} ReconcileOperation 需要 files JSON 数组；单文件也可写 path + expectedHash。`);
-            }
-            if (!Object.prototype.hasOwnProperty.call(args, 'expectedhash')) {
-                throw new Error(`${P} 每个文件都必须提交 expectedHash（null 表示当前不存在）。`);
-            }
-            return [{ filePath, expectedHash: expectedHashOf(args.expectedhash) }];
-        }
-        const parsed = typeof raw === 'string' ? A.json(raw, 'files') : raw;
-        if (!Array.isArray(parsed) || !parsed.length) throw new Error(`${P} files 必须是非空 JSON 数组。`);
-        return parsed.map((entry, index) => {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-                throw new Error(`${P} files[${index}] 必须是对象。`);
-            }
-            const lower = A.lowerKeys(entry);
-            const filePath = String(lower.filepath ?? lower.file_path ?? lower.path ?? lower.file ?? '').trim();
-            if (!filePath) throw new Error(`${P} files[${index}] 缺少 filePath。`);
-            const hasCamel = Object.prototype.hasOwnProperty.call(lower, 'expectedhash');
-            const hasSnake = Object.prototype.hasOwnProperty.call(lower, 'expected_hash');
-            if (!hasCamel && !hasSnake) {
-                throw new Error(`${P} files[${index}] 缺少 expectedHash；null 表示文件当前不存在。`);
-            }
-            return { filePath, expectedHash: expectedHashOf(hasCamel ? lower.expectedhash : lower.expected_hash) };
-        });
-    }
-    function renderOperationFiles(result) {
-        const files = Array.isArray(result.files) ? result.files : [];
-        if (!files.length) return '- （无文件记录）';
-        return files.map(file => {
-            const bits = [
-                `actual=${file.actualHash ?? 'null'}`,
-                `intent=${file.beforeHash ?? 'null'}→${file.afterHash ?? 'null'}`,
-                `applied=${Boolean(file.applied)}`,
-                `pending=${Boolean(file.pending)}`,
-            ];
-            if (file.state) bits.push(`state=${file.state}`);
-            if (file.error) bits.push(`error=${file.error}`);
-            return `- \`${file.filePath}\` · ${bits.join(' · ')}`;
-        }).join('\n');
-    }
-    async function inspectOperation(args) {
-        const operationId = operationIdOf(args);
-        const result = await clientRequest('operation.inspect', { operationId });
-        const text = [
-            `## 操作检查 · \`${operationId}\` · ${result.state || 'unknown'}`,
-            `- 类型：${result.kind || '-'}${result.commitKind ? ` (${result.commitKind})` : ''}`,
-            `- 工程：${result.projectId || '-'} · 根目录授权：${result.rootAuthorized === undefined ? '-' : result.rootAuthorized}`,
-            `- committed：${Boolean(result.committed)} · reconciled：${Boolean(result.reconciled)}`,
-            result.authorizationError ? `- 授权错误：${result.authorizationError}` : null,
-            result.hint ? `- 下一步：${result.hint}` : null,
-            '',
-            '### 文件当前态',
-            renderOperationFiles(result),
-        ].filter(Boolean).join('\n');
-        return textResult(text, { command: 'InspectOperation', operationId, ...result });
-    }
-    async function reconcileOperation(args) {
-        const operationId = operationIdOf(args);
-        const policy = A.str(args, 'policy');
-        const files = reconcileFilesOf(args);
-        const result = await clientRequest('operation.reconcile', { operationId, policy, files });
-        const text = [
-            `## 操作已处置 · \`${operationId}\` · ${result.state || 'reconciled'}`,
-            `- policy：${result.policy || policy} · committed：${Boolean(result.committed)} · reconciled：${Boolean(result.reconciled)}`,
-            `- 已发生文件变更：${(result.appliedFiles || []).join('、') || '无'}`,
-            `- 未应用文件：${(result.pendingFiles || []).join('、') || '无'}`,
-            `- 快照保留：${Boolean(result.snapshotsRetained)} · 未完成意图已放弃：${Boolean(result.intentAbandoned)}`,
-            result.note ? `- 说明：${result.note}` : null,
-            '',
-            '### 文件处置态',
-            renderOperationFiles(result),
-        ].filter(Boolean).join('\n');
-        return textResult(text, { command: 'ReconcileOperation', operationId, ...result });
-    }
     async function runFileCommand(command, args) {
         const isRollback = String(command).toLowerCase() === 'rollback';
         const reason = isRollback
@@ -1079,10 +987,8 @@ function createNativeService(options = {}) {
         findsymbol: findSymbolCmd,
         trace: traceCmd,
         evalsymbol: evalSymbolCmd,
-        inspectoperation: inspectOperation,
-        reconcileoperation: reconcileOperation,
     };
-    const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、SearchProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace、EvalSymbol、InspectOperation、ReconcileOperation';
+    const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、SearchProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace、EvalSymbol';
 
     async function processToolCall(rawArgs = {}) {
         if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) throw new Error(`${P} 无效的工具参数。`);

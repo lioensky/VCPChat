@@ -34,7 +34,6 @@ mod file_replace;
 mod file_commit;
 mod file_service;
 mod commit_journal;
-mod operation_reconcile;
 mod line_diff;
 mod commit_coordinator;
 mod validation;

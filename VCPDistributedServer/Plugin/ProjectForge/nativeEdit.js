@@ -37,8 +37,6 @@ const TIER_LABEL = {
     structure: '结构',
     symbol: '符号',
 };
-/** 推断性层级：选中后必须带 expectedHash 才能写入。 */
-const INFERRED_TIERS = new Set(['token', 'structure']);
 const tierLabel = kind => TIER_LABEL[kind] || kind;
 
 /** expectedHash 与旧别名 sourceHash 同义；两个都没给才表示「未预检」。 */
@@ -237,8 +235,7 @@ function buildEditRequest(context, args) {
         bestEffort: mode === 'besteffort',
         rejectNewSyntax: A.bool(A.pick(lower, 'revertOnSyntaxError'), false),
     };
-    // 词法/结构命中的编辑在原生层会被要求授权：这里把调用方的 expectedHash 原样透传，
-    // 不替它猜、也不替它补。
+    // expectedHash 仅保留为可选内部透传字段；外层 EditCode 不要求调用方提供。
     if (expectedHash !== undefined) params.expectedHash = expectedHash;
     if (ctx.maid !== undefined && ctx.maid !== null && String(ctx.maid).trim() !== '') {
         params.maid = String(ctx.maid).trim();
@@ -313,7 +310,6 @@ function renderAmbiguities(ambiguities, ticketId, steps = []) {
     } else {
         lines.push('- 票据：当前 Rust 结果未回传 ticketId；父入口需接通原生票据签发/ResolveEdit RPC 后才能让 AI 只回传选择。');
     }
-    const inferred = ambiguities.filter(ambiguity => INFERRED_TIERS.has(ambiguity.kind));
     for (const ambiguity of ambiguities) {
         const step = steps.find(item => item.step === ambiguity.step);
         if (step?.symbol) lines.push(`- 符号 \`${step.symbol}\` 有 ${ambiguity.total} 处同名定义`);
@@ -325,9 +321,6 @@ function renderAmbiguities(ambiguities, ticketId, steps = []) {
             const scope = candidate.scope ? ` · ${candidate.scope}` : '';
             lines.push(`- 候选 ${index} · L${candidate.startLine}-${candidate.endLine}${kind}${scope}`);
         }
-    }
-    if (inferred.length) {
-        lines.push('- ⚠️ 这些候选来自词法/结构推断，不是逐字节命中：选定后必须带 expectedHash（当前 sourceHash）重发，否则原生层拒绝写入。');
     }
     return lines.join('\n');
 }
@@ -389,7 +382,7 @@ function renderPlanningRejected(result, context) {
         resultHeader('❌ 未写入', result.filePath || context.filePath, result.operationId || result.outcome?.operationId || context.operationId, context.projectId, context.reason, context.maid),
     ];
     const sourceHash = outcome.sourceHash || result.sourceHash || null;
-    if (sourceHash) lines.push(`- sourceHash：\`${sourceHash}\`（重发时作为 expectedHash 提交，表示「我就基于这一版改」）`);
+    if (sourceHash) lines.push(`- sourceHash：\`${sourceHash}\`（本次规划基于该原始快照，票据/服务内部绑定用于漂移校验）`);
     if (errors.length) lines.push(`### 错误\n${errors.map(error => {
         const step = context.steps?.find(item => item.step === error.step);
         return renderIssue(step?.symbol && error.message === 'symbol not found in snapshot outline'
@@ -424,14 +417,6 @@ function renderEditResult(result, context = {}) {
     const reason = context.reason || '';
     const maid = context.maid ? String(context.maid) : null;
     const baseDetails = { command, projectId, filePath, reason, maid };
-
-    if (result.status === 'reconciled') {
-        return {
-            status: 'success',
-            result: `## ${command} · 意图已处置\n- operationId：\`${result.operationId}\`\n- 已保留核对时的磁盘内容，未完成意图已放弃；这不是成功提交。`,
-            details: { ...baseDetails, ...result },
-        };
-    }
 
     if (result.status === 'ok' || result.state === 'committed') {
         const details = {
