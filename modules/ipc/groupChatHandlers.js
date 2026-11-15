@@ -255,7 +255,7 @@ function initialize(mainWindow, context) {
             return { success: true };
         } catch (error) {
             console.error(`[Main IPC] 保存群组 ${groupId} 话题 ${topicId} 聊天历史失败:`, error);
-            return { success: false, error: error.message };
+            return { success: false, error: error.message, code: error.code };
         }
     });
 
