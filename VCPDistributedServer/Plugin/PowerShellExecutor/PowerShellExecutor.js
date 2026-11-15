@@ -211,9 +211,9 @@ function applyPtyResize(cols, rows) {
     const normalizedRows = Number(rows);
     const previous = lastKnownSize;
 
-    if (Number.isInteger(normalizedCols) && Number.isInteger(normalizedRows) && normalizedCols > 0 && normalizedRows > 0) {
-        lastKnownSize = { cols: normalizedCols, rows: normalizedRows };
-    }
+    if (!Number.isInteger(normalizedCols) || !Number.isInteger(normalizedRows) || normalizedCols <= 0 || normalizedRows <= 0) return;
+    if (normalizedCols === previous.cols && normalizedRows === previous.rows) return;
+    lastKnownSize = { cols: normalizedCols, rows: normalizedRows };
     // 镜像视图（侧栏终端）里不持有尺寸的那些要跟着新尺寸画
     if (lastKnownSize.cols !== previous.cols || lastKnownSize.rows !== previous.rows) {
         notifyMirrors('onResize', lastKnownSize.cols, lastKnownSize.rows);
@@ -1110,6 +1110,8 @@ function createNewPtySession() {
 
     // 创建GUI数据监听器（带 AI 短命令执行状态检查）
     guiDataListener = (data) => {
+        // kill 的旧 PTY 仍可能投递排队输出，不得访问新会话的共享投影和启动缓存。
+        if (ptyProcess !== currentPtyProcess) return;
         // 渲染始终使用完整 PTY 流；命令解析只提取 AI 返回值，不改变屏幕坐标。
         dispatchPtyData(terminalProjection ? terminalProjection.push(data) : data);
     };

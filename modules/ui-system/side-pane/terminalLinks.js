@@ -9,27 +9,28 @@
 'use strict';
 
 const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>"'`]+/gi;
-const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?]+$/;
+const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?]/;
 const CLOSING_BRACKET_PAIRS = { ')': '(', ']': '[', '}': '{' };
-
-function countChar(value, char) {
-    let count = 0;
-    for (const current of value) {
-        if (current === char) count += 1;
-    }
-    return count;
-}
+// 超预算只取消自动链接，不截断文本/URL；最多扫描这数量的终端单元格。
+const MAX_LINK_SCAN_CELLS = 16 * 1024;
 
 /** 去掉 URL 末尾的标点；括号只在闭合多于开启时才剥掉。 */
 export function trimTerminalUrlCandidate(value) {
-    let trimmed = String(value).replace(TRAILING_PUNCTUATION_PATTERN, '');
-    for (;;) {
-        const last = trimmed.slice(-1);
-        const opening = last ? CLOSING_BRACKET_PAIRS[last] : undefined;
-        if (!last || !opening) return trimmed;
-        if (countChar(trimmed, last) <= countChar(trimmed, opening)) return trimmed;
-        trimmed = trimmed.slice(0, -1).replace(TRAILING_PUNCTUATION_PATTERN, '');
+    const text = String(value);
+    const counts = { '(': 0, ')': 0, '[': 0, ']': 0, '{': 0, '}': 0 };
+    for (const char of text) {
+        if (Object.hasOwn(counts, char)) counts[char]++;
     }
+    let end = text.length;
+    while (end > 0) {
+        const last = text[end - 1];
+        if (TRAILING_PUNCTUATION_PATTERN.test(last)) { end--; continue; }
+        const opening = CLOSING_BRACKET_PAIRS[last];
+        if (!opening || counts[last] <= counts[opening]) break;
+        counts[last]--;
+        end--;
+    }
+    return text.slice(0, end);
 }
 
 export function findHttpLinksInTerminalText(text) {
@@ -59,20 +60,31 @@ function appendBufferLine(snapshot, line, bufferLine, cols) {
         if (!current || current.getWidth() === 0) continue;
         const text = current.getChars() || ' ';
         snapshot.text += text;
-        for (let index = 0; index < text.length; index += 1) snapshot.positions.push({ bufferLine, cellX });
+        for (let index = 0; index < text.length; index += 1) snapshot.positions.push((bufferLine - 1) * cols + cellX);
     }
 }
 
-function getWrappedLineRange(buffer, bufferLineNumber) {
+function getWrappedLineRange(buffer, bufferLineNumber, cols) {
+    if (!Number.isInteger(cols) || cols <= 0 || cols > MAX_LINK_SCAN_CELLS
+        || !Number.isInteger(bufferLineNumber) || bufferLineNumber < 1 || bufferLineNumber > buffer.length) return null;
+    const maxRows = Math.floor(MAX_LINK_SCAN_CELLS / cols);
     let start = bufferLineNumber - 1;
-    while (start > 0 && buffer.getLine(start)?.isWrapped) start -= 1;
-    let end = bufferLineNumber - 1;
-    while (end + 1 < buffer.length && buffer.getLine(end + 1)?.isWrapped) end += 1;
+    let end = start;
+    while (start > 0 && buffer.getLine(start)?.isWrapped) {
+        if (end - start + 1 >= maxRows) return null;
+        start--;
+    }
+    while (end + 1 < buffer.length && buffer.getLine(end + 1)?.isWrapped) {
+        if (end - start + 1 >= maxRows) return null;
+        end++;
+    }
     return { start, end };
 }
 
 function readWrappedLineSnapshot(buffer, bufferLineNumber, cols) {
-    const { start, end } = getWrappedLineRange(buffer, bufferLineNumber);
+    const range = getWrappedLineRange(buffer, bufferLineNumber, cols);
+    if (!range) return null;
+    const { start, end } = range;
     const snapshot = { text: '', positions: [] };
     for (let lineIndex = start; lineIndex <= end; lineIndex += 1) {
         const line = buffer.getLine(lineIndex);
@@ -90,12 +102,12 @@ export function getHttpLinksForTerminalBufferLine(buffer, bufferLineNumber, cols
     for (const match of findHttpLinksInTerminalText(snapshot.text)) {
         const start = snapshot.positions[match.startIndex];
         const end = snapshot.positions[match.endIndex];
-        if (!start || !end) continue;
+        if (start === undefined || end === undefined) continue;
         const link = {
             text: match.text,
             range: {
-                start: { x: start.cellX + 1, y: start.bufferLine },
-                end: { x: end.cellX + 1, y: end.bufferLine }
+                start: { x: start % cols + 1, y: Math.floor(start / cols) + 1 },
+                end: { x: end % cols + 1, y: Math.floor(end / cols) + 1 }
             },
             // xterm 只在 hover 时绘制装饰：显式打开下划线和手型，链接才不会看起来像普通文本
             decorations: { underline: true, pointerCursor: true }

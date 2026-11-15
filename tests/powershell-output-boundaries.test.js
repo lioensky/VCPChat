@@ -171,6 +171,6 @@ test('a PTY resize tells the mirror views the new size, once per change', () => 
     context.applyPtyResize(45, 20);
     context.applyPtyResize(45, 20);
     context.applyPtyResize('bad', 0);
-    assert.deepEqual(resized, [[45, 20], [45, 20], [45, 20]]);
+    assert.deepEqual(resized, [[45, 20]], 'unchanged and invalid requests must not resize the native PTY');
     assert.deepEqual(notices, [['onResize', 45, 20]]);
 });
