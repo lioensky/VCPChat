@@ -60,3 +60,26 @@ test('仓储兼容没有回执的既有保存适配器', async () => {
     const repository = createChatRepository({ saveChatHistory: async () => {} });
     assert.equal(await repository.saveHistory('a', 'agent', 't', []), undefined);
 });
+
+test('仓储在成功保存历史后触发 onDidSaveHistory 监听器，并在注销后停止通知', async () => {
+    const events = [];
+    const repository = createChatRepository({
+        saveChatHistory: async () => ({ success: true })
+    });
+    const unsubscribe = repository.onDidSaveHistory(evt => events.push(evt));
+
+    await repository.saveHistory('agent-1', 'agent', 'topic-1', [{ id: 'm1' }, { id: 'm2' }]);
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0], {
+        itemId: 'agent-1',
+        itemType: 'agent',
+        topicId: 'topic-1',
+        history: [{ id: 'm1' }, { id: 'm2' }],
+        count: 2,
+        options: undefined
+    });
+
+    unsubscribe();
+    await repository.saveHistory('agent-1', 'agent', 'topic-1', [{ id: 'm1' }]);
+    assert.equal(events.length, 1, '注销后不应再收到通知');
+});

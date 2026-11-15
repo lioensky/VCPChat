@@ -27,6 +27,7 @@ export function assertChatRepositorySuccess(value, fallback) {
  */
 export function createChatRepository(electronAPI) {
     if (!electronAPI) throw new TypeError('ChatRepository requires an IPC adapter');
+    const saveListeners = new Set();
     const method = (name) => {
         if (typeof electronAPI[name] !== 'function') throw new Error(`Missing chat repository capability: ${name}`);
         return electronAPI[name].bind(electronAPI);
@@ -45,9 +46,24 @@ export function createChatRepository(electronAPI) {
         persistAssistant(scope, message) {
             return invoke('topicAdmissionPersistAssistant', scope, message);
         },
-        saveHistory(itemId, itemType, topicId, history, options) {
-            return invoke(itemType === 'group' ? 'saveGroupChatHistory' : 'saveChatHistory',
+        async saveHistory(itemId, itemType, topicId, history, options) {
+            const result = await invoke(itemType === 'group' ? 'saveGroupChatHistory' : 'saveChatHistory',
                 itemId, topicId, history, options);
+            if (Array.isArray(history)) {
+                for (const listener of saveListeners) {
+                    try {
+                        listener({ itemId, itemType, topicId, history, count: history.length, options });
+                    } catch (listenerError) {
+                        console.error('[ChatRepository] Error in onDidSaveHistory listener:', listenerError);
+                    }
+                }
+            }
+            return result;
+        },
+        onDidSaveHistory(listener) {
+            if (typeof listener !== 'function') return () => {};
+            saveListeners.add(listener);
+            return () => saveListeners.delete(listener);
         }
     });
 }

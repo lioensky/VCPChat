@@ -424,6 +424,14 @@ export const chatManager = (() => {
     }
 
     function saveHistory(itemId, itemType, topicId, history) {
+        if (Array.isArray(history) && topicId) {
+            const manager = topicListManager || window.topicListManager;
+            manager?.updateTopicMessageCount?.(topicId, history.length, {
+                itemId,
+                itemType,
+                isCurrent: String(topicId) === String(currentTopicIdRef?.get?.())
+            });
+        }
         if (historyMutationAuthority) {
             return historyMutationAuthority.replace({
                 itemId,
@@ -1415,6 +1423,16 @@ export const chatManager = (() => {
         if (abortIfStale()) {
             if (messageRenderer) messageRenderer.removeMessageById('loading_history');
             return;
+        }
+
+        if (Array.isArray(historyResult)) {
+            const manager = topicListManager || window.topicListManager;
+            manager?.updateTopicMessageCount?.(topicId, historyResult.length, {
+                itemId,
+                itemType,
+                isCurrent: true,
+                unreadCount: 0
+            });
         }
 
         const currentSelectedItem = currentSelectedItemRef.get();

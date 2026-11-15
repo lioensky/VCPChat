@@ -24,6 +24,7 @@ window.topicListManager = (() => {
     let availableTopics = [];
     let currentItemConfig = null;
     let managedItemKey = '';
+    let chatRepositorySubscription = null;
 
     const TOPIC_OVERSCAN = 8;
     const TOPIC_COUNT_CONCURRENCY = 4;
@@ -118,6 +119,21 @@ window.topicListManager = (() => {
         // 设置鼠标快捷键
         setupMouseShortcuts();
         setupNextUiTopicTools();
+
+        chatRepositorySubscription?.();
+        chatRepositorySubscription = null;
+        if (typeof chatRepository?.onDidSaveHistory === 'function') {
+            chatRepositorySubscription = chatRepository.onDidSaveHistory(({ itemId, itemType, topicId, count }) => {
+                const currentItem = currentSelectedItemRef?.get?.();
+                if (currentItem && String(currentItem.id) === String(itemId) && currentItem.type === itemType) {
+                    updateTopicMessageCount(topicId, count, {
+                        itemId,
+                        itemType,
+                        isCurrent: String(topicId) === String(currentTopicIdRef?.get?.())
+                    });
+                }
+            });
+        }
 
         console.log('[TopicListManager] Initialized successfully.');
     }
@@ -426,6 +442,61 @@ window.topicListManager = (() => {
                 drainTopicCountQueue();
             });
         }
+    }
+
+    function findTopicListItem(topicId) {
+        if (!topicListContainer || !topicId) return null;
+        const items = topicListContainer.querySelectorAll('.topic-item');
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].dataset.topicId === String(topicId)) {
+                return items[i];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 响应式更新指定话题的消息条数及缓存。
+     * @param {string} topicId - 话题ID
+     * @param {number} count - 消息条数
+     * @param {object} [options] - 选项 (itemId, itemType, isCurrent, unreadCount)
+     */
+    function updateTopicMessageCount(topicId, count, options = {}) {
+        const numericCount = Number(count);
+        if (!topicId || !Number.isFinite(numericCount)) return;
+        const currentItem = currentSelectedItemRef?.get?.();
+        const itemId = options.itemId || currentItem?.id;
+        const itemType = options.itemType || currentItem?.type;
+        const isCurrent = options.isCurrent ?? (String(topicId) === String(currentTopicIdRef?.get?.()));
+
+        if (itemId && itemType) {
+            const key = JSON.stringify([itemType, itemId, String(topicId)]);
+            const existing = topicSummaryCache.get(key);
+            const unreadCount = options.unreadCount !== undefined
+                ? options.unreadCount
+                : (isCurrent ? 0 : (existing ? existing.unreadCount : 0));
+            const summary = {
+                count: numericCount,
+                unreadCount,
+                at: Date.now()
+            };
+            topicSummaryCache.delete(key);
+            topicSummaryCache.set(key, summary);
+            if (topicSummaryCache.size > TOPIC_SUMMARY_CACHE_LIMIT) {
+                topicSummaryCache.delete(topicSummaryCache.keys().next().value);
+            }
+        }
+
+        const li = findTopicListItem(topicId);
+        if (!li) return;
+        const unreadCount = options.unreadCount !== undefined
+            ? options.unreadCount
+            : (isCurrent ? 0 : undefined);
+        applyTopicSummary(li, {
+            count: numericCount,
+            unreadCount: unreadCount !== undefined ? unreadCount : 0
+        });
+        li.dataset.countLoading = 'false';
     }
 
     function createTopicListItem(topic, currentSelectedItem, currentTopicId, itemConfigFull) {
@@ -1778,6 +1849,10 @@ window.topicListManager = (() => {
     }
 
     function dispose() {
+        if (typeof chatRepositorySubscription === 'function') {
+            chatRepositorySubscription();
+            chatRepositorySubscription = null;
+        }
         surfaceObserver?.disconnect();
         surfaceObserver = null;
         cancelPendingTopicSearch();
@@ -1801,6 +1876,7 @@ window.topicListManager = (() => {
         syncSurfaceVisibility,
         showTopicContextMenu,
         setupMouseShortcuts,
+        updateTopicMessageCount,
         dispose
     };
 })();
