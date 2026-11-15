@@ -419,6 +419,19 @@ ${markdownBaseCss('.vdoc-runtime')}
             return root;
         }
 
+        function restoreRuntimeResources(root) {
+            const restoreHtml = context.resourceResolver?.()?.restoreHtml;
+            if (!restoreHtml || !root?.querySelectorAll) return root;
+            const nodes = [root, ...root.querySelectorAll('[src],[href],[poster],[xlink\\:href]')];
+            nodes.forEach(node => {
+                for (const attribute of ['src', 'href', 'poster', 'xlink:href']) {
+                    const value = node.getAttribute(attribute);
+                    if (value) node.setAttribute(attribute, restoreHtml(value));
+                }
+            });
+            return root;
+        }
+
         function renderMath(root) {
             root?.querySelectorAll?.('[data-vdoc-math]').forEach((node) => {
                 const latex = decodeMathSource(node);
@@ -545,6 +558,7 @@ ${markdownBaseCss('.vdoc-runtime')}
             createRuntime,
             decodeMathSource,
             restoreMathSemantics,
+            restoreRuntimeResources,
             renderMath,
             decodeMermaidSource,
             renderMermaid,

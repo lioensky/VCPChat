@@ -54,7 +54,7 @@
         function capture(options = {}) {
             assertActive();
             if (state.restoring || !documentPort.document()) return false;
-            context.editorPort?.flush?.();
+            if (context.editorPort?.flush?.() === false) return false;
             const key = String(options.branchKey || resolvedBranchKey());
             const branch = branchFor(key);
             const serialized = snapshot();
@@ -100,7 +100,7 @@
             if (!branch) return false;
             window.clearTimeout(branch.burstTimer);
             branch.burstTimer = null;
-            context.editorPort?.flush?.();
+            if (context.editorPort?.flush?.() === false) return false;
             if (!branch.burstDirty && options.force !== true) {
                 notify(options.reason || 'history-finalize-unchanged', key);
                 return false;
@@ -132,6 +132,7 @@
 
         function restore(offset) {
             assertActive();
+            if (context.editorPort?.flush?.() === false) return false;
             const key = resolvedBranchKey();
             const branch = branchFor(key, { create: false });
             const viewState = context.editorPort?.captureViewState?.() || null;
