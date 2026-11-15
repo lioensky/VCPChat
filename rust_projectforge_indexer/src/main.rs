@@ -22,8 +22,29 @@ mod scan;
 mod symbols;
 mod geo;
 mod component;
+mod transport;
+mod storage;
+mod service;
+mod edit;
+mod text_snapshot;
+mod symbol_address;
+mod project_path;
+mod edit_pipeline;
+mod file_replace;
+mod file_commit;
+mod file_service;
+mod commit_journal;
+mod line_diff;
+mod commit_coordinator;
+mod validation;
+mod validation_process;
+mod edit_service;
+mod edit_tickets;
+mod service_config;
+mod todo_refs;
+mod elision;
 
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -158,17 +179,34 @@ fn handle(state: &mut State, method: &str, params: &Value) -> Result<Value, Fail
 }
 
 fn write_line(out: &mut impl Write, value: &Value) -> io::Result<()> {
-    serde_json::to_writer(&mut *out, value)?;
-    out.write_all(b"\n")?;
-    out.flush()
+    transport::write_frame(out, value)
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.is_empty() {
+        if !matches!(args.len(),3|5) || args[0] != "--storage-service" || args[1] != "--db"
+            || (args.len()==5 && args[3]!="--config") {
+            eprintln!("usage: projectforge_indexer [--storage-service --db ABSOLUTE_PATH [--config ABSOLUTE_PATH]]");
+            std::process::exit(2);
+        }
+        let config=if args.len()==5 {Some(Path::new(&args[4]))} else {None};
+        if let Err(error) = service::run(Path::new(&args[2]),config) {
+            eprintln!("[projectforge-storage] {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let mut languages: Vec<&str> = Lang::ALL.iter().map(|l| l.name()).collect();
     languages.push("binary");
-    if write_line(&mut out, &json!({ "type": "ready", "protocolVersion": PROTOCOL_VERSION, "languages": languages })).is_err() {
+    if write_line(&mut out, &json!({
+        "type": "ready", "protocolVersion": PROTOCOL_VERSION, "languages": languages,
+        "capabilities": ["outline", "findSymbols", "facts", "boundedTransport"],
+        "maxFrameBytes": transport::MAX_FRAME_BYTES,
+        "requestQueueCapacity": transport::REQUEST_QUEUE_CAPACITY
+    })).is_err() {
         return;
     }
 
@@ -178,12 +216,21 @@ fn main() {
     // stdin 关闭 → 读线程结束 → 发送端释放 → 主线程收到 Disconnected 退出，不遗留孤儿进程。
     // 在途请求计数：读线程发送前 +1，主线程取出后 -1；>0 时正在进行的补齐立即中止。
     // 用计数而非布尔：避免"清标志"与"新请求到达"之间的竞态。
-    let (tx, rx) = mpsc::channel::<String>();
+    let (tx, rx) = mpsc::sync_channel::<String>(transport::REQUEST_QUEUE_CAPACITY);
     let queued = Arc::new(AtomicUsize::new(0));
     let reader_queued = Arc::clone(&queued);
     thread::spawn(move || {
-        for line in io::stdin().lock().lines() {
-            let Ok(line) = line else { break };
+        let stdin = io::stdin();
+        let mut input = stdin.lock();
+        loop {
+            let line = match transport::read_frame(&mut input, transport::MAX_FRAME_BYTES) {
+                Ok(Some(line)) => line,
+                Ok(None) => break,
+                Err(error) => {
+                    eprintln!("[projectforge_indexer] fatal transport error: {error}");
+                    break;
+                }
+            };
             reader_queued.fetch_add(1, Ordering::SeqCst);
             if tx.send(line).is_err() {
                 break;

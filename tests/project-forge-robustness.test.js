@@ -1,43 +1,38 @@
 'use strict';
-// ProjectForge 健壮性回归测试：
-// 1) 写盘前复核 hash：读取与写入之间文件被外部修改时放弃写入；
+// ProjectForge 健壮性回归测试（原生服务路径）：
+// 1) 写盘前复核 hash：真实校验 worker 期间文件被外部修改时放弃写入；
 // 2) Rollback 中途失败时恢复已写入文件、且不记录回退批次；
-// 3) Python 校验改为异步后不再阻塞事件循环。
+// 3) Python 校验经原生服务异步执行，期间事件循环可以继续运行。
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
-// 必须在加载 ProjectForge 之前替换 execFile（validator 在加载时解构引用）。
-const cp = require('child_process');
-const originalExecFile = cp.execFile;
-let beforePythonHook = null;
-cp.execFile = function patchedExecFile(...args) {
-    if (beforePythonHook) {
-        const hook = beforePythonHook;
-        beforePythonHook = null;
-        hook();
-    }
-    return originalExecFile.apply(this, args);
-};
-
 const forge = require('../VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService');
-const { validateCode } = require('../VCPDistributedServer/shared/fileKit/validator');
+const { ProjectServiceClient } = require('../VCPDistributedServer/Plugin/ProjectForge/serviceClient');
+
+const binaryPath = process.env.PF_SERVICE_BINARY || path.resolve(__dirname, '../rust_projectforge_indexer/target/debug',
+    process.platform === 'win32' ? 'projectforge_indexer.exe' : 'projectforge_indexer');
+const requireBinary = process.env.PF_SERVICE_REQUIRE_BINARY === '1';
+if (requireBinary && !fs.existsSync(binaryPath)) throw new Error(`Required Rust binary missing: ${binaryPath}`);
+const hasBinary = fs.existsSync(binaryPath);
 
 let tmp;
 let wsRoot;
+let forgeOptions;
 
 const call = args => forge.processToolCall(args);
 const textOf = r => r.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
 const norm = s => s.replace(/\r\n/g, '\n');
 
 test.before(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-robust-'));
+    const tempRoot = process.env.PF_TEST_TEMP || path.join(__dirname, '..', '.forge', 'test-temp');
+    fs.mkdirSync(tempRoot, { recursive: true });
+    tmp = fs.mkdtempSync(path.join(tempRoot, 'pf-robust-'));
     wsRoot = path.join(tmp, 'ws');
     fs.mkdirSync(wsRoot, { recursive: true });
-    forge.initialize({
+    forgeOptions = {
         dbPath: path.join(tmp, 'db', 'pf.db'),
         services: {
             workspaceService: {
@@ -45,39 +40,88 @@ test.before(() => {
                 getActiveWorkspaceId: () => 'ws1',
             },
         },
-        trash: async abs => fs.rmSync(abs, { force: true }),
         logger: { log() {}, warn() {}, error() {} },
-    });
+    };
+    forge.initialize(forgeOptions);
 });
 
 test.after(async () => {
-    cp.execFile = originalExecFile;
     await forge.cleanup();
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 test('EditCode：代码审查期间文件被外部修改时放弃写入，不覆盖外部内容', async () => {
-    const projectId = (await call({ command: 'CreateProject', name: 'lf1', dir: 'lf1' })).details.project.id;
-    const abs = path.join(wsRoot, 'lf1', 'm.py');
-    const created = await call({ command: 'CreateFile', projectId, path: 'm.py', content: 'x = 1\n', reason: 'init' });
-    assert.equal(created.details.status, 'ok', textOf(created));
+    assert.ok(hasBinary, `native binary missing: ${binaryPath}`);
+    const projectRoot = path.join(wsRoot, 'lf1');
+    const target = path.join(projectRoot, 'm.py');
+    const realWorker = path.resolve(__dirname, '../VCPDistributedServer/Plugin/ProjectForge/validationWorker.cjs');
+    const baseConfig = {
+        version: 1, allowedRoots: [wsRoot], nodeExecutable: process.execPath,
+        validationCwd: path.resolve(__dirname, '..'), validationTimeoutMs: 10000,
+    };
+    const setupConfig = path.join(tmp, 'lf1-setup.json');
+    fs.writeFileSync(setupConfig, JSON.stringify({ ...baseConfig, validationWorker: realWorker }));
+    fs.mkdirSync(projectRoot, { recursive: true });
+    const dbPath = path.join(tmp, 'native-db', 'lf1.db');
+    const setup = new ProjectServiceClient({ dbPath, binaryPath, configPath: setupConfig });
+    try {
+        await setup.start();
+        await setup.request('store.createProject', {
+            operationId: 'lf1-create', projectId: 'lf1', name: 'lf1', root: projectRoot, createRoot: true,
+        });
+        await setup.request('file.execute', {
+            operationId: 'lf1-file', projectId: 'lf1', kind: 'create', reason: 'init',
+            filePath: 'm.py', content: 'x = 1\n',
+        });
+    } finally {
+        await setup.close();
+    }
+    assert.equal(fs.readFileSync(target, 'utf8'), 'x = 1\n');
 
-    beforePythonHook = () => fs.writeFileSync(abs, 'x = 99\n');
-    await assert.rejects(
-        call({ command: 'EditCode', projectId, path: 'm.py', start: 1, end: 1, content: 'x = 2', reason: 'edit' }),
-        /被外部修改/,
-    );
-    assert.equal(beforePythonHook, null, 'Python 校验钩子未被触发');
-    assert.equal(fs.readFileSync(abs, 'utf8'), 'x = 99\n');
+    // The hook runs inside the real native validation worker, after planning
+    // read the snapshot but before Rust re-validates the plan against disk.
+    const hookWorker = path.join(tmp, 'external-change-worker.cjs');
+    fs.writeFileSync(hookWorker, `'use strict';
+const fs = require('node:fs');
+fs.writeFileSync(${JSON.stringify(target)}, 'x = 99\\n');
+const { review } = require(${JSON.stringify(realWorker)});
+(async () => {
+    let input = '';
+    for await (const chunk of process.stdin) input += chunk;
+    const result = await review(JSON.parse(input));
+    process.stdout.write(JSON.stringify({ ok: true, result }) + '\\n');
+})().catch(error => {
+    process.stdout.write(JSON.stringify({
+        ok: false, error: { code: 'VALIDATION_FAILED', message: String(error.message) },
+    }) + '\\n');
+    process.exitCode = 1;
+});
+`);
+    const hookConfig = path.join(tmp, 'lf1-hook.json');
+    fs.writeFileSync(hookConfig, JSON.stringify({ ...baseConfig, validationWorker: hookWorker }));
+    const client = new ProjectServiceClient({ dbPath, binaryPath, configPath: hookConfig });
+    try {
+        await assert.rejects(
+            client.request('edit.execute', {
+                operationId: 'lf1-edit', projectId: 'lf1', filePath: 'm.py', reason: 'edit',
+                steps: [{ step: 1, op: 'replace', start: 1, end: 1, content: 'x = 2' }],
+            }),
+            /file changed during validation|target changed/,
+        );
+        assert.equal(fs.readFileSync(target, 'utf8'), 'x = 99\n');
+        assert.equal((await client.operationStatus('lf1-edit')).state, 'unknown');
+    } finally {
+        await client.close();
+    }
 });
 
-test('Rollback：中途写入失败时恢复已写入文件，并且不记录回退节点', async () => {
+test('Rollback：中途写入失败时补偿回滚已写部分并释放锁，解除只读后重启重试完成回退', async () => {
     const projectId = (await call({ command: 'CreateProject', name: 'lf2', dir: 'lf2' })).details.project.id;
     const a = path.join(wsRoot, 'lf2', 'a.txt');
     const b = path.join(wsRoot, 'lf2', 'b.txt');
     await call({ command: 'CreateFile', projectId, path: 'a.txt', content: 'a1\n', reason: 'init a' });
     const cb = await call({ command: 'CreateFile', projectId, path: 'b.txt', content: 'b1\n', reason: 'init b' });
-    const nb = cb.details.nodeId;
+    const nb = cb.details.nodeIds?.[0] ?? cb.details.nodeId;
     assert.ok(nb, textOf(cb));
     for (const [p, c] of [['a.txt', 'a2'], ['b.txt', 'b2']]) {
         const r = await call({ command: 'EditCode', projectId, path: p, start: 1, end: 1, content: c, reason: `edit ${p}` });
@@ -89,19 +133,29 @@ test('Rollback：中途写入失败时恢复已写入文件，并且不记录回
         await assert.rejects(
             call({ command: 'Rollback', projectId, toNode: `n${nb}`, reason: 'test' }),
             err => {
-                assert.match(err.message, /回退中途失败/);
-                assert.match(err.message, /已写入的 1 个文件中，1 个已恢复/);
+                assert.match(err.message, /file commit conflict: apply failed at b\.txt/);
+                assert.match(err.message, /os error 5|EPERM|拒绝访问/);
                 return true;
             },
         );
-        assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a2\n', 'a.txt 应恢复为回退前内容');
-        assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b2\n');
+        // 简化 conflict 模型：多文件写中途失败后立即补偿回滚已写部分并释放资源锁，
+        // 不留下半套落盘或持久挂起状态，解除外部阻塞后可直接重试。
+        assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a2\n', '已应用的 a.txt 必须被补偿回退到回退前快照');
+        assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b2\n', '失败目标保持原内容');
         const hist = await call({ command: 'SearchHistory', projectId, limit: 50 });
         assert.ok(!hist.details.nodes.some(n => n.op === 'rollback'), '失败的回退不应留下 rollback 节点');
     } finally {
         fs.chmodSync(b, 0o666);
     }
 
+    await forge.cleanup();
+    forge.initialize(forgeOptions);
+    assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b2\n', '重启前不应假装回退已完成');
+    const reopened = await call({ command: 'GetProject', projectId });
+    assert.equal(reopened.details.project.id, projectId);
+    assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a2\n');
+    assert.equal(norm(fs.readFileSync(b, 'utf8')), 'b2\n');
+    // 资源锁已立即释放，解除只读后重试同一 Rollback 应直接成功。
     const ok = await call({ command: 'Rollback', projectId, toNode: `n${nb}`, reason: 'retry' });
     assert.equal(ok.details.status, 'ok', textOf(ok));
     assert.equal(norm(fs.readFileSync(a, 'utf8')), 'a1\n');
@@ -109,10 +163,19 @@ test('Rollback：中途写入失败时恢复已写入文件，并且不记录回
 });
 
 test('Python 校验异步执行，期间事件循环可以继续运行', async () => {
+    const projectId = (await call({ command: 'CreateProject', name: 'lf3', dir: 'lf3' })).details.project.id;
+    const created = await call({ command: 'CreateFile', projectId, path: 'm.py', content: 'x = 1\n', reason: 'init' });
+    assert.equal(created.details.status, 'ok', textOf(created));
     let ticks = 0;
     const timer = setInterval(() => { ticks += 1; }, 1);
-    await validateCode('x.py', 'x = 1\n');
-    clearInterval(timer);
+    let edited;
+    try {
+        edited = await call({ command: 'EditCode', projectId, path: 'm.py', target: 'x = 1', content: 'x = 2', reason: 'python' });
+    } finally {
+        clearInterval(timer);
+    }
+    assert.equal(edited.details.status, 'ok', textOf(edited));
+    assert.equal(norm(fs.readFileSync(path.join(wsRoot, 'lf3', 'm.py'), 'utf8')), 'x = 2\n');
     assert.ok(ticks >= 1, `校验期间事件循环被阻塞（ticks=${ticks}）`);
 });
 

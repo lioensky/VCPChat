@@ -9,6 +9,12 @@ description = "ProjectForge AST symbol indexer: tree-sitter outline / symbol sea
 license = "CC-BY-NC-SA-4.0"
 
 [dependencies]
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
+sha2 = "0.10"
+flate2 = "1"
+base64 = "0.22"
+fs2 = "0.4"
+tokio = { version = "1", features = ["rt", "process", "io-util", "time", "macros"] }
 ignore = "0.4"
 rayon = "1"
 serde = { version = "1", features = ["derive"] }
@@ -27,6 +33,15 @@ tree-sitter-java = "0.23"
 tree-sitter-c-sharp = "0.23"
 tree-sitter-lua = "0.5"
 rustc-demangle = "0.1"
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 tempfile = "3"
 
