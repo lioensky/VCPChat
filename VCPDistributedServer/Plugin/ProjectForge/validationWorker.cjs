@@ -2,7 +2,11 @@
 // One request/process. Rust owns timeout, cancellation and process-tree cleanup.
 // Hashes cover the exact normalized text sent for validation, not encoded file bytes.
 const crypto = require('node:crypto');
-const { validateCodeStrict, diffDiagnostics, isValidatable } = require('../../shared/fileKit/validator');
+const path = require('node:path');
+// The worker is a native file, but Node dependencies resolve through the archive.
+const validatorModule = path.resolve(__dirname, '../../shared/fileKit/validator.js')
+    .replace(/([\\/])app\.asar\.unpacked(?=[\\/]|$)/, '$1app.asar');
+const { validateCodeStrict, diffDiagnostics, isValidatable } = require(validatorModule);
 const MAX_INPUT = 64 * 1024 * 1024;
 const MAX_TEXT = 8 * 1024 * 1024;
 const MAX_OUTPUT = 2 * 1024 * 1024;

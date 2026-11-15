@@ -55,12 +55,13 @@ function langOf(filePath) {
     if (isBinaryPath(filePath)) return 'binary';
     return SUPPORTED_EXT.get(path.extname(String(filePath || '')).toLowerCase()) || null;
 }
+function resolveNativePath(filePath) {
+    return path.resolve(filePath).replace(/([\\/])app\.asar(?=[\\/]|$)/, '$1app.asar.unpacked');
+}
+
 function resolveDefaultBinaryPath(platform = process.platform, arch = process.arch) {
     const name = platform === 'win32' ? 'projectforge_indexer.exe' : 'projectforge_indexer';
-    let dir = path.join(__dirname, 'bin', `${platform}-${arch}`);
-    const marker = `${path.sep}app.asar${path.sep}`;
-    if (dir.includes(marker)) dir = dir.replace(marker, `${path.sep}app.asar.unpacked${path.sep}`);
-    return path.join(dir, name);
+    return resolveNativePath(path.join(__dirname, 'bin', `${platform}-${arch}`, name));
 }
 
 class IndexerError extends Error {
@@ -299,4 +300,4 @@ class IndexerClient {
     }
 }
 
-module.exports = { IndexerClient, IndexerError, langOf, resolveDefaultBinaryPath, PROTOCOL_VERSION };
+module.exports = { IndexerClient, IndexerError, langOf, resolveDefaultBinaryPath, resolveNativePath, PROTOCOL_VERSION };

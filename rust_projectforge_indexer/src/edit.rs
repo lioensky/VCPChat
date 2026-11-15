@@ -1,5 +1,7 @@
 //! Native editing plans. Byte ranges always belong to the original LF snapshot.
-//! This module does not write files. Fuzzy/symbol/elision planning is not implemented here yet.
+//! This module does not write files.
+//! 目标定位按证据强度分四级：逐字节 exact → 整行省略号 elision → 按行词法 token → 符号结构 structure。
+//! 只有逐字节命中能自动执行；其余层级只产候选，落计划时必须由调用方带 expectedHash 授权。
 use serde::{Deserialize, Serialize};
 
 const MAX_TEXT: usize = 8 * 1024 * 1024;
@@ -18,8 +20,34 @@ pub enum Action {
         #[serde(default)] pick: Option<usize>,
         #[serde(default)] line: Option<usize>,
     },
-    Insert { after: usize, content: String },
-    Target { target: String, replace: String, #[serde(default)] pick: Vec<usize> },
+    Insert {
+        #[serde(default)] after: Option<Position>,
+        #[serde(default)] before: Option<Position>,
+        content: String,
+        #[serde(default)] pick: Option<usize>,
+        #[serde(default)] line: Option<usize>,
+    },
+    Target {
+        target: String, replace: String,
+        #[serde(default)] pick: Vec<usize>,
+        #[serde(default)] all: bool,
+        #[serde(default)] line: Option<usize>,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Position { Line(usize), Address(String) }
+
+impl Action {
+    pub fn needs_symbols(&self) -> bool {
+        match self {
+            Self::Symbol {..} => true,
+            Self::Insert {after,before,..} => matches!(before.as_ref().or(after.as_ref()),
+                Some(Position::Address(s)) if s.get(..7).is_some_and(|p|p.eq_ignore_ascii_case("symbol:"))),
+            _ => false,
+        }
+    }
 }
 #[derive(Debug, Clone, Deserialize)]
 pub struct Step {
@@ -59,13 +87,42 @@ fn anchored_range(idx: &Lines<'_>, start: usize, end: usize, step: &Step) -> Res
     }
     Err("expect anchor not found within drift budget".into())
 }
+/// 命中的证据层级，从强到弱。弱的层级只提供候选，需显式 pick 选择。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tier { Exact, Elision, Token, Structure }
+impl Tier {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Exact => "exact", Self::Elision => "elision",
+            Self::Token => "token", Self::Structure => "structure",
+        }
+    }
+    /// 逐字节字面量命中保持旧行为：唯一命中与 line 就近都可以直接执行。
+    fn auto_apply(self) -> bool { matches!(self, Self::Exact) }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Candidate { pub index: usize, pub start_line: usize, pub end_line: usize }
+pub struct Candidate {
+    pub index: usize,
+    pub start_line: usize,
+    pub end_line: usize,
+    /// 该候选由哪一级证据产生（exact / elision / token / structure / symbol）。
+    pub kind: &'static str,
+    /// 包住候选区间的符号限定名；快路径未解析 AST 时缺省。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
 #[derive(Debug, Serialize)]
 pub struct Issue { pub step: usize, pub message: String }
 #[derive(Debug, Serialize)]
-pub struct Ambiguity { pub step: usize, pub total: usize, pub candidates: Vec<Candidate> }
+pub struct Ambiguity {
+    pub step: usize,
+    pub total: usize,
+    /// 触发歧义的证据层级，供调用方判断这次需要多强的确认。
+    pub kind: &'static str,
+    pub candidates: Vec<Candidate>,
+}
 #[derive(Debug, Serialize)]
 #[serde(rename_all="camelCase")]
 pub struct Placement {
@@ -118,6 +175,13 @@ impl<'a> Lines<'a> {
         Ok((self.starts[start-1],self.starts.get(end).copied().unwrap_or(self.text.len())))
     }
     fn line(&self, offset: usize) -> usize { self.starts.partition_point(|&i| i <= offset) }
+    /// 行内文本（不含行尾换行），供按行词法比较使用。
+    fn line_text(&self, line: usize) -> &'a str {
+        if line == 0 || line > self.count { return ""; }
+        let a = self.starts[line - 1];
+        let b = self.starts.get(line).copied().unwrap_or(self.text.len());
+        body(&self.text[a..b])
+    }
 }
 fn normalize(text: &str) -> String { text.replace("\r\n","\n").replace('\r',"\n") }
 fn body(text: &str) -> &str { text.strip_suffix('\n').unwrap_or(text) }
@@ -141,7 +205,8 @@ fn display_prefix(line:&str)->Option<&str> {
 fn clean_input(text:&str)->String {
     let normalized=normalize(text);
     let mut nonempty=normalized.split('\n').filter(|line|!line.trim().is_empty()).peekable();
-    if nonempty.peek().is_none() || !nonempty.all(|line|display_prefix(line).is_some()) {
+    if nonempty.peek().is_none() || !nonempty.all(|line|
+        matches!(line.trim(), "..."|"…"|"⋮") || display_prefix(line).is_some()) {
         return normalized;
     }
     normalized.split('\n').map(|line| {
@@ -155,7 +220,152 @@ fn conflicts(a: &Patch,b: &Patch) -> bool {
     if b.start == b.end { return a.start < b.start && b.start < a.end; }
     a.start < b.end && b.start < a.end
 }
-fn plan(idx: &Lines<'_>, st: &Step, order: usize, symbols: &[crate::symbols::Symbol]) -> Result<Result<Vec<Patch>,Ambiguity>,String> {
+/// 单个步骤的规划结果：只含补丁本身。
+struct Plan { patches: Vec<Patch> }
+
+/// token 层的候选与工作量上限，防止在超大文件上做无界扫描。
+const MAX_TOKEN_HITS: usize = 1_000;
+const MAX_TOKEN_WORK: usize = 400_000;
+
+fn is_indent_byte(b: u8) -> bool { b == b' ' || b == b'\t' }
+
+/// 一行内的词法单元：引号字符串整体成为一个 token（其内部空格原样保留），
+/// 其余连续非空白字符成段切分（标点与标识符贴合，不做猜测性拆分）。
+fn lex_line(line: &str) -> Vec<&str> {
+    let mut tokens = Vec::new();
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if is_indent_byte(bytes[i]) { i += 1; continue; }
+        let start = i;
+        let quote = bytes[i];
+        if quote == b'"' || quote == b'\'' || quote == b'`' {
+            i += 1;
+            while i < bytes.len() {
+                let b = bytes[i];
+                if b == b'\\' {
+                    // 转义后跳过一个完整字符，避免停在多字节字符中间切开切片。
+                    i += 1;
+                    while i < bytes.len() && (bytes[i] & 0xC0) == 0x80 { i += 1; }
+                    continue;
+                }
+                i += 1;
+                if b == quote { break; }
+            }
+            tokens.push(&line[start..i]);
+            continue;
+        }
+        while i < bytes.len() {
+            let b = bytes[i];
+            if is_indent_byte(b) || b == b'"' || b == b'\'' || b == b'`' { break; }
+            i += 1;
+        }
+        tokens.push(&line[start..i]);
+    }
+    tokens
+}
+
+fn line_indent(line: &str) -> &str {
+    let trimmed = line.trim_start_matches(|c| c == ' ' || c == '\t');
+    &line[..line.len() - trimmed.len()]
+}
+
+/// 三级候选：按行词法切分后比对。行内空白差异被忽略，引号字符串内部必须逐字相等；
+/// 多行目标只比较「相对首行的缩进」，避免把同内容但不同嵌套层的块当成同一处（Python 尤甚）。
+fn token_hits(idx: &Lines<'_>, target: &str) -> Result<Vec<(usize, usize)>, String> {
+    let mut rows: Vec<(&str, Vec<&str>)> = Vec::new();
+    for line in target.split('\n') {
+        rows.push((line_indent(line), lex_line(line.trim_start_matches(|c| c == ' ' || c == '\t'))));
+    }
+    // 首尾空行只是排版，不参与匹配。
+    while rows.first().is_some_and(|row| row.1.is_empty()) { rows.remove(0); }
+    while rows.last().is_some_and(|row| row.1.is_empty()) { rows.pop(); }
+    if rows.is_empty() { return Ok(Vec::new()); }
+    let base_target = rows[0].0;
+    let mut relative: Vec<Option<&str>> = vec![Some("")];
+    for (indent, _) in rows.iter().skip(1) {
+        relative.push(indent.strip_prefix(base_target));
+    }
+    // 目标自身缩进关系不成立（后续行比首行更浅）：不做任何猜测。
+    if relative.iter().skip(1).any(Option::is_none) { return Ok(Vec::new()); }
+    let span = rows.len();
+    if idx.count < span { return Ok(Vec::new()); }
+    let tokens: usize = rows.iter().map(|row| row.1.len()).sum();
+    if tokens > MAX_TOKEN_WORK { return Err("target token budget exceeded".into()); }
+    let mut work = MAX_TOKEN_WORK;
+    let mut hits = Vec::new();
+    for start in 1..=idx.count - span + 1 {
+        let base_source = line_indent(idx.line_text(start));
+        let mut matched = true;
+        for (k, (_, wanted)) in rows.iter().enumerate() {
+            work = work.checked_sub(1).ok_or("target token work budget exceeded")?;
+            let text = idx.line_text(start + k);
+            let found = lex_line(text.trim_start_matches(|c| c == ' ' || c == '\t'));
+            if found != *wanted { matched = false; break; }
+            if k > 0 {
+                let Some(relative) = relative[k] else { matched = false; break; };
+                if !line_indent(text).strip_prefix(base_source).is_some_and(|rest| rest == relative) {
+                    matched = false;
+                    break;
+                }
+            }
+        }
+        if !matched { continue; }
+        if hits.len() >= MAX_TOKEN_HITS { return Err("target token candidate budget exceeded".into()); }
+        let last = start + span - 1;
+        hits.push((idx.starts[start - 1], idx.starts.get(last).copied().unwrap_or(idx.text.len())));
+    }
+    Ok(hits)
+}
+
+/// 四级候选：目标本身是某个符号的签名 / 名字 / 限定名，区间取完整定义 full_start..=end。
+/// 只有单行目标参与结构匹配；多行块交给 token 层。
+fn structure_hits(idx: &Lines<'_>, target: &str,
+    symbols: &[crate::symbols::Symbol]) -> Vec<(usize, usize)> {
+    if symbols.is_empty() || target.contains('\n') { return Vec::new(); }
+    let wanted = target.trim();
+    if wanted.is_empty() { return Vec::new(); }
+    let normalized = crate::symbol_address::normalize(wanted);
+    let rank = |symbol: &crate::symbols::Symbol| -> Option<u8> {
+        let signature = symbol.signature.trim();
+        if !signature.is_empty() && signature == wanted { return Some(0); }
+        if symbol.name == wanted { return Some(1); }
+        if !normalized.is_empty()
+            && crate::symbol_address::normalize(&symbol.qualified) == normalized {
+            return Some(2);
+        }
+        None
+    };
+    let mut best: Option<u8> = None;
+    let mut hits = Vec::new();
+    for symbol in symbols {
+        let Some(current) = rank(symbol) else { continue };
+        match best {
+            Some(winner) if current > winner => continue,
+            Some(winner) if current < winner => { best = Some(current); hits.clear(); }
+            Some(_) => {}
+            None => best = Some(current),
+        }
+        let Ok((start, end)) = idx.range(symbol.full_start, symbol.end) else { continue };
+        hits.push((start, end));
+    }
+    hits
+}
+
+/// 包住该行区间的最内层符号限定名；快路径没有 AST 时返回 None。
+fn scope_of(symbols: &[crate::symbols::Symbol], start_line: usize, end_line: usize) -> Option<String> {
+    symbols.iter()
+        .filter(|symbol| symbol.full_start <= start_line && end_line <= symbol.end)
+        .min_by_key(|symbol| symbol.end.saturating_sub(symbol.full_start))
+        .map(|symbol| if symbol.qualified.is_empty() { symbol.name.clone() } else { symbol.qualified.clone() })
+}
+
+fn candidate(index: usize, start_line: usize, end_line: usize, kind: &'static str,
+    symbols: &[crate::symbols::Symbol]) -> Candidate {
+    Candidate { index, start_line, end_line, kind, scope: scope_of(symbols, start_line, end_line) }
+}
+
+fn plan(idx: &Lines<'_>, st: &Step, order: usize, symbols: &[crate::symbols::Symbol]) -> Result<Result<Plan,Ambiguity>,String> {
     let patch = |start,end,text| Patch { start,end,text,order,step:st.step };
     match &st.action {
         Action::Replace {start,end,..} | Action::Delete {start,end} => {
@@ -165,17 +375,17 @@ fn plan(idx: &Lines<'_>, st: &Step, order: usize, symbols: &[crate::symbols::Sym
             let replacement=if content.is_empty() {String::new()} else {
                 format!("{}{}",body(&content),if idx.text[..b].ends_with('\n') {"\n"} else {""})
             };
-            Ok(Ok(vec![patch(a,b,replacement)]))
+            Ok(Ok(Plan { patches: vec![patch(a,b,replacement)] }))
         }
         Action::Symbol {symbol,content,body,pick,line} => {
             use crate::symbol_address::{select, range, Selection};
             match select(symbols,symbol,*pick,*line)? {
                 Selection::NotFound => Err("symbol not found in snapshot outline".into()),
                 Selection::Ambiguous(hits) => Ok(Err(Ambiguity {
-                    step:st.step,total:hits.len(),
-                    candidates:hits.iter().take(8).enumerate().map(|(i,&n)|Candidate {
-                        index:i+1,start_line:symbols[n].full_start,end_line:symbols[n].end
-                    }).collect(),
+                    step:st.step,total:hits.len(),kind:"symbol",
+                    candidates:hits.iter().take(8).enumerate().map(|(i,&n)|candidate(
+                        i+1,symbols[n].full_start,symbols[n].end,"symbol",symbols,
+                    )).collect(),
                 })),
                 Selection::Found(i) => {
                     let (start,end)=range(&symbols[i],*body,0,idx.count)?;
@@ -190,76 +400,130 @@ fn plan(idx: &Lines<'_>, st: &Step, order: usize, symbols: &[crate::symbols::Sym
                 }
             }
         }
-        Action::Insert {after,content} => {
-            if *after > idx.count {return Err("insert point outside snapshot".into());}
-            let after=if st.expect.is_some() {
-                if *after==0 {return Err("expect requires an existing insertion anchor line".into());}
-                anchored_range(idx,*after,*after,st)?.0
-            } else {*after};
-            let offset=if after==0 {0} else {idx.range(after,after)?.1};
+        Action::Insert {after,before,content,pick,line} => {
+            if after.is_some() && before.is_some() {return Err("insert requires only one of after or before".into());}
+            let before_side=before.is_some();
+            let point=before.as_ref().or(after.as_ref()).ok_or("insert point is missing")?;
+            let mut symbolic=false;
+            let anchor=match point {
+                Position::Line(n)=>*n,
+                Position::Address(address) if address.eq_ignore_ascii_case("end")=>
+                    if before_side {idx.count+1} else {idx.count},
+                Position::Address(address)=> {
+                    symbolic=true;
+                    use crate::symbol_address::{select,Selection};
+                    match select(symbols,address,*pick,*line)? {
+                        Selection::NotFound=>return Err("insertion symbol not found".into()),
+                        Selection::Ambiguous(hits)=>return Ok(Err(Ambiguity {
+                            step:st.step,total:hits.len(),kind:"symbol",
+                            candidates:hits.iter().take(8).enumerate().map(|(i,&n)|candidate(
+                                i+1,symbols[n].full_start,symbols[n].end,"symbol",symbols,
+                            )).collect(),
+                        })),
+                        Selection::Found(i)=>if before_side {symbols[i].full_start} else {symbols[i].end},
+                    }
+                }
+            };
+            if (before_side && (anchor==0 || anchor>idx.count+1)) || (!before_side && anchor>idx.count) {
+                return Err("insert point outside snapshot".into());
+            }
+            let located=if st.expect.is_some() {
+                if anchor==0 || anchor>idx.count {return Err("expect requires an existing insertion anchor line".into());}
+                anchored_range(idx,anchor,anchor,st)?.0
+            } else {anchor};
+            if symbolic && located!=anchor {return Err("insertion expect cannot drift outside selected symbol".into());}
+            let offset=if before_side {
+                if located==idx.count+1 {idx.text.len()} else {idx.range(located,located)?.0}
+            } else if located==0 {0} else {idx.range(located,located)?.1};
             let content=clean_input(content);
-            let replacement=if after==idx.count && idx.count>0 && !idx.text.ends_with('\n') {
+            let replacement=if offset==idx.text.len() && idx.count>0 && !idx.text.ends_with('\n') {
                 format!("\n{}",body(&content))
             } else {format!("{}\n",body(&content))};
-            Ok(Ok(vec![patch(offset,offset,replacement)]))
+            Ok(Ok(Plan { patches: vec![patch(offset,offset,replacement)] }))
         }
-        Action::Target {target,replace,pick} => {
+        Action::Target {target,replace,pick,all,line} => {
             let target=clean_input(target);
             if target.is_empty() {return Err("target must not be empty".into());}
+            // 一级：逐字节字面量。命中即不再往下猜。
             let hits:Vec<_>=idx.text.match_indices(&target).take(MAX_HITS+1).map(|(i,_)|i).collect();
             if hits.len()>MAX_HITS {return Err("target candidate budget exceeded".into());}
-            if hits.is_empty() {
-                let Some(candidates)=crate::elision::candidates(idx.text,&target)? else {
-                    return Err("target not found".into());
-                };
-                if candidates.is_empty() {return Err("elision anchors not found".into());}
-                // Elision is incomplete source evidence, not an exact replacement target.
-                // Require an explicit selection even when only one pair was found.
-                if pick.is_empty() {
-                    return Ok(Err(Ambiguity {
-                        step:st.step,total:candidates.len(),
-                        candidates:candidates.iter().take(8).enumerate().map(|(i,c)|Candidate {
-                            index:i+1,start_line:c.start_line,end_line:c.end_line,
-                        }).collect(),
-                    }));
+            let mut tier=Tier::Exact;
+            let mut ranges:Vec<(usize,usize)>=hits.iter().map(|&a|(a,a+target.len())).collect();
+            if ranges.is_empty() {
+                // 二级：整行省略号。不完整的源码证据，一律要求显式选择；省略语法锚点失配不再掉进词法层。
+                if let Some(candidates)=crate::elision::candidates(idx.text,&target)? {
+                    if candidates.is_empty() { return Err("elision anchors not found".into()); }
+                    tier=Tier::Elision;
+                    ranges=candidates.iter().map(|c|(c.start,c.end)).collect();
                 }
-                let mut choices=pick.clone();
-                choices.sort_unstable();choices.dedup();
-                if choices.iter().any(|&n|n==0||n>candidates.len()) {
-                    return Err("pick outside elision candidate range".into());
-                }
-                let replacement=clean_input(replace);
-                if replacement.len().checked_add(1).and_then(|n|n.checked_mul(choices.len()))
-                    .is_none_or(|n|n>MAX_TEXT) {
-                    return Err("expanded elision replacement budget exceeded".into());
-                }
-                let mut selected:Vec<Patch>=Vec::new();
-                for choice in choices {
-                    let hit=&candidates[choice-1];
-                    let content=if replacement.is_empty() {String::new()} else {
-                        format!("{}{}",body(&replacement),
-                            if idx.text[..hit.end].ends_with('\n') {"\n"} else {""})
-                    };
-                    let next=patch(hit.start,hit.end,content);
-                    if selected.iter().any(|previous|conflicts(previous,&next)) {
-                        return Err("selected elision ranges overlap".into());
-                    }
-                    selected.push(next);
-                }
-                return Ok(Ok(selected));
             }
-            if pick.is_empty() && hits.len()>1 {
-                return Ok(Err(Ambiguity {step:st.step,total:hits.len(),candidates:hits.iter().take(8).enumerate().map(|(i,&a)|
-                    Candidate{index:i+1,start_line:idx.line(a),end_line:idx.line(a+target.len()-1)}).collect()}));
+            if ranges.is_empty() {
+                // 三级：按行词法。空白差异可接受，字符串内部空格与多行相对缩进不可改。
+                tier=Tier::Token;
+                ranges=token_hits(idx,&target)?;
             }
-            let mut choices=if pick.is_empty() {vec![1]} else {pick.clone()};
+            if ranges.is_empty() {
+                // 四级：符号签名/名字/限定名，区间取完整定义 full_start..=end。
+                tier=Tier::Structure;
+                ranges=structure_hits(idx,&target,symbols);
+            }
+            if ranges.is_empty() {return Err("target not found".into());}
+            let mut choices=if *all {(1..=ranges.len()).collect()} else {pick.clone()};
+            // 只有逐字节命中能自动执行；推断性层级即使只有一个候选也必须显式点选。
+            if choices.is_empty() && tier.auto_apply() {
+                if ranges.len()==1 {choices.push(1);}
+                else if let Some(line)=line {
+                    if *line==0 {return Err("line hint must be positive".into());}
+                    let nearest=ranges.iter().map(|&(a,_)|idx.line(a).abs_diff(*line)).min().unwrap();
+                    let close:Vec<_>=ranges.iter().enumerate()
+                        .filter(|(_,(a,_))|idx.line(*a).abs_diff(*line)==nearest)
+                        .map(|(i,_)|i+1).collect();
+                    if close.len()==1 {choices=close;}
+                }
+            }
+            if choices.is_empty() {
+                return Ok(Err(Ambiguity {step:st.step,total:ranges.len(),kind:tier.name(),
+                    candidates:ranges.iter().take(8).enumerate().map(|(i,&(a,b))|
+                        candidate(i+1,idx.line(a),idx.line(if b>a {b-1} else {a}),tier.name(),symbols)
+                    ).collect()}));
+            }
             choices.sort_unstable(); choices.dedup();
-            if choices.iter().any(|&n|n==0||n>hits.len()) {return Err("pick outside candidate range".into());}
+            if choices.iter().any(|&n|n==0||n>ranges.len()) {return Err("pick outside candidate range".into());}
             let replacement=clean_input(replace);
             if replacement.len().checked_mul(choices.len()).is_none_or(|n| n > MAX_TEXT) {
                 return Err("expanded replacement budget exceeded".into());
             }
-            Ok(Ok(choices.into_iter().map(|n|patch(hits[n-1],hits[n-1]+target.len(),replacement.clone())).collect()))
+            let mut selected:Vec<Patch>=Vec::new();
+            for choice in choices {
+                let (start,end)=ranges[choice-1];
+                let content=if replacement.is_empty() {String::new()} else if tier.auto_apply() {
+                    // 逐字节命中是纯替换：坐标就是文件坐标。
+                    replacement.clone()
+                } else if tier==Tier::Elision {
+                    // 整行块逐字命中：调用方坐标同样是文件坐标，只需补回行尾换行。
+                    format!("{}{}",body(&replacement),if idx.text[..end].ends_with('\n') {"\n"} else {""})
+                } else {
+                    // 词法/结构命中的首行缩进是自由的：把调用方块重新基准到命中处缩进，
+                    // 相对缩进保持不变，再补回行尾换行，避免把 Python 块拽出原有作用域。
+                    let base_target=line_indent(&target);
+                    let base_source=line_indent(idx.line_text(idx.line(start)));
+                    let mut rebased=String::new();
+                    for (i,line) in replacement.split('\n').enumerate() {
+                        if i>0 {rebased.push('\n');}
+                        let rest=line.strip_prefix(base_target).unwrap_or(line);
+                        if rest.trim().is_empty() {continue;}
+                        rebased.push_str(base_source);
+                        rebased.push_str(rest);
+                    }
+                    format!("{}{}",rebased,if idx.text[..end].ends_with('\n') {"\n"} else {""})
+                };
+                let next=patch(start,end,content);
+                if selected.iter().any(|previous|conflicts(previous,&next)) {
+                    return Err("selected target ranges overlap".into());
+                }
+                selected.push(next);
+            }
+            Ok(Ok(Plan { patches: selected }))
         }
     }
 }
@@ -302,20 +566,21 @@ pub fn run_with_symbols(original: &str,steps: &[Step],best_effort: bool,symbols:
         match plan(&idx,st,order,symbols) {
             Err(message)=>errors.push(Issue{step:st.step,message}),
             Ok(Err(a))=>ambiguities.push(a),
-            Ok(Ok(next))=>{
-                let comparisons=next.len().checked_mul(patches.len()).ok_or("overlap budget overflow")?;
-                if comparisons>overlap_budget || patches.len().saturating_add(next.len())>MAX_HITS {
+            Ok(Ok(planned))=>{
+                let comparisons=planned.patches.len().checked_mul(patches.len()).ok_or("overlap budget overflow")?;
+                if comparisons>overlap_budget || patches.len().saturating_add(planned.patches.len())>MAX_HITS {
                     return Err("edit planning work budget exceeded".into());
                 }
                 overlap_budget-=comparisons;
-                let next_bytes=next.iter().try_fold(0usize,|n,p|n.checked_add(p.text.len()));
+                let next_bytes=planned.patches.iter().try_fold(0usize,|n,p|n.checked_add(p.text.len()));
                 if next_bytes.and_then(|n|n.checked_add(planned_bytes)).is_none_or(|n|n>MAX_TEXT) {
                     errors.push(Issue{step:st.step,message:"cumulative plan budget exceeded".into()});
-                } else if next.iter().any(|p|patches.iter().any(|old|conflicts(p,old))) {
+                } else if planned.patches.iter().any(|p|patches.iter().any(|old|conflicts(p,old))) {
                     errors.push(Issue{step:st.step,message:"overlap with an earlier step in original snapshot".into()});
                 } else {
                     planned_bytes += next_bytes.unwrap_or(0);
-                    applied.push(st.step); patches.extend(next);
+                    applied.push(st.step);
+                    patches.extend(planned.patches);
                 }
             }
         }
@@ -538,5 +803,91 @@ mod tests {
         assert_eq!(run("原",&s,false).unwrap().text.as_deref(),Some("甲\n乙\n原"));
         let s=steps(serde_json::json!([{"step":1,"op":"insert","after":1,"content":"末"}]));
         assert_eq!(run("原",&s,false).unwrap().text.as_deref(),Some("原\n末"));
+    }
+
+    #[test]
+    fn token_layer_needs_explicit_pick_and_plans_without_expected_hash() {
+        // 只有空白差异：字面量层不命中，词法层命中，即使只有一个候选也先返回候选。
+        let s=steps(serde_json::json!([
+            {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;"}
+        ]));
+        let rejected=run("const a = 1;\nkeep\n",&s,false).unwrap();
+        assert_eq!(rejected.status,"ambiguous");
+        assert_eq!(rejected.ambiguities[0].kind,"token");
+        assert_eq!(rejected.ambiguities[0].total,1);
+        assert_eq!(rejected.ambiguities[0].candidates[0].kind,"token");
+        assert!(rejected.ambiguities[0].candidates[0].scope.is_none(),"无 AST 时不许伪造 scope");
+        // 多候选仍必须由 pick 消歧，不得猜测。
+        let repeated=run("const a = 1;\nconst a = 1;\n",&s,false).unwrap();
+        assert_eq!(repeated.status,"ambiguous");
+        assert_eq!(repeated.ambiguities[0].total,2);
+        // 选定 token 候选后可直接规划，不再要求外层 expectedHash。
+        let s=steps(serde_json::json!([
+            {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;","pick":[1]}
+        ]));
+        let applied=run("const a = 1;\nkeep\n",&s,false).unwrap();
+        assert_eq!(applied.status,"ok");
+        assert_eq!(applied.text.as_deref(),Some("const a = 2;\nkeep\n"));
+    }
+
+    #[test]
+    fn token_layer_keeps_quoted_spaces_and_relative_indent() {
+        // 引号字符串内部的空格不许被折叠。
+        let s=steps(serde_json::json!([{"step":1,"op":"target","target":"f('a b')","replace":"g('a b')","pick":[1]}]));
+        assert_eq!(run("f('a  b')\n",&s,false).unwrap().status,"error");
+        let s=steps(serde_json::json!([{
+            "step":1,"op":"target","target":"f( 'a  b' )","replace":"g('a  b')","pick":[1]}]));
+        assert_eq!(run("f('a  b')\n",&s,false).unwrap().text.as_deref(),Some("g('a  b')\n"),
+            "字符串外的空白可以不同，字符串内部必须逐字相同");
+        // 多行块：首行缩进自由，后续行只认相对缩进。
+        // 注意目标里刻意多打空格，否则源码本身就是字面量，会先被逐字节层命中。
+        let source="def f():\n    if x:\n        y()\nkeep\n";
+        let s=steps(serde_json::json!([
+            {"step":1,"op":"target","target":"if   x:\n        y()","replace":"if x:\n        y2()","pick":[1]}
+        ]));
+        let wrong=run(source,&s,false).unwrap();
+        assert_eq!(wrong.status,"error","相对缩进差 4 格不许当成同一处");
+        let s=steps(serde_json::json!([
+            {"step":1,"op":"target","target":"if   x:\n    y()","replace":"if x:\n    y2()","pick":[1]}
+        ]));
+        assert_eq!(run(source,&s,false).unwrap().text.as_deref(),
+            Some("def f():\n    if x:\n        y2()\nkeep\n"),
+            "替换块要重新基准到命中处缩进，不能把 Python 块拽出作用域");
+    }
+
+    #[test]
+    fn structure_layer_matches_symbol_signature_and_qualified_name() {
+        let source="class Box {\n  dup() { return 1; }\n}\n";
+        let mut parser=tree_sitter::Parser::new();
+        let outline=crate::symbols::outline(crate::lang::Lang::from_path(
+            std::path::Path::new("a.js")).unwrap(),source,&mut parser).unwrap();
+        let s=steps(serde_json::json!([{"step":1,"op":"target","target":"Box.dup","replace":"dup() { return 2; }"}]));
+        let rejected=run_with_symbols(source,&s,false,&outline.symbols).unwrap();
+        assert_eq!(rejected.status,"ambiguous");
+        assert_eq!(rejected.ambiguities[0].kind,"structure");
+        assert_eq!(rejected.ambiguities[0].candidates[0].scope.as_deref(),Some("Box.dup"));
+        let s=steps(serde_json::json!([{
+            "step":1,"op":"target","target":"Box.dup","replace":"dup() { return 2; }","pick":[1]}]));
+        let applied=run_with_symbols(source,&s,false,&outline.symbols).unwrap();
+        assert_eq!(applied.text.as_deref(),Some("class Box {\n  dup() { return 2; }\n}\n"));
+        let s=steps(serde_json::json!([{
+            "step":1,"op":"target","target":"dup() { return 1; }","replace":"dup() { return 3; }","pick":[1]}]));
+        assert_eq!(run_with_symbols(source,&s,false,&outline.symbols).unwrap().text.as_deref(),
+            Some("class Box {\n  dup() { return 3; }\n}\n"),
+            "签名层命中同样落在整段定义上");
+    }
+
+    #[test]
+    fn exact_and_elision_layers_stay_automatically_applicable() {
+        let s=steps(serde_json::json!([{"step":1,"op":"target","target":"two","replace":"猫"}]));
+        let exact=run("one\ntwo\n",&s,false).unwrap();
+        assert_eq!(exact.text.as_deref(),Some("one\n猫\n"));
+        let s=steps(serde_json::json!([
+            {"step":1,"op":"target","target":"head\n...\ntail","replace":"new","pick":[1]}]));
+        let elision=run("head\nmid\ntail\n",&s,false).unwrap();
+        assert_eq!(elision.text.as_deref(),Some("new\n"));
+        let s=steps(serde_json::json!([{"step":1,"op":"target","target":"x","replace":"y"}]));
+        let ambiguous=run("x x",&s,false).unwrap();
+        assert_eq!(ambiguous.ambiguities[0].kind,"exact");
     }
 }

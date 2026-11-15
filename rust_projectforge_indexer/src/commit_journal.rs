@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS file_commit_intents (
     updated_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_commit_resource_active
-ON file_commit_intents(resource_key) WHERE state IN ('prepared','conflict');
+ON file_commit_intents(resource_key) WHERE state = 'prepared';
 ";
 
 #[derive(Debug)]
@@ -247,10 +247,12 @@ impl Store {
         if ready.plan.expected_hash==ready.plan.after_hash {
             return Err("unchanged plan must not create a commit intent".into());
         }
-        // All deterministic format/work-budget failures must happen before a
-        // durable intent can authorize filesystem mutation.
+        // All deterministic format and hard budget failures must happen before a
+        // durable intent can authorize filesystem mutation. A large in-place
+        // rewrite is priced with the bounded statistics, so it can no longer
+        // block a commit that the byte/line ceilings already allowed.
         let proposed=crate::text_snapshot::TextSnapshot::decode(ready.plan.bytes.clone())?;
-        crate::line_diff::counts(&ready.snapshot.text,&proposed.text)?;
+        crate::line_diff::stats_bounded(&ready.snapshot.text,&proposed.text)?;
         let root=ready.path.root.to_str().ok_or("root is not UTF8")?;
         let resource=ready.path.absolute.to_str().ok_or("path is not UTF8")?;
         #[cfg(windows)]
@@ -300,7 +302,7 @@ impl Store {
         let encoded:Option<String>=self.db.query_row(
             "SELECT commit_context FROM file_commit_intents WHERE operation_id=?",
             [operation],|r|r.get(0))?;
-        let encoded=encoded.ok_or("intent missing commit context; manual reconciliation required")?;
+        let encoded=encoded.ok_or("intent missing commit context")?;
         if encoded.len()>512*1024 {return Err("commit context budget exceeded".into());}
         let context:CommitContext=serde_json::from_str(&encoded)?;
         context.check()?;
@@ -317,7 +319,7 @@ impl Store {
         let encoded:Option<String>=self.db.query_row(
             "SELECT validation_receipt FROM file_commit_intents WHERE operation_id=?",
             [operation],|r|r.get(0))?;
-        let encoded=encoded.ok_or("intent has no validation receipt; manual reconciliation required")?;
+        let encoded=encoded.ok_or("intent has no validation receipt")?;
         if encoded.len()>2*1024*1024 {return Err("validation receipt budget exceeded".into());}
         let receipt:crate::validation::Receipt=serde_json::from_str(&encoded)?;
         let before=Self::blob(&self.db,&intent.before_hash)?;
@@ -337,14 +339,21 @@ impl Store {
             }))?)
     }
 
+    /// Only prepared intents are pending recovery. Conflicts keep their audit snapshots
+    /// but are terminal for recovery and hold no resource lock.
     pub fn pending_intents(&self)->Result<Vec<Intent>> {
+        self.prepared_intents()
+    }
+
+    /// Prepared intents are the only entries eligible for startup recovery.
+    pub fn prepared_intents(&self)->Result<Vec<Intent>> {
         let mut query=self.db.prepare("SELECT operation_id,root,file_path,before_hash,after_hash,state
-            FROM file_commit_intents WHERE state IN ('prepared','conflict') ORDER BY created_at,operation_id LIMIT 201")?;
+            FROM file_commit_intents WHERE state='prepared' ORDER BY created_at,operation_id LIMIT 201")?;
         let intents=query.query_map([],|r|Ok(Intent {
             operation_id:r.get(0)?,root:r.get(1)?,file_path:r.get(2)?,
             before_hash:r.get(3)?,after_hash:r.get(4)?,state:r.get(5)?,
         }))?.collect::<std::result::Result<Vec<_>,_>>()?;
-        if intents.len()>200 {return Err("recovery intent budget exceeded; manual inspection required".into());}
+        if intents.len()>200 {return Err("prepared recovery intent budget exceeded; manual inspection required".into());}
         Ok(intents)
     }
 
@@ -383,13 +392,15 @@ impl Store {
         if !active {return Err("project deleted while file commit pending; recovery required".into());}
         context.verify_todos(&tx,&project)?;
         // Derive statistics from verified durable images, never caller-supplied numbers.
-        // Budget errors roll back finalization and leave the intent recoverable.
+        // Only the hard byte/line ceilings can still fail here and roll back
+        // finalization; a large in-place rewrite is estimated instead.
         let before_image=crate::text_snapshot::TextSnapshot::decode(Self::blob(&tx,&before)?)?;
         let after_image=crate::text_snapshot::TextSnapshot::decode(Self::blob(&tx,&after)?)?;
-        let counts=crate::line_diff::counts(&before_image.text,&after_image.text)?;
-        let added=i64::try_from(counts.added)?;
-        let removed=i64::try_from(counts.removed)?;
+        let stats=crate::line_diff::stats_bounded(&before_image.text,&after_image.text)?;
+        let added=i64::try_from(stats.added)?;
+        let removed=i64::try_from(stats.removed)?;
         let ts:String=tx.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')",[],|r|r.get(0))?;
+        crate::file_commit::record_external_snapshot(&tx,&project,&file,Some(&before),&ts)?;
         tx.execute("INSERT INTO batches(project_id,kind,reason,maid,created_at) VALUES (?,'edit',?,?,?)",
             params![project,reason,maid,ts])?;
         let batch=tx.last_insert_rowid();
@@ -419,7 +430,8 @@ impl Store {
         tx.commit()?;
         Ok(result)
     }
-    /// Conflicts retain ownership and both snapshots until explicitly reconciled.
+    /// Conflicts retain the before/after snapshots and validation receipt, mark the
+    /// intent as conflict, and release the resource lock immediately.
     pub fn conflict_intent(&mut self,operation:&str,message:&str)->Result<()> {
         let message:String=message.chars().take(2000).collect();
         let n=self.db.execute("UPDATE file_commit_intents SET state='conflict',error=?,
@@ -470,16 +482,27 @@ mod tests {
         store.mutate("store.createProject",&json!({
             "operationId":"create","projectId":"p1","name":"test","root":dir.path().to_str().unwrap()
         })).unwrap();
-        let original="a\n".repeat(1001);
+        // 1001-line mid-section rewrite now uses bounded linear stats instead of blocking commit.
+        let medium="a\n".repeat(1001);
+        std::fs::write(dir.path().join("mid.txt"),&medium).unwrap();
+        let mid_steps:Vec<crate::edit::Step>=serde_json::from_value(json!([
+            {"step":1,"op":"replace","start":1,"end":1001,"content":"b\n".repeat(1001)}
+        ])).unwrap();
+        let crate::edit_pipeline::Preparation::Ready(mid_ready)=crate::edit_pipeline::prepare(
+            dir.path(),"mid.txt",&[dir.path().to_path_buf()],&mid_steps,false).unwrap() else {panic!("mid plan")};
+        store.prepare_intent("mid-rewrite",&digest(b"mid-request"),"p1",&mid_ready,"test",None).unwrap();
+
+        // Exceeding hard line ceiling (>200_000 lines) still fails before intent creation or file mutation.
+        let original="a\n".repeat(200_001);
         std::fs::write(dir.path().join("a.txt"),&original).unwrap();
         let steps:Vec<crate::edit::Step>=serde_json::from_value(json!([
-            {"step":1,"op":"replace","start":1,"end":1001,"content":"b\n".repeat(1001)}
+            {"step":1,"op":"replace","start":1,"end":2,"content":"b\n"}
         ])).unwrap();
         let crate::edit_pipeline::Preparation::Ready(ready)=crate::edit_pipeline::prepare(
             dir.path(),"a.txt",&[dir.path().to_path_buf()],&steps,false).unwrap() else {panic!("plan")};
         assert!(store.prepare_intent("oversized",&digest(b"request"),"p1",&ready,"test",None).is_err());
-        assert!(store.pending_intents().unwrap().is_empty());
         assert!(store.intent_status("oversized").unwrap().is_none());
+        assert_eq!(store.pending_intents().unwrap().len(),1);
         assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),original);
     }
     #[test]
@@ -568,6 +591,175 @@ mod tests {
         assert_eq!(inspect_intent(&pending[0],&roots).unwrap(),RecoveryPosition::Conflict);
         store.conflict_intent("edit-1","external content").unwrap();
         assert_eq!(store.intent_status("edit-1").unwrap().unwrap()["state"],"conflict");
-        assert!(store.prepare_intent("edit-3",&request_hash,"p2",&ready,"test",None).is_err());
+        store.prepare_intent("edit-3",&request_hash,"p2",&ready,"test",None).unwrap();
+    }
+
+    /// Real-table row counts: durability claims are made against SQLite, never mocks.
+    fn journal_count(store:&Store,table:&str)->i64 {
+        store.db.query_row(&format!("SELECT COUNT(*) FROM {table}"),[],|r|r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn replayed_operation_id_never_replans_and_commit_releases_resource_lock() {
+        let dir=tempfile::tempdir().unwrap();
+        let db=dir.path().join("pf.db");
+        let file=dir.path().join("a.txt");
+        std::fs::write(&file,b"before").unwrap();
+        let mut store=Store::open(&db).unwrap();
+        store.mutate("store.createProject",&json!({
+            "operationId":"create","projectId":"p1","name":"test","root":dir.path().to_str().unwrap()
+        })).unwrap();
+        let steps=serde_json::from_value::<Vec<crate::edit::Step>>(json!([
+            {"step":1,"op":"target","target":"before","replace":"after"}
+        ])).unwrap();
+        let crate::edit_pipeline::Preparation::Ready(ready)=crate::edit_pipeline::prepare(
+            dir.path(),"a.txt",&[dir.path().to_path_buf()],&steps,false).unwrap() else {panic!("plan")};
+        let request_hash=digest(b"immutable request");
+        store.prepare_intent("edit",&request_hash,"p1",&ready,"test",Some("Kerr")).unwrap();
+        assert_eq!(journal_count(&store,"file_commit_intents"),1);
+        assert_eq!(journal_count(&store,"blobs"),2);
+        // A repeated operation identity must be answered from the durable intent:
+        // no second row, no extra image and no second plan against current bytes.
+        let replay=store.prepare_intent("edit",&request_hash,"p1",&ready,"test",None).unwrap_err().to_string();
+        assert!(replay.contains("already exists"),"{replay}");
+        assert_eq!(journal_count(&store,"file_commit_intents"),1);
+        assert_eq!(journal_count(&store,"blobs"),2);
+        assert_eq!(std::fs::read(&file).unwrap(),b"before");
+        crate::file_replace::replace_existing(&ready.path,&ready.plan.expected_hash,&ready.plan.bytes).unwrap();
+        let committed=store.finish_intent("edit",&ready.plan.after_hash).unwrap();
+        // A committed operation is still single-truth: replay is refused, result is reused.
+        let replay=store.prepare_intent("edit",&request_hash,"p1",&ready,"test",None).unwrap_err().to_string();
+        assert!(replay.contains("already exists"),"{replay}");
+        assert_eq!(journal_count(&store,"file_commit_intents"),1);
+        let status=store.query("operation.status",&json!({"operationId":"edit"})).unwrap();
+        assert_eq!(status["state"],"committed");
+        assert_eq!(status["result"],committed);
+        // Committed is terminal: a late conflict marker cannot reopen it.
+        assert!(store.conflict_intent("edit","late conflict").is_err());
+        assert_eq!(store.intent_status("edit").unwrap().unwrap()["state"],"committed");
+        // The partial unique index must release the resource on commit, or the next
+        // legitimate edit of this file would be blocked forever.
+        let next_steps=serde_json::from_value::<Vec<crate::edit::Step>>(json!([
+            {"step":1,"op":"target","target":"after","replace":"final"}
+        ])).unwrap();
+        let crate::edit_pipeline::Preparation::Ready(next)=crate::edit_pipeline::prepare(
+            dir.path(),"a.txt",&[dir.path().to_path_buf()],&next_steps,false).unwrap() else {panic!("next plan")};
+        store.prepare_intent("edit-2",&digest(b"second request"),"p1",&next,"test",None).unwrap();
+        assert_eq!(journal_count(&store,"file_commit_intents"),2);
+        assert_eq!(std::fs::read(&file).unwrap(),b"after");
+    }
+
+    #[test]
+    fn conflict_retains_snapshots_and_receipt_and_releases_resource_lock() {
+        let dir=tempfile::tempdir().unwrap();
+        let db=dir.path().join("pf.db");
+        let file=dir.path().join("a.txt");
+        std::fs::write(&file,b"before").unwrap();
+        let mut store=Store::open(&db).unwrap();
+        store.mutate("store.createProject",&json!({
+            "operationId":"create","projectId":"p1","name":"test","root":dir.path().to_str().unwrap()
+        })).unwrap();
+        let steps=serde_json::from_value::<Vec<crate::edit::Step>>(json!([
+            {"step":1,"op":"target","target":"before","replace":"after"}
+        ])).unwrap();
+        let crate::edit_pipeline::Preparation::Ready(ready)=crate::edit_pipeline::prepare(
+            dir.path(),"a.txt",&[dir.path().to_path_buf()],&steps,false).unwrap() else {panic!("plan")};
+        store.prepare_intent("edit",&digest(b"request"),"p1",&ready,"test",Some("Kerr")).unwrap();
+        // Third-party bytes: the intent becomes a conflict, but both snapshots, the
+        // receipt and the commit context must stay intact for audit.
+        std::fs::write(&file,b"external content").unwrap();
+        store.conflict_intent("edit","external content").unwrap();
+        assert_eq!(journal_count(&store,"blobs"),2);
+        store.verify_intent_receipt("edit").unwrap();
+        let intent=store.load_intent("edit").unwrap();
+        assert_eq!(intent.state,"conflict");
+        assert_eq!(intent.before_hash,ready.snapshot.hash);
+        assert_eq!(intent.after_hash,ready.plan.after_hash);
+        assert_eq!(Store::blob(&store.db,&intent.before_hash).unwrap(),b"before");
+        assert_eq!(Store::blob(&store.db,&intent.after_hash).unwrap(),b"after");
+        // A conflict can never finalize, and the refused attempt leaves no batch, node
+        // or file_state row behind.
+        assert!(store.finish_intent("edit",&ready.plan.after_hash).is_err());
+        assert_eq!(journal_count(&store,"batches"),0);
+        assert_eq!(journal_count(&store,"nodes"),0);
+        assert_eq!(journal_count(&store,"file_state"),0);
+        assert!(store.prepared_intents().unwrap().is_empty());
+        assert!(store.pending_intents().unwrap().is_empty());
+        // The conflict releases the lock immediately: a new operation may claim the
+        // same resource without restarting or reconciling the old audit row.
+        let next_steps=serde_json::from_value::<Vec<crate::edit::Step>>(json!([
+            {"step":1,"op":"target","target":"external","replace":"repaired"}
+        ])).unwrap();
+        let crate::edit_pipeline::Preparation::Ready(next)=crate::edit_pipeline::prepare(
+            dir.path(),"a.txt",&[dir.path().to_path_buf()],&next_steps,false).unwrap() else {panic!("next plan")};
+        store.prepare_intent("edit-2",&digest(b"other request"),"p1",&next,"test",None).unwrap();
+        assert_eq!(journal_count(&store,"file_commit_intents"),2);
+        assert_eq!(std::fs::read(&file).unwrap(),b"external content");
+        drop(store);
+        let store=Store::open(&db).unwrap();
+        let conflict=store.load_intent("edit").unwrap();
+        assert_eq!(conflict.state,"conflict");
+        assert_eq!(conflict.before_hash,ready.snapshot.hash);
+        assert_eq!(conflict.after_hash,ready.plan.after_hash);
+        assert_eq!(store.prepared_intents().unwrap()[0].operation_id,"edit-2");
+        assert_eq!(store.pending_intents().unwrap()[0].operation_id,"edit-2");
+        assert_eq!(journal_count(&store,"blobs"),4);
+        store.verify_intent_receipt("edit").unwrap();
+        assert_eq!(store.load_commit_context("edit").unwrap().outcome["applied"].as_array().unwrap().len(),1);
+    }
+
+    #[test]
+    fn failure_at_last_finalization_write_rolls_back_whole_batch_then_recovers() {
+        let dir=tempfile::tempdir().unwrap();
+        let db=dir.path().join("pf.db");
+        let file=dir.path().join("a.txt");
+        std::fs::write(&file,b"before").unwrap();
+        let mut store=Store::open(&db).unwrap();
+        store.mutate("store.createProject",&json!({
+            "operationId":"create","projectId":"p1","name":"test","root":dir.path().to_str().unwrap()
+        })).unwrap();
+        // A sentinel timestamp makes "did finalization touch the project row" decidable.
+        store.db.execute("UPDATE projects SET updated_at='2000-01-01T00:00:00.000Z' WHERE id=?1",
+            ["p1"]).unwrap();
+        let steps=serde_json::from_value::<Vec<crate::edit::Step>>(json!([
+            {"step":1,"op":"target","target":"before","replace":"after"}
+        ])).unwrap();
+        let crate::edit_pipeline::Preparation::Ready(ready)=crate::edit_pipeline::prepare(
+            dir.path(),"a.txt",&[dir.path().to_path_buf()],&steps,false).unwrap() else {panic!("plan")};
+        store.prepare_intent("edit",&digest(b"request"),"p1",&ready,"test",None).unwrap();
+        crate::file_replace::replace_existing(&ready.path,&ready.plan.expected_hash,&ready.plan.bytes).unwrap();
+        // Fail the LAST write of finalization (operation log), after batch, node,
+        // todo and file_state were already written inside the same transaction.
+        store.db.execute_batch("CREATE TRIGGER fail_operation BEFORE INSERT ON service_operations
+            BEGIN SELECT RAISE(ABORT,'injected last write failure'); END;").unwrap();
+        assert!(store.finish_intent("edit",&ready.plan.after_hash).is_err());
+        assert_eq!(journal_count(&store,"batches"),0);
+        assert_eq!(journal_count(&store,"nodes"),0);
+        assert_eq!(journal_count(&store,"file_state"),0);
+        assert_eq!(store.db.query_row("SELECT COUNT(*) FROM service_operations WHERE id='edit'",
+            [],|r|r.get::<_,i64>(0)).unwrap(),0);
+        assert_eq!(store.db.query_row("SELECT updated_at FROM projects WHERE id='p1'",
+            [],|r|r.get::<_,String>(0)).unwrap(),"2000-01-01T00:00:00.000Z");
+        // Only the durable intent survives as the recovery handle; bytes are already the
+        // planned ones, so recovery must finish instead of replanning.
+        assert_eq!(store.intent_status("edit").unwrap().unwrap()["state"],"prepared");
+        assert_eq!(store.pending_intents().unwrap().len(),1);
+        assert_eq!(std::fs::read(&file).unwrap(),b"after");
+        store.db.execute_batch("DROP TRIGGER fail_operation").unwrap();
+        drop(store);
+        let mut store=Store::open(&db).unwrap();
+        let result=store.finish_intent("edit",&ready.plan.after_hash).unwrap();
+        assert_eq!(journal_count(&store,"batches"),1);
+        assert_eq!(journal_count(&store,"nodes"),1);
+        assert_eq!(journal_count(&store,"file_state"),1);
+        // Replaying the recovery is idempotent: same receipt, still one batch and node.
+        assert_eq!(store.finish_intent("edit",&ready.plan.after_hash).unwrap(),result);
+        assert_eq!(journal_count(&store,"batches"),1);
+        assert_eq!(journal_count(&store,"nodes"),1);
+        assert_eq!(store.db.query_row("SELECT hash FROM file_state WHERE project_id='p1' AND file_path='a.txt'",
+            [],|r|r.get::<_,String>(0)).unwrap(),ready.plan.after_hash);
+        assert_ne!(store.db.query_row("SELECT updated_at FROM projects WHERE id='p1'",
+            [],|r|r.get::<_,String>(0)).unwrap(),"2000-01-01T00:00:00.000Z");
+        assert!(store.pending_intents().unwrap().is_empty());
     }
 }

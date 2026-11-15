@@ -12,7 +12,6 @@ const os = require('os');
 const path = require('path');
 
 const forge = require('../VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService');
-const engine = require('../VCPDistributedServer/Plugin/ProjectForge/engine');
 const SR = require('../VCPDistributedServer/Plugin/ProjectForge/symbolResolver');
 const { IndexerClient, resolveDefaultBinaryPath } = require('../VCPDistributedServer/Plugin/ProjectForge/indexerClient');
 
@@ -119,11 +118,9 @@ test('symbolResolver：地址语法、打分、歧义、区间', () => {
     assert.deepEqual(SR.symbolRange(sym), { startLine: 3, endLine: 8, mode: 'full' });
     assert.deepEqual(SR.symbolRange(sym, { range: 'body', context: 1, lineCount: 8 }), { startLine: 5, endLine: 8, mode: 'body' });
 
-    // engine.enclosingScope：有 symbols 用 AST（能识别单行方法），没有则退回正则（只认出外层类）
-    const idx = engine.buildIndex('class Box {\n  dup() { return 1; }\n}\n');
-    assert.equal(engine.enclosingScope(idx, 2, outline.symbols), 'Box > dup');
-    assert.equal(engine.enclosingScope(idx, 2), 'Box');
-    assert.equal(engine.enclosingScope(idx, 2, []), 'Box', '空符号表退回正则');
+    // SR.enclosingChain：基于 AST 符号表返回包围作用域链，空符号表不伪造作用域
+    assert.equal(SR.enclosingChain(outline.symbols, 2), 'Box > dup');
+    assert.equal(SR.enclosingChain([], 2), null, '空符号表不伪造作用域');
 });
 
 // ---------------- 有二进制 ----------------
@@ -249,16 +246,18 @@ test('降级：二进制缺失时新命令给提示，旧命令照常', async ()
         await assert.rejects(call({ command: 'FindSymbol', projectId: pid, name: 'calc' }), /需要 AST 索引器/);
         const rc = await call({ command: 'ReadCode', projectId: pid, path: 'src/a.js#calc' });
         assert.match(textOf(rc), /AST 索引器不可用/);
-        const ec = await call({ command: 'EditCode', projectId: pid, path: 'src/a.js', reason: 'x', symbol: 'calc', content: 'x' });
-        assert.equal(ec.details.status, 'error');
-        assert.match(textOf(ec), /AST 索引器不可用/);
+        // 查询索引器故障不阻断独立服务的原生符号规划；保持函数长度供后续原行号验证。
+        const ec = await call({ command: 'EditCode', projectId: pid, path: 'src/a.js', reason: '原生符号编辑', symbol: 'calc', content: '/** 原生计算 */\nfunction calc(a) {\n    return a + 1;\n}' });
+        assert.equal(ec.details.status, 'ok', textOf(ec));
+        assert.match(fs.readFileSync(path.join(root, 'src/a.js'), 'utf8'), /function calc\(a\)/);
 
-        // 旧路径不受影响；find 的 scope 退回正则
+        // 行号编辑仍工作；无查询AST时只保证find命中，不伪造包围符号。
         const ok = await call({ command: 'EditCode', projectId: pid, path: 'src/a.js', reason: '行号编辑', start: '16', end: '16', expect: '    return a + 1;', content: '    return a + 2;' });
         assert.equal(ok.details.status, 'ok', textOf(ok));
         assert.match(fs.readFileSync(path.join(root, 'src/a.js'), 'utf8'), /return a \+ 2;/);
         const found = await call({ command: 'ReadCode', projectId: pid, path: 'src/a.js', find: 'return a + 2;' });
-        assert.match(textOf(found), /in calc/);
+        assert.match(textOf(found), /return a \+ 2;/);
+        assert.doesNotMatch(textOf(found), /in calc/);
     } finally {
         await forge.cleanup();
         init();

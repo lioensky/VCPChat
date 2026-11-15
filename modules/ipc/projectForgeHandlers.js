@@ -95,7 +95,7 @@ function initialize({ workspaceService = null, subscriptions = null, ipcMain: in
     ipcMain.handle('project-forge:get-timeline', wrap((projectId, options = {}) => forge().getTimeline(projectId, options || {})));
     ipcMain.handle('project-forge:export-report', async (event, projectId) => {
         try {
-            const report = forge().exportReport(String(projectId || ''));
+            const report = await forge().exportReport(String(projectId || ''));
             const options = {
                 title: '导出工程履历报告',
                 defaultPath: report.filename,

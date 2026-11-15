@@ -1,7 +1,7 @@
 # ProjectForge Rust 工程服务化施工图
 
 工程：pm82m；2026-11-15；负责人 Kerr。
-状态：2026-11-15 按用户决定暂缓；内部原生编辑RPC与恢复内核阶段性实现，未完成外部契约兼容及生产切换。当前断点与验证以文末“暂停封存”节为准，前文阶段记录保留为历史。
+状态：2026-11-15 已在独立 worktree 续接，原生编辑/票据、元数据、文件操作和异步门面主干已贯通；外部全兼容与发布态验收仍未完成。当前事实以文末“续接：单一权威与 release 交付链”节为准，暂停封存及前文记录仅作历史。
 来源：prqp0 的只读调查；逐行高亮假设已暂停，不作为本工程性能结论。
 
 ## 用户已确权
@@ -221,3 +221,40 @@ A阶段纯函数内核测试不等于B端到端完成；任何过渡RPC规划接
 6. 接管前还要处理路径别名/句柄级竞态边界与Windows文件属性验收；现有hash复核不是文件系统CAS。
 
 本次暂停不标记工程已完成，不提交accepted验收；保留未完成todo供后续续接。
+
+## 2026-11-15 续接：拒绝重放与启动恢复
+
+在独立分支 `feat/pf-rust-service-continue` 上续接；未切换主工作树，未接生产库或替换运行区二进制。
+- `edit.execute` 的 planningRejected / syntaxRejected 复用 service_operations 保存结果与请求摘要；同 ID 同请求返回原结果，异请求拒绝。operation.status 返回对应拒绝状态；旧 committed / unchanged 查询行为保持。参数、路径和运行时异常仍按原错误通道返回，本次不扩展成统一错误生命周期框架。
+- service.run 在 ready 前只扫描 prepared 意图，使用可信启动 roots 调既有 resume；不重新规划、不重做校验。已有 conflict 不自动重试；恢复失败则本次启动失败，已完成的意图不回滚。无配置且有 prepared 时拒绝启动并保留原意图。
+- 沿用原有服务集成用例覆盖拒绝的重启重放、异请求拒绝，以及由真实提交凭据还原 prepared 窗口后的启动恢复；未新增测试套件。
+- 集中验证：原入口 116 Rust passed，1 项 ignored 真实 Node 用例显式执行 passed，45 JS passed / 0 skipped。删除恢复后的冗余查询后重新 debug 构建成功，定向跨进程原生编辑用例 1 passed / 0 skipped（包含启动恢复）。
+- 本机验证使用已安装 MSVC 的 vcvars64，进程局部设置 CARGO_PROFILE_DEV_DEBUG=0、CARGO_BUILD_JOBS=4，并使用仓库内临时目录；未改全局工具链、权限或 Cargo 配置。D8050 的完整机制未确认，不作为源码缺陷结论。
+- 未执行 release、Clippy、全仓库/Electron 或生产迁移验收。原有 pending_intents 和 geo_probe 未使用项 warning 未顺手整治。
+
+以上为首段续接历史，不再作为当前未完成清单。
+
+## 2026-11-15 续接：单一权威与 release 交付链
+
+工作树：`C:\Users\szou5\Desktop\code\work\vcpchat-pf-service`；分支 `feat/pf-rust-service-continue`；续接工程 `ptyfc`。用户再次要求快速推进主线、不做防御性框架、不堆测试、最后清理本次不必要临时痕迹；子代理不能验收关单。
+
+### A–E 最终落点
+- 原生 EditCode 已覆盖旧行号/target/插入/符号地址、首尾省略以及 exact → elision → token → structure 四级候选。歧义票据持久绑定原快照，ResolveEdit 只在同一快照完成显式选择（`source_hash` 仅在票据/服务内部闭环校验，不强迫外层调用者传 `expectedHash`）；JS 不接收待写盘字节。
+- 工程元数据与查询、Create/Remove/Move/MoveCode/CopyCode、整批 Rollback、GUI 单文件回退均接入同一个 Rust 服务。schema5 同事务迁移单/多文件日志（含清理旧持久冲突挂锁索引与触发器）；SHA256+gzip 原字节快照及 prepared/applied/conflict/committed 状态由单一服务持久协调。
+- 服务保持单写权威并提供有界只读连接池、队列/并发预算与可查询统计；GUI 热态只读请求不再被慢校验串行阻塞。原生 diff 提供有界统计、统一 diff 和明确截断元数据，不把大快照搬回 JS 重算。
+- 工具与 GUI 共用异步服务生命周期；可信 roots 变化在请求之间关闭旧所有者后重启。CreateProject 的目录创建、Python 校验进程树和启动前恢复都归 Rust 权威入口。
+- 旧 `store.js`、`engine.js`、`tickets.js` 已在迁移测试 fixture 后从源码树物理删除；生产门面只保留参数、展示、Electron/Node 生态桥。changed 通知由单一工具分发入口产生。
+- 多文件协调是持久恢复日志，不承诺 OS 级跨文件原子写；hash 复核不是文件系统 CAS。遇第三方内容漂移、应用失败或启动恢复冲突时保留 `before` 审计快照、多文件按逆序补偿回滚本次已写部分（不覆盖第三方字节）、立即释放全部资源锁并直接报错返回，不设需要人工/Agent 解锁的持久挂起态。
+
+### F 最终交付与证据（2026-11-15 22:29）
+- 最终统一 runner：Rust `145 passed / 0 failed / 1 ignored`；默认 ignored 的真实 Node validator 另行显式执行 `1 passed`（合计 `146 passed / 0 failed / 0 skipped`）；8 份 Node/SQLite 服务套件 `49 passed / 0 failed / 0 skipped`。
+- 在原有业务链之外保留真实 SQLite 回归，覆盖 schema4→5/旧库迁移原子性、外键完整性、WAL 快照隔离与唯一写者、单文件意图事务回滚/幂等/冲突即时释放锁、三文件日志部分落盘恢复、补偿回滚与第三方字节保留、持久票据事务/外键/唯一解析操作约束。测试均使用磁盘临时库并核对重开状态，不用 mock 冒充数据库。
+- `node rust_projectforge_indexer/build-runtime.js` 已从当前源码完成 Windows x64 release 并更新本隔离工作树随包程序；随包与 `target/release` SHA256 同为 `41aaf69d5815d9625fb9daada3c16c4043d5245f3b56ef4b349cbdcd448bf6db`。未修改主工作树、运行区或生产库。
+- [打包配置](<../package.json>) 已包含 ProjectForge 插件、共享 fileKit 与 GUI，并将插件及共享模块映射到 `app.asar.unpacked`。最终真实最小 asar + Electron BrowserWindow 冒烟 27/27 全绿：原生服务与校验 worker 从 unpacked 运行，GUI/utility preload/IPC 从 asar 加载，25 份外链脚本、6 份样式无资源或控制台错误，合法 JSON 提交、非法 JSON fatal 拒写且保留原字节。
+- `git diff --check` 通过；当前只保留既有 unused 警告，没有为风格顺手扩大业务改动。
+
+### 本分支明确未覆盖
+1. 未执行完整 NSIS/签名/自动更新安装包实机流程；真实 asar 运行边界已验收，但不能冒充完整安装器验收。
+2. Unix 进程组、Windows 文件属性/路径别名及真实文件系统 CAS 边界未做跨平台实机；当前实现不承诺 CAS 或跨文件原子性。
+3. 未以生产数据库副本执行接管与回退演练，未部署或加载生产运行区。本分支仅准备提交到 `wip/projectforge-rust-service-pm82m-20261115` 的 PR；生产操作需另行授权。
+4. Clippy 与全仓库无关模块测试未执行；ProjectForge 自身 Rust、Node/SQLite、validator、release 与真实 asar 门禁已经完成。

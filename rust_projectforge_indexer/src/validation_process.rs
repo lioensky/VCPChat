@@ -1,12 +1,124 @@
 //! Isolated ecosystem validation. Configuration is service-owned, not tool input.
-//! Only the fixed worker's non-spawning adapters are enabled here.
-//! Python requires process-tree supervision before enabling this runner.
-use std::path::{Path, PathBuf};
+//! The fixed worker chooses the ecosystem adapter; this runner contains the
+//! worker and every descendant it spawns, including Python's py_compile child.
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 use crate::validation::{self, Review};
+
+/// Owns OS-level containment for the worker and every descendant it creates.
+/// Windows uses a kill-on-close Job Object; Unix uses a dedicated process group.
+struct ProcessTree {
+    #[cfg(windows)]
+    job: windows_sys::Win32::Foundation::HANDLE,
+    #[cfg(unix)]
+    pid: i32,
+}
+
+#[cfg(windows)]
+unsafe impl Send for ProcessTree {}
+#[cfg(windows)]
+unsafe impl Sync for ProcessTree {}
+
+// POSIX kill(2): the Unix process-group leader is the worker itself.
+#[cfg(unix)]
+extern "C" {
+    fn kill(pid: i32, signal: i32) -> i32;
+}
+#[cfg(unix)]
+const UNIX_SIGKILL: i32 = 9;
+#[cfg(unix)]
+const UNIX_ESRCH: i32 = 3;
+
+impl ProcessTree {
+    fn attach(child: &Child) -> Result<Self, String> {
+        #[cfg(windows)]
+        {
+            use std::ffi::c_void;
+            use std::mem::{size_of, zeroed};
+            use windows_sys::Win32::System::JobObjects::{
+                AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+                SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            };
+            let process = child.raw_handle().ok_or("validation child handle unavailable")?;
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return Err("validation job creation failed".into());
+                }
+                let tree = Self { job };
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                if SetInformationJobObject(
+                    job,
+                    JobObjectExtendedLimitInformation,
+                    &info as *const _ as *const c_void,
+                    size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                ) == 0
+                {
+                    return Err("validation job configuration failed".into());
+                }
+                if AssignProcessToJobObject(job, process) == 0 {
+                    return Err("validation process-tree assignment failed".into());
+                }
+                Ok(tree)
+            }
+        }
+        #[cfg(unix)]
+        {
+            let pid = child.id().ok_or("validation child pid unavailable")?;
+            Ok(Self {
+                pid: i32::try_from(pid).map_err(|_| "validation child pid overflow")?,
+            })
+        }
+        #[cfg(not(any(windows, unix)))]
+        {
+            let _ = child;
+            Err("validation process-tree supervision unsupported on this platform".into())
+        }
+    }
+
+    fn terminate(&self) -> Result<(), String> {
+        #[cfg(windows)]
+        unsafe {
+            use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+            if TerminateJobObject(self.job, 1) == 0 {
+                return Err("validation job termination failed".into());
+            }
+            Ok(())
+        }
+        #[cfg(unix)]
+        unsafe {
+            if kill(-self.pid, UNIX_SIGKILL) == 0 {
+                return Ok(());
+            }
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() == Some(UNIX_ESRCH) {
+                Ok(())
+            } else {
+                Err(format!("validation process-group termination failed: {error}"))
+            }
+        }
+        #[cfg(not(any(windows, unix)))]
+        {
+            Err("validation process-tree supervision unsupported on this platform".into())
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for ProcessTree {
+    fn drop(&mut self) {
+        if !self.job.is_null() {
+            unsafe {
+                windows_sys::Win32::Foundation::CloseHandle(self.job);
+            }
+        }
+    }
+}
 
 pub struct ValidatorProcess {
     pub executable: PathBuf,
@@ -36,11 +148,9 @@ impl ValidatorProcess {
         if !self.executable.is_absolute() || !self.worker.is_absolute() || !self.cwd.is_absolute() {
             return Err("validation runtime paths must be absolute".into());
         }
-        let ext=Path::new(file_path).extension().and_then(|s|s.to_str())
-            .unwrap_or("").to_ascii_lowercase();
-        if !matches!(ext.as_str(),"js"|"cjs"|"mjs"|"css"|"json") {
-            return Err("adapter not enabled in native process runner; Python needs process-tree supervision".into());
-        }
+        // The fixed worker owns extension support and returns an explicit
+        // `unsupported` review for non-code files. Do not reject here, or
+        // ordinary .txt edits would lose their legacy no-validator path.
         let input=validation::request(file_path,before,after)?;
         if input.len()>64*1024*1024 {return Err("validation wire input budget exceeded".into());}
         let mut command=Command::new(&self.executable);
@@ -50,7 +160,19 @@ impl ValidatorProcess {
             .kill_on_drop(true);
         #[cfg(windows)]
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        #[cfg(unix)]
+        command.process_group(0);
         let mut child=command.spawn().map_err(|e|format!("validation spawn failed: {e}"))?;
+        // Assign before writing stdin: the worker cannot spawn py_compile until
+        // it has received the request, so every descendant is already contained.
+        let tree=match ProcessTree::attach(&child) {
+            Ok(tree)=>tree,
+            Err(error)=>{
+                let _=child.start_kill();
+                let _=tokio::time::timeout(Duration::from_secs(3),child.wait()).await;
+                return Err(format!("{error}; validation worker termination is unconfirmed"));
+            }
+        };
         let mut stdin=child.stdin.take().ok_or("missing worker stdin")?;
         let mut stdout=child.stdout.take().ok_or("missing worker stdout")?;
         let mut stderr=child.stderr.take().ok_or("missing worker stderr")?;
@@ -74,10 +196,13 @@ impl ValidatorProcess {
         match tokio::time::timeout(self.timeout,operation).await {
             Ok(Ok(review))=>Ok(review),
             failure=>{
-                // Reap even on overflow/write/read errors. Cancelling this future
-                // still drops Child with kill_on_drop enabled.
-                let _=child.start_kill();
+                // Kill the whole contained tree, then reap the direct child.
+                // Dropping ProcessTree also closes a kill-on-close Job Object.
+                let terminate_error=tree.terminate().err();
                 let cleanup=tokio::time::timeout(Duration::from_secs(3),child.wait()).await;
+                if let Some(error)=terminate_error {
+                    return Err(format!("validation process-tree termination failed; termination unconfirmed: {error}"));
+                }
                 match cleanup {
                     Ok(Ok(_)) => {}
                     Ok(Err(error)) => return Err(format!("validation reaping failed; termination unconfirmed: {error}")),
@@ -112,7 +237,6 @@ mod tests {
             let review=runner.review("fixture.json","{}","{\"broken\":").await.unwrap();
             assert!(review.supported);
             assert!(review.rejects_syntax(true));
-            assert!(runner.review("fixture.py","x=1","x=2").await.is_err());
             let dir=tempfile::tempdir().unwrap();
             let file=dir.path().join("a.json");
             std::fs::write(&file,b"{\"value\":1}\n").unwrap();
@@ -186,6 +310,38 @@ mod tests {
             assert!(crate::edit_service::execute(&mut store,&changed,&roots,&runner).await.is_err());
             assert_eq!(store.query("store.projectStats",&serde_json::json!({"projectId":"p1"}))
                 .unwrap()["nodeCount"],2);
+            // Python is enabled only behind the supervised runner: prove real
+            // py_compile diagnostics, not an "adapter not enabled" shortcut.
+            let python=runner.review("fixture.py","x=1\n","x=2\n").await.unwrap();
+            assert!(python.supported);
+            assert!(!python.rejects_syntax(true));
+            let broken_python=runner.review("fixture.py","x=1\n","def broken(:\n").await.unwrap();
+            assert!(broken_python.supported);
+            assert!(broken_python.rejects_syntax(true));
+            let plain_text=runner.review("fixture.txt","a","b").await.unwrap();
+            assert!(!plain_text.supported);
+            // A timed-out worker may have already spawned a grandchild. The job
+            // object/process group must kill it before its delayed write lands.
+            let tree_dir=tempfile::tempdir().unwrap();
+            let tree_worker=tree_dir.path().join("tree-worker.cjs");
+            std::fs::write(&tree_worker, r#"
+const { spawn } = require('node:child_process');
+const path = require('node:path');
+const marker = path.join(__dirname, 'grandchild.marker');
+spawn(process.execPath, ['-e',
+  `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'alive'), 1200)`
+], { stdio: 'ignore', windowsHide: true });
+setInterval(() => {}, 1000);
+"#).unwrap();
+            let marker=tree_dir.path().join("grandchild.marker");
+            let tree_runner=ValidatorProcess {
+                executable:runner.executable.clone(),worker:tree_worker,
+                cwd:runner.cwd.clone(),timeout:Duration::from_millis(250),
+            };
+            let error=tree_runner.review("fixture.json","{}","{}").await.unwrap_err();
+            assert!(error.contains("deadline exceeded"), "{error}");
+            tokio::time::sleep(Duration::from_millis(1600)).await;
+            assert!(!marker.exists(), "grandchild escaped the native process tree");
             let tiny=ValidatorProcess {timeout:Duration::from_millis(1),..runner};
             assert!(tiny.review("fixture.json","{}","{}").await.is_err());
         });
