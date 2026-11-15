@@ -512,6 +512,9 @@ function getOrCreateStreamSegmentState(messageId) {
             // 已判定为稳定的源码前缀终点；tail 从这里开始渲染。
             stableCutoff: 0,
             boundaryScanner: createStableBoundaryState(),
+            // Only this owner writes accumulatedStreamText. Appends retain the
+            // identity; seed replacement changes it before the next visible scan.
+            sourceEpoch: {},
             // 平滑模式只展示已由队列消费的文本前缀；非平滑模式会直接推进到接收文本末尾。
             visibleTextLength: 0,
             // O(1) 维护待展示字符数，避免每帧 reduce 扫描完整队列。
@@ -525,6 +528,8 @@ function getOrCreateStreamSegmentState(messageId) {
             lastTailText: '',
             stableCssChunks: [],
             scopedCssScopeId: null,
+            scopedCssMessageItem: null,
+            scopedCssDirty: true,
             tailCssChunks: [],
             lastRenderedTailText: null,
             lastRenderedTailRoot: null,
@@ -628,7 +633,10 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
             { injectStyles: false, cssChunks }
         )
         : sourceText;
-    segmentState.stableCssChunks.push(...cssChunks);
+    if (cssChunks.length) {
+        segmentState.stableCssChunks.push(...cssChunks);
+        segmentState.scopedCssDirty = true;
+    }
     const html = parseFullStreamContent(renderSourceText);
     const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
     return blockRecord ? [blockRecord] : [];
@@ -1004,6 +1012,18 @@ function ensureStreamMessageAtFinalFloor(messageItem) {
     if (following) root.appendChild(messageItem);
 }
 
+/** Publish only after a CSS result or its mounted owner changes. Extraction is
+ * deliberately not skipped: later input can release previously opaque source.
+ */
+function publishStreamScopedCss(segmentState, scopeId, messageItem) {
+    if (!segmentState.scopedCssDirty) return;
+    refs.updateStreamScopedCss?.(
+        [...segmentState.stableCssChunks, ...segmentState.tailCssChunks],
+        scopeId, messageItem
+    );
+    segmentState.scopedCssDirty = false;
+}
+
 /**
  * Renders a single frame of the streaming message using morphdom for efficient DOM updates.
  * This version performs minimal processing to keep it fast and avoid destroying JS state.
@@ -1049,7 +1069,9 @@ function renderStreamFrame(messageId) {
         : receivedText.length;
     const textForRendering = receivedText.slice(0, visibleTextLength);
 
-    const boundary = segmentState.boundaryScanner.update(textForRendering);
+    const boundary = segmentState.boundaryScanner.update(textForRendering, {
+        appendEpoch: segmentState.sourceEpoch,
+    });
     if (boundary.revised) {
         refs.cleanupStreamContent?.(contentDiv);
         cleanupChatMedia(contentDiv);
@@ -1060,8 +1082,10 @@ function renderStreamFrame(messageId) {
         segmentState.tailCssChunks = [];
         segmentState.lastRenderedTailText = null;
         segmentState.lastRenderedTailRoot = null;
-        segmentState.scopedCssScopeId = null;
-        refs.updateStreamScopedCss?.([], messageItem.id || null, messageItem);
+        segmentState.scopedCssScopeId = messageItem.id || null;
+        segmentState.scopedCssMessageItem = messageItem;
+        segmentState.scopedCssDirty = true;
+        publishStreamScopedCss(segmentState, messageItem.id || null, messageItem);
     }
 
     // 等待首个可见 token 时，“思考中”是活动流的规范投影，不能为了建立
@@ -1112,7 +1136,8 @@ function renderStreamFrame(messageId) {
     }
 
     // CSS 已包含作用域选择器；重建 DOM 时仅重新提取稳定片段的 CSS，不重跑 Markdown。
-    if (segmentState.scopedCssScopeId !== streamRenderOptions.scopeId) {
+    if (segmentState.scopedCssScopeId !== streamRenderOptions.scopeId
+        || segmentState.scopedCssMessageItem !== messageItem) {
         segmentState.stableCssChunks = [];
         for (const record of segmentState.stableBlocks) {
             refs.processAssistantScopedHtmlContent?.(record.source, streamRenderOptions.scopeId, messageItem, {
@@ -1120,6 +1145,8 @@ function renderStreamFrame(messageId) {
             });
         }
         segmentState.scopedCssScopeId = streamRenderOptions.scopeId;
+        segmentState.scopedCssMessageItem = messageItem;
+        segmentState.scopedCssDirty = true;
     }
     const nextStableCutoff = boundary.cutoff;
 
@@ -1142,11 +1169,8 @@ function renderStreamFrame(messageId) {
     if (tailText === segmentState.lastRenderedTailText
         && tailRoot === segmentState.lastRenderedTailRoot
         && streamRenderOptions.scopeId === segmentState.lastRenderedScopeId) {
-        // 相同尾文本不代表稳定区没有追加 CSS。
-        refs.updateStreamScopedCss?.(
-            [...segmentState.stableCssChunks, ...segmentState.tailCssChunks],
-            streamRenderOptions.scopeId, messageItem
-        );
+        // 相同尾文本仍可能新增稳定 CSS，但未变时不再汇总/发布旧样式。
+        publishStreamScopedCss(segmentState, streamRenderOptions.scopeId, messageItem);
         return;
     }
 
@@ -1159,12 +1183,12 @@ function renderStreamFrame(messageId) {
             { injectStyles: false, cssChunks: tailCssChunks, mode: 'stream' }
         )
         : tailText;
-    segmentState.tailCssChunks = tailCssChunks;
-    refs.updateStreamScopedCss?.(
-        [...segmentState.stableCssChunks, ...tailCssChunks],
-        streamRenderOptions.scopeId,
-        messageItem
-    );
+    if (tailCssChunks.length !== segmentState.tailCssChunks.length
+        || tailCssChunks.some((css, index) => css !== segmentState.tailCssChunks[index])) {
+        segmentState.tailCssChunks = tailCssChunks;
+        segmentState.scopedCssDirty = true;
+    }
+    publishStreamScopedCss(segmentState, streamRenderOptions.scopeId, messageItem);
     const rawHtml = prepareChatMediaHtml(parseStreamTail(renderTailText), ownerDocument());
 
     if (refs.morphdom) {
@@ -1561,10 +1585,11 @@ async function startStreamingMessage(message, passedMessageItem = null) {
         || existingText === '思考中...'
         || newText.length > existingText.length;
 
+    const initialSegmentState = getOrCreateStreamSegmentState(messageId);
     if (shouldOverwrite) {
         accumulatedStreamText.set(messageId, newText);
+        initialSegmentState.sourceEpoch = {};
     }
-    const initialSegmentState = getOrCreateStreamSegmentState(messageId);
     if (!shouldEnableSmoothStreaming()) {
         initialSegmentState.visibleTextLength = (accumulatedStreamText.get(messageId) || '').length;
     } else if (initialSegmentState.visibleTextLength === 0 && newText) {

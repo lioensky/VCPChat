@@ -752,38 +752,64 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
 
 /**
  * Stateful compatibility adapter, not a strict delta lexer.
- * Exact prefix validation detects edits (including same-length edits); unfinished
- * tails still use the reference parser. The retained string is stream-owned and
- * released with streamSegmentStates, never stored in the template cache.
+ * Generic callers retain exact prefix validation. An appendEpoch object is an
+ * owner-issued guarantee: within that identity only the visible prefix of the
+ * same append-only source may be supplied. Replacements MUST change the epoch;
+ * visible-length rollback also invalidates the cutoff. No source hash is used.
+ * Unfinished tails still use the reference parser. The retained string remains
+ * stream-owned and is never stored in the template cache.
  */
 export function createStableBoundaryState() {
     let previous = '';
+    let previousEpoch = null;
     let cutoff = 0;
     let scans = 0;
     let hits = 0;
     let revisions = 0;
+    let prefixChecks = 0;
+    let trustedUpdates = 0;
     return {
-        update(source) {
-            if (source === previous) {
-                hits++;
-                return { cutoff, revised: false };
+        update(source, options = {}) {
+            const epoch = options.appendEpoch;
+            const trusted = epoch !== null && typeof epoch === 'object';
+            let revised;
+            if (trusted) {
+                trustedUpdates++;
+                // Check identity/length BEFORE string equality: equal visible
+                // lengths in one append epoch need no content comparison.
+                if (epoch === previousEpoch && source.length === previous.length) {
+                    hits++;
+                    return { cutoff, revised: false };
+                }
+                revised = previous.length > 0
+                    && (epoch !== previousEpoch || source.length < previous.length);
+            } else {
+                // A generic call breaks the trusted chain, even on an exact hit.
+                previousEpoch = null;
+                if (source === previous) {
+                    hits++;
+                    return { cutoff, revised: false };
+                }
+                prefixChecks++;
+                revised = !source.startsWith(previous);
             }
-            const revised = !source.startsWith(previous);
             if (revised) {
                 cutoff = 0;
                 revisions++;
             }
             cutoff = findExplicitStablePrefix(source, cutoff);
             previous = source;
+            previousEpoch = trusted ? epoch : null;
             scans++;
             return { cutoff, revised };
         },
         reset() {
             previous = '';
+            previousEpoch = null;
             cutoff = 0;
         },
         getDiagnostics() {
-            return { scans, hits, revisions, retainedChars: previous.length, cutoff };
+            return { scans, hits, revisions, prefixChecks, trustedUpdates, retainedChars: previous.length, cutoff };
         },
     };
 }

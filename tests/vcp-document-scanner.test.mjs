@@ -124,12 +124,16 @@ test('stateful compatibility path matches reference at every chunk split without
         '[[VCP调用结果信息汇总:\n```\nVCP调用结果结束]]\n<<<[END_ROLE_DIVIDE_USER]>>>\ntail',
     ]) {
         const state = createStableBoundaryState();
+        const trustedState = createStableBoundaryState();
+        const appendEpoch = {};
         let cutoff = 0;
         for (let end = 1; end <= source.length; end++) {
             const text = source.slice(0, end);
             cutoff = findExplicitStablePrefix(text, cutoff);
             assert.equal(state.update(text).cutoff, cutoff);
+            assert.equal(trustedState.update(text, { appendEpoch }).cutoff, cutoff);
         }
+        assert.equal(trustedState.getDiagnostics().prefixChecks, 0);
     }
 });
 
@@ -143,4 +147,55 @@ test('backticks opened in comments, scripts and attributes never escape their ow
         const regions = checkPartition(source);
         assert.equal(regions.filter(r => r.kind === 'style').length, 1, opaque);
     }
+});
+
+test('owner append epochs skip prefix comparisons and memoize unchanged visible lengths', () => {
+    const state = createStableBoundaryState();
+    const appendEpoch = {};
+    let cutoff = 0;
+    for (const source of ['A\n\nB\n\nC', 'A\n\nB\n\nC more', 'A\n\nB\n\nC more\n\nD']) {
+        cutoff = findExplicitStablePrefix(source, cutoff);
+        assert.deepEqual(state.update(source, { appendEpoch }), { cutoff, revised: false });
+    }
+    const before = state.getDiagnostics();
+    assert.deepEqual(state.update('A\n\nB\n\nC more\n\nD', { appendEpoch }), { cutoff, revised: false });
+    const after = state.getDiagnostics();
+    assert.equal(after.scans, before.scans);
+    assert.equal(after.hits, before.hits + 1);
+    assert.equal(after.prefixChecks, 0);
+    assert.equal(after.trustedUpdates, 4);
+});
+
+test('owner epoch replacement invalidates equal-length edits and prefix-preserving replacements', () => {
+    const state = createStableBoundaryState();
+    assert.equal(state.update('A\n\nB\n\nC', { appendEpoch: {} }).cutoff, 3);
+    assert.deepEqual(state.update('X\n\nY\n\nZ', { appendEpoch: {} }), { cutoff: 3, revised: true });
+    assert.deepEqual(state.update('X\n\nY\n\nZ appended', { appendEpoch: {} }), { cutoff: 3, revised: true });
+    assert.equal(state.getDiagnostics().prefixChecks, 0);
+    assert.equal(state.getDiagnostics().revisions, 2);
+});
+
+test('visible rollback resets an owner cutoff while later expansion can reuse the epoch', () => {
+    const state = createStableBoundaryState();
+    const appendEpoch = {};
+    const source = 'A\n\nB\n\nC';
+    assert.equal(state.update(source, { appendEpoch }).cutoff, 3);
+    assert.deepEqual(state.update('A', { appendEpoch }), { cutoff: 0, revised: true });
+    assert.deepEqual(state.update(source, { appendEpoch }), { cutoff: 3, revised: false });
+    assert.deepEqual(state.update('', { appendEpoch }), { cutoff: 0, revised: true });
+    state.reset();
+    assert.deepEqual(state.update(source, { appendEpoch }), { cutoff: 3, revised: false });
+});
+
+test('generic callers retain exact checks and cannot inherit a stale trusted chain', () => {
+    const state = createStableBoundaryState();
+    const appendEpoch = {};
+    const original = 'A\n\nB\n\nC';
+    state.update(original, { appendEpoch });
+    state.update(original); // Even an exact generic hit breaks owner trust.
+    assert.equal(state.update(original + ' more', { appendEpoch }).revised, true);
+    assert.deepEqual(state.update('X\n\nY\n\nZ'), { cutoff: 3, revised: true });
+    assert.deepEqual(state.update('X'), { cutoff: 0, revised: true });
+    assert.deepEqual(state.update('Y', { appendEpoch: 'not-an-owner-token' }), { cutoff: 0, revised: true });
+    assert.equal(state.getDiagnostics().prefixChecks, 3);
 });

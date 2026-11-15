@@ -866,3 +866,28 @@ test('stream inline code cannot inject CSS before closing, while terminal repars
         assert.match(fixture.dom.window.document.head.textContent, /orphan-rule/);
     } finally { await disposeFixture(fixture); }
 });
+
+
+test('a blank-line append releases old inline-protected CSS without requiring a new style marker', async () => {
+    const fixture = await createRendererFixture('');
+    try {
+        const message = {
+            id: 'animation-island-message', role: 'assistant', content: '',
+            agentId: 'animation-agent', topicId: 'animation-topic', streamOperationId: 'released-css',
+        };
+        await fixture.streamProjection.startStreamingMessage(message, fixture.messageItem);
+        fixture.streamProjection.appendStreamChunk(message.id, {
+            content: 'unfinished `<style>.released-rule { width: 37px; }</style>',
+        }, message, message.streamOperationId);
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 100));
+        assert.doesNotMatch(fixture.dom.window.document.head.textContent, /released-rule/);
+        fixture.streamProjection.appendStreamChunk(message.id, { content: '\n\n' }, message, message.streamOperationId);
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 100));
+        assert.match(fixture.dom.window.document.head.textContent, /released-rule/);
+        await fixture.streamProjection.projectStreamTerminal(message.id, 'stop', message, {
+            streamOperationId: message.streamOperationId, fullResponse: 'canonical final without CSS',
+        });
+        assert.doesNotMatch(fixture.dom.window.document.head.textContent, /released-rule/);
+        assert.equal(fixture.messageItem.querySelector('.md-content').textContent.trim(), 'canonical final without CSS');
+    } finally { await disposeFixture(fixture); }
+});
