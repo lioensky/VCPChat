@@ -359,7 +359,9 @@ async function saveGlobalSettings(deps, settingsForm) {
        const error = result?.error || '保存接口未返回成功结果';
        const isConflict = result?.status === 'conflict' || result?.code === 'SETTINGS_CONFLICT' || String(error).includes('Settings changed since it was read');
        reportSaveResult(false, error, isConflict ? 'conflict' : 'failed', { code: result?.code, currentRevision: result?.currentRevision });
-       if (!isConflict) {
+       if (isConflict) {
+           uiHelperFunctions.showToastNotification('设置发生版本冲突，已重新同步最新配置，请重试保存', 'warning');
+       } else {
            uiHelperFunctions.showToastNotification(`保存全局设置失败: ${error}`, 'error');
        }
     }
