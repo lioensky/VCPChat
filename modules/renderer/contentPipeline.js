@@ -153,15 +153,7 @@ function createMapPlaceholderReplacer(map) {
         return noop;
     }
 
-    return (text) => {
-        let result = text;
-        for (const [placeholder, original] of map.entries()) {
-            if (result.includes(placeholder)) {
-                result = result.replace(placeholder, () => original);
-            }
-        }
-        return result;
-    };
+    return text => text.replace(/<!--VCP_TOOL_REQUEST_\d+-->/g, token => map.get(token) ?? token);
 }
 
 function createContentPipeline(deps = {}) {
@@ -414,12 +406,9 @@ function createContentPipeline(deps = {}) {
     }
 
     function restoreCodeBlocks(text, ctx) {
-        if (!ctx.state.codeBlockMap || ctx.state.codeBlockMap.size === 0) return text;
-        let result = text;
-        for (const [placeholder, original] of ctx.state.codeBlockMap.entries()) {
-            result = result.split(placeholder).join(original);
-        }
-        return result;
+        const map = ctx.state.codeBlockMap;
+        if (!map || map.size === 0) return text;
+        return text.replace(/__VCP_CODE_BLOCK_PLACEHOLDER_\d+__/g, token => map.get(token) ?? token);
     }
 
     function transformDesktopPush(text, ctx) {
@@ -514,6 +503,18 @@ function createContentPipeline(deps = {}) {
         // 4. 保护代码块
         step(ctx, 'protect-code-blocks', protectCodeBlocks);
 
+        // 裸 HTML 岛可被空行终止，后续缩进 JS 会被 Markdown 解释为代码块。
+        // 代码/工具/思维链已隔离后，仅封存真正的完整 script 原文，贯穿 marked。
+        ctx.state.rawScriptMap = new Map();
+        step(ctx, 'protect-raw-scripts', text => text.replace(
+            /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
+            source => {
+                const token = `<!--VCP_RAW_SCRIPT_${ctx.state.rawScriptMap.size}-->`;
+                ctx.state.rawScriptMap.set(token, source);
+                return token;
+            }
+        ));
+
         // Only hide a complete reply-address footer at the end of assistant display text.
         // Protected code/tool/thought domains remain data; history and request text are untouched.
         if ((options.messageRole || 'assistant') === 'assistant') {
@@ -529,8 +530,8 @@ function createContentPipeline(deps = {}) {
         }
 
         // 6. 再做会改变行首语义/结构边界的修正
-        step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
-        step(ctx, 'deindent-html', (text) => deIndentHtml(text));
+        step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text, { codeDomainsProtected: true }));
+        step(ctx, 'deindent-html', (text) => deIndentHtml(text, { codeDomainsProtected: true }));
         step(ctx, 'deindent-tool-request-blocks', (text) => deIndentToolRequestBlocks(text));
 
         // 7. 再做结构转换
@@ -551,7 +552,7 @@ function createContentPipeline(deps = {}) {
             ctx.state.thoughtChainMap,
             ctx.state.toolRequestSourceMap
         ));
-        step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text));
+        step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text, { codeDomainsProtected: true }));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
 
         // 10. Markdown 解析前修复相邻粗体边界；此时代码块仍是占位符，避免污染代码内容。

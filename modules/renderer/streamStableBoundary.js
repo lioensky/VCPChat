@@ -38,6 +38,16 @@ const HTML_ISLAND_STACK_TAGS = new Set([
 ]);
 
 
+const RAW_TEXT_OPEN = /<(style|script)\b[^>]*>/iy;
+const DIV_OPEN = /<div(?:\s|>)/iy;
+const HTML_TAG_START = /<(?:[a-zA-Z][a-zA-Z0-9:-]*(?:\s|\/?>|$)|\/[a-zA-Z]|!)/y;
+const FENCE_OPEN = /(`{3,}|~{3,})([^\n]*)/y;
+
+function matchAt(regex, text, index) {
+    regex.lastIndex = index;
+    return regex.exec(text);
+}
+
 function startsWithAt(text, index, token) {
     return text.startsWith(token, index);
 }
@@ -45,7 +55,7 @@ function findFenceOpeningAt(text, startIndex) {
     const lineStart = startIndex === 0 ? 0 : text.lastIndexOf('\n', startIndex - 1) + 1;
     const prefix = text.slice(lineStart, startIndex);
     if (!/^[ \t]{0,3}$/.test(prefix)) return null;
-    const match = text.slice(startIndex).match(/^(`{3,}|~{3,})([^\n]*)/);
+    const match = matchAt(FENCE_OPEN, text, startIndex);
     if (!match) return null;
     return { markerChar: match[1][0], markerLength: match[1].length };
 }
@@ -387,7 +397,7 @@ function findBareDivIslandStableCutoff(text, startOffset = 0, codeDomains = []) 
             continue;
         }
 
-        if (!/^<(?:[a-zA-Z][a-zA-Z0-9:-]*(?:\s|\/?>|$)|\/[a-zA-Z]|!)/.test(text.slice(tagStart))) {
+        if (!matchAt(HTML_TAG_START, text, tagStart)) {
             index = tagStart + 1;
             continue;
         }
@@ -455,6 +465,14 @@ function findRoleDividerSectionEnd(text, startIndex, toolResultRanges = null) {
 }
 
 export function findExplicitStablePrefix(text, startOffset = 0) {
+    if (startOffset > 0) {
+        const offset = Math.min(text.length, startOffset);
+        const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+        const linePrefix = text.slice(lineStart, offset);
+        // 切点可能紧随行内协议/HTML；不可凭空创造一个行首。
+        const context = linePrefix.trim() ? 'x' : linePrefix;
+        return Math.max(offset, offset + findExplicitStablePrefix(context + text.slice(offset), 0) - context.length);
+    }
     const batches = collectToolBatchRanges(text).filter(batch => batch.closed && batch.end > startOffset);
     if (batches.length) {
         const end = batches[batches.length - 1].end;
@@ -488,6 +506,8 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
         includeUnclosedInline: true,
     });
     let codeDomainIndex = 0;
+    let nextThoughtStart = findThoughtChainStart(text, index);
+    let nextThinkStart = findConventionalThinkStart(text, index);
 
     while (codeDomainIndex < codeDomains.length && codeDomains[codeDomainIndex].end <= index) {
         codeDomainIndex += 1;
@@ -501,7 +521,7 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
             codeDomainIndex += 1;
         }
         // 独立 raw-text 标签也拥有内部的空行；不能在 CSS/JS 中途提交段落。
-        const rawTextOpen = text.slice(index).match(/^<(style|script)\b[^>]*>/i);
+        const rawTextOpen = text.charCodeAt(index) === 60 ? matchAt(RAW_TEXT_OPEN, text, index) : null;
         if (rawTextOpen) {
             const close = new RegExp('</' + rawTextOpen[1] + '\\s*>', 'ig');
             close.lastIndex = index + rawTextOpen[0].length;
@@ -516,7 +536,7 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
             continue;
         }
         // HTML islands own all inner delimiters, including Markdown-looking text.
-        if (text[index] === '<' && /^<div(?:\s|>)/i.test(text.slice(index)) && isBareDivIslandLineStart(text, index)) {
+        if (text[index] === '<' && matchAt(DIV_OPEN, text, index) && isBareDivIslandLineStart(text, index)) {
             const island = scanBareDivIslandEnd(text, index);
             if (island.end < 0) {
                 blockedByUnclosedExplicitBlock = true;
@@ -645,8 +665,8 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
             continue;
         }
 
-        const thoughtChainStart = findThoughtChainStart(text, index);
-        if (thoughtChainStart === index) {
+        if (nextThoughtStart >= 0 && nextThoughtStart < index) nextThoughtStart = findThoughtChainStart(text, index);
+        if (nextThoughtStart === index) {
             const thoughtChainEnd = findThoughtChainEnd(text, index, toolResultRanges);
             if (thoughtChainEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
@@ -681,8 +701,8 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
             continue;
         }
 
-        const thinkStart = findConventionalThinkStart(text, index);
-        if (thinkStart === index) {
+        if (nextThinkStart >= 0 && nextThinkStart < index) nextThinkStart = findConventionalThinkStart(text, index);
+        if (nextThinkStart === index) {
             const thinkEnd = findConventionalThinkEnd(text, index, toolResultRanges);
             if (thinkEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;

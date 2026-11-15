@@ -1,5 +1,6 @@
 // modules/renderer/contentProcessor.js
 import * as cssTree from '../../node_modules/css-tree/dist/csstree.esm.js';
+import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
 
 /** Creates one rendered-content interaction owner for one MessageRenderer instance. */
 export function createContentProcessor() {
@@ -430,9 +431,7 @@ function prettifySinglePreElement(preElement, type, relevantContent) {
     }
 }
 
-const TAG_REGEX = /@([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
-const ALERT_TAG_REGEX = /@!([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
-const QUOTE_REGEX = /(?:"([^"]*)"|“([^”]*)”)/g; // Matches English "..." and Chinese “...”
+const PATTERN_REGEX = /(@![\u4e00-\u9fa5A-Za-z0-9_]+)|(@[\u4e00-\u9fa5A-Za-z0-9_]+)|"([^"]*)"|“([^”]*)”/g;
 
 /**
  * 一次性高亮所有文本模式（标签、引号），替换旧的多次遍历方法。
@@ -478,26 +477,17 @@ function highlightAllPatternsInMessage(messageElement) {
             if (!text) continue;
             const matches = [];
 
-            // 收集所有匹配
             let match;
-            while ((match = TAG_REGEX.exec(text)) !== null) {
-                matches.push({ type: 'tag', index: match.index, length: match[0].length, content: match[0] });
-            }
-            while ((match = ALERT_TAG_REGEX.exec(text)) !== null) {
-                matches.push({ type: 'alert-tag', index: match.index, length: match[0].length, content: match[0] });
-            }
-            while ((match = QUOTE_REGEX.exec(text)) !== null) {
-                // 确保引号内有内容
-                if (match[1] || match[2]) {
-                    matches.push({ type: 'quote', index: match.index, length: match[0].length, content: match[0] });
-                }
+            PATTERN_REGEX.lastIndex = 0;
+            while ((match = PATTERN_REGEX.exec(text)) !== null) {
+                if (!match[1] && !match[2] && !match[3] && !match[4]) continue;
+                matches.push({
+                    type: match[1] ? 'alert-tag' : match[2] ? 'tag' : 'quote',
+                    index: match.index, length: match[0].length, content: match[0],
+                });
             }
 
-            if (matches.length > 0) {
-                // 按位置排序
-                matches.sort((a, b) => a.index - b.index);
-                nodesToProcess.push({ node, matches });
-            }
+            if (matches.length > 0) nodesToProcess.push({ node, matches });
         }
     } catch (error) {
         if (!error.message.includes("no longer runnable")) {
@@ -510,17 +500,7 @@ function highlightAllPatternsInMessage(messageElement) {
         const { node, matches } = nodesToProcess[i];
         if (!node.parentNode) continue;
 
-        // 健壮的重叠匹配过滤逻辑
-        const filteredMatches = [];
-        let lastIndexProcessed = -1;
-        for (const currentMatch of matches) {
-            if (currentMatch.index >= lastIndexProcessed) {
-                filteredMatches.push(currentMatch);
-                lastIndexProcessed = currentMatch.index + currentMatch.length;
-            }
-        }
-
-        if (filteredMatches.length === 0) continue;
+        const filteredMatches = matches;
 
         const fragment = ownerDocument.createDocumentFragment();
         let lastIndex = 0;
@@ -1424,11 +1404,20 @@ function applyContentProcessors(text) {
  * @param {string} text 输入文本。
  * @returns {string} 处理后的文本。
  */
-function deIndentMisinterpretedCodeBlocks(text) {
+function deIndentMisinterpretedCodeBlocks(text, options = {}) {
     if (typeof text !== 'string') return text;
+    if (!options.codeDomainsProtected && (text.includes('`') || text.includes('~~~'))) {
+        const blocks = new Map();
+        const protectedText = replaceMarkdownCodeDomains(text, block => {
+            const token = `<!--VCP_DEINDENT_CODE_${blocks.size}-->`;
+            blocks.set(token, block);
+            return token;
+        });
+        return deIndentMisinterpretedCodeBlocks(protectedText, { codeDomainsProtected: true })
+            .replace(/<!--VCP_DEINDENT_CODE_\d+-->/g, token => blocks.get(token) ?? token);
+    }
 
     const lines = text.split('\n');
-    let inFence = false;
 
     // 匹配 Markdown 列表标记，例如 *, -, 1.
     const listRegex = /^\s*([-*]|\d+\.)\s+/;
@@ -1448,18 +1437,6 @@ function deIndentMisinterpretedCodeBlocks(text) {
     const chineseParagraphRegex = /^[\u4e00-\u9fa5]/;
 
     return lines.map(line => {
-        // 检测代码围栏
-        if (line.trim().startsWith('```')) {
-            inFence = !inFence;
-            // 移除代码围栏标记本身的缩进
-            return line.trimStart();
-        }
-
-        // 如果在代码块内，完全不处理
-        if (inFence) {
-            return line;
-        }
-
         const trimmedStartLine = line.trimStart();
         const hasIndentation = line.length > trimmedStartLine.length;
 

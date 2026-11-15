@@ -290,6 +290,9 @@ function createFixture(options = {}) {
         dom,
         window,
         chatManager: window.chatManager,
+        messageRenderer,
+        electronAPI,
+        singleChatRequestOrchestrator,
         publishedSelections: window.__publishedSelections,
         initError,
         topicRequests,
@@ -1322,4 +1325,105 @@ test('late admission acceptance cannot consume another topic draft', async () =>
         assert.deepEqual(fixture.state().history.map(message => message.id), ['b-message']);
         assert.equal(fixture.sentRequests.length, 0);
     } finally { fixture.dom.window.close(); }
+});
+
+
+test('file sync protects every active stream and non-streaming local thinking placeholder', async () => {
+    const fixture = createFixture({
+        streamProjection: {
+            snapshotConversation: () => ['live-1', 'live-2'].map(messageId => ({ messageId })),
+        },
+    });
+    try {
+        await selectAdmissionFixture(fixture);
+        const local = [
+            { id: 'live-1', role: 'assistant', content: 'one', timestamp: 10 },
+            { id: 'live-2', role: 'assistant', content: 'two', timestamp: 20 },
+            { id: 'non-stream-thinking', role: 'assistant', content: 'thinking', isThinking: true, timestamp: 30 },
+        ];
+        fixture.setCurrentHistory([...fixture.state().history.filter(m => !m.id.startsWith('live-')), ...local]);
+        fixture.setPersistedHistory('agent-a', 'topic-a', [{ id: 'a-message', role: 'assistant', content: 'A', timestamp: 1 }]);
+        await fixture.chatManager.syncHistoryFromFile('agent-a', 'agent', 'topic-a');
+        for (const message of local) assert.ok(fixture.state().history.some(m => m.id === message.id));
+        assert.deepEqual(fixture.state().history.filter(m => m.id.startsWith('live-')).map(m => m.id), ['live-1', 'live-2']);
+    } finally { fixture.dom.window.close(); }
+});
+
+test('a file notification skipped during send is replayed after the send transaction', async () => {
+    const fixture = createFixture();
+    try {
+        await selectAdmissionFixture(fixture);
+        const gate = fixture.holdNextVcpRequest();
+        const sending = fixture.chatManager.handleSendMessage({ content: 'send', attachments: [] });
+        await gate.started.promise;
+        const external = { id: 'external-during-send', role: 'assistant', content: 'external', timestamp: 100 };
+        fixture.setPersistedHistory('agent-a', 'topic-a', [...fixture.persistedHistory('agent-a', 'topic-a'), external]);
+        await fixture.chatManager.syncHistoryFromFile('agent-a', 'agent', 'topic-a');
+        assert.equal(fixture.state().history.some(m => m.id === external.id), false);
+        gate.release.resolve();
+        await sending;
+        assert.ok(fixture.state().history.some(m => m.id === external.id));
+        assert.ok(fixture.state().history.some(m => m.isThinking), 'local thinking placeholder must survive compensation');
+    } finally { fixture.dom.window.close(); }
+});
+
+test('watcher starts after projection and compensates changes made before startup', async () => {
+    const fixture = createFixture();
+    const entered = deferred();
+    const gate = deferred();
+    const events = [];
+    const render = fixture.messageRenderer.renderHistory;
+    fixture.messageRenderer.renderHistory = async messages => {
+        events.push('render');
+        entered.resolve();
+        await gate.promise;
+        await render(messages);
+        events.push('rendered');
+    };
+    fixture.electronAPI.watcherStart = async () => { events.push('watcher'); };
+    try {
+        const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'A', null, fixture.configs['agent-a']);
+        await new Promise(resolve => setImmediate(resolve));
+        fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
+        await entered.promise;
+        fixture.setPersistedHistory('agent-a', 'topic-a', [
+            ...fixture.persistedHistory('agent-a', 'topic-a'),
+            { id: 'before-watcher', role: 'assistant', content: 'external', timestamp: 2 },
+        ]);
+        await fixture.chatManager.syncHistoryFromFile('agent-a', 'agent', 'topic-a');
+        assert.deepEqual(events, ['render']);
+        gate.resolve();
+        await selecting;
+        assert.deepEqual(events, ['render', 'rendered', 'watcher']);
+        assert.ok(fixture.state().history.some(m => m.id === 'before-watcher'));
+        assert.equal(fixture.state().visibleMessageIds.filter(id => id === 'before-watcher').length, 1);
+    } finally { fixture.dom.window.close(); }
+});
+
+test('normal compaction consumption wakes boundary wait without timeout cancellation', async () => {
+    const interruptEntered = deferred();
+    const compactGate = deferred();
+    const cancellations = [];
+    const fixture = createFixture({
+        settings: { enableContextCompaction: true },
+        interruptHandler: { interrupt: async () => { interruptEntered.resolve(); return { success: true }; } },
+        compactionService: {
+            isBusy: () => false, dispose() {},
+            compact: () => compactGate.promise,
+        },
+    });
+    try {
+        fixture.configs['agent-a'].contextTokenLimit = 10;
+        await selectAdmissionFixture(fixture);
+        const checking = fixture.chatManager.checkStreamContextBudget({
+            messageId: 'settled', context: { agentId: 'agent-a', topicId: 'topic-a' },
+            text: 'tool result'.repeat(100), cancelStream: (...args) => cancellations.push(args),
+        });
+        await interruptEntered.promise;
+        const finishing = fixture.chatManager.finishStreamContextCompaction({ messageId: 'settled' });
+        await checking;
+        assert.deepEqual(cancellations, [], 'normal wakeup is not a timeout even while intent remains owned');
+        compactGate.resolve(null);
+        await finishing;
+    } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
 });

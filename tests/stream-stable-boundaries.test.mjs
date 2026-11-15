@@ -133,3 +133,25 @@ test('unknown emoticon backtick is released once its paragraph ends', () => {
     assert.equal(scan(tail), 3);
     assert.equal(collectMarkdownCodeDomains(tail, { includeUnclosedInline: true })[0].closed, false);
 });
+
+test('incremental cutoff preserves inline context instead of inventing an HTML island line start', () => {
+    const prefix = '<<<[TOOL_REQUEST]>>>tool_name:「始」Demo「末」<<<[END_TOOL_REQUEST]>>>';
+    const cutoff = scan(prefix);
+    assert.equal(cutoff, prefix.length);
+    const text = prefix + '<div>inline mention\n\nsecond\n\nthird';
+    assert.equal(scan(text, cutoff), scan(text));
+});
+
+test('incremental boundaries preserve blank indentation, variable fences and display math', () => {
+    const prefix = '<style>.demo { color: red; }</style>\n';
+    for (const tail of [
+        '~~~html\n<div>code</div>\n~~~\n',
+        '````text\n```\n<div>code</div>\n````\n',
+        '$$\nx^2\n$$\n',
+        '\\[\nx^2\n\\]\n',
+        '   <div>island</div>',
+    ]) {
+        const text = prefix + tail;
+        assert.equal(scan(text, prefix.length), scan(text), tail);
+    }
+});

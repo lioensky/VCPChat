@@ -522,6 +522,12 @@ function getOrCreateStreamSegmentState(messageId) {
             stableBlocks: [],
             stableBlockSeq: 0,
             lastTailText: '',
+            stableCssChunks: [],
+            scopedCssScopeId: null,
+            tailCssChunks: [],
+            lastRenderedTailText: null,
+            lastRenderedTailRoot: null,
+            lastRenderedScopeId: null,
             lastParagraphBoundary: 0,
             // 高级匀速流式的工具结果区间追踪（嵌套感知）：
             // toolResultDepth 为当前未闭合工具结果的嵌套深度，0 表示不在区间内；
@@ -584,7 +590,6 @@ function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, h
         const enrichResult = refs.renderPostProcessedHtml(blockEl, html, {
             messageId,
             settings,
-            renderSessionId: null,
             runHeavy: true,
             includeAttachments: false,
             // stable block 在终态会被整树替换，脚本只允许在规范终态执行一次。
@@ -613,14 +618,16 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
     const sourceText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
     if (!sourceText) return [];
 
+    const cssChunks = [];
     const renderSourceText = typeof refs.processAssistantScopedHtmlContent === 'function'
         ? refs.processAssistantScopedHtmlContent(
             sourceText,
             options.scopeId || null,
             options.messageItem || null,
-            { injectStyles: false }
+            { injectStyles: false, cssChunks }
         )
         : sourceText;
+    segmentState.stableCssChunks.push(...cssChunks);
     const html = parseFullStreamContent(renderSourceText);
     const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
     return blockRecord ? [blockRecord] : [];
@@ -657,7 +664,6 @@ function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, opti
             const enrichResult = refs.renderPostProcessedHtml(blockEl, record.html, {
                 messageId: options.messageId || null,
                 settings: options.settings || null,
-                renderSessionId: null,
                 runHeavy: true,
                 includeAttachments: false,
                 processScripts: false
@@ -1075,16 +1081,19 @@ function renderStreamFrame(messageId) {
     // 在计算/追加新稳定范围前恢复旧 blocks，避免只看得到新的 tail。
     restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, streamRenderOptions);
 
-    // 消息级 CSS 必须基于完整可见源码统一重算。稳定块与 tail 随后只剥离
-    // 各自片段里的 style，不再分别覆盖同一个消息 scope 样式节点。
-    if (typeof refs.processAssistantScopedHtmlContent === 'function') {
-        refs.processAssistantScopedHtmlContent(
-            textForRendering,
-            streamRenderOptions.scopeId,
-            streamRenderOptions.messageItem
-        );
-    }
+    // 工程话题观察独立于 CSS 提取，普通 HTML 不再触发全量保护/AST 扫描。
+    refs.observeStreamSource?.(textForRendering, messageItem);
 
+    // CSS 已包含作用域选择器；重建 DOM 时仅重新提取稳定片段的 CSS，不重跑 Markdown。
+    if (segmentState.scopedCssScopeId !== streamRenderOptions.scopeId) {
+        segmentState.stableCssChunks = [];
+        for (const record of segmentState.stableBlocks) {
+            refs.processAssistantScopedHtmlContent?.(record.source, streamRenderOptions.scopeId, messageItem, {
+                injectStyles: false, cssChunks: segmentState.stableCssChunks,
+            });
+        }
+        segmentState.scopedCssScopeId = streamRenderOptions.scopeId;
+    }
     const nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
 
     // 移除思考指示器
@@ -1103,14 +1112,32 @@ function renderStreamFrame(messageId) {
     }
 
     const tailText = textForRendering.slice(segmentState.stableCutoff);
+    if (tailText === segmentState.lastRenderedTailText
+        && tailRoot === segmentState.lastRenderedTailRoot
+        && streamRenderOptions.scopeId === segmentState.lastRenderedScopeId) {
+        // 相同尾文本不代表稳定区没有追加 CSS。
+        refs.updateStreamScopedCss?.(
+            [...segmentState.stableCssChunks, ...segmentState.tailCssChunks],
+            streamRenderOptions.scopeId, messageItem
+        );
+        return;
+    }
+
+    const tailCssChunks = [];
     const renderTailText = typeof refs.processAssistantScopedHtmlContent === 'function'
         ? refs.processAssistantScopedHtmlContent(
             tailText,
             streamRenderOptions.scopeId,
             streamRenderOptions.messageItem,
-            { injectStyles: false }
+            { injectStyles: false, cssChunks: tailCssChunks }
         )
         : tailText;
+    segmentState.tailCssChunks = tailCssChunks;
+    refs.updateStreamScopedCss?.(
+        [...segmentState.stableCssChunks, ...tailCssChunks],
+        streamRenderOptions.scopeId,
+        messageItem
+    );
     const rawHtml = prepareChatMediaHtml(parseStreamTail(renderTailText), ownerDocument());
 
     if (refs.morphdom) {
@@ -1150,8 +1177,9 @@ function renderStreamFrame(messageId) {
                 }
 
                 // 🟢 检测块级元素的显著内容增长
-                if (STREAM_BLOCK_TAG_REGEX.test(fromEl.tagName)) {
-                    const oldLength = elementContentLengthCache.get(fromEl) || fromEl.textContent.length;
+                if (STREAM_BLOCK_TAG_REGEX.test(fromEl.tagName)
+                    && (!toEl.children.length || toEl.tagName === 'P' || toEl.tagName === 'LI')) {
+                    const oldLength = elementContentLengthCache.get(fromEl) ?? fromEl.textContent.length;
                     const newLength = toEl.textContent.length;
                     const lengthDiff = newLength - oldLength;
 
@@ -1248,7 +1276,9 @@ function renderStreamFrame(messageId) {
                     }
 
                     // 初始化长度缓存用于后续的脉冲检测。
-                    elementContentLengthCache.set(node, node.textContent.length);
+                    if (!node.children.length || node.tagName === 'P' || node.tagName === 'LI') {
+                        elementContentLengthCache.set(node, node.textContent.length);
+                    }
                 }
                 return node;
             }
@@ -1271,6 +1301,9 @@ function renderStreamFrame(messageId) {
     processStreamTailImages(tailRoot);
     decorateStreamingCodeLines(tailRoot);
     segmentState.lastTailText = tailText;
+    segmentState.lastRenderedTailText = tailText;
+    segmentState.lastRenderedTailRoot = tailRoot;
+    segmentState.lastRenderedScopeId = streamRenderOptions.scopeId;
 }
 
 /**
@@ -1455,7 +1488,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
 
     // Only manipulate DOM for current view
     let messageItem = null;
-    if (shouldProjectToDom) {
+    if (shouldProjectToDom && isMessageForCurrentView(context)) {
         messageItem = passedMessageItem || chatMessagesDiv.querySelector(`.message-item[data-message-id="${message.id}"]`);
         if (!messageItem) {
             const placeholderMessage = {
@@ -1847,6 +1880,8 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
     if (disposed) return null;
     const expectedOperationId = finalPayload?.streamOperationId || context?.streamOperationId || null;
     const activeContext = messageContextMap.get(messageId);
+    const runtimeKey = messageRuntimeKeys.get(String(messageId));
+    const stillOwnsTerminal = () => !disposed && messageRuntimeKeys.get(String(messageId)) === runtimeKey;
     if (expectedOperationId && activeContext?.streamOperationId && activeContext.streamOperationId !== expectedOperationId) return null;
     // 原子停止流式帧；最终 DOM 投影期间不允许旧帧重新创建 stable/tail 根。
     streamingTimers.delete(messageId);
@@ -1866,6 +1901,15 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
         });
         if (!initialized) return null;
         initStatusAtFinalize = messageInitializationStatus.get(messageId);
+    }
+    if (!stillOwnsTerminal()) return null;
+    // 初始化回放预缓冲 chunk 可能重新注册帧；唤醒后必须再撤销一次。
+    streamingTimers.delete(messageId);
+    pendingDirectRenderMessages.delete(messageId);
+    if (streamingTimers.size === 0 && globalRenderLoopFrameHandle !== null) {
+        cancelScheduledAnimationFrame(globalRenderLoopFrameHandle);
+        globalRenderLoopFrameHandle = null;
+        globalRenderLoopRunning = false;
     }
     if (!initStatusAtFinalize) {
         console.warn(`[StreamManager] Finalization ignored because message initialization is absent: ${messageId}`);
@@ -1928,9 +1972,10 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
         });
     } catch (error) {
         console.error(`[StreamManager] Could not finalize transient history for ${messageId}`, storedContext, error);
-        discardStreamingMessage(messageId);
+        if (stillOwnsTerminal()) discardStreamingMessage(messageId);
         return null;
     }
+    if (!stillOwnsTerminal()) return null;
     if (!transientModel) {
         // If it's an assistant chat and the message is not found,
         // it's likely the window was reset. Ignore gracefully.
@@ -1953,6 +1998,7 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
         const pendingRecovery = streamDomRecoveryOperations.get(String(messageId));
         if (pendingRecovery) await Promise.allSettled([pendingRecovery]);
 
+        if (!stillOwnsTerminal() || !isMessageForCurrentView(storedContext)) return null;
         let messageItem = messageDomCache.get(messageId)?.messageItem;
         if (!messageItem?.isConnected) {
             messageDomCache.delete(messageId);
@@ -1977,7 +2023,8 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
             }
         }
 
-        if (messageItem) {
+        if (!stillOwnsTerminal()) return null;
+        if (messageItem && isMessageForCurrentView(storedContext)) {
             messageItem.classList.remove('streaming', 'thinking');
 
             const contentDiv = messageItem.querySelector('.md-content');
@@ -2006,7 +2053,6 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
                         messageId,
                         message,
                         settings: refs.globalSettingsRef?.get?.(),
-                        renderSessionId: null,
                         runHeavy: true,
                         includeAttachments: true
                     });
@@ -2036,6 +2082,7 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
                 }
             }
 
+            if (!stillOwnsTerminal()) return null;
             const nameTimeBlock = messageItem.querySelector('.name-time-block');
             if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
                 const timestampDiv = ownerDocument().createElement('div');
@@ -2077,24 +2124,28 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
     };
 }
 
-async function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
+function projectStreamTerminal(messageId, finishReason, context, finalPayload = null) {
     const terminalKey = String(messageId);
-    if (terminalProjectingMessages.has(terminalKey)) return null;
-    const terminalToken = Object.freeze({});
-    terminalProjectingMessages.set(terminalKey, terminalToken);
-    try {
-        return await projectStreamTerminalInternal(
-            messageId,
-            finishReason,
-            context,
-            finalPayload
-        );
-    } finally {
-        // 仅释放本调用持有的锁，重复/迟到终态不能解锁另一个正在投影的终态。
-        if (terminalProjectingMessages.get(terminalKey) === terminalToken) {
-            terminalProjectingMessages.delete(terminalKey);
+    const operationId = finalPayload?.streamOperationId || context?.streamOperationId
+        || messageContextMap.get(messageId)?.streamOperationId || null;
+    const activeOperationId = messageContextMap.get(messageId)?.streamOperationId || null;
+    if (operationId && activeOperationId && operationId !== activeOperationId) return Promise.resolve(null);
+    const existing = terminalProjectingMessages.get(terminalKey);
+    if (existing) return existing.operationId === operationId ? existing.promise : Promise.resolve(null);
+    const entry = { operationId, runtimeKey: messageRuntimeKeys.get(terminalKey), promise: null };
+    // 微任务启动确保锁与共享 Promise 在任何异步路径执行之前发布。
+    entry.promise = Promise.resolve().then(() => {
+        if (disposed || messageRuntimeKeys.get(terminalKey) !== entry.runtimeKey) return null;
+        return projectStreamTerminalInternal(messageId, finishReason, context, finalPayload);
+    }).finally(() => {
+        // 导航早退、后处理失败也必须回收运行态；旧终态不得清理同 ID 的新重试。
+        if (entry.runtimeKey && messageRuntimeKeys.get(terminalKey) === entry.runtimeKey) {
+            discardStreamingMessage(messageId);
         }
-    }
+        if (terminalProjectingMessages.get(terminalKey) === entry) terminalProjectingMessages.delete(terminalKey);
+    });
+    terminalProjectingMessages.set(terminalKey, entry);
+    return entry.promise;
 }
 
 function discardStreamingMessage(messageId) {
@@ -2126,6 +2177,7 @@ function discardStreamingMessage(messageId) {
     cleanupDesktopPushState(messageId);
     activeStreamingMessages.delete(messageId);
     messageRuntimeKeys.delete(String(messageId));
+    streamMessageModels.delete(messageId);
 }
 
 async function dispose() {

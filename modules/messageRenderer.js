@@ -68,6 +68,18 @@ const middleClickHandler = options.middleClickHandler || createMiddleClickHandle
 const imageHandler = options.imageHandler || createImageHandler({ fixUrl: emoticonUrlFixer.fixEmoticonUrl });
 const colorExtractionPromises = new Map();
 const ownedStyleElements = new Set();
+const persistedAvatarColorKeys = new Set();
+const scopedCssCache = new Map();
+
+function scopeCssCached(source, scopeId) {
+    let cache = scopedCssCache.get(scopeId);
+    if (!cache) scopedCssCache.set(scopeId, cache = new Map());
+    if (cache.has(source)) return cache.get(source);
+    const css = contentProcessor.scopeCss(source, scopeId);
+    if (cache.size >= 64) cache.delete(cache.keys().next().value);
+    cache.set(source, css);
+    return css;
+}
 const projectForgeTopicSurface = createProjectForgeTopicSurface();
 
 async function getDominantAvatarColorCached(url) {
@@ -254,9 +266,12 @@ function protectLatexBlocks(text) {
 
             let closeIndex = -1;
             let cursor = openIndex + 1;
-            while (cursor < source.length) {
-                const dollarIndex = source.indexOf('$', cursor);
-                if (dollarIndex === -1) break;
+            const newline = source.indexOf('\n', openIndex + 1);
+            const limit = Math.min(source.length, newline < 0 ? source.length : newline, openIndex + 1202);
+            while (cursor < limit) {
+                let dollarIndex = cursor;
+                while (dollarIndex < limit && source[dollarIndex] !== '$') dollarIndex++;
+                if (dollarIndex >= limit) break;
 
                 if (source[dollarIndex - 1] === '\\') {
                     cursor = dollarIndex + 1;
@@ -314,62 +329,14 @@ function protectLatexBlocks(text) {
         return result;
     };
 
-    // 🟢 关键修复：先保护代码围栏，防止代码块内的 $ / $$ 被误匹配为 LaTeX
-    // 例如 Python 代码 `b'$$' in data` 中的 $$ 会与文档后面的 $$ 数学公式匹配，
-    // 导致 LaTeX 占位符跨越并吞噬中间的代码围栏标记
+    // 公式保护与结构修正共享代码域规则，包含行内代码、可变长围栏和波浪号。
+    // 保留此处保护：特殊块转换可能生成新内容，不能假定流水线早期的代码占位符仍覆盖全部输入。
     const codeFenceMap = new Map();
-    let codeFenceId = 0;
-
-    // 使用逐行状态机识别代码围栏（比正则更可靠）
-    const lines = text.split('\n');
-    const resultLines = [];
-    let fenceStartLine = -1;
-    let fenceBacktickCount = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i].trimStart();
-
-        if (fenceStartLine === -1) {
-            // 不在代码块内：检测开始围栏
-            const openMatch = trimmed.match(/^(`{3,})/);
-            if (openMatch) {
-                fenceStartLine = resultLines.length;
-                fenceBacktickCount = openMatch[1].length;
-                resultLines.push(lines[i]);
-            } else {
-                resultLines.push(lines[i]);
-            }
-        } else {
-            // 在代码块内：检测关闭围栏
-            const closeMatch = trimmed.match(/^(`{3,})\s*$/);
-            if (closeMatch && closeMatch[1].length >= fenceBacktickCount) {
-                // 找到关闭围栏，将整个代码块替换为占位符
-                resultLines.push(lines[i]);
-                const blockLines = resultLines.splice(fenceStartLine);
-                const blockContent = blockLines.join('\n');
-                const placeholder = `%%CODEFENCE_FOR_LATEX_${codeFenceId}%%`;
-                codeFenceMap.set(placeholder, blockContent);
-                codeFenceId++;
-                resultLines.push(placeholder);
-                fenceStartLine = -1;
-                fenceBacktickCount = 0;
-            } else {
-                resultLines.push(lines[i]);
-            }
-        }
-    }
-
-    // 如果有未关闭的代码围栏（流式传输场景），也保护起来
-    if (fenceStartLine !== -1) {
-        const blockLines = resultLines.splice(fenceStartLine);
-        const blockContent = blockLines.join('\n');
-        const placeholder = `%%CODEFENCE_FOR_LATEX_${codeFenceId}%%`;
-        codeFenceMap.set(placeholder, blockContent);
-        codeFenceId++;
-        resultLines.push(placeholder);
-    }
-
-    let processed = resultLines.join('\n');
+    let processed = replaceMarkdownCodeDomains(text, block => {
+        const placeholder = `%%CODEFENCE_FOR_LATEX_${codeFenceMap.size}%%`;
+        codeFenceMap.set(placeholder, block);
+        return placeholder;
+    });
 
     // 保护顺序很重要：先保护 display math ($$...$$)，再保护 inline math。
     // 块级 $$ 只接受“独占一行”的定界符，避免把 `$10`、`$$` 字符串或表格内容误贪成跨段公式。
@@ -415,9 +382,7 @@ function protectLatexBlocks(text) {
     });
 
     // 🟢 恢复代码围栏（占位符 → 原始代码块）
-    for (const [placeholder, original] of codeFenceMap.entries()) {
-        processed = processed.split(placeholder).join(original);
-    }
+    processed = processed.replace(/%%CODEFENCE_FOR_LATEX_\d+%%/g, token => codeFenceMap.get(token) ?? token);
 
     return { text: processed, map };
 }
@@ -970,13 +935,7 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, tool
 
     const restoreBlocks = (textStr) => {
         if (!textStr || !codeBlockMap) return textStr;
-        let res = textStr;
-        for (const [placeholder, block] of codeBlockMap.entries()) {
-            if (res.includes(placeholder)) {
-                res = res.replace(placeholder, () => block);
-            }
-        }
-        return res;
+        return textStr.replace(/__VCP_CODE_BLOCK_PLACEHOLDER_\d+__/g, token => codeBlockMap.get(token) ?? token);
     };
 
     // 🟢 架构级修复：VCP Tool Results 不再在此处理
@@ -1345,9 +1304,7 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, tool
     // 所有外层特殊协议转换完成后才恢复思维链。
     // 从这里开始只执行思维链专用 Markdown/LaTeX 渲染，不再运行任何 VCP 特殊规则。
     if (thoughtChainMap && thoughtChainMap.size > 0) {
-        for (const [placeholder, original] of thoughtChainMap.entries()) {
-            processed = processed.split(placeholder).join(original);
-        }
+        processed = processed.replace(/<!--VCP_THOUGHT_CHAIN_\d+-->/g, token => thoughtChainMap.get(token) ?? token);
     }
 
     // Process VCP Thought Chains
@@ -1495,7 +1452,7 @@ function processAndInjectScopedCss(content, scopeId, options = {}) {
     if (options.cssChunks) {
         if (cssContent.trim()) {
             try {
-                options.cssChunks.push(contentProcessor.scopeCss(cssContent, scopeId));
+                options.cssChunks.push(scopeCssCached(cssContent, scopeId));
             } catch (error) {
                 console.warn('[ScopedCSS] Rejected invalid domain CSS:', error);
             }
@@ -1504,7 +1461,7 @@ function processAndInjectScopedCss(content, scopeId, options = {}) {
     }
     if (injectStyles && (cssContent.length > 0 || options.scopedCssOverride)) {
         try {
-            const scopedCss = options.scopedCssOverride ?? contentProcessor.scopeCss(cssContent, scopeId);
+            const scopedCss = options.scopedCssOverride ?? scopeCssCached(cssContent, scopeId);
             if (!scopedCss.trim()) {
                 if (options.messageItem) {
                     options.messageItem.dataset.vcpScopedStyleState = 'rejected';
@@ -1529,7 +1486,7 @@ function processAndInjectScopedCss(content, scopeId, options = {}) {
 
             // 流式渲染会多次经过此函数：复用节点并原子替换文本，
             // 避免同一消息累积多个样式节点或出现旧规则覆盖新规则。
-            styleElement.textContent = scopedCss;
+            if (styleElement.textContent !== scopedCss) styleElement.textContent = scopedCss;
             styleInjected = true;
             if (options.messageItem) {
                 options.messageItem.dataset.vcpScopedStyleState = 'active';
@@ -1576,6 +1533,7 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
             processAssistantScopedHtmlContent(source, scopeId, null, {
                 ...options, injectStyles: false, cssChunks,
             }));
+        if (options.cssChunks) options.cssChunks.push(...cssChunks);
         if (options.injectStyles !== false) {
             removeOwnedMessageScopeStyle(scopeId);
             if (cssChunks.length) {
@@ -1607,6 +1565,8 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
             messageItem.dataset.vcpInlineHtmlScoped = 'true';
         }
     }
+
+    if (!containsStyleTag(content)) return content;
 
     // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
     // 这样可以避免 HTML 注释、代码块、推送块、工具请求块、工具结果块和
@@ -1719,13 +1679,13 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
  * Wraps raw HTML documents in markdown code fences if they aren't already.
  * 🟢 跳过「始」「末」标记内的 HTML，防止工具调用参数被错误封装
  */
-function ensureHtmlFenced(text) {
+function ensureHtmlFenced(text, options = {}) {
     const doctypeTag = '<!DOCTYPE html>';
     const htmlCloseTag = '</html>';
     const lowerText = text.toLowerCase();
 
     // 已在代码块中，不处理
-    if (HTML_FENCE_CHECK_REGEX.test(text)) {
+    if (!options.codeDomainsProtected && HTML_FENCE_CHECK_REGEX.test(text)) {
         return text;
     }
 
@@ -1751,13 +1711,13 @@ function ensureHtmlFenced(text) {
     let lastIndex = 0;
 
     while (true) {
-        const startIndex = text.toLowerCase().indexOf(doctypeTag.toLowerCase(), lastIndex);
+        const startIndex = lowerText.indexOf(doctypeTag.toLowerCase(), lastIndex);
 
         result += text.substring(lastIndex, startIndex === -1 ? text.length : startIndex);
 
         if (startIndex === -1) break;
 
-        const endIndex = text.toLowerCase().indexOf(htmlCloseTag.toLowerCase(), startIndex + doctypeTag.length);
+        const endIndex = lowerText.indexOf(htmlCloseTag.toLowerCase(), startIndex + doctypeTag.length);
 
         if (endIndex === -1) {
             result += text.substring(startIndex);
@@ -1774,7 +1734,7 @@ function ensureHtmlFenced(text) {
         }
 
         // 正常逻辑：检查是否已在代码块内
-        const fencesInResult = (result.match(/```/g) || []).length;
+        const fencesInResult = options.codeDomainsProtected ? 0 : (result.match(/```/g) || []).length;
 
         if (fencesInResult % 2 === 0) {
             result += `\n\`\`\`html\n${block}\n\`\`\`\n`;
@@ -1796,11 +1756,11 @@ function ensureHtmlFenced(text) {
  * @param {string} text The text content.
  * @returns {string} The processed text.
  */
-function deIndentHtml(text) {
+function deIndentHtml(text, options = {}) {
     const lines = text.split('\n');
     let inFence = false;
     return lines.map(line => {
-        if (line.trim().startsWith('```')) {
+        if (!options.codeDomainsProtected && line.trim().startsWith('```')) {
             inFence = !inFence;
             return line;
         }
@@ -1876,7 +1836,11 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
         depth
     });
 
-    return { text: result.text, toolResultMap: result.state.toolResultMap || null };
+    return {
+        text: result.text,
+        toolResultMap: result.state.toolResultMap || null,
+        rawScriptMap: result.state.rawScriptMap || null,
+    };
 }
 
 function preprocessStreamTailContent(text) {
@@ -2018,11 +1982,14 @@ function renderMarkdownToHtmlUncached(text, options = {}) {
         depth = 0
     } = options;
 
-    const { text: processedText, toolResultMap } = preprocessFullContent(text, globalSettings, messageRole, depth);
+    const { text: processedText, toolResultMap, rawScriptMap } = preprocessFullContent(text, globalSettings, messageRole, depth);
     const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
     let html = markedInstance.parse(protectedText);
     html = restoreLatexBlocks(html, latexMap);
     html = restoreRenderedToolResults(html, toolResultMap, options.resultOrdinal || 0);
+    if (rawScriptMap?.size) {
+        html = html.replace(/<!--VCP_RAW_SCRIPT_\d+-->/g, token => rawScriptMap.get(token) ?? token);
+    }
     return html;
 }
 
@@ -2785,6 +2752,8 @@ function disposeRendererResources() {
         styleElement.remove();
     }
     ownedStyleElements.clear();
+    scopedCssCache.clear();
+    persistedAvatarColorKeys.clear();
 }
 async function disposeRootResources(root) {
     if (!root?.querySelectorAll) return;
@@ -2831,6 +2800,7 @@ function cleanupScopedStylesForMessage(messageItem, messageId = null) {
     if (!messageItem && !messageId) return;
     const scopeId = messageItem?.id;
     const chatScopeId = messageItem?.getAttribute?.('data-chat-scope') || (messageId ? `vcp-${surfaceId}-chat-${messageId}` : null);
+    scopedCssCache.delete(scopeId);
     for (const styleElement of ownedStyleElements) {
         if ((styleElement.getAttribute('data-vcp-surface-id') === surfaceId)
             && ((scopeId && styleElement.getAttribute('data-vcp-scope-id') === scopeId)
@@ -3229,6 +3199,15 @@ function initializeMessageRenderer(refs) {
         runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
         preprocessFullContent: preprocessFullContent,
         processAssistantScopedHtmlContent,
+        observeStreamSource: (content, messageItem) => {
+            const root = messageItem.closest('[data-vcp-projectforge-root]') || mainRendererReferences.chatMessagesDiv;
+            projectForgeTopicSurface.observe(root, { id: messageItem.dataset.messageId, role: 'assistant', content });
+        },
+        updateStreamScopedCss: (chunks, scopeId, messageItem) => {
+            const css = chunks.filter(Boolean).join('\n');
+            if (css) processAndInjectScopedCss('', scopeId, { scopedCssOverride: css, messageItem });
+            else removeOwnedMessageScopeStyle(scopeId);
+        },
         findToolRequestEnd: (text, startIndex) => findToolRequestEnd(text, startIndex),
         removeSpeakerTags: contentProcessor.removeSpeakerTags,
         ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
@@ -3783,13 +3762,13 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     const renderRevision = replacesContent
         ? (Number(contentDiv._vcpRenderRevision) || 0) + 1
         : (Number(contentDiv._vcpRenderRevision) || 0);
-    if (replacesContent) contentDiv._vcpRenderRevision = renderRevision;
+    contentDiv._vcpRenderRevision = renderRevision;
 
     const {
         messageId = null,
         message = null,
         settings = mainRendererReferences.globalSettingsRef.get(),
-        renderSessionId = getActiveRenderSessionId(),
+        renderSessionId = getActiveRenderSessionId(contentDiv.closest?.('[data-vcp-projectforge-root]')),
         runHeavy = true,
         includeAttachments = true,
         deferHighlights = true,
@@ -3835,6 +3814,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         // 不在旧任务中扫描删除附件：同一节点可能已被新 revision 重新挂载。
         // 新渲染开始时的统一 DOM 资源清理负责释放旧附件。
         if (!isStillValid()) return;
+        contentDiv.dataset.vcpAttachmentsProcessed = 'true';
     }
 
     if (!isStillValid()) return;
@@ -4037,7 +4017,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                     const loadedItems = typeof window !== 'undefined' && window.itemListManager?.getLoadedItems
                         ? window.itemListManager.getLoadedItems()
                         : [];
-                    
+
                     const matchedItem = loadedItems.find(it => {
                         if (it.type !== 'agent' || !it.name) return false;
                         const itLower = it.name.toLowerCase();
@@ -4157,8 +4137,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         rawHtml = rawHtml.replace(/viewBox="0 "/g, 'viewBox="0 0 24 24"');
 
         // Synchronously set the base HTML content
-        const finalHtml = prepareChatMediaHtml(rawHtml, contentDiv.ownerDocument);
-        contentDiv.innerHTML = finalHtml;
+        imageHandler.setContentAndProcessImages(contentDiv, rawHtml, message.id);
+        contentDiv._vcpRenderRevision = 1;
         bindLazyTools(contentDiv);
 
         // [Pretext集成] 延后填充文本高度缓存，避免阻塞首屏与批量历史渲染。
@@ -4166,20 +4146,23 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         // 第一条 .md-content，导致所有消息争用同一个 idle handle。
         scheduleMessagePretextEstimate(message.id, textToRender, contentDiv);
 
+        const initialRevision = contentDiv._vcpRenderRevision;
         // Define the post-processing logic as a function.
         // This allows us to control WHEN it gets executed.
         const runPostRenderProcessing = async (postOptions = {}) => {
-            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
+            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected
+                || contentDiv._vcpRenderRevision !== initialRevision
+                || isActiveStreamRequest) {
                 return;
             }
 
-            return renderPostProcessedHtml(contentDiv, finalHtml, {
+            return renderPostProcessedHtml(contentDiv, null, {
                 messageId: message.id,
                 message,
                 settings: globalSettings,
                 renderSessionId,
                 runHeavy: postOptions.runHeavy !== false,
-                includeAttachments: true
+                includeAttachments: contentDiv.dataset.vcpAttachmentsProcessed !== 'true'
             });
         };
 
@@ -4285,12 +4268,16 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                         typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id;
                     }
 
-                    if (typeToSave && idToSaveFor) {
+                    const persistKey = `${typeToSave}:${idToSaveFor}:${avatarUrlToUse}:${dominantColor}`;
+                    if (typeToSave && idToSaveFor && !persistedAvatarColorKeys.has(persistKey)) {
+                        persistedAvatarColorKeys.add(persistKey);
                         electronAPI.saveAvatarColor({ type: typeToSave, id: idToSaveFor, color: dominantColor })
                             .then(result => {
                                 if (result.success) {
                                     if (typeToSave === 'user') {
-                                        mainRendererReferences.globalSettingsRef.set({ ...globalSettings, userAvatarCalculatedColor: dominantColor });
+                                        const latestSettings = mainRendererReferences.globalSettingsRef.get();
+                                        if (latestSettings.userAvatarUrl !== avatarUrlToUse) return;
+                                        mainRendererReferences.globalSettingsRef.set({ ...latestSettings, userAvatarCalculatedColor: dominantColor });
                                     } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id) {
                                         const liveSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
                                         if (liveSelectedItem?.id !== idToSaveFor || liveSelectedItem.type !== 'agent') return;
@@ -4299,7 +4286,12 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                                             : { ...liveSelectedItem, avatarCalculatedColor: dominantColor };
                                         mainRendererReferences.currentSelectedItemRef.set(nextSelectedItem);
                                     }
+                                } else {
+                                    persistedAvatarColorKeys.delete(persistKey);
                                 }
+                            }).catch(error => {
+                                persistedAvatarColorKeys.delete(persistKey);
+                                console.warn('[Color] Failed to persist avatar color:', error);
                             });
                     }
                 }
@@ -4337,7 +4329,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                 console.debug(`[DEBUG] Applying chat CSS to message ${message.id}:`, chatCss);
 
                 // 为此消息创建唯一的scope ID
-                const chatScopeId = `vcp-${surfaceId}-chat-${message.id}`;
+                const chatScopeId = `vcp-${surfaceId}-chat-${message.id}-${messageItem.id}`;
                 messageItem.setAttribute('data-chat-scope', chatScopeId);
 
                 // 检查是否已存在相同的style标签
@@ -4519,7 +4511,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId, opt
         messageId,
         message: messageFromHistoryForRegex ? { ...messageFromHistoryForRegex, content: fullContent } : null,
         settings: globalSettings,
-        renderSessionId: null,
+        renderSessionId: getActiveRenderSessionId(chatMessagesDiv),
         runHeavy: true,
         includeAttachments: !!messageFromHistoryForRegex
     });
@@ -4656,7 +4648,7 @@ function updateMessageContent(messageId, newContent) {
         messageId,
         message: messageInHistory ? { ...messageInHistory, content: newContent } : null,
         settings: globalSettings,
-        renderSessionId: null,
+        renderSessionId: getActiveRenderSessionId(contentDiv.closest('[data-vcp-projectforge-root]')),
         runHeavy: true,
         includeAttachments: !!messageInHistory
     }).catch(error => {
@@ -4821,11 +4813,15 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
             // 不能只删除 fragment 中的历史快照，否则实时节点会留在旧位置并被
             // 随后追加的历史消息压到顶部。把实时节点移动到快照槽位，才能同时
             // 保持唯一身份和 history 数组定义的最终楼层。
-            messageElements.forEach(el => {
+            messageElements.forEach((el, index) => {
                 const messageId = el.dataset?.messageId;
                 if (!messageId) return;
                 const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
-                if (mounted && mounted !== el) el.replaceWith(mounted);
+                if (mounted && mounted !== el) {
+                    cleanupMessageDomResources(el);
+                    el.replaceWith(mounted);
+                    messageElements[index] = mounted;
+                }
             });
 
             // Step 1: Append all elements to the DOM at once.
@@ -4883,11 +4879,15 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
 
                 // idle 等待期间流式恢复可能已建立同 ID 节点。用实时节点替换
                 // fragment 中的快照槽位，使节点随该批次进入准确的历史位置。
-                elementsForProcessing.forEach(el => {
+                elementsForProcessing.forEach((el, index) => {
                     const messageId = el.dataset?.messageId;
                     if (!messageId) return;
                     const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
-                    if (mounted && mounted !== el) el.replaceWith(mounted);
+                    if (mounted && mounted !== el) {
+                        cleanupMessageDomResources(el);
+                        el.replaceWith(mounted);
+                        elementsForProcessing[index] = mounted;
+                    }
                 });
 
                 let insertPoint = renderRoot.firstChild;
@@ -4952,11 +4952,15 @@ async function renderHistoryLegacy(history, renderSessionId = null, renderContex
 
             // 构建 fragment 后到本帧挂载前，活动流补建可能已经恢复同 ID 节点。
             // 将实时节点移入对应快照槽位，避免它停留在历史队列顶部。
-            allMessageElements.forEach(el => {
+            allMessageElements.forEach((el, index) => {
                 const messageId = el.dataset?.messageId;
                 if (!messageId) return;
                 const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
-                if (mounted && mounted !== el) el.replaceWith(mounted);
+                if (mounted && mounted !== el) {
+                    cleanupMessageDomResources(el);
+                    el.replaceWith(mounted);
+                    allMessageElements[index] = mounted;
+                }
             });
 
             // Step 1: Append all elements to the DOM.
