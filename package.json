@@ -198,7 +198,9 @@
       "node_modules/sherpa-onnx-linux-x64/**/*",
       "modules/voice/localStt/sttWorker.js",
       "modules/deskpet/wake/kwsWorker.js",
-      "VCPDistributedServer/Plugin/PowerShellExecutor/AdminConfirm.py"
+      "VCPDistributedServer/Plugin/PowerShellExecutor/AdminConfirm.py",
+      "VCPDistributedServer/Plugin/ProjectForge/**/*",
+      "VCPDistributedServer/shared/**/*"
     ],
     "files": [
       "main.js",
@@ -216,6 +218,9 @@
       "VCPDistributedServer/Plugin.js",
       "VCPDistributedServer/frontend-plugin-loader.js",
       "VCPDistributedServer/Plugin/ChartController/**/*",
+      "VCPDistributedServer/Plugin/ProjectForge/**/*",
+      "VCPDistributedServer/shared/**/*",
+      "ProjectForgemodules/**/*",
       "VCPDistributedServer/Plugin/VCPMobileSync/**/*",
       "VCPDistributedServer/Plugin/VChatDynamicWallpaper/**/*",
       "VCPDistributedServer/Plugin/VChatAutoTTS/**/*",

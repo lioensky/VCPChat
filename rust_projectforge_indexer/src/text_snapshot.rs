@@ -25,6 +25,8 @@ pub struct PreparedTextEdit {
 
 impl TextSnapshot {
     /// A rejected or ambiguous plan has no output bytes and cannot become a commit.
+    /// 快路径：不解析 AST。词法/结构命中会把 `requires_expected_hash` 置位，
+    /// 由管线要求调用方补 expectedHash 之后才能变成可提交计划。
     pub fn prepare(
         &self,
         steps: &[crate::edit::Step],
@@ -34,6 +36,8 @@ impl TextSnapshot {
         self.finish(outcome)
     }
 
+    /// 慢路径：按需解析一次语法树。只服务两件事——符号编辑的定位，
+    /// 以及快路径失败/歧义时补回 scope 与 structure 候选。
     pub fn prepare_with_language(
         &self,
         steps: &[crate::edit::Step],
@@ -43,7 +47,7 @@ impl TextSnapshot {
         let mut parser = tree_sitter::Parser::new();
         let outline = crate::symbols::outline(lang, &self.text, &mut parser)?;
         // Broken AST ranges are not authoritative for native symbol mutations yet.
-        if outline.has_error && steps.iter().any(|s| matches!(&s.action,crate::edit::Action::Symbol{..})) {
+        if outline.has_error && steps.iter().any(|s|s.action.needs_symbols()) {
             return Err("symbol editing requires a syntactically valid snapshot".into());
         }
         let outcome = crate::edit::run_with_symbols(&self.text,steps,best_effort,&outline.symbols)?;
@@ -222,5 +226,22 @@ mod tests {
         std::fs::write(&path, "原文\r\n").unwrap();
         assert_eq!(TextSnapshot::read(&path).unwrap().text, "原文\n");
         assert!(TextSnapshot::read(dir.path()).is_err());
+    }
+
+    #[test]
+    fn fast_path_marks_inferred_plans_without_parsing_ast() {
+        let snapshot = TextSnapshot::decode(b"const a = 1;\n".to_vec()).unwrap();
+        let steps: Vec<crate::edit::Step> = serde_json::from_value(serde_json::json!([
+            {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;","pick":[1]}
+        ])).unwrap();
+        let plan = snapshot.prepare(&steps, false).unwrap().ok().unwrap();
+        assert!(plan.outcome.requires_expected_hash, "词法命中要显式授权");
+        assert_eq!(plan.bytes, b"const a = 2;\n");
+        let ambiguous: Vec<crate::edit::Step> = serde_json::from_value(serde_json::json!([
+            {"step":1,"op":"target","target":"const   a = 1;","replace":"const a = 2;"}
+        ])).unwrap();
+        let rejected = snapshot.prepare(&ambiguous, false).unwrap().err().unwrap();
+        assert_eq!(rejected.status, "ambiguous");
+        assert!(!rejected.requires_expected_hash, "没有计划就没有授权要求");
     }
 }

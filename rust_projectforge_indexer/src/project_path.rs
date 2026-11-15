@@ -66,6 +66,30 @@ pub fn resolve(root: &Path, input: &str, allow_missing: bool) -> Result<ProjectP
     Ok(ProjectPath { root, absolute, relative:names.join("/") })
 }
 
+/// Authorize a possibly missing project directory using its nearest existing ancestor.
+pub fn resolve_new_root(root: &Path, allowed_roots: &[PathBuf]) -> Result<PathBuf, String> {
+    if !root.is_absolute() || root.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Err("project root must be an absolute path without parent traversal".into());
+    }
+    let mut ancestor = root.to_path_buf();
+    let mut missing = Vec::new();
+    while !ancestor.exists() {
+        missing.push(ancestor.file_name().ok_or("project root has no existing ancestor")?.to_owned());
+        if !ancestor.pop() { return Err("project root has no existing ancestor".into()); }
+    }
+    let ancestor = ancestor.canonicalize().map_err(|e| e.to_string())?;
+    if !ancestor.is_dir() { return Err("project root ancestor is not a directory".into()); }
+    for allowed in allowed_roots {
+        let Ok(prefix) = ancestor.strip_prefix(allowed) else { continue; };
+        let mut relative = prefix.to_path_buf();
+        for name in missing.iter().rev() { relative.push(name); }
+        if relative.as_os_str().is_empty() { return Ok(allowed.clone()); }
+        let input = relative.to_str().ok_or("non-UTF8 project root")?;
+        return resolve(allowed, input, true).map(|path| path.absolute);
+    }
+    Err("project root is outside trusted allowed roots".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -134,7 +134,10 @@ impl Receipt {
             || self.review.after_text_hash != hash(&after.text) {
             return Err("validation receipt path/text mismatch".into());
         }
-        if !self.review.supported || self.review.rejects_syntax(self.reject_new_syntax) {
+        // An explicit unsupported worker state means "no validator for this
+        // extension", not "validation failed". Its hashes are still identity
+        // checked above, and decode() guarantees it carries no diagnostics.
+        if self.review.rejects_syntax(self.reject_new_syntax) {
             return Err("validation receipt does not authorize this plan".into());
         }
         // Recheck deserialized diagnostic limits and fields as well.
@@ -176,9 +179,14 @@ mod tests {
         assert!(recovered.verify("other.js", before, after).is_err());
         assert!(recovered.verify("fixture.js", b"\xef\xbb\xbfbefore", after).is_err());
         assert!(recovered.verify("fixture.js", before, b"external").is_err());
-        let mut altered = serde_json::to_value(&receipt).unwrap();
-        altered["review"]["supported"] = json!(false);
-        assert!(serde_json::from_value::<Receipt>(altered).unwrap()
+        let mut unsupported = serde_json::to_value(&receipt).unwrap();
+        unsupported["review"]["supported"] = json!(false);
+        serde_json::from_value::<Receipt>(unsupported).unwrap()
+            .verify("fixture.js", before, after).unwrap();
+        let mut tampered = serde_json::to_value(&receipt).unwrap();
+        tampered["review"]["supported"] = json!(false);
+        tampered["review"]["introduced"] = json!([d(1, true)]);
+        assert!(serde_json::from_value::<Receipt>(tampered).unwrap()
             .verify("fixture.js", before, after).is_err());
         let mut altered = serde_json::to_value(&receipt).unwrap();
         altered["review"]["introduced"] = json!([d(1, true)]);

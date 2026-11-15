@@ -8,7 +8,12 @@ const { resolveDefaultBinaryPath } = require('./indexerClient');
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
 const MAX_PENDING = 32;
 const MAX_PENDING_BYTES = 64 * 1024 * 1024;
-const MUTATIONS = new Set(['store.createProject', 'store.recordBatch', 'edit.execute']);
+const MUTATIONS = new Set([
+    'store.createProject', 'store.recordBatch', 'store.updateProject', 'store.addTodos',
+    'store.updateTodo', 'store.removeTodo', 'store.softDeleteProjects',
+    'store.restoreProjects', 'store.purgeProjects', 'edit.execute', 'edit.resolve', 'file.execute',
+    'operation.reconcile',
+]);
 
 class ServiceError extends Error {
     constructor(message, code, operationId = null) {
@@ -192,6 +197,10 @@ class ProjectServiceClient {
     }
 
     operationStatus(operationId) { return this.request('operation.status', { operationId }); }
+    operationInspect(operationId) { return this.request('operation.inspect', { operationId }); }
+    operationReconcile({ operationId, files, policy }) {
+        return this.request('operation.reconcile', { operationId, policy, files });
+    }
 
     async close() {
         if (this.closed) return;

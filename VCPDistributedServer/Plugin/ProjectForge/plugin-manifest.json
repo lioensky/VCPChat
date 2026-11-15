@@ -172,6 +172,16 @@
         "command": "PurgeProjects",
         "description": "永久清除已删除工程的记录、todo、报告和全部历史快照，之后无法回退。只针对已 DeleteProjects 的工程，需要 confirm=true。磁盘文件不受影响。",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」PurgeProjects「末」,\nprojectIds:「始」p9x8y「末」,\nconfirm:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "InspectOperation",
+        "description": "只读检查持久操作的真实状态。operationId 必需。返回 state（conflict / reconciled / committed / unknown）、kind（single / multi）、commitKind、根目录授权结果，以及每个文件的 beforeHash / afterHash / actualHash / exists / state / applied / pending。绝不写磁盘；处置持久冲突前先用它取得当前 actualHash 与未完成文件清单。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」InspectOperation「末」,\noperationId:「始」pf-xxxxxxxx「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ReconcileOperation",
+        "description": "显式处置持久冲突，仅支持 policy=acceptCurrent。operationId 必需；files 为 JSON 数组，必须逐文件提交 {filePath, expectedHash}，expectedHash 为当前磁盘 sha256 小写十六进制，null 表示文件当前不存在。服务会重核 allowedRoots、项目根与逐文件实际 hash；全部匹配后仅放弃未完成意图、释放资源锁，并持久保存 status=reconciled、committed=false 的可重放结果。绝不覆盖第三方字节、不生成 batch/node 成功历史，before/after 持久快照保留。hash 失配时不会改动任何状态；原 operationId 重放返回 reconciled 而不是重新执行。",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ProjectForge「末」,\ncommand:「始」ReconcileOperation「末」,\noperationId:「始」pf-xxxxxxxx「末」,\npolicy:「始」acceptCurrent「末」,\nfiles:「始」[{\"filePath\":\"a.txt\",\"expectedHash\":\"sha256-current-a\"},{\"filePath\":\"b.txt\",\"expectedHash\":null}]「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }

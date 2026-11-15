@@ -15,6 +15,8 @@ run(cargo, ['test', '--manifest-path', manifest, '--locked',
     '--', '--ignored', '--exact',
 ], { ...process.env, PF_VALIDATOR_NODE: process.execPath });
 run(cargo, ['build', '--manifest-path', manifest, '--locked']);
+const binaryName = process.platform === 'win32' ? 'projectforge_indexer.exe' : 'projectforge_indexer';
+const debugBinary = path.join(root, 'rust_projectforge_indexer', 'target', 'debug', binaryName);
 run(process.execPath, ['--test',
     'tests/project-forge-service.test.js',
     'tests/project-forge-validation-worker.test.cjs',
@@ -24,4 +26,8 @@ run(process.execPath, ['--test',
     'tests/project-forge-export-ipc.test.js',
     'tests/project-forge-event-ipc.test.js',
     'tests/project-forge-ast.test.js',
-], { ...process.env, PF_SERVICE_REQUIRE_BINARY: '1' });
+], {
+    ...process.env,
+    PF_SERVICE_BINARY: process.env.PF_SERVICE_BINARY || debugBinary,
+    PF_SERVICE_REQUIRE_BINARY: '1',
+});

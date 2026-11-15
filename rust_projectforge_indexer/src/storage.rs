@@ -2,13 +2,13 @@
 //! Only an explicitly handed-over DB may be opened; the Rust lock does NOT fence legacy JS.
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use fs2::FileExt;
-use rusqlite::{params, types::ValueRef, Connection, OptionalExtension};
+use rusqlite::{params, params_from_iter, types::{Value as SqlValue, ValueRef}, Connection, OpenFlags, OptionalExtension};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -16,9 +16,17 @@ pub(crate) type Result<T> = std::result::Result<T, Box<dyn std::error::Error + S
 const MAX_BLOB_BYTES: usize = 32 * 1024 * 1024;
 const MAX_BATCH_NODES: usize = 200;
 const SCHEMA: &str = include_str!("storage_schema.sql");
+/// Upper bound of the read-only connection budget, mirroring the host configuration range.
+const MAX_READ_CONCURRENCY: usize = 16;
+/// Default read-only budget of a storage process without explicit configuration.
+pub(crate) const DEFAULT_MAX_READ_CONCURRENCY: usize = 4;
 
 pub struct Store {
     pub(crate) db: Connection,
+    /// Canonical database path, shared with every pooled read-only connection.
+    path: PathBuf,
+    /// Read concurrency granted to the query pool; the pool enforces it per query.
+    max_read_concurrency: usize,
     _ownership: File,
 }
 
@@ -42,6 +50,34 @@ fn limit(p: &Value, fallback: u64, max: u64) -> Result<i64> {
     };
     if n == 0 || n > max { return Err(format!("limit must be 1..={max}").into()); }
     Ok(n as i64)
+}
+fn offset(p: &Value) -> Result<i64> {
+    let n = match p.get("offset") {
+        None => 0,
+        Some(v) => v.as_u64().ok_or("offset must be a non-negative integer")?,
+    };
+    if n > 1_000_000 { return Err("offset too large".into()); }
+    Ok(n as i64)
+}
+fn rows_values(db: &Connection, sql: &str, args: &[SqlValue]) -> Result<Vec<Value>> {
+    let mut statement = db.prepare(sql)?;
+    let names: Vec<String> = statement.column_names().iter().map(|s| (*s).into()).collect();
+    let mapped = statement.query_map(params_from_iter(args.iter()), |row| {
+        let mut object = Map::new();
+        for (i, name) in names.iter().enumerate() {
+            let value = match row.get_ref(i)? {
+                ValueRef::Null => Value::Null,
+                ValueRef::Integer(n) => json!(n),
+                ValueRef::Real(n) => json!(n),
+                ValueRef::Text(s) => Value::String(String::from_utf8_lossy(s).into_owned()),
+                // BLOBs never belong in metadata responses.
+                ValueRef::Blob(_) => return Err(rusqlite::Error::InvalidColumnType(i, name.clone(), rusqlite::types::Type::Blob)),
+            };
+            object.insert(name.clone(), value);
+        }
+        Ok(Value::Object(object))
+    })?;
+    Ok(mapped.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 fn rows(db: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> Result<Vec<Value>> {
     let mut statement = db.prepare(sql)?;
@@ -68,7 +104,15 @@ fn first(db: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> Result<Va
 }
 
 impl Store {
+    /// Single writer connection: the only handle allowed to mutate the database.
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_with_read_concurrency(path, DEFAULT_MAX_READ_CONCURRENCY)
+    }
+
+    pub fn open_with_read_concurrency(path: &Path, max_read_concurrency: usize) -> Result<Self> {
+        if !(1..=MAX_READ_CONCURRENCY).contains(&max_read_concurrency) {
+            return Err("read concurrency budget must be between 1 and 16".into());
+        }
         if !path.is_absolute() { return Err("database path must be absolute".into()); }
         if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
         // Canonical parent avoids relative aliases; inode aliases/symlinks remain a deployment concern.
@@ -87,7 +131,7 @@ impl Store {
                 if !matches!(version.as_str(), "1" | "2") { return Err(format!("unsupported schema version: {version}").into()); }
             }
             let version: Option<String> = db.query_row("SELECT value FROM meta WHERE key='service_schema_version'", [], |r| r.get(0)).optional()?;
-            if version.as_deref().is_some_and(|v| !matches!(v, "1" | "2" | "3")) {
+            if version.as_deref().is_some_and(|v| !matches!(v, "1" | "2" | "3" | "4" | "5")) {
                 return Err("unsupported service schema version".into());
             }
         }
@@ -113,6 +157,8 @@ impl Store {
                 id TEXT PRIMARY KEY, request_hash TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL
             );")?;
         tx.execute_batch(crate::commit_journal::SCHEMA)?;
+        tx.execute_batch(crate::file_commit::SCHEMA)?;
+        tx.execute_batch(crate::edit_tickets::SCHEMA)?;
         let columns = rows(&tx, "PRAGMA table_info(file_commit_intents)", &[])?;
         if !columns.iter().any(|c| c["name"].as_str() == Some("validation_receipt")) {
             tx.execute_batch("ALTER TABLE file_commit_intents ADD COLUMN validation_receipt TEXT")?;
@@ -121,14 +167,78 @@ impl Store {
             tx.execute_batch("ALTER TABLE file_commit_intents ADD COLUMN commit_context TEXT")?;
         }
         tx.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('schema_version','2')", [])?;
-        tx.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('service_schema_version','3')", [])?;
+        tx.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('service_schema_version','5')", [])?;
         tx.commit()?;
-        Ok(Self { db, _ownership: ownership })
+        Ok(Self { db, path, max_read_concurrency, _ownership: ownership })
+    }
+
+    /// Canonical database path, shared with every pooled read-only connection.
+    pub fn database_path(&self) -> &Path { &self.path }
+
+    /// Read-only connection for the query pool. WAL readers never share the writer
+    /// connection, and `query_only` turns an accidental write into an error instead of
+    /// a second writer. `NO_MUTEX` is sound because a pooled connection is used by one
+    /// caller at a time.
+    pub fn open_read_only(path: &Path) -> Result<Connection> {
+        let db = Connection::open_with_flags(path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+        db.busy_timeout(Duration::from_secs(5))?;
+        db.pragma_update(None, "query_only", "ON")?;
+        db.pragma_update(None, "foreign_keys", "ON")?;
+        Ok(db)
     }
 
     pub fn query(&self, method: &str, p: &Value) -> Result<Value> {
         match method {
-            "store.info" => Ok(json!({"schemaVersion":2,"serviceSchemaVersion":3,"maxBlobBytes":MAX_BLOB_BYTES})),
+            "store.info" => Ok(self.info()),
+            "operation.status" => self.operation_status(p),
+            _ => Self::query_with_connection(&self.db, method, p),
+        }
+    }
+
+    /// Every read-only query, shared verbatim by the single writer connection and by each
+    /// pooled read-only connection: `Conn` only borrows, so the SQL bodies below are
+    /// defined exactly once for both paths.
+    pub fn query_with_connection(db: &Connection, method: &str, p: &Value) -> Result<Value> {
+        Conn { db }.query(method, p)
+    }
+
+    /// Budget-annotated metadata. The writer connection knows the configured read budget;
+    /// a bare read-only connection can only report `DEFAULT_MAX_READ_CONCURRENCY`.
+    pub fn info(&self) -> Value { Self::info_json(self.max_read_concurrency) }
+
+    pub(crate) fn info_json(max_read_concurrency: usize) -> Value {
+        json!({"schemaVersion":2,"serviceSchemaVersion":5,"maxBlobBytes":MAX_BLOB_BYTES,
+            "singleWriter":true,"readOnlyQueryPool":true,"maxReadConcurrency":max_read_concurrency})
+    }
+
+    fn operation_status(&self, p: &Value) -> Result<Value> {
+        let row = first(&self.db,"SELECT request_hash,result,created_at FROM service_operations WHERE id=?", &[&required(p,"operationId")?])?;
+        if row.is_null() {
+            let operation = required(p,"operationId")?;
+            if let Some(status) = self.intent_status(operation)? { return Ok(status); }
+            return Ok(crate::file_commit::operation_status(self,operation)?
+                .unwrap_or_else(||json!({"state":"unknown"})));
+        }
+        let result = serde_json::from_str::<Value>(row["result"].as_str().ok_or("invalid operation result")?)?;
+        let state = match result.get("state").or_else(||result.get("status")).and_then(Value::as_str) {
+            Some("planningRejected") => "planningRejected",
+            Some("syntaxRejected") => "syntaxRejected",
+            _ => "committed",
+        };
+        Ok(json!({"state":state,"requestHash":row["request_hash"],"createdAt":row["created_at"],
+            "result":result}))
+    }
+}
+
+/// Borrowed read-only view over the same database: `Conn::query` holds every read-only SQL
+/// body, so the single writer connection and the pooled read-only connections run the
+/// identical query code instead of two drifting copies.
+struct Conn<'a> { db: &'a Connection }
+
+impl Conn<'_> {
+    fn query(&self, method: &str, p: &Value) -> Result<Value> {
+        match method {
             "store.getProject" => {
                 let id = required(p, "projectId")?;
                 let deleted = p.get("includeDeleted").and_then(Value::as_bool).unwrap_or(false);
@@ -136,6 +246,7 @@ impl Store {
             }
             "store.listProjects" => {
                 let n = limit(p, 100, 500)?;
+                let off = offset(p)?;
                 let deleted = p.get("includeDeleted").and_then(Value::as_bool).unwrap_or(false);
                 let ws = nullable(p, "workspaceAlias")?;
                 let ws_id = nullable(p, "workspaceId")?;
@@ -144,8 +255,75 @@ impl Store {
                 Ok(json!(rows(&self.db, "SELECT * FROM projects WHERE (? OR deleted_at IS NULL)
                     AND ((? IS NOT NULL AND (workspace_id=? OR (workspace_id IS NULL AND workspace_alias=?)))
                       OR (? IS NULL AND (? IS NULL OR workspace_alias=?)))
-                    AND (? IS NULL OR name LIKE ? OR id=?) ORDER BY updated_at DESC, created_at DESC, id DESC LIMIT ?",
-                    &[&deleted,&ws_id,&ws_id,&ws,&ws_id,&ws,&ws,&query,&like,&query,&n])?))
+                    AND (? IS NULL OR name LIKE ? OR id=?) ORDER BY updated_at DESC, created_at DESC, id DESC LIMIT ? OFFSET ?",
+                    &[&deleted,&ws_id,&ws_id,&ws,&ws_id,&ws,&ws,&query,&like,&query,&n,&off])?))
+            }
+            "store.listProjectSummaries" => {
+                let n = limit(p, 100, 500)?;
+                let off = offset(p)?;
+                let deleted = p.get("includeDeleted").and_then(Value::as_bool).unwrap_or(false);
+                let ws = nullable(p, "workspaceAlias")?;
+                let ws_id = nullable(p, "workspaceId")?;
+                let query = nullable(p, "query")?;
+                let like = query.as_ref().map(|s| format!("%{s}%"));
+                let base = "FROM projects p WHERE (? OR p.deleted_at IS NULL)
+                    AND ((? IS NOT NULL AND (p.workspace_id=? OR (p.workspace_id IS NULL AND p.workspace_alias=?)))
+                      OR (? IS NULL AND (? IS NULL OR p.workspace_alias=?)))
+                    AND (? IS NULL OR p.name LIKE ? OR p.id=?)";
+                let mut args = vec![
+                    SqlValue::Integer(if deleted { 1 } else { 0 }),
+                    ws_id.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                    ws_id.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                    ws.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                    ws_id.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                    ws_id.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                    ws.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                    query.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                    like.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                    query.clone().map(SqlValue::Text).unwrap_or(SqlValue::Null),
+                ];
+                let total: i64 = self.db.query_row(
+                    &format!("SELECT COUNT(*) {base}"),
+                    params_from_iter(args.iter()),
+                    |row| row.get(0),
+                )?;
+                let sql = format!("SELECT p.*,
+                    (SELECT COUNT(*) FROM todos t WHERE t.project_id=p.id) AS todo_total,
+                    (SELECT COUNT(*) FROM todos t WHERE t.project_id=p.id AND t.status='done') AS todo_done,
+                    (SELECT COUNT(*) FROM nodes x WHERE x.project_id=p.id) AS node_count,
+                    (SELECT COUNT(DISTINCT x.file_path) FROM nodes x WHERE x.project_id=p.id) AS file_count,
+                    (SELECT COALESCE(SUM(x.added),0) FROM nodes x WHERE x.project_id=p.id) AS added,
+                    (SELECT COALESCE(SUM(x.removed),0) FROM nodes x WHERE x.project_id=p.id) AS removed,
+                    (SELECT MAX(x.id) FROM nodes x WHERE x.project_id=p.id) AS last_node_id,
+                    (SELECT x.created_at FROM nodes x WHERE x.project_id=p.id ORDER BY x.id DESC LIMIT 1) AS last_at
+                    {base} ORDER BY p.updated_at DESC, p.created_at DESC, p.id DESC LIMIT ? OFFSET ?");
+                args.push(SqlValue::Integer(n));
+                args.push(SqlValue::Integer(off));
+                let mut items = rows_values(&self.db, &sql, &args)?;
+                let ids = items.iter()
+                    .filter_map(|item| item["id"].as_str().map(|id| SqlValue::Text(id.to_string())))
+                    .collect::<Vec<_>>();
+                let mut maids = std::collections::HashMap::<String, Vec<Value>>::new();
+                if !ids.is_empty() {
+                    let placeholders = std::iter::repeat("?").take(ids.len()).collect::<Vec<_>>().join(",");
+                    let rows = rows_values(&self.db,
+                        &format!("SELECT b.project_id,b.maid,COUNT(DISTINCT b.id) AS batches
+                            FROM batches b JOIN nodes x ON x.batch_id=b.id
+                            WHERE b.project_id IN ({placeholders})
+                            GROUP BY b.project_id,b.maid ORDER BY b.project_id,batches DESC,b.maid"),
+                        &ids)?;
+                    for row in rows {
+                        if let Some(project) = row["project_id"].as_str() {
+                            maids.entry(project.to_string()).or_default().push(row["maid"].clone());
+                        }
+                    }
+                }
+                for item in &mut items {
+                    let key = item["id"].as_str().unwrap_or_default().to_string();
+                    item["maids"] = json!(maids.remove(&key).unwrap_or_default());
+                }
+                let shown = items.len() as i64;
+                Ok(json!({"items":items,"total":total,"offset":off,"limit":n,"hasMore":off + shown < total}))
             }
             "store.listTodos" => Ok(json!(rows(&self.db, "SELECT * FROM todos WHERE project_id=? ORDER BY seq,id", &[&required(p,"projectId")?])?)),
             "store.getFileState" => {
@@ -209,6 +387,7 @@ impl Store {
                 &[&required(p,"projectId")?,&p.get("seq").and_then(Value::as_i64).ok_or("seq required")?]),
             "store.searchNodes" => {
                 let n=limit(p,50,500)?;
+                let off=offset(p)?;
                 let project=nullable(p,"projectId")?;
                 let file=nullable(p,"filePattern")?;
                 let since=nullable(p,"since")?;
@@ -233,9 +412,9 @@ impl Store {
                     AND (? IS NULL OR n.op=?) AND (? IS NULL OR LOWER(b.maid)=LOWER(?))
                     AND (? IS NULL OR n.batch_id=?) AND (? IS NULL OR n.todo_id=?)
                     AND (? IS NULL OR n.reason LIKE ? OR b.reason LIKE ? OR n.summary LIKE ? OR n.file_path LIKE ?)
-                    ORDER BY n.id DESC LIMIT ?",
+                    ORDER BY n.id DESC LIMIT ? OFFSET ?",
                     &[&project,&project,&file,&file,&since,&since,&until,&until,&op,&op,&maid,&maid,
-                    &batch,&batch,&todo,&todo,&keyword,&kw,&kw,&kw,&kw,&n])?))
+                    &batch,&batch,&todo,&todo,&keyword,&kw,&kw,&kw,&kw,&n,&off])?))
             }
             "store.exportSnapshot" => {
                 // One SQLite read snapshot, not a sequence of potentially interleaved RPC reads.
@@ -258,21 +437,50 @@ impl Store {
             }
             "store.getBlob" => {
                 let Some(h) = nullable(p,"hash")? else { return Ok(Value::Null); };
-                let bytes = Self::blob(&self.db, &h)?;
+                let bytes = Store::blob(&self.db, &h)?;
                 Ok(json!({"hash":h,"size":bytes.len(),"base64":STANDARD.encode(bytes)}))
             }
-            "operation.status" => {
-                let row = first(&self.db,"SELECT request_hash,result,created_at FROM service_operations WHERE id=?", &[&required(p,"operationId")?])?;
-                if row.is_null() {
-                    return Ok(self.intent_status(required(p,"operationId")?)?.unwrap_or_else(||json!({"state":"unknown"})));
-                }
-                Ok(json!({"state":"committed","requestHash":row["request_hash"],"createdAt":row["created_at"],
-                    "result":serde_json::from_str::<Value>(row["result"].as_str().ok_or("invalid operation result")?)?}))
+            "store.diffBlobs" => {
+                let before_hash = nullable(p, "beforeHash")?;
+                let after_hash = nullable(p, "afterHash")?;
+                let before = match before_hash.as_deref() {
+                    Some(h) => Store::text_blob(self.db, h)?,
+                    None => Some(String::new()),
+                };
+                let after = match after_hash.as_deref() {
+                    Some(h) => Store::text_blob(self.db, h)?,
+                    None => Some(String::new()),
+                };
+                let (Some(before), Some(after)) = (before, after) else {
+                    return Ok(json!({ "binary": true }));
+                };
+                let old_label = p.get("oldLabel").and_then(Value::as_str).unwrap_or("a");
+                let new_label = p.get("newLabel").and_then(Value::as_str).unwrap_or("b");
+                let context = p.get("context").and_then(Value::as_u64).unwrap_or(3).min(50) as usize;
+                let max_lines = p.get("maxLines").and_then(Value::as_u64).unwrap_or(400).clamp(1, 50_000) as usize;
+                let max_bytes = p.get("maxBytes").and_then(Value::as_u64).unwrap_or(512 * 1024).clamp(64, 4 * 1024 * 1024) as usize;
+                let diff = crate::line_diff::unified(&before, &after, old_label, new_label, context, max_lines, max_bytes)?;
+                Ok(json!({
+                    "binary": false,
+                    "text": diff.text,
+                    "added": diff.added,
+                    "removed": diff.removed,
+                    "truncated": diff.truncated,
+                    "totalLines": diff.total_lines,
+                    "shownLines": diff.shown_lines,
+                    "omittedLines": diff.omitted_lines,
+                    "hunksTotal": diff.hunks_total,
+                    "hunksShown": diff.hunks_shown,
+                    "truncationReason": diff.reason,
+                }))
             }
+            "store.info" => Ok(Store::info_json(DEFAULT_MAX_READ_CONCURRENCY)),
             _ => Err(format!("unknown storage method: {method}").into()),
         }
     }
+}
 
+impl Store {
     pub(crate) fn blob(db: &Connection, h: &str) -> Result<Vec<u8>> {
         let (size, compressed): (i64, Vec<u8>) = db.query_row(
             "SELECT size,data FROM blobs WHERE hash=?", [h], |r| Ok((r.get(0)?,r.get(1)?)))?;
@@ -283,10 +491,38 @@ impl Store {
         Ok(bytes)
     }
 
+    fn text_blob(db: &Connection, h: &str) -> Result<Option<String>> {
+        let bytes = Self::blob(db, h)?;
+        if bytes.iter().take(8000).any(|&b| b == 0) {
+            return Ok(None);
+        }
+        let Ok(raw) = String::from_utf8(bytes) else {
+            return Ok(None);
+        };
+        let stripped = raw.strip_prefix('\u{FEFF}').unwrap_or(&raw);
+        // Normalize CRLF/CR to LF for unified diff display parity across mixed-EOL snapshots.
+        if stripped.contains('\r') {
+            Ok(Some(stripped.replace("\r\n", "\n").replace('\r', "\n")))
+        } else if stripped.len() == raw.len() {
+            Ok(Some(raw))
+        } else {
+            Ok(Some(stripped.to_string()))
+        }
+    }
+
     /// Explicit business transaction, not an open transaction spanning RPC calls.
     /// This records DB history only; durable multi-file commit is a later layer.
     pub fn mutate(&mut self, method: &str, p: &Value) -> Result<Value> {
-        if !matches!(method,"store.createProject"|"store.recordBatch") { return Err("unknown mutation".into()); }
+        self.mutate_authorized(method, p, None)
+    }
+
+    pub fn mutate_authorized(&mut self, method: &str, p: &Value, allowed_roots: Option<&[std::path::PathBuf]>) -> Result<Value> {
+        if !matches!(method,
+            "store.createProject"|"store.recordBatch"|"store.updateProject"|"store.addTodos"|
+            "store.updateTodo"|"store.removeTodo"|"store.softDeleteProjects"|
+            "store.restoreProjects"|"store.purgeProjects") {
+            return Err("unknown mutation".into());
+        }
         let operation = required(p, "operationId")?;
         if operation.len() > 128 { return Err("operationId too long".into()); }
         let digest = hash(&serde_json::to_vec(&json!({"method":method,"params":p}))?);
@@ -298,8 +534,9 @@ impl Store {
             return Ok(serde_json::from_str(&result)?);
         }
         let reserved: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM file_commit_intents WHERE operation_id=?)",
-            [operation],|r|r.get(0))?;
+            "SELECT EXISTS(SELECT 1 FROM file_commit_intents WHERE operation_id=?
+             UNION ALL SELECT 1 FROM file_commit_plans WHERE operation_id=?)",
+            params![operation,operation],|r|r.get(0))?;
         if reserved {return Err("operationId belongs to a file commit; query status".into());}
         let ts: String = tx.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')",[],|r| r.get(0))?;
         let result = match method {
@@ -308,11 +545,184 @@ impl Store {
                 if id.len()>64 || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c==b'_' || c==b'-') {
                     return Err("invalid projectId".into());
                 }
+                required(p,"name")?;
+                let root = required(p,"root")?;
+                match p.get("createRoot") {
+                    Some(Value::Bool(true)) => {
+                        let roots = allowed_roots.ok_or("directory creation requires trusted service configuration")?;
+                        let authorized = crate::project_path::resolve_new_root(Path::new(root), roots)?;
+                        fs::create_dir_all(authorized)?;
+                    }
+                    None | Some(Value::Bool(false)) => {}
+                    _ => return Err("createRoot must be a boolean".into()),
+                }
                 tx.execute("INSERT INTO projects(id,name,workspace_id,workspace_alias,root,subpath,created_by,created_at,updated_at)
                     VALUES (?,?,?,?,?,?,?,?,?)", params![id,required(p,"name")?,nullable(p,"workspaceId")?,
                     nullable(p,"workspaceAlias")?,required(p,"root")?,p.get("subpath").and_then(Value::as_str).unwrap_or(""),
                     nullable(p,"createdBy")?,ts,ts])?;
                 first(&tx,"SELECT * FROM projects WHERE id=?", &[&id])?
+            }
+            "store.updateProject" => {
+                let id = required(p,"projectId")?;
+                let patch = p.get("patch").and_then(Value::as_object).ok_or("patch object required")?;
+                let touch = p.get("touch").and_then(Value::as_bool).unwrap_or(true);
+                let mut fields: Vec<String> = Vec::new();
+                let mut args: Vec<SqlValue> = Vec::new();
+                for (key,column,allow_null) in [
+                    ("name","name",false),("status","status",false),("report","report",true),
+                    ("reportBy","report_by",true),("root","root",false),
+                    ("workspaceAlias","workspace_alias",true),("deletedAt","deleted_at",true),
+                ] {
+                    let Some(value) = patch.get(key) else { continue; };
+                    let bound = match value {
+                        Value::Null if allow_null => SqlValue::Null,
+                        Value::String(s) => SqlValue::Text(s.clone()),
+                        _ => return Err(format!("invalid {key}").into()),
+                    };
+                    fields.push(format!("{column}=?"));
+                    args.push(bound);
+                }
+                if touch {
+                    fields.push("updated_at=?".into());
+                    args.push(SqlValue::Text(ts.clone()));
+                }
+                if fields.is_empty() {
+                    first(&tx,"SELECT * FROM projects WHERE id=?",&[&id])?
+                } else {
+                    args.push(SqlValue::Text(id.to_string()));
+                    tx.execute(&format!("UPDATE projects SET {} WHERE id=?",fields.join(",")),
+                        params_from_iter(args.iter()))?;
+                    first(&tx,"SELECT * FROM projects WHERE id=?",&[&id])?
+                }
+            }
+            "store.addTodos" => {
+                let project = required(p,"projectId")?;
+                let titles = p.get("titles").and_then(Value::as_array).ok_or("titles array required")?;
+                let maid = nullable(p,"maid")?;
+                let max_seq: i64 = tx.query_row(
+                    "SELECT COALESCE(MAX(seq),0) FROM todos WHERE project_id=?",
+                    [project], |r| r.get(0))?;
+                let mut ids = Vec::with_capacity(titles.len());
+                for (index,title) in titles.iter().enumerate() {
+                    let title = title.as_str().ok_or("todo title must be a string")?;
+                    tx.execute("INSERT INTO todos(project_id,seq,title,status,updated_by,updated_at)
+                        VALUES (?,?,?,'pending',?,?)",
+                        params![project,max_seq + index as i64 + 1,title,maid.as_deref(),ts])?;
+                    ids.push(tx.last_insert_rowid());
+                }
+                json!(ids)
+            }
+            "store.updateTodo" => {
+                let project = required(p,"projectId")?;
+                let seq = p.get("seq").and_then(Value::as_i64).ok_or("seq required")?;
+                let patch = p.get("patch").and_then(Value::as_object).ok_or("patch object required")?;
+                let mut fields: Vec<String> = Vec::new();
+                let mut args: Vec<SqlValue> = Vec::new();
+                if let Some(value) = patch.get("title") {
+                    let title = value.as_str().ok_or("title must be a string")?;
+                    fields.push("title=?".into());
+                    args.push(SqlValue::Text(title.to_string()));
+                }
+                if let Some(value) = patch.get("status") {
+                    let status = value.as_str().ok_or("status must be a string")?;
+                    fields.push("status=?".into());
+                    args.push(SqlValue::Text(status.to_string()));
+                }
+                if let Some(value) = patch.get("note") {
+                    let note = match value {
+                        Value::Null => SqlValue::Null,
+                        Value::String(s) => SqlValue::Text(s.clone()),
+                        _ => return Err("invalid note".into()),
+                    };
+                    fields.push("note=?".into());
+                    args.push(note);
+                }
+                if fields.is_empty() {
+                    json!(false)
+                } else {
+                    if let Some(value) = patch.get("updatedBy") {
+                        match value {
+                            Value::Null => {}
+                            Value::String(s) if s.is_empty() => {}
+                            Value::String(s) => {
+                                fields.push("updated_by=?".into());
+                                args.push(SqlValue::Text(s.clone()));
+                            }
+                            _ => return Err("invalid updatedBy".into()),
+                        }
+                    }
+                    fields.push("updated_at=?".into());
+                    args.push(SqlValue::Text(ts.clone()));
+                    args.push(SqlValue::Text(project.to_string()));
+                    args.push(SqlValue::Integer(seq));
+                    let changed = tx.execute(
+                        &format!("UPDATE todos SET {} WHERE project_id=? AND seq=?",fields.join(",")),
+                        params_from_iter(args.iter()))?;
+                    json!(changed > 0)
+                }
+            }
+            "store.removeTodo" => {
+                let project = required(p,"projectId")?;
+                let seq = p.get("seq").and_then(Value::as_i64).ok_or("seq required")?;
+                json!(tx.execute("DELETE FROM todos WHERE project_id=? AND seq=?",
+                    params![project,seq])? > 0)
+            }
+            "store.softDeleteProjects" => {
+                let ids = p.get("ids").and_then(Value::as_array).ok_or("ids array required")?;
+                let maid = nullable(p,"maid")?;
+                let mut done = Vec::new();
+                for id in ids {
+                    let id = id.as_str().filter(|s| !s.is_empty()).ok_or("invalid project id")?;
+                    let changed = tx.execute("UPDATE projects SET deleted_at=?,deleted_by=?,updated_at=?
+                        WHERE id=? AND deleted_at IS NULL",
+                        params![ts,maid.as_deref(),ts,id])?;
+                    if changed > 0 { done.push(id); }
+                }
+                json!(done)
+            }
+            "store.restoreProjects" => {
+                let ids = p.get("ids").and_then(Value::as_array).ok_or("ids array required")?;
+                let mut done = Vec::new();
+                for id in ids {
+                    let id = id.as_str().filter(|s| !s.is_empty()).ok_or("invalid project id")?;
+                    let changed = tx.execute("UPDATE projects SET deleted_at=NULL,deleted_by=NULL,updated_at=?
+                        WHERE id=? AND deleted_at IS NOT NULL",params![ts,id])?;
+                    if changed > 0 { done.push(id); }
+                }
+                json!(done)
+            }
+            "store.purgeProjects" => {
+                let ids = p.get("ids").and_then(Value::as_array).ok_or("ids array required")?;
+                for id in ids {
+                    let id = id.as_str().filter(|s| !s.is_empty()).ok_or("invalid project id")?;
+                    let active: bool = tx.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM file_commit_intents
+                            WHERE project_id=? AND state IN ('prepared','conflict')
+                            UNION ALL SELECT 1 FROM file_commit_plans
+                            WHERE project_id=? AND state IN ('prepared','conflict')
+                                AND json_extract(result,'$.status') IS NOT 'reconciled')",
+                        params![id,id], |r| r.get(0))?;
+                    if active {
+                        return Err(format!("cannot purge project with prepared/conflict file intent: {id}").into());
+                    }
+                }
+                let mut purged = Vec::new();
+                for id in ids {
+                    let id = id.as_str().filter(|s| !s.is_empty()).ok_or("invalid project id")?;
+                    tx.execute("DELETE FROM file_commit_intents WHERE project_id=?",[id])?;
+                    if tx.execute("DELETE FROM projects WHERE id=?",[id])? > 0 { purged.push(id); }
+                }
+                // Active intents are rejected above; surviving intents of other projects are GC roots.
+                let freed = tx.execute("DELETE FROM blobs WHERE hash NOT IN (
+                    SELECT before_hash FROM nodes WHERE before_hash IS NOT NULL
+                    UNION SELECT after_hash FROM nodes WHERE after_hash IS NOT NULL
+                    UNION SELECT hash FROM file_state WHERE hash IS NOT NULL
+                    UNION SELECT before_hash FROM file_commit_intents
+                    UNION SELECT after_hash FROM file_commit_intents
+                    UNION SELECT before_hash FROM file_commit_changes WHERE before_hash IS NOT NULL
+                    UNION SELECT after_hash FROM file_commit_changes WHERE after_hash IS NOT NULL
+                )", [])?;
+                json!({"purged":purged,"freedBlobs":freed})
             }
             "store.recordBatch" => {
                 let project = required(p,"projectId")?;
@@ -430,7 +840,7 @@ mod tests {
             UPDATE meta SET value='1' WHERE key='service_schema_version';").unwrap();
         drop(store);
         let mut store=Store::open(&root.join("pf.db")).unwrap();
-        assert_eq!(store.query("store.info",&json!({})).unwrap()["serviceSchemaVersion"],3);
+        assert_eq!(store.query("store.info",&json!({})).unwrap()["serviceSchemaVersion"],5);
         assert_eq!(Store::blob(&store.db,&before_hash).unwrap(),b"before");
         assert_eq!(Store::blob(&store.db,&after_hash).unwrap(),b"after");
         let receipt:Option<String>=store.db.query_row(
@@ -495,5 +905,140 @@ mod tests {
         gzip.write_all(b"too long").unwrap();
         store.db.execute("INSERT INTO blobs VALUES ('wrong',1,?)",[gzip.finish().unwrap()]).unwrap();
         assert!(store.query("store.getBlob",&json!({"hash":"wrong"})).is_err());
+    }
+
+    #[test]
+    fn read_only_connections_reject_writes_and_share_concurrent_wal_reads() {
+        let (_dir,mut store)=open(); project(&mut store);
+        let path=store.database_path().to_path_buf();
+        let db=Store::open_read_only(&path).unwrap();
+        // query_only turns any write into an error, so the pool can never become a writer.
+        assert!(db.execute("INSERT INTO meta(key,value) VALUES ('leaked','x')",[]).is_err());
+        assert!(db.execute_batch("CREATE TABLE leaked(x)").is_err());
+        assert!(db.execute_batch("DELETE FROM projects").is_err());
+        assert_eq!(Store::query_with_connection(&db,"store.listProjects",&json!({})).unwrap()
+            .as_array().unwrap().len(),1);
+        drop(db);
+        // WAL readers never take the writer connection: eight readers run alongside it.
+        let readers:Vec<_>=(0..8).map(|_| {
+            let path=path.clone();
+            std::thread::spawn(move|| {
+                let db=Store::open_read_only(&path).unwrap();
+                for _ in 0..25 {
+                    let projects=Store::query_with_connection(&db,"store.listProjects",&json!({"limit":10})).unwrap();
+                    assert_eq!(projects.as_array().unwrap().len(),1);
+                }
+            })
+        }).collect();
+        for reader in readers { reader.join().unwrap(); }
+        assert_eq!(store.query("store.info",&json!({})).unwrap()["singleWriter"],true);
+    }
+
+    #[test]
+    fn info_reports_single_writer_and_configured_read_budget() {
+        let dir=tempfile::tempdir().unwrap();
+        assert!(Store::open_with_read_concurrency(&dir.path().join("pf.db"),0).is_err());
+        assert!(Store::open_with_read_concurrency(&dir.path().join("pf.db"),17).is_err());
+        let store=Store::open_with_read_concurrency(&dir.path().join("pf.db"),9).unwrap();
+        let info=store.query("store.info",&json!({})).unwrap();
+        assert_eq!(info["singleWriter"],true);
+        assert_eq!(info["readOnlyQueryPool"],true);
+        assert_eq!(info["maxReadConcurrency"],9);
+        // A bare read-only connection cannot learn the process budget from the database.
+        assert_eq!(Store::query_with_connection(&store.db,"store.info",&json!({})).unwrap()["maxReadConcurrency"],
+            DEFAULT_MAX_READ_CONCURRENCY);
+    }
+
+    /// A schema-4 database (both v5 intent columns absent) upgrades in place: legacy rows
+    /// survive, both service columns appear, and the foreign-key graph stays clean yet enforced.
+    #[test]
+    fn schema4_upgrade_adds_v5_columns_without_losing_rows_or_foreign_keys() {
+        let (dir,store)=open();
+        let path=dir.path().join("pf.db");
+        store.db.execute_batch("INSERT INTO projects(id,name,root,created_at,updated_at)
+                VALUES ('old','legacy','root','t','t');
+            INSERT INTO todos(project_id,seq,title,updated_at) VALUES ('old',1,'keep','t');
+            INSERT INTO batches(project_id,kind,created_at) VALUES ('old','edit','t');").unwrap();
+        // Reproduce the pre-v5 shape exactly: both intent columns are v5-only additions.
+        store.db.execute_batch("ALTER TABLE file_commit_intents DROP COLUMN validation_receipt;
+            ALTER TABLE file_commit_intents DROP COLUMN commit_context;
+            UPDATE meta SET value='4' WHERE key='service_schema_version';").unwrap();
+        // Fixture self-check: the downgrade must be real, otherwise the upgrade could pass vacuously.
+        assert_eq!(store.db.query_row("SELECT value FROM meta WHERE key='service_schema_version'",[],|r|r.get::<_,String>(0)).unwrap(),"4");
+        assert_eq!(store.db.query_row("SELECT COUNT(*) FROM pragma_table_info('file_commit_intents') WHERE name IN ('validation_receipt','commit_context')",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+        drop(store);
+        let store=Store::open(&path).unwrap();
+        assert_eq!(store.query("store.info",&json!({})).unwrap()["serviceSchemaVersion"],5);
+        assert_eq!(store.query("store.getProject",&json!({"projectId":"old"})).unwrap()["name"],"legacy");
+        let columns=rows(&store.db,"PRAGMA table_info(file_commit_intents)",&[]).unwrap();
+        for name in ["validation_receipt","commit_context"] {
+            assert!(columns.iter().any(|c| c["name"].as_str()==Some(name)),"missing migrated column {name}");
+        }
+        assert_eq!(store.db.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+        assert_eq!(store.db.query_row("SELECT COUNT(*) FROM todos WHERE project_id='old'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+        assert_eq!(store.db.query_row("SELECT COUNT(*) FROM batches WHERE project_id='old'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+        // The migrated graph still rejects orphans instead of advertising a broken constraint.
+        assert!(store.db.execute("INSERT INTO todos(project_id,seq,title,updated_at) VALUES ('ghost',2,'orphan','t')",[]).is_err());
+    }
+
+    /// A migration that dies inside its transaction must not half-upgrade: the abort is
+    /// injected at the version bump, i.e. after every DDL statement already ran.
+    #[test]
+    fn aborted_migration_rolls_back_without_half_upgrade_or_lost_rows() {
+        let (dir,store)=open();
+        let path=dir.path().join("pf.db");
+        store.db.execute_batch("INSERT INTO projects(id,name,root,created_at,updated_at)
+                VALUES ('old','legacy','root','t','t');
+            ALTER TABLE file_commit_intents DROP COLUMN validation_receipt;
+            ALTER TABLE file_commit_intents DROP COLUMN commit_context;
+            UPDATE meta SET value='4' WHERE key='service_schema_version';
+            CREATE TRIGGER fail_upgrade BEFORE INSERT ON meta
+                WHEN NEW.key='service_schema_version' AND NEW.value='5'
+                BEGIN SELECT RAISE(ABORT,'simulated crash'); END;").unwrap();
+        // Fixture self-check: the abort must be staged on a genuine schema-4 shape.
+        assert_eq!(store.db.query_row("SELECT value FROM meta WHERE key='service_schema_version'",[],|r|r.get::<_,String>(0)).unwrap(),"4");
+        assert_eq!(store.db.query_row("SELECT COUNT(*) FROM pragma_table_info('file_commit_intents') WHERE name IN ('validation_receipt','commit_context')",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+        drop(store);
+        let error=Store::open(&path).err().expect("migration must fail");
+        assert!(error.to_string().contains("simulated crash"),"unexpected error: {error}");
+        // Rollback restored the v4 shape: version, old row and the still absent v5 columns.
+        let db=Connection::open(&path).unwrap();
+        assert_eq!(db.query_row("SELECT value FROM meta WHERE key='service_schema_version'",[],|r|r.get::<_,String>(0)).unwrap(),"4");
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM projects WHERE id='old'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+        assert_eq!(db.query_row("SELECT COUNT(*) FROM pragma_table_info('file_commit_intents') WHERE name IN ('validation_receipt','commit_context')",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+        db.execute_batch("DROP TRIGGER fail_upgrade").unwrap();
+        drop(db);
+        // A retry from scratch completes the very same migration.
+        let store=Store::open(&path).unwrap();
+        assert_eq!(store.query("store.info",&json!({})).unwrap()["serviceSchemaVersion"],5);
+        assert_eq!(store.db.query_row("SELECT COUNT(*) FROM pragma_table_info('file_commit_intents') WHERE name IN ('validation_receipt','commit_context')",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+        assert_eq!(store.db.query_row("SELECT COUNT(*) FROM projects WHERE id='old'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+    }
+
+    /// WAL snapshots: a reader pinned by an open transaction keeps its snapshot across a
+    /// committed write from the single writer, and never takes the writer lock.
+    #[test]
+    fn wal_readers_only_see_committed_snapshots() {
+        let (_dir,mut store)=open(); project(&mut store);
+        let path=store.database_path().to_path_buf();
+        let reader=Store::open_read_only(&path).unwrap();
+        // Pin the WAL snapshot before the writer commits anything.
+        reader.execute_batch("BEGIN").unwrap();
+        let pinned:i64=reader.query_row("SELECT COUNT(*) FROM projects",[],|r|r.get(0)).unwrap();
+        assert_eq!(pinned,1);
+        // The single writer commits a second project while that snapshot is still open.
+        store.mutate("store.createProject",&json!({"operationId":"create2","projectId":"p2","name":"second","root":"root"})).unwrap();
+        assert_eq!(reader.query_row("SELECT COUNT(*) FROM projects",[],|r|r.get::<_,i64>(0)).unwrap(),pinned);
+        // A reader opened after the commit starts on the new snapshot and sees it.
+        let fresh=Store::open_read_only(&path).unwrap();
+        assert_eq!(fresh.query_row("SELECT COUNT(*) FROM projects",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+        // Releasing the pinned snapshot moves the same connection onto the committed state.
+        reader.execute_batch("COMMIT").unwrap();
+        assert_eq!(reader.query_row("SELECT COUNT(*) FROM projects",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+        // Readers never take the ownership lock, but a second writer is still rejected.
+        assert!(Store::open(&path).is_err());
+        drop(fresh); drop(reader); drop(store);
+        let store=Store::open(&path).unwrap();
+        assert_eq!(store.query("store.listProjects",&json!({})).unwrap().as_array().unwrap().len(),2);
     }
 }
