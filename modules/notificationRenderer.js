@@ -57,6 +57,162 @@ function checkMessageFilter(messageTitle) {
     return filterManagerCapability?.checkMessageFilter?.(messageTitle) || null;
 }
 
+function openNotificationZoomModal({ title, content, raw, timestamp, tone }) {
+    if (typeof document === 'undefined') return null;
+
+    const existing = document.getElementById('notificationZoomModal');
+    if (existing) existing.remove();
+
+    const isLightTheme = Boolean(
+        document.body?.classList?.contains('light-theme')
+        || document.documentElement?.classList?.contains('light-theme')
+        || document.body?.getAttribute('data-vcp-theme') === 'light'
+        || document.documentElement?.getAttribute('data-vcp-theme') === 'light'
+    );
+
+    const modal = document.createElement('div');
+    modal.className = `modal active vcp-ui-scope${isLightTheme ? ' light-theme' : ''}`;
+    if (isLightTheme) modal.dataset.vcpTheme = 'light';
+    modal.id = 'notificationZoomModal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('tabindex', '-1');
+
+    const toneClass = tone === 'error' ? 'tone-error'
+                    : tone === 'success' ? 'tone-success'
+                    : tone === 'warning' ? 'tone-warning'
+                    : 'tone-neutral';
+    const toneLabel = tone === 'error' ? '错误'
+                    : tone === 'success' ? '成功'
+                    : tone === 'warning' ? '警告'
+                    : '通知';
+
+    const textToDisplay = String(content || raw || '');
+    const lineCount = textToDisplay ? textToDisplay.split('\n').length : 0;
+    const charCount = textToDisplay.length;
+
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content notification-zoom-modal-content';
+
+    // Header
+    const header = document.createElement('header');
+    header.className = 'notification-zoom-header';
+
+    const titleGroup = document.createElement('div');
+    titleGroup.className = 'notification-zoom-title-group';
+
+    const toneBadge = document.createElement('span');
+    toneBadge.className = `notification-zoom-tone-badge ${toneClass}`;
+    toneBadge.textContent = toneLabel;
+
+    const titleEl = document.createElement('h2');
+    titleEl.className = 'notification-zoom-title';
+    titleEl.textContent = title || '通知详情';
+    titleEl.title = title || '通知详情';
+
+    const timeEl = document.createElement('span');
+    timeEl.className = 'notification-zoom-time';
+    timeEl.textContent = timestamp || '';
+
+    titleGroup.append(toneBadge, titleEl, timeEl);
+
+    const headerActions = document.createElement('div');
+    headerActions.className = 'notification-zoom-header-actions';
+
+    const wrapBtn = document.createElement('button');
+    wrapBtn.type = 'button';
+    wrapBtn.className = 'notification-zoom-wrap-btn is-active';
+    wrapBtn.title = '切换自动换行';
+    wrapBtn.setAttribute('aria-label', '切换自动换行');
+    wrapBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"></line><path d="M3 12h15a3 3 0 1 1 0 6h-4"></path><polyline points="16 16 14 18 16 20"></polyline><line x1="3" y1="18" x2="9" y2="18"></line></svg><span>换行</span>';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'notification-zoom-copy-btn';
+    copyBtn.title = '复制全文';
+    copyBtn.setAttribute('aria-label', '复制全文');
+    copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg><span>复制</span>';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'close-button notification-zoom-close';
+    closeBtn.title = '关闭 (Esc)';
+    closeBtn.setAttribute('aria-label', '关闭');
+    closeBtn.textContent = '×';
+
+    headerActions.append(wrapBtn, copyBtn, closeBtn);
+    header.append(titleGroup, headerActions);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'notification-zoom-body';
+
+    const pre = document.createElement('pre');
+    pre.className = 'notification-zoom-content is-wrapped';
+    pre.textContent = textToDisplay;
+    body.appendChild(pre);
+
+    // Footer
+    const footer = document.createElement('footer');
+    footer.className = 'notification-zoom-footer';
+
+    const stats = document.createElement('span');
+    stats.className = 'notification-zoom-stats';
+    stats.textContent = `${charCount} 字符 | ${lineCount} 行`;
+
+    const closeFooterBtn = document.createElement('button');
+    closeFooterBtn.type = 'button';
+    closeFooterBtn.className = 'vcp-btn notification-zoom-close-btn';
+    closeFooterBtn.textContent = '关闭';
+
+    footer.append(stats, closeFooterBtn);
+
+    modalContent.append(header, body, footer);
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+
+    const closeModal = () => {
+        document.removeEventListener('keydown', onKeyDown);
+        modal.remove();
+    };
+
+    const onKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            e.stopPropagation();
+            closeModal();
+        }
+    };
+    document.addEventListener('keydown', onKeyDown);
+
+    closeBtn.onclick = closeModal;
+    closeFooterBtn.onclick = closeModal;
+    modal.onclick = (e) => {
+        if (e.target === modal) closeModal();
+    };
+
+    wrapBtn.onclick = () => {
+        const isWrapped = pre.classList.toggle('is-wrapped');
+        wrapBtn.classList.toggle('is-active', isWrapped);
+    };
+
+    copyBtn.onclick = () => {
+        const textToCopy = raw || textToDisplay;
+        navigator.clipboard?.writeText?.(textToCopy).then(() => {
+            const originalMarkup = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span>已复制!</span>';
+            setTimeout(() => {
+                copyBtn.innerHTML = originalMarkup;
+            }, 1500);
+        }).catch(err => {
+            console.error('复制通知全文失败:', err);
+        });
+    };
+
+    return modal;
+}
+
+window.openNotificationZoomModal = openNotificationZoomModal;
+
 function scheduleNotificationTimeout(callback, delay) {
     return notificationLifecycleOwner?.timeout
         ? notificationLifecycleOwner.timeout(callback, delay)
@@ -1020,8 +1176,63 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             } else {
                 // 自动消失的定时器不在这里清：它到点发现浮卡已经不在会直接返回，并从 owner 里注销自己
                 element.onclick = () => closeToastNotification(element); // Click on bubble itself still closes it
+
+                const toastActions = document.createElement('div');
+                toastActions.className = 'notification-toast-actions';
+                const toastZoomBtn = document.createElement('button');
+                toastZoomBtn.type = 'button';
+                toastZoomBtn.className = 'notification-zoom-btn notification-toast-zoom-btn';
+                toastZoomBtn.title = '居中放大查看';
+                toastZoomBtn.setAttribute('aria-label', '居中放大查看');
+                toastZoomBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+                toastZoomBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    openNotificationZoomModal({
+                        title: titleText,
+                        content: mainContent || textToCopy,
+                        raw: textToCopy,
+                        timestamp: timestampSpan.textContent,
+                        tone: notificationTone,
+                        element
+                    });
+                };
+                toastActions.appendChild(toastZoomBtn);
+                element.appendChild(toastActions);
             }
         } else { // For persistent list item
+            if (!isToolApprovalRequest) {
+                contentDiv.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    openNotificationZoomModal({
+                        title: titleText,
+                        content: mainContent || textToCopy,
+                        raw: textToCopy,
+                        timestamp: timestampSpan.textContent,
+                        tone: notificationTone,
+                        element
+                    });
+                });
+                contentDiv.title = '双击居中放大查看';
+            }
+
+            const zoomButton = document.createElement('button');
+            zoomButton.type = 'button';
+            zoomButton.className = 'notification-zoom-btn';
+            zoomButton.title = '居中放大查看';
+            zoomButton.setAttribute('aria-label', '居中放大查看');
+            zoomButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+            zoomButton.onclick = (e) => {
+                e.stopPropagation();
+                openNotificationZoomModal({
+                    title: titleText,
+                    content: mainContent || textToCopy,
+                    raw: textToCopy,
+                    timestamp: timestampSpan.textContent,
+                    tone: notificationTone,
+                    element
+                });
+            };
+
             const copyButton = document.createElement('button');
             copyButton.className = 'notification-copy-btn';
             copyButton.textContent = '📋';
@@ -1052,6 +1263,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             };
             const cardActions = document.createElement('div');
             cardActions.classList.add('notification-card-actions');
+            cardActions.appendChild(zoomButton);
             cardActions.appendChild(copyButton);
 
             // 列表用于回看历史：不再「点一下就消失」，改为显式的关闭按钮（待审批卡片不显示）
