@@ -10,6 +10,9 @@ window.itemListManager = (() => {
     let uiHelper;
     let activeLoadItemsToken = 0;
     let activeUnreadCountsToken = 0;
+    let navigationUnreadRequest = null;
+    let unreadSnapshot = null;
+    const itemElements = new Map();
 
     const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
     const OPENHER_PERSONA_CACHE_TTL_MS = 11 * 60 * 1000;
@@ -98,6 +101,9 @@ window.itemListManager = (() => {
         }
 
         activeUnreadCountsToken += 1; // Revoke requests from the previous API or list.
+        navigationUnreadRequest = null;
+        unreadSnapshot = null;
+        itemElements.clear();
         itemListUl = config.elements.itemListUl;
         electronAPI = config.electronAPI;
         currentSelectedItemRef = config.refs.currentSelectedItemRef;
@@ -815,8 +821,7 @@ window.itemListManager = (() => {
         if (!itemListUl) return;
         const itemKey = getStreamItemKey(itemId, itemType);
         const activeCount = activeStreamsByItem.get(itemKey)?.size || 0;
-        const li = Array.from(itemListUl.querySelectorAll('li[data-item-id][data-item-type]'))
-            .find(candidate => candidate.dataset.itemId === itemId && candidate.dataset.itemType === itemType);
+        const li = itemElements.get(itemKey);
         if (!li) return;
 
         li.classList.toggle('is-stream-speaking', activeCount > 0);
@@ -862,6 +867,8 @@ window.itemListManager = (() => {
         if (!owner) return false;
 
         if (event.type === 'agent_thinking' || event.type === 'start' || event.type === 'data') {
+            // Chunks do not change membership. Avoid DOM writes for every token.
+            if (activeStreamOwners.get(owner.operationId)?.itemKey === owner.itemKey) return true;
             setStreamOwnerActive(owner, true);
             return true;
         }
@@ -1070,6 +1077,7 @@ window.itemListManager = (() => {
 
     function renderItems(items, fallbackHtml = null) {
         itemListUl.innerHTML = '';
+        itemElements.clear();
 
         if (items.length === 0) {
             itemListUl.innerHTML = fallbackHtml || '<li>没有找到Agent或群组。请创建一个。</li>';
@@ -1078,7 +1086,9 @@ window.itemListManager = (() => {
 
         const fragment = document.createDocumentFragment();
         items.forEach(item => {
-            fragment.appendChild(createItemElement(item));
+            const row = createItemElement(item);
+            itemElements.set(getStreamItemKey(item.id, item.type), row);
+            fragment.appendChild(row);
         });
         itemListUl.appendChild(fragment);
 
@@ -1218,15 +1228,35 @@ window.itemListManager = (() => {
     /**
      * 仅刷新未读计数，而不重新加载整个列表
      */
-    async function refreshUnreadCounts({ isCurrent = () => true } = {}) {
+    async function refreshUnreadCounts({ isCurrent = () => true, maxAgeMs = 0 } = {}) {
         if (!electronAPI || !isCurrent()) return;
         const token = ++activeUnreadCountsToken;
         try {
-            const result = await electronAPI.getUnreadTopicCounts();
-            // Navigation and catalog refresh share one publication order. The
-            // caller can also revoke its own lifecycle while the request waits.
+            let result;
+            if (maxAgeMs > 0 && unreadSnapshot && Date.now() - unreadSnapshot.at < maxAgeMs) {
+                result = unreadSnapshot.result;
+            } else {
+                // Explicit mutation/catalog refreshes bypass and invalidate
+                // navigation caches. Only fresh navigation requests may share IO.
+                if (maxAgeMs === 0) {
+                    unreadSnapshot = null;
+                    navigationUnreadRequest = null;
+                }
+                let request = maxAgeMs > 0 && navigationUnreadRequest;
+                if (!request || Date.now() - request.at >= maxAgeMs) {
+                    request = { at: Date.now(), promise: electronAPI.getUnreadTopicCounts() };
+                    if (maxAgeMs > 0) navigationUnreadRequest = request;
+                }
+                try { result = await request.promise; }
+                finally {
+                    if (navigationUnreadRequest === request) navigationUnreadRequest = null;
+                }
+            }
             if (token !== activeUnreadCountsToken || !isCurrent()) return;
-            if (result && result.success) updateUnreadBadges(result.counts);
+            if (result?.success) {
+                unreadSnapshot = { result, at: Date.now() };
+                updateUnreadBadges(result.counts);
+            }
         } catch (err) {
             console.error('[ItemListManager] Failed to fetch unread counts:', err);
         }

@@ -6,6 +6,55 @@
  * - 纯平极简状态：无突兀投影，采用 ZCode 标志性的 bg-surface-hover 与 bg-selected 极淡半透明遮罩
  */
 @layer vcp-ui.components {
+    /* Inactive lists are not zero-height flex trees. The compact topics
+       drawer is an independent visible surface beside the active Agent rail. */
+    html .vcp-ui-scope #tabContentAgents:not(.active),
+    html .vcp-ui-scope #tabContentTopics:not(.active):not(.compact-drawer-open) {
+        display: none;
+    }
+
+    /* A transition cannot start reliably from display:none. Animate only the
+       incoming surface; outgoing rows can still be released immediately. */
+    @keyframes sidebarTabEnter {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    html .vcp-ui-scope :is(#tabContentAgents, #tabContentTopics, #tabContentSettings) {
+        transition: none;
+    }
+
+    html .vcp-ui-scope :is(#tabContentAgents, #tabContentTopics, #tabContentSettings).active {
+        animation: sidebarTabEnter var(--vcp-motion-duration-normal, 220ms) var(--vcp-motion-ease-standard, ease) backwards;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        html .vcp-ui-scope :is(#tabContentAgents, #tabContentTopics, #tabContentSettings).active {
+            animation: none;
+        }
+    }
+
+    html .vcp-ui-scope.sidebar .topic-list .topic-virtual-spacer {
+        display: block;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        pointer-events: none;
+        overflow: hidden;
+        list-style: none;
+    }
+
+    html .vcp-ui-scope #tabContentTopics .sidebar-list-scroll {
+        overflow-anchor: none;
+    }
+
     html .vcp-ui-scope :is(.agents-header, .topics-header-container) {
         gap: 0;
         margin-bottom: 0;
@@ -557,6 +606,9 @@
         border-radius: var(--vcp-ui-radius-full, 9999px);
         color: var(--vcp-ui-text-2, var(--vcp-ui-port-color-rgba-255-255-255-0-5));
         background: var(--vcp-ui-port-color-rgba-255-255-255-0-08);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        box-shadow: none;
         font-size: calc(var(--vcp-ui-font-size) - 3px);
         font-weight: 500;
         line-height: 1.2;

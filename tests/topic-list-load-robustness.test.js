@@ -84,6 +84,9 @@ test('typing a search waits for a pause and reloads once', async () => {
     await wait(300);
     assert.equal(configCalls, 1, 'one reload after typing stops');
     assert.equal(searchCalls, 1, 'one content search for the final query');
+    // IO completion schedules a separate rendering frame. Under parallel
+    // suites the 300ms debounce wait can finish before that frame runs.
+    for (let attempt = 0; attempt < 100 && !list.querySelector('.topic-item'); attempt++) await wait(10);
     assert.deepEqual([...list.querySelectorAll('.topic-item')].map(li => li.dataset.topicId), ['t1']);
     window.topicListManager.dispose();
     dom.window.close();

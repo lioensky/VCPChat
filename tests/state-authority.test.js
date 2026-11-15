@@ -277,6 +277,8 @@ async function fixture() {
     const { window } = dom;
     const pending = [];
     const errors = [];
+    let now = Date.now();
+    window.Date.now = () => now;
     let deferred = false;
     window.console = { log() {}, warn() {}, debug() {}, error: (...args) => errors.push(args) };
     const api = {
@@ -311,9 +313,15 @@ async function fixture() {
     await window.uiManager.init(uiConfig);
     await settle();
     deferred = true;
+    now += 3000;
     return {
         window, pending, errors, listConfig, uiConfig,
-        refresh: owner => owner === 'ui' ? window.uiManager.switchToTab('agents') : window.itemListManager.refreshUnreadCounts(),
+        refresh(owner, fresh = true) {
+            // Race tests intentionally exercise independent IO, outside the
+            // navigation cache/coalescing window. Dedicated tests stay inside it.
+            if (fresh) now += 3000;
+            return owner === 'ui' ? window.uiManager.switchToTab('agents') : window.itemListManager.refreshUnreadCounts();
+        },
         badge: () => window.document.querySelector('[data-item-id="nova"] .unread-badge'),
         async close() {
             for (const request of pending) request.resolve({ success: false });
@@ -432,6 +440,25 @@ test('UI reinitialization revokes its previous pending request even if the new l
         f.pending[0].resolve({ success: true, counts: { nova: 9 } });
         await settle();
         assert.equal(f.badge().textContent, '3');
+    } finally { await f.close(); }
+});
+
+test('navigation coalesces unread IO and explicit refresh invalidates its cache', async () => {
+    const f = await fixture();
+    try {
+        f.refresh('ui', false);
+        f.refresh('ui', false);
+        assert.equal(f.pending.length, 1, 'rapid tab switches share one request');
+        f.pending[0].resolve({ success: true, counts: { nova: 2 } });
+        await settle();
+        assert.equal(f.badge().textContent, '2');
+        f.refresh('ui', false);
+        assert.equal(f.pending.length, 1, 'recent successful navigation snapshot is reused');
+        const explicit = f.refresh('list', false);
+        assert.equal(f.pending.length, 2, 'business mutations never reuse the navigation cache');
+        f.pending[1].resolve({ success: true, counts: { nova: 1 } });
+        await explicit;
+        assert.equal(f.badge().textContent, '1');
     } finally { await f.close(); }
 });
 

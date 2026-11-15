@@ -388,6 +388,7 @@ const uiManager = (() => {
             leftSidebar.classList.remove('compact-topics-open');
             topicsPanel.classList.remove('compact-drawer-open');
             topicsPanel.setAttribute('aria-hidden', 'true');
+            window.topicListManager?.syncSurfaceVisibility?.();
             compactItems.forEach(item => {
                 item.classList.toggle('active', item.dataset.compactAction === 'agents');
             });
@@ -403,7 +404,8 @@ const uiManager = (() => {
                 item.classList.toggle('active', item.dataset.compactAction === 'topics');
             });
 
-            window.topicListManager?.loadTopicList?.();
+            if (window.topicListManager?.syncSurfaceVisibility) window.topicListManager.syncSurfaceVisibility();
+            else window.topicListManager?.loadTopicList?.();
             window.topicListManager?.setupTopicSearch?.();
             refreshUnreadCounts();
             setCompactMenuOpen(false);
@@ -526,7 +528,9 @@ const uiManager = (() => {
                 if (isActive) {
                     if (targetTab === 'topics') {
                         if (window.topicListManager) {
-                            window.topicListManager.loadTopicList(); // This might create/re-render the topic list and search input
+                            // The surface owner restores its bounded window, reloading
+                            // only when mutations invalidated the hidden snapshot.
+                            if (!window.topicListManager.syncSurfaceVisibility) window.topicListManager.loadTopicList();
                             window.topicListManager.setupTopicSearch(); // Explicitly set up search listeners after the tab is active and list loaded
                         }
                         // 刷新计数
@@ -564,6 +568,7 @@ const uiManager = (() => {
                 }
             });
         }
+        window.topicListManager?.syncSurfaceVisibility?.();
     }
 
     /**
@@ -574,7 +579,7 @@ const uiManager = (() => {
         if (!isCurrent(token)) return;
         try {
             const manager = itemListManagerCapability || window.itemListManager;
-            await manager?.refreshUnreadCounts?.({ isCurrent: () => isCurrent(token) });
+            await manager?.refreshUnreadCounts?.({ isCurrent: () => isCurrent(token), maxAgeMs: 2000 });
         } catch (error) {
             console.error('[UIManager][refreshUnreadCounts] Error:', error);
         }
