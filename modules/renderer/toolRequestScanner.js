@@ -362,12 +362,12 @@ function findEarliestUnclosedToolBlock(text) {
         .sort((a, b) => a.startIndex - b.startIndex)[0] || null;
 }
 
-function replaceToolRequestBlocks(text, replacer) {
+function replaceToolRequestBlocks(text, replacer, options = {}) {
     if (typeof text !== 'string' || !text.includes(TOOL_REQUEST_START_MARKER)) {
         return text;
     }
 
-    const toolResultRanges = collectToolResultRanges(text);
+    const toolResultRanges = options.toolResultRanges ?? collectToolResultRanges(text);
     const codeRanges = collectProtocolLiteralCodeRanges(text, toolResultRanges);
     let result = '';
     let cursor = 0;

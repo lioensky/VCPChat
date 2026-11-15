@@ -1405,7 +1405,21 @@ function extractSpeakableTextFromContentElement(contentElement) {
     // 工具结果优先级最高且嵌套感知，最先整体剥离；其内部的工具请求/推送标记随之移除。
     // 工具请求扫描器不依赖换行，支持“前文<<<[TOOL_REQUEST]>>>tool_name...结束标记后文”。
     // 因此即使 Markdown 没有生成独立气泡，也不会把完整工具载荷送入 TTS。
-    const speakableToolResultRanges = collectClosedToolResultRanges(speakableText);
+    // Speech is conservative: DOM text may concatenate line-oriented protocol
+    // closers with prose. Match nested receipt literals without requiring lines.
+    const speakableToolResultRanges = [];
+    const receiptMarkers = /\[\[VCP调用结果信息汇总:|VCP调用结果结束\]\]/g;
+    let receiptDepth = 0;
+    let receiptStart = 0;
+    let receiptMarker;
+    while ((receiptMarker = receiptMarkers.exec(speakableText))) {
+        if (receiptMarker[0].startsWith('[[')) {
+            if (receiptDepth++ === 0) receiptStart = receiptMarker.index;
+        } else if (receiptDepth > 0 && --receiptDepth === 0) {
+            speakableToolResultRanges.push({ start: receiptStart, end: receiptMarkers.lastIndex });
+        }
+    }
+    if (receiptDepth > 0) speakableToolResultRanges.push({ start: receiptStart, end: speakableText.length });
     if (speakableToolResultRanges.length > 0) {
         speakableText = replaceToolResultRanges(speakableText, speakableToolResultRanges, () => '');
     }
@@ -2935,6 +2949,9 @@ function initializeMessageRenderer(refs) {
         fixEmoticonUrlsInMarkdown,
         deIndentMisinterpretedCodeBlocks: contentProcessor.deIndentMisinterpretedCodeBlocks,
         deIndentHtml,
+        normalizeRenderLines: text => contentProcessor.deIndentMisinterpretedCodeBlocks(text, {
+            codeDomainsProtected: true, normalizeHtml: true,
+        }),
         deIndentToolRequestBlocks: contentProcessor.deIndentToolRequestBlocks,
         applyContentProcessors: contentProcessor.applyContentProcessors,
         transformSpecialBlocks: (text, codeBlockMap, thoughtChainMap, toolRequestSourceMap) =>
@@ -4262,7 +4279,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                     let typeToSave, idToSaveFor;
                     if (message.role === 'user') {
                         typeToSave = 'user'; idToSaveFor = 'user_global';
-                    } else if (message.isGroupMessage && message.agentId) {
+                    } else if (message.agentId) {
                         typeToSave = 'agent'; idToSaveFor = message.agentId;
                     } else if (currentSelectedItem && currentSelectedItem.type === 'agent') {
                         typeToSave = 'agent'; idToSaveFor = currentSelectedItem.id;
@@ -4278,7 +4295,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                                         const latestSettings = mainRendererReferences.globalSettingsRef.get();
                                         if (latestSettings.userAvatarUrl !== avatarUrlToUse) return;
                                         mainRendererReferences.globalSettingsRef.set({ ...latestSettings, userAvatarCalculatedColor: dominantColor });
-                                    } else if (typeToSave === 'agent' && idToSaveFor === currentSelectedItem.id) {
+                                    } else if (typeToSave === 'agent') {
                                         const liveSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
                                         if (liveSelectedItem?.id !== idToSaveFor || liveSelectedItem.type !== 'agent') return;
                                         const nextSelectedItem = liveSelectedItem.config

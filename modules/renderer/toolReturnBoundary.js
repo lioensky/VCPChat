@@ -21,6 +21,18 @@ export function findToolReturnBoundary(text) {
         range.start >= domain.start && range.start < domain.end));
     const last = receipts.at(-1);
     if (!last?.closed) return 0;
+    // Rendering accepts line-oriented legacy receipts, but interrupt admission must
+    // not mistake an inner same-line literal's closing marker for the outer end.
+    if (text.startsWith('[[VCP调用结果信息汇总:', last.start)) {
+        const markers = /\[\[VCP调用结果信息汇总:|VCP调用结果结束\]\]/g;
+        markers.lastIndex = last.start;
+        let depth = 0;
+        let match;
+        while ((match = markers.exec(text)) && match.index < last.end) {
+            depth += match[0].startsWith('[[') ? 1 : -1;
+        }
+        if (depth !== 0) return 0;
+    }
     const tail = text.slice(last.end);
     if (requests.some(request => request.start >= last.end)) return 0;
     // 起始标记也可能跨网络分片；不可在新调用的半截协议头上中止。

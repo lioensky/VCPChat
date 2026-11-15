@@ -74,19 +74,38 @@ function replaceCdnUrls(scriptContent) {
 
 const trackedThreeInstances = new Map();
 const visibilityOwnerByContent = new WeakMap();
-let isThreePatched = false;
+const trackedAnimeInstances = new WeakMap();
+const scriptExecutions = new WeakMap();
 
-function patchThreeJS() {
-    if (isThreePatched || !window.THREE || !window.THREE.WebGLRenderer) return;
-
+function patchThreeJS(contentDiv, visibilityOptimizer) {
+    if (!window.THREE?.WebGLRenderer) return window.THREE;
     const OriginalWebGLRenderer = window.THREE.WebGLRenderer;
-
-    window.THREE.WebGLRenderer = function(...args) {
+    const MessageWebGLRenderer = function(...args) {
         const renderer = new OriginalWebGLRenderer(...args);
 
         const originalRender = renderer.render;
         let associatedScene = null;
         let associatedCamera = null;
+        let animationLoop = null;
+        const originalSetAnimationLoop = renderer.setAnimationLoop?.bind(renderer);
+        const context = {
+            renderer,
+            getScene: () => associatedScene,
+            getCamera: () => associatedCamera,
+            isPaused: false,
+            pause() {
+                originalSetAnimationLoop?.(null);
+            },
+            resume() {
+                if (!renderer._disposed && animationLoop) originalSetAnimationLoop?.(animationLoop);
+            },
+        };
+        if (originalSetAnimationLoop) {
+            renderer.setAnimationLoop = callback => {
+                animationLoop = callback;
+                originalSetAnimationLoop(context.isPaused ? null : callback);
+            };
+        }
 
         renderer.render = function(scene, camera) {
             if (this._disposed) {
@@ -100,7 +119,7 @@ function patchThreeJS() {
                 associatedCamera = camera;
             }
             
-            if (!document.body.contains(this.domElement)) {
+            if (!contentDiv.isConnected) {
                 if (!this._disposed) this.dispose();
                 return;
             }
@@ -118,56 +137,26 @@ function patchThreeJS() {
         renderer.dispose = function() {
             if (this._disposed) return;
             this._disposed = true;
-            // This observer is owned by the renderer. Disconnect it before
-            // releasing GPU resources so a detached canvas cannot retain the
-            // document or re-register itself after teardown.
-            this._vcpMutationObserver?.disconnect?.();
-            this._vcpMutationObserver = null;
+            animationLoop = null;
+            originalSetAnimationLoop?.(null);
             if (originalDispose) {
                 return originalDispose.call(this);
             }
         };
 
-        const observer = new MutationObserver(() => {
-            if (document.body.contains(renderer.domElement)) {
-                const contentDiv = renderer.domElement.closest('.md-content');
-                if (contentDiv) {
-                    const visibilityOptimizer = visibilityOwnerByContent.get(contentDiv);
-                    if (!trackedThreeInstances.has(contentDiv)) {
-                        trackedThreeInstances.set(contentDiv, []);
-                    }
-                    const instance = {
-                        renderer,
-                        getScene: () => associatedScene,
-                    };
-                    trackedThreeInstances.get(contentDiv).push(instance);
-
-                    // 注册到可见性优化器
-                    const messageItem = contentDiv.closest('.message-item');
-                    if (messageItem) {
-                        visibilityOptimizer.registerThreeContext(messageItem, {
-                            renderer,
-                            getScene: () => associatedScene,
-                            getCamera: () => associatedCamera,
-                            // 注意：这里无法直接获取外部的 renderLoop，
-                            // 但我们可以通过拦截 setAnimationLoop 来获取
-                        });
-                    }
-                }
-                observer.disconnect();
-            }
-        });
-
-        renderer._vcpMutationObserver = observer;
-
-        observer.observe(document.body, { childList: true, subtree: true });
+        if (!trackedThreeInstances.has(contentDiv)) trackedThreeInstances.set(contentDiv, []);
+        trackedThreeInstances.get(contentDiv).push({ renderer, getScene: () => associatedScene });
+        const messageItem = contentDiv.closest('.message-item');
+        if (messageItem) visibilityOptimizer?.registerThreeContext?.(messageItem, context);
 
         return renderer;
     };
 
-    window.THREE.WebGLRenderer.prototype = OriginalWebGLRenderer.prototype;
-    isThreePatched = true;
-    console.log('[Three.js Patch] THREE.WebGLRenderer patched with safety checks.');
+    MessageWebGLRenderer.prototype = OriginalWebGLRenderer.prototype;
+    Object.setPrototypeOf(MessageWebGLRenderer, OriginalWebGLRenderer);
+    return new Proxy(window.THREE, {
+        get(target, prop) { return prop === 'WebGLRenderer' ? MessageWebGLRenderer : target[prop]; },
+    });
 }
 
 function createMessagePixiFacade(messageItem, visibilityOptimizer) {
@@ -290,6 +279,8 @@ function loadScript(src, onLoad, onError) {
 }
 
 function processScripts(containerElement, visibilityOptimizer) {
+    const execution = {};
+    scriptExecutions.set(containerElement, execution);
     if (visibilityOptimizer) visibilityOwnerByContent.set(containerElement, visibilityOptimizer);
     const messageItem = containerElement.closest('.message-item');
 
@@ -327,21 +318,16 @@ function processScripts(containerElement, visibilityOptimizer) {
     executableScripts.forEach(s => { if (s.parentNode) s.parentNode.removeChild(s); });
 
     const executeInline = () => {
+        if (scriptExecutions.get(containerElement) !== execution) return;
         // 🛡️ 拦截 anime.js 的创建，以便自动注册
         const originalAnime = window.anime;
-        let animePatched = false;
-        if (originalAnime && !originalAnime._vcp_patched) {
-            window.anime = function(options) {
-                const instance = originalAnime(options);
-                if (messageItem) {
-                    visibilityOptimizer.registerAnimeInstance(messageItem, instance);
-                }
-                return instance;
-            };
-            Object.assign(window.anime, originalAnime);
-            window.anime._vcp_patched = true;
-            animePatched = true;
-        }
+        const messageAnime = originalAnime && Object.assign(function(options) {
+            const instance = originalAnime(options);
+            if (!trackedAnimeInstances.has(containerElement)) trackedAnimeInstances.set(containerElement, new Set());
+            trackedAnimeInstances.get(containerElement).add(instance);
+            if (messageItem) visibilityOptimizer?.registerAnimeInstance?.(messageItem, instance);
+            return instance;
+        }, originalAnime);
 
         // 🛡️ Document API Shadowing - 防止 document.write/open/close 导致 SPA 崩溃
         const originalWrite = document.write;
@@ -383,18 +369,9 @@ function processScripts(containerElement, visibilityOptimizer) {
                             clearInterval: window.clearInterval.bind(window)
                         };
 
-                    // 3. 影子注入：通过 IIFE 重新定义局部作用域内的 API
-                    // 我们将 pausableRAF / pausableTimerAPI 挂载到临时全局变量上，以便注入脚本读取
-                    const tempRafId = `_vcp_raf_${Math.random().toString(36).slice(2, 11)}`;
-                    window[tempRafId] = pausableRAF;
-                    const tempTimerId = `_vcp_timer_${Math.random().toString(36).slice(2, 11)}`;
-                    window[tempTimerId] = pausableTimerAPI;
-
-                    const tempDocId = `_vcp_doc_${Math.random().toString(36).slice(2, 11)}`;
+                    // A single synchronous handoff captures all message-owned APIs.
                     const tempContainerId = `_vcp_container_${Math.random().toString(36).slice(2, 11)}`;
-                    window[tempContainerId] = containerElement;
-                    const tempPixiId = `_vcp_pixi_${Math.random().toString(36).slice(2, 11)}`;
-                    window[tempPixiId] = createMessagePixiFacade(messageItem, visibilityOptimizer);
+                    const messagePixi = createMessagePixiFacade(messageItem, visibilityOptimizer);
                     const virtualCurrentScript = {
                         tagName: 'SCRIPT',
                         nodeName: 'SCRIPT',
@@ -412,6 +389,7 @@ function processScripts(containerElement, visibilityOptimizer) {
                     };
                     const shadowDocument = new Proxy(document, {
                         get(target, prop) {
+                            if (prop === 'write' || prop === 'open' || prop === 'close') return blockedApiHandler;
                             if (prop === 'currentScript') {
                                 return virtualCurrentScript;
                             }
@@ -500,32 +478,44 @@ function processScripts(containerElement, visibilityOptimizer) {
                             return true;
                         }
                     });
-                    window[tempDocId] = shadowDocument;
+                    const scopedApis = {
+                        document: shadowDocument,
+                        PIXI: messagePixi,
+                        THREE: patchThreeJS(containerElement, visibilityOptimizer),
+                        anime: messageAnime,
+                        requestAnimationFrame: pausableRAF,
+                        webkitRequestAnimationFrame: pausableRAF,
+                        mozRequestAnimationFrame: pausableRAF,
+                        ...pausableTimerAPI,
+                        container: containerElement,
+                    };
+                    const scopedWindow = new Proxy(window, {
+                        get(target, prop) {
+                            if (prop === 'window' || prop === 'self' || prop === 'globalThis') return scopedWindow;
+                            if (Object.prototype.hasOwnProperty.call(scopedApis, prop)) return scopedApis[prop];
+                            const value = Reflect.get(target, prop, target);
+                            return typeof value === 'function' && !value.prototype ? value.bind(target) : value;
+                        },
+                        set(target, prop, value) { target[prop] = value; return true; },
+                    });
+                    window[tempContainerId] = scopedWindow;
                     
-                    // [优化] 拦截脚本中的 requestAnimationFrame / timer，强制指向可暂停 API
-                    let scriptContent = replaceCdnUrls(script.textContent);
-                    
-                    // 简单的正则替换，处理常见的 window.* 调用方式
-                    // 注意：这只是辅助手段，核心拦截靠 IIFE 作用域覆盖
-                    scriptContent = scriptContent
-                        .replace(/window\.PIXI/g, `window['${tempPixiId}']`)
-                        .replace(/window\.requestAnimationFrame/g, `window['${tempRafId}']`)
-                        .replace(/window\.webkitRequestAnimationFrame/g, `window['${tempRafId}']`)
-                        .replace(/window\.mozRequestAnimationFrame/g, `window['${tempRafId}']`)
-                        .replace(/window\.setTimeout/g, `window['${tempTimerId}'].setTimeout`)
-                        .replace(/window\.clearTimeout/g, `window['${tempTimerId}'].clearTimeout`)
-                        .replace(/window\.setInterval/g, `window['${tempTimerId}'].setInterval`)
-                        .replace(/window\.clearInterval/g, `window['${tempTimerId}'].clearInterval`);
+                    const scriptContent = replaceCdnUrls(script.textContent);
+                    // Explicit window/globalThis calls resolve through the captured local proxy.
                     
                     const wrappedScript = `
-(function() {
-    const document = window['${tempDocId}'];
-    const PIXI = window['${tempPixiId}'];
-    const requestAnimationFrame = window['${tempRafId}'];
+(function(window) {
+    const globalThis = window;
+    const self = window;
+    const document = window.document;
+    const PIXI = window.PIXI;
+    const THREE = window.THREE;
+    const anime = window.anime;
+    const requestAnimationFrame = window.requestAnimationFrame;
     // 同时也覆盖 webkitRequestAnimationFrame 等变体以防万一
     const webkitRequestAnimationFrame = requestAnimationFrame;
     const mozRequestAnimationFrame = requestAnimationFrame;
-    const __vcpTimerAPI = window['${tempTimerId}'];
+    const __vcpTimerAPI = window;
     const setTimeout = __vcpTimerAPI.setTimeout;
     const clearTimeout = __vcpTimerAPI.clearTimeout;
     const setInterval = __vcpTimerAPI.setInterval;
@@ -533,26 +523,22 @@ function processScripts(containerElement, visibilityOptimizer) {
     
     // 直接绑定本次处理所属的内容根，不再通过消息 ID 和全局 document 反查。
     // 因此 script 位于 DIV 岛内部、岛外或辅助 Surface 时语义完全一致。
-    const container = window['${tempContainerId}'];
+    const container = window.container;
     try {
         ${scriptContent}
     } catch (e) {
         console.error('[Animation] Error in AI script:', e);
     }
-})();`;
+})(window['${tempContainerId}']);`;
                     
                     const newScript = document.createElement('script');
                     newScript.textContent = wrappedScript;
-                    document.head.appendChild(newScript).parentNode.removeChild(newScript);
-                    
-                    // 稍微延迟清理，确保脚本解析完成；已创建的回调闭包会继续持有可暂停 API
-                    setTimeout(() => {
-                        delete window[tempRafId];
-                        delete window[tempTimerId];
-                        delete window[tempDocId];
+                    try {
+                        document.head.appendChild(newScript);
+                    } finally {
+                        newScript.remove();
                         delete window[tempContainerId];
-                        delete window[tempPixiId];
-                    }, 0);
+                    }
 
                 } catch (e) {
                     console.error('[Animation] Error executing inline script:', e);
@@ -590,7 +576,6 @@ function processScripts(containerElement, visibilityOptimizer) {
 
     if (threeScripts.length > 0) {
         loadScript('vendor/three.min.js', () => {
-            patchThreeJS();
             loadOtherScriptsAndExecuteInline();
         });
     } else {
@@ -606,14 +591,21 @@ export function processAnimationsInContent(containerElement, visibilityOptimizer
 
 export function cleanupAnimationsInContent(contentDiv) {
     if (!contentDiv) return;
+    scriptExecutions.delete(contentDiv);
     const visibilityOptimizer = visibilityOwnerByContent.get(contentDiv);
     const messageItem = contentDiv.closest?.('.message-item');
     visibilityOptimizer?.destroyPixiMessage?.(messageItem);
     visibilityOwnerByContent.delete(contentDiv);
 
-    if (window.anime) {
-        const animatedElements = contentDiv.querySelectorAll('*');
-        if (animatedElements.length > 0) anime.remove(animatedElements);
+    const animeInstances = trackedAnimeInstances.get(contentDiv);
+    if (animeInstances) {
+        for (const instance of animeInstances) {
+            instance.pause?.();
+            const targets = instance.animatables?.map(entry => entry.target) || [];
+            if (targets.length) window.anime?.remove?.(targets);
+        }
+        animeInstances.clear();
+        trackedAnimeInstances.delete(contentDiv);
     }
 
     if (trackedThreeInstances.has(contentDiv)) {

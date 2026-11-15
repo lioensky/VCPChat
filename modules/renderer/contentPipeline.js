@@ -57,18 +57,18 @@ function findPersonaJsonEnd(text, startIndex) {
     return -1;
 }
 
-function stripPersonaBackfillTail(text) {
+function stripPersonaBackfillTail(text, ranges) {
     if (!text || text.indexOf('persona_') === -1) return text;
     // 工具结果是权威数据域：其中出现的 persona 注释只是数据，不能被剥离；
     // 工具结果之前的半截回填也只能剥到工具结果边界，不得吞掉整个工具结果。
-    return transformOutsideToolResults(text, stripPersonaBackfillSegment);
+    return transformOutsideToolResults(text, stripPersonaBackfillSegment, ranges);
 }
 
 // 情绪标签 <!--emo:happy 0.8--> 只给立绘等助手形象看，显示时剥掉；工具结果里的同样是数据，不动。
 // 流式时连尾巴上没写完的半个标签一起藏起来，免得闪出 "<!--emo"。
-function stripEmotionTagsOutsideToolResults(text, streaming) {
+function stripEmotionTagsOutsideToolResults(text, streaming, ranges) {
     if (!text || text.indexOf('<!') === -1) return text;
-    return transformOutsideToolResults(text, segment => stripEmotionTags(segment, { streaming }));
+    return transformOutsideToolResults(text, segment => stripEmotionTags(segment, { streaming }), ranges);
 }
 
 function stripPersonaBackfillSegment(text) {
@@ -163,6 +163,7 @@ function createContentPipeline(deps = {}) {
         fixEmoticonUrlsInMarkdown = (text) => text,
         deIndentMisinterpretedCodeBlocks = (text) => text,
         deIndentHtml = (text) => text,
+        normalizeRenderLines = null,
         deIndentToolRequestBlocks = (text) => text,
         applyContentProcessors = (text) => text,
         transformSpecialBlocks = (text) => text,
@@ -205,6 +206,14 @@ function createContentPipeline(deps = {}) {
         return ctx;
     }
 
+    function toolRanges(text, ctx) {
+        if (ctx.state.toolRangesText !== text) {
+            ctx.state.toolRangesText = text;
+            ctx.state.toolResultRanges = collectToolResultRanges(text);
+        }
+        return ctx.state.toolResultRanges;
+    }
+
     function protectThoughtChains(text, ctx) {
         if (
             typeof text !== 'string' ||
@@ -218,7 +227,7 @@ function createContentPipeline(deps = {}) {
         // 工具结果优先级高于思维链：先以等长空白遮蔽（保持偏移与换行），
         // 其内部的 <think> / 元思考链 / 围栏都不参与扫描；并以工具结果为硬边界，
         // 跨越工具结果的思维链视为未闭合，不得把工具结果吞进思维链渲染域。
-        const toolResultRanges = collectToolResultRanges(text);
+        const toolResultRanges = toolRanges(text, ctx);
         const scanText = maskToolResults(text, toolResultRanges);
         let toolResultCursor = 0;
         const lineOverlapsToolResult = (lineStart, lineEnd) => {
@@ -332,7 +341,8 @@ function createContentPipeline(deps = {}) {
         // 嵌套感知配对：工具结果内部成对出现的字面量起止标记（例如读取渲染器源码）
         // 被整体包含在最外层工具结果中，不会在第一个内层结束标记处截断。
         // 占位符序号与删除功能（removeToolResultFromMessage）使用同一配对规则，保持一致。
-        const ranges = collectClosedToolResultRanges(text);
+        const ranges = toolRanges(text, ctx).filter(range => range.closed);
+        ctx.state.toolResultsProtected = !toolRanges(text, ctx).some(range => !range.closed);
         if (ranges.length === 0) return text;
 
         ctx.state.toolResultMap ||= new Map();
@@ -380,7 +390,9 @@ function createContentPipeline(deps = {}) {
         };
 
         if (typeof replaceToolRequestBlocks === 'function') {
-            return replaceToolRequestBlocks(text, protectMatch);
+            return replaceToolRequestBlocks(text, protectMatch, {
+                toolResultRanges: ctx.state.toolResultsProtected ? [] : toolRanges(text, ctx),
+            });
         }
 
         toolRequestRegex.lastIndex = 0;
@@ -480,8 +492,10 @@ function createContentPipeline(deps = {}) {
         }
 
         if ((options.messageRole || 'assistant') === 'assistant') {
-            step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
-            step(ctx, 'strip-emotion-tags', (text) => stripEmotionTagsOutsideToolResults(text, false));
+            step(ctx, 'strip-persona-backfill-tail', text =>
+                stripPersonaBackfillTail(text, text.includes('persona_') ? toolRanges(text, ctx) : undefined));
+            step(ctx, 'strip-emotion-tags', text =>
+                stripEmotionTagsOutsideToolResults(text, false, text.includes('<!') ? toolRanges(text, ctx) : undefined));
         }
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
 
@@ -510,7 +524,9 @@ function createContentPipeline(deps = {}) {
             /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
             source => {
                 const token = `<!--VCP_RAW_SCRIPT_${ctx.state.rawScriptMap.size}-->`;
-                ctx.state.rawScriptMap.set(token, source);
+                // Code protection ran first and may have replaced JS template
+                // literals. Restore inside the sealed payload, not only ctx.text.
+                ctx.state.rawScriptMap.set(token, restoreCodeBlocks(source, ctx));
                 return token;
             }
         ));
@@ -530,9 +546,13 @@ function createContentPipeline(deps = {}) {
         }
 
         // 6. 再做会改变行首语义/结构边界的修正
-        step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text, { codeDomainsProtected: true }));
-        step(ctx, 'deindent-html', (text) => deIndentHtml(text, { codeDomainsProtected: true }));
-        step(ctx, 'deindent-tool-request-blocks', (text) => deIndentToolRequestBlocks(text));
+        if (normalizeRenderLines) {
+            step(ctx, 'normalize-render-lines', normalizeRenderLines);
+        } else {
+            step(ctx, 'deindent-misinterpreted-code-blocks', text => deIndentMisinterpretedCodeBlocks(text, { codeDomainsProtected: true }));
+            step(ctx, 'deindent-html', text => deIndentHtml(text, { codeDomainsProtected: true }));
+        }
+        // Closed requests are opaque placeholders here; unclosed requests stay literal.
 
         // 7. 再做结构转换
         step(ctx, 'transform-desktop-push', transformDesktopPush);

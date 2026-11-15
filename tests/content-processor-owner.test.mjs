@@ -152,3 +152,23 @@ test('quote highlighting leaves button labels untouched', () => {
     assert.equal(root.querySelectorAll('p .highlighted-quote').length, 1);
     assert.equal(root.querySelector('button').innerHTML, '工具 · "query"');
 });
+
+
+test('Chinese paragraph normalization preserves list continuations, quotes and short indentation', () => {
+    const processor = createContentProcessor();
+    const source = '- 列表\n  中文子段落\n    中文续行\n\n普通正文\n  中文短缩进\n    中文误缩进\n> 引用\n  > 中文引用';
+    assert.equal(processor.deIndentMisinterpretedCodeBlocks(source),
+        '- 列表\n  中文子段落\n    中文续行\n\n普通正文\n  中文短缩进\n中文误缩进\n> 引用\n  > 中文引用');
+});
+
+test('preview cleanup never enumerates every syntax-highlighted descendant', () => {
+    const dom = new JSDOM('<div><pre><code><span>code</span></code></pre></div>');
+    const root = dom.window.document.querySelector('div');
+    const nativeQuery = root.querySelectorAll.bind(root);
+    root.querySelectorAll = selector => {
+        assert.notEqual(selector, '*');
+        return nativeQuery(selector);
+    };
+    createContentProcessor().cleanupPreviewsInContent(root);
+    dom.window.close();
+});

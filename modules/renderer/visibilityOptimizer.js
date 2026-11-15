@@ -508,7 +508,7 @@ function flushPausedRAFCallbacks(messageItem, state) {
         requestAnimationFrame((timestamp) => {
             const latestState = messageAnimationStates.get(messageItem);
             if (!latestState || latestState.isPaused || !messageItem.isConnected) {
-                if (latestState && !latestState.isPaused) {
+                if (latestState && latestState.isPaused && messageItem.isConnected) {
                     latestState.pausedRAFCallbacks.push(callback);
                 }
                 return;
@@ -571,7 +571,7 @@ function pauseMessageAnimations(messageItem) {
     cleanupFinishedAnimations(state);
 
     // [新增] 固化实测高度，辅助 content-visibility / 后续墓碑占位更好地工作
-    rememberMessageHeight(messageItem);
+    rememberMessageHeightLater(messageItem);
 
     applyPauseToState(messageItem, state);
     state.isPaused = true;
@@ -618,9 +618,8 @@ function applyPauseToState(messageItem, state) {
             if (ctx.animationId) {
                 cancelAnimationFrame(ctx.animationId);
             }
-            if (ctx.renderer?.setAnimationLoop) {
-                ctx.renderer.setAnimationLoop(null);
-            }
+            if (ctx.pause) ctx.pause();
+            else ctx.renderer?.setAnimationLoop?.(null);
             ctx.isPaused = true;
         }
     });
@@ -707,7 +706,7 @@ function resumeMessageAnimations(messageItem) {
     if (!state) return;
 
     activateHeavyIfNeeded(messageItem, state);
-    rememberMessageHeight(messageItem);
+    rememberMessageHeightLater(messageItem);
 
     if (!state.isPaused) {
         scanAnimatedElements(messageItem);
@@ -740,9 +739,8 @@ function resumeMessageAnimations(messageItem) {
     state.threeContexts.forEach(ctx => {
         if (ctx.isPaused) {
             ctx.isPaused = false;
-            if (ctx.renderLoop) {
-                ctx.renderLoop();
-            }
+            if (ctx.resume) ctx.resume();
+            else if (ctx.renderLoop) ctx.renderLoop();
         }
     });
 
@@ -848,9 +846,8 @@ function registerThreeContext(messageItem, context) {
             if (context.animationId) {
                 cancelAnimationFrame(context.animationId);
             }
-            if (context.renderer?.setAnimationLoop) {
-                context.renderer.setAnimationLoop(null);
-            }
+            if (context.pause) context.pause();
+            else context.renderer?.setAnimationLoop?.(null);
             context.isPaused = true;
         }
     }
@@ -1127,11 +1124,12 @@ function recheckVisibility() {
     const containerRect = chatContainerRef.getBoundingClientRect();
     const margin = 200;
 
-    chatContainerRef.querySelectorAll('.message-item').forEach(item => {
+    const visibility = [...chatContainerRef.querySelectorAll('.message-item')].map(item => {
         const rect = item.getBoundingClientRect();
-
-        const isVisible = isMessageInHotZone(item, margin);
-
+        return { item, isVisible: rect.bottom >= containerRect.top - margin
+            && rect.top <= containerRect.bottom + margin };
+    });
+    visibility.forEach(({ item, isVisible }) => {
         if (isVisible) {
             resumeMessageAnimations(item);
         } else {

@@ -124,12 +124,13 @@ function createVisibilityStub() {
     };
 }
 
-async function createRendererFixture(messageContent, appearanceProfile = null) {
+async function createRendererFixture(messageContent, appearanceProfile = null, executeScripts = false) {
     const dom = new JSDOM(
         '<!doctype html><html><head></head><body><div class="chat-messages-container"><div id="chat"></div></div></body></html>',
         {
             url: 'https://vcpchat.local/',
             pretendToBeVisual: true,
+            ...(executeScripts ? { runScripts: 'dangerously' } : {}),
         },
     );
     const previousGlobals = {
@@ -640,5 +641,127 @@ test('canvas island script remains valid JavaScript across blank lines and compa
         assert.ok(rendered);
         assert.doesNotThrow(() => new Function('container', rendered), rendered);
         assert.equal(rendered.trim(), script.trim(), 'render pipeline must not rewrite script source');
+    } finally { await disposeFixture(fixture); }
+});
+
+
+test('active stream tool payloads remain expandable after chat DOM recreation', async () => {
+    const fixture = await createRendererFixture('');
+    try {
+        const message = {
+            id: 'animation-island-message', role: 'assistant', content: '思考中', isThinking: true,
+            agentId: 'animation-agent', topicId: 'animation-topic', streamOperationId: 'tool-restore',
+        };
+        await fixture.streamProjection.startStreamingMessage(message, fixture.messageItem);
+        fixture.streamProjection.appendStreamChunk(message.id, { content: [
+            '<<<[TOOL_REQUEST]>>>',
+            'tool_name:「始」Demo「末」',
+            'query:「始」restored-request「末」',
+            '<<<[END_TOOL_REQUEST]>>>',
+            '',
+            '[[VCP调用结果信息汇总:',
+            '- 工具名称: Demo',
+            '- 返回内容: ' + Array.from({ length: 150 }, (_, i) => `restored-${i} ${'x'.repeat(400)}`).join('\n'),
+            'VCP调用结果结束]]',
+            '\n<<<[END_ROLE_DIVIDE_USER]>>>\n',
+        ].join('\n') }, message, 'tool-restore');
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 100));
+        fixture.renderer.clearChat();
+        await fixture.streamProjection.reconcileConversation({
+            itemType: 'agent', itemId: 'animation-agent', topicId: 'animation-topic',
+        });
+        const rebuilt = fixture.root.querySelector('.message-item');
+        assert.ok(rebuilt);
+        assert.equal(rebuilt.classList.contains('thinking'), false);
+        const request = rebuilt.querySelector('.vcp-tool-use-bubble');
+        assert.ok(request);
+        request.querySelector('.vcp-tool-summary').click();
+        assert.match(request.textContent, /restored-request/);
+        const result = rebuilt.querySelector('.vcp-tool-result-bubble');
+        result.querySelector('.vcp-tool-result-header').click();
+        const notice = result.querySelector('.vcp-tool-result-truncated-notice');
+        assert.ok(notice);
+        notice.click();
+        assert.match(result.textContent, /restored-149/);
+    } finally { await disposeFixture(fixture); }
+});
+
+
+test('stream projection accumulates desktop-filtered text rather than the raw push payload', async () => {
+    const fixture = await createRendererFixture('');
+    try {
+        const message = {
+            id: 'animation-island-message', role: 'assistant', content: '',
+            agentId: 'animation-agent', topicId: 'animation-topic', streamOperationId: 'desktop-filter',
+        };
+        await fixture.streamProjection.startStreamingMessage(message, fixture.messageItem);
+        for (const content of ['before<<<[DESK', 'TOP_PUSH]>>><div>desktop-only</div>', '<<<[DESKTOP_PUSH_END]>>>after']) {
+            fixture.streamProjection.appendStreamChunk(message.id, { content }, message, 'desktop-filter');
+        }
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 80));
+        const snapshots = fixture.streamProjection.snapshotConversation({
+            itemType: 'agent', itemId: 'animation-agent', topicId: 'animation-topic',
+        });
+        assert.equal(snapshots[0].accumulatedText, 'beforeafter');
+        assert.doesNotMatch(fixture.messageItem.textContent, /desktop-only|DESKTOP_PUSH/);
+    } finally { await disposeFixture(fixture); }
+});
+
+
+test('script template literals are restored inside sealed payloads before delayed drawing', async () => {
+    const script = [
+        'const node = container.querySelector(".template-probe");',
+        'const title = `动画 ${1 + 2}`;',
+        'function draw(timestamp) {',
+        '  const nested = `rgb(${Math.round(timestamp / 10)}, ${`2${3}`}, 4)`;',
+        '  node.dataset.color = nested;',
+        '  node.textContent = `${title}: ${timestamp >= 1000 ? `仍在运行 ${timestamp}` : "启动"}`;',
+        '  if (timestamp < 1100) requestAnimationFrame(draw);',
+        '}',
+        'requestAnimationFrame(draw);',
+    ].join('\n');
+    const fixture = await createRendererFixture(
+        '<div><span class="template-probe"></span><script>' + script + '</script></div>');
+    try {
+        const rendered = fixture.messageItem.querySelector('script')?.textContent;
+        assert.equal(rendered, script, 'sealed executable source must not retain Markdown code tokens');
+        assert.doesNotMatch(rendered, /__VCP_CODE_BLOCK_PLACEHOLDER_\d+__/);
+        const callbacks = [];
+        new Function('container', 'requestAnimationFrame', rendered)(
+            fixture.messageItem, callback => callbacks.push(callback));
+        for (const timestamp of [16, 500, 1000, 1100]) {
+            assert.equal(callbacks.length, 1);
+            assert.doesNotThrow(() => callbacks.shift()(timestamp));
+        }
+        const node = fixture.messageItem.querySelector('.template-probe');
+        assert.equal(node.textContent, '动画 3: 仍在运行 1100');
+        assert.equal(node.dataset.color, 'rgb(110, 23, 4)');
+        assert.equal(callbacks.length, 0);
+    } finally { await disposeFixture(fixture); }
+});
+
+
+test('rendered animation executes template literals after one second without losing later frames', async () => {
+    const script = [
+        'const output = container.querySelector(".late-template");',
+        'setTimeout(() => {',
+        '  let frameCount = 0;',
+        '  function draw() {',
+        '    output.textContent = `延迟动画 ${++frameCount}`;',
+        '    if (frameCount < 3) window.requestAnimationFrame(draw);',
+        '  }',
+        '  globalThis.requestAnimationFrame(draw);',
+        '}, 1050);',
+    ].join('\n');
+    const fixture = await createRendererFixture(
+        '<div><span class="late-template">等待</span><script>' + script + '</script></div>', null, true);
+    try {
+        const errors = [];
+        fixture.dom.window.addEventListener('error', event => errors.push(event.error || event.message));
+        await fixture.messageItem._vcp_activateHeavy();
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        assert.equal(fixture.messageItem.querySelector('.late-template').textContent, '延迟动画 3');
+        assert.deepEqual(errors, []);
+        assert.doesNotMatch(fixture.messageItem.innerHTML, /__VCP_CODE_BLOCK_PLACEHOLDER_\d+__/);
     } finally { await disposeFixture(fixture); }
 });

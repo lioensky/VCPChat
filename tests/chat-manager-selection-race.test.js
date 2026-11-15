@@ -8,6 +8,7 @@ test.before(async () => {
     compactionDependencies = {
         ...await import('../modules/chat/contextCompactionService.js'),
         ...await import('../modules/chat/contextCompactionState.js'),
+        ...await import('../modules/chat/chatHistoryMutationAuthority.js'),
     };
 });
 
@@ -244,6 +245,12 @@ function createFixture(options = {}) {
     try {
         window.chatManager.init({
         singleChatRequestOrchestrator,
+        historyMutationAuthority: compactionDependencies.createChatHistoryMutationAuthority({
+            repository: {
+                getHistory: (id, _type, topic) => electronAPI.getChatHistory(id, topic),
+                saveHistory: (id, _type, topic, messages) => electronAPI.saveChatHistory(id, topic, messages),
+            },
+        }),
         chatRepository: {
             getHistory: (itemId, _itemType, requestedTopicId) => electronAPI.getChatHistory(itemId, requestedTopicId),
             saveHistory: (itemId, _itemType, requestedTopicId, messages) => electronAPI.saveChatHistory(itemId, requestedTopicId, messages),
@@ -1425,5 +1432,118 @@ test('normal compaction consumption wakes boundary wait without timeout cancella
         assert.deepEqual(cancellations, [], 'normal wakeup is not a timeout even while intent remains owned');
         compactGate.resolve(null);
         await finishing;
+    } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
+});
+
+
+test('late budget IPC cannot acquire a lease after stream finalization', async () => {
+    let active = true;
+    let suspensions = 0;
+    const gate = deferred();
+    const fixture = createFixture({
+        streamProjection: { isMessageActive: () => active },
+        flowlockManager: { suspendForContextCompaction() { suspensions++; } },
+    });
+    try {
+        fixture.electronAPI.topicAdmissionList = () => gate.promise;
+        fixture.electronAPI.topicAdmissionRelay = async () => ({ success: true });
+        const checking = fixture.chatManager.checkStreamContextBudget({
+            messageId: 'late', context: { agentId: 'agent-a', topicId: 'topic-a', admissionToken: 'token' },
+            text: 'result',
+        });
+        active = false;
+        fixture.chatManager.abandonStreamContextCompaction({ messageId: 'late' });
+        gate.resolve({ success: true, entries: [{
+            scope: { itemType: 'agent', itemId: 'agent-a', topicId: 'topic-a' }, state: 'queued',
+        }] });
+        await checking;
+        assert.equal(suspensions, 0);
+        assert.equal(fixture.chatManager.hasStreamAdmissionRelay('late'), false);
+    } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
+});
+
+for (const mode of ['cancel', 'error', 'handoff', 'settled-before-interrupt']) {
+    test(`stream relay lease ownership: ${mode}`, async () => {
+        const lease = {};
+        const resumed = [];
+        const interrupt = deferred();
+        const fixture = createFixture({
+            interruptHandler: { interrupt: () => interrupt.promise },
+            flowlockManager: {
+                suspendForContextCompaction: () => lease,
+                resumeAfterContextCompaction: value => resumed.push(value),
+            },
+        });
+        try {
+            fixture.electronAPI.topicAdmissionList = async () => ({
+                success: true, entries: [{
+                    scope: { itemType: 'agent', itemId: 'agent-a', topicId: 'topic-a' }, state: 'queued',
+                }],
+            });
+            fixture.electronAPI.topicAdmissionRelay = async () => {
+                if (mode === 'error') throw new Error('relay unavailable');
+                return { success: true };
+            };
+            fixture.electronAPI.topicAdmissionRelease = async () => ({ success: true });
+            fixture.electronAPI.topicAdmissionUncertain = async () => ({ success: true });
+            const context = { agentId: 'agent-a', topicId: 'topic-a', admissionToken: 'token' };
+            const checking = fixture.chatManager.checkStreamContextBudget({ messageId: 'relay', context, text: 'result' });
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(fixture.chatManager.hasStreamAdmissionRelay('relay'), true);
+            if (mode === 'settled-before-interrupt') {
+                fixture.chatManager.abandonStreamContextCompaction({ messageId: 'relay' });
+            } else {
+                if (mode === 'cancel') fixture.chatManager.cancelStreamAdmissionRelay('relay');
+                const finishing = fixture.chatManager.finishStreamAdmissionRelay({ messageId: 'relay', context });
+                if (mode === 'error') await assert.rejects(finishing, /relay unavailable/);
+                else await finishing;
+            }
+            interrupt.resolve({ success: true });
+            await checking;
+            fixture.chatManager.abandonStreamContextCompaction({ messageId: 'relay' });
+            assert.equal(resumed.length, mode === 'handoff' ? 0 : 1);
+            if (resumed.length) assert.equal(resumed[0], lease);
+            assert.equal(fixture.chatManager.hasStreamAdmissionRelay('relay'), false);
+        } finally { interrupt.resolve({ success: true }); await fixture.chatManager.dispose(); fixture.dom.window.close(); }
+    });
+}
+
+
+test('attachment upload preserves concurrent durable replies and local placeholders', async () => {
+    const fixture = createFixture();
+    try {
+        await selectAdmissionFixture(fixture);
+        const gate = deferred();
+        fixture.electronAPI.handleFileDrop = () => gate.promise;
+        fixture.setCurrentHistory([...fixture.state().history,
+            { id: 'thinking', role: 'assistant', content: '', isThinking: true }]);
+        const adding = fixture.chatManager.addAttachmentsToMessage('a-message', []);
+        fixture.setPersistedHistory('agent-a', 'topic-a', [...fixture.persistedHistory('agent-a', 'topic-a'),
+            { id: 'finished-reply', role: 'assistant', content: 'saved concurrently' }]);
+        gate.resolve([{ success: true, name: 'note.txt', attachment: { internalPath: '/note.txt' } }]);
+        await adding;
+        const durable = fixture.persistedHistory('agent-a', 'topic-a');
+        assert.ok(durable.some(message => message.id === 'finished-reply'));
+        assert.equal(durable.some(message => message.isThinking), false);
+        assert.equal(durable[0].attachments[0].name, 'note.txt');
+        assert.ok(fixture.state().history.some(message => message.id === 'thinking'));
+        await fixture.chatManager.removeAttachmentFromMessage('a-message', 0);
+        assert.equal(fixture.persistedHistory('agent-a', 'topic-a')[0].attachments.length, 0);
+        assert.ok(fixture.persistedHistory('agent-a', 'topic-a').some(message => message.id === 'finished-reply'));
+    } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
+});
+
+test('late branch creation persists its source history without stealing a newer topic', async () => {
+    const fixture = createFixture();
+    try {
+        await selectAdmissionFixture(fixture, 'agent-b');
+        const creating = fixture.chatManager.handleCreateBranch(fixture.state().history[0]);
+        await new Promise(resolve => setImmediate(resolve));
+        await fixture.chatManager.selectTopic('topic-b-2');
+        fixture.createTopicRequests.get('agent-b')[0].resolve({ success: true, topicId: 'branch-b' });
+        await creating;
+        assert.equal(fixture.state().topicId, 'topic-b-2');
+        assert.equal(fixture.persistedHistory('agent-b', 'branch-b')[0].id, 'b-message');
+        assert.deepEqual(fixture.state().history.map(message => message.id), ['b2-message']);
     } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
 });

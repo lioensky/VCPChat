@@ -100,3 +100,53 @@ test('dispose cancels the owned delayed scan before it can touch detached conten
         dom.window.close();
     }
 });
+
+
+test('RAF callbacks survive resume then pause again before the scheduled frame runs', () => {
+    const dom = new JSDOM('<main id="root"><article class="message-item"><div class="md-content"></div></article></main>');
+    // Height batching uses the owner realm; animation frames use the injected queue.
+    dom.window.requestAnimationFrame = () => 1;
+    dom.window.cancelAnimationFrame = () => {};
+    const keys = ['window', 'Element', 'IntersectionObserver', 'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame'];
+    const previous = Object.fromEntries(keys.map(key => [key, globalThis[key]]));
+    const frames = [];
+    class FakeIntersectionObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    }
+    Object.assign(globalThis, {
+        window: dom.window, Element: dom.window.Element,
+        IntersectionObserver: FakeIntersectionObserver, MutationObserver: dom.window.MutationObserver,
+        requestAnimationFrame: callback => { frames.push(callback); return frames.length; },
+        cancelAnimationFrame() {},
+    });
+    const owner = createVisibilityOptimizer();
+    try {
+        const root = dom.window.document.querySelector('main');
+        const message = root.querySelector('article');
+        message.getAnimations = () => [];
+        owner.initializeVisibilityOptimizer(root);
+        const raf = owner.createPausableRAF(message);
+        let executions = 0;
+        owner.pauseMessageAnimations(message);
+        raf(() => { executions++; });
+        owner.resumeMessageAnimations(message);
+        assert.equal(frames.length, 1);
+        owner.pauseMessageAnimations(message);
+        frames.shift()(1000);
+        assert.equal(executions, 0);
+        owner.resumeMessageAnimations(message);
+        assert.equal(frames.length, 1, 'the re-paused callback must not be dropped');
+        frames.shift()(1100);
+        assert.equal(executions, 1);
+        assert.equal(frames.length, 0);
+    } finally {
+        owner.destroyVisibilityOptimizer();
+        for (const [key, value] of Object.entries(previous)) {
+            if (value === undefined) delete globalThis[key];
+            else globalThis[key] = value;
+        }
+        dom.window.close();
+    }
+});

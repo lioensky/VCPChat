@@ -30,19 +30,17 @@ export function createMainChatSendOwner({
 
     const getInterruptibleMessage = () => {
         const history = historyRef.get();
-        for (let index = history.length - 1; index >= 0; index--) {
-            const message = history[index];
-            if (!message || message.role !== 'assistant') continue;
-            const item = messagesRoot?.querySelector(`.message-item[data-message-id="${message.id}"]`);
-            const isStreaming = Boolean(item?.classList.contains('streaming'));
-            if ((item?.isConnected && message.isThinking === true) || isStreaming) {
-                return { ...message, isStreaming };
-            }
-        }
-
         const messageId = streamProjection?.getActiveStreamingMessageId?.();
         const context = streamProjection?.getActiveStreamingContext?.();
-        if (!messageId || !isContextCurrent(context)) return null;
+        if (!messageId || !isContextCurrent(context)) {
+            const item = messagesRoot?.querySelector('.message-item.assistant.streaming, .message-item.assistant.thinking, .message-item.streaming');
+            if (!item?.isConnected) return null;
+            const isStreaming = item.classList.contains('streaming');
+            const message = history.find(entry => entry?.role === 'assistant'
+                && (item.dataset?.messageId ? entry.id === item.dataset.messageId : entry.isThinking === true));
+            return message && (isStreaming || message.isThinking === true)
+                ? { ...message, isStreaming } : null;
+        }
         const existing = history.find(message => message?.id === messageId && message.role === 'assistant');
         if (existing) return { ...existing, isStreaming: true };
         const selected = selectedItemRef.get();

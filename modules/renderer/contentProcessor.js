@@ -9,8 +9,10 @@ let mainRefs = {};
 function scheduleOwnedTimeout(owner, callback, delay) {
     if (!owner) return setTimeout(callback, delay);
     if (!owner._vcpOwnedTimeouts) owner._vcpOwnedTimeouts = new Set();
+    owner.setAttribute?.('data-vcp-has-timeout', 'true');
     const timerId = setTimeout(() => {
         owner._vcpOwnedTimeouts?.delete(timerId);
+        if (!owner._vcpOwnedTimeouts?.size) owner.removeAttribute?.('data-vcp-has-timeout');
         callback();
     }, delay);
     owner._vcpOwnedTimeouts.add(timerId);
@@ -22,6 +24,7 @@ function clearOwnedTimeouts(owner) {
     for (const timerId of owner._vcpOwnedTimeouts) clearTimeout(timerId);
     owner._vcpOwnedTimeouts.clear();
     delete owner._vcpOwnedTimeouts;
+    owner.removeAttribute?.('data-vcp-has-timeout');
 }
 
 /**
@@ -253,15 +256,18 @@ function removeSpeakerTags(text) {
  * @param {string} text The input string.
  * @returns {string} The processed string.
  */
-function ensureBlankLineAfterStandaloneImageTag(text) {
-    if (typeof text !== 'string' || !/<img\b/i.test(text)) return text;
+function ensureBlankLineAfterStandaloneImageTag(text, options = {}) {
+    if (typeof text !== 'string'
+        || (!options.normalizeFenceMarkers && !/<img\b/i.test(text))) return text;
 
     const lines = text.split('\n');
     const result = [];
     let activeFence = null;
 
     for (let index = 0; index < lines.length; index++) {
-        const line = lines[index];
+        const sourceLine = lines[index];
+        const line = options.normalizeFenceMarkers && sourceLine.trim().startsWith('```')
+            ? sourceLine.trim() : sourceLine;
         const fenceMatch = line.match(/^[ \t]{0,3}(`{3,}|~{3,})(.*)$/);
 
         if (fenceMatch) {
@@ -1372,12 +1378,8 @@ function applyContentProcessors(text) {
     // Apply processors that need special handling first
     let processedText = text;
 
-    // Use the proper function for code block markers (preserves content formatting)
-    processedText = removeIndentationFromCodeBlockMarkers(processedText);
-
-    // A standalone raw <img> line must be terminated before following Markdown.
-    // Do this after fence-marker normalization so fenced examples remain protected.
-    processedText = ensureBlankLineAfterStandaloneImageTag(processedText);
+    // Normalize fence markers and standalone images in one line pass.
+    processedText = ensureBlankLineAfterStandaloneImageTag(processedText, { normalizeFenceMarkers: true });
 
     // Then apply simple regex replacements
     return processedText
@@ -1436,8 +1438,19 @@ function deIndentMisinterpretedCodeBlocks(text, options = {}) {
     // 匹配中文字符开头，用于识别首行缩进的段落
     const chineseParagraphRegex = /^[\u4e00-\u9fa5]/;
 
+    let listIndent = null;
     return lines.map(line => {
         const trimmedStartLine = line.trimStart();
+        const indentation = line.length - trimmedStartLine.length;
+        if (listRegex.test(line)) {
+            listIndent = indentation;
+            return line;
+        }
+        if (trimmedStartLine && listIndent !== null) {
+            if (indentation > listIndent) return line;
+            listIndent = null;
+        }
+        if (/^[ \t]*>/.test(line)) return line;
         const hasIndentation = line.length > trimmedStartLine.length;
 
         // 只处理有缩进的行
@@ -1448,7 +1461,9 @@ function deIndentMisinterpretedCodeBlocks(text, options = {}) {
             }
 
             // 🟢 如果是HTML标签、HTML注释或中文段落，则移除会触发 Markdown 缩进代码块的缩进
-            if (htmlTagRegex.test(line) || indentedHtmlCommentRegex.test(line) || chineseParagraphRegex.test(trimmedStartLine)) {
+            if ((options.normalizeHtml && /^\s+<(!|[a-zA-Z])/.test(line) && !line.includes('<img'))
+                || htmlTagRegex.test(line) || indentedHtmlCommentRegex.test(line)
+                || (/^(?: {4,}|\t+)/.test(line) && chineseParagraphRegex.test(trimmedStartLine))) {
                 return trimmedStartLine;
             }
         }
@@ -1467,7 +1482,7 @@ function deIndentMisinterpretedCodeBlocks(text, options = {}) {
 function cleanupPreviewsInContent(contentDiv) {
     if (!contentDiv) return;
     clearOwnedTimeouts(contentDiv);
-    contentDiv.querySelectorAll('*').forEach(clearOwnedTimeouts);
+    contentDiv.querySelectorAll('[data-vcp-has-timeout]').forEach(clearOwnedTimeouts);
     contentDiv.querySelectorAll('button[data-vcp-interactive="true"]').forEach(button => {
         button._vcpInteractiveCleanup?.();
         delete button._vcpInteractiveCleanup;

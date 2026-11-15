@@ -17,6 +17,8 @@ AppData/LoomApps/*
 node_modules/
 /node_modules
 
+/artifacts
+
 .env
 !audio_engine/.env
 

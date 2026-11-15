@@ -228,3 +228,31 @@ test('user Stop freezes the active scope and never waits for cancellation disk A
     await Promise.resolve();
     owner.dispose();
 });
+
+
+test('idle long histories use one DOM fallback query, active runtime uses none', () => {
+    let queries = 0;
+    let active = false;
+    const history = Array.from({ length: 300 }, (_, index) => ({
+        id: `m-${index}`, role: index % 2 ? 'assistant' : 'user', content: 'history',
+    }));
+    const owner = createMainChatSendOwner({
+        button: button(),
+        messagesRoot: { querySelector() { queries++; return null; } },
+        historyRef: ref(history),
+        selectedItemRef: ref({ id: 'a', type: 'agent' }),
+        topicIdRef: ref('t'),
+        streamProjection: {
+            getActiveStreamingMessageId: () => active ? 'm-299' : null,
+            getActiveStreamingContext: () => active ? { agentId: 'a', topicId: 't' } : null,
+        },
+        getChatManager: () => null,
+    });
+    owner.update();
+    assert.equal(queries, 1);
+    active = true;
+    owner.update();
+    assert.equal(queries, 1);
+    assert.equal(owner.getInterruptibleMessage().id, 'm-299');
+    owner.dispose();
+});

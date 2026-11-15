@@ -651,7 +651,12 @@ function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, opti
     stableBlocksRoot.replaceChildren();
 
     for (const record of segmentState.stableBlocks) {
-    const blockEl = ownerDocument().createElement('div');
+        // Tool payload registries are view-owned and cleared on navigation.
+        // Rebuild only payload-bearing blocks; plain Markdown keeps its HTML cache.
+        if (/data-vcp-lazy-tool-id=|data-content-id=/.test(record.html)) {
+            record.html = parseFullStreamContent(record.source);
+        }
+        const blockEl = ownerDocument().createElement('div');
         blockEl.className = 'vcp-stream-stable-block';
         blockEl.dataset.vcpStreamStableBlock = 'true';
         blockEl.dataset.vcpBlockKey = record.id;
@@ -1082,7 +1087,13 @@ function renderStreamFrame(messageId) {
     restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, streamRenderOptions);
 
     // 工程话题观察独立于 CSS 提取，普通 HTML 不再触发全量保护/AST 扫描。
-    refs.observeStreamSource?.(textForRendering, messageItem);
+    const observationNow = Date.now();
+    if (segmentState.observedMessageItem !== messageItem
+        || observationNow - (segmentState.sourceObservedAt || 0) >= 200) {
+        segmentState.observedMessageItem = messageItem;
+        segmentState.sourceObservedAt = observationNow;
+        refs.observeStreamSource?.(textForRendering, messageItem);
+    }
 
     // CSS 已包含作用域选择器；重建 DOM 时仅重新提取稳定片段的 CSS，不重跑 Markdown。
     if (segmentState.scopedCssScopeId !== streamRenderOptions.scopeId) {
@@ -1815,7 +1826,7 @@ function appendStreamChunk(messageId, chunkData, context, streamOperationId = nu
         return;
     }
 
-    const textToAppend = contentRuntime
+    let textToAppend = contentRuntime
         ? contentRuntime.extractChunkText(chunkData)
         : '';
 
@@ -1824,7 +1835,7 @@ function appendStreamChunk(messageId, chunkData, context, streamOperationId = nu
     // --- VCPdesktop 流式推送拦截 ---
     // 在累积到 accumulatedStreamText 之前，先过滤桌面推送语法
     // 返回不属于推送块的正常文本（推送块内容被拦截转发到桌面画布）
-    processDesktopPushToken(messageId, textToAppend);
+    textToAppend = processDesktopPushToken(messageId, textToAppend);
 
     // Always maintain accumulated text（只累积正常文本，推送块内容不进入聊天气泡）
     // 但开始/结束标签本身会被累积（用于transformSpecialBlocks的转义封印显示占位符）
@@ -2270,7 +2281,11 @@ async function reconcileConversation(identity) {
     for (const snapshot of snapshots) {
         const context = messageContextMap.get(snapshot.messageId) || snapshot.context;
         viewContextCache.set(snapshot.messageId, isMessageForCurrentView(context));
-        await startStreamingMessage({ ...snapshot.message, ...context, content: snapshot.message.content || '' });
+        await startStreamingMessage({
+            ...snapshot.message, ...context,
+            content: snapshot.accumulatedText,
+            isThinking: snapshot.accumulatedText.trim() === '',
+        });
         if (isMessageForCurrentView(context)) {
             renderStreamFrame(snapshot.messageId);
         }

@@ -42,6 +42,9 @@ const RAW_TEXT_OPEN = /<(style|script)\b[^>]*>/iy;
 const DIV_OPEN = /<div(?:\s|>)/iy;
 const HTML_TAG_START = /<(?:[a-zA-Z][a-zA-Z0-9:-]*(?:\s|\/?>|$)|\/[a-zA-Z]|!)/y;
 const FENCE_OPEN = /(`{3,}|~{3,})([^\n]*)/y;
+const PARAGRAPH_BOUNDARY = /\r?\n[ \t]*\r?\n/g;
+const EXPLICIT_FEATURE = /[<`~$\\[\-]/g;
+const RAW_TEXT_CLOSE = { script: /<\/script\b/ig, style: /<\/style\b/ig };
 
 function matchAt(regex, text, index) {
     regex.lastIndex = index;
@@ -160,7 +163,7 @@ function findParagraphStableCutoff(text, floorOffset) {
     let searchIndex = Math.max(0, floorOffset);
 
     while (searchIndex < text.length) {
-        const boundary = /\r?\n[ \t]*\r?\n/g;
+        const boundary = PARAGRAPH_BOUNDARY;
         boundary.lastIndex = searchIndex;
         const match = boundary.exec(text);
         if (!match) break;
@@ -263,7 +266,6 @@ function isBareDivIslandLineStart(text, tagStart) {
 function scanBareDivIslandEnd(text, startIndex) {
     const stack = [];
     let index = startIndex;
-    const lowerText = text.toLowerCase();
 
     while (index < text.length) {
         if (index - startIndex > HTML_ISLAND_MAX_CHARS) {
@@ -325,7 +327,9 @@ function scanBareDivIslandEnd(text, startIndex) {
         index = tagEnd + 1;
 
         if (HTML_RAWTEXT_TAGS.has(name)) {
-            const rawTextCloseStart = lowerText.indexOf(`</${name}`, index);
+            const closePattern = RAW_TEXT_CLOSE[name];
+            closePattern.lastIndex = index;
+            const rawTextCloseStart = closePattern.exec(text)?.index ?? -1;
             if (rawTextCloseStart === -1) {
                 return { end: -1, blocked: true };
             }
@@ -714,7 +718,16 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
             continue;
         }
 
-        index += 1;
+        EXPLICIT_FEATURE.lastIndex = index + 1;
+        const nextFeature = EXPLICIT_FEATURE.exec(text)?.index ?? text.length;
+        // A code domain can start on a character not otherwise used by protocols.
+        const nextCodeStart = codeDomains[codeDomainIndex]?.start ?? text.length;
+        index = Math.min(
+            nextFeature,
+            nextCodeStart > index ? nextCodeStart : text.length,
+            nextThoughtStart > index ? nextThoughtStart : text.length,
+            nextThinkStart > index ? nextThinkStart : text.length,
+        );
     }
 
     if (blockedByUnclosedExplicitBlock) {
