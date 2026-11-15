@@ -927,3 +927,79 @@ test('root disposal revokes animation callbacks before replacing its children', 
         assert.equal(fixture.dom.window.staleRootWrites, undefined);
     } finally { await disposeFixture(fixture); }
 });
+
+
+test('history presentation reveals the first batch without waiting for older history', async () => {
+    const fixture = await createRendererFixture('initial');
+    try {
+        fixture.renderer.clearChat();
+        const messages = Array.from({ length: 3 }, (_, index) => ({
+            id: `presentation-${index}`, role: 'assistant', content: `message ${index}`, timestamp: index,
+        }));
+        fixture.historyRef.set(messages);
+        const frames = new Map();
+        let sequence = 0;
+        fixture.dom.window.requestAnimationFrame = callback => {
+            frames.set(++sequence, callback);
+            return sequence;
+        };
+        fixture.dom.window.cancelAnimationFrame = id => frames.delete(id);
+        // Keep older batches pending without using wall-clock delays.
+        fixture.dom.window.requestIdleCallback = () => ++sequence;
+        fixture.dom.window.cancelIdleCallback = () => {};
+        const loading = fixture.renderer.renderHistory(messages, { initialBatch: 1, batchSize: 1, batchDelay: 0 });
+        assert.equal(fixture.root.dataset.vcpHistoryPresentation, 'preparing');
+        for (let i = 0; i < 20 && fixture.root.dataset.vcpHistoryPresentation !== 'ready'; i++) {
+            await new Promise(resolve => setImmediate(resolve));
+            const callbacks = [...frames.values()];
+            frames.clear();
+            callbacks.forEach(callback => callback(Date.now()));
+        }
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(fixture.root.dataset.vcpHistoryPresentation, 'ready');
+        assert.deepEqual([...fixture.root.querySelectorAll('.message-item')].map(el => el.dataset.messageId),
+            ['presentation-2'], 'only the latest batch is needed for reveal');
+        fixture.renderer.clearChat();
+        await loading;
+        assert.equal(fixture.root.dataset.vcpHistoryPresentation, undefined);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('small history reveals once and empty history leaves no hidden presentation', async () => {
+    const fixture = await createRendererFixture('initial');
+    try {
+        const message = { ...fixture.historyRef.get()[0] };
+        fixture.renderer.clearChat();
+        fixture.historyRef.set([message]);
+        await fixture.renderer.renderHistory([message]);
+        assert.equal(fixture.root.dataset.vcpHistoryPresentation, 'ready');
+        assert.equal(fixture.root.querySelectorAll('.message-item').length, 1);
+        fixture.renderer.clearChat();
+        await fixture.renderer.renderHistory([]);
+        assert.equal(fixture.root.dataset.vcpHistoryPresentation, undefined);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('revoked history cannot restore presentation state after chat clear', async () => {
+    const fixture = await createRendererFixture('initial');
+    try {
+        const message = { ...fixture.historyRef.get()[0] };
+        fixture.renderer.clearChat();
+        const loading = fixture.renderer.renderHistory([message]);
+        assert.equal(fixture.root.dataset.vcpHistoryPresentation, 'preparing');
+        fixture.renderer.clearChat();
+        await loading;
+        assert.equal(fixture.root.dataset.vcpHistoryPresentation, undefined);
+        assert.equal(fixture.root.childElementCount, 0);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('history preparation failure leaves the message root visible', async () => {
+    const fixture = await createRendererFixture('initial');
+    try {
+        fixture.renderer.clearChat();
+        const invalid = { role: 'assistant', get content() { throw new Error('controlled history failure'); } };
+        await assert.rejects(fixture.renderer.renderHistory([invalid]), /controlled history failure/);
+        assert.equal(fixture.root.dataset.vcpHistoryPresentation, undefined);
+    } finally { await disposeFixture(fixture); }
+});

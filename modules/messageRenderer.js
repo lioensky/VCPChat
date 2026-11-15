@@ -1806,6 +1806,8 @@ const renderTaskOwner = createSurfaceTaskOwner();
 function invalidateRenderSession(root = null) {
     const ownerRoot = root || mainRendererReferences?.chatMessagesDiv || null;
     if (ownerRoot) {
+        // Navigation/teardown must never leave a retained root visually hidden.
+        delete ownerRoot.dataset.vcpHistoryPresentation;
         renderWorkerClient?.cancel(ownerRoot);
         renderTaskOwner.revoke(ownerRoot);
     }
@@ -3745,51 +3747,73 @@ async function renderHistory(history, options = {}) {
     projectForgeTopicSurface.replaceHistory(renderRoot, history || []);
     const renderSessionId = invalidateRenderSession(renderRoot);
     mainRendererReferences.uiHelper.resetChatScrollFollow?.();
-
-    const {
-        initialBatch = 5,
-        batchSize = 10,
-        batchDelay = 100
-    } = options;
-
-    // 核心修复：在开始批量渲染前，只等待一次依赖项。
-    await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
-
-    if (!history || history.length === 0) {
-        return Promise.resolve();
-    }
-
-    const renderContext = {
-        depthMap: buildTurnDepthMap(history),
-        root: options.root || null
+    // One presentation boundary per history load, not one animation per card.
+    // Keep layout available for postprocessing and the existing scroll scheduler.
+    renderRoot.dataset.vcpHistoryPresentation = 'preparing';
+    const revealFirstBatch = async () => {
+        await renderTaskOwner.animationFrame(renderRoot, () => {
+            if (!isRenderSessionActive(renderSessionId)) return;
+            renderRoot.dataset.vcpHistoryPresentation = 'ready';
+        });
     };
 
-    // 如果消息数量很少，直接使用原来的方式渲染
-    if (history.length <= initialBatch) {
-        return renderHistoryLegacy(history, renderSessionId, renderContext);
+    try {
+        const {
+            initialBatch = 5,
+            batchSize = 10,
+            batchDelay = 100
+        } = options;
+
+        // 核心修复：在开始批量渲染前，只等待一次依赖项。
+        await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+        if (!isRenderSessionActive(renderSessionId)) return;
+
+        if (!history || history.length === 0) {
+            return Promise.resolve();
+        }
+
+        const renderContext = {
+            depthMap: buildTurnDepthMap(history),
+            root: options.root || null
+        };
+
+        // 如果消息数量很少，直接使用原来的方式渲染
+        if (history.length <= initialBatch) {
+            const result = await renderHistoryLegacy(history, renderSessionId, renderContext);
+            if (isRenderSessionActive(renderSessionId)) await revealFirstBatch();
+            return result;
+        }
+
+        console.debug(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
+
+        // 分离最新的消息和历史消息
+        const latestMessages = history.slice(-initialBatch);
+        const olderMessages = history.slice(0, -initialBatch);
+
+        // 第一阶段：立即渲染最新的消息
+        await renderMessageBatch(latestMessages, true, renderSessionId, renderContext);
+        if (!isRenderSessionActive(renderSessionId)) return;
+        await revealFirstBatch();
+        if (!isRenderSessionActive(renderSessionId)) return;
+        console.debug(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
+
+        // 第二阶段：分批渲染历史消息（从旧到新）
+        if (olderMessages.length > 0) {
+            await renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId, renderContext);
+        }
+
+        if (!isRenderSessionActive(renderSessionId)) return;
+
+        // 最终滚动到底部
+        mainRendererReferences.uiHelper.scrollToBottom();
+        console.debug(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
+    } finally {
+        // Empty/error paths fail open; a stale load cannot reveal a newer load.
+        if (isRenderSessionActive(renderSessionId)
+            && renderRoot.dataset.vcpHistoryPresentation === 'preparing') {
+            delete renderRoot.dataset.vcpHistoryPresentation;
+        }
     }
-
-    console.debug(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
-
-    // 分离最新的消息和历史消息
-    const latestMessages = history.slice(-initialBatch);
-    const olderMessages = history.slice(0, -initialBatch);
-
-    // 第一阶段：立即渲染最新的消息
-    await renderMessageBatch(latestMessages, true, renderSessionId, renderContext);
-    if (!isRenderSessionActive(renderSessionId)) return;
-    console.debug(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
-
-    // 第二阶段：分批渲染历史消息（从旧到新）
-    if (olderMessages.length > 0) {
-        await renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId, renderContext);
-    }
-
-    if (!isRenderSessionActive(renderSessionId)) return;
-
-    // 最终滚动到底部
-    mainRendererReferences.uiHelper.scrollToBottom();
-    console.debug(`[MessageRenderer] 所有 ${history.length} 条消息渲染完成`);
 }
 
 /**

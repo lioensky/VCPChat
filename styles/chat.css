@@ -101,6 +101,45 @@ body.light-theme #moon-icon {
     font-family: var(--vcp-chat-font-family, inherit);
 }
 
+/* History navigation is revealed once, after the first batch and initial scroll.
+ * No per-card staggering, forced layout or permanent compositor promotion. */
+[data-vcp-history-presentation="preparing"] {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+[data-vcp-history-presentation="ready"] {
+    animation: vcp-history-reveal 160ms ease-out;
+}
+
+@keyframes vcp-history-reveal {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Fast reads should not flash a transient system notice. CSS owns the delay,
+ * so removing the notice also cancels it without a timer or callback. */
+.message-item[data-message-id="loading_history"] {
+    animation: vcp-history-loading-notice 100ms ease-out 150ms both;
+}
+
+@keyframes vcp-history-loading-notice {
+    from { opacity: 0; visibility: hidden; }
+    to { opacity: 1; visibility: visible; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-vcp-history-presentation="ready"] {
+        animation: none;
+    }
+
+    .message-item[data-message-id="loading_history"] {
+        animation-duration: 1ms;
+        animation-timing-function: step-end;
+    }
+}
+
 /* 正向滚动坐标下的短会话贴底弹簧。
  * 空间不足时该伪元素自然归零，不会像 margin-top:auto 一样在跨越
  * 视口高度的临界帧改变外边距参与滚动范围。 */
