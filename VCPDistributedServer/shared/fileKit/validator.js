@@ -111,7 +111,7 @@ function execFileAsync(file, args, options) {
     });
 }
 
-async function validatePython(content) {
+async function validatePython(content, strict = false) {
     const tempFile = path.join(os.tmpdir(), `vcp_val_${process.pid}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.py`);
     await fs.promises.writeFile(tempFile, content);
     try {
@@ -119,7 +119,8 @@ async function validatePython(content) {
         await execFileAsync('python', ['-m', 'py_compile', tempFile], { windowsHide: true, timeout: 20000 });
         return [];
     } catch (error) {
-        if (error.code === 'ENOENT') return []; // 未安装 python：跳过校验而非报错
+        if (error.code === 'ENOENT' && !strict) return []; // 旧入口兼容；严格入口不得冒充通过
+        if (strict && (error.code === 'ENOENT' || error.killed || error.signal)) throw error;
         const stderr = error.stderr ? error.stderr.toString() : error.message;
         const lineMatch = stderr.match(/line (\d+)/);
         const lastLine = stderr.trim().split(/\r?\n/).pop() || stderr;
@@ -146,24 +147,33 @@ function isValidatable(filePath) {
  * 校验代码内容。校验器自身异常时返回一条 ruleId=linter-error 的警告（非 fatal），
  * 不影响文件操作本身。
  */
-async function validateCode(filePath, content) {
+async function validateCodeStrict(filePath, content) {
     const ext = path.extname(String(filePath || '')).toLowerCase();
     const text = String(content ?? '');
+    switch (ext) {
+        case '.js':
+        case '.cjs':
+        case '.mjs':
+            return validateJavaScript(filePath, text, ext);
+        case '.css':
+            return validateCss(text);
+        case '.json':
+            return validateJson(text);
+        case '.py':
+            return validatePython(text, true);
+        default:
+            throw new Error(`Unsupported validator extension: ${ext}`);
+    }
+}
+
+async function validateCode(filePath, content) {
+    if (!isValidatable(filePath)) return [];
     try {
-        switch (ext) {
-            case '.js':
-            case '.cjs':
-            case '.mjs':
-                return await validateJavaScript(filePath, text, ext);
-            case '.css':
-                return await validateCss(text);
-            case '.json':
-                return validateJson(text);
-            case '.py':
-                return await validatePython(text);
-            default:
-                return [];
+        // Python legacy entry retains its historical missing-interpreter behavior.
+        if (path.extname(String(filePath || '')).toLowerCase() === '.py') {
+            return await validatePython(String(content ?? ''));
         }
+        return await validateCodeStrict(filePath, content);
     } catch (error) {
         return [{
             line: 1,
@@ -199,6 +209,7 @@ function diffDiagnostics(before = [], after = []) {
 }
 
 module.exports = {
+    validateCodeStrict,
     validateCode,
     diffDiagnostics,
     isValidatable,
