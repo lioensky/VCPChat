@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-11-15 18:06:37  
+> 自动生成于：2026-11-15 22:38:01  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -11,12 +11,12 @@
 ## 文件统计
 
 - **总目录数**：246
-- **总文件数**：1759
+- **总文件数**：1761
 - **文件类型数**：21
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 1111 |
+| JavaScript | `.js` | 1113 |
 | CSS | `.css` | 159 |
 | JSON | `.json` | 153 |
 | Rust | `.rs` | 116 |
@@ -37,7 +37,7 @@
 | Shell Script | `.sh` | 2 |
 | C# | `.cs` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1759** |
+| **合计** | - | **1761** |
 
 ## 目录结构树
 
@@ -740,6 +740,7 @@ VCPChat/
 │   │   ├── mainChatSurfaceAdapter.js
 │   │   ├── mainChatThemeOwner.js
 │   │   ├── markdownCodeDomainScanner.js
+│   │   ├── mathRenderer.js
 │   │   ├── mediaLifecycle.js
 │   │   ├── messageContextMenu.js
 │   │   ├── messagePreviewText.js
@@ -766,6 +767,7 @@ VCPChat/
 │   │   ├── sidePaneLauncherWiring.js
 │   │   ├── sidePaneWiring.js
 │   │   ├── sidePaneWorkspaceServices.js
+│   │   ├── streamIslandGate.js
 │   │   ├── streamManager.js
 │   │   ├── streamProjectionRuntime.js
 │   │   ├── streamSpeech.js
