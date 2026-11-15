@@ -10,7 +10,7 @@ import { createProjectForgeTopicSurface } from './renderer/projectForgeTopicSurf
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { createImageHandler } from './renderer/imageHandler.js';
 import { prepareChatMediaHtml, cleanupChatMedia } from './renderer/mediaLifecycle.js';
-import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
+import { processAnimationsInContent as processOwnedAnimations, cleanupAnimationsInContent as cleanupOwnedAnimations } from './renderer/animation.js';
 import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
 
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
@@ -73,6 +73,20 @@ const colorExtractionPromises = new Map();
 const ownedStyleElements = new Set();
 const persistedAvatarColorKeys = new Set();
 const scopedCssCache = new Map();
+const ownedAnimationContents = new Set();
+function processAnimationsInContent(content, optimizer) {
+    if (rendererDisposed) return;
+    const controller = processOwnedAnimations(content, optimizer);
+    if (controller && !ownedAnimationContents.has(content)) {
+        ownedAnimationContents.add(content);
+        controller.own(() => ownedAnimationContents.delete(content));
+    }
+    return controller;
+}
+function cleanupAnimationsInContent(content) {
+    ownedAnimationContents.delete(content);
+    cleanupOwnedAnimations(content);
+}
 
 function scopeCssCached(source, scopeId) {
     let cache = scopedCssCache.get(scopeId);
@@ -1748,6 +1762,9 @@ function disposeRendererListeners() {
 function disposeRendererResources() {
     rendererDisposed = true;
     invalidateRenderSession();
+    for (const content of [...ownedAnimationContents]) {
+        try { cleanupAnimationsInContent(content); } catch (error) { console.warn('[Animation] renderer cleanup failed:', error); }
+    }
     offscreenWindow?.destroy();
     renderWorkerClient?.dispose();
     disposeRendererListeners();
@@ -1836,35 +1853,34 @@ function cleanupToolResultFullContentForRoot(root) {
 
 function cleanupMessageDomResources(messageItem, messageId = null, cleanupOptions = {}) {
     if (!messageItem) return;
-    if (!cleanupOptions.preserveShell) offscreenWindow?.unobserve(messageItem);
-
-    releaseLazyTools(messageItem);
-    cleanupToolResultFullContentForRoot(messageItem);
+    const release = action => {
+        try { action(); } catch (error) { console.warn('[MessageRenderer] resource cleanup failed:', error); }
+    };
     const contentDiv = messageItem.querySelector('.md-content');
+    release(() => cleanupAnimationsInContent(contentDiv));
+    if (!cleanupOptions.preserveShell) release(() => offscreenWindow?.unobserve(messageItem));
+    release(() => releaseLazyTools(messageItem));
+    release(() => cleanupToolResultFullContentForRoot(messageItem));
     if (contentDiv) {
-        chartEmbedHost?.beforeReplace(contentDiv);
-        imageHandler.cleanupContent?.(contentDiv);
+        release(() => chartEmbedHost?.beforeReplace(contentDiv));
+        release(() => imageHandler.cleanupContent?.(contentDiv));
         if (contentDiv._vcpDeferredHighlightTimer) {
-            clearTimeout(contentDiv._vcpDeferredHighlightTimer);
+            contentDiv.ownerDocument.defaultView.clearTimeout(contentDiv._vcpDeferredHighlightTimer);
             delete contentDiv._vcpDeferredHighlightTimer;
         }
-        cancelPretextEstimate(contentDiv);
-        cleanupMermaidViewers(contentDiv);
-        contentProcessor.cleanupPreviewsInContent(contentDiv);
-        cleanupAnimationsInContent(contentDiv);
+        release(() => cancelPretextEstimate(contentDiv));
+        release(() => cleanupMermaidViewers(contentDiv));
+        release(() => contentProcessor.cleanupPreviewsInContent(contentDiv));
         contentDiv.querySelectorAll('[data-vcp-attachment-cleanup], .message-attachment-wrapper *').forEach(node => {
-            node._vcpAttachmentCleanup?.();
+            release(() => node._vcpAttachmentCleanup?.());
             delete node._vcpAttachmentCleanup;
         });
-        cleanupChatMedia(contentDiv);
+        release(() => cleanupChatMedia(contentDiv));
     }
-
-    if (!cleanupOptions.preserveShell) cleanupScopedStylesForMessage(messageItem, messageId || messageItem.dataset?.messageId || null);
+    if (!cleanupOptions.preserveShell) release(() => cleanupScopedStylesForMessage(messageItem, messageId || messageItem.dataset?.messageId || null));
     const ownedMessageId = messageId || messageItem.dataset?.messageId || null;
-    if (ownedMessageId && mainRendererReferences?.pretextBridge?.evict) {
-        mainRendererReferences.pretextBridge.evict(ownedMessageId);
-    }
-    visibilityOptimizer.unobserveMessage(messageItem);
+    if (ownedMessageId) release(() => mainRendererReferences?.pretextBridge?.evict?.(ownedMessageId));
+    release(() => visibilityOptimizer.unobserveMessage(messageItem));
 }
 
 function removeMessageById(messageId, saveHistory = false, root = mainRendererReferences.chatMessagesDiv) {
@@ -2201,10 +2217,10 @@ function initializeMessageRenderer(refs) {
         preprocessFullContent: preprocessFullContent,
         processAssistantScopedHtmlContent,
         cleanupStreamContent: contentDiv => {
+            cleanupAnimationsInContent(contentDiv);
             releaseLazyTools(contentDiv);
             cleanupToolResultFullContentForRoot(contentDiv);
             contentProcessor.cleanupPreviewsInContent(contentDiv);
-            cleanupAnimationsInContent(contentDiv);
             imageHandler.cleanupContent?.(contentDiv);
         },
         observeStreamSource: (content, messageItem) => {
@@ -2787,6 +2803,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     const messageItem = contentDiv.closest?.('.message-item');
 
     const isStillValid = () => {
+        if (rendererDisposed) return false;
         if (renderSessionId !== null && !isRenderSessionActive(renderSessionId)) return false;
         if (Number(contentDiv._vcpRenderRevision) !== renderRevision) return false;
         if (!contentDiv.isConnected) return false;
@@ -2795,6 +2812,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     };
 
     if (typeof rawHtml === 'string') {
+        cleanupAnimationsInContent(contentDiv);
         chartEmbedHost?.beforeReplace(contentDiv);
         toolPresentation?.capture(contentDiv);
         // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器、
@@ -2803,7 +2821,6 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         cleanupChatMedia(contentDiv);
         cleanupToolResultFullContentForRoot(contentDiv);
         contentProcessor.cleanupPreviewsInContent(contentDiv);
-        cleanupAnimationsInContent(contentDiv);
         imageHandler.setContentAndProcessImages(contentDiv, rawHtml, messageId);
     }
 

@@ -891,3 +891,39 @@ test('a blank-line append releases old inline-protected CSS without requiring a 
         assert.equal(fixture.messageItem.querySelector('.md-content').textContent.trim(), 'canonical final without CSS');
     } finally { await disposeFixture(fixture); }
 });
+
+
+test('body redraw revokes managed callbacks without removing the shell', async () => {
+    const fixture = await createRendererFixture('<div><script>setTimeout(() => { window.staleBodyWrites = true; }, 20);</script></div>', null, true);
+    try {
+        await fixture.messageItem._vcp_activateHeavy();
+        const shell = fixture.messageItem;
+        fixture.renderer.updateMessageContent('animation-island-message', 'new body');
+        await new Promise(resolve => setTimeout(resolve, 50));
+        assert.equal(shell.isConnected, true);
+        assert.equal(shell.textContent.includes('new body'), true);
+        assert.equal(fixture.dom.window.staleBodyWrites, undefined);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('renderer disposal cancels animation callbacks on retained message DOM', async () => {
+    const fixture = await createRendererFixture('<div><script>setInterval(() => { window.staleRendererWrites = true; }, 10);</script></div>', null, true);
+    try {
+        await fixture.messageItem._vcp_activateHeavy();
+        fixture.renderer.disposeRendererResources();
+        assert.equal(fixture.messageItem.isConnected, true);
+        await new Promise(resolve => setTimeout(resolve, 40));
+        assert.equal(fixture.dom.window.staleRendererWrites, undefined);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('root disposal revokes animation callbacks before replacing its children', async () => {
+    const fixture = await createRendererFixture('<div><script>setTimeout(() => { window.staleRootWrites = true; }, 10);</script></div>', null, true);
+    try {
+        await fixture.messageItem._vcp_activateHeavy();
+        await fixture.renderer.disposeRootResources(fixture.root);
+        await new Promise(resolve => setTimeout(resolve, 35));
+        assert.equal(fixture.root.childElementCount, 0);
+        assert.equal(fixture.dom.window.staleRootWrites, undefined);
+    } finally { await disposeFixture(fixture); }
+});

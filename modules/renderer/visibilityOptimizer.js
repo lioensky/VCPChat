@@ -14,7 +14,7 @@ function acquireElementAnimateInterceptor(elementPrototype) {
         elementPrototype.animate = function (keyframes, options) {
             const animation = originalAnimate.call(this, keyframes, options);
             const messageItem = this.closest?.('.message-item');
-            visibilityOwnerByMessage.get(messageItem)?.captureWebAnimation(messageItem, animation);
+            visibilityOwnerByMessage.get(messageItem)?.captureWebAnimation(messageItem, animation, this);
             return animation;
         };
     }
@@ -124,10 +124,17 @@ function initializeVisibilityOptimizer(chatContainer) {
 /**
  * 💉 注入全局拦截器
  */
-function captureWebAnimation(messageItem, animation) {
+function captureWebAnimation(messageItem, animation, element = null) {
     const state = messageAnimationStates.get(messageItem);
     if (!state) return;
     if (!state.webAnimations.includes(animation)) state.webAnimations.push(animation);
+    if (element) {
+        for (const mount of state.animationMounts) {
+            if (mount.isCurrent() && mount.root.contains(element)) mount.own(() => {
+                try { animation.cancel(); } finally { unregisterAnimationResource(messageItem, animation); }
+            });
+        }
+    }
     if (state.isPaused) {
         requestAnimationFrame(() => {
             if (state.isPaused && animation.playState === 'running') animation.pause();
@@ -175,6 +182,8 @@ function observeMessage(messageItem) {
             gifImages: [],           // GIF/WebP 动图
             mutationObserver: null,  // 动态元素监听
             animationStartHandler: null, // 捕获暂停后才启动的 CSS 动画（包括伪元素）
+            animationMounts: new Set(),
+            activeRAFRecords: new Set(),
             pausedRAFCallbacks: [],  // 暂停期间被挂起的 rAF 回调，resume 时事件唤醒
             activePausableTimers: new Set(), // 由 animation.js 注入的可暂停 timeout/interval
             isPaused: false,
@@ -424,11 +433,12 @@ function flushHeightMemory(generation) {
 
 function destroyPixiContext(context) {
     if (!context || context.isDestroyed) return;
-    context.isDestroyed = true;
     try {
         context.destroy?.();
     } catch (error) {
         console.warn('[VisibilityOptimizer] Pixi context destroy failed:', error);
+    } finally {
+        context.isDestroyed = true;
     }
 }
 
@@ -503,19 +513,8 @@ function activateHeavyIfNeeded(messageItem, state) {
 
 function flushPausedRAFCallbacks(messageItem, state) {
     if (!state?.pausedRAFCallbacks?.length || !messageItem?.isConnected) return;
-    const callbacks = state.pausedRAFCallbacks.splice(0);
-    callbacks.forEach(callback => {
-        requestAnimationFrame((timestamp) => {
-            const latestState = messageAnimationStates.get(messageItem);
-            if (!latestState || latestState.isPaused || !messageItem.isConnected) {
-                if (latestState && latestState.isPaused && messageItem.isConnected) {
-                    latestState.pausedRAFCallbacks.push(callback);
-                }
-                return;
-            }
-            callback(timestamp);
-        });
-    });
+    const records = state.pausedRAFCallbacks.splice(0);
+    records.forEach(record => record.schedule());
 }
 
 function resumePausableTimers(state) {
@@ -581,6 +580,7 @@ function pauseMessageAnimations(messageItem) {
  * 内部方法：执行具体的暂停逻辑
  */
 function applyPauseToState(messageItem, state) {
+    state.animationMounts.forEach(mount => mount.pause());
     // 1. CSS 动画：添加暂停类
     messageItem.classList.add('vcp-paused');
 
@@ -782,6 +782,7 @@ function resumeMessageAnimations(messageItem) {
     });
 
     state.isPaused = false;
+    state.animationMounts.forEach(mount => mount.resume());
     flushPausedRAFCallbacks(messageItem, state);
     resumePausableTimers(state);
 }
@@ -886,6 +887,7 @@ function registerCanvasAnimation(messageItem, context) {
             canvasCtx.canvas.style.visibility = 'hidden';
             canvasCtx.isPaused = true;
         }
+        return canvasCtx;
     }
 }
 
@@ -902,41 +904,76 @@ function isMessagePaused(messageItem) {
  * 🔧 创建一个可暂停的 requestAnimationFrame 包装器
  * 供 animation.js 在执行用户脚本时使用
  */
-function createPausableRAF(messageItem) {
-    const wrappedRAF = (callback) => {
-        const state = messageAnimationStates.get(messageItem);
-        if (!state || !messageItem?.isConnected) {
-            return 0;
-        }
-
-        if (state.isPaused) {
-            // 墓碑冻结：暂停态不再每帧轮询，等 resumeMessageAnimations() 事件唤醒。
-            state.pausedRAFCallbacks.push(callback);
-            return state.pausedRAFCallbacks.length;
-        }
-
-        return requestAnimationFrame((timestamp) => {
-            const latestState = messageAnimationStates.get(messageItem);
-
-            // [Fix] 防止元素被移除后仍在运行动画导致 crash
-            if (!latestState || !messageItem.isConnected) {
-                return;
-            }
-
-            if (latestState.isPaused) {
-                latestState.pausedRAFCallbacks.push(callback);
-                return;
-            }
-
-            callback(timestamp);
-        });
+function createPausableRAF(messageItem, frameWindow = null) {
+    const requestFrame = frameWindow ? frameWindow.requestAnimationFrame.bind(frameWindow) : callback => requestAnimationFrame(callback);
+    const cancelFrame = frameWindow ? frameWindow.cancelAnimationFrame.bind(frameWindow)
+        : id => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); };
+    const state = messageAnimationStates.get(messageItem);
+    const records = new Map();
+    let nextId = 1;
+    const cancel = id => records.get(id)?.cancel();
+    const wrappedRAF = callback => {
+        if (!state || messageAnimationStates.get(messageItem) !== state || !messageItem?.isConnected) return 0;
+        if (records.size >= 4096) throw new RangeError('Paused frame limit exceeded');
+        const record = {
+            id: nextId++, nativeId: null, canceled: false,
+            cancel() {
+                record.canceled = true;
+                if (record.nativeId !== null) cancelFrame(record.nativeId);
+                record.nativeId = null;
+                records.delete(record.id);
+                state.activeRAFRecords.delete(record);
+                const index = state.pausedRAFCallbacks.indexOf(record);
+                if (index >= 0) state.pausedRAFCallbacks.splice(index, 1);
+            },
+            schedule() {
+                if (record.canceled) return;
+                if (state.isPaused) {
+                    if (!state.pausedRAFCallbacks.includes(record)) state.pausedRAFCallbacks.push(record);
+                    return;
+                }
+                record.nativeId = requestFrame(timestamp => {
+                    record.nativeId = null;
+                    if (record.canceled) return;
+                    if (messageAnimationStates.get(messageItem) !== state || !messageItem.isConnected) { record.cancel(); return; }
+                    if (state.isPaused) { record.schedule(); return; }
+                    record.cancel();
+                    callback(timestamp);
+                });
+            },
+        };
+        records.set(record.id, record);
+        state.activeRAFRecords.add(record);
+        record.schedule();
+        return record.id;
     };
-
+    wrappedRAF.cancel = cancel;
     return wrappedRAF;
 }
 
+function registerAnimationMount(messageItem, mount) {
+    const state = messageAnimationStates.get(messageItem);
+    if (!state) return;
+    state.animationMounts.add(mount);
+    mount.own(() => state.animationMounts.delete(mount));
+    if (state.isPaused) mount.pause();
+}
+
+function unregisterAnimationResource(messageItem, resource) {
+    const state = messageAnimationStates.get(messageItem);
+    if (!state) return;
+    for (const key of ['animeInstances', 'threeContexts', 'pixiContexts', 'canvasContexts', 'webAnimations']) {
+        state[key] = state[key].filter(entry => entry !== resource);
+    }
+    if (!state.pixiContexts.length) {
+        state.pixiStarted = false;
+        releasePixiMessageSlot(messageItem);
+    }
+}
+
 function createPausableTimerAPI(messageItem) {
-    const getState = () => messageAnimationStates.get(messageItem);
+    const registration = messageAnimationStates.get(messageItem);
+    const getState = () => messageAnimationStates.get(messageItem) === registration ? registration : null;
 
     const createTimerRecord = (type, callback, delay, args, repeat) => {
         const state = getState();
@@ -1051,6 +1088,10 @@ function unobserveMessage(messageItem) {
         scanTimers.delete(messageItem);
     }
     if (state) {
+        [...state.animationMounts].forEach(mount => {
+            try { mount.revoke(); } catch (error) { console.warn('[Animation] mount revoke failed:', error); }
+        });
+        [...state.activeRAFRecords].forEach(record => record.cancel());
         // [新增] 断开 MutationObserver
         if (state.mutationObserver) {
             state.mutationObserver.disconnect();
@@ -1181,6 +1222,8 @@ publicApi = Object.freeze({
     registerCanvasAnimation,
     destroyPixiMessage,
     isMessagePaused,
+    registerAnimationMount,
+    unregisterAnimationResource,
     createPausableRAF,
     createPausableTimerAPI,
     unobserveMessage,
