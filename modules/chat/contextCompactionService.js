@@ -4,6 +4,14 @@ import { compactionSettings, buildCompactionMessages, createCheckpointMessage } 
 
 const scopeKey = scope => `${scope.itemType || 'agent'}:${scope.itemId}:${scope.topicId}`;
 
+/** Compare consumed state, not renderer/runtime metadata or JSON object key order. */
+function serializeCompactionState(state) {
+    return JSON.stringify(state, (_key, value) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+        return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));
+    });
+}
+
 /** Conservative local estimate, not a tokenizer count. Includes attachment text and metadata. */
 export function estimateContextTokens(history, systemPrompt = '') {
     const text = systemPrompt + JSON.stringify(effectiveContextHistory(history));
@@ -89,6 +97,7 @@ export function createContextCompactionService({
         const snapshot = structuredClone(history);
         const state = prepareCompactionState(snapshot);
         if (!state.sourceCount) throw new Error('当前没有可压缩的上下文');
+        const original = serializeCompactionState(state);
         const controller = new AbortController();
         controller.requestId = `compaction_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
         const key = scopeKey(scope);
@@ -122,12 +131,15 @@ export function createContextCompactionService({
             if (disposed || controller.signal.aborted) throw new Error('上下文压缩已取消');
             returnedContent = response;
             const message = createCheckpointMessage(state, response, settings);
-            const original = JSON.stringify(snapshot);
+
             const outcome = await historyMutationAuthority.mutate({
                 ...scope, category: 'context-compaction',
             }, current => {
                 if (disposed || controller.signal.aborted) throw new Error('上下文压缩已取消');
-                if (JSON.stringify(current) !== original) throw new Error('压缩期间历史已变化，请重新压缩');
+                if (current.some(message => message?.isThinking)
+                    || serializeCompactionState(prepareCompactionState(current)) !== original) {
+                    throw new Error('压缩期间历史已变化，请重新压缩');
+                }
                 // Once the mutation has handed off to durable storage it cannot
                 // safely be rolled back by aborting the network request.
                 controller.committing = true;
