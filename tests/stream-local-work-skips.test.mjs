@@ -110,7 +110,7 @@ test('unchanged stable CSS skips publication on growing prose and duplicate fram
     } finally { await f.dispose(); }
 });
 
-test('unchanged CSS inside an unfinished HTML island skips publication, not extraction', async () => {
+test('unfinished HTML island skips extraction during commit cooldown and flushes on closure', async () => {
     const f = await fixture();
     try {
         f.append('<div><style>.tail { width: 2px; }</style>unfinished');
@@ -121,7 +121,7 @@ test('unchanged CSS inside an unfinished HTML island skips publication, not extr
         f.append(' more');
         f.frame();
         assert.equal(f.publications.length, 1);
-        assert.equal(f.extractionCount(), before + 1);
+        assert.equal(f.extractionCount(), before, 'a gated DOM frame must also skip CSS extraction');
         f.append('</div>');
         f.frame();
         assert.ok(f.state().stableCutoff > 0);

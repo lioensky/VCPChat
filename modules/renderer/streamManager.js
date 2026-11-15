@@ -1,4 +1,5 @@
 import { collectToolBatchRanges } from './toolBatchRegions.js';
+import { createStreamIslandGate } from './streamIslandGate.js';
 import { findExplicitStablePrefix, createStableBoundaryState } from './streamStableBoundary.js';
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
@@ -512,6 +513,8 @@ function getOrCreateStreamSegmentState(messageId) {
             // 已判定为稳定的源码前缀终点；tail 从这里开始渲染。
             stableCutoff: 0,
             boundaryScanner: createStableBoundaryState(),
+            islandGate: createStreamIslandGate(),
+            islandGateTimer: null,
             // Only this owner writes accumulatedStreamText. Appends retain the
             // identity; seed replacement changes it before the next visible scan.
             sourceEpoch: {},
@@ -1067,7 +1070,27 @@ function renderStreamFrame(messageId) {
     const visibleTextLength = shouldEnableSmoothStreaming()
         ? Math.min(receivedText.length, Math.max(0, segmentState.visibleTextLength))
         : receivedText.length;
-    const textForRendering = receivedText.slice(0, visibleTextLength);
+    let textForRendering = receivedText.slice(0, visibleTextLength);
+    const gate = segmentState.islandGate.update(textForRendering, {
+        epoch: segmentState.sourceEpoch,
+        owner: contentDiv,
+        now: Date.now(),
+    });
+    if (gate.commit || gate.delay === null) {
+        clearOwnedTimeout(segmentState.islandGateTimer);
+        segmentState.islandGateTimer = null;
+    } else if (!segmentState.islandGateTimer) {
+        segmentState.islandGateTimer = scheduleOwnedTimeout(() => {
+            segmentState.islandGateTimer = null;
+            if (streamSegmentStates.get(messageId) !== segmentState
+                || terminalProjectingMessages.has(String(messageId))
+                || !isMessageActive(messageId)) return;
+            pendingDirectRenderMessages.add(messageId);
+            processAndRenderSmoothChunk(messageId);
+        }, gate.delay);
+    }
+    if (!gate.commit) return false;
+    textForRendering = textForRendering.slice(0, gate.length);
 
     const boundary = segmentState.boundaryScanner.update(textForRendering, {
         appendEpoch: segmentState.sourceEpoch,
@@ -1421,9 +1444,9 @@ function processAndRenderSmoothChunk(messageId) {
         : null;
 
     // Render the current state of the accumulated text using our lightweight method.
-    renderStreamFrame(messageId);
+    const rendered = renderStreamFrame(messageId);
 
-    if (isForCurrentView && scrollFollowSnapshot?.followBottom) {
+    if (rendered !== false && isForCurrentView && scrollFollowSnapshot?.followBottom) {
         refs.uiHelper.scrollToBottom({
             force: true,
             immediate: true,
@@ -2182,6 +2205,9 @@ function projectStreamTerminal(messageId, finishReason, context, finalPayload = 
         || messageContextMap.get(messageId)?.streamOperationId || null;
     const activeOperationId = messageContextMap.get(messageId)?.streamOperationId || null;
     if (operationId && activeOperationId && operationId !== activeOperationId) return Promise.resolve(null);
+    const gateState = streamSegmentStates.get(messageId);
+    clearOwnedTimeout(gateState?.islandGateTimer);
+    if (gateState) gateState.islandGateTimer = null;
     const existing = terminalProjectingMessages.get(terminalKey);
     if (existing) return existing.operationId === operationId ? existing.promise : Promise.resolve(null);
     const entry = { operationId, runtimeKey: messageRuntimeKeys.get(terminalKey), promise: null };
@@ -2202,6 +2228,8 @@ function projectStreamTerminal(messageId, finishReason, context, finalPayload = 
 
 function discardStreamingMessage(messageId) {
     if (disposed) return false;
+    const gateState = streamSegmentStates.get(messageId);
+    clearOwnedTimeout(gateState?.islandGateTimer);
     terminalProjectingMessages.delete(String(messageId));
     streamDomRecoveryOperations.delete(String(messageId));
     const scrollTimer = scrollThrottleTimers.get(messageId);
