@@ -13,6 +13,7 @@
  * - 业务细节（特殊块转换、HTML fenced 等）通过依赖注入提供
  */
 
+import { tokenizeVcpDocument } from './vcpDocumentScanner.js';
 import { collectToolBatchRanges } from './toolBatchRegions.js';
 import { PIPELINE_MODES } from '../chat/contentModes.js';
 import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
@@ -212,6 +213,18 @@ function createContentPipeline(deps = {}) {
             ctx.state.toolResultRanges = collectToolResultRanges(text);
         }
         return ctx.state.toolResultRanges;
+    }
+
+    function normalizeProseUrls(text, ctx) {
+        if (!/!\[|<img\b/i.test(text)) return text;
+        return tokenizeVcpDocument(text, {
+            mode: ctx.mode === PIPELINE_MODES.STREAM_FAST ? 'stream' : 'final',
+        }).map(region => {
+            const raw = text.slice(region.start, region.end);
+            return region.kind === 'markdown'
+                || (region.kind === 'html-tag' && /^<img\b/i.test(raw))
+                ? fixEmoticonUrlsInMarkdown(raw) : raw;
+        }).join('');
     }
 
     function protectThoughtChains(text, ctx) {
@@ -497,7 +510,7 @@ function createContentPipeline(deps = {}) {
             step(ctx, 'strip-emotion-tags', text =>
                 stripEmotionTagsOutsideToolResults(text, false, text.includes('<!') ? toolRanges(text, ctx) : undefined));
         }
-        step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
+        step(ctx, 'normalize-emoticon-urls', normalizeProseUrls);
 
         // 顺序协议：
         // 1. 最先隔离完整思维链。其内部只允许专用渲染器处理 Markdown 与 LaTeX，
@@ -596,7 +609,7 @@ function createContentPipeline(deps = {}) {
         // 防止普通正文提及该语法时被提前转义或造成排版抖动。
         step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
         step(ctx, 'strip-emotion-tags', (text) => stripEmotionTagsOutsideToolResults(text, true));
-        step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
+        step(ctx, 'normalize-emoticon-urls', normalizeProseUrls);
         step(ctx, 'protect-code-blocks', protectCodeBlocks);
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));

@@ -1,7 +1,7 @@
+import { tokenizeVcpDocument } from './renderer/vcpDocumentScanner.js';
 import { sanitizeToolDataHtml } from './renderer/toolDataHtml.js';
 import { stripToolBatches, collectToolBatchRanges } from './renderer/toolBatchRegions.js';
 import { splitToolBatchDomains, transformToolBatchText, composeToolBatchHtml } from './renderer/toolBatchDomains.js';
-import { collectToolDataRanges } from './renderer/toolResultRegions.js';
 import { isContextCheckpoint } from './chat/contextCompactionState.js';
 import { createProjectForgeTopicSurface } from './renderer/projectForgeTopicSurface.js';
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
@@ -101,11 +101,43 @@ const toolResultFullContentMap = new Map(); // placeholderId -> { raw: string, f
 let toolResultContentIdCounter = 0;
 const lazyToolContents = new Map();
 let lazyToolSequence = 0;
+// Only the synchronous template build owns this collector. Cached descriptors never
+// contain DOM, owner callbacks or runtime IDs; each projection gets fresh bindings.
+let lazyToolTemplate = null;
 
 function registerLazyTool(entry) {
+    if (lazyToolTemplate) {
+        const id = `template-${lazyToolTemplate.length}-${hashStringFNV1a(entry.raw)}`;
+        lazyToolTemplate.push({ id, ...entry });
+        return id;
+    }
     const id = `${surfaceId}-${++lazyToolSequence}`;
     lazyToolContents.set(id, entry);
     return id;
+}
+
+function buildRenderTemplate(text, options) {
+    const previous = lazyToolTemplate;
+    const tools = [];
+    lazyToolTemplate = tools;
+    try {
+        return { html: renderMarkdownToHtmlUncached(text, options), tools };
+    } finally {
+        lazyToolTemplate = previous;
+    }
+}
+
+function hydrateRenderTemplate(template) {
+    // Allocate only IDs present in the final HTML (a malformed Markdown domain may
+    // have swallowed a placeholder). Never register data for an unmounted token.
+    const tools = new Map(template.tools.map(entry => [entry.id, entry]));
+    const ids = new Map();
+    return template.html.replace(/data-vcp-lazy-tool-id="([^"]+)"/g, (attribute, id) => {
+        const entry = tools.get(id);
+        if (!entry) return attribute;
+        if (!ids.has(id)) ids.set(id, registerLazyTool(entry));
+        return `data-vcp-lazy-tool-id="${ids.get(id)}"`;
+    });
 }
 
 function deferToolRequest(_block, source) {
@@ -180,12 +212,12 @@ function releaseLazyTools(root, incomingHtml = '') {
     });
 }
 
-// 🟢 完整 Markdown → HTML 渲染缓存：只缓存 raw HTML 字符串，不缓存 DOM / 后处理结果 / message 对象。
-const RENDER_PIPELINE_VERSION = '2026-07-26-dollar-guard-v3';
+// Cache inert HTML templates + lazy tool descriptors, never DOM / postprocessing /
+// message objects. Runtime registrations are regenerated on every cache hit.
+const RENDER_PIPELINE_VERSION = '2026-11-15-document-domains-v2';
 const RENDER_HTML_CACHE_MAX_BYTES = 20 * 1024 * 1024;
 const RENDER_HTML_CACHE_MAX_ENTRIES = 500;
 const RENDER_HTML_CACHE_MAX_SINGLE_BYTES = 1024 * 1024;
-const RENDER_HTML_CACHE_MIN_TEXT_LENGTH = 512;
 const RENDER_HTML_CACHE_MAX_TEXT_LENGTH = 512 * 1024;
 const renderHtmlCache = new Map();
 let renderHtmlCacheBytes = 0;
@@ -1580,104 +1612,22 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null,
         }
     }
 
-    if (!containsStyleTag(content)) return content;
-
-    // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
-    // 这样可以避免 HTML 注释、代码块、推送块、工具请求块、工具结果块和
-    // 「始」「末」标记内的 <style> 被误当作真正的样式注入。
-    // 即使只是结构化 HTML / 内联 style，也会进入该路径以跳过 HTML 缓存并统一保护扫描。
-    const protectedBlocks = [];
-
-    // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]），
-    // 包括流式中尚未闭合、延伸到流尾的工具结果。工具协议载荷属于不可信数据域，
-    // 不是可执行的 assistant HTML 岛；其中任意 style/script/HTML/注释都只是工具数据。
-    // 必须先于 HTML 注释保护：否则工具结果之前的 <!-- 可能与工具数据中的 --> 配对，
-    // 把起始标记吞进注释，使剩余载荷暴露给消息级 CSS 提取器。
-    const toolResultRanges = collectToolDataRanges(content);
-    let textWithProtectedBlocks = toolResultRanges.length > 0
-        ? replaceToolResultRanges(content, toolResultRanges, (match) => {
-            const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-            protectedBlocks.push(match);
-            return placeholder;
-        })
-        : content;
-
-    // HTML 注释是字面量域。诸如
-    // <!-- 子组件拥有独立的 <style> 标签 -->
-    // 这样的说明不能让 STYLE_REGEX 从伪开始标签跨越吞到后续真实 </style>。
-    // 未闭合注释在流式中同样拥有当前尾部，直到 --> 到达前不得产生 CSS 副作用。
-    textWithProtectedBlocks = textWithProtectedBlocks.replace(/<!--[\s\S]*?(?:-->|$)/g, (match) => {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(match);
-        return placeholder;
-    });
-
-    // 🔴 保护完整工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）。
-    // 使用 ESCAPE 感知的扫描器，避免参数内容里的 END 标记导致工具块提前闭合。
-    textWithProtectedBlocks = replaceToolRequestBlocks(textWithProtectedBlocks, (match) => {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(match);
-        return placeholder;
-    });
-
-    // 🔴 流式严格封印：完整块替换后，若仍有未闭合的请求或结果，则从源码中
-    // 最早的未闭合协议入口一直保护到流尾。不能等待结束标记，因为在等待期间
-    // 已生成的 <style> 就足以产生 document.head 注入副作用。
-    const unclosedToolBlock = findEarliestUnclosedToolBlock(textWithProtectedBlocks);
-
-    if (unclosedToolBlock) {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(textWithProtectedBlocks.slice(unclosedToolBlock.startIndex));
-        textWithProtectedBlocks =
-            textWithProtectedBlocks.slice(0, unclosedToolBlock.startIndex) + placeholder;
+    if (!containsStyleTag(content)) {
+        if (options.injectStyles !== false && messageItem) {
+            removeOwnedMessageScopeStyle(scopeId);
+            delete messageItem.dataset.vcpScopedStyleState;
+        }
+        return content;
     }
 
-    // 「始」「末」与「始ESCAPE」「末ESCAPE」只在工具请求围栏内部作为字段边界语法。
-    // 工具请求块已在上一步整体保护；这里不再扫描工具围栏外的裸始末标记，
-    // 避免普通聊天提及这些标记时误保护大段正文或影响 <style> 提取边界。
-
-    // 保护桌面推送块（必须在代码块之前，因为推送块可能包含代码围栏）。
-    textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_REGEX, (match) => {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(match);
-        return placeholder;
-    });
-    // 也保护未闭合的推送块。
-    textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match) => {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(match);
-        return placeholder;
-    });
-
-    // 保护所有 Markdown 代码域。不能只保护固定三个反引号的 fenced code：
-    // 正文中的 inline code（例如 `<style>`、`<div>`）如果暴露给 STYLE_REGEX，
-    // 会从伪开始标签跨越匹配到后续动画岛的真实 </style>，吞掉整段 CSS 与 HTML。
-    // 共享扫描器同时覆盖可变长度反引号、波浪号围栏和未闭合流尾。
-    textWithProtectedBlocks = replaceMarkdownCodeDomains(textWithProtectedBlocks, (match) => {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(match);
-        return placeholder;
-    });
-
-    // 现在只会匹配不在保护区域内的 <style> 标签。
-    // 流式分片可选择只剥离 style；注入副作用由完整可见源码统一执行。
-    const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(
-        textWithProtectedBlocks,
-        scopeId,
-        { ...options, messageItem }
-    );
-
-    // 恢复所有被保护的块。
-    // 保护域允许嵌套：例如 fenced HTML 中的注释会先被保护，随后包含该
-    // 注释占位符的整个代码围栏又被保护。必须按 LIFO 逆序恢复，先展开
-    // 外层围栏，再恢复其中的注释；正序恢复会让内部占位符永久泄漏。
-    // 使用 split/join，避免代码块中的 $ 字符（如 $'、$$、$&）被
-    // String.replace() 误解释为特殊替换模式。
-    let restoredContent = contentWithoutStyles;
-    for (let i = protectedBlocks.length - 1; i >= 0; i--) {
-        const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
-        restoredContent = restoredContent.split(placeholder).join(protectedBlocks[i]);
-    }
+    const styles = [];
+    const restoredContent = tokenizeVcpDocument(content, { mode: options.mode || 'final' }).map(region => {
+        const raw = content.slice(region.start, region.end);
+        if (region.kind !== 'style' || !region.closed) return raw;
+        styles.push(raw);
+        return '<!-- VCP-SCOPED-STYLE-EXTRACTED -->';
+    }).join('');
+    processAndInjectScopedCss(styles.join('\n'), scopeId, { ...options, messageItem });
 
     return restoredContent;
 }
@@ -1886,20 +1836,24 @@ function buildRenderSettingsFingerprint(settings = {}) {
     });
 }
 
-function shouldBypassRenderHtmlCache(text, options = {}) {
-    if (typeof text !== 'string' || !text) return true;
-    if (text.length < RENDER_HTML_CACHE_MIN_TEXT_LENGTH) return true;
-    if (text.length > RENDER_HTML_CACHE_MAX_TEXT_LENGTH) return true;
+function shouldBypassRenderHtmlCache(text) {
+    return typeof text !== 'string' || !text || text.length > RENDER_HTML_CACHE_MAX_TEXT_LENGTH;
+}
 
-    // 大工具结果 HTML 含运行时 data-content-id，其完整文本由消息级 Map 持有，
-    // 不能跨消息/内容 revision 复用缓存 HTML，否则按钮会引用已释放的条目。
-    if (text.includes('<<<[VCP_TOOL_BATCH_START:') || text.includes('[[VCP调用结果信息汇总:') || text.includes('<<<[TOOL_REQUEST]>>>')) return true;
-
-    // scoped CSS 有 scopeId 与 document.head 注入副作用，第一版保守跳过。
-    // 同时用大小写无关的 HTML/CSS 风险识别覆盖 <STYLE>、结构化 HTML 与内联 style 场景。
-    if ((options.messageRole || 'assistant') === 'assistant' && containsAssistantHtmlNeedingScope(text)) return true;
-
-    return false;
+function buildRenderSourceFingerprint(text) {
+    // Two 32-bit accumulators in one traversal. This is a probabilistic cache
+    // fingerprint, not a cryptographic identity or a proof of source equality.
+    let first = 0x811c9dc5;
+    let second = 0x9e3779b9;
+    for (let i = 0; i < text.length; i++) {
+        const char = text.charCodeAt(i);
+        first = Math.imul(first ^ char, 0x01000193);
+        second = Math.imul(second ^ char, 0x5bd1e995);
+        second ^= second >>> 13;
+    }
+    return JSON.stringify([
+        first >>> 0, second >>> 0, text.length, text.slice(0, 64), text.slice(-64)
+    ]);
 }
 
 function buildRenderHtmlCacheKey(text, options = {}) {
@@ -1912,16 +1866,15 @@ function buildRenderHtmlCacheKey(text, options = {}) {
         messageRole,
         depth,
         buildRenderSettingsFingerprint(settings),
-        text.length,
-        hashStringFNV1a(text)
+        options.resultOrdinal || 0,
+        Boolean(options.batchDomain),
+        buildRenderSourceFingerprint(text)
     ].join('|');
 }
 
-function getRenderHtmlCache(key, sourceText) {
+function getRenderHtmlCache(key) {
     const entry = renderHtmlCache.get(key);
     if (!entry) return null;
-    // FNV-1a 与长度只用于快速索引；命中后必须比较原文，避免哈希碰撞返回其他消息 HTML。
-    if (entry.sourceText !== sourceText) return null;
 
     renderHtmlCache.delete(key);
     entry.lastUsed = Date.now();
@@ -1929,7 +1882,7 @@ function getRenderHtmlCache(key, sourceText) {
     renderHtmlCache.set(key, entry);
     renderHtmlCacheStats.hits += 1;
 
-    return entry.html;
+    return entry.template;
 }
 
 function trimRenderHtmlCache() {
@@ -1947,8 +1900,13 @@ function trimRenderHtmlCache() {
     }
 }
 
-function setRenderHtmlCache(key, html, sourceText) {
-    const size = estimateStringBytes(html) + estimateStringBytes(sourceText);
+function setRenderHtmlCache(key, template) {
+    // Lazy payloads are necessary to restore tools after DOM cleanup; include them
+    // and metadata in the budget rather than hiding them in an unbounded side map.
+    const size = estimateStringBytes(key) + estimateStringBytes(template.html)
+        + template.tools.reduce((bytes, entry) => bytes
+            + estimateStringBytes(entry.id) + estimateStringBytes(entry.type)
+            + estimateStringBytes(entry.raw) + estimateStringBytes(JSON.stringify(entry.meta)) + 8, 0);
     if (size <= 0 || size > RENDER_HTML_CACHE_MAX_SINGLE_BYTES) {
         return;
     }
@@ -1960,8 +1918,7 @@ function setRenderHtmlCache(key, html, sourceText) {
     }
 
     renderHtmlCache.set(key, {
-        html,
-        sourceText,
+        template,
         size,
         hits: 0,
         lastUsed: Date.now()
@@ -2045,21 +2002,23 @@ function renderMarkdownToHtml(text, options = {}) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
-    if (shouldBypassRenderHtmlCache(text, options)) {
+    if (shouldBypassRenderHtmlCache(text)) {
         renderHtmlCacheStats.skips += 1;
         return renderMarkdownToHtmlUncached(text, options);
     }
 
     const cacheKey = buildRenderHtmlCacheKey(text, options);
-    const cachedHtml = getRenderHtmlCache(cacheKey, text);
-    if (cachedHtml !== null) {
-        return cachedHtml;
+    const cachedTemplate = getRenderHtmlCache(cacheKey);
+    if (cachedTemplate !== null) {
+        return hydrateRenderTemplate(cachedTemplate);
     }
 
     renderHtmlCacheStats.misses += 1;
-    const html = renderMarkdownToHtmlUncached(text, options);
-    setRenderHtmlCache(cacheKey, html, text);
-    return html;
+    // Scoped CSS extraction/injection happens at the caller before this pure
+    // template stage. Media, events and scripts are still processed after mount.
+    const template = buildRenderTemplate(text, options);
+    setRenderHtmlCache(cacheKey, template);
+    return hydrateRenderTemplate(template);
 }
 
 function parseFullMarkdown(text, options = {}) {
@@ -2755,6 +2714,7 @@ function disposeRendererResources() {
     disposeRendererListeners();
     projectForgeTopicSurface.dispose();
     if (mainRendererReferences?.chatMessagesDiv) releaseLazyTools(mainRendererReferences.chatMessagesDiv);
+    clearRenderHtmlCache();
     lazyToolContents.clear();
     contentProcessor.dispose?.();
     middleClickHandler.dispose?.();
@@ -2910,8 +2870,8 @@ function clearChat(root = mainRendererReferences.chatMessagesDiv) {
     chartEmbedHost?.clear();
     mainRendererReferences.uiHelper.resetChatScrollFollow?.();
 
-    // 清空聊天通常意味着用户希望释放当前渲染上下文占用；HTML 字符串缓存不持有 DOM，但这里主动释放更保守。
-    clearRenderHtmlCache();
+    // Topic switches revoke mounted resources, not reusable templates. The bounded
+    // cache survives navigation and is cleared explicitly or on renderer disposal.
 
     // 只清理当前视图的 DOM/渲染相关内容，不触碰底层异步流状态
     // 这样可避免切换话题时误伤同窗口内其他 agent 的后台流式聊天
@@ -2935,6 +2895,8 @@ function clearChat(root = mainRendererReferences.chatMessagesDiv) {
 
 function initializeMessageRenderer(refs) {
     disposeRendererListeners();
+    // Re-injection may replace Markdown/Flowlock dependencies.
+    clearRenderHtmlCache();
     mainRendererReferences = createRenderDependencies(refs);
     chartEmbedHost = createChartEmbedHost({
         root: mainRendererReferences.chatMessagesDiv,
@@ -3216,6 +3178,13 @@ function initializeMessageRenderer(refs) {
         runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
         preprocessFullContent: preprocessFullContent,
         processAssistantScopedHtmlContent,
+        cleanupStreamContent: contentDiv => {
+            releaseLazyTools(contentDiv);
+            cleanupToolResultFullContentForRoot(contentDiv);
+            contentProcessor.cleanupPreviewsInContent(contentDiv);
+            cleanupAnimationsInContent(contentDiv);
+            imageHandler.cleanupContent?.(contentDiv);
+        },
         observeStreamSource: (content, messageItem) => {
             const root = messageItem.closest('[data-vcp-projectforge-root]') || mainRendererReferences.chatMessagesDiv;
             projectForgeTopicSurface.observe(root, { id: messageItem.dataset.messageId, role: 'assistant', content });

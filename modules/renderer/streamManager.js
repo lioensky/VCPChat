@@ -1,5 +1,5 @@
 import { collectToolBatchRanges } from './toolBatchRegions.js';
-import { findExplicitStablePrefix } from './streamStableBoundary.js';
+import { findExplicitStablePrefix, createStableBoundaryState } from './streamStableBoundary.js';
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
 import { prepareChatMediaHtml, cleanupChatMedia } from './mediaLifecycle.js';
@@ -511,6 +511,7 @@ function getOrCreateStreamSegmentState(messageId) {
         state = {
             // 已判定为稳定的源码前缀终点；tail 从这里开始渲染。
             stableCutoff: 0,
+            boundaryScanner: createStableBoundaryState(),
             // 平滑模式只展示已由队列消费的文本前缀；非平滑模式会直接推进到接收文本末尾。
             visibleTextLength: 0,
             // O(1) 维护待展示字符数，避免每帧 reduce 扫描完整队列。
@@ -1048,6 +1049,21 @@ function renderStreamFrame(messageId) {
         : receivedText.length;
     const textForRendering = receivedText.slice(0, visibleTextLength);
 
+    const boundary = segmentState.boundaryScanner.update(textForRendering);
+    if (boundary.revised) {
+        refs.cleanupStreamContent?.(contentDiv);
+        cleanupChatMedia(contentDiv);
+        contentDiv.replaceChildren();
+        resetStableBlockState(segmentState);
+        segmentState.stableCutoff = 0;
+        segmentState.stableCssChunks = [];
+        segmentState.tailCssChunks = [];
+        segmentState.lastRenderedTailText = null;
+        segmentState.lastRenderedTailRoot = null;
+        segmentState.scopedCssScopeId = null;
+        refs.updateStreamScopedCss?.([], messageItem.id || null, messageItem);
+    }
+
     // 等待首个可见 token 时，“思考中”是活动流的规范投影，不能为了建立
     // 空 stable/tail 根而清空它。切回会话及高速切换后的 reconcile 都会
     // 经过这里，因此必须在任何 innerHTML 替换之前短路。
@@ -1105,7 +1121,7 @@ function renderStreamFrame(messageId) {
         }
         segmentState.scopedCssScopeId = streamRenderOptions.scopeId;
     }
-    const nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
+    const nextStableCutoff = boundary.cutoff;
 
     // 移除思考指示器
     const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
@@ -1140,7 +1156,7 @@ function renderStreamFrame(messageId) {
             tailText,
             streamRenderOptions.scopeId,
             streamRenderOptions.messageItem,
-            { injectStyles: false, cssChunks: tailCssChunks }
+            { injectStyles: false, cssChunks: tailCssChunks, mode: 'stream' }
         )
         : tailText;
     segmentState.tailCssChunks = tailCssChunks;

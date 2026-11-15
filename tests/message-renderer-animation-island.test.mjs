@@ -765,3 +765,104 @@ test('rendered animation executes template literals after one second without los
         assert.doesNotMatch(fixture.messageItem.innerHTML, /__VCP_CODE_BLOCK_PLACEHOLDER_\d+__/);
     } finally { await disposeFixture(fixture); }
 });
+
+
+test('cached HTML island reapplies styles to its new scope after topic navigation', async () => {
+    const source = '<div class="cache-island"><style>.cache-island { width: 137px; }</style>cached island</div>';
+    const fixture = await createRendererFixture(source);
+    try {
+        const oldScope = fixture.messageItem.id;
+        const message = { ...fixture.historyRef.get()[0] };
+        const before = fixture.renderer.getRenderHtmlCacheStats();
+        assert.equal(before.entries, 1, 'short HTML is eligible for the pure template cache');
+        fixture.renderer.clearChat();
+        assert.equal(fixture.dom.window.document.head.querySelector('style[data-vcp-scope-id]'), null);
+        fixture.historyRef.set([message]);
+        const restored = await fixture.renderer.renderMessage(message);
+        assert.notEqual(restored.id, oldScope);
+        assert.equal(fixture.renderer.getRenderHtmlCacheStats().hits, before.hits + 1);
+        const sheet = fixture.dom.window.document.head.querySelector('style[data-vcp-scope-id]');
+        assert.equal(sheet.dataset.vcpScopeId, restored.id);
+        assert.doesNotMatch(sheet.textContent, new RegExp(`#${oldScope}`));
+        assert.equal(fixture.dom.window.getComputedStyle(restored.querySelector('.cache-island')).width, '137px');
+        fixture.renderer.updateMessageContent(message.id, '<div class="cache-island">no styles</div>');
+        assert.equal(fixture.dom.window.document.head.querySelector('style[data-vcp-scope-id]'), null);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('cached script templates remount fresh DOM and execute through normal postprocessing', async () => {
+    const source = '<div><span class="cache-script">pending</span><script>'
+        + 'container.querySelector(".cache-script").textContent = `mounted ${1 + 2}`;'
+        + '</script></div>';
+    const fixture = await createRendererFixture(source, null, true);
+    try {
+        await fixture.messageItem._vcp_activateHeavy();
+        const oldNode = fixture.messageItem.querySelector('.cache-script');
+        assert.equal(oldNode.textContent, 'mounted 3');
+        const message = { ...fixture.historyRef.get()[0] };
+        fixture.renderer.clearChat();
+        fixture.historyRef.set([message]);
+        const restored = await fixture.renderer.renderMessage(message);
+        assert.equal(fixture.renderer.getRenderHtmlCacheStats().hits, 1);
+        const newNode = restored.querySelector('.cache-script');
+        assert.notEqual(newNode, oldNode);
+        assert.equal(newNode.textContent, 'pending', 'cache stores pre-execution HTML, not mutated DOM');
+        await restored._vcp_activateHeavy();
+        assert.equal(newNode.textContent, 'mounted 3');
+    } finally { await disposeFixture(fixture); }
+});
+
+
+test('stream source replacement retires old stable CSS, DOM and lazy tool leases before canonical terminal render', async () => {
+    const fixture = await createRendererFixture('');
+    try {
+        const message = {
+            id: 'animation-island-message', role: 'assistant', content: '',
+            agentId: 'animation-agent', topicId: 'animation-topic', streamOperationId: 'source-revision',
+        };
+        await fixture.streamProjection.startStreamingMessage(message, fixture.messageItem);
+        const original = '<style>.old-rule { width: 999px; }</style>\n'
+            + '<<<[TOOL_REQUEST]>>>tool_name:「始」Demo「末」<<<[END_TOOL_REQUEST]>>>';
+        fixture.streamProjection.appendStreamChunk(message.id, { content: original }, message, message.streamOperationId);
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 100));
+        assert.equal(fixture.renderer.getLazyToolStats().entries, 1);
+        assert.match(fixture.dom.window.document.head.textContent, /old-rule/);
+        // Reinitialization with a longer corrected seed is an existing source replacement path.
+        const corrected = 'corrected-source '.repeat(20) + '\n\nB\n\nC';
+        await fixture.streamProjection.startStreamingMessage({
+            ...message, isThinking: true, content: corrected,
+        }, fixture.messageItem);
+        fixture.streamProjection.appendStreamChunk(message.id, { content: ' tail' }, message, message.streamOperationId);
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 100));
+        assert.doesNotMatch(fixture.messageItem.textContent, /Demo/);
+        assert.match(fixture.messageItem.textContent, /corrected-source/);
+        assert.doesNotMatch(fixture.dom.window.document.head.textContent, /old-rule/);
+        assert.equal(fixture.renderer.getLazyToolStats().entries, 0);
+        await fixture.streamProjection.projectStreamTerminal(message.id, 'stop', message, {
+            streamOperationId: message.streamOperationId,
+            fullResponse: 'canonical shorter final',
+        });
+        assert.equal(fixture.messageItem.querySelector('.md-content').textContent.trim(), 'canonical shorter final');
+        assert.equal(fixture.messageItem.querySelector('.vcp-stream-stable-root'), null);
+        assert.equal(fixture.streamProjection.getDiagnostics().contexts, 0);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('stream inline code cannot inject CSS before closing, while terminal reparse releases orphan delimiters', async () => {
+    const fixture = await createRendererFixture('');
+    try {
+        const message = {
+            id: 'animation-island-message', role: 'assistant', content: '',
+            agentId: 'animation-agent', topicId: 'animation-topic', streamOperationId: 'inline-css',
+        };
+        await fixture.streamProjection.startStreamingMessage(message, fixture.messageItem);
+        const content = 'unfinished `<style>.orphan-rule { width: 33px; }</style>';
+        fixture.streamProjection.appendStreamChunk(message.id, { content }, message, message.streamOperationId);
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 100));
+        assert.doesNotMatch(fixture.dom.window.document.head.textContent, /orphan-rule/);
+        await fixture.streamProjection.projectStreamTerminal(message.id, 'stop', message, {
+            streamOperationId: message.streamOperationId, fullResponse: content,
+        });
+        assert.match(fixture.dom.window.document.head.textContent, /orphan-rule/);
+    } finally { await disposeFixture(fixture); }
+});

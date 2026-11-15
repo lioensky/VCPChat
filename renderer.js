@@ -136,8 +136,7 @@ const {
     vcpLogConnectionStatusDiv, notificationsListUl, sidebarTabButtons,
     sidebarTabContents, tabContentTopics, tabContentSettings, topicSearchInput,
     leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight,
-    agentSearchInput, notificationTitleElement, digitalClockElement,
-    dateDisplayElement, toggleAssistantBtn, toggleSidebarModeBtn, openModelSelectBtn,
+    agentSearchInput, toggleAssistantBtn, toggleSidebarModeBtn, openModelSelectBtn,
     vcpSidePane, sidePaneTabs, sidePaneContentContainer,
     toggleSidePaneChatBtn, closeSidePaneBtn, addSidePaneChatBtn,
 } = createMainChatDomBindings(document);
@@ -1031,9 +1030,6 @@ mainChatSettingsPresentationOwner.configureStartup({
                     vcpSidePane,
                     resizerLeft: document.getElementById('resizerLeft'),
                     resizerRight: document.getElementById('resizerRight'),
-                    digitalClockElement: document.getElementById('digitalClock'),
-                    dateDisplayElement: document.getElementById('dateDisplay'),
-                    notificationTitleElement: document.getElementById('notificationTitle'),
                     sidebarTabButtons: sidebarTabButtons,
                     sidebarTabContents: sidebarTabContents,
                 }

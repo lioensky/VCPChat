@@ -749,3 +749,41 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
     return Math.max(stableCutoff, paragraphCutoff);
 }
 
+
+/**
+ * Stateful compatibility adapter, not a strict delta lexer.
+ * Exact prefix validation detects edits (including same-length edits); unfinished
+ * tails still use the reference parser. The retained string is stream-owned and
+ * released with streamSegmentStates, never stored in the template cache.
+ */
+export function createStableBoundaryState() {
+    let previous = '';
+    let cutoff = 0;
+    let scans = 0;
+    let hits = 0;
+    let revisions = 0;
+    return {
+        update(source) {
+            if (source === previous) {
+                hits++;
+                return { cutoff, revised: false };
+            }
+            const revised = !source.startsWith(previous);
+            if (revised) {
+                cutoff = 0;
+                revisions++;
+            }
+            cutoff = findExplicitStablePrefix(source, cutoff);
+            previous = source;
+            scans++;
+            return { cutoff, revised };
+        },
+        reset() {
+            previous = '';
+            cutoff = 0;
+        },
+        getDiagnostics() {
+            return { scans, hits, revisions, retainedChars: previous.length, cutoff };
+        },
+    };
+}

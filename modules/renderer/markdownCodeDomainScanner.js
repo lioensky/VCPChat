@@ -87,25 +87,25 @@ function isEmoticonBacktick(source, index) {
  */
 function findInlineClose(source, contentStart, openingLength) {
     let cursor = contentStart;
-    // CommonMark code spans may span lines, but not separate Markdown blocks.
-    const remainder = source.slice(contentStart);
-    const boundary = /\r?\n[ \t]*\r?\n/.exec(remainder);
-    const limit = boundary ? contentStart + boundary.index : source.length;
-    const unclosed = { end: -1, bounded: Boolean(boundary) };
-
-    while (cursor < limit) {
+    let checkedTo = contentStart;
+    while (cursor < source.length) {
         const nextBacktick = source.indexOf('`', cursor);
-        if (nextBacktick === -1 || nextBacktick >= limit) return unclosed;
+        const limit = nextBacktick === -1 ? source.length : nextBacktick;
+        // Check only the newly traversed segment, rather than the whole remaining
+        // document for every short code span. A skipped backtick run is nonblank,
+        // so it cannot be part of a paragraph boundary spanning two segments.
+        const boundary = /\r?\n[ \t]*\r?\n/.test(source.slice(checkedTo, limit));
+        if (boundary) return { end: -1, bounded: true };
+        if (nextBacktick === -1) return { end: -1, bounded: false };
 
         const closingLength = countRun(source, nextBacktick, '`');
         if (closingLength === openingLength) {
             return { end: nextBacktick + closingLength, bounded: false };
         }
-
         cursor = nextBacktick + closingLength;
+        checkedTo = cursor;
     }
-
-    return unclosed;
+    return { end: -1, bounded: false };
 }
 
 /**

@@ -324,6 +324,16 @@ async function fixture() {
     };
 }
 
+test('UI initialization without retired clock elements does not log errors', async () => {
+    const f = await fixture();
+    try {
+        assert.deepEqual(f.errors, []);
+        await f.window.uiManager.init(f.uiConfig);
+        await settle();
+        assert.deepEqual(f.errors, []);
+    } finally { await f.close(); }
+});
+
 for (const [olderOwner, newerOwner] of [['list', 'list'], ['ui', 'list'], ['list', 'ui'], ['ui', 'ui']]) {
     for (const oldCounts of [{ nova: 9 }, {}]) {
         test(`${olderOwner} -> ${newerOwner}: late ${oldCounts.nova ? 'count' : 'empty'} cannot overwrite current badge`, async () => {

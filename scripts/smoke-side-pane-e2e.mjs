@@ -41,8 +41,6 @@ const IGNORED_ERRORS = [
     /mainServerUrl or vcpKey is not configured/,
     /VCPLog|WebSocket connection to/i,
     /dbus/i,
-    // uiManager 在没有新版时钟/通知标题元素的布局里每次启动都会报，和副屏无关
-    /Digital clock, notification title, or date display element not found/,
 ];
 // 类型声明 persist: false 的标签不跨重启恢复（辅助对话、终端、命令输出），见 tab-types/*.js
 const NOT_PERSISTED = /^(sidechat-|terminal:|tool-output:)/;
