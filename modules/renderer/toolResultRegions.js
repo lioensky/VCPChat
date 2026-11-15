@@ -3,19 +3,18 @@ import { collectMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
 import { collectToolBatchRanges } from './toolBatchRegions.js';
 
 /** 安全域：原子批次整体优先，旧结果只在批次之外参与配对。 */
-export function collectToolDataRanges(text) {
+export function collectToolDataRanges(text, batches = collectToolBatchRanges(text)) {
     if (typeof text !== 'string') return [];
-    const batches = collectToolBatchRanges(text);
-    if (!batches.length) return collectToolResultRanges(text);
+    if (!batches.length) return collectLegacyToolResultRanges(text);
     const ranges = [];
     let cursor = 0;
     for (const batch of batches) {
-        ranges.push(...collectToolResultRanges(text.slice(cursor, batch.start))
+        ranges.push(...collectLegacyToolResultRanges(text.slice(cursor, batch.start))
             .map(range => ({ ...range, start: range.start + cursor, end: range.end + cursor })));
         ranges.push(batch);
         cursor = batch.end;
     }
-    ranges.push(...collectToolResultRanges(text.slice(cursor))
+    ranges.push(...collectLegacyToolResultRanges(text.slice(cursor))
         .map(range => ({ ...range, start: range.start + cursor, end: range.end + cursor })));
     return ranges;
 }
@@ -120,9 +119,8 @@ export function findToolResultEnd(text, startIndex) {
  * @param {string} text
  * @returns {Array<{start: number, end: number, closed: boolean}>} 按源码顺序排列、互不重叠
  */
-export function collectToolResultRanges(text) {
+export function collectToolResultRanges(text, batches = collectToolBatchRanges(text)) {
     if (typeof text !== 'string') return [];
-    const batches = collectToolBatchRanges(text);
     if (!batches.length) return collectLegacyToolResultRanges(text);
     const ranges = [];
     const append = (source, offset, recover = false) => {

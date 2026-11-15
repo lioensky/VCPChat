@@ -876,3 +876,41 @@ test('template cache and hydrated tool leases are isolated per renderer surface'
         await disposeFixture(first);
     }
 });
+
+
+test('parse registration keeps same-shaped source tokens literal in code and lazy fields across cache hydration', async () => {
+    const literal = '__VCP_CODE_BLOCK_PLACEHOLDER_0__ <!--VCP_TOOL_RESULT_0--> '
+        + '<!--VCP_TOOL_REQUEST_0--> <!--VCP_THOUGHT_CHAIN_0--> <!--VCP_RAW_SCRIPT_0-->';
+    const source = '```text\n' + literal + '\n```\n\n'
+        + REQ('Demo', `text:${S}${literal}${E}`) + '\n\n' + RESULT('Demo', '`' + literal + '`');
+    const parsed = [];
+    const fixture = await createRendererFixture(source, { toolPresentation: 'legacy', toolExpansion: 'none' }, {
+        parse(text, options) { parsed.push(text); return marked.parse(text, options); },
+    });
+    try {
+        const verify = item => {
+            assert.equal(item.querySelector('pre code')?.textContent.trim(), literal);
+            assert.equal(item.querySelectorAll('.vcp-tool-use-bubble').length, 1);
+            assert.equal(item.querySelectorAll('.vcp-tool-result-bubble').length, 1);
+            assert.equal(item.querySelector('.vcp-tool-result-bubble').dataset.vcpToolResultIndex, '0');
+            item.querySelector('.vcp-tool-summary').click();
+            assert.ok(item.querySelector('.vcp-tool-details').textContent.includes(literal));
+            item.querySelector('.vcp-tool-result-header').click();
+            const expanded = item.querySelector('.vcp-tool-result-collapsible-content').textContent;
+            // Existing safe result rendering seals HTML before parsing inline code;
+            // retain that entity-literal behavior rather than changing safety here.
+            const sealedLiteral = literal.replaceAll('<', '\x26lt;').replaceAll('>', '\x26gt;');
+            assert.equal(expanded, `返回内容: ${sealedLiteral}\n`);
+        };
+        verify(fixture.messageItem);
+        const message = { ...fixture.historyRef.get()[0] };
+        fixture.renderer.clearChat();
+        fixture.historyRef.set([message]);
+        const parses = parsed.length;
+        const restored = await fixture.renderer.renderMessage(message);
+        assert.equal(parsed.length, parses, 'cache hydration must not rebuild indexes or parse content');
+        verify(restored);
+        assert.equal(fixture.renderer.getLazyToolStats().entries, 2);
+        assert.equal(fixture.historyRef.get()[0].content, source);
+    } finally { await disposeFixture(fixture); }
+});

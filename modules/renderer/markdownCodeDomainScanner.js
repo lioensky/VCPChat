@@ -135,9 +135,21 @@ export function replaceMarkdownCodeDomains(source, replacer, options = {}) {
         throw new TypeError('replaceMarkdownCodeDomains requires a replacer');
     }
 
+    return scanMarkdownCodeDomains(source, replacer, options);
+}
+
+function scanMarkdownCodeDomains(source, replacer, options, ranges = null) {
     let result = '';
     let cursor = 0;
     let plainStart = 0;
+    const emit = metadata => {
+        if (ranges) {
+            ranges.push(Object.freeze(metadata));
+        } else {
+            result += source.slice(plainStart, cursor);
+            result += String(replacer(source.slice(cursor, metadata.end), metadata));
+        }
+    };
 
     while (cursor < source.length) {
         const marker = source[cursor];
@@ -156,15 +168,14 @@ export function replaceMarkdownCodeDomains(source, replacer, options = {}) {
             const closingEnd = findFenceClose(source, contentStart, marker, runLength);
             const end = closingEnd === -1 ? source.length : closingEnd;
 
-            result += source.slice(plainStart, cursor);
-            result += String(replacer(source.slice(cursor, end), {
+            emit({
                 kind: 'fence',
                 marker,
                 length: runLength,
                 closed: closingEnd !== -1,
                 start: cursor,
                 end,
-            }));
+            });
             cursor = end;
             plainStart = end;
             continue;
@@ -186,15 +197,14 @@ export function replaceMarkdownCodeDomains(source, replacer, options = {}) {
             }
             const end = closingEnd === -1 ? source.length : closingEnd;
 
-            result += source.slice(plainStart, cursor);
-            result += String(replacer(source.slice(cursor, end), {
+            emit({
                 kind: 'inline',
                 marker: '`',
                 length: runLength,
                 closed: closingEnd !== -1,
                 start: cursor,
                 end,
-            }));
+            });
             cursor = end;
             plainStart = end;
             continue;
@@ -203,8 +213,7 @@ export function replaceMarkdownCodeDomains(source, replacer, options = {}) {
         cursor += runLength;
     }
 
-    result += source.slice(plainStart);
-    return result;
+    return ranges ? ranges : result + source.slice(plainStart);
 }
 
 /**
@@ -224,9 +233,7 @@ export function replaceMarkdownCodeDomains(source, replacer, options = {}) {
  */
 export function collectMarkdownCodeDomains(source, options = {}) {
     const ranges = [];
-    replaceMarkdownCodeDomains(source, (domain, metadata) => {
-        ranges.push(Object.freeze({ ...metadata }));
-        return domain;
-    }, options);
+    // Collection does not need payload slices or an identical reconstructed source.
+    if (typeof source === 'string' && source.length) scanMarkdownCodeDomains(source, null, options, ranges);
     return Object.freeze(ranges);
 }

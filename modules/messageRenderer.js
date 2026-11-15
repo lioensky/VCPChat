@@ -214,7 +214,7 @@ function releaseLazyTools(root, incomingHtml = '') {
 
 // Cache inert HTML templates + lazy tool descriptors, never DOM / postprocessing /
 // message objects. Runtime registrations are regenerated on every cache hit.
-const RENDER_PIPELINE_VERSION = '2026-11-15-document-domains-v2';
+const RENDER_PIPELINE_VERSION = '2026-11-15-parse-registration-v3';
 const RENDER_HTML_CACHE_MAX_BYTES = 20 * 1024 * 1024;
 const RENDER_HTML_CACHE_MAX_ENTRIES = 500;
 const RENDER_HTML_CACHE_MAX_SINGLE_BYTES = 1024 * 1024;
@@ -962,11 +962,12 @@ function applyFrontendRegexRules(text, rules, role, depth) {
  * @param {Map} [codeBlockMap] Map of code block placeholders to their original content.
  * @returns {string} The processed text with special blocks as HTML.
  */
-function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, toolRequestSourceMap = null) {
+function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, toolRequestSourceMap = null, placeholders = null) {
     let processed = text;
 
     const restoreBlocks = (textStr) => {
         if (!textStr || !codeBlockMap) return textStr;
+        if (placeholders) return placeholders.replace(textStr, 'code');
         return textStr.replace(/__VCP_CODE_BLOCK_PLACEHOLDER_\d+__/g, token => codeBlockMap.get(token) ?? token);
     };
 
@@ -1336,7 +1337,9 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, tool
     // 所有外层特殊协议转换完成后才恢复思维链。
     // 从这里开始只执行思维链专用 Markdown/LaTeX 渲染，不再运行任何 VCP 特殊规则。
     if (thoughtChainMap && thoughtChainMap.size > 0) {
-        processed = processed.replace(/<!--VCP_THOUGHT_CHAIN_\d+-->/g, token => thoughtChainMap.get(token) ?? token);
+        processed = placeholders
+            ? placeholders.replace(processed, 'thought')
+            : processed.replace(/<!--VCP_THOUGHT_CHAIN_\d+-->/g, token => thoughtChainMap.get(token) ?? token);
     }
 
     // Process VCP Thought Chains
@@ -1804,6 +1807,7 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
         text: result.text,
         toolResultMap: result.state.toolResultMap || null,
         rawScriptMap: result.state.rawScriptMap || null,
+        placeholders: result.state.placeholders,
     };
 }
 
@@ -1953,15 +1957,23 @@ function renderMarkdownToHtmlUncached(text, options = {}) {
         depth = 0
     } = options;
 
-    const { text: processedText, toolResultMap, rawScriptMap } = preprocessFullContent(text, globalSettings, messageRole, depth);
-    const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
-    let html = markedInstance.parse(protectedText);
-    html = restoreLatexBlocks(html, latexMap);
-    html = restoreRenderedToolResults(html, toolResultMap, options.resultOrdinal || 0);
-    if (rawScriptMap?.size) {
-        html = html.replace(/<!--VCP_RAW_SCRIPT_\d+-->/g, token => rawScriptMap.get(token) ?? token);
+    const { text: processedText, toolResultMap, rawScriptMap, placeholders } = preprocessFullContent(text, globalSettings, messageRole, depth);
+    try {
+        const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
+        let html = markedInstance.parse(protectedText);
+        html = restoreLatexBlocks(html, latexMap);
+        html = restoreRenderedToolResults(html, toolResultMap, options.resultOrdinal || 0, placeholders);
+        if (rawScriptMap?.size) {
+            html = placeholders
+                ? placeholders.replace(html, 'script')
+                : html.replace(/<!--VCP_RAW_SCRIPT_\d+-->/g, token => rawScriptMap.get(token) ?? token);
+        }
+        return html;
+    } finally {
+        // Templates keep only HTML/descriptors, never a parse-local registry or its
+        // cached reference text. Recovery stages remain in their original order.
+        placeholders?.releaseReferences();
     }
-    return html;
 }
 
 function renderMarkdownToHtml(text, options = {}) {
@@ -2479,24 +2491,29 @@ function renderToolBatchBody(body, ranges, firstOrdinal = 0) {
     return `<div data-vcp-block-type="tool-batch" data-vcp-preserve-children="true">${html}</div>`;
 }
 
-function restoreRenderedToolResults(html, toolResultMap, firstOrdinal = 0) {
+function restoreRenderedToolResults(html, toolResultMap, firstOrdinal = 0, placeholders = null) {
     if (!toolResultMap || toolResultMap.size === 0 || typeof html !== 'string') return html;
 
     let resultOrdinal = firstOrdinal;
+    const render = rawMatch => {
+        if (rawMatch.type === 'batch') {
+            const result = renderToolBatchBody(rawMatch.body, rawMatch.results, resultOrdinal);
+            resultOrdinal += rawMatch.results.length;
+            return result;
+        }
+        return `\n\n${renderToolResultBlock(rawMatch, resultOrdinal++)}\n\n`;
+    };
+    if (placeholders) {
+        return placeholders.replace(html, 'result', render, { unwrapParagraph: true });
+    }
+    // Compatibility for callers supplying legacy maps without a parse registry.
     // P1-5：工具结果占位符使用 HTML 注释格式，单遍匹配即可恢复。
     // 同时兼容 marked 将注释占位符包裹成 <p><!--VCP_TOOL_RESULT_n--></p> 的情况。
     return html.replace(/<p>\s*(<!--VCP_TOOL_RESULT_(\d+)-->)\s*<\/p>|<!--VCP_TOOL_RESULT_(\d+)-->/g, (match, wrappedPlaceholder, wrappedId, bareId) => {
         const placeholder = wrappedPlaceholder || `<!--VCP_TOOL_RESULT_${bareId}-->`;
         const rawMatch = toolResultMap.get(placeholder);
         if (!rawMatch) return match;
-        if (rawMatch.type === 'batch') {
-            const result = renderToolBatchBody(rawMatch.body, rawMatch.results, resultOrdinal);
-            resultOrdinal += rawMatch.results.length;
-            return result;
-        }
-        // 占位符 ID 按源文本中出现顺序从 0 递增，可直接作为序号。
-        const ordinal = resultOrdinal++;
-        return `\n\n${renderToolResultBlock(rawMatch, ordinal)}\n\n`;
+        return render(rawMatch);
     });
 }
 
@@ -2916,8 +2933,8 @@ function initializeMessageRenderer(refs) {
         }),
         deIndentToolRequestBlocks: contentProcessor.deIndentToolRequestBlocks,
         applyContentProcessors: contentProcessor.applyContentProcessors,
-        transformSpecialBlocks: (text, codeBlockMap, thoughtChainMap, toolRequestSourceMap) =>
-            transformSpecialBlocks(text, codeBlockMap, thoughtChainMap, toolRequestSourceMap),
+        transformSpecialBlocks: (text, codeBlockMap, thoughtChainMap, toolRequestSourceMap, placeholders) =>
+            transformSpecialBlocks(text, codeBlockMap, thoughtChainMap, toolRequestSourceMap, placeholders),
         ensureHtmlFenced,
         transformFlowlockBlocks: (text) => {
             if (!mainRendererReferences.flowlockProtocol || typeof mainRendererReferences.flowlockProtocol.transformForRender !== 'function') {

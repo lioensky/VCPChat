@@ -13,21 +13,14 @@
  * - 业务细节（特殊块转换、HTML fenced 等）通过依赖注入提供
  */
 
-import { tokenizeVcpDocument } from './vcpDocumentScanner.js';
-import { collectToolBatchRanges } from './toolBatchRegions.js';
+import { createVcpParseContext } from './vcpParseContext.js';
 import { PIPELINE_MODES } from '../chat/contentModes.js';
-import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
 import { stripEmotionTags } from '../emotion/emotionTags.js';
 import {
-    collectToolResultRanges,
     collectClosedToolResultRanges,
     maskToolResults,
     transformOutsideToolResults,
 } from './toolResultRegions.js';
-
-function noop(value) {
-    return value;
-}
 
 // OpenHerPersona 回填注释（persona_delta / persona_expression）需要从渲染中剥离。
 // 不能简单"从开标记删到文末"——VCP 工具循环会把工具调用等后续内容追加在同一条
@@ -149,14 +142,6 @@ function normalizeAdjacentBoldBoundaries(text) {
     return result;
 }
 
-function createMapPlaceholderReplacer(map) {
-    if (!map || map.size === 0) {
-        return noop;
-    }
-
-    return text => text.replace(/<!--VCP_TOOL_REQUEST_\d+-->/g, token => map.get(token) ?? token);
-}
-
 function createContentPipeline(deps = {}) {
     const {
         escapeHtml = (text) => text,
@@ -181,8 +166,13 @@ function createContentPipeline(deps = {}) {
     } = deps;
 
     function createContext(inputText, options = {}) {
+        const mode = options.mode || PIPELINE_MODES.FULL_RENDER;
+        const parse = createVcpParseContext(typeof inputText === 'string' ? inputText : '', {
+            mode: mode === PIPELINE_MODES.STREAM_FAST ? 'stream' : 'final',
+        });
         return {
-            mode: options.mode || PIPELINE_MODES.FULL_RENDER,
+            parse,
+            mode,
             text: typeof inputText === 'string' ? inputText : '',
             options,
             meta: {
@@ -193,10 +183,7 @@ function createContentPipeline(deps = {}) {
                 toolResultMap: null,
                 toolRequestMap: null,
                 codeBlockMap: null,
-                thoughtChainPlaceholderId: 0,
-                toolResultPlaceholderId: 0,
-                toolRequestPlaceholderId: 0,
-                codeBlockPlaceholderId: 0
+                placeholders: parse.placeholders
             }
         };
     }
@@ -208,18 +195,12 @@ function createContentPipeline(deps = {}) {
     }
 
     function toolRanges(text, ctx) {
-        if (ctx.state.toolRangesText !== text) {
-            ctx.state.toolRangesText = text;
-            ctx.state.toolResultRanges = collectToolResultRanges(text);
-        }
-        return ctx.state.toolResultRanges;
+        return ctx.parse.index(text).toolResults();
     }
 
     function normalizeProseUrls(text, ctx) {
         if (!/!\[|<img\b/i.test(text)) return text;
-        return tokenizeVcpDocument(text, {
-            mode: ctx.mode === PIPELINE_MODES.STREAM_FAST ? 'stream' : 'final',
-        }).map(region => {
+        return ctx.parse.index(text).regions().map(region => {
             const raw = text.slice(region.start, region.end);
             return region.kind === 'markdown'
                 || (region.kind === 'html-tag' && /^<img\b/i.test(raw))
@@ -235,7 +216,7 @@ function createContentPipeline(deps = {}) {
             return text;
         }
 
-        ctx.state.thoughtChainMap = new Map();
+        ctx.state.thoughtChainMap = ctx.state.placeholders.map('thought');
 
         // 工具结果优先级高于思维链：先以等长空白遮蔽（保持偏移与换行），
         // 其内部的 <think> / 元思考链 / 围栏都不参与扫描；并以工具结果为硬边界，
@@ -338,9 +319,7 @@ function createContentPipeline(deps = {}) {
         for (let i = ranges.length - 1; i >= 0; i--) {
             const range = ranges[i];
             const original = text.slice(range.start, range.end);
-            const placeholder = `<!--VCP_THOUGHT_CHAIN_${ctx.state.thoughtChainPlaceholderId}-->`;
-            ctx.state.thoughtChainMap.set(placeholder, original);
-            ctx.state.thoughtChainPlaceholderId += 1;
+            const placeholder = ctx.state.placeholders.register('thought', original);
             result = result.slice(0, range.start) + placeholder + result.slice(range.end);
         }
 
@@ -358,16 +337,14 @@ function createContentPipeline(deps = {}) {
         ctx.state.toolResultsProtected = !toolRanges(text, ctx).some(range => !range.closed);
         if (ranges.length === 0) return text;
 
-        ctx.state.toolResultMap ||= new Map();
+        ctx.state.toolResultMap ||= ctx.state.placeholders.map('result');
         let result = '';
         let cursor = 0;
         for (const range of ranges) {
             // 🟢 架构级修复：工具结果块保持原始内容不做任何转义
             // 占位符将贯穿整个 Markdown 解析过程，在 parse() 之后才恢复为渲染好的 HTML
             // 🔴 关键：使用 HTML 注释格式，避免 __ 被 Markdown 解释为粗体
-            const placeholder = `<!--VCP_TOOL_RESULT_${ctx.state.toolResultPlaceholderId}-->`;
-            ctx.state.toolResultMap.set(placeholder, text.slice(range.start, range.end));
-            ctx.state.toolResultPlaceholderId += 1;
+            const placeholder = ctx.state.placeholders.register('result', text.slice(range.start, range.end));
             result += text.slice(cursor, range.start) + placeholder;
             cursor = range.end;
         }
@@ -381,30 +358,27 @@ function createContentPipeline(deps = {}) {
         const hasToolRequests = text.includes('<<<[TOOL_REQUEST]>>>');
         if (!hasToolRequests) return text;
 
-        ctx.state.toolRequestMap = new Map();
+        ctx.state.toolRequestMap = ctx.state.placeholders.map('request');
         ctx.state.toolRequestSourceMap = new Map();
 
         const protectMatch = (match, content) => {
             // 「始/末」标记是 Tool Request 字段语法的一部分，只应在工具请求围栏内部生效。
             // 因此在保护工具请求时局部处理字段内容，后续全局流水线不再扫描裸「始/末」。
-            const placeholder = `<!--VCP_TOOL_REQUEST_${ctx.state.toolRequestPlaceholderId}-->`;
             const deferredHtml = deferToolRequest?.(match, content);
             if (typeof deferredHtml === 'string') {
-                ctx.state.toolRequestMap.set(placeholder, deferredHtml);
-                ctx.state.toolRequestPlaceholderId += 1;
-                return placeholder;
+                return ctx.state.placeholders.register('request', deferredHtml);
             }
             const escapedMatch = processStartEndMarkers(match);
-            ctx.state.toolRequestMap.set(placeholder, escapedMatch);
+            const placeholder = ctx.state.placeholders.register('request', escapedMatch);
             // 工具气泡在输出处自己转义一次，需要字段转义之前的原文；按转义后的整块查回。
             if (typeof content === 'string') ctx.state.toolRequestSourceMap.set(escapedMatch, content);
-            ctx.state.toolRequestPlaceholderId += 1;
             return placeholder;
         };
 
         if (typeof replaceToolRequestBlocks === 'function') {
             return replaceToolRequestBlocks(text, protectMatch, {
                 toolResultRanges: ctx.state.toolResultsProtected ? [] : toolRanges(text, ctx),
+                sourceIndex: ctx.parse.index(text),
             });
         }
 
@@ -415,25 +389,26 @@ function createContentPipeline(deps = {}) {
     }
 
     function restoreToolRequests(text, ctx) {
-        return createMapPlaceholderReplacer(ctx.state.toolRequestMap)(text);
+        return ctx.state.placeholders.replace(text, 'request');
     }
 
     function protectCodeBlocks(text, ctx) {
         if (typeof text !== 'string' || (!text.includes('`') && !text.includes('~~~'))) return text;
 
-        ctx.state.codeBlockMap = new Map();
-        return replaceMarkdownCodeDomains(text, (match) => {
-            const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${ctx.state.codeBlockPlaceholderId}__`;
-            ctx.state.codeBlockMap.set(placeholder, match);
-            ctx.state.codeBlockPlaceholderId += 1;
-            return placeholder;
-        });
+        ctx.state.codeBlockMap = ctx.state.placeholders.map('code');
+        const ranges = ctx.parse.index(text).codes('markdown');
+        let result = '';
+        let cursor = 0;
+        for (const range of ranges) {
+            const placeholder = ctx.state.placeholders.register('code', text.slice(range.start, range.end));
+            result += text.slice(cursor, range.start) + placeholder;
+            cursor = range.end;
+        }
+        return result + text.slice(cursor);
     }
 
     function restoreCodeBlocks(text, ctx) {
-        const map = ctx.state.codeBlockMap;
-        if (!map || map.size === 0) return text;
-        return text.replace(/__VCP_CODE_BLOCK_PLACEHOLDER_\d+__/g, token => map.get(token) ?? token);
+        return ctx.state.placeholders.replace(text, 'code');
     }
 
     function transformDesktopPush(text, ctx) {
@@ -482,14 +457,14 @@ function createContentPipeline(deps = {}) {
         const ctx = createContext(inputText, { ...options, mode: PIPELINE_MODES.FULL_RENDER });
 
         // 后端批次先于所有内容修正封存，原始字节与边界不被内部语法改变。
-        const batches = collectToolBatchRanges(ctx.text);
+        const batches = ctx.text.includes('<<<[VCP_TOOL_BATCH_START:')
+            ? ctx.parse.index(ctx.text).batches() : [];
         if (batches.length) {
-            ctx.state.toolResultMap = new Map();
+            ctx.state.toolResultMap = ctx.state.placeholders.map('result');
             let cursor = 0;
             let sealed = '';
             for (const batch of batches) {
-                const placeholder = `<!--VCP_TOOL_RESULT_${ctx.state.toolResultPlaceholderId++}-->`;
-                ctx.state.toolResultMap.set(placeholder, {
+                const placeholder = ctx.state.placeholders.register('result', {
                     type: 'batch',
                     body: ctx.text.slice(batch.contentStart, batch.contentEnd),
                     results: collectClosedToolResultRanges(ctx.text.slice(batch.start, batch.end))
@@ -532,15 +507,13 @@ function createContentPipeline(deps = {}) {
 
         // 裸 HTML 岛可被空行终止，后续缩进 JS 会被 Markdown 解释为代码块。
         // 代码/工具/思维链已隔离后，仅封存真正的完整 script 原文，贯穿 marked。
-        ctx.state.rawScriptMap = new Map();
+        ctx.state.rawScriptMap = ctx.state.placeholders.map('script');
         step(ctx, 'protect-raw-scripts', text => text.replace(
             /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
             source => {
-                const token = `<!--VCP_RAW_SCRIPT_${ctx.state.rawScriptMap.size}-->`;
                 // Code protection ran first and may have replaced JS template
                 // literals. Restore inside the sealed payload, not only ctx.text.
-                ctx.state.rawScriptMap.set(token, restoreCodeBlocks(source, ctx));
-                return token;
+                return ctx.state.placeholders.register('script', restoreCodeBlocks(source, ctx));
             }
         ));
 
@@ -583,7 +556,8 @@ function createContentPipeline(deps = {}) {
             text,
             ctx.state.codeBlockMap,
             ctx.state.thoughtChainMap,
-            ctx.state.toolRequestSourceMap
+            ctx.state.toolRequestSourceMap,
+            ctx.state.placeholders
         ));
         step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text, { codeDomainsProtected: true }));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
@@ -594,11 +568,7 @@ function createContentPipeline(deps = {}) {
         // 11. 最后恢复代码块
         step(ctx, 'restore-code-blocks', restoreCodeBlocks);
 
-        return {
-            text: ctx.text,
-            meta: ctx.meta,
-            state: ctx.state
-        };
+        return finish(ctx);
     }
 
     function runStreamFastPipeline(inputText, options = {}) {
@@ -607,8 +577,10 @@ function createContentPipeline(deps = {}) {
         // 流式快路径只保留轻量、幂等、低风险修正。
         // 注意：「始/末」仅属于工具请求围栏内部字段语法；流式尾部不做全局扫描，
         // 防止普通正文提及该语法时被提前转义或造成排版抖动。
-        step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
-        step(ctx, 'strip-emotion-tags', (text) => stripEmotionTagsOutsideToolResults(text, true));
+        step(ctx, 'strip-persona-backfill-tail', text =>
+            stripPersonaBackfillTail(text, text.includes('persona_') ? ctx.parse.index(text).toolData() : undefined));
+        step(ctx, 'strip-emotion-tags', text =>
+            stripEmotionTagsOutsideToolResults(text, true, text.includes('<!') ? ctx.parse.index(text).toolData() : undefined));
         step(ctx, 'normalize-emoticon-urls', normalizeProseUrls);
         step(ctx, 'protect-code-blocks', protectCodeBlocks);
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
@@ -616,11 +588,13 @@ function createContentPipeline(deps = {}) {
         step(ctx, 'normalize-adjacent-bold-boundaries', normalizeAdjacentBoldBoundaries);
         step(ctx, 'restore-code-blocks', restoreCodeBlocks);
 
-        return {
-            text: ctx.text,
-            meta: ctx.meta,
-            state: ctx.state
-        };
+        return finish(ctx);
+    }
+
+    function finish(ctx) {
+        ctx.parse.release();
+        ctx.meta.recognition = ctx.parse.getDiagnostics();
+        return { text: ctx.text, meta: ctx.meta, state: ctx.state };
     }
 
     function process(inputText, options = {}) {

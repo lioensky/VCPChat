@@ -1,5 +1,75 @@
-import { collectToolDataRanges, collectCodeDomainsOutsideToolResults } from './toolResultRegions.js';
+import { collectToolDataRanges, collectToolResultRanges, collectCodeDomainsOutsideToolResults } from './toolResultRegions.js';
+import { collectMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
+import { collectToolBatchRanges } from './toolBatchRegions.js';
 import { scanToolRequestEnd } from './toolRequestScanner.js';
+
+/**
+ * One exact source/mode identity. Laziness matters: a tool-only consumer must not
+ * pay for HTML or Markdown scanning. Policies deliberately retain legacy semantic
+ * differences. No payload copies, global cache, rendering or recovery side effects.
+ * onWork reports input extents, NOT actual character visits inside legacy scanners.
+ */
+export function createVcpSourceIndex(source, { mode = 'final', onWork = () => {} } = {}) {
+    if (typeof source !== 'string') throw new TypeError('Source index requires a string');
+    if (mode !== 'final' && mode !== 'stream') throw new TypeError('Unknown source index mode');
+    const cache = new Map();
+    const memo = (key, build, scan = true) => {
+        if (cache.has(key)) {
+            onWork({ operation: key, reused: true, inputChars: 0 });
+            return cache.get(key);
+        }
+        const built = build();
+        const result = Object.isFrozen(built) ? built
+            : Object.freeze(built.map(region => Object.isFrozen(region) ? region : Object.freeze(region)));
+        cache.set(key, result);
+        onWork({ operation: key, reused: false, inputChars: scan ? source.length : 0 });
+        return result;
+    };
+    const batches = () => memo('tool-batches', () => collectToolBatchRanges(source));
+    const toolData = () => memo('tool-data', () => collectToolDataRanges(source, batches()));
+    const toolResults = () => batches().length
+        ? memo('tool-results', () => collectToolResultRanges(source, batches()))
+        : toolData();
+    const codes = (policy = 'document') => {
+        if (!['document', 'protocol', 'markdown'].includes(policy)) throw new TypeError('Unknown code policy');
+        if (policy === 'protocol' && !/[`~]/.test(source)) {
+            return memo('code-protocol', () => [], false);
+        }
+        if (policy === 'protocol') return memo('code-protocol', () =>
+            codeBase(false).filter(range => range.kind === 'fence'
+                || !source.slice(range.start, range.end).includes('\n')), false);
+        if (policy === 'markdown') return memo('code-markdown', () => collectMarkdownCodeDomains(source));
+        return codeBase(mode === 'stream');
+    };
+    const codeBase = stream => memo(`code-data-${stream ? 'stream' : 'final'}`, () =>
+        collectCodeDomainsOutsideToolResults(source, toolData(), { includeUnclosedInline: stream }));
+    // Keep the cap in the key: document isolation stops at authoritative data,
+    // while a legacy protocol consumer may deliberately use the whole source.
+    const requestEnd = (contentStart, limit = source.length) => {
+        if (!Number.isInteger(contentStart) || !Number.isInteger(limit)
+            || contentStart < 0 || limit < contentStart || limit > source.length) {
+            throw new RangeError('Invalid request source extent');
+        }
+        const key = `request-end:${contentStart}:${limit}`;
+        if (cache.has(key)) {
+            onWork({ operation: 'request-end', reused: true, inputChars: 0 });
+            return cache.get(key);
+        }
+        const scan = scanToolRequestEnd(limit === source.length ? source : source.slice(0, limit), contentStart);
+        const result = Object.freeze({ ...scan,
+            ...(scan.field ? { field: Object.freeze({ ...scan.field }) } : {}),
+        });
+        cache.set(key, result);
+        onWork({ operation: 'request-end', reused: false, inputChars: limit - contentStart });
+        return result;
+    };
+    const regions = () => memo('document-regions', () =>
+        scanDocumentRegions(source, toolData(), codes(), requestEnd));
+    return Object.freeze({
+        source, mode, toolData, toolResults, batches, codes, regions, requestEnd,
+        ofKind: kind => memo(`kind:${kind}`, () => regions().filter(region => region.kind === kind), false),
+    });
+}
 
 /**
  * Source-offset domain contract. Tool data has absolute priority; code, comments
@@ -9,10 +79,10 @@ import { scanToolRequestEnd } from './toolRequestScanner.js';
  */
 export function tokenizeVcpDocument(source, { mode = 'final' } = {}) {
     if (typeof source !== 'string' || !source.length) return [];
-    const tools = collectToolDataRanges(source);
-    const codes = collectCodeDomainsOutsideToolResults(source, tools, {
-        includeUnclosedInline: mode === 'stream',
-    });
+    return createVcpSourceIndex(source, { mode }).regions();
+}
+
+function scanDocumentRegions(source, tools, codes, requestEnd) {
     const regions = [];
     let cursor = 0;
     let plainStart = 0;
@@ -56,7 +126,7 @@ export function tokenizeVcpDocument(source, { mode = 'final' } = {}) {
             continue;
         }
         if (source.startsWith('<<<[TOOL_REQUEST]>>>', cursor) && source[cursor - 1] !== '`') {
-            const scan = scanToolRequestEnd(source.slice(0, limit), cursor + '<<<[TOOL_REQUEST]>>>'.length);
+            const scan = requestEnd(cursor + '<<<[TOOL_REQUEST]>>>'.length, limit);
             emit({ kind: 'tool-request', start: cursor,
                 end: scan.endIndex < 0 ? limit : scan.endIndex, closed: scan.endIndex >= 0 });
             continue;
