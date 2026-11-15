@@ -273,7 +273,7 @@ mod tests {
                 dir.path(),"a.json",&roots,&ambiguous,false,true,&failed).await.unwrap();
             let crate::edit_pipeline::ValidatedPreparation::PlanningRejected(outcome)=result
                 else {panic!("invalid plan must not invoke missing validator")};
-            assert_eq!(outcome.status,"error");
+            assert_eq!(outcome.outcome.status,"error");
             // Real ecosystem review -> durable receipt -> restart -> native commit.
             let receipt=crate::validation::Receipt::bind(&edit,&review,true).unwrap();
             let db=dir.path().join("pf.db");

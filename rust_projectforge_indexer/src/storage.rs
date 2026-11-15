@@ -105,6 +105,7 @@ fn first(db: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> Result<Va
 
 impl Store {
     /// Single writer connection: the only handle allowed to mutate the database.
+    #[cfg(test)]
     pub fn open(path: &Path) -> Result<Self> {
         Self::open_with_read_concurrency(path, DEFAULT_MAX_READ_CONCURRENCY)
     }

@@ -955,7 +955,7 @@ function createNativeService(options = {}) {
         const diff = await committedDiff(result, resolvedProjectId);
         const rendered = nativeEdit.renderEditResult(result, {
             command: 'ResolveEdit', projectId: resolvedProjectId,
-            filePath: result.filePath || '', reason: A.str(args, 'reason'), maid: maid || request.params.maid, operationId,
+            filePath: result.filePath || '', reason: result.reason ?? A.str(args, 'reason'), maid: maid || request.params.maid, operationId,
             diff,
         });
         return textResult(rendered.result, mergeDiffDetails(rendered.details, diff));

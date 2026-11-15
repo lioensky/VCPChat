@@ -341,6 +341,7 @@ impl Store {
 
     /// Only prepared intents are pending recovery. Conflicts keep their audit snapshots
     /// but are terminal for recovery and hold no resource lock.
+    #[cfg(test)]
     pub fn pending_intents(&self)->Result<Vec<Intent>> {
         self.prepared_intents()
     }
@@ -418,6 +419,7 @@ impl Store {
             ON CONFLICT(project_id,file_path) DO UPDATE SET hash=excluded.hash",params![project,file,after])?;
         tx.execute("UPDATE projects SET updated_at=? WHERE id=?",params![ts,project])?;
         let result=json!({"operationId":operation,"status":"ok","batchId":batch,"nodeId":node,
+            "projectId":project,"reason":reason,
             "afterHash":after,"filePath":file,"applied":context.outcome["applied"],
             "placements":context.outcome["placements"],
             "skipped":context.outcome["errors"],"review":receipt["review"]});

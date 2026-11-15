@@ -132,7 +132,6 @@ struct LineMetrics {
     net_parens: i16,
     ends_with_colon: bool,
     has_decl_hint: bool,
-    has_paren: bool,
     starts_with_ctrl: bool,
 }
 
@@ -234,7 +233,6 @@ fn scan_geometry(lang: Lang, source: &str) -> GeoFileResult {
         net_parens: 0,
         ends_with_colon: false,
         has_decl_hint: false,
-        has_paren: false,
         starts_with_ctrl: false,
     });
 
@@ -320,7 +318,7 @@ fn scan_geometry(lang: Lang, source: &str) -> GeoFileResult {
         };
 
         let starts_with_ctrl = non_empty && !started_in_multiline && is_control_flow_head(trimmed);
-        let (has_decl_hint, has_paren) = if non_empty && !started_in_multiline && !is_comment {
+        let (has_decl_hint, _) = if non_empty && !started_in_multiline && !is_comment {
             check_decl_hint(trimmed, family)
         } else {
             (false, false)
@@ -520,7 +518,6 @@ fn scan_geometry(lang: Lang, source: &str) -> GeoFileResult {
             net_parens,
             ends_with_colon: last_non_ws == b':',
             has_decl_hint,
-            has_paren,
             starts_with_ctrl,
         });
 

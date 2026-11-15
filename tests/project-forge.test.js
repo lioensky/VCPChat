@@ -136,6 +136,9 @@ test('工程生命周期：创建 → 编辑 → 歧义票据 → 回退 → 删
     assert.match(textOf(amb), /候选 2 · L5/);
     const resolved = await call({ command: 'ResolveEdit', ticketId: amb.details.ticketId, pick: '2' });
     assert.equal(resolved.details.status, 'ok', textOf(resolved));
+    assert.ok(textOf(resolved).includes('- 工程：`' + pid + '`'), textOf(resolved));
+    assert.match(textOf(resolved), /- reason：统一注释/);
+    assert.doesNotMatch(textOf(resolved), /未回传/);
     const afterResolve = fs.readFileSync(path.join(root, 'src/a.js'), 'utf8');
     assert.match(afterResolve, /^function a\(\)/);
     assert.match(afterResolve, /async function b\(\)/);

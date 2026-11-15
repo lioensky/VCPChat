@@ -552,6 +552,8 @@ test('native old parameters and persistent tickets use the Rust service end to e
         const selected = buildResolveRequest({ ticketId: ambiguous.ticketId, pick: '2' }, 'resolve');
         const result = await client.request(selected.method, selected.params);
         assert.equal(result.status, 'ok');
+        assert.equal(result.projectId, ctx.projectId);
+        assert.equal(result.reason, ctx.reason);
         assert.equal(fs.readFileSync(file, 'utf8'), 'const first=1;\nconst second=2;\n');
         assert.deepEqual(await client.request(selected.method, selected.params), result);
         await assert.rejects(client.request(selected.method, { ...selected.params, pick: '1' }), /different|reused/);

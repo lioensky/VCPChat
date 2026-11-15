@@ -11,7 +11,6 @@ pub struct ReadyEdit {
 }
 
 pub struct RejectedPreparation {
-    pub status: &'static str,
     pub snapshot_hash: String,
     pub outcome: Outcome,
 }
@@ -29,6 +28,7 @@ pub enum ValidatedPreparation {
 
 /// Internal composition only. The resulting review must be persisted with the
 /// intent before recovery is allowed; this does not itself authorize a commit.
+#[cfg(test)]
 pub async fn prepare_validated(
     root: &Path,
     file: &str,
@@ -85,6 +85,7 @@ pub(crate) fn revalidate(edit: &ReadyEdit, allowed_roots: &[std::path::PathBuf])
     Ok(())
 }
 
+#[cfg(test)]
 pub fn prepare(
     root: &Path,
     file: &str,
@@ -133,7 +134,6 @@ pub(crate) fn prepare_with_expected(
         Ok(plan)=>Ok(Preparation::Ready(ReadyEdit {path,snapshot,plan})),
         Err(outcome)=> {
             let rejected=RejectedPreparation {
-                status:outcome.status,
                 snapshot_hash:snapshot.hash.clone(),
                 outcome,
             };
@@ -172,7 +172,7 @@ mod tests {
         assert!(prepare(dir.path(),"a.txt",&[],&actions,false).is_err());
         let result=prepare(dir.path(),"a.txt",&[dir.path().to_path_buf()],&actions,true).unwrap();
         let Preparation::Rejected(outcome)=result else {panic!("ambiguous plan must not be ready")};
-        assert_eq!(outcome.status,"ambiguous");
+        assert_eq!(outcome.outcome.status,"ambiguous");
         use sha2::{Digest,Sha256};
         assert_eq!(outcome.snapshot_hash,format!("{:x}",Sha256::digest(b"x x")));
         assert_eq!(std::fs::read(dir.path().join("a.txt")).unwrap(),b"x x");
@@ -207,7 +207,7 @@ mod tests {
         let ambiguous=steps(serde_json::json!([{"step":1,"op":"target","target":"f","replace":"g"}]));
         let Preparation::Rejected(outcome)=prepare(dir.path(),"broken.js",&[dir.path().to_path_buf()],&ambiguous,false).unwrap()
             else {panic!("f occurs in both function keyword and function name")};
-        assert_eq!(outcome.status,"ambiguous");
+        assert_eq!(outcome.outcome.status,"ambiguous");
         let actions=steps(serde_json::json!([{"step":1,"op":"target","target":"function f","replace":"function g"}]));
         let Preparation::Ready(ready)=prepare(dir.path(),"broken.js",&[dir.path().to_path_buf()],&actions,false).unwrap()
             else {panic!("unique exact target must not require AST")};
@@ -224,7 +224,7 @@ mod tests {
         let actions=steps(serde_json::json!([{"step":1,"op":"target","target":"dup","replace":"done"}]));
         let Preparation::Rejected(rejected)=prepare(dir.path(),"a.js",&[dir.path().to_path_buf()],&actions,false).unwrap()
             else {panic!("two literal hits must stay ambiguous")};
-        assert_eq!(rejected.status,"ambiguous");
+        assert_eq!(rejected.outcome.status,"ambiguous");
         let candidates=&rejected.outcome.ambiguities[0].candidates;
         assert_eq!(candidates[0].scope.as_deref(),Some("alpha"));
         assert_eq!(candidates[1].scope.as_deref(),Some("beta"));

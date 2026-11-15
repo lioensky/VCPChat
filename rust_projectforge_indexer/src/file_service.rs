@@ -851,7 +851,7 @@ fn build_transfer(
     let block_text = source_block_text(&source_snapshot.text, range.start, range.end)?;
 
     let mut after = request.after.clone();
-    let mut before = request.before.clone();
+    let before = request.before.clone();
     if !target_exists && before.is_none() && after.is_none() {
         after = Some(json!(0));
     }
@@ -1851,7 +1851,7 @@ fn auto_indent(text: &str, after: usize, skip: Option<(usize, usize)>) -> String
             return indent_of(next);
         }
     }
-    if let (Some(previous), Some(next)) = (previous, next) {
+    if let (Some(previous), Some(_)) = (previous, next) {
         if is_opener(lines[previous - 1]) {
             let mut base = indent_of(previous);
             let unit = if base.starts_with('\t') { "\t" } else { "    " };
