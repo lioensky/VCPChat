@@ -1,5 +1,7 @@
 # VCPChat 项目文件目录结构
 
+> 自动生成于：2026-11-15 18:06:37  
+
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
 > 筛选文件类型：`.bash`、`.bat`、`.c`、`.cc`、`.cfg`、`.cjs`、`.cmd`、`.conf`、`.cpp`、`.cs`、`.css`、`.cxx`、`.example`、`.go`、`.h`、`.hpp`、`.htm`、`.html`、`.hxx`、`.ini`、`.ipynb`、`.java`、`.js`、`.json`、`.json5`、`.jsonc`、`.jsx`、`.kt`、`.kts`、`.less`、`.lock`、`.lua`、`.md`、`.mjs`、`.php`、`.properties`、`.ps1`、`.psd1`、`.psm1`、`.py`、`.pyi`、`.r`、`.rb`、`.rs`、`.rst`、`.sass`、`.scss`、`.sh`、`.sql`、`.svelte`、`.swift`、`.toml`、`.ts`、`.tsx`、`.txt`、`.vbs`、`.vue`、`.xml`、`.yaml`、`.yml`、`.zsh`  
@@ -8,16 +10,16 @@
 
 ## 文件统计
 
-- **总目录数**：245
-- **总文件数**：1748
+- **总目录数**：246
+- **总文件数**：1759
 - **文件类型数**：21
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 1101 |
+| JavaScript | `.js` | 1111 |
 | CSS | `.css` | 159 |
 | JSON | `.json` | 153 |
-| Rust | `.rs` | 115 |
+| Rust | `.rs` | 116 |
 | Markdown | `.md` | 67 |
 | HTML | `.html` | 49 |
 | Python | `.py` | 28 |
@@ -35,7 +37,7 @@
 | Shell Script | `.sh` | 2 |
 | C# | `.cs` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1748** |
+| **合计** | - | **1759** |
 
 ## 目录结构树
 
@@ -593,6 +595,8 @@ VCPChat/
 │   │   ├── throwMotion.js
 │   │   ├── wander.js
 │   │   └── zipImport.js
+│   ├── diagnostics/
+│   │   └── bootProfile.js
 │   ├── emotion/
 │   │   ├── emotionDirector.js
 │   │   ├── emotionPrompt.js
@@ -705,6 +709,7 @@ VCPChat/
 │   │   │   └── thought-map-modal.js
 │   │   ├── agentEmotionFeed.js
 │   │   ├── animation.js
+│   │   ├── animationMountController.js
 │   │   ├── appFeatures.js
 │   │   ├── chartEmbedHost.js
 │   │   ├── chat-header-style.js
@@ -737,10 +742,12 @@ VCPChat/
 │   │   ├── markdownCodeDomainScanner.js
 │   │   ├── mediaLifecycle.js
 │   │   ├── messageContextMenu.js
+│   │   ├── messagePreviewText.js
 │   │   ├── messenger-presentation.js
 │   │   ├── middleClickHandler.js
 │   │   ├── model-picker-popup.js
 │   │   ├── nonStreamingEventConsumer.js
+│   │   ├── offscreenDomWindow.js
 │   │   ├── ownedPreloadSubscription.js
 │   │   ├── pretext-bridge.js
 │   │   ├── pretext.bundle.js
@@ -748,6 +755,10 @@ VCPChat/
 │   │   ├── projectForgeTopicSurface.js
 │   │   ├── renderDependencies.js
 │   │   ├── renderSessionAuthority.js
+│   │   ├── renderTemplateCompiler.js
+│   │   ├── renderWorker.js
+│   │   ├── renderWorkerClient.js
+│   │   ├── renderWorkerRuntime.js
 │   │   ├── sideChatSurfaceOwner.js
 │   │   ├── sideChatWiring.js
 │   │   ├── sidePaneCommands.js
@@ -772,6 +783,8 @@ VCPChat/
 │   │   ├── topicAdmissionQueueView.js
 │   │   ├── topicSelectionReadiness.js
 │   │   ├── ttsSurfaceOwner.js
+│   │   ├── vcpDocumentScanner.js
+│   │   ├── vcpParseContext.js
 │   │   ├── visibilityOptimizer.js
 │   │   └── windowStreamRuntime.js
 │   ├── scriptorium/
@@ -1418,6 +1431,7 @@ VCPChat/
 │   │   ├── main.rs
 │   │   ├── protocol.rs
 │   │   ├── search.rs
+│   │   ├── startup.rs
 │   │   ├── storage.rs
 │   │   ├── sync.rs
 │   │   ├── sync_wire.rs
@@ -2045,5 +2059,5 @@ VCPChat/
   `.astro`, `.cache`, `.docusaurus`, `.git`, `.gradle`, `.hg`, `.hypothesis`, `.idea`, `.ipynb_checkpoints`, `.m2`, `.mypy_cache`, `.next`, `.nox`, `.nuxt`, `.output`, `.parcel-cache`, `.pnpm-store`, `.pyre`, `.pytest_cache`, `.ruff_cache`, `.svelte-kit`, `.svn`, `.temp`, `.tmp`, `.tox`, `.turbo`, `.venv`, `.virtualenv`, `.vite`, `.vs`, `.vscode`, `.webpack`, `.yarn`, `__pycache__`, `__tests__`, `appdata`, `arm64`, `artifacts`, `bin`, `bower_components`, `build`, `carthage`, `checkpoints`, `coverage`, `data_cache`, `debug`, `dist`, `doc`, `docs`, `documentation`, `env`, `example`, `examples`, `htmlcov`, `indexeddb`, `jspm_packages`, `local_storage`, `logs`, `models`, `node_modules`, `obj`, `out`, `output`, `packages`, `pip-wheel-metadata`, `pkg`, `pods`, `pretrained_models`, `project_structure.md`, `python_embedded`, `python_embeded`, `release`, `reports`, `screenshots`, `scripts`, `sessions`, `site-packages`, `storybook-static`, `target`, `temp`, `test`, `test-results`, `tests`, `tmp`, `user_data`, `userdata`, `vendor`, `venv`, `wheelhouse`, `x64`, `x86`, `开发文档`
 - **默认通配符排除**：
   `cmake-build-*`, `*.egg-info`, `*.dist-info`, `*.tmp`, `.DS_Store`, `Thumbs.db`, `desktop.ini`, `*.pyc`, `*.pyo`, `*.pyd`, `*.o`, `*.obj`, `*.class`, `*.tsbuildinfo`, `*.log`, `*.tmp`, `*.temp`, `*.swp`, `*.swo`, `*.bak`, `*~`, `*.suo`, `*.user`, `scripts`, `开发文档`, `doc`, `docs`, `documentation`, `test`, `tests`, `__tests__`, `example`, `examples`, `artifacts`, `screenshots`, `test-results`, `reports`, `models`, `checkpoints`, `pretrained_models`, `site-packages`, `python_embedded`, `python_embeded`, `PROJECT_STRUCTURE.md`
-- **.gitignore 生效规则**：共 58 条规则已并入跳过逻辑
+- **.gitignore 生效规则**：共 59 条规则已并入跳过逻辑
 </details>
