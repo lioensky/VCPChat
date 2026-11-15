@@ -2866,7 +2866,11 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         return;
     }
 
-    contentProcessor.processRenderedContent(contentDiv, settings);
+    if (contentProcessor.processRenderedContentAsync) {
+        await contentProcessor.processRenderedContentAsync(contentDiv, settings, { isValid: isStillValid });
+    } else {
+        contentProcessor.processRenderedContent(contentDiv, settings);
+    }
     if (!isStillValid()) return;
     await renderMermaidDiagrams(contentDiv);
 
@@ -3191,7 +3195,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         const initialRevision = contentDiv._vcpRenderRevision;
         // Define the post-processing logic as a function.
         // This allows us to control WHEN it gets executed.
-        const runPostRenderProcessing = async (postOptions = {}) => {
+        let heavyProcessing = null;
+        const runPostRenderProcessingOnce = async (postOptions = {}) => {
             if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected
                 || contentDiv._vcpRenderRevision !== initialRevision
                 || isActiveStreamRequest) {
@@ -3206,6 +3211,15 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                 runHeavy: postOptions.runHeavy !== false,
                 includeAttachments: contentDiv.dataset.vcpAttachmentsProcessed !== 'true'
             });
+        };
+
+        const runPostRenderProcessing = (postOptions = {}) => {
+            if (postOptions.runHeavy === false) return runPostRenderProcessingOnce(postOptions);
+            // Visibility activation may race the initial batch while math yields.
+            // One content revision must never have two formula writers.
+            if (heavyProcessing) return heavyProcessing;
+            heavyProcessing = runPostRenderProcessingOnce(postOptions).finally(() => { heavyProcessing = null; });
+            return heavyProcessing;
         };
 
         messageItem._vcp_activateHeavy = () => {
@@ -3748,7 +3762,8 @@ async function renderHistory(history, options = {}) {
     const renderSessionId = invalidateRenderSession(renderRoot);
     mainRendererReferences.uiHelper.resetChatScrollFollow?.();
     // One presentation boundary per history load, not one animation per card.
-    // Keep layout available for postprocessing and the existing scroll scheduler.
+    // Reveal the mounted base before time-sliced math; keep layout available
+    // for the existing scroll scheduler throughout preparation.
     renderRoot.dataset.vcpHistoryPresentation = 'preparing';
     const revealFirstBatch = async () => {
         await renderTaskOwner.animationFrame(renderRoot, () => {
@@ -3774,14 +3789,20 @@ async function renderHistory(history, options = {}) {
 
         const renderContext = {
             depthMap: buildTurnDepthMap(history),
-            root: options.root || null
+            root: options.root || null,
+            onFirstBatchMounted: async () => {
+                if (!isRenderSessionActive(renderSessionId)) return;
+                mainRendererReferences.uiHelper.scrollToBottom();
+                await revealFirstBatch();
+                // A second frame gives the revealed base content a paint
+                // opportunity before formula compilation starts in microtasks.
+                await renderTaskOwner.animationFrame(renderRoot, () => {});
+            },
         };
 
         // 如果消息数量很少，直接使用原来的方式渲染
         if (history.length <= initialBatch) {
-            const result = await renderHistoryLegacy(history, renderSessionId, renderContext);
-            if (isRenderSessionActive(renderSessionId)) await revealFirstBatch();
-            return result;
+            return await renderHistoryLegacy(history, renderSessionId, renderContext);
         }
 
         console.debug(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
@@ -3792,8 +3813,6 @@ async function renderHistory(history, options = {}) {
 
         // 第一阶段：立即渲染最新的消息
         await renderMessageBatch(latestMessages, true, renderSessionId, renderContext);
-        if (!isRenderSessionActive(renderSessionId)) return;
-        await revealFirstBatch();
         if (!isRenderSessionActive(renderSessionId)) return;
         console.debug(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
 
@@ -3842,8 +3861,10 @@ function processDeferredMessageElement(el, renderSessionId, renderContext = {}) 
 
     if (typeof el._vcp_process === 'function') {
         const runHeavy = shouldRunHeavyForMessage(el, renderContext);
-        el._vcp_process({ runHeavy });
+        const processing = el._vcp_process({ runHeavy });
         delete el._vcp_process;
+        delete el._vcp_renderSessionId;
+        return processing;
     }
     delete el._vcp_renderSessionId;
 }
@@ -3876,7 +3897,7 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
     messageElements.forEach(el => fragment.appendChild(el));
 
     // 使用 owner-managed animation frame，Surface teardown 会取消并等待它。
-    return renderTaskOwner.animationFrame(renderRoot, () => {
+    return renderTaskOwner.animationFrame(renderRoot, async () => {
             if (!isRenderSessionActive(renderSessionId)) return;
 
             // 在异步批次构建期间，活动流恢复可能已经挂载了相同 message id。
@@ -3898,8 +3919,10 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
             renderRoot.appendChild(fragment);
             mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
-            // Step 2: Now that they are in the DOM, run the deferred processing for each.
-            messageElements.forEach(el => processDeferredMessageElement(el, renderSessionId, renderContext));
+            await renderContext.onFirstBatchMounted?.();
+            if (!isRenderSessionActive(renderSessionId)) return;
+            // The owner tracks completion, including time-sliced math work.
+            await Promise.all(messageElements.map(el => processDeferredMessageElement(el, renderSessionId, renderContext)));
 
             if (scrollToBottom && isRenderSessionActive(renderSessionId)) {
                 mainRendererReferences.uiHelper.scrollToBottom();
@@ -3944,7 +3967,7 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         }
 
         // 🟢 owner-managed idle work，当前 root revoke/dispose 时会被取消。
-        await renderTaskOwner.idle(renderRoot, () => {
+        await renderTaskOwner.idle(renderRoot, async () => {
                 if (!isRenderSessionActive(renderSessionId)) return;
 
                 // idle 等待期间流式恢复可能已建立同 ID 节点。用实时节点替换
@@ -3972,10 +3995,10 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                 }
                 mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
-                elementsForProcessing.forEach(el => processDeferredMessageElement(el, renderSessionId, {
+                await Promise.all(elementsForProcessing.map(el => processDeferredMessageElement(el, renderSessionId, {
                     ...renderContext,
                     deferHeavy: true
-                }));
+                })));
         }, { timeout: 1000 });
 
         if (!isRenderSessionActive(renderSessionId)) return;
@@ -4017,7 +4040,7 @@ async function renderHistoryLegacy(history, renderSessionId = null, renderContex
     // Phase 2: Append all created elements at once using a DocumentFragment
     allMessageElements.forEach(el => fragment.appendChild(el));
 
-    return renderTaskOwner.animationFrame(renderRoot, () => {
+    return renderTaskOwner.animationFrame(renderRoot, async () => {
             if (!isRenderSessionActive(renderSessionId)) return;
 
             // 构建 fragment 后到本帧挂载前，活动流补建可能已经恢复同 ID 节点。
@@ -4037,8 +4060,9 @@ async function renderHistoryLegacy(history, renderSessionId = null, renderContex
             renderRoot.appendChild(fragment);
                 mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
 
-            // Step 2: Run the deferred processing for each element now that it's attached.
-            allMessageElements.forEach(el => processDeferredMessageElement(el, renderSessionId, renderContext));
+            await renderContext.onFirstBatchMounted?.();
+            if (!isRenderSessionActive(renderSessionId)) return;
+            await Promise.all(allMessageElements.map(el => processDeferredMessageElement(el, renderSessionId, renderContext)));
 
             if (isRenderSessionActive(renderSessionId)) {
                 mainRendererReferences.uiHelper.scrollToBottom();
@@ -4095,6 +4119,7 @@ const messageRenderer = {
     getOffscreenStats: () => offscreenWindow?.getStats() || null,
     getRenderWorkerStats: () => renderWorkerClient?.getStats() || null,
     getLazyToolStats: () => ({ entries: lazyToolContents.size }),
+    getMathRenderStats: () => contentProcessor.getMathRenderStats?.() || null,
     getRenderHtmlCacheStats: () => ({
         entries: renderHtmlCache.size,
         bytes: renderHtmlCacheBytes,

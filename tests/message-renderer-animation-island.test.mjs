@@ -1003,3 +1003,74 @@ test('history preparation failure leaves the message root visible', async () => 
         assert.equal(fixture.root.dataset.vcpHistoryPresentation, undefined);
     } finally { await disposeFixture(fixture); }
 });
+
+
+test('four-message math history reveals before compilation and reuses formula strings after navigation', async () => {
+    const fixture = await createRendererFixture('initial');
+    try {
+        fixture.renderer.clearChat();
+        const katex = require('../vendor/katex.min.js');
+        let compilations = 0;
+        fixture.dom.window.katex = {
+            renderToString(source, options) {
+                assert.equal(fixture.root.dataset.vcpHistoryPresentation, 'ready', 'math must not hold reveal hostage');
+                compilations++;
+                return katex.renderToString(source, options);
+            },
+        };
+        const formulas = Array.from({ length: 60 }, (_, i) => `\\(x_${i}+1\\)`).join(' ');
+        const messages = [
+            { id: 'math-u1', role: 'user', content: 'question one', timestamp: 1 },
+            { id: 'math-a1', role: 'assistant', content: formulas, timestamp: 2 },
+            { id: 'math-u2', role: 'user', content: 'question two', timestamp: 3 },
+            { id: 'math-a2', role: 'assistant', content: formulas, timestamp: 4 },
+        ];
+        fixture.historyRef.set(messages);
+        await fixture.renderer.renderHistory(messages);
+        assert.equal(fixture.root.querySelectorAll('.katex').length, 120);
+        assert.equal(compilations, 60, 'same formula in another message uses the inert cache');
+        const before = fixture.renderer.getMathRenderStats();
+        assert.ok(before.yields > 0);
+        fixture.renderer.clearChat();
+        fixture.historyRef.set(messages);
+        await fixture.renderer.renderHistory(messages);
+        assert.equal(fixture.root.querySelectorAll('.katex').length, 120);
+        assert.equal(compilations, 60, 'navigation must not recompile cached formulas');
+        assert.equal(fixture.renderer.getMathRenderStats().hits, before.hits + 120);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('body replacement during a math slice revokes the old writer', async () => {
+    const fixture = await createRendererFixture('initial');
+    try {
+        fixture.renderer.clearChat();
+        const katex = require('../vendor/katex.min.js');
+        let scheduled = false;
+        let oldContent;
+        let snapshot;
+        fixture.dom.window.katex = {
+            renderToString(source, options) {
+                if (!scheduled) {
+                    scheduled = true;
+                    fixture.dom.window.setTimeout(() => {
+                        oldContent = fixture.root.querySelector('.md-content');
+                        fixture.renderer.updateMessageContent('math-revision', 'replacement body');
+                        snapshot = oldContent.innerHTML;
+                    }, 0);
+                }
+                return katex.renderToString(source, options);
+            },
+        };
+        const message = {
+            id: 'math-revision', role: 'assistant', timestamp: 1,
+            content: Array.from({ length: 120 }, (_, i) => `\\(y_${i}\\)`).join(' '),
+        };
+        fixture.historyRef.set([message]);
+        await fixture.renderer.renderHistory([message]);
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 10));
+        assert.ok(scheduled);
+        assert.equal(oldContent.innerHTML, snapshot);
+        assert.equal(oldContent.textContent.trim(), 'replacement body');
+        assert.equal(oldContent.querySelector('.katex'), null);
+    } finally { await disposeFixture(fixture); }
+});

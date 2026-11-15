@@ -1,10 +1,12 @@
 // modules/renderer/contentProcessor.js
 import * as cssTree from '../../node_modules/css-tree/dist/csstree.esm.js';
 import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
+import { createMathRenderer } from './mathRenderer.js';
 
 /** Creates one rendered-content interaction owner for one MessageRenderer instance. */
 export function createContentProcessor() {
 let mainRefs = {};
+let mathRenderer = createMathRenderer();
 
 function scheduleOwnedTimeout(owner, callback, delay) {
     if (!owner) return setTimeout(callback, delay);
@@ -32,6 +34,8 @@ function clearOwnedTimeouts(owner) {
  * @param {object} refs - References to main modules and utilities.
  */
 function initializeContentProcessor(refs) {
+    mathRenderer.dispose();
+    mathRenderer = createMathRenderer();
     mainRefs = refs;
 }
 
@@ -452,26 +456,16 @@ function highlightAllPatternsInMessage(messageElement) {
     const NodeFilterRef = ownerWindow?.NodeFilter;
     if (!ownerDocument || !NodeFilterRef) return;
 
+    const excluded = 'pre, code, style, script, textarea, noscript, button, .katex, .katex-display, .highlighted-tag, .highlighted-alert-tag, .highlighted-quote';
+    if (messageElement.closest(excluded)) return;
+    // SHOW_TEXT alone cannot prune element subtrees: it still visits every
+    // KaTeX text node before rejecting it. Reject the formula root instead.
     const walker = ownerDocument.createTreeWalker(
         messageElement,
-        NodeFilterRef.SHOW_TEXT,
-        (node) => {
-            let parent = node.parentElement;
-            while (parent && parent !== messageElement) {
-                // 只跳过不应改写的技术内容和已高亮节点；不要跳过 STRONG/B。
-                // 这样 Markdown 先完成加粗后，引号高亮仍可进入加粗文本内部执行。
-                // 按钮里是界面文字（如工具行的单行摘要），插入的高亮会打破它的单行省略。
-                if (['PRE', 'CODE', 'STYLE', 'SCRIPT', 'BUTTON'].includes(parent.tagName) ||
-                    parent.classList.contains('highlighted-tag') ||
-                    parent.classList.contains('highlighted-alert-tag') ||
-                    parent.classList.contains('highlighted-quote')) {
-                    return NodeFilterRef.FILTER_REJECT;
-                }
-                parent = parent.parentElement;
-            }
-            return NodeFilterRef.FILTER_ACCEPT;
-        },
-        false
+        NodeFilterRef.SHOW_ELEMENT | NodeFilterRef.SHOW_TEXT,
+        node => node.nodeType === 1
+            ? (node.matches(excluded) ? NodeFilterRef.FILTER_REJECT : NodeFilterRef.FILTER_SKIP)
+            : NodeFilterRef.FILTER_ACCEPT
     );
 
     const nodesToProcess = [];
@@ -1195,22 +1189,18 @@ function normalizeSafeSingleDollarMathInTextNodes(root) {
     const NodeFilterRef = ownerDocument?.defaultView?.NodeFilter;
     if (!ownerDocument || !NodeFilterRef) return;
 
+    const excluded = 'pre, code, script, style, textarea, noscript, .katex, .katex-display, .mermaid, .mermaid-placeholder';
+    if (root.closest(excluded)) return;
     const walker = ownerDocument.createTreeWalker(
         root,
-        NodeFilterRef.SHOW_TEXT,
-        (node) => {
-            const parent = node.parentElement;
-            if (!parent) return NodeFilter.FILTER_REJECT;
-
-            if (parent.closest('pre, code, script, style, textarea, .katex')) {
-                return NodeFilterRef.FILTER_REJECT;
+        NodeFilterRef.SHOW_ELEMENT | NodeFilterRef.SHOW_TEXT,
+        node => {
+            if (node.nodeType === 1) {
+                return node.matches(excluded) ? NodeFilterRef.FILTER_REJECT : NodeFilterRef.FILTER_SKIP;
             }
-
-            return node.nodeValue && node.nodeValue.includes('$')
-                ? NodeFilterRef.FILTER_ACCEPT
-                : NodeFilterRef.FILTER_REJECT;
-        },
-        false
+            return node.nodeValue?.includes('$')
+                ? NodeFilterRef.FILTER_ACCEPT : NodeFilterRef.FILTER_REJECT;
+        }
     );
 
     const nodes = [];
@@ -1233,27 +1223,24 @@ function normalizeSafeSingleDollarMathInTextNodes(root) {
  * that do not depend on a fully stable DOM tree from complex innerHTML.
  * @param {HTMLElement} contentDiv The message content element.
  */
-function processRenderedContent(contentDiv, settings = {}) {
+async function processRenderedContentAsync(contentDiv, settings = {}, options = {}) {
+    if (!contentDiv || contentDiv.querySelector(':scope > .vcp-context-checkpoint')) return;
+    const isValid = options.isValid || (() => contentDiv.isConnected);
+    if (!isValid()) return;
+    normalizeSafeSingleDollarMathInTextNodes(contentDiv);
+    await mathRenderer.processAsync(contentDiv, { isValid });
+    if (!isValid()) return;
+    processRenderedContent(contentDiv, settings, { skipMath: true });
+}
+
+function processRenderedContent(contentDiv, settings = {}, { skipMath = false } = {}) {
     if (!contentDiv || contentDiv.querySelector(':scope > .vcp-context-checkpoint')) return;
     const ownerWindow = contentDiv.ownerDocument?.defaultView;
 
-    // 将经严格判定的单美元公式转换为 \(...\)；普通价格保持原始 `$` 文本。
-    normalizeSafeSingleDollarMathInTextNodes(contentDiv);
-
-    // KaTeX rendering
-    if (ownerWindow?.renderMathInElement) {
-        ownerWindow.renderMathInElement(contentDiv, {
-            delimiters: [
-                {left: "$$", right: "$$", display: true},
-                // 不在此处注册宽松的 `$...$`：否则两个价格会绕过上面的安全判断被强制配对。
-                // 合法单美元公式已经由预解析保护器或 DOM 文本节点规范器转换为 \(...\)。
-                {left: "\\(", right: "\\)", display: false},
-                {left: "\\[", right: "\\]", display: true}
-            ],
-            ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-            ignoredClasses: ['mermaid', 'mermaid-placeholder'],
-            throwOnError: false
-        });
+    if (!skipMath) {
+        // 安全单美元规范化仍先于公式排版；普通价格保持原样。
+        normalizeSafeSingleDollarMathInTextNodes(contentDiv);
+        mathRenderer.processSync(contentDiv);
     }
 
     // Special block formatting (VCP/Diary)
@@ -1513,6 +1500,8 @@ const contentProcessor = Object.freeze({
     deIndentMisinterpretedCodeBlocks,
     processAllPreBlocksInContentDiv,
     processRenderedContent,
+    processRenderedContentAsync,
+    getMathRenderStats: () => mathRenderer.getStats(),
     processInteractiveButtons,
     handleAIButtonClick,
     highlightAllPatternsInMessage, // Export the new async highlighter
@@ -1523,6 +1512,7 @@ const contentProcessor = Object.freeze({
     processStartEndMarkers,
     cleanupPreviewsInContent,
     dispose() {
+        mathRenderer.dispose();
         if (mainRefs.chatMessagesDiv) cleanupPreviewsInContent(mainRefs.chatMessagesDiv);
         mainRefs = {};
     },
