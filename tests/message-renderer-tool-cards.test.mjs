@@ -51,7 +51,7 @@ function createVisibilityStub() {
     };
 }
 
-async function createRendererFixture(messageContent, appearanceProfile, markdown = marked) {
+async function createRendererFixture(messageContent, appearanceProfile, markdown = marked, rendererOptions = {}) {
     const dom = new JSDOM(
         '<!doctype html><html><head></head><body><div class="chat-messages-container"><div id="chat"></div></div></body></html>',
         {
@@ -116,6 +116,7 @@ async function createRendererFixture(messageContent, appearanceProfile, markdown
         enableContextMenu: false,
         enableMiddleClick: false,
         exposeGlobalCommands: false,
+        ...rendererOptions,
     });
     const root = dom.window.document.getElementById('chat');
     const electronAPI = {
@@ -912,5 +913,174 @@ test('parse registration keeps same-shaped source tokens literal in code and laz
         verify(restored);
         assert.equal(fixture.renderer.getLazyToolStats().entries, 2);
         assert.equal(fixture.historyRef.get()[0].content, source);
+    } finally { await disposeFixture(fixture); }
+});
+
+
+test('history worker output populates the real template cache and preserves batch isolation', async () => {
+    const { compileRenderJob } = await import('../modules/renderer/renderWorkerRuntime.js');
+    const { Marked } = require('marked');
+    let jobs = 0;
+    const fixture = await createRendererFixture('seed', { toolPresentation: 'legacy', toolExpansion: 'none' },
+        new Marked({ gfm: true, breaks: true }), {
+            createRenderWorker: () => ({
+                async postMessage({ id, job }) {
+                    jobs++;
+                    try { this.onmessage?.({ data: { id, result: await compileRenderJob(job) } }); }
+                    catch (error) { this.onmessage?.({ data: { id, error: error.message } }); }
+                },
+                terminate() {},
+            }),
+        });
+    try {
+        fixture.renderer.clearChat();
+        const content = '```js\nopen\n<<<[VCP_TOOL_BATCH_START:worker]>>>\n'
+            + '[[VCP调用结果信息汇总:\n- 工具名称: Demo\n- 返回内容: WORKER_PAYLOAD\nVCP调用结果结束]]\n'
+            + '<<<[VCP_TOOL_BATCH_END:worker]>>>\n\n## 后文';
+        const history = [{ id: 'worker-history', role: 'assistant', content, timestamp: 1 }];
+        fixture.historyRef.set(history);
+        await fixture.renderer.renderHistory(history);
+        const root = fixture.dom.window.document.getElementById('chat');
+        assert.equal(jobs, 1);
+        assert.equal(fixture.renderer.getRenderWorkerStats().completed, 1);
+        assert.equal(root.querySelector('h2')?.textContent, '后文');
+        assert.equal(root.querySelector('.vcp-tool-result-bubble').closest('pre, code'), null);
+        const ids = [...root.querySelectorAll('[data-vcp-lazy-tool-id]')].map(node => node.dataset.vcpLazyToolId);
+        fixture.renderer.clearChat();
+        fixture.historyRef.set(history);
+        await fixture.renderer.renderHistory(history);
+        assert.equal(jobs, 1, 'cache hit must not dispatch or reparse');
+        const fresh = [...root.querySelectorAll('[data-vcp-lazy-tool-id]')].map(node => node.dataset.vcpLazyToolId);
+        assert.ok(fresh.every(id => !ids.includes(id)));
+        root.querySelector('.vcp-tool-result-header').click();
+        assert.match(root.textContent, /WORKER_PAYLOAD/);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('cold content is destroyed and restored with fresh tool leases on the same shell', async () => {
+    const fixture = await createRendererFixture(TRANSCRIPT, { toolPresentation: 'compact', toolExpansion: 'none' });
+    try {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const item = fixture.messageItem;
+        const content = item.querySelector('.md-content');
+        const scroll = item.closest('.chat-messages-container');
+        let top = -6000;
+        scroll.getBoundingClientRect = () => ({ top: 0, bottom: 600, height: 600 });
+        item.getBoundingClientRect = () => ({ top, bottom: top + 500, height: 500 });
+        content.getBoundingClientRect = () => ({ top: top + 50, bottom: top + 450, height: 400 });
+        const source = fixture.historyRef.get()[0].content;
+        const oldId = content.querySelector('[data-vcp-lazy-tool-id]').dataset.vcpLazyToolId;
+        content.querySelector('.vcp-tool-row-toggle').click();
+        scroll.dispatchEvent(new fixture.dom.window.Event('scroll'));
+        await new Promise(resolve => setTimeout(resolve, 60));
+        assert.equal(item.dataset.vcpDomEvicted, 'true');
+        assert.equal(content.childNodes.length, 0);
+        assert.equal(fixture.renderer.getLazyToolStats().entries, 0);
+        assert.equal(item.style.height, '500px');
+        top = 100;
+        scroll.dispatchEvent(new fixture.dom.window.Event('scroll'));
+        await new Promise(resolve => setTimeout(resolve, 80));
+        assert.equal(item.dataset.vcpDomEvicted, undefined);
+        assert.equal(item.style.height, '');
+        assert.ok(item.isConnected);
+        assert.notEqual(content.querySelector('[data-vcp-lazy-tool-id]').dataset.vcpLazyToolId, oldId);
+        assert.match(content.querySelector('.vcp-tool-details').textContent, /EditCode/);
+        assert.equal(fixture.historyRef.get()[0].content, source);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('editing cold content revokes the tombstone and cannot restore its stale source', async () => {
+    const fixture = await createRendererFixture('old body', { toolPresentation: 'legacy', toolExpansion: 'none' });
+    try {
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const item = fixture.messageItem;
+        const content = item.querySelector('.md-content');
+        const scroll = item.closest('.chat-messages-container');
+        scroll.getBoundingClientRect = () => ({ top: 0, bottom: 600 });
+        item.getBoundingClientRect = () => ({ top: -6000, bottom: -5500, height: 500 });
+        content.getBoundingClientRect = () => ({ height: 400 });
+        scroll.dispatchEvent(new fixture.dom.window.Event('scroll'));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        assert.equal(item.dataset.vcpDomEvicted, 'true');
+        fixture.historyRef.get()[0].content = 'new body';
+        fixture.renderer.updateMessageContent(item.dataset.messageId, 'new body');
+        assert.equal(item.dataset.vcpDomEvicted, undefined);
+        assert.match(content.textContent, /new body/);
+        assert.equal(item.style.height, '');
+    } finally { await disposeFixture(fixture); }
+});
+
+
+test('pending worker is revoked on renderer dispose without synchronous fallback or tool leases', async () => {
+    const { Marked } = require('marked');
+    let sent = null;
+    const fixture = await createRendererFixture('seed', null, new Marked({ gfm: true, breaks: true }), {
+        createRenderWorker: () => ({
+            postMessage(data) { sent = data; },
+            terminate() {},
+        }),
+    });
+    try {
+        fixture.renderer.clearChat();
+        const history = [{ id: 'pending-worker', role: 'assistant', content: REQ('Demo', `text:${S}pending${E}`) }];
+        fixture.historyRef.set(history);
+        const pending = fixture.renderer.renderHistory(history);
+        for (let i = 0; i < 50 && !sent; i++) await new Promise(resolve => setTimeout(resolve, 1));
+        assert.ok(sent);
+        fixture.renderer.disposeRendererResources();
+        await pending;
+        assert.equal(fixture.renderer.getLazyToolStats().entries, 0);
+        assert.equal(fixture.dom.window.document.querySelectorAll('.message-item').length, 0);
+        assert.equal(fixture.renderer.getRenderWorkerStats().pending, 0);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('settings changed during worker compilation rebuild current history instead of dropping a bubble', async () => {
+    const { Marked } = require('marked');
+    const { compileRenderJob } = await import('../modules/renderer/renderWorkerRuntime.js');
+    let sent = null;
+    let worker;
+    const fixture = await createRendererFixture('seed', null, new Marked({ gfm: true, breaks: true }), {
+        createRenderWorker: () => (worker = {
+            postMessage(data) { sent = data; },
+            terminate() {},
+        }),
+    });
+    try {
+        fixture.renderer.clearChat();
+        const history = [{ id: 'changed-worker', role: 'assistant', content: 'current body' }];
+        fixture.historyRef.set(history);
+        const pending = fixture.renderer.renderHistory(history);
+        for (let i = 0; i < 50 && !sent; i++) await new Promise(resolve => setTimeout(resolve, 1));
+        assert.ok(sent);
+        fixture.settingsRef.set({ ...fixture.settingsRef.get(), enableAiMessageButtons: true });
+        worker.onmessage({ data: { id: sent.id, result: await compileRenderJob(sent.job) } });
+        await pending;
+        assert.match(fixture.dom.window.document.querySelector('[data-message-id="changed-worker"]').textContent, /current body/);
+        assert.equal(fixture.renderer.getRenderWorkerStats().pending, 0);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('cold message with an active text selection remains mounted until selection is released', async () => {
+    const fixture = await createRendererFixture('selected body', { toolPresentation: 'legacy', toolExpansion: 'none' });
+    try {
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const item = fixture.messageItem;
+        const content = item.querySelector('.md-content');
+        const scroll = item.closest('.chat-messages-container');
+        scroll.getBoundingClientRect = () => ({ top: 0, bottom: 600 });
+        item.getBoundingClientRect = () => ({ top: -6000, bottom: -5500, height: 500 });
+        content.getBoundingClientRect = () => ({ height: 400 });
+        const range = fixture.dom.window.document.createRange();
+        range.selectNodeContents(content);
+        fixture.dom.window.getSelection().addRange(range);
+        scroll.dispatchEvent(new fixture.dom.window.Event('scroll'));
+        await new Promise(resolve => setTimeout(resolve, 40));
+        assert.equal(item.dataset.vcpDomEvicted, undefined);
+        assert.match(content.textContent, /selected body/);
+        fixture.dom.window.getSelection().removeAllRanges();
+        scroll.dispatchEvent(new fixture.dom.window.Event('scroll'));
+        await new Promise(resolve => setTimeout(resolve, 40));
+        assert.equal(item.dataset.vcpDomEvicted, 'true');
     } finally { await disposeFixture(fixture); }
 });

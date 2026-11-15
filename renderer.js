@@ -336,6 +336,7 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         const key = id => `${surfacePretextPrefix}:${id}`;
         return Object.freeze({
             isReady: () => bridge.isReady?.() === true,
+            getMeasurementOptions: (...args) => bridge.getMeasurementOptions?.(...args),
             estimateHeight: (id, ...args) => bridge.estimateHeight?.(key(id), ...args),
             evict: id => bridge.evict?.(key(id)),
         });

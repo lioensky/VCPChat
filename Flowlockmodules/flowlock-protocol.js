@@ -417,4 +417,4 @@
     });
 
     console.log('[Flowlock Protocol] Safe parser initialized.');
-})(window);
+})(typeof window !== 'undefined' ? window : globalThis);

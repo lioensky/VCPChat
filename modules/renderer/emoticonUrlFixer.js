@@ -302,5 +302,9 @@ function fixEmoticonUrl(originalSrc) {
     return originalSrc;
 }
 
-    return Object.freeze({ initialize, fixEmoticonUrl });
+    return Object.freeze({
+        initialize,
+        fixEmoticonUrl,
+        snapshot: () => emoticonLibrary.map(({ url, filename }) => ({ url, filename })),
+    });
 }

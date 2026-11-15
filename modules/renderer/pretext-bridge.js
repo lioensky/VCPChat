@@ -190,6 +190,13 @@ if (typeof prepare !== 'function' || typeof layout !== 'function') {
     // ─── 暴露全局 API ───
 
     window.pretextBridge = {
+        getMeasurementOptions(messageType = 'body', containerWidth) {
+            return {
+                font: FONTS[messageType] || FONTS.body,
+                width: getContentWidth(containerWidth, messageType),
+                lineHeight: LINE_HEIGHTS[messageType] || LINE_HEIGHTS.body,
+            };
+        },
         estimateHeight: estimateHeight,
         getCachedHeight: getCachedHeight,
         recalculateAll: recalculateAll,

@@ -1,0 +1,102 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+body { margin: 0; font: 15px "Segoe UI"; }
+.chat-messages-container { height: 600px; overflow: auto; }
+.message-item { padding: 12px; content-visibility: auto; contain-intrinsic-size: auto 100px; }
+.md-content { padding: 10px; }
+.vcp-tool-details, .vcp-tool-result-collapsible-content { display: none; }
+.expanded > .vcp-tool-details, .expanded > .vcp-tool-result-collapsible-content { display: block; }
+</style>
+<div class="chat-messages-container"><div id="chat"></div></div>
+<script type="module">
+import { Marked } from '../../node_modules/marked/lib/marked.esm.js';
+import { createMessageRenderer } from '../../modules/messageRenderer.js';
+import '../../modules/renderer/pretext-bridge.js';
+const ref = initial => { let value = initial; return { get: () => value, set: next => { value = next; } }; };
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+window.runRenderWindowSmoke = async () => {
+    const root = document.getElementById('chat');
+    const scroll = root.parentElement;
+    const history = Array.from({ length: 500 }, (_, i) => ({
+        id: `smoke-${i}`, role: 'assistant', timestamp: i,
+        content: `## 消息 ${i}\n\n` + '真实布局与 Worker 渲染测试。 **粗体** ordinary prose.\n\n'.repeat(12)
+            + `<<<[TOOL_REQUEST]>>>\ntool_name:「始」Demo「末」,\ntext:「始」payload-${i}「末」\n<<<[END_TOOL_REQUEST]>>>`,
+    }));
+    history[0].content = '纯文本离线程高度估算测试 ordinary prose '.repeat(100);
+    const historyRef = ref(history);
+    const renderer = createMessageRenderer({
+        streamManager: { isMessageActive: () => false },
+        initializeStreamProjection: false, enableContextMenu: false, enableMiddleClick: false,
+    });
+    renderer.initializeMessageRenderer({
+        chatMessagesDiv: root,
+        electronAPI: { getEmoticonLibrary: async () => [], saveAvatarColor: async () => ({ success: true }) },
+        chatRepository: { saveHistory: async () => ({ success: true }) },
+        historyMutationAuthority: { replace: async () => ({}) },
+        transientStreamHistory: { prepare() {}, finalize() {} },
+        markedInstance: new Marked({ gfm: true, breaks: true }),
+        currentChatHistoryRef: historyRef,
+        currentSelectedItemRef: ref({ id: 'fixture', type: 'agent', name: 'Fixture', config: {} }),
+        currentTopicIdRef: ref('fixture-topic'),
+        globalSettingsRef: ref({ enableAiMessageButtons: false }),
+        pretextBridge: window.pretextBridge,
+        uiHelper: { scrollToBottom: () => { scroll.scrollTop = scroll.scrollHeight; } },
+        summarizeTopicFromMessages() {}, handleCreateBranch() {}, messageCommands: {},
+    });
+    const frameGaps = [];
+    let sampling = true;
+    let previousFrame = performance.now();
+    const sampleFrame = now => {
+        frameGaps.push(now - previousFrame);
+        previousFrame = now;
+        if (sampling) requestAnimationFrame(sampleFrame);
+    };
+    requestAnimationFrame(sampleFrame);
+    const start = performance.now();
+    await renderer.renderHistory(history, { batchSize: 10, batchDelay: 0 });
+    const renderMs = performance.now() - start;
+    await wait(3500);
+    sampling = false;
+    const estimatedHeight = Number(root.querySelector('.md-content[data-vcp-estimated-height]')?.dataset.vcpEstimatedHeight);
+    if (!(estimatedHeight > 0)) throw new Error('OffscreenCanvas estimate missing');
+    const stats = renderer.getOffscreenStats();
+    const worker = renderer.getRenderWorkerStats();
+    const nodesCold = root.querySelectorAll('*').length;
+    if (worker.completed < 500 || worker.unavailable) throw new Error('Real Worker did not compile history: ' + JSON.stringify(worker));
+    if (stats.cold < 400) throw new Error('Cold DOM was not evicted: ' + JSON.stringify(stats));
+    if (root.querySelectorAll('.message-item').length !== history.length) throw new Error('Message shells lost');
+    const loadMs = performance.now() - start;
+    scroll.scrollTop = 0;
+    scroll.dispatchEvent(new Event('scroll'));
+    for (let i = 0; i < 100 && root.firstElementChild.dataset.vcpDomEvicted; i++) await wait(25);
+    if (root.firstElementChild.dataset.vcpDomEvicted
+        || !root.firstElementChild.querySelector('.md-content')?.textContent.includes('纯文本离线程高度估算测试')) {
+        throw new Error('Prewarm failed: first plain-text body was not restored');
+    }
+    const cold = root.querySelector('[data-vcp-dom-evicted="true"]');
+    if (cold) {
+        const id = cold.dataset.messageId;
+        historyRef.set(historyRef.get().map(message => message.id === id ? { ...message, content: 'EDITED' } : message));
+        renderer.updateMessageContent(id, 'EDITED');
+        if (cold.dataset.vcpDomEvicted || !cold.textContent.includes('EDITED')) throw new Error('Cold edit failed');
+    }
+    const anchorTop = root.firstElementChild.getBoundingClientRect().top;
+    await renderer.restoreOffscreenMessages();
+    const anchorDrift = root.firstElementChild.getBoundingClientRect().top - anchorTop;
+    if (Math.abs(anchorDrift) > 1) throw new Error('Restore moved viewport anchor: ' + anchorDrift);
+    const nodesRestored = root.querySelectorAll('*').length;
+    if (nodesRestored < nodesCold * 1.5) throw new Error('No meaningful subtree reduction');
+    frameGaps.sort((a, b) => a - b);
+    const result = {
+        worker, stats, nodesCold, nodesRestored, estimatedHeight, anchorDrift,
+        renderMs: Math.round(renderMs), loadMs: Math.round(loadMs), shells: history.length,
+        frameGapP95: Math.round(frameGaps[Math.floor(frameGaps.length * 0.95)] || 0),
+        frameGapMax: Math.round(frameGaps.at(-1) || 0),
+    };
+    renderer.clearChat();
+    if (renderer.getLazyToolStats().entries !== 0 || renderer.getOffscreenStats().tracked !== 0) throw new Error('Teardown leaked message ownership');
+    renderer.disposeRendererResources();
+    return result;
+};
+</script>

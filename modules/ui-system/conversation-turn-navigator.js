@@ -13,6 +13,7 @@
 'use strict';
 
 import { bindChatNavigationIdle } from './chat-navigation-idle.js';
+import { readMessagePreviewText } from '../renderer/messagePreviewText.js';
 
 
 export const TURN_NAVIGATOR_MIN_WIDTH_PX = 400; // 左侧导轨仅占 48px，通知栏展开后仍可使用；只在极窄聊天区隐藏
@@ -161,13 +162,7 @@ export function resolveBarVisualState({ itemIndex, visualFocusItemIndex }) {
 
 // ------------------------------------------------------------------ DOM reading
 
-function readMessageText(messageItem) {
-    const content = messageItem.querySelector('.md-content');
-    if (!content) return '';
-    const clone = content.cloneNode(true);
-    clone.querySelectorAll('.thinking-indicator, style, script, .vcp-tool-use-bubble, details').forEach(node => node.remove());
-    return clone.textContent || '';
-}
+const readMessageText = readMessagePreviewText;
 
 /**
  * 把消息列表读成 buildTurnNavigatorItems 需要的 entries。
@@ -176,7 +171,9 @@ function readMessageText(messageItem) {
  */
 export function collectTurnEntries(messagesRoot, { textCache = null, dirty = null } = {}) {
     const textOf = (element) => {
-        if (!textCache) return readMessageText(element);
+        // Cold bodies own a bounded snapshot even if this navigator mounted late.
+        // Never keep a former full-body cache entry merely because eviction is quiet.
+        if (!textCache || element.dataset.vcpDomEvicted === 'true') return readMessageText(element);
         if (!dirty?.has(element) && textCache.has(element)) return textCache.get(element);
         const text = readMessageText(element);
         textCache.set(element, text);
@@ -608,7 +605,7 @@ export function createConversationTurnNavigator({
 
         if (typeof win.MutationObserver === 'function') {
             const observer = new win.MutationObserver(onMutations);
-            observer.observe(messages, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+            observer.observe(messages, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'data-vcp-dom-evicted'] });
             cleanups.push(() => observer.disconnect());
         }
         if (typeof win.ResizeObserver === 'function') {
