@@ -56,6 +56,15 @@ fn absolute_existing(path:&Path,directory:bool)->Result<PathBuf,String> {
     }
     Ok(canonical)
 }
+fn strip_verbatim(path:PathBuf)->PathBuf {
+    #[cfg(windows)]
+    {
+        let text=path.to_string_lossy();
+        if let Some(rest)=text.strip_prefix(r"\\?\UNC\") {return PathBuf::from(format!(r"\\{rest}"));}
+        if let Some(rest)=text.strip_prefix(r"\\?\") {return PathBuf::from(rest);}
+    }
+    path
+}
 impl Config {
     pub fn load(path:&Path)->Result<Self,String> {
         let path=absolute_existing(path,false)?;
@@ -81,10 +90,31 @@ impl Config {
             allowed_roots:roots,
             validator:ValidatorProcess {
                 executable:absolute_existing(&wire.node_executable,false)?,
-                worker:absolute_existing(&wire.validation_worker,false)?,
+                worker:strip_verbatim(absolute_existing(&wire.validation_worker,false)?),
                 cwd:absolute_existing(&wire.validation_cwd,true)?,
                 timeout:Duration::from_millis(wire.validation_timeout_ms),
             },
         })
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_verbatim_preserves_regular_paths_and_normalizes_windows_prefixes() {
+        let plain = PathBuf::from(if cfg!(windows) { r"D:\vcp\worker.cjs" } else { "/tmp/worker.cjs" });
+        assert_eq!(strip_verbatim(plain.clone()), plain);
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                strip_verbatim(PathBuf::from(r"\\?\D:\vcp\validationWorker.cjs")),
+                PathBuf::from(r"D:\vcp\validationWorker.cjs")
+            );
+            assert_eq!(
+                strip_verbatim(PathBuf::from(r"\\?\UNC\srv\share\validationWorker.cjs")),
+                PathBuf::from(r"\\srv\share\validationWorker.cjs")
+            );
+        }
     }
 }

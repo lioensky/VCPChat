@@ -109,7 +109,7 @@ test('relay cannot bypass another paused entry in the same topic', async () => {
     await f.service.dispose();
 });
 
-test('dispatched relay continuation restarts uncertain without chat writes or automatic generation', async () => {
+test('dispatched relay continuation restart drops interrupted staging without chat writes or automatic generation', async () => {
     const f = await fixture();
     await f.service.relay(scope, 'old', { saved: true });
     await tick();
@@ -127,10 +127,8 @@ test('dispatched relay continuation restarts uncertain without chat writes or au
     });
     await restored.initialize();
     await tick();
-    assert.equal(restored.snapshot(scope).length, 1);
-    assert.equal(restored.snapshot(scope)[0].kind, 'relay-continuation');
-    assert.equal(restored.snapshot(scope)[0].state, 'uncertain');
-    assert.equal((await restored.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
+    assert.equal(restored.snapshot(scope).length, 0);
+    assert.equal((await restored.resume(scope)).success, true);
     assert.equal(restored.leases.size, 0);
     await restored.dispose();
 });

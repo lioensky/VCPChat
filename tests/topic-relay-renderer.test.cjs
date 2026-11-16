@@ -13,7 +13,7 @@ function fixture({ compress = false, pending = true, failCompact = false } = {})
     const scope = { itemType: 'agent', itemId: 'a', topicId: 't' };
     const context = { agentId: 'a', topicId: 't', admissionToken: 'old' };
     const sandbox = {
-        disposed: false, console,
+        disposed: false, console, streamProjection: null,
         setTimeout, clearTimeout, INTERRUPT_SETTLE_MS: 10,
         globalSettingsRef: { get: () => ({ enableContextCompaction: compress }) },
         currentSelectedItemRef: { get: () => ({ id: 'a', type: 'agent', config: { contextTokenLimit: 10 } }) },

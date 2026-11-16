@@ -166,3 +166,22 @@ test('unpaired inline start literal inside a tool batch keeps sibling results se
     assert.equal(ranges.length, 2);
     assert.equal(closed.length, 2);
 });
+
+test('multiline tool results with end marker inline on last content line close sequentially', async () => {
+    const { collectToolResultRanges, collectClosedToolResultRanges } = await loadRegions();
+    const compactResult = (tool, status, body) =>
+        `${START}- 工具名称: ${tool}\n- 执行状态: ${status}\n- 返回内容: ${body}${END}`;
+    const text = [
+        compactResult('FileOperator', 'success', '内容A'),
+        compactResult('DailyNote', 'error', 'boom'),
+        '谢谢',
+    ].join('\n');
+
+    const ranges = collectToolResultRanges(text);
+    const closed = collectClosedToolResultRanges(text);
+    assert.equal(ranges.length, 2);
+    assert.equal(closed.length, 2);
+    assert.equal(text.slice(ranges[0].start, ranges[0].end), compactResult('FileOperator', 'success', '内容A'));
+    assert.equal(text.slice(ranges[1].start, ranges[1].end), compactResult('DailyNote', 'error', 'boom'));
+    assert.equal(text.slice(ranges[1].end), '\n谢谢');
+});

@@ -39,7 +39,6 @@ import {
     setToolResultHidden,
 } from './renderer/toolResultRegions.js';
 import { createToolPresentation } from './renderer/toolPresentation.js';
-import { parseJevToolUse } from './renderer/jevToolUse.js';
 import {
     findMalformedToolFields,
     describeToolRequestMarkerProblem

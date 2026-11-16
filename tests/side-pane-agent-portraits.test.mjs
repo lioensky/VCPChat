@@ -23,7 +23,7 @@ Module._load = originalLoad;
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vcp-portraits-'));
 const agentDir = path.join(root, 'Agents');
 fs.mkdirSync(agentDir);
-agentHandlers.initialize({ AGENT_DIR: agentDir, USER_DATA_DIR: path.join(root, 'UserData'), settingsManager: {} });
+agentHandlers.initialize({ AGENT_DIR: agentDir, USER_DATA_DIR: path.join(root, 'UserData'), settingsManager: {}, agentConfigManager: { runAgentOperation: (_id, fn) => fn(), clearCache() {} }, historyMutationQueue: { runOwner: (_id, fn) => fn() } });
 const getPortraits = (id) => handlers.get('get-agent-portraits')({}, id);
 
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));

@@ -71,7 +71,7 @@ test('release failure retains memory and durable ownership until successful retr
     assert.deepEqual(f.disk().standaloneLeases, []);
 });
 
-test('standalone transfer persists new token and restart restores diagnostics only', async t => {
+test('standalone transfer persists new token and restart drops interrupted topic staging', async t => {
     const f = await fixture();
     t.after(() => f.service.dispose());
     await f.service.acquire(scope, 'owner');
@@ -82,10 +82,9 @@ test('standalone transfer persists new token and restart restores diagnostics on
     t.after(() => recovered.dispose());
     await recovered.initialize();
     assert.equal(recovered.leases.size, 0);
-    assert.equal(recovered.snapshot(scope)[0].leaseToken, 'receiver');
-    assert.equal(recovered.snapshot(scope)[0].state, 'uncertain');
+    assert.equal(recovered.snapshot(scope).length, 0);
     assert.deepEqual(f.disk().standaloneLeases, []);
-    assert.equal((await recovered.resume(scope)).code, 'TERMINAL_UNCONFIRMED');
+    assert.equal((await recovered.resume(scope)).success, true);
 });
 
 test('waiting handoff cancellation restores both messages and standalone lease token', async t => {
