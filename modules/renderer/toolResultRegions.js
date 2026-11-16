@@ -66,17 +66,14 @@ function findNextProtocolToolResultStart(text, fromIndex) {
     return -1;
 }
 
-function findNextProtocolToolResultEnd(text, fromIndex, openStartIndex) {
+function findNextProtocolToolResultEnd(text, fromIndex) {
     let cursor = Math.max(0, fromIndex);
     while (cursor <= text.length) {
         const idx = text.indexOf(TOOL_RESULT_END_MARKER, cursor);
         if (idx === -1) return -1;
         const afterIdx = idx + TOOL_RESULT_END_MARKER.length;
         if (isLineTrailingBlank(text, afterIdx)) {
-            const sameLineAsOpen = openStartIndex >= 0 && text.lastIndexOf('\n', idx - 1) < openStartIndex;
-            if (isLineLeadingBlank(text, idx) || sameLineAsOpen) {
-                return idx;
-            }
+            return idx;
         }
         cursor = afterIdx;
     }
@@ -89,8 +86,7 @@ export function findToolResultEnd(text, startIndex) {
     let nextStart = findNextProtocolToolResultStart(text, cursor);
 
     while (cursor <= text.length && openStack.length > 0) {
-        const currentOpen = openStack[openStack.length - 1];
-        const nextEnd = findNextProtocolToolResultEnd(text, cursor, currentOpen);
+        const nextEnd = findNextProtocolToolResultEnd(text, cursor);
         if (nextEnd === -1) return -1;
 
         if (nextStart !== -1 && nextStart < nextEnd) {
