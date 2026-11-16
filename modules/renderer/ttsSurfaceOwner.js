@@ -24,12 +24,12 @@ export function createTtsSurfaceOwner({
     let playing = false;
     let currentMessageId = null;
     let sessionId = -1;
+    let stoppedSessionId = -1;
     let mounted = false;
     let disposed = false;
     let generation = 0;
     const unsubscribers = [];
     const activeWork = new Set();
-
     const setIndicator = (messageId, active) => {
         if (messageId && typeof updateSpeakingIndicator === 'function') {
             updateSpeakingIndicator(messageId, active);
@@ -38,7 +38,7 @@ export function createTtsSurfaceOwner({
 
     const stopPlayback = () => {
         generation += 1;
-        sessionId += 1;
+        stoppedSessionId = sessionId;
         queue = [];
         playing = false;
         streamDecodeTail = Promise.resolve();
@@ -169,7 +169,7 @@ export function createTtsSurfaceOwner({
             streaming = false,
             playbackRate = 1
         }) => {
-            if (disposed || incomingSession < sessionId) return;
+            if (disposed || incomingSession < sessionId || incomingSession <= stoppedSessionId) return;
             if (incomingSession > sessionId) {
                 stopPlayback();
                 sessionId = incomingSession;

@@ -76,7 +76,7 @@ test('纯自然语言 JEV 仍被识别且不生成显示名称', async () => {
 
 test('主消息渲染器以附加分支渲染 JEV 且保留旧 VCP ToolUse', () => {
     const source = fs.readFileSync(
-        path.join(root, 'modules/messageRenderer.js'),
+        path.join(root, 'modules/renderer/renderTemplateCompiler.js'),
         'utf8'
     );
 
