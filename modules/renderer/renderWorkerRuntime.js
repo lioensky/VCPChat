@@ -1,5 +1,6 @@
 import '../../Flowlockmodules/flowlock-protocol.js';
 import { Marked } from '../../node_modules/marked/lib/marked.esm.js';
+import { applyMarkdownPolicy } from './markdownPolicy.js';
 import { createRenderTemplateCompiler } from './renderTemplateCompiler.js';
 import { createContentProcessor } from './contentProcessor.js';
 import { createEmoticonUrlFixer } from './emoticonUrlFixer.js';
@@ -15,7 +16,7 @@ export async function compileRenderJob(job) {
     await fixer.initialize({ getEmoticonLibrary: async () => job.emoticons || [] });
     const compiler = createRenderTemplateCompiler({
         mainRendererReferences: {
-            markedInstance: new Marked(job.markdown),
+            markedInstance: applyMarkdownPolicy(new Marked(job.markdown)),
             globalSettingsRef: { get: () => job.settings || {} },
             flowlockProtocol: job.flowlock ? globalThis.flowlockProtocol : null,
         },

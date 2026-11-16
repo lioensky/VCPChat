@@ -16,6 +16,7 @@ import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
 
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
+import { applyMarkdownPolicy, hasOnlyMarkdownPolicyTokenizer, markdownWorkerOptions } from './renderer/markdownPolicy.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
 import { createContentRuntime } from './chat/contentRuntime.js';
 import { createMermaidPlaceholderTransform } from './chat/contentTransforms.js';
@@ -1751,12 +1752,14 @@ let templateCompiler = null;
 
 async function renderHistoryTemplate(text, renderOptions, root, session, message, isValid = () => true) {
     const parser = mainRendererReferences.markedInstance;
-    // Custom injected parsers/extensions have no cross-thread equivalence contract.
+    // Only the shared policy has an explicit cross-thread equivalence contract.
     if (!renderWorkerClient || options.contentProcessor || options.emoticonUrlFixer
         || (mainRendererReferences.flowlockProtocol
             && mainRendererReferences.flowlockProtocol !== mainRendererReferences.realm.flowlockProtocol)
         || parser?.constructor?.name !== 'Marked'
-        || parser.defaults?.renderer || parser.defaults?.tokenizer || parser.defaults?.hooks
+        || parser.defaults?.renderer
+        || (parser.defaults?.tokenizer && !hasOnlyMarkdownPolicyTokenizer(parser))
+        || parser.defaults?.hooks
         || parser.defaults?.walkTokens || parser.defaults?.extensions
         || isContextCheckpoint(message)
         || shouldBypassRenderHtmlCache(text)) {
@@ -1778,7 +1781,7 @@ async function renderHistoryTemplate(text, renderOptions, root, session, message
     const result = await renderWorkerClient.submit(root, {
         text, settings: { enableAiMessageButtons: renderOptions.settings?.enableAiMessageButtons },
         role: renderOptions.messageRole,
-        depth: renderOptions.depth, markdown: parser.defaults,
+        depth: renderOptions.depth, markdown: markdownWorkerOptions(parser),
         flowlock: Boolean(mainRendererReferences.flowlockProtocol),
         emoticons: /!\[|<img\b/i.test(text) ? emoticonUrlFixer.snapshot?.() || [] : [],
         measure,
@@ -2027,6 +2030,7 @@ function initializeMessageRenderer(refs) {
     mainRendererReferences.chatMessagesDiv.setAttribute('data-vcp-projectforge-root', '');
     projectForgeTopicSurface.replaceHistory(mainRendererReferences.chatMessagesDiv, mainRendererReferences.currentChatHistoryRef.get());
 
+    applyMarkdownPolicy(mainRendererReferences.markedInstance);
     templateCompiler = createRenderTemplateCompiler({ mainRendererReferences, contentProcessor, fixEmoticonUrlsInMarkdown, deferToolRequest, registerLazyTool, toolResultFullContentMap });
     contentPipeline = templateCompiler;
     contentRuntime = createContentRuntime({ pipeline: { process: (text, options) => ({ text: templateCompiler.processStream(text), state: {} }) } });
@@ -2291,7 +2295,7 @@ function initializeMessageRenderer(refs) {
         findToolRequestEnd: (text, startIndex) => findToolRequestEnd(text, startIndex),
         removeSpeakerTags: contentProcessor.removeSpeakerTags,
         ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
-        ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
+
         removeIndentationFromCodeBlockMarkers: contentProcessor.removeIndentationFromCodeBlockMarkers,
         deIndentMisinterpretedCodeBlocks: contentProcessor.deIndentMisinterpretedCodeBlocks, // 🟢 传递新函数
         processStartEndMarkers: contentProcessor.processStartEndMarkers, // 🟢 传递安全处理函数

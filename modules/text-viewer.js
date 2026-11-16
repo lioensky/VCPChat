@@ -2,6 +2,7 @@ import { collectToolBatchRanges } from './renderer/toolBatchRegions.js';
 import { splitToolBatchDomains, composeToolBatchHtml } from './renderer/toolBatchDomains.js';
 import { sanitizeToolDataHtml } from './renderer/toolDataHtml.js';
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
+import { applyMarkdownPolicy } from './renderer/markdownPolicy.js';
 import { replaceMarkdownCodeDomains } from './renderer/markdownCodeDomainScanner.js';
 import {
     TOOL_RESULT_START_MARKER,
@@ -959,7 +960,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Basic content processors from contentProcessor.js
         processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n'); // ensureNewlineAfterCodeBlock
-        processed = processed.replace(/~(?![\s~])/g, '~ '); // ensureSpaceAfterTilde
+
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2'); // removeIndentationFromCodeBlockMarkers
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2'); // ensureSeparatorBetweenImgAndCode
 
@@ -1216,6 +1217,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Pele 无需初始化；图表在 enhanceRenderedContent 中同步、逐张渲染。
 
     if (window.marked) {
+        applyMarkdownPolicy(window.marked);
         marked.setOptions({
             gfm: true,
             tables: true,

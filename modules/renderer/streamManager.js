@@ -376,9 +376,7 @@ function attachStreamProjection(dependencies) {
             if (refs.ensureNewlineAfterCodeBlock) {
                 processedText = refs.ensureNewlineAfterCodeBlock(processedText);
             }
-            if (refs.ensureSpaceAfterTilde) {
-                processedText = refs.ensureSpaceAfterTilde(processedText);
-            }
+
             if (refs.ensureSeparatorBetweenImgAndCode) {
                 processedText = refs.ensureSeparatorBetweenImgAndCode(processedText);
             }

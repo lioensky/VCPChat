@@ -192,21 +192,6 @@ function ensureNewlineAfterCodeBlock(text) {
     return text.replace(/^([ \t]{0,3}(?:`{3,}|~{3,})[^\S\r\n]*\w*)[^\S\r\n]+(\S.*)$/gm, '$1\n$2');
 }
 
-/**
- * Ensures that a tilde (~) is followed by a space, to prevent accidental strikethrough.
- * It avoids doing this for tildes inside URLs or file paths.
- * @param {string} text The input string.
- * @returns {string} The processed string with spaces after tildes where they were missing.
- */
-function ensureSpaceAfterTilde(text) {
-    if (typeof text !== 'string') return text;
-    // Replace a single tilde `~` with `~ ` to prevent it from being interpreted as a strikethrough marker.
-    // This should not affect tildes in URLs (e.g., `.../~user/`), home paths (`~/file`), or common code operators (`~=`, `~=`).
-    // The previous rule excluded tildes preceded by ASCII word chars, so the closing marker in `~text~`
-    // remained untouched (`~ text~`) and marked could still treat the pair as strikethrough in the main chat.
-    // Keep only the URL/path/operator exclusions and protect both the opening and closing single tilde.
-    return text.replace(/(^|[^/\\=~])~(?![\s~=/])/g, '$1~ ');
-}
 
 /**
  * Removes leading whitespace from lines starting with ``` (code block markers).
@@ -1372,8 +1357,7 @@ function applyContentProcessors(text) {
     return processedText
         // ensureNewlineAfterCodeBlock
         .replace(/^([ \t]{0,3}(?:`{3,}|~{3,})[^\S\r\n]*\w*)[^\S\r\n]+(\S.*)$/gm, '$1\n$2')
-        // ensureSpaceAfterTilde
-        .replace(/(^|[^/\\=~])~(?![\s~=/])/g, '$1~ ')
+
         // removeSpeakerTags - Simplified regex to remove all occurrences at the start
         .replace(/^(\[(?:(?!\]:\s).)*的发言\]:\s*)+/g, '')
         // ensureSeparatorBetweenImgAndCode
@@ -1492,7 +1476,7 @@ function cleanupPreviewsInContent(contentDiv) {
 const contentProcessor = Object.freeze({
     initializeContentProcessor,
     ensureNewlineAfterCodeBlock,
-    ensureSpaceAfterTilde,
+
     removeIndentationFromCodeBlockMarkers,
     removeSpeakerTags,
     ensureSeparatorBetweenImgAndCode,
