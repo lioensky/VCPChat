@@ -25,7 +25,12 @@
         template.content.querySelectorAll(
             'style,script,noscript'
         ).forEach((node) => node.remove());
-        return String(template.content.textContent || '')
+        const textContent = node => {
+            if (node.nodeType === Node.TEXT_NODE) return node.nodeValue;
+            if (node.nodeName === 'BR') return '\n';
+            return [...node.childNodes].map(textContent).join('');
+        };
+        return [...template.content.childNodes].map(textContent).join('')
             .replace(/\u00a0/g, ' ')
             .replace(/[ \t]+\n/g, '\n')
             .replace(/\n{3,}/g, '\n\n')

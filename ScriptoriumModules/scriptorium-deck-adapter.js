@@ -223,7 +223,7 @@
             if (!context.renderer?.renderEdit) {
                 throw new Error('Deck edit renderer is unavailable.');
             }
-            disposeSurface();
+            if (!disposeSurface()) return surface;
             surface = context.renderer.renderEdit({
                 adapter: api,
                 target,
@@ -332,19 +332,21 @@
         }
 
         function disposeSurface() {
+            if (!flushEditor()) return false;
             try {
                 surface?.dispose?.();
             } finally {
                 surface = null;
                 context.editor?.disposeSurface?.();
             }
+            return true;
         }
 
         function dispose() {
-            if (disposed) return;
-            flushEditor();
-            disposeSurface();
+            if (disposed) return true;
+            if (!disposeSurface()) return false;
             disposed = true;
+            return true;
         }
 
         const api = Object.freeze({

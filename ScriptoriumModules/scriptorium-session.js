@@ -29,6 +29,7 @@
         }
 
         async function activateDocument(documentModel, metadata = {}) {
+            if (context.editorResolver?.()?.flush?.() === false) return false;
             const previousDocumentId = documentPort.status().documentId;
             documentPort.setActivity({
                 loading: true,
@@ -243,7 +244,7 @@
         async function save(saveAs = false) {
             const status = documentPort.status();
             if (!status.ready || status.saving) return false;
-            context.editorResolver?.()?.flush?.();
+            if (context.editorResolver?.()?.flush?.() === false) return false;
             // 渲染编辑器与源码编辑器均实时写入同一个文档模型。保存只需
             // 结束当前历史输入脉冲，不再从源码面板提交第二份草稿。
             context.historyPort.finalize();

@@ -279,11 +279,21 @@
             });
             return output;
         };
+        const restoreHtml = html => {
+            let output = String(html || '');
+            objectUrls.forEach((objectUrl, id) => {
+                const resource = resourceMetadata(documentModel, id);
+                if (resource) output = output.split(objectUrl).join(
+                    `vdoc-resource://${resource.category}/${id}`
+                );
+            });
+            return output;
+        };
         const revoke = () => {
             objectUrls.forEach((url) => URL.revokeObjectURL(url));
             objectUrls.clear();
         };
-        return { resolveHtml, resolveExportHtml, revoke, objectUrls };
+        return { resolveHtml, resolveExportHtml, restoreHtml, revoke, objectUrls };
     }
 
     function resourceReference(resource) {

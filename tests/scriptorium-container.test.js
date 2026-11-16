@@ -124,6 +124,7 @@ async function run() {
         '<img src="https://example.test/first.svg">'
     );
     assert.match(rendered, /^<img src="blob:/);
+    assert.equal(resolver.restoreHtml(rendered).includes('vdoc-resource://media/'), true);
     const exported = resolver.resolveExportHtml(
         '<img src="https://example.test/first.svg">'
     );

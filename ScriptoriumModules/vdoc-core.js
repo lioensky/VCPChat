@@ -137,7 +137,7 @@
             script.remove();
         });
         return {
-            html: template.innerHTML,
+            html: serializeFragment(template.content),
             css: sanitizeCss(inlineStyles.join('\n\n')),
             script: inlineScripts.join('\n\n'),
             hadInlineStyle: inlineStyles.length > 0,
@@ -150,10 +150,8 @@
     }
 
     function normalizeCompleteSource(value, fallback) {
-        // 完整源码本身就是唯一文档真相。仅做安全清理、编辑节点标记和
-        // 可读格式化；绝不能抽取并重组 style/script，否则会改变标签属性、
-        // 执行顺序、DOM 归属以及人类在源码面看到的内容。
-        return formatHtml(ensureTextNodeIds(sanitizeHtml(value || fallback)));
+        // 持久化只清理安全属性与补齐身份；源码美化由显式展示操作负责。
+        return ensureTextNodeIds(value || fallback);
     }
 
     function normalizeCompleteSlideSource(value) {
@@ -217,7 +215,7 @@ ${defaultHtml()}`);
         const template = document.createElement('template');
         template.innerHTML = sanitizeHtml(source);
         return {
-            html: template.innerHTML,
+            html: serializeFragment(template.content),
         };
     }
 
@@ -376,12 +374,17 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         return attributeName === 'src' && FILE_SOURCE_ELEMENTS.has(element.tagName);
     }
 
-    function sanitizeHtml(html) {
-        const template = document.createElement('template');
-        template.innerHTML = String(html || '');
-        template.content.querySelectorAll(BLOCKED_ELEMENTS).forEach((element) => element.remove());
-
-        template.content.querySelectorAll('*').forEach((element) => {
+    // Sanitizes the root and its descendants; a blocked Element root is removed and returns null.
+    function sanitizeFragment(root) {
+        const rootIsElement = root.nodeType === Node.ELEMENT_NODE;
+        if (rootIsElement && root.matches(BLOCKED_ELEMENTS)) {
+            root.remove();
+            return null;
+        }
+        root.querySelectorAll(BLOCKED_ELEMENTS).forEach((element) => element.remove());
+        const elements = rootIsElement ? [root, ...root.querySelectorAll('*')] : [...root.querySelectorAll('*')];
+        elements.forEach((element) => {
+            if (element.content?.nodeType === Node.DOCUMENT_FRAGMENT_NODE) sanitizeFragment(element.content);
             for (const attribute of [...element.attributes]) {
                 const name = attribute.name.toLowerCase();
                 const value = attribute.value.trim();
@@ -396,7 +399,46 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 }
             }
         });
-        return template.innerHTML;
+        return root;
+    }
+
+    function serializeFragment(root) {
+        const rawTextTags = new Set(['SCRIPT', 'STYLE', 'XMP', 'IFRAME', 'NOEMBED', 'NOFRAMES']);
+        const serializeNode = (node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const holder = document.createElement('span');
+                holder.textContent = node.nodeValue;
+                return holder.innerHTML.replace(/\r/g, '&#13;');
+            }
+            if (node.nodeType === Node.COMMENT_NODE) return `<!--${node.nodeValue}-->`;
+            if (node.nodeType !== Node.ELEMENT_NODE) return '';
+            const shallow = node.cloneNode(false).outerHTML.replace(/\r/g, '&#13;');
+            const closing = `</${node.localName}>`;
+            if (node.tagName === 'PLAINTEXT') {
+                return shallow.slice(0, -closing.length) + node.textContent;
+            }
+            if (!shallow.endsWith(closing)) return shallow;
+            if (node.tagName === 'NOSCRIPT') {
+                return shallow.slice(0, -closing.length) + node.textContent + closing;
+            }
+            if (rawTextTags.has(node.tagName)) {
+                return shallow.slice(0, -closing.length) + node.innerHTML + closing;
+            }
+            const children = node.tagName === 'TEMPLATE' ? node.content : node;
+            const content = [...children.childNodes].map(serializeNode).join('');
+            // HTML parser suppresses exactly one LF immediately after PRE/TEXTAREA/LISTING.
+            const leadingLf = ['PRE', 'TEXTAREA', 'LISTING'].includes(node.tagName)
+                && children.firstChild?.nodeType === Node.TEXT_NODE
+                && children.firstChild.nodeValue.startsWith('\n') ? '\n' : '';
+            return shallow.slice(0, -closing.length) + leadingLf + content + closing;
+        };
+        return [...root.childNodes].map(serializeNode).join('');
+    }
+
+    function sanitizeHtml(html) {
+        const template = document.createElement('template');
+        template.innerHTML = String(html || '');
+        return serializeFragment(sanitizeFragment(template.content));
     }
 
     function sanitizeCss(css) {
@@ -408,7 +450,8 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
 
     function ensureTextNodeIds(html) {
         const template = document.createElement('template');
-        template.innerHTML = sanitizeHtml(html);
+        template.innerHTML = String(html || '');
+        sanitizeFragment(template.content);
 
         // data-vdoc-* 是渲染树定向回写源码的主键，不只是展示元数据。
         // 粘贴 HTML、手工复制源码或旧版导入都可能留下重复值；querySelector
@@ -443,7 +486,7 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         editables.forEach((element) => {
             element.setAttribute('data-vdoc-removable', 'true');
         });
-        return template.innerHTML;
+        return serializeFragment(template.content);
     }
 
     function escapeText(value) {
@@ -477,7 +520,8 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
 
         const formatElement = (element, depth) => {
             const indent = indentText.repeat(depth);
-            if (whitespaceSensitiveTags.has(element.tagName)) {
+            if (whitespaceSensitiveTags.has(element.tagName)
+                || ['pre', 'pre-wrap', 'break-spaces'].includes(element.style.whiteSpace)) {
                 return `${indent}${element.outerHTML}`;
             }
             if (voidTags.has(element.tagName)) {
@@ -686,6 +730,8 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         parse,
         serialize,
         sanitizeHtml,
+        sanitizeFragment,
+        serializeFragment,
         sanitizeCss,
         ensureTextNodeIds,
         formatHtml,

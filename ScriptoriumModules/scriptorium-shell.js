@@ -349,7 +349,7 @@
                 return false;
             }
             resetScrollPositionsIfDocumentChanged();
-            context.editorResolver?.()?.flush?.();
+            if (context.editorResolver?.()?.flush?.() === false) return false;
             if (normalized !== mode) {
                 context.historyPort?.finalize?.({
                     reason: 'surface-history-finalized',

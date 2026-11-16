@@ -92,7 +92,19 @@
             const segments = [];
             let text = '';
             let previousBlock = null;
-            renderedTextNodes(root).forEach((node) => {
+            const append = node => {
+                if (node.nodeType === Node.ELEMENT_NODE && node.nodeName === 'BR') {
+                    text += '\n';
+                    previousBlock = node.parentElement?.closest(
+                        '[data-vdoc-text],[data-vdoc-edit-key]'
+                    ) || null;
+                    return;
+                }
+                if (node.nodeType !== Node.TEXT_NODE) {
+                    node.childNodes.forEach(append);
+                    return;
+                }
+                if (!node.nodeValue) return;
                 const block = node.parentElement?.closest(
                     '[data-vdoc-text],[data-vdoc-edit-key]'
                 ) || null;
@@ -101,7 +113,9 @@
                 text += node.nodeValue;
                 segments.push({ node, start, end: text.length });
                 previousBlock = block;
-            });
+            };
+            const runtime = root.querySelector('.vdoc-runtime');
+            runtime?.childNodes.forEach(append);
 
             const normalizedText = text.toLocaleLowerCase();
             const normalizedQuery = query.toLocaleLowerCase();

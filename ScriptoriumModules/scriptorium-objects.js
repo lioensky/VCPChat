@@ -675,7 +675,7 @@
         return true;
     }
 
-    function applyMutationToSource(source, mutation = {}, deck = false) {
+    function applyMutationToSource(source, mutation = {}, deck = false, core = null) {
         const template = document.createElement('template');
         template.innerHTML = String(source || '');
         const fragment = template.content;
@@ -707,7 +707,9 @@
         }
         return {
             changed,
-            source: changed ? template.innerHTML : String(source || ''),
+            source: changed
+                ? core?.serializeFragment?.(fragment) || template.innerHTML
+                : String(source || ''),
         };
     }
 
