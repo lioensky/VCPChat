@@ -1,0 +1,13 @@
+{
+  "name": "projectforge-mcp-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local stdio MCP adapter for ProjectForgeService",
+  "type": "commonjs",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node server.cjs", "test": "node --test bridge.test.cjs search.test.cjs" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "ajv": "^8.17.1"
+  }
+}

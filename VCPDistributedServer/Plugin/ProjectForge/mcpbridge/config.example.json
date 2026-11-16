@@ -1,0 +1,9 @@
+{
+  "workspaces": [
+    { "id": "vcpchat", "alias": "vcpchat", "path": "H:/VCP/VCPMain/VCPChat", "enabled": true }
+  ],
+  "activeWorkspaceId": "vcpchat",
+  "maid": "Kerr",
+  "enableEval": false,
+  "enablePurge": false
+}
