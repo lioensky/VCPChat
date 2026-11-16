@@ -601,8 +601,9 @@ function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, h
             settings,
             runHeavy: true,
             includeAttachments: false,
-            // stable block 在终态会被整树替换，脚本只允许在规范终态执行一次。
-            processScripts: false
+            // Strictly closed islands own independent mounts; other scripts wait.
+            processScripts: false,
+            mountStableIslands: true
         });
         if (enrichResult && typeof enrichResult.catch === 'function') {
             enrichResult.catch(error => console.error('[StreamManager] Stable block enrichment failed:', error));
@@ -628,14 +629,15 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
     if (!sourceText) return [];
 
     const cssChunks = [];
+    const islandSource = refs.prepareAnimationIslands?.(sourceText, options.messageItem) ?? sourceText;
     const renderSourceText = typeof refs.processAssistantScopedHtmlContent === 'function'
         ? refs.processAssistantScopedHtmlContent(
-            sourceText,
+            islandSource,
             options.scopeId || null,
             options.messageItem || null,
             { injectStyles: false, cssChunks }
         )
-        : sourceText;
+        : islandSource;
     if (cssChunks.length) {
         segmentState.stableCssChunks.push(...cssChunks);
         segmentState.scopedCssDirty = true;
@@ -665,8 +667,12 @@ function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, opti
     for (const record of segmentState.stableBlocks) {
         // Tool payload registries are view-owned and cleared on navigation.
         // Rebuild only payload-bearing blocks; plain Markdown keeps its HTML cache.
-        if (/data-vcp-lazy-tool-id=|data-content-id=/.test(record.html)) {
-            record.html = parseFullStreamContent(record.source);
+        if (/data-vcp-lazy-tool-id=|data-content-id=|data-vcp-animation-island=/.test(record.html)) {
+            let source = refs.prepareAnimationIslands?.(record.source, options.messageItem) ?? record.source;
+            source = refs.processAssistantScopedHtmlContent?.(
+                source, options.scopeId, options.messageItem, { injectStyles: false, cssChunks: [] }
+            ) ?? source;
+            record.html = parseFullStreamContent(source);
         }
         const blockEl = ownerDocument().createElement('div');
         blockEl.className = 'vcp-stream-stable-block';
@@ -683,7 +689,8 @@ function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, opti
                 settings: options.settings || null,
                 runHeavy: true,
                 includeAttachments: false,
-                processScripts: false
+                processScripts: false,
+                mountStableIslands: true
             });
             if (enrichResult && typeof enrichResult.catch === 'function') {
                 enrichResult.catch(error => console.error('[StreamManager] Restored stable block enrichment failed:', error));
@@ -2104,20 +2111,22 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
 
             const contentDiv = messageItem.querySelector('.md-content');
             if (contentDiv) {
-                // Keep the old subtree reachable until the replacement's cleanup runs.
-                cleanupChatMedia(contentDiv);
+                // Replacement owns cleanup, including island-instance preservation.
 
                 const preparedFinal = typeof refs.prepareFinalTextForRender === 'function'
                     ? refs.prepareFinalTextForRender(messageId, finalFullText, message.role || 'assistant', historyForThisMessage)
                     : { text: finalFullText, role: message.role || 'assistant', depth: 0 };
+                const islandFinalText = preparedFinal.role === 'assistant'
+                    ? (refs.prepareAnimationIslands?.(preparedFinal.text, messageItem, { terminal: true }) ?? preparedFinal.text)
+                    : preparedFinal.text;
                 const finalRenderText = preparedFinal.role === 'assistant'
                     && typeof refs.processAssistantScopedHtmlContent === 'function'
                     ? refs.processAssistantScopedHtmlContent(
-                        preparedFinal.text,
+                        islandFinalText,
                         messageItem.id || null,
                         messageItem
                     )
-                    : preparedFinal.text;
+                    : islandFinalText;
                 const rawHtml = parseFullStreamContent(finalRenderText, {
                     messageRole: preparedFinal.role,
                     depth: preparedFinal.depth

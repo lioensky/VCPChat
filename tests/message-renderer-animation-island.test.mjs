@@ -1074,3 +1074,196 @@ test('body replacement during a math slice revokes the old writer', async () => 
         assert.equal(oldContent.querySelector('.katex'), null);
     } finally { await disposeFixture(fixture); }
 });
+
+
+async function startIslandStream(fixture, operation = 'early-island') {
+    const message = {
+        id: 'animation-island-message', role: 'assistant', content: '',
+        agentId: 'animation-agent', topicId: 'animation-topic', streamOperationId: operation,
+    };
+    await fixture.streamProjection.startStreamingMessage(message, fixture.messageItem);
+    return message;
+}
+
+async function appendIslandChunk(fixture, message, content) {
+    fixture.streamProjection.appendStreamChunk(message.id, { content }, message, message.streamOperationId);
+    await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 100));
+}
+
+async function finishIslandStream(fixture, message, source) {
+    await fixture.streamProjection.projectStreamTerminal(message.id, 'stop', message, {
+        streamOperationId: message.streamOperationId, fullResponse: source,
+    });
+}
+
+test('closed stable JS island starts early and retains node, timer and initialization across terminal', async () => {
+    const fixture = await createRendererFixture('', null, true);
+    try {
+        const message = await startIslandStream(fixture);
+        const source = '<div class="early-card"><style>.early-card { width: 117px; }</style>'
+            + '<span>pending</span><script>'
+            + 'window.earlyRuns = (window.earlyRuns || 0) + 1;'
+            + 'const node = container.querySelector("span"); node.textContent = "running";'
+            + 'setInterval(() => { node.dataset.ticks = String(Number(node.dataset.ticks || 0) + 1); }, 10);'
+            + '</script></div>';
+        await appendIslandChunk(fixture, message, source.slice(0, -6));
+        assert.equal(fixture.dom.window.earlyRuns, undefined, 'outer DIV is still open');
+        await appendIslandChunk(fixture, message, source.slice(-6));
+        const node = fixture.messageItem.querySelector('.vcp-stream-stable-root .early-card');
+        assert.ok(node);
+        assert.equal(node.textContent, 'running');
+        assert.equal(fixture.dom.window.earlyRuns, 1);
+        assert.equal(fixture.dom.window.getComputedStyle(node).width, '117px');
+        await appendIslandChunk(fixture, message, '\n\nfollowing prose');
+        assert.equal(fixture.messageItem.querySelector('.early-card'), node);
+        const ticks = Number(node.querySelector('span').dataset.ticks);
+        await finishIslandStream(fixture, message, source + '\n\nfollowing prose');
+        assert.equal(fixture.messageItem.querySelector('.early-card'), node, 'canonical terminal must adopt the live island');
+        assert.equal(fixture.dom.window.earlyRuns, 1, 'no second initialization');
+        assert.equal(fixture.messageItem.querySelector('.vcp-stream-stable-root'), null);
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 35));
+        assert.ok(Number(node.querySelector('span').dataset.ticks) > ticks, 'same mount remains alive');
+        fixture.renderer.updateMessageContent(message.id, 'replacement');
+        const snapshot = node.querySelector('span').dataset.ticks;
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 35));
+        assert.equal(node.querySelector('span').dataset.ticks, snapshot, 'body replacement revokes descendant mount');
+    } finally { await disposeFixture(fixture); }
+});
+
+test('malformed and unsupported islands wait for terminal compatibility execution', async () => {
+    for (const source of [
+        '<div><span><script>window.fallbackRuns = (window.fallbackRuns || 0) + 1;</script></div>',
+        '<div><p>optional HTML structure</p><script>window.fallbackRuns = (window.fallbackRuns || 0) + 1;</script></div>',
+    ]) {
+        const fixture = await createRendererFixture('', null, true);
+        try {
+            const message = await startIslandStream(fixture);
+            await appendIslandChunk(fixture, message, source);
+            assert.equal(fixture.dom.window.fallbackRuns, undefined);
+            await finishIslandStream(fixture, message, source);
+            assert.equal(fixture.dom.window.fallbackRuns, 1);
+        } finally { await disposeFixture(fixture); }
+    }
+});
+
+test('failed early initialization revokes partial work and retries once at terminal', async () => {
+    const fixture = await createRendererFixture('', null, true);
+    try {
+        const message = await startIslandStream(fixture);
+        const source = '<div><span></span><script>'
+            + 'window.initAttempts = (window.initAttempts || 0) + 1;'
+            + 'if (window.initAttempts === 1) {'
+            + 'setTimeout(() => { window.failedMountLeaked = true; }, 10);'
+            + 'throw new Error("controlled early failure"); }'
+            + 'container.querySelector("span").textContent = "recovered";'
+            + '</script></div>';
+        await appendIslandChunk(fixture, message, source);
+        assert.equal(fixture.dom.window.initAttempts, 1);
+        assert.equal(fixture.dom.window.failedMountLeaked, undefined);
+        const old = fixture.messageItem.querySelector('[data-vcp-animation-island]');
+        await finishIslandStream(fixture, message, source);
+        assert.equal(fixture.dom.window.initAttempts, 2);
+        assert.equal(old.isConnected, false);
+        assert.match(fixture.messageItem.textContent, /recovered/);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('canonical source changes retire early mounts instead of retaining stale islands', async () => {
+    const fixture = await createRendererFixture('', null, true);
+    try {
+        const message = await startIslandStream(fixture);
+        const source = '<div class="old-island"><script>'
+            + 'window.oldRuns = (window.oldRuns || 0) + 1;'
+            + 'setInterval(() => { window.oldTicks = (window.oldTicks || 0) + 1; }, 10);'
+            + '</script></div>';
+        await appendIslandChunk(fixture, message, source);
+        assert.equal(fixture.dom.window.oldRuns, 1);
+        const old = fixture.messageItem.querySelector('.old-island');
+        await finishIslandStream(fixture, message,
+            '<div class="new-island"><script>window.newRuns = (window.newRuns || 0) + 1;</script></div>');
+        const ticks = fixture.dom.window.oldTicks;
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 35));
+        assert.equal(fixture.dom.window.oldTicks, ticks);
+        assert.equal(old.isConnected, false);
+        assert.equal(fixture.dom.window.newRuns, 1);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('identical sibling islands mount separately and each survives terminal without replay', async () => {
+    const fixture = await createRendererFixture('', null, true);
+    try {
+        const message = await startIslandStream(fixture);
+        const island = '<div class="sibling-island"><span></span><script>'
+            + 'window.siblingRuns = (window.siblingRuns || 0) + 1;'
+            + 'container.querySelector("span").textContent = String(window.siblingRuns);'
+            + '</script></div>';
+        await appendIslandChunk(fixture, message, island + '\n\n' + island);
+        const nodes = [...fixture.messageItem.querySelectorAll('.sibling-island')];
+        assert.deepEqual(nodes.map(node => node.textContent), ['1', '2']);
+        await finishIslandStream(fixture, message, island + '\n\n' + island);
+        assert.deepEqual([...fixture.messageItem.querySelectorAll('.sibling-island')], nodes);
+        assert.equal(fixture.dom.window.siblingRuns, 2);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('active stream navigation revokes old island mount and restores a fresh instance', async () => {
+    const fixture = await createRendererFixture('', null, true);
+    try {
+        const message = await startIslandStream(fixture);
+        const source = '<div class="nav-island"><span></span><script>'
+            + 'window.navRuns = (window.navRuns || 0) + 1;'
+            + 'const node = container.querySelector("span");'
+            + 'setInterval(() => { node.textContent += "."; }, 10);'
+            + '</script></div>';
+        await appendIslandChunk(fixture, message, source);
+        const old = fixture.messageItem.querySelector('.nav-island');
+        fixture.renderer.clearChat();
+        const snapshot = old.textContent;
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 30));
+        assert.equal(old.textContent, snapshot);
+        await fixture.streamProjection.reconcileConversation({
+            itemType: 'agent', itemId: 'animation-agent', topicId: 'animation-topic',
+        });
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 100));
+        assert.equal(fixture.dom.window.navRuns, 2);
+        assert.notEqual(fixture.root.querySelector('.nav-island'), old);
+        await finishIslandStream(fixture, message, source);
+        assert.equal(fixture.dom.window.navRuns, 2);
+    } finally { await disposeFixture(fixture); }
+});
+
+
+test('one failed sibling retries at terminal without refreshing successful sibling mounts', async () => {
+    const fixture = await createRendererFixture('', null, true);
+    try {
+        const message = await startIslandStream(fixture);
+        const a = '<div class="island-a"><span></span><script>'
+            + 'window.aRuns = (window.aRuns || 0) + 1;'
+            + 'if (window.aRuns === 1) throw new Error("A fails early");'
+            + 'container.querySelector("span").textContent = "A recovered";'
+            + '</script></div>';
+        const makeIsland = name => `<div class="island-${name}"><span></span><script>`
+            + `window.${name}Runs = (window.${name}Runs || 0) + 1;`
+            + 'const node = container.querySelector("span");'
+            + 'setInterval(() => { node.dataset.ticks = String(Number(node.dataset.ticks || 0) + 1); }, 10);'
+            + '</script></div>';
+        const source = [a, makeIsland('b'), makeIsland('c')].join('\n\n');
+        await appendIslandChunk(fixture, message, source);
+        const b = fixture.messageItem.querySelector('.island-b');
+        const c = fixture.messageItem.querySelector('.island-c');
+        assert.equal(fixture.dom.window.aRuns, 1);
+        assert.equal(fixture.dom.window.bRuns, 1);
+        assert.equal(fixture.dom.window.cRuns, 1);
+        const bTicks = Number(b.querySelector('span').dataset.ticks || 0);
+        const cTicks = Number(c.querySelector('span').dataset.ticks || 0);
+        await finishIslandStream(fixture, message, source);
+        assert.equal(fixture.dom.window.aRuns, 2, 'only failed A retries');
+        assert.equal(fixture.dom.window.bRuns, 1, 'B never initializes twice');
+        assert.equal(fixture.dom.window.cRuns, 1, 'C never initializes twice');
+        assert.equal(fixture.messageItem.querySelector('.island-b'), b);
+        assert.equal(fixture.messageItem.querySelector('.island-c'), c);
+        await new Promise(resolve => fixture.dom.window.setTimeout(resolve, 35));
+        assert.ok(Number(b.querySelector('span').dataset.ticks) > bTicks);
+        assert.ok(Number(c.querySelector('span').dataset.ticks) > cTicks);
+    } finally { await disposeFixture(fixture); }
+});

@@ -1,3 +1,4 @@
+import { collectStrictAnimationIslands } from './renderer/strictAnimationIsland.js';
 import { createOffscreenDomWindow } from './renderer/offscreenDomWindow.js';
 import { createRenderWorkerClient } from './renderer/renderWorkerClient.js';
 import { createRenderTemplateCompiler } from './renderer/renderTemplateCompiler.js';
@@ -74,9 +75,9 @@ const ownedStyleElements = new Set();
 const persistedAvatarColorKeys = new Set();
 const scopedCssCache = new Map();
 const ownedAnimationContents = new Set();
-function processAnimationsInContent(content, optimizer) {
+function processAnimationsInContent(content, optimizer, animationOptions = {}) {
     if (rendererDisposed) return;
-    const controller = processOwnedAnimations(content, optimizer);
+    const controller = processOwnedAnimations(content, optimizer, animationOptions);
     if (controller && !ownedAnimationContents.has(content)) {
         ownedAnimationContents.add(content);
         controller.own(() => ownedAnimationContents.delete(content));
@@ -84,8 +85,61 @@ function processAnimationsInContent(content, optimizer) {
     return controller;
 }
 function cleanupAnimationsInContent(content) {
-    ownedAnimationContents.delete(content);
+    // Mount roots may be independent stable islands, not just .md-content.
+    const records = animationIslandsByMessage.get(content?.closest?.('.message-item'));
+    if (records) {
+        for (const [key, record] of records) {
+            if (record.node && (record.node === content || content?.contains?.(record.node))) records.delete(key);
+        }
+    }
+    for (const root of [...ownedAnimationContents]) {
+        if (root === content || content?.contains?.(root)) {
+            ownedAnimationContents.delete(root);
+            cleanupOwnedAnimations(root);
+        }
+    }
     cleanupOwnedAnimations(content);
+}
+
+const animationIslandsByMessage = new WeakMap();
+let animationIslandSequence = 0;
+function prepareAnimationIslands(source, messageItem, { terminal = false } = {}) {
+    if (!messageItem) return source;
+    let records = animationIslandsByMessage.get(messageItem);
+    if (!records) animationIslandsByMessage.set(messageItem, records = new Map());
+    const used = new Set();
+    let output = '';
+    let cursor = 0;
+    for (const range of collectStrictAnimationIslands(source)) {
+        const raw = source.slice(range.start, range.end);
+        let record = terminal && [...records.values()].find(entry =>
+            !used.has(entry.key) && entry.source === raw && entry.node?.isConnected
+            && entry.controller?.isCurrent() && entry.controller.executionStatus === 'ready');
+        if (!record) {
+            // Terminal-only/failed islands continue through the normal script path.
+            if (terminal) continue;
+            const key = `${surfaceId}-island-${++animationIslandSequence}`;
+            record = { key, source: raw, node: null, controller: null };
+            records.set(key, record);
+        }
+        used.add(record.key);
+        output += source.slice(cursor, range.start)
+            + raw.replace(/^<div\b/i, match => `${match} data-vcp-animation-island="${record.key}"`);
+        cursor = range.end;
+    }
+    return output + source.slice(cursor);
+}
+
+function mountStableAnimationIslands(contentDiv) {
+    const item = contentDiv.closest('.message-item');
+    const records = animationIslandsByMessage.get(item);
+    if (!records) return;
+    for (const node of contentDiv.querySelectorAll('[data-vcp-animation-island]')) {
+        const record = records.get(node.dataset.vcpAnimationIsland);
+        if (!record || record.node === node) continue;
+        record.node = node;
+        record.controller = processAnimationsInContent(node, visibilityOptimizer, { strictExecution: true });
+    }
 }
 
 function scopeCssCached(source, scopeId) {
@@ -2218,6 +2272,7 @@ function initializeMessageRenderer(refs) {
         runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
         preprocessFullContent: preprocessFullContent,
         processAssistantScopedHtmlContent,
+        prepareAnimationIslands,
         cleanupStreamContent: contentDiv => {
             cleanupAnimationsInContent(contentDiv);
             releaseLazyTools(contentDiv);
@@ -2799,7 +2854,8 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         runHeavy = true,
         includeAttachments = true,
         deferHighlights = true,
-        processScripts = true
+        processScripts = true,
+        mountStableIslands = false
     } = options;
 
     const messageItem = contentDiv.closest?.('.message-item');
@@ -2814,6 +2870,21 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     };
 
     if (typeof rawHtml === 'string') {
+        // Preserve exact-source island instances across the canonical replacement.
+        // Detach/replace/reattach synchronously: no callback sees a disconnected root.
+        const retained = [];
+        const records = animationIslandsByMessage.get(messageItem);
+        if (processScripts && records) {
+            for (const record of records.values()) {
+                if (record.node && contentDiv.contains(record.node)
+                    && record.controller?.isCurrent()
+                    && record.controller.executionStatus === 'ready'
+                    && rawHtml.includes(`data-vcp-animation-island="${record.key}"`)) {
+                    record.node.remove();
+                    retained.push(record);
+                }
+            }
+        }
         cleanupAnimationsInContent(contentDiv);
         chartEmbedHost?.beforeReplace(contentDiv);
         toolPresentation?.capture(contentDiv);
@@ -2823,7 +2894,23 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         cleanupChatMedia(contentDiv);
         cleanupToolResultFullContentForRoot(contentDiv);
         contentProcessor.cleanupPreviewsInContent(contentDiv);
-        imageHandler.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+        try {
+            imageHandler.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+            for (const record of retained) {
+                const replacement = [...contentDiv.querySelectorAll('[data-vcp-animation-island]')]
+                    .find(node => node.dataset.vcpAnimationIsland === record.key);
+                if (replacement) replacement.replaceWith(record.node);
+                else cleanupAnimationsInContent(record.node);
+            }
+        } catch (error) {
+            for (const record of retained) cleanupAnimationsInContent(record.node);
+            throw error;
+        }
+        if (records) {
+            for (const [key, record] of records) {
+                if (record.node && !record.node.isConnected) records.delete(key);
+            }
+        }
     }
 
     if (!isStillValid()) return;
@@ -2894,8 +2981,9 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     }
 
     if (!isStillValid()) return;
-    // stable block 会在终态被规范整树替换；提前执行脚本会把 rAF、timer 和事件
-    // 绑定到即将销毁的局部 DOM。CSS 动画不依赖此处理器，可继续即时播放。
+    // Only strictly closed islands get independent mounts during streaming.
+    // Unrecognized scripts retain the terminal-only compatibility path.
+    if (mountStableIslands) mountStableAnimationIslands(contentDiv);
     if (processScripts) {
         processAnimationsInContent(contentDiv, visibilityOptimizer);
         if (!isStillValid()) {

@@ -348,7 +348,7 @@ function loadScript(src, realm) {
     return task;
 }
 
-function processScripts(containerElement, visibilityOptimizer) {
+function processScripts(containerElement, visibilityOptimizer, { strictExecution = false } = {}) {
     const realm = containerElement.ownerDocument.defaultView;
     const previous = mounts.get(containerElement);
     if (previous && (previous.state === 'revoked' || previous.revision !== containerElement._vcpRenderRevision || previous.optimizer !== visibilityOptimizer)) {
@@ -356,6 +356,12 @@ function processScripts(containerElement, visibilityOptimizer) {
     }
     const controller = mounts.get(containerElement) || createAnimationMountController(containerElement, visibilityOptimizer);
     mounts.set(containerElement, controller);
+    controller.executionStatus = 'pending';
+    const failExecution = error => {
+        controller.executionStatus = 'failed';
+        if (strictExecution) controller.revoke();
+        console.error('[Animation] Execution stopped:', error);
+    };
     const execution = controller;
     scriptExecutions.set(containerElement, execution);
     const messageItem = containerElement.closest('.message-item');
@@ -609,28 +615,30 @@ function processScripts(containerElement, visibilityOptimizer) {
     try {
         ${scriptContent}
     } catch (e) {
-        console.error('[Animation] Error in AI script:', e);
+        throw e;
     }
 }).call(window, window);`;
                     if (script.type && !/^(?:text|application)\/javascript$/i.test(script.type)) {
-                        console.warn('[Animation] Unsupported inline script type:', script.type);
-                        return;
+                        throw new Error('Unsupported inline script type: ' + script.type);
                     }
                     const runner = document.createElement('script');
                     runner.textContent = `document.currentScript.__vcpRun = function(window) { ${wrappedScript} };`;
                     try {
                         document.head.appendChild(runner);
                         if (typeof runner.__vcpRun === 'function') runner.__vcpRun.call(scopedWindow, scopedWindow);
-                        else console.warn('[Animation] Inline execution unavailable under this document policy');
+                        else throw new Error('Inline execution unavailable under this document policy');
                     } finally {
                         delete runner.__vcpRun;
                         runner.remove();
                     }
 
                 } catch (e) {
-                    console.error('[Animation] Error executing inline script:', e);
+                    failExecution(e);
                 }
             });
+        }
+        if (controller.executionStatus !== 'failed' && controller.isCurrent()) {
+            controller.executionStatus = 'ready';
         }
     };
 
@@ -639,14 +647,14 @@ function processScripts(containerElement, visibilityOptimizer) {
     else Promise.all(dependencies.map(script => loadScript(script.src, realm)))
         .then(executeInline)
         .catch(error => {
-            if (controller.isCurrent()) console.error('[Animation] Execution stopped:', error);
+            if (controller.isCurrent()) failExecution(error);
         });
     return controller;
 }
 
-export function processAnimationsInContent(containerElement, visibilityOptimizer = null) {
+export function processAnimationsInContent(containerElement, visibilityOptimizer = null, options = {}) {
     if (!containerElement) return;
-    return processScripts(containerElement, visibilityOptimizer);
+    return processScripts(containerElement, visibilityOptimizer, options);
 }
 
 
