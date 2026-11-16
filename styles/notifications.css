@@ -1813,3 +1813,444 @@ body[data-vcp-theme="light"] .tool-change-audit-diff-line.is-add {
 .notification-tool-approval .notification-approval-script-card .notification-approval-script {
     margin: 0;
 }
+
+/* --- Notification Zoom Modal & Card Actions --- */
+.notification-card-actions {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    z-index: 3;
+}
+
+.notification-toast-actions {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    z-index: 5;
+}
+
+.floating-toast-notification:hover .notification-toast-actions {
+    opacity: 1;
+}
+
+.notification-toast-zoom-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--primary-text, #fff);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    padding: 0;
+}
+
+.notification-toast-zoom-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.notification-toast-zoom-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
+#notificationZoomModal.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: var(--vcp-ui-backdrop, rgba(0, 0, 0, 0.68));
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+    padding: 20px;
+}
+
+#notificationZoomModal.modal.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#notificationZoomModal .notification-zoom-modal-content {
+    background: var(--vcp-ui-bg-1, var(--secondary-bg, #20252a)) !important;
+    color: var(--vcp-ui-text-0, var(--primary-text, #f2f0e9));
+    border: 1px solid var(--vcp-ui-border, var(--border-color, rgba(255, 255, 255, 0.14)));
+    border-radius: var(--vcp-ui-radius-lg, 12px);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    width: min(1400px, 94vw);
+    max-width: min(1400px, 94vw) !important;
+    height: min(92vh, 980px);
+    max-height: 92vh !important;
+    min-height: 480px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0 !important;
+    margin: auto;
+    box-sizing: border-box;
+    animation: notificationZoomPop 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes notificationZoomPop {
+    from {
+        transform: scale(0.97);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.notification-zoom-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--vcp-ui-border, var(--border-color, rgba(255, 255, 255, 0.08)));
+    background: var(--vcp-ui-bg-0, var(--primary-bg, rgba(23, 26, 29, 0.95)));
+    flex-shrink: 0;
+}
+
+.notification-zoom-title-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+}
+
+.notification-zoom-tone-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 9px;
+    border-radius: var(--vcp-ui-radius-xs, 4px);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+}
+
+.notification-zoom-tone-badge.tone-error {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.notification-zoom-tone-badge.tone-success {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+    border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.notification-zoom-tone-badge.tone-warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.notification-zoom-tone-badge.tone-neutral {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.notification-zoom-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--vcp-ui-text-0, var(--primary-text, #f2f0e9));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.notification-zoom-time {
+    font-size: 12px;
+    color: var(--vcp-ui-text-3, var(--secondary-text, rgba(255, 255, 255, 0.5)));
+    flex-shrink: 0;
+}
+
+.notification-zoom-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.notification-zoom-header-actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--vcp-ui-radius-sm, 6px);
+    border: 1px solid var(--vcp-ui-border, var(--border-color, rgba(255, 255, 255, 0.16)));
+    background: var(--vcp-ui-fill-1, rgba(255, 255, 255, 0.08));
+    color: var(--vcp-ui-text-1, #e0e0e0);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.notification-zoom-header-actions button:hover {
+    background: var(--vcp-ui-fill-2, rgba(255, 255, 255, 0.16));
+    color: var(--vcp-ui-text-0, #ffffff);
+}
+
+.notification-zoom-header-actions button.is-active {
+    background: var(--vcp-ui-accent, var(--button-bg, #4a90e2));
+    color: #ffffff;
+    border-color: transparent;
+}
+
+.notification-zoom-header-actions .close-button.notification-zoom-close {
+    font-size: 20px;
+    line-height: 1;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--vcp-ui-text-2, var(--secondary-text, rgba(255, 255, 255, 0.6)));
+    cursor: pointer;
+    border-radius: var(--vcp-ui-radius-sm, 6px);
+}
+
+.notification-zoom-header-actions .close-button.notification-zoom-close:hover {
+    color: var(--vcp-ui-text-0, #ffffff);
+    background: var(--vcp-ui-fill-1, rgba(255, 255, 255, 0.1));
+}
+
+.notification-zoom-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 20px 24px;
+    background: var(--vcp-ui-bg-0, var(--primary-bg, #14171a));
+    display: flex;
+    flex-direction: column;
+}
+
+.notification-zoom-content {
+    flex: 1;
+    min-height: 100%;
+    margin: 0;
+    padding: 16px 20px;
+    border-radius: var(--vcp-ui-radius-md, 8px);
+    background: rgba(0, 0, 0, 0.42);
+    border: 1px solid var(--vcp-ui-border, rgba(255, 255, 255, 0.08));
+    color: var(--vcp-ui-text-0, var(--primary-text, #f2f0e9));
+    font-family: var(--vcp-ui-font-family-mono, var(--vcp-chat-code-font-family, Consolas, Monaco, 'Courier New', monospace));
+    font-size: 13.5px;
+    line-height: 1.65;
+    box-sizing: border-box;
+    user-select: text;
+    -webkit-user-select: text;
+    tab-size: 2;
+}
+
+.notification-zoom-content.is-wrapped {
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.notification-zoom-content:not(.is-wrapped) {
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.notification-zoom-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-top: 1px solid var(--vcp-ui-border, var(--border-color, rgba(255, 255, 255, 0.08)));
+    background: var(--vcp-ui-bg-0, var(--primary-bg, rgba(23, 26, 29, 0.95)));
+    flex-shrink: 0;
+}
+
+.notification-zoom-stats {
+    font-size: 12.5px;
+    color: var(--vcp-ui-text-3, var(--secondary-text, rgba(255, 255, 255, 0.5)));
+    font-variant-numeric: tabular-nums;
+}
+
+.notification-zoom-close-btn {
+    height: 32px;
+    padding: 0 20px;
+    border-radius: var(--vcp-ui-radius-sm, 6px);
+    border: 1px solid var(--vcp-ui-border, var(--border-color, rgba(255, 255, 255, 0.16)));
+    background: var(--vcp-ui-fill-2, rgba(255, 255, 255, 0.12));
+    color: var(--vcp-ui-text-0, #ffffff);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 120ms ease;
+}
+
+.notification-zoom-close-btn:hover {
+    background: var(--vcp-ui-fill-1, rgba(255, 255, 255, 0.2));
+}
+
+/* =========================================================
+   Notification Zoom Modal · Light Theme Adaptations (白天主题自适应)
+   ========================================================= */
+:is(.light-theme, [data-vcp-theme="light"]) #notificationZoomModal.modal,
+#notificationZoomModal.modal.light-theme {
+    background: rgba(15, 23, 42, 0.38);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) #notificationZoomModal .notification-zoom-modal-content,
+#notificationZoomModal.modal.light-theme .notification-zoom-modal-content {
+    background: var(--vcp-ui-bg-1, var(--secondary-bg, #fcfaf4)) !important;
+    color: var(--vcp-ui-text-0, var(--primary-text, #1b211f));
+    border: 1px solid var(--vcp-ui-border, var(--border-color, #d2cbc0));
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15), 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-header,
+#notificationZoomModal.modal.light-theme .notification-zoom-header,
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-footer,
+#notificationZoomModal.modal.light-theme .notification-zoom-footer {
+    background: var(--vcp-ui-bg-0, var(--primary-bg, #f5f2ea));
+    border-color: var(--vcp-ui-border, var(--border-color, #ded7cc));
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-title,
+#notificationZoomModal.modal.light-theme .notification-zoom-title {
+    color: var(--vcp-ui-text-0, var(--primary-text, #1b211f));
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-time,
+#notificationZoomModal.modal.light-theme .notification-zoom-time,
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-stats,
+#notificationZoomModal.modal.light-theme .notification-zoom-stats {
+    color: var(--vcp-ui-text-2, var(--secondary-text, #626a66));
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-body,
+#notificationZoomModal.modal.light-theme .notification-zoom-body {
+    background: var(--vcp-ui-bg-2, var(--tertiary-bg, #eee9df));
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-content,
+#notificationZoomModal.modal.light-theme .notification-zoom-content {
+    background: #ffffff;
+    border: 1px solid var(--vcp-ui-border, var(--border-color, #d2cbc0));
+    color: var(--vcp-ui-text-0, var(--primary-text, #1b211f));
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-header-actions button,
+#notificationZoomModal.modal.light-theme .notification-zoom-header-actions button {
+    border: 1px solid var(--vcp-ui-border, var(--border-color, #d2cbc0));
+    background: #ffffff;
+    color: var(--vcp-ui-text-0, var(--primary-text, #1b211f));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-header-actions button:hover,
+#notificationZoomModal.modal.light-theme .notification-zoom-header-actions button:hover {
+    background: #f7f5f0;
+    border-color: #b8b0a2;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-header-actions button.is-active,
+#notificationZoomModal.modal.light-theme .notification-zoom-header-actions button.is-active {
+    background: var(--button-bg, #b94832) !important;
+    color: #ffffff !important;
+    border-color: var(--button-bg, #b94832) !important;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-header-actions .close-button.notification-zoom-close,
+#notificationZoomModal.modal.light-theme .notification-zoom-header-actions .close-button.notification-zoom-close {
+    color: var(--vcp-ui-text-2, var(--secondary-text, #626a66));
+    box-shadow: none;
+    border: 0;
+    background: transparent;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-header-actions .close-button.notification-zoom-close:hover,
+#notificationZoomModal.modal.light-theme .notification-zoom-header-actions .close-button.notification-zoom-close:hover {
+    color: var(--vcp-ui-text-0, #000000);
+    background: rgba(0, 0, 0, 0.06);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-close-btn,
+#notificationZoomModal.modal.light-theme .notification-zoom-close-btn {
+    border: 1px solid var(--vcp-ui-border, var(--border-color, #d2cbc0));
+    background: #ffffff;
+    color: var(--vcp-ui-text-0, var(--primary-text, #1b211f));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-close-btn:hover,
+#notificationZoomModal.modal.light-theme .notification-zoom-close-btn:hover {
+    background: #f7f5f0;
+    border-color: #b8b0a2;
+}
+
+/* Light Theme Badges */
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-tone-badge.tone-error,
+#notificationZoomModal.modal.light-theme .notification-zoom-tone-badge.tone-error {
+    background: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+    border: 1px solid rgba(220, 38, 38, 0.28);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-tone-badge.tone-success,
+#notificationZoomModal.modal.light-theme .notification-zoom-tone-badge.tone-success {
+    background: rgba(22, 163, 74, 0.1);
+    color: #16a34a;
+    border: 1px solid rgba(22, 163, 74, 0.28);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-tone-badge.tone-warning,
+#notificationZoomModal.modal.light-theme .notification-zoom-tone-badge.tone-warning {
+    background: rgba(217, 119, 6, 0.1);
+    color: #b45309;
+    border: 1px solid rgba(217, 119, 6, 0.28);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-zoom-tone-badge.tone-neutral,
+#notificationZoomModal.modal.light-theme .notification-zoom-tone-badge.tone-neutral {
+    background: rgba(100, 116, 139, 0.1);
+    color: #475569;
+    border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+/* Toast zoom button light mode */
+:is(.light-theme, [data-vcp-theme="light"]) .notification-toast-zoom-btn {
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--primary-text, #1b211f);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .notification-toast-zoom-btn:hover {
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
