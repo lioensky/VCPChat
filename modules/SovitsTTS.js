@@ -47,11 +47,13 @@ class SovitsTTS {
     constructor(settingsManager = null) {
         this.settingsManager = settingsManager;
         this.isSpeaking = false;
+        this._isProcessingQueue = false;
         this.speechQueue = [];
         this.currentSpeechItemId = null; // 用于跟踪当前朗读的气泡ID
         this.sessionId = 0; // 新增：会话ID，用于作废过时的播放事件
-        // Map 保持插入顺序，用作最多两个参考音频的进程内 LRU。
-        // value 中保存文件签名，用户替换同名文件后不会继续使用旧数据。
+        this._activeAbortController = null;
+        this._processingPromise = null;
+        this._loopGeneration = 0;
         this.cloneAudioMemory = new Map();
         this.gsvStore = new GsvPresetStore();
         this.cacheEpoch = 0;
@@ -166,11 +168,11 @@ class SovitsTTS {
         return dataUri;
     }
 
-    async requestMimoSpeech(runtimeConfig, text, voice, directorPrompts = [], onAudioChunk = null) {
+    async requestMimoSpeech(runtimeConfig, text, voice, directorPrompts = [], onAudioChunk = null, options = {}) {
+        const { signal } = options;
         if (!runtimeConfig.apiKey) {
             throw new Error('网络 MiMo TTS 未配置 API Key');
         }
-
         const prompts = Array.isArray(directorPrompts)
             ? directorPrompts.map(item => String(item || '').trim()).filter(Boolean)
             : [];
@@ -226,8 +228,15 @@ class SovitsTTS {
             stream: payload.stream
         }));
 
+        if (signal?.aborted) {
+            const abortError = new Error('TTS request aborted');
+            abortError.name = 'AbortError';
+            throw abortError;
+        }
+
         const response = await axios.post(this.normalizeMimoEndpoint(runtimeConfig.baseUrl), payload, {
             responseType: 'stream',
+            signal,
             headers: {
                 ...this.buildHeaders(runtimeConfig.apiKey),
                 'Content-Type': 'application/json',
@@ -263,13 +272,13 @@ class SovitsTTS {
 
         let pending = '';
         for await (const chunk of response.data) {
+            if (signal?.aborted) break;
             pending += Buffer.from(chunk).toString('utf8');
             const lines = pending.split(/\r?\n/);
             pending = lines.pop() || '';
             lines.forEach(processSseLine);
         }
         if (pending.trim()) processSseLine(pending);
-
         if (!pcmChunks.length) {
             throw new Error('MiMo API 流结束，但没有返回音频数据');
         }
@@ -435,8 +444,10 @@ class SovitsTTS {
      * @param {Function|null} onAudioChunk 网络模式收到 PCM 块后的即时回调
      * @returns {Promise<{audioBuffer: Buffer, streamed: boolean}|null>} 音频结果
      */
-    async textToSpeech(text, voice, speed, directorPrompts = [], onAudioChunk = null) {
+    async textToSpeech(text, voice, speed, directorPrompts = [], onAudioChunk = null, options = {}) {
         const cacheEpoch = this.cacheEpoch;
+        const signal = options?.signal;
+        if (signal?.aborted) return null;
         const runtimeConfig = await this.getRuntimeConfig();
         if (runtimeConfig.voiceMode === 'local') {
             try {
@@ -488,14 +499,19 @@ class SovitsTTS {
                     text,
                     voice,
                     directorPrompts,
-                    onAudioChunk
+                    onAudioChunk,
+                    { signal }
                 );
+                if (signal?.aborted) return null;
                 await this.writeAudioCache(cacheFilePath, audioBuffer, cacheEpoch);
                 return { audioBuffer, streamed: typeof onAudioChunk === 'function' };
             }
 
             throw new Error('Unexpected local TTS branch');
         } catch (error) {
+            if (signal?.aborted || error?.name === 'AbortError' || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+                return null;
+            }
             console.error("[TTS] 请求语音合成API时出错: ", error.message);
             return null;
         }
@@ -678,84 +694,110 @@ class SovitsTTS {
      * 处理语音队列
      */
     async processQueue() {
-        if (this.isSpeaking) return; // 防止重入
+        if (this._isProcessingQueue) return; // 防止重入
+        this._isProcessingQueue = true;
         this.isSpeaking = true;
-        
-        const loopSessionId = this.sessionId; // 捕获当前循环的会话ID
+        const generation = ++this._loopGeneration;
 
-        while (this.speechQueue.length > 0) {
-            // 在每次循环开始时检查会话ID是否已改变
-            if (this.sessionId !== loopSessionId) {
-                console.log(`[TTS] Session ID changed (${loopSessionId} -> ${this.sessionId}). Stopping current processing loop.`);
-                break;
+        const runLoop = async () => {
+            if (this._processingPromise) {
+                await this._processingPromise.catch(() => {});
             }
 
-            const currentTask = this.speechQueue.shift();
-            this.currentSpeechItemId = currentTask.msgId;
+            try {
+                while (this.speechQueue.length > 0 && this._loopGeneration === generation) {
+                    const loopSessionId = this.sessionId; // 捕获当前任务所属会话ID
+                    const currentTask = this.speechQueue.shift();
+                    if (!currentTask) continue;
+                    this.isSpeaking = true;
+                    this.currentSpeechItemId = currentTask.msgId;
 
-            const taskRuntimeConfig = await this.getRuntimeConfig();
-            const playbackRate = taskRuntimeConfig.voiceMode === 'network'
-                ? Math.min(2, Math.max(0.5, Number(currentTask.speed) || 1))
-                : 1;
-            let streamedChunkCount = 0;
-            const speechResult = await this.textToSpeech(
-                currentTask.text,
-                currentTask.voice,
-                currentTask.speed,
-                currentTask.directorPrompts,
-                (audioChunk) => {
-                    if (this.sessionId !== loopSessionId) return;
-                    if (!currentTask.sender || currentTask.sender.isDestroyed()) return;
-                    streamedChunkCount += 1;
-                    currentTask.sender.send('play-tts-audio', {
-                        audioData: audioChunk.toString('base64'),
-                        msgId: currentTask.msgId,
-                        sessionId: loopSessionId,
-                        streaming: true,
-                        chunkIndex: streamedChunkCount,
-                        audioFormat: 'wav',
-                        playbackRate
-                    });
-                }
-            );
-            const audioBuffer = speechResult?.audioBuffer || null;
+                    const abortController = new AbortController();
+                    this._activeAbortController = abortController;
 
-            // 在异步操作后，再次检查会话ID
-            if (this.sessionId !== loopSessionId) {
-                console.log(`[TTS] Session ID changed during TTS synthesis. Discarding audio.`);
-                break;
-            }
+                    const taskRuntimeConfig = await this.getRuntimeConfig();
+                    if (this.sessionId !== loopSessionId || abortController.signal.aborted) {
+                        continue;
+                    }
+                    const playbackRate = taskRuntimeConfig.voiceMode === 'network'
+                        ? Math.min(2, Math.max(0.5, Number(currentTask.speed) || 1))
+                        : 1;
+                    let streamedChunkCount = 0;
+                    const speechResult = await this.textToSpeech(
+                        currentTask.text,
+                        currentTask.voice,
+                        currentTask.speed,
+                        currentTask.directorPrompts,
+                        (audioChunk) => {
+                            if (this.sessionId !== loopSessionId || abortController.signal.aborted) return;
+                            if (!currentTask.sender || currentTask.sender.isDestroyed()) return;
+                            streamedChunkCount += 1;
+                            currentTask.sender.send('play-tts-audio', {
+                                audioData: audioChunk.toString('base64'),
+                                msgId: currentTask.msgId,
+                                sessionId: loopSessionId,
+                                streaming: true,
+                                chunkIndex: streamedChunkCount,
+                                audioFormat: 'wav',
+                                playbackRate
+                            });
+                        },
+                        { signal: abortController.signal }
+                    );
+                    if (this._activeAbortController === abortController) {
+                        this._activeAbortController = null;
+                    }
+                    const audioBuffer = speechResult?.audioBuffer || null;
 
-            if (audioBuffer) {
-                // 网络 MiMo 请求已经把 SSE PCM 块逐块推送给渲染器；
-                // 这里只对缓存命中和本地 SoVITS 的完整音频发送一次，避免重复播放。
-                if (!speechResult.streamed) {
-                    const audioBase64 = audioBuffer.toString('base64');
-                    if (currentTask.sender && !currentTask.sender.isDestroyed()) {
-                        currentTask.sender.send('play-tts-audio', {
-                            audioData: audioBase64,
-                            msgId: currentTask.msgId,
-                            sessionId: loopSessionId,
-                            streaming: false,
-                            audioFormat: audioBuffer.subarray(0, 4).toString('ascii') === 'RIFF' ? 'wav' : 'mp3',
-                            playbackRate
-                        });
+                    // 在异步操作后，再次检查会话ID
+                    if (this.sessionId !== loopSessionId || abortController.signal.aborted) {
+                        console.log(`[TTS] Session ID changed during TTS synthesis (${loopSessionId} -> ${this.sessionId}). Discarding audio.`);
+                        continue;
+                    }
+
+                    if (audioBuffer) {
+                        // 网络 MiMo 请求已经把 SSE PCM 块逐块推送给渲染器；
+                        // 这里只对缓存命中和本地 SoVITS 的完整音频发送一次，避免重复播放。
+                        if (!speechResult.streamed) {
+                            const audioBase64 = audioBuffer.toString('base64');
+                            if (currentTask.sender && !currentTask.sender.isDestroyed()) {
+                                currentTask.sender.send('play-tts-audio', {
+                                    audioData: audioBase64,
+                                    msgId: currentTask.msgId,
+                                    sessionId: loopSessionId,
+                                    streaming: false,
+                                    audioFormat: audioBuffer.subarray(0, 4).toString('ascii') === 'RIFF' ? 'wav' : 'mp3',
+                                    playbackRate
+                                });
+                            } else {
+                                console.error(`[TTS] 无法发送音频，因为发送方窗口已被销毁。`);
+                            }
+                        }
                     } else {
-                        console.error(`[TTS] 无法发送音频，因为发送方窗口已被销毁。`);
+                        console.error(`合成失败: "${currentTask.text.substring(0, 20)}..."`);
                     }
                 }
-            } else {
-                console.error(`合成失败: "${currentTask.text.substring(0, 20)}..."`);
+            } finally {
+                if (this._loopGeneration === generation) {
+                    this._isProcessingQueue = false;
+                    if (this.speechQueue.length === 0) {
+                        this.isSpeaking = false;
+                        this.currentSpeechItemId = null;
+                    }
+                }
+                console.log(`TTS processing loop generation ${generation} finished.`);
+                if (this.speechQueue.length > 0 && !this._isProcessingQueue) {
+                    void this.processQueue();
+                }
             }
-        }
+        };
 
-        // 队列处理完毕或被中断
-        this.isSpeaking = false;
-        // 只有当会话未被更新时，才清除 currentSpeechItemId
-        if (this.sessionId === loopSessionId) {
-            this.currentSpeechItemId = null;
+        const currentPromise = runLoop();
+        this._processingPromise = currentPromise;
+        await currentPromise;
+        if (this._processingPromise === currentPromise) {
+            this._processingPromise = null;
         }
-        console.log(`TTS processing loop for session ${loopSessionId} finished.`);
     }
 
     /**
@@ -765,11 +807,18 @@ class SovitsTTS {
         this.speechQueue = [];
         this.isSpeaking = false;
         this.sessionId++; // 关键：使当前所有操作和事件失效
+        if (this._activeAbortController) {
+            try {
+                this._activeAbortController.abort();
+            } catch {
+                // Ignore abort errors
+            }
+            this._activeAbortController = null;
+        }
         console.log(`[TTS] Stop called. New session ID: ${this.sessionId}`);
         // 停止事件的发送逻辑已移至 ipc/sovitsHandlers.js，以确保可靠性。
-        // 这里只负责清理内部状态。
+        // 这里只负责清理内部状态，不提前释放 _isProcessingQueue 锁，防止并发消费协程重入。
         this.currentSpeechItemId = null;
-        // console.log('TTS朗读已停止。'); // 日志由上方的 sessionId 变化日志替代
     }
 }
 
