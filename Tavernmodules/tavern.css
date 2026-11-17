@@ -589,6 +589,47 @@ body[data-vcp-theme="light"] .tavern-popover-header .tavern-icon-btn:hover {
     gap: 4px;
 }
 
+.tavern-form-row-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+
+.tavern-content-zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    font-size: 11.5px;
+    font-weight: 500;
+    background: var(--vcp-ui-fill-0, rgba(255, 255, 255, 0.06));
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+    border-radius: 6px;
+    color: var(--vcp-ui-color-foreground-subtle, var(--secondary-text, #aaa));
+    cursor: pointer;
+    transition: all 0.15s ease;
+    line-height: 1.3;
+}
+
+.tavern-content-zoom-btn:hover {
+    color: var(--vcp-ui-color-foreground, var(--primary-text, #fff));
+    background: var(--vcp-ui-color-hover, rgba(255, 255, 255, 0.12));
+    border-color: var(--button-bg, #4a90e2);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-btn {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #475569;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+    border-color: #3b82f6;
+}
+
 .tavern-form-row label {
     font-size: 12px;
     color: var(--secondary-text, rgba(255,255,255,0.7));
@@ -604,7 +645,7 @@ body[data-vcp-theme="light"] .tavern-popover-header .tavern-icon-btn:hover {
 }
 
 .tavern-form-row textarea {
-    min-height: 110px;
+    min-height: 130px;
     resize: vertical;
     font-family: inherit;
 }
@@ -864,4 +905,294 @@ body[data-vcp-theme="light"] .tavern-popover-header .tavern-icon-btn:hover {
 }
 .tavern-popover .tavern-override-capsule[data-value="inherit"]::before {
     background: color-mix(in srgb, var(--tavern-global-color) 24%, transparent);
+}
+
+/* ===== 注入内容居中放大编辑弹窗 ===== */
+.tavern-content-zoom-modal {
+    z-index: 5500 !important;
+    background-color: rgba(0, 0, 0, 0.72) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.tavern-content-zoom-dialog {
+    width: min(1200px, 94vw) !important;
+    max-width: min(1200px, 94vw) !important;
+    height: min(840px, 88vh) !important;
+    max-height: 88vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background: var(--panel-bg, #1a1c23) !important;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12)) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45) !important;
+    padding: 16px 20px !important;
+    box-sizing: border-box !important;
+    color: var(--primary-text, #f1f5f9) !important;
+    overflow: hidden !important;
+}
+
+/* 白天模式深度自适应 */
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-dialog,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-dialog,
+.tavern-content-zoom-modal[data-vcp-theme="light"] .tavern-content-zoom-dialog {
+    background: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18) !important;
+}
+
+.tavern-content-zoom-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    flex: 0 0 auto;
+    gap: 12px;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-header,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-header {
+    border-bottom-color: #e2e8f0;
+}
+
+.tavern-content-zoom-title-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.tavern-content-zoom-title {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+}
+
+.tavern-content-zoom-rule-badge {
+    padding: 2px 8px;
+    font-size: 12px;
+    border-radius: 6px;
+    background: rgba(74, 144, 226, 0.15);
+    color: var(--button-bg, #4a90e2);
+    border: 1px solid rgba(74, 144, 226, 0.3);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-rule-badge,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-rule-badge {
+    background: #eff6ff;
+    color: #2563eb;
+    border-color: #bfdbfe;
+}
+
+.tavern-content-zoom-stats {
+    font-size: 12px;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.55));
+    white-space: nowrap;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-stats,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-stats {
+    color: #64748b;
+}
+
+.tavern-content-zoom-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.tavern-content-zoom-tool-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--primary-text, #fff);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tavern-content-zoom-tool-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.tavern-content-zoom-tool-btn.active {
+    background: rgba(74, 144, 226, 0.2);
+    border-color: var(--button-bg, #4a90e2);
+    color: #93c5fd;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-tool-btn,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-tool-btn {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-tool-btn:hover,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-tool-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-tool-btn.active,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-tool-btn.active {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1d4ed8;
+}
+
+.tavern-content-zoom-close {
+    font-size: 22px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    color: var(--secondary-text, #aaa);
+    transition: all 0.15s ease;
+    margin-left: 4px;
+}
+
+.tavern-content-zoom-close:hover {
+    color: var(--primary-text, #fff);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-close,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-close {
+    color: #64748b;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-close:hover,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-close:hover {
+    color: #0f172a;
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.tavern-content-zoom-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 0;
+}
+
+.tavern-content-zoom-editor {
+    width: 100% !important;
+    height: 100% !important;
+    flex: 1 1 auto;
+    min-height: 200px;
+    margin: 0 !important;
+    box-sizing: border-box;
+    padding: 14px 16px;
+    font-family: var(--vcp-ui-font-mono, 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace);
+    font-size: 13.5px;
+    line-height: 1.6;
+    background: rgba(0, 0, 0, 0.25) !important;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)) !important;
+    border-radius: 10px !important;
+    color: var(--primary-text, #f8fafc) !important;
+    resize: none !important;
+    outline: none;
+    white-space: pre;
+    overflow: auto;
+    transition: border-color 0.15s ease;
+}
+
+.tavern-content-zoom-editor.is-wrapped {
+    white-space: pre-wrap !important;
+    overflow-wrap: break-word !important;
+}
+
+.tavern-content-zoom-editor:focus {
+    border-color: var(--button-bg, #4a90e2) !important;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.25);
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-editor,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-editor {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-editor:focus,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-editor:focus {
+    background: #ffffff !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.tavern-content-zoom-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    flex: 0 0 auto;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-footer,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-footer {
+    border-top-color: #e2e8f0;
+}
+
+.tavern-content-zoom-hint {
+    font-size: 12px;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.5));
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-hint,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-hint {
+    color: #64748b;
+}
+
+.tavern-content-zoom-hint kbd {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 11px;
+}
+
+:is(.light-theme, [data-vcp-theme="light"]) .tavern-content-zoom-hint kbd,
+.tavern-content-zoom-modal.light-theme .tavern-content-zoom-hint kbd {
+    background: #e2e8f0;
+    border-color: #cbd5e1;
+    color: #334155;
+}
+
+.tavern-content-zoom-btn-confirm {
+    padding: 7px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--button-bg, #4a90e2);
+    color: var(--text-on-accent, #fff);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.08s ease;
+}
+
+.tavern-content-zoom-btn-confirm:hover {
+    opacity: 0.92;
+}
+
+.tavern-content-zoom-btn-confirm:active {
+    transform: scale(0.98);
 }

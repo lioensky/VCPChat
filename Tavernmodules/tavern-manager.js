@@ -517,6 +517,14 @@
         },
 
         closeManagerModal() {
+            const zoomModal = document.getElementById('tavernContentZoomModal');
+            if (zoomModal) {
+                if (typeof zoomModal._closeModal === 'function') {
+                    zoomModal._closeModal();
+                } else {
+                    zoomModal.remove();
+                }
+            }
             if (this.sortableInstance) {
                 this.sortableInstance.destroy();
                 this.sortableInstance = null;
@@ -699,8 +707,19 @@
                         </label>
                     </div>
                 </div>
-                <div class="tavern-form-row">
-                    <label>注入内容</label>
+                <div class="tavern-form-row tavern-form-row--content">
+                    <div class="tavern-form-row-header">
+                        <label>注入内容</label>
+                        <button type="button" class="tavern-content-zoom-btn" data-action="zoom-content" title="放大编辑注入内容 (可双击输入框)">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <polyline points="9 21 3 21 3 15"></polyline>
+                                <line x1="21" y1="3" x2="14" y2="10"></line>
+                                <line x1="3" y1="21" x2="10" y2="14"></line>
+                            </svg>
+                            <span>放大编辑</span>
+                        </button>
+                    </div>
                     <textarea data-field="content" placeholder="${wrapEnabled ? '将以 [本信息由VCPChat客户端注入] ... [临时注入结束] 包裹后注入' : '裸注入：将原样发送给模型'}">${escapeHtml(rule.content || '')}</textarea>
                 </div>
                 <div class="tavern-edit-actions">
@@ -719,6 +738,162 @@
             panel.querySelector('[data-action="delete"]').addEventListener('click', async () => {
                 await this._deleteCurrentRule();
             });
+
+            const contentTextarea = panel.querySelector('textarea[data-field="content"]');
+            const zoomBtn = panel.querySelector('[data-action="zoom-content"]');
+            const triggerZoom = () => {
+                const nameInput = panel.querySelector('input[data-field="name"]');
+                const ruleName = nameInput ? nameInput.value : (rule.name || '');
+                this.openContentZoomModal(contentTextarea, ruleName);
+            };
+
+            if (zoomBtn && contentTextarea) {
+                zoomBtn.addEventListener('click', triggerZoom);
+                contentTextarea.addEventListener('dblclick', triggerZoom);
+            }
+        },
+
+        openContentZoomModal(textarea, ruleName = '') {
+            if (!textarea) return;
+            const existing = document.getElementById('tavernContentZoomModal');
+            if (existing) {
+                if (typeof existing._closeModal === 'function') {
+                    existing._closeModal();
+                } else {
+                    existing.remove();
+                }
+            }
+
+            const isLight = document.body.classList.contains('light-theme')
+                || document.documentElement.classList.contains('light-theme')
+                || document.body.getAttribute('data-vcp-theme') === 'light'
+                || document.documentElement.getAttribute('data-vcp-theme') === 'light';
+
+            const modal = document.createElement('div');
+            modal.id = 'tavernContentZoomModal';
+            modal.className = `modal tavern-content-zoom-modal active ${isLight ? 'light-theme' : ''}`;
+            if (isLight) modal.dataset.vcpTheme = 'light';
+
+            const rawVal = textarea.value || '';
+            const initialStart = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : rawVal.length;
+            const initialEnd = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : rawVal.length;
+
+            const calcStats = (val) => {
+                const chars = val.length;
+                const lines = val ? val.split('\n').length : 0;
+                return `${lines} 行 · ${chars} 字符`;
+            };
+
+            const titleId = 'tavernContentZoomTitle';
+            modal.innerHTML = `
+                <div class="modal-content tavern-content-zoom-dialog" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
+                    <div class="tavern-content-zoom-header">
+                        <div class="tavern-content-zoom-title-group">
+                            <span class="tavern-content-zoom-title" id="${titleId}">注入内容 · 放大编辑</span>
+                            ${ruleName ? `<span class="tavern-content-zoom-rule-badge">${escapeHtml(ruleName)}</span>` : ''}
+                            <span class="tavern-content-zoom-stats">${calcStats(rawVal)}</span>
+                        </div>
+                        <div class="tavern-content-zoom-actions">
+                            <button type="button" class="tavern-content-zoom-tool-btn tavern-zoom-wrap-btn active" title="切换自动换行">自动换行: 开</button>
+                            <button type="button" class="tavern-content-zoom-tool-btn tavern-zoom-copy-btn" title="复制全部内容">复制内容</button>
+                            <span class="close-button tavern-content-zoom-close" title="关闭 (Esc)">×</span>
+                        </div>
+                    </div>
+                    <div class="tavern-content-zoom-body">
+                        <textarea class="tavern-content-zoom-editor is-wrapped" placeholder="在此编辑注入内容...">${escapeHtml(rawVal)}</textarea>
+                    </div>
+                    <div class="tavern-content-zoom-footer">
+                        <div class="tavern-content-zoom-hint">
+                            <span>提示：实时双向同步，支持 <kbd>Esc</kbd> 退出或 <kbd>Ctrl+Enter</kbd> 完成</span>
+                        </div>
+                        <div class="tavern-content-zoom-footer-actions">
+                            <button type="button" class="tavern-content-zoom-btn-confirm">完成</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const editor = modal.querySelector('.tavern-content-zoom-editor');
+            const stats = modal.querySelector('.tavern-content-zoom-stats');
+            const wrapBtn = modal.querySelector('.tavern-zoom-wrap-btn');
+            const copyBtn = modal.querySelector('.tavern-zoom-copy-btn');
+            const closeBtn = modal.querySelector('.tavern-content-zoom-close');
+            const confirmBtn = modal.querySelector('.tavern-content-zoom-btn-confirm');
+
+            editor.addEventListener('input', () => {
+                textarea.value = editor.value;
+                try {
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                } catch (_) {}
+                stats.textContent = calcStats(editor.value);
+            });
+
+            wrapBtn.addEventListener('click', () => {
+                const isWrap = editor.classList.toggle('is-wrapped');
+                wrapBtn.classList.toggle('active', isWrap);
+                wrapBtn.textContent = `自动换行: ${isWrap ? '开' : '关'}`;
+            });
+
+            let copyResetTimer = null;
+            copyBtn.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(editor.value);
+                    copyBtn.textContent = '已复制!';
+                } catch (e) {
+                    copyBtn.textContent = '复制失败';
+                }
+                if (copyResetTimer) clearTimeout(copyResetTimer);
+                copyResetTimer = setTimeout(() => {
+                    copyBtn.textContent = '复制内容';
+                    copyResetTimer = null;
+                }, 1500);
+            });
+
+            let isClosed = false;
+            const closeModal = () => {
+                if (isClosed) return;
+                isClosed = true;
+                if (copyResetTimer) {
+                    clearTimeout(copyResetTimer);
+                    copyResetTimer = null;
+                }
+                window.removeEventListener('keydown', onKeyDown);
+                modal._closeModal = null;
+                modal.remove();
+                try {
+                    textarea.focus();
+                } catch (_) {}
+            };
+            modal._closeModal = closeModal;
+
+            const onKeyDown = (e) => {
+                if (e.isComposing || e.keyCode === 229) return;
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeModal();
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeModal();
+                }
+            };
+
+            window.addEventListener('keydown', onKeyDown);
+            closeBtn.addEventListener('click', closeModal);
+            confirmBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+
+            setTimeout(() => {
+                try {
+                    editor.focus();
+                    editor.setSelectionRange(initialStart, initialEnd);
+                } catch (_) {}
+            }, 30);
         },
 
         _addNewRule(type) {
