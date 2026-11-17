@@ -124,7 +124,9 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 context,
                 error: event.outcome?.transport?.error || event.outcome?.persistence?.error || null,
             });
-            if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context });
+            // 终态 failed 事件由 streamCoordinator 发出，只带 outcome、不带 messageId；
+            // 把本消费方的 messageId 一并交出去，报错才能落到出错的那条回复里。
+            if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context, messageId });
             projection?.settle?.({ event, finalized, context, messageId, streamOperationId: operationId });
             const settledEvent = event.type === 'end'
                 ? { ...event, type: event.finish_reason === 'cancelled' ? 'cancelled' : 'completed' }

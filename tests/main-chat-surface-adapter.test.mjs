@@ -156,3 +156,56 @@ test('side chat replies never reach the Flowlock manager; main topic replies sti
     await adapter.dispose();
     dom.window.close();
 });
+
+// 保存失败时 streamCoordinator 发出的 failed 事件不带 messageId；报错要落到出错的那条回复里，
+// 而不是另起一行“流处理错误 (ID: undefined)”。
+for (const [label, saveError, shown] of [
+    ['an Error', () => new Error('磁盘已满'), '磁盘已满'],
+    ['a plain string', () => '读取聊天记录失败', '读取聊天记录失败'],
+]) {
+    test(`a reply that cannot be saved (${label}) shows the error inside that reply`, async () => {
+        const dom = new JSDOM('<main><div id="root"><div class="message-item" data-message-id="m1">'
+            + '<div class="md-content"></div></div></div><textarea></textarea>');
+        const root = dom.window.document.getElementById('root');
+        const rendered = [];
+        const renderer = { initializeMessageRenderer() {}, renderHistory() {}, renderMessage: message => rendered.push(message) };
+        const adapter = createMainChatSurfaceAdapter({
+            root,
+            renderer,
+            repository: { getHistory: async () => [], saveHistory() {} },
+            focusTarget: dom.window.document.querySelector('textarea'),
+            operations: { dispose: async () => {} },
+            renderDependencies: {},
+            streamServices: {
+                streamProjection: {
+                    startStreamingMessage() {},
+                    appendStreamChunk() {},
+                    projectStreamTerminal: async (messageId, finishReason, context, payload) => ({
+                        messageId, finishReason, context, content: payload.fullResponse, history: [],
+                    }),
+                },
+                historyPersistence: { commit: () => { throw saveError(); } },
+                messageRenderer: renderer,
+                getSelection: () => ({ id: 'agent-a' }),
+                getTopicId: () => 'topic-a',
+                notifySendStateChanged() {},
+            },
+            disposeRenderer: async () => {},
+        });
+        const context = { agentId: 'agent-a', topicId: 'topic-a' };
+        adapter.acceptStreamEvent({ type: 'start', messageId: 'm1', streamOperationId: 'op1', context });
+        adapter.acceptStreamEvent({ type: 'end', messageId: 'm1', streamOperationId: 'op1', context, fullResponse: '完整回复', finish_reason: 'completed' });
+        const inReplySelector = '.message-item[data-message-id="m1"] .md-content strong';
+        const deadline = Date.now() + 3000;
+        while (!rendered.length && !root.querySelector(inReplySelector)) {
+            assert.ok(Date.now() < deadline, 'the failure was never shown');
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.deepEqual(rendered.map(message => message.content), [], 'no separate error row');
+        const inReply = root.querySelector(inReplySelector);
+        assert.ok(inReply, 'the error is shown inside the reply');
+        assert.equal(inReply.textContent, `流错误: ${shown}`);
+        await adapter.dispose();
+        dom.window.close();
+    });
+}
