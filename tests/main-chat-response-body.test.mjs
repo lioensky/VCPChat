@@ -20,7 +20,7 @@ async function waitFor(predicate) {
 
 // Execute the real module and public IPC route, with isolated dependencies.
 // No source rewriting or test-only access to its private stream function.
-function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admission = null, token = null } = {}) {
+function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admission = null, token = null, history = {} } = {}) {
     const handlers = new Map(), module = { exports: {} }, sent = [], warnings = [];
     const dependencies = new Map([
         ['electron', { ipcMain: { handle: (name, fn) => handlers.set(name, fn), on() {} }, dialog: {}, BrowserWindow: {} }],
@@ -43,7 +43,7 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admi
         console: { log() {}, warn: (...args) => warnings.push(args.join(' ')), error() {} },
         TextDecoder, URL, fetch: fetchResponse, AbortSignal: abortSignal,
     })(load, module, module.exports);
-    module.exports.initialize(null, { USER_DATA_DIR: 'unused-isolated-fixture', APP_DATA_ROOT_IN_PROJECT: 'unused-isolated-fixture', historyMutationQueue: {}, topicAdmission: admission });
+    module.exports.initialize(null, { USER_DATA_DIR: 'unused-isolated-fixture', APP_DATA_ROOT_IN_PROJECT: 'unused-isolated-fixture', historyMutationQueue: history, topicAdmission: admission });
     const sender = Object.assign(new EventEmitter(), { id: 501, isDestroyed: () => false, send: (channel, event) => sent.push({ channel, event }) });
     const context = { agentId: 'fixture-agent', topicId: 'fixture-topic', admissionToken: token };
     return { sent, warnings, sender, context, tasks: () => module.exports.getVcpStreamTaskSnapshot(),
@@ -389,3 +389,47 @@ test('failed ready control never invokes local stream cancellation', async () =>
         await waitFor(() => !f.tasks().length);
     } finally { f.close(); if (!body.locked) await body.cancel().catch(() => {}); }
 });
+
+// 页面刷新或渲染进程退出中止回复时，发起回复的页面已经不在：由主进程先存已收到的部分，
+// 再放开话题准入。用户点停止时保存和放开仍由页面自己做，主进程不插手。
+for (const [label, end, expected] of [
+    ['a page reload', f => f.sender.emit('did-start-navigation', {}, 'file:///main.html', false, true), 1],
+    ['the Stop button', f => f.interrupt(), 0],
+]) {
+    test(`a reply ended by ${label} ${expected ? 'is saved and releases' : 'leaves'} the topic admission in the main process`, async () => {
+        let controller;
+        const body = new ReadableStream({ start(value) { controller = value; } });
+        const failures = [], order = [];
+        let saved = [{ id: 'user-1', role: 'user', content: '提问' }];
+        const history = { mutate: async (scope, change) => { order.push('save'); saved = await change(saved); } };
+        const admission = { fail: async (...args) => { order.push('release'); failures.push(args); return { success: true }; } };
+        const f = route(async (url, options) => {
+            if (url.endsWith('/v1/interrupt')) return { ok: false, status: 404, json: async () => ({}) };
+            options.signal.addEventListener('abort', () => controller.error(new DOMException('ended', 'AbortError')), { once: true });
+            return { ok: true, body };
+        }, { admission, token: 'lease-token', history });
+        try {
+            await f.start();
+            controller.enqueue(encode('data: {"choices":[{"delta":{"content":"半段回复"}}]}\n\n'));
+            await tick();
+            await end(f);
+            await waitFor(() => !f.tasks().length);
+            await new Promise(resolve => setTimeout(resolve, 20));
+            assert.equal(failures.length, expected);
+            if (!expected) assert.deepEqual(order, []);
+            if (expected) {
+                // 先存再放开：之后入场的消息排在这半段回复后面。
+                assert.deepEqual(order, ['save', 'release']);
+                const reply = saved.at(-1);
+                assert.equal(reply.id, 'same-message');
+                assert.equal(reply.role, 'assistant');
+                assert.equal(reply.finishReason, 'cancelled');
+                assert.equal(reply.isThinking, false);
+                assert.match(reply.content, /^半段回复\n\n> 本轮回复中断（页面重新加载）/);
+                assert.equal(saved.length, 2);
+                assert.equal(JSON.stringify(failures[0].slice(0, 2)),
+                    JSON.stringify([{ itemType: 'agent', itemId: 'fixture-agent', topicId: 'fixture-topic' }, 'lease-token']));
+            }
+        } finally { f.close(); }
+    });
+}

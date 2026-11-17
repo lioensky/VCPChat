@@ -233,6 +233,29 @@ function initialize(mainWindow, context) {
     });
     context.topicAdmission?.subscribe?.(entries => handoffs.updateEntries(entries));
 
+    // 页面刷新、渲染进程退出或窗口关闭会中止正在进行的回复（SenderTaskRegistry），
+    // 但发起回复的那个页面已经不在了：没人保存已收到的部分，也没人放开话题准入，
+    // 之后这个话题的消息会一直排队、不入场，直到重启。这类中止由主进程收尾：
+    // 先按原消息编号保存已收到的正文，再按失败放开话题。用户点停止仍由页面自己处理。
+    const admissionForAbortedStreams = context.topicAdmission || null;
+    const PAGE_GONE_ABORTS = new Set(['sender-navigation', 'sender-render-process-gone', 'sender-destroyed']);
+    const PAGE_GONE_NOTE = '\n\n> 本轮回复中断（页面重新加载），后续内容未能接收。';
+    const streamChunkText = chunk => {
+        // 与页面拼接正文的规则一致（modules/chat/contentRuntime.js 的 normalizeStreamChunk）。
+        if (chunk?.error === 'json_parse_error') return '';
+        if (typeof chunk?.choices?.[0]?.delta?.content === 'string') return chunk.choices[0].delta.content;
+        if (typeof chunk?.delta?.content === 'string') return chunk.delta.content;
+        if (typeof chunk?.content === 'string') return chunk.content;
+        if (typeof chunk === 'string') return chunk;
+        if (typeof chunk?.raw === 'string' && !chunk?.error) return chunk.raw;
+        return '';
+    };
+    const notifyHistoryChanged = data => {
+        for (const window of BrowserWindow.getAllWindows?.() || []) {
+            if (!window.isDestroyed()) window.webContents.send('history-file-updated', data);
+        }
+    };
+
     // Ensure the watcher is in a clean state on initialization
     if (fileWatcher) {
         fileWatcher.stopWatching();
@@ -1139,6 +1162,44 @@ function initialize(mainWindow, context) {
             vcpStreamTasks.finish(event.sender, messageId);
             streamTask = null;
         };
+        const replyStartedAt = Date.now();
+        let receivedText = '';
+        const abortReason = () => (streamTask?.controller.signal.aborted ? streamTask.controller.signal.reason : null);
+        const saveReceivedReply = async scope => {
+            if (!receivedText.trim() || typeof historyMutationQueue?.mutate !== 'function') return false;
+            const reply = {
+                role: 'assistant', name: context.agentName, agentId: context.agentId, topicId: context.topicId,
+                id: messageId, timestamp: replyStartedAt, content: receivedText + PAGE_GONE_NOTE,
+                isThinking: false, finishReason: 'cancelled', avatarUrl: context.avatarUrl, avatarColor: context.avatarColor,
+                isGroupMessage: false,
+            };
+            let saved = false;
+            await historyMutationQueue.mutate(scope, history => {
+                const index = history.findIndex(item => item?.id === messageId);
+                if (index !== -1 && !history[index].isThinking) return history; // 页面已经存过终稿
+                saved = true;
+                return index === -1 ? [...history, reply] : history.map((item, i) => (i === index ? { ...item, ...reply } : item));
+            });
+            return saved;
+        };
+        // 只处理页面已不在的中止：先存已收到的部分，再放开话题，之后入场的消息排在它后面。
+        const settleIfPageGone = async reason => {
+            if (!PAGE_GONE_ABORTS.has(reason) || isGroupCall || !context?.agentId || !context.topicId
+                || /^sidechat_[0-9]+_[0-9a-f]+$/.test(context.topicId)) return;
+            const scope = { itemType: 'agent', itemId: context.agentId, topicId: context.topicId };
+            try {
+                if (await saveReceivedReply(scope)) notifyHistoryChanged({ agentId: context.agentId, topicId: context.topicId });
+            } catch (error) {
+                console.warn(`[Main - sendToVCP] ${messageId} 因 ${reason} 中止，保存已收到的回复失败:`, error?.message || error);
+            }
+            if (!admissionForAbortedStreams?.fail || !context.admissionToken) return;
+            try {
+                const result = await admissionForAbortedStreams.fail(scope, context.admissionToken, `回复因页面离开中止（${reason}）`);
+                console.warn(`[Main - sendToVCP] ${messageId} 因 ${reason} 中止，话题已放开:`, result?.code || 'ok');
+            } catch (error) {
+                console.warn(`[Main - sendToVCP] ${messageId} 中止后放开话题失败:`, error?.message || error);
+            }
+        };
         const sendStreamPayload = payload => {
             const aborted = streamTask?.controller.signal.aborted === true;
             // 挂钩的功能只看事件不看窗口；用户中止时把收尾当作正常结束。
@@ -1553,6 +1614,7 @@ function initialize(mainWindow, context) {
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
                                         trajectoryCall.chunk(parsedChunk);
+                                        receivedText += streamChunkText(parsedChunk);
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         sendStreamPayload(dataPayload);
                                     } catch (e) {
@@ -1580,7 +1642,9 @@ function initialize(mainWindow, context) {
                         if (context) streamErrPayload.context = context;
                         sendStreamPayload(streamErrPayload);
                     } finally {
+                        const endedBy = abortReason();
                         finishStreamTask();
+                        void settleIfPageGone(endedBy);
                         if (!bodyReachedEOF) {
                             const reportCancelError = error => console.warn(
                                 `[Main - sendToVCP] Failed to cancel stream reader for ${messageId}:`, error?.message || String(error)
@@ -1637,7 +1701,11 @@ function initialize(mainWindow, context) {
             }
             return { error: `VCP请求错误: ${error.message}` };
         } finally {
-            if (!streamTaskDetached) finishStreamTask();
+            if (!streamTaskDetached) {
+                const endedBy = abortReason();
+                finishStreamTask();
+                void settleIfPageGone(endedBy);
+            }
         }
     });
 
