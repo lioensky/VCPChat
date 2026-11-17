@@ -470,7 +470,9 @@ function enhanceMermaidDiagram(mermaidElement) {
 
     const viewport = ownerDocument.createElement('div');
     viewport.className = 'mermaid-viewer-viewport';
-    viewport.title = '滚轮缩放，按住鼠标左键拖拽平移，双击重置';
+    // 滚轮默认留给聊天滚动；点中图表（取得焦点）后滚轮才用来缩放。
+    viewport.tabIndex = 0;
+    viewport.title = '点击图表后滚轮缩放，按住鼠标左键拖拽平移，双击重置，Esc 或点别处退出';
 
     const canvas = ownerDocument.createElement('div');
     canvas.className = 'mermaid-viewer-canvas';
@@ -552,7 +554,17 @@ function enhanceMermaidDiagram(mermaidElement) {
         else if (action === 'fit') fitToViewport();
     });
 
+    // 点到图表外面或按 Esc 就交还滚轮。
+    listen(ownerDocument, 'pointerdown', (event) => {
+        if (ownerDocument.activeElement === viewport && !viewport.contains(event.target)) viewport.blur();
+    }, { capture: true });
+    listen(viewport, 'keydown', (event) => {
+        if (event.key === 'Escape') viewport.blur();
+    });
+
     listen(viewport, 'wheel', (event) => {
+        // 未点中时不拦截：翻聊天记录经过图表不会被当成缩放。
+        if (ownerDocument.activeElement !== viewport || event.deltaY === 0) return;
         event.preventDefault();
         event.stopPropagation();
 
@@ -565,6 +577,8 @@ function enhanceMermaidDiagram(mermaidElement) {
     listen(viewport, 'pointerdown', (event) => {
         if (event.button !== 0) return;
 
+        // 下面的 preventDefault 会挡掉默认的点击聚焦，这里显式聚焦。
+        viewport.focus({ preventScroll: true });
         const state = getState();
         dragState = {
             pointerId: event.pointerId,
