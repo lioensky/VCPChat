@@ -1547,3 +1547,75 @@ test('late branch creation persists its source history without stealing a newer 
         assert.deepEqual(fixture.state().history.map(message => message.id), ['b2-message']);
     } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
 });
+
+
+test('floor compaction passes its boundary and immediately projects checkpoint in durable order', async () => {
+    const { createCheckpointMessage } = await import('../modules/chat/contextCompactionPrompts.js');
+    const checkpoint = createCheckpointMessage({ diaries: [], warnings: [], sourceCount: 1 }, 'floor report');
+    let receivedBoundary;
+    let fixture;
+    fixture = createFixture({
+        compactionService: {
+            isBusy: () => false, dispose() {},
+            async compact({ history, throughMessageId, onCommitted }) {
+                receivedBoundary = throughMessageId;
+                const next = [history[0], checkpoint, ...history.slice(1)];
+                fixture.setPersistedHistory('agent-a', 'topic-a', next);
+                await onCommitted(next, checkpoint);
+                return { history: next, message: checkpoint };
+            },
+        },
+    });
+    try {
+        fixture.setPersistedHistory('agent-a', 'topic-a', [
+            { id: 'a-message', role: 'user', content: 'A', timestamp: 1 },
+            { id: 'tail', role: 'assistant', content: 'B', timestamp: 2 },
+        ]);
+        await selectAdmissionFixture(fixture);
+        const originalBubble = fixture.window.document.querySelector('[data-message-id="tail"]');
+        await fixture.chatManager.compactContext({ throughMessageId: 'a-message' });
+        assert.equal(receivedBoundary, 'a-message');
+        const expected = ['a-message', checkpoint.id, 'tail'];
+        assert.deepEqual(fixture.state().history.map(message => message.id), expected);
+        assert.deepEqual(fixture.state().visibleMessageIds, expected);
+        assert.equal(fixture.window.document.querySelector('[data-message-id="tail"]'), originalBubble);
+        await fixture.chatManager.syncHistoryFromFile('agent-a', 'agent', 'topic-a');
+        assert.deepEqual(fixture.state().history.map(message => message.id), expected);
+        assert.deepEqual(fixture.state().visibleMessageIds, expected);
+    } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
+});
+
+test('file sync inserts an external newer-created checkpoint at its durable floor', async () => {
+    const { createCheckpointMessage } = await import('../modules/chat/contextCompactionPrompts.js');
+    const checkpoint = createCheckpointMessage({ diaries: [], warnings: [], sourceCount: 1 }, 'external report');
+    const fixture = createFixture();
+    try {
+        const first = { id: 'a-message', role: 'user', content: 'A', timestamp: 1 };
+        const tail = { id: 'tail', role: 'assistant', content: 'B', timestamp: 2 };
+        fixture.setPersistedHistory('agent-a', 'topic-a', [first, tail]);
+        await selectAdmissionFixture(fixture);
+        fixture.setPersistedHistory('agent-a', 'topic-a', [first, checkpoint, tail]);
+        await fixture.chatManager.syncHistoryFromFile('agent-a', 'agent', 'topic-a');
+        const expected = ['a-message', checkpoint.id, 'tail'];
+        assert.deepEqual(fixture.state().history.map(message => message.id), expected);
+        assert.deepEqual(fixture.state().visibleMessageIds, expected);
+    } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
+});
+
+test('a stale context-menu scope cannot compress the newly selected topic', async () => {
+    let calls = 0;
+    const fixture = createFixture({
+        compactionService: {
+            isBusy: () => false, dispose() {},
+            compact() { calls++; },
+        },
+    });
+    try {
+        await selectAdmissionFixture(fixture, 'agent-b');
+        await assert.rejects(fixture.chatManager.compactContext({
+            scope: { itemId: 'agent-a', itemType: 'agent', topicId: 'topic-a' },
+            throughMessageId: 'a-message',
+        }), /话题已切换/);
+        assert.equal(calls, 0);
+    } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
+});

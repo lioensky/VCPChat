@@ -217,10 +217,16 @@ function showContextMenu(event, messageItem, message) {
             const compactOption = ownerDocument.createElement('div');
             compactOption.className = 'context-menu-item';
             compactOption.innerHTML = '<i class="fas fa-compress-alt" aria-hidden="true"></i> 压缩前文';
-            compactOption.title = '压缩当前话题整个有效上下文，与右键气泡位置无关';
+            compactOption.title = '压缩截至本楼层（含本条）的前文，在本楼层后插入压缩点，后续消息保持不变';
             compactOption.onclick = async () => {
                 closeContextMenu();
-                try { await contextMenuDependencies.compactContext(); }
+                try {
+                    if (!message.id) throw new Error('该楼层缺少消息标识，无法定位压缩点');
+                    await contextMenuDependencies.compactContext({
+                        scope: { itemId: currentSelectedItemVal.id, itemType: currentSelectedItemVal.type, topicId: currentTopicIdVal },
+                        throughMessageId: message.id,
+                    });
+                }
                 catch (error) {
                     uiHelper.showToastNotification(`压缩失败：${error.message}`, 'error');
                     if (error.compactionDiagnostic && typeof electronAPI?.openTextInNewWindow === 'function') {

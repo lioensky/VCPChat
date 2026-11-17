@@ -70,6 +70,7 @@ test('manual compaction menu includes a matching icon and remains absent from gr
     const dom = new JSDOM('<div id="chat"><article class="message-item"></article></div>');
     let type = 'agent';
     let calls = 0;
+    let receivedOptions;
     const menu = createMessageContextMenu();
     const message = { id: 'm', role: 'user', content: 'hello' };
     menu.initializeContextMenu({
@@ -78,7 +79,7 @@ test('manual compaction menu includes a matching icon and remains absent from gr
         currentSelectedItemRef: { get: () => ({ id: 'a', type }) },
         currentTopicIdRef: { get: () => 't' },
         uiHelper: { showToastNotification() {} },
-    }, { compactContext: async () => { calls++; } });
+    }, { compactContext: async options => { calls++; receivedOptions = options; } });
     const show = () => menu.showContextMenu({ clientX: 10, clientY: 10 },
         dom.window.document.querySelector('article'), message);
     show();
@@ -87,6 +88,11 @@ test('manual compaction menu includes a matching icon and remains absent from gr
     assert.ok(option.querySelector('i.fas.fa-compress-alt[aria-hidden="true"]'));
     await option.onclick();
     assert.equal(calls, 1);
+    assert.deepEqual(receivedOptions, {
+        scope: { itemId: 'a', itemType: 'agent', topicId: 't' },
+        throughMessageId: 'm',
+    });
+    assert.match(option.title, /含本条/);
     type = 'group';
     show();
     assert.ok(!dom.window.document.querySelector('#chatContextMenu').textContent.includes('压缩前文'));

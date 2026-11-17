@@ -370,6 +370,21 @@ export const chatManager = (() => {
         return cancelled;
     }
 
+    // Durable array order, not creation timestamps, owns floor positions.
+    // Reuse mounted nodes so inserting a checkpoint does not rebuild old bubbles.
+    function orderRenderedHistory(root, history) {
+        const nodes = new Map(Array.from(root?.querySelectorAll?.('.message-item[data-message-id]') || [])
+            .filter(node => node.parentNode === root)
+            .map(node => [node.dataset.messageId, node]));
+        let next = null;
+        for (let index = history.length - 1; index >= 0; index--) {
+            const node = nodes.get(history[index]?.id);
+            if (!node) continue;
+            if (node.nextSibling !== next) root.insertBefore(node, next);
+            next = node;
+        }
+    }
+
     async function compactContext(options = {}) {
         const scope = options.scope || currentCompactionScope();
         if (scope.itemType !== 'agent' || !scope.topicId) throw new Error('请先打开一个单聊话题');
@@ -384,15 +399,18 @@ export const chatManager = (() => {
         const target = options.renderTarget || messageRenderer;
         const isCurrent = () => selectedRef.get()?.id === scope.itemId
             && selectedRef.get()?.type === scope.itemType && topicRef.get() === scope.topicId;
+        if (!isCurrent()) throw new Error('当前话题已切换，请重新选择压缩楼层');
         const result = await contextCompactionService.compact({
             scope,
             history: historyRef.get(),
             settings: globalSettingsRef.get(),
+            throughMessageId: options.throughMessageId ?? null,
             onCommitted: async (history, message) => {
                 if (!isCurrent()) return;
                 historyRef.set([...history]);
-                await target?.renderMessage?.(message);
+                const node = await target?.renderMessage?.(message, options.throughMessageId != null);
                 if (isCurrent()) {
+                    orderRenderedHistory(node?.parentNode || elements.chatMessagesDiv, history);
                     const fidelity = message?.contextCompaction?.fidelity;
                     const continuity = message?.contextCompaction?.continuity;
                     const missing = Number.isFinite(fidelity?.total) ? fidelity.total - fidelity.preserved : 0;
@@ -2803,34 +2821,28 @@ export const chatManager = (() => {
         }
 
         // 3. Handle ADDED messages
-        let messagesWereAdded = false;
         for (const newMsg of newHistory) {
             if (!oldHistoryMap.has(newMsg.id)) {
                 // Message was ADDED
-                messageRenderer.renderMessage(newMsg, true); // Update UI (true = don't modify history ref inside)
+                await messageRenderer.renderMessage(newMsg, true); // Update UI without replay animation.
+                if (!isSyncCurrent()) return;
                 historyInMem.push(newMsg); // Update Memory
-                messagesWereAdded = true;
             }
         }
 
-        // 4. If messages were added or removed, the order might be wrong. Re-sort.
-        // Also ensures the streaming message (if any) is at the very end.
+        // 4. Preserve durable floor order: a newly created checkpoint may belong
+        // in the middle of history. Timestamp sorting would silently break relay.
+        const durableOrder = new Map(newHistory.map((message, index) => [message.id, index]));
         historyInMem.sort((a, b) => {
             if (protectedStreamingIds.has(a.id) !== protectedStreamingIds.has(b.id)) {
                 return protectedStreamingIds.has(a.id) ? 1 : -1;
             }
-            return a.timestamp - b.timestamp;
+            return (durableOrder.get(a.id) ?? Infinity) - (durableOrder.get(b.id) ?? Infinity);
         });
 
-        // 5. Commit the fully merged and sorted history back to the ref. This is the new source of truth.
+        // 5. Keep memory and mounted bubbles in the same authoritative order.
         currentChatHistoryRef.set(historyInMem);
-
-        // If messages were added, the DOM order might be incorrect. A full re-render is safest
-        // but can cause flicker. For now, we accept this as the individual DOM operations
-        // are faster. A subsequent topic load will fix any visual misordering.
-        if (messagesWereAdded) {
-             console.log('[Sync] New messages were added. DOM might require a refresh to be perfectly ordered.');
-        }
+        orderRenderedHistory(elements.chatMessagesDiv, historyInMem);
     }
 
 

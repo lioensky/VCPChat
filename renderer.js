@@ -914,7 +914,7 @@ mainChatSettingsPresentationOwner.configureStartup({
             notifySendStateChanged: mainChatSendOwner.update
         });
         messageRenderer.setContextMenuDependencies({
-            compactContext: () => chatManager.compactContext(),
+            compactContext: options => chatManager.compactContext(options),
             isContextCompacting: () => chatManager.isContextCompacting(),
         });
         ownedRendererSubscriptions.add(chatManager);
