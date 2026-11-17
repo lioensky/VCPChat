@@ -30,6 +30,50 @@ function clone(value) {
         : JSON.parse(JSON.stringify(value));
 }
 
+// Windows 上别的程序开着 history.json 且不允许删除共享（杀毒、索引、编辑器、
+// PowerShell Get-Content 等）时，用临时文件覆盖改名会报 EPERM/EACCES/EBUSY，
+// 这次保存（例如一整条回复）就丢了。fs-extra 的 graceful-fs 只在目标不存在时重试，
+// 覆盖已有文件不管，所以这里按退避再试约 21 秒。目标是文件夹或只读文件这类
+// 等多久都不会好的情况立即报错。
+const RENAME_RETRY_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const RENAME_RETRY_DELAYS = [100, 200, 400, 800, 1600, 3200, 5000, 5000, 5000];
+
+async function renameBlockedForGood(target) {
+    try {
+        if ((await fs.stat(target)).isDirectory()) return true;
+    } catch {
+        return false;
+    }
+    try {
+        await fs.access(target, fs.constants.W_OK);
+        return false;
+    } catch {
+        return true;
+    }
+}
+
+async function renameWithRetry(from, to, {
+    delays = RENAME_RETRY_DELAYS,
+    onRetry = null,
+    platform = process.platform,
+    sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+} = {}) {
+    for (let attempt = 0; ; attempt += 1) {
+        try {
+            await fs.rename(from, to);
+            return;
+        } catch (error) {
+            if (platform !== 'win32' || !RENAME_RETRY_CODES.has(error.code)
+                || attempt >= delays.length
+                || (attempt === 0 && await renameBlockedForGood(to))) {
+                throw error;
+            }
+            await sleep(delays[attempt]);
+            onRetry?.();
+        }
+    }
+}
+
 /**
  * 主进程侧话题历史写入权威。
  *
@@ -120,7 +164,10 @@ class HistoryMutationQueue {
         if (this.fileWatcher) this.fileWatcher.signalInternalSave?.();
         try {
             await fs.writeJson(tempPath, clone(history), { spaces: 2 });
-            await fs.rename(tempPath, historyPath);
+            // 每次重试前重新标记内部保存，免得文件监视器把这次写入当成外部改动。
+            await renameWithRetry(tempPath, historyPath, {
+                onRetry: () => this.fileWatcher?.signalInternalSave?.(),
+            });
         } catch (error) {
             await fs.remove(tempPath).catch(() => {});
             throw error;
@@ -181,4 +228,4 @@ class HistoryMutationQueue {
     }
 }
 
-module.exports = { HistoryMutationQueue, conversationKey };
+module.exports = { HistoryMutationQueue, conversationKey, renameWithRetry };
