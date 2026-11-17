@@ -163,6 +163,59 @@ function transformContent(content, transform) {
     return content;
 }
 
+// 压缩请求里附件和超长工具返回只带有上限的摘录。附件记录会作为“历史附件元数据”整份
+// 序列化（contextCompactionPrompts.js），其中 _fileManagerData.extractedText 是附件抽出的
+// 全文；工具返回也原样整段发出。一份几 MB 的网页附件就能让压缩请求本身超过压缩模型的
+// 上限，压缩永远做不成。保真审计和冲突比较都读这份 state，所以截短放在这里，三者看到的
+// 是同一份内容。数值是经验值：附件开头 4000 字足够认出是什么文件；工具返回超过 6000 字时
+// 留开头 4000、结尾 1000。
+const ATTACHMENT_EXCERPT_CHARS = 4000;
+const TOOL_RESULT_LIMIT_CHARS = 6000;
+const TOOL_RESULT_HEAD_CHARS = 4000;
+const TOOL_RESULT_TAIL_CHARS = 1000;
+
+const BULKY_ATTACHMENT_FIELDS = new Set(['_fileManagerData', 'extractedText', 'imageFrames', 'inlineFrames']);
+const FILE_MANAGER_METADATA = ['name', 'type', 'size', 'hash', 'internalPath', 'sourcePath', 'isLiveReference', 'pdfMeta'];
+
+function attachmentForCompaction(attachment) {
+    if (!attachment || typeof attachment !== 'object') return attachment;
+    const data = attachment._fileManagerData || {};
+    const text = [data.extractedText, attachment.extractedText].find(value => typeof value === 'string') || '';
+    // 顶层字段照留（冲突比较也靠它们），只去掉全文和图片帧，再从 _fileManagerData 补上元数据。
+    const summary = Object.fromEntries(Object.entries(attachment).filter(([key]) => !BULKY_ATTACHMENT_FIELDS.has(key)));
+    for (const key of FILE_MANAGER_METADATA) {
+        if (summary[key] === undefined && data[key] !== undefined) summary[key] = data[key];
+    }
+    if (text) {
+        summary.textLength = text.length;
+        summary.excerpt = text.slice(0, ATTACHMENT_EXCERPT_CHARS);
+        if (text.length > ATTACHMENT_EXCERPT_CHARS) {
+            summary.excerptNote = `压缩时只带开头 ${ATTACHMENT_EXCERPT_CHARS} 字，全文 ${text.length} 字，需要时按路径重读`;
+        }
+    }
+    return Object.fromEntries(Object.entries(summary).filter(([, value]) => value !== undefined && value !== null && value !== ''));
+}
+
+function capToolResults(text) {
+    const ranges = collectToolResultRanges(text)
+        .filter(range => range.end - range.start > TOOL_RESULT_LIMIT_CHARS)
+        .sort((a, b) => a.start - b.start);
+    if (!ranges.length) return text;
+    let output = '';
+    let cursor = 0;
+    for (const range of ranges) {
+        if (range.start < cursor) continue;
+        const block = text.slice(range.start, range.end);
+        const omitted = block.length - TOOL_RESULT_HEAD_CHARS - TOOL_RESULT_TAIL_CHARS;
+        output += text.slice(cursor, range.start)
+            + block.slice(0, TOOL_RESULT_HEAD_CHARS)
+            + `\n【压缩时略去中间 ${omitted} 字】\n`
+            + block.slice(block.length - TOOL_RESULT_TAIL_CHARS);
+        cursor = range.end;
+    }
+    return output + text.slice(cursor);
+}
+
 /** No mutation of the source history or the previous checkpoint's diary state. */
 export function prepareCompactionState(history = []) {
     const effective = effectiveContextHistory(history);
@@ -173,10 +226,11 @@ export function prepareCompactionState(history = []) {
         if (isContextCheckpoint(message)) {
             return { role: 'user', content: message.contextCompaction.checkpoint };
         }
-        const copy = { role: message.role, content: transformContent(message.content, text => extractDiaryText(text, diaries, warnings)) };
+        const copy = { role: message.role, content: transformContent(message.content, text => capToolResults(extractDiaryText(text, diaries, warnings))) };
         for (const key of ['name', 'tool_calls', 'tool_call_id', 'attachments']) {
             if (message[key] !== undefined) copy[key] = message[key];
         }
+        if (Array.isArray(copy.attachments)) copy.attachments = copy.attachments.map(attachmentForCompaction);
         return copy;
     });
     // Closed loop: the previous checkpoint's audit misses are surfaced to the
