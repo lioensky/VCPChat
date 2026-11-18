@@ -1,4 +1,5 @@
 // modules/forum.js
+import { rewriteServerFileKeyInUrl } from '../modules/renderer/emoticonUrlFixer.js';
 
 const api = window.utilityAPI || window.electronAPI;
 
@@ -17,6 +18,7 @@ let avatarCache = {}; // Cache for loaded avatars
 let avatarPendingCache = new Map(); // Cache pending avatar requests
 let agentsList = []; // List of all agents with their names
 let emoticonLibrary = []; // Emoticon library for URL fixing
+let serverKeyConfig = { vcpServerUrl: '', fileKey: '' };
 let lastRenderedPostKeys = '';
 
 // ========== DOM Elements ==========
@@ -104,6 +106,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadEmoticonLibrary(); // Load emoticon library for URL fixing
     try {
         const settings = await api?.loadSettings();
+        if (settings) {
+            serverKeyConfig = {
+                vcpServerUrl: typeof settings.vcpServerUrl === 'string' ? settings.vcpServerUrl.trim() : '',
+                fileKey: typeof settings.fileKey === 'string' ? settings.fileKey.trim() : '',
+            };
+        }
         if (settings?.currentThemeMode) applyTheme(settings.currentThemeMode);
         api?.onThemeUpdated(applyTheme); // Listen for live theme changes
     } catch (e) { /* ignore */ }
@@ -329,7 +337,6 @@ function extractEmoticonInfo(url) {
 }
 
 function fixEmoticonUrl(originalSrc) {
-    console.log(`[Forum Debug] Starting fix for: ${originalSrc}. Library size: ${emoticonLibrary.length}`);
     if (emoticonLibrary.length === 0) {
         console.log('[Forum Debug] Library is empty. Aborting.');
         return originalSrc;
@@ -389,12 +396,15 @@ function fixEmoticonUrl(originalSrc) {
     console.log(`[Forum Debug] Best match: ${bestMatch ? bestMatch.filename : 'None'}. Score: ${highestScore.toFixed(2)}`);
 
     if (bestMatch && highestScore > 0.6) {
-        console.log('[Forum] Fixed emoticon URL:', originalSrc, '->', bestMatch.url);
         return bestMatch.url;
     }
     
     console.log('[Forum Debug] No suitable match found.');
     return originalSrc;
+}
+
+function rewriteForumServerFileKeyInUrl(url) {
+    return rewriteServerFileKeyInUrl(url, serverKeyConfig);
 }
 
 // Setup image error handling for emoticon fixing
@@ -405,10 +415,10 @@ function setupEmoticonFixer(container) {
         if (img.src) {
             // Remove escaped quotes and backslashes that might appear in URLs
             let cleanedSrc = img.src.replace(/\\"/g, '"').replace(/\\\\/g, '/').replace(/\\/g, '/');
+            cleanedSrc = rewriteForumServerFileKeyInUrl(cleanedSrc);
             
             // If the URL was cleaned, update it immediately
             if (cleanedSrc !== img.src) {
-                console.log('[Forum] Cleaned malformed URL:', img.src, '->', cleanedSrc);
                 img.src = cleanedSrc;
             }
         }
@@ -426,13 +436,27 @@ function setupEmoticonFixer(container) {
             }
 
             if (originalSrc && isEmoticonUrl) {
-                const fixedSrc = fixEmoticonUrl(originalSrc);
+                const fixedSrc = rewriteForumServerFileKeyInUrl(fixEmoticonUrl(originalSrc));
                 if (fixedSrc !== originalSrc) {
-                    console.log('[Forum] Attempting to fix broken emoticon:', originalSrc);
                     this.src = fixedSrc;
                 }
             }
         }, { once: true }); // Only try once per image
+    });
+
+    container.querySelectorAll('a[href]').forEach(link => {
+        const href = link.getAttribute('href');
+        if (href) {
+            const fixed = rewriteForumServerFileKeyInUrl(href);
+            if (fixed !== href) link.setAttribute('href', fixed);
+        }
+    });
+    container.querySelectorAll('audio[src], video[src], source[src]').forEach(media => {
+        const src = media.getAttribute('src');
+        if (src) {
+            const fixed = rewriteForumServerFileKeyInUrl(src);
+            if (fixed !== src) media.setAttribute('src', fixed);
+        }
     });
 }
 
@@ -443,7 +467,6 @@ function setupImageViewer(container) {
         if (img.src && img.src.includes('\\')) {
             let cleanedSrc = img.src.replace(/\\/g, '/');
             if (cleanedSrc !== img.src) {
-                console.log('[Forum] Universal URL cleaning:', img.src, '->', cleanedSrc);
                 img.src = cleanedSrc;
             }
         }

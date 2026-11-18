@@ -114,3 +114,149 @@ test('non-emoticon image paths remain untouched', async () => {
 
     assert.equal(fixer.fixEmoticonUrl(original), original);
 });
+
+test('rewriteServerFileKeyInUrl rewrites expired pw keys for same-host images and files', async () => {
+    const { rewriteServerFileKeyInUrl } = await loadEmoticonUrlFixerModule();
+    const config = {
+        vcpServerUrl: 'https://vcp.example.test/v1/chat/completions',
+        fileKey: 'active-fixture-key',
+    };
+
+    assert.equal(
+        rewriteServerFileKeyInUrl(
+            'https://vcp.example.test/pw=stale-fixture-key/images/zimageturbogen/generated.png',
+            config
+        ),
+        'https://vcp.example.test/pw=active-fixture-key/images/zimageturbogen/generated.png'
+    );
+
+    assert.equal(
+        rewriteServerFileKeyInUrl(
+            'https://vcp.example.test:6005/pw=stale-fixture-key/files/report%20v2.pdf?download=1#page=2',
+            config
+        ),
+        'https://vcp.example.test:6005/pw=active-fixture-key/files/report%20v2.pdf?download=1#page=2'
+    );
+
+    const alreadyCurrent = 'https://vcp.example.test/pw=active-fixture-key/images/persist/ok.png';
+    assert.equal(rewriteServerFileKeyInUrl(alreadyCurrent, config), alreadyCurrent);
+});
+
+test('rewriteServerFileKeyInUrl never leaks fileKey to third-party hosts or unrelated paths', async () => {
+    const { rewriteServerFileKeyInUrl } = await loadEmoticonUrlFixerModule();
+    const config = {
+        vcpServerUrl: 'https://vcp.example.test/v1/chat/completions',
+        fileKey: 'secret-new-key',
+    };
+
+    const untouched = [
+        'https://evil.com/pw=old/images/a.png',
+        'https://sub.vcp.example.test/pw=old/images/a.png',
+        'https://vcp.example.test@evil.com/pw=old/images/a.png',
+        'https://evil.com&#x2f;@vcp.example.test/pw=old/images/a.png',
+        'https://someone@vcp.example.test/pw=old/images/a.png',
+        'file:///pw=old/images/a.png',
+        'https://vcp.example.test/pw=old/admin_api/status',
+        'https://vcp.example.test/api/pw=old/images/a.png',
+        'https://vcp.example.test/images/a.png',
+    ];
+
+    for (const url of untouched) {
+        assert.equal(rewriteServerFileKeyInUrl(url, config), url);
+    }
+});
+
+test('fixer rewrites same-host keys dynamically even when emoticon library is empty', async () => {
+    const { createEmoticonUrlFixer } = await loadEmoticonUrlFixerModule();
+    let currentKey = 'key-v1';
+    const fixer = createEmoticonUrlFixer({
+        getSettings: () => ({
+            vcpServerUrl: 'https://vcp.example.test/v1/chat/completions',
+            fileKey: currentKey,
+        }),
+    });
+
+    await fixer.initialize({
+        getEmoticonLibrary: async () => [],
+    });
+
+    const stale = 'https://vcp.example.test/pw=stale-fixture-key/images/zimageturbogen/test.png';
+    assert.equal(
+        fixer.fixEmoticonUrl(stale),
+        'https://vcp.example.test/pw=key-v1/images/zimageturbogen/test.png'
+    );
+
+    currentKey = 'key-v2';
+    assert.equal(
+        fixer.fixEmoticonUrl(stale),
+        'https://vcp.example.test/pw=key-v2/images/zimageturbogen/test.png'
+    );
+});
+
+test('fixUrlsInMarkdownText updates images, links, media tags, and bare VCP URLs without corrupting non-image emoticon links', async () => {
+    const { createEmoticonUrlFixer, fixUrlsInMarkdownText } = await loadEmoticonUrlFixerModule();
+    const fixer = createEmoticonUrlFixer({
+        settings: {
+            vcpServerUrl: 'https://vcp.example.test/v1/chat/completions',
+            fileKey: 'active-key',
+        },
+    });
+    await fixer.initialize({
+        getEmoticonLibrary: async () => [
+            {
+                category: '通用表情包',
+                filename: '开心.png',
+                url: 'https://vcp.example.test:6005/pw=old-lib-key/images/%E9%80%9A%E7%94%A8%E8%A1%A8%E6%83%85%E5%8C%85/%E5%BC%80%E5%BF%83.png',
+            },
+        ],
+    });
+
+    const input = [
+        '![图](https://vcp.example.test/pw=old/images/zimageturbogen/a.png)',
+        '[文件](https://vcp.example.test/pw=old/files/spec.pdf)',
+        '[网页](https://other.local/表情包/guide.html)',
+        '<img src="https://vcp.example.test/pw=old/images/我的表情包/开心.png">',
+        '<a href="https://vcp.example.test/pw=old/files/data.zip">zip</a>',
+        '<audio src="https://vcp.example.test/pw=old/files/voice.wav"></audio>',
+        '直链 https://vcp.example.test/pw=old/images/persist/b.webp',
+    ].join('\n');
+
+    const output = fixUrlsInMarkdownText(input, {
+        fixEmoticonUrl: fixer.fixEmoticonUrl,
+        fixServerKeyUrl: fixer.fixServerKeyUrl,
+    });
+
+    assert.match(output, /!\[图\]\(https:\/\/vcp\.example\.test\/pw=active-key\/images\/zimageturbogen\/a\.png\)/);
+    assert.match(output, /\[文件\]\(https:\/\/vcp\.example\.test\/pw=active-key\/files\/spec\.pdf\)/);
+    assert.match(output, /\[网页\]\(https:\/\/other\.local\/表情包\/guide\.html\)/);
+    assert.match(output, /<img src="https:\/\/vcp\.example\.test:6005\/pw=active-key\/images\/%E9%80%9A%E7%94%A8%E8%A1%A8%E6%83%85%E5%8C%85\/%E5%BC%80%E5%BF%83\.png">/);
+    assert.match(output, /<a href="https:\/\/vcp\.example\.test\/pw=active-key\/files\/data\.zip">zip<\/a>/);
+    assert.match(output, /<audio src="https:\/\/vcp\.example\.test\/pw=active-key\/files\/voice\.wav"><\/audio>/);
+    assert.match(output, /直链 https:\/\/vcp\.example\.test\/pw=active-key\/images\/persist\/b\.webp/);
+});
+
+test('fileKey remains one safe segment in Markdown links and quoted HTML attributes', async () => {
+    const { rewriteServerFileKeyInUrl, fixUrlsInMarkdownText } = await loadEmoticonUrlFixerModule();
+    const url = 'https://vcp.example.test/pw=old/files/clip.wav';
+    const fixServerKeyUrl = value => rewriteServerFileKeyInUrl(value, {
+        vcpServerUrl: 'https://vcp.example.test',
+        fileKey: "quote'and(paren)/",
+    });
+    const fixed = 'https://vcp.example.test/pw=quote%27and%28paren%29%2F/files/clip.wav';
+    assert.equal(
+        fixUrlsInMarkdownText(`[clip](${url}) <audio src='${url}'></audio>`, { fixServerKeyUrl }),
+        `[clip](${fixed}) <audio src='${fixed}'></audio>`
+    );
+});
+
+test('clearing the live fileKey does not fall back to an earlier key', async () => {
+    const { createEmoticonUrlFixer } = await loadEmoticonUrlFixerModule();
+    const host = 'https://vcp.example.test';
+    const url = `${host}/pw=old/images/a.png`;
+    const settings = { vcpServerUrl: host, fileKey: 'active-key' };
+    const fixer = createEmoticonUrlFixer({ getSettings: () => settings });
+    await fixer.initialize({ loadSettings: async () => ({ ...settings }) });
+    assert.equal(fixer.fixServerKeyUrl(url), `${host}/pw=active-key/images/a.png`);
+    settings.fileKey = '';
+    assert.equal(fixer.fixServerKeyUrl(url), url);
+});

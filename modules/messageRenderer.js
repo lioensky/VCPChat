@@ -15,7 +15,7 @@ import { processAnimationsInContent as processOwnedAnimations, cleanupAnimations
 import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
 
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
-import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
+import { createEmoticonUrlFixer, fixUrlsInMarkdownText } from './renderer/emoticonUrlFixer.js';
 import { applyMarkdownPolicy, hasOnlyMarkdownPolicyTokenizer, markdownWorkerOptions } from './renderer/markdownPolicy.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
 import { createContentRuntime } from './chat/contentRuntime.js';
@@ -1044,10 +1044,12 @@ function estimateStringBytes(str) {
 
 const hashStringFNV1a = (...args) => templateCompiler.hashStringFNV1a(...args);
 
-function buildRenderSettingsFingerprint(settings = {}) {
+function buildRenderSettingsFingerprint(settings = {}, serverConfig = emoticonUrlFixer.getServerConfig?.()) {
     // 仅纳入会影响 Markdown → raw HTML 或按钮标记处理的稳定设置；后续新增渲染相关设置时可 bump RENDER_PIPELINE_VERSION。
     return JSON.stringify({
-        enableAiMessageButtons: settings.enableAiMessageButtons !== false
+        enableAiMessageButtons: settings.enableAiMessageButtons !== false,
+        vcpServerUrl: serverConfig?.vcpServerUrl ?? '',
+        fileKey: serverConfig?.fileKey ?? ''
     });
 }
 
@@ -1071,7 +1073,7 @@ function buildRenderSourceFingerprint(text) {
     ]);
 }
 
-function buildRenderHtmlCacheKey(text, options = {}) {
+function buildRenderHtmlCacheKey(text, options = {}, serverConfig) {
     const settings = options.settings || mainRendererReferences.globalSettingsRef.get();
     const messageRole = options.messageRole || 'assistant';
     const depth = options.depth ?? 0;
@@ -1080,7 +1082,7 @@ function buildRenderHtmlCacheKey(text, options = {}) {
         RENDER_PIPELINE_VERSION,
         messageRole,
         depth,
-        buildRenderSettingsFingerprint(settings),
+        buildRenderSettingsFingerprint(settings, serverConfig),
         options.resultOrdinal || 0,
         Boolean(options.batchDomain),
         buildRenderSourceFingerprint(text)
@@ -1614,37 +1616,17 @@ function removeToolResultFromMessage(messageItem, ordinal, hash) {
 }
 
 /**
- * 🟢 在 Markdown 文本中修复表情包URL
- * 处理 ![alt](url) 和 <img src="url"> 两种形式
+ * 🟢 在 Markdown / HTML 文本中修复表情包 URL 及同域过期 fileKey URL
+ * 处理 ![alt](url)、[text](url)、<img/a/audio/video/source> 及裸链接
  */
 function fixEmoticonUrlsInMarkdown(text) {
-    if (!text || typeof text !== 'string') return text;
-
-    // 1. 修复 Markdown 图片语法: ![alt](url)
-    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-        if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
-            const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
-            if (fixedUrl !== url) {
-                console.debug(`[PreprocessFix] Markdown图片: ${url} → ${fixedUrl}`);
-            }
-            return `![${alt}](${fixedUrl})`;
-        }
-        return match;
+    if (!text || typeof text !== 'string' || !emoticonUrlFixer) return text;
+    return fixUrlsInMarkdownText(text, {
+        fixEmoticonUrl: emoticonUrlFixer.fixEmoticonUrl,
+        fixServerKeyUrl: typeof emoticonUrlFixer.fixServerKeyUrl === 'function'
+            ? emoticonUrlFixer.fixServerKeyUrl
+            : (value => value),
     });
-
-    // 2. 修复 HTML img 标签: <img src="url" ...>
-    text = text.replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (match, before, url, after) => {
-        if (emoticonUrlFixer && emoticonUrlFixer.fixEmoticonUrl) {
-            const fixedUrl = emoticonUrlFixer.fixEmoticonUrl(url);
-            if (fixedUrl !== url) {
-                console.debug(`[PreprocessFix] HTML图片: ${url} → ${fixedUrl}`);
-            }
-            return `<img${before}src="${fixedUrl}"${after}>`;
-        }
-        return match;
-    });
-
-    return text;
 }
 
 /**
@@ -1765,7 +1747,8 @@ async function renderHistoryTemplate(text, renderOptions, root, session, message
         || shouldBypassRenderHtmlCache(text)) {
         return renderMarkdownToHtml(text, renderOptions);
     }
-    const key = buildRenderHtmlCacheKey(text, renderOptions);
+    const serverConfig = emoticonUrlFixer.getServerConfig();
+    const key = buildRenderHtmlCacheKey(text, renderOptions, serverConfig);
     const cached = getRenderHtmlCache(key);
     if (cached) {
         renderOptions.workerCompiled = true;
@@ -1779,7 +1762,11 @@ async function renderHistoryTemplate(text, renderOptions, root, session, message
     const width = root.clientWidth;
     const measure = width > 0 ? bridge?.getMeasurementOptions?.('body', width) || null : null;
     const result = await renderWorkerClient.submit(root, {
-        text, settings: { enableAiMessageButtons: renderOptions.settings?.enableAiMessageButtons },
+        text,
+        settings: {
+            enableAiMessageButtons: renderOptions.settings?.enableAiMessageButtons,
+            ...serverConfig,
+        },
         role: renderOptions.messageRole,
         depth: renderOptions.depth, markdown: markdownWorkerOptions(parser),
         flowlock: Boolean(mainRendererReferences.flowlockProtocol),
@@ -2031,7 +2018,10 @@ function initializeMessageRenderer(refs) {
     projectForgeTopicSurface.replaceHistory(mainRendererReferences.chatMessagesDiv, mainRendererReferences.currentChatHistoryRef.get());
 
     applyMarkdownPolicy(mainRendererReferences.markedInstance);
-    templateCompiler = createRenderTemplateCompiler({ mainRendererReferences, contentProcessor, fixEmoticonUrlsInMarkdown, deferToolRequest, registerLazyTool, toolResultFullContentMap });
+    const fixServerKeyUrl = typeof emoticonUrlFixer.fixServerKeyUrl === 'function'
+        ? emoticonUrlFixer.fixServerKeyUrl
+        : (value => value);
+    templateCompiler = createRenderTemplateCompiler({ mainRendererReferences, contentProcessor, fixEmoticonUrlsInMarkdown, fixUrl: emoticonUrlFixer.fixEmoticonUrl, fixServerKeyUrl, deferToolRequest, registerLazyTool, toolResultFullContentMap });
     contentPipeline = templateCompiler;
     contentRuntime = createContentRuntime({ pipeline: { process: (text, options) => ({ text: templateCompiler.processStream(text), state: {} }) } });
 
@@ -2046,7 +2036,9 @@ function initializeMessageRenderer(refs) {
 
     // Start the emoticon fixer initialization, but don't wait for it here.
     // The await will happen inside renderMessage to ensure it's ready before rendering.
-    emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+    emoticonUrlFixer.initialize(mainRendererReferences.electronAPI, {
+        getSettings: () => mainRendererReferences.globalSettingsRef.get(),
+    });
 
     // 初始化可见性优化器
     // 🟢 关键修复：IntersectionObserver 的 root 必须是产生滚动条的那个父容器
@@ -3871,7 +3863,9 @@ async function renderHistory(history, options = {}) {
         } = options;
 
         // 核心修复：在开始批量渲染前，只等待一次依赖项。
-        await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI);
+        await emoticonUrlFixer.initialize(mainRendererReferences.electronAPI, {
+            getSettings: () => mainRendererReferences.globalSettingsRef.get(),
+        });
         if (!isRenderSessionActive(renderSessionId)) return;
 
         if (!history || history.length === 0) {

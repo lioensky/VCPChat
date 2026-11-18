@@ -90,3 +90,37 @@ test('Flowlock shares the production protocol parser', async () => {
     const result = await compileRenderJob({ ...base, flowlock: true, text: '[[Flowlock::Complete]]' });
     assert.doesNotMatch(result.parts[0], /\[\[Flowlock::Complete\]\]/);
 });
+
+test('worker compiler rewrites expired pw keys in prose and media while preserving code domains', async () => {
+    const result = await compileRenderJob({
+        ...base,
+        settings: {
+            vcpServerUrl: 'https://vcp.example.test/v1/chat/completions',
+            fileKey: 'fresh-key',
+        },
+        text: [
+            '![pic](https://vcp.example.test/pw=old-key/images/zimageturbogen/demo.png)',
+            '',
+            '[doc](https://vcp.example.test/pw=old-key/files/paper.pdf)',
+            '',
+            '`https://vcp.example.test/pw=old-key/images/code-sample.png`',
+        ].join('\n'),
+    });
+    assert.match(result.parts[0], /pw=fresh-key\/images\/zimageturbogen\/demo\.png/);
+    assert.match(result.parts[0], /pw=fresh-key\/files\/paper\.pdf/);
+    assert.match(result.parts[0], /<code>https:\/\/vcp\.example\.test\/pw=old-key\/images\/code-sample\.png<\/code>/);
+});
+
+test('worker retains original tool result source for lazy hydration', async () => {
+    const result = await compileRenderJob({
+        ...base,
+        settings: {
+            vcpServerUrl: 'https://vcp.example.test/v1/chat/completions',
+            fileKey: 'fresh-key',
+        },
+        text: '[[VCP调用结果信息汇总:\n- 工具名称: ZImageTurboGen\n- 执行状态: success\n- 可访问URL: https://vcp.example.test/pw=old-key/images/zimageturbogen/out.png\nVCP调用结果结束]]',
+    });
+    assert.equal(result.tools.length, 1);
+    assert.match(result.tools[0].raw, /pw=old-key\/images\/zimageturbogen\/out\.png/);
+    assert.doesNotMatch(result.tools[0].raw, /pw=fresh-key/);
+});

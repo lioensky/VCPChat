@@ -3,7 +3,7 @@ import { Marked } from '../../node_modules/marked/lib/marked.esm.js';
 import { applyMarkdownPolicy } from './markdownPolicy.js';
 import { createRenderTemplateCompiler } from './renderTemplateCompiler.js';
 import { createContentProcessor } from './contentProcessor.js';
-import { createEmoticonUrlFixer } from './emoticonUrlFixer.js';
+import { createEmoticonUrlFixer, fixUrlsInMarkdownText } from './emoticonUrlFixer.js';
 import { splitToolBatchDomains } from './toolBatchDomains.js';
 import { collectClosedToolResultRanges } from './toolResultRegions.js';
 import { prepare, layout, clearCache } from './pretext.esm.js';
@@ -12,7 +12,7 @@ import { prepare, layout, clearCache } from './pretext.esm.js';
 export async function compileRenderJob(job) {
     const tools = [];
     const processor = createContentProcessor();
-    const fixer = createEmoticonUrlFixer();
+    const fixer = createEmoticonUrlFixer({ settings: job.settings });
     await fixer.initialize({ getEmoticonLibrary: async () => job.emoticons || [] });
     const compiler = createRenderTemplateCompiler({
         mainRendererReferences: {
@@ -27,11 +27,13 @@ export async function compileRenderJob(job) {
             return id;
         },
         fixEmoticonUrlsInMarkdown(text) {
-            return text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,
-                (_match, alt, url) => `![${alt}](${fixer.fixEmoticonUrl(url)})`)
-                .replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi,
-                    (_match, before, url, after) => `<img${before}src="${fixer.fixEmoticonUrl(url)}"${after}>`);
+            return fixUrlsInMarkdownText(text, {
+                fixEmoticonUrl: fixer.fixEmoticonUrl,
+                fixServerKeyUrl: fixer.fixServerKeyUrl,
+            });
         },
+        fixUrl: fixer.fixEmoticonUrl,
+        fixServerKeyUrl: fixer.fixServerKeyUrl,
     });
     let ordinal = 0;
     const domains = splitToolBatchDomains(job.text);

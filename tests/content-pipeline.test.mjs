@@ -99,3 +99,27 @@ test('assistant reply address is display-only and hidden only as a complete term
     const tool = `${TOOL_RESULT_START_MARKER}\n${footer}\n${TOOL_RESULT_END_MARKER}`;
     assert.equal([...render(tool).state.toolResultMap.values()][0], tool);
 });
+
+test('normalizeProseUrls routes markdown links, media tags, and bare /pw= URLs without touching code or tool domains', () => {
+    const pipeline = createContentPipeline({
+        getToolResultRegex: () => /\[\[VCP调用结果信息汇总:[\s\S]*?VCP调用结果结束\]\]/g,
+        fixEmoticonUrlsInMarkdown: text => text.replace(/\/pw=old-key\//g, '/pw=new-key/'),
+    });
+
+    const input = [
+        '[file](https://vcp.example.test/pw=old-key/files/a.pdf)',
+        '<a href="https://vcp.example.test/pw=old-key/files/b.zip">b</a>',
+        '<audio src="https://vcp.example.test/pw=old-key/files/c.wav"></audio>',
+        'https://vcp.example.test/pw=old-key/images/d.png',
+        '`https://vcp.example.test/pw=old-key/images/inline.png`',
+        `${TOOL_RESULT_START_MARKER}\nhttps://vcp.example.test/pw=old-key/images/tool.png\n${TOOL_RESULT_END_MARKER}`,
+    ].join('\n');
+
+    const full = pipeline.process(input, { mode: PIPELINE_MODES.FULL_RENDER });
+    assert.match(full.text, /\[file\]\(https:\/\/vcp\.example\.test\/pw=new-key\/files\/a\.pdf\)/);
+    assert.match(full.text, /<a href="https:\/\/vcp\.example\.test\/pw=new-key\/files\/b\.zip">b<\/a>/);
+    assert.match(full.text, /<audio src="https:\/\/vcp\.example\.test\/pw=new-key\/files\/c\.wav"><\/audio>/);
+    assert.match(full.text, /https:\/\/vcp\.example\.test\/pw=new-key\/images\/d\.png/);
+    assert.match(full.text, /`https:\/\/vcp\.example\.test\/pw=old-key\/images\/inline\.png`/);
+    assert.match([...full.state.toolResultMap.values()][0], /pw=old-key\/images\/tool\.png/);
+});

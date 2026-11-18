@@ -36,6 +36,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
         });
+
+        const fixServerKeyUrl = typeof emoticonFixer.fixServerKeyUrl === 'function'
+            ? emoticonFixer.fixServerKeyUrl
+            : null;
+        if (fixServerKeyUrl) {
+            container.querySelectorAll('a[href]').forEach(link => {
+                const originalHref = link.getAttribute('href');
+                if (originalHref) {
+                    const fixedHref = fixServerKeyUrl(originalHref);
+                    if (fixedHref !== originalHref) {
+                        link.setAttribute('href', fixedHref);
+                    }
+                }
+            });
+            container.querySelectorAll('audio[src], video[src], source[src]').forEach(media => {
+                const originalSrc = media.getAttribute('src');
+                if (originalSrc) {
+                    const fixedSrc = fixServerKeyUrl(originalSrc);
+                    if (fixedSrc !== originalSrc) {
+                        media.setAttribute('src', fixedSrc);
+                    }
+                }
+            });
+        }
     }
     // --- End: Emoticon URL Fixer (Module) ---
 

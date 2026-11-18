@@ -957,6 +957,52 @@ test('history worker output populates the real template cache and preserves batc
     } finally { await disposeFixture(fixture); }
 });
 
+test('rotating or clearing fileKey invalidates history templates and repairs lazy tool URLs without changing source', async () => {
+    const { compileRenderJob } = await import('../modules/renderer/renderWorkerRuntime.js');
+    const { Marked } = require('marked');
+    const host = 'https://vcp.example.test';
+    const url = (key, path) => `${host}/pw=${key}/${path}`;
+    const oldKey = 'stale-key';
+    const doc = 'files/report.pdf';
+    const image = 'images/generated.png';
+    const media = 'files/clip.wav';
+    const content = `[report](${url(oldKey, doc)})\n\n`
+        + '[[VCP调用结果信息汇总:\n- 工具名称: Demo\n- 执行状态: SUCCESS\n'
+        + `- 可访问URL: ${url(oldKey, image)}\n`
+        + `- 返回内容: [clip](${url(oldKey, media)}) \n\n\`${url(oldKey, media)}\`\nVCP调用结果结束]]`;
+    const jobs = [];
+    const fixture = await createRendererFixture('seed', { toolPresentation: 'legacy', toolExpansion: 'none' },
+        new Marked({ gfm: true, breaks: true }), {
+            createRenderWorker: () => ({
+                async postMessage({ id, job }) {
+                    jobs.push(job.settings.fileKey);
+                    try { this.onmessage?.({ data: { id, result: await compileRenderJob(job) } }); }
+                    catch (error) { this.onmessage?.({ data: { id, error: error.message } }); }
+                },
+                terminate() {},
+            }),
+        });
+
+    const history = [{ id: 'worker-history', role: 'assistant', content, timestamp: 1 }];
+    try {
+        for (const key of ['first-key', 'first-key', 'rotated-key', '']) {
+            fixture.settingsRef.set({ ...fixture.settingsRef.get(), vcpServerUrl: host, fileKey: key });
+            fixture.renderer.clearChat();
+            fixture.historyRef.set(history);
+            await fixture.renderer.renderHistory(history);
+            const root = fixture.dom.window.document.getElementById('chat');
+            assert.equal(root.querySelector('.md-content > p > a')?.href, url(key || oldKey, doc));
+            root.querySelector('.vcp-tool-result-header').click();
+            const card = root.querySelector('.vcp-tool-result-collapsible-content');
+            assert.equal(card.querySelector('.vcp-tool-result-image')?.src, url(key || oldKey, image));
+            assert.equal(card.querySelector('.vcp-tool-result-markdown-content a')?.href, url(key || oldKey, media));
+            assert.equal(card.querySelector('code')?.textContent, url(oldKey, media));
+            assert.equal(history[0].content, content);
+        }
+        assert.deepEqual(jobs, ['first-key', 'rotated-key', '']);
+    } finally { await disposeFixture(fixture); }
+});
+
 test('cold content is destroyed and restored with fresh tool leases on the same shell', async () => {
     const fixture = await createRendererFixture(TRANSCRIPT, { toolPresentation: 'compact', toolExpansion: 'none' });
     try {

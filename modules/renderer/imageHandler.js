@@ -44,8 +44,8 @@ export function createImageHandler({ fixUrl = value => value } = {}) {
     images.forEach((img, index) => {
         let src = img.src;
         
-        // 修复表情包 URL
-        if (fixUrl && src.includes('表情包')) {
+        // 修复表情包及同域过期 fileKey 图片 URL
+        if (fixUrl && src) {
             const fixedSrc = fixUrl(src);
             if (fixedSrc !== src) {
                 img.src = fixedSrc;
