@@ -139,11 +139,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 groupsListEl.appendChild(listItem);
             }
             
-            listItem.addEventListener('click', () => handleSidebarClick(itemData));
+            listItem.addEventListener('click', () => handleSidebarClick(itemData, item.type));
         });
     }
 
-    function handleSidebarClick(itemData) {
+    function handleSidebarClick(itemData, itemType) {
         switchTab('chat-history');
         chatHistoryEl.innerHTML = '';
         jsonEditorEl.innerHTML = '';
@@ -155,21 +155,131 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // topics 数组的顺序就是主程序侧栏的顺序（新话题在前，拖动后保存），照原样显示。
+        // 话题很多时在主程序侧栏里拖动不便，这里可以拖动或置顶/置底后整体保存。
+        const toolbar = document.createElement('div');
+        toolbar.classList.add('topic-order-toolbar');
+        const status = document.createElement('span');
+        status.classList.add('topic-order-status');
+        status.textContent = 'Drag topics or use Top / Bottom, then save the order.';
+        const makeButton = (label, className) => {
+            const button = document.createElement('button');
+            button.textContent = label;
+            button.className = className;
+            return button;
+        };
+        const saveButton = makeButton('Save Order', 'action-button primary topic-order-save');
+        const revertButton = makeButton('Revert', 'action-button topic-order-revert');
+        toolbar.append(status, revertButton, saveButton);
+
         const topicsList = document.createElement('ul');
         topicsList.classList.add('topics-list');
-        
-        // topics 数组的顺序就是主程序侧栏的顺序（新话题在前，拖动后保存），照原样显示
-        itemData.topics.forEach(topic => {
-            const topicItem = document.createElement('li');
-            topicItem.textContent = `${topic.name} (${topic.id})`;
-            topicItem.addEventListener('click', (e) => {
-                e.stopPropagation();
-                loadChatHistory(itemData.id, topic.id);
+
+        const topicById = new Map(itemData.topics.map(topic => [topic.id, topic]));
+        let savedOrder = itemData.topics.map(topic => topic.id);
+        let order = [...savedOrder];
+        let draggedId = null;
+
+        const moveTopic = (id, toIndex) => {
+            const from = order.indexOf(id);
+            if (from === -1) return;
+            order.splice(from, 1);
+            order.splice(Math.max(0, Math.min(toIndex, order.length)), 0, id);
+            renderTopics();
+        };
+
+        function renderTopics() {
+            topicsList.innerHTML = '';
+            order.forEach(id => {
+                const topic = topicById.get(id);
+                const topicItem = document.createElement('li');
+                topicItem.dataset.topicId = id;
+                topicItem.draggable = true;
+                const label = document.createElement('span');
+                label.classList.add('topic-label');
+                label.textContent = `${topic.name} (${topic.id})`;
+                const topButton = makeButton('Top', 'topic-move-button topic-move-top');
+                const bottomButton = makeButton('Bottom', 'topic-move-button topic-move-bottom');
+                topButton.addEventListener('click', e => { e.stopPropagation(); moveTopic(id, 0); });
+                bottomButton.addEventListener('click', e => { e.stopPropagation(); moveTopic(id, order.length); });
+                topicItem.append(label, topButton, bottomButton);
+                topicItem.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    loadChatHistory(itemData.id, topic.id);
+                });
+                topicItem.addEventListener('dragstart', e => {
+                    draggedId = id;
+                    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                });
+                topicItem.addEventListener('dragover', e => {
+                    if (draggedId && draggedId !== id) e.preventDefault();
+                });
+                topicItem.addEventListener('drop', e => {
+                    e.preventDefault();
+                    if (!draggedId || draggedId === id) return;
+                    const rect = topicItem.getBoundingClientRect();
+                    const after = e.clientY > rect.top + rect.height / 2;
+                    const source = draggedId;
+                    draggedId = null;
+                    order.splice(order.indexOf(source), 1);
+                    order.splice(order.indexOf(id) + (after ? 1 : 0), 0, source);
+                    renderTopics();
+                });
+                topicItem.addEventListener('dragend', () => { draggedId = null; });
+                topicsList.appendChild(topicItem);
             });
-            topicsList.appendChild(topicItem);
+            const changed = order.some((id, index) => id !== savedOrder[index]);
+            saveButton.disabled = !changed;
+            revertButton.disabled = !changed;
+        }
+
+        revertButton.addEventListener('click', () => {
+            order = [...savedOrder];
+            renderTopics();
+        });
+        saveButton.addEventListener('click', async () => {
+            saveButton.disabled = true;
+            try {
+                const topics = await saveTopicOrder(itemData.id, itemType, order);
+                itemData.topics = topics;
+                topics.forEach(topic => topicById.set(topic.id, topic));
+                savedOrder = topics.map(topic => topic.id);
+                order = [...savedOrder];
+                renderTopics();
+                status.textContent = 'Order saved. Reselect this item in VCPChat to see it.';
+            } catch (error) {
+                console.error('Failed to save topic order:', error);
+                status.textContent = `Could not save order: ${error.message}`;
+                saveButton.disabled = false;
+            }
         });
 
-        chatHistoryEl.appendChild(topicsList);
+        renderTopics();
+        chatHistoryEl.append(toolbar, topicsList);
+    }
+
+    // 与主程序 save-topic-order 相同：保存时重读配置，只按 id 重排 topics，话题对象原样保留。
+    // 本窗口打开后才新建的话题不在 order 里，按主程序新话题在前的约定放到最前。
+    async function saveTopicOrder(itemId, itemType, orderedIds) {
+        const configPath = itemType === 'group'
+            ? `${AppDataPath}AgentGroups/${itemId}/config.json`
+            : `${AppDataPath}Agents/${itemId}/config.json`;
+        const configStr = await window.api.readFile(configPath);
+        if (!configStr) throw new Error('Could not read config file');
+        const config = JSON.parse(configStr);
+        if (!Array.isArray(config.topics)) throw new Error("'topics' is not an array");
+        const remaining = new Map(config.topics.map(topic => [topic.id, topic]));
+        const ordered = [];
+        orderedIds.forEach(id => {
+            if (remaining.has(id)) {
+                ordered.push(remaining.get(id));
+                remaining.delete(id);
+            }
+        });
+        config.topics = [...remaining.values(), ...ordered];
+        const result = await window.api.writeFile(configPath, JSON.stringify(config, null, 2));
+        if (!result.success) throw new Error(result.error || 'Failed to write config');
+        return config.topics;
     }
 
     async function loadChatHistory(itemId, topicId) {

@@ -91,8 +91,63 @@ test('combinedItemOrder 为空或不全时，侧栏仍列出全部 Agent 和群�
 test('话题列表按 topics 数组的顺序显示，不按创建时间重排', async t => {
     const doc = await openManager(t, await createProject(t));
     doc.querySelector('.sidebar-item[data-id="agent_nova"]').click();
-    const topics = [...doc.querySelectorAll('.topics-list li')].map(el => el.textContent);
+    const topics = [...doc.querySelectorAll('.topics-list li .topic-label')].map(el => el.textContent);
     assert.deepEqual(topics, ['置顶的旧话题 (topic_100)', '最新话题 (topic_300)', '中间话题 (topic_200)']);
+});
+
+test('话题可以置顶、置底和拖动，保存后按新顺序写回 topics，话题对象原样保留', async t => {
+    const root = await createProject(t);
+    const doc = await openManager(t, root);
+    const window = doc.defaultView;
+    doc.querySelector('.sidebar-item[data-id="agent_nova"]').click();
+    const ids = () => [...doc.querySelectorAll('.topics-list li')].map(el => el.dataset.topicId);
+    const row = id => doc.querySelector(`.topics-list li[data-topic-id="${id}"]`);
+    const saveButton = doc.querySelector('.topic-order-save');
+    assert.equal(saveButton.disabled, true);
+
+    row('topic_200').querySelector('.topic-move-top').click();
+    assert.deepEqual(ids(), ['topic_200', 'topic_100', 'topic_300']);
+    row('topic_100').querySelector('.topic-move-bottom').click();
+    assert.deepEqual(ids(), ['topic_200', 'topic_300', 'topic_100']);
+    // 把 topic_100 拖到 topic_300 上半部：放在它前面
+    row('topic_100').dispatchEvent(new window.Event('dragstart'));
+    const drop = new window.Event('drop', { cancelable: true });
+    Object.defineProperty(drop, 'clientY', { value: -1 });
+    row('topic_300').dispatchEvent(drop);
+    assert.deepEqual(ids(), ['topic_200', 'topic_100', 'topic_300']);
+    assert.equal(saveButton.disabled, false);
+
+    // 本窗口打开后主程序又新建了一个话题，保存时不能丢，按新话题在前放在最前
+    const configPath = path.join(root, 'AppData/Agents/agent_nova/config.json');
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    config.topics.unshift({ id: 'topic_400', name: '刚建的话题', createdAt: 400, locked: false, unread: true, creatorSource: 'ui' });
+    config.model = 'kept-model';
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+
+    saveButton.click();
+    await settle(80);
+    const saved = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    assert.deepEqual(saved.topics.map(topic => topic.id), ['topic_400', 'topic_200', 'topic_100', 'topic_300']);
+    assert.deepEqual(saved.topics[0], { id: 'topic_400', name: '刚建的话题', createdAt: 400, locked: false, unread: true, creatorSource: 'ui' });
+    assert.equal(saved.model, 'kept-model');
+    assert.deepEqual(ids(), ['topic_400', 'topic_200', 'topic_100', 'topic_300']);
+    assert.equal(saveButton.disabled, true);
+});
+
+test('群组的话题顺序写回 AgentGroups 下的配置', async t => {
+    const root = await createProject(t);
+    const groupPath = path.join(root, 'AppData/AgentGroups/group_team/config.json');
+    const group = JSON.parse(await fs.readFile(groupPath, 'utf8'));
+    group.topics.push({ id: 'group_topic_2', name: '第二个群聊', createdAt: 2 });
+    await fs.writeFile(groupPath, JSON.stringify(group, null, 2), 'utf8');
+
+    const doc = await openManager(t, root);
+    doc.querySelector('.sidebar-item[data-id="group_team"]').click();
+    doc.querySelector('.topics-list li[data-topic-id="group_topic_2"] .topic-move-top').click();
+    doc.querySelector('.topic-order-save').click();
+    await settle(80);
+    const saved = JSON.parse(await fs.readFile(groupPath, 'utf8'));
+    assert.deepEqual(saved.topics.map(topic => topic.id), ['group_topic_2', 'group_topic_1']);
 });
 
 test('一致性检查跳过辅助对话目录，恢复的话题带上主程序的话题字段', async t => {
