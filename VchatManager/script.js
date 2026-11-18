@@ -37,26 +37,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const agents = {};
             const groups = {};
 
-            // If combinedItemOrder doesn't exist, build it from existing directories
-            let combinedItemOrder = settings.combinedItemOrder;
-            if (!combinedItemOrder || !Array.isArray(combinedItemOrder)) {
-                combinedItemOrder = [];
-
-                // Scan Agents directory
-                const agentDirs = await window.api.listDir(`${AppDataPath}Agents`);
-                if (agentDirs && Array.isArray(agentDirs)) {
-                    for (const agentId of agentDirs) {
-                        combinedItemOrder.push({ type: 'agent', id: agentId });
-                    }
-                }
-
-                // Scan AgentGroups directory
-                const groupDirs = await window.api.listDir(`${AppDataPath}AgentGroups`);
-                if (groupDirs && Array.isArray(groupDirs)) {
-                    for (const groupId of groupDirs) {
-                        combinedItemOrder.push({ type: 'group', id: groupId });
-                    }
-                }
+            // 与主程序侧栏一致：combinedItemOrder 只记录用户拖动过的顺序，
+            // 新装或新建后未拖动的 Agent/群组不在其中，仍要从目录补全
+            const savedOrder = Array.isArray(settings.combinedItemOrder) ? settings.combinedItemOrder : [];
+            const scannedItems = [];
+            for (const [type, dir] of [['agent', 'Agents'], ['group', 'AgentGroups']]) {
+                const ids = await window.api.listDir(`${AppDataPath}${dir}`);
+                if (Array.isArray(ids)) ids.forEach(id => scannedItems.push({ type, id }));
+            }
+            const scannedKeys = new Set(scannedItems.map(item => `${item.type}_${item.id}`));
+            const placedKeys = new Set();
+            const combinedItemOrder = [];
+            for (const item of [...savedOrder, ...scannedItems]) {
+                const key = `${item?.type}_${item?.id}`;
+                if (!scannedKeys.has(key) || placedKeys.has(key)) continue;
+                placedKeys.add(key);
+                combinedItemOrder.push({ type: item.type, id: item.id });
             }
 
             for (const item of combinedItemOrder) {
@@ -84,7 +80,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Update settings with the combinedItemOrder if it was constructed
+            // 从未拖动过时，主程序按名称排列
+            if (savedOrder.length === 0) {
+                const nameOf = item => (item.type === 'agent' ? agents[item.id] : groups[item.id])?.name || '';
+                combinedItemOrder.sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'zh-Hans-CN'));
+            }
+            // 仅用于本窗口显示，不写回 settings.json
             settings.combinedItemOrder = combinedItemOrder;
 
             allSettings = settings;
@@ -157,10 +158,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const topicsList = document.createElement('ul');
         topicsList.classList.add('topics-list');
         
-        // Sort topics by createdAt timestamp, newest first
-        const sortedTopics = [...itemData.topics].sort((a, b) => b.createdAt - a.createdAt);
-
-        sortedTopics.forEach(topic => {
+        // topics 数组的顺序就是主程序侧栏的顺序（新话题在前，拖动后保存），照原样显示
+        itemData.topics.forEach(topic => {
             const topicItem = document.createElement('li');
             topicItem.textContent = `${topic.name} (${topic.id})`;
             topicItem.addEventListener('click', (e) => {
