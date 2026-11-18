@@ -94,3 +94,51 @@ test('话题列表按 topics 数组的顺序显示，不按创建时间重排', 
     const topics = [...doc.querySelectorAll('.topics-list li')].map(el => el.textContent);
     assert.deepEqual(topics, ['置顶的旧话题 (topic_100)', '最新话题 (topic_300)', '中间话题 (topic_200)']);
 });
+
+test('一致性检查跳过辅助对话目录，恢复的话题带上主程序的话题字段', async t => {
+    const root = await createProject(t);
+    const topicsDir = 'AppData/UserData/agent_nova/topics';
+    await writeJson(root, `${topicsDir}/sidechat_1_ab12/history.json`, [{ id: 'm1', role: 'user', content: '侧聊', timestamp: 5 }]);
+    await writeJson(root, `${topicsDir}/sidechat_1_ab12/sidechat-child.json`, {
+        schemaVersion: 1, ephemeral: true, agentId: 'agent_nova', topicId: 'sidechat_1_ab12', parentTopicId: 'topic_100', createdAt: 5
+    });
+    await writeJson(root, `${topicsDir}/topic_lost/history.json`, [{ id: 'm2', role: 'user', content: '丢失的话题', timestamp: 400 }]);
+    await writeJson(root, 'AppData/UserData/group_team/topics/group_topic_lost/history.json', [{ id: 'm3', role: 'user', content: '群聊', timestamp: 50 }]);
+
+    const doc = await openManager(t, root);
+    doc.getElementById('run-check-btn').click();
+    await settle(80);
+    const report = doc.getElementById('consistency-issues-list').textContent;
+    assert.match(report, /topic_lost/);
+    assert.doesNotMatch(report, /sidechat_1_ab12/);
+
+    doc.getElementById('apply-fixes-btn').click();
+    await settle(150);
+    const agentConfig = JSON.parse(await fs.readFile(path.join(root, 'AppData/Agents/agent_nova/config.json'), 'utf8'));
+    assert.deepEqual(agentConfig.topics.map(topic => topic.id), ['topic_lost', 'topic_100', 'topic_300', 'topic_200']);
+    assert.deepEqual(agentConfig.topics[0], {
+        id: 'topic_lost', name: 'Recovered: topic_lost', createdAt: 400, locked: true, unread: false, creatorSource: 'recovery'
+    });
+    const groupConfig = JSON.parse(await fs.readFile(path.join(root, 'AppData/AgentGroups/group_team/config.json'), 'utf8'));
+    assert.deepEqual(groupConfig.topics[0], { id: 'group_topic_lost', name: 'Recovered: group_topic_lost', createdAt: 50 });
+});
+
+test('恢复丢失配置的 Agent 时不把辅助对话当作话题', async t => {
+    const root = await createProject(t);
+    const topicsDir = 'AppData/UserData/agent_lost/topics';
+    await writeJson(root, `${topicsDir}/topic_9/history.json`, [{ id: 'a', role: 'assistant', name: 'Lost', content: '在', timestamp: 9 }]);
+    await writeJson(root, `${topicsDir}/sidechat_2_cd34/history.json`, [{ id: 'b', role: 'user', content: '侧聊', timestamp: 10 }]);
+    await writeJson(root, `${topicsDir}/sidechat_2_cd34/sidechat-child.json`, {
+        schemaVersion: 1, ephemeral: true, agentId: 'agent_lost', topicId: 'sidechat_2_cd34', parentTopicId: 'topic_9', createdAt: 10
+    });
+
+    const doc = await openManager(t, root);
+    doc.getElementById('run-check-btn').click();
+    await settle(80);
+    doc.getElementById('apply-fixes-btn').click();
+    await settle(150);
+    const recovered = JSON.parse(await fs.readFile(path.join(root, 'AppData/Agents/agent_lost/config.json'), 'utf8'));
+    assert.deepEqual(recovered.topics, [
+        { id: 'topic_9', name: 'Recovered: topic_9', createdAt: 9, locked: true, unread: false, creatorSource: 'recovery' }
+    ]);
+});
