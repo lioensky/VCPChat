@@ -118,3 +118,35 @@ test('a stray ** in one paragraph does not flip bold markers in later paragraphs
         assert.match(html, /接受 \*\*kwargs 形式/, 'the stray marker stays literal text');
     }
 });
+
+test('a raw <svg> with blank lines inside stays one picture through Markdown', async () => {
+    const { compileRenderJob } = await import('../modules/renderer/renderWorkerRuntime.js');
+    const svg = [
+        '<svg viewBox="0 0 320 170" xmlns="http://www.w3.org/2000/svg">',
+        '  <rect x="0" y="0" width="320" height="170" fill="#dde6f5"/>',
+        '',
+        '  <!-- 输出 -->',
+        '  <text x="210" y="134">输出</text>',
+        '  <rect x="190" y="106" width="110" height="44" fill="none" stroke="#d08f7f"/>',
+        '</svg>',
+    ].join('\n');
+    const render = async text => (await compileRenderJob({ text, markdown: { gfm: true, breaks: true } })).parts.join('');
+
+    const html = await render(`下面是示意图：\n\n${svg}\n\n图后面的**文字**。`);
+    assert.ok(html.includes(svg), 'the svg source reaches the DOM unchanged');
+    assert.doesNotMatch(html, /<p>\s*<text/, 'no svg element is wrapped in a paragraph');
+    assert.match(html, /<strong>文字<\/strong>/, 'Markdown after the svg still renders');
+
+    const pipeline = createContentPipeline({ getToolResultRegex: () => /unused/g });
+    const sealed = text => pipeline.process(text, { mode: PIPELINE_MODES.FULL_RENDER }).state.rawScriptMap.size;
+    assert.equal(sealed(`前文\n\n${svg}`), 1);
+    assert.equal(sealed('前文\n\n<svg viewBox="0 0 10 10">\n  <rect/>\n\n  <text>写到一半'), 0, 'an unclosed svg (still streaming) is left as is');
+    assert.equal(sealed('说起 <svg>\n\n标签时 </svg> 不算'), 0, 'an <svg> in the middle of a sentence is not a picture');
+    assert.equal(sealed('<svg viewBox="0 0 9 9"><rect/></svg>'), 0, 'an svg without blank lines is already kept whole by marked');
+    assert.equal(sealed(`\`\`\`html\n${svg}\n\`\`\``), 0, 'an svg inside a code fence stays code');
+    const script = `<script>\nconst icon = \`\n${svg}\`;\n</script>`;
+    const result = pipeline.process(script, { mode: PIPELINE_MODES.FULL_RENDER });
+    assert.deepEqual([...result.state.rawScriptMap.values()], [script], 'an svg inside a script stays part of the script');
+    const nested = '<svg viewBox="0 0 9 9"><svg x="1"><rect/></svg>\n\n<text>外层</text></svg>';
+    assert.ok((await render(nested)).includes(nested), 'a nested <svg> does not end the outer one early');
+});
