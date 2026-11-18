@@ -107,7 +107,8 @@ function createLineEndingHelper(content) {
         };
       }
 
-      const normResult = normContent.replace(normSearch, normReplace);
+      // 使用函数替换，避免 replace 文本中的 $&、$$、$`、$' 被当作替换模式展开。
+      const normResult = normContent.replace(normSearch, () => normReplace);
 
       let result = normResult;
       if (lineEnding === '\r\n') {
