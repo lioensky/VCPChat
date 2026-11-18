@@ -54,7 +54,12 @@ jobs:
         # Electron's postinstall script downloads the runtime used by the
         # embedded-app contract tests. Do not suppress lifecycle scripts here;
         # this job does not perform native addon rebuilds.
-        run: npm ci --omit=optional
+        # sharp ships its platform runtime and libvips as optional dependencies.
+        # Omitting them silently removes bundled sprite outfits before tests fail.
+        run: npm ci --include=optional
+
+      - name: Verify sharp platform runtime
+        run: node -e "const sharp = require('sharp'); console.log('sharp', sharp.versions.sharp, 'libvips', sharp.versions.vips)"
 
       - name: Verify Electron runtime
         run: node -e "const electron = require('electron'); if (typeof electron !== 'string') { throw new Error('Electron runtime path was not installed'); } console.log(electron)"

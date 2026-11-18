@@ -43,13 +43,17 @@ jobs:
           node-version: 22
           cache: npm
 
-      # 跳过安装脚本：better-sqlite3 等原生模块在 Windows runner 上会回退到 node-gyp 编译并失败，
-      # 而这里的测试只需要 node-pty。node-pty 自带 N-API 预编译包，单独把它拷到 build/Release
+      # 跳过安装脚本：better-sqlite3 等原生模块在 Windows runner 上会回退到 node-gyp 编译并失败。
+      # 保留 optional 依赖：sharp 的平台运行库和 libvips 通过它们分发，桌宠精灵测试需要。
+      # node-pty 自带 N-API 预编译包，单独把它拷到 build/Release。
       - name: Install dependencies
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-        run: npm ci --omit=optional --ignore-scripts
+        run: npm ci --include=optional --ignore-scripts
+
+      - name: Verify sharp platform runtime
+        run: node -e "const sharp = require('sharp'); console.log('sharp', sharp.versions.sharp, 'libvips', sharp.versions.vips)"
 
       - name: Install node-pty prebuilt binaries
         working-directory: node_modules/node-pty
