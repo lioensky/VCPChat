@@ -2,12 +2,10 @@
 
 const SERVER_KEY_PATH_REGEX = /^\/pw=([^/]+)\/(images|files)(?:\/|$)/;
 const SERVER_KEY_REPLACE_REGEX = /^(https?:\/\/[^/?#]+)\/pw=[^/?#]+(\/(?:images|files)(?:\/|$|[?#]))/i;
-const MARKDOWN_IMAGE_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g;
-const MARKDOWN_LINK_REGEX = /(?<!!)\[([^\]]*)\]\(([^)]+)\)/g;
-const HTML_IMG_SRC_REGEX = /<img([^>]*?)src=(["'])([^"']+)\2([^>]*?)>/gi;
-const HTML_LINK_HREF_REGEX = /<a([^>]*?)href=(["'])([^"']+)\2([^>]*?)>/gi;
-const HTML_MEDIA_SRC_REGEX = /<(audio|video|source)([^>]*?)src=(["'])([^"']+)\3([^>]*?)>/gi;
-const BARE_SERVER_KEY_URL_REGEX = /https?:\/\/[^\s<>"'()[\]`]+\/pw=[^/\s<>"'()[\]`]+\/(?:images|files)(?:\/[^\s<>"'()[\]`]*)?/gi;
+// Consume complete tags and link destinations before looking for bare URLs. In
+// particular, a trusted URL inside another host's query is not a trusted link.
+const PROSE_URL_TOKEN_REGEX = /<!--[^]*?(?:-->|$)|<\/?(?<tag>[a-z][a-z0-9:-]*)(?=[\s/>])(?:[^"'<>]|"[^"]*"|'[^']*')*>|(?<image>!?)\[[^\]\n]*\]\((?<destination>[^)\n]+)\)|(?<bare>https?:\/\/[^\s<>]+)/gi;
+const HTML_URL_ATTRIBUTE_REGEX = /(\s+)([^\s=/"'<>]+)(\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\x60]+))/g;
 
 function normalizeNonEmptyString(value) {
     return typeof value === 'string' ? value.trim() : '';
@@ -97,49 +95,33 @@ export function fixUrlsInMarkdownText(text, fixers = {}) {
         ? (value => value)
         : (typeof fixers?.fixServerKeyUrl === 'function' ? fixers.fixServerKeyUrl : value => value);
 
-    let result = text;
-
-    if (result.includes('![')) {
-        result = result.replace(MARKDOWN_IMAGE_REGEX, (match, alt, url) => {
-            const fixedUrl = fixEmoticonUrl(url);
-            return `![${alt}](${fixedUrl})`;
-        });
-    }
-
-    if (result.includes('](') && result.includes('/pw=')) {
-        result = result.replace(MARKDOWN_LINK_REGEX, (match, label, url) => {
-            const fixedUrl = fixServerKeyUrl(url);
-            return `[${label}](${fixedUrl})`;
-        });
-    }
-
-    if (/<img\b/i.test(result)) {
-        result = result.replace(HTML_IMG_SRC_REGEX, (match, before, quote, url, after) => {
-            const fixedUrl = fixEmoticonUrl(url);
-            return `<img${before}src=${quote}${fixedUrl}${quote}${after}>`;
-        });
-    }
-
-    if (result.includes('/pw=')) {
-        if (/<a\b/i.test(result)) {
-            result = result.replace(HTML_LINK_HREF_REGEX, (match, before, quote, url, after) => {
-                const fixedUrl = fixServerKeyUrl(url);
-                return `<a${before}href=${quote}${fixedUrl}${quote}${after}>`;
+    if (!/!\[|<img\b|\/pw=/i.test(text)) return text;
+    return text.replace(PROSE_URL_TOKEN_REGEX, (...args) => {
+        const token = args[0];
+        const { tag, image, destination, bare } = args.at(-1);
+        if (tag) {
+            const name = tag.toLowerCase();
+            const attribute = name === 'a' ? 'href'
+                : ['img', 'audio', 'video', 'source'].includes(name) ? 'src' : null;
+            if (!attribute || token.startsWith('</')) return token;
+            const fixUrl = name === 'img' ? fixEmoticonUrl : fixServerKeyUrl;
+            return token.replace(HTML_URL_ATTRIBUTE_REGEX, (match, space, key, equals, double, single, bareValue) => {
+                if (key.toLowerCase() !== attribute) return match;
+                const value = double ?? single ?? bareValue;
+                const fixed = fixUrl(value);
+                if (fixed === value) return match;
+                const quote = double !== undefined ? '"' : single !== undefined ? "'" : '';
+                return `${space}${key}${equals}${quote}${fixed}${quote}`;
             });
         }
-        if (/<(?:audio|video|source)\b/i.test(result)) {
-            result = result.replace(HTML_MEDIA_SRC_REGEX, (match, tag, before, quote, url, after) => {
-                const fixedUrl = fixServerKeyUrl(url);
-                return `<${tag}${before}src=${quote}${fixedUrl}${quote}${after}>`;
-            });
+        if (destination) {
+            const fixUrl = image ? fixEmoticonUrl : fixServerKeyUrl;
+            const fixed = destination.replace(/^(\s*)(?:<([^<>]+)>|(\S+))/, (match, space, angled, plain) =>
+                angled !== undefined ? `${space}<${fixUrl(angled)}>` : space + fixUrl(plain));
+            return token.slice(0, -destination.length - 1) + fixed + ')';
         }
-        result = result.replace(BARE_SERVER_KEY_URL_REGEX, (url) => {
-            const fixedUrl = fixServerKeyUrl(url);
-            return fixedUrl;
-        });
-    }
-
-    return result;
+        return bare ? fixServerKeyUrl(bare) : token;
+    });
 }
 
 /** Creates one emoticon catalog owner for one renderer or viewer. */

@@ -260,3 +260,19 @@ test('clearing the live fileKey does not fall back to an earlier key', async () 
     settings.fileKey = '';
     assert.equal(fixer.fixServerKeyUrl(url), url);
 });
+
+test('nested VCP URLs in third-party destinations and unrelated HTML attributes are never rewritten', async () => {
+    const { rewriteServerFileKeyInUrl, fixUrlsInMarkdownText } = await loadEmoticonUrlFixerModule();
+    const stale = 'https://vcp.example.test/pw=stale-key/files/clip.wav';
+    const text = [
+        `<a href="https://external.example/?next=<${stale}>">external</a>`,
+        `[external](https://external.example/?next=(${stale}))`,
+        `https://external.example/?next=(${stale})`,
+        `<img src="https://external.example/image.png" alt="example ${stale}">`,
+    ].join('\n');
+    const fixServerKeyUrl = value => rewriteServerFileKeyInUrl(value, {
+        vcpServerUrl: 'https://vcp.example.test',
+        fileKey: 'active-fixture-key',
+    });
+    assert.equal(fixUrlsInMarkdownText(text, { fixEmoticonUrl: fixServerKeyUrl, fixServerKeyUrl }), text);
+});
