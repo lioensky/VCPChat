@@ -4,6 +4,9 @@
  * Also detects and recovers orphaned agents (topic files exist but agent config is missing)
  */
 
+// 主程序辅助对话目录的标记文件（modules/ipc/sideChatHandlers.js 的 CHILD_MARKER_FILE）
+const SIDE_CHAT_MARKER_FILE = 'sidechat-child.json';
+
 class ConsistencyChecker {
     constructor(appDataPath, apiHandlers) {
         this.appDataPath = appDataPath;
@@ -39,14 +42,35 @@ class ConsistencyChecker {
     }
 
     /**
+     * 列出 topics 目录下的话题目录。辅助对话（侧聊）也存放在这里，
+     * 由 sidechat-child.json 标记、挂在父话题下，不属于 topics 数组，跳过。
+     */
+    async listTopicDirs(topicsPath) {
+        const dirs = await this.api.listDir(topicsPath);
+        if (!Array.isArray(dirs) || dirs.length === 0) return [];
+        const markers = await Promise.all(dirs.map(dir => this.api.readFile(`${topicsPath}/${dir}/${SIDE_CHAT_MARKER_FILE}`)));
+        return dirs.filter((dir, index) => markers[index] == null);
+    }
+
+    /**
+     * 写回 topics 数组的恢复项。Agent 话题补齐主程序新建话题时写入的字段，
+     * 与聊天数据服务恢复话题时一致；群组话题保持 { id, name, createdAt }。
+     */
+    toConfigTopic(topic, itemType) {
+        const entry = { id: topic.id, name: topic.name, createdAt: topic.createdAt || Date.now() };
+        if (itemType === 'agent') Object.assign(entry, { locked: true, unread: false, creatorSource: 'recovery' });
+        return entry;
+    }
+
+    /**
      * Check a single agent or group for consistency
      */
     async checkItem(itemId, itemData, itemType) {
         const userDataPath = `${this.appDataPath}UserData/${itemId}/topics`;
-        
+
         try {
             // Get actual topic directories from filesystem
-            const actualTopicDirs = await this.api.listDir(userDataPath);
+            const actualTopicDirs = await this.listTopicDirs(userDataPath);
             
             if (!actualTopicDirs || actualTopicDirs.length === 0) {
                 // No topics directory exists, but config might have topics
@@ -163,7 +187,7 @@ class ConsistencyChecker {
 
                 // Check if this UserData directory has a topics subdirectory
                 const topicsPath = `${this.appDataPath}UserData/${dirName}/topics`;
-                const topicDirs = await this.api.listDir(topicsPath);
+                const topicDirs = await this.listTopicDirs(topicsPath);
                 
                 if (!topicDirs || topicDirs.length === 0) continue; // No topic files, skip
 
@@ -358,11 +382,7 @@ class ConsistencyChecker {
         const agentName = recoveryInfo.agentName || itemId;
 
         // Build topics array from recovered info
-        const topics = recoveryInfo.topics.map(t => ({
-            id: t.id,
-            name: t.name,
-            createdAt: t.createdAt || Date.now()
-        }));
+        const topics = recoveryInfo.topics.map(t => this.toConfigTopic(t, 'agent'));
 
         // Create a minimal but valid agent config
         const newConfig = {
@@ -469,11 +489,7 @@ class ConsistencyChecker {
                 for (const orphanedTopic of issue.orphanedTopics) {
                     // Check if not already in list
                     if (!currentTopics.find(t => t.id === orphanedTopic.id)) {
-                        toAdd.push({
-                            id: orphanedTopic.id,
-                            name: orphanedTopic.name,
-                            createdAt: orphanedTopic.createdAt
-                        });
+                        toAdd.push(this.toConfigTopic(orphanedTopic, itemType));
                         modified = true;
                     }
                 }
