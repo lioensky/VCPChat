@@ -2,6 +2,7 @@
 import * as cssTree from '../../node_modules/css-tree/dist/csstree.esm.js';
 import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
 import { createMathRenderer } from './mathRenderer.js';
+import { linkProseUrls } from './proseLinks.js';
 
 /** Creates one rendered-content interaction owner for one MessageRenderer instance. */
 export function createContentProcessor() {
@@ -1233,6 +1234,9 @@ function processRenderedContent(contentDiv, settings = {}, { skipMath = false } 
 
     // 为超过 4 行的普通代码块添加复制按钮；HTML 预览块会与播放/返回按钮共用右上角工具栏
     setupCodeCopyButtons(contentDiv);
+
+    // AI 直接写的 HTML 不经过 Markdown 的裸链接规则，正文里的网址在这里补成链接
+    linkProseUrls(contentDiv);
 
     // Process interactive buttons, passing settings
     processInteractiveButtons(contentDiv, settings);
