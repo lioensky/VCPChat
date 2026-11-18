@@ -100,3 +100,36 @@ test('keyboard and touch scroll-up intents detach, but arrow keys inside the com
     assert.equal(scrolling.isSticky(), false);
     scrolling.dispose();
 });
+
+test('expanding a section in a completed message grows downward instead of pinning to the bottom', () => {
+    const { win, root, ro, scrolling, grow } = setup();
+    root.scrollTop = 500;
+    const msg = root.firstElementChild;
+    const toggle = win.document.createElement('button');
+    toggle.className = 'vcp-tool-row-toggle';
+    msg.appendChild(toggle);
+
+    toggle.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(scrolling.isSticky(), false);
+
+    grow(240);
+    ro.fire(msg);
+    assert.equal(root.scrollTop, 500, 'the clicked control and the content above it stay in place');
+    scrolling.dispose();
+});
+
+test('clicking a control inside a streaming message keeps pinning to the bottom', () => {
+    const { win, root, ro, scrolling, grow } = setup();
+    root.scrollTop = 500;
+    const msg = root.firstElementChild;
+    msg.classList.add('streaming');
+    const toggle = win.document.createElement('button');
+    msg.appendChild(toggle);
+
+    toggle.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(scrolling.isSticky(), true);
+    grow(240);
+    ro.fire(msg);
+    assert.equal(root.scrollTop, root.scrollHeight);
+    scrolling.dispose();
+});

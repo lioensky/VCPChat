@@ -294,6 +294,7 @@
             generation: 0,
             programmatic: false,
             userScrollActive: false,
+            lastScrollTop: container.scrollTop,
             frameId: 0,
             layoutFrameId: 0,
             requestedGeneration: null,
@@ -329,17 +330,43 @@
             });
         };
 
+        const releaseFollow = () => {
+            state.generation += 1;
+            cancelPendingScroll();
+            if (state.layoutFrameId) {
+                cancelAnimationFrame(state.layoutFrameId);
+                state.layoutFrameId = 0;
+            }
+            setChatFollowBottom(container, state, false);
+        };
+
         container.addEventListener('wheel', (event) => {
-            markUserIntent();
             if (event.deltaY < 0) {
+                markUserIntent();
                 // 向上滚轮是明确的解锁意图。保持 userScrollActive，直到后续
                 // 向下滚动结算；这样该滚轮默认行为产生的近底部 scroll 事件
                 // 不会在同一轮事件中立刻把 followBottom 改回 true。
                 setChatFollowBottom(container, state, false);
-            } else {
+            } else if (event.deltaY > 0) {
+                markUserIntent();
                 settleUserScrollIntent();
             }
+            // deltaY === 0 是纯横向滚动（触控板常在同一手势里带出），
+            // 不能当作“向下滚动”去结算，否则会冲掉刚才的向上解锁。
         }, { passive: true });
+
+        // 在已完成的消息里点展开类控件（工具行、折叠块、卡片内按钮）时，用户期望
+        // 被点的控件和上方内容不动、展开部分向下长。跟随开着时，内容增高会被下面的
+        // ResizeObserver 补滚到底，把刚点的控件推出视口，所以点击时先释放跟随。
+        // 正在生成的消息不在此列，生成中仍保持跟随。
+        const isInPlaceExpandTarget = (target) => {
+            if (!target?.closest) return false;
+            const messageItem = target.closest('.message-item');
+            if (!messageItem || messageItem.classList.contains('streaming') || messageItem.classList.contains('thinking')) {
+                return false;
+            }
+            return Boolean(target.closest('button, summary, details, [role="button"], [role="tab"], [aria-expanded]'));
+        };
 
         container.addEventListener('touchstart', markUserIntent, { passive: true });
         container.addEventListener('touchend', settleUserScrollIntent, { passive: true });
@@ -350,8 +377,13 @@
             const rect = container.getBoundingClientRect();
             if (scrollbarWidth > 0 && event.clientX >= rect.right - scrollbarWidth - 2) {
                 markUserIntent();
+                return;
             }
-        }, { passive: true });
+            if (isInPlaceExpandTarget(event.target)) releaseFollow();
+        }, { capture: true, passive: true });
+        container.addEventListener('click', (event) => {
+            if (isInPlaceExpandTarget(event.target)) releaseFollow();
+        }, { capture: true, passive: true });
         container.addEventListener('pointerup', () => {
             if (state.userScrollActive) settleUserScrollIntent();
         }, { passive: true });
@@ -360,6 +392,9 @@
         }, { passive: true });
 
         container.addEventListener('scroll', () => {
+            const currentScrollTop = container.scrollTop;
+            const movedUp = currentScrollTop < state.lastScrollTop - 0.5;
+            state.lastScrollTop = currentScrollTop;
             if (state.programmatic) return;
 
             if (state.userScrollActive) {
@@ -369,6 +404,14 @@
                 if (!isChatNearBottom(container)) {
                     setChatFollowBottom(container, state, false);
                 }
+                return;
+            }
+
+            // 键盘 PageUp/ArrowUp、点击滚动条槽上方、触控板惯性滚动不一定经过
+            // 上面的输入事件。视口确实上移并离开底部阈值时，同样释放跟随并推进
+            // 代际，已排队的回底（包括回复结束时那一次）随之作废。
+            if (movedUp && !isChatNearBottom(container)) {
+                releaseFollow();
                 return;
             }
 
@@ -439,6 +482,7 @@
         setChatFollowBottom(container, state, true);
         state.programmatic = false;
         state.userScrollActive = false;
+        state.lastScrollTop = container.scrollTop;
         state.requestedGeneration = null;
         if (state.frameId) {
             cancelAnimationFrame(state.frameId);
@@ -464,6 +508,7 @@
         state.generation += 1;
         state.programmatic = false;
         state.userScrollActive = false;
+        state.lastScrollTop = container.scrollTop;
         state.requestedGeneration = null;
         if (state.frameId) {
             cancelAnimationFrame(state.frameId);
@@ -500,7 +545,11 @@
         if (expectedGeneration !== null && state.generation !== expectedGeneration) {
             return false;
         }
-        if (!force && !state.followBottom && !isChatNearBottom(container)) {
+        // 跟随关闭后，非强制的滚到底一律不做。离底部 50px 内就重新开启的话，
+        // 生成中向上滚一格常常仍落在这 50px 里，下一帧流式渲染或回复结束时
+        // 的这次调用就会把人拉回底部。重新跟随只认用户动作：滚回底部、
+        // “回到底部”按钮、发送新消息（force）、切换话题（resetChatScrollFollow）。
+        if (!force && !state.followBottom) {
             return false;
         }
 
@@ -520,14 +569,13 @@
 
             state.programmatic = true;
             container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+            state.lastScrollTop = container.scrollTop;
             requestAnimationFrame(() => {
                 state.programmatic = false;
                 // 不用下一帧的几何位置反向撤销跟随授权。图片可能恰好在两帧
                 // 之间完成解码并再次撑高内容；只要用户没有产生新滚动意图，
-                // ResizeObserver 会继续补偿到新的底部。
-                if (container.isConnected && isChatNearBottom(container)) {
-                    setChatFollowBottom(container, state, true);
-                }
+                // ResizeObserver 会继续补偿到新的底部。也不在这里按几何重新
+                // 开启跟随：两帧之间用户可能刚向上滚了一小步，仍在阈值内。
             });
         };
 

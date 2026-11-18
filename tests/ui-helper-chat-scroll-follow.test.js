@@ -274,3 +274,104 @@ test('follow changes are announced once per flip on the scroll container', () =>
     assert.deepEqual(seen, [false, true, false, true]);
     fixture.dom.window.close();
 });
+
+test('after a small upward wheel step, non-forced scrolls cannot pull the reader back until they return', () => {
+    const fixture = createFixture();
+    const { window, container } = fixture;
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    // 回复生成中向上滚一格，仍在 50px 阈值内。
+    container.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -30 }));
+    fixture.setGeometry({ scrollTop: 570 });
+    container.dispatchEvent(new window.Event('scroll'));
+    fixture.flushAnimationFrames();
+    assert.equal(fixture.uiHelper.isNearChatBottom(), true, 'still inside the 50px threshold');
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+
+    // 流式内容增高，随后回复结束时调用一次非强制滚到底。
+    fixture.setGeometry({ scrollHeight: 1010 });
+    fixture.triggerResize();
+    assert.equal(fixture.uiHelper.scrollToBottom(), false);
+    fixture.flushAnimationFrames();
+    assert.equal(fixture.geometry().scrollTop, 570, 'the reader is not pulled back to the bottom');
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+
+    // 用户自己滚回底部后重新跟随。
+    container.dispatchEvent(new window.WheelEvent('wheel', { deltaY: 100 }));
+    fixture.setGeometry({ scrollTop: 610 });
+    fixture.flushAnimationFrames();
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+    fixture.dom.window.close();
+});
+
+test('a horizontal wheel frame (deltaY === 0) does not settle a pending upward release', () => {
+    const fixture = createFixture();
+    const { window, container } = fixture;
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    container.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -20 }));
+    fixture.setGeometry({ scrollTop: 580 });
+    container.dispatchEvent(new window.Event('scroll'));
+    // 触控板常在同一手势里带出纯横向的滚轮帧。
+    container.dispatchEvent(new window.WheelEvent('wheel', { deltaY: 0, deltaX: 12 }));
+    fixture.flushAnimationFrames();
+
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+    fixture.dom.window.close();
+});
+
+test('an upward scroll without wheel or pointer input (PageUp, inertia) releases follow once off the bottom', () => {
+    const fixture = createFixture();
+    const { window, container } = fixture;
+    fixture.setGeometry({ scrollHeight: 1200, clientHeight: 400, scrollTop: 800 });
+    const before = fixture.uiHelper.captureChatScrollFollow();
+    assert.equal(before.followBottom, true);
+
+    fixture.setGeometry({ scrollTop: 420 });
+    container.dispatchEvent(new window.Event('scroll'));
+
+    const after = fixture.uiHelper.captureChatScrollFollow();
+    assert.equal(after.followBottom, false);
+    assert.ok(after.generation > before.generation, 'a scroll queued before the move is rejected');
+    assert.equal(fixture.uiHelper.scrollToBottom({ expectedGeneration: before.generation }), false);
+    fixture.dom.window.close();
+});
+
+test('expanding a section in a completed message grows downward instead of scrolling to the bottom', () => {
+    const fixture = createFixture();
+    const { window } = fixture;
+    const chatMessages = window.document.getElementById('chatMessages');
+    chatMessages.innerHTML = '<div class="message-item assistant"><div class="md-content">'
+        + '<button type="button" class="vcp-tool-row-toggle">读取文件 · 结果</button></div></div>';
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    chatMessages.querySelector('.vcp-tool-row-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+
+    // 展开后消息增高 300px：按钮和上方内容保持原位。
+    fixture.setGeometry({ scrollHeight: 1300 });
+    fixture.triggerResize();
+    fixture.flushAnimationFrames();
+    assert.equal(fixture.geometry().scrollTop, 600);
+    fixture.dom.window.close();
+});
+
+test('clicking a control inside the message that is still streaming keeps following', () => {
+    const fixture = createFixture();
+    const { window } = fixture;
+    const chatMessages = window.document.getElementById('chatMessages');
+    chatMessages.innerHTML = '<div class="message-item assistant streaming"><div class="md-content">'
+        + '<button type="button" class="vcp-tool-row-toggle">读取文件 · 请求</button></div></div>';
+    fixture.uiHelper.captureChatScrollFollow();
+
+    chatMessages.querySelector('.vcp-tool-row-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    fixture.setGeometry({ scrollHeight: 1300 });
+    fixture.triggerResize();
+    fixture.flushAnimationFrames();
+    assert.equal(fixture.geometry().scrollTop, 900);
+    fixture.dom.window.close();
+});
