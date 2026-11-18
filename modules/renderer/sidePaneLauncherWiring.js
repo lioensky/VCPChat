@@ -195,7 +195,7 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
             id: `internal:${app.id}`,
             label: app.title,
             title: app.title,
-            mountIcon: appIcons.mount(app.id === 'ui-component-library' ? 'widgets' : app.launchpadIcon, ''),
+            mountIcon: appIcons.mount(app.id === 'ui-component-library' ? 'widgets' : app.launchpadIcon, app.iconSvg || ''),
             open: () => shell?.openInternalApp?.(app.id),
         }));
         return [...external, ...internal];

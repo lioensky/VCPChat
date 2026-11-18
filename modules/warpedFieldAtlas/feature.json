@@ -1,0 +1,14 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "WarpedFieldAtlas",
+  "displayName": "双曲场图",
+  "version": "0.1.0",
+  "description": "把知识库里 RiverMemo V5 的双曲场画出来。全景图看每个 Tag、每个日记片段落在哪一圈；查询视图看一条查询最近的是谁、半径改变了哪些名次。数据由后端插件 WarpedFieldAtlas 提供，只读。在右栏“应用”里打开。",
+  "pluginType": "feature",
+  "main": "index.js",
+  "renderer": "modules/warpedFieldAtlas/renderer/index.js",
+  "tests": [
+    "tests/warped-field-atlas.test.mjs"
+  ],
+  "defaultEnabled": true
+}
