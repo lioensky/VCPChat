@@ -58,6 +58,7 @@ export function createImageHandler({ fixUrl = value => value } = {}) {
         img.title = `点击在新窗口预览\n右键可复制图片`;
         
         const onClick = (e) => {
+            e.preventDefault(); // The viewer handles this click, including images inside anchors.
             e.stopPropagation();
             const currentTheme = contentDiv.ownerDocument.body.classList.contains('light-theme') ? 'light' : 'dark';
             transport.openImageViewer({
