@@ -5,7 +5,7 @@ import {
     updateFirstTextPart,
 } from './chat/singleChatRequestOrchestrator.js';
 import { publishConversationSelection } from './ui-system/sources/conversation-current.js';
-import { createContextCompactionService, shouldCompactContext, estimateContextTokens } from './chat/contextCompactionService.js';
+import { createContextCompactionService, shouldCompactContext, contextExceedsCompactableBudget } from './chat/contextCompactionService.js';
 import { effectiveContextHistory, isContextCheckpoint, summarizeCompactionInput } from './chat/contextCompactionState.js';
 
 // 上游接受中止后等它自己收尾的上限；过了仍没有终态就在本地停止，保留已收到的部分
@@ -104,7 +104,7 @@ export const chatManager = (() => {
             const limit = Number(config?.contextTokenLimit);
             if (Array.isArray(history) && Number.isFinite(limit) && limit > 0) {
                 const effective = effectiveContextHistory(history.filter(message => message.id !== messageId));
-                needed = estimateContextTokens([...effective, { role: 'assistant', content: text }], config.systemPrompt || '') >= limit;
+                needed = contextExceedsCompactableBudget([...effective, { role: 'assistant', content: text }], config.systemPrompt || '', limit);
             }
         }
         if (isStreamActive() && !streamCompactionRequests.has(messageId)) {
@@ -153,7 +153,7 @@ export const chatManager = (() => {
                     const effective = effectiveContextHistory(history.filter(message => message.id !== messageId));
                     const limit = Number(config?.contextTokenLimit);
                     needsCompression = Number.isFinite(limit) && limit > 0
-                        && estimateContextTokens([...effective, { role: 'assistant', content: text }], config.systemPrompt || '') >= limit;
+                        && contextExceedsCompactableBudget([...effective, { role: 'assistant', content: text }], config.systemPrompt || '', limit);
                 }
             }
             if (!isStreamActive() || boundaryCheck.cancelled || streamCompactionRequests.has(messageId)

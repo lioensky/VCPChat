@@ -148,7 +148,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 messageId,
                 terminal.kind === 'completed' ? (terminal.finishReason || 'completed') : terminal.kind,
                 terminal.context || context,
-                { fullResponse, error, streamOperationId: operationId },
+                { fullResponse, error, streamOperationId: operationId, usage: terminal.kind === 'completed' ? terminal.usage : undefined },
             );
             if (!projected) throw new Error(`Stream terminal projection failed: ${messageId}`);
 

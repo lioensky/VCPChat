@@ -1,4 +1,17 @@
 const cloneHistory = history => history.map(message => ({ ...message }));
+const tokenCount = value => (Number.isFinite(value) && value >= 0 ? Math.round(value) : undefined);
+
+/**
+ * 只保留压缩计数需要的上游用量字段，接受已归一化的 { inputTokens } 或 OpenAI 原始 usage；
+ * 估算值或缺少输入数的用量不作为基准。
+ */
+export function normalizeContextUsage(usage) {
+    if (!usage || typeof usage !== 'object' || usage.estimated === true) return undefined;
+    const inputTokens = tokenCount(usage.inputTokens ?? usage.prompt_tokens);
+    if (inputTokens === undefined || inputTokens === 0) return undefined;
+    const outputTokens = tokenCount(usage.outputTokens ?? usage.completion_tokens);
+    return { inputTokens, ...(outputTokens !== undefined ? { outputTokens } : {}) };
+}
 const isTemporaryContext = context => (
     context?.topicId === 'assistant_chat' || context?.topicId?.startsWith?.('voicechat_')
 );
@@ -59,7 +72,7 @@ export function createStreamTransientHistory({ repository, currentHistory } = {}
             if (visible) currentHistory.replace(cloneHistory(history));
             return history;
         },
-        async finalize({ messageId, context, content, finishReason, visible = false } = {}) {
+        async finalize({ messageId, context, content, finishReason, usage, visible = false } = {}) {
             if (disposed) return null;
             const epoch = prepareEpochs.get(messageId) || 0;
             const history = await readFor(context, visible, messageId);
@@ -83,6 +96,8 @@ export function createStreamTransientHistory({ repository, currentHistory } = {}
                 isThinking: false,
             };
             delete message.isPendingStream;
+            // 上游报告的用量是压缩触发的计数基准；没有时显式清空，重生成不会沿用旧回复的用量。
+            message.contextUsage = normalizeContextUsage(usage);
             if (message.isGroupMessage) {
                 message.name = context?.agentName || message.name;
                 message.agentId = context?.agentId || message.agentId;

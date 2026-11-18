@@ -1,4 +1,5 @@
 import { createSingleChatRequestOrchestrator } from './singleChatRequestOrchestrator.js';
+import { normalizeContextUsage } from './streamTransientHistory.js';
 
 export const DEFAULT_TOPIC_REPLY_INVITE = '[系统提示:] 话题中有新的伙伴留言，现在请结合上下文回应。需要回信时可自行调用 TopicSponsor；无需回信时正常回复即可。';
 
@@ -64,6 +65,8 @@ export async function prepareTopicAdmissionSingleChat({
                 content: response.choices[0].message.content,
                 timestamp: Date.now(), finishReason: 'completed', isThinking: false,
             };
+            const contextUsage = normalizeContextUsage(response.usage);
+            if (contextUsage) message.contextUsage = contextUsage;
             await persistAssistant(request.scope, message);
             const released = await api.topicAdmissionRelease(request.scope, request.token, { saved: true });
             if (!released?.success) throw new Error(released?.error || released?.code || '入场租约释放失败');
