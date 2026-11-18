@@ -44,6 +44,32 @@ test('the latest provider usage is the base and only the anchor reply and later 
     assert.equal(measured.fixed, 9000 - 1101);
 });
 
+test('messages edited or deleted before the anchor are re-estimated', () => {
+    const history = [
+        { id: 'u1', role: 'user', content: 'x'.repeat(3000) },
+        { id: 'a1', role: 'assistant', content: 'abc', contextUsage: { inputTokens: 5000, prefixEstimate: 1000 } },
+    ];
+    // 未改动：与上游计数一致
+    assert.equal(measureContextTokens(history, '').total, 5000 + 1);
+    // 前文被删掉一大段：上游计数里的 1000 被换成现在的估算 100
+    const edited = [{ ...history[0], content: 'x'.repeat(300) }, history[1]];
+    assert.deepEqual(measureContextTokens(edited, ''), { total: 4000 + 100 + 1, fixed: 4000, source: 'provider_usage' });
+});
+
+test('finalize records the estimate of the messages a usage covers', async () => {
+    let current = [{ id: 'u', role: 'user', content: 'abcdef' }, { id: 'a', role: 'assistant', content: '' }];
+    const provider = createStreamTransientHistory({
+        repository: { async getHistory() { return []; } },
+        currentHistory: { get: () => current, replace: history => { current = history; } },
+    });
+    await provider.prepare({ id: 'a', role: 'assistant' }, { agentId: 'x', topicId: 't' }, { visible: true });
+    const finalized = await provider.finalize({
+        messageId: 'a', context: { agentId: 'x', topicId: 't' }, content: 'ok',
+        finishReason: 'completed', usage: { inputTokens: 50 }, visible: true,
+    });
+    assert.deepEqual(finalized.message.contextUsage, { inputTokens: 50, prefixEstimate: 2 });
+});
+
 test('usage recorded before the newest checkpoint is not used as the base', () => {
     const measured = measureContextTokens([
         { id: 'a0', role: 'assistant', content: 'old', contextUsage: { inputTokens: 99999 } },
@@ -104,7 +130,7 @@ test('finalized stream messages record provider usage and drop a previous one', 
         });
     };
     assert.deepEqual((await finalize('a', { inputTokens: 4321, outputTokens: 12 })).message.contextUsage,
-        { inputTokens: 4321, outputTokens: 12 });
+        { inputTokens: 4321, outputTokens: 12, prefixEstimate: 0 });
     // 重新生成的回复没有上游用量时，不能沿用上一版回复的用量。
     assert.equal((await finalize('b', undefined)).message.contextUsage, undefined);
     assert.equal(Object.hasOwn(current[1], 'contextUsage'), true);

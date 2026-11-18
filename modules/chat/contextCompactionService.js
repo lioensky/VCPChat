@@ -53,10 +53,25 @@ function estimateMessageTokens(message) {
 function latestUsageAnchor(messages) {
     for (let index = messages.length - 1; index >= 0; index--) {
         const message = messages[index];
-        const inputTokens = message?.role === 'assistant' ? message.contextUsage?.inputTokens : undefined;
-        if (Number.isFinite(inputTokens) && inputTokens > 0) return { index, inputTokens };
+        const usage = message?.role === 'assistant' ? message.contextUsage : undefined;
+        if (Number.isFinite(usage?.inputTokens) && usage.inputTokens > 0) {
+            const prefixEstimate = Number.isFinite(usage.prefixEstimate) && usage.prefixEstimate >= 0
+                ? usage.prefixEstimate : undefined;
+            return { index, inputTokens: usage.inputTokens, prefixEstimate };
+        }
     }
     return null;
+}
+
+/**
+ * Local estimate of the effective messages before `index`, recorded beside a
+ * provider usage so later edits or deletions of those messages can be applied
+ * to the provider count.
+ */
+export function estimateHistoryPrefixTokens(history, index) {
+    if (!Array.isArray(history) || index <= 0) return 0;
+    return effectiveContextHistory(history.slice(0, index))
+        .reduce((total, message) => total + estimateMessageTokens(message), 0);
 }
 
 /**
@@ -66,6 +81,9 @@ function latestUsageAnchor(messages) {
  * `fixed` is the part compaction cannot shrink (expanded system prompt, tool
  * definitions, server-side injections): anchor input minus the estimated
  * messages it covered, or the estimated system prompt without an anchor.
+ * When the anchor recorded the estimate of the messages it covered, messages
+ * edited or deleted since then are re-estimated instead of trusting the stale
+ * provider count.
  */
 export function measureContextTokens(history, systemPrompt = '') {
     const messages = effectiveContextHistory(history);
@@ -76,9 +94,12 @@ export function measureContextTokens(history, systemPrompt = '') {
         const fixed = estimateTextTokens(systemPrompt);
         return { total: fixed + sum(estimates), fixed, source: 'estimate' };
     }
+    const coveredNow = sum(estimates.slice(0, anchor.index));
+    const covered = anchor.prefixEstimate ?? coveredNow;
+    const fixed = Math.max(0, anchor.inputTokens - covered);
     return {
-        total: anchor.inputTokens + sum(estimates.slice(anchor.index)),
-        fixed: Math.max(0, anchor.inputTokens - sum(estimates.slice(0, anchor.index))),
+        total: fixed + coveredNow + sum(estimates.slice(anchor.index)),
+        fixed,
         source: 'provider_usage',
     };
 }

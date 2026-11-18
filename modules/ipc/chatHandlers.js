@@ -1520,9 +1520,10 @@ function initialize(mainWindow, context) {
                 async function processStream(reader, decoder) {
                     let buffer = '';
                     let bodyReachedEOF = false;
-                    // 上游在流里报告的用量（通常在最后一个数据块）。工具循环里有多次调用时取最后一次，
-                    // 它的输入覆盖了完整的最终上下文；随 end 事件交给渲染端记到 assistant 消息上。
-                    let latestUsage = null;
+                    // 上游在流里报告的用量（通常在该次调用的最后一个数据块）。服务端工具循环会把多次上游调用
+                    // 的用量都转发过来，只取第一次：它的输入正好是这条回复之前的上下文，后续调用的输入里
+                    // 已含本条回复的前半段和工具结果，再加上回复本身的估算会重复计数。
+                    let firstUsage = null;
 
                     try {
                         while (true) {
@@ -1545,7 +1546,7 @@ function initialize(mainWindow, context) {
                                     if (jsonData === '[DONE]') {
                                         console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
                                         trajectoryCall.finish();
-                                        const donePayload = { type: 'end', messageId: messageId, context, ...(latestUsage ? { usage: latestUsage } : {}) };
+                                        const donePayload = { type: 'end', messageId: messageId, context, ...(firstUsage ? { usage: firstUsage } : {}) };
                                         sendStreamPayload(donePayload);
                                         return; // [DONE] 是明确的结束信号，退出函数
                                     }
@@ -1556,7 +1557,7 @@ function initialize(mainWindow, context) {
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
                                         trajectoryCall.chunk(parsedChunk);
-                                        latestUsage = normalizeUsage(parsedChunk?.usage) || latestUsage;
+                                        firstUsage = firstUsage || normalizeUsage(parsedChunk?.usage);
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         sendStreamPayload(dataPayload);
                                     } catch (e) {
@@ -1572,7 +1573,7 @@ function initialize(mainWindow, context) {
                                 // 缓冲区已被处理，现在发送最终的 'end' 信号。
                                 console.log(`VCP流结束 for messageId: ${messageId}`);
                                 trajectoryCall.finish();
-                                const endPayload = { type: 'end', messageId: messageId, context, ...(latestUsage ? { usage: latestUsage } : {}) };
+                                const endPayload = { type: 'end', messageId: messageId, context, ...(firstUsage ? { usage: firstUsage } : {}) };
                                 sendStreamPayload(endPayload);
                                 break; // 退出 while 循环
                             }
