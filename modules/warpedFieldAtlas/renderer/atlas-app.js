@@ -1,3 +1,4 @@
+import { metricChart, sliceViewport } from './metric-slice.mjs';
 // 双曲场图的界面。mountAtlas(container, source) 把整个界面挂进 container；
 // source.get(route) 取数据（Chat 里经主进程转到后端插件，命令行预览时直接请求本机服务）。
 // 两个视图：全景（半径取实际数值，角度按近邻排布）和查询（横轴夹角、纵轴半径，等距离线取自精确距离）。
@@ -91,12 +92,13 @@ export function mountAtlas(container, source, options = {}) {
 
     const style = win.getComputedStyle(root);
     const token = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
-    const color = {
+    const readColors = () => ({
         ink: token('--wa-ink-0', '#14110e'), line: token('--wa-line', '#3b342b'), lineSoft: token('--wa-line-soft', '#2f2a23'),
         text: token('--wa-text', '#ece3d3'), text2: token('--wa-text-2', '#b4a893'), text3: token('--wa-text-3', '#7d7262'),
         terra: token('--wa-terra', '#c35f2c'), terraHi: token('--wa-terra-hi', '#db7a43'), mark: token('--wa-mark', '#dea06c'),
         umber: token('--wa-umber', '#9b795d'),
-    };
+    });
+    let color = readColors();
     const fontBody = token('--wa-font', '"MiSans", "Noto Sans SC", "Microsoft YaHei", sans-serif');
     const fontLetter = token('--wa-font-letter', '"PT Serif", Georgia, serif');
     const font = (px, weight = 400, family = fontBody) => `${weight} ${px}px ${family}`;
@@ -168,7 +170,9 @@ export function mountAtlas(container, source, options = {}) {
         const focused = state.view === 'panorama' && field() ? field().groups[state.focus[state.kind]] : null;
         plateNote.textContent = focused
             ? `已展开话题团“${focused.label || '未命名'}”：它占了大半圈，其余的话题团挤在剩下的一段里，半径不变。再点它的弧或名称，或按“复位”，即可还原。`
-            : NOTE[state.view];
+            : state.view === 'query' && query()?.metricMode
+                ? '查询的黎曼保角截面：横向为真实夹角，纵向依快照度规展开。虚线是到查询的等距线；屏幕上两点的直线距离不是它们的测地距离。'
+                : NOTE[state.view];
     }
 
     // ---------- 取数 ----------
@@ -428,6 +432,14 @@ export function mountAtlas(container, source, options = {}) {
     // ---------- 查询视图的窗口 ----------
     function plotBox() {
         return { left: 66, right: size.width - 26, top: 46, bottom: size.height - 108 };
+    }
+    function currentSlice() {
+        const f = field();
+        if (!query()?.metricMode || !f) return null;
+        if (f.chart === undefined) f.chart = metricChart(f.geometry, f.radiusRange);
+        if (!f.chart) return null;
+        const [from, to] = queryWindow();
+        return sliceViewport(f.chart, from, to, plotBox());
     }
     function queryWindow() {
         const q = query();
@@ -989,11 +1001,12 @@ export function mountAtlas(container, source, options = {}) {
     }
 
     function drawQuery(ctx, f, q) {
-        const box = plotBox();
+        const slice = currentSlice();
+        const box = slice || plotBox();
         const [from, to] = queryWindow();
         const [inner, outer] = f.radiusRange;
-        const X = theta => box.left + (theta - from) / (to - from) * (box.right - box.left);
-        const Y = radius => box.bottom - (radius - (inner - 0.02)) / (outer - inner + 0.04) * (box.bottom - box.top);
+        const X = slice?.X || (theta => box.left + (theta - from) / (to - from) * (box.right - box.left));
+        const Y = slice?.Y || (radius => box.bottom - (radius - (inner - 0.02)) / (outer - inner + 0.04) * (box.bottom - box.top));
         const chosen = state.selected && state.selected.kind === state.kind ? state.selected.index : null;
         const picked = chosen === q.query.index ? null : chosen;
 
@@ -1264,7 +1277,7 @@ export function mountAtlas(container, source, options = {}) {
         hover = null;
         hoverGroup = null;
         if (state.view === 'query' && query()) {
-            const box = plotBox();
+            const box = currentSlice() || plotBox();
             const w = queryWindow();
             const shift = -(x - drag.lastX) / (box.right - box.left) * (w[1] - w[0]);
             const clamped = Math.max(-w[0], Math.min(180 - w[1], shift));
@@ -1303,7 +1316,7 @@ export function mountAtlas(container, source, options = {}) {
         const [x, y] = point(event);
         const factor = Math.exp(-event.deltaY * 0.0016);
         if (state.view === 'query' && query()) {
-            const box = plotBox();
+            const box = currentSlice() || plotBox();
             const w = queryWindow();
             const span = Math.max(2, Math.min(180, (w[1] - w[0]) / factor));
             const anchor = w[0] + (x - box.left) / (box.right - box.left) * (w[1] - w[0]);
@@ -1630,6 +1643,17 @@ export function mountAtlas(container, source, options = {}) {
     function renderQuerySide(f, q) {
         const picked = state.selected && state.selected.kind === state.kind ? state.selected.index : null;
         const fromMessage = q.query.message != null;
+        const projection = section('投影');
+        const choices = el(doc, 'div', 'wa-seg');
+        const supported = f.geometry && f.distanceCheck?.ok;
+        segment(choices, [['plot', '坐标图'], ['metric', '黎曼切片', !supported]],
+            q.metricMode ? 'metric' : 'plot', mode => {
+                if (mode === 'metric' && f.chart === undefined) f.chart = metricChart(f.geometry, f.radiusRange);
+                q.metricMode = mode === 'metric' && Boolean(f.chart);
+                renderHead(); renderSide(); schedule();
+            });
+        projection.append(choices);
+        if (!supported) projection.append(el(doc, 'div', 'wa-note', '此快照缺少受支持的度规或距离自检未通过。'));
         const headBox = section(fromMessage ? '查询 · 对话消息' : '查询');
         headBox.append(el(doc, 'div', fromMessage ? 'wa-text' : 'wa-name', q.query.label));
         const radiusNote = q.query.radiusFrom === 'default' ? '（取常见值）' : q.query.radiusFrom === 'rule' ? '（按片段的规则算出）' : '';
@@ -1653,9 +1677,9 @@ export function mountAtlas(container, source, options = {}) {
         segment(seg, [5, 10, 20, 40].map(n => [n, `${n} 条`]), state.k, value => { state.k = value; renderSide(); schedule(); });
         near.append(seg);
         const legend = el(doc, 'div', 'wa-legend');
-        legend.innerHTML = `<span><svg width="12" height="12"><circle cx="6" cy="6" r="4.6" fill="${color.terra}"/></svg>两种排法都在前 ${state.k}</span>`
-            + `<span><svg width="14" height="14"><path d="M7 .5 13.5 7 7 13.5 .5 7Z" fill="${color.terraHi}"/></svg>因半径被提前</span>`
-            + `<span><svg width="12" height="12"><circle cx="6" cy="6" r="4.4" fill="none" stroke="${color.umber}" stroke-width="1.5"/></svg>因半径被挤出</span>`;
+        legend.innerHTML = `<span><svg width="12" height="12"><circle cx="6" cy="6" r="4.6" fill="var(--wa-terra)"/></svg>两种排法都在前 ${state.k}</span>`
+            + `<span><svg width="14" height="14"><path d="M7 .5 13.5 7 7 13.5 .5 7Z" fill="var(--wa-terra-hi)"/></svg>因半径被提前</span>`
+            + `<span><svg width="12" height="12"><circle cx="6" cy="6" r="4.4" fill="none" stroke="var(--wa-umber)" stroke-width="1.5"/></svg>因半径被挤出</span>`;
         near.append(legend);
         const table = el(doc, 'table', 'wa-table');
         table.innerHTML = '<colgroup><col class="wa-c-rank"><col><col class="wa-c-num"><col class="wa-c-num"><col class="wa-c-num"><col class="wa-c-move"></colgroup>'
@@ -1693,7 +1717,7 @@ export function mountAtlas(container, source, options = {}) {
         } else {
             out.append(el(doc, 'div', 'wa-note', '没有，两种排法的前几名相同。'));
         }
-        side.replaceChildren(headBox, where, near, out, ...(state.messages ? [messagePicker()] : []));
+        side.replaceChildren(headBox, projection, where, near, out, ...(state.messages ? [messagePicker()] : []));
         drawInset(inset, f, q);
     }
 
@@ -1793,6 +1817,14 @@ export function mountAtlas(container, source, options = {}) {
     start();
 
     return {
+        refreshTheme() {
+            if (disposed) return;
+            color = readColors();
+            miniBase = null;
+            const inset = side.querySelector('.wa-inset');
+            if (inset && field() && query()) drawInset(inset, field(), query());
+            schedule();
+        },
         dispose() {
             disposed = true;
             if (frame) win.cancelAnimationFrame(frame);

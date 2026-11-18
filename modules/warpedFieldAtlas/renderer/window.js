@@ -21,3 +21,16 @@ window.__warpedFieldAtlas = mountAtlas(document.getElementById('app'), source, {
     ownWindow: true,
     windowControls: controls,
 });
+// Subscribe first: a slow initial read must not undo a newer broadcast.
+let themeRevision = 0;
+function applyTheme(mode) {
+    if (mode !== 'dark' && mode !== 'light') return;
+    document.body.classList.toggle('light-theme', mode === 'light');
+    window.__warpedFieldAtlas.refreshTheme();
+}
+const offTheme = api?.onThemeUpdated?.(mode => { themeRevision++; applyTheme(mode); });
+api?.getCurrentTheme?.().then(mode => { if (!themeRevision) applyTheme(mode); }).catch(() => {});
+window.addEventListener('pagehide', () => {
+    if (typeof offTheme === 'function') offTheme();
+    window.__warpedFieldAtlas.dispose();
+}, { once: true });

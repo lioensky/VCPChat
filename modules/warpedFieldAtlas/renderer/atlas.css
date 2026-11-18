@@ -1,20 +1,19 @@
-/* 双曲场图（应用功能模块 warpedFieldAtlas）。图版式样：墨底、细线、陶土色选中、标记铜连线；直角，不用蓝色，不做悬停提示。
-   颜色和字体由模块自己的变量定义。 */
+/* 图版保留细线、直角与排版，只从当前 VChat 主题取得颜色。 */
 .wa-root {
-    --wa-ink-0: #14110e;
-    --wa-ink-1: #1b1814;
-    --wa-ink-2: #231f1a;
-    --wa-ink-3: #2d2822;
-    --wa-line: #3b342b;
-    --wa-line-soft: #2f2a23;
-    --wa-text: #ece3d3;
-    --wa-text-2: #b4a893;
-    --wa-text-3: #7d7262;
-    --wa-terra: #c35f2c;
-    --wa-terra-hi: #db7a43;
-    --wa-on-terra: #fbe9dc;
-    --wa-mark: #dea06c;
-    --wa-umber: #9b795d;
+    --wa-ink-0: var(--primary-bg, #171a1d);
+    --wa-ink-1: var(--secondary-bg, #20252a);
+    --wa-ink-2: var(--accent-bg, #2a3035);
+    --wa-ink-3: color-mix(in srgb, var(--wa-text) 12%, var(--wa-ink-1));
+    --wa-line: var(--border-color, #3b4449);
+    --wa-line-soft: color-mix(in srgb, var(--wa-line) 70%, var(--wa-ink-0));
+    --wa-text: var(--primary-text, #f2f0e9);
+    --wa-text-2: var(--secondary-text, #a7afb1);
+    --wa-text-3: var(--wa-text-2);
+    --wa-terra: var(--button-bg, #f2a900);
+    --wa-terra-hi: var(--highlight-text, var(--wa-text));
+    --wa-on-terra: var(--text-on-accent, #171a1d);
+    --wa-mark: var(--wa-terra-hi);
+    --wa-umber: color-mix(in srgb, var(--wa-text) 65%, var(--wa-mark));
     --wa-lit: color-mix(in srgb, var(--wa-text) 8%, transparent);
     /* 界面和图使用本机字体。英文小标签优先使用 PT Serif。 */
     --wa-font: "MiSans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
@@ -34,8 +33,8 @@
 .wa-root *, .wa-root *::before, .wa-root *::after { box-sizing: border-box; }
 .wa-root button { font: inherit; color: inherit; cursor: default; border: 0; border-radius: 0; background: none; padding: 0; }
 .wa-root ::-webkit-scrollbar { width: 10px; height: 10px; }
-.wa-root ::-webkit-scrollbar-thumb { background: rgba(166, 141, 111, .18); }
-.wa-root ::-webkit-scrollbar-thumb:hover { background: rgba(184, 145, 103, .38); }
+.wa-root ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, var(--wa-line)); }
+.wa-root ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, var(--wa-text-2)); }
 
 /* 页头：名称、两组切换、查找 */
 .wa-head {

@@ -174,6 +174,26 @@ box(c,60,80,32,6,3,'#eaa57c');box(c,68,86,16,5,1,'#b86b53');box(c,63,91,26,4,2,'
 c.globalAlpha=1;
 for(let i=0;i<4;i++){const p=(t*.8+i*.25)%1;c.globalAlpha=e*(1-p);circle(c,82+Math.sin(i*2.3+t*2)*6,43-p*22,1.7,'#ffe6a8')}
 c.globalAlpha=1;
+}else if(type==='warped-field-atlas'){
+// Enamel survey dial. Orthogonal circular arcs form a Poincaré disk grid.
+c.save();c.translate(64,63);c.rotate(-.12);
+circle(c,0,3,43,'#705540');
+circle(c,0,0,43,gradient(c,-32,-38,32,38,['#fff0c3','#c29165','#796554']));
+c.shadowBlur=0;c.shadowOffsetY=0;
+const r=37;
+circle(c,0,0,r,gradient(c,-24,-32,24,32,['#377c81','#193f54','#152838']));
+c.clip();
+const d=r*1.36, radius=Math.sqrt(d*d-r*r), span=Math.asin(r/d);
+for(let i=0;i<6;i++){
+    c.save();c.rotate(i*Math.PI/3);
+    c.beginPath();c.arc(d,0,radius,Math.PI-span,Math.PI+span);
+    c.strokeStyle=i===0?'#ffd197':'#86d8d3';c.lineWidth=i===0?2.8:1.8;c.stroke();
+    c.restore();
+}
+const angle=Math.PI+span*.78*Math.sin(t*1.8)*e;
+const px=d+radius*Math.cos(angle),py=radius*Math.sin(angle);
+circle(c,px,py,7,'#ffcc8040');circle(c,px,py,4.2,'#ffc379');circle(c,px-1,py-1,1.6,'#fff2d3');
+c.restore();
 }else if(type==='game'){
 // Mint arcade controller: floating shell, responsive stick and softly pulsing buttons.
 c.save();c.translate(64,66);c.rotate(-.08+b*.025);

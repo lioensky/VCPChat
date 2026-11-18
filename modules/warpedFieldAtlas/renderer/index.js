@@ -13,6 +13,7 @@ export function install(context = {}) {
         id: 'warped-field-atlas',
         title: '双曲场图',
         kind: 'internal',
+        launchpadIcon: 'warped-field-atlas',
         iconSvg: ICON,
         mount(container, app) {
             chatAPI.warpedFieldAtlasOpen();

@@ -168,6 +168,7 @@
     "sherpa-onnx-node": "^1.13.8",
     "smol-toml": "^1.9.0",
     "stylelint": "^16.25.0",
+    "stylelint-config-standard": "39.0.1",
     "superdoc": "^1.45.0",
     "tesseract.js": "^6.0.1",
     "three": "^0.178.0",
