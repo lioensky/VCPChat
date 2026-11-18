@@ -10,19 +10,27 @@ const { validateCode } = require('./CodeValidator');
 const fileKit = require('../../shared/fileKit');
 
 // Load environment variables with fallback chain: config.env → .env → defaults
+// 本插件以 direct 方式运行在宿主进程内，与其他插件共用 process.env，
+// 因此配置只解析给本插件读取，不写入 process.env。
+// 与原 dotenv.config() 一致，进程环境中已有的同名变量优先于文件中的值。
 const dotenv = require('dotenv');
 const configEnvPath = path.join(__dirname, 'config.env');
 const dotEnvPath = path.join(__dirname, '.env');
+let fileConfig = {};
 if (fsSync.existsSync(configEnvPath)) {
-  dotenv.config({ path: configEnvPath, quiet: true });
+  fileConfig = dotenv.parse(fsSync.readFileSync(configEnvPath));
 } else if (fsSync.existsSync(dotEnvPath)) {
-  dotenv.config({ path: dotEnvPath, quiet: true });
+  fileConfig = dotenv.parse(fsSync.readFileSync(dotEnvPath));
 }
 // If neither exists, all config falls back to code defaults below.
 
+function getConfigValue(key) {
+  return process.env[key] !== undefined ? process.env[key] : fileConfig[key];
+}
+
 // Configuration
 const CANVAS_DIRECTORY = path.join(__dirname, '..', '..', '..', 'AppData', 'Canvas');
-const ALLOWED_DIRECTORIES = (process.env.ALLOWED_DIRECTORIES || '')
+const ALLOWED_DIRECTORIES = (getConfigValue('ALLOWED_DIRECTORIES') || '')
   .split(',')
   .map(dir => dir.trim())
   .filter(dir => dir);
@@ -31,13 +39,13 @@ const ALLOWED_DIRECTORIES = (process.env.ALLOWED_DIRECTORIES || '')
 if (!ALLOWED_DIRECTORIES.includes(CANVAS_DIRECTORY)) {
   ALLOWED_DIRECTORIES.push(CANVAS_DIRECTORY);
 }
-const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 20971520; // 20MB default
-const MAX_DIRECTORY_ITEMS = parseInt(process.env.MAX_DIRECTORY_ITEMS) || 1000;
-const MAX_SEARCH_RESULTS = parseInt(process.env.MAX_SEARCH_RESULTS) || 100;
-const DEFAULT_DOWNLOAD_DIR = (process.env.DEFAULT_DOWNLOAD_DIR || '').trim();
-const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
-const ENABLE_RECURSIVE_OPERATIONS = process.env.ENABLE_RECURSIVE_OPERATIONS !== 'false';
-const ENABLE_HIDDEN_FILES = process.env.ENABLE_HIDDEN_FILES === 'true';
+const MAX_FILE_SIZE = parseInt(getConfigValue('MAX_FILE_SIZE')) || 20971520; // 20MB default
+const MAX_DIRECTORY_ITEMS = parseInt(getConfigValue('MAX_DIRECTORY_ITEMS')) || 1000;
+const MAX_SEARCH_RESULTS = parseInt(getConfigValue('MAX_SEARCH_RESULTS')) || 100;
+const DEFAULT_DOWNLOAD_DIR = (getConfigValue('DEFAULT_DOWNLOAD_DIR') || '').trim();
+const DEBUG_MODE = getConfigValue('DEBUG_MODE') === 'true';
+const ENABLE_RECURSIVE_OPERATIONS = getConfigValue('ENABLE_RECURSIVE_OPERATIONS') !== 'false';
+const ENABLE_HIDDEN_FILES = getConfigValue('ENABLE_HIDDEN_FILES') === 'true';
 
 // Utility functions
 function debugLog(message, data = null) {
@@ -107,7 +115,8 @@ function createLineEndingHelper(content) {
         };
       }
 
-      const normResult = normContent.replace(normSearch, normReplace);
+      // 使用函数替换，避免 replace 文本中的 $&、$$、$`、$' 被当作替换模式展开。
+      const normResult = normContent.replace(normSearch, () => normReplace);
 
       let result = normResult;
       if (lineEnding === '\r\n') {
@@ -330,8 +339,8 @@ function resolveAndNormalizePath(inputPath) {
 
   // BASE_PATH: configurable project root for bare relative paths.
   // Falls back to two levels up from this plugin's directory.
-  const BASE_PATH = process.env.BASE_PATH
-    ? path.resolve(process.env.BASE_PATH)
+  const BASE_PATH = getConfigValue('BASE_PATH')
+    ? path.resolve(getConfigValue('BASE_PATH'))
     : path.resolve(__dirname, '..', '..');
 
   // Virtual root: map "/xxx" to FileOperator/xxx on platforms where it is not absolute.
