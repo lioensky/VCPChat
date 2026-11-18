@@ -730,7 +730,7 @@ export function mountAtlas(container, source, options = {}) {
                 const x1 = sx(f.wx[link.index]);
                 const y1 = sy(f.wy[link.index]);
                 if (river) {
-                    ctx.globalAlpha = 0.35 + 0.5 * link.weight;
+                    ctx.globalAlpha = 0.13 + 0.72 * link.weight ** 1.35;
                     drawRiverEdge(ctx, x0, y0, x1, y1, 0.6 + 2 * link.weight);
                 } else {
                     ctx.strokeStyle = color.text2;
