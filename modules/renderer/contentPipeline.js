@@ -97,8 +97,54 @@ function stripPersonaBackfillSegment(text) {
     return result;
 }
 
+// 行首开始、已经闭合、内部有空行的整段 <svg>（嵌套 <svg> 按层数配对）。没写完的（流式中）、
+// 句中提到的、不含空行的（marked 本来就整段保留）和位于 <script> 里的都不处理。
+const RAW_SVG_START = /(^|\n)[ \t]*<svg\b/gi;
+const SVG_TAG = /<(\/?)svg\b[^>]*?(\/?)>/gi;
+const RAW_SCRIPT = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+
+function sealRawSvgBlocks(text, seal) {
+    if (typeof text !== 'string' || !/<svg\b/i.test(text)) return text;
+    const scripts = [...text.matchAll(RAW_SCRIPT)].map(match => [match.index, match.index + match[0].length]);
+    const starts = new RegExp(RAW_SVG_START.source, 'gi');
+    let result = '';
+    let cursor = 0;
+    for (let match = starts.exec(text); match; match = starts.exec(text)) {
+        const start = match.index + match[0].indexOf('<');
+        const tags = new RegExp(SVG_TAG.source, 'gi');
+        tags.lastIndex = start;
+        let depth = 0;
+        let end = -1;
+        for (let tag = tags.exec(text); tag; tag = tags.exec(text)) {
+            if (tag[2]) {
+                if (depth === 0) { end = tags.lastIndex; break; }
+                continue;
+            }
+            depth += tag[1] ? -1 : 1;
+            if (depth === 0) { end = tags.lastIndex; break; }
+        }
+        if (end < 0) break;
+        starts.lastIndex = end;
+        const source = text.slice(start, end);
+        if (!/\n[ \t]*\n/.test(source) || scripts.some(([from, to]) => start >= from && start < to)) continue;
+        result += text.slice(cursor, start) + seal(source);
+        cursor = end;
+    }
+    return cursor ? result + text.slice(cursor) : text;
+}
+
+// 粗体不跨空行（CommonMark 的强调只在同一段落内配对），所以开、关按段落分别计数。
+// 从整条回复开头计数时，正文里一处不成对的 `**`（如 **kwargs、2**10）会让之后所有段落的
+// 开关都判反，分隔注释插错位置，marked 认不出粗体，后文成段显示成 **文字**。
 function normalizeAdjacentBoldBoundaries(text) {
     if (typeof text !== 'string' || !text.includes('**')) return text;
+    return text.split(/(\n[ \t]*\n)/).map(normalizeParagraphBoldBoundaries).join('');
+}
+
+function normalizeParagraphBoldBoundaries(text) {
+    if (!text.includes('**')) return text;
+    // 本段 `**` 为单数，说明含有字面星号，无法判断哪一处是开、哪一处是关，原样交给 marked。
+    if ((text.split('**').length - 1) % 2) return text;
 
     // marked/CommonMark 的 emphasis 边界算法在中文/引号无空格相邻时会把
     // **“文字a”**文字b**""文字c""**
@@ -508,6 +554,10 @@ function createContentPipeline(deps = {}) {
         // 裸 HTML 岛可被空行终止，后续缩进 JS 会被 Markdown 解释为代码块。
         // 代码/工具/思维链已隔离后，仅封存真正的完整 script 原文，贯穿 marked。
         ctx.state.rawScriptMap = ctx.state.placeholders.map('script');
+        // 正文里直接写的 <svg> 同理：内部有空行时，空行后以 <text>文字</text> 开头的一段会被包进 <p>，
+        // 浏览器解析时 <p> 跳出 svg，后半截图形丢失、文字掉到图外。整段封存后与 script 一样原样还原。
+        step(ctx, 'protect-raw-svgs', text => sealRawSvgBlocks(text, source =>
+            ctx.state.placeholders.register('script', restoreCodeBlocks(source, ctx))));
         step(ctx, 'protect-raw-scripts', text => text.replace(
             /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
             source => {
