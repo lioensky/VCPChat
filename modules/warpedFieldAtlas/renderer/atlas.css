@@ -104,9 +104,11 @@
 /* 缩略图：放大到看不全整圈时出现在左上角（右边已经有侧栏，不再往右边放）。 */
 .wa-stage canvas.wa-mini { inset: 14px auto auto 14px; width: 172px; height: 172px; background: var(--wa-ink-1); border: 1px solid var(--wa-line); }
 .wa-stage canvas.wa-mini[hidden] { display: none; }
-.wa-plate { position: absolute; left: 18px; bottom: 14px; max-width: 62%; pointer-events: none; }
-.wa-plate-mark { font-family: var(--wa-font-letter); font-size: 11px; letter-spacing: .16em; color: var(--wa-umber); }
-.wa-plate-note { margin-top: 2px; font-size: 12px; color: var(--wa-text-3); }
+/* keep reading notes outside the plot, including in narrow windows. */
+.wa-plot-column { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
+.wa-plate { display: flex; align-items: baseline; gap: 12px; padding: 7px 16px; border-top: 1px solid var(--wa-line-soft); }
+.wa-plate-mark { white-space: nowrap; font-family: var(--wa-font-letter); font-size: 11px; letter-spacing: .16em; color: var(--wa-umber); }
+.wa-plate-note { font-size: 12px; color: var(--wa-text-2); }
 .wa-root .wa-reset { flex: none; padding: 5px 12px; background: var(--wa-ink-2); color: var(--wa-text-2); }
 .wa-root .wa-reset:hover { background: var(--wa-ink-3); color: var(--wa-text); }
 .wa-message {
@@ -140,6 +142,8 @@
 
 /* 列表：一行一条，不做卡片 */
 .wa-list { margin: 0; padding: 0; list-style: none; }
+/* keep both relation directions reachable without an extra expand action. */
+.wa-relations { max-height: 15rem; overflow-y: auto; }
 .wa-list li { border-top: 1px solid var(--wa-line-soft); }
 .wa-list li:last-child { border-bottom: 1px solid var(--wa-line-soft); }
 .wa-root .wa-list button { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 5px 4px; text-align: left; }

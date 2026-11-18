@@ -9,10 +9,10 @@ const FLAG_ENTRY = 1;
 const FLAG_DIRECTION = 2;
 const FLAG_SHELL = 4;
 const KIND_NAME = { tag: 'Tag 场', chunk: 'Chunk 场' };
-const PLATE = { tag: 'PLATE I · TAG FIELD', chunk: 'PLATE II · CHUNK FIELD', query: 'PLATE III · VIEW FROM A QUERY' };
+const PLATE = { tag: 'PLATE I', chunk: 'PLATE II', query: 'PLATE III' };
 const NOTE = {
-    panorama: '半径是场里的实际数值。角度为近似排布：相邻表示同属一个话题团，角度差不代表实际远近。点话题团的弧或名称，可以把它展开。',
-    query: '横轴是与查询方向的夹角，纵轴是节点半径，虚线是等距离线。同样的夹角下，里圈的节点更近。',
+    panorama: '半径取自训练快照；沿圆周按近邻排布，角度差不代表距离。',
+    query: '横轴是与查询方向的夹角，纵轴是节点半径；同一条虚线上的点到查询等距。',
 };
 const FOCUS_SHARE = 0.7;      // 展开的话题团占整圈的比例
 const MOTION_MS = 220;        // 展开、收起时节点移动的时长
@@ -85,9 +85,12 @@ export function mountAtlas(container, source, options = {}) {
     plate.append(plateMark, plateNote);
     const message = el(doc, 'div', 'wa-message');
     message.hidden = true;
-    stage.append(canvas, mini, plate, message);
+    // measure only the drawing stage; its caption belongs below the canvas.
+    const plotColumn = el(doc, 'div', 'wa-plot-column');
+    stage.append(canvas, mini, message);
+    plotColumn.append(stage, plate);
     const side = el(doc, 'aside', 'wa-side');
-    body.append(stage, side);
+    body.append(plotColumn, side);
     root.append(head, body);
 
     const style = win.getComputedStyle(root);
@@ -169,7 +172,7 @@ export function mountAtlas(container, source, options = {}) {
         plateMark.textContent = state.view === 'query' ? PLATE.query : PLATE[state.kind];
         const focused = state.view === 'panorama' && field() ? field().groups[state.focus[state.kind]] : null;
         plateNote.textContent = focused
-            ? `已展开话题团“${focused.label || '未命名'}”：它占了大半圈，其余的话题团挤在剩下的一段里，半径不变。再点它的弧或名称，或按“复位”，即可还原。`
+            ? '展开只改变各团占用的圆弧，节点半径不变。'
             : state.view === 'query' && query()?.metricMode
                 ? '查询的黎曼保角截面：横向为真实夹角，纵向依快照度规展开。虚线是到查询的等距线；屏幕上两点的直线距离不是它们的测地距离。'
                 : NOTE[state.view];
@@ -538,6 +541,19 @@ export function mountAtlas(container, source, options = {}) {
             },
         };
     }
+    // 悬停名称是图内的临时标注，不占普通名称名额，不改变选择或侧栏。
+    function drawHoverName(ctx, label, text, x, y, bounds) {
+        if (!text) return;
+        const left = bounds.left + 4, right = bounds.right - 4;
+        const style = font(12.5, 600);
+        ctx.font = style;
+        const width = Math.min(ctx.measureText(text).width, 280, Math.max(1, right - left));
+        const start = x + 12 + width <= right ? x + 12 : x - 12 - width;
+        const top = Math.max(bounds.top + 9, Math.min(bounds.bottom - 9, y));
+        label.place(text, Math.max(left, Math.min(right - width, start)), top, {
+            align: 'left', gap: 0, force: true, maxWidth: width, fontSpec: style, fill: color.text,
+        });
+    }
     /** 节点名称按默认字号画出来有多宽：量一次记住，字体换了（网页字体到货）再重量。 */
     function labelWidth(ctx, f, i) {
         if (!f.labelWidth[i]) {
@@ -694,7 +710,7 @@ export function mountAtlas(container, source, options = {}) {
         const showMini = cam.x - ring < 0 || cam.y - ring < 0 || cam.x + ring > size.width || cam.y + ring > size.height;
         if (showMini) label.block(0, 0, 14 + MINI + 6, 14 + MINI + 6);
         // 左下角的图版说明也不让名称压上去。
-        label.block(0, size.height - plate.offsetHeight - 22, plate.offsetWidth + 26, size.height);
+
 
         // 话题团的弧和名称。展开的那一团用陶土色，指针指着的那一团提亮：两种都表示点下去会展开或收起。
         f.groups.forEach((group, index) => {
@@ -730,7 +746,9 @@ export function mountAtlas(container, source, options = {}) {
                 const x1 = sx(f.wx[link.index]);
                 const y1 = sy(f.wy[link.index]);
                 if (river) {
-                    ctx.globalAlpha = 0.13 + 0.72 * link.weight ** 1.35;
+                    // keep every edge visible while giving weaker co-occurrences less contrast.
+                    const alpha = 0.13 + 0.72 * link.weight ** 1.35;
+                    ctx.globalAlpha = relationPreview == null ? alpha : link.index === relationPreview ? 1 : alpha * 0.45;
                     drawRiverEdge(ctx, x0, y0, x1, y1, 0.6 + 2 * link.weight);
                 } else {
                     ctx.strokeStyle = color.text2;
@@ -862,7 +880,7 @@ export function mountAtlas(container, source, options = {}) {
             dot(ctx, x, y, 9.5);
             ctx.stroke();
             label.reserve(x, y, 10);
-            label.place(f.labels[picked], x, y, { fill: color.text, fontSpec: font(12.5, 600), gap: 14, force: true, maxWidth: 280 });
+            if (hover !== picked) label.place(f.labels[picked], x, y, { fill: color.text, fontSpec: font(12.5, 600), gap: 14, force: true, maxWidth: 280 });
         }
         // 指针下面的节点：亮起来并套一圈，表示现在点下去选中的是它。
         if (hover != null && hover !== picked && hover < f.count) {
@@ -896,6 +914,7 @@ export function mountAtlas(container, source, options = {}) {
         if (links.length) {
             const ordered = links.slice().sort((a, b) => b.weight - a.weight || f.radius[a.index] - f.radius[b.index]);
             for (const link of ordered.slice(0, 40)) {
+                if (link.index === hover) continue;
                 label.place(f.labels[link.index], sx(f.wx[link.index]), sy(f.wy[link.index]), { fill: color.text });
             }
         }
@@ -906,6 +925,7 @@ export function mountAtlas(container, source, options = {}) {
             let tried = 0;
             for (const i of f.byRadius) {
                 if (placed >= budget || tried >= budget * 8) break;
+                if (i === hover) continue;
                 if (zoom < 1.7 && f.group[i] !== focused) continue;
                 const x = sx(f.wx[i]);
                 const y = sy(f.wy[i]);
@@ -913,6 +933,19 @@ export function mountAtlas(container, source, options = {}) {
                 tried++;
                 if (label.place(f.labels[i], x, y, { width: labelWidth(ctx, f, i) })) placed++;
             }
+        }
+        if (hover != null && hover < f.count) {
+            drawHoverName(ctx, label, f.labels[hover], sx(f.wx[hover]), sy(f.wy[hover]),
+                { left: 0, right: size.width, top: 0, bottom: size.height });
+        }
+        if (relationPreview != null && picked != null && linked.has(relationPreview)) {
+            const x = sx(f.wx[relationPreview]), y = sy(f.wy[relationPreview]);
+            ctx.strokeStyle = color.mark;
+            ctx.lineWidth = 1.5;
+            dot(ctx, x, y, 7);
+            ctx.stroke();
+            drawHoverName(ctx, label, f.labels[relationPreview], x, y,
+                { left: 0, right: size.width, top: 0, bottom: size.height });
         }
         drawMini(f, cam, showMini, picked, focused);
     }
@@ -1237,15 +1270,18 @@ export function mountAtlas(container, source, options = {}) {
             label.place(tag.text, tag.x, tag.y, { fill: tag.main ? color.mark : color.umber, fontSpec: font(11.5), gap: 5 });
         }
         if (picked != null && q.distance[picked] != null) {
-            label.place(f.labels[picked], X(q.theta[picked]), Y(f.radius[picked]), { fill: color.text, fontSpec: font(12.5, 600), gap: 13, maxWidth: 260 });
+            if (picked !== hover) label.place(f.labels[picked], X(q.theta[picked]), Y(f.radius[picked]), { fill: color.text, fontSpec: font(12.5, 600), gap: 13, maxWidth: 260 });
         }
         for (const i of q.byDistance.slice(0, k)) {
-            if (i === picked) continue;
+            if (i === picked || i === hover) continue;
             label.place(f.labels[i], X(q.theta[i]), Y(f.radius[i]), { fill: color.text, fontSpec: font(11.5), gap: 9 });
         }
         for (const i of q.byCosine.slice(0, k)) {
-            if (q.distanceRank[i] <= k || i === picked) continue;
+            if (q.distanceRank[i] <= k || i === picked || i === hover) continue;
             label.place(f.labels[i], X(q.theta[i]), Y(f.radius[i]), { fill: color.text2, fontSpec: font(11.5), gap: 9 });
+        }
+        if (hover != null && q.distance[hover] != null) {
+            drawHoverName(ctx, label, f.labels[hover], X(q.theta[hover]), Y(f.radius[hover]), box);
         }
         ctx.restore();
     }
@@ -1266,7 +1302,11 @@ export function mountAtlas(container, source, options = {}) {
         let bestDistance = limit * limit;
         for (let k = 0; k < hitCount; k++) {
             const d = (hitX[k] - x) ** 2 + (hitY[k] - y) ** 2;
-            if (d <= bestDistance) { best = k; bestDistance = d; }
+            // equal-distance hits must agree with the first click candidate.
+            if (d < bestDistance || (d === bestDistance && (best == null || hitIndex[k] < hitIndex[best]))) {
+                best = k;
+                bestDistance = d;
+            }
         }
         return best == null ? null : { index: hitIndex[best], x: hitX[best], y: hitY[best] };
     }
@@ -1277,7 +1317,7 @@ export function mountAtlas(container, source, options = {}) {
             const d = (hitX[k] - x) ** 2 + (hitY[k] - y) ** 2;
             if (d <= limit * limit) found.push([d, hitIndex[k]]);
         }
-        return found.sort((a, b) => a[0] - b[0]).map(item => item[1]);
+        return found.sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(item => item[1]);
     }
     /** 全景图上这一点指着哪个话题团：它的名称，或者它在环外的那段弧。 */
     function groupAt(x, y) {
@@ -1436,6 +1476,39 @@ export function mountAtlas(container, source, options = {}) {
         b.addEventListener('click', onClick);
         return b;
     }
+    // keep relation previews local to the sidebar; never select or fetch on hover.
+    let relationPreview = null;
+    function setRelationPreview(index) {
+        if (index === relationPreview) return;
+        relationPreview = index;
+        schedule();
+    }
+    function relationList(items, render, jump) {
+        const list = nodeList(items, (row, item) => {
+            render(row, item);
+            if (item.index != null) row.dataset.relationIndex = String(item.index);
+        }, jump);
+        list.classList.add('wa-relations');
+        // keep evidence for the two directions distinct, even when their canvas edge is shared.
+        const evidence = el(doc, 'div', 'wa-note');
+        const hint = '指向关系可看贡献来源。';
+        evidence.textContent = hint;
+        const byRow = new Map(items.map((item, i) => [list.children[i].firstElementChild, item]));
+        const indexOfRow = target => {
+            const item = byRow.get(target?.closest?.('button, .wa-static'));
+            evidence.textContent = !item ? hint : item.sources?.length
+                ? '贡献来源：' + item.sources.map(file => `${file.diary} / ${file.name}`).join('；')
+                : '没有可核对的文件贡献记录。';
+            return item?.index ?? null;
+        };
+        list.addEventListener('pointerover', event => setRelationPreview(indexOfRow(event.target)));
+        list.addEventListener('pointerleave', () => setRelationPreview(indexOfRow(doc.activeElement)));
+        list.addEventListener('focusin', event => setRelationPreview(indexOfRow(event.target)));
+        list.addEventListener('focusout', event => setRelationPreview(indexOfRow(event.relatedTarget)));
+        const group = el(doc, 'div', 'wa-relation-group');
+        group.append(list, evidence);
+        return group;
+    }
     function nodeList(items, render, onPick) {
         const list = el(doc, 'ul', 'wa-list');
         for (const item of items) {
@@ -1488,7 +1561,7 @@ export function mountAtlas(container, source, options = {}) {
         if (state.kind === 'tag') marks.append(el(doc, 'div', 'wa-note', '点的大小分三档，入度分位越高越大。'));
         // 话题团：点一个就展开，再点一次收起。节点很密、分不清也点不中时用。
         const groups = section('话题团');
-        groups.append(el(doc, 'div', 'wa-note', '点一个话题团，把它展开到大半圈，其余的挤到剩下的一段里；再点一次，或按“复位”，即可还原。在图上点它的弧或名称也一样。'));
+        groups.append(el(doc, 'div', 'wa-note', '点团名或外弧展开，再点一次收起。'));
         const focused = state.focus[state.kind] ?? null;
         const order = f.groups.map((group, index) => ({ group, index })).sort((a, b) => b.group.count - a.group.count);
         const shown = order.slice(0, 24);
@@ -1575,14 +1648,15 @@ export function mountAtlas(container, source, options = {}) {
             if (!d.river) {
                 lines.append(el(doc, 'div', 'wa-note', '这个 Tag 不在 River 网络里。'));
             } else {
+                lines.append(el(doc, 'div', 'wa-note', '越粗亮，表示相对当前节点的其他连线越强；线长不表示强弱。'));
                 const render = (row, item) => {
                     row.append(el(doc, 'span', 'wa-fade', item.name));
                     if (item.wormhole) row.append(el(doc, 'span', 'wa-num wa-dim', '虫洞'));
                     if (item.index == null) row.append(el(doc, 'span', 'wa-num wa-dim', '未进场'));
                     row.append(el(doc, 'span', 'wa-num', fixed(item.weight, 3)));
                 };
-                lines.append(el(doc, 'div', 'wa-more', `指向它的 ${d.river.incoming.length} 条`), nodeList(d.river.incoming.slice(0, 30), render, jump));
-                lines.append(el(doc, 'div', 'wa-more', `它指向的 ${d.river.outgoing.length} 条`), nodeList(d.river.outgoing.slice(0, 30), render, jump));
+                lines.append(el(doc, 'div', 'wa-more', `指向它的 ${d.river.incoming.length} 条`), relationList(d.river.incoming, render, jump));
+                lines.append(el(doc, 'div', 'wa-more', `它指向的 ${d.river.outgoing.length} 条`), relationList(d.river.outgoing, render, jump));
             }
         } else if (state.lines === 'navigation') {
             const items = d.navigation.map(index => ({ index, id: f.ids[index], name: f.labels[index] }));
@@ -1807,6 +1881,7 @@ export function mountAtlas(container, source, options = {}) {
     }
 
     function renderSide() {
+        setRelationPreview(null);
         const f = field();
         if (!f) { side.replaceChildren(); return; }
         if (state.view === 'query' && query()) { renderQuerySide(f, query()); return; }
