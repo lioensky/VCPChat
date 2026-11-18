@@ -97,8 +97,18 @@ function stripPersonaBackfillSegment(text) {
     return result;
 }
 
+// 粗体不跨空行（CommonMark 的强调只在同一段落内配对），所以开、关按段落分别计数。
+// 从整条回复开头计数时，正文里一处不成对的 `**`（如 **kwargs、2**10）会让之后所有段落的
+// 开关都判反，分隔注释插错位置，marked 认不出粗体，后文成段显示成 **文字**。
 function normalizeAdjacentBoldBoundaries(text) {
     if (typeof text !== 'string' || !text.includes('**')) return text;
+    return text.split(/(\n[ \t]*\n)/).map(normalizeParagraphBoldBoundaries).join('');
+}
+
+function normalizeParagraphBoldBoundaries(text) {
+    if (!text.includes('**')) return text;
+    // 本段 `**` 为单数，说明含有字面星号，无法判断哪一处是开、哪一处是关，原样交给 marked。
+    if ((text.split('**').length - 1) % 2) return text;
 
     // marked/CommonMark 的 emphasis 边界算法在中文/引号无空格相邻时会把
     // **“文字a”**文字b**""文字c""**

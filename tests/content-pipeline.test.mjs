@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Marked } from 'marked';
 import { createContentPipeline, PIPELINE_MODES } from '../modules/renderer/contentPipeline.js';
 import { TOOL_RESULT_START_MARKER, TOOL_RESULT_END_MARKER } from '../modules/renderer/toolResultRegions.js';
 
@@ -98,4 +99,22 @@ test('assistant reply address is display-only and hidden only as a complete term
     assert.equal(render(inline).text, inline);
     const tool = `${TOOL_RESULT_START_MARKER}\n${footer}\n${TOOL_RESULT_END_MARKER}`;
     assert.equal([...render(tool).state.toolResultMap.values()][0], tool);
+});
+
+test('a stray ** in one paragraph does not flip bold markers in later paragraphs', () => {
+    const pipeline = createContentPipeline({
+        getToolResultRegex: () => /unused/g,
+    });
+    const input = [
+        '这个函数接受 **kwargs 形式的参数，调用时可以随意传关键字。',
+        '',
+        '1. **参数名**不能和位置参数重名。',
+        '2. 传进来的是**字典**，顺序和调用时一致。',
+    ].join('\n');
+    for (const mode of [PIPELINE_MODES.FULL_RENDER, PIPELINE_MODES.STREAM_FAST]) {
+        const html = new Marked({ gfm: true, breaks: true }).parse(pipeline.process(input, { mode }).text);
+        const strong = [...html.matchAll(/<strong>([\s\S]*?)<\/strong>/g)].map(match => match[1]);
+        assert.deepEqual(strong, ['参数名', '字典'], mode);
+        assert.match(html, /接受 \*\*kwargs 形式/, 'the stray marker stays literal text');
+    }
 });
