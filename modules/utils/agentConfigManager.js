@@ -184,8 +184,18 @@ class AgentConfigManager extends EventEmitter {
                 await fs.copy(configPath, backupFile, { overwrite: true });
             }
 
-            // 原子性替换
-            await fs.move(tempFile, configPath, { overwrite: true });
+            // fs-extra's overwrite move unlinks the destination before renaming.
+            // Keep the previous config readable, including while a Windows reader blocks replacement.
+            for (let attempt = 0; ; attempt++) {
+                try {
+                    await fs.rename(tempFile, configPath);
+                    break;
+                } catch (error) {
+                    const busy = process.platform === 'win32' && ['EPERM', 'EBUSY', 'EACCES'].includes(error.code);
+                    if (!busy || attempt >= 7) throw error;
+                    await new Promise(resolve => setTimeout(resolve, 10 * 2 ** attempt));
+                }
+            }
 
             // 更新缓存（使用实际文件的修改时间，而非 Date.now()，确保与 readAgentConfig 的 stat 比较一致）
             const newStats = await fs.stat(configPath).catch(() => null);
