@@ -597,6 +597,38 @@ export function mountAtlas(container, source, options = {}) {
         return [];
     }
 
+    function drawRiverEdge(ctx, x0, y0, x1, y1, width) {
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        const length = Math.hypot(dx, dy);
+        if (length === 0) return;
+
+        const half = width / 2;
+        const tip = half * 0.55;
+        const taper = Math.min(48, length * 0.22);
+        const third = taper / 3;
+        const far = length - taper;
+        const ux = dx / length;
+        const uy = dy / length;
+
+        ctx.save();
+        ctx.transform(ux, uy, -uy, ux, x0, y0);
+        ctx.fillStyle = color.mark;
+        ctx.beginPath();
+        ctx.moveTo(0, tip);
+        // 控制点在轴向三等分、在端部与主体处水平相接，宽度按 smoothstep 过渡。
+        ctx.bezierCurveTo(third, tip, taper - third, half, taper, half);
+        ctx.lineTo(far, half);
+        ctx.bezierCurveTo(far + third, half, length - third, tip, length, tip);
+        ctx.lineTo(length, -tip);
+        ctx.bezierCurveTo(length - third, -tip, far + third, -half, far, -half);
+        ctx.lineTo(taper, -half);
+        ctx.bezierCurveTo(taper - third, -half, third, -tip, 0, -tip);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
     function drawPanorama(ctx, f) {
         const cam = camera();
         const [inner, outer] = f.radiusRange;
@@ -691,15 +723,24 @@ export function mountAtlas(container, source, options = {}) {
 
         // 连线画在点的下面。
         if (picked != null && links.length) {
+            const river = state.kind === 'tag' && state.lines === 'river';
+            const x0 = sx(f.wx[picked]);
+            const y0 = sy(f.wy[picked]);
             for (const link of links) {
-                const river = state.kind === 'tag' && state.lines === 'river';
-                ctx.strokeStyle = river ? color.mark : color.text2;
-                ctx.globalAlpha = river ? 0.35 + 0.5 * link.weight : 0.4;
-                ctx.lineWidth = river ? 0.6 + 2 * link.weight : 0.7;
-                ctx.beginPath();
-                ctx.moveTo(sx(f.wx[picked]), sy(f.wy[picked]));
-                ctx.lineTo(sx(f.wx[link.index]), sy(f.wy[link.index]));
-                ctx.stroke();
+                const x1 = sx(f.wx[link.index]);
+                const y1 = sy(f.wy[link.index]);
+                if (river) {
+                    ctx.globalAlpha = 0.35 + 0.5 * link.weight;
+                    drawRiverEdge(ctx, x0, y0, x1, y1, 0.6 + 2 * link.weight);
+                } else {
+                    ctx.strokeStyle = color.text2;
+                    ctx.globalAlpha = 0.4;
+                    ctx.lineWidth = 0.7;
+                    ctx.beginPath();
+                    ctx.moveTo(x0, y0);
+                    ctx.lineTo(x1, y1);
+                    ctx.stroke();
+                }
             }
             ctx.globalAlpha = 1;
         }
