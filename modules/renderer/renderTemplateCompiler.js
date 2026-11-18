@@ -12,7 +12,7 @@ import { parseJevToolUse } from './jevToolUse.js';
 import { findMalformedToolFields, describeToolRequestMarkerProblem } from './toolRequestMarkers.js';
 
 // Shared synchronous text compiler. No DOM initialization or script execution.
-export function createRenderTemplateCompiler({ mainRendererReferences, contentProcessor, fixEmoticonUrlsInMarkdown = text => text, registerLazyTool, toolResultFullContentMap = new Map() }) {
+export function createRenderTemplateCompiler({ mainRendererReferences, contentProcessor, fixEmoticonUrlsInMarkdown = text => text, fixUrl = value => value, fixServerKeyUrl = value => value, registerLazyTool, toolResultFullContentMap = new Map() }) {
 function deferToolRequest(_block, source) {
     const field = key => readToolRequestField(source, key);
     const name = field('tool_name') || source.match(/<tool_name>([\s\S]*?)<\/tool_name>/i)?.[1]?.trim() || '';
@@ -358,8 +358,22 @@ function sealToolResultMarkdownSource(markdownText) {
     return escapeRawHtmlOutsideCodeFences(fencedHtml);
 }
 
+function fixToolResultMarkdownUrls(markdownText) {
+    if (typeof markdownText !== 'string' || !markdownText) return markdownText;
+    if (!/!\[|<img\b|<a\b|<audio\b|<video\b|<source\b|\/pw=/i.test(markdownText)) return markdownText;
+    const codeMap = new Map();
+    const masked = replaceMarkdownCodeDomains(markdownText, block => {
+        const token = `%%VCP_TOOL_RESULT_CODE_${codeMap.size}%%`;
+        codeMap.set(token, block);
+        return token;
+    });
+    const fixed = fixEmoticonUrlsInMarkdown(masked);
+    if (codeMap.size === 0) return fixed;
+    return fixed.replace(/%%VCP_TOOL_RESULT_CODE_\d+%%/g, token => codeMap.get(token) ?? token);
+}
+
 function renderSafeToolResultMarkdown(markdownText) {
-    const sealedMarkdown = sealToolResultMarkdownSource(markdownText);
+    const sealedMarkdown = sealToolResultMarkdownSource(fixToolResultMarkdownUrls(markdownText));
 
     if (!mainRendererReferences.markedInstance) {
         return `<pre class="vcp-tool-result-raw-content">${escapeHtml(sealedMarkdown)}</pre>`;
@@ -1059,7 +1073,8 @@ function renderToolResultBlock(fullMatch, ordinal = -1, deferred = true) {
         let processedValue;
 
         if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
-            processedValue = `<a href="${escapeHtml(value)}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${escapeHtml(value)}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+            const resolvedImageUrl = fixUrl(value);
+            processedValue = `<a href="${escapeHtml(resolvedImageUrl)}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${escapeHtml(resolvedImageUrl)}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
         } else if (isMarkdownField) {
             // 🟢 架构级修复：工具结果内容使用独立的 Markdown 渲染
             // 由于工具结果块已经从外部文本中完全隔离，这里可以安全地使用 Markdown 解析器
@@ -1095,8 +1110,18 @@ function renderToolResultBlock(fullMatch, ordinal = -1, deferred = true) {
             processedValue = `<div class="vcp-tool-result-markdown-content${sealClass}">${renderedMarkdown}</div>${truncationNotice}`;
         } else {
             const urlRegex = /(https?:\/\/[^\s]+)/g;
-            processedValue = escapeHtml(value);
-            processedValue = processedValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+            let cursor = 0;
+            let linked = '';
+            let match;
+            while ((match = urlRegex.exec(value)) !== null) {
+                linked += escapeHtml(value.slice(cursor, match.index));
+                const resolvedUrl = fixServerKeyUrl(match[1]);
+                const escapedUrl = escapeHtml(resolvedUrl);
+                linked += `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer">${escapedUrl}</a>`;
+                cursor = match.index + match[0].length;
+            }
+            linked += escapeHtml(value.slice(cursor));
+            processedValue = linked;
 
             if (key === '返回内容') {
                 processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');

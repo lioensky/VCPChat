@@ -199,11 +199,11 @@ function createContentPipeline(deps = {}) {
     }
 
     function normalizeProseUrls(text, ctx) {
-        if (!/!\[|<img\b/i.test(text)) return text;
+        if (!/!\[|<img\b|<a\b|<audio\b|<video\b|<source\b|\/pw=/i.test(text)) return text;
         return ctx.parse.index(text).regions().map(region => {
             const raw = text.slice(region.start, region.end);
             return region.kind === 'markdown'
-                || (region.kind === 'html-tag' && /^<img\b/i.test(raw))
+                || (region.kind === 'html-tag' && /^<(?:img|a|audio|video|source)\b/i.test(raw))
                 ? fixEmoticonUrlsInMarkdown(raw) : raw;
         }).join('');
     }

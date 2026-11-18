@@ -5,6 +5,7 @@ import { findExplicitStablePrefix, createStableBoundaryState } from './streamSta
 import { formatMessageTimestamp } from './domBuilder.js';
 import { prepareChatMediaHtml, cleanupChatMedia } from './mediaLifecycle.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
+import { fixUrlsInMarkdownText } from './emoticonUrlFixer.js';
 import { createContentRuntime } from '../chat/contentRuntime.js';
 import { createDesktopPushConsumer } from './desktopPushConsumer.js';
 import { createStreamProjectionRuntime } from './streamProjectionRuntime.js';
@@ -352,19 +353,12 @@ function attachStreamProjection(dependencies) {
         fixEmoticonUrlsInMarkdown: (text) => {
             if (!text || typeof text !== 'string' || !refs.emoticonUrlFixer) return text;
 
-            let processedText = text;
-
-            processedText = processedText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-                const fixedUrl = refs.emoticonUrlFixer.fixEmoticonUrl(url);
-                return `![${alt}](${fixedUrl})`;
+            return fixUrlsInMarkdownText(text, {
+                fixEmoticonUrl: refs.emoticonUrlFixer.fixEmoticonUrl,
+                fixServerKeyUrl: typeof refs.emoticonUrlFixer.fixServerKeyUrl === 'function'
+                    ? refs.emoticonUrlFixer.fixServerKeyUrl
+                    : (value => value),
             });
-
-            processedText = processedText.replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (match, before, url, after) => {
-                const fixedUrl = refs.emoticonUrlFixer.fixEmoticonUrl(url);
-                return `<img${before}src="${fixedUrl}"${after}>`;
-            });
-
-            return processedText;
         },
         processStartEndMarkers: (text) => refs.processStartEndMarkers ? refs.processStartEndMarkers(text) : text,
         deIndentMisinterpretedCodeBlocks: (text) => refs.deIndentMisinterpretedCodeBlocks ? refs.deIndentMisinterpretedCodeBlocks(text) : text,

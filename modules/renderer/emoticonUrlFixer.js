@@ -1,11 +1,160 @@
 // modules/renderer/emoticonUrlFixer.js
 
+const SERVER_KEY_PATH_REGEX = /^\/pw=([^/]+)\/(images|files)(?:\/|$)/;
+const SERVER_KEY_REPLACE_REGEX = /^(https?:\/\/[^/?#]+)\/pw=[^/?#]+(\/(?:images|files)(?:\/|$|[?#]))/i;
+// Consume complete tags and link destinations before looking for bare URLs. In
+// particular, a trusted URL inside another host's query is not a trusted link.
+const PROSE_URL_TOKEN_REGEX = /<!--[^]*?(?:-->|$)|<\/?(?<tag>[a-z][a-z0-9:-]*)(?=[\s/>])(?:[^"'<>]|"[^"]*"|'[^']*')*>|(?<image>!?)\[[^\]\n]*\]\((?<destination>[^)\n]+)\)|(?<bare>https?:\/\/[^\s<>]+)/gi;
+const HTML_URL_ATTRIBUTE_REGEX = /(\s+)([^\s=/"'<>]+)(\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\x60]+))/g;
+
+function normalizeNonEmptyString(value) {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseHttpHostname(urlString) {
+    const trimmed = normalizeNonEmptyString(urlString);
+    if (!trimmed) return '';
+    try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+        return parsed.hostname.toLowerCase();
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Rewrites `/pw=<oldKey>/(images|files)/...` on URLs targeting the same VCP host
+ * to the active `fileKey`. Third-party hosts and unrelated paths remain untouched.
+ */
+export function rewriteServerFileKeyInUrl(originalUrl, serverConfig = {}) {
+    if (typeof originalUrl !== 'string' || !originalUrl.includes('/pw=')) {
+        return originalUrl;
+    }
+
+    const trimmedFileKey = normalizeNonEmptyString(serverConfig?.fileKey);
+    const serverHostname = parseHttpHostname(serverConfig?.vcpServerUrl);
+    if (!trimmedFileKey || !serverHostname) {
+        return originalUrl;
+    }
+
+    const trimmedUrl = originalUrl.trim();
+    if (!trimmedUrl) {
+        return originalUrl;
+    }
+
+    let parsedTarget;
+    try {
+        parsedTarget = new URL(trimmedUrl);
+    } catch {
+        return originalUrl;
+    }
+
+    if (parsedTarget.protocol !== 'http:' && parsedTarget.protocol !== 'https:') {
+        return originalUrl;
+    }
+    // Reject userinfo before rewriting raw Markdown/HTML: character references in
+    // the authority could turn it into a different host when the markup is parsed.
+    if (parsedTarget.username || parsedTarget.password || parsedTarget.hostname.toLowerCase() !== serverHostname) {
+        return originalUrl;
+    }
+
+    const pathMatch = parsedTarget.pathname.match(SERVER_KEY_PATH_REGEX);
+    if (!pathMatch) {
+        return originalUrl;
+    }
+
+    // These characters are legal URL path bytes but delimit Markdown or HTML.
+    const encodedFileKey = encodeURIComponent(trimmedFileKey)
+        .replace(/['()]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+    if (pathMatch[1] === trimmedFileKey || pathMatch[1] === encodedFileKey) {
+        return originalUrl;
+    }
+
+    const rewritten = trimmedUrl.replace(SERVER_KEY_REPLACE_REGEX, `$1/pw=${encodedFileKey}$2`);
+    if (rewritten === trimmedUrl) {
+        return originalUrl;
+    }
+
+    return originalUrl === trimmedUrl
+        ? rewritten
+        : originalUrl.replace(trimmedUrl, rewritten);
+}
+
+/**
+ * Rewrites image, link, media, and bare VCP URLs inside prose Markdown / HTML tags.
+ * Non-image links and media only run `fixServerKeyUrl` (never fuzzy emoticon repair).
+ */
+export function fixUrlsInMarkdownText(text, fixers = {}) {
+    if (!text || typeof text !== 'string') return text;
+
+    const fixEmoticonUrl = typeof fixers === 'function'
+        ? fixers
+        : (typeof fixers?.fixEmoticonUrl === 'function' ? fixers.fixEmoticonUrl : value => value);
+    const fixServerKeyUrl = typeof fixers === 'function'
+        ? (value => value)
+        : (typeof fixers?.fixServerKeyUrl === 'function' ? fixers.fixServerKeyUrl : value => value);
+
+    if (!/!\[|<img\b|\/pw=/i.test(text)) return text;
+    return text.replace(PROSE_URL_TOKEN_REGEX, (...args) => {
+        const token = args[0];
+        const { tag, image, destination, bare } = args.at(-1);
+        if (tag) {
+            const name = tag.toLowerCase();
+            const attribute = name === 'a' ? 'href'
+                : ['img', 'audio', 'video', 'source'].includes(name) ? 'src' : null;
+            if (!attribute || token.startsWith('</')) return token;
+            const fixUrl = name === 'img' ? fixEmoticonUrl : fixServerKeyUrl;
+            return token.replace(HTML_URL_ATTRIBUTE_REGEX, (match, space, key, equals, double, single, bareValue) => {
+                if (key.toLowerCase() !== attribute) return match;
+                const value = double ?? single ?? bareValue;
+                const fixed = fixUrl(value);
+                if (fixed === value) return match;
+                const quote = double !== undefined ? '"' : single !== undefined ? "'" : '';
+                return `${space}${key}${equals}${quote}${fixed}${quote}`;
+            });
+        }
+        if (destination) {
+            const fixUrl = image ? fixEmoticonUrl : fixServerKeyUrl;
+            const fixed = destination.replace(/^(\s*)(?:<([^<>]+)>|(\S+))/, (match, space, angled, plain) =>
+                angled !== undefined ? `${space}<${fixUrl(angled)}>` : space + fixUrl(plain));
+            return token.slice(0, -destination.length - 1) + fixed + ')';
+        }
+        return bare ? fixServerKeyUrl(bare) : token;
+    });
+}
+
 /** Creates one emoticon catalog owner for one renderer or viewer. */
-export function createEmoticonUrlFixer() {
+export function createEmoticonUrlFixer(initialOptions = {}) {
 let emoticonLibrary = [];
 let isInitialized = false;
 let electronAPI;
 let initializationPromise = null;
+let getSettingsFn = typeof initialOptions?.getSettings === 'function' ? initialOptions.getSettings : null;
+let loadedSettings = initialOptions?.settings && typeof initialOptions.settings === 'object'
+    ? { ...initialOptions.settings }
+    : null;
+
+function getServerConfig() {
+    const settings = getSettingsFn?.() ?? loadedSettings;
+    return {
+        vcpServerUrl: normalizeNonEmptyString(settings?.vcpServerUrl),
+        fileKey: normalizeNonEmptyString(settings?.fileKey),
+    };
+}
+
+function setServerConfig(config = {}) {
+    if (!config || typeof config !== 'object') return;
+    loadedSettings = {
+        ...(loadedSettings || {}),
+        ...('vcpServerUrl' in config ? { vcpServerUrl: config.vcpServerUrl } : {}),
+        ...('fileKey' in config ? { fileKey: config.fileKey } : {}),
+    };
+}
+
+function fixServerKeyUrl(originalSrc) {
+    return rewriteServerFileKeyInUrl(originalSrc, getServerConfig());
+}
 
 // A simple string similarity function (Jaro-Winkler might be better, but this is simple)
 function getSimilarity(s1, s2) {
@@ -119,65 +268,80 @@ function extractEmoticonInfo(url) {
 }
 
 
-function initialize(api) {
+function initialize(api, options = {}) {
+    if (typeof options?.getSettings === 'function') {
+        getSettingsFn = options.getSettings;
+    }
+    if (options?.settings && typeof options.settings === 'object') {
+        setServerConfig(options.settings);
+    }
+
     if (initializationPromise) {
         return initializationPromise;
     }
 
-    initializationPromise = new Promise(async (resolve, reject) => {
-        electronAPI = api;
-        try {
-            console.log('[EmoticonFixer] Initializing and fetching library...');
-            const library = await electronAPI.getEmoticonLibrary();
-            emoticonLibrary = Array.isArray(library) ? library : [];
+    electronAPI = api;
+    initializationPromise = (async () => {
+        const libraryTask = typeof electronAPI?.getEmoticonLibrary === 'function'
+            ? Promise.resolve().then(() => electronAPI.getEmoticonLibrary())
+            : Promise.resolve([]);
+        const settingsTask = !getSettingsFn && typeof electronAPI?.loadSettings === 'function'
+            ? Promise.resolve().then(() => electronAPI.loadSettings())
+            : Promise.resolve(null);
+
+        console.log('[EmoticonFixer] Initializing and fetching library...');
+        const [libraryResult, settingsResult] = await Promise.allSettled([libraryTask, settingsTask]);
+
+        if (settingsResult.status === 'fulfilled' && settingsResult.value && typeof settingsResult.value === 'object') {
+            setServerConfig(settingsResult.value);
+        }
+
+        if (libraryResult.status === 'fulfilled') {
+            emoticonLibrary = Array.isArray(libraryResult.value) ? libraryResult.value : [];
             isInitialized = true;
             if (emoticonLibrary.length > 0) {
                 console.log(`[EmoticonFixer] Library loaded with ${emoticonLibrary.length} items.`);
             } else {
                 console.log('[EmoticonFixer] Library unavailable, fixer running in degraded passthrough mode.');
             }
-            resolve();
-        } catch (error) {
+        } else {
             emoticonLibrary = [];
             isInitialized = true;
-            console.warn(`[EmoticonFixer] Library fetch failed, skipping URL repair: ${error.message || error}`);
-            resolve();
+            console.warn('[EmoticonFixer] Library fetch failed, skipping emoticon repair.');
         }
-    });
+    })();
 
     return initializationPromise;
 }
 
 function fixEmoticonUrl(originalSrc) {
+    const normalizedSrc = fixServerKeyUrl(originalSrc);
+
     if (!isInitialized || emoticonLibrary.length === 0) {
-        return originalSrc; // Not ready, pass through
+        return normalizedSrc; // Library not ready, still keep same-domain fileKey rewrite
     }
 
-    // 1. Quick check: if the URL is already perfect, return it.
+    let decodedNormalizedSrc;
     try {
-        const decodedOriginalSrc = decodeURIComponent(originalSrc);
-        if (emoticonLibrary.some(item => decodeURIComponent(item.url) === decodedOriginalSrc)) {
-            return originalSrc; // It's a perfect match, don't touch it.
-        }
-    } catch (e) {
-        console.warn(`[EmoticonFixer] Could not decode originalSrc for perfect match check: ${originalSrc}`, e);
+        decodedNormalizedSrc = decodeURIComponent(normalizedSrc);
+    } catch {
+        return normalizedSrc; // Malformed URI
     }
-
-    // 2. Check if it's likely an emoticon URL by looking for "表情包"
-    try {
-        if (!decodeURIComponent(originalSrc).includes('表情包')) {
-            return originalSrc;
+    // Ordinary images do not need to scan the emoticon catalog.
+    if (!decodedNormalizedSrc.includes('表情包')) return normalizedSrc;
+    if (emoticonLibrary.some(item => {
+        try {
+            return decodeURIComponent(fixServerKeyUrl(item.url)) === decodedNormalizedSrc;
+        } catch {
+            return false;
         }
-    } catch (e) {
-        return originalSrc; // Malformed URI
-    }
+    })) return normalizedSrc;
 
     // 3. 文件主名是表情身份，扩展名不参与匹配；分类只用于同名表情消歧。
-    const searchInfo = extractEmoticonInfo(originalSrc);
+    const searchInfo = extractEmoticonInfo(normalizedSrc);
 
     if (!searchInfo.filenameStem) {
-        console.log(`[EmoticonFixer] Could not extract filename from "${originalSrc}". Passing through.`);
-        return originalSrc;
+        return normalizedSrc;
     }
 
     const candidates = emoticonLibrary
@@ -205,8 +369,7 @@ function fixEmoticonUrl(originalSrc) {
 
     if (exactNameMatches.length === 1) {
         const exactMatch = exactNameMatches[0].item;
-        console.log(`[EmoticonFixer] Fixed URL by exact filename stem. Original: "${originalSrc}", Match: "${exactMatch.url}"`);
-        return exactMatch.url;
+        return fixServerKeyUrl(exactMatch.url);
     }
 
     if (exactNameMatches.length > 1 && searchInfo.packageName) {
@@ -218,8 +381,7 @@ function fixEmoticonUrl(originalSrc) {
         );
 
         if (exactPackageMatch) {
-            console.log(`[EmoticonFixer] Fixed URL by exact filename stem and package. Original: "${originalSrc}", Match: "${exactPackageMatch.item.url}"`);
-            return exactPackageMatch.item.url;
+            return fixServerKeyUrl(exactPackageMatch.item.url);
         }
 
         let bestPackageMatch = null;
@@ -234,8 +396,7 @@ function fixEmoticonUrl(originalSrc) {
         }
 
         if (bestPackageMatch) {
-            console.log(`[EmoticonFixer] Fixed URL by exact filename stem and closest package. Original: "${originalSrc}", Match: "${bestPackageMatch.url}" (Package score: ${highestPackageScore.toFixed(2)})`);
-            return bestPackageMatch.url;
+            return fixServerKeyUrl(bestPackageMatch.url);
         }
     }
 
@@ -256,8 +417,7 @@ function fixEmoticonUrl(originalSrc) {
             }
         }
 
-        console.log(`[EmoticonFixer] Fixed ambiguous exact filename stem with package fallback. Original: "${originalSrc}", Match: "${bestExactMatch.item.url}"`);
-        return bestExactMatch.item.url;
+        return fixServerKeyUrl(bestExactMatch.item.url);
     }
 
     // 5. 主名没有命中，但分类精确命中时，先锁定该表情包，再在包内找最相似文件。
@@ -292,19 +452,19 @@ function fixEmoticonUrl(originalSrc) {
 
     // 6. 明确的表情包 URL 必须兜底到库内项目，不设最低相似度门槛。
     if (bestMatch) {
-        const matchScope = samePackageCandidates.length > 0 ? 'same package' : 'library fallback';
-        console.log(`[EmoticonFixer] Fixed URL by ${matchScope}. Original: "${originalSrc}", Best Match: "${bestMatch.url}" (Score: ${highestScore.toFixed(2)})`);
-        return bestMatch.url;
+        return fixServerKeyUrl(bestMatch.url);
     }
 
     // 理论上只有表情库条目全部无有效文件名时才会到这里。
-    console.log(`[EmoticonFixer] Emoticon library has no usable candidates for "${originalSrc}". Passing through.`);
-    return originalSrc;
+    return normalizedSrc;
 }
 
     return Object.freeze({
         initialize,
         fixEmoticonUrl,
+        fixServerKeyUrl,
+        setServerConfig,
+        getServerConfig,
         snapshot: () => emoticonLibrary.map(({ url, filename }) => ({ url, filename })),
     });
 }

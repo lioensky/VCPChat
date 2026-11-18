@@ -33,3 +33,34 @@ test('image handlers retain only their owning Surface transport', () => {
     assert.throws(() => handlerA.setContentAndProcessImages(rootA, '', 'a'), /not initialized/);
     assert.doesNotThrow(() => handlerB.setContentAndProcessImages(rootB, '', 'b'));
 });
+
+test('image handler repairs non-emoticon image URLs and uses repaired URL in viewer and context menu', () => {
+    const dom = new JSDOM('<body><section id="root"></section></body>', { url: 'https://example.test/' });
+    const root = dom.window.document.getElementById('root');
+    const opened = [];
+    const contextMenus = [];
+    const handler = createImageHandler({
+        fixUrl: url => url.replace('/pw=old-key/', '/pw=new-key/'),
+    });
+    handler.initialize({
+        chatMessagesDiv: root,
+        electronAPI: {
+            openImageViewer: value => opened.push(value),
+            showImageContextMenu: value => contextMenus.push(value),
+        },
+    });
+
+    handler.setContentAndProcessImages(
+        root,
+        '<img src="https://vcp.example.test/pw=old-key/images/zimageturbogen/a.png" alt="gen">',
+        'm1'
+    );
+    const img = root.querySelector('img');
+    assert.equal(img.src, 'https://vcp.example.test/pw=new-key/images/zimageturbogen/a.png');
+
+    img.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    img.dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true }));
+    assert.equal(opened[0].src, 'https://vcp.example.test/pw=new-key/images/zimageturbogen/a.png');
+    assert.equal(contextMenus[0], 'https://vcp.example.test/pw=new-key/images/zimageturbogen/a.png');
+    handler.dispose();
+});
