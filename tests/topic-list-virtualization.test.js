@@ -6,7 +6,7 @@ const { JSDOM } = require('jsdom');
 const source = fs.readFileSync('modules/topicListManager.js', 'utf8');
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture({ count = 10000, history, config } = {}) {
+async function fixture({ count = 10000, history, config, activityTimes } = {}) {
     const dom = new JSDOM(`<!doctype html><body>
         <aside class="sidebar active vcp-ui-scope">
             <section id="tabContentTopics" class="sidebar-tab-content active">
@@ -57,7 +57,7 @@ async function fixture({ count = 10000, history, config } = {}) {
                 configCalls++;
                 return config ? config() : { id: selected.id, topics };
             },
-            getTopicActivityTimes: async () => [],
+            getTopicActivityTimes: activityTimes || (async () => []),
             saveTopicOrder: async (id, ids) => { savedOrder = [...ids]; return { success: true }; },
             searchTopicsByContent: async () => ({ success: true, matchedTopicIds: [] })
         },
@@ -280,5 +280,37 @@ test('unread prioritization uses bounded workers and stops dispatching when hidd
         await f.flush();
         assert.equal(f.counts().history, 4);
         assert.equal(f.rows().length, 0);
+    } finally { f.close(); }
+});
+
+test('sort keeps rows during IO, then swaps and fades the populated window without waiting for a frame', async () => {
+    let resolveActivity;
+    const f = await fixture({ count: 5, activityTimes: () => new Promise(resolve => { resolveActivity = resolve; }) });
+    try {
+        const list = f.doc.getElementById('topicList');
+        const bell = f.doc.getElementById('topicSortMode');
+        const fades = [];
+        let cancels = 0;
+        list.animate = (frames, options) => {
+            fades.push({ start: frames[0].opacity, end: frames[1].opacity, duration: options.duration, row: f.rows()[0]?.dataset.topicId });
+            return { cancel() { cancels++; } };
+        };
+        const before = f.rows()[0];
+        bell.click();
+        await settle();
+        assert.equal(f.rows()[0], before, 'old rows remain visible while activity times load');
+        assert.equal(fades.length, 0);
+
+        resolveActivity([['t4', 10]]);
+        await settle(); // Intentionally do not flush the fixture's animation frames.
+        assert.equal(f.rows()[0].dataset.topicId, 't4');
+        assert.deepEqual(fades, [{ start: 0.88, end: 1, duration: 120, row: 't4' }]);
+
+        f.window.matchMedia = query => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+        bell.click();
+        await settle();
+        assert.equal(f.rows()[0].dataset.topicId, 't0');
+        assert.equal(cancels, 1);
+        assert.equal(fades.length, 1, 'reduced motion skips the fade, not the synchronous swap');
     } finally { f.close(); }
 });

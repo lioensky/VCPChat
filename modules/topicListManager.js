@@ -41,6 +41,7 @@ window.topicListManager = (() => {
     let surfaceActive = true;
     let snapshotDirty = true;
     let snapshotSearch = '';
+    let topicSortFade = null;
     let savedScrollTop = 0;
     let scrollScope = '';
     let virtualView = null;
@@ -139,7 +140,7 @@ window.topicListManager = (() => {
                 writeSortPreference('vcp.topicSortMode', next);
                 writeSortPreference('vcp.topicManual.' + managedItemKey, null);
                 syncSortBell();
-                void loadTopicList();
+                void loadTopicList({ sortChanged: true });
             });
         }
         stopTopicActivity?.();
@@ -371,6 +372,8 @@ window.topicListManager = (() => {
 
     function cleanupProgressiveTopicRendering() {
         topicListRenderGeneration++;
+        topicSortFade?.cancel();
+        topicSortFade = null;
         draggingTopic = false;
         activityDuringDrag = false;
         if (renderFrame !== null) {
@@ -702,7 +705,7 @@ window.topicListManager = (() => {
         return li;
     }
 
-    function renderTopicListProgressively(topicListUl, topicsToProcess, currentSelectedItem, currentTopicId, itemConfigFull, searchTerm) {
+    function renderTopicListProgressively(topicListUl, topicsToProcess, currentSelectedItem, currentTopicId, itemConfigFull, searchTerm, sortChanged = false) {
         if (!topicListUl || !isTopicSurfaceVisible()) return;
         const renderGeneration = topicListRenderGeneration;
         const scrollContainer = getTopicScrollContainer(topicListUl);
@@ -808,7 +811,18 @@ window.topicListManager = (() => {
         topicListScrollCleanup = () => scrollContainer.removeEventListener('scroll', schedule);
         addRenderListener(topicListUl, 'keydown', onTopicListKeydown);
         addRenderListener(topicListUl, 'focusin', onTopicListFocusIn);
-        schedule();
+        if (sortChanged) {
+            // Swap the first window in the same frame as the spacers.
+            renderWindow();
+            if (!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+                topicSortFade = topicListUl.animate?.(
+                    [{ opacity: 0.88 }, { opacity: 1 }],
+                    { duration: 120, easing: 'ease-out' }
+                );
+            }
+        } else {
+            schedule();
+        }
         if (currentSelectedItem.id && typeof Sortable !== 'undefined' && !searchTerm && !isManageMode) {
             initializeTopicSortable(currentSelectedItem.id, currentSelectedItem.type);
         }
@@ -898,7 +912,7 @@ window.topicListManager = (() => {
         enabledItems()[0]?.focus({ preventScroll: true });
     }
 
-    async function loadTopicList() {
+    async function loadTopicList({ sortChanged = false } = {}) {
         if (!topicListContainer) {
             console.error("Topic list container (tabContentTopics) not found.");
             return;
@@ -919,9 +933,7 @@ window.topicListManager = (() => {
         activityTimes = new Map();
 
         let topicListUl = topicListContainer.querySelector('.topic-list');
-        if (topicListUl) {
-            topicListUl.innerHTML = '';
-        } else {
+        if (!topicListUl) {
             const topicsHeader = topicListContainer.querySelector('.topics-header') || document.createElement('div');
             if (!topicsHeader.classList.contains('topics-header')) {
                 topicsHeader.className = 'topics-header';
@@ -950,7 +962,8 @@ window.topicListManager = (() => {
         }
 
         const nextItemKey = `${currentSelectedItem.type}:${currentSelectedItem.id}`;
-        if (managedItemKey && managedItemKey !== nextItemKey) {
+        const sameItem = managedItemKey === nextItemKey;
+        if (managedItemKey && !sameItem) {
             selectedTopicIds.clear();
         }
         if (managedItemKey !== nextItemKey && document.getElementById('topicSortMode')) {
@@ -973,10 +986,14 @@ window.topicListManager = (() => {
 
         let itemConfigFull;
 
-        if (!searchTerm) {
-            renderTopicListStatus(topicListUl, `正在加载 ${itemNameForLoading} 的话题...`, { loading: true });
-        } else {
-            topicListUl.innerHTML = '';
+        const keepPreviousRows = sortChanged && sameItem && searchTerm === snapshotSearch
+            && topicListUl.querySelector('.topic-item');
+        if (!keepPreviousRows) {
+            if (!searchTerm) {
+                renderTopicListStatus(topicListUl, `正在加载 ${itemNameForLoading} 的话题...`, { loading: true });
+            } else {
+                topicListUl.replaceChildren();
+            }
         }
 
         try {
@@ -1088,7 +1105,7 @@ window.topicListManager = (() => {
                 renderTopicListStatus(topicListUl, `${itemNameForLoading} 还没有任何话题${searchTerm ? '匹配当前搜索' : ''}。您可以点击上方的“新建${currentSelectedItem.type === 'group' ? '群聊话题' : '聊天话题'}”按钮创建一个。`);
             } else {
                 const currentTopicId = currentTopicIdRef.get();
-                renderTopicListProgressively(topicListUl, displayedTopics, currentSelectedItem, currentTopicId, itemConfigFull, searchTerm);
+                renderTopicListProgressively(topicListUl, displayedTopics, currentSelectedItem, currentTopicId, itemConfigFull, searchTerm, sortChanged);
             }
         }
     }
