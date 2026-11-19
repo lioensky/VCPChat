@@ -149,7 +149,7 @@ test('过滤 system 与 isThinking 后不足 4 条有效消息不触发总结', 
             { role: 'user', content: '你好' },
             { role: 'assistant', content: '你好呀' },
             { role: 'user', content: '第二句' },
-            { role: 'assistant', isThinking: true, content: '思考中...' }
+            { role: 'assistant', isThinking: true, content: '思考中' }
         ];
         let saved = false;
         await topicTitleManager.triggerSummarizationIfNeeded(

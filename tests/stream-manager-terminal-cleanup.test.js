@@ -419,7 +419,7 @@ test('smooth stream terminal stops queued rendering and releases every runtime o
 test('tool-request-first stream falls back to direct DOM projection when morphdom rejects a frame', async () => {
     const createStreamProjection = await loadFactory();
     const dom = new JSDOM(
-        '<!doctype html><div id="chat"><article class="message-item" data-message-id="tool-first"><div class="md-content"><span class="thinking-indicator">思考中...</span></div></article></div>',
+        '<!doctype html><div id="chat"><article class="message-item" data-message-id="tool-first"><div class="md-content"><span class="thinking-indicator">思考中</span></div></article></div>',
         { url: 'https://vcpchat.local/', pretendToBeVisual: true }
     );
     const projection = createStreamProjection();
@@ -799,7 +799,7 @@ test('a live stream frame reclaims the final message floor after a late history 
         node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
         node.dataset.messageId = message.id;
         node.innerHTML = message.isThinking
-            ? '<div class="md-content"><span class="thinking-indicator">思考中...</span></div>'
+            ? '<div class="md-content"><span class="thinking-indicator">思考中</span></div>'
             : '<div class="md-content"></div>';
         root.appendChild(node);
         return node;

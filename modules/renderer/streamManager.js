@@ -426,7 +426,7 @@ function isMessageActive(messageId) {
 function isThinkingPlaceholderText(text) {
     if (typeof text !== 'string') return false;
     const normalized = text.trim();
-    return normalized === '思考中...' || normalized === '思考中' || normalized === 'Thinking...' || normalized === 'thinking...';
+    return normalized === '思考中' || normalized === '思考中' || normalized === 'Thinking...' || normalized === 'thinking...';
 }
 
 /**
@@ -761,7 +761,7 @@ function requestStreamDomRecovery(messageId) {
             ...streamMessageModel,
             ...context,
             id: messageId,
-            content: hasVisibleContent ? accumulatedText : (streamMessageModel.content || '思考中...'),
+            content: hasVisibleContent ? accumulatedText : (streamMessageModel.content || '思考中'),
             isThinking: !hasVisibleContent,
             timestamp: streamMessageModel.timestamp || Date.now(),
             streamOperationId: context.streamOperationId || streamMessageModel.streamOperationId || null,
@@ -1572,7 +1572,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
         if (!messageItem) {
             const placeholderMessage = {
                 ...message,
-                content: message.content || '思考中...', // Show thinking text initially
+                content: message.content || '思考中', // Show thinking text initially
                 isThinking: true, // Mark as thinking
                 timestamp: message.timestamp || Date.now(),
                 isGroupMessage: message.isGroupMessage || false
@@ -1610,7 +1610,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
     const shouldSkipGroupThinkingSeed = context.isGroupMessage === true && message.isThinking === true;
     const newText = shouldSkipGroupThinkingSeed ? '' : (message.content || '');
     const shouldOverwrite = !existingText
-        || existingText === '思考中...'
+        || existingText === '思考中'
         || newText.length > existingText.length;
 
     const initialSegmentState = getOrCreateStreamSegmentState(messageId);

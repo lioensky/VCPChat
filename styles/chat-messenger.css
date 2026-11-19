@@ -152,7 +152,7 @@ body.chat-presentation-messenger #chatMessages .message-item.streaming .md-conte
     content: none;
 }
 
-/* 等待首个字之前不出空气泡（也不显示"思考中..."），只靠底部的工作状态行。 */
+/* 等待首个字之前不出空气泡（也不显示"思考中"），只靠底部的工作状态行。 */
 body.chat-presentation-messenger #chatMessages .message-item.assistant.thinking .md-content {
     display: none;
 }

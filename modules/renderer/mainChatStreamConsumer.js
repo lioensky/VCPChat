@@ -13,7 +13,7 @@ const buildMessage = event => {
         admissionToken: context.admissionToken,
         avatarUrl: context.avatarUrl,
         avatarColor: context.avatarColor,
-        content: event.type === 'agent_thinking' ? '思考中...' : '',
+        content: event.type === 'agent_thinking' ? '思考中' : '',
         timestamp: Date.now(),
         isThinking: event.type === 'agent_thinking',
         isGroupMessage: context.isGroupMessage || false,
