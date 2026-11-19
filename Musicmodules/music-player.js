@@ -33,14 +33,27 @@ function setupPlayer(app) {
     const RAPID_SWITCH_SETTLE_MS = 180;
     app.engineTrackPath = null;
 
-    app.enqueueControl = (send) => {
-        const run = () => Promise.resolve().then(send).catch(error => ({
-            status: 'error',
-            message: error?.message || String(error)
-        }));
-        const next = controlChain.then(run);
-        controlChain = next.then(() => {}, () => {});
-        return next;
+    // 播放/暂停只有“最后一次”有意义：排着队还没发出去的那条，直接被后来的顶替。
+    // 这样不管是谁在短时间内反复触发（连点、媒体键、别的窗口发来的指令），
+    // 队列里最多只有一条待发的播放/暂停，不会越积越多，引擎也不会被一串过期指令轮番折腾。
+    let queuedTransport = null;
+    app.enqueueControl = (send, kind) => {
+        if (kind === 'transport' && queuedTransport) {
+            const slot = queuedTransport;
+            slot.resolve({ status: 'superseded' });
+            return new Promise(resolve => { slot.send = send; slot.resolve = resolve; });
+        }
+        const slot = { send, resolve: null };
+        const result = new Promise(resolve => { slot.resolve = resolve; });
+        if (kind === 'transport') queuedTransport = slot;
+        controlChain = controlChain.then(() => {
+            if (queuedTransport === slot) queuedTransport = null;
+            return Promise.resolve().then(() => slot.send()).catch(error => ({
+                status: 'error',
+                message: error?.message || String(error)
+            })).then(value => slot.resolve(value));
+        });
+        return result;
     };
 
     const freezePlaybackClock = (wasPlaying) => {
@@ -51,6 +64,63 @@ function setupPlayer(app) {
         app.lastStateUpdateTime = now;
     };
 
+    // 静音的占位 <audio> 只为让系统媒体键和耳机按键能控制播放。
+    // 它的 play/pause 事件是异步派发的：我们自己调用 play()/pause() 之后，事件可能在
+    // 几百毫秒后才到，那时界面状态也许已经又变了。如果把这种“回声”当成用户按了媒体键，
+    // 就会反过来给引擎再发一次播放/暂停，和状态轮询互相触发，按钮来回抽搐、引擎被反复重启。
+    // 所以每次主动调用都记一笔，事件到来时先销账，只有销不掉的才算外部操作。
+    const PHANTOM_ECHO_WINDOW_MS = 3000;
+    const phantomEchoes = { play: [], pause: [] };
+    const externalPhantomEvents = [];
+    let phantomStormWarned = false;
+    const expectPhantomEvent = (type) => phantomEchoes[type].push(Date.now() + PHANTOM_ECHO_WINDOW_MS);
+    const consumePhantomEcho = (type) => {
+        const pending = phantomEchoes[type];
+        const now = Date.now();
+        while (pending.length && pending[0] < now) pending.shift();
+        if (!pending.length) return false;
+        pending.shift();
+        return true;
+    };
+
+    app.setPhantomAudio = (playing) => {
+        const audio = app.phantomAudio;
+        if (!audio) return;
+        if (playing) {
+            audio.loop = true;
+            if (audio.paused === false) return; // 已经在播，不会再派发事件
+            expectPhantomEvent('play');
+            Promise.resolve(audio.play()).catch(e => {
+                // 被随后的 pause() 打断时 play 事件照样已经派发；只有被策略拒绝才不会有事件，撤销这一笔。
+                if (e?.name === 'AbortError') return;
+                phantomEchoes.play.shift();
+                console.error("Phantom audio play failed:", e);
+            });
+        } else {
+            if (audio.paused === true) return;
+            expectPhantomEvent('pause');
+            audio.pause();
+        }
+    };
+
+    app.handlePhantomAudioEvent = (type) => {
+        if (consumePhantomEcho(type)) return;
+        if (app.isTrackLoading) return;
+        // 真人按媒体键不可能一秒好几次；短时间内来了一串，说明有东西在自激，直接不理。
+        const now = Date.now();
+        while (externalPhantomEvents.length && externalPhantomEvents[0] < now - 2000) externalPhantomEvents.shift();
+        if (externalPhantomEvents.length >= 4) {
+            if (!phantomStormWarned) {
+                phantomStormWarned = true;
+                console.warn('[Music.js] Ignoring a burst of media play/pause events.');
+            }
+            return;
+        }
+        externalPhantomEvents.push(now);
+        if (type === 'play' && !app.isPlaying) app.playTrack();
+        else if (type === 'pause' && app.isPlaying) app.pauseTrack();
+    };
+
     // 把界面切到“播放中 / 已暂停”。点击后立即调用，引擎确认失败时再回滚。
     app.applyPlayingUi = (playing) => {
         // 暂停期间歌词时钟不应继续走，否则恢复播放的第一帧会跳到后面的歌词。
@@ -59,12 +129,7 @@ function setupPlayer(app) {
         app.publishCapsuleState();
         document.body.classList.toggle('music-playing', playing);
         app.playPauseBtn.classList.toggle('is-playing', playing);
-        if (playing) {
-            app.phantomAudio.loop = true;
-            app.phantomAudio.play().catch(e => console.error("Phantom audio play failed:", e));
-        } else {
-            app.phantomAudio.pause();
-        }
+        app.setPhantomAudio(playing);
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
     };
@@ -254,7 +319,7 @@ function setupPlayer(app) {
         app.lastCommandTime = Date.now();
         app.expectedPlayingState = true;
         app.applyPlayingUi(true);
-        const result = await app.enqueueControl(() => app.api.musicPlay());
+        const result = await app.enqueueControl(() => app.api.musicPlay(), 'transport');
         if (epoch !== app.controlEpoch) return; // 已被更新的指令取代
         if (result?.status === 'success') {
             app.lastCommandTime = Date.now();
@@ -276,7 +341,7 @@ function setupPlayer(app) {
         app.expectedPlayingState = false;
         app.applyPlayingUi(false);
         app.stopStatePolling();
-        const result = await app.enqueueControl(() => app.api.musicPause());
+        const result = await app.enqueueControl(() => app.api.musicPause(), 'transport');
         if (epoch !== app.controlEpoch) return;
         if (result?.status === 'success') {
             app.lastCommandTime = Date.now();

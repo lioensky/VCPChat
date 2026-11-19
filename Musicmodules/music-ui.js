@@ -37,8 +37,8 @@ function setupUI(app) {
         navigator.mediaSession.setActionHandler('pause', () => app.pauseTrack());
         navigator.mediaSession.setActionHandler('previoustrack', () => app.prevTrack());
         navigator.mediaSession.setActionHandler('nexttrack', () => app.nextTrack());
-        app.phantomAudio.onplay = () => { if (!app.isPlaying && !app.isTrackLoading) app.playTrack(); };
-        app.phantomAudio.onpause = () => { if (app.isPlaying && !app.isTrackLoading) app.pauseTrack(); };
+        app.phantomAudio.onplay = () => app.handlePhantomAudioEvent('play');
+        app.phantomAudio.onpause = () => app.handlePhantomAudioEvent('pause');
     };
 
     app.updateMediaSessionMetadata = () => {

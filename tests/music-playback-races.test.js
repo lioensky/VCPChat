@@ -56,7 +56,12 @@ function setup(api = {}) {
         albumArt: element(), playPauseBtn: element(), progress: element(),
         currentTimeEl: element(), durationEl: element(),
         loudnessInfo: element(), loudnessCurrentLufs: element(), dynamicLoudnessFactor: element(),
-        phantomAudio: { play: async () => {}, pause() {} },
+        phantomAudio: {
+            paused: true,
+            // 和真实 <audio> 一样：play()/pause() 之后事件是异步派发的。
+            play() { if (this.paused) { this.paused = false; setTimeout(() => this.onplay?.(), 20); } return Promise.resolve(); },
+            pause() { if (!this.paused) { this.paused = true; setTimeout(() => this.onpause?.(), 20); } }
+        },
         stripAudioExtension: t => t, formatTime: s => String(Math.floor(s)),
         normalizePathForCompare: p => (p || '').toLowerCase(),
         updateBlurredBackground() {}, renderPlaylist() {}, updateMediaSessionMetadata() {},
@@ -64,7 +69,7 @@ function setup(api = {}) {
             cancelMusicPreload: async () => ({ status: 'success' }),
             getMusicLyrics: async () => null,
             searchMusicLyricsCandidates: async () => ({ success: true, candidates: [] }),
-            musicLoad: async t => { calls.push(`load:${t.title}`); return { status: 'success', state: {} }; },
+            musicLoad: async t => { calls.push(`load:${t.title}`); app.lastLoadedPath = t.path; return { status: 'success', state: {} }; },
             musicPlay: async () => { calls.push('play'); return { status: 'success' }; },
             musicPause: async () => { calls.push('pause'); return { status: 'success' }; },
             seekMusic: async s => { calls.push(`seek:${s}`); return { status: 'success' }; },
@@ -75,6 +80,8 @@ function setup(api = {}) {
     context.setupLyrics(app);
     context.setupPlayer(app);
     context.setupState(app);
+    app.phantomAudio.onplay = () => app.handlePhantomAudioEvent('play');
+    app.phantomAudio.onpause = () => app.handlePhantomAudioEvent('pause');
     app.engineTrackPath = track.path; // 默认当作第一首已经在引擎里
     app.renderLyrics = () => {};
     app.setNow = value => { context.__now = value; };
@@ -126,6 +133,7 @@ test('play and pause reach the engine in the order they were pressed', async t =
     t.after(() => app.stopStatePolling());
     const playing = app.playTrack();
     assert.equal(app.isPlaying, true, 'button flips immediately');
+    await tick(5); // 播放指令已经发出、还没回来
     const pausing = app.pauseTrack();
     await tick(5);
     slowPlay.resolve();
@@ -270,7 +278,7 @@ test('skipping quickly through tracks only loads the one the user stops on', asy
 });
 
 test('previous returns to the track that was actually playing before', async t => {
-    const app = setup({ getMusicState: async () => readyState() });
+    const app = setup({ getMusicState: async () => readyState({ file_path: app.lastLoadedPath }) });
     t.after(() => app.stopStatePolling());
     app.playlist.push({ path: 'C:/music/c.flac', title: 'c' }, { path: 'C:/music/d.flac', title: 'd' });
     app.playModes = ['shuffle']; app.currentPlayMode = 0;
@@ -338,4 +346,133 @@ test('a song with no lyrics is not searched again right away, and skipped songs 
     await app.fetchAndDisplayLyrics('x', 'staying');
     assert.equal(searches, 1, 'a fresh miss is remembered');
     assert.match(app.lyricsList.innerHTML, /暂无歌词/);
+});
+
+const playingState = (extra = {}) => readyState({ is_playing: true, ...extra }).state;
+
+test('our own play and pause calls on the media-key audio element are not mistaken for key presses', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    await app.playTrack();
+    // 播放事件还没派发，界面就又被切回暂停，再切回播放：旧实现里这些迟到的事件会互相触发，停不下来。
+    app.applyPlayingUi(false);
+    app.applyPlayingUi(true);
+    app.applyPlayingUi(false);
+    await tick(120);
+    assert.deepEqual(app.calls, ['play'], 'late echo events must not send anything to the engine');
+    assert.equal(app.isPlaying, false);
+});
+
+test('a real media key press still pauses and resumes', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    await app.playTrack();
+    await tick(60);
+    app.phantomAudio.paused = true; // 系统媒体键直接暂停了占位音频
+    app.phantomAudio.onpause();
+    await tick(30);
+    assert.equal(app.isPlaying, false);
+    app.phantomAudio.paused = false;
+    app.phantomAudio.onplay();
+    await tick(60);
+    assert.equal(app.isPlaying, true);
+    assert.deepEqual(app.calls, ['play', 'pause', 'play']);
+});
+
+test('a storm of media events cannot flood the engine', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    await app.playTrack();
+    await tick(60);
+    for (let i = 0; i < 500; i++) {
+        app.phantomAudio.paused = i % 2 === 0;
+        app.handlePhantomAudioEvent(i % 2 === 0 ? 'pause' : 'play');
+    }
+    await tick(60);
+    assert.ok(app.calls.length <= 6, `engine got ${app.calls.length} commands`);
+});
+
+test('hammering play and pause while the engine is busy keeps at most one command waiting', async t => {
+    const gate = deferred();
+    const arrived = [];
+    const app = setup({
+        musicPlay: async () => { arrived.push('play'); await gate.promise; return { status: 'success' }; },
+        musicPause: async () => { arrived.push('pause'); await gate.promise; return { status: 'success' }; }
+    });
+    t.after(() => app.stopStatePolling());
+    const pending = [app.playTrack()];
+    await tick(5); // 第一条已经发给引擎，引擎还没回
+    for (let i = 0; i < 200; i++) pending.push(i % 2 === 0 ? app.pauseTrack() : app.playTrack());
+    pending.push(app.pauseTrack());
+    await tick(5);
+    gate.resolve();
+    await Promise.all(pending);
+    assert.deepEqual(arrived, ['play', 'pause'], 'the first command and the final one');
+    assert.equal(app.isPlaying, false);
+});
+
+test('the button stays on playing while the engine is still opening its output', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    app.setNow(1000);
+    await app.playTrack();
+    await tick(40); // 让占位音频的 play 事件先派发完，再拨动时钟
+    // 引擎要等输出流建好才报 is_playing，这里拖了 3 秒
+    for (const at of [1500, 2000, 2500, 3000, 3500, 4000]) {
+        app.setNow(at);
+        app.updateUIWithState(readyState({ current_time: 0 }).state);
+        assert.equal(app.isPlaying, true, `flipped to paused at ${at}`);
+    }
+    app.setNow(4500);
+    app.updateUIWithState(playingState({ current_time: 0.3 }));
+    assert.equal(app.isPlaying, true);
+});
+
+test('progress that keeps moving counts as playing even when the engine flag says otherwise', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    app.setNow(1000);
+    await app.playTrack();
+    await tick(40); // 让占位音频的 play 事件先派发完，再拨动时钟
+    app.setNow(8000);
+    app.updateUIWithState(playingState({ current_time: 7 }));
+    for (let i = 1; i <= 10; i++) {
+        app.setNow(8000 + i * 500);
+        app.updateUIWithState(readyState({ is_playing: false, current_time: 7 + i * 0.5 }).state);
+        assert.equal(app.isPlaying, true);
+    }
+});
+
+test('playback that really stopped flips the button after two polls, not one', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    app.setNow(1000);
+    await app.playTrack();
+    await tick(40); // 让占位音频的 play 事件先派发完，再拨动时钟
+    app.setNow(8000);
+    app.updateUIWithState(playingState({ current_time: 7 }));
+    app.setNow(8500);
+    app.updateUIWithState(readyState({ current_time: 7.2 }).state); // 还在动：算在播
+    app.setNow(9000);
+    app.updateUIWithState(readyState({ current_time: 7.2 }).state);
+    assert.equal(app.isPlaying, true, 'one stalled poll is not enough');
+    app.setNow(9500);
+    app.updateUIWithState(readyState({ current_time: 7.2 }).state);
+    assert.equal(app.isPlaying, false);
+    assert.equal(app.statePollInterval, null);
+});
+
+test('an engine that reports paused is believed at once after the grace period', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    app.setNow(1000);
+    await app.playTrack();
+    await tick(40); // 让占位音频的 play 事件先派发完，再拨动时钟
+    app.setNow(8000);
+    app.updateUIWithState(playingState({ current_time: 7 }));
+    app.setNow(8500);
+    app.updateUIWithState(readyState({ is_paused: true, current_time: 7.5 }).state);
+    app.setNow(9000);
+    app.updateUIWithState(readyState({ is_paused: true, current_time: 8 }).state);
+    assert.equal(app.isPlaying, false, 'paused wins even if the clock still creeps');
 });

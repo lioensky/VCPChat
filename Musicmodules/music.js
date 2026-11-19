@@ -1081,22 +1081,40 @@ document.addEventListener('DOMContentLoaded', () => {
             app.currentTimeEl.textContent = app.formatTime(state.current_time);
             app.durationEl.textContent = app.formatTime(state.duration);
         }
-        if (state.is_playing !== app.isPlaying) {
-            // Optimistic UI guard: Ignore polled state if we just sent a command
-            const now = Date.now();
-            if (app.isChangingState && (now - app.lastCommandTime < 800)) {
-                if (state.is_playing === app.expectedPlayingState) {
-                    app.isChangingState = false;
-                } else {
-                    // Skip update to prevent flickering
-                    return;
-                }
-            }
-
+        // 引擎的 is_playing 只在输出流建好之后才为真：刚发出播放、或者引擎重建输出流的那段时间，
+        // 它会报“未播放”，可声音其实马上就来（或者一直在响）。所以“在不在播”要结合进度看：
+        // 没有明确报告已暂停、且进度确实在往前走，就算在播。
+        const nowMs = Date.now();
+        const prev = app.lastEngineProgress;
+        app.lastEngineProgress = { time: state.current_time, at: nowMs };
+        let advancing = false;
+        if (prev && nowMs - prev.at < 3000) {
+            const moved = state.current_time - prev.time;
+            // 跳转造成的大幅位移不算“在播”
+            advancing = moved > 0.02 && moved < (nowMs - prev.at) / 1000 + 1;
+        }
+        const enginePlaying = state.is_playing === true || (state.is_paused !== true && advancing);
+        if (enginePlaying === app.isPlaying) {
+            app.stateMismatchPolls = 0;
+            if (enginePlaying === app.expectedPlayingState) app.isChangingState = false;
+        } else if (options.force) {
+            app.stateMismatchPolls = 0;
             // 刚加载好的曲目一定是停止状态；用户想播放时由 loadTrack 接着发播放指令，这里不改按钮。
-            if (!(options.force && app.playIntent)) {
-                app.playIntent = state.is_playing;
-                app.applyPlayingUi(state.is_playing);
+            if (!app.playIntent) {
+                app.playIntent = enginePlaying;
+                app.applyPlayingUi(enginePlaying);
+                if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
+            }
+        } else {
+            // 刚发过指令：给引擎留出执行时间（建输出流可能要几秒），期间不拿旧状态去翻按钮。
+            const grace = app.expectedPlayingState ? 5000 : 1500;
+            const waitingForCommand = app.isChangingState && nowMs - (app.lastCommandTime || 0) < grace;
+            // 平时也要连续两次查询都不一致才认为状态真的变了。
+            if (!waitingForCommand && (app.stateMismatchPolls = (app.stateMismatchPolls || 0) + 1) >= 2) {
+                app.stateMismatchPolls = 0;
+                app.isChangingState = false;
+                app.playIntent = enginePlaying;
+                app.applyPlayingUi(enginePlaying);
                 if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
             }
         }
