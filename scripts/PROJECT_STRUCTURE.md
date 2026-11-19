@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-11-19 15:52:28  
+> 自动生成于：2026-11-19 17:01:48  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,19 +10,19 @@
 
 ## 文件统计
 
-- **总目录数**：249
-- **总文件数**：1811
+- **总目录数**：250
+- **总文件数**：1821
 - **文件类型数**：23
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 1125 |
-| CSS | `.css` | 160 |
-| JSON | `.json` | 157 |
+| JavaScript | `.js` | 1131 |
+| CSS | `.css` | 161 |
+| JSON | `.json` | 158 |
 | Rust | `.rs` | 137 |
 | Markdown | `.md` | 69 |
-| HTML | `.html` | 50 |
-| Python | `.py` | 28 |
+| HTML | `.html` | 51 |
+| Python | `.py` | 29 |
 | JavaScript (CommonJS) | `.cjs` | 19 |
 | Batch Script | `.bat` | 10 |
 | .example | `.example` | 9 |
@@ -39,7 +39,7 @@
 | JavaScript (ESM) | `.mjs` | 1 |
 | SQL | `.sql` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1811** |
+| **合计** | - | **1821** |
 
 ## 目录结构树
 
@@ -494,6 +494,15 @@ VCPChat/
 ├── migration/
 │   ├── migrateAvatars.js
 │   └── 头像迁移脚本readme.md
+├── Mijiamodules/
+│   ├── capabilities.json
+│   ├── device-art.js
+│   ├── device-controls.js
+│   ├── mijia.css
+│   ├── mijia.html
+│   ├── mijia_bridge.py
+│   ├── panel.js
+│   └── window.js
 ├── modules/
 │   ├── assistant/
 │   │   └── assistant-rust-adapter.js
@@ -649,6 +658,7 @@ VCPChat/
 │   │   ├── localSttHandlers.js
 │   │   ├── mainChatVoiceCoordinator.js
 │   │   ├── memoHandlers.js
+│   │   ├── mijiaHandlers.js
 │   │   ├── modelTrajectoryHandlers.js
 │   │   ├── musicHandlers.js
 │   │   ├── notesHandlers.js
@@ -1271,6 +1281,7 @@ VCPChat/
 │   │   ├── localStt.js
 │   │   ├── loom.js
 │   │   ├── memo.js
+│   │   ├── mijia.js
 │   │   ├── modelTrajectory.js
 │   │   ├── music.js
 │   │   ├── notes.js
