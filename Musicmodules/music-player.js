@@ -528,9 +528,16 @@ function setupPlayer(app) {
         app.publishCapsuleState();
     };
 
+    // 歌词和进度在两次查询之间按本地时钟推算，查询只用来校准，不需要每秒 4 次。
+    // 窗口不可见时再降到 2 秒一次，只为外部的“正在播放”信息保持更新。
+    let hiddenPollSkips = 0;
     app.startStatePolling = () => {
         if (app.statePollInterval) clearInterval(app.statePollInterval);
-        app.statePollInterval = setInterval(app.pollState, 250);
+        app.statePollInterval = setInterval(() => {
+            if (document.hidden && ++hiddenPollSkips % 4 !== 0) return;
+            app.pollState();
+        }, 500);
+        app.pollState();
     };
 
     app.stopStatePolling = () => {

@@ -131,12 +131,18 @@ function setupVisualizer(app) {
             try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'spectrum_data') {
-                    app.api?.publishMusicGroove?.({
-                        playing: app.isPlaying === true && !app.isTrackLoading,
-                        trackKey: app.playlist?.[app.currentTrackIndex]?.path || '',
-                        data: message.data
-                    });
+                    // 停着的时候只通知一次“没在播”，不再把每一帧频谱都经主进程转发出去。
+                    const grooving = app.isPlaying === true && !app.isTrackLoading;
+                    if (grooving || app._lastGroovePlaying !== false) {
+                        app._lastGroovePlaying = grooving;
+                        app.api?.publishMusicGroove?.(grooving ? {
+                            playing: true,
+                            trackKey: app.playlist?.[app.currentTrackIndex]?.path || '',
+                            data: message.data
+                        } : { playing: false });
+                    }
                     if (app.isPlaying) {
+                        app._visualizerIdle = false;
                         app.targetVisualizerData = message.data;
                         if (app.currentVisualizerData.length === 0) {
                             app.currentVisualizerData = Array(app.targetVisualizerData.length).fill(0);
@@ -238,11 +244,18 @@ function setupVisualizer(app) {
         const bufferLength = data.length;
         if (bufferLength === 0) return;
 
-        const gradient = app.visualizerCtx.createLinearGradient(0, 0, 0, app.visualizerCanvas.height);
+        // 渐变只和画布高度、主题色有关，不必每帧新建。
         const { r, g, b } = app.visualizerColor;
-        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.85)`);
-        gradient.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.4)`);
-        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.05)`);
+        const gradientKey = `${app.visualizerCanvas.height}|${r},${g},${b}`;
+        if (app._visualizerGradientKey !== gradientKey) {
+            const created = app.visualizerCtx.createLinearGradient(0, 0, 0, app.visualizerCanvas.height);
+            created.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.85)`);
+            created.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.4)`);
+            created.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.05)`);
+            app._visualizerGradient = created;
+            app._visualizerGradientKey = gradientKey;
+        }
+        const gradient = app._visualizerGradient;
 
         app.visualizerCtx.fillStyle = gradient;
         app.visualizerCtx.strokeStyle = gradient;
@@ -339,13 +352,27 @@ function setupVisualizer(app) {
                 return;
             }
 
+            // 暂停后让频谱自然落回零，落稳之后不再每帧重画同一幅画面。
+            const paused = !app.isPlaying;
+            if (paused && app._visualizerIdle && !isStageActive) {
+                app.updateAmbientPixi?.(0.016);
+                app.animationFrameId = requestAnimationFrame(draw);
+                return;
+            }
+
             // 缓动更新
+            let peak = 0;
             for (let i = 0; i < app.targetVisualizerData.length; i++) {
                 if (app.currentVisualizerData[i] === undefined) {
                     app.currentVisualizerData[i] = 0;
                 }
+                if (paused) app.targetVisualizerData[i] *= 0.86;
                 app.currentVisualizerData[i] += (app.targetVisualizerData[i] - app.currentVisualizerData[i]) * app.easingFactor;
+                if (app.currentVisualizerData[i] > peak) peak = app.currentVisualizerData[i];
             }
+            app._visualizerQuietFrames = paused && peak < 0.003 ? (app._visualizerQuietFrames || 0) + 1 : 0;
+            // 多等半秒左右，让顶部的粒子曲线也回到基线。
+            app._visualizerIdle = app._visualizerQuietFrames > 40;
 
             if (isStageActive) {
                 app.stageHost.updateFrame(timestamp);

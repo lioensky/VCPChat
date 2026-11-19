@@ -935,9 +935,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         app.searchInput.oninput = (e) => {
             if (app.isSemanticSearchActive) return; // 语义搜索模式下不进行实时过滤
-            const query = e.target.value.toLowerCase();
-            app.currentFilteredTracks = query ? app.playlist.filter(t => (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query)) : null;
-            app.renderPlaylist(app.currentFilteredTracks);
+            // 连续输入时只在停顿后过滤一次，避免每敲一个字就重建整个列表。
+            clearTimeout(app.searchInputTimer);
+            app.searchInputTimer = setTimeout(() => {
+                if (app.isSemanticSearchActive) return;
+                const query = app.searchInput.value.toLowerCase();
+                app.currentFilteredTracks = query ? app.playlist.filter(t => (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query)) : null;
+                app.renderPlaylist(app.currentFilteredTracks);
+            }, 120);
         };
 
         app.searchInput.onkeydown = (e) => {

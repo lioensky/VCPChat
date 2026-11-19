@@ -1397,6 +1397,9 @@ body.light-theme option {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    /* 屏幕外的行跳过样式、布局和绘制；歌多的时候打开、搜索和滚动都只处理看得见的部分。 */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 44px;
 }
 
 .playlist li:hover {
