@@ -1118,5 +1118,16 @@ test('toggling tool result visibility updates the bubble in place without replac
         assert.equal(toggleBtn.dataset.vcpHidden, 'false');
         assert.equal(firstBubble.querySelector('.vcp-tool-result-hidden-badge'), null);
         assert.equal(secondBubble.dataset.inPlaceSentinel, 'preserved');
+
+        // 切换到 compact 模式后点击隐藏，再切回 legacy 模式：旧式徽章应当同步出现
+        fixture.dom.window.dispatchEvent(new fixture.dom.window.CustomEvent('vcp-appearance-changed', {
+            detail: { profile: { toolPresentation: 'compact', toolExpansion: 'none' } }
+        }));
+        toggleBtn.dispatchEvent(new fixture.dom.window.MouseEvent('click', { bubbles: true }));
+        assert.equal(firstBubble.classList.contains('vcp-tool-result-bubble--hidden'), true);
+        fixture.dom.window.dispatchEvent(new fixture.dom.window.CustomEvent('vcp-appearance-changed', {
+            detail: { profile: { toolPresentation: 'legacy', toolExpansion: 'none' } }
+        }));
+        assert.ok(firstBubble.querySelector('.vcp-tool-result-hidden-badge'), 'restoring to legacy mode must keep hidden badge');
     } finally { await disposeFixture(fixture); }
 });

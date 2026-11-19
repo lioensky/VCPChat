@@ -134,7 +134,7 @@ test('clicking a control inside a streaming message keeps pinning to the bottom'
     scrolling.dispose();
 });
 
-test('expanding legacy collapsible headers in side chat detaches, while copy and hide buttons keep sticky follow', () => {
+test('expanding legacy headers or HTML preview in side chat detaches, while copy and hide buttons keep sticky follow', () => {
     const { win, root, ro, scrolling, grow } = setup();
     root.scrollTop = 500;
     const msg = root.firstElementChild;
@@ -144,13 +144,21 @@ test('expanding legacy collapsible headers in side chat detaches, while copy and
     hideBtn.className = 'vcp-tool-result-delete-btn';
     header.appendChild(hideBtn);
     const copyBtn = win.document.createElement('button');
-    copyBtn.className = 'code-copy-btn';
-    msg.append(header, copyBtn);
+    copyBtn.className = 'vcp-code-copy-button';
+    copyBtn.dataset.vcpInteractive = 'true';
+    const previewBtn = win.document.createElement('button');
+    previewBtn.className = 'vcp-html-preview-toggle';
+    previewBtn.dataset.vcpInteractive = 'true';
+    msg.append(header, copyBtn, previewBtn);
 
     hideBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
     copyBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
     assert.equal(scrolling.isSticky(), true, 'non-expanding action buttons must not detach sticky follow');
 
+    previewBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(scrolling.isSticky(), false, 'HTML preview toggle detaches sticky follow');
+
+    scrolling.resume();
     header.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
     assert.equal(scrolling.isSticky(), false, 'legacy header click detaches sticky follow');
     grow(200);

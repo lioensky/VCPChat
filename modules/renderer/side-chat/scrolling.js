@@ -44,10 +44,10 @@ export function createSideChatScrolling({
         const IN_PLACE_EXPAND_IGNORE_SELECTOR = [
             '.vcp-tool-result-delete-btn',
             '.vcp-tool-result-toggle-btn',
+            '.vcp-code-copy-button',
+            '.vcp-code-sideview-button',
             '.code-copy-btn',
             '.mermaid-viewer-btn',
-            '[data-vcp-interactive="true"]',
-            '[data-send]',
             '.chat-avatar',
             '.message-avatar'
         ].join(', ');

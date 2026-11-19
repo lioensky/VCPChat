@@ -199,7 +199,7 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
         if (!header) return null;
         if (!originalHeaders.has(block)) originalHeaders.set(block, { nodes: [...header.childNodes], header, expanded: block.classList.contains('expanded') });
         const original = originalHeaders.get(block);
-        const extraActions = [...header.children].filter(node=>!node.matches('.vcp-tool-row-toggle, .vcp-tool-result-label, .vcp-tool-result-name, .vcp-tool-result-status, .vcp-result-toggle-icon, .vcp-tool-label, .vcp-tool-name-highlight, .vcp-tool-call-summary-icon, .vcp-tool-call-summary-title'));
+        const extraActions = [...header.children].filter(node=>!node.matches('.vcp-tool-row-toggle, .vcp-tool-result-label, .vcp-tool-result-name, .vcp-tool-result-status, .vcp-tool-result-hidden-badge, .vcp-result-toggle-icon, .vcp-tool-label, .vcp-tool-name-highlight, .vcp-tool-call-summary-icon, .vcp-tool-call-summary-title'));
         // File-change badges may be installed after the first render. Keep
         // their actual nodes and handlers through future appearance previews.
         original.extraActions = extraActions;
@@ -389,6 +389,20 @@ export function createToolPresentation({ root, getProfile, getLocalConfig }) {
         if (!original) return;
         original.header.replaceChildren(...original.nodes);
         original.extraActions?.filter(node=>!original.nodes.includes(node)).forEach(node=>original.header.append(node));
+        if (block.dataset.vcpBlockType === 'tool-result') {
+            const hidden = block.classList.contains('vcp-tool-result-bubble--hidden');
+            let badge = original.header.querySelector(':scope > .vcp-tool-result-hidden-badge');
+            if (hidden && !badge) {
+                badge = doc.createElement('span');
+                badge.className = 'vcp-tool-result-hidden-badge';
+                badge.title = '当前工具结果已排除，后续对话不会注入到AI上下文中';
+                badge.textContent = '已隐藏';
+                const anchor = original.header.querySelector(':scope > .vcp-result-toggle-icon, :scope > .vcp-tool-result-delete-btn');
+                if (anchor) original.header.insertBefore(badge, anchor); else original.header.append(badge);
+            } else if (!hidden && badge) {
+                badge.remove();
+            }
+        }
         const body = block.querySelector('.vcp-tool-result-collapsible-content, .vcp-tool-call-summary-content, .vcp-tool-details');
         if (body?.id?.startsWith(prefix)) body.removeAttribute('id');
         block.classList.remove('vcp-tool-presented');
