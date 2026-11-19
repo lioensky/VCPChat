@@ -9,6 +9,8 @@ module.exports = {
     roles: ['chat'],
     api: {
         // 话题
+        getTopicActivityTimes: invoke('get-topic-activity-times', 'itemId', 'topicIds'),
+        onTopicActivityChanged: on('topic-activity-changed'),
         getAgentTopics: invoke('get-agent-topics', 'agentId'),
         createNewTopicForAgent: invoke('create-new-topic-for-agent', 'agentId', 'topicName', 'isBranch', 'locked'),
         saveAgentTopicTitle: invoke('save-agent-topic-title', 'agentId', 'topicId', 'newTitle'),

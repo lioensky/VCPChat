@@ -24,6 +24,18 @@ function conversationKey({ itemId, itemType = 'agent', topicId }) {
     return `${itemType}:${itemId}/topic:${topicId}`;
 }
 
+function lastConversationTime(history) {
+    let latest = 0;
+    for (const message of history) {
+        if (!message || message.isThinking || !['user', 'assistant'].includes(message.role)) continue;
+        const raw = message.timestamp;
+        const time = Number.isFinite(Number(raw)) ? Number(raw) : Date.parse(raw);
+        // Undated legacy messages still rank above empty topics.
+        latest = Math.max(latest, Number.isFinite(time) && time > 0 ? time : 1);
+    }
+    return latest;
+}
+
 function clone(value) {
     return typeof structuredClone === 'function'
         ? structuredClone(value)
@@ -39,10 +51,12 @@ function clone(value) {
  * 另行提供版本校验或基于最新历史的变更意图。此队列不提供跨进程锁。
  */
 class HistoryMutationQueue {
-    constructor({ userDataDir, fileWatcher = null, logger = console } = {}) {
+    constructor({ userDataDir, fileWatcher = null, onActivity = null, logger = console } = {}) {
         if (!userDataDir) throw new TypeError('HistoryMutationQueue requires userDataDir');
         this.userDataDir = userDataDir;
         this.fileWatcher = fileWatcher;
+        this.onActivity = onActivity;
+        this.activityCache = new Map();
         this.logger = logger;
         this.queues = new Map();
         this.ownerBarriers = new Map();
@@ -51,6 +65,36 @@ class HistoryMutationQueue {
 
     getHistoryPath(itemId, topicId) {
         return path.resolve(this.userDataDir, validateSegment(itemId), 'topics', validateSegment(topicId), 'history.json');
+    }
+
+    async getActivityTimes(itemId, topicIds) {
+        if (!Array.isArray(topicIds)) throw new TypeError('Expected topic identifiers');
+        const files = topicIds.map(id => this.getHistoryPath(itemId, id));
+        const result = new Array(files.length);
+        let next = 0;
+        const readBatch = async () => {
+            while (next < files.length) {
+                const i = next++;
+                const file = files[i];
+                let time = 0;
+                try {
+                    const stat = await fs.stat(file);
+                    const cached = this.activityCache.get(file);
+                    if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) {
+                        time = cached.time;
+                    } else {
+                        time = lastConversationTime(await fs.readJson(file));
+                        this.activityCache.set(file, { mtime: stat.mtimeMs, size: stat.size, time });
+                        if (this.activityCache.size > 4096) this.activityCache.delete(this.activityCache.keys().next().value);
+                    }
+                } catch (error) {
+                    if (error.code !== 'ENOENT') this.logger.warn('Cannot read topic activity:', error.message);
+                }
+                result[i] = [topicIds[i], time];
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(4, files.length) }, readBatch));
+        return result;
     }
 
     run(descriptor, operation) {
@@ -124,6 +168,13 @@ class HistoryMutationQueue {
         } catch (error) {
             await fs.remove(tempPath).catch(() => {});
             throw error;
+        }
+        this.activityCache.delete(historyPath);
+        try {
+            this.onActivity?.({ itemId: descriptor.itemId, itemType: descriptor.itemType || 'agent',
+                topicId: descriptor.topicId, time: lastConversationTime(history) });
+        } catch (error) {
+            this.logger.warn('Cannot notify topic activity:', error.message);
         }
         return { success: true };
     }

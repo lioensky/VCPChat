@@ -525,6 +525,9 @@ function initialize(mainWindow, context) {
         }
     });
 
+    ipcMain.handle('get-topic-activity-times', (_event, itemId, topicIds) =>
+        historyMutationQueue.getActivityTimes(itemId, topicIds));
+
     ipcMain.handle('search-topics-by-content', async (event, itemId, itemType, searchTerm) => {
         if (!itemId || !itemType || typeof searchTerm !== 'string' || searchTerm.trim() === '') {
             return { success: false, error: 'Invalid arguments for topic content search.', matchedTopicIds: [] };

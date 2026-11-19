@@ -1259,6 +1259,9 @@ if (!gotTheLock) {
         const agentConfigManager = new AgentConfigManager(AGENT_DIR);
         historyMutationQueue = new HistoryMutationQueue({
             userDataDir: USER_DATA_DIR,
+            onActivity: activity => {
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('topic-activity-changed', activity);
+            },
             fileWatcher,
             logger: console
         });
