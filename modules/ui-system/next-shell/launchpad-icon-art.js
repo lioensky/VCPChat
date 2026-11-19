@@ -199,11 +199,17 @@ c.restore();
 box(c,30,53,68,49,10,'#578b89');
 box(c,28,50,68,48,10,gradient(c,28,50,96,98,['#fff9e6','#d4e4d8','#94b7b0']));
 box(c,81,28,12,24,4,gradient(c,81,28,93,52,['#a5e3db','#4d8d89']));
-const roof=[[22,59],[61,26],[103,58]];
-line(c,roof,'#286c69',16);
 c.shadowBlur=0;c.shadowOffsetY=0;
-line(c,roof.map(([x,y])=>[x,y-4]),gradient(c,26,30,98,58,['#b0f2dc','#55aca0','#338380']),12);
-line(c,[[25,52],[61,22],[80,37]],'#e2fff2a0',2);
+const face=(points,fill)=>{
+    c.beginPath();c.moveTo(...points[0]);
+    for(const point of points.slice(1))c.lineTo(...point);
+    c.closePath();c.fillStyle=fill;c.fill();
+};
+// Bring the gable up to the ridge; a solid roof must not show wallpaper through it.
+face([[28,57],[56,29],[88,57]],gradient(c,48,30,58,58,['#ccdcd0','#f3f3df']));
+face([[21,55],[55,23],[70,21],[105,52],[105,56],[87,60],[55,32],[23,59]],'#598d83');
+face([[21,55],[55,23],[56,28],[24,57]],'#96d5bc');
+face([[55,23],[70,21],[105,52],[87,56]],gradient(c,64,22,85,56,['#b7e8cc','#80c7ae','#67af9d']));
 box(c,69,69,17,29,5,gradient(c,69,69,86,98,['#689e99','#386b69']));
 circle(c,81,84,1.6,'#e5d7ab');
 const glow=(Math.sin(t*3)*.5+.5)*e;
