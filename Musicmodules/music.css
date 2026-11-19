@@ -365,11 +365,13 @@ body.light-theme #lyrics-list li:hover {
     -webkit-text-fill-color: transparent;
     transition: transform 0.15s cubic-bezier(0.2, 0, 0.1, 1),
                 filter 0.15s ease;
-    will-change: transform, filter;
+    /* 不在这里写 will-change：逐字歌词一首歌有几百上千个字，每个字都被提升成独立合成层，
+       显卡进程要为它们各留一张纹理、每帧逐层合成。只提升正在唱的那一个字就够了。 */
 }
 
 /* 正在演唱的字元呼吸/脉冲微视效 */
 .lyric-word.singing {
+    will-change: transform, filter;
     transform: scale(1.08);
     filter: drop-shadow(0 0 6px rgba(var(--music-highlight-rgb, 0, 180, 255), 0.55));
 }
