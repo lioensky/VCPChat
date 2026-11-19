@@ -142,6 +142,8 @@ function setupVisualizer(app) {
                             app.currentVisualizerData = Array(app.targetVisualizerData.length).fill(0);
                         }
                     }
+                } else if (message.type === 'load_error' || message.type === 'load_complete' || message.type === 'loading_progress') {
+                    app.handleEngineLoadEvent?.(message);
                 } else if (message.type === 'needs_preload') {
                     console.log('[Music.js] Received needs_preload event, remaining:', message.remaining_secs?.toFixed(1), 's');
                     app.handleNeedsPreload();

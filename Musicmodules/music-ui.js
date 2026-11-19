@@ -56,17 +56,45 @@ function setupUI(app) {
         app.volumeSlider.style.backgroundSize = `${val * 100}% 100%`;
     };
 
+    // 每次切歌都会调用 renderPlaylist。列表内容没变时只移动高亮，
+    // 不再清空重建全部 <li>（上千首歌时重建一次就是一次明显的卡顿）。
+    let renderedSongs = null;
+    let renderedBase = null;
+    let renderedTitles = null;
+    let renderedBaseLength = -1;
     app.renderPlaylist = (filtered) => {
         const songs = filtered || app.playlist;
+        const items = app.playlistEl.children;
+        const unchanged = renderedSongs
+            && renderedBase === app.playlist
+            && renderedBaseLength === app.playlist.length
+            && renderedSongs.length === songs.length
+            && items.length === songs.length
+            && songs.every((t, i) => renderedSongs[i] === t && renderedTitles[i] === t.title);
+        if (unchanged) {
+            for (const li of app.playlistEl.querySelectorAll('li.active')) li.classList.remove('active');
+            for (let i = 0; i < items.length; i++) {
+                if (Number(items[i].dataset.index) === app.currentTrackIndex) items[i].classList.add('active');
+            }
+            app.updateAllCount();
+            return;
+        }
+
+        const indexByTrack = new Map();
+        app.playlist.forEach((t, i) => { if (!indexByTrack.has(t)) indexByTrack.set(t, i); });
         app.playlistEl.innerHTML = '';
         const frag = document.createDocumentFragment();
         songs.forEach(t => {
             const li = document.createElement('li'); li.textContent = app.stripAudioExtension(t.title) || '未知标题';
-            const origIdx = app.playlist.indexOf(t); li.dataset.index = origIdx;
+            const origIdx = indexByTrack.has(t) ? indexByTrack.get(t) : -1; li.dataset.index = origIdx;
             if (origIdx === app.currentTrackIndex) li.classList.add('active');
             frag.appendChild(li);
         });
         app.playlistEl.appendChild(frag); app.updateAllCount();
+        renderedSongs = songs.slice();
+        renderedBase = app.playlist;
+        renderedBaseLength = app.playlist.length;
+        renderedTitles = songs.map(t => t.title);
     };
 
     app.scrollCurrentTrackToSidebarTop = () => {

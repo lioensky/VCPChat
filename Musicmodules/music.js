@@ -688,10 +688,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 app.progress.style.width = `${(newTime / app.lastKnownDuration) * 100}%`;
                 app.currentTimeEl.textContent = app.formatTime(newTime);
 
-                if (shouldSeek) {
-                    await app.api.seekMusic(newTime);
-                    if (app.isPlaying) app.startStatePolling();
-                }
+                if (shouldSeek) await app.seekTo(newTime);
             }
         };
 
@@ -1052,11 +1049,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    app.updateUIWithState = (state) => {
+    app.updateUIWithState = (state, options = {}) => {
         if (!state) return;
+        // 切歌加载期间引擎报的还是上一首（或已停止）的状态，写进界面会让进度条和按钮乱跳。
+        if (app.isTrackLoading && !options.force) return;
         app.lastKnownCurrentTime = state.current_time; app.lastKnownDuration = state.duration;
         app.lastStateUpdateTime = Date.now();
-        if (state.duration > 0) {
+        if (state.duration > 0 && !app.dragInProgress) {
             const percent = (state.current_time / state.duration) * 100;
             app.progress.style.width = `${percent}%`;
             app.currentTimeEl.textContent = app.formatTime(state.current_time);
@@ -1074,10 +1073,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            app.isPlaying = state.is_playing;
-            document.body.classList.toggle('music-playing', app.isPlaying);
-            app.playPauseBtn.classList.toggle('is-playing', app.isPlaying);
-            if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
+            // 刚加载好的曲目一定是停止状态；用户想播放时由 loadTrack 接着发播放指令，这里不改按钮。
+            if (!(options.force && app.playIntent)) {
+                app.playIntent = state.is_playing;
+                app.applyPlayingUi(state.is_playing);
+                if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
+            }
         }
         if (!app.isTrackLoading) app.publishCapsuleState?.();
         if (state.loudness_info) {
