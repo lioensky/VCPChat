@@ -11,7 +11,7 @@ async function fixture({ count = 10000, history, config } = {}) {
         <aside class="sidebar active vcp-ui-scope">
             <section id="tabContentTopics" class="sidebar-tab-content active">
                 <div class="topics-header-container">
-                    <button id="nextUiCreateTopicBtn"></button><button id="nextUiManageTopicsBtn"></button>
+                    <button id="topicSortMode"></button><button id="nextUiCreateTopicBtn"></button><button id="nextUiManageTopicsBtn"></button>
                     <button id="nextUiTopicSearchTrigger"></button><button id="nextUiTopicSearchClose"></button>
                     <input id="topicSearchInput">
                 </div>
@@ -57,6 +57,7 @@ async function fixture({ count = 10000, history, config } = {}) {
                 configCalls++;
                 return config ? config() : { id: selected.id, topics };
             },
+            getTopicActivityTimes: async () => [],
             saveTopicOrder: async (id, ids) => { savedOrder = [...ids]; return { success: true }; },
             searchTopicsByContent: async () => ({ success: true, matchedTopicIds: [] })
         },
@@ -202,7 +203,11 @@ test('dragging a virtual window saves every topic exactly once in complete model
         assert.equal(new Set(f.order()).size, 1000);
         assert.equal(f.order()[firstIndex], moved.dataset.topicId);
         assert.ok(f.order().every(id => id), 'spacers never enter persisted ordering');
+        assert.equal(f.doc.getElementById('topicSortMode').dataset.mode, 'manual');
         assert.equal(f.rows()[0].dataset.topicId, moved.dataset.topicId);
+        f.doc.getElementById('topicSortMode').click();
+        await f.flush();
+        assert.equal(f.doc.getElementById('topicSortMode').dataset.mode, 'created');
     } finally { f.close(); }
 });
 
