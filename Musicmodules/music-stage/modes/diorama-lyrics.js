@@ -129,7 +129,7 @@
             const performance = new T.ShaderMaterial({
                 transparent: true, depthWrite: false,
                 uniforms: { bins: { value: new Float32Array(24) }, light: { value: 0 },
-                    closing: { value: 0 }, accent: { value: sungColour() } },
+                    closing: { value: 0 }, accent: { value: new T.Color(palette.accent || '#f2a900') } },
                 vertexShader: `varying vec2 vUv;void main(){vUv=uv;
                     gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
                 fragmentShader: `varying vec2 vUv;uniform float bins[24],light,closing;uniform vec3 accent;
@@ -182,15 +182,6 @@
         const plane = new T.PlaneGeometry(1, 1);
         const box = new T.BoxGeometry(1, 1, 1);
         let palette = {}, timeline = null, track = null, options = {};
-        // By day the theme's accent, full strength, jumps out of the pale
-        // scene: the words being sung take a deeper, quieter shade of it, and
-        // the words already sung settle back toward the ink, not into a third colour.
-        const sungColour = () => {
-            const colour = new T.Color(palette.accent || '#f2a900');
-            if (!palette.light) return colour;
-            const hsl = colour.getHSL({});
-            return colour.setHSL(hsl.h, hsl.s * 0.7, hsl.l * 0.78);
-        };
         let readingBounds = [], lastCamera = null, lastDiagnosticTime = 0;
         const sight = new T.Raycaster();
         const release = node => {
@@ -213,6 +204,97 @@
             t.generateMipmaps = true;
             return t;
         };
+        // A line of words written on the sky or on a board; the warm-up builds one too.
+        const skyLine = ({ map, constellation, style, ranges, starts, ends }) => new T.ShaderMaterial({
+            transparent: true, depthWrite: false, side: T.DoubleSide, forceSinglePass: true,
+            // A line written on the sky is never hidden by what the train passes.
+            depthTest: !constellation,
+            uniforms: {
+                map: { value: map }, time: { value: 0 }, fade: { value: 1 },
+                glow: { value: 1 }, vocal: { value: 0 },
+                constellation: { value: constellation ? 1 : 0 },
+                entrance: { value: 1 }, departure: { value: 0 },
+                motion: { value: 0 }, style: { value: style }, waterEcho: { value: 0 },
+                // Dark strokes blended over a pale sky in linear light come out
+                // far paler than their opacity suggests, so by day the words
+                // still to be sung are laid on more heavily.
+                rest: { value: palette.light ? 0.82 : 0.48 },
+                accent: { value: new T.Color(palette.accent || '#f2a900') },
+                ink: { value: new T.Color(palette.ink || '#f2f0e9') },
+                cold: { value: new T.Color(palette.secondary || '#76bfae') },
+                ranges: { value: ranges }, starts: { value: starts }, ends: { value: ends }
+            },
+            vertexShader: `
+                attribute vec3 glyphTiming;
+                uniform float time,motion,constellation,entrance,departure,style,waterEcho;
+                varying vec2 vUv;
+                void main(){
+                    vUv=uv;
+                    float age=max(0.0,time-glyphTiming.x);
+                    float duration=max(0.04,glyphTiming.y-glyphTiming.x);
+                    float singing=step(glyphTiming.x,time)*(1.0-step(glyphTiming.y,time));
+                    float emphasis=sin(clamp(age/duration,0.0,1.0)*3.14159265)*singing;
+                    float stagger=clamp((entrance-glyphTiming.z*0.16)/0.84,0.0,1.0);
+                    stagger=stagger*stagger*(3.0-2.0*stagger);
+                    float incoming=1.0-stagger;
+                    vec3 p=position;
+                    // Keep sign glyphs close to their physical surface.
+                    p.y+=motion*(emphasis*mix(0.012,0.055,constellation)
+                        -incoming*mix(0.045,0.38,constellation)
+                        +departure*constellation*0.2);
+                    p.z+=motion*constellation*(incoming*(0.3+glyphTiming.z*0.45)
+                        -departure*(0.5+glyphTiming.z*0.25));
+                    p.x+=motion*constellation*(incoming*0.08-departure*0.14)
+                        *sin(glyphTiming.z*9.0);
+                    if(style>1.5 && style<2.5){
+                        p.x+=motion*constellation*(incoming*0.2-departure*0.28);
+                    }
+                    gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+                }`,
+            fragmentShader: `uniform sampler2D map;uniform float time,fade,glow,vocal;
+                uniform float constellation,entrance,departure,style,waterEcho,rest;
+                uniform vec3 accent,ink,cold;uniform float ranges[64],starts[64],ends[64];
+                varying vec2 vUv;
+                void main(){float start=1e8,end=1e8;float selected=0.0;
+                    for(int i=0;i<64;i++){if(selected<0.5 && vUv.x<=ranges[i]){
+                        start=starts[i];end=ends[i];selected=1.0;}}
+                    float age=time-start;float singing=step(start,time)*(1.0-step(end,time));
+                    float passed=step(end,time);float attack=smoothstep(0.0,0.08,age);
+                    float peak=singing*attack*exp(-max(age-0.08,0.0)*8.0);
+                    vec3 color=mix(ink,accent,step(start,time));
+                    color=mix(color,mix(accent,cold,0.55),passed*smoothstep(0.0,0.6,time-end));
+                    float wave=sin(vUv.x*9.0+time*0.7)*0.012;
+                    vec2 sampleUv=vUv+vec2(0.0,wave*constellation*(1.0-entrance));
+                    float alpha=texture2D(map,sampleUv).a;
+                    // The same glyph supplies both the incoming water-light
+                    // and the settled text. No second particle coordinate system.
+                    float waterReveal=smoothstep(0.0,0.18,entrance-vUv.y*0.12);
+                    float dissolve=1.0-smoothstep(0.0,0.3,departure-(1.0-vUv.x)*0.16);
+                    alpha*=mix(1.0,waterReveal*dissolve,constellation);
+                    if(style>2.5 && departure>0.0){
+                        float speck=step(0.965,fract(sin(dot(floor(vUv*vec2(900.0,180.0)),
+                            vec2(12.9898,78.233)))*43758.5453));
+                        alpha=max(alpha,texture2D(map,sampleUv).a*speck*departure*0.5);
+                    }
+                    if(waterEcho>0.5){
+                        sampleUv=vUv+vec2(sin(vUv.y*27.0+time*0.6)*0.004,
+                            sin(vUv.x*43.0-time*0.7)*0.018);
+                        alpha=texture2D(map,sampleUv).a;
+                        // Preserve the source glyph's reveal and dissolve
+                        // while adding only the water's soft breakup.
+                        alpha*=mix(0.72,1.0,waterReveal*dissolve);
+                    }
+                    float brightness=1.0+peak*glow*0.7;
+                    brightness+=singing*step(0.8,end-start)*vocal*0.15*glow;
+                    vec3 lit=mix(color,mix(cold,ink,0.55),constellation*0.38);
+                    gl_FragColor=vec4(lit*brightness,alpha*fade*mix(rest,0.95,step(start,time)));
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
+                }`
+        });
+        const subtitleMaterial = (map, constellation) => new T.MeshBasicMaterial({ map, color: palette.ink || '#f2f0e9',
+            transparent: true, opacity: 0.7, depthWrite: false, depthTest: !constellation,
+            side: T.DoubleSide, forceSinglePass: true });
         const build = phrase => {
             const group = new T.Group(), materials = [], textures = [];
             const midpoint = (phrase.start + phrase.end) * 0.5;
@@ -279,93 +361,7 @@
             while (ranges.length < 64) { ranges.push(2); starts.push(1e8); ends.push(1e8); }
             const map = texture(canvas);
             textures.push(map);
-            const mat = new T.ShaderMaterial({
-                transparent: true, depthWrite: false, side: T.DoubleSide, forceSinglePass: true,
-                // A line written on the sky is never hidden by what the train passes.
-                depthTest: !constellation,
-                uniforms: {
-                    map: { value: map }, time: { value: 0 }, fade: { value: 1 },
-                    glow: { value: 1 }, vocal: { value: 0 },
-                    constellation: { value: constellation ? 1 : 0 },
-                    entrance: { value: 1 }, departure: { value: 0 },
-                    motion: { value: 0 }, style: { value: style }, waterEcho: { value: 0 },
-                    // Dark strokes blended over a pale sky in linear light come out
-                    // far paler than their opacity suggests, so by day the words
-                    // still to be sung are laid on more heavily.
-                    rest: { value: palette.light ? 0.82 : 0.48 },
-                    accent: { value: sungColour() },
-                    ink: { value: new T.Color(palette.ink || '#f2f0e9') },
-                    cold: { value: new T.Color(palette.light ? palette.ink || '#2b2b2b' : palette.secondary || '#76bfae') },
-                    ranges: { value: ranges }, starts: { value: starts }, ends: { value: ends }
-                },
-                vertexShader: `
-                    attribute vec3 glyphTiming;
-                    uniform float time,motion,constellation,entrance,departure,style,waterEcho;
-                    varying vec2 vUv;
-                    void main(){
-                        vUv=uv;
-                        float age=max(0.0,time-glyphTiming.x);
-                        float duration=max(0.04,glyphTiming.y-glyphTiming.x);
-                        float singing=step(glyphTiming.x,time)*(1.0-step(glyphTiming.y,time));
-                        float emphasis=sin(clamp(age/duration,0.0,1.0)*3.14159265)*singing;
-                        float stagger=clamp((entrance-glyphTiming.z*0.16)/0.84,0.0,1.0);
-                        stagger=stagger*stagger*(3.0-2.0*stagger);
-                        float incoming=1.0-stagger;
-                        vec3 p=position;
-                        // Keep sign glyphs close to their physical surface.
-                        p.y+=motion*(emphasis*mix(0.012,0.055,constellation)
-                            -incoming*mix(0.045,0.38,constellation)
-                            +departure*constellation*0.2);
-                        p.z+=motion*constellation*(incoming*(0.3+glyphTiming.z*0.45)
-                            -departure*(0.5+glyphTiming.z*0.25));
-                        p.x+=motion*constellation*(incoming*0.08-departure*0.14)
-                            *sin(glyphTiming.z*9.0);
-                        if(style>1.5 && style<2.5){
-                            p.x+=motion*constellation*(incoming*0.2-departure*0.28);
-                        }
-                        gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
-                    }`,
-                fragmentShader: `uniform sampler2D map;uniform float time,fade,glow,vocal;
-                    uniform float constellation,entrance,departure,style,waterEcho,rest;
-                    uniform vec3 accent,ink,cold;uniform float ranges[64],starts[64],ends[64];
-                    varying vec2 vUv;
-                    void main(){float start=1e8,end=1e8;float selected=0.0;
-                        for(int i=0;i<64;i++){if(selected<0.5 && vUv.x<=ranges[i]){
-                            start=starts[i];end=ends[i];selected=1.0;}}
-                        float age=time-start;float singing=step(start,time)*(1.0-step(end,time));
-                        float passed=step(end,time);float attack=smoothstep(0.0,0.08,age);
-                        float peak=singing*attack*exp(-max(age-0.08,0.0)*8.0);
-                        vec3 color=mix(ink,accent,step(start,time));
-                        color=mix(color,mix(accent,cold,0.55),passed*smoothstep(0.0,0.6,time-end));
-                        float wave=sin(vUv.x*9.0+time*0.7)*0.012;
-                        vec2 sampleUv=vUv+vec2(0.0,wave*constellation*(1.0-entrance));
-                        float alpha=texture2D(map,sampleUv).a;
-                        // The same glyph supplies both the incoming water-light
-                        // and the settled text. No second particle coordinate system.
-                        float waterReveal=smoothstep(0.0,0.18,entrance-vUv.y*0.12);
-                        float dissolve=1.0-smoothstep(0.0,0.3,departure-(1.0-vUv.x)*0.16);
-                        alpha*=mix(1.0,waterReveal*dissolve,constellation);
-                        if(style>2.5 && departure>0.0){
-                            float speck=step(0.965,fract(sin(dot(floor(vUv*vec2(900.0,180.0)),
-                                vec2(12.9898,78.233)))*43758.5453));
-                            alpha=max(alpha,texture2D(map,sampleUv).a*speck*departure*0.5);
-                        }
-                        if(waterEcho>0.5){
-                            sampleUv=vUv+vec2(sin(vUv.y*27.0+time*0.6)*0.004,
-                                sin(vUv.x*43.0-time*0.7)*0.018);
-                            alpha=texture2D(map,sampleUv).a;
-                            // Preserve the source glyph's reveal and dissolve
-                            // while adding only the water's soft breakup.
-                            alpha*=mix(0.72,1.0,waterReveal*dissolve);
-                        }
-                        float brightness=1.0+peak*glow*0.7;
-                        brightness+=singing*step(0.8,end-start)*vocal*0.15*glow;
-                        vec3 lit=mix(color,mix(cold,ink,0.55),constellation*0.38);
-                        gl_FragColor=vec4(lit*brightness,alpha*fade*mix(rest,0.95,step(start,time)));
-                        #include <tonemapping_fragment>
-                        #include <colorspace_fragment>
-                    }`
-            });
+            const mat = skyLine({ map, constellation, style, ranges, starts, ends });
             materials.push(mat);
             const halfHeight = distance * Math.tan(reference.fov * Math.PI / 360);
             const glyphHeight = halfHeight * 0.19;
@@ -455,9 +451,7 @@
                 rows.forEach((row, i) => sc.fillText(row, 1024, 128 + (i - (rows.length - 1) / 2) * px * 1.22, 1960));
                 const subTexture = texture(sub);
                 textures.push(subTexture);
-                const subMat = new T.MeshBasicMaterial({ map: subTexture, color: palette.ink || '#f2f0e9',
-                    transparent: true, opacity: 0.7, depthWrite: false, depthTest: !constellation,
-                    side: T.DoubleSide, forceSinglePass: true });
+                const subMat = subtitleMaterial(subTexture, constellation);
                 materials.push(subMat);
                 const subtitle = new T.Mesh(plane, subMat);
                 subtitle.scale.set(subWidth, subWidth / 8, 1);
@@ -604,6 +598,24 @@
             const reflected = group.userData.reflectedSubtitle;
             if (reflected) reflected.position.y = node.reflectedLevel - group.position.y;
         };
+        /*
+         * Boards and lines are built as the song reaches them, long after the
+         * stage has warmed its shaders. One of each, never shown, is built now
+         * so their shaders are compiled with the rest and the first board or
+         * line of the song does not stall the frame it appears in.
+         */
+        const primer = (() => {
+            const blank = global.document.createElement('canvas');
+            blank.width = blank.height = 4;
+            const map = texture(blank);
+            const sign = buildSign({ position: { x: 0, y: -400, z: 0 }, yaw: 0, width: 4, height: 2 }, 0);
+            const none = new Array(64).fill(2), never = new Array(64).fill(1e8);
+            const line = skyLine({ map, constellation: false, style: 0, ranges: none, starts: never, ends: never });
+            const subtitle = subtitleMaterial(map, false);
+            sign.group.add(new T.Mesh(plane, line), new T.Mesh(plane, subtitle));
+            sign.group.visible = false;
+            return { sign, map, materials: [line, subtitle] };
+        })();
         return {
             reset(nextTimeline, nextTrack, nextOptions, nextPalette) {
                 timeline = nextTimeline; track = nextTrack; options = nextOptions; palette = nextPalette || {};
@@ -845,7 +857,13 @@
                 encounterSides: track?.encounters.map(item => item.side) || [],
                 lyricNodes: live.size, lyricTextures: Array.from(live.values())
                 .reduce((sum, node) => sum + node.textures.length, 0) }); },
-            destroy() { clear(); plane.dispose(); box.dispose(); scene.remove(root); timeline = track = null; }
+            destroy() {
+                clear();
+                release(primer.sign);
+                primer.materials.forEach(material => material.dispose());
+                primer.map.dispose();
+                plane.dispose(); box.dispose(); scene.remove(root); timeline = track = null;
+            }
         };
     };
     global.MusicStageDioramaLyrics = Object.freeze({ create });

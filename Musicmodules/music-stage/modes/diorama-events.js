@@ -511,6 +511,9 @@
         const rings = new T.InstancedMesh(ringGeometry, ringMaterial, 12);
         rings.instanceMatrix.setUsage(T.DynamicDrawUsage);
         rings.frustumCulled = false;
+        // Each ripple has its own colour. Give the mesh its colour buffer now,
+        // so its shader is compiled with it at the warm-up and not mid-song.
+        rings.setColorAt(0, new T.Color(0, 0, 0));
         root.add(rings);
         const bodyGeometry = new T.SphereGeometry(1, 20, 14);
         // Fresnel rim light: bodies read as luminous silhouettes rather than

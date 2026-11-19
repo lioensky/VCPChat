@@ -590,6 +590,12 @@
             roll, fov, eventFocus, finale,
             // How far the saloon has to be there to be seen or passed through.
             saloon: inside ? inside.raised : 0,
+            // How much of the picture is the lit saloon itself, for the lens.
+            cabinView: inside ? inside.weight : 0,
+            // The saloon at sundown has the low sun in it; it empties as the song
+            // turns inward, and in an interlude nobody is left aboard.
+            cabinSunset: state.dusk ?? 0,
+            cabinEmpty: Math.max(state.dream ?? 0, act?.kind === 'Interlude' ? 1 : 0.6),
             scene: staged && staged.weight > 0 ? { id: staged.scene.id, kind: staged.scene.kind, weight: staged.weight } : null,
             shot: openness > 0.6 ? 'rising-traverse' : 'window-tracking',
             rig: !motion ? 'CAB' : staged && staged.weight > 0.5 ? staged.scene.kind : rig,

@@ -79,6 +79,7 @@
             const now = Date.now();
             if (now - lastContextLoss > 60000) contextRetries = 0;
             lastContextLoss = now;
+            console.warn(`[MusicStage:Diorama] WebGL context lost (retry ${contextRetries} of 3)`);
             fallbackMode = true;
             disposeGraphics();
             if (latest) renderFallback(latest);
@@ -205,7 +206,8 @@
                 && (settings.animationIntensity ?? 1) > 0;
             const swell = moving ? (timeline.accentAt?.(time) ?? 0) : 0;
             const breath = moving ? R.clamp(audio.energy) * 0.05 : 0;
-            renderer.toneMappingExposure = 1.15 * (1 + swell * 0.12 + breath);
+            // The saloon is lit from its own ceiling and sits a little lower.
+            renderer.toneMappingExposure = 1.15 * (1 + swell * 0.12 + breath) * (1 - 0.2 * (pose.cabinView || 0));
             const bars = settings.letterbox !== false && settings.geometryMode !== 'corridor'
                 ? Math.max(0, (height - width / 2.39) / 2) * (1 - pose.state.openness * 0.75) : 0;
             // Lyrics stay clear of the frame edge and of the letterbox bars.
@@ -219,8 +221,10 @@
             // By day the paper-white sky is brighter than the lens's usual
             // threshold, and its veil would wash thin dark lyric strokes pale.
             // Only what is brighter than the paper may bloom.
-            const lens = palette().light
-                ? Object.assign(dayLens, mode.config.modes?.diorama, { threshold: 1.4 }) : undefined;
+            // Inside the saloon the lens is told so: the strips carry the light there.
+            const tuned = mode.config.modes?.diorama || {};
+            const lens = Object.assign(dayLens, tuned, {
+                threshold: palette().light ? 1.4 : tuned.threshold ?? 0.82, cabin: pose.cabinView || 0 });
             if (optics) optics.render(renderer, scene, camera, settings.reducedMotion ? 0 : time, mode.config, lens);
             else renderer.render(scene, camera);
             lastTime = time;
@@ -261,6 +265,9 @@
                 events = global.MusicStageDioramaEvents.create(T, scene);
                 optics = global.MusicStageDioramaOptics?.create(T);
                 resize();
+                // The environment map has to be in place before the warm-up, or every
+                // standard material recompiles the first time it appears.
+                world.prepareEnvironment?.(renderer);
                 // The lens draws the scene offscreen; without it only the water pass does.
                 await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true });
                 if (mode.destroyed || !renderer) return;
