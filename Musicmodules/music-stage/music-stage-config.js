@@ -82,6 +82,7 @@
                 showParticles: true,
                 geometryMode: 'clouds',
                 cabinFrame: true,
+                rain: 'off',
                 glow: 1
             },
             luminous: {
@@ -133,7 +134,8 @@
                 motionAmount: 1,
                 cameraBreath: 0.5,
                 cameraShake: 1,
-                pauseDuration: 0.9,
+                pauseDuration: 0.4,
+                showTranslation: true,
                 objectDensity: 1,
                 starfield: true,
                 showPlanets: true,
@@ -217,6 +219,7 @@
             showParticles: bool(source.showParticles, fallback.showParticles),
             geometryMode: enumValue(source.geometryMode, ['clouds', 'corridor'], fallback.geometryMode),
             cabinFrame: bool(source.cabinFrame, fallback.cabinFrame),
+            rain: enumValue(source.rain, ['off', 'light', 'heavy'], fallback.rain),
             wordRotation: bool(source.wordRotation, fallback.wordRotation),
             breathing: clamp(source.breathing, 0, 2, fallback.breathing),
             wordSpacing: clamp(source.wordSpacing, 0, 2, fallback.wordSpacing),
@@ -247,7 +250,6 @@
             showShips: bool(source.showShips, fallback.showShips),
             showStations: bool(source.showStations, fallback.showStations),
             dissolveAmount: clamp(source.dissolveAmount, 0, 1, fallback.dissolveAmount),
-            textHoldRatio: clamp(source.textHoldRatio, 0, 0.8, fallback.textHoldRatio),
             audioReactivity: clamp(source.audioReactivity, 0, 2, fallback.audioReactivity),
             cameraSpeed: clamp(source.cameraSpeed, 0.55, 1.85, fallback.cameraSpeed),
             motionAmount: clamp(source.motionAmount, 0, 2, fallback.motionAmount),

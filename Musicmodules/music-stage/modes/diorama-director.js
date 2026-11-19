@@ -13,7 +13,8 @@
         Chorus: { speed: 4.2, height: 6.5, fov: 58, openness: 1, warmth: 0.45, density: 0.1 },
         Open: { speed: 3.4, height: 4.8, fov: 55, openness: 0.75, warmth: 0.4, density: 0.35 },
         Interlude: { speed: 1.5, height: 2.6, fov: 42, openness: 0.4, warmth: 0.5, density: 0.5 },
-        Terminus: { speed: 0, height: 3.6, fov: 48, openness: 0.9, warmth: 0.25, density: 0.1 }
+        // The train almost stops at the end, but a long outro never freezes the view.
+        Terminus: { speed: 0.3, height: 3.6, fov: 48, openness: 0.9, warmth: 0.25, density: 0.1 }
     });
     const upperBound = (items, time, key) => {
         let lo = 0, hi = items.length;
@@ -73,17 +74,9 @@
         lines.forEach((line, lineIndex) => {
             const glyphs = buildGlyphTimeline(line);
             const cjkLine = /[\u3040-\u30ff\u3400-\u9fff]/u.test(line.fullText);
+            const groups = [];
             let group = [];
-            const flush = () => {
-                if (!group.length) return;
-                if (group.some(g => g.text.trim())) phrases.push({
-                    id: phrases.length, lineIndex, glyphs: group,
-                    text: group.map(g => g.text).join(''),
-                    start: Math.min(...group.map(g => g.startTime)),
-                    end: Math.max(...group.map(g => g.endTime))
-                });
-                group = [];
-            };
+            const flush = () => { if (group.length) groups.push(group); group = []; };
             glyphs.forEach((glyph, i) => {
                 const previous = glyphs[i - 1];
                 const boundary = previous && (/[\s，。！？；,.!?;:：]/u.test(previous.text)
@@ -98,13 +91,42 @@
                 group.push(glyph);
             });
             flush();
+            // A fixed cut can strand one or two characters on a sign of their
+            // own. Fold a short tail back, or share the two halves evenly.
+            for (let i = groups.length - 1; cjkLine && i > 0; i--) {
+                if (groups[i].filter(g => g.text.trim()).length >= 4) continue;
+                const joined = groups[i - 1].concat(groups[i]);
+                const natural = /[\s，。！？；,.!?;:：]/u.test(groups[i - 1].at(-1).text);
+                if (joined.length <= 14) groups.splice(i - 1, 2, joined);
+                else if (!natural) {
+                    const cut = Math.ceil(joined.length / 2);
+                    groups.splice(i - 1, 2, joined.slice(0, cut), joined.slice(cut));
+                }
+            }
+            for (const glyphs of groups) {
+                if (glyphs.some(g => g.text.trim())) phrases.push({
+                    id: phrases.length, lineIndex, glyphs,
+                    text: glyphs.map(g => g.text).join(''),
+                    start: Math.min(...glyphs.map(g => g.startTime)),
+                    end: Math.max(...glyphs.map(g => g.endTime))
+                });
+            }
         });
         return phrases;
     };
 
+    const CREDIT = /^\s*(作词|作詞|作曲|编曲|編曲|词|詞|曲|填词|制作人|監製|监制|混音|和声|演唱|歌|原唱|翻唱|lyrics?|lyricist|composer|composed by|written by|arranger|arranged by|producer|vocals?)\s*[:：]/i;
+    // How long before the end of the music the arrival begins, at the latest.
+    const TERMINUS = 20;
     const compile = (input = {}) => {
-        const lines = (input.lines || []).filter(line => Number.isFinite(line.startTime))
+        const sorted = (input.lines || []).filter(line => Number.isFinite(line.startTime))
             .slice().sort((a, b) => a.startTime - b.startTime);
+        // Credit lines ahead of the first sung line (lyricist, composer...) are
+        // not sung: they would take the opening ride in the car and put a
+        // screen up for a name. They are left to the lyric panel.
+        const credit = line => CREDIT.test(String(line.fullText ?? line.text ?? ''));
+        const firstSung = sorted.findIndex(line => !credit(line));
+        const lines = firstSung > 0 ? sorted.slice(firstSung) : sorted;
         const seed = String(input.trackId || 'last-train');
         const lastEnd = lines.reduce((end, line) => Math.max(end, vocalEnd(line),
             finiteNumber(line.renderHints?.renderEndTime, 0)), 0);
@@ -130,8 +152,19 @@
                 const end = Math.min(next, Math.max(vocalEnd(line),
                     finiteNumber(line.renderHints?.renderEndTime, vocalEnd(line))));
                 push(kinds[index], line.startTime, index === lines.length - 1 || next - end > 6 ? end : next);
-                if (index === lines.length - 1) push('Terminus', end, duration);
-                else if (next - end > 6) push('Interlude', end, next);
+                if (index === lines.length - 1) {
+                    // Lyrics that stop long before the music (a short version's
+                    // words on the full track) leave the journey going: the
+                    // camera takes turns riding along and rising over the water,
+                    // and only the last stretch of the song is the arrival.
+                    let cursor = end;
+                    for (let turn = 0; duration - TERMINUS - cursor > 20; turn++) {
+                        const length = Math.min(28, duration - TERMINUS - cursor);
+                        push(turn % 2 ? 'Open' : 'Interlude', cursor, cursor + length);
+                        cursor += length;
+                    }
+                    push('Terminus', cursor, duration);
+                } else if (next - end > 6) push('Interlude', end, next);
             });
         }
         if (!acts.length) push('Open', 0, duration);
@@ -146,6 +179,18 @@
                 act.params.height += Math.min(1.5, (act.visit - 1) * 0.6);
             }
         });
+        // The ride starts as a real evening on a real line and drifts into a
+        // dream: from the second chorus, or once the words run out well before
+        // the music, or failing both a little past the middle of the song.
+        // Never in the first third.
+        const secondChorus = acts.find(act => act.kind === 'Chorus' && act.visit === 2)?.start ?? Infinity;
+        const wordsRunOut = lines.length && duration - lastEnd > 30 ? lastEnd : Infinity;
+        const dreamStart = Math.max(duration * 0.35, Math.min(secondChorus, wordsRunOut, duration * 0.6));
+        const dreamAt = time => smooth((clamp(time, 0, duration) - dreamStart + 6) / 36);
+        // And it sets out at dusk: the afterglow fades by the first chorus.
+        const firstChorus = acts.find(act => act.kind === 'Chorus')?.start ?? duration * 0.3;
+        const duskEnd = clamp(firstChorus, Math.min(25, duration * 0.5), duration * 0.4);
+        const duskAt = time => 1 - smooth(clamp(time, 0, duration) / duskEnd);
         const sample = time => {
             const t = clamp(time, 0, duration);
             const index = Math.max(0, upperBound(acts, t, 'start') - 1);
@@ -155,7 +200,7 @@
             const params = {};
             for (const key of Object.keys(act.params)) params[key] = mix(previous.params[key], act.params[key], blend);
             if (act.kind === 'Departure') params.speed *= smooth(t / Math.max(1, act.end));
-            return { ...params, act: act.kind, actIndex: index, visit: act.visit, blend };
+            return { ...params, act: act.kind, actIndex: index, visit: act.visit, blend, dream: dreamAt(t), dusk: duskAt(t) };
         };
         // Fixed offline quadrature: sample order, refresh rate and seeks cannot
         // change distance. Long recordings retain a bounded integration table.
@@ -221,7 +266,7 @@
         return {
             seed, seedHash: hashString(seed), lines, duration, acts, cuts,
             phrases: compilePhrases(lines), beats, rhythmSource, protectedIntervals,
-            sample, distanceAt, isSinging,
+            sample, distanceAt, isSinging, dreamStart, dreamAt, duskEnd,
             // Chapter accent: a one-shot swell entering each chorus / open passage.
             // Pure function of time, so seeking mid-swell reproduces the same frame.
             accentAt(time) {
@@ -249,9 +294,14 @@
     const planEncounters = (timeline, options = {}) => {
         const speed = clamp(options.cameraSpeed ?? 1, 0.55, 1.85);
         const aspect = clamp(options.aspect ?? 1.6, 0.35, 3);
+        // Where the camera is along the line at a time; the cab's schedule unless told otherwise.
+        const addressAt = options.addressAt || (time => timeline.distanceAt(time, speed));
         const horizontalFov = 2 * Math.atan(Math.tan(48 * Math.PI / 360) * aspect);
-        const lateral = 18;
-        const travelBudget = clamp(2 * lateral * Math.tan(horizontalFov * 0.6), 24, 48);
+        // Screens stand close enough to the line, and far enough ahead of where
+        // their last page ends, that reading one never turns the camera far from
+        // the way the train is going.
+        const lateral = 13;
+        const travelBudget = clamp(36 * Math.tan(horizontalFov * 0.6), 24, 48);
         const encounters = [];
         const pageEncounter = new Map();
         let current = null;
@@ -260,8 +310,8 @@
                 && !['Chorus', 'Open'].includes(timeline.sample(phrase.start).act);
         for (const phrase of timeline.phrases) {
             if (!isSign(phrase)) { current = null; continue; }
-            const startDistance = timeline.distanceAt(phrase.start, speed);
-            const endDistance = timeline.distanceAt(phrase.end, speed);
+            const startDistance = addressAt(phrase.start);
+            const endDistance = addressAt(phrase.end);
             const gap = current ? phrase.start - current.end : Infinity;
             const travelled = current ? endDistance - current.startDistance : Infinity;
             // Never split a spoken/sung phrase. Prefer an actual breath for the
@@ -285,7 +335,7 @@
         encounters.forEach((encounter, index) => {
             // Fixed roadside address. It never follows the camera. A short
             // forward bias keeps the screen ahead until its final page finishes.
-            encounter.address = encounter.endDistance + 10;
+            encounter.address = encounter.endDistance + 16;
             encounter.previewStart = Math.max(0, encounter.start - 7);
             encounter.releaseAfter = encounter.end + 12;
             const previous = encounters[index - 1];

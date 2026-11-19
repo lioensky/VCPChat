@@ -69,7 +69,17 @@
         const next = lines[index + 1];
         const nextStart = finiteNumber(next?.time, finiteNumber(next?.startTime, NaN));
         const declaredEnd = finiteNumber(line?.endTime, 0);
-        const endTime = Math.max(startTime + 0.08, declaredEnd || nextStart || startTime + 5);
+        // A timestamp-only line owns no end time. Letting it run to the next
+        // line turns every instrumental break into one very long sung line, so
+        // cap it with the same reading estimate the structured parser applies.
+        let inferredEnd = nextStart || startTime + 5;
+        if (!declaredEnd && !(Array.isArray(line?.words) && line.words.length)) {
+            const text = String(line?.fullText ?? line?.original ?? '');
+            const reading = splitGraphemes(text).length * 0.45 + 2;
+            const gap = inferredEnd - startTime;
+            if (gap > 5 && gap > reading) inferredEnd = startTime + reading;
+        }
+        const endTime = Math.max(startTime + 0.08, declaredEnd || inferredEnd);
         const words = Array.isArray(line?.words) && line.words.length
             ? line.words.map((word, wordIndex) => {
                 const wordStart = finiteNumber(word?.startTime, startTime);
@@ -205,6 +215,32 @@
         if (!app?.isPlaying) return base;
         const lastUpdate = Number(app?.lastStateUpdateTime) || now;
         return Math.max(0, base + Math.max(0, now - lastUpdate) / 1000);
+    };
+
+    // Every poll re-anchors the extrapolation with a few milliseconds of
+    // transport latency, which shows up as a small step four times a second in
+    // any continuously moving camera. Follow the polled clock through a slow
+    // filter instead, and snap only for real discontinuities.
+    const steadyClocks = new WeakMap();
+    const STEADY_CLOCK_SNAP = 0.12;
+    const STEADY_CLOCK_SECONDS = 0.6;
+    const resolveSteadyPlaybackTime = (app, now) => {
+        const raw = resolvePlaybackTime(app, now);
+        if (!app || typeof app !== 'object') return raw;
+        if (!app.isPlaying) {
+            steadyClocks.delete(app);
+            return raw;
+        }
+        const wall = now / 1000;
+        const instant = raw - wall;
+        const clock = steadyClocks.get(app);
+        if (!clock || now < clock.at || Math.abs(instant - clock.offset) > STEADY_CLOCK_SNAP) {
+            steadyClocks.set(app, { offset: instant, at: now });
+            return raw;
+        }
+        clock.offset += (instant - clock.offset) * (1 - Math.exp(-(now - clock.at) / 1000 / STEADY_CLOCK_SECONDS));
+        clock.at = now;
+        return Math.max(0, wall + clock.offset);
     };
 
     const findActiveLineIndex = (lines, playbackTime, previousIndex = -1) => {
@@ -367,7 +403,7 @@
     const createFrame = (app, now = performance.now()) => {
         const wallNow = Date.now();
         const lines = normalizeLines(app?.currentLyrics);
-        const playbackTime = resolvePlaybackTime(app, wallNow);
+        const playbackTime = resolveSteadyPlaybackTime(app, wallNow);
         const currentLineIndex = findActiveLineIndex(lines, playbackTime, app?.currentLyricIndex ?? -1);
         const activeLine = currentLineIndex >= 0 ? lines[currentLineIndex] : null;
         const lineDuration = activeLine ? Math.max(0.001, activeLine.endTime - activeLine.startTime) : 1;
@@ -554,6 +590,7 @@
         buildGlyphTimeline,
         resolveSupplementalText,
         resolvePlaybackTime,
+        resolveSteadyPlaybackTime,
         findActiveLineIndex,
         resolveWordState,
         resolveAudioBands,

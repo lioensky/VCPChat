@@ -233,3 +233,188 @@ test('finale progress is monotonic, seekable and ends facing the moon', () => {
     assert.deepEqual(plain(C.pose(timeline, track, 22)), plain(final));
     assert.equal(C.pose(timeline, track, 22, { reducedMotion: true }).finale, 0);
 });
+test('long CJK lines split into balanced signs without stray tails', () => {
+    const phrasesOf = text => D.compile({
+        lines: R.normalizeLines([{ startTime: 2, endTime: 8, fullText: text }]), trackId: 'split', duration: 20
+    }).phrases.map(phrase => phrase.text);
+    // 13 characters used to become 12 + 1.
+    assert.deepEqual(plain(phrasesOf('一二三四五六七八九十甲乙丙')), ['一二三四五六七八九十甲乙丙']);
+    // 15 characters used to become 12 + 3.
+    const halves = phrasesOf('一二三四五六七八九十甲乙丙丁戊');
+    assert.deepEqual(plain(halves), ['一二三四五六七八', '九十甲乙丙丁戊']);
+});
+
+test('the outro keeps a slow glide instead of a frozen frame', () => {
+    const timeline = D.compile({ lines, trackId: 'test', duration: 220 });
+    assert.equal(timeline.acts.at(-1).kind, 'Terminus');
+    assert.ok(timeline.distanceAt(215) - timeline.distanceAt(200) > 2);
+});
+
+test('break scenes are planned in long silences only, and the camera moves into them without a jump', () => {
+    // A long introduction, two verses, a long break, a last verse.
+    const starts = [16, 21, 26, 31, 36, 41, 80, 85, 90];
+    const song = R.normalizeLines(starts.map((start, i) => ({
+        startTime: start, endTime: start + 3.5, fullText: `第${i}句 车窗外的海`
+    })));
+    const timeline = D.compile({ lines: song, trackId: 'scenes', duration: 120 });
+    const track = C.createTrack(timeline, 1, { aspect: 1.78 });
+    assert.ok(track.scenes.length >= 2, 'the introduction and the break each get a scene');
+    assert.equal(track.scenes[0].kind, 'SALOON');
+    assert.equal(track.scenes[0].start, 0);
+    assert.ok(track.scenes.some(scene => scene.kind === 'TRACKSIDE'));
+    for (const scene of track.scenes) {
+        assert.ok(scene.end - scene.start >= 7.5 && scene.end - scene.start <= 14.5);
+        // Nobody sings during a scene, and the next line is at least five seconds off.
+        for (const busy of timeline.protectedIntervals)
+            assert.ok(busy.end <= scene.start || busy.start >= scene.end + 5 - 1e-6);
+    }
+    assert.deepEqual(plain(C.createTrack(timeline, 1, { aspect: 1.78, cameraCuts: false }).scenes), []);
+    // Inside the saloon the camera stands in the leading car, clear of its walls.
+    const saloon = track.scenes[0], middle = (saloon.start + saloon.end) / 2;
+    const inside = C.pose(timeline, track, middle, { aspect: 1.78 });
+    assert.equal(inside.rig, 'SALOON');
+    assert.ok(inside.saloon > 0.99);
+    // The lens is told when the picture is the lit saloon, and only then.
+    assert.ok(inside.cabinView > 0.99);
+    // The opening saloon is already thinning out, and keeps the low sun.
+    assert.ok(inside.cabinEmpty >= 0.6 && inside.cabinEmpty <= 1);
+    assert.ok(inside.cabinSunset > 0.5);
+    const outside = track.scenes.find(scene => scene.kind === 'TRACKSIDE');
+    assert.equal(C.pose(timeline, track, (outside.start + outside.end) / 2, { aspect: 1.78 }).cabinView, 0);
+    const back = inside.trainFront - inside.distance;
+    assert.ok(Math.abs(back + 0.4) < 1e-9, 'the train stays where the cab view left it');
+    const car = track.at(inside.distance - 8);
+    const lateral = (inside.position.x - car.position.x) * car.right.x + (inside.position.z - car.position.z) * car.right.z;
+    assert.ok(Math.abs(lateral) < 0.6 && inside.position.y > 2.3 && inside.position.y < 3.1);
+    // Beside the line the train is only let past once the camera is clear of it.
+    const beside = track.scenes.find(scene => scene.kind === 'TRACKSIDE');
+    let previous = null;
+    for (let t = 0; t <= 120; t += 1 / 60) {
+        const pose = C.pose(timeline, track, t, { aspect: 1.78 });
+        const f = track.at(pose.distance);
+        const offset = (pose.position.x - f.position.x) * f.right.x + (pose.position.z - f.position.z) * f.right.z;
+        const lead = pose.trainFront - pose.distance;
+        if (t > beside.start - 3 && t < beside.end + 3 && lead > 0.5 && lead < 53)
+            assert.ok(Math.abs(offset) > 2, `the train would run through the camera at ${t.toFixed(2)}`);
+        if (previous) {
+            const step = Math.hypot(pose.position.x - previous.position.x, pose.position.y - previous.position.y,
+                pose.position.z - previous.position.z);
+            assert.ok(step < 0.25, `camera jumps ${step.toFixed(2)} m at ${t.toFixed(2)}`);
+            // Neither the train nor the camera ever goes back down the line.
+            assert.ok(pose.trainFront >= previous.trainFront - 1e-9, `the train runs backwards at ${t.toFixed(2)}`);
+            assert.ok(pose.distance >= previous.distance - 0.02, `the camera flies backwards at ${t.toFixed(2)}`);
+            const turn = Math.abs(Math.atan2(Math.sin(pose.yaw - previous.yaw), Math.cos(pose.yaw - previous.yaw)));
+            assert.ok(turn < 0.03, `camera whips ${turn.toFixed(3)} rad at ${t.toFixed(2)}`);
+        }
+        previous = pose;
+    }
+});
+
+test('each chorus is seen from somewhere else, and the train never runs through the camera', () => {
+    // Three choruses of four lines, verses between them.
+    const chorus = i => i >= 6 && i < 10 || i >= 16 && i < 20 || i >= 26 && i < 30;
+    const song = R.normalizeLines(Array.from({ length: 32 }, (_, i) => ({
+        startTime: 6 + i * 5, endTime: 6 + i * 5 + 4, fullText: `第${i}句 沿着海岸线`, isChorus: chorus(i)
+    })));
+    const timeline = D.compile({ lines: song, trackId: 'three-choruses', duration: 175 });
+    const track = C.createTrack(timeline, 1, { aspect: 1.78 });
+    const choruses = timeline.acts.filter(act => act.kind === 'Chorus');
+    assert.equal(choruses.length, 3);
+    // Held a little before the end: before a short act the way back starts early.
+    const held = choruses.map(act => C.pose(timeline, track, act.end - 4, { aspect: 1.78 }));
+    assert.deepEqual(plain(held.map(pose => pose.chaseRig)), ['QUARTER', 'BOW', 'ALONGSIDE']);
+    const beside = pose => {
+        const f = track.at(pose.distance);
+        return (pose.position.x - f.position.x) * f.right.x + (pose.position.z - f.position.z) * f.right.z;
+    };
+    // High and to one side; out over the water ahead of the train, turned
+    // to face it; low over the water alongside.
+    assert.ok(beside(held[0]) > 6 && held[0].position.y > 6);
+    assert.ok(beside(held[1]) < -4.5 && held[1].position.y < 3);
+    // Half way through its chorus the bow rig is turned to face the train coming up behind it.
+    const facing = C.pose(timeline, track, (choruses[1].start + choruses[1].end) / 2, { aspect: 1.78 });
+    const heading = track.at(facing.distance).yaw;
+    assert.ok(facing.direction.x * Math.sin(heading) - facing.direction.z * Math.cos(heading) < -0.8,
+        'the bow rig looks back at the train');
+    assert.ok(facing.trainFront < facing.distance - 8, 'the train is behind the bow rig');
+    assert.ok(beside(held[2]) < -6 && held[2].position.y < 3);
+    assert.ok(held[2].trainFront > held[2].distance + 30);
+    // Beside the train the line on the sky is written above the gaze, clear of the windows.
+    assert.ok(held[1].sky.y > held[1].direction.y + 0.1);
+    // Even behind the train it sits a little above the gaze, over the far shore.
+    assert.ok(held[0].sky.y > held[0].direction.y + 0.05 && held[0].sky.y < held[1].sky.y);
+    let previous = null;
+    for (let t = 0; t <= 175; t += 1 / 60) {
+        const pose = C.pose(timeline, track, t, { aspect: 1.78 });
+        const lead = pose.trainFront - pose.distance;
+        // The train reaches from its nose 53 m back. Where that covers the
+        // camera, the camera is out to one side of it or up over its roof,
+        // and riding on the roof only clear of the pantograph 2.9 m back.
+        const onRoof = pose.ride && pose.position.y > 4.4 && (lead > 4 || lead < 1.8);
+        if (pose.chase > 0.01 && lead > 0.5 && lead < 53)
+            assert.ok(Math.abs(beside(pose)) > 2 || pose.position.y > 5.2 || onRoof,
+                `the train would run through the camera at ${t.toFixed(2)}`);
+        if (previous) {
+            const step = Math.hypot(pose.position.x - previous.position.x, pose.position.y - previous.position.y,
+                pose.position.z - previous.position.z);
+            assert.ok(step < 0.25, `camera jumps ${step.toFixed(2)} m at ${t.toFixed(2)}`);
+            // Neither the train nor the camera ever goes back down the line.
+            assert.ok(pose.trainFront >= previous.trainFront - 1e-9, `the train runs backwards at ${t.toFixed(2)}`);
+            assert.ok(pose.distance >= previous.distance - 0.02, `the camera flies backwards at ${t.toFixed(2)}`);
+            const turn = Math.abs(Math.atan2(Math.sin(pose.yaw - previous.yaw), Math.cos(pose.yaw - previous.yaw)));
+            assert.ok(turn < 0.03, `camera whips ${turn.toFixed(3)} rad at ${t.toFixed(2)}`);
+        }
+        previous = pose;
+    }
+});
+
+test('lyrics that stop long before the music do not end the journey early', () => {
+    // A short version's words on a full-length track: sung for 90 s of 204.
+    // Its file opens with the lyricist and the composer, which nobody sings.
+    const song = R.normalizeLines([
+        { startTime: 0, endTime: 1, fullText: '作词 : 某人' }, { startTime: 1, endTime: 7, fullText: '作曲 : 某人' },
+        ...Array.from({ length: 18 }, (_, i) => ({
+            startTime: 13 + i * 5, endTime: 13 + i * 5 + 4, fullText: `第${i}句 地图上没有的路口` }))]);
+    const timeline = D.compile({ lines: song, trackId: 'short-words', duration: 204 });
+    const terminus = timeline.acts.at(-1);
+    assert.equal(terminus.kind, 'Terminus');
+    assert.ok(terminus.start >= 204 - 40, `the arrival starts at ${terminus.start}`);
+    const after = timeline.acts.filter(act => act.start >= 101 && act.kind !== 'Terminus');
+    assert.ok(after.some(act => act.kind === 'Interlude') && after.some(act => act.kind === 'Open'));
+    // So the camera is not turned up to the moon for the rest of the song.
+    const track = C.createTrack(timeline, 1, { aspect: 1.78 });
+    assert.equal(C.pose(timeline, track, 140, { aspect: 1.78 }).finale, 0);
+    // The song still opens in the car, and goes back into it after the words run out.
+    assert.equal(timeline.acts[0].kind, 'Departure');
+    assert.equal(track.scenes[0].kind, 'SALOON');
+    assert.equal(track.scenes[0].start, 0);
+    assert.ok(track.scenes.some(scene => scene.start > 101 && scene.kind === 'SALOON'));
+});
+
+test('the ride drifts into a dream from the second chorus, or once the words run out', () => {
+    const a = D.compile({ lines, trackId: 'test', duration: 160 });
+    const second = a.acts.find(act => act.kind === 'Chorus' && act.visit === 2);
+    assert.equal(a.sample(0).dream, 0);
+    assert.equal(a.sample(160 * 0.3).dream, 0);
+    assert.ok(Math.abs(a.dreamStart - Math.max(160 * 0.35, Math.min(second.start, 160 * 0.6))) < 1e-9);
+    assert.equal(a.sample(160).dream, 1);
+    let previous = 0;
+    for (let t = 0; t <= 160; t += 0.25) {
+        const dream = a.sample(t).dream;
+        assert.ok(dream >= previous && dream - previous < 0.02, `dream jumps at ${t}`);
+        previous = dream;
+    }
+    // A short version's words on the full track: the dream begins when they stop.
+    const short = D.compile({ lines: R.normalizeLines(Array.from({ length: 18 }, (_, i) => ({
+        startTime: 13 + i * 5, endTime: 13 + i * 5 + 4, fullText: `第${i}句 地图上没有的路口` }))), trackId: 'short', duration: 204 });
+    assert.ok(Math.abs(short.dreamStart - 102) < 0.5, `dream starts at ${short.dreamStart}`);
+    assert.ok(short.sample(150).dream > 0.99);
+});
+
+test('the ride sets out at dusk and the afterglow is gone by the first chorus', () => {
+    const a = D.compile({ lines, trackId: 'test', duration: 160 });
+    const first = a.acts.find(act => act.kind === 'Chorus');
+    assert.equal(a.sample(0).dusk, 1);
+    assert.equal(a.sample(Math.min(first.start, 160 * 0.4) + 0.01).dusk, 0);
+    for (let t = 0.25; t <= 60; t += 0.25) assert.ok(a.sample(t).dusk <= a.sample(t - 0.25).dusk);
+});
