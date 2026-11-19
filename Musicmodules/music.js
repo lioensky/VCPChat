@@ -415,10 +415,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     pendingTrack.title,
                     pendingPlayback?.stageMode || 'regular'
                 );
-                await app.playRequestedTrack(pendingPlayback);
+                // 引擎要把整首歌解码完才算加载好，可能要几秒。这里不等它：
+                // 侧栏、音效设置和“窗口就绪”信号都不该被第一首歌的解码挡住。
+                app.playRequestedTrack(pendingPlayback)
+                    .catch(error => console.error('[Music] Pending playback failed:', error));
             } else if (app.playlist.length > 0) {
-                // 没有待播放曲目，按默认行为加载第一首（不自动播放）
-                await app.loadTrack(0, false);
+                // 没有待播放曲目：回到上次听的那首（找不到就第一首），不自动播放。
+                let initialIndex = 0;
+                try {
+                    const lastPath = app.normalizePathForCompare(localStorage.getItem('musicLastTrackPath'));
+                    const found = lastPath
+                        ? app.playlist.findIndex(t => app.normalizePathForCompare(t.path) === lastPath)
+                        : -1;
+                    if (found !== -1) initialIndex = found;
+                } catch (error) {}
+                app.loadTrack(initialIndex, false)
+                    .catch(error => console.error('[Music] Initial track load failed:', error));
             }
 
             await app.loadCustomPlaylists();

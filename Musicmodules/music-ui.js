@@ -101,10 +101,8 @@ function setupUI(app) {
         const playlist = app.playlistEl;
         if (!playlist || playlist.style.display === 'none') return false;
 
-        const activeItem = Array.from(playlist.children).find(
-            item => Number(item.dataset.index) === app.currentTrackIndex
-        );
-        if (!activeItem) return false;
+        const activeItem = playlist.querySelector('li.active');
+        if (!activeItem || Number(activeItem.dataset.index) !== app.currentTrackIndex) return false;
 
         // Place the active row around 1/4 of the visible list instead of directly
         // against the top edge. This leaves tolerance for restored layout/rounded

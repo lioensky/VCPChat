@@ -55,6 +55,9 @@ body.music-stage-active .music-player-container {
     opacity: 0;
     transform: scale(1.025);
     pointer-events: none;
+    /* 淡出结束后彻底不参与绘制和合成，舞台期间不再为看不见的普通界面付帧时间。 */
+    visibility: hidden;
+    transition: opacity 0.38s ease, transform 0.5s var(--stage-ease), visibility 0s linear 0.5s;
 }
 
 /* 标题栏始终是舞台唯一模式出口；进入舞台后只保留圆形切换键与窗口控制。 */
@@ -91,6 +94,8 @@ body.music-stage-active #custom-title-bar #stage-toggle-btn {
 
 body.music-stage-active #player-background {
     opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.45s ease, visibility 0s linear 0.45s;
 }
 
 #player-background {

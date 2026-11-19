@@ -28,6 +28,10 @@ function setupPlayer(app) {
     app.engineLoadProgressAt = 0;
     let controlChain = Promise.resolve();
     let wakeLoadWait = null;
+    let lastLoadSentAt = 0;
+    const RAPID_SWITCH_WINDOW_MS = 400;
+    const RAPID_SWITCH_SETTLE_MS = 180;
+    app.engineTrackPath = null;
 
     app.enqueueControl = (send) => {
         const run = () => Promise.resolve().then(send).catch(error => ({
@@ -86,6 +90,8 @@ function setupPlayer(app) {
 
     app.loadTrack = async (trackIndex, andPlay = true) => {
         const requestId = ++app.pendingLoadRequestId;
+        const skipHistory = app.skipHistoryOnce === true;
+        app.skipHistoryOnce = false;
         const loadErrorSeq = app.engineLoadErrorSeq;
         app.controlEpoch++;
         app.playIntent = andPlay === true;
@@ -111,6 +117,9 @@ function setupPlayer(app) {
         app.currentTrackIndex = trackIndex;
         const track = app.playlist[trackIndex];
         app.pendingTrackPath = track.path;
+        try { localStorage.setItem('musicLastTrackPath', track.path); } catch (error) {}
+        if (!skipHistory) app.rememberPlayed(track);
+        app.engineTrackPath = null;
         app.isTrackLoading = true;
         app.lastKnownCurrentTime = 0;
         app.lastStateUpdateTime = Date.now();
@@ -145,6 +154,15 @@ function setupPlayer(app) {
         app.progress.style.width = '0%';
         app.currentTimeEl.textContent = app.formatTime(0);
         if (track.duration > 0) app.durationEl.textContent = app.formatTime(track.duration);
+
+        // 连续快速切歌时只让引擎加载最后停下的那一首。
+        // 引擎每收到一次加载都会起一个线程把整首歌解码完，连点五次就是五首歌同时在解码。
+        const sinceLastLoad = Date.now() - lastLoadSentAt;
+        if (sinceLastLoad < RAPID_SWITCH_WINDOW_MS) {
+            await new Promise(resolve => setTimeout(resolve, RAPID_SWITCH_SETTLE_MS));
+            if (requestId !== app.pendingLoadRequestId) return;
+        }
+        lastLoadSentAt = Date.now();
 
         const result = await app.enqueueControl(() => app.api.musicLoad(track));
         if (requestId !== app.pendingLoadRequestId) return;
@@ -198,6 +216,7 @@ function setupPlayer(app) {
             if (requestId !== app.pendingLoadRequestId) return;
             app.isTrackLoading = false;
             if (outcome === 'ready') {
+                app.engineTrackPath = track.path;
                 app.publishCapsuleState();
                 if (app.playIntent) app.playTrack();
                 return;
@@ -223,6 +242,12 @@ function setupPlayer(app) {
             // 还在加载：先把按钮切过去，加载完成后按 playIntent 自动开始。
             app.applyPlayingUi(true);
             return;
+        }
+        // 当前这首并不在引擎里（上次加载失败或超时）：按播放就是重试加载，
+        // 而不是对着空的引擎发一个“播放”然后界面假装在播。
+        const current = app.playlist[app.currentTrackIndex];
+        if (current && app.engineTrackPath !== current.path) {
+            return app.loadTrack(app.currentTrackIndex, true);
         }
         const epoch = ++app.controlEpoch;
         app.isChangingState = true;
@@ -274,9 +299,35 @@ function setupPlayer(app) {
         return result;
     };
 
+    // 最近播放过的曲目，供“上一首”回退。随机播放时“上一首”应该回到刚才听的那首，
+    // 而不是总列表里排在前面的那首。
+    const playHistory = [];
+    app.rememberPlayed = (track) => {
+        if (!track || playHistory[playHistory.length - 1] === track) return;
+        playHistory.push(track);
+        if (playHistory.length > 200) playHistory.shift();
+    };
+
     app.prevTrack = () => {
-        app.currentTrackIndex = (app.currentTrackIndex - 1 + app.playlist.length) % app.playlist.length;
-        app.loadTrack(app.currentTrackIndex);
+        const activeList = app.currentFilteredTracks || app.playlist;
+        if (activeList.length === 0) return;
+        const currentTrack = app.playlist[app.currentTrackIndex];
+
+        // 先按播放历史回退（历史里的歌可能已被移出列表，跳过）。
+        if (playHistory[playHistory.length - 1] === currentTrack) playHistory.pop();
+        while (playHistory.length > 0) {
+            const index = app.playlist.indexOf(playHistory.pop());
+            if (index === -1 || index === app.currentTrackIndex) continue;
+            app.skipHistoryOnce = true;
+            app.loadTrack(index);
+            return;
+        }
+
+        // 没有历史：在当前显示的列表（搜索结果或自建歌单）里取前一首，不跳到列表之外。
+        const position = activeList.indexOf(currentTrack);
+        const previous = activeList[(Math.max(position, 0) - 1 + activeList.length) % activeList.length];
+        const index = app.playlist.indexOf(previous);
+        if (index !== -1) app.loadTrack(index);
     };
 
     app.nextTrack = () => {
@@ -426,6 +477,8 @@ function setupPlayer(app) {
             const track = app.playlist[index];
             app.pendingTrackPath = track.path;
             app.isTrackLoading = false; // gapless 切歌后后端已经加载好了，重置加载标志
+            app.engineTrackPath = track.path;
+            app.rememberPlayed(track);
             app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
             app.trackArtist.textContent = track.artist || '未知艺术家';
             app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
@@ -477,6 +530,8 @@ function setupPlayer(app) {
                     const track = app.playlist[fuzzyIndex];
                     app.pendingTrackPath = track.path;
                     app.isTrackLoading = false;
+                    app.engineTrackPath = track.path;
+                    app.rememberPlayed(track);
                     app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
                     app.trackArtist.textContent = track.artist || '未知艺术家';
                     app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';

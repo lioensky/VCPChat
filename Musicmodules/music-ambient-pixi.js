@@ -437,9 +437,30 @@
 
         app.ambientPixiController = null;
 
+        // 进舞台时不立刻销毁：重建一次要重新申请 WebGL 上下文并编译着色器，
+        // 正好卡在“退出舞台”的那一下。舞台期间它不渲染（见 updateAmbientPixi），
+        // 只有在舞台里停留较久时才真正释放，把显存让给舞台。
+        const STAGE_RELEASE_DELAY_MS = 45000;
+        let stageReleaseTimer = null;
+        const clearStageRelease = () => {
+            if (stageReleaseTimer) clearTimeout(stageReleaseTimer);
+            stageReleaseTimer = null;
+        };
+        const releaseController = () => {
+            clearStageRelease();
+            if (app.ambientPixiController) {
+                app.ambientPixiController.destroy();
+                app.ambientPixiController = null;
+            }
+        };
+
         app.createAmbientPixi = async () => {
             if (app.isStageActive) return;
-            if (app.ambientPixiController && !app.ambientPixiController.destroyed) return;
+            clearStageRelease();
+            if (app.ambientPixiController && !app.ambientPixiController.destroyed) {
+                app.ambientPixiController.resize();
+                return;
+            }
 
             const controller = new AmbientPixiController(app, container);
             app.ambientPixiController = controller;
@@ -447,10 +468,15 @@
         };
 
         app.destroyAmbientPixi = () => {
-            if (app.ambientPixiController) {
-                app.ambientPixiController.destroy();
-                app.ambientPixiController = null;
+            if (app.isStageActive && !app.destroyed && app.ambientPixiController) {
+                clearStageRelease();
+                stageReleaseTimer = setTimeout(() => {
+                    stageReleaseTimer = null;
+                    if (app.isStageActive) releaseController();
+                }, STAGE_RELEASE_DELAY_MS);
+                return;
             }
+            releaseController();
         };
 
         app.updateAmbientPixi = (dt) => {
