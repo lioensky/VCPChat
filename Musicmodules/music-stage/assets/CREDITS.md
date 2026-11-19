@@ -25,3 +25,7 @@ From https://polyhaven.com. CC0 asks for no attribution; the authors are named h
 | `ballast.webp` | Gravel Floor 02, https://polyhaven.com/a/gravel_floor_02 (1k diffuse) | Jenelle van Heerden, Dimitrios Savva | Converted to greyscale, levels stretched, reduced to 512×512, saved as WebP. |
 | `coast-rock.js` | Coast Rocks 05, https://polyhaven.com/a/coast_rocks_05 (glTF mesh) | Rob Tuytel | Reduced from 771,724 to 2,595 triangles, recentred to stand on its lowest point, positions, normals and texture coordinates quantised, stored as a script. |
 | `coast-rock.webp` | Coast Rocks 05 (1k diffuse) | Rob Tuytel | Converted to greyscale, levels stretched, reduced to 512×512, saved as WebP. |
+
+## Everything else
+
+All other geometry, textures and effects in the Diorama and Tunnel stages (the train and its interior, stations, trackside, sky, rain, water, post-processing, planets other than the textures above, and the spacecraft) are generated in code in `modes/`. No other third-party models, textures or sounds are used. Real objects were used only as visual reference for proportions; no real fleet numbers or logos appear.

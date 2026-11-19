@@ -257,6 +257,31 @@
             renderer.setRenderTarget(previous);
             probe?.dispose();
         }
+        reportPrograms(renderer);
+    };
+
+    // Shader errors are not checked per program (that waits on the GPU
+    // process every time), so look once, after the warm-up, and say which
+    // program the driver refused and why.
+    const reportPrograms = (renderer) => {
+        try {
+            const gl = renderer.getContext();
+            if (!gl || gl.isContextLost()) {
+                console.warn('[MusicStage] WebGL context lost during shader warm-up');
+                return;
+            }
+            for (const entry of renderer.info.programs || []) {
+                const program = entry.program;
+                if (!program || gl.getProgramParameter(program, gl.LINK_STATUS)) continue;
+                const shaderLog = (shader) => (shader && gl.getShaderInfoLog(shader)) || '';
+                console.error('[MusicStage] shader program failed:', entry.name || entry.type || '',
+                    '\nprogram:', gl.getProgramInfoLog(program) || '',
+                    '\nvertex:', shaderLog(entry.vertexShader),
+                    '\nfragment:', shaderLog(entry.fragmentShader));
+            }
+        } catch (error) {
+            console.warn('[MusicStage] shader check skipped:', error);
+        }
     };
 
     global.MusicStageModeUtils = Object.freeze({

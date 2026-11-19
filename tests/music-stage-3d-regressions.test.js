@@ -120,6 +120,17 @@ test('mode settings keep their own ranges', () => {
     dom.window.close();
 });
 
+test('diorama rain is off unless chosen, and only takes its three settings', () => {
+    const dom = createDom();
+    const { MusicStageConfig: Config } = loadStage(dom);
+    assert.equal(Config.get().modes.diorama.rain, 'off');
+    Config.setModePatch('diorama', { rain: 'heavy' });
+    assert.equal(Config.get().modes.diorama.rain, 'heavy');
+    Config.setModePatch('diorama', { rain: 'monsoon' });
+    assert.equal(Config.get().modes.diorama.rain, 'off');
+    dom.window.close();
+});
+
 test('diorama scenery knows when it would stand between the train and a lyric screen', () => {
     const dom = createDom();
     const { MusicStageDioramaWorld: World } = loadStage(dom, 'Musicmodules/music-stage/modes/diorama-world.js');
