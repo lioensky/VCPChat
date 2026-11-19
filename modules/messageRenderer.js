@@ -1513,6 +1513,59 @@ const TOOL_RESULT_SHOW_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" f
 const TOOL_RESULT_DELETE_ICON = TOOL_RESULT_HIDE_ICON; // 兼容旧引用
 
 /**
+ * 原地无损同步单个工具结果气泡的显隐 DOM 状态与原文哈希，
+ * 避免因调用 updateMessageContent 重绘整条消息而导致高度瞬时塌缩与视口上抬回弹。
+ */
+function syncToolResultBubbleVisibilityDom(bubble, button, updatedRawBlock, targetHidden) {
+    if (!bubble || !bubble.isConnected) return false;
+
+    const nextHash = hashStringFNV1a(updatedRawBlock);
+    bubble.dataset.vcpToolResultHash = nextHash;
+    bubble.classList.toggle('vcp-tool-result-bubble--hidden', targetHidden);
+
+    const lazyId = bubble.dataset.vcpLazyToolId;
+    if (lazyId && lazyToolContents.has(lazyId)) {
+        const entry = lazyToolContents.get(lazyId);
+        if (entry) entry.raw = updatedRawBlock;
+    }
+
+    const toggleBtn = button || bubble.querySelector('.vcp-tool-result-delete-btn, .vcp-tool-result-toggle-btn');
+    if (toggleBtn) {
+        const btnTitle = targetHidden
+            ? '当前已从上下文中隐藏（点击恢复注入）'
+            : '当前已注入上下文（点击在上下文中隐藏）';
+        toggleBtn.classList.toggle('is-hidden', targetHidden);
+        toggleBtn.dataset.vcpHidden = targetHidden ? 'true' : 'false';
+        toggleBtn.title = btnTitle;
+        toggleBtn.setAttribute('aria-label', btnTitle);
+        toggleBtn.innerHTML = targetHidden ? TOOL_RESULT_HIDE_ICON : TOOL_RESULT_SHOW_ICON;
+    }
+
+    const header = bubble.querySelector(':scope > .vcp-tool-result-header');
+    if (header && !bubble.classList.contains('vcp-tool-presented')) {
+        let badge = header.querySelector(':scope > .vcp-tool-result-hidden-badge');
+        if (targetHidden && !badge) {
+            badge = header.ownerDocument.createElement('span');
+            badge.className = 'vcp-tool-result-hidden-badge';
+            badge.title = '当前工具结果已排除，后续对话不会注入到AI上下文中';
+            badge.textContent = '已隐藏';
+            const toggleIcon = header.querySelector(':scope > .vcp-result-toggle-icon');
+            if (toggleIcon) {
+                header.insertBefore(badge, toggleIcon);
+            } else if (toggleBtn && toggleBtn.parentElement === header) {
+                header.insertBefore(badge, toggleBtn);
+            } else {
+                header.appendChild(badge);
+            }
+        } else if (!targetHidden && badge) {
+            badge.remove();
+        }
+    }
+
+    return true;
+}
+
+/**
  * 切换工具结果的显隐状态（从上下文中隐藏或恢复）。
  */
 function handleToolResultDeleteClick(button) {
@@ -1528,7 +1581,9 @@ function handleToolResultDeleteClick(button) {
         messageItem,
         Number.isInteger(ordinal) ? ordinal : -1,
         bubble.dataset.vcpToolResultHash || '',
-        targetHidden
+        targetHidden,
+        bubble,
+        button
     );
 }
 
@@ -1537,7 +1592,7 @@ function handleToolResultDeleteClick(button) {
  * 隐藏后其效果与原先垃圾桶删除一致（在发给 AI 的上下文中完全剔除，节省 Token 且不干扰对话），
  * 且具备完全无损性，用户随时可以再次点击恢复注入。
  */
-function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetHidden) {
+function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetHidden, bubbleElement = null, buttonElement = null) {
     const notify = (text, type = 'info') => mainRendererReferences.uiHelper?.showToastNotification?.(text, type);
     const messageId = messageItem?.dataset?.messageId;
     if (!messageId) return false;
@@ -1591,6 +1646,7 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
         return false;
     }
 
+    const originalContentSnapshot = JSON.stringify(message.content);
     const updatedRawBlock = setToolResultHidden(target.raw, targetHidden);
     const newText = content.slice(0, target.start) + updatedRawBlock + content.slice(target.end);
 
@@ -1598,6 +1654,7 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
         ...message,
         content: isTextObject ? { ...message.content, text: newText } : newText
     };
+    const updatedContentSnapshot = JSON.stringify(updatedMessage.content);
     history[messageIndex] = updatedMessage;
     mainRendererReferences.currentChatHistoryRef.set(history);
     messageItem._vcpMessageModel = updatedMessage;
@@ -1613,7 +1670,8 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
         }, latest => {
             const index = latest.findIndex(item => item.id === messageId);
             if (index < 0) throw new Error('消息已删除，请刷新');
-            if (JSON.stringify(latest[index].content) !== JSON.stringify(message.content)) {
+            const latestSnapshot = JSON.stringify(latest[index].content);
+            if (latestSnapshot !== originalContentSnapshot && latestSnapshot !== updatedContentSnapshot) {
                 throw new Error('消息内容已变化，请刷新后重试');
             }
             latest[index] = { ...latest[index], content: updatedMessage.content };
@@ -1623,8 +1681,12 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
             notify('工具结果状态已更新，但保存历史失败', 'error');
         });
     }
-
-    updateMessageContent(messageId, updatedMessage.content);
+    const resolvedBubble = (bubbleElement && messageItem.contains(bubbleElement))
+        ? bubbleElement
+        : messageItem.querySelector(`.vcp-tool-result-bubble[data-vcp-tool-result-index="${target.ordinal}"]`);
+    if (!syncToolResultBubbleVisibilityDom(resolvedBubble, buttonElement, updatedRawBlock, targetHidden)) {
+        updateMessageContent(messageId, updatedMessage.content);
+    }
     if (targetHidden) {
         notify('已在上下文中隐藏此工具结果（不会注入给后续AI）', 'success');
     } else {
