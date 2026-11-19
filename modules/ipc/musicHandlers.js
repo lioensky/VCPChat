@@ -197,9 +197,20 @@ function createOrFocusMusicWindow() {
 }
 
 // --- Audio Engine API Helper ---
+// 引擎卡住或已经退出时，没有超时的请求会一直挂着，渲染端的播放/暂停/加载也就永远等不到结果。
+// 状态查询是高频轮询，给短超时；分析类接口本身耗时长，单独放宽。
+function audioEngineTimeoutMs(endpoint) {
+    if (endpoint === '/state') return 3000;
+    if (/scan|loudness|load_ir|devices|configure/.test(endpoint)) return 60000;
+    return 8000;
+}
+
 async function audioEngineApi(endpoint, method = 'POST', body = null) {
     // The check for engine readiness is now handled in createOrFocusMusicWindow,
     // so we can remove the promise check from here, simplifying this function.
+    const timeoutMs = audioEngineTimeoutMs(endpoint);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
         if (!fetch) throw new Error('node-fetch module is not available yet.');
 
@@ -207,6 +218,7 @@ async function audioEngineApi(endpoint, method = 'POST', body = null) {
         const options = {
             method,
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
         };
         if (body) {
             options.body = JSON.stringify(body);
@@ -221,11 +233,16 @@ async function audioEngineApi(endpoint, method = 'POST', body = null) {
 
         return await response.json();
     } catch (error) {
+        if (error?.name === 'AbortError') {
+            error = new Error(`音频引擎 ${Math.round(timeoutMs / 1000)} 秒内没有响应（${endpoint}）`);
+        }
         console.error(`[Music] Error calling Audio Engine API endpoint '${endpoint}':`, error.message);
         if (musicWindow && !musicWindow.isDestroyed()) {
             musicWindow.webContents.send('audio-engine-error', { message: error.message });
         }
         return { status: 'error', message: error.message };
+    } finally {
+        clearTimeout(timer);
     }
 }
 

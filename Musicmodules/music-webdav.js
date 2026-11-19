@@ -133,17 +133,10 @@ function setupWebDav(app) {
         };
         if (!app.playlist.some((t) => t.path === track.path)) app.playlist.push(track);
         const idx = app.playlist.findIndex((t) => t.path === track.path);
-        await app.api.loadWebdavTrack({
-            url: entry.url,
-            serverId: app.activeWebDavServer.id,
-            trackMeta: { title: track.title, artist: track.artist, album: track.album },
-        });
-        app.currentTrackIndex = idx;
-        app.trackTitle.textContent = app.stripAudioExtension(track.title) || track.title;
-        app.trackArtist.textContent = track.artist || '未知艺术家';
-        app.trackBitrate.textContent = '';
-        app.renderPlaylist(app.currentFilteredTracks);
-        app.playTrack();
+        // 走和本地曲目相同的加载流程：引擎是异步加载的，下发加载后立刻发“播放”
+        // 会被随后的加载完成重置成停止，结果就是点了没声音。
+        // 主进程的 music-load 会按 serverId 取凭据。
+        await app.loadTrack(idx, true);
     };
 
     app.setupWebDavHandlers = () => {

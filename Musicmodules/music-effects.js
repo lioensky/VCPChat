@@ -55,7 +55,39 @@ function setupEffects(app) {
         }
     };
 
+    // 拖动滑块时每个 input 事件都会触发一次设置。各次请求走独立的连接，
+    // 到达引擎的先后没有保证，旧值可能盖掉新值；逐个排队又会在松手后还要追很久。
+    // 这里同一类设置同时只发一个请求，发送期间的新值只保留最后一个。
+    const latestSlots = new Map();
+    app.sendLatest = (key, send) => {
+        const slot = latestSlots.get(key);
+        if (slot) {
+            slot.next = send;
+            return slot.done;
+        }
+        const created = { next: null, done: null };
+        latestSlots.set(key, created);
+        created.done = (async () => {
+            let current = send;
+            let result;
+            while (current) {
+                created.next = null;
+                try {
+                    result = await current();
+                } catch (error) {
+                    result = { status: 'error', message: error?.message || String(error) };
+                }
+                current = created.next;
+            }
+            latestSlots.delete(key);
+            return result;
+        })();
+        return created.done;
+    };
+
     let eqSyncQueue = Promise.resolve();
+    let eqRequestSeq = 0;
+    let eqPending = 0;
     app.sendEqSettings = async () => {
         if (!app.api?.setMusicEq) return;
         const newBands = {};
@@ -67,9 +99,15 @@ function setupEffects(app) {
         const eqType = app.eqTypeSelect?.value;
         const firTaps = parseInt(app.firTapsSelect?.value, 10) || 1023;
         app.eqEnabled = enabled;
+        const requestSeq = ++eqRequestSeq;
+        // 没有其它请求在排队时发起的那一个一定执行，后来者之间只保留最新的。
+        const mustRun = eqPending === 0;
+        eqPending++;
         // Snapshot each gesture and serialize type/enable/bands. A slider event
         // must not duplicate an in-flight FIR rebuild or race an older type.
         const operation = eqSyncQueue.then(async () => {
+            // 排队期间又来了更新的值：中间这些不必再发，只发最后一个。
+            if (!mustRun && requestSeq !== eqRequestSeq) return { status: 'superseded' };
             if (app.api?.setMusicEqType && eqType !== undefined) {
                 if (app._syncedEqType !== eqType || app._syncedFirTaps !== firTaps) {
                     const typeResult = await app.api.setMusicEqType({ type: eqType, fir_taps: firTaps });
@@ -88,7 +126,7 @@ function setupEffects(app) {
         });
         // One rejected operation must not poison subsequent retries. The caller
         // still receives the original result/rejection, never a false success.
-        eqSyncQueue = operation.catch(() => {});
+        eqSyncQueue = operation.catch(() => {}).then(() => { eqPending--; });
         return operation;
     };
 
@@ -138,10 +176,11 @@ function setupEffects(app) {
         app.targetLufs = parseFloat(app.loudnessLufsSlider.value);
         app.loudnessPreampDb = parseFloat(app.loudnessPreampSlider.value);
 
-        await app.api.configureMusicNormalization({
+        const loudness = {
             enabled: app.loudnessEnabled, target_lufs: app.targetLufs,
             mode: app.loudnessMode, preamp_db: app.loudnessPreampDb
-        });
+        };
+        await app.sendLatest('loudness', () => app.api.configureMusicNormalization(loudness));
         const isRg = app.loudnessMode === 'replaygain_track' || app.loudnessMode === 'replaygain_album';
         if (app.replaygainSwitch.checked !== isRg) {
             app.replaygainSwitch._programmaticUpdate = true;
@@ -164,9 +203,8 @@ function setupEffects(app) {
         app.saturationType = app.saturationTypeSelect.value;
         app.saturationDrive = parseFloat(app.saturationDriveSlider.value) / 100;
         app.saturationMix = parseFloat(app.saturationMixSlider.value) / 100;
-        await app.api.setMusicSaturation({
-            enabled: app.saturationEnabled, drive: app.saturationDrive, mix: app.saturationMix
-        });
+        const saturation = { enabled: app.saturationEnabled, drive: app.saturationDrive, mix: app.saturationMix };
+        await app.sendLatest('saturation', () => app.api.setMusicSaturation(saturation));
         app.saveSettings();
     };
 
@@ -178,7 +216,8 @@ function setupEffects(app) {
         if (!app.api?.setMusicCrossfeed) return;
         app.crossfeedEnabled = app.crossfeedSwitch.checked;
         app.crossfeedMix = parseFloat(app.crossfeedMixSlider.value) / 100;
-        await app.api.setMusicCrossfeed({ enabled: app.crossfeedEnabled, mix: app.crossfeedMix });
+        const crossfeed = { enabled: app.crossfeedEnabled, mix: app.crossfeedMix };
+        await app.sendLatest('crossfeed', () => app.api.setMusicCrossfeed(crossfeed));
         app.saveSettings();
     };
 
@@ -189,9 +228,8 @@ function setupEffects(app) {
         if (!app.api?.setMusicDynamicLoudness) return;
         app.dynamicLoudnessEnabled = app.dynamicLoudnessSwitch.checked;
         app.dynamicLoudnessStrength = parseFloat(app.dynamicLoudnessStrengthSlider.value) / 100;
-        await app.api.setMusicDynamicLoudness({
-            enabled: app.dynamicLoudnessEnabled, strength: app.dynamicLoudnessStrength
-        });
+        const dynamicLoudness = { enabled: app.dynamicLoudnessEnabled, strength: app.dynamicLoudnessStrength };
+        await app.sendLatest('dynamic-loudness', () => app.api.setMusicDynamicLoudness(dynamicLoudness));
         app.saveSettings();
     };
 
