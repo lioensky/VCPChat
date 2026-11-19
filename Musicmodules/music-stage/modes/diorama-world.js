@@ -41,7 +41,7 @@
     const SIGNAL_RED = '#ff3b2f';
     // Landmarks on the far shore, as bearings round the sky. The line runs towards -z.
     const ISLE = Object.freeze({ bearing: -1.3, reach: 0.2, radius: 520, crest: 34, height: 27, tower: 0.16 });
-    const FUJI = Object.freeze({ bearing: -1.08, reach: 0.21, radius: 646, height: 62 });
+    const PEAK = Object.freeze({ bearing: -1.08, reach: 0.21, radius: 646, height: 62 });
     const create = (T, scene) => {
         const root = new T.Group();
         scene.add(root);
@@ -319,9 +319,9 @@
                 bx, -2, bz, bx, elevation(b), bz, ax, elevation(a), az);
         }
         /*
-         * The far shore is the Shonan coast. Off it lies Enoshima: a wooded
-         * table of an island, its lighthouse tower standing on top, joined to
-         * the land by a long bridge. Beyond and to the right, Mount Fuji. They
+         * The far shore is a long coastline. Off it lies a small island: a wooded
+         * table of land, its lighthouse tower standing on top, joined to
+         * the shore by a long bridge. Beyond and to the right, a snow-capped peak. They
          * are part of the same silhouette as the ridge, a tone apart: the
          * island nearer and darker, the mountain hazed and capped with snow.
          */
@@ -354,17 +354,17 @@
                 };
                 split(wide0, wide1);
             });
-        const fujiCrest = u => {
+        const peakCrest = u => {
             const flank = Math.pow(Math.max(0, 1 - Math.abs(u)), 1.75);
-            return FUJI.height * Math.min(flank, 0.93 + 0.02 * Math.sin(u * 90)) / 0.93;
+            return PEAK.height * Math.min(flank, 0.93 + 0.02 * Math.sin(u * 90)) / 0.93;
         };
-        const snowLine = u => FUJI.height * (0.62 + 0.05 * Math.sin(u * 37) + 0.03 * Math.sin(u * 83));
+        const snowLine = u => PEAK.height * (0.62 + 0.05 * Math.sin(u * 37) + 0.03 * Math.sin(u * 83));
         for (let i = 0; i < 64; i++) {
             const u0 = i / 32 - 1, u1 = (i + 1) / 32 - 1;
-            const a0 = FUJI.bearing + u0 * FUJI.reach, a1 = FUJI.bearing + u1 * FUJI.reach;
-            const h0 = fujiCrest(u0), h1 = fujiCrest(u1), s0 = Math.min(h0, snowLine(u0)), s1 = Math.min(h1, snowLine(u1));
-            facet(a0, a1, FUJI.radius, -2, s0, -2, s1, 1.22);
-            if (h0 > s0 || h1 > s1) facet(a0, a1, FUJI.radius, s0, h0, s1, h1, 2.3);
+            const a0 = PEAK.bearing + u0 * PEAK.reach, a1 = PEAK.bearing + u1 * PEAK.reach;
+            const h0 = peakCrest(u0), h1 = peakCrest(u1), s0 = Math.min(h0, snowLine(u0)), s1 = Math.min(h1, snowLine(u1));
+            facet(a0, a1, PEAK.radius, -2, s0, -2, s1, 1.22);
+            if (h0 > s0 || h1 > s1) facet(a0, a1, PEAK.radius, s0, h0, s1, h1, 2.3);
         }
         const ridgeGeometry = geometry(new T.BufferGeometry());
         ridgeGeometry.setAttribute('position', new T.Float32BufferAttribute(ridgePositions, 3));
@@ -397,7 +397,7 @@
         const headlight = new T.PointLight('#ffe9c4', 0, 16, 2);
         root.add(headlight);
         /*
-         * The train is drawn after the Enoshima Electric Railway's 300 series:
+         * The train is drawn after a classic seaside electric railcar:
          * short two-car articulated sets in a two-tone livery, a folded front
          * of three panes with a lamp on the roof, deep sash windows, one
          * lozenge pantograph to a set. From the cab it is all around the camera
@@ -2818,7 +2818,7 @@
                     }
                     if (!saving) {
                         // A torii standing alone in the shallows beyond the steps, after
-                        // the bronze one on the approach to Enoshima: round columns
+                        // a bronze shrine gate by the sea: round columns
                         // leaning in on stone footings, a tie beam run through them and
                         // wedged, a strut carrying the tablet, and a lintel that lifts
                         // towards its ends.
