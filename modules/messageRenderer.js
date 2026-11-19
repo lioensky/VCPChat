@@ -3006,6 +3006,15 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
 
     if (!isStillValid()) return;
 
+    // 新 HTML 一写入就套用工具呈现：下面渲染附件要 await，期间可能出帧，
+    // 不能让未折叠的原始工具卡片先露出来。
+    let toolsPresented = false;
+    if (typeof rawHtml === 'string') {
+        bindLazyTools(contentDiv);
+        toolPresentation?.apply(contentDiv);
+        toolsPresented = true;
+    }
+
     if (includeAttachments && message) {
         const existingAttachments = contentDiv.querySelector('.message-attachments');
         if (existingAttachments) {
@@ -3025,8 +3034,10 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
 
     if (!isStillValid()) return;
 
-    bindLazyTools(contentDiv);
-    toolPresentation?.apply(contentDiv);
+    if (!toolsPresented) {
+        bindLazyTools(contentDiv);
+        toolPresentation?.apply(contentDiv);
+    }
 
     // 原生 audio 负责媒体播放，自定义控件层负责一致的主题与交互。
     // 放在附件渲染之后，可同时覆盖 Markdown HTML 音频和消息附件音频。
@@ -3366,6 +3377,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         imageHandler.setContentAndProcessImages(contentDiv, rawHtml, message.id);
         contentDiv._vcpRenderRevision = 1;
         bindLazyTools(contentDiv);
+        // 工具卡片的折叠/分组/整轮折叠必须在首帧之前定好。历史加载会先显示基础 DOM
+        // 再做后处理；若等到后处理才套用，用户会先看到未折叠的原始卡片再收起。
+        toolPresentation?.apply(contentDiv);
 
         // [Pretext集成] 延后填充文本高度缓存，避免阻塞首屏与批量历史渲染。
         // 必须传入当前消息自己的内容节点；传聊天根会令 querySelector 始终命中
