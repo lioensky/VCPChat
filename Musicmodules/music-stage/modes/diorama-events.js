@@ -66,6 +66,10 @@
     const compile = (timeline, track, options = {}) => {
         const events = [];
         const occupied = timeline.protectedIntervals.map(i => ({ start: i.start - 2, end: i.end + 2.5 }));
+        // While the camera is inside the car or out at the waterside it is not
+        // looking down the line, so nothing is staged there for it to miss.
+        for (const scene of track.scenes || []) occupied.push({ start: scene.start - 1, end: scene.end + 1 });
+        occupied.sort((a, b) => a.start - b.start);
         const gaps = [];
         let cursor = 5;
         for (const interval of occupied) {
@@ -572,6 +576,8 @@
         root.add(splashes);
         let splashCount = 0;
         const dummy = new T.Object3D(), cold = new T.Color(), warm = new T.Color(), color = new T.Color();
+        const tint = Object.fromEntries(['#ffffff', '#fff2b8', '#d4ffff', '#e0f8ff']
+            .map(hex => [hex, new T.Color(hex)]));
         let events = [], active = null, state = null, seedId = null, samples = [];
         let dead = false;
         const parts = (kind, pose) => {
@@ -652,7 +658,7 @@
                 volumes.visible = bodyVisible && !vectorAnimal;
                 outlines.visible = vectorAnimal;
                 if (vectorAnimal) {
-                    lineMaterial.color.copy(cold).lerp(new T.Color('#ffffff'), 0.45);
+                    lineMaterial.color.copy(cold).lerp(tint['#ffffff'], 0.45);
                     lineMaterial.opacity = state.fade * 0.9;
                     drawAnimal(active, state);
                 }
@@ -793,17 +799,17 @@
                         if (burstAge >= 0 && burstAge < 0.22) {
                             color.set('#ffffff').lerp(warm, burstAge / 0.22).multiplyScalar(brightness);
                         } else if (burst === 1) {
-                            color.copy(warm).lerp(new T.Color('#fff2b8'), 0.35).multiplyScalar(brightness);
+                            color.copy(warm).lerp(tint['#fff2b8'], 0.35).multiplyScalar(brightness);
                         } else if (burst === 2) {
-                            color.copy(cold).lerp(new T.Color('#d4ffff'), 0.55).multiplyScalar(brightness);
+                            color.copy(cold).lerp(tint['#d4ffff'], 0.55).multiplyScalar(brightness);
                         } else {
                             color.copy(warm).lerp(cold, 0.4).multiplyScalar(brightness);
                         }
                     } else if (whale) {
                         if (isSpout) {
-                            color.copy(cold).lerp(new T.Color('#ffffff'), 0.72).multiplyScalar(brightness);
+                            color.copy(cold).lerp(tint['#ffffff'], 0.72).multiplyScalar(brightness);
                         } else if (isSplash) {
-                            color.copy(cold).lerp(new T.Color('#e0f8ff'), 0.52).multiplyScalar(brightness);
+                            color.copy(cold).lerp(tint['#e0f8ff'], 0.52).multiplyScalar(brightness);
                         } else {
                             color.copy(cold).lerp(warm, 0.15).multiplyScalar(brightness);
                         }
@@ -823,7 +829,7 @@
                         const glow = ripple.opacity * state.fade * (palette.light ? 0.5 : 1);
                         if (glow <= 0.001) continue;
                         splashPositions.set([ripple.x, 0.6, ripple.z], splashCount * 3);
-                        color.copy(cold).lerp(new T.Color('#e0f8ff'), 0.5).multiplyScalar(glow * 1.6);
+                        color.copy(cold).lerp(tint['#e0f8ff'], 0.5).multiplyScalar(glow * 1.6);
                         color.toArray(splashColors, splashCount * 3);
                         splashSizes[splashCount] = ripple.radius * 0.9;
                         splashCount++;
