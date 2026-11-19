@@ -4,7 +4,9 @@ import { createVcpStreamBridge } from '../chat/vcpStreamBridge.js';
 import { createMainChatStreamConsumer } from './mainChatStreamConsumer.js';
 import { isSideChatChildTopicId } from '../chat/sideChatSessionService.js';
 
-function createStreamCapabilities(root, services) {
+import { createUnsavedReplyRecovery } from './unsavedReplyRecovery.js';
+
+function createStreamCapabilities(root, services, recovery) {
     const required = ['streamProjection', 'historyPersistence', 'messageRenderer', 'getSelection', 'getTopicId'];
     for (const name of required) {
         if (!services?.[name]) throw new TypeError(`MainChatSurfaceAdapter requires stream service: ${name}`);
@@ -21,6 +23,7 @@ function createStreamCapabilities(root, services) {
             try {
                 return await services.historyPersistence.commit(projected);
             } catch (error) {
+                recovery.retain(projected, error);
                 const context = projected?.context;
                 if (context?.admissionToken && context.agentId && context.topicId) {
                     try {
@@ -123,7 +126,8 @@ function createStreamCapabilities(root, services) {
                 if (result.status === 'rejected') reportError('[MainChatSurfaceAdapter] post-commit side effect failed', result.reason);
             });
         },
-        renderError({ event, context }) {
+        renderError({ event, context, messageId }) {
+            if (event.outcome?.persistence?.error && recovery.has(context, messageId)) return;
             const selected = services.getSelection();
             const relevant = context && selected
                 && (context.groupId ? context.groupId === selected.id : context.agentId === selected.id)
@@ -181,7 +185,8 @@ export function createMainChatSurfaceAdapter({
         cancelStreamAdmissionRelay: messageId => streamServices.chatManager?.cancelStreamAdmissionRelay?.(messageId),
         cancelStreamCapability: (messageId, reason) => bridge.cancelOperation(messageId, reason),
     });
-    const streamCapabilities = createStreamCapabilities(root, streamServices);
+    const recovery = createUnsavedReplyRecovery(root, streamServices);
+    const streamCapabilities = createStreamCapabilities(root, streamServices, recovery);
     const bridge = createVcpStreamBridge({
         createConsumer: initialEvent => createMainChatStreamConsumer(initialEvent, {
             ...streamCapabilities,
@@ -229,6 +234,7 @@ export function createMainChatSurfaceAdapter({
             ownerWindow?.removeEventListener?.('beforeunload', unloadHandler);
             streamRoutes.dispose();
             await bridge.dispose();
+            recovery.dispose();
             await surface.dispose();
             await onDispose?.();
         },

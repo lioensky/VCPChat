@@ -124,7 +124,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 context,
                 error: event.outcome?.transport?.error || event.outcome?.persistence?.error || null,
             });
-            if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context });
+            if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context, messageId });
             projection?.settle?.({ event, finalized, context, messageId, streamOperationId: operationId });
             const settledEvent = event.type === 'end'
                 ? { ...event, type: event.finish_reason === 'cancelled' ? 'cancelled' : 'completed' }
