@@ -24,6 +24,10 @@ function setupLyrics(app) {
         });
     });
 
+    const lyricSearchMisses = new Map();
+    const LYRIC_MISS_TTL_MS = 10 * 60 * 1000;
+    const LYRIC_SEARCH_SETTLE_MS = 500;
+
     app.fetchAndDisplayLyrics = async (artist, title, options = {}) => {
         app.resetLyrics();
         const requestToken = app.lyricsRequestToken;
@@ -62,9 +66,19 @@ function setupLyrics(app) {
             }
             app.renderLyrics();
         } else {
+            // 这首歌刚搜过且没有结果：短时间内不再重复联网搜一遍。
+            const missKey = `${artist || ''}\u0000${normalizedTitle}`;
+            if ((lyricSearchMisses.get(missKey) || 0) > Date.now()) {
+                app.lyricsList.innerHTML = '<li class="no-lyrics">暂无歌词</li>';
+                return;
+            }
+
             // 自动下载与手动搜索严格复用同一条候选搜索、解析和写盘链路。
             // 这避免单体 fetchMusicLyrics 接口与手动候选接口出现 provider 行为差异。
             app.lyricsList.innerHTML = '<li class="no-lyrics">正在跨平台审计高精度歌词...</li>';
+            // 连续切歌时路过的歌不联网：停留片刻仍是这首才开始搜索。
+            await new Promise(resolve => setTimeout(resolve, LYRIC_SEARCH_SETTLE_MS));
+            if (requestToken !== app.lyricsRequestToken) return;
             try {
                 let fetched = null;
                 if (app.api.searchMusicLyricsCandidates && app.api.applyMusicLyricsCandidate) {
@@ -125,6 +139,7 @@ function setupLyrics(app) {
                     }
                     app.renderLyrics();
                 } else {
+                    lyricSearchMisses.set(missKey, Date.now() + LYRIC_MISS_TTL_MS);
                     app.lyricsList.innerHTML = '<li class="no-lyrics">暂无歌词</li>';
                 }
             } catch (error) {

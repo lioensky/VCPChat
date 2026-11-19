@@ -294,3 +294,48 @@ test('previous stays inside the filtered list', async t => {
     await tick(250);
     assert.equal(app.currentTrackIndex, 0);
 });
+
+function effectsApp(api) {
+    const app = { eqBands: {}, api };
+    vm.runInNewContext(
+        fs.readFileSync(path.join(__dirname, '../Musicmodules/music-effects.js'), 'utf8') + '\nsetupEffects(app);',
+        { app, document: {}, console }
+    );
+    return app;
+}
+
+test('dragging a setting slider sends one request at a time and ends on the last value', async () => {
+    const sent = [];
+    const gates = [];
+    const app = effectsApp({});
+    const send = value => app.sendLatest('volume', () => new Promise(resolve => {
+        sent.push(value);
+        gates.push(resolve);
+    }));
+    const all = [0.1, 0.2, 0.3, 0.4, 0.5].map(send);
+    await tick(5);
+    assert.deepEqual(sent, [0.1], 'only one request is in flight');
+    gates.shift()();
+    await tick(5);
+    assert.deepEqual(sent, [0.1, 0.5], 'intermediate values are dropped');
+    gates.shift()();
+    await Promise.all(all);
+    assert.deepEqual(sent, [0.1, 0.5]);
+});
+
+test('a song with no lyrics is not searched again right away, and skipped songs are not searched at all', async () => {
+    let searches = 0;
+    const app = setup({ searchMusicLyricsCandidates: async () => { searches++; return { success: true, candidates: [] }; } });
+    app.applyMusicLyricsCandidate = async () => ({ success: false });
+    app.api.applyMusicLyricsCandidate = async () => ({ success: false });
+
+    const passing = app.fetchAndDisplayLyrics('x', 'passing-by');
+    await tick(20);
+    const staying = app.fetchAndDisplayLyrics('x', 'staying');
+    await Promise.all([passing, staying]);
+    assert.equal(searches, 1, 'only the song the user stayed on is searched');
+
+    await app.fetchAndDisplayLyrics('x', 'staying');
+    assert.equal(searches, 1, 'a fresh miss is remembered');
+    assert.match(app.lyricsList.innerHTML, /暂无歌词/);
+});

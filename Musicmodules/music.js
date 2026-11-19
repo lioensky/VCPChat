@@ -684,7 +684,10 @@ document.addEventListener('DOMContentLoaded', () => {
         app.volumeSlider.oninput = (e) => {
             const val = parseFloat(e.target.value);
             app.updateVolumeSliderBackground(val);
-            app.api?.setMusicVolume?.(val);
+            if (app.api?.setMusicVolume) {
+                if (app.sendLatest) app.sendLatest('volume', () => app.api.setMusicVolume(val));
+                else app.api.setMusicVolume(val);
+            }
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
             app.saveSettings();
         };
