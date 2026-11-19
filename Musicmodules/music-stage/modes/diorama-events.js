@@ -78,6 +78,18 @@
         }
         if (cursor < timeline.duration - 1) gaps.push({ start: cursor, end: timeline.duration - 1 });
         const random = seededRandom(`${timeline.seed}:encounters`);
+        // Where the camera is along the line at a time, and when it gets to an address.
+        const addressAt = time => track.addressAt ? track.addressAt(time)
+            : timeline.distanceAt(time, options.cameraSpeed ?? 1);
+        const timeAt = address => {
+            if (track.timeAt) return track.timeAt(address);
+            let lo = 0, hi = timeline.duration;
+            for (let j = 0; j < 28; j++) {
+                const mid = (lo + hi) / 2;
+                if (addressAt(mid) < address) lo = mid; else hi = mid;
+            }
+            return (lo + hi) / 2;
+        };
         let whale = false, lastEnd = -25;
         for (const gap of gaps) {
             for (let start = Math.max(gap.start, lastEnd + 24); start < gap.end; start = lastEnd + 24) {
@@ -94,7 +106,7 @@
                 kind = 'rabbit'; duration = 8;
             }
             const side = random() > 0.5 ? 1 : -1;
-            const address = timeline.distanceAt(start + duration * 0.5, options.cameraSpeed ?? 1)
+            const address = addressAt(start + duration * 0.5)
                 + (kind === 'whale' ? 70 : kind === 'rabbit' ? 24 : 200);
             const frame = track.at(address);
             events.push({
@@ -151,20 +163,14 @@
                 y: 0, z: pose.position.z + forward.z * distance
             } };
             add(kind, start, duration, frame, smallIndex % 2 ? -1 : 1, { viewPlaced: true,
-                trackAddress: timeline.distanceAt(start + 1.4, options.cameraSpeed ?? 1) + distance });
+                trackAddress: addressAt(start + 1.4) + distance });
             smallIndex++;
         }
         if (options.narrativeStations !== false && (options.stationIntensity ?? 1) > 0) {
-            const speed = options.cameraSpeed ?? 1;
-            const total = timeline.distanceAt(timeline.duration, speed);
+            const total = addressAt(timeline.duration);
             for (let id = 0; id * 110 + 38 < total; id += 2) {
                 const address = id * 110 + 38;
-                let lo = 0, hi = timeline.duration;
-                for (let j = 0; j < 28; j++) {
-                    const mid = (lo + hi) / 2;
-                    if (timeline.distanceAt(mid, speed) < address - 23) lo = mid; else hi = mid;
-                }
-                const start = (lo + hi) / 2;
+                const start = timeAt(address - 23);
                 if (start < 2 || start + 6 > timeline.duration || !free(start, start + 6)) continue;
                 const f = track.at(address);
                 const side = id % 2 ? 1 : -1;
@@ -194,18 +200,12 @@
         }
         if (options.narrativeStations !== false && (options.stationIntensity ?? 1) > 0) {
             const spacing = 16 / clamp(options.stationIntensity ?? 1, 0.5, 2);
-            const speed = options.cameraSpeed ?? 1;
             for (let start = 10; start + 7 < timeline.duration; start += 13) {
                 if (!birdFree(start)) continue;
-                const address = Math.ceil((timeline.distanceAt(start, speed) + 18) / spacing) * spacing;
+                const address = Math.ceil((addressAt(start) + 18) / spacing) * spacing;
                 const id = Math.round(address / spacing);
                 if (id % 7 === 3) continue;
-                let lo = 0, hi = timeline.duration;
-                for (let j = 0; j < 24; j++) {
-                    const mid = (lo + hi) / 2;
-                    if (timeline.distanceAt(mid, speed) < address) lo = mid; else hi = mid;
-                }
-                if (timeline.sample((lo + hi) / 2).density < 0.4 && id % 4 !== 0) continue;
+                if (timeline.sample(timeAt(address)).density < 0.4 && id % 4 !== 0) continue;
                 const f = track.at(address);
                 const p = worldPoint({ anchor: f.position, ...f }, -3.05, 0, 6.16);
                 const view = global.MusicStageDioramaCamera.pose(timeline, track, start + 1, options);

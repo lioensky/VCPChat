@@ -12,7 +12,9 @@
     // so arc length really is metres (not a spline's arbitrary parameter).
     const createTrack = (timeline, speed = 1, options = {}) => {
         const step = 2;
-        const length = timeline.distanceAt(timeline.duration, speed) + 600;
+        const scenes = planScenes(timeline, options);
+        const path = trainPath(timeline, scenes, speed, options);
+        const length = Math.max(path.addressAt(timeline.duration), path.trainAt(timeline.duration)) + 600;
         const count = Math.ceil(length / step);
         const x = new Float64Array(count + 1), z = new Float64Array(count + 1);
         const phase = timeline.seedHash / 4294967295 * Math.PI * 2;
@@ -37,7 +39,10 @@
                 forward, right, yaw
             };
         };
-        const plan = global.MusicStageDioramaDirector.planEncounters(timeline, { ...options, cameraSpeed: speed });
+        // Screens are set out along where the camera actually goes, which is
+        // not always where the cab is.
+        const plan = global.MusicStageDioramaDirector.planEncounters(timeline,
+            { ...options, cameraSpeed: speed, addressAt: path.addressAt });
         plan.encounters.forEach(encounter => {
             const frame = at(encounter.address);
             // The first encounter is to the right; successive encounters
@@ -89,7 +94,7 @@
         const rideSides = rideSpans(timeline).map(span => ({
             entry: screenSide(span.start + ROOF.blend / 2), exit: screenSide(span.end - ROOF.blend / 2) }));
         return { at, encounters: plan.encounters, pageEncounter: plan.pageEncounter, turns, initialYaw,
-            scenes: planScenes(timeline, options), rideSides };
+            scenes, rideSides, path, addressAt: path.addressAt, timeAt: path.timeAt, trainAt: path.trainAt };
     };
     const CHASE_LATERAL = 7.5;
     const CHASE_LEAD = 66;
@@ -128,6 +133,16 @@
     };
     // Starts and stops without a jolt: no speed and no acceleration at either end.
     const ease = value => { const p = clamp(value); return p * p * p * (p * (p * 6 - 15) + 10); };
+    // A long move along the line: it gathers speed gently, keeps an even pace
+    // through the middle, and comes to rest gently, so its top speed is no more
+    // than half as much again as its average.
+    const glide = (value, edge = 0.3) => {
+        const p = clamp(value), total = 1 - edge;
+        const ramp = x => edge * (x * x * x - x * x * x * x / 2);
+        if (p < edge) return ramp(p / edge) / total;
+        if (p > 1 - edge) return 1 - ramp((1 - p) / edge) / total;
+        return (p - edge / 2) / total;
+    };
     /*
      * Leaving the cab for a high act is a crane move with an order to it. The
      * camera first lifts out to one side of the line; only when it is clear of
@@ -142,7 +157,7 @@
         // one high act straight into another it is carried across.
         const own = timeline ? chaseRig(timeline, act) : CHASE_RIGS[0];
         const before = timeline && act.index ? chaseRig(timeline, previous) : own;
-        const across = ease((t - act.start) / Math.max(0.001, Math.min(8, (act.end - act.start) * 0.8)));
+        const across = glide((t - act.start) / Math.max(0.001, Math.min(12, (act.end - act.start) * 0.8)));
         const rig = to > from || own === before ? own : to < from ? before : {
             name: across < 0.5 ? before.name : own.name, lateral: mix(before.lateral, own.lateral, across),
             lead: mix(before.lead, own.lead, across), yaw: mix(before.yaw, own.yaw, across),
@@ -151,15 +166,38 @@
         };
         const level = item => chaseAmount(item.params.height) > 0.5
             ? (timeline ? chaseRig(timeline, item) : CHASE_RIGS[0]).height ?? item.params.height : item.params.height;
-        // Going up takes its time; coming back is a little brisker, to leave a break room for a scene.
-        const p = (t - act.start) / Math.max(0.001, Math.min(to < from ? 7 : 10, (act.end - act.start) * 0.8));
+        // Coming back down to the cab: catch the train up first, slide in over
+        // the nose last. The camera has the length of the train to make up and
+        // must not outrun the eye doing it, so the way back takes its time; when
+        // the act after a high one is too short for that, it sets off before
+        // the high act is over.
+        // Behind the train it first closes in to just off the side of the
+        // roofs, up above them, out of the way of the screens either side of the
+        // line, then runs up over the train, and comes down in front of the cab.
+        const back = (p, high, low, start, lower) => {
+            const shot = high === to ? own : before;
+            if (shot.lead <= 0) return { rig: shot, out: mix(high, low, ease((p - 0.45) / 0.55)),
+                lead: mix(high, low, glide(p / 0.8)), height: mix(start, level(lower), ease((p - 0.3) / 0.7)) };
+            const narrow = Math.min(1, ROOF_SIDE / Math.max(0.01, Math.abs(shot.lateral)));
+            const over = Math.max(OVER_ROOF, start);
+            return { rig: shot, out: mix(high, low, ease((p - 0.8) / 0.15)) * mix(1, narrow, ease(p / 0.35)),
+                lead: mix(high, low, glide(p / 0.8)),
+                height: mix(mix(start, over, ease(p / 0.3)), level(lower), ease((p - 0.83) / 0.17)) };
+        };
+        const early = item => Math.max(0, RETURN - (item.end - item.start) * 0.85);
+        if (to < from) return back((t - act.start + early(act)) / RETURN, from, to, level(previous), act);
+        // Going up takes its time too.
+        const p = (t - act.start) / Math.max(0.001, Math.min(10, (act.end - act.start) * 0.8));
         const height = (a, b) => act.index ? mix(level(previous), level(act), ease((p - a) / b)) : level(act);
-        if (to > from) return { rig, out: mix(from, to, ease(p / 0.6)), lead: mix(from, to, ease((p - 0.25) / 0.75)),
-            height: height(0, 0.6) };
-        if (to < from) return { rig, out: mix(from, to, ease((p - 0.4) / 0.6)), lead: mix(from, to, ease(p / 0.7)),
-            height: height(0.3, 0.7) };
-        return { rig, out: to, lead: to, height: height(0, 0.5) };
+        const up = to > from ? { rig, out: mix(from, to, ease(p / 0.6)), lead: mix(from, to, ease((p - 0.25) / 0.75)),
+            height: height(0, 0.6) } : { rig, out: to, lead: to, height: height(0, 0.5) };
+        const next = timeline?.acts[act.index + 1];
+        const below = next ? chaseAmount(next.params.height) : to;
+        if (!next || below >= to || t < act.end - early(next)) return up;
+        const down = back((t - act.end + early(next)) / RETURN, to, below, up.height, next);
+        return { rig: up.rig, out: Math.min(up.out, down.out), lead: Math.min(up.lead, down.lead), height: down.height };
     };
+    const RETURN = 11, ROOF_SIDE = 2.6, OVER_ROOF = 5.6;
     /*
      * When nobody is singing for a while there is nothing to read, and the
      * camera can go somewhere else: back into the saloon of the leading car, or
@@ -209,7 +247,7 @@
      * Lead is how far the nose runs ahead of the camera, out how far the
      * camera stands off to the side on its way up.
      */
-    const ROOF = Object.freeze({ name: 'ROOF', lead: 13, height: 4.95, out: 2.15, pitch: -0.07, fov: 4, sky: 0.12, blend: 6 });
+    const ROOF = Object.freeze({ name: 'ROOF', lead: 13, height: 4.95, out: 2.6, pitch: -0.07, fov: 4, sky: 0.12, blend: 6 });
     const rides = new WeakMap();
     const rideSpans = timeline => {
         let spans = rides.get(timeline);
@@ -239,6 +277,16 @@
     // The saloon camera rides at seated eye level, measured back from the nose.
     const SALOON = Object.freeze({ back: 9.1, travel: 2.4, lateral: 0.11, height: 2.34, sill: 2.35 });
     const TRACKSIDE = Object.freeze({ lateral: 6.5, height: 1.5 });
+    /*
+     * Beside the line the camera goes on ahead of the train first, out to the
+     * waterside, and stands there; the train comes up behind it and runs on
+     * past into the picture; then the camera follows it along the first car
+     * and climbs back in at the front. This is how far the nose is ahead of the camera.
+     */
+    const TRACKSIDE_AHEAD = 18, TRACKSIDE_PAST = 22;
+    const passing = progress => -0.4 - (TRACKSIDE_AHEAD - 0.4) * glide(progress / 0.28)
+        + (TRACKSIDE_AHEAD + TRACKSIDE_PAST) * glide((progress - 0.28) / 0.28)
+        - (TRACKSIDE_PAST + 0.4) * glide((progress - 0.58) / 0.28);
     const sceneAt = (track, t) => {
         const scenes = track.scenes || [];
         const scene = scenes[upperBound(scenes, t + SCENE_RAISE, 'start') - 1];
@@ -267,13 +315,69 @@
         }
         return result;
     };
+    const motionOf = options => options.reducedMotion ? 0 : clamp(options.motionAmount ?? 1, 0, 2)
+        * clamp(options.animationIntensity ?? 1, 0, 2);
+    // How far the nose of the train runs ahead of the camera.
+    const leadAt = (timeline, scenes, t, motion) => {
+        if (!motion) return -0.4;
+        const state = timeline.sample(t);
+        const act = timeline.acts[state.actIndex];
+        const move = crane(act, timeline.acts[Math.max(0, state.actIndex - 1)], t, timeline);
+        const staged = sceneAt({ scenes }, t);
+        const beside = staged?.scene.kind === 'TRACKSIDE' ? staged : null;
+        const riding = rideAt(timeline, t);
+        if (beside) return passing(beside.progress);
+        return Math.max(mix(-0.4, move.rig.lead, move.lead),
+            riding > 0 ? mix(-0.4, ROOF.lead, ease((riding - 0.15) / 0.45)) : -Infinity);
+    };
+    /*
+     * The train never runs backwards and the camera never flies back down the
+     * line. When the train is to draw ahead the camera first slows, down to
+     * standing still beside the line, and only the rest is the train speeding
+     * up; when it is to be caught up the camera hurries after it, and the train
+     * gives way a little, never below a third of its speed. Both are worked out
+     * once from the song, as a schedule along the line: screens, stations and
+     * everything else that is set out for the camera use the camera's own.
+     */
+    const trainPath = (timeline, scenes, speed, options = {}) => {
+        const motion = motionOf(options);
+        const duration = timeline.duration;
+        const step = Math.max(1 / 30, duration / 120000);
+        const count = Math.max(1, Math.ceil(duration / step));
+        const train = new Float64Array(count + 1), camera = new Float64Array(count + 1);
+        let base = timeline.distanceAt(0, speed), lead = leadAt(timeline, scenes, 0, motion), ahead = 0;
+        train[0] = base - 0.4; camera[0] = train[0] - lead;
+        for (let i = 1; i <= count; i++) {
+            const t = Math.min(duration, i * step);
+            const next = timeline.distanceAt(t, speed), travel = next - base;
+            const nextLead = leadAt(timeline, scenes, t, motion), change = nextLead - lead;
+            ahead += change > 0 ? Math.max(0, change - travel) : -Math.min(-change, travel * 0.65);
+            base = next; lead = nextLead;
+            train[i] = base - 0.4 + ahead;
+            // Never behind where it was a moment ago, whatever rounding says.
+            camera[i] = Math.max(camera[i - 1], train[i] - lead);
+        }
+        const sampler = values => time => {
+            const t = clamp(time, 0, duration);
+            const i = Math.min(count - 1, Math.floor(t / step));
+            const span = Math.min(duration, (i + 1) * step) - i * step;
+            return mix(values[i], values[i + 1], clamp((t - i * step) / Math.max(1e-9, span)));
+        };
+        const addressAt = sampler(camera);
+        // When the camera reaches an address along the line.
+        const timeAt = address => {
+            let lo = 0, hi = count;
+            while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (camera[mid] < address) lo = mid; else hi = mid; }
+            const a = camera[lo], b = camera[hi];
+            return clamp(Math.min(duration, (lo + (b > a ? clamp((address - a) / (b - a)) : 0)) * step), 0, duration);
+        };
+        return { addressAt, trainAt: sampler(train), timeAt };
+    };
     const pose = (timeline, track, time, options = {}) => {
         const t = clamp(time, 0, timeline.duration);
         const state = timeline.sample(t);
-        const motion = options.reducedMotion ? 0 : clamp(options.motionAmount ?? 1, 0, 2)
-            * clamp(options.animationIntensity ?? 1, 0, 2);
+        const motion = motionOf(options);
         const distance = timeline.distanceAt(t, options.cameraSpeed ?? 1);
-        const frame = track.at(distance);
         const act = timeline.acts[state.actIndex];
         const previous = timeline.acts[Math.max(0, state.actIndex - 1)];
         const cutsEnabled = motion && options.cameraCuts !== false;
@@ -310,16 +414,21 @@
         const beside = staged?.scene.kind === 'TRACKSIDE' ? staged : null;
         // Out to the waterside, the train past, the train caught up, back in: in that order.
         const aside = beside ? ease(beside.progress / 0.25) * (1 - ease((beside.progress - 0.8) / 0.2)) : 0;
-        const passed = beside ? ease((beside.progress - 0.1) / 0.4) * (1 - ease((beside.progress - 0.55) / 0.3)) : 0;
         const rideSpan = {};
         const riding = motion ? rideAt(timeline, t, rideSpan) : 0;
         const rideSide = riding > 0 ? track.rideSides?.[rideSpan.index]?.[rideSpan.leaving ? 'exit' : 'entry'] ?? 1 : 1;
         const ride = {
             out: ease(riding / 0.3) * (1 - ease((riding - 0.7) / 0.3)),
-            lead: ease((riding - 0.2) / 0.35),
+            lead: ease((riding - 0.15) / 0.45),
             up: ease((riding - 0.45) / 0.3),
             over: ease((riding - 0.7) / 0.3)
         };
+        // The train keeps to the speed of the song whatever the camera does: it
+        // is the camera that moves along the line to frame it. Drawing the train
+        // ahead of the camera, or catching it up, never runs the train backwards.
+        const rel = leadAt(timeline, track.scenes, t, motion);
+        const trainFront = track.trainAt ? track.trainAt(t) : distance - 0.4, along = trainFront - rel;
+        const frame = track.at(along);
         if (riding > 0) move.height = mix(move.height, ROOF.height, ride.up);
         if (inside) move.height = mix(move.height, Math.max(move.height, SALOON.sill), inside.raised);
         if (beside) move.height = mix(move.height, TRACKSIDE.height, aside);
@@ -456,8 +565,8 @@
         if (inside && inside.weight > 0) {
             // Ride low in the aisle, so the leading benches frame the view.
             const w = inside.weight, side = inside.scene.side;
-            const along = distance - SALOON.back + SALOON.travel * inside.progress;
-            const car = track.at(along);
+            const seat = trainFront + 0.4 - SALOON.back + SALOON.travel * inside.progress;
+            const car = track.at(seat);
             const offset = -side * SALOON.lateral + Math.sin(t * 0.9) * 0.015;
             position.x = mix(position.x, car.position.x + car.right.x * offset, w);
             position.z = mix(position.z, car.position.z + car.right.z * offset, w);
@@ -484,11 +593,10 @@
             scene: staged && staged.weight > 0 ? { id: staged.scene.id, kind: staged.scene.kind, weight: staged.weight } : null,
             shot: openness > 0.6 ? 'rising-traverse' : 'window-tracking',
             rig: !motion ? 'CAB' : staged && staged.weight > 0.5 ? staged.scene.kind : rig,
-            encounterId, reading, distance, state, chase, chaseRig: move.out > 0.5 ? move.rig.name : null,
+            encounterId, reading, distance: along, state, chase, chaseRig: move.out > 0.5 ? move.rig.name : null,
             ride: riding > 0 ? ROOF.name : null,
             // Where the front of the train is along the line.
-            trainFront: distance + (motion ? Math.max(mix(-0.4, move.rig.lead, move.lead), riding > 0 ? mix(-0.4, ROOF.lead, ride.lead) : -Infinity,
-                mix(Math.min(-0.4, move.rig.lead * move.lead), CHASE_LEAD, passed)) : -0.4),
+            trainFront,
             look: { x: position.x + direction.x * 30, y: position.y + direction.y * 30,
                 z: position.z + direction.z * 30 }
         };

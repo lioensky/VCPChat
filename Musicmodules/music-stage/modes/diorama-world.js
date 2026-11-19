@@ -2263,7 +2263,7 @@
             waterMat.uniforms.moonTint.value.copy(light ? surface : ink).lerp(emission, 0.08);
             waterMat.uniforms.glitter.value = light ? 0.25 : 1;
             waterMat.uniforms.lampTint.value.copy(emission);
-            steel.color.copy(structure).lerp(muted, light ? 0.3 : 0.5);
+            steel.color.copy(structure).lerp(muted, light ? 0.45 : 0.5);
             concrete.color.copy(surface).lerp(border, light ? 0.2 : 0.45);
             timber.color.copy(deep).lerp(structure, 0.55).lerp(emission, 0.025);
             // Rust takes a little of the lamp colour.
@@ -2277,25 +2277,40 @@
             moonLight.color.copy(light ? surface : ink).lerp(tertiary, 0.12);
             moonColor.copy(light ? surface : ink).lerp(emission, 0.08);
             // Lamps are brighter than white, so the lens has something to spread.
-            lampMaterial.color.copy(emission).multiplyScalar(LAMP_GAIN);
+            // By day they are pale and only warm, not the theme's accent shining
+            // out of the mist: everything saturated is taken down by day, so
+            // nothing jumps out of the white.
+            const lamp = light ? emission.clone().lerp(surface, 0.6) : emission;
+            lampMaterial.color.copy(lamp).multiplyScalar(light ? 1.5 : LAMP_GAIN);
             coldLampMaterial.color.copy(luminous(secondary.clone())).multiplyScalar(1.7);
             // Paint does not shine: a marking is a little lighter than what it is painted on.
-            warmPaint.copy(emission).lerp(concrete.color, 0.4).multiplyScalar(light ? 0.8 : 0.2);
+            warmPaint.copy(emission).lerp(concrete.color, light ? 0.8 : 0.4).multiplyScalar(light ? 0.92 : 0.2);
             palePaint.copy(light ? surface : ink).lerp(concrete.color, 0.3).multiplyScalar(light ? 0.95 : 0.3);
-            lights.forEach(l => l.color.copy(emission));
+            lights.forEach(l => l.color.copy(lamp));
+            const signal = new T.Color(SIGNAL_RED);
+            if (light) signal.lerp(surface, 0.45).lerp(muted, 0.15);
+            signalLit.copy(signal).multiplyScalar(light ? 1.25 : 3.2);
+            signalDark.copy(signal).multiplyScalar(light ? 0.45 : 0.06);
+            buoyPaint.copy(signal).multiplyScalar(light ? 0.6 : 0.09);
+            glassMaterial.uniforms.shadowInk.value.set(light ? '#56585f' : '#24212a');
             // Cream window band and the deep green body learn a little of the current theme.
             const ivory = new T.Color('#eed6a1').lerp(light ? surface : ink, light ? 0.46 : 0.19);
             const green = new T.Color('#426b3f').lerp(luminous(secondary.clone()), light ? 0.26 : 0.22);
+            if (light) { const hsl = green.getHSL({}); green.setHSL(hsl.h, hsl.s * 0.5, Math.min(0.5, hsl.l * 1.15)); }
             const runningGear = new T.Color('#45443d').lerp(deep, light ? 0.08 : 0.40);
             const roof = new T.Color('#484f45').lerp(structure, 0.37);
             paintTrain(ivory, green, runningGear, roof);
             carHorizon.value.copy(light ? surface : muted).lerp(secondary, 0.3);
             carWater.value.copy(secondary).lerp(deep, 0.31);
             cabinDaylight.value = light ? 1 : 0;
+            // By day the inside of the car is lit from the windows, not by its lamps.
             glassMaterial.uniforms.warm.value.copy(emission).lerp(white, 0.18);
+            if (light) glassMaterial.uniforms.warm.value.copy(surface).lerp(lamp, 0.2);
             glassMaterial.uniforms.seat.value.copy(secondary).multiplyScalar(0.3);
+            if (light) { const hsl = glassMaterial.uniforms.seat.value.getHSL({});
+                glassMaterial.uniforms.seat.value.setHSL(hsl.h, hsl.s * 0.55, hsl.l * 1.25); }
             glassMaterial.uniforms.night.value.copy(deep).multiplyScalar(0.5);
-            endMaterial.uniforms.warm.value.copy(emission).lerp(white, 0.18);
+            endMaterial.uniforms.warm.value.copy(glassMaterial.uniforms.warm.value);
             cabinGlow.color.copy(emission);
             starMat.uniforms.tint.value.copy(light ? surface : ink).lerp(tertiary, 0.08);
             baseStarOpacity = light ? 0.15 : 0.8;
@@ -2310,13 +2325,13 @@
             wireMaterial.color.copy(border).lerp(secondary, 0.25);
             haloBase = light ? 0.35 : 1;
             frameMat.color.copy(deep).lerp(structure, 0.35).multiplyScalar(light ? 0.55 : 0.4);
-            haloMat.uniforms.color.value.copy(emission);
+            haloMat.uniforms.color.value.copy(lamp);
             palBase = {
                 light,
                 horizon: skyMat.uniforms.horizon.value.clone(),
                 night: skyMat.uniforms.night.value.clone(),
                 hemi: hemisphere.color.clone(), hemiIntensity: hemisphere.intensity,
-                lamp: emission.clone(), warm: emission.clone(), cold: tertiary.clone()
+                lamp: lamp.clone(), warm: lamp.clone(), cold: tertiary.clone()
             };
         };
         // Warmth 0..1 → bias -1 (cold, open chorus) .. +1 (warm, tightening pre-chorus).
@@ -2346,7 +2361,7 @@
             lights.forEach(l => l.color.copy(scratch));
             waterMat.uniforms.lampTint.value.copy(scratch);
             haloMat.uniforms.color.value.copy(scratch);
-            lampMaterial.color.copy(scratch).multiplyScalar(LAMP_GAIN * (1 + Math.max(0, bias) * 0.15));
+            lampMaterial.color.copy(scratch).multiplyScalar((palBase.light ? 1.5 : LAMP_GAIN) * (1 + Math.max(0, bias) * 0.15));
         };
         const update = (timeline, track, pose, time, config, audio = {}) => {
             if (dead) return;
@@ -2454,8 +2469,9 @@
                 rocks.setMatrixAt(rocks.count++, dummy.matrix);
             };
             const speed = tuning.cameraSpeed ?? 1;
-            // When the train reaches an address along the line.
+            // When the camera reaches an address along the line.
             const timeAt = address => {
+                if (track.timeAt) return track.timeAt(address);
                 let lo = 0, hi = timeline.duration;
                 for (let j = 0; j < 18; j++) {
                     const mid = (lo + hi) * 0.5;
@@ -2517,8 +2533,13 @@
                 let side = exposure(-preferred) < exposure(preferred) ? -preferred : preferred;
                 // A station takes the other side from the camera, or is not built.
                 const flownOver = towards => inTheWay(address, towards * 5.4, 5.2, 4.6, 15);
-                if (flownOver(side)) side = -side;
-                if (flownOver(side)) continue;
+                // Nor does it stand where a screen does: the screen's lower edge
+                // would go through the canopy and the name board.
+                const screened = towards => (track.encounters || []).some(item => item.side === towards
+                    && item.lateral - item.width / 2 < 11 && Math.abs(item.address - address) < 21);
+                const taken = towards => flownOver(towards) || screened(towards);
+                if (taken(side)) side = -side;
+                if (taken(side)) continue;
                 stations.push({ id, address, open: stateAt(address).density < 0.4, side });
             }
             const atStation = (address, side, margin) => stations.some(station =>

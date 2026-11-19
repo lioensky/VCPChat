@@ -293,6 +293,9 @@ test('break scenes are planned in long silences only, and the camera moves into 
             const step = Math.hypot(pose.position.x - previous.position.x, pose.position.y - previous.position.y,
                 pose.position.z - previous.position.z);
             assert.ok(step < 0.25, `camera jumps ${step.toFixed(2)} m at ${t.toFixed(2)}`);
+            // Neither the train nor the camera ever goes back down the line.
+            assert.ok(pose.trainFront >= previous.trainFront - 1e-9, `the train runs backwards at ${t.toFixed(2)}`);
+            assert.ok(pose.distance >= previous.distance - 0.02, `the camera flies backwards at ${t.toFixed(2)}`);
             const turn = Math.abs(Math.atan2(Math.sin(pose.yaw - previous.yaw), Math.cos(pose.yaw - previous.yaw)));
             assert.ok(turn < 0.03, `camera whips ${turn.toFixed(3)} rad at ${t.toFixed(2)}`);
         }
@@ -310,7 +313,8 @@ test('each chorus is seen from somewhere else, and the train never runs through 
     const track = C.createTrack(timeline, 1, { aspect: 1.78 });
     const choruses = timeline.acts.filter(act => act.kind === 'Chorus');
     assert.equal(choruses.length, 3);
-    const held = choruses.map(act => C.pose(timeline, track, act.end - 2, { aspect: 1.78 }));
+    // Held a little before the end: before a short act the way back starts early.
+    const held = choruses.map(act => C.pose(timeline, track, act.end - 4, { aspect: 1.78 }));
     assert.deepEqual(plain(held.map(pose => pose.chaseRig)), ['QUARTER', 'BOW', 'ALONGSIDE']);
     const beside = pose => {
         const f = track.at(pose.distance);
@@ -347,9 +351,35 @@ test('each chorus is seen from somewhere else, and the train never runs through 
             const step = Math.hypot(pose.position.x - previous.position.x, pose.position.y - previous.position.y,
                 pose.position.z - previous.position.z);
             assert.ok(step < 0.25, `camera jumps ${step.toFixed(2)} m at ${t.toFixed(2)}`);
+            // Neither the train nor the camera ever goes back down the line.
+            assert.ok(pose.trainFront >= previous.trainFront - 1e-9, `the train runs backwards at ${t.toFixed(2)}`);
+            assert.ok(pose.distance >= previous.distance - 0.02, `the camera flies backwards at ${t.toFixed(2)}`);
             const turn = Math.abs(Math.atan2(Math.sin(pose.yaw - previous.yaw), Math.cos(pose.yaw - previous.yaw)));
             assert.ok(turn < 0.03, `camera whips ${turn.toFixed(3)} rad at ${t.toFixed(2)}`);
         }
         previous = pose;
     }
+});
+
+test('lyrics that stop long before the music do not end the journey early', () => {
+    // A short version's words on a full-length track: sung for 90 s of 204.
+    // Its file opens with the lyricist and the composer, which nobody sings.
+    const song = R.normalizeLines([
+        { startTime: 0, endTime: 1, fullText: '作词 : 某人' }, { startTime: 1, endTime: 7, fullText: '作曲 : 某人' },
+        ...Array.from({ length: 18 }, (_, i) => ({
+            startTime: 13 + i * 5, endTime: 13 + i * 5 + 4, fullText: `第${i}句 地图上没有的路口` }))]);
+    const timeline = D.compile({ lines: song, trackId: 'short-words', duration: 204 });
+    const terminus = timeline.acts.at(-1);
+    assert.equal(terminus.kind, 'Terminus');
+    assert.ok(terminus.start >= 204 - 40, `the arrival starts at ${terminus.start}`);
+    const after = timeline.acts.filter(act => act.start >= 101 && act.kind !== 'Terminus');
+    assert.ok(after.some(act => act.kind === 'Interlude') && after.some(act => act.kind === 'Open'));
+    // So the camera is not turned up to the moon for the rest of the song.
+    const track = C.createTrack(timeline, 1, { aspect: 1.78 });
+    assert.equal(C.pose(timeline, track, 140, { aspect: 1.78 }).finale, 0);
+    // The song still opens in the car, and goes back into it after the words run out.
+    assert.equal(timeline.acts[0].kind, 'Departure');
+    assert.equal(track.scenes[0].kind, 'SALOON');
+    assert.equal(track.scenes[0].start, 0);
+    assert.ok(track.scenes.some(scene => scene.start > 101 && scene.kind === 'SALOON'));
 });
