@@ -256,3 +256,36 @@ test('idle long histories use one DOM fallback query, active runtime uses none',
     assert.equal(owner.getInterruptibleMessage().id, 'm-299');
     owner.dispose();
 });
+test('composer rail follows the visible stream, not drafts, stale bubbles or background terminals', () => {
+    const send = button();
+    const classes = new Set();
+    send.closest = () => ({ classList: {
+        toggle: (name, on) => on ? classes.add(name) : classes.delete(name),
+        remove: name => classes.delete(name),
+    } });
+    const topic = ref('A');
+    const live = new Set(['A', 'B']);
+    const owner = createMainChatSendOwner({
+        button: send, topicIdRef: topic, selectedItemRef: ref({ id: 'agent', type: 'agent' }),
+        historyRef: ref([{ id: 'stale', role: 'assistant', isThinking: true }]),
+        messagesRoot: { querySelector: () => ({ isConnected: true, classList: { contains: () => true } }) },
+        streamProjection: {
+            getActiveStreamingMessageId: () => live.has(topic.get()) ? topic.get() : null,
+            getActiveStreamingContext: () => ({ agentId: 'agent', topicId: topic.get() }),
+        },
+        hasDraft: () => true, getChatManager: () => null,
+    });
+    const check = expected => {
+        owner.update();
+        assert.equal(classes.has('has-streaming-reply'), expected);
+        assert.equal(send.dataset.mode, 'send');
+    };
+    check(true);
+    topic.set('idle'); check(false);
+    topic.set('B'); check(true);
+    live.delete('A'); check(true);
+    topic.set('A'); check(false);
+    topic.set('B'); check(true);
+    owner.dispose();
+    assert.equal(classes.size, 0);
+});
