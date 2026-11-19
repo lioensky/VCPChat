@@ -1534,7 +1534,7 @@ window.topicListManager = (() => {
         exportTopicOption.innerHTML = `<i class="fas fa-file-export"></i> 导出此话题`;
         exportTopicOption.onclick = () => {
             closeTopicContextMenu();
-            handleExportTopic(itemFullConfig.id, itemType, topic.id, topic.name);
+            handleExportTopic(targetItemId, targetItemType, targetTopicId, topic.name, itemFullConfig);
         };
         menu.appendChild(exportTopicOption);
 
@@ -1601,74 +1601,79 @@ window.topicListManager = (() => {
         }
     }
 
-    async function handleExportTopic(itemId, itemType, topicId, topicName) {
-        const currentTopicId = currentTopicIdRef.get();
-        if (topicId !== currentTopicId) {
-            uiHelper.showToastNotification('请先点击并加载此话题，然后再导出。', 'info');
-            return;
-        }
+    function plainTextFromHtmlBlock(html) {
+        // template.content is inert: never mount chat HTML or load its resources for export.
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        const root = template.content;
+        root.querySelectorAll('style, script, template, noscript, defs, [hidden]').forEach(node => node.remove());
+        root.querySelectorAll('br').forEach(node => node.replaceWith('\n'));
+        root.querySelectorAll('div, p, section, article, header, footer, h1, h2, h3, h4, h5, h6, li, tr, svg, svg text')
+            .forEach(node => { node.before('\n'); node.after('\n'); });
+        root.querySelectorAll('span, b, strong, td, th').forEach(node => node.after(' '));
+        return root.textContent.split('\n').map(line => line.trim()).filter(Boolean).join('\n');
+    }
 
-        console.log(`[TopicListManager] Exporting currently visible topic: ${topicName} (ID: ${topicId})`);
+    function cleanExportHtmlBlocks(source) {
+        const panelTag = /<(?:div|style|svg)\b/i;
+        const mediaTag = /<\/?(?:img|audio|video|picture|source|track)\b/i;
+        if (!panelTag.test(source) && !mediaTag.test(source)) return source;
+        // Only replace block HTML identified by the Markdown lexer. Slice the
+        // original so fences, inline code and link definitions stay verbatim.
+        const text = source.replace(/\r\n?/g, '\n');
+        function cleanTokens(input, tokens) {
+            let cursor = 0;
+            let copied = 0;
+            let output = '';
+            for (const token of tokens) {
+                const raw = token.raw;
+                const start = input.indexOf(raw, cursor);
+                if (start < 0) continue;
+                cursor = start + raw.length;
+                if (!panelTag.test(raw) && !mediaTag.test(raw)) continue;
 
-        try {
-            const chatMessagesDiv = document.getElementById('chatMessages');
-            if (!chatMessagesDiv) {
-                console.error('[Export Debug] chatMessagesDiv not found!');
-                uiHelper.showToastNotification('错误：找不到聊天内容容器。', 'error');
-                return;
-            }
-
-            const messageItems = chatMessagesDiv.querySelectorAll('.message-item');
-            console.log(`[Export Debug] Found ${messageItems.length} message items.`);
-            if (messageItems.length === 0) {
-                uiHelper.showToastNotification('此话题没有可见的聊天内容可导出。', 'info');
-                return;
-            }
-
-            let markdownContent = `# 话题: ${topicName}\n\n`;
-            let extractedCount = 0;
-
-            messageItems.forEach((item, index) => {
-                if (item.classList.contains('system') || item.classList.contains('thinking')) {
-                    console.log(`[Export Debug] Skipping system/thinking message at index ${index}.`);
-                    return;
-                }
-
-                const senderElement = item.querySelector('.sender-name');
-                const contentElement = item.querySelector('.md-content');
-
-                if (senderElement && contentElement) {
-                    const sender = senderElement.textContent.trim().replace(':', '');
-                    // 克隆节点，移除思维链气泡（<think> 已被渲染为 DOM 节点，innerText 会包含其文本）
-                    const contentClone = contentElement.cloneNode(true);
-                    contentClone.querySelectorAll('.vcp-thought-chain-bubble').forEach(el => el.remove());
-                    let content = contentClone.innerText || contentClone.textContent || "";
-                    // 兜底：仅清理起止标签分别独占一行的明文思维链。
-                    content = content.replace(/^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*\r?\n[\s\S]*?^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm, '');
-                    content = content.replace(/^[ \t]*<think(?:ing)?>[ \t]*\r?\n[\s\S]*?^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim, '');
-                    content = content.trim();
-
-                    if (sender && content) {
-                        markdownContent += `**${sender}**: ${content}\n\n---\n\n`;
-                        extractedCount++;
-                    } else {
-                        console.log(`[Export Debug] Skipping message at index ${index} due to empty sender or content. Sender: "${sender}", Content: "${content}"`);
-                    }
+                let replacement;
+                if (token.type === 'html' && token.block) {
+                    replacement = plainTextFromHtmlBlock(raw) + (raw.match(/\n+$/)?.[0] || '');
+                } else if (token.type === 'html' && /^<\/?(?:img|audio|video|picture|source|track)\b/i.test(raw)) {
+                    replacement = '';
+                } else if (token.tokens || token.items) {
+                    replacement = cleanTokens(raw, token.tokens || token.items);
                 } else {
-                    console.log(`[Export Debug] Skipping message at index ${index} because sender or content element was not found.`);
+                    continue;
                 }
-            });
+                output += input.slice(copied, start) + replacement;
+                copied = cursor;
+            }
+            return copied ? output + input.slice(copied) : input;
+        }
+        return cleanTokens(text, window.marked.lexer(text));
+    }
 
-            console.log(`[Export Debug] Extracted ${extractedCount} messages. Final markdown length: ${markdownContent.length}`);
+    async function handleExportTopic(itemId, itemType, topicId, topicName, config) {
+        try {
+            const history = await getHistory(itemId, itemType, topicId);
+            if (!Array.isArray(history)) throw new Error(history?.error || '无法读取话题历史');
 
-            if (extractedCount === 0) {
-                uiHelper.showToastNotification('未能从当前话题中提取任何有效对话内容。', 'warning');
+            const entries = [];
+            for (const message of history) {
+                if (!message || message.role === 'system' || message.isThinking) continue;
+                const content = cleanExportHtmlBlocks(getRawMessageContent(message))
+                    .replace(/^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*\r?\n[\s\S]*?^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm, '')
+                    .replace(/^[ \t]*<think(?:ing)?>[ \t]*\r?\n[\s\S]*?^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim, '')
+                    .trim();
+                if (!content) continue;
+                const { name } = resolveFullExportAgentInfo(message, config, itemType);
+                entries.push(`**${name}**: ${content}\n\n---\n\n`);
+            }
+            if (!entries.length) {
+                uiHelper.showToastNotification('此话题没有可导出的对话内容。', 'info');
                 return;
             }
 
             const result = await electronAPI.exportTopicAsMarkdown({
-                topicName: topicName,
-                markdownContent: markdownContent
+                topicName,
+                markdownContent: `# 话题: ${topicName}\n\n${entries.join('')}`
             });
 
             if (result.success) {
@@ -1875,6 +1880,7 @@ window.topicListManager = (() => {
         setupTopicSearch,
         syncSurfaceVisibility,
         showTopicContextMenu,
+        handleExportTopic,
         setupMouseShortcuts,
         updateTopicMessageCount,
         dispose

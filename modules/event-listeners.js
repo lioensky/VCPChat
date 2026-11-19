@@ -108,75 +108,11 @@ export function setupEventListeners(deps) {
             return;
         }
 
-        try {
-            let topicName = '未命名话题';
-            if (currentSelectedItem.config && currentSelectedItem.config.topics) {
-                const currentTopic = currentSelectedItem.config.topics.find(t => t.id === currentTopicId);
-                if (currentTopic) {
-                    topicName = currentTopic.name;
-                }
-            }
-
-            const chatMessagesDiv = document.getElementById('chatMessages');
-            if (!chatMessagesDiv) {
-                uiHelperFunctions.showToastNotification('错误：找不到聊天内容容器', 'error');
-                return;
-            }
-
-            const messageItems = chatMessagesDiv.querySelectorAll('.message-item');
-            if (messageItems.length === 0) {
-                uiHelperFunctions.showToastNotification('此话题没有可见的聊天内容可导出', 'info');
-                return;
-            }
-
-            let markdownContent = `# 话题: ${topicName}\n\n`;
-            let extractedCount = 0;
-
-            messageItems.forEach((item) => {
-                if (item.classList.contains('system') || item.classList.contains('thinking')) {
-                    return;
-                }
-
-                const senderElement = item.querySelector('.sender-name');
-                const contentElement = item.querySelector('.md-content');
-
-                if (senderElement && contentElement) {
-                    const sender = senderElement.textContent.trim().replace(':', '');
-                    // 克隆节点，移除思维链气泡后再取文本（<think> 已渲染为 DOM 节点）
-                    const contentClone = contentElement.cloneNode(true);
-                    contentClone.querySelectorAll('.vcp-thought-chain-bubble').forEach(el => el.remove());
-                    let content = contentClone.innerText || contentClone.textContent || "";
-                    // 兜底：仅清理起止标签分别独占一行的明文思维链。
-                    content = content.replace(/^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*\r?\n[\s\S]*?^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm, '');
-                    content = content.replace(/^[ \t]*<think(?:ing)?>[ \t]*\r?\n[\s\S]*?^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim, '');
-                    content = content.trim();
-
-                    if (sender && content) {
-                        markdownContent += `**${sender}**: ${content}\n\n---\n\n`;
-                        extractedCount++;
-                    }
-                }
-            });
-
-            if (extractedCount === 0) {
-                uiHelperFunctions.showToastNotification('未能从当前话题中提取任何有效对话内容', 'warning');
-                return;
-            }
-
-            const result = await chatAPI.exportTopicAsMarkdown({
-                topicName: topicName,
-                markdownContent: markdownContent
-            });
-
-            if (result.success) {
-                uiHelperFunctions.showToastNotification(`话题 "${topicName}" 已成功导出到: ${result.path}`, 'success');
-            } else {
-                uiHelperFunctions.showToastNotification(`导出话题失败: ${result.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('[快捷键] 导出话题时发生错误:', error);
-            uiHelperFunctions.showToastNotification(`导出话题时发生错误: ${error.message}`, 'error');
-        }
+        const config = currentSelectedItem.config || currentSelectedItem;
+        const topicName = config.topics?.find(topic => topic.id === currentTopicId)?.name || '未命名话题';
+        await topicListManager.handleExportTopic(
+            currentSelectedItem.id, currentSelectedItem.type, currentTopicId, topicName, config
+        );
     }
 
     /**
