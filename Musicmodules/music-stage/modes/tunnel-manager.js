@@ -950,7 +950,12 @@
                     vec3 paper = mix(uBase, uColorA, m.r * 0.3 * uNebula);
                     paper = mix(paper, uColorB, m.g * 0.22 * uNebula);
                     paper = mix(paper, uInk, m.a * 0.1 + star * 0.45);
-                    paper = mix(paper, vec3(1.0), clamp(disc + corona * 0.9, 0.0, 1.0) * 0.85);
+                    // The sun on paper: a warm bloom with a white heart, since white
+                    // alone would vanish into the page.
+                    paper = mix(paper, uColorSun, clamp(corona * 1.6, 0.0, 1.0) * 0.8);
+                    // A wide, faint radiance around it fills the page with light.
+                    paper = mix(paper, mix(uColorSun, vec3(1.0), 0.45), exp(-angle * 1.5) * 0.5);
+                    paper = mix(paper, vec3(1.0), clamp(disc, 0.0, 1.0));
 
                     vec3 background = mix(night, paper, uPaper);
                     if (lensRange < 5.1) {
@@ -1799,7 +1804,8 @@
                 uColorAccent: { value: new T.Color('#f2a900') },
                 uColorInk: { value: new T.Color('#f2f0e9') },
                 uColorEmber: { value: new T.Color('#e06c5f') },
-                uFloor: { value: new T.Color('#000000') }
+                uFloor: { value: new T.Color('#000000') },
+                uPage: { value: new T.Color('#000000') }, uPaper: { value: 0 }
             },
             vertexShader: `
                 attribute float aPart;
@@ -1821,7 +1827,8 @@
                 uniform vec3 uBounceDir;
                 uniform sampler2D uSurface, uRingMap;
                 uniform vec2 uRing, uViewport;
-                uniform vec3 uLight, uLightLocal, uColorPrimary, uColorAccent, uColorInk, uColorEmber, uFloor;
+                uniform vec3 uLight, uLightLocal, uColorPrimary, uColorAccent, uColorInk, uColorEmber, uFloor, uPage;
+                uniform float uPaper;
                 varying vec3 vLocal, vWorld, vNormal;
                 varying vec2 vUv;
                 varying float vPart, vDepth;
@@ -2188,11 +2195,19 @@
                         col = mix(col, uColorInk * (0.1 + 0.5 * lam), clamp(hem, 0.0, 1.0) * 0.8);
                         alpha = (0.9 + 0.1 * (1.0 - facing)) * fade;
                     }
-                    // On a pale backdrop the night side is a deep tone, not a hole.
-                    col += uFloor;
                     // Whatever drifts behind the reading area steps back.
                     vec2 ndc = gl_FragCoord.xy / uViewport * 2.0 - 1.0;
-                    col *= mix(0.3, 1.0, smoothstep(0.15, 0.8, length(ndc * vec2(0.8, 1.5))));
+                    float forward = smoothstep(0.15, 0.8, length(ndc * vec2(0.8, 1.5)));
+                    if (uPaper > 0.5) {
+                        // On paper a body is a wash, never darker than a soft grey:
+                        // its shade is lifted toward the page, and behind the
+                        // lyrics or far off it fades into the page instead of darkening.
+                        col = uFloor + col * (vec3(1.0) - uFloor);
+                        col = mix(col, uPage, (1.0 - forward) * 0.3);
+                        col = mix(col, uPage, smoothstep(700.0, 1700.0, vDepth) * 0.45);
+                    } else {
+                        col *= mix(0.3, 1.0, forward);
+                    }
                     col += mix(uColorAccent, uColorInk, 0.4) * front * 1.6 * uGlow;
                     gl_FragColor = vec4(col, alpha);
                     #include <tonemapping_fragment>
@@ -2320,6 +2335,7 @@
                     uLight: { value: new T.Vector3(...KEY_LIGHT) },
                     uColorPrimary: { value: new T.Color('#76bfae') }, uColorInk: { value: new T.Color('#f2f0e9') },
                     uColorAccent: { value: new T.Color('#f2a900') }, uFloor: { value: new T.Color('#000000') },
+                    uPage: { value: new T.Color('#000000') }, uPaper: { value: 0 },
                     uViewport: { value: new T.Vector2(1280, 720) }
                 },
                 vertexShader: `
@@ -2353,8 +2369,8 @@
                     }
                 `,
                 fragmentShader: `
-                    uniform float uAmount, uBelt;
-                    uniform vec3 uLight, uColorPrimary, uColorInk, uColorAccent, uFloor;
+                    uniform float uAmount, uBelt, uPaper;
+                    uniform vec3 uLight, uColorPrimary, uColorInk, uColorAccent, uFloor, uPage;
                     uniform vec2 uViewport;
                     varying vec3 vWorld, vLocal;
                     varying float vSeed, vDepth, vCycleDepth;
@@ -2381,10 +2397,17 @@
                         float pit = smoothstep(0.62, 0.7, noise(vLocal * 1.3 + vSeed * 7.0));
                         vec3 stone = mix(uColorPrimary, uColorInk, 0.55) * (0.2 + 0.14 * vSeed) * grain * (1.0 - 0.45 * pit);
                         vec3 col = stone * (mix(uColorInk, uColorAccent, 0.2) * lit * 1.5
-                            + uColorPrimary * (0.05 + 0.07 * clamp(0.5 - 0.5 * dot(n, uLight), 0.0, 1.0))) + uFloor;
+                            + uColorPrimary * (0.05 + 0.07 * clamp(0.5 - 0.5 * dot(n, uLight), 0.0, 1.0)));
+                        col = uPaper > 0.5 ? uFloor + col * (vec3(1.0) - uFloor) : col + uFloor;
                         col += uColorPrimary * uBelt * pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 2.0) * (0.035 + grain * 0.055);
                         vec2 ndc = gl_FragCoord.xy / uViewport * 2.0 - 1.0;
-                        col *= mix(0.35, 1.0, smoothstep(0.15, 0.8, length(ndc * vec2(0.8, 1.5))));
+                        float forward = smoothstep(0.15, 0.8, length(ndc * vec2(0.8, 1.5)));
+                        if (uPaper > 0.5) {
+                            col = mix(col, uPage, (1.0 - forward) * 0.3);
+                            col = mix(col, uPage, smoothstep(250.0, 800.0, vDepth) * 0.45);
+                        } else {
+                            col *= mix(0.35, 1.0, forward);
+                        }
                         gl_FragColor = vec4(col, 1.0);
                         #include <tonemapping_fragment>
                         #include <colorspace_fragment>
@@ -2960,9 +2983,18 @@
                     glyphTexture.magFilter = T.LinearFilter;
                     const uniforms = glyphMaterial.uniforms;
                     uniforms.map.value = glyphTexture;
-                    uniforms.waitMain.value.copy(colors.ink).lerp(colors.background, stagePalette.light ? 0.06 : 0.15);
-                    uniforms.sungMain.value.copy(colors.accent).lerp(colors.ink, 0.28);
-                    uniforms.sub.value.copy(colors.secondary).lerp(colors.ink, 0.48);
+                    if (stagePalette.light) {
+                        // On paper the line is written in ink: pale and waiting,
+                        // then full and deep as it is sung; the translation in a
+                        // quiet grey beneath. No colour, so nothing reads as dirt.
+                        uniforms.waitMain.value.copy(colors.ink).lerp(colors.background, 0.22);
+                        uniforms.sungMain.value.copy(colors.ink).multiplyScalar(0.8);
+                        uniforms.sub.value.copy(colors.muted).lerp(colors.ink, 0.15);
+                    } else {
+                        uniforms.waitMain.value.copy(colors.ink).lerp(colors.background, 0.15);
+                        uniforms.sungMain.value.copy(colors.accent).lerp(colors.ink, 0.28);
+                        uniforms.sub.value.copy(colors.secondary).lerp(colors.ink, 0.48);
+                    }
                     uniforms.ink.value.copy(colors.ink);
                     uniforms.outline.value.copy(colors.background);
 
@@ -2980,7 +3012,7 @@
                             // on the small row they merge into a white smear over it.
                             if (cell.isSub) return;
                             const stride = 5;
-                            const pColor = colors.accent;
+                            const pColor = stagePalette.light ? colors.ink : colors.accent;
                             const wWorld = cell.w * unit * cell.fit;
                             const hWorld = cell.h * unit;
                             for (let y = 0; y < cell.h; y += stride) {
@@ -3047,7 +3079,17 @@
         const setPalette = (palette) => {
             stagePalette = palette || {};
             const colors = parsePalette();
-            const abyssBg = colors.background.clone().multiplyScalar(0.38);
+            const luma = (c) => c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
+            const paper = luma(colors.background) > luma(colors.ink);
+            // On a light theme the sky is the page itself, not a dimmed copy of it.
+            const abyssBg = paper ? colors.background.clone().lerp(new T.Color('#ffffff'), 0.35) : colors.background.clone().multiplyScalar(0.38);
+            // A pale page cannot carry the theme's saturated accents at full
+            // strength on large shapes: on paper they are washed toward the
+            // muted tone, as watercolour is, and the page shows through.
+            const soften = (c, toMuted, toPage) => paper ? c.clone().lerp(colors.muted, toMuted).lerp(colors.background, toPage) : c.clone();
+            const washA = soften(colors.secondary, 0.3, 0.3);
+            const washB = soften(colors.accent, 0.6, 0.3);
+            const washEmber = soften(colors.ember, 0.6, 0.3);
             if (scene?.background?.copy) scene.background.copy(abyssBg);
             else if (scene) scene.background = abyssBg;
             if (scene?.fog?.color?.copy) scene.fog.color.copy(abyssBg);
@@ -3056,15 +3098,17 @@
             fieldMat.uniforms.uNebulaA.value.copy(colors.secondary);
             fieldMat.uniforms.uNebulaB.value.copy(colors.accent);
 
-            const pale = colors.background.r * 0.2126 + colors.background.g * 0.7152 + colors.background.b * 0.0722
-                > colors.ink.r * 0.2126 + colors.ink.g * 0.7152 + colors.ink.b * 0.0722;
+            const pale = paper;
             const sky = skyMat.uniforms;
             sky.uBase.value.copy(abyssBg);
-            sky.uColorA.value.copy(colors.secondary);
-            sky.uColorB.value.copy(colors.ember).lerp(colors.accent, 0.3);
+            sky.uColorA.value.copy(paper ? colors.secondary.clone().lerp(abyssBg, 0.55) : colors.secondary);
+            sky.uColorB.value.copy(paper ? colors.accent.clone().lerp(new T.Color('#ffffff'), 0.62).lerp(abyssBg, 0.3) : colors.ember.clone().lerp(colors.accent, 0.3));
             sky.uColorStar.value.copy(colors.ink).lerp(colors.muted, 0.35);
-            sky.uColorSun.value.copy(colors.accent).lerp(new T.Color('#ffffff'), 0.62);
-            sky.uInk.value.copy(colors.ink);
+            // On paper the sun's light is shown as a pale gold, since brightness alone
+            // cannot stand out from a white page.
+            if (paper) sky.uColorSun.value.set('#e3c27f');
+            else sky.uColorSun.value.copy(colors.accent).lerp(new T.Color('#ffffff'), 0.62);
+            sky.uInk.value.copy(paper ? colors.muted.clone().lerp(abyssBg, 0.3) : colors.ink);
             sky.uPaper.value = pale ? 1 : 0;
 
             filamentMat.uniforms.uColorA.value.copy(colors.secondary);
@@ -3075,32 +3119,35 @@
             streakMat.uniforms.uColorB.value.copy(colors.secondary);
 
             entityNodes.forEach((node) => {
-                node.mat.uniforms.uColorPrimary.value.copy(colors.secondary);
-                node.mat.uniforms.uColorAccent.value.copy(colors.accent);
-                node.mat.uniforms.uColorInk.value.copy(colors.ink);
-                node.mat.uniforms.uColorEmber.value.copy(colors.ember);
+                node.mat.uniforms.uColorPrimary.value.copy(washA);
+                node.mat.uniforms.uColorAccent.value.copy(washB);
+                node.mat.uniforms.uColorInk.value.copy(paper ? colors.muted.clone().lerp(abyssBg, 0.45) : colors.ink);
+                node.mat.uniforms.uColorEmber.value.copy(washEmber);
             });
             // Bodies are lit towards "ink". On a light theme ink is the dark
-            // colour, so they are lit towards paper and rest on a deep floor.
-            const luma = (c) => c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
-            const paper = luma(colors.background) > luma(colors.ink);
-            const bodyInk = paper ? colors.background.clone().lerp(new T.Color('#ffffff'), 0.6) : colors.ink;
-            const bodyFloor = paper ? colors.ink.clone().lerp(colors.secondary, 0.4).multiplyScalar(0.5) : new T.Color('#000000');
-            rockField.mat.uniforms.uColorPrimary.value.copy(colors.secondary);
-            rockField.mat.uniforms.uColorAccent.value.copy(colors.accent);
+            // colour, so they are lit towards paper, and their shade is a
+            // soft grey of the page rather than a hole in it.
+            const bodyInk = paper ? colors.background.clone().lerp(new T.Color('#ffffff'), 0.85) : colors.ink;
+            const bodyFloor = paper ? abyssBg.clone().lerp(colors.secondary, 0.12).multiplyScalar(0.42) : new T.Color('#000000');
+            rockField.mat.uniforms.uColorPrimary.value.copy(washA);
+            rockField.mat.uniforms.uColorAccent.value.copy(washB);
             rockField.mat.uniforms.uColorInk.value.copy(bodyInk);
             rockField.mat.uniforms.uFloor.value.copy(bodyFloor);
-            beltDust.mat.uniforms.uDust.value.copy(colors.secondary).lerp(bodyInk, 0.35);
-            beltDust.mat.uniforms.uGlint.value.copy(colors.accent).lerp(bodyInk, 0.24);
+            rockField.mat.uniforms.uPage.value.copy(abyssBg);
+            rockField.mat.uniforms.uPaper.value = paper ? 1 : 0;
+            beltDust.mat.uniforms.uDust.value.copy(washA).lerp(bodyInk, 0.35);
+            beltDust.mat.uniforms.uGlint.value.copy(washB).lerp(bodyInk, 0.24);
             bodyNodes.forEach((body) => body.parts.forEach(({ mat }) => {
-                mat.uniforms.uColorPrimary.value.copy(colors.secondary);
-                mat.uniforms.uColorAccent.value.copy(colors.accent);
+                mat.uniforms.uColorPrimary.value.copy(washA);
+                mat.uniforms.uColorAccent.value.copy(washB);
                 mat.uniforms.uColorInk.value.copy(bodyInk);
-                mat.uniforms.uColorEmber.value.copy(colors.ember);
+                mat.uniforms.uColorEmber.value.copy(washEmber);
                 mat.uniforms.uFloor.value.copy(bodyFloor);
+                mat.uniforms.uPage.value.copy(abyssBg);
+                mat.uniforms.uPaper.value = paper ? 1 : 0;
             }));
 
-            lyricParticleMat.uniforms.uTint.value.copy(colors.accent);
+            lyricParticleMat.uniforms.uTint.value.copy(paper ? colors.accent.clone().lerp(new T.Color('#ffffff'), 0.5) : colors.accent);
             frameArcMats.forEach((m, idx) => m.color.copy(idx === 0 ? colors.secondary : colors.accent));
             ripples.forEach((r, idx) => r.mat.color.copy(idx % 2 === 0 ? colors.secondary : colors.accent));
             glyphCacheKey = ''; // 触发当前句按新主题重绘
