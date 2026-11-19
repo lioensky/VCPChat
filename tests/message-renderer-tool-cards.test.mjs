@@ -1084,3 +1084,50 @@ test('cold message with an active text selection remains mounted until selection
         assert.equal(item.dataset.vcpDomEvicted, 'true');
     } finally { await disposeFixture(fixture); }
 });
+
+test('toggling tool result visibility updates the bubble in place without replacing the message DOM subtree', async () => {
+    const fixture = await createRendererFixture(TRANSCRIPT, { toolPresentation: 'legacy', toolExpansion: 'none' });
+    try {
+        const item = fixture.messageItem;
+        const content = item.querySelector('.md-content');
+        const firstBubble = content.querySelector('.vcp-tool-result-bubble');
+        const secondBubble = content.querySelectorAll('.vcp-tool-result-bubble')[1];
+        assert.ok(firstBubble && secondBubble);
+
+        // 先展开第二个气泡并放一个哨兵属性，验证切换第一个气泡显隐不会把整条消息重绘冲掉第二个气泡的状态
+        secondBubble.classList.add('expanded');
+        secondBubble.dataset.inPlaceSentinel = 'preserved';
+
+        const toggleBtn = firstBubble.querySelector('.vcp-tool-result-delete-btn');
+        assert.ok(toggleBtn);
+        assert.equal(toggleBtn.dataset.vcpHidden, 'false');
+
+        // 第一次点击：隐藏
+        toggleBtn.dispatchEvent(new fixture.dom.window.MouseEvent('click', { bubbles: true }));
+        assert.equal(firstBubble.isConnected, true, 'bubble node must stay connected in place');
+        assert.equal(firstBubble.classList.contains('vcp-tool-result-bubble--hidden'), true);
+        assert.equal(toggleBtn.dataset.vcpHidden, 'true');
+        assert.ok(firstBubble.querySelector('.vcp-tool-result-hidden-badge'));
+        assert.equal(secondBubble.classList.contains('expanded'), true);
+        assert.equal(secondBubble.dataset.inPlaceSentinel, 'preserved');
+
+        // 第二次点击：恢复显示（验证更新后的 FNV-1a 哈希能连续命中）
+        toggleBtn.dispatchEvent(new fixture.dom.window.MouseEvent('click', { bubbles: true }));
+        assert.equal(firstBubble.isConnected, true);
+        assert.equal(firstBubble.classList.contains('vcp-tool-result-bubble--hidden'), false);
+        assert.equal(toggleBtn.dataset.vcpHidden, 'false');
+        assert.equal(firstBubble.querySelector('.vcp-tool-result-hidden-badge'), null);
+        assert.equal(secondBubble.dataset.inPlaceSentinel, 'preserved');
+
+        // 切换到 compact 模式后点击隐藏，再切回 legacy 模式：旧式徽章应当同步出现
+        fixture.dom.window.dispatchEvent(new fixture.dom.window.CustomEvent('vcp-appearance-changed', {
+            detail: { profile: { toolPresentation: 'compact', toolExpansion: 'none' } }
+        }));
+        toggleBtn.dispatchEvent(new fixture.dom.window.MouseEvent('click', { bubbles: true }));
+        assert.equal(firstBubble.classList.contains('vcp-tool-result-bubble--hidden'), true);
+        fixture.dom.window.dispatchEvent(new fixture.dom.window.CustomEvent('vcp-appearance-changed', {
+            detail: { profile: { toolPresentation: 'legacy', toolExpansion: 'none' } }
+        }));
+        assert.ok(firstBubble.querySelector('.vcp-tool-result-hidden-badge'), 'restoring to legacy mode must keep hidden badge');
+    } finally { await disposeFixture(fixture); }
+});

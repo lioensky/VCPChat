@@ -375,3 +375,92 @@ test('clicking a control inside the message that is still streaming keeps follow
     assert.equal(fixture.geometry().scrollTop, 900);
     fixture.dom.window.close();
 });
+
+test('expanding legacy collapsible div headers in a completed message releases follow', () => {
+    const legacySelectors = [
+        '.vcp-tool-summary',
+        '.vcp-tool-result-header',
+        '.vcp-thought-chain-header',
+        '.vcp-tool-result-truncated-notice'
+    ];
+    for (const selector of legacySelectors) {
+        const fixture = createFixture();
+        const { window } = fixture;
+        const cls = selector.slice(1);
+        const chatMessages = window.document.getElementById('chatMessages');
+        chatMessages.innerHTML = `<div class="message-item assistant"><div class="md-content"><div class="${cls}">展开项</div></div></div>`;
+        assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+        chatMessages.querySelector(selector)
+            .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+        assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false, `${selector} should release follow`);
+
+        fixture.setGeometry({ scrollHeight: 1300 });
+        fixture.triggerResize();
+        fixture.flushAnimationFrames();
+        assert.equal(fixture.geometry().scrollTop, 600);
+        fixture.dom.window.close();
+    }
+});
+
+test('clicking copy or tool-hide buttons preserves follow, while HTML preview toggle releases follow', () => {
+    const fixture = createFixture();
+    const { window } = fixture;
+    const chatMessages = window.document.getElementById('chatMessages');
+    chatMessages.innerHTML = '<div class="message-item assistant"><div class="md-content">'
+        + '<div class="vcp-tool-result-header"><button type="button" class="vcp-tool-result-delete-btn">隐藏</button></div>'
+        + '<button type="button" class="vcp-code-copy-button" data-vcp-interactive="true">复制</button>'
+        + '<button type="button" class="vcp-code-copy-button vcp-code-sideview-button" data-vcp-interactive="true">副屏</button>'
+        + '<button type="button" class="vcp-html-preview-toggle" data-vcp-interactive="true">▶️ 播放</button>'
+        + '</div></div>';
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    chatMessages.querySelector('.vcp-tool-result-delete-btn')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    chatMessages.querySelector('.vcp-code-copy-button')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    chatMessages.querySelector('.vcp-code-sideview-button')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    fixture.setGeometry({ scrollHeight: 1300 });
+    fixture.triggerResize();
+    fixture.flushAnimationFrames();
+    assert.equal(fixture.geometry().scrollTop, 900, 'copy/hide buttons keep following new growth');
+
+    // 点击同样带有 data-vcp-interactive="true" 的 HTML 预览播放按钮：必须释放跟随，原地展开
+    chatMessages.querySelector('.vcp-html-preview-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+
+    fixture.setGeometry({ scrollHeight: 1600 });
+    fixture.triggerResize();
+    fixture.flushAnimationFrames();
+    assert.equal(fixture.geometry().scrollTop, 900, 'HTML preview growth stays in place');
+    fixture.dom.window.close();
+});
+test('pointerdown followed by pointerup without click on an expand control does not re-enable follow near the bottom', () => {
+    const fixture = createFixture();
+    const { window, container } = fixture;
+    const chatMessages = window.document.getElementById('chatMessages');
+    chatMessages.innerHTML = '<div class="message-item assistant"><div class="md-content">'
+        + '<button type="button" class="vcp-tool-row-toggle">读取文件 · 结果</button></div></div>';
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, true);
+
+    // 先产生一次向上滚轮使 userScrollActive 置为 true，但仍处于距底 50px 阈值内
+    container.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -8 }));
+    fixture.setGeometry({ scrollTop: 592 });
+    container.dispatchEvent(new window.Event('scroll'));
+
+    const toggle = chatMessages.querySelector('.vcp-tool-row-toggle');
+    toggle.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    container.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true }));
+    fixture.flushAnimationFrames();
+
+    assert.equal(fixture.uiHelper.captureChatScrollFollow().followBottom, false);
+    fixture.dom.window.close();
+});
