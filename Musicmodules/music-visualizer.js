@@ -344,9 +344,13 @@ function setupVisualizer(app) {
             if (app.targetVisualizerData.length === 0) {
                 if (isStageActive) {
                     app.stageHost.updateFrame(timestamp);
-                } else {
+                } else if (app.isPlaying) {
                     app.updateAmbientPixi?.(0.016);
                     app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+                } else {
+                    // 还没收到过频谱（刚打开、没播过）：同样只按低帧率画背景，画布本来就是空的不用清。
+                    app._ambientIdleFrame = ((app._ambientIdleFrame || 0) + 1) % 5;
+                    if (app._ambientIdleFrame === 0) app.updateAmbientPixi?.(0.08);
                 }
                 app.animationFrameId = requestAnimationFrame(draw);
                 return;
@@ -355,7 +359,9 @@ function setupVisualizer(app) {
             // 暂停后让频谱自然落回零，落稳之后不再每帧重画同一幅画面。
             const paused = !app.isPlaying;
             if (paused && app._visualizerIdle && !isStageActive) {
-                app.updateAmbientPixi?.(0.016);
+                // 暂停后背景只剩很慢的“呼吸”，每秒画十来次就够，不必让显卡按满帧重画整窗。
+                app._ambientIdleFrame = ((app._ambientIdleFrame || 0) + 1) % 5;
+                if (app._ambientIdleFrame === 0) app.updateAmbientPixi?.(0.08);
                 app.animationFrameId = requestAnimationFrame(draw);
                 return;
             }
