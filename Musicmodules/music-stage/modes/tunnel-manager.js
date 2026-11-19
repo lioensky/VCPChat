@@ -34,6 +34,8 @@
     const unit = (v) => { const length = Math.hypot(...v); return v.map((n) => n / length); };
     const KEY_LIGHT = unit([-0.78, 0.44, 0.26]);
     const SUN_AT = unit([-0.5, 0.26, -0.83]);
+    // What a body is made as: the surface kinds a planet can be given.
+    const WORLD = { gas: 0, moon: 1, ice: 2, volcanic: 3, home: 4, desert: 5, iceGiant: 6, asteroid: 7 };
     // The galaxy's plane, tilted across the upper part of the view, and its bright middle.
     const GALAXY_POLE = unit([0.18, 0.93, 0.33]);
     const GALAXY_CORE = unit([0.75, 0.21, -1]);
@@ -304,16 +306,20 @@
         //   - 'planet'  -> 幽暗晨昏线气态巨行星與极光磁层 (Abyssal Terminator Planet)
         //   - 'ship'    -> 远航张拉星帆孤舟群与离子弦尾迹 (Nomad Solar-Sail Monolith)
         const ENCOUNTER_CYCLE = 2400;
+        // Home is drawn at this many times a planet's size, its surface a little below the route.
+        const HOME_SIZE = 12, HOME_DEPTH = 26 * 1.25 * 12 + 30;
         // Each station keeps close company with a planet: it comes up small
         // against the disc, then passes near the camera.
+        // A slot is a different world each time round, so no planet is met
+        // twice: the planets and ringed bodies list theirs in order.
         const encounterSlots = [
             { slotId: 0, type: 'station', baseS: 792,  side:  1, radial: 21, elev: 7,   scale: 0.58, rotSpeed: 0.05, tilt: [0.42, 0.18, -0.28], p: 3, q: 5 },
-            { slotId: 1, type: 'planet',  baseS: 860,  side:  1, radial: 56, elev: 18,  scale: 1.25, rotSpeed: 0.05, tilt: [0.22, -0.12, 0.16], p: 2, q: 3 },
-            { slotId: 2, type: 'rings',   baseS: 1160, side: -1, radial: 50, elev: -12, scale: 1.32, rotSpeed: 0.09, tilt: [0.68, 0.24, 0], p: 2, q: 5 },
+            { slotId: 1, type: 'planet',  baseS: 860,  side:  1, radial: 56, elev: 18,  scale: 1.25, rotSpeed: 0.05, tilt: [0.22, -0.12, 0.16], p: 2, q: 3, worlds: [WORLD.moon, WORLD.volcanic, WORLD.ice] },
+            { slotId: 2, type: 'rings',   baseS: 1160, side: -1, radial: 50, elev: -12, scale: 1.32, rotSpeed: 0.09, tilt: [0.68, 0.24, 0], p: 2, q: 5, worlds: [WORLD.gas, WORLD.ice, WORLD.moon] },
             { slotId: 3, type: 'ship',    baseS: 1460, side:  1, radial: 58, elev: -9,  scale: 1.10, rotSpeed: 0.04, tilt: [-0.08, 0.14, -0.12], p: 3, q: 4 },
             { slotId: 4, type: 'station', baseS: 1985, side: -1, radial: 23, elev: -5,  scale: 0.62, rotSpeed: -0.05, tilt: [-0.52, 0.31, 0.22], p: 4, q: 7 },
-            { slotId: 5, type: 'planet',  baseS: 2060, side: -1, radial: 60, elev: -16, scale: 1.18, rotSpeed: 0.06, tilt: [0.31, 0.15, -0.24], p: 3, q: 5 },
-            { slotId: 6, type: 'rings',   baseS: 2360, side:  1, radial: 46, elev: 12,  scale: 1.22, rotSpeed: -0.08, tilt: [-0.62, -0.20, 0.29], p: 5, q: 8 },
+            { slotId: 5, type: 'planet',  baseS: 2060, side: -1, radial: 60, elev: -16, scale: 1.18, rotSpeed: 0.06, tilt: [0.31, 0.15, -0.24], p: 3, q: 5, worlds: [WORLD.desert, WORLD.iceGiant, WORLD.moon] },
+            { slotId: 6, type: 'rings',   baseS: 2360, side:  1, radial: 46, elev: 12,  scale: 1.22, rotSpeed: -0.08, tilt: [-0.62, -0.20, 0.29], p: 5, q: 8, worlds: [WORLD.iceGiant, WORLD.asteroid, WORLD.desert] },
             { slotId: 7, type: 'ship',    baseS: 2660, side: -1, radial: 25, elev: 5,   scale: 0.66, rotSpeed: 0.012, tilt: [0.35, 0.5 - 7 * 1.1, -0.95], p: 2, q: 3, hold: true },
             { slotId: 8, type: 'ship',    baseS: 1730, side:  1, radial: 25, elev: -4,  scale: 0.6,  rotSpeed: 0.01, tilt: [0.3, -0.55 - 8 * 1.1, 0.12], p: 3, q: 7, hold: true }
         ];
@@ -333,15 +339,22 @@
         // procession: the second skims the sunlit cloud tops of a gas giant,
         // the third goes up through a ring system from its shaded side.
         const heroPasses = [
-            hero(choruses[1], { slotId: 5, side: 1, radial: 35, elev: -5, tilt: [0.31, 0.15, -0.24] }),
-            hero(choruses[2], { slotId: 6, side: 1, radial: 46, elev: 12, tilt: [-0.62, -0.2, 0] })
+            hero(choruses[1], { slotId: 5, side: 1, radial: 35, elev: -5, tilt: [0.31, 0.15, -0.24], world: WORLD.gas }),
+            hero(choruses[2], { slotId: 6, side: 1, radial: 46, elev: 12, tilt: [-0.62, -0.2, 0], world: WORLD.gas })
         ].filter(Boolean);
+        // The voyage sets out from home: the opening drifts low over the
+        // night side of a vast world, cities lit beneath the weather.
+        if (duration > 45) {
+            heroPasses.unshift({ slotId: 1, distance: distanceAt(Math.min(12, duration * 0.06)), side: -1, radial: 150, elev: HOME_DEPTH - 30,
+                tilt: [1.25, 0.6, 0.18], hold: true, world: WORLD.home, size: HOME_SIZE, clearFrom: 0, clearTo: distanceAt(16) });
+        }
         // The close is an arrival: a ringed planet gathers far ahead through
-        // the last act and the song ends on the slow approach to it.
+        // the last act and the song ends on the slow approach to it. Far out,
+        // under a small sun, it is a cold ice giant with fine rings.
         const closing = acts[acts.length - 1];
         if (closing && closing.kind === 'Horizon' && closing.end - closing.start > 12) {
             heroPasses.push({ slotId: 2, distance: distanceAt(duration) + 150, side: -1, radial: 58, elev: -10,
-                tilt: [0.5, 0.2, -0.25], hold: true, clearFrom: distanceAt(duration - 16), clearTo: Infinity });
+                tilt: [0.5, 0.2, -0.25], hold: true, world: WORLD.iceGiant, clearFrom: distanceAt(duration - 16), clearTo: Infinity });
         }
 
         const usableDuration = durationHint > 0 ? Math.min(duration, durationHint) : duration;
@@ -365,6 +378,8 @@
         };
         const asteroidBelt = findEncounter(0.23, 18, 0.14, 0.38);
         const blackHole = findEncounter(0.67, 22, 0.50, 0.83);
+        // Between the first two choruses the route passes close by a comet.
+        const cometPass = findEncounter(0.36, 30, 0.28, 0.46);
 
         return {
             seedHash,
@@ -377,6 +392,7 @@
             heroPasses,
             asteroidBelt,
             blackHole,
+            cometPass,
             ENCOUNTER_CYCLE,
             sampleState,
             distanceAt,
@@ -398,10 +414,16 @@
     // One set of dimensions for each encounter: the point template and the
     // solid body are built from the same numbers, so they coincide.
     const ENTITY_SPECS = Object.freeze({
-        stationA: { radius: 25, plan: 'truss' }, stationB: { radius: 26, plan: 'cross' },
+        // Each craft slot is a different spacecraft each time round: the
+        // first is the slot's own, the rest follow in turn.
+        stationA: { radius: 25, plan: 'truss', variants: [{ radius: 25, plan: 'mir' }] },
+        stationB: { radius: 26, plan: 'cross', variants: [{ radius: 26, plan: 'skylab' }] },
         ringsA: { inner: 22, outer: 48 }, ringsB: { inner: 24, outer: 52 },
         planetA: { radius: 26 }, planetB: { radius: 24 },
-        shipA: { scale: 1.0 }, shipB: { scale: 0.92, radius: 25, plan: 'probe' },
+        shipA: { scale: 1.0, variants: [{ radius: 25, plan: 'apollo' }] },
+        // The probe slot's first pass comes in the opening, still near home:
+        // `turns` picks the craft for each time round, from the one before the first.
+        shipB: { scale: 0.92, radius: 25, plan: 'probe', variants: [{ radius: 25, plan: 'sputnik' }, { radius: 25, plan: 'hubble' }], turns: [1, 0, 2] },
         scope: { radius: 25, plan: 'telescope' }
     });
     // A solar sail, after the square sails that have flown: a thin film in
@@ -833,7 +855,7 @@
                 uColorStar: { value: new T.Color('#b8c7d4') },
                 uColorSun: { value: new T.Color('#fff1d6') },
                 uInk: { value: new T.Color('#f2f0e9') },
-                uTime: { value: 0 }, uNebula: { value: 1 }, uPaper: { value: 0 },
+                uTime: { value: 0 }, uNebula: { value: 1 }, uPaper: { value: 0 }, uJourney: { value: 0 }, uComet: { value: 0 },
                 uHole: { value: new T.Vector2(0, 0.08) },
                 uHoleDir: { value: new T.Vector3(0, 0, -1) },
                 uHoleRight: { value: new T.Vector3(1, 0, 0) },
@@ -852,11 +874,15 @@
             fragmentShader: `
                 uniform sampler2D uMasks;
                 uniform vec3 uBase, uColorA, uColorB, uColorStar, uColorSun, uInk;
-                uniform float uTime, uNebula, uPaper;
+                uniform float uTime, uNebula, uPaper, uJourney, uComet;
                 uniform vec2 uViewport, uHole;
                 uniform vec3 uHoleDir, uHoleRight, uHoleUp;
                 varying vec3 vDir;
                 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+                float bandNoise(float x) {
+                    float i = floor(x), f = fract(x);
+                    return mix(hash(vec2(i, 0.0)), hash(vec2(i + 1.0, 0.0)), f * f * (3.0 - 2.0 * f));
+                }
                 vec3 accretion(vec2 x, vec3 background, float read) {
                     vec2 p = mat2(0.95, 0.312, -0.312, 0.95) * x;
                     float r = length(p);
@@ -906,11 +932,16 @@
                     vec2 at = 0.2 + 0.6 * vec2(hash(cell + 17.3), hash(cell + 41.7));
                     float px = max(length(dFdx(g)), length(dFdy(g)));
                     float dist = length((fract(g) - at) * vec2(cos(lat), 1.0));
-                    float star = step(0.86 - m.b * 0.3, pick) * smoothstep(px * (0.75 + mag * 0.9), px * 0.2, dist)
+                    // The further out, the more stars, and the galaxy fills in.
+                    float star = step(0.86 - m.b * (0.3 + 0.12 * uJourney) - uJourney * 0.035, pick) * smoothstep(px * (0.75 + mag * 0.9), px * 0.2, dist)
                         * (0.1 + 0.9 * mag) * (0.8 + 0.2 * sin(uTime * (0.6 + pick * 2.0) + pick * 40.0));
-                    float angle = acos(clamp(dot(d, ${glslVec3(SUN_AT)}), -1.0, 1.0));
+                    // Leaving home the sun shrinks towards a bright star and its glow draws in.
+                    float far = uJourney * uJourney;
+                    float reach = mix(1.0, 0.32, far);
+                    float angle = acos(clamp(dot(d, ${glslVec3(SUN_AT)}), -1.0, 1.0)) / reach;
                     float disc = smoothstep(0.024, 0.008, angle);
-                    float corona = exp(-angle * 24.0) * 0.8 + exp(-angle * 6.5) * 0.14 + exp(-angle * 2.2) * 0.03;
+                    float corona = (exp(-angle * 24.0) * 0.8 + exp(-angle * 6.5) * 0.14 + exp(-angle * 2.2) * 0.03)
+                        * mix(1.0, 0.55, far);
                     // Six thin rays, as a lens draws a point of light.
                     vec3 sunward = ${glslVec3(SUN_AT)};
                     vec3 across = normalize(cross(vec3(0.0, 1.0, 0.0), sunward)), up = cross(sunward, across);
@@ -929,32 +960,57 @@
                     vec3 away = normalize(comet * dot(comet, sunward) - sunward), side = cross(comet, away);
                     vec3 from = d - comet;
                     float along = dot(from, away), off = dot(from, side), gone = max(along, 0.0);
-                    float coma = exp(-length(from) * 190.0) * 0.9 + exp(-length(from) * 46.0) * 0.1;
-                    float bend = off - gone * gone * 0.55;
-                    float dustTail = exp(-bend * bend / (0.00006 + gone * 0.008)) * exp(-gone * 6.5) * step(0.0, along) * 0.2;
-                    float gasTail = exp(-off * off / (0.00001 + gone * 0.0005)) * exp(-gone * 4.2) * step(0.0, along) * 0.16;
+                    // Passing close, it grows: the coma swells, both tails stretch
+                    // across the sky, the dust tail shows striations, and jets of
+                    // gas fan out sunward from the nucleus.
+                    float grow = 1.0 + 3.0 * uComet;
+                    float coma = exp(-length(from) * 190.0 / grow) * 0.9 + exp(-length(from) * 46.0 / grow) * 0.1 * (1.0 + uComet);
+                    float bend = off - gone * gone * 0.55 / grow;
+                    float striae = 1.0 - 0.35 * uComet * smoothstep(0.3, 0.8, bandNoise(bend * 900.0 / grow + gone * 40.0));
+                    float dustTail = exp(-bend * bend / ((0.00006 + gone * 0.008) * grow)) * exp(-gone * 6.5 / grow)
+                        * step(0.0, along) * 0.2 * (1.0 + 0.8 * uComet) * striae;
+                    float gasTail = exp(-off * off / ((0.00001 + gone * 0.0005) * grow)) * exp(-gone * 4.2 / grow)
+                        * step(0.0, along) * 0.16 * (1.0 + uComet);
+                    float jets = 0.0;
+                    if (uComet > 0.001) {
+                        for (int i = 0; i < 3; i++) {
+                            float turn = 2.55 + float(i) * 0.48;
+                            vec2 aim = vec2(cos(turn), sin(turn));
+                            vec2 at = vec2(along, off);
+                            float reachOut = dot(at, aim), across = dot(at, vec2(-aim.y, aim.x));
+                            jets += exp(-across * across / (0.0000003 + reachOut * reachOut * 0.015)) * step(0.0, reachOut)
+                                * exp(-reachOut * 110.0 / grow);
+                        }
+                        jets *= uComet * 0.35;
+                    }
                     float cometSide = step(0.0, dot(d, comet));
 
+                    // Out at the end of the voyage the nearer clouds of gas fall back
+                    // a little; the galaxy shows through them in its stars.
+                    float late = smoothstep(0.72, 0.98, uJourney);
                     vec3 night = uBase + uColorStar * m.b * 0.055;
                     // Thin gas takes the cloud's colour; where it is dense it brightens
                     // and pales, as lit gas does.
                     float coolCore = m.r * m.r * m.r, warmCore = m.g * m.g * m.g;
                     night += (uColorA * (m.r * 0.06 + coolCore * 0.07) + uColorB * (m.g * 0.05 + warmCore * 0.06)
-                        + uColorStar * (coolCore + warmCore) * 0.015) * uNebula;
+                        + uColorStar * (coolCore + warmCore) * 0.015) * uNebula * (1.0 - 0.15 * late);
                     night *= (1.0 - m.a * 0.86) * read;
                     night += mix(uColorStar, vec3(1.0), 0.5) * star * (0.5 + 0.5 * read) * 1.3;
-                    night += (mix(uColorStar, uColorSun, 0.5) * (coma + dustTail) + uColorA * gasTail * 1.6)
+                    night += (mix(uColorStar, uColorSun, 0.5) * (coma + dustTail + jets) + uColorA * gasTail * 1.6)
                         * cometSide * (0.45 + 0.55 * read);
-                    night += uColorSun * (disc * 16.0 + corona * (0.6 + 0.4 * read));
+                    vec3 sunTone = mix(uColorSun, mix(uColorStar, vec3(1.0), 0.4), far * 0.6);
+                    night += sunTone * (disc * 16.0 + corona * (0.6 + 0.4 * read));
                     // On a pale theme the same sky is washes of colour on paper.
                     vec3 paper = mix(uBase, uColorA, m.r * 0.3 * uNebula);
                     paper = mix(paper, uColorB, m.g * 0.22 * uNebula);
-                    paper = mix(paper, uInk, m.a * 0.1 + star * 0.45);
+                    paper = mix(paper, uInk, m.a * 0.1 + star * 0.45
+                        + m.b * smoothstep(0.35, 1.0, uJourney) * 0.07
+                        + clamp(coma + dustTail + gasTail + jets, 0.0, 1.0) * 0.3 * cometSide);
                     // The sun on paper: a warm bloom with a white heart, since white
                     // alone would vanish into the page.
                     paper = mix(paper, uColorSun, clamp(corona * 1.6, 0.0, 1.0) * 0.8);
                     // A wide, faint radiance around it fills the page with light.
-                    paper = mix(paper, mix(uColorSun, vec3(1.0), 0.45), exp(-angle * 1.5) * 0.5);
+                    paper = mix(paper, mix(uColorSun, vec3(1.0), 0.45), exp(-angle * 1.5) * 0.5 * mix(1.0, 0.6, far));
                     paper = mix(paper, vec3(1.0), clamp(disc, 0.0, 1.0));
 
                     vec3 background = mix(night, paper, uPaper);
@@ -962,7 +1018,8 @@
                         float mask = uHole.x * (1.0 - smoothstep(4.3, 5.1, lensRange));
                         background = mix(background, accretion(lens, background, read), mask);
                     }
-                    gl_FragColor = vec4(background, 1.0);
+                    if (any(isnan(background)) || any(isinf(background))) background = vec3(0.0);
+                    gl_FragColor = vec4(min(max(background, vec3(0.0)), vec3(64.0)), 1.0);
                     #include <tonemapping_fragment>
                     #include <colorspace_fragment>
                 }
@@ -1294,7 +1351,159 @@
                 panel(3.2, 1.1, 'x', 'z', [2.7, 0, z + facing * 0.6], 4);
                 panel(3.2, 1.1, 'x', 'z', [-2.7, 0, z + facing * 0.6], 4);
             };
-            if (spec.plan === 'truss') {
+            // A rod between two points, and a can (open-ended tapering drum) along an axis.
+            const rod = (a, b, r, code = 7, sides = 5) => {
+                const span = new T.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+                const g = sized(new T.CylinderGeometry(r * k, r * k, span.length() * k, sides, 1), 4, span.length());
+                g.applyQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 1, 0), span.clone().normalize()));
+                parts.push([g.translate((a[0] + b[0]) / 2 * k, (a[1] + b[1]) / 2 * k, (a[2] + b[2]) / 2 * k), code]);
+            };
+            const can = (top, bottom, length, axis, at, code, sides = 20) => {
+                parts.push([turn(sized(new T.CylinderGeometry(top * k, bottom * k, length * k, sides, 1), TAU * Math.max(top, bottom), length), axis)
+                    .translate(at[0] * k, at[1] * k, at[2] * k), code]);
+            };
+            // A panel turned freely: length along `dir` (in the xz-plane or any), face normal `facing`.
+            const sheet = (length, width, centre, dir, facing, code) => {
+                const g = new T.BoxGeometry(width * k, 0.06 * k, length * k);
+                const z = new T.Vector3(...dir).normalize(), y = new T.Vector3(...facing).normalize();
+                const x = new T.Vector3().crossVectors(y, z).normalize();
+                g.applyMatrix4(new T.Matrix4().makeBasis(x, new T.Vector3().crossVectors(z, x), z));
+                parts.push([g.translate(centre[0] * k, centre[1] * k, centre[2] * k), code]);
+            };
+            // The command and service modules of a lunar ship, nose towards +z
+            // (or -z), sitting on the given point: the conical capsule, the
+            // service module with its thruster quads, the big engine bell and
+            // the four-dish antenna swung out on its boom.
+            const lunarShip = (z, facing) => {
+                const f = facing, at = (dz) => [0, 0, z + dz * f];
+                can(f > 0 ? 0.32 : 1.95, f > 0 ? 1.95 : 0.32, 3.2, 'z', at(5.3), 8, 28);
+                can(1.95, 1.95, 7.4, 'z', at(0), 8, 28);
+                can(1.98, 1.98, 0.5, 'z', at(3.45), 9, 28);
+                can(f > 0 ? 0.55 : 1.3, f > 0 ? 1.3 : 0.55, 2.8, 'z', at(-5.1), 7, 20);
+                can(0.7, 0.7, 0.6, 'z', at(-3.9), 9, 14);
+                for (let i = 0; i < 4; i += 1) {
+                    const a = i * TAU / 4 + 0.4, x = Math.cos(a) * 2.15, y = Math.sin(a) * 2.15;
+                    crate([0.55, 0.55, 0.9], [x, y, z + 2.2 * f]);
+                    for (const d of [-1, 1]) rod([x, y, z + 2.2 * f], [x * 1.25, y * 1.25, z + (2.2 + d * 0.7) * f], 0.08, 7, 6);
+                }
+                rod([1.4, -1.4, z - 3.6 * f], [3.6, -3.6, z - 5.4 * f], 0.1);
+                for (const [dx, dy] of [[0.5, 0.5], [-0.5, 0.5], [0.5, -0.5], [-0.5, -0.5]]) {
+                    parts.push([new T.ConeGeometry(0.42 * k, 0.22 * k, 14, 1, true).rotateX(-f * Math.PI / 2)
+                        .translate((3.6 + dx) * k, (-3.6 + dy) * k, (z - 5.6 * f) * k), 8]);
+                }
+            };
+            if (spec.plan === 'hubble') {
+                // A space telescope of the first kind: a long tube in silver blankets, the
+                // wider aft shroud, the aperture door swung open, two long
+                // solar wings out on masts, two dish antennas on booms, handrails.
+                can(2.15, 2.15, 7.6, 'z', [0, 0, -4.4], 8, 28);
+                can(1.6, 1.6, 9.0, 'z', [0, 0, 4.3], 8, 28);
+                can(1.62, 1.62, 0.25, 'z', [0, 0, 8.7], 9, 28);
+                can(2.18, 2.18, 0.35, 'z', [0, 0, -8.1], 8, 28);
+                can(2.0, 2.0, 0.3, 'z', [0, 0, -0.65], 7, 28);
+                // The door, hinged at the top of the aperture and standing open.
+                parts.push([new T.CylinderGeometry(1.62 * k, 1.62 * k, 0.12 * k, 24, 1).rotateX(-0.35)
+                    .translate(0, 3.3 * k, 9.5 * k), 8]);
+                rod([0, 1.62, 8.8], [0, 2.4, 9.3], 0.12, 7, 6);
+                for (const side of [-1, 1]) {
+                    rod([side * 2.1, 0, -2.2], [side * 4.0, 0, -2.2], 0.14, 7, 6);
+                    sheet(11.8, 2.5, [side * 4.0, 0, -2.2], [0, 0, 1], [side * 0.2, 1, 0], 4);
+                    rod([side * 4.0, 0, -8.2], [side * 4.0, 0, 3.8], 0.06, 7, 6);
+                    rod([0, side * 2.15, -3.5], [0, side * 4.3, -3.5], 0.08, 7, 6);
+                    parts.push([new T.ConeGeometry(0.85 * k, 0.4 * k, 18, 1, true).rotateX(side > 0 ? Math.PI : 0)
+                        .translate(0, side * 4.6 * k, -3.5 * k), 8]);
+                }
+                for (let i = 0; i < 8; i += 1) {
+                    const a = i * TAU / 8 + 0.2;
+                    rod([Math.cos(a) * 1.75, Math.sin(a) * 1.75, 0.2], [Math.cos(a) * 1.75, Math.sin(a) * 1.75, 8.2], 0.05, 7, 4);
+                }
+                for (const [x, y] of [[1.6, 1.4], [-1.9, 1.0]]) crate([0.8, 0.5, 1.6], [x, y, -6.2]);
+            } else if (spec.plan === 'apollo') {
+                // A lunar ship as it was flown out: the command and service
+                // modules with the lander docked at the nose, its legs out.
+                lunarShip(-3.0, 1);
+                can(0.55, 0.55, 1.2, 'z', [0, 0, 4.4], 7, 14);
+                // Ascent stage: a faceted cabin, a docking tunnel, a dish and windows.
+                can(1.9, 2.1, 2.6, 'z', [0, 0, 6.3], 3, 7);
+                crate([2.6, 1.8, 1.6], [0, -1.6, 6.6]);
+                crate([1.2, 1.2, 2.2], [2.1, 0.6, 6.2]);
+                dish(0.6, [-1.6, 2.4, 6.2], 0.6);
+                // Descent stage: an octagon in gold foil, four legs and footpads.
+                can(2.4, 2.4, 1.8, 'z', [0, 0, 8.6], 9, 8);
+                can(0.9, 1.2, 0.8, 'z', [0, 0, 9.9], 7, 14);
+                for (let i = 0; i < 4; i += 1) {
+                    const a = i * TAU / 4 + TAU / 8, cx = Math.cos(a), cy = Math.sin(a);
+                    rod([cx * 2.2, cy * 2.2, 8.0], [cx * 4.6, cy * 4.6, 10.8], 0.13);
+                    rod([cx * 2.3, cy * 2.3, 9.4], [cx * 4.0, cy * 4.0, 10.2], 0.08);
+                    parts.push([new T.CylinderGeometry(0.55 * k, 0.45 * k, 0.2 * k, 14, 1).rotateX(Math.PI / 2)
+                        .translate(cx * 4.7 * k, cy * 4.7 * k, 11.0 * k), 8]);
+                }
+            } else if (spec.plan === 'mir') {
+                // The modular station: a core with a docking node at its head,
+                // five laboratories reaching out from the node and aft, each
+                // with its own wings, the long girder on the aft module, ships docked.
+                module(2.05, 13, 'z', [0, 0, 0]);
+                node(1.75, [0, 0, 7.6]);
+                module(2.1, 5.6, 'z', [0, 0, -9.3]);
+                for (const [axis, sign] of [['x', 1], ['x', -1], ['y', 1], ['y', -1]]) {
+                    const along = (d) => axis === 'x' ? [sign * d, 0, 7.6] : [0, sign * d, 7.6];
+                    module(2.05, 11.2, axis, along(7.4));
+                    module(1.4, 1.4, axis, along(13.6));
+                    const tip = along(9.5), up = axis === 'x' ? [0, 1, 0] : [1, 0, 0];
+                    for (const s2 of [-1, 1]) {
+                        const c = [tip[0] + up[0] * s2 * 6.4, tip[1] + up[1] * s2 * 6.4, tip[2]];
+                        sheet(9.4, 2.5, c, up, [0, 0, 1], 4);
+                        rod([tip[0] + up[0] * s2 * 2.0, tip[1] + up[1] * s2 * 2.0, tip[2]], [c[0] - up[0] * s2 * 4.6, c[1] - up[1] * s2 * 4.6, c[2]], 0.1);
+                    }
+                }
+                for (const side of [-1, 1]) {
+                    sheet(10.5, 3.0, [side * 8.0, 0, -1.5], [1, 0, 0], [0, 0.3, 1], 4);
+                    rod([side * 2.05, 0, -1.5], [side * 2.8, 0, -1.5], 0.12);
+                }
+                beam(0.32, 14, 'y', [0, 9.1, -9.3], 4);
+                crate([1.4, 1.4, 1.4], [0, 16.5, -9.3]);
+                visitor(10.6, 1);
+                visitor(-14.4, -1);
+                dish(1.0, [2.4, 2.2, 3.0], 0.3);
+                for (const at of [[0, 0, 15.6], [0, 0, -18.5], [0, 16.8, -9.3]]) {
+                    parts.push([new T.IcosahedronGeometry(0.24 * k, 1).translate(at[0] * k, at[1] * k, at[2] * k), 2]);
+                }
+            } else if (spec.plan === 'skylab') {
+                // The first workshop in orbit: a broad white cylinder with a gold
+                // sunshade spread over it and a single wing (the other was lost),
+                // the solar observatory in its windmill of four wings, and a
+                // lunar-type ship docked at the front.
+                can(3.3, 3.3, 14.6, 'z', [0, 0, -4.0], 8, 32);
+                can(3.32, 3.32, 0.4, 'z', [0, 0, 3.2], 7, 32);
+                can(3.32, 3.32, 0.4, 'z', [0, 0, -11.3], 7, 32);
+                can(1.6, 3.3, 1.6, 'z', [0, 0, -12.1], 8, 32);
+                sheet(9.0, 7.2, [0, 3.45, -4.0], [0, 0, 1], [0, 1, 0.05], 11);
+                rod([3.3, 0, -3.5], [5.2, 0, -3.5], 0.15);
+                sheet(9.5, 3.6, [10.0, 0, -3.5], [1, 0, 0], [0, 1, 0.2], 4);
+                rod([5.2, 0, -3.5], [14.8, 0, -3.5], 0.08);
+                can(1.65, 1.65, 4.6, 'z', [0, 0, 5.6], 3, 18);
+                can(1.5, 1.5, 4.2, 'z', [0, 0, 10.0], 9, 18);
+                lunarShip(17.2, -1);
+                // Observatory on its strut, with four wings in an X.
+                rod([0, 1.5, 9.6], [0, 4.6, 9.6], 0.25, 5, 4);
+                can(1.8, 1.8, 3.4, 'z', [0, 5.6, 9.6], 9, 8);
+                for (let i = 0; i < 4; i += 1) {
+                    const a = i * TAU / 4 + TAU / 8, d = [Math.cos(a), Math.sin(a), 0];
+                    sheet(9.0, 2.6, [d[0] * 6.6, 5.6 + d[1] * 6.6, 9.6], d, [0, 0, 1], 4);
+                    rod([d[0] * 1.8, 5.6 + d[1] * 1.8, 9.6], [d[0] * 2.2, 5.6 + d[1] * 2.2, 9.6], 0.12);
+                }
+            } else if (spec.plan === 'sputnik') {
+                // The first: a polished sphere with four whip antennas swept
+                // back in two pairs, shown far larger than life.
+                parts.push([new T.SphereGeometry(2.9 * k, 40, 26), 8]);
+                can(0.55, 0.55, 0.4, 'z', [0, 0, 2.9], 7, 12);
+                parts.push([new T.TorusGeometry(2.9 * k, 0.06 * k, 6, 48), 7]);
+                for (const [x, y, len] of [[1, 1, 24], [-1, 1, 24], [1, -1, 28], [-1, -1, 28]]) {
+                    const base = [x * 1.6, y * 1.6, 2.0];
+                    rod(base, [x * 1.6 + x * len * 0.36, y * 1.6 + y * len * 0.22, 2.0 - len * 0.9], 0.07, 7, 5);
+                    parts.push([new T.SphereGeometry(0.28 * k, 10, 8).translate(base[0] * k, base[1] * k, base[2] * k), 7]);
+                }
+            } else if (spec.plan === 'truss') {
                 // A long truss across, eight solar wings, radiators, and a
                 // spine of modules fore and aft with laboratories off a node.
                 beam(0.85, 46, 'x', [0, 1.6, 0]);
@@ -1786,6 +1995,7 @@
         // Surface kinds: 0 hull, 1 gas planet, 2 ring disc, 3 sail membrane, 4 air above the clouds.
         const AIR_REACH = 1.045;
         const makeBodyMaterial = (kind, seed, surface) => wearSurface(new T.ShaderMaterial({
+            defines: { BODY_KIND: kind },
             transparent: kind >= 2,
             depthWrite: kind < 2,
             side: kind === 2 || kind === 3 ? T.DoubleSide : T.FrontSide,
@@ -1793,6 +2003,7 @@
                 uTime: { value: 0 }, uKind: { value: kind }, uSeed: { value: seed },
                 uSurface: { value: null }, uMapped: { value: 0 },
                 uRingMap: { value: null }, uRingMapped: { value: 0 }, uRinged: { value: 0 }, uDetail: { value: 1 },
+                uWorld: { value: 0 }, uThin: { value: 0 },
                 uBounceDir: { value: new T.Vector3(0, 1, 0) }, uBounce: { value: 0 },
                 uCohesion: { value: 1 }, uPresence: { value: 1 }, uGlow: { value: 1 },
                 uAudioPulse: { value: 0 }, uBodyRadius: { value: 0 },
@@ -1809,12 +2020,48 @@
             },
             vertexShader: `
                 attribute float aPart;
+                uniform float uWorld, uSeed, uKind;
                 varying vec3 vLocal, vWorld, vNormal;
                 varying vec2 vUv;
-                varying float vPart, vDepth;
+                varying float vPart, vDepth, vRise;
+                float vhash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+                float vnoise(vec3 p) {
+                    vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+                    return mix(mix(mix(vhash(i), vhash(i + vec3(1, 0, 0)), f.x),
+                        mix(vhash(i + vec3(0, 1, 0)), vhash(i + vec3(1, 1, 0)), f.x), f.y),
+                        mix(mix(vhash(i + vec3(0, 0, 1)), vhash(i + vec3(1, 0, 1)), f.x),
+                        mix(vhash(i + vec3(0, 1, 1)), vhash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+                }
                 void main() {
-                    vLocal = position; vUv = uv; vPart = aPart;
-                    vec4 world = modelMatrix * vec4(position, 1.0);
+                    vec3 at = position;
+                    #if BODY_KIND == 1
+                    if (uWorld > 6.5 && aPart < 0.5) {
+                        // A small body is not round: a lumpy, elongated rubble pile
+                        // with a waist, like the asteroids probes have visited.
+                        vec3 d = normalize(position);
+                        float lump = 1.0 + (vnoise(d * 1.4 + uSeed * 7.0) - 0.5) * 0.7
+                            + (vnoise(d * 3.3 + uSeed * 3.0) - 0.5) * 0.24 + (vnoise(d * 8.0) - 0.5) * 0.06;
+                        float waist = 1.0 - 0.18 * exp(-d.x * d.x * 9.0);
+                        at = position * vec3(1.55, 0.8 * waist, 0.85 * waist) * lump;
+                    }
+                    #endif
+                    vRise = 0.0;
+                    #if BODY_KIND == 4
+                    if (abs(uWorld - 2.0) < 0.5 || abs(uWorld - 3.0) < 0.5) {
+                        // The shell of air becomes plumes: on an ice moon, curtains of
+                        // vapour over the cracks at the south pole; on a volcanic
+                        // moon, the umbrella of one great eruption.
+                        vec3 d = normalize(position);
+                        vec3 vent = uWorld < 2.5 ? vec3(0.0, -1.0, 0.0) : normalize(vec3(0.62, 0.55, 0.56));
+                        float off = acos(clamp(dot(d, vent), -1.0, 1.0));
+                        float tall = uWorld < 2.5 ? 0.5 : 0.28;
+                        float wide = uWorld < 2.5 ? 0.42 : 0.3;
+                        vRise = tall * exp(-off * off / (wide * wide));
+                        at = position * (1.0 + vRise);
+                    }
+                    #endif
+                    vLocal = at; vUv = uv; vPart = aPart;
+                    vec4 world = modelMatrix * vec4(at, 1.0);
                     vWorld = world.xyz;
                     vNormal = normalize(mat3(modelMatrix) * normal);
                     vec4 mv = viewMatrix * world;
@@ -1824,6 +2071,7 @@
             `,
             fragmentShader: `
                 uniform float uTime, uKind, uSeed, uCohesion, uPresence, uGlow, uAudioPulse, uBodyRadius, uMapped, uRingMapped, uRinged, uDetail, uBounce;
+                uniform float uWorld, uThin;
                 uniform vec3 uBounceDir;
                 uniform sampler2D uSurface, uRingMap;
                 uniform vec2 uRing, uViewport;
@@ -1831,7 +2079,7 @@
                 uniform float uPaper;
                 varying vec3 vLocal, vWorld, vNormal;
                 varying vec2 vUv;
-                varying float vPart, vDepth;
+                varying float vPart, vDepth, vRise;
 
                 float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
                 float noise(vec3 p) {
@@ -1842,6 +2090,29 @@
                         mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
                 }
                 float fbm(vec3 p) { return noise(p) * 0.55 + noise(p * 2.1) * 0.28 + noise(p * 4.3) * 0.17; }
+                // Impact craters on a unit sphere scaled by f: a bowl, a raised
+                // rim and a bright apron of ejecta round the fresher ones.
+                // x: height, y: ejecta brightness.
+                vec2 craters(vec3 p, float keep, float salt) {
+                    vec3 base = floor(p - 0.5);
+                    vec2 sum = vec2(0.0);
+                    for (int i = 0; i < 8; i++) {
+                        vec3 cell = base + vec3(mod(float(i), 2.0), mod(floor(float(i) * 0.5), 2.0), floor(float(i) * 0.25));
+                        if (hash(cell + salt) > keep) continue;
+                        vec3 at = cell + 0.5 + (vec3(hash(cell + 1.3 + salt), hash(cell + 2.7), hash(cell + 5.1)) - 0.5) * 0.5;
+                        float size = 0.07 + 0.18 * hash(cell + 8.9);
+                        float d = length(p - at) / size;
+                        float fresh = step(0.72, hash(cell + 3.3));
+                        sum.x += (d < 1.0 ? (d * d - 1.0) * 0.55 : 0.0) + exp(-(d - 1.0) * (d - 1.0) * 30.0) * 0.3;
+                        sum.y += fresh * exp(-max(d - 1.0, 0.0) * 2.2) * step(0.8, d) * 0.6;
+                    }
+                    return sum;
+                }
+                // Lines that wind across a surface: where a noise field crosses one level.
+                float lineae(vec3 p, float width) {
+                    float f = fbm(p);
+                    return 1.0 - smoothstep(0.0, width, abs(f - 0.5));
+                }
                 const vec3 SUN = ${glslVec3(SUN_AT)};
                 // Where the cloud tops' silhouette falls on the shell of air around them.
                 const float LIMB = ${Math.sqrt(1 - 1 / (AIR_REACH * AIR_REACH)).toFixed(4)};
@@ -1858,7 +2129,7 @@
                     if (uKind < 1.5 && dither > fade) discard;
 
                     vec3 n = normalize(vNormal);
-                    if (uKind > 2.5 && uKind < 3.5) n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+                    if ((uKind > 2.5 && uKind < 3.5) || (uKind < 1.5 && uWorld > 6.5)) { vec3 fn = cross(dFdx(vWorld), dFdy(vWorld)); if (dot(fn, fn) > 1e-12) n = normalize(fn); }
                     vec3 v = normalize(cameraPosition - vWorld);
                     if (dot(n, v) < 0.0) n = -n;
                     float ndl = dot(n, uLight);
@@ -1867,7 +2138,9 @@
                     vec3 col = vec3(0.0);
                     float alpha = 1.0;
 
-                    if (uKind < 0.5) {
+                    // Each kind of surface compiles only its own code.
+                    #if BODY_KIND == 0
+                    {
                         // Hull, as spacecraft are finished: white thermal panels,
                         // gold foil blankets, bare truss metal, glass ports in rows.
                         // Sunlight is hard in vacuum; the sky fills the shade a little
@@ -1984,8 +2257,12 @@
                             float flash = smoothstep(0.88, 0.9, beat) * (1.0 - smoothstep(0.95, 1.0, beat));
                             col = mix(uColorAccent, uColorInk, 0.45) * (0.22 + 2.4 * flash) * uGlow;
                         }
-                    } else if (uKind < 1.5) {
+                    }
+                    #elif BODY_KIND == 1
+                    {
                         if (vPart > 0.5) {
+                            // Only the giants keep moons in attendance.
+                            if (uWorld > 0.5 && (uWorld < 5.5 || uWorld > 6.5)) discard;
                             // A moon in attendance: airless rock, dark plains,
                             // craters with bright rims, lit hard from one side
                             // and faintly by the planet it circles.
@@ -1998,6 +2275,164 @@
                             float sunlit = clamp(ndl * 1.2 + 0.02, 0.0, 1.0);
                             col = mix(uColorInk, uColorPrimary, 0.12) * max(rock, 0.03) * sunlit * 1.25
                                 + uColorPrimary * 0.012;
+                        } else if (uWorld > 0.5) {
+                        // Worlds other than gas giants, each after a real kind of
+                        // body: a grey cratered moon, an ice moon, a volcanic moon,
+                        // home, a cold desert world, an ice giant. Shade and relief
+                        // are their own; colour still comes from the palette.
+                        vec3 p = normalize(vLocal);
+                        float R = length(vLocal);
+                        float s = uSeed * 13.0;
+                        float h = 0.0;
+                        vec3 ground = vec3(0.5);
+                        vec3 glow = vec3(0.0);
+                        float gloss = 0.0, cover = 0.0, airy = 0.0, hard = 1.0;
+                        // Craters at up to three sizes, sized for whichever world
+                        // this is, so the shader holds one copy of the search.
+                        bool moon = uWorld < 1.5, volcanic = abs(uWorld - 3.0) < 0.5;
+                        bool desert = abs(uWorld - 5.0) < 0.5, rubble = uWorld > 6.5;
+                        vec2 c1 = vec2(0.0), c2 = vec2(0.0), c3 = vec2(0.0);
+                        if (moon || volcanic || desert || rubble) {
+                            float f1 = moon ? 5.0 : volcanic ? 6.0 : desert ? 7.0 : 4.0;
+                            float k1 = moon ? 0.55 : volcanic ? 0.6 : desert ? 0.5 : 0.6;
+                            c1 = craters(p * f1, k1, s);
+                            if (!volcanic) c2 = craters(p * (moon ? 13.0 : desert ? 20.0 : 11.0), desert ? 0.65 : 0.7, s + 3.0);
+                            if (moon && uDetail > 0.5) c3 = craters(p * 34.0, 0.8, s + 7.0);
+                        }
+                        if (uWorld < 1.5) {
+                            // Dark lava seas over bright highlands, craters within
+                            // craters, and young ones with bright aprons.
+                            float seas = smoothstep(0.5, 0.6, fbm(p * 1.7 + s));
+                            h = c1.x * 0.05 + c2.x * 0.018 * (1.0 - seas * 0.6) + c3.x * 0.007 * (1.0 - seas * 0.5);
+                            float albedo = mix(0.6, 0.22, seas) * (0.86 + 0.28 * noise(p * 24.0 + s))
+                                + (c1.y + c2.y + c3.y * 0.5) * 0.2;
+                            ground = mix(uColorInk, uColorPrimary, 0.08) * albedo;
+                        } else if (uWorld < 2.5) {
+                            // Young bright ice scored by long ruddy cracks, with
+                            // patches where the crust has broken up and refrozen.
+                            float cracks = clamp(lineae(p * 2.2 + s, 0.02) + lineae(p * 3.7 + s + 4.0, 0.014) * 0.8
+                                + lineae(p * 6.3 + s + 9.0, 0.01) * 0.55 * uDetail, 0.0, 1.0);
+                            float chaos = smoothstep(0.6, 0.72, fbm(p * 3.0 + s + 20.0));
+                            h = -cracks * 0.004 + chaos * (noise(p * 40.0 + s) - 0.5) * 0.012;
+                            float albedo = 0.86 - cracks * 0.3 - chaos * 0.22 + (noise(p * 30.0 + s) - 0.5) * 0.06;
+                            vec3 ice = mix(uColorInk, uColorPrimary, 0.12);
+                            ground = mix(ice, mix(uColorEmber, uColorInk, 0.45), clamp(cracks * 0.7 + chaos * 0.45, 0.0, 1.0)) * albedo;
+                        } else if (uWorld < 3.5) {
+                            // Sulphur plains mottled light and dark, calderas with
+                            // dark floors and rings of fallout; lava glows at night.
+                            vec2 cal = c1;
+                            float mottle = fbm(p * 4.0 + s) + (noise(p * 18.0 + s) - 0.5) * 0.15;
+                            float pit = smoothstep(-0.2, -0.45, cal.x);
+                            h = cal.x * 0.008;
+                            float albedo = mix(0.5, 0.9, smoothstep(0.3, 0.75, mottle));
+                            albedo = mix(albedo, 0.08, pit) + cal.y * 0.35;
+                            vec3 sulphur = mix(uColorInk, uColorAccent, 0.42);
+                            sulphur = mix(sulphur, mix(uColorEmber, uColorInk, 0.4), (1.0 - smoothstep(0.3, 0.6, mottle)) * 0.4);
+                            ground = sulphur * albedo;
+                            glow = mix(uColorAccent, uColorEmber, 0.5) * pit * (0.4 + 1.2 * smoothstep(0.5, 0.8, noise(p * 40.0 + s)));
+                        } else if (uWorld < 4.5) {
+                            // Home: dark sea and continents, ice at the poles,
+                            // weather over everything, and cities lit at night.
+                            vec3 q = p * 1.6 + s + (vec3(fbm(p * 3.0 + s), fbm(p * 3.0 + s + 5.0), fbm(p * 3.0 + s + 9.0)) - 0.5) * 0.9;
+                            // Seen from low orbit, so the coast and the weather carry fine detail.
+                            float shape = fbm(q) + (noise(q * 7.0) - 0.5) * 0.1
+                                + (uDetail > 0.5 ? (noise(q * 31.0) - 0.5) * 0.04 + (noise(q * 90.0) - 0.5) * 0.015 : 0.0);
+                            float land = smoothstep(0.5, 0.512, shape);
+                            float coast = 1.0 - smoothstep(0.0, 0.03, abs(shape - 0.506));
+                            float cap = smoothstep(0.78, 0.83, abs(p.y) + (noise(p * 9.0 + s) - 0.5) * 0.08);
+                            float relief = fbm(q * 5.0 + 3.0) * 0.7 + fbm(q * 40.0) * 0.3;
+                            vec3 sea = mix(uColorPrimary, uColorInk, 0.1) * (0.05 + coast * 0.05);
+                            vec3 plains = mix(mix(uColorPrimary, uColorInk, 0.6) * 0.13, mix(uColorInk, uColorEmber, 0.18) * 0.26,
+                                smoothstep(0.35, 0.7, relief));
+                            ground = mix(sea, plains, land);
+                            ground = mix(ground, uColorInk * 0.92, cap);
+                            vec3 w = vec3(p.x * 9.0, p.y * 16.0, p.z * 9.0) + vec3(uTime * 0.01, 0.0, 0.0) + s + 40.0;
+                            float swirl = fbm(w + vec3(fbm(w * 1.7), 0.0, fbm(w * 1.7 + 6.0)) * 1.2);
+                            // Big systems of cloud, broken into cells and streets close to.
+                            float cells = uDetail > 0.5 ? noise(p * 70.0 + s) * 0.6 + noise(p * 170.0 + s) * 0.4 : 0.5;
+                            cover = smoothstep(0.52, 0.66, swirl + (cells - 0.5) * 0.16) * (0.7 + 0.3 * cells);
+                            // Towns are points of light, gathered where the land is settled.
+                            vec3 g = p * 420.0, cell = floor(g);
+                            vec3 spot = cell + 0.5 + (vec3(hash(cell + 1.7), hash(cell + 4.1), hash(cell + 8.3)) - 0.5) * 0.6;
+                            float dot_ = length(g - spot), px = max(fwidth(g.x) + fwidth(g.y), 0.05);
+                            float settled = land * (1.0 - cap) * smoothstep(0.55, 0.75, fbm(p * 7.0 + s + 30.0));
+                            float town = settled * step(0.6, hash(cell)) * (1.0 - smoothstep(0.06, 0.06 + px, dot_))
+                                * (1.0 - smoothstep(0.3, 1.0, px)) + settled * 0.3;
+                            glow = mix(uColorAccent, uColorInk, 0.45) * town * 0.9 * (1.0 - cover * 0.8);
+                            gloss = (1.0 - land) * (1.0 - cap);
+                            airy = 1.0; hard = 0.3;
+                        } else if (uWorld < 5.5) {
+                            // A cold desert: rust dust, dark basalt, frost at one
+                            // pole, and a canyon system along the equator.
+                            float dark = smoothstep(0.5, 0.66, fbm(p * 2.4 + s + 11.0));
+                            float lon = atan(p.z, p.x + 1e-5);
+                            float trench = (1.0 - smoothstep(0.0, 0.025 + 0.02 * noise(p * 12.0), abs(p.y + 0.08 + 0.05 * sin(lon * 3.0 + s))))
+                                * smoothstep(-0.6, -0.2, sin(lon + s)) ;
+                            float cap = smoothstep(0.84, 0.88, p.y + (noise(p * 10.0 + s) - 0.5) * 0.06);
+                            h = c1.x * 0.03 + c2.x * 0.01 - trench * 0.02;
+                            vec3 dust = mix(uColorEmber, uColorInk, 0.62) * mix(0.55, 0.26, dark) * (0.88 + 0.24 * noise(p * 22.0 + s));
+                            ground = mix(dust, uColorInk * 0.9, cap) * (1.0 - trench * 0.35);
+                            airy = 0.3; hard = 0.75;
+                        } else if (uWorld > 6.5) {
+                            // An asteroid: dark carbon-rich rubble, boulders, craters
+                            // softened by regolith, brighter where fresh rock shows.
+                            float boulders = smoothstep(0.72, 0.8, noise(p * 60.0 + s)) * uDetail;
+                            h = c1.x * 0.04 + c2.x * 0.015 + boulders * 0.006 + (noise(p * 25.0 + s) - 0.5) * 0.01;
+                            float albedo = 0.2 * (0.8 + 0.4 * noise(p * 14.0 + s)) + (c1.y + c2.y) * 0.12 + boulders * 0.08;
+                            ground = mix(uColorInk, uColorPrimary, 0.06) * albedo;
+                        } else {
+                            // An ice giant: deep haze, faint bands, one dark storm
+                            // with a bright cloud riding beside it.
+                            float lat = p.y + (fbm(p * 3.0 + s) - 0.5) * 0.05;
+                            float bands = 0.5 + 0.5 * sin(lat * 11.0 + s);
+                            vec3 at = p - normalize(vec3(0.6, -0.35, 0.72));
+                            float spot = exp(-dot(at * vec3(1.0, 2.4, 1.0), at * vec3(1.0, 2.4, 1.0)) * 70.0);
+                            float puff = exp(-length(at - vec3(0.0, -0.09, 0.0)) * 30.0);
+                            ground = mix(uColorPrimary, uColorInk, 0.62) * (0.66 + 0.06 * bands - spot * 0.3 + puff * 0.35);
+                            airy = 1.0; hard = 0.2;
+                        }
+                        // Relief: the height field tilts the normal, so craters and
+                        // canyons fill with shadow near the terminator.
+                        vec3 nl = p;
+                        if (uWorld > 6.5) {
+                            vec3 facet = cross(dFdx(vLocal), dFdy(vLocal));
+                            if (dot(facet, facet) > 1e-12) nl = normalize(facet);
+                            if (dot(nl, vLocal) < 0.0) nl = -nl;
+                        }
+                        // Derivatives are taken outside any branch that varies across pixels.
+                        {
+                            vec3 dpx = dFdx(vLocal), dpy = dFdy(vLocal);
+                            float hx = dFdx(h * R), hy = dFdy(h * R);
+                            vec3 r1 = cross(dpy, nl), r2 = cross(nl, dpx);
+                            float det = dot(dpx, r1);
+                            vec3 bumped = abs(det) * nl - sign(det) * (hx * r1 + hy * r2);
+                            if (dot(bumped, bumped) > 1e-12) nl = normalize(bumped);
+                        }
+                        float lam = dot(nl, normalize(uLightLocal));
+                        float sunlit = mix(clamp(lam, 0.0, 1.0), smoothstep(-0.12, 0.65, lam), 1.0 - hard);
+                        // Relief cannot lift the night side into the light.
+                        sunlit *= smoothstep(-0.08, 0.06, dot(p, normalize(uLightLocal)));
+                        float facing = clamp(dot(n, v), 0.0, 1.0);
+                        // From low over home only the horizon wears the air.
+                        float lowOrbit = step(3.5, uWorld) * step(uWorld, 4.5);
+                        float haze = mix(rim, pow(1.0 - facing, 14.0), lowOrbit);
+                        if (airy > 0.5) ground *= mix(mix(0.55, 0.85, lowOrbit), 1.0, pow(facing, 0.5));
+                        ground = mix(ground, uColorInk * 0.95, cover);
+                        ground = mix(ground, ground * mix(vec3(1.0), uColorEmber * 1.6, 0.5),
+                            (1.0 - smoothstep(0.0, mix(0.45, 0.14, lowOrbit), lam)) * smoothstep(-0.2, 0.1, lam) * airy);
+                        col = ground * (0.008 + sunlit * 1.1);
+                        float glint = pow(max(dot(reflect(-v, n), uLight), 0.0), 70.0) * gloss * (1.0 - cover);
+                        col += mix(uColorAccent, uColorInk, 0.6) * glint * 1.4 * day;
+                        col += glow * (1.0 - smoothstep(-0.12, 0.08, ndl)) * uGlow;
+                        vec3 air = mix(uColorPrimary, uColorInk, 0.3);
+                        col += air * haze * (0.012 + day * 0.8) * airy;
+                        float against = pow(max(dot(-v, SUN), 0.0), 4.0);
+                        col += air * haze * against * smoothstep(-0.1, 0.7, dot(n, SUN)) * 2.2 * airy;
+                        if (uWorld > 3.5 && uWorld < 4.5) {
+                            float polarLight = smoothstep(0.8, 0.93, abs(p.y));
+                            float curtain = mix(0.4, 1.0, noise(vec3(p.xz * 9.0, uTime * 0.2 + uSeed)));
+                            col += mix(uColorPrimary, uColorAccent, 0.25) * polarLight * curtain * (1.0 - day) * 0.3 * uGlow;
+                        }
                         } else {
                         // Gas giant: turbulent latitude bands, storms, a soft
                         // terminator, a limb of atmosphere, aurora on the night pole.
@@ -2007,8 +2442,8 @@
                         float bands = 0.5 + 0.5 * sin(lat * (15.0 + uSeed * 9.0) + sin(lat * 41.0) * 0.6);
                         float fine = noise(vec3(p.x * 5.0, lat * 46.0, p.z * 5.0) + uSeed * 3.0);
                         float storm = smoothstep(0.62, 0.86, fbm(vec3(p.x * 4.0, lat * 13.0, p.z * 4.0) + uSeed * 11.0));
-                        vec3 dark = mix(uColorPrimary, uColorInk, 0.12) * 0.26;
-                        vec3 pale = mix(uColorPrimary, uColorInk, 0.62) * 0.74;
+                        vec3 dark = mix(uColorPrimary, uColorInk, 0.38) * 0.26;
+                        vec3 pale = mix(uColorPrimary, uColorInk, 0.8) * 0.74;
                         float deck = bands * (0.72 + fine * 0.28);
                         if (uMapped > 0.0) {
                             // A real cloud deck turns slowly under the same light;
@@ -2045,9 +2480,9 @@
                         }
                         vec3 surface = mix(dark, pale, deck);
                         surface = mix(surface, mix(uColorAccent, uColorInk, 0.25) * 0.8, storm * 0.5);
-                        surface = mix(surface, uColorEmber * 0.55, smoothstep(0.8, 0.98, bands) * (1.0 - storm) * 0.22);
+                        surface = mix(surface, mix(uColorEmber, uColorInk, 0.5) * 0.55, smoothstep(0.8, 0.98, bands) * (1.0 - storm) * 0.18);
                         // Belts lean warm and the brightest zones catch the accent.
-                        surface = mix(surface, uColorEmber * 0.36, (1.0 - smoothstep(0.12, 0.5, deck)) * 0.42 * uMapped);
+                        surface = mix(surface, mix(uColorEmber, uColorInk, 0.45) * 0.36, (1.0 - smoothstep(0.12, 0.5, deck)) * 0.28 * uMapped);
                         surface = mix(surface, mix(uColorAccent, uColorInk, 0.55) * 0.8, smoothstep(0.7, 1.0, deck) * 0.22 * uMapped);
                         vec3 air = mix(uColorPrimary, uColorInk, 0.3);
                         // The disc dims towards its edge, where the light has
@@ -2075,8 +2510,21 @@
                         float polarLight = smoothstep(0.77, 0.94, abs(p.y));
                         float curtain = mix(0.55, 1.0, noise(vec3(p.xz * 5.0, uTime * 0.14 + uSeed)));
                         col += mix(uColorPrimary, uColorAccent, 0.3) * polarLight * curtain * (1.0 - day) * 0.20 * uGlow;
+                        if (uDetail > 0.5) {
+                            // Lightning deep in the storm belts of the night side:
+                            // brief flashes that light a patch of cloud from below.
+                            vec3 g = vec3(p.x * 16.0, lat * 30.0, p.z * 16.0), cell = floor(g);
+                            float cellSeed = hash(cell + uSeed * 7.0);
+                            float beat = uTime * (1.5 + cellSeed * 2.0) + cellSeed * 31.0;
+                            float strike = step(0.93, hash(vec3(floor(beat), cellSeed, 3.0))) * pow(1.0 - fract(beat), 6.0);
+                            float glowAt = exp(-length(g - cell - 0.5) * 3.2);
+                            col += mix(uColorInk, uColorPrimary, 0.25) * strike * glowAt * step(0.55, cellSeed)
+                                * (1.0 - day) * 0.55 * uGlow;
                         }
-                    } else if (uKind < 2.5) {
+                        }
+                    }
+                    #elif BODY_KIND == 2
+                    {
                         // Ring system: ringlets, a wide division, spiral density
                         // waves, the planet's shadow, and light scattered forward.
                         float r = length(vLocal.xz);
@@ -2089,7 +2537,7 @@
                         float wave = 0.82 + 0.18 * sin(angle * 2.0 - log(max(r, 1.0)) * 9.0 + uTime * 0.12);
                         float dust = 0.82 + 0.18 * noise(vec3(vLocal.xz * 1.3, uSeed));
                         float density = ringlets * division * wave * dust;
-                        vec3 tone = mix(uColorAccent * 1.05, mix(uColorPrimary, uColorInk, 0.35), smoothstep(0.0, 0.3, t));
+                        vec3 tone = mix(mix(uColorAccent, uColorInk, 0.5), mix(uColorPrimary, uColorInk, 0.5), smoothstep(0.0, 0.3, t));
                         tone = mix(tone, uColorInk * 0.5, smoothstep(0.7, 1.0, t));
                         if (uMapped > 0.0) {
                             // A measured profile: how much ice there is along the
@@ -2099,12 +2547,25 @@
                             density = mix(density, profile.r * sand * (0.94 + 0.06 * wave), uMapped);
                             // Dusty and warm near the planet, pale ice in the broad
                             // middle ring, greyer and cooler outside the division.
-                            vec3 dusty = mix(uColorAccent, uColorEmber, 0.35) * 0.55;
+                            vec3 dusty = mix(uColorInk, mix(uColorAccent, uColorEmber, 0.35), 0.4) * 0.5;
                             vec3 ice = mix(uColorInk, uColorAccent, 0.14);
                             vec3 outerIce = mix(uColorInk, uColorPrimary, 0.3) * 0.8;
                             vec3 mappedTone = mix(dusty, ice, smoothstep(0.12, 0.3, t));
                             mappedTone = mix(mappedTone, outerIce, smoothstep(0.66, 0.76, t));
                             tone = mix(tone, mappedTone * (0.45 + 0.75 * profile.g), uMapped);
+                        }
+                        if (uThin > 0.5) {
+                            // An ice giant's rings: a few narrow dark ringlets, the
+                            // outermost the broadest, over a whisper of dust.
+                            float thin = 0.0;
+                            for (int i = 0; i < 9; i++) {
+                                float fi = float(i);
+                                float at = 0.16 + fi * 0.09 + (hash(vec3(fi, uSeed, 2.0)) - 0.5) * 0.04;
+                                float w = 0.004 + 0.006 * hash(vec3(fi, uSeed, 5.0)) + (i == 8 ? 0.014 : 0.0);
+                                thin += exp(-(t - at) * (t - at) / (w * w));
+                            }
+                            density = clamp(thin, 0.0, 1.0) * 0.26 + 0.07 * noise(vec3(t * 80.0, uSeed, 3.0));
+                            tone = mix(uColorInk, uColorPrimary, 0.3) * 0.2;
                         }
                         // Fine ringlets, kept only while a pixel can still resolve them.
                         float grainT = uDetail > 0.5 ? fwidth(t) : 1.0;
@@ -2143,7 +2604,9 @@
                         // Seen edge-on a thin sheet still hides what is behind it.
                         float across = max(0.22, abs(dot(n, v)));
                         alpha = (1.0 - exp(-depthOf * 0.8 / across)) * edges * fade;
-                    } else if (uKind > 3.5) {
+                    }
+                    #elif BODY_KIND == 4
+                    {
                         // Air above the cloud tops: brightest along the limb, thinning
                         // outwards, lit on the day side and glowing when the sun is behind.
                         float facing = clamp(dot(n, v), 0.0, 1.0);
@@ -2155,7 +2618,25 @@
                         col = mix(uColorPrimary, uColorInk, 0.38) * (0.5 + lit)
                             + mix(uColorAccent, uColorInk, 0.5) * against * 1.5;
                         alpha = halo * (0.012 + 0.42 * lit + 0.5 * against) * fade * step(grain, solid - 0.04);
-                    } else {
+                        if (abs(uWorld - 2.0) < 0.5 || abs(uWorld - 3.0) < 0.5) {
+                            // Plumes: fine streaks rising from the vents, thinning with
+                            // height, lit by the sun and brightest seen against it.
+                            vec3 q = normalize(vLocal);
+                            float streaks = noise(vec3(atan(q.z, q.x + 1e-5) * 26.0, vRise * 3.0, uSeed * 5.0)) * 0.6
+                                + noise(vec3(atan(q.z, q.x + 1e-5) * 70.0, vRise * 8.0 - uTime * 0.3, uSeed)) * 0.4;
+                            float body = smoothstep(0.01, 0.06, vRise) * (0.4 + 0.6 * smoothstep(0.35, 0.8, streaks));
+                            float sunPart = smoothstep(-0.3, 0.4, ndl) + against * 2.5;
+                            col = mix(uColorInk, uColorPrimary, uWorld < 2.5 ? 0.25 : 0.05)
+                                * (uWorld < 2.5 ? 1.0 : 0.85) * (0.15 + sunPart);
+                            if (uWorld > 2.5) col = mix(col, mix(uColorAccent, uColorInk, 0.5) * (0.15 + sunPart), 0.4);
+                            // Thinning to nothing at the top and along the outline, so no edge shows.
+                            float top = vRise / (uWorld < 2.5 ? 0.5 : 0.28);
+                            alpha = body * 0.22 * (1.0 - smoothstep(0.15, 0.9, top)) * smoothstep(0.05, 0.5, facing)
+                                * fade * step(grain, solid - 0.04);
+                        }
+                    }
+                    #else
+                    {
                         // Sail film: aluminised on the sunward face, bare gold
                         // polymer behind; fold creases, slack wrinkles, strips
                         // of thin solar cells, taped edges. It mirrors the sky.
@@ -2195,6 +2676,7 @@
                         col = mix(col, uColorInk * (0.1 + 0.5 * lam), clamp(hem, 0.0, 1.0) * 0.8);
                         alpha = (0.9 + 0.1 * (1.0 - facing)) * fade;
                     }
+                    #endif
                     // Whatever drifts behind the reading area steps back.
                     vec2 ndc = gl_FragCoord.xy / uViewport * 2.0 - 1.0;
                     float forward = smoothstep(0.15, 0.8, length(ndc * vec2(0.8, 1.5)));
@@ -2209,7 +2691,12 @@
                         col *= mix(0.3, 1.0, forward);
                     }
                     col += mix(uColorAccent, uColorInk, 0.4) * front * 1.6 * uGlow;
-                    gl_FragColor = vec4(col, alpha);
+                    // A real GPU can make NaN where a software one does not; one bad
+                    // pixel would spread through the bloom, so it is cleared here.
+                    if (any(isnan(col)) || any(isinf(col))) col = vec3(0.0);
+                    col = min(max(col, vec3(0.0)), vec3(64.0));
+                    if (isnan(alpha)) alpha = 0.0;
+                    gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
                     #include <tonemapping_fragment>
                     #include <colorspace_fragment>
                 }
@@ -2279,13 +2766,18 @@
         const bodyNodes = slotTemplateMap.map((item, idx) => {
             const group = new T.Group();
             group.visible = false;
-            const parts = bodyBuilders[item.code](item.spec, (idx * 0.618 + 0.11) % 1).map(([geo, mat]) => {
+            const seed = (idx * 0.618 + 0.11) % 1;
+            const built = bodyBuilders[item.code](item.spec, seed).map(([geo, mat]) => [geo, mat, 0]);
+            (item.spec.variants || []).forEach((variant, v) => {
+                built.push([stationGeometry(variant), makeBodyMaterial(0, (seed + 0.29 * (v + 1)) % 1), v + 1]);
+            });
+            const parts = built.map(([geo, mat, variant]) => {
                 const mesh = new T.Mesh(geo, mat);
                 mesh.frustumCulled = false;
                 // Translucent rings and sails draw after the opaque bodies they wrap.
                 mesh.renderOrder = mat.transparent ? 6 : 0;
                 group.add(mesh);
-                return { geo, mat };
+                return { geo, mat, mesh, variant };
             });
             root.add(group);
             return { group, parts };
@@ -2389,7 +2881,7 @@
                         float dither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
                         if (dither >= present) discard;
                         // Broken faces, as shattered rock has.
-                        vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+                        vec3 n = cross(dFdx(vWorld), dFdy(vWorld)); n = dot(n, n) > 1e-12 ? normalize(n) : vec3(0.0, 0.0, 1.0);
                         vec3 v = normalize(cameraPosition - vWorld);
                         if (dot(n, v) < 0.0) n = -n;
                         float lit = clamp(dot(n, uLight) * 1.15 + 0.03, 0.0, 1.0);
@@ -2731,6 +3223,12 @@
             `
         });
         const fadingGlyphMaterial = glyphMaterial.clone();
+        // A hidden stand-in carries the glyph material from the start, so it is
+        // compiled with the rest of the scene and not at the first lyric.
+        const glyphWarmup = new T.Mesh(new T.PlaneGeometry(1, 1), glyphMaterial);
+        glyphWarmup.visible = false;
+        glyphWarmup.frustumCulled = false;
+        root.add(glyphWarmup);
         const glyphColorUniforms = ['waitMain', 'sungMain', 'sub', 'ink', 'outline'];
         let glyphCanvas = document.createElement('canvas');
         let glyphMesh = null;
@@ -3377,6 +3875,8 @@
             skyDome.visible = showStarfield;
             const sky = skyMat.uniforms;
             sky.uTime.value = settings.reducedMotion ? 0 : time;
+            sky.uJourney.value = clamp(time / Math.max(1, timeline.duration));
+            sky.uComet.value = timeline.cometPass ? encounterAmount(timeline.cometPass, time) : 0;
             sky.uNebula.value = actState.nebulaAlpha * clamp(glowAmount, 0.3, 1.6);
             const holeStrength = showStarfield ? encounterAmount(timeline.blackHole, time) : 0;
             sky.uHole.value.x = holeStrength;
@@ -3567,7 +4067,8 @@
                 u.uSolid.value = formed;
                 u.uPresence.value = presence;
                 u.uDissolveDir.value = dissolveDir;
-                u.uScale.value = slot.scale;
+                const size = place.size || 1;
+                u.uScale.value = slot.scale * size;
                 u.uDensity.value = objectDensity;
                 u.uAudioPulse.value = audioPulse;
                 u.uGlow.value = glowAmount;
@@ -3582,7 +4083,7 @@
                 body.group.visible = formed > 0.42;
                 body.group.position.copy(node.points.position);
                 body.group.rotation.copy(node.points.rotation);
-                body.group.scale.setScalar(slot.scale * (dissolveDir < 0 ? mix(0.58, 1, smooth(cohesion)) : 1));
+                body.group.scale.setScalar(slot.scale * size * (dissolveDir < 0 ? mix(0.58, 1, smooth(cohesion)) : 1));
 
                 if (hasMotion) {
                     // Save the change in heading for a close pass; distant bodies drift into view on their own.
@@ -3602,11 +4103,31 @@
                 }
 
                 bodyTurn.copy(body.group.quaternion).invert();
-                for (const { mat } of body.parts) {
+                const world = place !== slot ? (place.world || 0)
+                    : slot.worlds ? slot.worlds[Math.max(0, cycleIndex) % slot.worlds.length] : 0;
+                // Air only round worlds that have it, rings only round giants.
+                const air = world === WORLD.desert ? 0.35 : world === WORLD.home ? 0.3
+                    : world === WORLD.ice || world === WORLD.volcanic ? 1
+                    : world === 0 || world === WORLD.home || world === WORLD.iceGiant ? 1 : 0;
+                // Craft take their turns the same way the worlds do.
+                const variants = slotTemplateMap[idx].spec.variants;
+                const turns = slotTemplateMap[idx].spec.turns;
+                const craft = place !== slot || !variants ? 0
+                    : turns ? turns[clamp(cycleIndex + 1, 0, turns.length - 1)]
+                        : Math.max(0, cycleIndex) % (variants.length + 1);
+                for (const { mat, mesh, variant } of body.parts) {
                     const b = mat.uniforms;
+                    mesh.visible = variant === craft;
+                    if (!mesh.visible) continue;
+                    b.uWorld.value = world;
+                    b.uThin.value = world === WORLD.iceGiant ? 1 : 0;
+                    const kind = b.uKind.value;
+                    if (kind === 4) mesh.visible = air > 0;
+                    else if (kind === 2) mesh.visible = world === 0 || world === WORLD.iceGiant;
+                    if (!mesh.visible) continue;
                     b.uTime.value = time;
                     b.uCohesion.value = formed;
-                    b.uPresence.value = presence;
+                    b.uPresence.value = kind === 4 ? presence * air : presence;
                     b.uAudioPulse.value = audioPulse;
                     b.uGlow.value = glowAmount;
                     b.uLightLocal.value.copy(worldLight).applyQuaternion(bodyTurn);
@@ -3686,7 +4207,7 @@
                 clearFadingGlyph();
                 clearGlyphStage();
                 scene.remove(root);
-                [fieldGeo, skyGeo, filamentGeo, streakGeo, lyricGeo, rippleGeo, ...frameArcGeos].forEach((g) => g?.dispose?.());
+                [fieldGeo, skyGeo, filamentGeo, streakGeo, lyricGeo, rippleGeo, glyphWarmup.geometry, ...frameArcGeos].forEach((g) => g?.dispose?.());
                 [fieldMat, skyMat, skyBakeMat, filamentMat, streakMat, lyricParticleMat, glyphMaterial, fadingGlyphMaterial,
                     ...frameArcMats].forEach((m) => m?.dispose?.());
                 skyMasks.dispose();
@@ -3807,6 +4328,7 @@
             const now = Date.now();
             if (now - lastContextLoss > 60000) contextRetries = 0;
             lastContextLoss = now;
+            console.warn(`[MusicStage:Tunnel] WebGL context lost (retry ${contextRetries} of 3)`);
             fallbackMode = true;
             disposeGraphics();
             if (latest) renderFallback(latest);
