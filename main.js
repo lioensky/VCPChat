@@ -323,6 +323,20 @@ const NATIVE_SPLASH_READY_FILE = app.isPackaged
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
 const SETTINGS_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
+// Which GPU a two-GPU laptop renders with. Chromium picks the integrated one
+// by default and the choice is made once, before the app is ready, so it is a
+// start-up setting: "gpuPreference" in settings.json ("high-performance",
+// "low-power" or absent), or VCPCHAT_GPU_PREFERENCE for one run.
+try {
+    let gpuPreference = process.env.VCPCHAT_GPU_PREFERENCE?.trim();
+    if (!gpuPreference && require('fs').existsSync(SETTINGS_FILE)) {
+        gpuPreference = JSON.parse(require('fs').readFileSync(SETTINGS_FILE, 'utf8')).gpuPreference;
+    }
+    if (gpuPreference === 'high-performance') app.commandLine.appendSwitch('force_high_performance_gpu');
+    else if (gpuPreference === 'low-power') app.commandLine.appendSwitch('force_low_power_gpu');
+} catch (error) {
+    console.warn('[Main] GPU preference not applied:', error.message);
+}
 // 诊断只观察缓存，不加载执行器；Windows 与非 Windows 的后端都必须计入。
 const TERMINAL_EXECUTOR_PATHS = ['PowerShellExecutor', 'PTYShellExecutor'].map(name =>
     path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', name, `${name}.js`));

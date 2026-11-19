@@ -112,6 +112,10 @@ function setupPlayer(app) {
             app.isChangingState = true;
             app.lastCommandTime = Date.now();
             app.expectedPlayingState = true;
+            // Visual clocks extrapolate from the last state sample. Restart that
+            // baseline here, otherwise the whole pause is added to the position
+            // until the first poll arrives.
+            app.lastStateUpdateTime = Date.now();
             app.isPlaying = true;
             app.publishCapsuleState();
             document.body.classList.add('music-playing');
@@ -131,6 +135,16 @@ function setupPlayer(app) {
             app.isChangingState = true;
             app.lastCommandTime = Date.now();
             app.expectedPlayingState = false;
+            if (app.isPlaying) {
+                // Polling stops with playback, so keep the extrapolated position
+                // instead of falling back to a sample up to 250 ms old.
+                const pausedAt = Date.now();
+                const elapsed = Math.max(0, pausedAt - (Number(app.lastStateUpdateTime) || pausedAt)) / 1000;
+                const duration = Number(app.lastKnownDuration) || 0;
+                const position = (Number(app.lastKnownCurrentTime) || 0) + Math.min(elapsed, 1);
+                app.lastKnownCurrentTime = duration > 0 ? Math.min(duration, position) : position;
+                app.lastStateUpdateTime = pausedAt;
+            }
             app.isPlaying = false;
             app.publishCapsuleState();
             document.body.classList.remove('music-playing');
