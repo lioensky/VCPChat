@@ -13,6 +13,7 @@ module.exports = Object.freeze({
     MUSIC: 'music',
     THEMES: 'themes',
     GAME: 'game-hall',
+    MIJIA: 'mijia',
     TASK: 'task',
     PLUGIN_MANAGER: 'plugin-manager',
     PROJECT_FORGE: 'project-forge',

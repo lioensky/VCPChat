@@ -9,6 +9,7 @@ module.exports = {
     roles: ['chat', 'utility', 'desktop'],
     api: {
         onThemeUpdated: on('theme-updated'),
+        onThemeStylesheetUpdated: on('theme-stylesheet-updated').roles('utility'),
         getCurrentTheme: invoke('get-current-theme'),
         setTheme: send('set-theme', 'theme'),
         setThemeMode: send('set-theme-mode', 'themeMode'),

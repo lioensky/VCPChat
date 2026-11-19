@@ -38,6 +38,7 @@ let vchatTaskWindow = null;
 let vchatPluginManagerWindow = null;
 let vchatProjectForgeWindow = null;
 let vchatGameWindow = null;
+let vchatMijiaWindow = null;
 
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -537,6 +538,7 @@ function createOrFocusChildWindow(existingWindow, options) {
         if (win === vchatPluginManagerWindow) vchatPluginManagerWindow = null;
         if (win === vchatProjectForgeWindow) vchatProjectForgeWindow = null;
         if (win === vchatGameWindow) vchatGameWindow = null;
+        if (win === vchatMijiaWindow) vchatMijiaWindow = null;
     });
 
     console.log(`[DesktopHandlers] Created child window: ${options.title}`);
@@ -864,6 +866,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.THEMES;
         case 'open-game-window':
             return WINDOW_APP_IDS.GAME;
+        case 'open-mijia-window':
+            return WINDOW_APP_IDS.MIJIA;
         case 'open-task-window':
             return WINDOW_APP_IDS.TASK;
         case 'open-plugin-manager-window':
@@ -1065,6 +1069,22 @@ function initialize(params) {
     CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
     registerManagedWindows();
     registerGameWindow();
+    require('./mijiaHandlers').initialize();
+    windowService.register(WINDOW_APP_IDS.MIJIA, {
+        owner: 'desktopHandlers',
+        getWindow: () => vchatMijiaWindow,
+        open: async () => {
+            if (vchatMijiaWindow && !vchatMijiaWindow.isDestroyed() && vchatMijiaWindow.isMinimized()) {
+                vchatMijiaWindow.restore();
+            }
+            vchatMijiaWindow = createOrFocusChildWindow(vchatMijiaWindow, {
+                width: 620, height: 660, minWidth: 340, minHeight: 400,
+                title: '米家 · VChat',
+                htmlPath: path.join(app.getAppPath(), 'Mijiamodules', 'mijia.html'),
+            });
+            return vchatMijiaWindow;
+        },
+    });
 
     if (!standaloneProcessCleanupRegistered) {
         app.once('will-quit', cleanupStandaloneAppProcesses);

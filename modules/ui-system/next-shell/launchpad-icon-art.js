@@ -194,6 +194,28 @@ const angle=Math.PI+span*.78*Math.sin(t*1.8)*e;
 const px=d+radius*Math.cos(angle),py=radius*Math.sin(angle);
 circle(c,px,py,7,'#ffcc8040');circle(c,px,py,4.2,'#ffc379');circle(c,px-1,py-1,1.6,'#fff2d3');
 c.restore();
+}else if(type==='mijia'){
+// Ceramic smart home: beveled teal roof and a warm window.
+box(c,30,53,68,49,10,'#578b89');
+box(c,28,50,68,48,10,gradient(c,28,50,96,98,['#fff9e6','#d4e4d8','#94b7b0']));
+box(c,81,28,12,24,4,gradient(c,81,28,93,52,['#a5e3db','#4d8d89']));
+const roof=[[22,59],[61,26],[103,58]];
+line(c,roof,'#286c69',16);
+c.shadowBlur=0;c.shadowOffsetY=0;
+line(c,roof.map(([x,y])=>[x,y-4]),gradient(c,26,30,98,58,['#b0f2dc','#55aca0','#338380']),12);
+line(c,[[25,52],[61,22],[80,37]],'#e2fff2a0',2);
+box(c,69,69,17,29,5,gradient(c,69,69,86,98,['#689e99','#386b69']));
+circle(c,81,84,1.6,'#e5d7ab');
+const glow=(Math.sin(t*3)*.5+.5)*e;
+if(glow>0){
+    c.globalAlpha=glow*.42;
+    box(c,34,62,31,33,11,'#ffbd55');
+    c.globalAlpha=1;
+}
+box(c,38,66,23,25,5,'#a77c58');
+box(c,40,68,19,21,3,gradient(c,40,68,59,89,['#fff5bb','#eeaa56']));
+line(c,[[49.5,69],[49.5,88]],'#b9824b',1.5);
+line(c,[[41,78],[58,78]],'#b9824b',1.5);
 }else if(type==='game'){
 // Mint arcade controller: floating shell, responsive stick and softly pulsing buttons.
 c.save();c.translate(64,66);c.rotate(-.08+b*.025);

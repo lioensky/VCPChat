@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'">
+    <title>米家 · VChat</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="./mijia.css">
+    <script type="module" src="./window.js"></script>
+</head>
+<body class="mijia-window">
+    <header id="top-nav-bar" class="mijia-window-bar">
+        <strong>米家</strong>
+        <nav aria-label="窗口控制">
+            <button id="minimize-btn" type="button" aria-label="最小化" title="最小化">−</button>
+            <button id="maximize-btn" type="button" aria-label="最大化或还原" title="最大化或还原">□</button>
+            <button id="close-btn" type="button" aria-label="关闭" title="关闭">×</button>
+        </nav>
+    </header>
+    <main id="mijia-root"></main>
+</body>
+</html>
