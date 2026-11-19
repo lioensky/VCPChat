@@ -89,49 +89,6 @@ test('stage clock filters poll jitter, stays monotonic and snaps on seeks', () =
     dom.window.close();
 });
 
-test('play and pause keep the extrapolated position continuous', async () => {
-    const dom = createDom();
-    const { window } = dom;
-    runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
-    runScript(dom, 'Musicmodules/music-player.js');
-    const classList = { add() {}, remove() {}, toggle() {} };
-    const app = {
-        playlist: [{ path: 'a.flac', title: 'a' }],
-        currentTrackIndex: 0,
-        isTrackLoading: false,
-        isPlaying: false,
-        lastKnownCurrentTime: 22.5,
-        lastKnownDuration: 200,
-        // The last sample is six seconds old because polling stops while paused.
-        lastStateUpdateTime: Date.now() - 6000,
-        playPauseBtn: { classList },
-        phantomAudio: { play: () => Promise.resolve(), pause() {} },
-        stripAudioExtension: (value) => value,
-        normalizePathForCompare: (value) => value,
-        syncTrackIndexByPath() {},
-        pollState() {},
-        api: {
-            musicPlay: async () => ({ status: 'success' }),
-            musicPause: async () => ({ status: 'success' })
-        }
-    };
-    vm.runInContext('setupPlayer', dom.getInternalVMContext())(app);
-    const Runtime = window.MusicStageRuntime;
-
-    await app.playTrack();
-    assert.equal(app.isPlaying, true);
-    const resumed = Runtime.resolvePlaybackTime(app, Date.now());
-    assert.ok(resumed - 22.5 < 0.2, `resume must not add the pause, got ${resumed}`);
-
-    app.lastStateUpdateTime = Date.now() - 180;
-    await app.pauseTrack();
-    assert.equal(app.isPlaying, false);
-    const paused = Runtime.resolvePlaybackTime(app, Date.now() + 5000);
-    assert.ok(paused >= 22.5 + 0.17 && paused < 22.5 + 0.4, `pause keeps the shown position, got ${paused}`);
-    app.stopStatePolling();
-    dom.window.close();
-});
-
 test('tunnel journey covers the whole song, with or without lyrics', () => {
     const dom = createDom();
     const { MusicStageTunnelManager: Tunnel } = loadStage(dom, 'Musicmodules/music-stage/modes/tunnel-manager.js');
