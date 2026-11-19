@@ -456,9 +456,9 @@ function applyStreamingPreprocessors(text) {
     return contentRuntime.createRenderModel({ content: text, role: 'assistant' }, { mode: PIPELINE_MODES.STREAM_FAST }).text;
 }
 
-function parseStreamTail(text) {
+function parseStreamTail(text, options) {
     if (typeof refs.parseTail === 'function') {
-        return refs.parseTail(text);
+        return refs.parseTail(text, options);
     }
 
     const processedText = applyStreamingPreprocessors(text);
@@ -562,6 +562,7 @@ function createStableBlockRecord(segmentState, start, end, source, html, element
 function resetStableBlockState(segmentState) {
     segmentState.stableRenderedCutoff = 0;
     segmentState.stableBlocks = [];
+    segmentState.mountedBlocksRoot = null;
     segmentState.stableBlockSeq = 0;
 }
 
@@ -591,6 +592,7 @@ function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, h
 
     stableBlocksRoot.appendChild(blockEl);
     segmentState.stableBlocks.push(blockRecord);
+    segmentState.mountedBlocksRoot = stableBlocksRoot;
     segmentState.stableRenderedCutoff = blockRecord.end;
 
     if (typeof refs.renderPostProcessedHtml === 'function') {
@@ -653,10 +655,10 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
 function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, options = {}) {
     if (!stableBlocksRoot || segmentState.stableBlocks.length === 0) return false;
 
-    const recordsAreMountedHere = segmentState.stableBlocks.every((record) => {
-        return record.element?.isConnected && record.element.parentNode === stableBlocksRoot;
-    });
-    if (recordsAreMountedHere) return false;
+    const records = segmentState.stableBlocks;
+    if (segmentState.mountedBlocksRoot === stableBlocksRoot
+        && stableBlocksRoot.childElementCount === records.length
+        && stableBlocksRoot.lastElementChild === records.at(-1).element) return false;
 
     // 当前 root 属于新视图。先一次性清空，避免历史批量渲染与首个流式帧交错时留下半恢复结构。
     cleanupChatMedia(stableBlocksRoot);
@@ -698,6 +700,7 @@ function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, opti
         }
     }
 
+    segmentState.mountedBlocksRoot = stableBlocksRoot;
     return true;
 }
 
@@ -1217,9 +1220,42 @@ function renderStreamFrame(messageId) {
         segmentState.scopedCssDirty = true;
     }
     publishStreamScopedCss(segmentState, streamRenderOptions.scopeId, messageItem);
-    const rawHtml = prepareChatMediaHtml(parseStreamTail(renderTailText), ownerDocument());
+    let openCode = null;
+    let patched = false;
+    const previous = segmentState.openCode;
+    const parsed = parseStreamTail(renderTailText, {
+        patchOpenCode(source, language) {
+            openCode = { source, language, root: tailRoot, cutoff: segmentState.stableCutoff, epoch: segmentState.sourceEpoch };
+            if (!previous || previous.root !== tailRoot || previous.language !== language
+                || previous.cutoff !== openCode.cutoff || previous.epoch !== openCode.epoch
+                || !previous.code || previous.code.parentElement?.parentElement !== tailRoot
+                || previous.code.lastElementChild !== previous.last || !previous.last
+                || !source.startsWith(previous.source)) return false;
+            const delta = source.slice(previous.source.length);
+            if (source.includes('\u0000')) return false;
+            const parts = delta.split('\n');
+            let line = previous.last;
+            let index = Number(line.dataset.vcpStreamCodeLine);
+            const oldTail = previous.source.slice(previous.source.lastIndexOf('\n') + 1);
+            line.textContent = oldTail + parts[0] || '\u200b';
+            const fragment = tailRoot.ownerDocument.createDocumentFragment();
+            for (let i = 1; i < parts.length; i++) {
+                line.dataset.vcpStreamCodeCompleted = 'true';
+                line = tailRoot.ownerDocument.createElement('span');
+                line.className = 'vcp-stream-code-line';
+                line.dataset.vcpKey = `stream-code-line-${++index}`;
+                line.dataset.vcpStreamCodeLine = String(index);
+                line.textContent = parts[i] || '\u200b';
+                fragment.appendChild(line);
+            }
+            previous.code.appendChild(fragment);
+            patched = true;
+            return true;
+        },
+    });
+    const rawHtml = patched ? null : prepareChatMediaHtml(parsed, ownerDocument());
 
-    if (refs.morphdom) {
+    if (!patched && refs.morphdom) {
         try {
             refs.morphdom(tailRoot, `<div>${rawHtml}</div>`, {
                 childrenOnly: true,
@@ -1371,13 +1407,17 @@ function renderStreamFrame(messageId) {
             tailRoot.innerHTML = rawHtml;
             console.debug('[StreamManager] morphdom rejected a stream frame; replaced the sealed tail directly.', error);
         }
-    } else {
+    } else if (!patched) {
         cleanupChatMedia(tailRoot);
         tailRoot.innerHTML = rawHtml;
     }
 
-    // stable block 在追加/恢复后的重后处理中已处理图片；每帧只扫描会变化的 tail。
-    processStreamTailImages(tailRoot);
+    if (openCode) {
+        openCode.code = patched ? previous.code : tailRoot.querySelector(':scope > pre.vcp-stream-code-block > code.vcp-stream-code-lines');
+        openCode.last = openCode.code?.lastElementChild;
+    }
+    segmentState.openCode = openCode;
+    if (!patched) processStreamTailImages(tailRoot);
     decorateStreamingCodeLines(tailRoot);
     segmentState.lastTailText = tailText;
     segmentState.lastRenderedTailText = tailText;
@@ -1577,9 +1617,15 @@ async function startStreamingMessage(message, passedMessageItem = null) {
                 timestamp: message.timestamp || Date.now(),
                 isGroupMessage: message.isGroupMessage || false
             };
-            messageItem = refs.chatDomRenderer
-                ? await refs.chatDomRenderer.renderMessage(placeholderMessage, false)
-                : refs.renderMessage(placeholderMessage, false);
+            try {
+                messageItem = await (refs.chatDomRenderer
+                    ? refs.chatDomRenderer.renderMessage(placeholderMessage, false)
+                    : refs.renderMessage(placeholderMessage, false));
+            } catch (error) {
+                if (stillOwnsOperation()) discardStreamingMessage(messageId);
+                console.error(`[StreamManager] Placeholder render failed for ${messageId}:`, error);
+                return null;
+            }
             if (!stillOwnsOperation()) return null;
             if (!messageItem) {
                 console.error(`[StreamManager] Failed to render message item for ${message.id}`);
@@ -1645,7 +1691,7 @@ async function startStreamingMessage(message, passedMessageItem = null) {
     messageInitializationWaiters.delete(messageId);
     initializationWaiters.forEach(resolve => resolve(true));
 
-    if (shouldProjectToDom) {
+    if (shouldProjectToDom && isMessageForCurrentView(context)) {
         // 如果从思考转为非思考，立即触发一次渲染以清理占位符
         if (!message.isThinking && isCurrentlyThinking) {
             renderStreamFrame(messageId);
@@ -1665,7 +1711,8 @@ function startGlobalRenderLoop() {
     if (globalRenderLoopRunning) return;
 
     globalRenderLoopRunning = true;
-    lastFrameTime = 0; // 重置时间戳
+    // Keep the last paint timestamp across short parks: frequent wakeups
+    // still share one FPS budget, while a long tool wait renders immediately.
 
     const scheduleNextRenderLoopFrame = () => {
         globalRenderLoopFrameHandle = scheduleAnimationFrame((timestamp) => {
@@ -1685,10 +1732,8 @@ function startGlobalRenderLoop() {
         if (!currentTime) { // Fallback for browsers that don't pass currentTime
             currentTime = performance.now();
         }
-        if (!lastFrameTime) {
-            lastFrameTime = currentTime;
-        }
-        const elapsed = currentTime - lastFrameTime;
+        // Only the very first paint has no preceding frame to throttle against.
+        const elapsed = lastFrameTime ? currentTime - lastFrameTime : FRAME_INTERVAL;
         if (elapsed < FRAME_INTERVAL) {
             scheduleNextRenderLoopFrame();
             return;
@@ -1702,30 +1747,25 @@ function startGlobalRenderLoop() {
                 streamingTimers.delete(messageId);
                 continue;
             }
-            processAndRenderSmoothChunk(messageId);
-
-            const currentQueue = streamingChunkQueues.get(messageId);
-            const hasDirectWork = pendingDirectRenderMessages.has(messageId);
-            const stillTracked = messageInitializationStatus.has(messageId);
-            if (
-                ((!currentQueue || currentQueue.length === 0) && messageIsFinalized(messageId))
-                || (!stillTracked && !hasDirectWork && (!currentQueue || currentQueue.length === 0))
-            ) {
+            try {
+                processAndRenderSmoothChunk(messageId);
+            } catch (error) {
+                // Pause this writer until new input. Do not spin on a bad frame
+                // or block unrelated streams; terminal still has the full text.
                 streamingTimers.delete(messageId);
+                console.error(`[StreamManager] Failed to render frame for ${messageId}:`, error);
+                continue;
+            }
 
-                const storedContext = messageContextMap.get(messageId);
-                const isForCurrentView = viewContextCache.get(messageId) ?? isMessageForCurrentView(storedContext);
-
-                if (isForCurrentView) {
-                    const finalMessageItem = getCachedMessageDom(messageId)?.messageItem;
-                    if (finalMessageItem) finalMessageItem.classList.remove('streaming');
-                }
-
-                streamingChunkQueues.delete(messageId);
+            if (!streamingChunkQueues.get(messageId)?.length && !pendingDirectRenderMessages.has(messageId)) {
+                // A tool wait is idle, not terminal. Preserve the empty smooth
+                // queue, operation identity, DOM and visible prefix for wakeup.
+                streamingTimers.delete(messageId);
             }
         }
 
-        scheduleNextRenderLoopFrame();
+        if (streamingTimers.size) scheduleNextRenderLoopFrame();
+        else globalRenderLoopRunning = false;
     }
 
     scheduleNextRenderLoopFrame();
@@ -2354,17 +2394,27 @@ function snapshotConversation(identity) {
 async function reconcileConversation(identity) {
     if (disposed) return Object.freeze([]);
     const snapshots = snapshotConversation(identity);
-    for (const snapshot of snapshots) {
-        const context = messageContextMap.get(snapshot.messageId) || snapshot.context;
-        viewContextCache.set(snapshot.messageId, isMessageForCurrentView(context));
-        await startStreamingMessage({
-            ...snapshot.message, ...context,
-            content: snapshot.accumulatedText,
-            isThinking: snapshot.accumulatedText.trim() === '',
-        });
-        if (isMessageForCurrentView(context)) {
-            renderStreamFrame(snapshot.messageId);
+    // Capture object identities before yielding, including legacy producers
+    // without operation IDs. Reconciliation is a reader, never an admission.
+    const owners = snapshots.map(({ messageId }) => messageContextMap.get(messageId));
+    for (const [index, { messageId }] of snapshots.entries()) {
+        const context = owners[index];
+        const current = () => !disposed && context && messageContextMap.get(messageId) === context
+            && isMessageActive(messageId) && !terminalProjectingMessages.has(String(messageId))
+            && isMessageForCurrentView(context);
+        if (!current()) continue;
+        if (messageInitializationStatus.get(messageId) === 'pending') {
+            await new Promise(resolve => {
+                const waiters = messageInitializationWaiters.get(messageId) || [];
+                waiters.push(resolve);
+                messageInitializationWaiters.set(messageId, waiters);
+            });
+            if (!current()) continue;
         }
+        refs.transientStreamHistory.restoreVisible?.(messageId, accumulatedStreamText.get(messageId) || '');
+        viewContextCache.set(messageId, true);
+        if (getCachedMessageDom(messageId)) renderStreamFrame(messageId);
+        else await requestStreamDomRecovery(messageId); // recovery owns its first frame
     }
     return snapshots;
 }

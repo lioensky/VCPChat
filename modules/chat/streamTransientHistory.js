@@ -59,6 +59,16 @@ export function createStreamTransientHistory({ repository, currentHistory } = {}
             if (visible) currentHistory.replace(cloneHistory(history));
             return history;
         },
+        // Navigation can remount a still-running stream after its placeholder
+        // disappeared from the visible history. Never start a new prepare epoch.
+        restoreVisible(messageId, content) {
+            const placeholder = pending.get(messageId);
+            if (disposed || !placeholder) return;
+            const history = currentHistory.get() || [];
+            if (!history.some(entry => entry.id === messageId)) {
+                currentHistory.replace([...history, { ...placeholder, content }]);
+            }
+        },
         async finalize({ messageId, context, content, finishReason, visible = false } = {}) {
             if (disposed) return null;
             const epoch = prepareEpochs.get(messageId) || 0;
