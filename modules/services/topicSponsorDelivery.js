@@ -1,6 +1,7 @@
 'use strict';
 
 const { createHash, randomUUID } = require('crypto');
+const { formatTopicRiverQuote } = require('./topicRiverQuote');
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const dispatchResult = (receipt, scope, messageId, flowlock) => ({
     success: receipt.success, accepted: receipt.accepted, queued: receipt.queued,
@@ -39,6 +40,8 @@ function createTopicSponsorDelivery({ admission, resolver, findAgent, prepareDis
         const senderQuery = args.sender_id || args.sender_name;
         if (typeof senderQuery !== 'string' || !senderQuery.trim()) throw new TypeError('sender_id 或 sender_name 必需');
         const isDispatch = args.mode === 'new_topic';
+        const riverQuote = formatTopicRiverQuote(args.river_context);
+        const body = riverQuote ? `${args.message.trimEnd()}\n\n${riverQuote}` : args.message;
         if (args.flowlock !== undefined && ![true, false, 'true', 'false'].includes(args.flowlock)) {
             throw new TypeError('flowlock 必须为 true 或 false');
         }
@@ -63,7 +66,7 @@ function createTopicSponsorDelivery({ admission, resolver, findAgent, prepareDis
             title = args.topic_name?.trim();
             dispatch = {
                 key: hash(['TopicSponsor.new_topic', requestId]),
-                fingerprint: hash([sourceId, args.target_agent.trim(), Boolean(args.sender_id), senderQuery.trim(), title, args.message, flowlock]),
+                fingerprint: hash([sourceId, args.target_agent.trim(), Boolean(args.sender_id), senderQuery.trim(), title, body, flowlock]),
             };
             const accepted = admission.getDispatchReceipt(dispatch.key, dispatch.fingerprint);
             if (accepted) return dispatchResult(accepted, accepted.scope, accepted.messageId, flowlock);
@@ -87,7 +90,7 @@ function createTopicSponsorDelivery({ admission, resolver, findAgent, prepareDis
             if (sourceId) await resolver.resolve({ topicId: sourceId });
         }
         const prefix = `[${speaker.name}的发言]`;
-        let content = args.message.startsWith(prefix) ? args.message : `${prefix}:\n${args.message}`;
+        let content = body.startsWith(prefix) ? body : `${prefix}:\n${body}`;
         if (sourceId) content += `\n\n[该发言发送自${sourceId}话题]`;
         const policy = executionContext.topicSponsorReplyPolicy || getPolicy() || {};
         // A self-post in its own source topic may persist but never self-wake.

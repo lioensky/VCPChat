@@ -1,7 +1,7 @@
 import '../../Flowlockmodules/flowlock-protocol.js';
 import { Marked } from '../../node_modules/marked/lib/marked.esm.js';
 import { applyMarkdownPolicy } from './markdownPolicy.js';
-import { createRenderTemplateCompiler } from './renderTemplateCompiler.js';
+import { createRenderTemplateCompiler, extractTopicRiverQuote, renderTopicRiverQuote } from './renderTemplateCompiler.js';
 import { createContentProcessor } from './contentProcessor.js';
 import { createEmoticonUrlFixer } from './emoticonUrlFixer.js';
 import { splitToolBatchDomains } from './toolBatchDomains.js';
@@ -34,7 +34,8 @@ export async function compileRenderJob(job) {
         },
     });
     let ordinal = 0;
-    const domains = splitToolBatchDomains(job.text);
+    const quote = (job.role || 'assistant') === 'assistant' ? extractTopicRiverQuote(job.text) : null;
+    const domains = splitToolBatchDomains(quote?.source ?? job.text);
     const parts = domains.map(domain => {
         const html = compiler.renderMarkdownToHtmlUncached(domain.source, {
             settings: job.settings, messageRole: job.role, depth: job.depth,
@@ -43,8 +44,9 @@ export async function compileRenderJob(job) {
         ordinal += collectClosedToolResultRanges(domain.source).length;
         return html;
     });
+    if (quote) parts.push(renderTopicRiverQuote(quote.rows));
     let estimatedHeight = null;
-    if (job.measure && !/[<`~$\\]|!\[|\[\[|<<<|\|/.test(job.text)) {
+    if (!quote && job.measure && !/[<`~$\\]|!\[|\[\[|<<<|\|/.test(job.text)) {
         try {
             const { font, width, lineHeight } = job.measure;
             if (width > 0 && lineHeight > 0) {
@@ -53,5 +55,5 @@ export async function compileRenderJob(job) {
         } catch { /* OffscreenCanvas/fonts are optional; never an exact DOM height. */ }
         finally { clearCache(); }
     }
-    return { parts, tools, isolatedDomains: domains.length > 1, estimatedHeight };
+    return { parts, tools, isolatedDomains: parts.length > 1, estimatedHeight };
 }

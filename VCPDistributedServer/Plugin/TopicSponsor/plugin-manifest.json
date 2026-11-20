@@ -57,7 +57,7 @@
       {
         "command": "ReplyToTopic",
         "commandIdentifier": "ReplyToTopic",
-        "description": "从当前单聊或群聊发起独立 Agent 子任务，或向已有话题留言。\n\n两种模式都需要 message 及 sender_id（精确注册 ID）或 sender_name（注册名，支持简称）。maid/valet 只作追踪署名。\n\n回复已有话题：省略 mode，传目的 topic_id，自动跨 Agent/Group 查找。source_topic_id 可选，仅提供回信地址。默认只留言，宿主启用 REPLY_ADVANCE_ENABLED 才请求推进。公共投递不适用于游戏话题。\n\n派工：传 mode=new_topic、source_topic_id（当前单聊或群聊 ID）、target_agent（注册 ID、完整名称或正向名称包含，如小克匹配猫娘小克）、message；可选 topic_name。不要传目的 topic_id，也无需查询对方旧话题。默认请求推进首轮，不切换对方当前话题。可选 flowlock=true：首轮成功落盘后才允许空闲认领，不接管已有心流；flowlock_requested 仅表示已请求。\n\n回执返回目的 topic_id；派工 accepted 表示曾受理，不表示首轮已启动或已完成。需要回报时，用普通 ReplyToTopic，把来源地址作为目的 topic_id。普通回答不自动回传。"
+        "description": "从当前单聊或群聊发起独立 Agent 子任务，或向已有话题留言。\n\n两种模式都需要 message 及 sender_id（精确注册 ID）或 sender_name（注册名，支持简称）。maid/valet 只作追踪署名。需携带最近对话时，可选 `river`: 「始」last:5「末」（`last:N`，N 为正整数，通常用 5）；不需要时省略。TopicSponsor 只使用此模式；附件仅保留 URL，由接收 Agent 按需读取。\n\n回复已有话题：省略 mode，传目的 topic_id，自动跨 Agent/Group 查找。source_topic_id 可选，仅提供回信地址。默认只留言，宿主启用 REPLY_ADVANCE_ENABLED 才请求推进。公共投递不适用于游戏话题。\n\n派工：传 mode=new_topic、source_topic_id（当前单聊或群聊 ID）、target_agent（注册 ID、完整名称或正向名称包含，如小克匹配猫娘小克）、message；可选 topic_name。不要传目的 topic_id，也无需查询对方旧话题。默认请求推进首轮，不切换对方当前话题。可选 flowlock=true：首轮成功落盘后才允许空闲认领，不接管已有心流；flowlock_requested 仅表示已请求。\n\n回执返回目的 topic_id；派工 accepted 表示曾受理，不表示首轮已启动或已完成。需要回报时，用普通 ReplyToTopic，把来源地址作为目的 topic_id。普通回答不自动回传。"
       },
       {
         "command": "CheckTopicOwnership",
