@@ -2376,7 +2376,7 @@ export const chatManager = (() => {
                         renderTarget.renderMessage({ role: 'system', notice: 'error', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
                     }
                     console.error(`[ChatManager] VCP Error for background message:`, response.error);
-                    if (request?.propagateError) throw Object.assign(new Error(String(response.error)), { shownInChat: true });
+                    if (request?.propagateError) throw Object.assign(new Error(response.error), { shownInChat: true });
                 } else if (response.choices && response.choices.length > 0) {
                     const assistantMessageContent = response.choices[0].message.content;
                     const assistantMessage = {
@@ -2427,7 +2427,7 @@ export const chatManager = (() => {
                 }
             } else {
                 if (vcpResponse && vcpResponse.streamError) {
-                    console.error("Streaming setup failed in main process:", vcpResponse.errorDetail || vcpResponse.error);
+                    console.error("Streaming setup failed in main process:", vcpResponse.error);
                     await removeThinkingFromSource();
                     settleOwnedStreamOperation?.({ event: { type: 'failed', outcome: { transport: { error: vcpResponse.error } } } });
                     if (isSendContextCurrent() && renderTarget) {

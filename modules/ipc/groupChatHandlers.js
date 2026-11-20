@@ -299,7 +299,8 @@ function initialize(mainWindow, context) {
                 );
             }
 
-            await groupChat.handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendStreamChunkToRenderer, getAgentConfigById);
+            const result = await groupChat.handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendStreamChunkToRenderer, getAgentConfigById);
+            if (result?.error) return { success: false, error: result.error, status: result.status };
             return { success: true, message: "Agent invitation processing started." };
         } catch (error) {
             console.error(`[Main IPC] Error in inviteAgentToSpeak handler for Group ${groupId}, Agent ${invitedAgentId}:`, error);

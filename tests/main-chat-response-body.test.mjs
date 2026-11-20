@@ -37,6 +37,7 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admi
         ['../services/historyMutationQueue', {}], ['./workspaceHandlers', {}], ['./sideChatHandlers', {}],
         // 桌宠没打开时这些钩子全是空操作，用真实模块。
         ['../hostHooks', require('../modules/hostHooks.js')],
+        ['../chatRequestError', require('../modules/chatRequestError.js')],
     ]);
     const load = name => { assert.ok(dependencies.has(name), 'unreviewed fixture dependency: ' + name); return dependencies.get(name); };
     vm.runInNewContext('(function(require,module,exports){' + source + '\n})', {
@@ -53,6 +54,35 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admi
         close: () => sender.emit('destroyed'),
     };
 }
+
+const limitError = JSON.stringify({ error: { message: '模拟限流', status: 429 } });
+
+test('object HTTP rejection has one readable error at the IPC and stream exits', async () => {
+    const f = route(async () => new Response(limitError, { status: 429 }));
+    try {
+        const result = await f.start();
+        assert.equal(result.error, 'HTTP 429：模拟限流');
+        assert.equal(result.status, 429);
+        const event = f.sent.find(entry => entry.event.type === 'error')?.event;
+        assert.equal(event?.error, result.error);
+        assert.equal(event?.status, 429);
+    } finally {
+        f.close();
+    }
+});
+
+test('interrupt rejection reads the nested message and keeps its HTTP status', async () => {
+    const f = route(async () => new Response(limitError, { status: 429 }),
+        { settings: { vcpServerUrl: 'http://controlled.invalid/v1/chat/completions' } });
+    try {
+        const result = await f.interrupt();
+        assert.equal(result.success, false);
+        assert.equal(result.error, 'HTTP 429：模拟限流');
+        assert.equal(result.status, 429);
+    } finally {
+        f.close();
+    }
+});
 
 // hung：服务卡住不回中止请求，超时后照样走本地收尾，停止按钮不跟着卡
 for (const failure of ['rejected', 'transport-error', 'missing-settings', 'hung']) {

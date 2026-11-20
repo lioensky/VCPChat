@@ -34,7 +34,7 @@ function fixture(mode) {
                 topic = 'other-topic';
             }
             if (mode === 'send-failed') throw new Error('send failed');
-            if (mode === 'stream-failed') return { streamError: true, errorDetail: 'stream failed' };
+            if (mode === 'stream-failed') return { streamError: true, error: 'stream failed' };
             if (mode === 'response-error') return { response: { error: 'remote failed' } };
             return {
                 response: { choices: [{ message: { content: 'terminal' } }] },

@@ -337,7 +337,7 @@ export function setupEventListeners(deps) {
                 return { nonStreamingSaved: true };
             }
             if (vcpResponse?.streamError) {
-                throw new Error(vcpResponse.errorDetail || vcpResponse.error || '续写流式请求启动失败');
+                throw new Error(vcpResponse.error || '续写流式请求启动失败');
             }
         } catch (error) {
             console.error('[ContinueWriting] 续写时出错:', error);

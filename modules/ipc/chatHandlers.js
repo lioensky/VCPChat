@@ -17,6 +17,7 @@ const { HistoryMutationQueue } = require('../services/historyMutationQueue');
 const workspaceHandlers = require('./workspaceHandlers');
 const { removeSideChatChildrenOfParent } = require('./sideChatHandlers');
 const { hostHooks } = require('../hostHooks');
+const { describeChatRequestError, readChatHttpError, chatResponseError } = require('../chatRequestError');
 
 /**
  * 若 filePath 属于已登记工作区且是文本/代码文件，创建真实路径实时引用；否则返回 null，
@@ -1471,62 +1472,15 @@ function initialize(mainWindow, context) {
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[Main - sendToVCP] VCP请求失败. Status: ${response.status}, Response Text:`, errorText);
-                let errorData = { message: `服务器返回状态 ${response.status}`, details: errorText };
-                try {
-                    const parsedError = JSON.parse(errorText);
-                    if (typeof parsedError === 'object' && parsedError !== null) {
-                        errorData = parsedError;
-                    }
-                } catch (e) { /* Not JSON, use raw text */ }
-
-                // 🔧 改进错误消息构造，防止 [object Object]
-                let errorMessage = '';
-                if (errorData.message && typeof errorData.message === 'string') {
-                    errorMessage = errorData.message;
-                } else if (errorData.error) {
-                    if (typeof errorData.error === 'string') {
-                        errorMessage = errorData.error;
-                    } else if (errorData.error.message && typeof errorData.error.message === 'string') {
-                        errorMessage = errorData.error.message;
-                    } else if (typeof errorData.error === 'object') {
-                        // 如果error是对象，尝试JSON序列化
-                        errorMessage = JSON.stringify(errorData.error);
-                    }
-                } else if (typeof errorData === 'string') {
-                    errorMessage = errorData;
-                } else {
-                    errorMessage = '未知服务端错误';
+                const failure = await readChatHttpError(response);
+                console.error('[Main - sendToVCP]', failure.error);
+                trajectoryCall.finish({ error: { name: 'HTTPError', message: failure.error } });
+                if (modelConfig.stream === true) {
+                    sendStreamPayload({ type: 'error', ...failure, messageId, context });
+                    return { streamError: true, ...failure };
                 }
-
-                const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorMessage}`;
-                trajectoryCall.finish({ error: { name: 'HTTPError', message: errorMessageToPropagate } });
-
-                if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                    // 构造更详细的错误信息
-                    let detailedErrorMessage = `服务器返回状态 ${response.status}.`;
-                    if (errorData && errorData.message && typeof errorData.message === 'string') {
-                        detailedErrorMessage += ` 错误: ${errorData.message}`;
-                    } else if (errorData && errorData.error && errorData.error.message && typeof errorData.error.message === 'string') {
-                        detailedErrorMessage += ` 错误: ${errorData.error.message}`;
-                    } else if (typeof errorData === 'string' && errorData.length < 200) {
-                        detailedErrorMessage += ` 响应: ${errorData}`;
-                    } else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) {
-                        detailedErrorMessage += ` 详情: ${errorData.details}`;
-                    }
-
-                    const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
-                    if (context) errorPayload.context = context;
-                    sendStreamPayload(errorPayload);
-                    // 为函数返回值构造统一的 errorDetail.message
-                    const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorMessage}`;
-                    return { streamError: true, error: `VCP请求失败 (${response.status})`, errorDetail: { message: finalErrorMessageForReturn, originalData: errorData } };
-                }
-                const err = new Error(errorMessageToPropagate);
-                err.details = errorData;
-                err.status = response.status;
-                throw err;
+                if (!isGroupCall) hostHooks.emit('chat:stream-payload', { type: 'error', ...failure, messageId, context });
+                return failure;
             }
 
             if (modelConfig.stream === true) {
@@ -1570,10 +1524,13 @@ function initialize(mainWindow, context) {
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
+                                        const responseError = chatResponseError(parsedChunk);
+                                        if (responseError) throw responseError;
                                         trajectoryCall.chunk(parsedChunk);
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         sendStreamPayload(dataPayload);
                                     } catch (e) {
+                                        if (e?.isChatResponseError) throw e;
                                         console.error(`解析VCP流数据块JSON失败 for messageId: ${messageId}:`, e, '原始数据:', jsonData);
                                         const errorChunkPayload = { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageId, context };
                                         sendStreamPayload(errorChunkPayload);
@@ -1594,7 +1551,10 @@ function initialize(mainWindow, context) {
                     } catch (streamError) {
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
                         trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
-                        const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
+                        const failure = streamError?.isChatResponseError
+                            ? { error: streamError.message, status: streamError.status }
+                            : describeChatRequestError(streamError, undefined, 'VCP流读取错误');
+                        const streamErrPayload = { type: 'error', ...failure, messageId };
                         if (context) streamErrPayload.context = context;
                         sendStreamPayload(streamErrPayload);
                     } finally {
@@ -1634,6 +1594,8 @@ function initialize(mainWindow, context) {
             } else { // Non-streaming
                 console.log('VCP响应: 非流式处理');
                 const vcpResponse = await response.json();
+                const responseError = chatResponseError(vcpResponse);
+                if (responseError) throw responseError;
                 trajectoryCall.finish({ response: vcpResponse });
                 if (!isGroupCall) hostHooks.emit('chat:full-response', messageId, context, vcpResponse);
                 // For non-streaming, wrap the response with the original context
@@ -1644,16 +1606,18 @@ function initialize(mainWindow, context) {
         } catch (error) {
             console.error('VCP请求错误 (catch block):', error);
             trajectoryCall?.finish({ error, aborted: error?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
+            const failure = error?.isChatResponseError
+                ? { error: error.message, status: error.status }
+                : describeChatRequestError(error, undefined, 'VCP请求错误');
             if (!isGroupCall && modelConfig.stream !== true) {
                 const aborted = error?.name === 'AbortError' || streamTask?.controller.signal.aborted === true;
-                hostHooks.emit('chat:stream-payload', { type: aborted ? 'end' : 'error', messageId, context, aborted });
+                hostHooks.emit('chat:stream-payload', { type: aborted ? 'end' : 'error', ...failure, messageId, context, aborted });
             }
-            if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
-                sendStreamPayload(catchErrorPayload);
-                return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
+            if (modelConfig.stream === true) {
+                sendStreamPayload({ type: 'error', ...failure, messageId, context });
+                return { streamError: true, ...failure };
             }
-            return { error: `VCP请求错误: ${error.message}` };
+            return failure;
         } finally {
             if (!streamTaskDetached) finishStreamTask();
         }
@@ -1706,20 +1670,22 @@ function initialize(mainWindow, context) {
                 signal: AbortSignal.timeout(INTERRUPT_TIMEOUT_MS)
             });
 
-            const result = await response.json();
-
             if (!response.ok) {
-                console.error(`[Main - interrupt] Failed to send interrupt signal:`, result);
-                return { success: false, error: result.message || `Server returned status ${response.status}` };
+                const failure = await readChatHttpError(response);
+                console.error('[Main - interrupt]', failure.error);
+                return { success: false, ...failure };
             }
 
+            const result = await response.json();
+            const responseError = chatResponseError(result);
+            if (responseError) return { success: false, error: responseError.message, status: responseError.status };
             console.log(`[Main - interrupt] Interrupt signal sent successfully for ${messageId}. Response:`, result.message);
             upstreamAccepted = true;
             return { success: true, message: result.message };
 
         } catch (error) {
             console.error(`[Main - interrupt] Error sending interrupt request for messageId ${messageId}:`, error);
-            return { success: false, error: error.message };
+            return { success: false, ...describeChatRequestError(error, undefined, '中止请求失败') };
         } finally {
             // 上游拒绝中止时，侧栏走本地流收尾；同时关闭本 IPC 调用者自己的
             // HTTP 读取。成功中止仍由上游发送终态，保留已接收内容的正常收尾路径。
