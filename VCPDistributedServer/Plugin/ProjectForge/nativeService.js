@@ -961,7 +961,31 @@ function createNativeService(options = {}) {
         return textResult(rendered.result, mergeDiffDetails(rendered.details, diff));
     }
 
+    async function queryCmd(args, _context, signal) {
+        const { project, rootInfo } = await projectOf(args);
+        const value = await require('./queryRunner').runQuery({ root: rootInfo.root, code: args.code,
+            indexer: runtime.indexer, timeoutMs: args.timeoutms, limits: options.queryLimits, signal });
+        return textResult(JSON.stringify(value), { command: 'Query', projectId: project.id, value });
+    }
+
+    async function bashCmd(args, context, signal) {
+        if (options.bashEnabled !== true && context?.allowBash !== true) throw new Error('ProjectForge Bash is disabled: host permission required');
+        const { project, rootInfo } = await projectOf(args, { write: true });
+        const value = await require('./bashRunner').runBash({ root: rootInfo.root, script: args.script ?? args.cmd,
+            workdir: args.workdir, timeoutMs: args.timeoutms, maxBytes: args.maxbytes, executable: options.bashExecutable || undefined, signal });
+        const lines = [`Bash: ${value.status}${value.exitCode == null ? '' : ` (exit ${value.exitCode})`}`];
+        if (value.error) lines.push(String(value.error.message || value.error.code));
+        for (const key of ['stdout', 'stderr']) {
+            const stream = value[key];
+            if (stream?.text) lines.push(`[${key}]`, stream.text);
+            if (stream?.truncated) lines.push(`[${key} truncated: ${stream.spillPath || 'full output unavailable'}]`);
+        }
+        return textResult(lines.join('\n'), { command: 'Bash', projectId: project.id, ...value });
+    }
+
     const COMMANDS = {
+        query: queryCmd,
+        bash: bashCmd,
         listworkspaces: listWorkspaces,
         createproject: createProject,
         listprojects: listProjects,
@@ -988,15 +1012,15 @@ function createNativeService(options = {}) {
         trace: traceCmd,
         evalsymbol: evalSymbolCmd,
     };
-    const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、SearchProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace、EvalSymbol';
+    const COMMAND_NAMES = 'ListWorkspaces、CreateProject、ListProjects、SearchProjects、GetProject、UpdateTodos、SubmitReport、DeleteProjects、RestoreProjects、PurgeProjects、ReadCode、EditCode、ResolveEdit、CreateFile、RemoveFile、MoveFile、MoveCode、CopyCode、Rollback、SearchHistory、GetNodeDiff、Outline、FindSymbol、Trace、EvalSymbol、Query、Bash';
 
-    async function processToolCall(rawArgs = {}) {
+    async function processToolCall(rawArgs = {}, executionContext = {}, signal) {
         if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) throw new Error(`${P} 无效的工具参数。`);
         const args = A.lowerKeys(rawArgs);
         const command = A.str(args, 'command', 'action').toLowerCase();
         const handler = COMMANDS[command];
         if (!handler) throw new Error(`${P} 不支持的 command“${command || '(空)'}”。可用：${COMMAND_NAMES}。`);
-        const result = await handler(args);
+        const result = await handler(args, executionContext, signal);
         if (MUTATING_COMMANDS.has(command)) {
             const affectedIds = result?.details?.deleted || result?.details?.restored || result?.details?.purged || null;
             emitProjectChanged({
