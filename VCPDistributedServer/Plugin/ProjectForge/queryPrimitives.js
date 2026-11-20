@@ -20,17 +20,13 @@ const readline = require('node:readline');
 const linkGraph = require('./linkGraph');
 const { scanWorkspace } = require('../../../modules/services/workspaceIndex.js');
 
-const MAX_PRIMITIVE_STEPS = 64;
-const MAX_FILE_BYTES = 256 * 1024;
-const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
-
 const DEFAULT_LIMITS = Object.freeze({
-    maxPrimitiveSteps: MAX_PRIMITIVE_STEPS,
+    maxPrimitiveSteps: 64,
     maxFiles: 5000,
     maxSearchResults: 50,
     maxContextLines: 20,
-    maxFileBytes: MAX_FILE_BYTES,
-    maxTotalBytes: MAX_TOTAL_BYTES,
+    maxFileBytes: 256 * 1024,
+    maxTotalBytes: 4 * 1024 * 1024,
     maxAstFileBytes: 8 * 1024 * 1024,
     maxSymbolResults: 200,
     preloadTimeoutMs: 5000,
@@ -39,7 +35,7 @@ const DEFAULT_LIMITS = Object.freeze({
 function toPosixRel(value) {
     return String(value == null ? '' : value)
         .replace(/\\/g, '/')
-        .replace(/^\.\/+/, '');
+        .replace(/^\.\//, '');
 }
 
 function inside(child, parent) {
@@ -49,6 +45,12 @@ function inside(child, parent) {
 
 function escapesRoot(rel) {
     return rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel);
+}
+
+function positiveInt(value, fallback, min = 1) {
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.floor(n));
 }
 
 function clampInt(value, fallback, min, max) {
@@ -67,15 +69,15 @@ function firstDefined(...values) {
 function normalizeLimits(input) {
     const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
     return Object.freeze({
-        maxPrimitiveSteps: clampInt(source.maxPrimitiveSteps, DEFAULT_LIMITS.maxPrimitiveSteps, 1, MAX_PRIMITIVE_STEPS),
-        maxFiles: clampInt(source.maxFiles, DEFAULT_LIMITS.maxFiles, 1, 200_000),
-        maxSearchResults: clampInt(source.maxSearchResults, DEFAULT_LIMITS.maxSearchResults, 1, 5000),
-        maxContextLines: clampInt(source.maxContextLines, DEFAULT_LIMITS.maxContextLines, 0, 200),
-        maxFileBytes: clampInt(source.maxFileBytes, DEFAULT_LIMITS.maxFileBytes, 1, MAX_FILE_BYTES),
-        maxTotalBytes: clampInt(source.maxTotalBytes, DEFAULT_LIMITS.maxTotalBytes, 1, MAX_TOTAL_BYTES),
-        maxAstFileBytes: clampInt(source.maxAstFileBytes, DEFAULT_LIMITS.maxAstFileBytes, 1024, 64 * 1024 * 1024),
-        maxSymbolResults: clampInt(source.maxSymbolResults, DEFAULT_LIMITS.maxSymbolResults, 1, 1000),
-        preloadTimeoutMs: clampInt(source.preloadTimeoutMs, DEFAULT_LIMITS.preloadTimeoutMs, 100, 30_000),
+        maxPrimitiveSteps: positiveInt(source.maxPrimitiveSteps, DEFAULT_LIMITS.maxPrimitiveSteps, 1),
+        maxFiles: positiveInt(source.maxFiles, DEFAULT_LIMITS.maxFiles, 1),
+        maxSearchResults: positiveInt(source.maxSearchResults, DEFAULT_LIMITS.maxSearchResults, 1),
+        maxContextLines: positiveInt(source.maxContextLines, DEFAULT_LIMITS.maxContextLines, 0),
+        maxFileBytes: positiveInt(source.maxFileBytes, DEFAULT_LIMITS.maxFileBytes, 1),
+        maxTotalBytes: positiveInt(source.maxTotalBytes, DEFAULT_LIMITS.maxTotalBytes, 1),
+        maxAstFileBytes: positiveInt(source.maxAstFileBytes, DEFAULT_LIMITS.maxAstFileBytes, 1),
+        maxSymbolResults: positiveInt(source.maxSymbolResults, DEFAULT_LIMITS.maxSymbolResults, 1),
+        preloadTimeoutMs: positiveInt(source.preloadTimeoutMs, DEFAULT_LIMITS.preloadTimeoutMs, 1),
     });
 }
 
@@ -163,26 +165,6 @@ function projectSymbol(symbol) {
     };
     if (source.signature) projected.signature = source.signature;
     return projected;
-}
-
-async function assertNoSymlinkComponents(realRoot, abs, op) {
-    const rel = path.relative(realRoot, abs);
-    if (!rel) return;
-    const parts = rel.split(path.sep);
-    let cursor = realRoot;
-    for (const part of parts) {
-        if (!part || part === '.') continue;
-        cursor = path.join(cursor, part);
-        let stat;
-        try {
-            stat = await fs.lstat(cursor);
-        } catch (error) {
-            throw new Error(`q.${op}: cannot access path component "${toPosixRel(path.relative(realRoot, cursor))}": ${error.message}`);
-        }
-        if (stat.isSymbolicLink()) {
-            throw new Error(`q.${op}: symbolic links are not followed: "${toPosixRel(rel)}"`);
-        }
-    }
 }
 
 async function readLineRange(absPath, displayPath, startLine, endLine, maxBytes, signal) {
@@ -371,7 +353,6 @@ async function createPrimitives(options = {}) {
         if (escapesRoot(lexRel)) {
             throw new Error(`q.${op}: path "${targetPath}" is outside project root`);
         }
-        await assertNoSymlinkComponents(realRoot, abs, op);
         let realAbs;
         try {
             realAbs = await fs.realpath(abs);

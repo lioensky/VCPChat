@@ -96,14 +96,14 @@ test('createPrimitives exposes six methods and only canonical host budgets', asy
     assert.equal(clamped.maxSteps, undefined);
     assert.equal(clamped.maxConcurrency, undefined);
 
-    const high = normalizeLimits({
+    const raised = normalizeLimits({
         maxPrimitiveSteps: 9999,
-        maxFileBytes: 99999999,
-        maxTotalBytes: 99999999,
+        maxFileBytes: 1024 * 1024,
+        maxTotalBytes: 16 * 1024 * 1024,
     });
-    assert.equal(high.maxPrimitiveSteps, 64);
-    assert.equal(high.maxFileBytes, 256 * 1024);
-    assert.equal(high.maxTotalBytes, 4 * 1024 * 1024);
+    assert.equal(raised.maxPrimitiveSteps, 9999);
+    assert.equal(raised.maxFileBytes, 1024 * 1024);
+    assert.equal(raised.maxTotalBytes, 16 * 1024 * 1024);
     assert.equal(DEFAULT_LIMITS.maxPrimitiveSteps, 64);
     assert.equal(DEFAULT_LIMITS.maxFileBytes, 256 * 1024);
     assert.equal(DEFAULT_LIMITS.maxTotalBytes, 4 * 1024 * 1024);
@@ -190,7 +190,7 @@ test('q.read returns full, line-range and symbol slices with boundary checks', a
         // Windows 可能因开发者模式/权限不允许创建符号链接；../ 用例仍覆盖词法边界。
     }
     if (linked) {
-        await assert.rejects(q.read('link.txt'), /symbolic links are not followed/);
+        await assert.rejects(q.read('link.txt'), /outside project root/);
         assert.equal((await q.files()).some((item) => item.path === 'link.txt'), false);
     }
 });

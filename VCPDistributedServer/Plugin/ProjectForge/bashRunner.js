@@ -190,7 +190,7 @@ function scrubbedParentEnv(parent = process.env) {
         if (value === undefined) continue;
         const upper = key.toUpperCase();
         if (SENSITIVE_ENV.test(key)) continue;
-        if (upper.startsWith('DSH_') || upper.startsWith('VCP_')) continue;
+        if (upper.startsWith('VCP_')) continue;
         if (upper.startsWith('BASH_FUNC_')) continue;
         if (DROP_ENV.has(upper)) continue;
         env[key] = String(value);

@@ -164,7 +164,6 @@ test('env: scrubs credentials, shell hooks, host identity and interactive prompt
         BASH_ENV: evil,
         NODE_OPTIONS: '--require /definitely/not/here.js',
         VCP_HOST_ONLY: 'vcp-host',
-        DSH_HOST_ONLY: 'dsh-host',
         'BASH_FUNC_evil%%': '() { echo hacked; }',
     }, async () => {
         const result = await run([
@@ -172,7 +171,6 @@ test('env: scrubs credentials, shell hooks, host identity and interactive prompt
             "printf 'bashenv=%s\\n' \"${BASH_ENV-unset}\"",
             "printf 'node=%s\\n' \"${NODE_OPTIONS-unset}\"",
             "printf 'vcp=%s\\n' \"${VCP_HOST_ONLY-unset}\"",
-            "printf 'dsh=%s\\n' \"${DSH_HOST_ONLY-unset}\"",
             "printf 'term=%s\\n' \"$TERM\"",
             "printf 'nocolor=%s\\n' \"$NO_COLOR\"",
             'if declare -F evil >/dev/null; then echo func=leaked; else echo func=clean; fi',
@@ -181,7 +179,7 @@ test('env: scrubs credentials, shell hooks, host identity and interactive prompt
         assert.equal(result.exitCode, 0);
         for (const expected of [
             'secret=unset', 'bashenv=unset', 'node=unset', 'vcp=unset',
-            'dsh=unset', 'term=dumb', 'nocolor=1', 'func=clean',
+            'term=dumb', 'nocolor=1', 'func=clean',
         ]) {
             assert.match(result.stdout.text, new RegExp(expected, 'u'));
         }

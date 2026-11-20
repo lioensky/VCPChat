@@ -24,7 +24,6 @@ const { fork } = require('node:child_process');
 const os = require('node:os');
 const path = require('node:path');
 const {
-    softTruncateJson,
     truncateUtf8,
 } = require('./queryWorker.cjs');
 
@@ -34,16 +33,10 @@ const PRIMITIVES_PATH = path.join(__dirname, 'queryPrimitives.js');
 const DEFAULT_TIMEOUT_MS = 10000;
 const MAX_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_HEAP_MIB = 128;
-const HARD_MAX_HEAP_MIB = 128;
 const DEFAULT_MAX_PRIMITIVE_STEPS = 64;
-const HARD_MAX_PRIMITIVE_STEPS = 64;
 const DEFAULT_MAX_OUTPUT_BYTES = 16 * 1024;
-const MIN_MAX_OUTPUT_BYTES = 64;
-const HARD_MAX_OUTPUT_BYTES = 16 * 1024;
 const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
-const HARD_MAX_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
-const HARD_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
 const IPC_ERROR_BYTES = 8 * 1024;
 const OOM_RE = /JavaScript heap out of memory|Allocation failed|Fatal error in|Reached heap limit|OOM/i;
 
@@ -91,7 +84,7 @@ function normalizeQueryError(error, fallbackCode = 'QUERY_ERROR') {
     return makeQueryError(fallbackCode, message, error);
 }
 
-function clampLimit(value, fallback, min, max, name) {
+function positiveLimit(value, fallback, min, name) {
     if (value === undefined || value === null || value === '') return fallback;
     if (typeof value !== 'number' && typeof value !== 'string') {
         throw makeQueryError('QUERY_ARGUMENT', name + ' must be a finite number');
@@ -100,59 +93,29 @@ function clampLimit(value, fallback, min, max, name) {
     if (!Number.isFinite(n)) {
         throw makeQueryError('QUERY_ARGUMENT', name + ' must be a finite number');
     }
-    return Math.min(max, Math.max(min, Math.floor(n)));
+    const floored = Math.floor(n);
+    return floored < min ? min : floored;
 }
 
 function normalizeTimeout(value) {
-    return clampLimit(value, DEFAULT_TIMEOUT_MS, 1, MAX_TIMEOUT_MS, 'timeoutMs');
+    return Math.min(MAX_TIMEOUT_MS, positiveLimit(value, DEFAULT_TIMEOUT_MS, 1, 'timeoutMs'));
 }
 
 /**
- * Normalize the approved query budgets. timeoutMs is a top-level runQuery
- * option; limits contains only the five budget fields below. All finite
- * numeric overrides clamp to their hard interval; null/undefined/'' keeps the
- * documented default.
+ * Normalize query budgets. timeoutMs stays bounded by the plugin transport
+ * deadline (30s); limits.* overrides accept any positive integer without
+ * clamping down to defaults.
  */
 function normalizeLimits(limits = {}, timeoutMs) {
     if (limits == null) limits = {};
     if (typeof limits !== 'object' || Array.isArray(limits)) {
         throw makeQueryError('QUERY_ARGUMENT', 'limits must be a plain object');
     }
-    const maxHeapMiB = clampLimit(
-        limits.maxHeapMiB,
-        DEFAULT_MAX_HEAP_MIB,
-        1,
-        HARD_MAX_HEAP_MIB,
-        'limits.maxHeapMiB',
-    );
-    const maxPrimitiveSteps = clampLimit(
-        limits.maxPrimitiveSteps,
-        DEFAULT_MAX_PRIMITIVE_STEPS,
-        1,
-        HARD_MAX_PRIMITIVE_STEPS,
-        'limits.maxPrimitiveSteps',
-    );
-    const maxOutputBytes = clampLimit(
-        limits.maxOutputBytes,
-        DEFAULT_MAX_OUTPUT_BYTES,
-        MIN_MAX_OUTPUT_BYTES,
-        HARD_MAX_OUTPUT_BYTES,
-        'limits.maxOutputBytes',
-    );
-    const maxFileBytes = clampLimit(
-        limits.maxFileBytes,
-        DEFAULT_MAX_FILE_BYTES,
-        1,
-        HARD_MAX_FILE_BYTES,
-        'limits.maxFileBytes',
-    );
-    const maxTotalBytes = clampLimit(
-        limits.maxTotalBytes,
-        DEFAULT_MAX_TOTAL_BYTES,
-        1,
-        HARD_MAX_TOTAL_BYTES,
-        'limits.maxTotalBytes',
-    );
+    const maxHeapMiB = positiveLimit(limits.maxHeapMiB, DEFAULT_MAX_HEAP_MIB, 1, 'limits.maxHeapMiB');
+    const maxPrimitiveSteps = positiveLimit(limits.maxPrimitiveSteps, DEFAULT_MAX_PRIMITIVE_STEPS, 1, 'limits.maxPrimitiveSteps');
+    const maxOutputBytes = positiveLimit(limits.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES, 1, 'limits.maxOutputBytes');
+    const maxFileBytes = positiveLimit(limits.maxFileBytes, DEFAULT_MAX_FILE_BYTES, 1, 'limits.maxFileBytes');
+    const maxTotalBytes = positiveLimit(limits.maxTotalBytes, DEFAULT_MAX_TOTAL_BYTES, 1, 'limits.maxTotalBytes');
 
     return Object.freeze({
         timeoutMs: normalizeTimeout(timeoutMs),
@@ -383,7 +346,6 @@ function runQuery(options = {}) {
         let primitives = null;
         let primitivesDisposed = false;
         let stderrBuf = '';
-        let rpcCount = 0;
         const ac = new AbortController();
 
         function cleanup() {
@@ -432,7 +394,7 @@ function runQuery(options = {}) {
             if (settled) return;
             let value;
             try {
-                value = softTruncateJson(jsonText, effectiveLimits.maxOutputBytes).value;
+                value = JSON.parse(jsonText);
             } catch (error) {
                 finishError(
                     makeQueryError('QUERY_SERIALIZE_ERROR', error && error.message || String(error), error),
@@ -509,14 +471,6 @@ function runQuery(options = {}) {
                 return;
             }
 
-            rpcCount += 1;
-            if (rpcCount > effectiveLimits.maxPrimitiveSteps) {
-                sendRpcError(
-                    id,
-                    `QUERY_STEP_LIMIT_EXCEEDED: 单次 query 允许调用的 q.* 原语上限为 ${effectiveLimits.maxPrimitiveSteps} 次 (在调用 q.${String(op)} 时超限)`,
-                );
-                return;
-            }
             if (!ALLOWED_RPC_OPS.includes(op)) {
                 sendRpcError(id, 'QUERY_RPC_FORBIDDEN: ' + String(op));
                 return;

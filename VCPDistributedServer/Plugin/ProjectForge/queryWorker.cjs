@@ -21,23 +21,20 @@
 const vm = require('node:vm');
 
 const DEFAULT_MAX_OUTPUT_BYTES = 16 * 1024;
-const MIN_MAX_OUTPUT_BYTES = 64;
-const HARD_MAX_OUTPUT_BYTES = 16 * 1024;
 const DEFAULT_MAX_PRIMITIVE_STEPS = 64;
-const HARD_MAX_PRIMITIVE_STEPS = 64;
 const ERROR_BYTES = 8 * 1024;
 const TRUNCATION_HINT = '结果已软截断，请在脚本内用 .slice()/.map()/计数聚合';
 
-function clampInt(value, min, max, fallback) {
+function positiveInt(value, fallback, min = 1) {
     const n = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(n)) return fallback;
-    return Math.min(max, Math.max(min, Math.floor(n)));
+    return Math.max(min, Math.floor(n));
 }
 
 /** UTF-8 safe truncation for error strings. */
 function truncateUtf8(str, maxBytes = ERROR_BYTES) {
     const text = String(str == null ? '' : str);
-    const limit = clampInt(maxBytes, 1, ERROR_BYTES, ERROR_BYTES);
+    const limit = Math.min(ERROR_BYTES, positiveInt(maxBytes, ERROR_BYTES, 1));
     if (Buffer.byteLength(text, 'utf8') <= limit) return text;
     let lo = 0;
     let hi = text.length;
@@ -225,7 +222,7 @@ function truncateObjectResult(value, totalBytes, maxBytes) {
 function softTruncateJson(jsonStr, maxBytes = DEFAULT_MAX_OUTPUT_BYTES) {
     const raw = typeof jsonStr === 'string' ? jsonStr : 'null';
     const totalBytes = Buffer.byteLength(raw, 'utf8');
-    const limit = clampInt(maxBytes, MIN_MAX_OUTPUT_BYTES, HARD_MAX_OUTPUT_BYTES, DEFAULT_MAX_OUTPUT_BYTES);
+    const limit = positiveInt(maxBytes, DEFAULT_MAX_OUTPUT_BYTES, 1);
     if (totalBytes <= limit) {
         return { value: JSON.parse(raw), json: raw, truncated: false, totalBytes, shownBytes: totalBytes };
     }
@@ -432,13 +429,6 @@ function buildVmRunner() {
             try { onReject('QUERY_RPC_FORBIDDEN: invalid primitive op'); } catch { /* disposed */ }
             return;
         }
-        workerSteps += 1;
-        if (workerSteps > maxPrimitiveSteps) {
-            try {
-                onReject(`QUERY_STEP_LIMIT_EXCEEDED: 单次 query 允许调用的 q.* 原语上限为 ${maxPrimitiveSteps} 次 (在调用 q.${op} 时超限)`);
-            } catch { /* disposed */ }
-            return;
-        }
         callHostRpc(op, argsJson).then(
             (jsonPayload) => {
                 try { onResolve(typeof jsonPayload === 'string' ? jsonPayload : 'null'); } catch { /* disposed */ }
@@ -484,8 +474,6 @@ function buildVmRunner() {
 
 let settled = false;
 let running = false;
-let workerSteps = 0;
-let maxPrimitiveSteps = DEFAULT_MAX_PRIMITIVE_STEPS;
 let maxOutputBytes = DEFAULT_MAX_OUTPUT_BYTES;
 let nextRpcId = 1;
 const pendingRpcs = new Map();
@@ -574,8 +562,7 @@ async function handleMessage(message) {
     if (message.type !== 'exec' || running || settled) return;
     running = true;
 
-    maxPrimitiveSteps = clampInt(message.maxPrimitiveSteps, 1, HARD_MAX_PRIMITIVE_STEPS, DEFAULT_MAX_PRIMITIVE_STEPS);
-    maxOutputBytes = clampInt(message.maxOutputBytes, MIN_MAX_OUTPUT_BYTES, HARD_MAX_OUTPUT_BYTES, DEFAULT_MAX_OUTPUT_BYTES);
+    maxOutputBytes = positiveInt(message.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES, 1);
 
     if (typeof message.code !== 'string' || !message.code.trim()) {
         settleError('QUERY_INVALID_ARGUMENTS', 'code must be a non-empty string');
@@ -641,10 +628,7 @@ module.exports = {
     truncateUtf8,
     formatError,
     DEFAULT_MAX_OUTPUT_BYTES,
-    MIN_MAX_OUTPUT_BYTES,
-    HARD_MAX_OUTPUT_BYTES,
     DEFAULT_MAX_PRIMITIVE_STEPS,
-    HARD_MAX_PRIMITIVE_STEPS,
     ERROR_BYTES,
     TRUNCATION_HINT,
 };
