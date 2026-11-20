@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-11-19 17:01:48  
+> 自动生成于：2026-11-20 14:10:54  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,17 +10,17 @@
 
 ## 文件统计
 
-- **总目录数**：250
-- **总文件数**：1821
+- **总目录数**：251
+- **总文件数**：1823
 - **文件类型数**：23
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 1131 |
+| JavaScript | `.js` | 1132 |
 | CSS | `.css` | 161 |
 | JSON | `.json` | 158 |
 | Rust | `.rs` | 137 |
-| Markdown | `.md` | 69 |
+| Markdown | `.md` | 70 |
 | HTML | `.html` | 51 |
 | Python | `.py` | 29 |
 | JavaScript (CommonJS) | `.cjs` | 19 |
@@ -39,7 +39,7 @@
 | JavaScript (ESM) | `.mjs` | 1 |
 | SQL | `.sql` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1821** |
+| **合计** | - | **1823** |
 
 ## 目录结构树
 
@@ -1192,6 +1192,9 @@ VCPChat/
 │   └── webdavManager.js
 ├── Musicmodules/
 │   ├── music-stage/
+│   │   ├── assets/
+│   │   │   ├── coast-rock.js
+│   │   │   └── CREDITS.md
 │   │   ├── modes/
 │   │   │   ├── cadenza-manager.js
 │   │   │   ├── diorama-camera.js
