@@ -184,8 +184,7 @@ async function listTopics(agentInfo) {
             hour: '2-digit',
             minute: '2-digit'
         });
-        const lockedTag = topic.locked ? ' 🔒' : '';
-        result += `${index + 1}. **${topic.name}**${lockedTag}\n`;
+        result += `${index + 1}. **${topic.name}**\n`;
         result += `   - ID: \`${topic.id}\`\n`;
         result += `   - 创建时间: ${createdDate}\n\n`;
     });

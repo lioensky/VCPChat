@@ -199,7 +199,9 @@ function sanitizeFlowlockRequest(request) {
         createdAt: request.createdAt,
         heartbeatSeconds: Math.max(1, Math.min(86400, Number.parseInt(request.heartbeatSeconds, 10) || 5)),
         prompt: typeof request.prompt === 'string' ? request.prompt : '',
-        status: request.status
+        status: request.status,
+        idleOnly: request.idleOnly === true,
+        initialMessageId: request.initialMessageId,
     };
 }
 
@@ -287,6 +289,7 @@ function initialize(mainWindow, context) {
                     const request = sanitizeFlowlockRequest(topic.flowlockRequest);
                     if (!request || request.status !== 'pending') continue;
                     if (request.requestedByAgentId !== agentId) continue;
+                    if (request.idleOnly && constraints.skipIdleOnly === true) continue;
                     if (requestId && request.requestId !== requestId) continue;
                     if (topicId && topic.id !== topicId) continue;
                     if (createdAfter !== null && request.createdAt < createdAfter) continue;
@@ -308,6 +311,16 @@ function initialize(mainWindow, context) {
                                 : item)
                         }));
                         continue;
+                    }
+                    if (request.idleOnly) {
+                        const history = await historyMutationQueue.read({ itemId: agentId, itemType: 'agent', topicId: topic.id });
+                        const initialIndex = history.findIndex(message => message.id === request.initialMessageId);
+                        if (initialIndex < 0 || !history.slice(initialIndex + 1).some(message =>
+                            message.role === 'assistant' && message.admissionTerminal === true
+                            && message.agentId === agentId && !message.isThinking && !message.isPendingStream
+                            && message.finishReason !== 'error'
+                            && !/^\s*\[ERROR\]/i.test(typeof message.content === 'string' ? message.content : '')
+                        )) continue;
                     }
                     candidates.push({ topic, request });
                 }
@@ -335,7 +348,8 @@ function initialize(mainWindow, context) {
                 });
 
                 const [{ topic, request }, ...staleCandidates] = candidates;
-                const staleRequestIds = new Set(staleCandidates.map(entry => entry.request.requestId));
+                const staleRequestIds = new Set(request.idleOnly ? [] : staleCandidates
+                    .filter(entry => !entry.request.idleOnly).map(entry => entry.request.requestId));
                 const now = Date.now();
                 let claimed = false;
                 await agentConfigManager.updateAgentConfig(agentId, existing => ({
@@ -386,7 +400,8 @@ function initialize(mainWindow, context) {
                         requestId: request.requestId,
                         heartbeatSeconds: request.heartbeatSeconds,
                         prompt: request.prompt,
-                        createdAt: request.createdAt
+                        createdAt: request.createdAt,
+                        ...(request.idleOnly ? { idleOnly: true } : {}),
                     }
                 };
             } catch (error) {
@@ -448,7 +463,8 @@ function initialize(mainWindow, context) {
                                 topicId: topic.id,
                                 topicName: topic.name,
                                 requestId: request.requestId,
-                                createdAt: request.createdAt
+                                createdAt: request.createdAt,
+                                ...(request.idleOnly ? { idleOnly: true } : {}),
                             });
                         }
                     }
@@ -739,7 +755,7 @@ function initialize(mainWindow, context) {
                 // Part A: 历史数据兼容处理 - 自动为缺少新字段的话题添加默认值
                 const normalizedTopics = config.topics.map(topic => ({
                     ...topic,
-                    locked: topic.locked !== undefined ? topic.locked : true,
+
                     unread: topic.unread !== undefined ? topic.unread : false,
                     creatorSource: topic.creatorSource || 'unknown'
                 }));
@@ -752,7 +768,7 @@ function initialize(mainWindow, context) {
         }
     });
 
-    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false, locked = true) => {
+    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false) => {
         try {
             const newTopicId = `topic_${Date.now()}`;
             const timestamp = Date.now();
@@ -769,7 +785,6 @@ function initialize(mainWindow, context) {
                     id: newTopicId,
                     name: topicName || `新话题 ${existingTopics.length + 1}`,
                     createdAt: timestamp,
-                    locked: locked,
                     unread: false,
                     creatorSource: "ui"
                 };
@@ -1814,50 +1829,6 @@ function initialize(mainWindow, context) {
         } catch (error) {
             console.error('获取未读话题计数时出错:', error);
             return { success: false, error: error.message, counts: {} };
-        }
-    });
-
-    // Part A: 切换话题锁定状态
-    ipcMain.handle('toggle-topic-lock', async (event, agentId, topicId) => {
-        try {
-            if (!agentId || !topicId) {
-                return { success: false, error: '缺少 agentId 或 topicId。' };
-            }
-
-            if (!agentConfigManager) {
-                return { success: false, error: 'AgentConfigManager 未初始化，无法安全更新话题锁定状态。' };
-            }
-
-            let locked;
-            await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
-                if (!Array.isArray(existingConfig.topics)) {
-                    throw new Error('配置文件损坏或缺少话题列表');
-                }
-
-                let found = false;
-                const topics = existingConfig.topics.map(topic => {
-                    if (topic.id !== topicId) return topic;
-
-                    found = true;
-                    locked = topic.locked === undefined ? false : !topic.locked;
-                    return { ...topic, locked };
-                });
-
-                if (!found) {
-                    throw new Error(`未找到话题 ${topicId}`);
-                }
-
-                return { ...existingConfig, topics };
-            });
-
-            return {
-                success: true,
-                locked,
-                message: locked ? '话题已锁定' : '话题已解锁'
-            };
-        } catch (error) {
-            console.error('[toggleTopicLock] Error:', error);
-            return { success: false, error: error.message };
         }
     });
 

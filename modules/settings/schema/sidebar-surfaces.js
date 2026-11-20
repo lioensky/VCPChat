@@ -44,6 +44,11 @@ const agentFields = Object.freeze([
     field('agentCardCss', 'textarea', '名片样式CSS', { name: 'cardCss', rows: 3, tooltip: '此CSS将应用于【设置】页面中Agent的名片区域（头像和名称）。' }),
     field('agentChatCss', 'textarea', '会话样式CSS', { name: 'chatCss', rows: 4, tooltip: '此CSS将应用于【聊天会话】中Agent的头像和名称。可使用 .message-avatar 控制头像，.sender-name 控制名称。' }),
     ...toolStyleFields('agent'),
+    field('agentContextMessageWindowSize', 'number', '单聊上下文楼层上限', {
+        name: 'contextMessageWindowSize', min: 1, max: 10000, step: 1, placeholder: '留空不限',
+        tooltip: '每次模型请求最多携带最近 N 楼单聊历史。不影响聊天记录的保存、显示和 TopicMemo 回读。',
+        validation: { min: 1, max: 10000 },
+    }),
 ]);
 
 const groupFields = Object.freeze([
@@ -340,7 +345,7 @@ function renderAgentIdentity(doc) {
     const customCss = renderField(doc, agentFields[12]);
     const cardCss = renderField(doc, agentFields[13]);
     const chatCss = renderField(doc, agentFields[14]);
-    controls.append(...agentFields.slice(15).map(spec => renderField(doc, spec, 'style-control-item full-width')));
+    controls.append(...agentFields.slice(15, -1).map(spec => renderField(doc, spec, 'style-control-item full-width')));
     controls.append(customCss, cardCss, chatCss);
     style.append(styleHeader, controls);
     return el(doc, 'div', { class: 'agent-identity-container' }, identityMain, style);
@@ -412,6 +417,7 @@ function renderAgentPortrait(doc) {
 function renderAgentParams(doc) {
     const content = el(doc, 'div', { class: 'params-content', id: 'paramsContent' });
     agentFields.slice(2, 7).forEach(spec => content.append(renderField(doc, spec)));
+    content.append(renderField(doc, agentFields.at(-1)));
     const stream = el(doc, 'div', { class: 'form-group-inline agent-stream-mode-group' },
         el(doc, 'span', { class: 'agent-stream-mode-title' }, '输出模式:'),
         el(doc, 'div', { class: 'agent-stream-mode-segmented' },

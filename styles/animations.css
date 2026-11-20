@@ -249,19 +249,6 @@ body main [id="chatMessages"] .message-item.streaming:is(.agent, .assistant) .md
   padding: 0;
 }
 
-/* 话题列表中的未锁定指示器 */
-.unlocked-indicator {
-  display: inline-block;
-  padding: 2px 6px;
-  background: rgba(76, 175, 80, 0.2);
-  color: #4caf50;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: bold;
-  margin-right: 8px;
-  border: 1px solid rgba(76, 175, 80, 0.3);
-}
-
 /* 消息计数样式 */
 .message-count.has-unread {
   background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);

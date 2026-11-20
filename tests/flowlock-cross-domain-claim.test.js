@@ -367,8 +367,6 @@ test('主进程 claim-pending-flowlock-topic 支持多 Pending 自动选最新�
         const agentConfigManager = new AgentConfigManager(agentDir);
 
         const handlers = new Map();
-        const electron = require('electron');
-        const origHandle = electron.ipcMain?.handle;
         const fakeIpcMain = {
             handle: (channel, fn) => handlers.set(channel, fn),
             on: () => {},
@@ -398,7 +396,6 @@ test('主进程 claim-pending-flowlock-topic 支持多 Pending 自动选最新�
             );
         } finally {
             Module._load = origLoad;
-            if (origHandle && electron.ipcMain) electron.ipcMain.handle = origHandle;
         }
 
         const listHandler = handlers.get('list-pending-flowlock-topics');
@@ -437,7 +434,56 @@ test('主进程 claim-pending-flowlock-topic 支持多 Pending 自动选最新�
         const emptyRes = await claimHandler({}, agentId, {});
         assert.equal(emptyRes.success, false);
         assert.equal(emptyRes.code, 'NOT_FOUND');
+
+        const topicId = 'topic_dispatch';
+        const dir = path.join(userDataDir, agentId, 'topics', topicId);
+        await fsp.mkdir(dir, { recursive: true });
+        const historyFile = path.join(dir, 'history.json');
+        const initial = { id: 'dispatch-message', role: 'assistant', agentId: 'sender' };
+        const terminal = { id: 'terminal', role: 'assistant', agentId, admissionTerminal: true, finishReason: 'completed' };
+        const writeHistory = (...messages) => fsp.writeFile(historyFile, JSON.stringify([initial, ...messages]));
+        await writeHistory();
+        await agentConfigManager.updateAgentConfig(agentId, config => ({
+            ...config,
+            topics: [...config.topics, { id: topicId, name: '子任务', flowlockRequest: {
+                requestId: 'dispatch-flowlock', requestedByAgentId: agentId, createdAt: 3000,
+                status: 'pending', idleOnly: true, initialMessageId: initial.id,
+            } }],
+        }));
+        assert.equal((await claimHandler({}, agentId, { topicId })).code, 'NOT_FOUND');
+        await writeHistory({ ...terminal, content: '[ERROR] upstream rejected' });
+        assert.equal((await claimHandler({}, agentId, { topicId })).code, 'NOT_FOUND');
+        await writeHistory({ ...terminal, content: '首轮完成' });
+        assert.equal((await claimHandler({}, agentId, { topicId, skipIdleOnly: true })).code, 'NOT_FOUND');
+        const idleClaim = await claimHandler({}, agentId, { topicId });
+        assert.equal(idleClaim.success, true);
+        assert.equal(idleClaim.claim.idleOnly, true);
     } finally {
         await fsp.rm(tmpRoot, { recursive: true, force: true });
     }
+});
+
+test('idle-only dispatch restores its claim if a different session starts in flight', async () => {
+    const agentId = 'agent-a';
+    let resolveClaim;
+    let constraints;
+    const restored = [];
+    const claim = { agentId, topicId: 'topic_task', requestId: 'task-run', heartbeatSeconds: 5, idleOnly: true };
+    const { manager } = createFlowlockRuntime({
+        claimPendingFlowlockTopic: (_id, options) => {
+            constraints = options;
+            if (options.skipIdleOnly) return { success: false, code: 'NOT_FOUND' };
+            return new Promise(resolve => { resolveClaim = resolve; });
+        },
+        restoreFlowlockClaim: (...args) => restored.push(args),
+    });
+    const pending = manager.claimAndHandoffPendingTopic(agentId);
+    await manager.start(agentId, 'topic_existing', { agentName: 'A' });
+    resolveClaim({ success: true, claim });
+    assert.equal((await pending).code, 'HANDOFF_FAILED');
+    assert.equal(restored[0][1], claim.requestId);
+    assert.equal(manager.getLockedTopicId(agentId), 'topic_existing');
+    assert.equal((await manager.claimAndHandoffPendingTopic(agentId)).code, 'NOT_FOUND');
+    assert.equal(constraints.skipIdleOnly, true);
+    await manager.stop(agentId);
 });

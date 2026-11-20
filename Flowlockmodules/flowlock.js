@@ -84,7 +84,9 @@ class FlowlockManager {
             return { success: false, message: '缺少 agentId 或 topicId' };
         }
 
-        // 如果该 Agent 已有活动 Session，先停止旧的
+        const idleOnly = options.idleOnly === true;
+        if (idleOnly && this.sessions.has(agentId)) return { success: false, message: 'Agent 已有心流会话' };
+        // 如果该 Agent 已有活动 Session，先停止旧的（手动兼容路径）。
         if (this.sessions.has(agentId)) {
             console.log(`[Flowlock] Agent ${agentId} already has an active session, stopping old one.`);
             await this.stop(agentId);
@@ -98,6 +100,7 @@ class FlowlockManager {
         } = options;
 
         const agentName = await this.resolveAgentDisplayName(agentId, preferredAgentName);
+        if (idleOnly && this.sessions.has(agentId)) return { success: false, message: 'Agent 已有心流会话' };
         const globalSettings = this.globalSettingsRef?.get?.() || {};
         const defaultDelay = delaySeconds ?? globalSettings.flowlockContinueDelay ?? 5;
 
@@ -233,7 +236,9 @@ class FlowlockManager {
             return { success: false, code: 'AGENT_BUSY_DEFERRED' };
         }
 
-        const result = await this.electronAPI.claimPendingFlowlockTopic(agentId, constraints);
+        const result = await this.electronAPI.claimPendingFlowlockTopic(agentId, {
+            ...constraints, ...(this.sessions.has(agentId) ? { skipIdleOnly: true } : {}),
+        });
         if (!result?.success) {
             if (result?.code === 'CONFLICT') {
                 console.error(`[Flowlock] Multiple pending requests for ${agentId}; handoff rejected.`, result.conflicts);
@@ -273,8 +278,10 @@ class FlowlockManager {
         }
 
         const existing = this.sessions.get(agentId);
+        if (claim.idleOnly && existing) throw new Error('Agent 已有心流会话，保留派工请求等待认领');
         if (!existing) {
             const started = await this.start(agentId, topicId, {
+                idleOnly: claim.idleOnly === true,
                 startImmediately: false,
                 delaySeconds: heartbeatSeconds,
                 prompt

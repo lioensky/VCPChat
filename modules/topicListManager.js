@@ -633,14 +633,6 @@ window.topicListManager = (() => {
         li.appendChild(selectionIcon);
         li.appendChild(avatarImg);
 
-        if (topic.locked === false) {
-            const unlockedIndicator = document.createElement('span');
-            unlockedIndicator.classList.add('unlocked-indicator');
-            unlockedIndicator.textContent = 'unlocked';
-            unlockedIndicator.title = 'AI可以查看和回复此话题';
-            li.appendChild(unlockedIndicator);
-        }
-
         li.appendChild(topicTitleDisplay);
         if (isPersistentlyUnread) {
             ensureTopicUnreadIndicator(li, topic.__calculatedUnreadCount);
@@ -1584,30 +1576,6 @@ window.topicListManager = (() => {
             }
         };
         menu.appendChild(copyTopicIdOption);
-
-        // Part C: 锁定/解锁话题选项
-        const toggleLockOption = document.createElement('div');
-        toggleLockOption.classList.add('context-menu-item');
-        const isLocked = topic.locked !== false; // 默认为锁定
-        toggleLockOption.innerHTML = isLocked
-            ? `<i class="fas fa-unlock"></i> 解锁话题`
-            : `<i class="fas fa-lock"></i> 锁定话题`;
-        toggleLockOption.onclick = async () => {
-            closeTopicContextMenu();
-            try {
-                const result = await electronAPI.toggleTopicLock(targetItemId, targetTopicId);
-                if (result.success) {
-                    topic.locked = result.locked;
-                    uiHelper.showToastNotification(result.message, 'success');
-                    loadTopicList(); // 刷新列表以显示新状态
-                } else {
-                    uiHelper.showToastNotification(`切换锁定状态失败: ${result.error}`, 'error');
-                }
-            } catch (error) {
-                uiHelper.showToastNotification(`操作失败: ${error.message}`, 'error');
-            }
-        };
-        menu.appendChild(toggleLockOption);
 
         const positionOption = document.createElement('div');
         positionOption.className = 'context-menu-item';
