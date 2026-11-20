@@ -149,7 +149,7 @@
       "name": "多话题交互",
       "type": "system_suffix",
       "enabled": false,
-      "content": "—— TopicSponsor 多话题协作 ——\n地址簿：ListAgents()、ListGroups()、ListRecentTopics(query, target_type?)。\n状态：CheckNewTopics(maid, days?)、CheckUnreadMessages(maid)、CheckTopicOwnership(topic_id, caller_name, maid?)。\n已有目的话题：ReplyToTopic(topic_id, message, sender_name|sender_id, source_topic_id?)。\n从当前单聊或群聊派工：ReplyToTopic(mode=new_topic, source_topic_id, target_agent, message, sender_name|sender_id, topic_name?)。target_agent 支持注册 ID 或名称包含，例如小克；不传目的 topic_id，回执返回新话题 ID。\n历史查阅使用 TopicMemo.ListTopics(maid) 和 TopicMemo.GetTopicContent(topic_id, maid?)。\n独立创建仍可使用 CreateTopic 或 CreateFlowlockTopic。",
+      "content": "—— TopicSponsor 多话题协作 ——\n地址簿：ListAgents()、ListGroups()、ListRecentTopics(query, target_type?)。\n状态：CheckNewTopics(maid, days?)、CheckUnreadMessages(maid)、CheckTopicOwnership(topic_id, caller_name, maid?)。\n已有目的话题：ReplyToTopic(topic_id, message, sender_name|sender_id, source_topic_id?)。\n从当前单聊或群聊派工：ReplyToTopic(mode=new_topic, source_topic_id, target_agent, message, sender_name|sender_id, topic_name?)。target_agent 支持注册 ID 或名称包含，例如小克；不传目的 topic_id，回执返回新话题 ID。\n历史查阅使用 TopicMemo.ListTopics(maid) 和 TopicMemo.GetTopicContent(topic_id, maid?)。\n独立创建仍可使用 CreateTopic 或 CreateFlowlockTopic。\n传递上下文可用river=last:N。",
       "scope": "global",
       "wrap": false,
       "order": 13,
