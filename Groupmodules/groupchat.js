@@ -31,6 +31,7 @@ const {
 const topicTitleManager = require('./topicTitleManager');
 const { noteToolApprovalMessage, isWaitingForToolApproval, isWatchdogAbort, withWatchdogNote, getGroupErrorMessage, normalizeGroupFetchError } = require('./streamWatchdog');
 const { resolveGroupChatUrl } = require('./groupChatUrl');
+const { readChatHttpError, chatResponseError } = require('../modules/chatRequestError');
 
 // 模式注册表 - 添加新模式只需在此注册
 const CHAT_MODES = {
@@ -1598,13 +1599,10 @@ ${canvasData.errors || 'No errors'}
             }
 
             if (!response.ok) {
-                trajectoryCall.finish({ error: { name: 'HTTPError', message: `VCP request failed: ${response.status}` } });
-                const errorText = await response.text();
-                console.error(`[GroupChat] VCP request failed for ${agentName}. Status: ${response.status}, Response Text:`, errorText);
-                let errorData = { message: `Server returned status ${response.status}`, details: errorText };
-                try { const parsedError = JSON.parse(errorText); if (typeof parsedError === 'object' && parsedError !== null) errorData = parsedError; } catch (e) { /* Not JSON */ }
-
-                const errorMessageToPropagate = `VCP request failed: ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : 'Unknown server error')}`;
+                const failure = await readChatHttpError(response);
+                const errorMessageToPropagate = failure.error;
+                console.error(`[GroupChat] VCP request failed for ${agentName}:`, failure.error);
+                trajectoryCall.finish({ error: { name: 'HTTPError', message: failure.error } });
                 const errorResponseEntry = buildGroupAssistantHistoryEntry({
                     id: messageIdForAgentResponse,
                     groupId,
@@ -1620,7 +1618,7 @@ ${canvasData.errors || 'No errors'}
 
                 if (typeof sendStreamChunkToRenderer === 'function') {
                     // Finalize the 'thinking' bubble with an error message
-                    sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: agentStreamContext });
+                    sendStreamChunkToRenderer({ type: 'end', ...failure, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: agentStreamContext });
                 }
                 activeRequestControllers.delete(messageIdForAgentResponse);
                 continue; // Move to the next agent
@@ -1662,24 +1660,15 @@ ${canvasData.errors || 'No errors'}
                 // This function will now be awaited
                 async function processStreamForGroupAndUpdateHistory() {
                     let accumulatedResponse = "";
+                    let buffer = '';
                     try {
                         resetIdleTimer();
                         while (true) {
                             const { done, value } = await reader.read();
-                            if (done) {
-                            trajectoryCall.finish();
-                                clearTimeout(activeTimer);
-                                console.log(`[GroupChat] VCP stream ended for ${agentName} (msgId: ${messageIdForAgentResponse})`);
-                                const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
-                                groupHistory = await persistAgentResponse(groupId, topicId, finalAiResponseEntry);
-                                if (typeof sendStreamChunkToRenderer === 'function') {
-                                    sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
-                                }
-                                break;
-                            }
-                            resetIdleTimer();
-                            const chunkString = decoder.decode(value, { stream: true });
-                            const lines = chunkString.split('\n').filter(line => line.trim() !== '');
+                            if (!done) resetIdleTimer();
+                            buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+                            const lines = buffer.split('\n');
+                            buffer = done ? '' : lines.pop();
                             for (const line of lines) {
                                 if (line.startsWith('data: ')) {
                                     const jsonData = line.substring(5).trim();
@@ -1695,6 +1684,8 @@ ${canvasData.errors || 'No errors'}
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
+                                        const responseError = chatResponseError(parsedChunk);
+                                        if (responseError) throw responseError;
                                         trajectoryCall.chunk(parsedChunk);
 
                                         // 更全面的安全检查，处理各种可能的响应格式
@@ -1742,6 +1733,7 @@ ${canvasData.errors || 'No errors'}
                                             });
                                         }
                                     } catch (e) {
+                                        if (e?.isChatResponseError) throw e;
                                         console.error(`[GroupChat] Failed to parse VCP stream chunk JSON for ${agentName}:`, e, 'Raw data:', jsonData);
                                         if (typeof sendStreamChunkToRenderer === 'function') {
                                             sendStreamChunkToRenderer({ type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true } });
@@ -1749,9 +1741,21 @@ ${canvasData.errors || 'No errors'}
                                     }
                                 }
                             }
+                            if (done) {
+                                trajectoryCall.finish();
+                                clearTimeout(activeTimer);
+                                console.log(`[GroupChat] VCP stream ended for ${agentName} (msgId: ${messageIdForAgentResponse})`);
+                                const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                                groupHistory = await persistAgentResponse(groupId, topicId, finalAiResponseEntry);
+                                if (typeof sendStreamChunkToRenderer === 'function') {
+                                    sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
+                                }
+                                break;
+                            }
                         }
                     } catch (streamError) {
                         trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' });
+                        if (streamError?.isChatResponseError) await reader.cancel().catch(() => {});
                         if (isWatchdogAbort(streamError, controller)) {
                             // 看门狗熔断：reader 抛出的是 abort 的字符串原因，没有 .message；已收到的内容（可能含已执行的工具调用和结果）要留下
                             console.warn(`[GroupChat] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) stopped by the idle watchdog.`);
@@ -1796,7 +1800,9 @@ ${canvasData.errors || 'No errors'}
                             }
                         } else {
                             console.error(`[GroupChat] VCP stream reading error for ${agentName}:`, streamError);
-                            const errorText = `[System Message] ${agentName} stream processing error: ${streamError.message}`;
+                            const errorText = streamError.isChatResponseError
+                                ? [accumulatedResponse, `[错误] ${streamError.message}`].filter(Boolean).join('\n\n')
+                                : `[System Message] ${agentName} stream processing error: ${streamError.message}`;
                             const streamErrorResponseEntry = buildGroupAssistantHistoryEntry({
                                 id: messageIdForAgentResponse,
                                 groupId,
@@ -1810,7 +1816,11 @@ ${canvasData.errors || 'No errors'}
                             });
                             groupHistory = await persistAgentResponse(groupId, topicId, streamErrorResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
-                                sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: agentStreamContext });
+                                if (streamError.isChatResponseError) {
+                                    sendStreamChunkToRenderer({ type: 'end', error: streamError.message, status: streamError.status, fullResponse: errorText, messageId: messageIdForAgentResponse, context: agentStreamContext });
+                                } else {
+                                    sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error: ${streamError.message}`, messageId: messageIdForAgentResponse, context: agentStreamContext });
+                                }
                             }
                         }
                     } finally {
@@ -2404,13 +2414,10 @@ ${canvasData.errors || 'No errors'}
         }
 
         if (!response.ok) {
-            trajectoryCall.finish({ error: { name: 'HTTPError', message: `VCP request failed: ${response.status}` } });
-            const errorText = await response.text();
-            console.error(`[GroupChat Invite] VCP request failed for ${agentName}. Status: ${response.status}, Response Text:`, errorText);
-            let errorData = { message: `Server returned status ${response.status}`, details: errorText };
-            try { const parsedError = JSON.parse(errorText); if (typeof parsedError === 'object' && parsedError !== null) errorData = parsedError; } catch (e) { /* Not JSON */ }
-
-            const errorMessageToPropagate = `VCP request failed (invite): ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : 'Unknown server error')}`;
+            const failure = await readChatHttpError(response);
+            const errorMessageToPropagate = failure.error;
+            console.error(`[GroupChat Invite] VCP request failed for ${agentName}:`, failure.error);
+            trajectoryCall.finish({ error: { name: 'HTTPError', message: failure.error } });
             const errorResponseEntry = buildGroupAssistantHistoryEntry({
                 id: messageIdForAgentResponse,
                 groupId,
@@ -2425,10 +2432,10 @@ ${canvasData.errors || 'No errors'}
             groupHistory = await persistResponse(groupId, topicId, errorResponseEntry);
 
             if (typeof sendStreamChunkToRenderer === 'function') {
-                sendStreamChunkToRenderer({ type: 'end', error: errorMessageToPropagate, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: invitedStreamContext });
+                sendStreamChunkToRenderer({ type: 'end', ...failure, fullResponse: `[错误] ${errorMessageToPropagate}`, messageId: messageIdForAgentResponse, context: invitedStreamContext });
             }
             activeRequestControllers.delete(messageIdForAgentResponse);
-            return { interrupted: false, error: errorMessageToPropagate };
+            return { interrupted: false, ...failure };
         }
 
         if (modelConfigForAgent.stream) {
@@ -2464,23 +2471,15 @@ ${canvasData.errors || 'No errors'}
 
             async function processStreamForInvitedAgent() {
                 let accumulatedResponse = "";
+                let buffer = '';
                 try {
                     resetIdleTimer();
                     while (true) {
                         const { done, value } = await reader.read();
-                        if (done) {
-                        trajectoryCall.finish();
-                            clearTimeout(activeTimer);
-                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
-                            groupHistory = await persistResponse(groupId, topicId, finalAiResponseEntry);
-                            if (typeof sendStreamChunkToRenderer === 'function') {
-                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
-                            }
-                            break;
-                        }
-                        resetIdleTimer();
-                        const chunkString = decoder.decode(value, { stream: true });
-                        const lines = chunkString.split('\n').filter(line => line.trim() !== '');
+                        if (!done) resetIdleTimer();
+                        buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = done ? '' : lines.pop();
                         for (const line of lines) {
                             if (line.startsWith('data: ')) {
                                 const jsonData = line.substring(5).trim();
@@ -2495,6 +2494,8 @@ ${canvasData.errors || 'No errors'}
                                 }
                                 try {
                                     const parsedChunk = JSON.parse(jsonData);
+                                    const responseError = chatResponseError(parsedChunk);
+                                    if (responseError) throw responseError;
                                     trajectoryCall.chunk(parsedChunk);
 
                                     // 更全面的安全检查，处理各种可能的响应格式
@@ -2542,6 +2543,7 @@ ${canvasData.errors || 'No errors'}
                                         });
                                     }
                                 } catch (e) {
+                                    if (e?.isChatResponseError) throw e;
                                     console.error(`[GroupChat Invite] Failed to parse VCP stream chunk JSON for ${agentName}:`, e, 'Raw data:', jsonData);
                                     // 添加错误chunk发送，保持一致性
                                     if (typeof sendStreamChunkToRenderer === 'function') {
@@ -2550,9 +2552,20 @@ ${canvasData.errors || 'No errors'}
                                 }
                             }
                         }
+                        if (done) {
+                            trajectoryCall.finish();
+                            clearTimeout(activeTimer);
+                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                            groupHistory = await persistResponse(groupId, topicId, finalAiResponseEntry);
+                            if (typeof sendStreamChunkToRenderer === 'function') {
+                                sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
+                            }
+                            break;
+                        }
                     }
                 } catch (streamError) {
                     trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' });
+                    if (streamError?.isChatResponseError) await reader.cancel().catch(() => {});
                     if (isWatchdogAbort(streamError, controller)) {
                         console.warn(`[GroupChat Invite] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) stopped by the idle watchdog.`);
                         const partialContent = withWatchdogNote(accumulatedResponse, GROUP_CHUNK_IDLE_TIMEOUT_MS);
@@ -2597,7 +2610,9 @@ ${canvasData.errors || 'No errors'}
                         }
                     } else {
                         console.error(`[GroupChat Invite] VCP stream reading error for ${agentName}:`, streamError);
-                        const errorText = `[System Message] ${agentName} stream processing error (invite): ${streamError.message}`;
+                        const errorText = streamError.isChatResponseError
+                            ? [accumulatedResponse, `[错误] ${streamError.message}`].filter(Boolean).join('\n\n')
+                            : `[System Message] ${agentName} stream processing error (invite): ${streamError.message}`;
                         const streamErrorResponseEntry = buildGroupAssistantHistoryEntry({
                             id: messageIdForAgentResponse,
                             groupId,
@@ -2610,6 +2625,13 @@ ${canvasData.errors || 'No errors'}
                             content: errorText
                         });
                         groupHistory = await persistResponse(groupId, topicId, streamErrorResponseEntry);
+                        if (streamError.isChatResponseError) {
+                            const failure = { error: streamError.message, status: streamError.status };
+                            if (typeof sendStreamChunkToRenderer === 'function') {
+                                sendStreamChunkToRenderer({ type: 'end', ...failure, fullResponse: errorText, messageId: messageIdForAgentResponse, context: invitedStreamContext });
+                            }
+                            return failure;
+                        }
                         if (typeof sendStreamChunkToRenderer === 'function') {
                             sendStreamChunkToRenderer({ type: 'error', error: `VCP stream reading error (invite): ${streamError.message}`, messageId: messageIdForAgentResponse, context: invitedStreamContext });
                         }
@@ -2621,7 +2643,8 @@ ${canvasData.errors || 'No errors'}
                     console.log(`[GroupChat Invite] Active request controller removed for ${messageIdForAgentResponse}`);
                 }
             }
-            await processStreamForInvitedAgent();
+            const failure = await processStreamForInvitedAgent();
+            if (failure) return { interrupted: false, ...failure };
         } else { // Non-streaming response
             const vcpResponseJson = await response.json();
             trajectoryCall.finish({ response: vcpResponseJson });

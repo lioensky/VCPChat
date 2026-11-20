@@ -15,6 +15,7 @@ async function fixture(t, mode, stream) {
     const localRequire = createRequire(filename);
     const requests = [], trajectories = [];
     let requestHook = null;
+    let responseFactory = null;
     let activeRules = [];
     const module = { exports: {} };
     const sandbox = {
@@ -26,6 +27,7 @@ async function fixture(t, mode, stream) {
             if (options.signal?.aborted) {
                 throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
             }
+            if (responseFactory) return responseFactory();
             if (!stream) return new Response(JSON.stringify({
                 choices: [{ message: { content: 'RAW_PRIVATE_RESPONSE' } }],
             }), { headers: { 'Content-Type': 'application/json' } });
@@ -89,15 +91,47 @@ async function fixture(t, mode, stream) {
     await api.appendGroupHistoryMessage(groupId, topicId, {
         id: 'latest', role: 'user', name: '玩家', content: 'LATEST_PUBLIC',
     });
-    const invoke = options => api.handleInviteAgentToSpeak(
-        groupId, topicId, 'a', undefined,
+    const invoke = (options, onEvent) => api.handleInviteAgentToSpeak(
+        groupId, topicId, 'a', onEvent,
         async () => ({ id: 'a', name: 'Agent A', model: 'test', systemPrompt: 'PERSONA', streamOutput: stream }),
         { skipSummary: true, ...options },
     );
     return { api, root, groupId, topicId, invoke, requests, trajectories,
         setRequestHook(hook) { requestHook = hook; },
+        setResponse(factory) { responseFactory = factory; },
         setRules(rules) { activeRules = rules; } };
 }
+for (const mode of ['sequential', 'invite_only']) {
+    for (const failure of ['http', 'split-stream']) {
+        test(`${mode} shows a readable ${failure} error`, async t => {
+            const f = await fixture(t, mode, true);
+            const body = JSON.stringify({ error: { message: '模拟限流', status: 429 } });
+            f.setResponse(() => {
+                if (failure === 'http') return new Response(body, { status: 429 });
+                const encoder = new TextEncoder();
+                return new Response(new ReadableStream({
+                    start(controller) {
+                        controller.enqueue(encoder.encode('data: ' + body.slice(0, 18)));
+                        controller.enqueue(encoder.encode(body.slice(18) + '\n\ndata: [DONE]\n\n'));
+                        controller.close();
+                    },
+                }), { headers: { 'Content-Type': 'text/event-stream' } });
+            });
+            const events = [];
+            const onEvent = event => events.push(event);
+            if (mode === 'invite_only') await f.invoke({}, onEvent);
+            else await f.api.handleGroupChatMessage(f.groupId, f.topicId,
+                { id: 'probe', originalUserText: 'hello', content: { text: 'hello' } }, onEvent,
+                async id => ({ id, name: 'Agent A', model: 'test', streamOutput: true }));
+            assert.equal(f.requests.length, 1);
+            const visible = events.findLast(event => event.type === 'end' || event.type === 'error');
+            assert.match(visible?.error ?? '', /HTTP 429：模拟限流/);
+            const history = await f.api.getGroupChatHistory(f.groupId, f.topicId);
+            assert.match(history.at(-1).content, /HTTP 429：模拟限流/);
+        });
+    }
+}
+
 for (const stream of [false, true]) {
     test(`game ${stream ? '流式' : '非流式'}：私有invite仅在本次请求，原始回复不入公共历史或轨迹`, async t => {
         const f = await fixture(t, 'game', stream);

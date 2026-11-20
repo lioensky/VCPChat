@@ -48,7 +48,7 @@ export async function prepareTopicAdmissionSingleChat({
             const result = await orchestrator.sendPrepared(prepared, settings);
             if (prepared.modelConfig.stream === true) {
                 if (!result?.streamingStarted || result.streamError) {
-                    throw new Error(result?.errorDetail || result?.error || '流式启动失败');
+                    throw new Error(result?.error || '流式启动失败');
                 }
                 // StreamCoordinator persists the response and releases admissionToken.
                 return;

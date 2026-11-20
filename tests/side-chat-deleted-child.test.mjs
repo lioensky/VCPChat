@@ -35,6 +35,7 @@ function setup() {
         ['../services/historyMutationQueue', { HistoryMutationQueue }], ['./workspaceHandlers', {}], ['./sideChatHandlers', sideChatHandlers],
         // 桌宠没打开时这些钩子全是空操作，用真实模块。
         ['../hostHooks', require('../modules/hostHooks.js')],
+        ['../chatRequestError', require('../modules/chatRequestError.js')],
     ]);
     vm.runInNewContext('(function(require,module,exports){' + source + '\n})', { console: { log() {}, warn() {}, error() {} }, TextDecoder, URL, fetch, AbortSignal })(
         name => { assert.ok(dependencies.has(name), 'unreviewed fixture dependency: ' + name); return dependencies.get(name); }, module, module.exports);
