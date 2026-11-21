@@ -56,6 +56,7 @@ export function compactionSettings(settings = {}) {
     return {
         enabled: settings.enableContextCompaction === true,
         model: String(settings.contextCompactionModel || '').trim(),
+        fallbackModel: String(settings.contextCompactionFallbackModel || '').trim(),
         prompt: settings.contextCompactionPrompt?.trim() ? settings.contextCompactionPrompt : DEFAULT_COMPACTION_PROMPT,
         sendPrompt: settings.contextCompactionSendPrompt?.trim() ? settings.contextCompactionSendPrompt : DEFAULT_COMPACTION_SEND_PROMPT,
         mainPrompt: settings.contextCompactionMainPrompt?.trim() ? settings.contextCompactionMainPrompt : DEFAULT_COMPACTION_MAIN_PROMPT,

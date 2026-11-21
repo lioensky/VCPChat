@@ -32,7 +32,7 @@ test('compaction settings declare dependencies and show empty-default guidance o
         if (previousDocument === undefined) delete globalThis.document;
         else globalThis.document = previousDocument;
     }
-    const ids = ['contextCompactionModel', 'contextCompactionPrompt', 'contextCompactionSendPrompt', 'contextCompactionMainPrompt'];
+    const ids = ['contextCompactionModel', 'contextCompactionFallbackModel', 'contextCompactionPrompt', 'contextCompactionSendPrompt', 'contextCompactionMainPrompt'];
     for (const enabled of [false, true, false]) {
         form.querySelector('#enableContextCompaction').checked = enabled;
         syncDependentRows(form);

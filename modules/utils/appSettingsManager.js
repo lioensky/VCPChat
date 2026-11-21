@@ -274,6 +274,7 @@ class SettingsManager extends EventEmitter {
             topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
             enableContextCompaction: false,
             contextCompactionModel: '',
+            contextCompactionFallbackModel: '',
             contextCompactionPrompt: '',
             contextCompactionSendPrompt: '',
             contextCompactionMainPrompt: '',

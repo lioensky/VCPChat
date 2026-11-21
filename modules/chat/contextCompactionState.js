@@ -12,16 +12,30 @@ export function isContextCheckpoint(message) {
         && typeof message.contextCompaction.checkpoint === 'string';
 }
 
-/** UI history remains complete; only outbound history starts at the newest checkpoint. */
+function checkpointFailure(value) {
+    if (typeof value !== 'string' || !value.trim()) return '压缩模型未返回有效文本，原历史未修改';
+    const text = value.trimStart();
+    if (/^(?:\[UPSTREAM_ERROR\]|upstream_stalled(?=$|[\s:：]))/i.test(text)
+        || /^\{\s*"error"\s*:/.test(text)) {
+        return '压缩模型返回上游错误信封，未保存快照';
+    }
+    return null;
+}
+
+function isBrokenCheckpoint(message) {
+    return isContextCheckpoint(message) && checkpointFailure(message.contextCompaction.checkpoint) !== null;
+}
+
+/** UI history remains complete; outbound history starts at the newest usable checkpoint. */
 export function effectiveContextHistory(history = []) {
     let start = 0;
     for (let index = history.length - 1; index >= 0; index--) {
-        if (isContextCheckpoint(history[index])) {
+        if (isContextCheckpoint(history[index]) && !isBrokenCheckpoint(history[index])) {
             start = index;
             break;
         }
     }
-    return history.slice(start).filter(message => message && !message.isThinking);
+    return history.slice(start).filter(message => message && !message.isThinking && !isBrokenCheckpoint(message));
 }
 
 function removeRanges(text, ranges) {
@@ -201,7 +215,8 @@ export function validateCheckpoint(value) {
         }
         value = value.map(part => part.text).join('');
     }
-    if (typeof value !== 'string' || !value.trim()) throw new Error('压缩模型未返回有效文本，原历史未修改');
+    const failure = checkpointFailure(value);
+    if (failure) throw new Error(failure);
     // Report quality belongs to the prompt. Metadata, not model-authored tags,
     // owns the context boundary. Preserve every character of the returned report.
     return value;
