@@ -40,7 +40,7 @@ function createTopicSponsorDelivery({ admission, resolver, findAgent, prepareDis
         const senderQuery = args.sender_id || args.sender_name;
         if (typeof senderQuery !== 'string' || !senderQuery.trim()) throw new TypeError('sender_id 或 sender_name 必需');
         const isDispatch = args.mode === 'new_topic';
-        const riverQuote = formatTopicRiverQuote(args.river_context);
+        const riverQuote = await formatTopicRiverQuote(args.river_context);
         const body = riverQuote ? `${args.message.trimEnd()}\n\n${riverQuote}` : args.message;
         if (args.flowlock !== undefined && ![true, false, 'true', 'false'].includes(args.flowlock)) {
             throw new TypeError('flowlock 必须为 true 或 false');
