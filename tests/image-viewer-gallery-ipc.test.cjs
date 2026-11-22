@@ -8,13 +8,23 @@ const handlers = new Map();
 ipc.handle = (channel, handler) => handlers.set(channel, handler);
 const windows = [];
 class BrowserWindow extends EventEmitter {
+    constructor() {
+        super();
+        this.webContents = { mainFrame: {} };
+        this.bounds = { x: 10, y: 40, width: 800, height: 600 };
+    }
+    getBounds() { return { ...this.bounds }; }
+    setBounds(bounds) { this.bounds = { ...bounds }; }
+    isDestroyed() { return false; }
+    isMaximized() { return this.maximized === true; }
+    isFullScreen() { return this.fullScreen === true; }
     setMenu() {}
     loadURL(url) { this.url = new URL(url); }
 }
 const originalLoad = Module._load;
 try {
     Module._load = function (request, parent, isMain) {
-        if (request === 'electron') return { ipcMain: ipc, BrowserWindow, app: { getAppPath: () => __dirname } };
+        if (request === 'electron') return { ipcMain: ipc, BrowserWindow, screen: { getDisplayMatching: () => ({ workArea: { x: 0, width: 1600 } }) }, app: { getAppPath: () => __dirname } };
         if (request === '../services/windowPinService') return { setupGlobalWindowPinObserver() {} };
         return originalLoad.call(this, request, parent, isMain);
     };
@@ -104,4 +114,44 @@ test('closing a gallery before it is consumed clears its token', () => {
     assert.ok(token);
     win.emit('closed');
     assert.equal(consume(token), null);
+});
+
+test('OCR drawer widens only the viewer main frame and restores unchanged bounds', () => {
+    const win = open({ src: 'sample.png' });
+    const toggle = handlers.get('image-viewer:set-ocr-open');
+    const event = { sender: win.webContents, senderFrame: win.webContents.mainFrame };
+    const initial = win.getBounds();
+    assert.equal(toggle({ sender: {}, senderFrame: {} }, true), false);
+    assert.equal(toggle({ ...event, senderFrame: {} }, true), false);
+    assert.equal(toggle(event, 'true'), false);
+    assert.deepEqual(win.getBounds(), initial);
+    assert.equal(toggle(event, true), true);
+    assert.equal(toggle(event, true), true);
+    assert.deepEqual(win.getBounds(), { ...initial, width: 1180 });
+    toggle(event, false);
+    assert.deepEqual(win.getBounds(), initial);
+    win.emit('closed');
+});
+
+test('OCR drawer leaves edge, maximized, fullscreen and manually adjusted bounds alone', () => {
+    const win = open({ src: 'sample.png' });
+    const toggle = handlers.get('image-viewer:set-ocr-open');
+    const event = { sender: win.webContents, senderFrame: win.webContents.mainFrame };
+    const initial = win.getBounds();
+    toggle(event, true);
+    const manual = { ...initial, x: 45, width: 900 };
+    win.setBounds(manual);
+    toggle(event, false);
+    assert.deepEqual(win.getBounds(), manual);
+    for (const mode of ['edge', 'maximized', 'fullscreen']) {
+        win.setBounds({ ...initial, x: mode === 'edge' ? 800 : 10 });
+        win.maximized = mode === 'maximized';
+        win.fullScreen = mode === 'fullscreen';
+        const before = win.getBounds();
+        toggle(event, true);
+        assert.deepEqual(win.getBounds(), before);
+        toggle(event, false);
+        assert.deepEqual(win.getBounds(), before);
+    }
+    win.emit('closed');
 });

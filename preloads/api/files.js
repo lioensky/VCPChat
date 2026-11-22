@@ -21,6 +21,7 @@ module.exports = {
         // 大体积图片 payload 经主进程内存缓存中转，避免把 dataURL 塞进窗口 URL
         registerImageViewerPayload: invoke('image-viewer:register-payload', 'payload').roles('utility'),
         consumeImageViewerPayload: invoke('image-viewer:consume-payload', 'token').roles('utility'),
+        setImageViewerOcrOpen: invoke('image-viewer:set-ocr-open', 'open').roles('utility'),
         copyGifToClipboard: invoke('image-viewer:copy-gif', 'gifBytes').roles('utility'),
         openTextInNewWindow: invoke('display-text-content-in-viewer', 'textContent', 'windowTitle', 'theme'),
 

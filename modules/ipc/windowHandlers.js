@@ -1,5 +1,7 @@
 // modules/ipc/windowHandlers.js
-const { ipcMain, app, BrowserWindow, clipboard } = require('electron');
+const { ipcMain, app, BrowserWindow, clipboard, screen } = require('electron');
+const viewerLayouts = new WeakMap();
+const OCR_PANEL_WIDTH = 380;
 const crypto = require('crypto');
 const path = require('path');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
@@ -231,6 +233,33 @@ function initialize(mainWindow, openChildWindows) {
         return { success: true, format, size: buffer.length };
     });
 
+    ipcMain.handle('image-viewer:set-ocr-open', (event, open) => {
+        const state = viewerLayouts.get(event.sender);
+        if (!state || typeof open !== 'boolean' || !event.senderFrame ||
+            event.senderFrame !== event.sender.mainFrame || state.win.isDestroyed()) return false;
+        if (state.open === open) return true;
+        state.open = open;
+        const win = state.win;
+        const bounds = win.getBounds();
+        if (open) {
+            const area = screen.getDisplayMatching(bounds).workArea;
+            if (!win.isMaximized() && !win.isFullScreen() &&
+                bounds.x + bounds.width + OCR_PANEL_WIDTH <= area.x + area.width) {
+                const expanded = { ...bounds, width: bounds.width + OCR_PANEL_WIDTH };
+                win.setBounds(expanded);
+                state.restore = { original: bounds, expanded: win.getBounds() };
+            }
+        } else {
+            const restore = state.restore;
+            state.restore = null;
+            if (restore && !win.isMaximized() && !win.isFullScreen() &&
+                ['x', 'y', 'width', 'height'].every(key => bounds[key] === restore.expanded[key])) {
+                win.setBounds(restore.original);
+            }
+        }
+        return true;
+    });
+
     ipcMain.on('open-image-viewer', (_event, payload = {}) => {
         const src = payload?.src;
         if (!isImageSource(src)) {
@@ -276,6 +305,7 @@ function initialize(mainWindow, openChildWindows) {
             show: false,
         });
 
+        viewerLayouts.set(imageViewerWindow.webContents, { win: imageViewerWindow, open: false, restore: null });
         imageViewerWindow.setMenu(null);
 
         const queryParts = [
