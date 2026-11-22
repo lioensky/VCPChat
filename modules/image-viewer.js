@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentTool = 'select';
     let isDrawing = false;
     let startX, startY;
-    let currentColor = '#498094ff';
+    let currentColor = colorPicker.value;
     let currentBrushSize = 5;
     let history = [];
     let historyStep = -1;
@@ -77,6 +77,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const initialTheme = params.get('theme') || 'dark';
     let resolvedImageSrc = '';
     let originalImageBlobPromise = null;
+    // 同一话题里的图片，可左右翻页（payload.gallery，来自 renderer/imageHandler.js）。
+    let gallery = [];
+    let galleryIndex = 0;
 
     applyTheme(initialTheme);
 
@@ -93,6 +96,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 imageUrl = payload.src;
                 if (payload.title) imageTitle = payload.title;
                 if (payload.theme) applyTheme(payload.theme);
+                if (Array.isArray(payload.gallery) && payload.gallery.length > 1) {
+                    gallery = payload.gallery.filter(item => item && typeof item.src === 'string');
+                    galleryIndex = Math.max(0, Math.min(gallery.length - 1, Number(payload.index) || 0));
+                }
                 console.log('[ImageViewer] Loaded payload via token. src length:', payload.src.length);
             } else {
                 console.error('[ImageViewer] Token payload missing or already consumed:', tokenFromUrl);
@@ -119,12 +126,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (dataUrlMatch) return dataUrlMatch[1].toLowerCase();
 
         const cleanUrl = (src || '').split(/[?#]/, 1)[0];
-        if (/\.gif$/i.test(cleanUrl) || /\.gif$/i.test(decodedTitle)) return 'image/gif';
+        if (/\.gif$/i.test(cleanUrl) || /\.gif$/i.test(document.title)) return 'image/gif';
         return '';
     }
 
     function isUneditedGif() {
-        return getImageMimeType(resolvedImageSrc) === 'image/gif' && historyStep <= 0;
+        return getImageMimeType(resolvedImageSrc) === 'image/gif' && historyStep <= 0 && rotation === 0;
     }
 
     async function getOriginalImageBlob() {
@@ -155,7 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function getGifDownloadName() {
-        let fileName = decodedTitle || 'image.gif';
+        let fileName = document.title || 'image.gif';
         if (!/\.gif$/i.test(fileName)) {
             fileName = fileName.replace(/\.[a-z0-9]+$/i, '') + '.gif';
         }
@@ -163,7 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function getPngDownloadName() {
-        const fileName = decodedTitle || 'image.png';
+        const fileName = (document.title || 'image.png').replace(/\.[a-z0-9]+$/i, '') + '.png';
         if (fileName.toLowerCase() !== 'image.png') return fileName;
 
         const now = new Date();
@@ -243,6 +250,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             canvas.classList.add('active');
             canvas.style.cursor = tool === 'eyedropper' ? 'crosshair' : 'crosshair';
         }
+        // 标注工具条常驻在顶栏下面一行；选了画图工具就是在标注，选回“选择”就是看图。
+        const annotating = tool !== 'select';
+        if (annotating && typeof rotation !== 'undefined' && rotation !== 0) { rotation = 0; resetView(); } // 画布坐标不跟旋转走
+        document.body.classList.toggle('viewer-annotating', annotating);
     }
 
     // 绘制箭头
@@ -426,165 +437,321 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 清除画布
+    // 清除画布。不弹系统确认框；直接清除（记进历史），底部出一条“撤销”，4 秒后消失。
+    const undoToast = document.getElementById('viewerUndoToast');
+    let undoToastTimer = null;
+    const hideUndoToast = () => { if (undoToast) undoToast.hidden = true; clearTimeout(undoToastTimer); };
+    document.getElementById('viewerUndoClear')?.addEventListener('click', () => { hideUndoToast(); undoBtn.click(); });
     clearBtn.addEventListener('click', () => {
-        if (confirm('确定要清除所有绘图吗？')) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            saveToHistory();
-        }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        saveToHistory();
+        if (!undoToast) return;
+        undoToast.hidden = false;
+        clearTimeout(undoToastTimer);
+        undoToastTimer = setTimeout(hideUndoToast, 4000);
     });
 
     // ========== 图片加载 ==========
+    // 打开即适应窗口；滚轮直接以光标为中心缩放；
+    // 拖动限制在图片边界内；双击在适应窗口和 100% 之间切换；← / → 翻同一话题的图；交互监听只挂一次，翻页不重复挂。
+
+    const zoomLabel = document.getElementById('viewerZoomLabel');
+    const indexLabel = document.getElementById('viewerIndexLabel');
+    let interactionBound = false;
+    // 旋转只改看的方向；复制、另存为按转过的方向导出。标注时回到 0°（画布坐标不跟旋转走）。
+    let rotation = 0;
+    // 长截图：高宽比很大、适应窗口后字小到看不清的图。按宽铺满、从顶部开始，滚轮上下滚动，Ctrl+滚轮缩放。
+    let longMode = false;
+
+    function isQuarterTurn() { return rotation === 90 || rotation === 270; }
+    function isLongView() { return longMode && !isQuarterTurn(); }
+
+    function viewportSize() {
+        const stage = imageContainer.parentElement;
+        return { w: stage.clientWidth, h: stage.clientHeight };
+    }
+
+    function fitScaleFor100() {
+        // 适应窗口时 scale=1；100% 是原图像素对屏幕像素
+        const shown = imgElement.offsetWidth || 1;
+        return (imgElement.naturalWidth || shown) / shown;
+    }
+
+    // “适应”时的比例：普通图 1；转了 90° 的图重新适应窗口；长截图按宽铺满。都不超过原图大小。
+    function baseScale() {
+        const { w: vw, h: vh } = viewportSize();
+        const ow = imgElement.offsetWidth || 1;
+        const oh = imgElement.offsetHeight || 1;
+        const full = Math.max(1, fitScaleFor100());
+        if (isLongView()) return Math.min(full, vw / ow);
+        if (isQuarterTurn()) return Math.min(full, vw / oh, vh / ow);
+        return 1;
+    }
+
+    function clampPan() {
+        const { w: vw, h: vh } = viewportSize();
+        const sw = (isQuarterTurn() ? imgElement.offsetHeight : imgElement.offsetWidth) * currentScale;
+        const sh = (isQuarterTurn() ? imgElement.offsetWidth : imgElement.offsetHeight) * currentScale;
+        const maxX = Math.max(0, (sw - vw) / 2);
+        const maxY = Math.max(0, (sh - vh) / 2);
+        imgInitialX = Math.max(-maxX, Math.min(maxX, imgInitialX));
+        imgInitialY = Math.max(-maxY, Math.min(maxY, imgInitialY));
+    }
+
+    function syncCanvasSize() {
+        canvas.style.width = imgElement.offsetWidth + 'px';
+        canvas.style.height = imgElement.offsetHeight + 'px';
+    }
+
+    function updateTransform() {
+        clampPan();
+        // 先 translate 后 rotate、scale：translate 单位是屏幕像素，滚轮的光标补偿才准确。只动 transform，不触发排版。
+        imageContainer.style.transform = `translate3d(${imgInitialX}px, ${imgInitialY}px, 0) rotate(${rotation}deg) scale(${currentScale})`;
+        if (zoomLabel) zoomLabel.textContent = `${Math.round(currentScale / fitScaleFor100() * 100)}%`;
+    }
+
+    function zoomTo(newScale, clientX, clientY) {
+        const oldScale = currentScale;
+        newScale = Math.max(minScale, Math.min(maxScale, newScale));
+        if (newScale === oldScale) return;
+        const rect = imageContainer.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const px = clientX ?? cx;
+        const py = clientY ?? cy;
+        const ratio = newScale / oldScale;
+        imgInitialX = (px - cx) * (1 - ratio) + imgInitialX;
+        imgInitialY = (py - cy) * (1 - ratio) + imgInitialY;
+        currentScale = newScale;
+        updateTransform();
+    }
+
+    function resetView() {
+        currentScale = baseScale();
+        imgInitialX = 0;
+        // 长截图从顶部开始看：先给一个很大的下移量，clampPan 会把它收到“顶边对齐”
+        imgInitialY = isLongView() ? Number.MAX_SAFE_INTEGER : 0;
+        updateTransform();
+    }
+
+    function panBy(dx, dy) {
+        imgInitialX += dx;
+        imgInitialY += dy;
+        updateTransform();
+    }
+
+    function rotateBy(delta) {
+        if (document.body.classList.contains('viewer-annotating')) return;
+        rotation = (rotation + delta + 360) % 360;
+        resetView();
+    }
+
+    // 滚轮、右键菜单不在这些地方生效：顶栏、标注工具条、缩略图条、识别文字抽屉、菜单本身
+    const CHROME_SELECTOR = '#custom-title-bar, .toolbar, #viewerFilmstrip, #ocrResultModal, .viewer-ctxmenu, .viewer-side-arrow, .viewer-undo-toast';
+
+    function bindInteractionOnce() {
+        if (interactionBound) return;
+        interactionBound = true;
+
+        imageContainer.parentElement.addEventListener('wheel', (event) => {
+            if (event.target?.closest?.(CHROME_SELECTOR)) return;
+            if (currentTool !== 'select') return;
+            event.preventDefault();
+            if (isLongView() && !event.ctrlKey) {
+                // 长截图：滚轮上下滚动，Shift+滚轮左右
+                if (event.shiftKey) panBy(-event.deltaY, 0);
+                else panBy(-event.deltaX, -event.deltaY);
+                return;
+            }
+            const factor = event.shiftKey ? ZOOM_FACTOR_FAST : ZOOM_FACTOR_STEP;
+            zoomTo(event.deltaY < 0 ? currentScale * factor : currentScale / factor, event.clientX, event.clientY);
+        }, { passive: false });
+
+        imgElement.addEventListener('dblclick', (event) => {
+            if (currentTool !== 'select') return;
+            event.preventDefault();
+            const base = baseScale();
+            if (Math.abs(currentScale - base) < 0.01) {
+                // 普通图：适应 → 100%；长截图：按宽铺满 → 整张放进窗口
+                if (isLongView()) zoomTo(1, event.clientX, event.clientY);
+                else if (fitScaleFor100() > base + 0.01) zoomTo(fitScaleFor100(), event.clientX, event.clientY);
+            } else resetView();
+        });
+
+        let dragStartX, dragStartY;
+        imgElement.addEventListener('mousedown', (event) => {
+            if (event.button === 0 && currentTool === 'select') {
+                isDragging = true;
+                dragStartX = event.clientX;
+                dragStartY = event.clientY;
+                event.preventDefault();
+            }
+        });
+        document.addEventListener('mousemove', (event) => {
+            if (!isDragging || currentTool !== 'select') return;
+            imgInitialX += event.clientX - dragStartX;
+            imgInitialY += event.clientY - dragStartY;
+            dragStartX = event.clientX;
+            dragStartY = event.clientY;
+            updateTransform();
+        });
+        document.addEventListener('mouseup', (event) => {
+            if (event.button === 0) isDragging = false;
+        });
+        const syncLayout = () => { syncCanvasSize(); updateTransform(); };
+        if (window.ResizeObserver) {
+            new ResizeObserver(syncLayout).observe(imageContainer.parentElement);
+        } else {
+            window.addEventListener('resize', syncLayout);
+        }
+    }
+
+    let imageGeneration = 0;
+    function showImage(src, title) {
+        imageGeneration++;
+        hideUndoToast();
+        setOcrPanelOpen(false);
+        ocrResultText.value = '';
+        resolvedImageSrc = src;
+        originalImageBlobPromise = null;
+        history = [];
+        historyStep = -1;
+        rotation = 0;
+        if (title) {
+            document.title = title;
+            document.getElementById('image-title-text').textContent = title;
+        }
+        if (indexLabel) indexLabel.textContent = gallery.length > 1 ? `${galleryIndex + 1} / ${gallery.length}` : '';
+        markCurrentThumb();
+        imgElement.src = src;
+    }
+
+    function showGalleryImage(index) {
+        if (gallery.length < 2 || currentTool !== 'select') return;
+        const nextIndex = (index + gallery.length) % gallery.length;
+        if (nextIndex === galleryIndex) return;
+        if (historyStep > 0 && !window.confirm('切换图片将丢弃本张的标注，仍要切换吗？')) return;
+        galleryIndex = nextIndex;
+        const item = gallery[galleryIndex];
+        showImage(item.src, item.title || '图片预览');
+    }
+
+    // 底部缩略图条（同一话题有多张图时出现，T 键收起 / 展开）。
+    // 缩略图懒加载，只解码看得见的几张；点一下跳过去，滚轮横向滚动。
+    const thumbs = document.getElementById('viewerThumbs');
+
+    function buildThumbs() {
+        if (!thumbs || gallery.length < 2) return;
+        const frag = document.createDocumentFragment();
+        gallery.forEach((item, i) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'viewer-thumb';
+            button.dataset.index = String(i);
+            button.setAttribute('aria-label', `第 ${i + 1} 张`);
+            const img = document.createElement('img');
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.alt = '';
+            img.draggable = false;
+            img.src = item.src;
+            button.appendChild(img);
+            frag.appendChild(button);
+        });
+        thumbs.appendChild(frag);
+        thumbs.addEventListener('click', (event) => {
+            const button = event.target.closest('.viewer-thumb');
+            if (button) showGalleryImage(Number(button.dataset.index));
+        });
+        thumbs.addEventListener('wheel', (event) => {
+            if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+                thumbs.scrollLeft += event.deltaY;
+                event.preventDefault();
+            }
+        }, { passive: false });
+    }
+
+    function markCurrentThumb() {
+        if (!thumbs || !thumbs.children.length) return;
+        thumbs.querySelector('.viewer-thumb.is-current')?.classList.remove('is-current');
+        const current = thumbs.children[galleryIndex];
+        if (!current) return;
+        current.classList.add('is-current');
+        current.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }
+
+    function toggleThumbs() {
+        if (gallery.length < 2) return;
+        document.body.classList.toggle('viewer-thumbs-hidden');
+        requestAnimationFrame(() => { syncCanvasSize(); resetView(); });
+    }
+
+    if (gallery.length > 1) {
+        document.body.classList.add('viewer-has-gallery');
+        buildThumbs();
+    }
+
+    imgElement.onload = () => {
+        imgElement.style.display = 'block';
+        imageControls.style.display = 'flex';
+        errorDiv.style.display = 'none';
+
+        canvas.width = imgElement.naturalWidth;
+        canvas.height = imgElement.naturalHeight;
+        syncCanvasSize();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 长截图：高是宽的 2.5 倍以上，而且适应窗口后显示宽度不到能显示宽度的 70%
+        const { w: vw } = viewportSize();
+        longMode = imgElement.naturalHeight / Math.max(1, imgElement.naturalWidth) > 2.5
+            && imgElement.offsetWidth < Math.min(imgElement.naturalWidth, vw) * 0.7;
+        document.body.classList.toggle('viewer-long-image', longMode);
+
+        imageCanvas.width = imgElement.naturalWidth;
+        imageCanvas.height = imgElement.naturalHeight;
+        imageCtx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
+
+        saveToHistory();
+        setTool('select');
+        bindInteractionOnce();
+        resetView();
+    };
+
+    imgElement.onerror = () => {
+        imgElement.style.display = 'none';
+        imageControls.style.display = 'none';
+        errorDiv.textContent = `无法加载图片: ${document.title}`;
+        errorDiv.style.display = 'block';
+    };
 
     if (imageUrl) {
-        // token 模式下 src 已经是原始 dataURL，不需要 decode；
-        // URL 模式下 src 是 encodeURIComponent 过的，需要解码。
+        // token 模式下 src 已经是原始 dataURL，不需要 decode；URL 模式下 src 是 encodeURIComponent 过的，需要解码。
         let finalSrc = imageUrl;
         if (!tokenFromUrl) {
-            try {
-                finalSrc = decodeURIComponent(imageUrl);
-            } catch (_) {
-                finalSrc = imageUrl;
-            }
+            try { finalSrc = decodeURIComponent(imageUrl); } catch (_) { finalSrc = imageUrl; }
         }
-        resolvedImageSrc = finalSrc;
-        console.log('[ImageViewer] Loading image, length:', finalSrc.length, 'via', tokenFromUrl ? 'token' : 'url');
-        imgElement.src = finalSrc;
-
-        imgElement.onload = () => {
-            console.log('Image Viewer: Image loaded successfully.');
-            imgElement.style.display = 'block';
-            imageControls.style.display = 'flex';
-            errorDiv.style.display = 'none';
-
-            // 设置画布大小
-            canvas.width = imgElement.naturalWidth;
-            canvas.height = imgElement.naturalHeight;
-            canvas.style.width = imgElement.offsetWidth + 'px';
-            canvas.style.height = imgElement.offsetHeight + 'px';
-
-            // 设置图像画布用于取色
-            imageCanvas.width = imgElement.naturalWidth;
-            imageCanvas.height = imgElement.naturalHeight;
-            imageCtx.drawImage(imgElement, 0, 0, imgElement.naturalWidth, imgElement.naturalHeight);
-
-            // 保存初始空白状态
-            saveToHistory();
-
-            // 默认选择选择工具
-            setTool('select');
-
-            // 右键单击可切换UI可见性
-            imageContainer.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                toolbar.classList.toggle('hidden');
-                imageControls.classList.toggle('active');
-            });
-
-            // ========== 缩放和拖拽功能 ==========
-            
-            // ---- 缩放：以鼠标位置为缩放原点（保持指向内容不偏移）----
-            // wheel 事件挂在 imageContainer 上，避免在放大后鼠标落到画布层时无响应。
-            const zoomTarget = imageContainer;
-            zoomTarget.addEventListener('wheel', (event) => {
-                if (!event.ctrlKey || currentTool !== 'select') return;
-                event.preventDefault();
-
-                const oldScale = currentScale;
-                const factor = event.shiftKey ? ZOOM_FACTOR_FAST : ZOOM_FACTOR_STEP;
-                let newScale = event.deltaY < 0
-                    ? oldScale * factor
-                    : oldScale / factor;
-                newScale = Math.max(minScale, Math.min(maxScale, newScale));
-                if (newScale === oldScale) return;
-
-                // 计算鼠标相对于 imageContainer 中心点的偏移，使缩放围绕鼠标指向位置。
-                // imageContainer 的 transform-origin 默认为 center center。
-                const rect = zoomTarget.getBoundingClientRect();
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                const mx = event.clientX - cx;
-                const my = event.clientY - cy;
-
-                // 根据缩放倍率变化反推平移补偿：保持鼠标位置在内容坐标系上的点不动。
-                const ratio = newScale / oldScale;
-                imgInitialX = mx - (mx - imgInitialX) * ratio;
-                imgInitialY = my - (my - imgInitialY) * ratio;
-
-                currentScale = newScale;
-                updateTransform();
-            }, { passive: false });
-
-            // 双击重置：缩放回 1，居中。
-            imgElement.addEventListener('dblclick', (event) => {
-                if (currentTool !== 'select') return;
-                event.preventDefault();
-                currentScale = 1;
-                imgInitialX = 0;
-                imgInitialY = 0;
-                updateTransform();
-            });
-
-            let dragStartX, dragStartY;
-            imgElement.addEventListener('mousedown', (event) => {
-                // 任何非 1× 状态都允许拖拽（缩小后也可能需要平移查看裁剪后的画面）。
-                if (event.button === 0 && currentScale !== 1 && currentTool === 'select') {
-                    isDragging = true;
-                    dragStartX = event.clientX;
-                    dragStartY = event.clientY;
-                    imgElement.style.cursor = 'grabbing';
-                    event.preventDefault();
-                }
-            });
-
-            document.addEventListener('mousemove', (event) => {
-                if (isDragging && currentTool === 'select') {
-                    const dx = event.clientX - dragStartX;
-                    const dy = event.clientY - dragStartY;
-                    imgInitialX += dx;
-                    imgInitialY += dy;
-                    dragStartX = event.clientX;
-                    dragStartY = event.clientY;
-                    updateTransform();
-                }
-            });
-
-            document.addEventListener('mouseup', (event) => {
-                if (event.button === 0 && isDragging) {
-                    isDragging = false;
-                    imgElement.style.cursor = currentScale !== 1 ? 'grab' : 'default';
-                }
-            });
-
-            function updateTransform() {
-                // 注意：先 translate 后 scale，使 translate 的单位保持为屏幕像素，
-                // 这样我们在 wheel 处理里基于屏幕坐标做的鼠标定位补偿才是准确的。
-                imageContainer.style.transform =
-                    `translate(${imgInitialX}px, ${imgInitialY}px) scale(${currentScale})`;
-
-                if (currentScale === 1) {
-                    // 仅当缩放回到 1× 时才重置平移并切换光标，
-                    // 避免用户缩小到 <1 时图片突然跳回中心。
-                    imgInitialX = 0;
-                    imgInitialY = 0;
-                    imageContainer.style.transform = `scale(1)`;
-                    imgElement.style.cursor = 'default';
-                } else {
-                    imgElement.style.cursor = 'grab';
-                }
-            }
-        };
-
-        imgElement.onerror = () => {
-            console.error('Image Viewer: Error loading image');
-            imgElement.style.display = 'none';
-            imageControls.style.display = 'none';
-            errorDiv.textContent = `无法加载图片: ${decodeURIComponent(imageTitle)}`;
-            errorDiv.style.display = 'block';
-        };
+        showImage(finalSrc, null);
     } else {
         errorDiv.textContent = '未提供图片URL。';
         errorDiv.style.display = 'block';
+    }
+
+    // 供键盘快捷键使用
+    const viewerNav = { zoomTo, resetView, fitScaleFor100, showGalleryImage, get index() { return galleryIndex; }, get count() { return gallery.length; } };
+
+    // 导出用的合成图：原图 + 标注层，按当前旋转方向画。复制、存编辑、另存为共用。
+    function renderExportCanvas() {
+        const w = imgElement.naturalWidth;
+        const h = imgElement.naturalHeight;
+        const out = document.createElement('canvas');
+        out.width = isQuarterTurn() ? h : w;
+        out.height = isQuarterTurn() ? w : h;
+        const outCtx = out.getContext('2d');
+        outCtx.translate(out.width / 2, out.height / 2);
+        outCtx.rotate(rotation * Math.PI / 180);
+        outCtx.drawImage(imgElement, -w / 2, -h / 2);
+        outCtx.drawImage(canvas, -w / 2, -h / 2);
+        return out;
     }
 
     // ========== 保存和导出功能 ==========
@@ -592,17 +759,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 保存编辑后的图片
     saveEditedButton.addEventListener('click', async () => {
         try {
-            // 创建合成画布
-            const mergedCanvas = document.createElement('canvas');
-            mergedCanvas.width = imgElement.naturalWidth;
-            mergedCanvas.height = imgElement.naturalHeight;
-            const mergedCtx = mergedCanvas.getContext('2d');
-            
-            // 绘制原图
-            mergedCtx.drawImage(imgElement, 0, 0);
-            // 绘制编辑层
-            mergedCtx.drawImage(canvas, 0, 0);
-            
+            // 合成画布：原图 + 编辑层，按旋转方向
+            const mergedCanvas = renderExportCanvas();
+
             // 转换为 blob
             const blob = await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
             
@@ -622,7 +781,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 复制功能：未编辑的 GIF 保留原始动画；其他图片合并编辑层后复制为 PNG。
     copyButton.addEventListener('click', async () => {
-        if (!imgElement.src) return;
+        if (!imgElement.naturalWidth) return;
 
         const originalText = copyButton.innerHTML;
         try {
@@ -641,15 +800,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     await navigator.clipboard.write([item]);
                 }
             } else {
-                const mergedCanvas = document.createElement('canvas');
-                mergedCanvas.width = imgElement.naturalWidth;
-                mergedCanvas.height = imgElement.naturalHeight;
-                const mergedCtx = mergedCanvas.getContext('2d');
+                const mergedCanvas = renderExportCanvas();
 
-                mergedCtx.drawImage(imgElement, 0, 0);
-                mergedCtx.drawImage(canvas, 0, 0);
-
-                blob = await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
+                blob =await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
                 mimeType = 'image/png';
 
                 const item = new ClipboardItem({ [mimeType]: blob });
@@ -667,7 +820,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 下载功能：未编辑的 GIF 直接下载原文件，避免画布截取后只剩静态首帧。
     downloadButton.addEventListener('click', async () => {
-        if (!imgElement.src) return;
+        if (!imgElement.naturalWidth) return;
 
         const link = document.createElement('a');
 
@@ -686,15 +839,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        const mergedCanvas = document.createElement('canvas');
-        mergedCanvas.width = imgElement.naturalWidth;
-        mergedCanvas.height = imgElement.naturalHeight;
-        const mergedCtx = mergedCanvas.getContext('2d');
+        const mergedCanvas = renderExportCanvas();
 
-        mergedCtx.drawImage(imgElement, 0, 0);
-        mergedCtx.drawImage(canvas, 0, 0);
-
-        link.href = mergedCanvas.toDataURL('image/png');
+        link.href =mergedCanvas.toDataURL('image/png');
         link.download = getPngDownloadName();
         link.click();
     });
@@ -733,56 +880,62 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     ocrButton.addEventListener('click', async () => {
-        if (!imgElement.src) return;
+        if (!imgElement.naturalWidth) return;
 
+        const generation = imageGeneration;
+        const source = resolvedImageSrc;
         const originalHtml = ocrButton.innerHTML;
-        ocrButton.innerHTML = '加载 OCR...';
+        ocrButton.innerHTML = '加载 OCR';
         ocrButton.disabled = true;
+        // 结果放在右侧抽屉里，不挡图；识别过程中抽屉先打开，显示进度。
+        ocrResultText.value = '正在加载识别组件';
+        setOcrPanelOpen(true);
 
         try {
             const TesseractAPI = await loadTesseractIfNeeded();
-            ocrButton.innerHTML = '识别中...';
+            ocrButton.innerHTML = '识别中';
+            ocrResultText.value = '正在识别';
 
             const { data: { text } } = await TesseractAPI.recognize(
-                imgElement.src,
+                source,
                 'chi_sim+eng', // 识别简体中文和英文
                 {
                     logger: m => {
-                        console.log(m);
+                        if (generation !== imageGeneration) return;
                         if (m.status === 'recognizing text') {
                             const progress = (m.progress * 100).toFixed(0);
                             ocrButton.innerHTML = `识别中 ${progress}%`;
+                            ocrResultText.value = `正在识别 ${progress}%`;
                         }
                     }
                 }
             );
             
-            // 清理文本：去除多余的空格和空行
-            const cleanedText = text.replace(/ /g, '').replace(/\n{2,}/g, '\n');
+            if (generation !== imageGeneration) return;
+            // 相邻汉字或假名间常有识别器插入的空格；保留英文、数字及其他文字的词界。
+            const cleanedText = text
+                .replace(/(?<=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]) +(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu, '')
+                .replace(/\n{2,}/g, '\n');
             ocrResultText.value = cleanedText;
-            ocrResultModal.style.display = 'block';
 
         } catch (err) {
+            if (generation !== imageGeneration) return;
             console.error('OCR 失败:', err);
             ocrResultText.value = '文字识别失败: ' + err.message;
-            ocrResultModal.style.display = 'block';
         } finally {
             ocrButton.innerHTML = originalHtml;
             ocrButton.disabled = false;
         }
     });
 
-    // 关闭 OCR 弹窗
-    ocrModalClose.addEventListener('click', () => {
-        ocrResultModal.style.display = 'none';
-    });
-
-    // 点击弹窗外部关闭
-    window.addEventListener('click', (event) => {
-        if (event.target == ocrResultModal) {
-            ocrResultModal.style.display = 'none';
-        }
-    });
+    function setOcrPanelOpen(open) {
+        if ((ocrResultModal.style.display === 'block') === open) return;
+        ocrResultModal.style.display = open ? 'block' : 'none';
+        Promise.resolve(viewerAPI?.setImageViewerOcrOpen?.(open)).catch(error => {
+            console.warn('窗口宽度未调整，保留窗口内并排显示。', error);
+        });
+    }
+    ocrModalClose.addEventListener('click', () => setOcrPanelOpen(false));
 
     // 复制 OCR 文本
     copyOcrText.addEventListener('click', async () => {
@@ -801,7 +954,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== 键盘快捷键 ==========
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
-            if (currentTool !== 'select') {
+            if (closeContextMenu()) {
+                // 先关右键菜单
+            } else if (ocrResultModal.style.display === 'block') {
+                setOcrPanelOpen(false);
+            } else if (document.body.classList.contains('viewer-annotating')) {
+                setAnnotating(false);
+            } else if (currentTool !== 'select') {
                 setTool('select');
             } else {
                 if (viewerAPI?.closeWindow) {
@@ -812,6 +971,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
         
+        if (event.target?.closest?.('input, textarea, [contenteditable="true"]')) return;
         // Ctrl+Z 撤销
         if (event.ctrlKey && event.key === 'z' && !event.shiftKey) {
             event.preventDefault();
@@ -824,7 +984,41 @@ document.addEventListener('DOMContentLoaded', async () => {
             redoBtn.click();
         }
 
-        // 快捷键切换工具
+        // 看图快捷键。Ctrl+C 复制、Ctrl+S 另存为；0 适应窗口、1 原始大小、+/- 缩放；
+        // ← / → 翻页；M 进入或退出标注；H 显示或隐藏界面。标注模式里方向键和 0/1 不抢画图的键。
+        if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) {
+            event.preventDefault(); copyButton.click(); return;
+        }
+        if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 's') {
+            event.preventDefault(); downloadButton.click(); return;
+        }
+        if (!event.ctrlKey && !event.altKey && event.target?.tagName !== 'TEXTAREA' && event.target?.tagName !== 'INPUT') {
+            const annotating = document.body.classList.contains('viewer-annotating');
+            const key = event.key;
+            if (key.toLowerCase() === 'm') { setAnnotating(!annotating); return; }
+            if (key.toLowerCase() === 'h') { document.body.classList.toggle('viewer-chrome-hidden'); return; }
+            if (!annotating) {
+                const pageStep = viewportSize().h * 0.9;
+                if (key === 'ArrowLeft') { viewerNav.showGalleryImage(viewerNav.index - 1); return; }
+                if (key === 'ArrowRight') { viewerNav.showGalleryImage(viewerNav.index + 1); return; }
+                // R 向右转、Shift+R 向左转；T 缩略图条；↑/↓ 平移，长截图里空格 / PageDown / PageUp / Home / End 翻屏
+                if (key.toLowerCase() === 'r') { rotateBy(event.shiftKey ? -90 : 90); return; }
+                if (key.toLowerCase() === 't') { toggleThumbs(); return; }
+                if (key === 'ArrowUp') { event.preventDefault(); panBy(0, 80); return; }
+                if (key === 'ArrowDown') { event.preventDefault(); panBy(0, -80); return; }
+                if (key === 'PageDown' || (key === ' ' && !event.shiftKey)) { event.preventDefault(); panBy(0, -pageStep); return; }
+                if (key === 'PageUp' || (key === ' ' && event.shiftKey)) { event.preventDefault(); panBy(0, pageStep); return; }
+                if (key === 'Home') { panBy(0, Number.MAX_SAFE_INTEGER); return; }
+                if (key === 'End') { panBy(0, -Number.MAX_SAFE_INTEGER); return; }
+                if (key === '0') { viewerNav.resetView(); return; }
+                if (key === '1') { viewerNav.zoomTo(viewerNav.fitScaleFor100()); return; }
+                if (key === '+' || key === '=') { viewerNav.zoomTo(currentScale * ZOOM_FACTOR_STEP); return; }
+                if (key === '-' || key === '_') { viewerNav.zoomTo(currentScale / ZOOM_FACTOR_STEP); return; }
+                return; // 看图模式下不响应画图工具的单键
+            }
+        }
+
+        // 快捷键切换工具（标注模式里）
         if (!event.ctrlKey && !event.shiftKey && !event.altKey) {
             switch(event.key.toLowerCase()) {
                 case 'v': setTool('select'); break;
@@ -838,6 +1032,91 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     });
+
+    // ========== 标注、界面自动隐藏 ==========
+    // 工具条常驻（顶栏下面一行）；M 键在画笔和“选择”之间切换，等于点工具条上的按钮。
+    function setAnnotating(on) {
+        closeContextMenu();
+        setTool(on ? 'brush' : 'select');
+    }
+    document.getElementById('viewerPrevBtn')?.addEventListener('click', () => viewerNav.showGalleryImage(viewerNav.index - 1));
+    document.getElementById('viewerNextBtn')?.addEventListener('click', () => viewerNav.showGalleryImage(viewerNav.index + 1));
+    // 图片两侧的箭头：鼠标在窗口左边或右边四分之一（标题栏和底部条以外）时出现那一侧的箭头。
+    document.getElementById('viewerSidePrev')?.addEventListener('click', () => viewerNav.showGalleryImage(viewerNav.index - 1));
+    document.getElementById('viewerSideNext')?.addEventListener('click', () => viewerNav.showGalleryImage(viewerNav.index + 1));
+    const updateNearSide = (event) => {
+        const stage = imageContainer.parentElement;
+        const inStage = stage.contains(event.target);
+        const band = Math.min(220, stage.clientWidth / 4);
+        document.body.classList.toggle('viewer-near-prev', inStage && event.clientX < stage.offsetLeft + band);
+        document.body.classList.toggle('viewer-near-next', inStage && event.clientX > stage.offsetLeft + stage.clientWidth - band);
+    };
+    document.addEventListener('mousemove', updateNearSide, { passive: true });
+    document.documentElement.addEventListener('mouseleave', () => document.body.classList.remove('viewer-near-prev', 'viewer-near-next'));
+    document.getElementById('viewerZoomLabel')?.addEventListener('click', () => viewerNav.resetView());
+    if (gallery.length > 1) document.body.classList.add('viewer-has-gallery');
+
+    // ========== 看图右键菜单 ==========
+    // 在图上或空白处右键：复制、另存为、旋转、适应 / 原始大小、识别文字、标注。标注模式里不弹，留给画图。
+    const ctxMenu = document.createElement('div');
+    ctxMenu.className = 'viewer-ctxmenu';
+    ctxMenu.setAttribute('role', 'menu');
+    document.body.appendChild(ctxMenu);
+    const MENU_ITEMS = [
+        ['复制', 'Ctrl+C', () => copyButton.click()],
+        ['另存为', 'Ctrl+S', () => downloadButton.click()],
+        null,
+        ['向左旋转', 'Shift+R', () => rotateBy(-90)],
+        ['向右旋转', 'R', () => rotateBy(90)],
+        ['适应窗口', '0', () => resetView()],
+        ['原始大小', '1', () => zoomTo(fitScaleFor100())],
+        null,
+        ['识别文字', '', () => ocrButton.click()],
+        ['标注', 'M', () => setAnnotating(true)],
+    ];
+    for (const entry of MENU_ITEMS) {
+        if (!entry) {
+            const sep = document.createElement('div');
+            sep.className = 'viewer-ctxmenu-sep';
+            ctxMenu.appendChild(sep);
+            continue;
+        }
+        const [label, keys, run] = entry;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'viewer-ctxmenu-item';
+        item.setAttribute('role', 'menuitem');
+        const text = document.createElement('span');
+        text.textContent = label;
+        const hint = document.createElement('span');
+        hint.className = 'viewer-ctxmenu-key';
+        hint.textContent = keys;
+        item.append(text, hint);
+        item.addEventListener('click', () => { closeContextMenu(); run(); });
+        ctxMenu.appendChild(item);
+    }
+
+    function closeContextMenu() {
+        if (!ctxMenu.classList.contains('is-open')) return false;
+        ctxMenu.classList.remove('is-open');
+        return true;
+    }
+
+    document.addEventListener('contextmenu', (event) => {
+        if (event.target?.closest?.(CHROME_SELECTOR)) return;
+        event.preventDefault();
+        if (document.body.classList.contains('viewer-annotating') || !imgElement.naturalWidth) return;
+        ctxMenu.classList.add('is-open');
+        const { offsetWidth: mw, offsetHeight: mh } = ctxMenu;
+        const x = Math.min(event.clientX, window.innerWidth - mw - 4);
+        const y = Math.min(event.clientY, window.innerHeight - mh - 4);
+        ctxMenu.style.transform = `translate(${Math.max(4, x)}px, ${Math.max(4, y)}px)`;
+    });
+    document.addEventListener('mousedown', (event) => {
+        if (!event.target?.closest?.('.viewer-ctxmenu')) closeContextMenu();
+    });
+    window.addEventListener('blur', closeContextMenu);
+    window.addEventListener('wheel', closeContextMenu, { passive: true });
 
     // ========== 窗口控制 ==========
     document.getElementById('minimize-viewer-btn').addEventListener('click', () => {
@@ -856,29 +1135,4 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // ========== 动态工具栏布局 ==========
-    function updateToolbarLayout() {
-        const toolbar = document.getElementById('toolbar');
-        const stackableSections = document.querySelectorAll('.stackable');
-        const windowHeight = window.innerHeight;
-        const toolbarHeight = toolbar.offsetHeight;
-
-        // 先重置状态，以便正确计算高度
-        stackableSections.forEach(section => section.classList.remove('stacked'));
-
-        // 重新获取高度
-        const unstackedHeight = toolbar.offsetHeight;
-
-        if (unstackedHeight > windowHeight * 0.95) {
-            stackableSections.forEach(section => section.classList.add('stacked'));
-        } else {
-            stackableSections.forEach(section => section.classList.remove('stacked'));
-        }
-    }
-
-    window.addEventListener('resize', updateToolbarLayout);
-    // 初始加载时也执行一次
-    imgElement.addEventListener('load', updateToolbarLayout);
-    // 如果图片已缓存，可能不会触发load事件，所以在DOM加载后也执行
-    updateToolbarLayout();
 });

@@ -1,5 +1,7 @@
 // modules/ipc/windowHandlers.js
-const { ipcMain, app, BrowserWindow, clipboard } = require('electron');
+const { ipcMain, app, BrowserWindow, clipboard, screen } = require('electron');
+const viewerLayouts = new WeakMap();
+const OCR_PANEL_WIDTH = 380;
 const crypto = require('crypto');
 const path = require('path');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
@@ -20,7 +22,27 @@ let logWindowInstance = null;
  * 由目标窗口通过 IPC 拉取，避免走 URL 参数（Chromium 对 URL 长度有上限，
  * 长截图会被截断或彻底打不开窗口）。
  */
-const imageViewerPayloads = new Map(); // token -> { src, title, theme, createdAt }
+const imageViewerPayloads = new Map(); // token -> { src, title, theme, gallery?, index?, createdAt }
+const MAX_GALLERY_IMAGES = 200;
+const isImageSource = src => typeof src === 'string' && src.length > 0;
+const imageTitle = (title, fallback = '') =>
+    typeof title === 'string' && title && !/^data:/i.test(title.trimStart()) ? title : fallback;
+const imageTheme = theme => theme === 'light' ? 'light' : 'dark';
+
+function sanitizeImageGallery(items, selectedIndex, selectedSrc) {
+    if (!Array.isArray(items) || !Number.isInteger(selectedIndex) || selectedIndex < 0
+        || selectedIndex >= items.length || items[selectedIndex]?.src !== selectedSrc) return {};
+
+    const gallery = [];
+    let index = -1;
+    for (let i = 0; i < items.length && gallery.length < MAX_GALLERY_IMAGES; i++) {
+        const item = items[i];
+        if (!isImageSource(item?.src)) continue;
+        if (i === selectedIndex) index = gallery.length;
+        gallery.push({ src: item.src, title: imageTitle(item.title) });
+    }
+    return index >= 0 && gallery.length > 1 ? { gallery, index } : {};
+}
 const IMAGE_PAYLOAD_TTL_MS = 10 * 60 * 1000; // 10 分钟兜底过期
 const generateImagePayloadToken = () => `imgpld_${Date.now().toString(36)}_${crypto.randomBytes(8).toString('hex')}`;
 const cleanupExpiredImagePayloads = () => {
@@ -157,15 +179,15 @@ function initialize(mainWindow, openChildWindows) {
      */
     ipcMain.handle('image-viewer:register-payload', (_event, payload = {}) => {
         cleanupExpiredImagePayloads();
-        const { src, title = '图片预览', theme = 'dark' } = payload || {};
-        if (typeof src !== 'string' || !src) {
+        const { src, title, theme } = payload || {};
+        if (!isImageSource(src)) {
             throw new Error('image-viewer:register-payload requires a non-empty "src" string.');
         }
         const token = generateImagePayloadToken();
         imageViewerPayloads.set(token, {
             src,
-            title,
-            theme,
+            title: imageTitle(title, '图片预览'),
+            theme: imageTheme(theme),
             createdAt: Date.now(),
         });
         return token;
@@ -183,6 +205,7 @@ function initialize(mainWindow, openChildWindows) {
             src: payload.src,
             title: payload.title,
             theme: payload.theme,
+            ...(payload.gallery ? { gallery: payload.gallery, index: payload.index } : {}),
         };
     });
 
@@ -210,25 +233,55 @@ function initialize(mainWindow, openChildWindows) {
         return { success: true, format, size: buffer.length };
     });
 
+    ipcMain.handle('image-viewer:set-ocr-open', (event, open) => {
+        const state = viewerLayouts.get(event.sender);
+        if (!state || typeof open !== 'boolean' || !event.senderFrame ||
+            event.senderFrame !== event.sender.mainFrame || state.win.isDestroyed()) return false;
+        if (state.open === open) return true;
+        state.open = open;
+        const win = state.win;
+        const bounds = win.getBounds();
+        if (open) {
+            const area = screen.getDisplayMatching(bounds).workArea;
+            if (!win.isMaximized() && !win.isFullScreen() &&
+                bounds.x + bounds.width + OCR_PANEL_WIDTH <= area.x + area.width) {
+                const expanded = { ...bounds, width: bounds.width + OCR_PANEL_WIDTH };
+                win.setBounds(expanded);
+                state.restore = { original: bounds, expanded: win.getBounds() };
+            }
+        } else {
+            const restore = state.restore;
+            state.restore = null;
+            if (restore && !win.isMaximized() && !win.isFullScreen() &&
+                ['x', 'y', 'width', 'height'].every(key => bounds[key] === restore.expanded[key])) {
+                win.setBounds(restore.original);
+            }
+        }
+        return true;
+    });
+
     ipcMain.on('open-image-viewer', (_event, payload = {}) => {
-        const { src, title, theme } = payload || {};
-        if (!src) {
-            console.error('[WindowHandlers] open-image-viewer received empty src.');
+        const src = payload?.src;
+        if (!isImageSource(src)) {
+            console.error('[WindowHandlers] open-image-viewer requires a non-empty src string.');
             return;
         }
+        const title = imageTitle(payload.title, '图片预览');
+        const theme = imageTheme(payload.theme);
+        const galleryFields = sanitizeImageGallery(payload.gallery, payload.index, src);
 
-        // 自动判断是否需要走 token：dataURL/超长 URL 一律不进 query string，避免被截断。
-        const isLargePayload = typeof src === 'string'
-            && (src.startsWith('data:') || src.length > 1500);
+        // 图片列表、data URL 和超长地址用令牌传递，避免被窗口 URL 截断。
+        const needsToken = galleryFields.gallery || /^data:/i.test(src) || src.length > 1500;
 
         let token = null;
-        if (isLargePayload) {
+        if (needsToken) {
             cleanupExpiredImagePayloads();
             token = generateImagePayloadToken();
             imageViewerPayloads.set(token, {
                 src,
-                title: title || '图片预览',
-                theme: theme || 'dark',
+                title,
+                theme,
+                ...galleryFields,
                 createdAt: Date.now(),
             });
         }
@@ -238,7 +291,7 @@ function initialize(mainWindow, openChildWindows) {
             height: 800,
             minWidth: 600,
             minHeight: 500,
-            title: title || '图片预览',
+            title,
             modal: false,
             frame: false, // 移除原生窗口框架
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }), // 隐藏标题栏
@@ -252,18 +305,14 @@ function initialize(mainWindow, openChildWindows) {
             show: false,
         });
 
+        viewerLayouts.set(imageViewerWindow.webContents, { win: imageViewerWindow, open: false, restore: null });
         imageViewerWindow.setMenu(null);
 
-        const queryParts = [];
-        if (token) {
-            queryParts.push(`token=${encodeURIComponent(token)}`);
-            queryParts.push(`title=${encodeURIComponent(title || '图片预览')}`);
-            queryParts.push(`theme=${encodeURIComponent(theme || 'dark')}`);
-        } else {
-            queryParts.push(`src=${encodeURIComponent(src)}`);
-            queryParts.push(`title=${encodeURIComponent(title || '图片预览')}`);
-            queryParts.push(`theme=${encodeURIComponent(theme || 'dark')}`);
-        }
+        const queryParts = [
+            token ? `token=${encodeURIComponent(token)}` : `src=${encodeURIComponent(src)}`,
+            `title=${encodeURIComponent(title)}`,
+            `theme=${encodeURIComponent(theme)}`,
+        ];
         const url = `file://${path.join(__dirname, '../../modules/image-viewer.html')}?${queryParts.join('&')}`;
         imageViewerWindow.loadURL(url);
 
