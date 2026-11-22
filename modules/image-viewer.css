@@ -262,7 +262,14 @@ body.viewer-chrome-hidden :is(#custom-title-bar, .toolbar, .viewer-filmstrip) {
     visibility: hidden;
 }
 
+.viewer-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 0;
+}
+
 .viewer-stage {
+    container-type: size;
     position: relative;
     display: grid;
     place-items: center;
@@ -280,14 +287,12 @@ body.viewer-chrome-hidden :is(#custom-title-bar, .toolbar, .viewer-filmstrip) {
 
 #viewerImage {
     display: block;
-    max-width: 100vw;
-    max-height: max(1px, calc(100vh - 2 * var(--viewer-header-height)));
+    max-width: 100cqw;
+    max-height: 100cqh;
     border-radius: 4px;
 }
 
-body.viewer-has-gallery:not(.viewer-thumbs-hidden) #viewerImage {
-    max-height: max(1px, calc(100vh - 2 * var(--viewer-header-height) - var(--viewer-strip-height)));
-}
+
 
 #drawingCanvas {
     position: absolute;
@@ -342,11 +347,10 @@ body.viewer-near-next .viewer-side-arrow.is-next,
 }
 
 .ocr-modal {
-    position: absolute;
-    inset: 0 0 0 auto;
-    z-index: 2;
+    box-sizing: border-box;
     display: none;
-    width: min(380px, 90vw);
+    width: min(380px, 40vw);
+    min-height: 0;
     border-left: 1px solid var(--border-color);
     background: var(--viewer-panel-bg);
 }

@@ -467,9 +467,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function isLongView() { return longMode && !isQuarterTurn(); }
 
     function viewportSize() {
-        // 图片区：窗口减去顶栏，有缩略图条时再减去它
-        const thumbsH = document.body.classList.contains('viewer-has-gallery') && !document.body.classList.contains('viewer-thumbs-hidden') ? 72 : 0;
-        return { w: window.innerWidth, h: Math.max(1, window.innerHeight - 80 - thumbsH) }; // 顶栏 40 + 标注工具条 40
+        const stage = imageContainer.parentElement;
+        return { w: stage.clientWidth, h: stage.clientHeight };
     }
 
     function fitScaleFor100() {
@@ -599,14 +598,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.addEventListener('mouseup', (event) => {
             if (event.button === 0) isDragging = false;
         });
-        window.addEventListener('resize', () => { syncCanvasSize(); updateTransform(); });
+        const syncLayout = () => { syncCanvasSize(); updateTransform(); };
+        if (window.ResizeObserver) {
+            new ResizeObserver(syncLayout).observe(imageContainer.parentElement);
+        } else {
+            window.addEventListener('resize', syncLayout);
+        }
     }
 
     let imageGeneration = 0;
     function showImage(src, title) {
         imageGeneration++;
         hideUndoToast();
-        ocrResultModal.style.display = 'none';
+        setOcrPanelOpen(false);
         ocrResultText.value = '';
         resolvedImageSrc = src;
         originalImageBlobPromise = null;
@@ -885,7 +889,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ocrButton.disabled = true;
         // 结果放在右侧抽屉里，不挡图；识别过程中抽屉先打开，显示进度。
         ocrResultText.value = '正在加载识别组件';
-        ocrResultModal.style.display = 'block';
+        setOcrPanelOpen(true);
 
         try {
             const TesseractAPI = await loadTesseractIfNeeded();
@@ -924,17 +928,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 关闭 OCR 弹窗
-    ocrModalClose.addEventListener('click', () => {
-        ocrResultModal.style.display = 'none';
-    });
-
-    // 点击弹窗外部关闭
-    window.addEventListener('click', (event) => {
-        if (event.target == ocrResultModal) {
-            ocrResultModal.style.display = 'none';
-        }
-    });
+    function setOcrPanelOpen(open) {
+        if ((ocrResultModal.style.display === 'block') === open) return;
+        ocrResultModal.style.display = open ? 'block' : 'none';
+        Promise.resolve(viewerAPI?.setImageViewerOcrOpen?.(open)).catch(error => {
+            console.warn('窗口宽度未调整，保留窗口内并排显示。', error);
+        });
+    }
+    ocrModalClose.addEventListener('click', () => setOcrPanelOpen(false));
 
     // 复制 OCR 文本
     copyOcrText.addEventListener('click', async () => {
@@ -956,7 +957,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (closeContextMenu()) {
                 // 先关右键菜单
             } else if (ocrResultModal.style.display === 'block') {
-                ocrResultModal.style.display = 'none';
+                setOcrPanelOpen(false);
             } else if (document.body.classList.contains('viewer-annotating')) {
                 setAnnotating(false);
             } else if (currentTool !== 'select') {
@@ -1044,10 +1045,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('viewerSidePrev')?.addEventListener('click', () => viewerNav.showGalleryImage(viewerNav.index - 1));
     document.getElementById('viewerSideNext')?.addEventListener('click', () => viewerNav.showGalleryImage(viewerNav.index + 1));
     const updateNearSide = (event) => {
-        const band = Math.min(220, window.innerWidth / 4);
-        const inBody = event.clientY > 80 && !event.target?.closest?.('#viewerFilmstrip, .toolbar, #ocrResultModal');
-        document.body.classList.toggle('viewer-near-prev', inBody && event.clientX < band);
-        document.body.classList.toggle('viewer-near-next', inBody && event.clientX > window.innerWidth - band);
+        const stage = imageContainer.parentElement;
+        const inStage = stage.contains(event.target);
+        const band = Math.min(220, stage.clientWidth / 4);
+        document.body.classList.toggle('viewer-near-prev', inStage && event.clientX < stage.offsetLeft + band);
+        document.body.classList.toggle('viewer-near-next', inStage && event.clientX > stage.offsetLeft + stage.clientWidth - band);
     };
     document.addEventListener('mousemove', updateNearSide, { passive: true });
     document.documentElement.addEventListener('mouseleave', () => document.body.classList.remove('viewer-near-prev', 'viewer-near-next'));
