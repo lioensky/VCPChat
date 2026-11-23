@@ -49,8 +49,21 @@ async function closeService(state) {
 
 async function dispose(state) {
     if (!state) return;
-    await closeService(state);
-    await state.indexer.stop();
+    // closeService 可能在原生存储子进程已退出时抛 CONNECTION_LOST。
+    // 无论成败都必须把 AST 索引子进程收回，否则 Node 事件循环无法收尾，
+    // 整份测试文件会被文件级超时 SIGKILL。
+    let closeError = null;
+    try {
+        await closeService(state);
+    } catch (error) {
+        closeError = error;
+    }
+    try {
+        await state.indexer.stop();
+    } catch (stopError) {
+        if (!closeError) closeError = stopError;
+    }
+    if (closeError) throw closeError;
 }
 
 function initialize(options = {}) {
