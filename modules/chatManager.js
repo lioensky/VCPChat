@@ -845,18 +845,10 @@ export const chatManager = (() => {
     function _saveLastOpenState() {
         const currentSelectedItem = currentSelectedItemRef.get();
         const currentTopicId = currentTopicIdRef.get();
-        const globalSettings = globalSettingsRef.get();
-
         if (currentSelectedItem && currentSelectedItem.id) {
-            const settingsToSave = {
-                ...globalSettings, // Preserve existing settings
-                lastOpenItemId: currentSelectedItem.id,
-                lastOpenItemType: currentSelectedItem.type,
-                lastOpenTopicId: currentTopicId,
-            };
             const operation = lastOpenSaveQueue
                 .catch(() => {})
-                .then(() => electronAPI.saveSettings({ __vcpSettingsOps: [
+                .then(() => electronAPI.saveSettings({ __vcpSessionOnly: true, __vcpSettingsOps: [
                     { op: 'set', path: ['lastOpenItemId'], value: currentSelectedItem.id },
                     { op: 'set', path: ['lastOpenItemType'], value: currentSelectedItem.type },
                     { op: 'set', path: ['lastOpenTopicId'], value: currentTopicId },

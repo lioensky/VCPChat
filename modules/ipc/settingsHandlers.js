@@ -140,6 +140,16 @@ function initialize(paths) {
             const expectedRevision = payload.expectedRevision;
             const patch = payload.__vcpSettingsPatch;
             const ops = payload.__vcpSettingsOps;
+            if (payload.__vcpSessionOnly === true) {
+                if (expectedRevision !== undefined || Object.keys(payload).some(key => !['__vcpSessionOnly', '__vcpSettingsOps'].includes(key))) {
+                    throw new Error('Session-only save cannot include global settings');
+                }
+                return await settingsManager.updateSettings({ __vcpSettingsOps: ops }, { sessionOnly: true });
+            }
+            const owned = new Set(['userAvatarUrl', 'combinedItemOrder', 'agentOrder', 'workspaces', 'activeWorkspaceId', 'workspacePromptSettings']);
+            if (Array.isArray(ops) && ops.some(op => owned.has(op?.path?.[0]))) {
+                throw new Error('General settings operations cannot change a field owned by a dedicated IPC');
+            }
             // User avatar URL is handled by 'save-user-avatar', remove it from general settings to avoid saving a file path
             // Also protect order fields from being accidentally overwritten by stale renderer snapshots.
             // workspaces / activeWorkspaceId / workspacePromptSettings 只由 workspaces:* IPC 写入，同样不接受渲染进程快照覆盖。

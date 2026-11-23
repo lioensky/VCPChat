@@ -18,6 +18,8 @@ const workspaceHandlers = require('./workspaceHandlers');
 const { removeSideChatChildrenOfParent } = require('./sideChatHandlers');
 const { hostHooks } = require('../hostHooks');
 const { describeChatRequestError, readChatHttpError, chatResponseError } = require('../chatRequestError');
+const { createSleepStreamIdle, getChatStreamDispatcher } = require('../chat/sleepStreamIdle');
+const { createSleepStreamRequests } = require('../chat/sleepStreamRequests');
 
 /**
  * 若 filePath 属于已登记工作区且是文本/代码文件，创建真实路径实时引用；否则返回 null，
@@ -1150,8 +1152,11 @@ function initialize(mainWindow, context) {
         let handoff = null;
         let streamTask = null;
         let streamTaskDetached = false;
+        let bodyIdle;
+        let observeSleep;
         let trajectoryCall = null; // 侧栏「调用轨迹」的记录句柄；记录器自己吞掉一切异常
         const finishStreamTask = () => {
+            bodyIdle?.close();
             handoff?.finish();
             if (activeHandoffs.get(messageId)?.handle === handoff) activeHandoffs.delete(messageId);
             if (!streamTask) return;
@@ -1461,6 +1466,11 @@ function initialize(mainWindow, context) {
                 });
                 activeHandoffs.set(messageId, { handle: handoff, sender: event.sender });
             }
+            if (modelConfig.stream === true && !isGroupCall) {
+                bodyIdle = createSleepStreamIdle();
+                observeSleep = await createSleepStreamRequests(bodyIdle);
+            }
+            const userSignal = streamTask?.controller.signal;
             const response = await fetch(finalVcpUrl, {
                 method: 'POST',
                 headers: {
@@ -1468,8 +1478,10 @@ function initialize(mainWindow, context) {
                     'Authorization': `Bearer ${vcpApiKey}`
                 },
                 body: serializedBody,
-                signal: streamTask?.controller.signal,
+                signal: bodyIdle && userSignal ? AbortSignal.any([userSignal, bodyIdle.signal]) : bodyIdle?.signal ?? userSignal,
+                ...(bodyIdle ? { dispatcher: getChatStreamDispatcher() } : {}),
             });
+            bodyIdle?.touch();
 
             if (!response.ok) {
                 const failure = await readChatHttpError(response);
@@ -1498,6 +1510,7 @@ function initialize(mainWindow, context) {
                             const { done, value } = await reader.read();
                             bodyReachedEOF = done;
                             if (value) {
+                                bodyIdle?.touch();
                                 buffer += decoder.decode(value, { stream: true });
                             }
 
@@ -1526,6 +1539,7 @@ function initialize(mainWindow, context) {
                                         const parsedChunk = JSON.parse(jsonData);
                                         const responseError = chatResponseError(parsedChunk);
                                         if (responseError) throw responseError;
+                                        observeSleep?.(parsedChunk.choices?.[0]?.delta?.content);
                                         trajectoryCall.chunk(parsedChunk);
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         sendStreamPayload(dataPayload);
@@ -1548,7 +1562,8 @@ function initialize(mainWindow, context) {
                                 break; // 退出 while 循环
                             }
                         }
-                    } catch (streamError) {
+                    } catch (readError) {
+                        const streamError = !userSignal?.aborted && bodyIdle?.signal.aborted ? bodyIdle.signal.reason : readError;
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
                         trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
                         const failure = streamError?.isChatResponseError
