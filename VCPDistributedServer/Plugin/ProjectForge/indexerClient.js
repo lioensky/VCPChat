@@ -291,6 +291,12 @@ class IndexerClient {
         this.cache.clear();
         const child = this.child;
         if (!child) return;
+        // 子进程已退出时 'exit' 不会再触发，直接返回避免 await exited 永久挂起。
+        if (child.exitCode !== null || child.signalCode !== null) {
+            this.child = null;
+            try { child.stdin.end(); } catch (_e) { /* ignore */ }
+            return;
+        }
         const exited = new Promise(resolve => child.once('exit', resolve));
         try { child.stdin.write(`${JSON.stringify({ id: 0, method: 'shutdown' })}\n`); child.stdin.end(); } catch (_e) { /* ignore */ }
         const timer = setTimeout(() => { try { child.kill(); } catch (_e) { /* ignore */ } }, 2000);

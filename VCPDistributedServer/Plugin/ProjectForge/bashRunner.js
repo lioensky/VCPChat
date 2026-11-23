@@ -135,9 +135,28 @@ function resolveWorkdir(rootReal, raw) {
     return { abs: physical, rel: toPosixRelative(rootReal, physical) || '.' };
 }
 
+/**
+ * bash 可执行文件 basename 判定：接受 bash / bash4 / bash5 / bash-5.2 / bash-static 等，
+ * 刻意排除 zsh / fish / dash。runBash 固定使用 `bash --noprofile --norc -c`，
+ * 用户登录 shell 的类型不应悄悄改变脚本语义。
+ */
+function isBashExecutableName(fileName) {
+    return /^bash(?:-?[0-9]+(?:\.[0-9]+)*)?(?:-static)?$/u.test(fileName);
+}
+
 function bashCandidates(env = process.env) {
     const candidates = [];
+    // L2: 类 JAVA_HOME 的根目录环境变量契约（BASH_HOME / PF_SHELL_HOME / GIT_INSTALL_ROOT）
+    const homeRoots = [env.BASH_HOME, env.PF_SHELL_HOME, env.GIT_INSTALL_ROOT]
+        .filter(v => typeof v === 'string' && v.trim() && !v.includes('\0'))
+        .map(v => v.trim());
     if (process.platform === 'win32') {
+        for (const root of homeRoots) {
+            if (!path.isAbsolute(root)) continue;
+            candidates.push(path.join(root, 'usr', 'bin', 'bash.exe'));
+            candidates.push(path.join(root, 'bin', 'bash.exe'));
+            candidates.push(path.join(root, 'bash.exe'));
+        }
         const programDirs = [
             env.ProgramFiles,
             env['ProgramFiles(x86)'],
@@ -150,6 +169,30 @@ function bashCandidates(env = process.env) {
         }
         candidates.push(...GIT_BASH_CANDIDATES);
     } else {
+        for (const root of homeRoots) {
+            if (!path.isAbsolute(root)) continue;
+            candidates.push(path.join(root, 'bin', 'bash'));
+            candidates.push(path.join(root, 'usr', 'bin', 'bash'));
+            candidates.push(path.join(root, 'bash'));
+        }
+        // 1) 用户声明的登录 shell：仅当它确实是 bash 家族时才采用。
+        //    zsh / fish / dash 直接跳过——runBash 用的是 bash 语义（--noprofile --norc -c），
+        //    用别的 shell 跑 bash 脚本只会把兼容性问题藏得更深。
+        const declaredShell = typeof env.SHELL === 'string'
+            ? env.SHELL.trim().split(/\s+/u)[0]
+            : '';
+        if (declaredShell && path.isAbsolute(declaredShell) &&
+            isBashExecutableName(path.basename(declaredShell))) {
+            candidates.push(declaredShell);
+        }
+        // 2) 逐目录扫 PATH：覆盖 NixOS(/run/current-system/sw/bin)、
+        //    Homebrew(/opt/homebrew/bin)、nix-env / asdf 等非常规前缀。
+        const pathValue = typeof env.PATH === 'string' ? env.PATH : '';
+        for (const dir of pathValue.split(path.delimiter)) {
+            if (!dir || !path.isAbsolute(dir)) continue;
+            candidates.push(path.join(dir, 'bash'));
+        }
+        // 3) 标准位置兜底，保持对既有部署的兼容。
         candidates.push('/bin/bash', '/usr/bin/bash');
     }
     const seen = new Set();
@@ -174,6 +217,9 @@ function resolveBash(executable, env = process.env) {
         if (isWslLauncher(explicit)) {
             fail('BASH_WSL', `WSL bash launchers are not supported: ${explicit}`);
         }
+        // 显式路径的存在性/可执行性不在此处预检：交给 spawn 按系统语义报告。
+        // 上游用例为「missing executable is reported as spawn_error by the system」，
+        // 提前 fail() 会破坏该契约。
         return explicit;
     }
     for (const candidate of bashCandidates(env)) {
@@ -309,7 +355,10 @@ async function runBash(options = {}) {
     if (!bashPath) {
         return spawnErrorResult({
             code: 'BASH_NOT_FOUND',
-            message: 'Git Bash was not found. Install Git for Windows or set PF_BASH to an absolute bash.exe path.',
+            message: process.platform === 'win32'
+                ? 'Git Bash was not found. Install Git for Windows or set PF_BASH to an absolute bash.exe path.'
+                : 'bash was not found. Install bash (e.g. `apt install bash` / `pacman -S bash`), '
+                    + 'or set PF_BASH / BASH_EXECUTABLE to an absolute bash path.',
             root: rootReal,
             cwd,
             timeoutMs,
