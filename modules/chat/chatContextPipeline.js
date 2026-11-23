@@ -182,7 +182,7 @@ async function readAttachmentFrames(electronAPI, attachment, data) {
     }
 }
 
-async function buildDefaultMessageContent({ message, electronAPI }) {
+async function buildDefaultMessageContent({ message, electronAPI, includeAttachmentFrames = true }) {
     const originalParts = normalizeContentParts(message?.content);
     let text = stripHiddenToolResults(originalParts.filter(part => part?.type === 'text').map(part => normalizeText(part.text)).join('\n'));
     const attachments = Array.isArray(message?.attachments) ? message.attachments : [];
@@ -192,6 +192,7 @@ async function buildDefaultMessageContent({ message, electronAPI }) {
         const data = getAttachmentData(attachment);
         const liveText = await refreshLiveReferenceText(electronAPI, attachment, data);
         text = appendAttachmentContext(text, attachment, data, liveText);
+        if (!includeAttachmentFrames) continue;
         const framePayload = await readAttachmentFrames(electronAPI, attachment, data);
         if (!framePayload) continue;
 
@@ -428,7 +429,7 @@ async function assembleRequestMessages({
         }
 
         const messagesForVCP = applyContextRules(messages, rules, engine);
-        return { messagesForVCP, conversationSnapshot: snapshot };
+        return { messagesForVCP, conversationSnapshot: snapshot, retainedHistory };
 }
 
 function buildConversationSystemPrefix(agentConfig, topicId) {
