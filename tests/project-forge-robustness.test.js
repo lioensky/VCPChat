@@ -11,9 +11,12 @@ const path = require('path');
 
 const forge = require('../VCPDistributedServer/Plugin/ProjectForge/ProjectForgeService');
 const { ProjectServiceClient } = require('../VCPDistributedServer/Plugin/ProjectForge/serviceClient');
+const { resolveDefaultBinaryPath } = require('../VCPDistributedServer/Plugin/ProjectForge/indexerClient');
 
-const binaryPath = process.env.PF_SERVICE_BINARY || path.resolve(__dirname, '../rust_projectforge_indexer/target/debug',
-    process.platform === 'win32' ? 'projectforge_indexer.exe' : 'projectforge_indexer');
+const binName = process.platform === 'win32' ? 'projectforge_indexer.exe' : 'projectforge_indexer';
+const deployedBinary = resolveDefaultBinaryPath();
+const debugBinary = path.resolve(__dirname, '../rust_projectforge_indexer/target/debug', binName);
+const binaryPath = process.env.PF_SERVICE_BINARY || (fs.existsSync(deployedBinary) ? deployedBinary : debugBinary);
 const requireBinary = process.env.PF_SERVICE_REQUIRE_BINARY === '1';
 if (requireBinary && !fs.existsSync(binaryPath)) throw new Error(`Required Rust binary missing: ${binaryPath}`);
 const hasBinary = fs.existsSync(binaryPath);
@@ -134,7 +137,7 @@ test('Rollback：中途写入失败时补偿回滚已写部分并释放锁，解
             call({ command: 'Rollback', projectId, toNode: `n${nb}`, reason: 'test' }),
             err => {
                 assert.match(err.message, /file commit conflict: apply failed at b\.txt/);
-                assert.match(err.message, /os error 5|EPERM|拒绝访问/);
+                assert.match(err.message, /os error (5|13)|EPERM|EACCES|Permission denied|拒绝访问/);
                 return true;
             },
         );
