@@ -113,6 +113,8 @@ function createOrFocusMusicWindow() {
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             modal: false,
             webPreferences: {
+                // Rust keeps playing when this window is occluded; keep its lyric/spectrum frame clock running too.
+                backgroundThrottling: false,
                 preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.UTILITY),
                 sandbox: false, // preloads/* 需要 require 本地模块，见 preloads/README.md
                 contextIsolation: true,
