@@ -44,7 +44,7 @@ const {
     parseWaitDuration,
     parseTerminalKey,
     cleanup
-} = require('./PowerShellExecutor');
+} = require('./MacPowerShell');
 
 Module._load = originalLoad;
 

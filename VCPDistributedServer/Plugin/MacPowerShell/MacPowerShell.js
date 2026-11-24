@@ -141,10 +141,10 @@ function sendThemeUpdate(targetWebContents, forceSend = false) {
         if (currentTheme !== lastSentTheme || forceSend) {
             targetWebContents.send('macpowershell-theme-init', { themeName: currentTheme });
             lastSentTheme = currentTheme; // 更新已发送的主题记录
-            console.log(`[PowerShellExecutor] Theme updated to: ${currentTheme}`);
+            console.log(`[MacPowerShell] Theme updated to: ${currentTheme}`);
         }
     } catch (error) {
-        console.error('[PowerShellExecutor] Error reading or sending theme settings:', error);
+        console.error('[MacPowerShell] Error reading or sending theme settings:', error);
     }
 }
 
@@ -226,7 +226,7 @@ function applyPtyResize(cols, rows) {
         try {
             ptyProcess.resize(lastKnownSize.cols, lastKnownSize.rows);
         } catch (e) {
-            console.error('[PowerShellExecutor] Failed to resize pty:', e);
+            console.error('[MacPowerShell] Failed to resize pty:', e);
         }
     }
 }
@@ -396,141 +396,12 @@ try {
         }
     }
 } catch (error) {
-    console.error('[PowerShellExecutor] Error reading config.env:', error);
+    console.error('[MacPowerShell] Error reading config.env:', error);
 }
 
 
-/**
- * 智能安全检查函数 - 区分命令关键字和路径内容
- * @param {string} command - 要检查的命令字符串
- * @param {string[]} forbiddenKeywords - 禁止的关键字列表
- * @param {string[]} authRequiredKeywords - 需要授权的关键字列表
- * @returns {object} - 检查结果 {isForbidden: boolean, needsAuth: boolean, matchedKeyword: string}
- */
-function intelligentSecurityCheck(command, forbiddenKeywords, authRequiredKeywords) {
-    const result = {
-        isForbidden: false,
-        needsAuth: false,
-        matchedKeyword: null,
-        reason: null
-    };
-
-    // 预处理命令：移除多余空格，转换为小写
-    const normalizedCommand = command.trim().toLowerCase();
-
-    // 如果命令为空，直接返回
-    if (!normalizedCommand) {
-        return result;
-    }
-
-    // 定义路径模式 - 常见的Windows和Unix路径格式
-    const pathPatterns = [
-        /[a-z]:\\[^\\/:*?"<>|]*(?:\\[^\\/:*?"<>|]*)*\\?/gi,  // Windows路径 C:\path\to\file
-        /\/[^\/\s]*(?:\/[^\/\s]*)*\/?/g,                      // Unix路径 /path/to/file
-        /\$env:[a-z_]+[^\\/:*?"<>|\s]*/gi,                   // PowerShell环境变量路径
-        /\${[^}]+}[^\\/:*?"<>|\s]*/gi,                       // 变量路径 ${VAR}/path
-        /~\/[^\/\s]*(?:\/[^\/\s]*)*\/?/g                     // 用户目录路径 ~/path
-    ];
-
-    // 提取所有可能的路径
-    const detectedPaths = [];
-    pathPatterns.forEach(pattern => {
-        const matches = normalizedCommand.match(pattern);
-        if (matches) {
-            detectedPaths.push(...matches);
-        }
-    });
-
-    // 创建不包含路径的命令版本用于安全检查
-    let commandWithoutPaths = normalizedCommand;
-    detectedPaths.forEach(path => {
-        // 将路径替换为占位符，避免路径中的关键字被误判
-        commandWithoutPaths = commandWithoutPaths.replace(path.toLowerCase(), ' __PATH_PLACEHOLDER__ ');
-    });
-
-    // 清理命令：移除多余空格
-    commandWithoutPaths = commandWithoutPaths.replace(/\s+/g, ' ').trim();
-
-    // 定义PowerShell命令结构模式
-    const commandStructurePatterns = [
-        // PowerShell cmdlet模式: Verb-Noun
-        /\b[a-z]+-[a-z]+\b/g,
-        // 常见命令
-        /\b(?:get|set|new|remove|copy|move|invoke|start|stop|restart|test|clear|add|export|import|select|where|foreach|sort|group|measure|compare|out|write|read)\b/g,
-        // 参数模式
-        /\s-[a-z]+\b/g
-    ];
-
-    // 检查禁止的关键字
-    for (const keyword of forbiddenKeywords) {
-        if (!keyword) continue;
-
-        const keywordLower = keyword.toLowerCase();
-
-        // 1. 首先检查是否在路径中
-        const isInPath = detectedPaths.some(path =>
-            path.toLowerCase().includes(keywordLower)
-        );
-
-        if (isInPath) {
-            // 如果关键字只在路径中出现，检查是否也在命令部分出现
-            if (!commandWithoutPaths.includes(keywordLower)) {
-                console.log(`[PowerShellExecutor] 安全检查：关键字 "${keyword}" 仅在路径中发现，允许执行`);
-                continue; // 跳过这个关键字，不视为违规
-            }
-        }
-
-        // 2. 检查命令部分是否包含关键字
-        if (commandWithoutPaths.includes(keywordLower)) {
-            // 3. 进一步验证：检查关键字是否作为独立的命令或参数出现
-            const wordBoundaryPattern = new RegExp(`\\b${keywordLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-
-            if (wordBoundaryPattern.test(commandWithoutPaths)) {
-                result.isForbidden = true;
-                result.matchedKeyword = keyword;
-                result.reason = `命令包含被禁止的关键字: ${keyword}`;
-                console.log(`[PowerShellExecutor] 安全检查：发现禁止的命令关键字 "${keyword}"`);
-                return result;
-            }
-        }
-    }
-
-    // 检查需要授权的关键字（使用相同的逻辑）
-    for (const keyword of authRequiredKeywords) {
-        if (!keyword) continue;
-
-        const keywordLower = keyword.toLowerCase();
-
-        // 1. 首先检查是否在路径中
-        const isInPath = detectedPaths.some(path =>
-            path.toLowerCase().includes(keywordLower)
-        );
-
-        if (isInPath) {
-            // 如果关键字只在路径中出现，检查是否也在命令部分出现
-            if (!commandWithoutPaths.includes(keywordLower)) {
-                console.log(`[PowerShellExecutor] 安全检查：授权关键字 "${keyword}" 仅在路径中发现，不需要授权`);
-                continue; // 跳过这个关键字，不需要授权
-            }
-        }
-
-        // 2. 检查命令部分是否包含关键字
-        if (commandWithoutPaths.includes(keywordLower)) {
-            // 3. 进一步验证：检查关键字是否作为独立的命令或参数出现
-            const wordBoundaryPattern = new RegExp(`\\b${keywordLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-
-            if (wordBoundaryPattern.test(commandWithoutPaths)) {
-                result.needsAuth = true;
-                result.matchedKeyword = keyword;
-                result.reason = `命令包含需要授权的关键字: ${keyword}`;
-                console.log(`[PowerShellExecutor] 安全检查：发现需要授权的命令关键字 "${keyword}"`);
-                // 注意：不要return，继续检查其他关键字
-            }
-        }
-    }
-
-    return result;
-}
+const { intelligentSecurityCheckAsync, shutdownAstDaemon } = require('../PowerShellExecutor/commandSecurityCheck');
+const { redactSecrets, redactToolResult, refreshBeforeEgress } = require('../PowerShellExecutor/secretRedactor');
 
 /**
  * 启动一个独立的 Python GUI 脚本来请求管理员权限并执行命令。
@@ -939,7 +810,7 @@ function dispatchPtyData(rawData) {
         }
         guiWindow.webContents.send('macpowershell-data', dataStr);
     } catch (error) {
-        console.warn('[PowerShellExecutor] GUI output delivery failed:', error.message);
+        console.warn('[MacPowerShell] GUI output delivery failed:', error.message);
     }
 }
 
@@ -1008,7 +879,7 @@ function releaseMirrorStartup(afterReady = null) {
         }
         guiWindow.webContents.send('macpowershell-data', releasedOutput);
     } catch (error) {
-        console.warn('[PowerShellExecutor] GUI output delivery failed:', error.message);
+        console.warn('[MacPowerShell] GUI output delivery failed:', error.message);
     }
 }
 
@@ -1017,7 +888,7 @@ function notifyMirrors(method, ...args) {
         try {
             sink[method]?.(...args);
         } catch (e) {
-            console.error('[PowerShellExecutor] Mirror sink failed:', e);
+            console.error('[MacPowerShell] Mirror sink failed:', e);
         }
     }
 }
@@ -1034,7 +905,7 @@ function attachMirror(sink) {
         try {
             sink.onData(replay);
         } catch (e) {
-            console.error('[PowerShellExecutor] Mirror replay failed:', e);
+            console.error('[MacPowerShell] Mirror replay failed:', e);
         }
     }
     return () => mirrorSinks.delete(sink);
@@ -1117,11 +988,12 @@ async function processQueueLoop() {
                 deltaOutputs.push({ command, output, returnMode: currentReturnMode });
             } catch (error) {
                 // 宽进严出因果铁律：前置命令发生任何异常中断，级联取消队列中的所有后序排队任务！
-                const cancelled = purgeExecutionQueue(`由于前置命令 [${command}] 执行异常中断，为防止依赖错乱已安全取消后置排队命令。`);
+                const safeCmdPreview = redactSecrets(command).slice(0, 120);
+                const cancelled = purgeExecutionQueue(`由于前置命令 [${safeCmdPreview}] 执行异常中断，为防止依赖错乱已安全取消后置排队命令。`);
                 const cancelledNotice = cancelled.length > 0
                     ? `\n\n🛡️ [排队级联保护] 为杜绝后续命令在未决环境中发生输入踩踏，队列中排队的后续 ${cancelled.length} 个任务已同步安全取消。`
                     : '';
-                throw new Error(`${error.message}${cancelledNotice}`);
+                throw new Error(redactSecrets(`${error.message}${cancelledNotice}`));
             }
         }
 
@@ -1594,7 +1466,7 @@ function buildHumanLaunchAnimationCommand() {
 }
 
 /**
- * 打开或聚焦 PowerShellExecutor 的交互式终端 GUI。
+ * 打开或聚焦 MacPowerShell 的交互式终端 GUI。
  * 该入口供主程序托盘 / 桌面应用启动器直接调用，不需要先通过 AI 工具执行命令。
  * @returns {BrowserWindow} PowerShell 终端窗口实例。
  */
@@ -1620,7 +1492,7 @@ function openGuiTerminal() {
                 }
             })
             .catch((error) => {
-                console.error('[PowerShellExecutor] Failed to initialize terminal launch animation:', error);
+                console.error('[MacPowerShell] Failed to initialize terminal launch animation:', error);
             });
     }
 
@@ -1694,7 +1566,7 @@ function executeSingleCommandInPty(targetPty, singleCommand) {
             }
             for (const file of [scriptPath, wrapperPath, outputPath, receiptPath, receiptPath + '.pending']) {
                 try { if (fs.existsSync(file)) fs.unlinkSync(file); }
-                catch (error) { console.warn('[PowerShellExecutor] Capture cleanup:', error.message); }
+                catch (error) { console.warn('[MacPowerShell] Capture cleanup:', error.message); }
             }
         };
         const abandon = () => {
@@ -2001,7 +1873,7 @@ async function prepareTerminalView(target, required = false) {
     } else {
         const opening = requestSidebar('open');
         if (required) await opening;
-        else opening.catch(error => console.warn('[PowerShellExecutor] Sidebar unavailable:', error.message));
+        else opening.catch(error => console.warn('[MacPowerShell] Sidebar unavailable:', error.message));
     }
 }
 
@@ -2081,7 +1953,7 @@ async function runInteractiveSequence(args) {
     const steps = parseInteractiveSequence(args);
 
     for (const step of steps.filter(item => item.type === 'command')) {
-        const securityResult = intelligentSecurityCheck(
+        const securityResult = await intelligentSecurityCheckAsync(
             step.value,
             defaultConfig.forbiddenCommands,
             defaultConfig.authRequiredCommands
@@ -2144,6 +2016,23 @@ async function runInteractiveSequence(args) {
 }
 
 async function processToolCall(args) {
+    try {
+        const rawResult = await processToolCallInternal(args);
+        refreshBeforeEgress();
+        return redactToolResult(rawResult);
+    } catch (error) {
+        if (error && typeof error.message === 'string') {
+            refreshBeforeEgress();
+            const scrubbed = redactSecrets(error.message);
+            if (scrubbed !== error.message) {
+                error.message = scrubbed;
+            }
+        }
+        throw error;
+    }
+}
+
+async function processToolCallInternal(args) {
     const target = terminalTarget(args);
     const declaredCommands = new Set([
         'ExecutePowerShell',
@@ -2273,7 +2162,7 @@ async function processToolCall(args) {
     // --- 2. 智能安全预检查 ---
     let needsInteractiveAuth = false;
     for (const entry of commandEntries) {
-        const securityResult = intelligentSecurityCheck(
+        const securityResult = await intelligentSecurityCheckAsync(
             entry.value,
             defaultConfig.forbiddenCommands,
             defaultConfig.authRequiredCommands
@@ -2285,7 +2174,7 @@ async function processToolCall(args) {
 
         if (securityResult.needsAuth) {
             needsInteractiveAuth = true;
-            console.log(`[PowerShellExecutor] 命令 "${entry.value}" 需要交互式授权：${securityResult.reason}`);
+            console.log('[MacPowerShell] 命令需要交互式授权');
         }
     }
 
@@ -2302,7 +2191,18 @@ async function processToolCall(args) {
 
     // --- 4. 根据模式选择执行路径 ---
 
-    // 路径 A: 管理员模式 (最高优先级)
+    // 路径 B: 普通敏感命令确认模式
+    // 这里只做确认；确认通过后继续走路径 C，在主 PTY/xterm 会话中执行并连续显示输出。
+    if (needsInteractiveAuth) {
+        const combinedCommand = commandEntries.map(e => e.value).join('; ');
+        const confirmed = await requestInteractiveConfirmation(combinedCommand);
+        if (!confirmed) {
+            return { content: [{ type: 'text', text: '用户取消了操作。' }] };
+        }
+    }
+
+    // 路径 A: 管理员模式
+
     if (requireAdmin) {
         if (commandEntries.length > 1) {
             throw new Error("管理员模式 (requireAdmin: true) 不支持执行多个命令链。");
@@ -2316,16 +2216,6 @@ async function processToolCall(args) {
         }
         const cleanOutput = (typeof output === 'string' ? output : String(output || '')).replace(/\r\n/g, '\n').replace(/\r/g, '');
         return { content: [{ type: 'text', text: `\`\`\`powershell\n${cleanOutput}\n\`\`\`` }] };
-    }
-
-    // 路径 B: 普通敏感命令确认模式
-    // 这里只做确认；确认通过后继续走路径 C，在主 PTY/xterm 会话中执行并连续显示输出。
-    if (needsInteractiveAuth) {
-        const combinedCommand = commandEntries.map(e => e.value).join('; ');
-        const confirmed = await requestInteractiveConfirmation(combinedCommand);
-        if (!confirmed) {
-            return { content: [{ type: 'text', text: '用户取消了操作。' }] };
-        }
     }
 
     // 路径 C: 标准非管理员会话执行
@@ -2359,7 +2249,7 @@ async function processToolCall(args) {
 
     // 同步执行命令排队入口 (FIFO Queue)
     if (executionQueue.length >= MAX_EXECUTION_QUEUE_SIZE) {
-        throw new Error(`[PowerShellExecutor] 命令排队队列已满 (当前排队上限 ${MAX_EXECUTION_QUEUE_SIZE} 个)，请求被拒绝。请等待当前任务完成或调用 InterruptPowerShell 清空队列。`);
+        throw new Error(`[MacPowerShell] 命令排队队列已满 (当前排队上限 ${MAX_EXECUTION_QUEUE_SIZE} 个)，请求被拒绝。请等待当前任务完成或调用 InterruptPowerShell 清空队列。`);
     }
 
     return new Promise((resolve, reject) => {
@@ -2382,8 +2272,9 @@ async function processToolCall(args) {
  * 清理插件资源，在主程序退出或插件重载时调用。
  */
 function cleanup() {
+    shutdownAstDaemon('MacPowerShell cleanup');
     if (pendingCommandCleanup) pendingCommandCleanup();
-    console.log('[PowerShellExecutor] 正在清理资源...');
+    console.log('[MacPowerShell] 正在清理资源...');
 
     // 1. 关闭并销毁 GUI 窗口
     if (guiWindow && !guiWindow.isDestroyed()) {
@@ -2391,9 +2282,9 @@ function cleanup() {
             // 移除 'closed' 监听器，以避免在程序化关闭时触发额外的 ptyProcess.kill()
             guiWindow.removeAllListeners('closed');
             guiWindow.close();
-            console.log('[PowerShellExecutor] GUI 窗口已关闭。');
+            console.log('[MacPowerShell] GUI 窗口已关闭。');
         } catch (e) {
-            console.error('[PowerShellExecutor] 关闭 GUI 窗口时出错:', e);
+            console.error('[MacPowerShell] 关闭 GUI 窗口时出错:', e);
         }
         guiWindow = null;
     }
@@ -2408,14 +2299,14 @@ function cleanup() {
 
     // 2. 终止所有跟踪的子进程
     if (childProcesses.size > 0) {
-        console.log(`[PowerShellExecutor] 正在终止 ${childProcesses.size} 个子进程...`);
+        console.log(`[MacPowerShell] 正在终止 ${childProcesses.size} 个子进程...`);
         for (const processToKill of childProcesses) {
             try {
                 // ptyProcess 和 child_process 对象都有一个 .kill() 方法
                 processToKill.kill();
-                console.log(`[PowerShellExecutor] 进程 (PID: ${processToKill.pid}) 已终止。`);
+                console.log(`[MacPowerShell] 进程 (PID: ${processToKill.pid}) 已终止。`);
             } catch (e) {
-                console.error(`[PowerShellExecutor] 终止进程 (PID: ${processToKill.pid}) 时出错:`, e);
+                console.error(`[MacPowerShell] 终止进程 (PID: ${processToKill.pid}) 时出错:`, e);
             }
         }
         childProcesses.clear();
@@ -2426,9 +2317,9 @@ function cleanup() {
         try {
             settingsWatcher.close();
             settingsWatcher = null;
-            console.log('[PowerShellExecutor] Settings file watcher stopped.');
+            console.log('[MacPowerShell] Settings file watcher stopped.');
         } catch (e) {
-            console.error('[PowerShellExecutor] Error stopping settings watcher:', e);
+            console.error('[MacPowerShell] Error stopping settings watcher:', e);
         }
     }
 
