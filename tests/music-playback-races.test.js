@@ -476,3 +476,31 @@ test('an engine that reports paused is believed at once after the grace period',
     app.updateUIWithState(readyState({ is_paused: true, current_time: 8 }).state);
     assert.equal(app.isPlaying, false, 'paused wins even if the clock still creeps');
 });
+test('loading intent does not advance the clock or send pause; readiness uses the accepted target', async t => {
+    const canonical = 'D:/library/a.flac';
+    const firstPoll = deferred();
+    const app = setup({
+        musicLoad: async () => ({ status: 'success', accepted_path: canonical }),
+        getMusicState: async () => {
+            if (++polls === 1) {
+                firstPoll.resolve();
+                return readyState(); // old track, same basename, different physical path
+            }
+            return readyState({ file_path: canonical });
+        }
+    });
+    let polls = 0;
+    t.after(() => app.stopStatePolling());
+    const pending = app.loadTrack(0, true);
+    await firstPoll.promise;
+    assert.equal(app.isPlaying, false);
+    assert.equal(app.phantomAudio.paused, true);
+    assert.equal(app.playPauseBtn.classList.contains('is-playing'), true);
+    await app.toggleTransport();
+    assert.equal(app.playIntent, false);
+    await pending;
+    assert.equal(polls, 2);
+    assert.equal(app.engineTrackPath, app.playlist[0].path);
+    assert.deepEqual(app.calls, []);
+    assert.equal(app.lastKnownCurrentTime, 0);
+});

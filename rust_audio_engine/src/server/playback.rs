@@ -206,10 +206,12 @@ async fn load(
     };
     let mut player = data.player.lock();
     match player.load_with_credentials(&path, credentials.as_ref()) {
-        Ok(()) => HttpResponse::Ok().json(ApiResponse::success_with_state(
-            "Track loaded",
-            get_player_state(&player),
-        )),
+        Ok(()) => HttpResponse::Ok().json(serde_json::json!({
+            "status": "success",
+            "message": "Track load accepted",
+            "accepted_path": path,
+            "state": get_player_state(&player),
+        })),
         Err(e) => HttpResponse::InternalServerError()
             .json(ApiResponse::error(&format!("Failed to load: {}", e))),
     }

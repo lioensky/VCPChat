@@ -784,6 +784,7 @@ pub fn audio_thread_main(
                 // Clear is_loading AFTER file_path and all state has been updated.
                 // This prevents the race condition where the frontend sees
                 // is_loading=false but file_path is still the old value.
+                shared_state.load_progress.store(100, Ordering::Relaxed);
                 shared_state.is_loading.store(false, Ordering::Release);
                 shared_state.event_flags.fetch_or(EVENT_LOAD_COMPLETE, Ordering::Release);
             }

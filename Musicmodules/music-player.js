@@ -134,6 +134,9 @@ function setupPlayer(app) {
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
     };
 
+    app.toggleTransport = () => (app.isTrackLoading ? app.playIntent : app.isPlaying)
+        ? app.pauseTrack() : app.playTrack();
+
     app.showPlaybackNotice = (message) => {
         console.warn('[Music.js]', message);
         app.trackBitrate.textContent = message;
@@ -186,10 +189,12 @@ function setupPlayer(app) {
         if (!skipHistory) app.rememberPlayed(track);
         app.engineTrackPath = null;
         app.isTrackLoading = true;
+        app.applyPlayingUi(false);
         app.lastKnownCurrentTime = 0;
         app.lastStateUpdateTime = Date.now();
-        // 加载期间按钮显示用户想要的状态：此时点它就是“加载好也别播”。
-        if (app.playIntent) app.applyPlayingUi(true);
+        app.lastEngineProgress = null;
+        app.isChangingState = false;
+        app.playPauseBtn.classList.toggle('is-playing', app.playIntent);
 
         app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
         app.trackArtist.textContent = track.artist || '未知艺术家';
@@ -234,7 +239,7 @@ function setupPlayer(app) {
         if (result && result.status === 'success') {
             const waitForTrackReady = async () => {
                 const startedAt = Date.now();
-                const targetPath = app.normalizePathForCompare(track.path);
+                const targetPath = app.normalizePathForCompare(result.accepted_path || track.path);
                 let pollInterval = 120;
 
                 // 引擎会把整首歌解码完才算加载好，长曲目或开了升频会超过十几秒。
@@ -254,7 +259,7 @@ function setupPlayer(app) {
                     if (stateResult && stateResult.status === 'success' && stateResult.state) {
                         const state = stateResult.state;
                         const loadedPath = app.normalizePathForCompare(state.file_path);
-                        if (loadedPath === targetPath && !state.is_loading) {
+                        if (targetPath && loadedPath === targetPath && state.is_loading === false) {
                             app.updateUIWithState(state, { force: true });
                             return 'ready';
                         }
@@ -304,8 +309,7 @@ function setupPlayer(app) {
         if (app.playlist.length === 0) return;
         app.playIntent = true;
         if (app.isTrackLoading) {
-            // 还在加载：先把按钮切过去，加载完成后按 playIntent 自动开始。
-            app.applyPlayingUi(true);
+            app.playPauseBtn.classList.toggle('is-playing', true);
             return;
         }
         // 当前这首并不在引擎里（上次加载失败或超时）：按播放就是重试加载，
@@ -334,6 +338,10 @@ function setupPlayer(app) {
 
     app.pauseTrack = async () => {
         app.playIntent = false;
+        if (app.isTrackLoading) {
+            app.playPauseBtn.classList.toggle('is-playing', false);
+            return;
+        }
         const wasPlaying = app.isPlaying === true;
         const epoch = ++app.controlEpoch;
         app.isChangingState = true;

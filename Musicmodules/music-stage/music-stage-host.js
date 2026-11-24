@@ -1211,7 +1211,7 @@
                 exit();
             } else if (event.code === 'Space' && !event.target.closest('button, input, select')) {
                 event.preventDefault();
-                app.isPlaying ? app.pauseTrack() : app.playTrack();
+                app.toggleTransport();
             } else if (event.key === 'ArrowLeft' && event.altKey) {
                 event.preventDefault();
                 app.prevTrack();
@@ -1281,7 +1281,7 @@
         });
         // 点击面板外部不关闭，避免调节控件时误触。
         scope.add(Config.subscribe(handleConfigChange));
-        scope.listen(elements.play, 'click', () => app.isPlaying ? app.pauseTrack() : app.playTrack());
+        scope.listen(elements.play, 'click', () => app.toggleTransport());
         scope.listen(elements.prev, 'click', () => app.prevTrack());
         scope.listen(elements.next, 'click', () => app.nextTrack());
         scope.listen(elements.playMode, 'click', () => {

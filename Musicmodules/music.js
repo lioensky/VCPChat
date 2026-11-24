@@ -674,7 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        app.playPauseBtn.onclick = () => app.isPlaying ? app.pauseTrack() : app.playTrack();
+        app.playPauseBtn.onclick = () => app.toggleTransport();
         app.prevBtn.onclick = () => app.prevTrack();
         app.nextBtn.onclick = () => app.nextTrack();
         app.modeBtn.onclick = () => {
