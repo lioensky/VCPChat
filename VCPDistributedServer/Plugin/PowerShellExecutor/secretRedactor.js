@@ -193,16 +193,35 @@ function createSecretRedactor(customTargets = null) {
         return out;
     }
 
-    function redactToolResult(result, depth = 0, seen = new WeakSet()) {
-        if (result == null || depth > 8) return result;
-        if (typeof result === "string") return redactSecrets(result);
-        if (typeof result !== "object" || seen.has(result)) return result;
-        if (Buffer.isBuffer(result)) return result;
-        seen.add(result);
-        if (Array.isArray(result)) return result.map((x) => redactToolResult(x, depth + 1, seen));
-        const out = {};
-        for (const [k, v] of Object.entries(result)) out[k] = redactToolResult(v, depth + 1, seen);
-        return out;
+    function redactToolResult(result) {
+        const copies = new WeakMap();
+        const active = new WeakSet();
+        function visit(value, depth) {
+            if (depth > 8) return '[REDACTED:DEPTH_LIMIT]';
+            if (value == null) return value;
+            if (typeof value === 'string') return redactSecrets(value);
+            if (typeof value === 'number' || typeof value === 'boolean') return value;
+            if (typeof value !== 'object') return '[REDACTED:UNSUPPORTED]';
+            if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return '[REDACTED:BINARY]';
+            if (active.has(value)) return '[REDACTED:CYCLE]';
+            if (copies.has(value)) return copies.get(value);
+            const array = Array.isArray(value);
+            if (!array && Object.getPrototypeOf(value) !== Object.prototype &&
+                Object.getPrototypeOf(value) !== null) return '[REDACTED:UNSUPPORTED]';
+            const out = array ? new Array(value.length) : Object.create(null);
+            active.add(value);
+            for (const key of Object.keys(value)) {
+                const prop = Object.getOwnPropertyDescriptor(value, key);
+                Object.defineProperty(out, key, {
+                    value: prop && 'value' in prop ? visit(prop.value, depth + 1) : '[REDACTED:ACCESSOR]',
+                    enumerable: true, configurable: true, writable: true
+                });
+            }
+            active.delete(value);
+            copies.set(value, out);
+            return out;
+        }
+        return visit(result, 0);
     }
 
     return {

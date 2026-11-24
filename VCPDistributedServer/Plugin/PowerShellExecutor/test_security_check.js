@@ -129,6 +129,17 @@ async function runAstAndDaemonTests() {
     const syncRes = intelligentSecurityCheck('Get-Location', forbiddenCommands, authRequiredCommands);
     assert.equal(syncRes.isForbidden, false);
 
+    // Run the parser only, with a parent-enforced deadline.
+    const childProbe = require('node:child_process').spawnSync(process.execPath, ['-e', `
+        const assert = require('node:assert/strict');
+        const {parsePosixShellAst} = require('./commandSecurityCheck');
+        for (const text of ['echo ok > report', 'cat < report']) {
+            const result = parsePosixShellAst(text);
+            assert.equal(result.errors[0].id, 'UnsupportedPosixRedirection');
+        }
+    `], { cwd: __dirname, timeout: 4000, encoding: 'utf8' });
+    assert.ifError(childProbe.error);
+    assert.equal(childProbe.status, 0, childProbe.stderr);
     const posixAst = parsePosixShellAst([
         "python3 - <<'EOF'",
         'import logging',

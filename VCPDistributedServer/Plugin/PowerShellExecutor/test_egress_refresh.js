@@ -22,6 +22,20 @@ try {
     check('b64 masked', r.redactSecrets(b64) === '[REDACTED:FRESH_API_KEY_B64]');
     const nested = r.redactToolResult({ content: [{ type: 'text', text: `k=${fresh}` }] });
     check('nested masked', nested.content[0].text === 'k=[REDACTED:FRESH_API_KEY]');
+    const shared = { text: fresh };
+    const cyclic = { text: fresh };
+    cyclic.self = cyclic;
+    let deep = fresh;
+    for (let i = 0; i < 12; i++) deep = { child: deep };
+    const cleaned = r.redactToolResult({ a: shared, b: shared, cyclic, deep,
+        binary: Buffer.from(fresh), normal: 'ordinary receipt' });
+    const wire = JSON.stringify(cleaned);
+    check('serialized aliases masked', cleaned.a === cleaned.b &&
+        cleaned.b.text === '[REDACTED:FRESH_API_KEY]' && !wire.includes(fresh));
+    check('cycle serializable', cleaned.cyclic.self === '[REDACTED:CYCLE]');
+    check('depth bounded', wire.includes('[REDACTED:DEPTH_LIMIT]'));
+    check('binary omitted', cleaned.binary === '[REDACTED:BINARY]');
+    check('normal text unchanged', cleaned.normal === 'ordinary receipt');
     check('exported on module', typeof require('./secretRedactor').refreshBeforeEgress === 'function');
     const cfgPath = path.join(dir, 'config.env');
     const extraA = path.join(dir, 'extra-a');

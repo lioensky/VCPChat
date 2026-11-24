@@ -9,6 +9,8 @@ const { spawn, execFileSync } = require('node:child_process');
 const AST_CACHE_LIMIT = 256;
 const AST_WARMUP_TIMEOUT_MS = 5000;
 const AST_RPC_TIMEOUT_MS = 1500;
+// Trial default: release the parser after five minutes without RPC work.
+const AST_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const astCache = new Map();
 
 const SAFE_DISPLAY_CMDLETS = new Set([
@@ -213,12 +215,28 @@ let daemonWarmed = false;
 let rpcSeq = 0;
 const pendingRpc = new Map();
 
+let idleTimer = null;
+
+function cancelIdleTimer() {
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    idleTimer = null;
+}
+
 function updateDaemonRefState() {
+    cancelIdleTimer();
     if (!daemonProc) return;
     if (pendingRpc.size > 0) {
         daemonProc.ref();
         daemonProc.stdout?.ref?.();
     } else {
+        const owner = daemonProc;
+        const timer = setTimeout(() => {
+            if (idleTimer !== timer || daemonProc !== owner || pendingRpc.size !== 0) return;
+            idleTimer = null;
+            shutdownAstDaemon('AST daemon idle');
+        }, AST_IDLE_TIMEOUT_MS);
+        idleTimer = timer;
+        timer.unref();
         daemonProc.unref();
         daemonProc.stdout?.unref?.();
         daemonProc.stderr?.unref?.();
@@ -227,6 +245,7 @@ function updateDaemonRefState() {
 }
 
 function shutdownAstDaemon(reason = 'AST daemon shutdown') {
+    cancelIdleTimer();
     if (daemonRl) {
         try { daemonRl.close(); } catch { /* ignore */ }
         daemonRl = null;
@@ -359,7 +378,10 @@ function parsePosixShellAst(command) {
         curTokens = [];
     };
 
+    let previousOffset = -1;
     while (i < n) {
+        if (i <= previousOffset) throw new Error('POSIX scanner made no progress');
+        previousOffset = i;
         const ch = command[i];
         if (ch === '\n') { flushCmd(); line++; i++; continue; }
         if (/\s/.test(ch)) { i++; continue; }
@@ -393,6 +415,10 @@ function parsePosixShellAst(command) {
             // Here-Doc 已消费结束行换行符，必须在此收束当前命令，否则下一行首词会并入参数
             flushCmd();
             continue;
+        }
+        if (ch === '<' || ch === '>') {
+            flushCmd();
+            return { errors: [{ id: 'UnsupportedPosixRedirection', line }], commands };
         }
         if (curTokens.length === 0) curLine = line;
         let tok = '';
