@@ -66,6 +66,14 @@ pf_trace(projectId, target, scope?, glob?)
 
 `pf_trace.target` 支持 `ipc:通道`、`api:preloadAPI`、`global:名称`、`page:页面.html`、`file:相对路径`。结果包括相应处理端 / 调用端 / 声明、加载顺序与依赖检查。它是静态链路分析，不代表 11 种语言都支持同等链路追踪；动态通道可能只计数，未找到静态边不能证明没有运行时调用。
 
+## 组合只读查询
+
+```text
+pf_query(projectId, code, timeoutMs?)
+```
+
+- 使用 `q.files`、`q.search`、`q.read`、`q.outline`、`q.symbols` 和 `q.graph` 组合工程内的只读调查。`code` 是可 `await` 的 JS 函数体，显式返回可 JSON 序列化的结果，优先只返回需要的字段。
+- 超时默认 10 秒，上限 30 秒；输出默认限 16 KiB，留意截断标记。结果可从 `structuredContent.value` 读取。
 ## 编辑
 
 ```text
@@ -153,6 +161,15 @@ pf_eval_symbol(projectId, path, args?, kwargs?, setup?, timeoutMs?, symbol?, pic
 - `timeoutMs`：JS / Python 默认 5000，Rust 默认 100000，上限 110000。工程根 `.projectforge-eval.json` 可指定 node / python / cargo；Python 按配置 → `.venv` → PATH 选择，失败不换环境。
 - `returned` 仅表示函数返回，`passed` 才表示实际测试通过；查看阶段错误、typed-v1 值、源码 hash 与有界日志。不支持 TS、局部闭包或自动构造实例；11 种语言的符号能力不等于都支持试跑。
 
+## 可选 Bash
+
+```text
+pf_bash(projectId, script, workdir?, timeoutMs?, maxBytes?)
+```
+
+- 默认不暴露也不允许调用；仅在桥的本地配置启用后可用，且需要可写工程。用于构建、测试和诊断，不用于绕过 ProjectForge 的文件编辑流程。
+- 脚本以非交互方式运行；`workdir` 省略时为工程根。它只是起始目录，不是沙箱；脚本可写盘或联网，写入没有 Forge 回滚快照。
+- 分别查看 stdout、stderr、退出码、超时和截断。非零退出或超时不代表没有副作用；先检查状态再决定是否重跑。
 ## 长期施工与交付
 
 1. 先读再改，优先局部 diff 和清晰函数；重构仍需保持完整、可编译的实现，不引入无关改动。

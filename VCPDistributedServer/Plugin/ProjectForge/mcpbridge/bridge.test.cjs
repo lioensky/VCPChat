@@ -17,6 +17,11 @@ test('schemas reject VCP fields, unknown edits and incorrect types', () => {
     }
     validateArguments('pf_update_todos', { projectId: 'p1', done: [1, 2] });
     validateArguments('pf_eval_symbol', { projectId: 'p1', path: 'a.rs#test', target: 'lib' });
+    validateArguments('pf_query', { projectId: 'p1', code: 'return 42;', timeoutMs: 30000 });
+    validateArguments('pf_bash', { projectId: 'p1', script: 'pwd', workdir: '.', timeoutMs: 110000, maxBytes: 1024 });
+    assert.throws(() => validateArguments('pf_query', { projectId: 'p1', code: ' ', timeoutMs: 30001 }));
+    assert.throws(() => validateArguments('pf_bash', { projectId: 'p1', script: 'pwd', allowBash: true }));
+    assert.throws(() => validateArguments('pf_bash', { projectId: 'p1', script: 'pwd', maxBytes: 1024 * 1024 + 1 }));
     assert.throws(() => validateArguments('pf_update_todos', { projectId: 'p1', done: ['abc'] }));
     assert.throws(() => validateArguments('pf_create_file', { projectId: 'p1', path: 'a', content: '', reason: 'create', overwrite: 'true' }));
 });
@@ -40,21 +45,31 @@ test('direct service adapter filters dangerous tools and never retries failures'
         async cleanup() {},
     });
     assert.equal(options.workspaceService.list().length, 0);
-    assert(!bridge.listTools().some(tool => ['pf_eval_symbol', 'pf_purge_projects'].includes(tool.name)));
+    assert.equal(options.config.BASH_ENABLED, false);
+    assert(!bridge.listTools().some(tool => ['pf_eval_symbol', 'pf_purge_projects', 'pf_bash'].includes(tool.name)));
+    assert.equal(bridge.listTools().find(tool => tool.name === 'pf_query').annotations.readOnlyHint, true);
     const reply = await bridge.call('pf_list_workspaces', {});
     assert.equal(reply.isError, true);
     assert.match(reply.content[0].text, /OUTCOME_UNKNOWN/);
     assert.equal(calls, 1);
     await bridge.call('pf_eval_symbol', {});
+    const disabled = await bridge.call('pf_bash', { projectId: 'p1', script: 'pwd' });
+    assert.equal(disabled.isError, true);
+    assert.match(disabled.content[0].text, /Unknown or disabled tool/);
     assert.equal(calls, 1);
     await bridge.close();
 });
 
-test('real stdio MCP lifecycle and native edit/rollback', { timeout: 60000 }, async () => {
+test('real stdio MCP lifecycle, Query, opt-in Bash and native edit/rollback', { timeout: 60000 }, async t => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pf-mcp-'));
     const filename = path.join(root, 'config.json');
-    await fs.writeFile(filename, JSON.stringify({ workspaces: [{ id: 'test', alias: 'test', path: root }], dbPath: path.join(root, 'state.db'), maid: 'MCPTest' }));
-    assert.equal(loadConfig(filename).workspaces[0].enabled, true);
+    const config = { workspaces: [{ id: 'test', alias: 'test', path: root }], dbPath: path.join(root, 'state.db'), maid: 'MCPTest' };
+    await fs.writeFile(filename, JSON.stringify(config));
+    assert.equal(loadConfig(filename).enableBash, false);
+    await fs.writeFile(filename, JSON.stringify({ ...config, enableBash: 'true' }));
+    assert.throws(() => loadConfig(filename), /enableBash must be boolean/);
+    await fs.writeFile(filename, JSON.stringify({ ...config, enableBash: true }));
+    assert.equal(loadConfig(filename).enableBash, true);
     const transport = new StdioClientTransport({ command: process.execPath, args: [path.join(__dirname, 'server.cjs'), '--config', filename], stderr: 'pipe' });
     let stderr = '';
     transport.stderr?.on('data', chunk => { stderr += chunk; });
@@ -64,7 +79,9 @@ test('real stdio MCP lifecycle and native edit/rollback', { timeout: 60000 }, as
         assert.match(client.getInstructions(), /No VCPToolCall/);
         const listed = await client.listTools();
         assert.equal(listed.tools.length, tools.length - 2 + 1);
-                assert(listed.tools.some(tool => tool.name === 'pf_search'));
+        assert(listed.tools.some(tool => tool.name === 'pf_search'));
+        assert(listed.tools.some(tool => tool.name === 'pf_query'));
+        assert.equal(listed.tools.find(tool => tool.name === 'pf_bash').annotations.openWorldHint, true);
         assert.equal((await client.listPrompts()).prompts[0].name, 'projectforge_development');
         assert((await client.getPrompt({ name: 'projectforge_development' })).messages[0].content.text.length > 100);
         assert((await client.readResource({ uri: 'projectforge://instructions' })).contents[0].text.length > 100);
@@ -82,6 +99,27 @@ test('real stdio MCP lifecycle and native edit/rollback', { timeout: 60000 }, as
         let text = await fs.readFile(path.join(root, 'source/a.js'), 'utf8');
         assert.match(text, /return 3/); assert.match(text, /return 4/);
         assert.match(await call('pf_read_code', { projectId, path: 'a.js' }), /return 3/);
+        const query = await client.callTool({ name: 'pf_query', arguments: { projectId, code: 'return { answer: 42 };' } });
+        assert.notEqual(query.isError, true, JSON.stringify(query));
+        assert.deepEqual(query.structuredContent.value, { answer: 42 });
+        const badQuery = await client.callTool({ name: 'pf_query', arguments: { projectId, code: 'throw new Error("query fixture");' } });
+        assert.equal(badQuery.isError, true);
+        await t.test('Bash returns exit code and streams over stdio', async t => {
+            const run = script => client.callTool({ name: 'pf_bash', arguments: { projectId, script } });
+            const bash = await run('printf "%s" "bash fixture"; printf "%s" "diagnostic" >&2');
+            if (bash.structuredContent?.error?.code === 'BASH_NOT_FOUND') {
+                assert.equal(bash.isError, true);
+                t.skip('Bash executable unavailable');
+                return;
+            }
+            assert.notEqual(bash.isError, true, JSON.stringify(bash));
+            assert.equal(bash.structuredContent.stdout.text, 'bash fixture');
+            assert.equal(bash.structuredContent.stderr.text, 'diagnostic');
+            assert.equal(bash.structuredContent.exitCode, 0);
+            const failed = await run('exit 7');
+            assert.equal(failed.isError, true);
+            assert.equal(failed.structuredContent.exitCode, 7);
+        });
         const search = await call('pf_search', { query: 'return 3;', path: 'source', include: '*.js', isRegex: false });
         assert.match(search, /a\.js/);
         assert.match(search, /return 3;/);

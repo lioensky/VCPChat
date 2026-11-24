@@ -52,12 +52,12 @@ function tool(command, description, properties = {}, required = [], readOnly = f
         name: `pf_${command.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()}`,
         command,
         description,
-        inputSchema: object({ ...properties, ...signature, ...(!readOnly ? operation : {}) }, required, constraints),
+        inputSchema: object({ ...properties, ...signature, ...(!readOnly && command !== 'Bash' ? operation : {}) }, required, constraints),
         annotations: {
             readOnlyHint: readOnly,
             destructiveHint: !readOnly,
             idempotentHint: false,
-            openWorldHint: command === 'EvalSymbol',
+            openWorldHint: command === 'EvalSymbol' || command === 'Bash',
         },
     };
 }
@@ -107,6 +107,13 @@ const tools = [
         ...project, name: nonempty, kind: text, glob: nonempty, exact: boolean,
         limit: positive, scope,
     }, ['projectId', 'name'], true),
+    tool('Query', '在可信工程内组合只读查询。code 是可 await 的 JS 函数体，通过 q.files/search/read/outline/symbols/graph 查询并 return JSON 值。', {
+        ...project, code: nonempty, timeoutMs: { ...positive, maximum: 30000 },
+    }, ['projectId', 'code'], true),
+    tool('Bash', '在可信可写工程中运行非交互 Bash，用于构建、测试和诊断。workdir 是起点，不是沙箱；脚本可写盘或联网，不生成 Forge 回滚快照。', {
+        ...project, script: nonempty, workdir: nonempty,
+        timeoutMs: { ...positive, maximum: 110000 }, maxBytes: { ...positive, maximum: 1024 * 1024 },
+    }, ['projectId', 'script']),
     tool('Trace', '链路地图；target为ipc:/api:/global:/page:/file:。', {
         ...project, target: nonempty, scope, glob: nonempty,
     }, ['projectId', 'target'], true),
