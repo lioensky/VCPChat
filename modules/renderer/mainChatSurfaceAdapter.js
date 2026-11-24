@@ -14,7 +14,13 @@ function createStreamCapabilities(root, services, recovery) {
     const ownerDocument = root.ownerDocument;
     const reportError = services.reportError || console.error;
     return Object.freeze({
-        start: message => services.streamProjection.startStreamingMessage(message),
+        async start(message) {
+            const projected = await services.streamProjection.startStreamingMessage(message);
+            // Group replies arrive via IPC rather than the local send flow.
+            // Refresh the composer once the stream is registered.
+            services.notifySendStateChanged?.();
+            return projected;
+        },
         append: (messageId, chunk, context, operationId) => services.streamProjection.appendStreamChunk(messageId, chunk, context, operationId),
         projectTerminal: (messageId, finishReason, context, payload) => (
             services.streamProjection.projectStreamTerminal(messageId, finishReason, context, payload)
