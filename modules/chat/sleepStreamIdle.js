@@ -1,6 +1,7 @@
 'use strict';
 
-const CHAT_BODY_IDLE_MS = 300_000; // Node fetch / Undici default body idle budget.
+const CHAT_STREAM_TIMEOUT_MS = 500_000;
+const CHAT_BODY_IDLE_MS = CHAT_STREAM_TIMEOUT_MS;
 const SLEEP_WAKE_GRACE_MS = 75_000; // Leave room for tool return and the next model dispatch.
 const MAX_SLEEP_MS = 12 * 60 * 60 * 1000;
 
@@ -53,19 +54,24 @@ function createSleepStreamIdle({
     };
 }
 
-let chatStreamDispatcher;
-function getChatStreamDispatcher() {
-    if (!chatStreamDispatcher) {
+let chatDispatchers;
+function getChatStreamDispatcher({ hasBodyWatchdog = true } = {}) {
+    if (!chatDispatchers) {
         const { Agent } = require('undici');
         const agent = new Agent();
-        // fetch supplies its own bodyTimeout per dispatch, overriding Agent defaults.
-        chatStreamDispatcher = {
+        // Fetch supplies its own timeouts per dispatch. Override the header budget
+        // and let the application watchdog handle streaming body timeouts and extensions.
+        const makeDispatcher = overrides => ({
             dispatch(options, handler) {
-                return agent.dispatch({ ...options, bodyTimeout: 0 }, handler);
+                return agent.dispatch({ ...options, headersTimeout: CHAT_STREAM_TIMEOUT_MS, ...overrides }, handler);
             },
+        });
+        chatDispatchers = {
+            stream: makeDispatcher({ bodyTimeout: 0 }),
+            nonStream: makeDispatcher({}),
         };
     }
-    return chatStreamDispatcher;
+    return hasBodyWatchdog ? chatDispatchers.stream : chatDispatchers.nonStream;
 }
 
-module.exports = { createSleepStreamIdle, getChatStreamDispatcher, CHAT_BODY_IDLE_MS, MAX_SLEEP_MS };
+module.exports = { createSleepStreamIdle, getChatStreamDispatcher, CHAT_STREAM_TIMEOUT_MS, CHAT_BODY_IDLE_MS, MAX_SLEEP_MS };

@@ -1,14 +1,31 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { test } from 'node:test';
+import undici from 'undici';
 import idleModule from '../modules/chat/sleepStreamIdle.js';
 import requestsModule from '../modules/chat/sleepStreamRequests.js';
 
-const { createSleepStreamIdle, getChatStreamDispatcher } = idleModule;
+const { createSleepStreamIdle, getChatStreamDispatcher, CHAT_STREAM_TIMEOUT_MS, CHAT_BODY_IDLE_MS } = idleModule;
 const { createSleepStreamRequests, parseSleepMs } = requestsModule;
 const block = fields => ['<<<[TOOL_REQUEST]>>>', fields, '<<<[END_TOOL_REQUEST]>>>'].join('\n');
 const jev = block('JEV: {始}睡眠[4分钟]，醒来后【检查状态】{末}');
 const standard = block('tool_name: {始}VCPSleep{末},\nsleeptime: {始}10小时{末}');
+
+test('chat transport uses the shared 500 s header and stream idle budgets', t => {
+    assert.equal(CHAT_STREAM_TIMEOUT_MS, 500_000);
+    assert.equal(CHAT_BODY_IDLE_MS, CHAT_STREAM_TIMEOUT_MS);
+
+    const dispatch = t.mock.method(undici.Agent.prototype, 'dispatch', () => true);
+    const fetchDefaults = { headersTimeout: 300_000, bodyTimeout: 300_000 };
+    const handler = {};
+    getChatStreamDispatcher().dispatch(fetchDefaults, handler);
+    getChatStreamDispatcher({ hasBodyWatchdog: false }).dispatch(fetchDefaults, handler);
+
+    assert.deepEqual(dispatch.mock.calls.map(call => call.arguments), [
+        [{ headersTimeout: 500_000, bodyTimeout: 0 }, handler],
+        [{ headersTimeout: 500_000, bodyTimeout: 300_000 }, handler],
+    ]);
+});
 
 test('sleep requests arm once after a split marker, and actual content resumes normal idle', async () => {
     const events = [];

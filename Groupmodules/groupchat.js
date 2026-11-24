@@ -32,6 +32,20 @@ const topicTitleManager = require('./topicTitleManager');
 const { noteToolApprovalMessage, isWaitingForToolApproval, isWatchdogAbort, withWatchdogNote, getGroupErrorMessage, normalizeGroupFetchError } = require('./streamWatchdog');
 const { resolveGroupChatUrl } = require('./groupChatUrl');
 const { readChatHttpError, chatResponseError } = require('../modules/chatRequestError');
+const { CHAT_STREAM_TIMEOUT_MS, getChatStreamDispatcher } = require('../modules/chat/sleepStreamIdle');
+
+const GROUP_TTFT_TIMEOUT_MS = CHAT_STREAM_TIMEOUT_MS;
+const GROUP_CHUNK_IDLE_TIMEOUT_MS = CHAT_STREAM_TIMEOUT_MS;
+
+// 流式 HTTP 错误响应不会进入正文看门狗，单独兜底。
+async function readGroupHttpError(response, controller) {
+    const timer = setTimeout(() => controller.abort('error_body_timeout'), GROUP_CHUNK_IDLE_TIMEOUT_MS);
+    try {
+        return await readChatHttpError(response);
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 // 模式注册表 - 添加新模式只需在此注册
 const CHAT_MODES = {
@@ -1478,12 +1492,7 @@ ${canvasData.errors || 'No errors'}
                 stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
             };
 
-            // === 分阶段弹性超时设计 (Phased Timeout Architecture) ===
-            // 阶段 1: 等待 HTTP 响应头 (120秒)；fetch 返回即清除，不等待正文或 reasoning
-            // 阶段 2: 块间流式看门狗 (62秒)，开始收到流数据后若连续 62秒无新数据则熔断僵死
-            const GROUP_TTFT_TIMEOUT_MS = 120000;
-            const GROUP_CHUNK_IDLE_TIMEOUT_MS = 62000;
-
+            // 响应头等待和流式块间空闲分别计时。
             const controller = new AbortController();
             let activeTimer = null;
             // 在发送 agent_thinking 之前注册活动控制器，消除 200ms 缓冲窗内点击中止报 Request not found 的竞态
@@ -1566,7 +1575,8 @@ ${canvasData.errors || 'No errors'}
                         temperature: modelConfigForAgent.temperature,
                         stream: modelConfigForAgent.stream
                     }, messageIdForAgentResponse, { groupId, topicId, agentId, agentName, isGroupMessage: true })),
-                    signal: controller.signal
+                    signal: controller.signal,
+                    dispatcher: getChatStreamDispatcher({ hasBodyWatchdog: modelConfigForAgent.stream })
                 });
             } catch (fetchError) {
                 fetchError = normalizeGroupFetchError(fetchError, controller, GROUP_TTFT_TIMEOUT_MS);
@@ -1599,7 +1609,7 @@ ${canvasData.errors || 'No errors'}
             }
 
             if (!response.ok) {
-                const failure = await readChatHttpError(response);
+                const failure = await readGroupHttpError(response, controller);
                 const errorMessageToPropagate = failure.error;
                 console.error(`[GroupChat] VCP request failed for ${agentName}:`, failure.error);
                 trajectoryCall.finish({ error: { name: 'HTTPError', message: failure.error } });
@@ -2293,12 +2303,7 @@ ${canvasData.errors || 'No errors'}
             stream: agentConfig.streamOutput === true || String(agentConfig.streamOutput) === 'true'
         };
 
-        // === 分阶段弹性超时设计 (Phased Timeout Architecture) - Jev / 点名邀请 ===
-        // 阶段 1: 等待 HTTP 响应头 (120秒)；fetch 返回即清除，不等待正文或 reasoning
-        // 阶段 2: 块间流式看门狗 (62秒)，开始收到流数据后若连续 62秒无新数据则熔断僵死
-        const GROUP_TTFT_TIMEOUT_MS = 120000;
-        const GROUP_CHUNK_IDLE_TIMEOUT_MS = 62000;
-
+        // 响应头等待和流式块间空闲分别计时。
         const controller = new AbortController();
         const abortFromSession = () => controller.abort();
         if (options.signal?.aborted) controller.abort();
@@ -2380,7 +2385,8 @@ ${canvasData.errors || 'No errors'}
                     stream: modelConfigForAgent.stream,
                     max_tokens: modelConfigForAgent.max_tokens
                 }, messageIdForAgentResponse, { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true })),
-                signal: controller.signal
+                signal: controller.signal,
+                dispatcher: getChatStreamDispatcher({ hasBodyWatchdog: modelConfigForAgent.stream })
             });
         } catch (fetchError) {
             fetchError = normalizeGroupFetchError(fetchError, controller, GROUP_TTFT_TIMEOUT_MS);
@@ -2414,7 +2420,7 @@ ${canvasData.errors || 'No errors'}
         }
 
         if (!response.ok) {
-            const failure = await readChatHttpError(response);
+            const failure = await readGroupHttpError(response, controller);
             const errorMessageToPropagate = failure.error;
             console.error(`[GroupChat Invite] VCP request failed for ${agentName}:`, failure.error);
             trajectoryCall.finish({ error: { name: 'HTTPError', message: failure.error } });
