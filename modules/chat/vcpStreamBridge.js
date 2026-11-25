@@ -127,7 +127,7 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
                 }
                 if (event.type === 'end' || event.type === 'error') {
                     const terminal = event.type === 'end'
-                        ? { kind: event.finish_reason || 'completed', fullResponse: event.fullResponse, context: event.context }
+                        ? { kind: event.finish_reason || 'completed', fullResponse: event.fullResponse, context: event.context, ...(event.usage ? { usage: event.usage } : {}) }
                         : { kind: 'failed', error: event.error, fullResponse: event.fullResponse || event.accumulatedResponse, context: event.context };
                     operation.accepting = false;
                     operation.projecting = false;

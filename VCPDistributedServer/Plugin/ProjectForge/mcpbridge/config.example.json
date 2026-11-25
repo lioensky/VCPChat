@@ -7,6 +7,8 @@
   "enableEval": false,
   "enablePurge": false,
   "enableBash": false,
+  "enableTopic": false,
+  "vcpUrl": "http://127.0.0.1:6005",
   "topic": {
     "enabled": false,
     "baseUrl": "http://127.0.0.1:6200",

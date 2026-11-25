@@ -5,7 +5,7 @@
 import { handleSaveGlobalSettings } from './global-settings-manager.js';
 import { syncDependentRows } from './ui-system/settings/dependent-rows.js';
 import { assembleRequestMessages } from './chat/chatContextPipeline.js';
-import { shouldCompactContext } from './chat/contextCompactionService.js';
+import { shouldCompactContext, assertContextWithinLimit } from './chat/contextCompactionService.js';
 import { installAppFeatures } from './renderer/appFeatures.js';
 
 let eventListenersBound = false;
@@ -218,6 +218,14 @@ export function setupEventListeners(deps) {
                 currentChatHistory = refs.currentChatHistory.get();
             } catch (error) {
                 uiHelperFunctions.showToastNotification(`自动压缩失败，已取消续写：${error.message}`, 'error');
+                return;
+            }
+        }
+        if (globalSettings.enableContextCompaction === true) {
+            try {
+                assertContextWithinLimit(currentChatHistory, currentSelectedItem.config || currentSelectedItem, temporaryPrompt);
+            } catch (error) {
+                uiHelperFunctions.showToastNotification(`续写未发送：${error.message}`, 'error');
                 return;
             }
         }

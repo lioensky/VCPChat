@@ -10,9 +10,9 @@ const { createBridge } = require('./bridge.cjs');
 const request = { topicId: 'topic_example', message: '## Ready\n\n- Review', requestId: 'request-1' };
 const tokenEnv = 'TEST_TOPIC_REPLY_TOKEN_' + process.pid;
 
-function fixture(t, topic) {
+function fixture(t, topic, upstream = {}) {
     const calls = [];
-    const bridge = createBridge({ topic, workspaces: [], maid: 'Test', enableBash: true }, {
+    const bridge = createBridge({ topic, workspaces: [], maid: 'Test', enableBash: true, ...upstream }, {
         initialize() {},
         processToolCall(args) {
             calls.push(args);
@@ -135,4 +135,51 @@ test('Topic uses only schema fields and dedicated HTTP paths/results; redirects 
     assert.equal((await bridge.call('pf_list_workspaces')).isError, true);
     assert.equal(observed.length, 3);
     assert.equal(calls.length, 0);
+});
+
+test('upstream Topic and dedicated replies have independent switches and routes', async t => {
+    const token = credentials(t);
+    const observed = [];
+    const upstream = await localServer(t, async (req, res) => {
+        for await (const chunk of req) void chunk;
+        observed.push(['upstream', req.url, req.headers.authorization === 'Bearer mock-vcp-key']);
+        res.end(JSON.stringify({ accepted: true }));
+    });
+    const dedicated = await localServer(t, async (req, res) => {
+        const parts = [];
+        for await (const chunk of req) parts.push(chunk);
+        const input = JSON.parse(Buffer.concat(parts).toString('utf8'));
+        observed.push(['dedicated', req.url, req.headers.authorization === `Bearer ${token}`, input]);
+        res.end(JSON.stringify({ requestId: input.requestId, state: 'queued',
+            advanceRequested: true, advanceEffective: true, entryId: 'mock-entry' }));
+    });
+    const upstreamConfig = { enableTopic: true, vcpUrl: upstream.config.baseUrl, vcpKey: 'mock-vcp-key' };
+    const tools = ['ts_reply_to_topic', 'tm_list_topics', 'topic_reply', 'topic_reply_status'];
+    for (const [topic, official, expected] of [
+        [dedicated.config, {}, [false, false, true, true]],
+        [{ enabled: false }, upstreamConfig, [true, true, false, false]],
+        [dedicated.config, upstreamConfig, [true, true, true, true]]
+    ]) {
+        const { bridge, calls } = fixture(t, topic, official);
+        const names = new Set(bridge.listTools().map(tool => tool.name));
+        assert.deepEqual(tools.map(name => names.has(name)), expected);
+        if (!expected[0]) assert.equal((await bridge.call(tools[0], {})).isError, true);
+        if (!expected[2]) assert.equal((await bridge.call(tools[2], request)).isError, true);
+        assert.equal(observed.length, 0);
+        if (!expected.every(Boolean)) continue;
+        const upstreamReply = await bridge.call(tools[0], {
+            topicId: request.topicId, senderName: 'Example', message: request.message
+        });
+        assert.equal(upstreamReply.structuredContent.accepted, true);
+        const reply = { ...request, advance: true };
+        const query = { requestId: request.requestId };
+        assert.equal((await bridge.call(tools[2], reply)).structuredContent.advanceEffective, true);
+        assert.equal((await bridge.call(tools[3], query)).structuredContent.state, 'queued');
+        assert.deepEqual(observed, [
+            ['upstream', '/v1/human/tool', true],
+            ['dedicated', '/v1/topic-replies', true, reply],
+            ['dedicated', '/v1/topic-replies/status', true, query]
+        ]);
+        assert.equal(calls.length, 0);
+    }
 });

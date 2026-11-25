@@ -32,8 +32,8 @@ test('send budget counts refreshed live text and expanded workspace prompt', asy
     await assert.rejects(preflightContextSend({
         context,
         electronAPI: {
-            async getTextContent() { return { text: '文'.repeat(225) }; },
-            async expandWorkspacePlaceholders() { return { success: true, text: '树'.repeat(260) }; },
+            async getTextContent() { return { text: '文'.repeat(400) }; },
+            async expandWorkspacePlaceholders() { return { success: true, text: '树'.repeat(400) }; },
         },
         agentConfig: { contextTokenLimit: 500, systemPrompt: '{{VCPChatWorkSpace}}' },
         history: [],

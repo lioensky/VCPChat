@@ -170,6 +170,27 @@ pf_bash(projectId, script, workdir?, timeoutMs?, maxBytes?)
 - 默认不暴露也不允许调用；仅在桥的本地配置启用后可用，且需要可写工程。用于构建、测试和诊断，不用于绕过 ProjectForge 的文件编辑流程。
 - 脚本以非交互方式运行；`workdir` 省略时为工程根。它只是起始目录，不是沙箱；脚本可写盘或联网，写入没有 Forge 回滚快照。
 - 分别查看 stdout、stderr、退出码、超时和截断。非零退出或超时不代表没有副作用；先检查状态再决定是否重跑。
+## 可选话题协作（TopicSponsor / TopicMemo）
+
+```text
+ts_list_agents()
+ts_list_groups()
+ts_list_recent_topics(query, targetType?)
+ts_check_new_topics(maid, days?)
+ts_check_unread_messages(maid)
+ts_check_topic_ownership(topicId, callerName, maid?)
+ts_create_topic(maid, topicName, initialMessage)
+ts_reply_to_topic(message, senderId?|senderName?, topicId, sourceTopicId?)
+ts_reply_to_topic(message, senderId?|senderName?, mode="new_topic", sourceTopicId, targetAgent, topicName?, flowlock?)
+tm_list_topics(maid)
+tm_get_topic_content(topicId, maid?)
+```
+
+- 默认不暴露也不允许调用；仅在桥本地配置 `enableTopic=true` 且 VCPToolBox 与 VChat 客户端在线时可用。
+- 先用 `ts_list_agents` / `ts_list_groups` 确认注册名称与 ID，再用 `ts_list_recent_topics`（最近 5 条元数据）或 `tm_list_topics`（完整历史列表）定位真实 `topicId`，按需用 `tm_get_topic_content` 读取对话正文；`tm_get_topic_content` 与 `ts_check_topic_ownership` 省略 `maid` 时按 `topicId` 全域反查。
+- `ts_reply_to_topic` 必须提供注册 Agent 的 `senderId` 或 `senderName`：回复已有话题传目的 `topicId` 并省略 `mode`；派工新建任务话题传 `mode="new_topic"`、`sourceTopicId` 与 `targetAgent`，不传目的 `topicId`。
+- MCP 桥不暴露 `river` 自动上下文注入；需要附带代码坐标、日志或前序结论时，直接整理写入 `message`。
+
 ## 长期施工与交付
 
 1. 先读再改，优先局部 diff 和清晰函数；重构仍需保持完整、可编译的实现，不引入无关改动。

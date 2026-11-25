@@ -1,5 +1,5 @@
 import { effectiveContextHistory, isContextCheckpoint, prepareCompactionState } from './contextCompactionState.js';
-import { assembleRequestMessages, buildDefaultMessageContent } from './chatContextPipeline.js';
+import { assembleRequestMessages, buildDefaultMessageContent, normalizeAgentContextWindowSize } from './chatContextPipeline.js';
 import { readCompactionResponse } from './contextCompactionStream.js';
 import { compactionSettings, buildCompactionMessages, createCheckpointMessage } from './contextCompactionPrompts.js';
 
@@ -13,12 +13,138 @@ function serializeCompactionState(state) {
     });
 }
 
-/** Conservative local estimate, not a tokenizer count. Includes attachment text and metadata. */
+// 计数方式：以最近一条带上游用量的 assistant 为基准（上游实际计费的输入），
+// 只对它及之后新增的内容做本地估算；没有用量时整段估算。
+// 估算公式：汉字按 2 个字符、其余按 1 个字符计，再除以 3。
+const ESTIMATED_TOKEN_CHAR_DIVISOR = 3;
+const IMAGE_TOKEN_ESTIMATE = 765;
+const IMAGE_ATTACHMENT = /^image\//i;
+
+/** Local heuristic for text the provider has not counted yet. */
+export function estimateTextTokens(text) {
+    const source = String(text ?? '');
+    if (!source) return 0;
+    // Counted in a loop: a global regex match over megabytes of history allocates one string per character.
+    let chineseChars = 0;
+    for (let index = 0; index < source.length; index++) {
+        const code = source.charCodeAt(index);
+        if (code >= 0x4e00 && code <= 0x9fff) chineseChars++;
+    }
+    return Math.ceil((chineseChars + source.length) / ESTIMATED_TOKEN_CHAR_DIVISOR);
+}
+
+function estimateMessageTokens(message) {
+    const content = message?.content;
+    let text = '';
+    let images = 0;
+    if (typeof content === 'string') text = content;
+    else if (Array.isArray(content)) {
+        for (const part of content) {
+            if (typeof part === 'string') text += part;
+            else if (part?.type === 'text') text += String(part.text ?? '');
+            else if (part?.type === 'image_url') images += 1;
+        }
+    } else if (content != null) text = JSON.stringify(content);
+    if (message?.contextCompaction?.checkpoint) text += message.contextCompaction.checkpoint;
+    for (const attachment of Array.isArray(message?.attachments) ? message.attachments : []) {
+        const data = attachment?._fileManagerData || attachment;
+        text += `${attachment?.name || ''}${data?.extractedText || attachment?.extractedText || ''}`;
+        const frames = data?.imageFrames || attachment?.imageFrames;
+        if (Array.isArray(frames) && frames.length) images += frames.length;
+        else if (IMAGE_ATTACHMENT.test(String(attachment?.type || data?.type || ''))) images += 1;
+    }
+    return estimateTextTokens(text) + images * IMAGE_TOKEN_ESTIMATE;
+}
+
+function latestUsageAnchor(messages) {
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index];
+        const usage = message?.role === 'assistant' ? message.contextUsage : undefined;
+        if (Number.isFinite(usage?.inputTokens) && usage.inputTokens > 0) {
+            const prefixEstimate = Number.isFinite(usage.prefixEstimate) && usage.prefixEstimate >= 0
+                ? usage.prefixEstimate : undefined;
+            return { index, inputTokens: usage.inputTokens, prefixEstimate };
+        }
+    }
+    return null;
+}
+
+/**
+ * Local estimate of the effective messages before `index`, recorded beside a
+ * provider usage so later edits or deletions of those messages can be applied
+ * to the provider count.
+ */
+export function estimateHistoryPrefixTokens(history, index) {
+    if (!Array.isArray(history) || index <= 0) return 0;
+    return effectiveContextHistory(history.slice(0, index))
+        .reduce((total, message) => total + estimateMessageTokens(message), 0);
+}
+
+/**
+ * The usage anchor stored on an assistant reply that arrived whole (streaming off):
+ * provider input tokens plus the local estimate of the messages they covered.
+ */
+export function providerUsageAnchor(usage, history, index) {
+    if (!usage || typeof usage !== 'object' || usage.estimated === true) return undefined;
+    const inputTokens = Number(usage.inputTokens ?? usage.prompt_tokens);
+    if (!Number.isFinite(inputTokens) || inputTokens <= 0) return undefined;
+    const outputTokens = Number(usage.outputTokens ?? usage.completion_tokens);
+    return {
+        inputTokens: Math.round(inputTokens),
+        ...(Number.isFinite(outputTokens) && outputTokens >= 0 ? { outputTokens: Math.round(outputTokens) } : {}),
+        prefixEstimate: estimateHistoryPrefixTokens(history, index),
+    };
+}
+
+/**
+ * Context size in provider tokens. With a provider-reported anchor `total` is
+ * the anchor's input tokens plus a local estimate of the anchor reply and every
+ * later message; without one the system prompt and all messages are estimated.
+ * `fixed` is the part compaction cannot shrink (expanded system prompt, tool
+ * definitions, server-side injections): anchor input minus the estimated
+ * messages it covered, or the estimated system prompt without an anchor.
+ * When the anchor recorded the estimate of the messages it covered, messages
+ * edited or deleted since then are re-estimated instead of trusting the stale
+ * provider count.
+ */
+export function measureContextTokens(history, systemPrompt = '') {
+    const messages = effectiveContextHistory(history);
+    const anchor = latestUsageAnchor(messages);
+    const estimates = messages.map(estimateMessageTokens);
+    const sum = list => list.reduce((total, value) => total + value, 0);
+    if (!anchor) {
+        const fixed = estimateTextTokens(systemPrompt);
+        return { total: fixed + sum(estimates), fixed, source: 'estimate' };
+    }
+    const coveredNow = sum(estimates.slice(0, anchor.index));
+    const covered = anchor.prefixEstimate ?? coveredNow;
+    if (covered > 0 && anchor.inputTokens < covered) {
+        // The provider received less than the local estimate of these messages: the server
+        // shortened old tool results before sending, or the estimate runs high for this text.
+        // Either way the provider count is what the next request will weigh, so the covered
+        // messages are scaled to it instead of being counted at full local size.
+        return {
+            total: Math.round(coveredNow * (anchor.inputTokens / covered)) + sum(estimates.slice(anchor.index)),
+            fixed: 0,
+            source: 'provider_usage',
+        };
+    }
+    const fixed = Math.max(0, anchor.inputTokens - covered);
+    return {
+        total: fixed + coveredNow + sum(estimates.slice(anchor.index)),
+        fixed,
+        source: 'provider_usage',
+    };
+}
+
 export function estimateContextTokens(history, systemPrompt = '') {
-    const text = systemPrompt + JSON.stringify(effectiveContextHistory(history));
-    let cost = 0;
-    for (const character of text) cost += character.codePointAt(0) > 127 ? 1 : 0.3;
-    return Math.ceil(cost);
+    return measureContextTokens(history, systemPrompt).total;
+}
+
+/** True when compaction is both needed and able to bring the context under `limit`. */
+export function contextExceedsCompactableBudget(history, systemPrompt, limit) {
+    const { total, fixed } = measureContextTokens(history, systemPrompt);
+    return fixed < limit && total >= limit;
 }
 
 export function shouldCompactContext(history, agentConfig, pendingText = '') {
@@ -28,10 +154,38 @@ export function shouldCompactContext(history, agentConfig, pendingText = '') {
     if (!effective.length) return false;
     // A checkpoint alone cannot be compressed endlessly when diary retention exceeds the budget.
     if (effective.length === 1 && effective[0].contextCompaction) return false;
-    return estimateContextTokens([...effective, { role: 'user', content: pendingText }], agentConfig.systemPrompt || '') >= limit * 0.85;
+    // 不可压缩的部分已超过阈值时压缩无济于事，否则每轮都会重新压缩；交给服务端裁剪兜底。
+    return contextExceedsCompactableBudget([...effective, { role: 'user', content: pendingText }], agentConfig.systemPrompt || '', limit * 0.85);
 }
 
-/** Estimate assembled text only; encoded media bytes are not text tokens. */
+/**
+ * Hard check for sends that do not go through the full preflight (continue,
+ * regenerate, heartbeat): refuse instead of sending a request the limit cannot hold.
+ * Uses the same measurement as the compaction trigger.
+ */
+export function assertContextWithinLimit(history, agentConfig, pendingText = '') {
+    const limit = Number(agentConfig?.contextTokenLimit);
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    const effective = effectiveContextHistory(history);
+    let messages = pendingText ? [...effective, { role: 'user', content: pendingText }] : effective;
+    // A message window sends only the newest messages, so neither the older ones nor a
+    // provider count taken over the whole topic say anything about the request size.
+    const windowSize = normalizeAgentContextWindowSize(agentConfig.contextMessageWindowSize);
+    if (windowSize !== null) {
+        messages = messages.slice(-windowSize).map(({ contextUsage, ...message }) => message);
+    }
+    const { total } = measureContextTokens(messages, agentConfig.systemPrompt || '');
+    if (total > limit) {
+        throw new Error(`当前上下文估算 ${total} token，超过上限 ${limit}；请先压缩上下文、缩短内容或调整上限。`);
+    }
+}
+
+/**
+ * Estimate assembled text only; encoded media bytes are not text tokens.
+ * The assembled request only contains what this client expands. Whatever the
+ * server adds (expanded prompt variables, memory, tool definitions) is known
+ * from the latest provider usage, so the larger of the two counts is used.
+ */
 export async function preflightContextSend({
     electronAPI, agentConfig, context, history, pendingMessage,
     extraContextHistory = [], createRequestTextOptions, afterCompaction = false,
@@ -52,7 +206,12 @@ export async function preflightContextSend({
             : message.content,
     })));
     const full = await assemble([...extraContextHistory, ...history, pendingMessage]);
-    const tokens = estimate(full);
+    // A message window sends only part of the history, so the usage-anchored count of the whole topic does not apply.
+    const measured = normalizeAgentContextWindowSize(agentConfig.contextMessageWindowSize) === null
+        ? measureContextTokens([...extraContextHistory, ...history, pendingMessage], agentConfig.systemPrompt || '')
+        : { source: 'estimate', total: 0, fixed: 0 };
+    const anchored = measured.source === 'provider_usage';
+    const tokens = Math.max(estimate(full), anchored ? measured.total : 0);
     if (tokens < limit * 0.85) return { shouldCompact: false, tokens };
 
     const oldHistory = new Set(history);
@@ -60,7 +219,9 @@ export async function preflightContextSend({
         oldHistory.has(message) && !isContextCheckpoint(message));
     if (canCompact) {
         // Do not spend a compaction request if the new turn cannot fit even on its own.
-        const minimum = estimate(await assemble([pendingMessage], full.conversationSnapshot));
+        const minimum = Math.max(
+            estimate(await assemble([pendingMessage], full.conversationSnapshot)),
+            anchored ? measured.fixed + estimateMessageTokens(pendingMessage) : 0);
         if (minimum <= limit) return { shouldCompact: true, tokens };
         throw new Error(`本轮内容（含展开附件）与提示词估算 ${minimum} token，超过上限 ${limit}；请缩短内容、移除附件或调整上限。`);
     }

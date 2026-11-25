@@ -23,7 +23,23 @@ async function readChatHttpError(response) {
     return describeChatRequestError(payload, response.status);
 }
 
+/**
+ * The server refused the request before sending it upstream because it exceeds the context
+ * limit. On a stream this arrives as a normal-looking chunk; it is an error, not a reply.
+ * (A tool loop stopped half-way carries stage 'tool_loop' and stays part of the reply.)
+ */
+function contextBudgetRefusal(payload) {
+    if (payload?.vcp_context_budget?.stage !== 'outbound') return null;
+    const text = payload.choices?.[0]?.delta?.content ?? payload.choices?.[0]?.message?.content;
+    const message = typeof text === 'string' && text.trim()
+        ? text.replace(/^\s*\[ERROR\]\s*/, '').trim()
+        : '请求超过上下文上限，未发送给模型。';
+    return Object.assign(new Error(message), { isChatResponseError: true, isContextBudgetRefusal: true });
+}
+
 function chatResponseError(payload) {
+    const refusal = contextBudgetRefusal(payload);
+    if (refusal) return refusal;
     if (!payload?.error) return null;
     const failure = describeChatRequestError(payload);
     return Object.assign(new Error(failure.error), { status: failure.status, isChatResponseError: true });

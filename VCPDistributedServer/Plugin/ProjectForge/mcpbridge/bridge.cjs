@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { tools, validateArguments } = require('./tools.cjs');
 const { searchTool, createSearcher } = require('./search.cjs');
-const { createTopicClient } = require('./topic.cjs');
+const { DEFAULT_VCP_URL, topicTools, normalizeVcpUrl, createTopicClient } = require('./topic.cjs');
+const { createTopicClient: createTopicReplyClient } = require('./topicReplyClient.cjs');
 
 const INSTRUCTIONS = 'Use ProjectForge tools for source investigation and edits instead of raw file writes. First reuse an existing projectId in the configured workspace; paths are relative to its root. Use pf_search for workspace content search via native CodeSearcher (no project required), Outline/FindSymbol for definitions and bounded ReadCode; batch same-file changes in EditCode.edits against one original snapshot. Supply reason for changes. Resolve ambiguous edits using returned tickets; never guess candidates or blindly retry uncertain writes. Read projectforge_development prompt (or projectforge://instructions) for full workflow. Keep terminal, Git and LSP diagnostics for builds, tests and validation. No VCPToolCall, ink or valet fields are used.';
 const PROMPT_URI = 'projectforge://instructions';
@@ -12,7 +13,10 @@ const PROMPT_URI = 'projectforge://instructions';
 function loadConfig(filename) {
     if (!filename || !path.isAbsolute(filename)) throw new Error('--config requires an absolute JSON file path');
     const raw = JSON.parse(fs.readFileSync(filename, 'utf8').replace(/^\uFEFF/, ''));
-    const allowed = new Set(['workspaces', 'activeWorkspaceId', 'dbPath', 'binaryPath', 'maid', 'enableEval', 'enablePurge', 'enableBash', 'topic']);
+    const allowed = new Set([
+        'workspaces', 'activeWorkspaceId', 'dbPath', 'binaryPath', 'maid',
+        'enableEval', 'enablePurge', 'enableBash', 'enableTopic', 'vcpUrl', 'vcpKey', 'topic',
+    ]);
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Config must be an object');
     for (const key of Object.keys(raw)) if (!allowed.has(key)) throw new Error(`Unknown config field: ${key}`);
     if (!Array.isArray(raw.workspaces) || !raw.workspaces.length) throw new Error('Configure at least one explicit workspace');
@@ -35,14 +39,26 @@ function loadConfig(filename) {
     for (const key of ['dbPath', 'binaryPath']) {
         if (raw[key] !== undefined && (typeof raw[key] !== 'string' || !path.isAbsolute(raw[key]))) throw new Error(`${key} must be absolute`);
     }
-    for (const key of ['enableEval', 'enablePurge', 'enableBash']) if (raw[key] !== undefined && typeof raw[key] !== 'boolean') throw new Error(`${key} must be boolean`);
+    for (const key of ['enableEval', 'enablePurge', 'enableBash', 'enableTopic']) {
+        if (raw[key] !== undefined && typeof raw[key] !== 'boolean') throw new Error(`${key} must be boolean`);
+    }
     if (raw.maid !== undefined && (typeof raw.maid !== 'string' || !raw.maid.trim() || raw.maid.length > 100)) throw new Error('maid must be 1–100 characters');
+    const vcpUrl = raw.vcpUrl !== undefined ? normalizeVcpUrl(raw.vcpUrl) : DEFAULT_VCP_URL;
+    if (raw.vcpKey !== undefined && (typeof raw.vcpKey !== 'string' || !raw.vcpKey.trim() || /[\r\n\0]/.test(raw.vcpKey))) {
+        throw new Error('vcpKey must be a single-line non-empty string');
+    }
+    const envKey = typeof process.env.VCP_API_KEY === 'string' ? process.env.VCP_API_KEY.trim() : '';
+    if (envKey && /[\r\n\0]/.test(envKey)) throw new Error('VCP_API_KEY must not contain newlines or NUL');
+    const enableTopic = raw.enableTopic === true;
+    const vcpKey = raw.vcpKey !== undefined ? raw.vcpKey.trim() : envKey;
+    if (enableTopic && !vcpKey) throw new Error('enableTopic requires vcpKey or VCP_API_KEY');
     return {
         ...raw, workspaces,
         activeWorkspaceId: raw.activeWorkspaceId || workspaces.find(ws => ws.enabled).id,
         dbPath: raw.dbPath || path.resolve(__dirname, '../../../../AppData/ProjectForge/mcp-projectforge.db'),
         maid: raw.maid || 'MCP',
         enableEval: raw.enableEval === true, enablePurge: raw.enablePurge === true, enableBash: raw.enableBash === true,
+        enableTopic, vcpUrl, ...(vcpKey ? { vcpKey } : {}),
     };
 }
 
@@ -79,8 +95,13 @@ function convertResult(result) {
 
 function createBridge(config, service) {
     const searcher = createSearcher(config);
-    const topic = createTopicClient(config.topic);
-    const available = [...tools, searchTool].filter(tool =>
+    const topicReplyClient = createTopicReplyClient(config.topic);
+    const topicClient = config.enableTopic === true ? createTopicClient(config) : null;
+    const available = [
+        ...tools,
+        searchTool,
+        ...(topicClient ? topicTools : []),
+    ].filter(tool =>
         (tool.command !== 'EvalSymbol' || config.enableEval) &&
         (tool.command !== 'PurgeProjects' || config.enablePurge) &&
         (tool.command !== 'Bash' || config.enableBash === true));
@@ -98,10 +119,10 @@ function createBridge(config, service) {
         logger: console,
     });
     return {
-        listTools: () => [...available.map(({ command, ...tool }) => tool), ...(topic?.tools || [])],
+        listTools: () => [...available.map(({ command, plugin, toArgs, ...tool }) => tool), ...(topicReplyClient?.tools || [])],
         prompt,
         async call(name, args = {}) {
-            if (topic?.has(name)) return topic.call(name, args);
+            if (topicReplyClient?.has(name)) return topicReplyClient.call(name, args);
             const tool = byName.get(name);
             if (!tool) return { isError: true, content: [{ type: 'text', text: `Unknown or disabled tool: ${name}` }] };
             if (closing || pending >= 32) return { isError: true, content: [{ type: 'text', text: 'ProjectForge bridge is closing or busy; no operation admitted.' }] };
@@ -109,6 +130,7 @@ function createBridge(config, service) {
             try {
                 validateArguments(tool, args);
                 if (name === searchTool.name) return await searcher.search(args);
+                if (tool.plugin) return await topicClient.call(tool, args);
                 const result = await service.processToolCall({ ...args, command: tool.command, maid: args.maid || config.maid });
                 return convertResult(result);
             } catch (error) {
@@ -117,8 +139,12 @@ function createBridge(config, service) {
         },
         async close() {
             closing = true;
-            topic?.close();
-            const results = await Promise.allSettled([searcher.close(), service.cleanup()]);
+            topicReplyClient?.close();
+            const results = await Promise.allSettled([
+                searcher.close(),
+                ...(topicClient ? [topicClient.close()] : []),
+                service.cleanup(),
+            ]);
             const failed = results.find(result => result.status === 'rejected');
             if (failed) throw failed.reason;
         },

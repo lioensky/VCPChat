@@ -1,5 +1,6 @@
 // modules/renderer/messageContextMenu.js
 import { effectiveContextHistory, isContextCheckpoint } from '../chat/contextCompactionState.js';
+import { assertContextWithinLimit } from '../chat/contextCompactionService.js';
 import { assembleRequestMessages } from '../chat/chatContextPipeline.js';
 
 /** Creates one context-menu state owner for one MessageRenderer instance. */
@@ -1033,6 +1034,15 @@ async function handleRegenerateResponseOwned(originalAssistantMessage, admission
     }
 
     const historyForRegeneration = effectiveContextHistory(currentChatHistoryArray.slice(0, originalMessageIndex));
+    if (globalSettingsVal?.enableContextCompaction === true && currentSelectedItemVal.type === 'agent') {
+        // 先检查再截断历史：超出上限时不动现有回复。
+        try {
+            assertContextWithinLimit(historyForRegeneration, currentSelectedItemVal.config || currentSelectedItemVal);
+        } catch (error) {
+            uiHelper.showToastNotification(`重新生成未启动：${error.message}`, 'error');
+            return;
+        }
+    }
     const regenerationBaseline = structuredClone(currentChatHistoryArray);
     const messagesToRemove = currentChatHistoryArray.slice(originalMessageIndex);
 

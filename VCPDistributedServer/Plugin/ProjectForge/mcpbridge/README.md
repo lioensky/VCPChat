@@ -4,13 +4,13 @@
 
 这是直接调用插件服务的本地 stdio MCP 桥，入口、工具 Schema、配置校验和测试均位于当前目录。已通过 SDK 客户端与真实原生服务的集成测试；Zed 图形界面的连接与提示词加载仍需在客户端验证。需要 Node.js 22 或更高版本。
 
-桥通过本地 stdio 提供 MCP，直接加载上一级 `ProjectForgeService.js`，复用工程管理、原生索引、文件编辑、快照和历史能力。它不经过 VCP 后端、不要求启动 VCPDistributedServer 或 GUI，也不使用 VCP 工具调用封装。桥只负责协议、配置、工具名 / 参数适配、能力开关和结果转换，不复制一套业务实现。另提供 `pf_search`，直接经隔壁 `CodeSearcher.js` 启动平台对应的 Rust 搜索二进制，同样不经过 VCP 后端。保留手动创建工程的流程，不新增自动工程或 `--workspace-root` 模式。
+桥通过本地 stdio 提供 MCP，直接加载上一级 `ProjectForgeService.js`，复用工程管理、原生索引、文件编辑、快照和历史能力。它不经过 VCP 后端、不要求启动 VCPDistributedServer 或 GUI，也不使用 VCP 工具调用封装。桥只负责协议、配置、工具名 / 参数适配、能力开关和结果转换，不复制一套业务实现。另提供 `pf_search`，直接经隔壁 `CodeSearcher.js` 启动平台对应的 Rust 搜索二进制，同样不经过 VCP 后端。保留手动创建工程的流程，不新增自动工程或 `--workspace-root` 模式。另支持可选开启的 `TopicSponsor` / `TopicMemo` 话题工具（`enableTopic=true`），经 VCPToolBox 的 `POST /v1/human/tool` 转发至在线 VChat 实例；未开启时桥仍保持完全离线。
 
 ```text
 Zed / 其他 MCP 客户端
   → node mcpbridge/server.cjs --config /absolute/path/config.json
-  → ProjectForgeService.js
-  → 原生 projectforge_indexer 服务 + 桥独立数据库
+  ├─ ProjectForgeService.js → 原生 projectforge_indexer 服务 + 桥独立数据库（默认离线）
+  └─ topic.cjs → POST /v1/human/tool → VChat TopicSponsor / TopicMemo（仅 enableTopic=true）
 ```
 
 stdio 的 stdout 仅用于 MCP 协议消息；日志写 stderr，避免污染协议流。
@@ -53,7 +53,9 @@ npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test
   "maid": "Kerr",
   "enableEval": false,
   "enablePurge": false,
-  "enableBash": false
+  "enableBash": false,
+  "enableTopic": false,
+  "vcpUrl": "http://127.0.0.1:6005"
 }
 ```
 
@@ -63,12 +65,15 @@ npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test
 | --- | --- |
 | `workspaces` | 本地登记的工作区列表，包含稳定 `id`、`alias`、绝对 `path` 和 `enabled`；已启用根目录构成写入边界 |
 | `activeWorkspaceId` | 默认工作区 ID，指向列表中的已启用工作区；创建工程也可显式传 `workspace` |
-| `maid` | 默认操作者署名，桥在调用服务时注入；无需模型重复传入 |
+| `maid` | 默认操作者署名，桥在调用 ProjectForge 服务时注入；无需模型重复传入 |
 | `dbPath` | 可选绝对路径；省略时使用宿主仓库 `AppData/ProjectForge/mcp-projectforge.db`，**不得回退为 GUI 数据库** |
 | `binaryPath` | 可选原生服务二进制绝对路径；省略时使用宿主的平台默认路径 `ProjectForge/bin/<platform>-<arch>/projectforge_indexer[.exe]` |
 | `enableEval` | 默认 `false`；显式设为 `true` 才暴露并允许 `pf_eval_symbol` |
 | `enablePurge` | 默认 `false`；显式设为 `true` 才暴露并允许 `pf_purge_projects`，调用仍须 `confirm=true` |
 | `enableBash` | 默认 `false`；在桥的本地配置设为 `true` 后重启 MCP，再由客户端刷新工具列表 |
+| `enableTopic` | 默认 `false`；显式设为 `true` 才暴露并允许 `ts_*` / `tm_*` 话题工具，需要运行中的 VCPToolBox 与在线 VChat |
+| `vcpUrl` | 可选 HTTP(S) 服务根地址，默认 `http://127.0.0.1:6005`（不含路径、查询参数或凭据） |
+| `vcpKey` | 可选 VCP API Key；`enableTopic=true` 时必需，也可省略该字段改由环境变量 `VCP_API_KEY` 提供 |
 
 桥从 JSON 构造只读工作区门面并注入 `ProjectForgeService`，将 `dbPath` 和 `binaryPath` 映射到服务初始化选项，不从 GUI 读取工作区或依赖后端配置。这里的配置字段不等于额外工具参数。
 
@@ -76,17 +81,20 @@ npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test
 
 - **桥与 GUI 必须使用不同数据库**，避免多个原生服务进程同时持有同一数据库引发冲突。不要把 `dbPath` 指向 GUI 的 `projectforge.db`。多个独立桥实例也应各用独立数据库，而非同时共享默认文件。
 - 独立数据库意味着工程 ID、待办、票据、快照与历史独立，不自动同步到 GUI。即使数据库不同，对同一源码文件的并发写入仍可能冲突，应避免 GUI 与多个 Agent 同时施工。
-- Eval、Purge、Bash 默认从 `tools/list` 隐藏，`tools/call` 也拒绝；调用参数不能授权。
+- Eval、Purge、Bash 与 Topic（`ts_*` / `tm_*`）默认均从 `tools/list` 隐藏，`tools/call` 也拒绝；调用参数不能授权。话题工具参数统一使用 `ESCAPE` 边界包裹并拒绝控制字符与保留转义分隔符，防止请求体注入。
 - Eval 和 Bash 都不是安全沙箱，只对可信工程和 Agent 开启。Bash 以 MCP 进程的系统用户权限执行，工程工作目录不是文件系统或网络边界，写盘不生成 Forge 快照。Purge 会永久删除已软删工程的记录及快照，不能回退。
 
-### 可选 Topic 回信
+### 可选专用 Topic 回信
 
-`config.example.json` 中的 `topic` 默认关闭；省略或填错该分区不影响 `pf_*`。
-显式开启并配置合法的 `baseUrl`（如 `http://127.0.0.1:6200`）和 `tokenEnv` 后，桥会暴露
-`topic_reply`、`topic_reply_status`。工具发现不连接 VChat；只有调用时才读取环境变量中的凭据并连接宿主。
-`timeoutMs` 可选，默认 14000，允许 100–30000 毫秒。不要在配置中填写原始令牌。
-宿主离线时只有 Topic 调用失败，不会自动重试；发送状态未知时用原 `requestId` 查询。
-完整授权、迁移及停用说明见 [Topic Reply](../../../../docs/topic-reply.md)。
+上游 `enableTopic` 启用完整的 `ts_*` / `tm_*` 话题工具，经 VCPToolBox 的 `/v1/human/tool`
+转发。另有独立的 `topic` 配置分区，提供专用、限权的既有话题回信与持久回执查询；
+它不替代上游工具，也不从上游读取 `vcpUrl`、`vcpKey` 或 `VCP_API_KEY`。
+
+`topic` 默认关闭；省略或填错不影响 `pf_*`。显式开启并配置回环 `baseUrl`
+（如 `http://127.0.0.1:6200`）和 `tokenEnv` 后，桥暴露 `topic_reply`、`topic_reply_status`。
+工具发现不连接宿主；实际调用才读取指定环境变量。`timeoutMs` 默认 14000，允许 100–30000
+毫秒；不要在分区中填写原始令牌。两套工具可同时启用，按工具名各走其端点，不跨通道重试。
+专用回信状态未知时用原 `requestId` 查询。授权、迁移及停用见 [Topic Reply](../../../../docs/topic-reply.md)。
 
 ## 启动
 
@@ -144,7 +152,7 @@ node VCPDistributedServer/Plugin/ProjectForge/mcpbridge/server.cjs --config H:/V
 | 编辑与文件 | `pf_edit_code`, `pf_resolve_edit`, `pf_create_file`, `pf_remove_file`, `pf_move_file`, `pf_move_code`, `pf_copy_code` |
 | 历史与回退 | `pf_search_history`, `pf_get_node_diff`, `pf_rollback` |
 | 工程记录 | `pf_delete_projects`, `pf_restore_projects` |
-| 默认关闭 | `pf_eval_symbol`（`enableEval`），`pf_purge_projects`（`enablePurge`），`pf_bash`（`enableBash`） |
+| 默认关闭 | `pf_eval_symbol`（`enableEval`），`pf_purge_projects`（`enablePurge`），`pf_bash`（`enableBash`），`ts_*` / `tm_*`（`enableTopic`） |
 
 例如 `CreateProject → pf_create_project`，`GetNodeDiff → pf_get_node_diff`；字段仍写 `projectId`、`showLine`、`revertOnSyntaxError`、`byMaid`，而非下划线形式。
 
@@ -165,6 +173,15 @@ node VCPDistributedServer/Plugin/ProjectForge/mcpbridge/server.cjs --config H:/V
 - `contextLines` 为 0–20，`maxResults` 为 1–500；每次搜索总截止时间 60 秒、stdout 上限 8 MB、stderr 上限 64 KB、最多 4 个并发搜索。
 - 只允许已启用工作区内的相对路径。桥预检目标树并保守拒绝符号链接 / junction（真实忽略目录不深入）；超过 100000 个条目须缩小搜索范围。此预检有额外遍历成本，也无法消除恶意并发替换路径的竞态，不应视为操作系统沙箱。
 - 返回路径相对搜索起点；后续调用 ProjectForge 读写前需换算成工程根相对路径。AST 定义和符号定位仍使用 `pf_find_symbol` / `pf_outline`，不把普通内容匹配当成语义索引。
+
+### TopicSponsor 与 TopicMemo 可选话题工具
+
+仅当 `enableTopic=true` 且配置了 `vcpKey`（或环境变量 `VCP_API_KEY`）时启用，参数同样采用 MCP camelCase，桥内部映射为插件字段并通过 `POST <vcpUrl>/v1/human/tool` 调用：
+
+- **TopicSponsor（`ts_*`）**：`ts_list_agents`、`ts_list_groups`、`ts_list_recent_topics`、`ts_check_new_topics`、`ts_check_unread_messages`、`ts_check_topic_ownership`、`ts_create_topic`、`ts_reply_to_topic`。
+- **TopicMemo（`tm_*`）**：`tm_list_topics`、`tm_get_topic_content`。
+- `ts_reply_to_topic` 区分已有话题留言（传 `topicId`，省略 `mode`）与跨话题新建派工（传 `mode="new_topic"`、`sourceTopicId`、`targetAgent`，不传 `topicId`）；发言者 `senderId` 或 `senderName` 须匹配已注册 Agent。
+- `/v1/human/tool` 链路不注入 VCP 对话循环的 `river` 上下文，因此桥不暴露 `river` 字段；需要传递背景时由调用方直接写入 `message`。插件业务错误（HTTP 500 `plugin_error`）统一映射为 MCP `isError: true`。
 
 ### Instructions、Prompts 与 Resources
 
