@@ -31,6 +31,8 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admi
         ['../contextSanitizer', require('../modules/contextSanitizer.js')],
         // 真实的调用轨迹模块：没有配置记录目录时只返回空操作，不写盘
         ['../modelTrajectory', require('../modules/modelTrajectory.js')],
+        ['../chat/sleepStreamIdle', require('../modules/chat/sleepStreamIdle.js')],
+        ['../chat/sleepStreamRequests', require('../modules/chat/sleepStreamRequests.js')],
         // 真实的心情模块：没有配置时 observe 是空操作
         ['../agentMood', require('../modules/agentMood.js')],
         ['../services/attachmentDialogState', {}], ['../../Groupmodules/topicTitleManager', {}],
