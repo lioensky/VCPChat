@@ -426,6 +426,11 @@ function initialize(mainWindow, openChildWindows) {
         memoWindow.setMenu(null);
 
         const url = `file://${path.join(__dirname, '../../Memomodules/memo.html')}`;
+        memoWindow.webContents.on('will-navigate', (navEvent, navigationUrl) => {
+            if (typeof navigationUrl === 'string' && !navigationUrl.includes('Memomodules/memo.html') && !navigationUrl.includes('Memomodules\\memo.html')) {
+                navEvent.preventDefault();
+            }
+        });
         memoWindow.loadURL(url);
 
         memoWindow.once('ready-to-show', () => {

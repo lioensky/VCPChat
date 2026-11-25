@@ -353,9 +353,11 @@ function initialize(mainWindow, context) {
 
     ipcMain.on('open-image-in-new-window', async (event, imageUrl, imageTitle) => {
         const imageViewerWindow = new BrowserWindow({
-            width: 800, height: 600, minWidth: 400, minHeight: 300,
+            width: 1000, height: 800, minWidth: 600, minHeight: 500,
             title: imageTitle || '图片预览',
-            parent: mainWindow, modal: false, show: false,
+            modal: false, show: false,
+            frame: false,
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             backgroundColor: '#28282c', // Default to dark, will be updated by JS
             icon: path.join(__dirname, '..', 'assets', 'icon.png'),
             webPreferences: {
