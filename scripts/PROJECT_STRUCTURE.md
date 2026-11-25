@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-11-20 14:10:54  
+> 自动生成于：2026-11-26 03:35:05  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,22 +10,22 @@
 
 ## 文件统计
 
-- **总目录数**：251
-- **总文件数**：1823
+- **总目录数**：253
+- **总文件数**：1856
 - **文件类型数**：23
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 1132 |
-| CSS | `.css` | 161 |
-| JSON | `.json` | 158 |
+| JavaScript | `.js` | 1157 |
+| CSS | `.css` | 163 |
+| JSON | `.json` | 159 |
 | Rust | `.rs` | 137 |
 | Markdown | `.md` | 70 |
-| HTML | `.html` | 51 |
-| Python | `.py` | 29 |
-| JavaScript (CommonJS) | `.cjs` | 19 |
+| HTML | `.html` | 52 |
+| Python | `.py` | 30 |
+| JavaScript (CommonJS) | `.cjs` | 21 |
 | Batch Script | `.bat` | 10 |
-| .example | `.example` | 9 |
+| .example | `.example` | 10 |
 | TOML | `.toml` | 8 |
 | Plain Text | `.txt` | 8 |
 | VBScript | `.vbs` | 7 |
@@ -39,7 +39,7 @@
 | JavaScript (ESM) | `.mjs` | 1 |
 | SQL | `.sql` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1823** |
+| **合计** | - | **1856** |
 
 ## 目录结构树
 
@@ -551,6 +551,8 @@ VCPChat/
 │   │   ├── memoryChatRepository.js
 │   │   ├── sideChatSessionService.js
 │   │   ├── singleChatRequestOrchestrator.js
+│   │   ├── sleepStreamIdle.js
+│   │   ├── sleepStreamRequests.js
 │   │   ├── streamConsumerRegistry.js
 │   │   ├── streamCoordinator.js
 │   │   ├── streamSession.js
@@ -850,6 +852,7 @@ VCPChat/
 │   │   ├── musicGrooveBus.js
 │   │   ├── networkNotesCacheStore.js
 │   │   ├── pdfAttachmentService.js
+│   │   ├── pdfRasterizer.js
 │   │   ├── pluginAgentOperationService.js
 │   │   ├── portraitOptimizer.js
 │   │   ├── preloadPaths.js
@@ -867,6 +870,7 @@ VCPChat/
 │   │   ├── topicMessageAdmission.js
 │   │   ├── topicMessageAdmissionHost.js
 │   │   ├── topicMessageAdmissionStore.js
+│   │   ├── topicRiverQuote.js
 │   │   ├── topicSponsorDelivery.js
 │   │   ├── windowAppIds.js
 │   │   ├── windowPinService.js
@@ -1151,6 +1155,7 @@ VCPChat/
 │   ├── agentMood.js
 │   ├── appFeatures.js
 │   ├── chatManager.js
+│   ├── chatRequestError.js
 │   ├── contextSanitizer.js
 │   ├── DASP.txt
 │   ├── diagnosticsSnapshot.js
@@ -1160,6 +1165,7 @@ VCPChat/
 │   ├── filterManager.js
 │   ├── global-settings-manager.js
 │   ├── hostHooks.js
+│   ├── image-viewer.css
 │   ├── image-viewer.html
 │   ├── image-viewer.js
 │   ├── inputEnhancer.js
@@ -1794,6 +1800,22 @@ VCPChat/
 │   │   │   ├── LoomSkillService.js
 │   │   │   ├── plugin-manifest.json
 │   │   │   └── README.md
+│   │   ├── MacPowerShell/
+│   │   │   ├── gui/
+│   │   │   │   ├── PowerShellViewer.css
+│   │   │   │   ├── PowerShellViewer.html
+│   │   │   │   ├── PowerShellViewer.js
+│   │   │   │   └── preload.js
+│   │   │   ├── AdminConfirm.py
+│   │   │   ├── command-output-parser.js
+│   │   │   ├── commandCapture.js
+│   │   │   ├── commandRunStore.js
+│   │   │   ├── MacPowerShell.js
+│   │   │   ├── nativeHelperPath.js
+│   │   │   ├── plugin-manifest.json
+│   │   │   ├── terminalOutputSanitizer.js
+│   │   │   ├── test_interactive_sequence.js
+│   │   │   └── test_security_check.js
 │   │   ├── MediaShot/
 │   │   │   ├── media_shot.py
 │   │   │   ├── plugin-manifest.json
@@ -1818,10 +1840,15 @@ VCPChat/
 │   │   │   ├── command-output-parser.js
 │   │   │   ├── commandCapture.js
 │   │   │   ├── commandRunStore.js
+│   │   │   ├── commandSecurityCheck.js
 │   │   │   ├── nativeHelperPath.js
 │   │   │   ├── plugin-manifest.json
 │   │   │   ├── PowerShellExecutor.js
+│   │   │   ├── secretRedactor.js
 │   │   │   ├── terminalOutputSanitizer.js
+│   │   │   ├── test_approval_order.js
+│   │   │   ├── test_ast_idle.js
+│   │   │   ├── test_egress_refresh.js
 │   │   │   ├── test_interactive_sequence.js
 │   │   │   └── test_security_check.js
 │   │   ├── ProjectForge/
@@ -1836,8 +1863,10 @@ VCPChat/
 │   │   │   │   ├── search.cjs
 │   │   │   │   ├── search.test.cjs
 │   │   │   │   ├── server.cjs
-│   │   │   │   └── tools.cjs
+│   │   │   │   ├── tools.cjs
+│   │   │   │   └── topic.cjs
 │   │   │   ├── args.js
+│   │   │   ├── bashRunner.js
 │   │   │   ├── evalProcess.js
 │   │   │   ├── evalRust.js
 │   │   │   ├── evalSymbol.js
@@ -1852,6 +1881,9 @@ VCPChat/
 │   │   │   ├── nativeService.js
 │   │   │   ├── plugin-manifest.json
 │   │   │   ├── ProjectForgeService.js
+│   │   │   ├── queryPrimitives.js
+│   │   │   ├── queryRunner.js
+│   │   │   ├── queryWorker.cjs
 │   │   │   ├── resolvers.js
 │   │   │   ├── rustStore.js
 │   │   │   ├── serviceClient.js
@@ -1936,6 +1968,9 @@ VCPChat/
 │   │   │   ├── run_alarm.py
 │   │   │   └── set_alarm.py
 │   │   ├── VCPEverything/
+│   │   │   ├── .env.example
+│   │   │   ├── local-search-controller-linux.js
+│   │   │   ├── local-search-controller-win.js
 │   │   │   ├── local-search-controller.js
 │   │   │   ├── plugin-manifest.json
 │   │   │   └── readme.md
