@@ -6,5 +6,7 @@
   "maid": "Kerr",
   "enableEval": false,
   "enablePurge": false,
-  "enableBash": false
+  "enableBash": false,
+  "enableTopic": false,
+  "vcpUrl": "http://127.0.0.1:6005"
 }
