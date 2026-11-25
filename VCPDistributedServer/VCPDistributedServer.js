@@ -291,8 +291,12 @@ class DistributedServer {
         const connectionUrl = `${this.mainServerUrl.replace(/^http/, 'ws')}/vcp-distributed-server/VCP_Key=${this.vcpKey}`;
         console.log(`[${this.serverName}] Attempting to connect to main server at ${connectionUrl}`);
 
-        // this.ws 现在是一个纯粹的客户端实例
-        this.ws = new WebSocket(connectionUrl);
+        // this.ws 现在是一个纯粹的客户端实例（对齐主服务端 256MB maxPayload 上限）
+        const configuredMaxPayloadMB = Number(process.env.WEBSOCKET_MAX_PAYLOAD_MB);
+        const maxPayloadBytes = (Number.isFinite(configuredMaxPayloadMB) && configuredMaxPayloadMB > 0
+            ? configuredMaxPayloadMB
+            : 256) * 1024 * 1024;
+        this.ws = new WebSocket(connectionUrl, { maxPayload: maxPayloadBytes });
 
         this.ws.on('open', async () => {
             console.log(`[${this.serverName}] Successfully connected to main server.`);
