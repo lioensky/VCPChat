@@ -125,3 +125,38 @@ test('createTtsSurfaceOwner: stopPlayback 后再收到新会话音频不会错�
 
     await owner.dispose();
 });
+test('createTtsSurfaceOwner: 同会话混发 streaming 与整段块时排在同一时间线，不叠音', async () => {
+    const moduleUrl = pathToFileURL(path.resolve(__dirname, '../modules/renderer/ttsSurfaceOwner.js')).href;
+    const { createTtsSurfaceOwner } = await import(moduleUrl);
+    let playHandler = null;
+    const sources = [];
+    const owner = createTtsSurfaceOwner({
+        subscribePlay: (cb) => { playHandler = cb; return () => {}; },
+        subscribeStop: () => () => {},
+        createAudioContext: () => ({
+            currentTime: 0,
+            destination: {},
+            decodeAudioData: async () => ({ duration: 1.0 }),
+            createBufferSource: () => {
+                const src = {
+                    buffer: null, playbackRate: { value: 1 }, onended: null,
+                    startAt: null, connect() {}, start(when = 0) { this.startAt = when; }, stop() {},
+                };
+                sources.push(src);
+                return src;
+            },
+        }),
+        decodeBase64: () => new ArrayBuffer(8),
+    });
+    owner.mount();
+    playHandler({ audioData: 'AA==', msgId: 'm1', sessionId: 1, streaming: true });
+    playHandler({ audioData: 'AA==', msgId: 'm1', sessionId: 1, streaming: false });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(sources.length, 2);
+    assert.notEqual(sources[0].startAt, null);
+    assert.notEqual(sources[1].startAt, null);
+    // 第二块（整段）必须排在第一块（1s 流式）结束之后，而非 start(0) 抢跑
+    assert.ok(sources[1].startAt >= sources[0].startAt + 1.0 - 1e-6,
+        `整段块 start=${sources[1].startAt} 早于流式块结束 ${sources[0].startAt + 1.0}`);
+    await owner.dispose();
+});
