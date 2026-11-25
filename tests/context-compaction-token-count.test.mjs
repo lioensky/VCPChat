@@ -180,3 +180,17 @@ test('the send preflight counts server-side overhead known from provider usage',
     // 设了消息窗口时只发送部分历史，整段话题的用量基准不适用。
     assert.ok((await run(4000, { contextMessageWindowSize: 1 })).tokens < 100);
 });
+
+test('message window: the hard check measures only the messages that will be sent', async () => {
+    const { assertContextWithinLimit } = await import('../modules/chat/contextCompactionService.js');
+    const history = [];
+    for (let i = 0; i < 40; i++) {
+        history.push({ role: 'user', content: 'q'.repeat(288) });
+        history.push({ role: 'assistant', content: 'a'.repeat(288), contextUsage: { inputTokens: 5000 + i * 200 } });
+    }
+    // The whole topic is far over the limit, with or without the provider count.
+    assert.throws(() => assertContextWithinLimit(history, { contextTokenLimit: 3000 }, 'next'), /超过上限 3000/);
+    // Only the newest 10 messages are sent: about 1000 tokens.
+    assert.doesNotThrow(() => assertContextWithinLimit(history, { contextTokenLimit: 3000, contextMessageWindowSize: 10 }, 'next'));
+    assert.throws(() => assertContextWithinLimit(history, { contextTokenLimit: 800, contextMessageWindowSize: 10 }, 'next'), /超过上限 800/);
+});

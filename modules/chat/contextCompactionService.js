@@ -135,9 +135,14 @@ export function assertContextWithinLimit(history, agentConfig, pendingText = '')
     const limit = Number(agentConfig?.contextTokenLimit);
     if (!Number.isFinite(limit) || limit <= 0) return;
     const effective = effectiveContextHistory(history);
-    const { total } = measureContextTokens(
-        pendingText ? [...effective, { role: 'user', content: pendingText }] : effective,
-        agentConfig.systemPrompt || '');
+    let messages = pendingText ? [...effective, { role: 'user', content: pendingText }] : effective;
+    // A message window sends only the newest messages, so neither the older ones nor a
+    // provider count taken over the whole topic say anything about the request size.
+    const windowSize = normalizeAgentContextWindowSize(agentConfig.contextMessageWindowSize);
+    if (windowSize !== null) {
+        messages = messages.slice(-windowSize).map(({ contextUsage, ...message }) => message);
+    }
+    const { total } = measureContextTokens(messages, agentConfig.systemPrompt || '');
     if (total > limit) {
         throw new Error(`当前上下文估算 ${total} token，超过上限 ${limit}；请先压缩上下文、缩短内容或调整上限。`);
     }
