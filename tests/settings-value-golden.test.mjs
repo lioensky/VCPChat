@@ -254,6 +254,8 @@ function pick(rng, pool) {
 function fillFormRandomly(form, rng) {
     const inputs = form.querySelectorAll('input, textarea, select');
     for (const control of inputs) {
+        // The new field is covered separately; preserve the historical seed sequence.
+        if (control.id === 'contextCompactionFallbackModel') continue;
         const type = control.type;
         if (type === 'file' || type === 'button' || type === 'submit' || control.disabled) continue;
         if (type === 'checkbox') {
@@ -318,7 +320,7 @@ function historicalPayload(payload) {
     delete profile.toolExpansion;
     delete profile.toolBubbleMotion;
     const historical = {...payload, appearanceProfile: profile};
-    for (const key of ['enableContextCompaction', 'contextCompactionModel', 'contextCompactionPrompt', 'contextCompactionSendPrompt', 'contextCompactionMainPrompt']) {
+    for (const key of ['enableContextCompaction', 'contextCompactionModel', 'contextCompactionFallbackModel', 'contextCompactionPrompt', 'contextCompactionSendPrompt', 'contextCompactionMainPrompt']) {
         delete historical[key];
     }
     return historical;
@@ -498,9 +500,10 @@ test('值语义通道：rust/论坛/头像字段不进全量载荷，通道清�
 });
 
 
-test('上下文压缩设置独立保存模型、引擎提示词与两类发送提示词', () => {
+test('上下文压缩设置独立保存主备模型、引擎提示词与两类发送提示词', () => {
     form.querySelector('#enableContextCompaction').checked = true;
     form.querySelector('#contextCompactionModel').value = '  compressor-model  ';
+    form.querySelector('#contextCompactionFallbackModel').value = '  long-context-model  ';
     const values = {
         contextCompactionPrompt: '  引擎职责\n只输出快照  ',
         contextCompactionSendPrompt: '  压缩模型专用 {{conversation_history}}  ',
@@ -510,5 +513,6 @@ test('上下文压缩设置独立保存模型、引擎提示词与两类发送�
     const payload = collectSettings(schemaSurfaceSections(), { form, ...makeScope(baseCurrentSettings()) });
     assert.equal(payload.enableContextCompaction, true);
     assert.equal(payload.contextCompactionModel, 'compressor-model');
+    assert.equal(payload.contextCompactionFallbackModel, 'long-context-model');
     for (const [key, value] of Object.entries(values)) assert.equal(payload[key], value);
 });

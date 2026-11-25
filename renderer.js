@@ -1199,8 +1199,6 @@ mainChatSettingsPresentationOwner.configureStartup({
        // Emoticon URL fixer is now initialized within messageRenderer
         topicSelectionReadiness.setReady(true);
 
-        chatAPI.toggleSelectionListener(!!getGlobalSettings().assistantEnabled);
-
         const pendingTopicSelection = topicSelectionReadiness.takePending();
         if (pendingTopicSelection && chatManager) {
             const pending = pendingTopicSelection;

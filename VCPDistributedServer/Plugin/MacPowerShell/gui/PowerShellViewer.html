@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VCP PowerShell Terminal</title>
+    <!-- 引入 xterm.js 的核心样式 -->
+    <link rel="stylesheet" href="../../../../node_modules/xterm/css/xterm.css" />
+    <!-- 引入我们的自定义样式 -->
+   <!-- 静态链接所有主题定义 -->
+   <link rel="stylesheet" href="../../../../styles/themes.css">
+   <!-- 修正路径: 从 gui/ 返回到根目录需要上溯四级 -->
+   <link rel="stylesheet" href="PowerShellViewer.css" />
+</head>
+<body>
+    <!-- 自定义标题栏 -->
+    <div id="custom-title-bar">
+        <div class="title-text-container">
+            <span id="window-title-text" class="title">VCP PowerShell Terminal</span>
+        </div>
+        <div class="window-controls">
+            <button id="minimize-btn" class="window-control-btn" title="最小化">
+                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line></svg>
+            </button>
+            <button id="maximize-btn" class="window-control-btn" title="最大化">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path></svg>
+            </button>
+            <button id="close-btn" class="window-control-btn" title="关闭">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor" stroke-width="1.2"></path></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- 内容包装器，用于实现磨砂玻璃效果 -->
+    <div id="content-wrapper">
+        <!-- 静态字符画容器 -->
+        <pre id="ascii-art-container">
+   ███╗   ██╗ ██████╗ ██████╗ ██████╗  █████
+   ████╗  ██║██╔═══██╗██╔══██╗██╔══██╗██╔══██╗
+   ██╔██╗ ██║██║   ██║██████╔╝██║  ██║███████║
+   ██║╚██╗██║██║   ██║██╔══██╗██║  ██║██╔══██║
+   ██║ ╚████║╚██████╔╝██║  ██║██████╔╝██║  ██║
+   ╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝
+         Welcome to V C P  •  v1.2.3
+        </pre>
+        <!-- 终端将在这个容器里被创建 -->
+        <div id="terminal-container"></div>
+    </div>
+
+    <!-- 命令输入区域 -->
+    <div id="input-area">
+        <textarea id="command-input" placeholder="在这里输入命令... (Shift+Enter 换行)" rows="1"></textarea>
+        <button id="send-button">执行</button>
+    </div>
+
+    <!-- 终端右键菜单 -->
+    <div id="terminal-context-menu" class="terminal-context-menu" hidden>
+        <button type="button" class="context-menu-item" data-action="copy">复制</button>
+        <button type="button" class="context-menu-item" data-action="paste">粘贴</button>
+        <button type="button" class="context-menu-item" data-action="selectAll">全选</button>
+        <div class="context-menu-separator"></div>
+        <button type="button" class="context-menu-item" data-action="clear">清屏</button>
+        <button type="button" class="context-menu-item" data-action="interrupt">中断命令 Ctrl+C</button>
+        <button type="button" class="context-menu-item" data-action="refit">重新适配窗口</button>
+    </div>
+
+    <!-- 引入 xterm.js 及其插件 -->
+    <script src="../../../../node_modules/xterm/lib/xterm.js"></script>
+    <script src="../../../../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+
+    <!-- 引入我们的终端逻辑脚本 -->
+    <script src="PowerShellViewer.js"></script>
+</body>
+</html>

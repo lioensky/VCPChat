@@ -274,6 +274,7 @@ class SettingsManager extends EventEmitter {
             topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
             enableContextCompaction: false,
             contextCompactionModel: '',
+            contextCompactionFallbackModel: '',
             contextCompactionPrompt: '',
             contextCompactionSendPrompt: '',
             contextCompactionMainPrompt: '',
@@ -459,6 +460,26 @@ class SettingsManager extends EventEmitter {
         }
     }
 
+    // Called under the settings lock. Do not read/rotate durable settings or publish a workspace event.
+    async persistSessionOperations(ops) {
+        if (!Array.isArray(ops) || !ops.length || ops.some(op =>
+            op?.op !== 'set' || !Array.isArray(op.path) || op.path.length !== 1 ||
+            !SESSION_KEYS.includes(op.path[0]) || !(typeof op.value === 'string' || op.value === null))) {
+            throw new TypeError('Invalid session-only operation');
+        }
+        let state;
+        try {
+            state = JSON.parse(await fs.readFile(this.sessionPath, 'utf8'));
+            if (!state || typeof state !== 'object' || Array.isArray(state)) throw new TypeError('Invalid session state');
+        } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+            state = {};
+        }
+        for (const op of ops) state[op.path[0]] = op.value;
+        await replaceFile(this.sessionPath, `${JSON.stringify(state, null, 2)}\n`);
+        this.clearCache();
+    }
+
     // Any parseable backup is a real earlier config; always better than defaults.
     async readBackup() {
         try { return this.parseSettings(await fs.readFile(this.backupPath, 'utf8')); }
@@ -495,7 +516,12 @@ class SettingsManager extends EventEmitter {
                 return { ...recovered };
             }
             // Read-only callers may display defaults; updates are guarded by readForUpdate().
-            if (error.code === 'ENOENT') return { ...this.defaultSettings };
+            if (error.code === 'ENOENT') {
+                const settings = { ...this.defaultSettings };
+                const session = await this.readSessionState();
+                for (const key of SESSION_KEYS) if (session && Object.hasOwn(session, key)) settings[key] = session[key];
+                return settings;
+            }
             console.error('Error reading settings and no valid backup:', error);
             throw new Error(`Settings file corrupted and no valid backup found: ${error.message}`);
         }
@@ -510,6 +536,7 @@ class SettingsManager extends EventEmitter {
         if (!base) {
             const recovered = await this.readBackup();
             if (recovered) {
+                console.warn(`[SettingsManager] Durable update using backup; main read failed (${mainError?.code || mainError?.name || 'unknown'}).`);
                 base = recovered;
             } else {
                 const missing = mainError?.code === 'ENOENT';
@@ -598,6 +625,11 @@ class SettingsManager extends EventEmitter {
 
         try {
             lockToken = await this.acquireLock();
+            if (options.sessionOnly === true) {
+                await this.persistSessionOperations(updater?.__vcpSettingsOps);
+                resolve({ success: true, status: 'success', sessionOnly: true });
+                return;
+            }
 
             // CAS must compare against the bytes currently protected by this
             // lock, never a renderer/process cache that may be stale.

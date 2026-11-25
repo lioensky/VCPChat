@@ -985,7 +985,7 @@ export const tools = {
     },
     'TopicSponsor': {
         displayName: '话题发起人 (TopicSponsor)',
-        description: '单聊与群聊地址簿发现、话题创建、历史审阅及跨话题留言协同。[宿主直连服务: TopicSponsor]',
+        description: '单聊与群聊地址簿、跨话题留言和独立子任务派工；历史读取使用 TopicMemo。[宿主直连服务: TopicSponsor]',
         commands: {
             'ListAgents': {
                 description: '列出所有单聊伙伴 (Agent) 的标准名称与 ID',
@@ -1010,13 +1010,6 @@ export const tools = {
                     { name: 'initial_message', type: 'textarea', required: true, placeholder: '第一句话' }
                 ]
             },
-            'ReadUnlockedTopics': {
-                description: '读取未锁定话题及消息历史',
-                params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '目标 Agent 或群组完整名称/ID (如：小克)' },
-                    { name: 'include_read', type: 'select', options: ['false', 'true'], description: '是否包含已读' }
-                ]
-            },
             'CheckNewTopics': {
                 description: '检查最近几天的新话题',
                 params: [
@@ -1031,12 +1024,16 @@ export const tools = {
                 ]
             },
             'ReplyToTopic': {
-                description: '向指定单聊或群聊话题投递回复',
+                description: '给已有话题留言，或从当前话题派出独立子任务',
                 params: [
-                    { name: 'topic_id', type: 'text', required: true, placeholder: '目标话题 topic_xxx' },
-                    { name: 'message', type: 'textarea', required: true, placeholder: '要投递的发言内容' },
-                    { name: 'sender_name', type: 'text', required: true, placeholder: '发言者名称 (如：小克)' },
-                    { name: 'source_topic_id', type: 'text', required: false, placeholder: '可选：来源话题ID，附带回信座标' }
+                    { name: 'mode', type: 'select', options: ['', 'new_topic'], description: '留空回复，new_topic 派工' },
+                    { name: 'topic_id', type: 'text', required: false, placeholder: '回复用：目标话题 ID' },
+                    { name: 'target_agent', type: 'text', required: false, placeholder: '派工用：Agent ID、全名或简称' },
+                    { name: 'topic_name', type: 'text', required: false, placeholder: '派工用：可选标题' },
+                    { name: 'flowlock', type: 'select', options: ['', 'true'], description: '派工用：首轮完成后在空闲时进入心流' },
+                    { name: 'source_topic_id', type: 'text', required: false, placeholder: '派工必填：当前单聊或群聊的 ID' },
+                    { name: 'message', type: 'textarea', required: true, placeholder: '留言或任务正文' },
+                    { name: 'sender_name', type: 'text', required: true, placeholder: '发言者名称 (如：小克)' }
                 ]
             },
             'CheckTopicOwnership': {
@@ -1045,20 +1042,6 @@ export const tools = {
                     { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx' },
                     { name: 'caller_name', type: 'text', required: true, placeholder: '调用者名' },
                     { name: 'maid', type: 'text', required: false, placeholder: '可选：目标 Agent 或群组名（省略则自动寻址）' }
-                ]
-            },
-            'ListUnlockedTopics': {
-                description: '列出所有未锁定话题',
-                params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '目标 Agent 或群组完整名称/ID (如：小克)' }
-                ]
-            },
-            'ReadTopicContent': {
-                description: '读取单聊或群聊话题完整内容',
-                params: [
-                    { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx 或 group_topic_xxx' },
-                    { name: 'maid', type: 'text', required: false, placeholder: '可选：目标 Agent 或群组名（省略则自动反查）' },
-                    { name: 'format', type: 'select', options: ['markdown', 'json', 'raw'], description: '返回格式' }
                 ]
             }
         }

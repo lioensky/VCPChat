@@ -419,7 +419,7 @@ test('smooth stream terminal stops queued rendering and releases every runtime o
 test('tool-request-first stream falls back to direct DOM projection when morphdom rejects a frame', async () => {
     const createStreamProjection = await loadFactory();
     const dom = new JSDOM(
-        '<!doctype html><div id="chat"><article class="message-item" data-message-id="tool-first"><div class="md-content"><span class="thinking-indicator">思考中...</span></div></article></div>',
+        '<!doctype html><div id="chat"><article class="message-item" data-message-id="tool-first"><div class="md-content"><span class="thinking-indicator">思考中</span></div></article></div>',
         { url: 'https://vcpchat.local/', pretendToBeVisual: true }
     );
     const projection = createStreamProjection();
@@ -799,7 +799,7 @@ test('a live stream frame reclaims the final message floor after a late history 
         node.className = `message-item${message.isThinking ? ' thinking' : ''}`;
         node.dataset.messageId = message.id;
         node.innerHTML = message.isThinking
-            ? '<div class="md-content"><span class="thinking-indicator">思考中...</span></div>'
+            ? '<div class="md-content"><span class="thinking-indicator">思考中</span></div>'
             : '<div class="md-content"></div>';
         root.appendChild(node);
         return node;
@@ -975,6 +975,101 @@ test('navigation during terminal history await releases runtime without writing 
         assert.equal(renders, 0);
         assert.deepEqual(normalizeDiagnostics(projection), emptyDiagnostics);
     } finally {
+        await projection.dispose();
+        dom.window.close();
+    }
+});
+
+for (const smooth of [true, false]) {
+    test(`tool wait parks all frames and wakes on receipt (smooth=${smooth})`, async () => {
+        const factory = await loadFactory();
+        const dom = new JSDOM('<div id="chat"><article class="message-item" data-message-id="wait"><div class="md-content"></div></article></div>', { pretendToBeVisual: true });
+        const frames = new Map();
+        let sequence = 0;
+        dom.window.requestAnimationFrame = fn => { frames.set(++sequence, fn); return sequence; };
+        dom.window.cancelAnimationFrame = id => frames.delete(id);
+        const drain = () => {
+            for (let i = 1; i <= 20 && frames.size; i++) {
+                const [[id, fn]] = frames;
+                frames.delete(id);
+                fn(i * 40);
+            }
+            assert.equal(frames.size, 0, 'no idle animation frame is retained');
+        };
+        const projection = factory();
+        projection.attachStreamProjection(createDependencies(dom, {
+            globalSettingsRef: { get: () => ({ enableSmoothStreaming: smooth }) },
+            parseTail: text => text,
+        }));
+        try {
+            const msg = { id: 'wait', agentId: 'visible-agent', topicId: 'visible-topic' };
+            await projection.startStreamingMessage(msg);
+            projection.appendStreamChunk(msg.id, 'waiting', msg);
+            drain();
+            assert.equal(projection.getDiagnostics().renderTimers, 0);
+            assert.equal(projection.isMessageActive(msg.id), true);
+            projection.appendStreamChunk(msg.id, ' receipt', msg);
+            assert.equal(frames.size, 1);
+            drain();
+            assert.equal(dom.window.document.querySelector('.md-content').textContent, 'waiting receipt');
+        } finally {
+            await projection.dispose();
+            dom.window.close();
+        }
+    });
+}
+
+test('placeholder rejection releases a terminal waiting on fallback initialization', async () => {
+    const factory = await loadFactory();
+    const dom = new JSDOM('<div id="chat"></div>');
+    const projection = factory();
+    const rendering = terminalGate(), entered = terminalGate();
+    projection.attachStreamProjection(createDependencies(dom, {
+        renderMessage: () => { entered.resolve(); return rendering.promise; },
+    }));
+    try {
+        const msg = { id: 'bad-placeholder', agentId: 'visible-agent', topicId: 'visible-topic' };
+        const start = projection.startStreamingMessage(msg);
+        await entered.promise;
+        const end = projection.projectStreamTerminal(msg.id, 'completed', msg);
+        await Promise.resolve();
+        assert.equal(projection.getDiagnostics().pendingFinalizations, 1);
+        rendering.reject(new Error('controlled placeholder rejection'));
+        assert.deepEqual(await Promise.all([start, end]), [null, null]);
+        assert.deepEqual(normalizeDiagnostics(projection), emptyDiagnostics);
+    } finally {
+        await projection.dispose();
+        dom.window.close();
+    }
+});
+
+test('a delayed reconcile cannot admit a finished stream or displace its retry', async () => {
+    const factory = await loadFactory();
+    const dom = new JSDOM('<div id="chat"></div>');
+    const projection = factory();
+    let visible = false;
+    const gate = terminalGate(), entered = terminalGate();
+    projection.attachStreamProjection(createDependencies(dom, {
+        viewAuthority: { isCurrent: () => visible },
+        renderMessage: async () => { entered.resolve(); await gate.promise; return null; },
+    }));
+    try {
+        const identity = { itemType: 'agent', itemId: 'visible-agent', topicId: 'visible-topic' };
+        const msg = { agentId: identity.itemId, topicId: identity.topicId, streamOperationId: 'first' };
+        for (const id of ['slow', 'finished', 'retry']) await projection.startStreamingMessage({ ...msg, id });
+        visible = true;
+        const reconciling = projection.reconcileConversation(identity);
+        await entered.promise;
+        visible = false;
+        await projection.projectStreamTerminal('finished', 'completed', msg, { fullResponse: 'done' });
+        await projection.startStreamingMessage({ ...msg, id: 'retry', streamOperationId: 'second' });
+        visible = true;
+        gate.resolve();
+        await reconciling;
+        assert.equal(projection.isMessageActive('finished'), false);
+        assert.equal(projection.snapshotConversation(identity).find(m => m.messageId === 'retry').streamOperationId, 'second');
+    } finally {
+        gate.resolve();
         await projection.dispose();
         dom.window.close();
     }

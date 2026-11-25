@@ -52,7 +52,8 @@ npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test
   "dbPath": "H:/VCP/VCPMain/VCPChat/AppData/ProjectForge/mcp-projectforge.db",
   "maid": "Kerr",
   "enableEval": false,
-  "enablePurge": false
+  "enablePurge": false,
+  "enableBash": false
 }
 ```
 
@@ -67,6 +68,7 @@ npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test
 | `binaryPath` | 可选原生服务二进制绝对路径；省略时使用宿主的平台默认路径 `ProjectForge/bin/<platform>-<arch>/projectforge_indexer[.exe]` |
 | `enableEval` | 默认 `false`；显式设为 `true` 才暴露并允许 `pf_eval_symbol` |
 | `enablePurge` | 默认 `false`；显式设为 `true` 才暴露并允许 `pf_purge_projects`，调用仍须 `confirm=true` |
+| `enableBash` | 默认 `false`；在桥的本地配置设为 `true` 后重启 MCP，再由客户端刷新工具列表 |
 
 桥从 JSON 构造只读工作区门面并注入 `ProjectForgeService`，将 `dbPath` 和 `binaryPath` 映射到服务初始化选项，不从 GUI 读取工作区或依赖后端配置。这里的配置字段不等于额外工具参数。
 
@@ -74,8 +76,8 @@ npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test
 
 - **桥与 GUI 必须使用不同数据库**，避免多个原生服务进程同时持有同一数据库引发冲突。不要把 `dbPath` 指向 GUI 的 `projectforge.db`。多个独立桥实例也应各用独立数据库，而非同时共享默认文件。
 - 独立数据库意味着工程 ID、待办、票据、快照与历史独立，不自动同步到 GUI。即使数据库不同，对同一源码文件的并发写入仍可能冲突，应避免 GUI 与多个 Agent 同时施工。
-- `enableEval=false` / `enablePurge=false` 时，不仅从 `tools/list` 隐藏相应工具，`tools/call` 也必须拒绝，不能只靠提示词约束。
-- Eval 会执行真实工程代码，不是安全沙箱；只对可信工程显式开启。Purge 会永久删除已软删工程的记录及快照，不能回退。
+- Eval、Purge、Bash 默认从 `tools/list` 隐藏，`tools/call` 也拒绝；调用参数不能授权。
+- Eval 和 Bash 都不是安全沙箱，只对可信工程和 Agent 开启。Bash 以 MCP 进程的系统用户权限执行，工程工作目录不是文件系统或网络边界，写盘不生成 Forge 快照。Purge 会永久删除已软删工程的记录及快照，不能回退。
 
 ## 启动
 
@@ -123,22 +125,27 @@ node VCPDistributedServer/Plugin/ProjectForge/mcpbridge/server.cjs --config H:/V
 
 ### Tools
 
-每个原命令对应一个工具：名称为 `pf_` + snake_case，参数保留原 camelCase。桥内部映射回原命令，调用方不传 `command`，也没有通用执行任意命令的工具。完整字段以 `tools/list` 的 inputSchema 为准；开发用法见 [MCPPrompt.md](./MCPPrompt.md)，这里不重复整套 schema。
+每个原命令对应一个工具：名称为 `pf_` + snake_case，参数保留原 camelCase。桥内部映射回原命令，调用方不传 `command`。完整字段以 `tools/list` 的 inputSchema 为准；开发用法见 [`MCPPrompt.md`](./MCPPrompt.md)。
 
 | 类别 | 工具 |
 | --- | --- |
 | 工程与进度 | `pf_list_workspaces`, `pf_create_project`, `pf_list_projects`, `pf_search_projects`, `pf_get_project`, `pf_update_todos`, `pf_submit_report` |
-| 读取与定位 | `pf_read_code`, `pf_outline`, `pf_find_symbol`, `pf_trace` |
+| 读取与定位 | `pf_read_code`, `pf_outline`, `pf_find_symbol`, `pf_trace`, `pf_query` |
 | 原生内容搜索 | `pf_search`（CodeSearcher，无需 `projectId`） |
 | 编辑与文件 | `pf_edit_code`, `pf_resolve_edit`, `pf_create_file`, `pf_remove_file`, `pf_move_file`, `pf_move_code`, `pf_copy_code` |
 | 历史与回退 | `pf_search_history`, `pf_get_node_diff`, `pf_rollback` |
 | 工程记录 | `pf_delete_projects`, `pf_restore_projects` |
-| 默认关闭 | `pf_eval_symbol`（`enableEval`），`pf_purge_projects`（`enablePurge`） |
+| 默认关闭 | `pf_eval_symbol`（`enableEval`），`pf_purge_projects`（`enablePurge`），`pf_bash`（`enableBash`） |
 
 例如 `CreateProject → pf_create_project`，`GetNodeDiff → pf_get_node_diff`；字段仍写 `projectId`、`showLine`、`revertOnSyntaxError`、`byMaid`，而非下划线形式。
 
 `pf_edit_code` 支持单步原字段和多步 `edits` 数组，**不是 `steps`**。桥将数组适配到现有服务的编辑契约，保留同一原始快照定位、重叠拒绝、atomic / bestEffort 和歧义票据语义，不循环执行多个独立写入来模拟批处理。默认 `maid` 在进入服务前注入。
 
+### Query 与 Bash
+
+- `pf_query` 默认可用。传工程 ID 和可异步执行的 JS 函数体，使用 `q` 组合读取、搜索、符号和链路查询；超时默认 10 秒，上限 30 秒。查询结果在 `structuredContent.value`，沿用服务的输出截断规则。
+- `pf_bash` 只接受可写工程。传工程 ID 和脚本，可选工程内的 `workdir`（默认工程根）、`timeoutMs`（默认 30000，上限 110000）与 `maxBytes`（默认 65536，桥限制为 1048576）。Windows 需要可发现的 Git Bash；也可在 MCP 客户端的进程环境将 `PF_BASH` 指向 Bash 的绝对路径。
+- Bash 返回独立的 stdout、stderr、退出码与超时／截断信息；非零退出、超时、启动失败等结果标记为 MCP 错误，仍保留进程结果（如果已返回）。失败不代表没有副作用，不要盲目重试。
 ### CodeSearcher 原生搜索
 
 `pf_search` 输入：`query` 必填，`workspace`、`path`、`include`、`isRegex`、`caseSensitive`、`wholeWord`、`contextLines`、`maxResults` 可选。字段保持 MCP camelCase，桥负责转换成插件的 snake_case 参数。
@@ -167,14 +174,14 @@ node VCPDistributedServer/Plugin/ProjectForge/mcpbridge/server.cjs --config H:/V
 ## 验收与已知边界
 
 - 安装桥依赖、编译原生服务后，能以 `node …/server.cjs --config …/config.json` 完成 stdio MCP 初始化，无 VCP 后端或 GUI 进程依赖。
-- `tools/list` 覆盖以上命令且字段一致；默认隐藏 Eval / Purge，直接调用也拒绝；开启后仍执行原服务校验。
+- `tools/list` 覆盖以上命令且字段一致；默认隐藏 Eval / Purge / Bash，直接调用也拒绝；开启后仍执行原服务校验。
 - 临时工作区与独立数据库中验证工程创建、读取、多步 `edits`、diff、回退和默认署名；不使用真实工程进行破坏性冒烟测试。
 - 测试单步 / 多步参数校验、原快照坐标、重叠拒绝和歧义票据，确保不是多次独立写入。
 - 验证 prompt 与 resource 文本均等于 `MCPPrompt.md` 全文；初始化仅给短规则；stdout 无日志。
 - 运行 `npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test`，再在 Zed 检查工具发现与开发 prompt 加载。
 
-默认只返回插件的可读文本和原生 MCP 图片 / 音频，不把重复源码和快照整体塞入模型上下文。启用 Eval 后，其 typed-v1 值和执行证据另通过 `structuredContent` 保留。视频不能作为 MCP 内联视频返回，桥会明确提示使用外部查看器；不会获取外部媒体 URL。
+桥返回插件的可读文本和原生 MCP 图片 / 音频，不把重复源码和快照整体塞入模型上下文。Query 结果和 Eval / Bash 的执行证据另通过 `structuredContent` 保留。视频不能作为 MCP 内联视频返回，桥会明确提示使用外部查看器；不会获取外部媒体 URL。
 
-服务关闭会等待已接纳的操作排空，不进行盲目写重试。客户端强杀进程仍可能导致结果未知，应检查工程历史和磁盘内容后再决定下一步。
+服务关闭会取消活动的 Query / Bash，并等待服务清理；已发生的 Bash 写入不会被撤销。桥不进行盲目写重试。客户端强杀进程仍可能导致结果未知，应检查工程历史和磁盘内容后再决定下一步。
 
 现有插件的 MoveCode / CopyCode 在某些歧义结果中未渲染完整候选；桥不猜测候选。遇到这种结果，应使用 Outline / ReadCode 明确范围后重新调用。EditCode 的歧义票据链路不受此限制。

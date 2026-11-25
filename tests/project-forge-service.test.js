@@ -10,9 +10,12 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const Database = require('better-sqlite3');
 const { ProjectServiceClient, MAX_FRAME_BYTES } = require('../VCPDistributedServer/Plugin/ProjectForge/serviceClient');
+const { resolveDefaultBinaryPath } = require('../VCPDistributedServer/Plugin/ProjectForge/indexerClient');
 
-const binaryPath = process.env.PF_SERVICE_BINARY || path.resolve(__dirname, '../rust_projectforge_indexer/target/debug',
-    process.platform === 'win32' ? 'projectforge_indexer.exe' : 'projectforge_indexer');
+const binName = process.platform === 'win32' ? 'projectforge_indexer.exe' : 'projectforge_indexer';
+const deployedBinary = resolveDefaultBinaryPath();
+const debugBinary = path.resolve(__dirname, '../rust_projectforge_indexer/target/debug', binName);
+const binaryPath = process.env.PF_SERVICE_BINARY || (fs.existsSync(deployedBinary) ? deployedBinary : debugBinary);
 const requireBinary = process.env.PF_SERVICE_REQUIRE_BINARY === '1';
 if (requireBinary && !fs.existsSync(binaryPath)) throw new Error(`Required Rust binary missing: ${binaryPath}`);
 const hasBinary = fs.existsSync(binaryPath);

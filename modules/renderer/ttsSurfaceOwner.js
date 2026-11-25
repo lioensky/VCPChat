@@ -175,12 +175,10 @@ export function createTtsSurfaceOwner({
                 sessionId = incomingSession;
             }
             if (!ensureAudioContext()) return;
-            if (streaming) {
-                scheduleStreamingChunk({ audioData, msgId, playbackRate }, generation);
-                return;
-            }
-            queue.push({ audioData, msgId, playbackRate });
-            void processQueue();
+            // 同一会话可能混发 streaming(网络SSE) 与整段(缓存命中/本地SoVITS)块；
+            // 两种都排进同一条音频时钟，避免整段块 start(0) 抢跑叠音。
+            void streaming;
+            scheduleStreamingChunk({ audioData, msgId, playbackRate }, generation);
         }));
         unsubscribers.push(subscribeStop(() => stopPlayback()));
     };

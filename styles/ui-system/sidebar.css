@@ -185,6 +185,36 @@
         flex: 1;
     }
 
+    html .vcp-ui-scope .topic-position-icon {
+        color: var(--vcp-ui-text-2);
+        display: inline-flex;
+        --vcp-ui-icon-size: 12px;
+    }
+
+    html .vcp-ui-scope .topic-sort-bell {
+        position: relative;
+    }
+
+    html .vcp-ui-scope .topic-sort-bell:not([data-mode="activity"]) .bell-ringing,
+    html .vcp-ui-scope .topic-sort-bell[data-mode="activity"] .bell-quiet {
+        display: none;
+    }
+
+    html body .vcp-ui-scope #topicSortMode[data-mode="activity"] {
+        color: var(--vcp-ui-accent);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 12%, transparent);
+    }
+
+    html .vcp-ui-scope .topic-sort-bell[data-mode="manual"]::after {
+        content: "";
+        position: absolute;
+        bottom: 4px;
+        width: 7px;
+        height: 2px;
+        border-radius: 2px;
+        background: currentColor;
+    }
+
     html .vcp-ui-scope .next-ui-create-topic-trigger {
         min-width: 0;
         flex: 1;

@@ -13,7 +13,7 @@ const buildMessage = event => {
         admissionToken: context.admissionToken,
         avatarUrl: context.avatarUrl,
         avatarColor: context.avatarColor,
-        content: event.type === 'agent_thinking' ? '思考中...' : '',
+        content: event.type === 'agent_thinking' ? '思考中' : '',
         timestamp: Date.now(),
         isThinking: event.type === 'agent_thinking',
         isGroupMessage: context.isGroupMessage || false,
@@ -124,7 +124,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
                 context,
                 error: event.outcome?.transport?.error || event.outcome?.persistence?.error || null,
             });
-            if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context });
+            if (event.type === 'failed') capabilities.renderError?.({ event, finalized, context, messageId });
             projection?.settle?.({ event, finalized, context, messageId, streamOperationId: operationId });
             const settledEvent = event.type === 'end'
                 ? { ...event, type: event.finish_reason === 'cancelled' ? 'cancelled' : 'completed' }

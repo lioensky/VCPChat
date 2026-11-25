@@ -462,7 +462,10 @@ const uiManager = (() => {
 
         document.addEventListener('pointerdown', (event) => {
             if (!leftSidebar.classList.contains('compact-topics-open')) return;
-            if (topicsPanel.contains(event.target) || navigation.contains(event.target)) return;
+            // The topic context menu is mounted under body, outside the drawer DOM.
+            const topicContextMenu = document.getElementById('topicContextMenu');
+            if (topicsPanel.contains(event.target) || navigation.contains(event.target) ||
+                topicContextMenu?.contains(event.target)) return;
             closeTopicDrawer();
         });
 

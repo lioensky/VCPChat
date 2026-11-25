@@ -22,6 +22,7 @@ const trayManager = (function () {
 
     // VChat 系统应用注册表 (从 vchatApps.js 复制的核心定义)
     const VCHAT_APPS = [
+        { id: 'vchat-app-mijia', name: '米家', icon: 'mijia', action: 'open-mijia-window' },
         { id: 'vchat-app-game', name: '游戏', icon: 'game', action: 'open-game-window' },
         { id: 'vchat-app-notes', name: '笔记', icon: 'notes', action: 'open-notes-window' },
         { id: 'vchat-app-note-mini', name: '便签', icon: 'noteMini', action: 'open-note-mini-window' },
@@ -49,6 +50,7 @@ const trayManager = (function () {
 
     // SVG 图标定义 (Lucide 风格)
     const SVG_ICONS = {
+        mijia: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 16a4 4 0 0 1 6 0M12 19h.01"/></svg>`,
         game: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12c3 0 4 4 4 9s-3 4-6 0H8c-3 4-6 5-6 0s1-9 4-9Z"/><path d="M6 10v4m-2-2h4m8-1h.01m3 3h.01"/></svg>`,
         chat: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
         notes: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-notebook-pen"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/></svg>`,

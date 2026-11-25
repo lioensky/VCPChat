@@ -86,6 +86,7 @@ const handleApplyTheme = async (event, themeFileName) => {
         const targetPath = path.join(PROJECT_ROOT, 'styles', 'themes.css');
         const themeContent = await fs.readFile(sourcePath, 'utf-8');
         await fs.writeFile(targetPath, themeContent, 'utf-8');
+        broadcastThemeUpdate(Date.now(), 'theme-stylesheet-updated');
         
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.reload();
@@ -207,8 +208,10 @@ function initialize(options) {
 }
 
 // Function to broadcast theme updates to all windows
-function broadcastThemeUpdate(theme) {
-    console.log(`[ThemeHandlers] Theme updated to: ${theme}. Notifying windows.`);
+function broadcastThemeUpdate(theme, channel = 'theme-updated') {
+    if (channel === 'theme-updated') {
+        console.log(`[ThemeHandlers] Theme updated to: ${theme}. Notifying windows.`);
+    }
     const targets = new Set();
     const addContents = contents => {
         if (contents && !contents.isDestroyed?.() && !contents.isCrashed?.()) targets.add(contents);
@@ -227,7 +230,7 @@ function broadcastThemeUpdate(theme) {
 
     targets.forEach(contents => {
         try {
-            contents.send('theme-updated', theme);
+            contents.send(channel, theme);
         } catch (error) {
             console.warn('[ThemeHandlers] Failed to notify a theme target:', error.message);
         }

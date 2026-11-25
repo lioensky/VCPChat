@@ -33,3 +33,20 @@ test('image handlers retain only their owning Surface transport', () => {
     assert.throws(() => handlerA.setContentAndProcessImages(rootA, '', 'a'), /not initialized/);
     assert.doesNotThrow(() => handlerB.setContentAndProcessImages(rootB, '', 'b'));
 });
+test('clicking a linked image opens one viewer without navigating the chat', () => {
+    const dom = new JSDOM('<section></section>', { url: 'file:///chat/main.html' });
+    const root = dom.window.document.querySelector('section');
+    const calls = [];
+    const handler = createImageHandler();
+    try {
+        handler.initialize({ chatMessagesDiv: root, electronAPI: { openImageViewer: value => calls.push(value) } });
+        handler.setContentAndProcessImages(root, '<a href="file:///preview.png"><img src="file:///preview.png"></a>', 'preview');
+        const event = new dom.window.MouseEvent('click', { bubbles: true, cancelable: true });
+        root.querySelector('img').dispatchEvent(event);
+        assert.equal(calls.length, 1);
+        assert.equal(event.defaultPrevented, true);
+    } finally {
+        handler.dispose();
+        dom.window.close();
+    }
+});

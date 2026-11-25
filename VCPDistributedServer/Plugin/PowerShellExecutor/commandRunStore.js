@@ -8,6 +8,7 @@
 'use strict';
 
 const { sanitizeTerminalOutput } = require('./terminalOutputSanitizer');
+const { redactSecrets } = require('./secretRedactor');
 
 const COMMAND_RUN_LIMIT = 30;
 const COMMAND_RUN_RAW_LIMIT = 512 * 1024;
@@ -43,7 +44,7 @@ function beginCommandRun(command, { outputSource = 'pty' } = {}) {
     commandRunSequence += 1;
     const run = {
         id: `run-${Date.now().toString(36)}-${commandRunSequence}`,
-        command: String(command),
+        command: redactSecrets(String(command)),
         status: 'running',
         startedAt: Date.now(),
         endedAt: null,
@@ -91,9 +92,10 @@ function cleanRunOutput(run) {
     const cached = cleanedOutput.get(run);
     if (cached && cached.raw === run.raw) return cached.clean;
     // 起始标记那一行留下的换行不算输出
-    const clean = run.outputSource === 'capture'
+    const rawClean = run.outputSource === 'capture'
         ? run.raw.replace(/\r\n/g, '\n')
         : sanitizeTerminalOutput(run.raw).replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/^\n/, '');
+    const clean = redactSecrets(rawClean);
     cleanedOutput.set(run, { raw: run.raw, clean });
     return clean;
 }

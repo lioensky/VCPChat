@@ -305,7 +305,7 @@ function evaluatePdfDocument(pages, numPages) {
 
 /**
  * 将 PDF 渲染为适合多模态 LLM 的 Base64 JPEG 图片序列
- * 使用 pdf-poppler 光栅化渲染 + sharp 高保真等比压缩
+ * 使用跨平台 Poppler 光栅化渲染 + sharp 高保真等比压缩
  * @param {string} pdfPath
  * @param {object} options
  * @returns {Promise<{ imageFrames: Array<string>, totalPages: number, convertedCount: number }>}
@@ -320,27 +320,8 @@ async function convertPdfToMultiModalImages(pdfPath, options = {}) {
 
     try {
         console.log(`[PdfAttachmentService] 开始 Poppler 转图渲染: ${pdfPath}`);
-        const poppler = require('pdf-poppler');
-        const prefix = 'page';
-        const popplerOptions = {
-            format: 'jpeg',
-            out_dir: tempDir,
-            out_prefix: prefix,
-            page: null // 先渲染所有页面，随后按上限截取
-        };
-
-        await poppler.convert(pdfPath, popplerOptions);
-
-        const allFiles = await fs.readdir(tempDir);
-        const imageFiles = allFiles
-            .filter(f => f.toLowerCase().endsWith('.jpg') || f.toLowerCase().endsWith('.jpeg'))
-            .sort((a, b) => {
-                const matchA = a.match(/\d+/);
-                const matchB = b.match(/\d+/);
-                const numA = matchA ? parseInt(matchA[0], 10) : 0;
-                const numB = matchB ? parseInt(matchB[0], 10) : 0;
-                return numA - numB;
-            });
+        const { rasterizePdf } = require('./pdfRasterizer');
+        const imageFiles = await rasterizePdf(pdfPath, tempDir, 'page');
 
         const totalRendered = imageFiles.length;
         const selectedFiles = imageFiles.slice(0, maxPages);

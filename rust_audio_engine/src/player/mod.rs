@@ -291,7 +291,7 @@ impl AudioPlayer {
         let cmd_tx = self.cmd_tx.clone();
         let config = self.config.clone();
         let device_id = self.device_id;
-        let loudness_enabled = self.loudness_enabled;
+        
 
         // Spawn background thread for decoding
         thread::spawn(move || {
@@ -301,9 +301,12 @@ impl AudioPlayer {
                 &config,
                 device_id,
                 &shared_state,
-                loudness_enabled,
+                load_generation,
             );
 
+            if shared_state.load_generation.load(Ordering::Acquire) != load_generation {
+                return;
+            }
             match result {
                 Ok(load_result) => {
                     // NOTE: is_loading is cleared by the audio thread after
@@ -336,11 +339,19 @@ impl AudioPlayer {
         config: &AppConfig,
         device_id: Option<usize>,
         shared_state: &Arc<SharedState>,
-        _loudness_enabled: bool,
+        load_generation: u64,
     ) -> Result<state::LoadResult, String> {
         use crate::decoder::StreamingDecoder;
         use crate::processor::StreamingResampler;
 
+        let check_current = || {
+            if shared_state.load_generation.load(Ordering::Acquire) == load_generation {
+                Ok(())
+            } else {
+                Err(String::from("load superseded"))
+            }
+        };
+        check_current()?;
         let mut decoder = StreamingDecoder::open_with_credentials(path, credentials)
             .map_err(|e| {
                 log::error!("Failed to open decoder for {}: {}", path, e);
@@ -444,6 +455,7 @@ impl AudioPlayer {
         } else {
             estimated_input_frames
         };
+        check_current()?;
         let mut samples = Vec::with_capacity(estimated_output_frames * channels);
 
         let mut resampler = if final_need_resample {
@@ -461,7 +473,10 @@ impl AudioPlayer {
         let mut chunk_count = 0;
         let mut decoded_frames = 0;
 
-        while let Some(decoded_chunk) = decoder.decode_next().map_err(|e| e.to_string())? {
+        loop {
+            check_current()?;
+            let Some(decoded_chunk) = decoder.decode_next().map_err(|e| e.to_string())? else { break };
+            check_current()?;
             decoded_frames += decoded_chunk.len() / channels;
             if let Some(ref mut rs) = resampler {
                 let resampled = rs.process_chunk(&decoded_chunk)
@@ -489,7 +504,7 @@ impl AudioPlayer {
             );
         }
 
-        shared_state.load_progress.store(100, Ordering::Relaxed);
+        check_current()?;
 
         log::info!(
             "Streaming decode complete: {} chunks, {} output samples ({}→{} Hz)",

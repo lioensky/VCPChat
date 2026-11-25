@@ -1,0 +1,22 @@
+{
+  "yeelink.light.lamp2": {
+    "icon": "lightbulb",
+    "properties": [
+      { "key": "power", "label": "开关", "siid": 2, "piid": 1, "type": "boolean", "commit": "immediate" },
+      { "key": "brightness", "label": "亮度", "siid": 2, "piid": 2, "type": "integer", "unit": "%", "min": 1, "max": 100, "step": 1, "commit": "apply" },
+      { "key": "colorTemperature", "label": "色温", "siid": 2, "piid": 3, "type": "integer", "unit": "K", "min": 2500, "max": 4800, "step": 1, "commit": "apply" }
+    ]
+  },
+  "midjd6.fridge.610": {
+    "icon": "kitchen",
+    "properties": [
+      { "key": "fridgeTemperature", "label": "冷藏当前温度", "group": "冷藏", "siid": 3, "piid": 1, "type": "integer", "unit": "°C" },
+      { "key": "fridgeTarget", "label": "冷藏设定温度", "group": "冷藏", "siid": 3, "piid": 2, "type": "integer", "unit": "°C" },
+      { "key": "freezerTemperature", "label": "冷冻当前温度", "group": "冷冻", "siid": 4, "piid": 1, "type": "integer", "unit": "°C" },
+      { "key": "freezerTarget", "label": "冷冻设定温度", "group": "冷冻", "siid": 4, "piid": 2, "type": "integer", "unit": "°C" },
+      { "key": "mode", "label": "模式", "siid": 2, "piid": 2, "type": "enum", "values": { "0": "无特殊模式", "1": "智能", "2": "假日", "3": "速冷", "4": "速冻" } },
+      { "key": "doorState", "label": "门状态", "siid": 5, "piid": 2, "type": "enum", "values": { "0": "未报告开门", "1": "左门开", "2": "右门开", "3": "双门开" } },
+      { "key": "fault", "label": "故障码", "siid": 2, "piid": 1, "type": "integer" }
+    ]
+  }
+}

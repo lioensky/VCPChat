@@ -19,6 +19,7 @@ export function createMainChatSendOwner({
     clearGroupQueueActive = null,
 }) {
     const defaultButtonHtml = button?.innerHTML || '';
+    const composerCard = button?.closest?.('.chat-input-card');
     let disposed = false;
 
     const isContextCurrent = context => {
@@ -28,10 +29,14 @@ export function createMainChatSendOwner({
         return (context.groupId || context.agentId) === selected.id && context.topicId === topicId;
     };
 
-    const getInterruptibleMessage = () => {
-        const history = historyRef.get();
+    const getCurrentProjection = () => {
         const messageId = streamProjection?.getActiveStreamingMessageId?.();
-        const context = streamProjection?.getActiveStreamingContext?.();
+        const context = messageId ? streamProjection?.getActiveStreamingContext?.() : null;
+        return { messageId, context };
+    };
+
+    const getInterruptibleMessage = ({ messageId, context } = getCurrentProjection()) => {
+        const history = historyRef.get();
         if (!messageId || !isContextCurrent(context)) {
             const item = messagesRoot?.querySelector('.message-item.assistant.streaming, .message-item.assistant.thinking, .message-item.streaming');
             if (!item?.isConnected) return null;
@@ -68,6 +73,8 @@ export function createMainChatSendOwner({
 
     const update = () => {
         if (disposed || !button) return false;
+        const projection = getCurrentProjection();
+        composerCard?.classList.toggle('has-streaming-reply', Boolean(projection.messageId && isContextCurrent(projection.context)));
         const compacting = getChatManager()?.isContextCompacting?.() === true;
         button.classList.toggle('context-compacting', compacting);
         if (compacting) {
@@ -81,7 +88,7 @@ export function createMainChatSendOwner({
             return true;
         }
         if (button.dataset.mode === 'compacting') button.disabled = false;
-        const active = getInterruptibleMessage();
+        const active = getInterruptibleMessage(projection);
         const activeQueue = active ? null : getActiveGroupQueueScope();
         const mode = (active || activeQueue) && !hasDraft() ? 'interrupt' : 'send';
         button.dataset.mode = mode;
@@ -191,6 +198,7 @@ export function createMainChatSendOwner({
         dispose() {
             if (disposed) return;
             disposed = true;
+            composerCard?.classList.remove('has-streaming-reply');
         },
     });
 }

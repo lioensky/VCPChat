@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { createMainChatSurfaceAdapter } from '../modules/renderer/mainChatSurfaceAdapter.js';
+import { createMainChatSendOwner } from '../modules/renderer/mainChatSendOwner.js';
 
 test('MainChatSurfaceAdapter owns renderer, stream routes and quiescent teardown', async () => {
     const dom = new JSDOM('<main><div id="root"></div><textarea></textarea></main>');
@@ -70,10 +71,39 @@ test('MainChatSurfaceAdapter owns the window unload receipt and releases it on d
     dom.window.close();
 });
 
-test('main Surface send state follows the real stream terminal consumer', async () => {
+test('main Surface lights the composer during an IPC group reply and clears it at the terminal', async t => {
     const dom = new JSDOM('<main><div id="root"></div><textarea></textarea>');
     const root = dom.window.document.getElementById('root');
     const renderer = { initializeMessageRenderer() {}, renderHistory() {}, renderMessage() {} };
+    const composer = dom.window.document.createElement('div');
+    composer.className = 'chat-input-card';
+    const button = dom.window.document.createElement('button');
+    composer.append(button);
+    root.after(composer);
+    const selection = { id: 'group-a', type: 'group' };
+    const topicId = 'topic-a';
+    const context = { groupId: selection.id, agentId: 'agent-a', topicId, isGroupMessage: true };
+    let active = null;
+    const streamProjection = {
+        async startStreamingMessage(message) { active = message; },
+        appendStreamChunk() {},
+        getActiveStreamingMessageId: () => active?.id,
+        getActiveStreamingContext: () => active?.context,
+        async projectStreamTerminal(messageId, finishReason, context, payload) {
+            active = null;
+            return { messageId, finishReason, context, content: payload.fullResponse, history: [] };
+        },
+    };
+    const sendOwner = createMainChatSendOwner({
+        button,
+        messagesRoot: root,
+        historyRef: { get: () => [] },
+        selectedItemRef: { get: () => selection },
+        topicIdRef: { get: () => topicId },
+        streamProjection,
+        getChatManager: () => null,
+        hasDraft: () => true,
+    });
     let settled;
     const terminalSettled = new Promise(resolve => { settled = resolve; });
     const adapter = createMainChatSurfaceAdapter({
@@ -84,28 +114,32 @@ test('main Surface send state follows the real stream terminal consumer', async 
         operations: { dispose: async () => {} },
         renderDependencies: {},
         streamServices: {
-            streamProjection: {
-                startStreamingMessage() {},
-                appendStreamChunk() {},
-                projectStreamTerminal: async (messageId, finishReason, context, payload) => ({
-                    messageId, finishReason, context, content: payload.fullResponse, history: [],
-                }),
-            },
+            streamProjection,
             historyPersistence: { commit: projected => projected },
             messageRenderer: renderer,
-            getSelection: () => ({ id: 'agent-a' }),
-            getTopicId: () => 'topic-a',
-            notifySendStateChanged: settled,
+            getSelection: () => selection,
+            getTopicId: () => topicId,
+            notifySendStateChanged: value => {
+                sendOwner.update();
+                if (value?.event?.type === 'completed') settled(value);
+            },
         },
         disposeRenderer: async () => {},
     });
-    const context = { agentId: 'agent-a', topicId: 'topic-a' };
-    assert.equal(adapter.acceptStreamEvent({ type: 'start', messageId: 'm1', streamOperationId: 'op1', context }), true);
+    t.after(async () => {
+        await adapter.dispose();
+        sendOwner.dispose();
+        dom.window.close();
+    });
+    assert.equal(composer.classList.contains('has-streaming-reply'), false);
+    assert.equal(adapter.acceptStreamEvent({ type: 'agent_thinking', messageId: 'm1', streamOperationId: 'op1', context }), true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(composer.classList.contains('has-streaming-reply'), true);
+    assert.equal(composer.querySelector('button').dataset.mode, 'send');
     assert.equal(adapter.acceptStreamEvent({ type: 'end', messageId: 'm1', streamOperationId: 'op1', context, fullResponse: 'done', finish_reason: 'completed' }), true);
     const outcome = await terminalSettled;
     assert.equal(outcome.event.type, 'completed');
-    await adapter.dispose();
-    dom.window.close();
+    assert.equal(composer.classList.contains('has-streaming-reply'), false);
 });
 
 // 心流锁按助手加锁；侧聊回复若进入心流锁，会把整个助手锁到隐藏的侧聊话题上，主聊天无法切换话题

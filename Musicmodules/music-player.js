@@ -15,8 +15,154 @@ function setupPlayer(app) {
         lastCapsuleSnapshot = snapshot;
         app.api?.publishMusicCapsuleState?.(state);
     };
+    // --- 播放控制的三个约定 ---
+    // 1. playIntent 记录用户最后一次想要的状态；加载期间按下的播放/暂停不丢，也不会被自动播放覆盖。
+    // 2. 播放/暂停/跳转各走一次独立的 HTTP 请求，到达引擎的先后没有保证，所以这里串行发送。
+    // 3. controlEpoch 在每次控制指令时递增；指令发出前就在路上的状态查询回来后直接丢弃。
+    app.playIntent = false;
+    app.controlEpoch = 0;
+    app.statePollInFlight = false;
+    app.engineLoadErrorSeq = 0;
+    app.engineLoadError = '';
+    app.engineLoadCompleteSeq = 0;
+    app.engineLoadProgressAt = 0;
+    let controlChain = Promise.resolve();
+    let wakeLoadWait = null;
+    let lastLoadSentAt = 0;
+    const RAPID_SWITCH_WINDOW_MS = 400;
+    const RAPID_SWITCH_SETTLE_MS = 180;
+    app.engineTrackPath = null;
+
+    // 播放/暂停只有“最后一次”有意义：排着队还没发出去的那条，直接被后来的顶替。
+    // 这样不管是谁在短时间内反复触发（连点、媒体键、别的窗口发来的指令），
+    // 队列里最多只有一条待发的播放/暂停，不会越积越多，引擎也不会被一串过期指令轮番折腾。
+    let queuedTransport = null;
+    app.enqueueControl = (send, kind) => {
+        if (kind === 'transport' && queuedTransport) {
+            const slot = queuedTransport;
+            slot.resolve({ status: 'superseded' });
+            return new Promise(resolve => { slot.send = send; slot.resolve = resolve; });
+        }
+        const slot = { send, resolve: null };
+        const result = new Promise(resolve => { slot.resolve = resolve; });
+        if (kind === 'transport') queuedTransport = slot;
+        controlChain = controlChain.then(() => {
+            if (queuedTransport === slot) queuedTransport = null;
+            return Promise.resolve().then(() => slot.send()).catch(error => ({
+                status: 'error',
+                message: error?.message || String(error)
+            })).then(value => slot.resolve(value));
+        });
+        return result;
+    };
+
+    const freezePlaybackClock = (wasPlaying) => {
+        const now = Date.now();
+        if (wasPlaying && app.lastStateUpdateTime) {
+            app.lastKnownCurrentTime = (app.lastKnownCurrentTime || 0) + (now - app.lastStateUpdateTime) / 1000;
+        }
+        app.lastStateUpdateTime = now;
+    };
+
+    // 静音的占位 <audio> 只为让系统媒体键和耳机按键能控制播放。
+    // 它的 play/pause 事件是异步派发的：我们自己调用 play()/pause() 之后，事件可能在
+    // 几百毫秒后才到，那时界面状态也许已经又变了。如果把这种“回声”当成用户按了媒体键，
+    // 就会反过来给引擎再发一次播放/暂停，和状态轮询互相触发，按钮来回抽搐、引擎被反复重启。
+    // 所以每次主动调用都记一笔，事件到来时先销账，只有销不掉的才算外部操作。
+    const PHANTOM_ECHO_WINDOW_MS = 3000;
+    const phantomEchoes = { play: [], pause: [] };
+    const externalPhantomEvents = [];
+    let phantomStormWarned = false;
+    const expectPhantomEvent = (type) => phantomEchoes[type].push(Date.now() + PHANTOM_ECHO_WINDOW_MS);
+    const consumePhantomEcho = (type) => {
+        const pending = phantomEchoes[type];
+        const now = Date.now();
+        while (pending.length && pending[0] < now) pending.shift();
+        if (!pending.length) return false;
+        pending.shift();
+        return true;
+    };
+
+    app.setPhantomAudio = (playing) => {
+        const audio = app.phantomAudio;
+        if (!audio) return;
+        if (playing) {
+            audio.loop = true;
+            if (audio.paused === false) return; // 已经在播，不会再派发事件
+            expectPhantomEvent('play');
+            Promise.resolve(audio.play()).catch(e => {
+                // 被随后的 pause() 打断时 play 事件照样已经派发；只有被策略拒绝才不会有事件，撤销这一笔。
+                if (e?.name === 'AbortError') return;
+                phantomEchoes.play.shift();
+                console.error("Phantom audio play failed:", e);
+            });
+        } else {
+            if (audio.paused === true) return;
+            expectPhantomEvent('pause');
+            audio.pause();
+        }
+    };
+
+    app.handlePhantomAudioEvent = (type) => {
+        if (consumePhantomEcho(type)) return;
+        if (app.isTrackLoading) return;
+        // 真人按媒体键不可能一秒好几次；短时间内来了一串，说明有东西在自激，直接不理。
+        const now = Date.now();
+        while (externalPhantomEvents.length && externalPhantomEvents[0] < now - 2000) externalPhantomEvents.shift();
+        if (externalPhantomEvents.length >= 4) {
+            if (!phantomStormWarned) {
+                phantomStormWarned = true;
+                console.warn('[Music.js] Ignoring a burst of media play/pause events.');
+            }
+            return;
+        }
+        externalPhantomEvents.push(now);
+        if (type === 'play' && !app.isPlaying) app.playTrack();
+        else if (type === 'pause' && app.isPlaying) app.pauseTrack();
+    };
+
+    // 把界面切到“播放中 / 已暂停”。点击后立即调用，引擎确认失败时再回滚。
+    app.applyPlayingUi = (playing) => {
+        // 暂停期间歌词时钟不应继续走，否则恢复播放的第一帧会跳到后面的歌词。
+        if (app.isPlaying !== playing) freezePlaybackClock(app.isPlaying === true);
+        app.isPlaying = playing;
+        app.publishCapsuleState();
+        document.body.classList.toggle('music-playing', playing);
+        app.playPauseBtn.classList.toggle('is-playing', playing);
+        app.setPhantomAudio(playing);
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+        if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+    };
+
+    app.toggleTransport = () => (app.isTrackLoading ? app.playIntent : app.isPlaying)
+        ? app.pauseTrack() : app.playTrack();
+
+    app.showPlaybackNotice = (message) => {
+        console.warn('[Music.js]', message);
+        app.trackBitrate.textContent = message;
+    };
+
+    // 引擎通过 WebSocket 推送的加载事件，用来立刻结束等待，而不是轮询到超时。
+    app.handleEngineLoadEvent = (message) => {
+        if (message.type === 'load_error') {
+            app.engineLoadError = message.error || '未知错误';
+            app.engineLoadErrorSeq++;
+        } else if (message.type === 'load_complete') {
+            app.engineLoadCompleteSeq++;
+        } else if (message.type === 'loading_progress') {
+            app.engineLoadProgressAt = Date.now();
+            return;
+        }
+        if (wakeLoadWait) wakeLoadWait();
+    };
+
     app.loadTrack = async (trackIndex, andPlay = true) => {
         const requestId = ++app.pendingLoadRequestId;
+        const skipHistory = app.skipHistoryOnce === true;
+        app.skipHistoryOnce = false;
+        const loadErrorSeq = app.engineLoadErrorSeq;
+        app.controlEpoch++;
+        app.playIntent = andPlay === true;
         // 切歌意图一出现就作废旧歌词，不能等取消预加载返回后才作废。
         app.resetLyrics();
         app.isPreloadingNext = false;
@@ -39,7 +185,16 @@ function setupPlayer(app) {
         app.currentTrackIndex = trackIndex;
         const track = app.playlist[trackIndex];
         app.pendingTrackPath = track.path;
+        try { localStorage.setItem('musicLastTrackPath', track.path); } catch (error) {}
+        if (!skipHistory) app.rememberPlayed(track);
+        app.engineTrackPath = null;
         app.isTrackLoading = true;
+        app.applyPlayingUi(false);
+        app.lastKnownCurrentTime = 0;
+        app.lastStateUpdateTime = Date.now();
+        app.lastEngineProgress = null;
+        app.isChangingState = false;
+        app.playPauseBtn.classList.toggle('is-playing', app.playIntent);
 
         app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
         app.trackArtist.textContent = track.artist || '未知艺术家';
@@ -64,87 +219,188 @@ function setupPlayer(app) {
         app.updateMediaSessionMetadata();
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
 
-        const result = await app.api.musicLoad(track);
+        // 旧歌的轮询到此为止；加载期间由下面的等待循环负责读状态。
+        app.stopStatePolling();
+        app.progress.style.width = '0%';
+        app.currentTimeEl.textContent = app.formatTime(0);
+        if (track.duration > 0) app.durationEl.textContent = app.formatTime(track.duration);
+
+        // 连续快速切歌时只让引擎加载最后停下的那一首。
+        // 引擎每收到一次加载都会起一个线程把整首歌解码完，连点五次就是五首歌同时在解码。
+        const sinceLastLoad = Date.now() - lastLoadSentAt;
+        if (sinceLastLoad < RAPID_SWITCH_WINDOW_MS) {
+            await new Promise(resolve => setTimeout(resolve, RAPID_SWITCH_SETTLE_MS));
+            if (requestId !== app.pendingLoadRequestId) return;
+        }
+        lastLoadSentAt = Date.now();
+
+        const result = await app.enqueueControl(() => app.api.musicLoad(track));
         if (requestId !== app.pendingLoadRequestId) return;
         if (result && result.status === 'success') {
-            app.updateUIWithState(result.state);
-
             const waitForTrackReady = async () => {
-                const timeoutAt = Date.now() + 12000;
-                const targetPath = app.normalizePathForCompare(track.path);
+                const startedAt = Date.now();
+                const targetPath = app.normalizePathForCompare(result.accepted_path || track.path);
                 let pollInterval = 120;
 
-                while (Date.now() < timeoutAt) {
-                    if (requestId !== app.pendingLoadRequestId) return false;
+                // 引擎会把整首歌解码完才算加载好，长曲目或开了升频会超过十几秒。
+                // 只要还在收到解码进度就继续等，完全没动静才判超时。
+                const deadline = () => Math.min(
+                    startedAt + 120000,
+                    Math.max(startedAt + 12000, (app.engineLoadProgressAt || 0) + 10000)
+                );
+
+                while (Date.now() < deadline()) {
+                    if (requestId !== app.pendingLoadRequestId) return 'stale';
+                    if (app.engineLoadErrorSeq !== loadErrorSeq) return 'error';
 
                     const stateResult = await app.api.getMusicState();
-                    if (requestId !== app.pendingLoadRequestId) return false;
+                    if (requestId !== app.pendingLoadRequestId) return 'stale';
+                    if (app.engineLoadErrorSeq !== loadErrorSeq) return 'error';
                     if (stateResult && stateResult.status === 'success' && stateResult.state) {
                         const state = stateResult.state;
-                        app.updateUIWithState(state);
                         const loadedPath = app.normalizePathForCompare(state.file_path);
-                        if (loadedPath === targetPath && !state.is_loading) return true;
+                        if (targetPath && loadedPath === targetPath && state.is_loading === false) {
+                            app.updateUIWithState(state, { force: true });
+                            return 'ready';
+                        }
                     }
-                    await new Promise(r => setTimeout(r, pollInterval));
+                    const completeSeq = app.engineLoadCompleteSeq;
+                    await new Promise(resolve => {
+                        const timer = setTimeout(done, pollInterval);
+                        function done() {
+                            clearTimeout(timer);
+                            if (wakeLoadWait === done) wakeLoadWait = null;
+                            resolve();
+                        }
+                        wakeLoadWait = done;
+                        // 等待前事件就已经到了的情况。
+                        if (app.engineLoadCompleteSeq !== completeSeq || app.engineLoadErrorSeq !== loadErrorSeq) done();
+                    });
                     // 逐步增大轮询间隔，避免高频轮询（最大 500ms）
                     pollInterval = Math.min(pollInterval + 50, 500);
                 }
-                console.warn('[Music.js] waitForTrackReady timed out for:', track.title);
-                return false;
+                return 'timeout';
             };
 
-            const ready = await waitForTrackReady();
-            if (requestId === app.pendingLoadRequestId) {
-                app.isTrackLoading = false;
-                if (ready) app.publishCapsuleState();
+            const outcome = await waitForTrackReady();
+            if (requestId !== app.pendingLoadRequestId) return;
+            app.isTrackLoading = false;
+            if (outcome === 'ready') {
+                app.engineTrackPath = track.path;
+                app.publishCapsuleState();
+                if (app.playIntent) app.playTrack();
+                return;
             }
-            if (requestId === app.pendingLoadRequestId && andPlay && ready) app.playTrack();
+            app.playIntent = false;
+            app.applyPlayingUi(false);
+            app.showPlaybackNotice(outcome === 'error'
+                ? `加载失败：${app.engineLoadError}`
+                : '加载超时，请重试或换一首');
         } else {
-            if (requestId === app.pendingLoadRequestId) app.isTrackLoading = false;
-            console.error("Failed to load track:", result.message);
+            if (requestId !== app.pendingLoadRequestId) return;
+            app.isTrackLoading = false;
+            app.playIntent = false;
+            app.applyPlayingUi(false);
+            app.showPlaybackNotice(`加载失败：${result?.message || '音频引擎没有响应'}`);
         }
     };
 
     app.playTrack = async () => {
-        if (app.playlist.length === 0 || app.isTrackLoading) return;
-        const result = await app.api.musicPlay();
-        if (result.status === 'success') {
-            app.isChangingState = true;
+        if (app.playlist.length === 0) return;
+        app.playIntent = true;
+        if (app.isTrackLoading) {
+            app.playPauseBtn.classList.toggle('is-playing', true);
+            return;
+        }
+        // 当前这首并不在引擎里（上次加载失败或超时）：按播放就是重试加载，
+        // 而不是对着空的引擎发一个“播放”然后界面假装在播。
+        const current = app.playlist[app.currentTrackIndex];
+        if (current && app.engineTrackPath !== current.path) {
+            return app.loadTrack(app.currentTrackIndex, true);
+        }
+        const epoch = ++app.controlEpoch;
+        app.isChangingState = true;
+        app.lastCommandTime = Date.now();
+        app.expectedPlayingState = true;
+        app.applyPlayingUi(true);
+        const result = await app.enqueueControl(() => app.api.musicPlay(), 'transport');
+        if (epoch !== app.controlEpoch) return; // 已被更新的指令取代
+        if (result?.status === 'success') {
             app.lastCommandTime = Date.now();
-            app.expectedPlayingState = true;
-            app.isPlaying = true;
-            app.publishCapsuleState();
-            document.body.classList.add('music-playing');
-            app.playPauseBtn.classList.add('is-playing');
-            app.phantomAudio.loop = true;
-            app.phantomAudio.play().catch(e => console.error("Phantom audio play failed:", e));
-
-            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
             app.startStatePolling();
-            if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+        } else {
+            app.playIntent = false;
+            app.isChangingState = false;
+            app.applyPlayingUi(false);
+            app.showPlaybackNotice(`播放失败：${result?.message || '音频引擎没有响应'}`);
         }
     };
 
     app.pauseTrack = async () => {
-        const result = await app.api.musicPause();
-        if (result.status === 'success') {
-            app.isChangingState = true;
+        app.playIntent = false;
+        if (app.isTrackLoading) {
+            app.playPauseBtn.classList.toggle('is-playing', false);
+            return;
+        }
+        const wasPlaying = app.isPlaying === true;
+        const epoch = ++app.controlEpoch;
+        app.isChangingState = true;
+        app.lastCommandTime = Date.now();
+        app.expectedPlayingState = false;
+        app.applyPlayingUi(false);
+        app.stopStatePolling();
+        const result = await app.enqueueControl(() => app.api.musicPause(), 'transport');
+        if (epoch !== app.controlEpoch) return;
+        if (result?.status === 'success') {
             app.lastCommandTime = Date.now();
-            app.expectedPlayingState = false;
-            app.isPlaying = false;
-            app.publishCapsuleState();
-            document.body.classList.remove('music-playing');
-            app.playPauseBtn.classList.remove('is-playing');
-            app.phantomAudio.pause();
-            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-            app.stopStatePolling();
-            if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+        } else if (wasPlaying && !app.isTrackLoading) {
+            // 暂停没送达，引擎多半还在响，界面不能停在“已暂停”。
+            app.isChangingState = false;
+            app.playIntent = true;
+            app.applyPlayingUi(true);
+            app.startStatePolling();
+            app.showPlaybackNotice(`暂停失败：${result?.message || '音频引擎没有响应'}`);
         }
     };
 
+    app.seekTo = async (seconds) => {
+        const epoch = ++app.controlEpoch;
+        app.lastKnownCurrentTime = seconds;
+        app.lastStateUpdateTime = Date.now();
+        const result = await app.enqueueControl(() => app.api.seekMusic(seconds));
+        if (epoch === app.controlEpoch && app.isPlaying) app.startStatePolling();
+        return result;
+    };
+
+    // 最近播放过的曲目，供“上一首”回退。随机播放时“上一首”应该回到刚才听的那首，
+    // 而不是总列表里排在前面的那首。
+    const playHistory = [];
+    app.rememberPlayed = (track) => {
+        if (!track || playHistory[playHistory.length - 1] === track) return;
+        playHistory.push(track);
+        if (playHistory.length > 200) playHistory.shift();
+    };
+
     app.prevTrack = () => {
-        app.currentTrackIndex = (app.currentTrackIndex - 1 + app.playlist.length) % app.playlist.length;
-        app.loadTrack(app.currentTrackIndex);
+        const activeList = app.currentFilteredTracks || app.playlist;
+        if (activeList.length === 0) return;
+        const currentTrack = app.playlist[app.currentTrackIndex];
+
+        // 先按播放历史回退（历史里的歌可能已被移出列表，跳过）。
+        if (playHistory[playHistory.length - 1] === currentTrack) playHistory.pop();
+        while (playHistory.length > 0) {
+            const index = app.playlist.indexOf(playHistory.pop());
+            if (index === -1 || index === app.currentTrackIndex) continue;
+            app.skipHistoryOnce = true;
+            app.loadTrack(index);
+            return;
+        }
+
+        // 没有历史：在当前显示的列表（搜索结果或自建歌单）里取前一首，不跳到列表之外。
+        const position = activeList.indexOf(currentTrack);
+        const previous = activeList[(Math.max(position, 0) - 1 + activeList.length) % activeList.length];
+        const index = app.playlist.indexOf(previous);
+        if (index !== -1) app.loadTrack(index);
     };
 
     app.nextTrack = () => {
@@ -269,8 +525,19 @@ function setupPlayer(app) {
     };
 
     app.pollState = async () => {
-        const result = await app.api.getMusicState();
-        if (result.status === 'success') app.updateUIWithState(result.state);
+        // 上一次查询还没回来就不再发，避免引擎忙时请求越堆越多、回包乱序。
+        if (app.statePollInFlight || app.isTrackLoading) return;
+        app.statePollInFlight = true;
+        const epoch = app.controlEpoch;
+        try {
+            const result = await app.api.getMusicState();
+            if (epoch !== app.controlEpoch || app.isTrackLoading) return;
+            if (result?.status === 'success') app.updateUIWithState(result.state);
+        } catch (error) {
+            console.warn('[Music.js] pollState failed:', error?.message || error);
+        } finally {
+            app.statePollInFlight = false;
+        }
     };
 
     app.syncTrackIndexByPath = (path) => {
@@ -283,6 +550,8 @@ function setupPlayer(app) {
             const track = app.playlist[index];
             app.pendingTrackPath = track.path;
             app.isTrackLoading = false; // gapless 切歌后后端已经加载好了，重置加载标志
+            app.engineTrackPath = track.path;
+            app.rememberPlayed(track);
             app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
             app.trackArtist.textContent = track.artist || '未知艺术家';
             app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
@@ -334,6 +603,8 @@ function setupPlayer(app) {
                     const track = app.playlist[fuzzyIndex];
                     app.pendingTrackPath = track.path;
                     app.isTrackLoading = false;
+                    app.engineTrackPath = track.path;
+                    app.rememberPlayed(track);
                     app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
                     app.trackArtist.textContent = track.artist || '未知艺术家';
                     app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
@@ -385,9 +656,16 @@ function setupPlayer(app) {
         app.publishCapsuleState();
     };
 
+    // 歌词和进度在两次查询之间按本地时钟推算，查询只用来校准，不需要每秒 4 次。
+    // 窗口不可见时再降到 2 秒一次，只为外部的“正在播放”信息保持更新。
+    let hiddenPollSkips = 0;
     app.startStatePolling = () => {
         if (app.statePollInterval) clearInterval(app.statePollInterval);
-        app.statePollInterval = setInterval(app.pollState, 250);
+        app.statePollInterval = setInterval(() => {
+            if (document.hidden && ++hiddenPollSkips % 4 !== 0) return;
+            app.pollState();
+        }, 500);
+        app.pollState();
     };
 
     app.stopStatePolling = () => {

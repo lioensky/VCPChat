@@ -1,0 +1,221 @@
+/* 图版保留细线、直角与排版，只从当前 VChat 主题取得颜色。 */
+.wa-root {
+    --wa-ink-0: var(--primary-bg, #171a1d);
+    --wa-ink-1: var(--secondary-bg, #20252a);
+    --wa-ink-2: var(--accent-bg, #2a3035);
+    --wa-ink-3: color-mix(in srgb, var(--wa-text) 12%, var(--wa-ink-1));
+    --wa-line: var(--border-color, #3b4449);
+    --wa-line-soft: color-mix(in srgb, var(--wa-line) 70%, var(--wa-ink-0));
+    --wa-text: var(--primary-text, #f2f0e9);
+    --wa-text-2: var(--secondary-text, #a7afb1);
+    --wa-text-3: var(--wa-text-2);
+    --wa-terra: var(--button-bg, #f2a900);
+    --wa-terra-hi: var(--highlight-text, var(--wa-text));
+    --wa-on-terra: var(--text-on-accent, #171a1d);
+    --wa-mark: var(--wa-terra-hi);
+    --wa-umber: color-mix(in srgb, var(--wa-text) 65%, var(--wa-mark));
+    --wa-lit: color-mix(in srgb, var(--wa-text) 8%, transparent);
+    /* 界面和图使用本机字体。英文小标签优先使用 PT Serif。 */
+    --wa-font: "MiSans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --wa-font-letter: "PT Serif", Georgia, serif;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: var(--wa-ink-0);
+    color: var(--wa-text);
+    font-family: var(--wa-font);
+    font-size: 13px;
+    line-height: 1.5;
+    cursor: default;
+    user-select: none;
+}
+.wa-root *, .wa-root *::before, .wa-root *::after { box-sizing: border-box; }
+.wa-root button { font: inherit; color: inherit; cursor: default; border: 0; border-radius: 0; background: none; padding: 0; }
+.wa-root ::-webkit-scrollbar { width: 10px; height: 10px; }
+.wa-root ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, var(--wa-line)); }
+.wa-root ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, var(--wa-text-2)); }
+
+/* 页头：名称、两组切换、查找 */
+.wa-head {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex: none;
+    height: 46px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--wa-line-soft);
+    background: var(--wa-ink-1);
+}
+/* 自己的窗口没有系统标题栏：页头空白处可以拖动窗口，按钮和输入框照常点。 */
+.wa-root[data-window="true"] .wa-head { -webkit-app-region: drag; }
+.wa-root[data-window="true"] .wa-head :is(button, input, .wa-seg, .wa-search, .wa-window-controls) { -webkit-app-region: no-drag; }
+.wa-title { display: flex; align-items: baseline; gap: 10px; flex: none; }
+.wa-title-main { font-size: 15px; font-weight: 600; }
+.wa-title-sub { font-family: var(--wa-font-letter); font-size: 11px; letter-spacing: .14em; color: var(--wa-umber); }
+.wa-seg { display: flex; flex: none; background: var(--wa-ink-2); }
+.wa-seg button { padding: 5px 14px; color: var(--wa-text-2); }
+.wa-seg button:hover { background: var(--wa-lit); }
+.wa-seg button[aria-pressed="true"] { background: var(--wa-ink-3); color: var(--wa-text); }
+.wa-search { position: relative; flex: 0 1 280px; margin-left: auto; }
+.wa-search input {
+    width: 100%;
+    height: 30px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    background: var(--wa-ink-2);
+    color: var(--wa-text);
+    font: inherit;
+    user-select: text;
+}
+.wa-search input::placeholder { color: var(--wa-text-3); }
+.wa-search-list {
+    position: absolute;
+    top: 34px;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    max-height: 340px;
+    overflow: auto;
+    background: var(--wa-ink-2);
+    border: 1px solid var(--wa-line);
+}
+.wa-search-list[hidden] { display: none; }
+.wa-search-list button { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 10px; text-align: left; }
+.wa-search-list button:hover, .wa-search-list button[data-active="true"] { background: var(--wa-lit); }
+.wa-search-note { flex: none; font-size: 11.5px; color: var(--wa-text-3); }
+.wa-window-controls { display: flex; flex: none; align-self: stretch; }
+.wa-root .wa-window-controls button {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    color: var(--wa-text-2);
+}
+.wa-root .wa-window-controls button:hover { background: var(--wa-lit); color: var(--wa-text); }
+.wa-root .wa-window-controls button[data-action="close"]:hover { background: var(--wa-terra); color: var(--wa-on-terra); }
+.wa-window-controls svg { width: 12px; height: 12px; fill: none; stroke: currentColor; }
+
+/* 主体：图在左，说明和详情在右 */
+.wa-body { display: grid; grid-template-columns: minmax(0, 1fr) 388px; flex: 1; min-height: 0; }
+.wa-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.wa-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* 缩略图：放大到看不全整圈时出现在左上角（右边已经有侧栏，不再往右边放）。 */
+.wa-stage canvas.wa-mini { inset: 14px auto auto 14px; width: 172px; height: 172px; background: var(--wa-ink-1); border: 1px solid var(--wa-line); }
+.wa-stage canvas.wa-mini[hidden] { display: none; }
+/* keep reading notes outside the plot, including in narrow windows. */
+.wa-plot-column { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
+.wa-plate { display: flex; align-items: baseline; gap: 12px; padding: 7px 16px; border-top: 1px solid var(--wa-line-soft); }
+.wa-plate-mark { white-space: nowrap; font-family: var(--wa-font-letter); font-size: 11px; letter-spacing: .16em; color: var(--wa-umber); }
+.wa-plate-note { font-size: 12px; color: var(--wa-text-2); }
+.wa-root .wa-reset { flex: none; padding: 5px 12px; background: var(--wa-ink-2); color: var(--wa-text-2); }
+.wa-root .wa-reset:hover { background: var(--wa-ink-3); color: var(--wa-text); }
+.wa-message {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 40px;
+    text-align: center;
+    color: var(--wa-text-2);
+    pointer-events: none;
+}
+.wa-message[hidden] { display: none; }
+
+.wa-side { min-height: 0; overflow: auto; padding: 16px 16px 28px; border-left: 1px solid var(--wa-line-soft); background: var(--wa-ink-1); user-select: text; }
+.wa-side section + section { margin-top: 20px; }
+.wa-cap { margin-bottom: 6px; font-size: 11.5px; letter-spacing: .08em; color: var(--wa-umber); }
+.wa-name { font-size: 16px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.wa-sub { margin-top: 2px; font-size: 12px; color: var(--wa-text-3); }
+.wa-rows { display: grid; grid-template-columns: auto 1fr; gap: 3px 16px; margin-top: 10px; }
+.wa-rows dt { color: var(--wa-text-2); }
+.wa-rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.wa-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.wa-root .wa-btn { padding: 5px 14px; background: var(--wa-ink-3); color: var(--wa-text); }
+.wa-root .wa-btn:hover { background: color-mix(in srgb, var(--wa-text) 14%, var(--wa-ink-3)); }
+.wa-root .wa-btn-primary { background: var(--wa-terra); color: var(--wa-on-terra); }
+.wa-root .wa-btn-primary:hover { background: var(--wa-terra-hi); }
+.wa-side .wa-seg { display: inline-flex; }
+.wa-side .wa-seg button { padding: 4px 12px; }
+
+/* 列表：一行一条，不做卡片 */
+.wa-list { margin: 0; padding: 0; list-style: none; }
+/* keep both relation directions reachable without an extra expand action. */
+.wa-relations { max-height: 15rem; overflow-y: auto; }
+.wa-list li { border-top: 1px solid var(--wa-line-soft); }
+.wa-list li:last-child { border-bottom: 1px solid var(--wa-line-soft); }
+.wa-root .wa-list button { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 5px 4px; text-align: left; }
+.wa-root .wa-list button:hover { background: var(--wa-lit); }
+.wa-root .wa-list button[aria-pressed="true"] { background: color-mix(in srgb, var(--wa-text) 12%, transparent); }
+.wa-list .wa-static { display: flex; align-items: baseline; gap: 10px; padding: 5px 4px; }
+.wa-fade {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip;
+    mask-image: linear-gradient(to right, black calc(100% - 14px), transparent);
+}
+.wa-num { flex: none; font-variant-numeric: tabular-nums; color: var(--wa-text-2); }
+.wa-dim { color: var(--wa-text-3); }
+.wa-up { color: var(--wa-terra-hi); }
+.wa-down { color: var(--wa-umber); }
+.wa-excerpt {
+    /* 摘录最多两行。只有一行的摘录不能套固定的下端渐隐（会把这一行本身淡掉），所以按行数截。 */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    width: 100%;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--wa-text-3);
+    white-space: normal;
+}
+.wa-list .wa-stack { flex-direction: column; align-items: stretch; gap: 1px; }
+.wa-text { margin-top: 8px; max-height: 260px; overflow: auto; font-size: 12.5px; line-height: 1.6; color: var(--wa-text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.wa-more { margin-top: 6px; font-size: 12px; color: var(--wa-text-3); }
+
+/* 最近 K 条：一张窄表 */
+.wa-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+.wa-table th { padding: 3px 4px; font-size: 11.5px; font-weight: 400; color: var(--wa-text-3); text-align: right; }
+.wa-table th:nth-child(2), .wa-table td:nth-child(2) { text-align: left; }
+.wa-table td { padding: 4px 4px; border-top: 1px solid var(--wa-line-soft); text-align: right; white-space: nowrap; overflow: hidden; }
+.wa-table td:nth-child(2) { mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); }
+.wa-table tr[data-index]:hover td { background: var(--wa-lit); }
+.wa-table tr[data-picked="true"] td { background: color-mix(in srgb, var(--wa-text) 12%, transparent); }
+.wa-table col.wa-c-rank { width: 30px; }
+.wa-table col.wa-c-num { width: 45px; }
+.wa-table col.wa-c-move { width: 56px; }
+
+/* 各圈人数、标记开关、小图 */
+.wa-bars { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; font-variant-numeric: tabular-nums; }
+.wa-bars span:nth-child(3n + 1) { color: var(--wa-text-2); }
+.wa-bars span:nth-child(3n) { color: var(--wa-text-2); text-align: right; }
+.wa-bar { height: 7px; background: var(--wa-line-soft); }
+.wa-bar i { display: block; height: 100%; background: var(--wa-text-2); }
+.wa-root .wa-toggle { display: flex; align-items: center; gap: 10px; width: 100%; padding: 4px 4px; color: var(--wa-text-3); text-align: left; }
+.wa-root .wa-toggle:hover { background: var(--wa-lit); }
+.wa-root .wa-toggle[aria-pressed="true"] { color: var(--wa-text); }
+.wa-toggle svg { flex: none; }
+.wa-toggle .wa-num { margin-left: auto; }
+.wa-inset { display: block; width: 100%; height: 150px; margin-top: 4px; }
+.wa-note { font-size: 12px; color: var(--wa-text-3); }
+.wa-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 12px; color: var(--wa-text-2); }
+.wa-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* 右侧栏里的输入框（查找对话消息） */
+.wa-input {
+    width: 100%;
+    height: 30px;
+    margin-bottom: 6px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    background: var(--wa-ink-2);
+    color: var(--wa-text);
+    font: inherit;
+}
+.wa-input::placeholder { color: var(--wa-text-3); }

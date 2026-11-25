@@ -332,6 +332,7 @@
 
         const releaseFollow = () => {
             state.generation += 1;
+            state.userScrollActive = false;
             cancelPendingScroll();
             if (state.layoutFrameId) {
                 cancelAnimationFrame(state.layoutFrameId);
@@ -355,17 +356,43 @@
             // 不能当作“向下滚动”去结算，否则会冲掉刚才的向上解锁。
         }, { passive: true });
 
-        // 在已完成的消息里点展开类控件（工具行、折叠块、卡片内按钮）时，用户期望
+        const IN_PLACE_EXPAND_IGNORE_SELECTOR = [
+            '.vcp-tool-result-delete-btn',
+            '.vcp-tool-result-toggle-btn',
+            '.vcp-code-copy-button',
+            '.vcp-code-sideview-button',
+            '.code-copy-btn',
+            '.mermaid-viewer-btn',
+            '.chat-avatar',
+            '.message-avatar'
+        ].join(', ');
+        const IN_PLACE_EXPAND_TARGET_SELECTOR = [
+            'button',
+            'summary',
+            'details',
+            '[role="button"]',
+            '[role="tab"]',
+            '[aria-expanded]',
+            '.vcp-tool-summary',
+            '.vcp-tool-result-header',
+            '.vcp-thought-chain-header',
+            '.vcp-tool-result-truncated-notice'
+        ].join(', ');
+
+        // 在已完成的消息里点展开类控件（工具行、折叠块、传统卡片折叠头）时，用户期望
         // 被点的控件和上方内容不动、展开部分向下长。跟随开着时，内容增高会被下面的
         // ResizeObserver 补滚到底，把刚点的控件推出视口，所以点击时先释放跟随。
-        // 正在生成的消息不在此列，生成中仍保持跟随。
+        // 明确不展开内容的动作按钮（如复制代码、切换工具结果显隐、快捷发送）不打断跟随。
         const isInPlaceExpandTarget = (target) => {
             if (!target?.closest) return false;
             const messageItem = target.closest('.message-item');
             if (!messageItem || messageItem.classList.contains('streaming') || messageItem.classList.contains('thinking')) {
                 return false;
             }
-            return Boolean(target.closest('button, summary, details, [role="button"], [role="tab"], [aria-expanded]'));
+            if (target.closest(IN_PLACE_EXPAND_IGNORE_SELECTOR)) {
+                return false;
+            }
+            return Boolean(target.closest(IN_PLACE_EXPAND_TARGET_SELECTOR));
         };
 
         container.addEventListener('touchstart', markUserIntent, { passive: true });

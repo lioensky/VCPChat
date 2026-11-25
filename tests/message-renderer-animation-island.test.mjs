@@ -1267,3 +1267,97 @@ test('one failed sibling retries at terminal without refreshing successful sibli
         assert.ok(Number(c.querySelector('span').dataset.ticks) > cTicks);
     } finally { await disposeFixture(fixture); }
 });
+
+test('revoking a batch keeps its borrowed bubble connected and releases only its new snapshot', async () => {
+    const fixture = await createRendererFixture('live');
+    try {
+        let scheduled;
+        const frame = new Promise(resolve => { scheduled = resolve; });
+        fixture.dom.window.requestAnimationFrame = () => { scheduled(); return 1; };
+        fixture.dom.window.cancelAnimationFrame = () => {};
+        const batch = fixture.renderer.renderMessageBatch([fixture.historyRef.get()[0], {
+            id: 'uncommitted', role: 'assistant', timestamp: 1,
+            content: '<style>.pending { width: 3px }</style>\n<<<[TOOL_REQUEST]>>>tool_name:「始」Demo「末」<<<[END_TOOL_REQUEST]>>>',
+        }]);
+        await frame;
+        assert.equal(fixture.messageItem.parentNode, fixture.root);
+        assert.equal(fixture.renderer.getLazyToolStats().entries, 1);
+        await fixture.renderer.renderHistory([]); // revoke without clearing the root
+        await batch;
+        assert.equal(fixture.messageItem.parentNode, fixture.root);
+        assert.equal(fixture.renderer.getLazyToolStats().entries, 0);
+        assert.equal(fixture.dom.window.document.head.querySelector('style[data-vcp-scope-id]'), null);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('measure growing open code fence projection', { skip: !process.env.VCP_FENCE_BENCH }, async t => {
+    const fixture = await createRendererFixture('');
+    try {
+        const message = await startIslandStream(fixture);
+        let frame;
+        fixture.dom.window.requestAnimationFrame = fn => { frame = fn; return 1; };
+        let chars = 0;
+        const times = [];
+        const prototype = fixture.dom.window.Element.prototype;
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, 'innerHTML');
+        Object.defineProperty(prototype, 'innerHTML', { ...descriptor, set(html) {
+            if (this.classList.contains('vcp-stream-tail-root')) chars += html.length;
+            descriptor.set.call(this, html);
+        } });
+        for (let i = 0; i < 80; i++) {
+            const chunk = (i === 0 ? '```js\n' : '') + `const value${i} = ${i};\n`;
+            fixture.streamProjection.appendStreamChunk(message.id, { content: chunk }, message, message.streamOperationId);
+            const started = performance.now();
+            frame(40 * (i + 1));
+            times.push(performance.now() - started);
+        }
+        assert.equal(fixture.messageItem.querySelectorAll('.vcp-stream-code-line').length, 81);
+        t.diagnostic(`80 one-line frames, jsdom without morphdom: tail HTML chars=${chars}; p95=${times.sort((a,b) => a-b)[75].toFixed(2)} ms`);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('open fence appends literal text without replacing completed lines and closes canonically', async () => {
+    const fixture = await createRendererFixture('');
+    try {
+        const msg = await startIslandStream(fixture);
+        await appendIslandChunk(fixture, msg, '```js\nfirst\npar');
+        const first = fixture.messageItem.querySelector('.vcp-stream-code-line');
+        assert.equal(first.textContent, 'first');
+        await appendIslandChunk(fixture, msg, 't <div>&amp;</div>\nlast');
+        const lines = [...fixture.messageItem.querySelectorAll('.vcp-stream-code-line')];
+        assert.equal(lines[0], first);
+        assert.deepEqual(lines.map(el => el.textContent), ['first', 'part <div>&amp;</div>', 'last']);
+        assert.equal(lines[1].childElementCount, 0);
+        assert.equal(lines[1].dataset.vcpStreamCodeCompleted, 'true');
+        await appendIslandChunk(fixture, msg, '\n```\n\nafter');
+        assert.equal(fixture.messageItem.querySelector('.vcp-stream-code-line'), null);
+        assert.match(fixture.messageItem.querySelector('.md-content').textContent, /last[\s\S]*after/);
+    } finally { await disposeFixture(fixture); }
+});
+
+test('Nova canvas island can find its own outer card and draw while the stream is idle', async () => {
+    const fixture = await createRendererFixture('', null, true);
+    try {
+        const message = await startIslandStream(fixture);
+        const source = '### 阶段一\n\n<div class="nova-island-stage1"><style>.nova-fps { color: cyan }</style>'
+            + '<div><canvas></canvas><span class="nova-fps">waiting</span></div><script>'
+            + 'const root = container.querySelector(".nova-island-stage1"); if (!root) return;'
+            + 'window.novaStarts = (window.novaStarts || 0) + 1;'
+            + 'let n = 0; function draw() { root.querySelector(".nova-fps").textContent = String(++n);'
+            + 'if (root.isConnected) requestAnimationFrame(draw); } requestAnimationFrame(draw);'
+            + '</script></div>';
+        await appendIslandChunk(fixture, message, source.slice(0, -6));
+        assert.equal(fixture.dom.window.novaStarts, undefined);
+        await appendIslandChunk(fixture, message, source.slice(-6));
+        const card = fixture.messageItem.querySelector('.nova-island-stage1');
+        const tick = () => Number(card.querySelector('.nova-fps').textContent);
+        assert.ok(tick() > 0, 'first managed draw must occur before terminal');
+        const before = tick();
+        await appendIslandChunk(fixture, message, '\n\n```typescript\nlet x = 1;\n');
+        assert.equal(fixture.streamProjection.getDiagnostics().renderTimers, 0);
+        assert.ok(tick() > before);
+        await finishIslandStream(fixture, message, source + '\n\n```typescript\nlet x = 1;\n```');
+        assert.equal(fixture.messageItem.querySelector('.nova-island-stage1'), card);
+        assert.equal(fixture.dom.window.novaStarts, 1);
+    } finally { await disposeFixture(fixture); }
+});

@@ -182,7 +182,7 @@ async function readAttachmentFrames(electronAPI, attachment, data) {
     }
 }
 
-async function buildDefaultMessageContent({ message, electronAPI }) {
+async function buildDefaultMessageContent({ message, electronAPI, includeAttachmentFrames = true }) {
     const originalParts = normalizeContentParts(message?.content);
     let text = stripHiddenToolResults(originalParts.filter(part => part?.type === 'text').map(part => normalizeText(part.text)).join('\n'));
     const attachments = Array.isArray(message?.attachments) ? message.attachments : [];
@@ -192,6 +192,7 @@ async function buildDefaultMessageContent({ message, electronAPI }) {
         const data = getAttachmentData(attachment);
         const liveText = await refreshLiveReferenceText(electronAPI, attachment, data);
         text = appendAttachmentContext(text, attachment, data, liveText);
+        if (!includeAttachmentFrames) continue;
         const framePayload = await readAttachmentFrames(electronAPI, attachment, data);
         if (!framePayload) continue;
 
@@ -315,6 +316,22 @@ async function expandWorkspacePlaceholdersInPrompt(electronAPI, text, snapshot =
     return text;
 }
 
+export function normalizeAgentContextWindowSize(value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    const size = Number(value);
+    return Number.isInteger(size) && size >= 1 && size <= 10000 ? size : null;
+}
+
+function selectAgentContextHistory(history, agentConfig) {
+    const size = normalizeAgentContextWindowSize(agentConfig.contextMessageWindowSize);
+    if (size === null || history.length <= size) return history;
+    let start = history.length - size;
+    // A tool-result suffix cannot be sent without the assistant call that precedes it.
+    while (start < history.length && (history[start].role === 'tool' || history[start].tool_call_id)) start++;
+    return history.slice(start);
+}
+
 // The entry point is intentionally mode-independent: intent chooses history, not prompt bytes.
 async function assembleRequestMessages({
     electronAPI, tavernEngine = null, agentConfig = {}, history,
@@ -327,10 +344,10 @@ async function assembleRequestMessages({
     requireDependency(electronAPI, 'electronAPI');
     if (!Array.isArray(history)) throw new TypeError('Single chat history must be an array');
     if (!context.agentId) throw new Error('Context assembly requires agentId');
-    if (temporaryPrompt && temporaryPrompt.trim()) {
-        currentUserMessage = { role: 'user', content: temporaryPrompt };
-        history = [...history, currentUserMessage];
-    }
+    const retainedHistory = selectAgentContextHistory(effectiveContextHistory(history), agentConfig);
+    const hasTemporaryPrompt = Boolean(temporaryPrompt?.trim());
+    if (hasTemporaryPrompt) currentUserMessage = { role: 'user', content: temporaryPrompt };
+    const effectiveHistory = hasTemporaryPrompt ? [...retainedHistory, currentUserMessage] : retainedHistory;
         let snapshot = conversationSnapshot;
         if (snapshot === undefined && typeof electronAPI.resolveConversationContext === 'function') {
             snapshot = await electronAPI.resolveConversationContext({ type: 'agent', id: context.agentId });
@@ -344,7 +361,6 @@ async function assembleRequestMessages({
             ? tavernRules
             : snapshot ? (Array.isArray(snapshot.rules) ? snapshot.rules : []) : await loadTavernRules(electronAPI);
         const contentBuilder = buildMessageContent || buildDefaultMessageContent;
-        const effectiveHistory = effectiveContextHistory(history);
         const messages = [];
 
         for (let index = 0; index < effectiveHistory.length; index += 1) {
@@ -413,7 +429,7 @@ async function assembleRequestMessages({
         }
 
         const messagesForVCP = applyContextRules(messages, rules, engine);
-        return { messagesForVCP, conversationSnapshot: snapshot };
+        return { messagesForVCP, conversationSnapshot: snapshot, retainedHistory };
 }
 
 function buildConversationSystemPrefix(agentConfig, topicId) {

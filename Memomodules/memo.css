@@ -489,6 +489,47 @@ body:not(.light-theme) .folder-item.active {
     transition: flex-basis 0.25s ease, width 0.25s ease, padding 0.25s ease, opacity 0.18s ease;
 }
 
+.editor-preview img.memo-preview-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    cursor: zoom-in;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editor-preview img.memo-preview-image:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+}
+
+.editor-preview a.memo-image-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--accent-color, #ff9e58);
+    background: rgb(255 158 88 / 12%);
+    border: 1px solid rgb(255 158 88 / 35%);
+    border-radius: 6px;
+    padding: 2px 8px;
+    margin: 2px 0;
+    text-decoration: none;
+    cursor: zoom-in;
+    word-break: break-all;
+    transition: all 0.18s ease;
+}
+
+.editor-preview a.memo-image-link::before {
+    content: "🖼️";
+    font-size: 0.9em;
+    flex-shrink: 0;
+}
+
+.editor-preview a.memo-image-link:hover {
+    background: rgb(255 158 88 / 22%);
+    border-color: rgb(255 158 88 / 60%);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgb(255 140 66 / 20%);
+}
 .editor-footer {
     padding: 15px 25px;
     border-top: 1px solid var(--glass-border);

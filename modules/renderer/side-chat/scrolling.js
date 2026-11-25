@@ -41,14 +41,37 @@ export function createSideChatScrolling({
         const onKeyDown = (event) => {
             if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) && !event.target?.closest?.('textarea, input, [contenteditable="true"]')) escape();
         };
+        const IN_PLACE_EXPAND_IGNORE_SELECTOR = [
+            '.vcp-tool-result-delete-btn',
+            '.vcp-tool-result-toggle-btn',
+            '.vcp-code-copy-button',
+            '.vcp-code-sideview-button',
+            '.code-copy-btn',
+            '.mermaid-viewer-btn',
+            '.chat-avatar',
+            '.message-avatar'
+        ].join(', ');
+        const IN_PLACE_EXPAND_TARGET_SELECTOR = [
+            'button',
+            'summary',
+            'details',
+            '[role="button"]',
+            '[role="tab"]',
+            '[aria-expanded]',
+            '.vcp-tool-summary',
+            '.vcp-tool-result-header',
+            '.vcp-thought-chain-header',
+            '.vcp-tool-result-truncated-notice'
+        ].join(', ');
         // 在已完成的消息里点展开类控件时让展开部分向下长，不再贴底把被点的控件推走；
-        // 正在生成的消息照常贴底。与主聊天 ui-helpers.js 的处理一致。
+        // 明确不改变展开高度的动作按钮（复制代码、切换工具结果显隐等）不打断贴底。
         const onInPlaceExpand = (event) => {
             const target = event.target;
             if (!target?.closest) return;
             const messageItem = target.closest('.message-item');
             if (!messageItem || messageItem.classList.contains('streaming') || messageItem.classList.contains('thinking')) return;
-            if (target.closest('button, summary, details, [role="button"], [role="tab"], [aria-expanded]')) {
+            if (target.closest(IN_PLACE_EXPAND_IGNORE_SELECTOR)) return;
+            if (target.closest(IN_PLACE_EXPAND_TARGET_SELECTOR)) {
                 stickToBottom = false;
             }
         };

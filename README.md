@@ -343,6 +343,8 @@ npm run doctor -- --deep
 ```
 > 💡 **版本与 ABI 说明**：Electron 44 使用 `NODE_MODULE_VERSION 149`。本项目锁定 `better-sqlite3 13.x` 与专用 `node-abi`。遇到任何 ABI 不匹配或 `Error invoking remote method 'get-agents'` 报错时，请执行带 `-f` 参数的完整 rebuild 并进行 deep 诊断。
 
+> **Linux PDF 附件转图**：需要系统 Poppler 的 `pdftoppm`（Debian/Ubuntu：`sudo apt install poppler-utils`），并确保它在启动 VCPChat 的环境的 `PATH` 中。未安装时，仍可提取 PDF 文本；需要转图的附件会降级为已有文本或无法读取提示。
+
 #### 3. 安装 Python 扩展依赖 (音频与高级 AI 服务环境)
 ```bash
 pip install -r requirements.txt

@@ -28,7 +28,9 @@ Module._load = function loadWithElectronMock(request, parent, isMain) {
     return originalLoad.call(this, request, parent, isMain);
 };
 const terminalHandlers = require('../modules/ipc/terminalHandlers');
-const executor = require('../VCPDistributedServer/Plugin/PowerShellExecutor/PowerShellExecutor.js');
+const PTY_EXECUTOR_PATH = path.join(__dirname, '..', 'VCPDistributedServer', 'Plugin', 'PTYShellExecutor', 'PTYShellExecutor.js');
+const PS_EXECUTOR_PATH = path.join(__dirname, '..', 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js');
+const executor = require(process.platform !== 'win32' && fs.existsSync(PTY_EXECUTOR_PATH) ? PTY_EXECUTOR_PATH : PS_EXECUTOR_PATH);
 Module._load = originalLoad;
 
 class FakeSender extends EventEmitter {
@@ -232,7 +234,10 @@ test('records AI commands as runs: listed, readable and pushed to watching pages
 
     // 脚本语法错误时仍会收到结束标记，错误文本进入输出；终端里只回显一行短的脚本调用
     const broken = await executor._runCommandForTest('Write-Output (');
-    assert.match(broken, /Missing|缺少|ParserError|expression/i);
+    const expectedError = process.platform === 'win32'
+        ? /Missing|缺少|ParserError|expression/i
+        : /syntax error|unexpected token|parse error|errors=[1-9]/i;
+    assert.match(broken, expectedError);
     const echoed = await call('terminal:create', sender, {});
     await waitFor(() => viewOutput(sender, echoed.data.id).includes('vcp-run-'));
     assert.equal(viewOutput(sender, echoed.data.id).includes('FromBase64String'), false, 'the wrapper code is not typed into the shell');

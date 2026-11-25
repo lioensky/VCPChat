@@ -92,6 +92,30 @@ test('navigator mounted after eviction reads bounded snapshots with unchanged fi
     } finally { f.close(); }
 });
 
+test('preview skips leading decoration, preserves literal code and stops before the third paragraph', () => {
+    const f = fixture();
+    try {
+        const body = f.items[0].firstChild;
+        body.innerHTML = '<style>.card { color: red }</style><div style="color:red">'
+            + '<details>hidden</details><span> 标</span><b>题\n</b><i> \n</i>'
+            + '<code>&lt;div&gt; .card { color: red }</code>\n\n<span>tail</span></div>';
+        const tail = body.lastChild.lastChild;
+        tail.matches = () => { throw new Error('walked past paragraph budget'); };
+        body.cloneNode = () => { throw new Error('cloned preview body'); };
+        assert.equal(readMessagePreviewText(f.items[0]), '标题\n\n<div> .card { color: red }');
+    } finally { f.close(); }
+});
+
+test('mounted preview stops walking after its character budget', () => {
+    const f = fixture();
+    try {
+        const body = f.items[0].firstChild;
+        body.innerHTML = `${'甲'.repeat(4096)}<span>tail</span>`;
+        body.lastChild.matches = () => { throw new Error('walked past character budget'); };
+        assert.equal(readMessagePreviewText(f.items[0]), '甲'.repeat(223));
+    } finally { f.close(); }
+});
+
 test('restoration, edits and repeated eviction use current text, including clearing a previous answer', async () => {
     const f = fixture();
     try {

@@ -66,6 +66,10 @@
     const compile = (timeline, track, options = {}) => {
         const events = [];
         const occupied = timeline.protectedIntervals.map(i => ({ start: i.start - 2, end: i.end + 2.5 }));
+        // While the camera is inside the car or out at the waterside it is not
+        // looking down the line, so nothing is staged there for it to miss.
+        for (const scene of track.scenes || []) occupied.push({ start: scene.start - 1, end: scene.end + 1 });
+        occupied.sort((a, b) => a.start - b.start);
         const gaps = [];
         let cursor = 5;
         for (const interval of occupied) {
@@ -74,6 +78,18 @@
         }
         if (cursor < timeline.duration - 1) gaps.push({ start: cursor, end: timeline.duration - 1 });
         const random = seededRandom(`${timeline.seed}:encounters`);
+        // Where the camera is along the line at a time, and when it gets to an address.
+        const addressAt = time => track.addressAt ? track.addressAt(time)
+            : timeline.distanceAt(time, options.cameraSpeed ?? 1);
+        const timeAt = address => {
+            if (track.timeAt) return track.timeAt(address);
+            let lo = 0, hi = timeline.duration;
+            for (let j = 0; j < 28; j++) {
+                const mid = (lo + hi) / 2;
+                if (addressAt(mid) < address) lo = mid; else hi = mid;
+            }
+            return (lo + hi) / 2;
+        };
         let whale = false, lastEnd = -25;
         for (const gap of gaps) {
             for (let start = Math.max(gap.start, lastEnd + 24); start < gap.end; start = lastEnd + 24) {
@@ -90,7 +106,7 @@
                 kind = 'rabbit'; duration = 8;
             }
             const side = random() > 0.5 ? 1 : -1;
-            const address = timeline.distanceAt(start + duration * 0.5, options.cameraSpeed ?? 1)
+            const address = addressAt(start + duration * 0.5)
                 + (kind === 'whale' ? 70 : kind === 'rabbit' ? 24 : 200);
             const frame = track.at(address);
             events.push({
@@ -147,20 +163,14 @@
                 y: 0, z: pose.position.z + forward.z * distance
             } };
             add(kind, start, duration, frame, smallIndex % 2 ? -1 : 1, { viewPlaced: true,
-                trackAddress: timeline.distanceAt(start + 1.4, options.cameraSpeed ?? 1) + distance });
+                trackAddress: addressAt(start + 1.4) + distance });
             smallIndex++;
         }
         if (options.narrativeStations !== false && (options.stationIntensity ?? 1) > 0) {
-            const speed = options.cameraSpeed ?? 1;
-            const total = timeline.distanceAt(timeline.duration, speed);
+            const total = addressAt(timeline.duration);
             for (let id = 0; id * 110 + 38 < total; id += 2) {
                 const address = id * 110 + 38;
-                let lo = 0, hi = timeline.duration;
-                for (let j = 0; j < 28; j++) {
-                    const mid = (lo + hi) / 2;
-                    if (timeline.distanceAt(mid, speed) < address - 23) lo = mid; else hi = mid;
-                }
-                const start = (lo + hi) / 2;
+                const start = timeAt(address - 23);
                 if (start < 2 || start + 6 > timeline.duration || !free(start, start + 6)) continue;
                 const f = track.at(address);
                 const side = id % 2 ? 1 : -1;
@@ -190,18 +200,12 @@
         }
         if (options.narrativeStations !== false && (options.stationIntensity ?? 1) > 0) {
             const spacing = 16 / clamp(options.stationIntensity ?? 1, 0.5, 2);
-            const speed = options.cameraSpeed ?? 1;
             for (let start = 10; start + 7 < timeline.duration; start += 13) {
                 if (!birdFree(start)) continue;
-                const address = Math.ceil((timeline.distanceAt(start, speed) + 18) / spacing) * spacing;
+                const address = Math.ceil((addressAt(start) + 18) / spacing) * spacing;
                 const id = Math.round(address / spacing);
                 if (id % 7 === 3) continue;
-                let lo = 0, hi = timeline.duration;
-                for (let j = 0; j < 24; j++) {
-                    const mid = (lo + hi) / 2;
-                    if (timeline.distanceAt(mid, speed) < address) lo = mid; else hi = mid;
-                }
-                if (timeline.sample((lo + hi) / 2).density < 0.4 && id % 4 !== 0) continue;
+                if (timeline.sample(timeAt(address)).density < 0.4 && id % 4 !== 0) continue;
                 const f = track.at(address);
                 const p = worldPoint({ anchor: f.position, ...f }, -3.05, 0, 6.16);
                 const view = global.MusicStageDioramaCamera.pose(timeline, track, start + 1, options);
@@ -507,6 +511,9 @@
         const rings = new T.InstancedMesh(ringGeometry, ringMaterial, 12);
         rings.instanceMatrix.setUsage(T.DynamicDrawUsage);
         rings.frustumCulled = false;
+        // Each ripple has its own colour. Give the mesh its colour buffer now,
+        // so its shader is compiled with it at the warm-up and not mid-song.
+        rings.setColorAt(0, new T.Color(0, 0, 0));
         root.add(rings);
         const bodyGeometry = new T.SphereGeometry(1, 20, 14);
         // Fresnel rim light: bodies read as luminous silhouettes rather than
@@ -572,6 +579,8 @@
         root.add(splashes);
         let splashCount = 0;
         const dummy = new T.Object3D(), cold = new T.Color(), warm = new T.Color(), color = new T.Color();
+        const tint = Object.fromEntries(['#ffffff', '#fff2b8', '#d4ffff', '#e0f8ff']
+            .map(hex => [hex, new T.Color(hex)]));
         let events = [], active = null, state = null, seedId = null, samples = [];
         let dead = false;
         const parts = (kind, pose) => {
@@ -652,7 +661,7 @@
                 volumes.visible = bodyVisible && !vectorAnimal;
                 outlines.visible = vectorAnimal;
                 if (vectorAnimal) {
-                    lineMaterial.color.copy(cold).lerp(new T.Color('#ffffff'), 0.45);
+                    lineMaterial.color.copy(cold).lerp(tint['#ffffff'], 0.45);
                     lineMaterial.opacity = state.fade * 0.9;
                     drawAnimal(active, state);
                 }
@@ -793,17 +802,17 @@
                         if (burstAge >= 0 && burstAge < 0.22) {
                             color.set('#ffffff').lerp(warm, burstAge / 0.22).multiplyScalar(brightness);
                         } else if (burst === 1) {
-                            color.copy(warm).lerp(new T.Color('#fff2b8'), 0.35).multiplyScalar(brightness);
+                            color.copy(warm).lerp(tint['#fff2b8'], 0.35).multiplyScalar(brightness);
                         } else if (burst === 2) {
-                            color.copy(cold).lerp(new T.Color('#d4ffff'), 0.55).multiplyScalar(brightness);
+                            color.copy(cold).lerp(tint['#d4ffff'], 0.55).multiplyScalar(brightness);
                         } else {
                             color.copy(warm).lerp(cold, 0.4).multiplyScalar(brightness);
                         }
                     } else if (whale) {
                         if (isSpout) {
-                            color.copy(cold).lerp(new T.Color('#ffffff'), 0.72).multiplyScalar(brightness);
+                            color.copy(cold).lerp(tint['#ffffff'], 0.72).multiplyScalar(brightness);
                         } else if (isSplash) {
-                            color.copy(cold).lerp(new T.Color('#e0f8ff'), 0.52).multiplyScalar(brightness);
+                            color.copy(cold).lerp(tint['#e0f8ff'], 0.52).multiplyScalar(brightness);
                         } else {
                             color.copy(cold).lerp(warm, 0.15).multiplyScalar(brightness);
                         }
@@ -823,7 +832,7 @@
                         const glow = ripple.opacity * state.fade * (palette.light ? 0.5 : 1);
                         if (glow <= 0.001) continue;
                         splashPositions.set([ripple.x, 0.6, ripple.z], splashCount * 3);
-                        color.copy(cold).lerp(new T.Color('#e0f8ff'), 0.5).multiplyScalar(glow * 1.6);
+                        color.copy(cold).lerp(tint['#e0f8ff'], 0.5).multiplyScalar(glow * 1.6);
                         color.toArray(splashColors, splashCount * 3);
                         splashSizes[splashCount] = ripple.radius * 0.9;
                         splashCount++;

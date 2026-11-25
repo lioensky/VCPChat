@@ -145,3 +145,23 @@ test('existing-only replacement queued after deletion cannot recreate history', 
     await rejected;
     assert.equal(await fs.pathExists(directory), false);
 });
+
+test('topic activity comes from persisted conversation timestamps, including old files and deletions', async t => {
+    const queue = await fixture(t);
+    const target = descriptor();
+    const events = [];
+    queue.onActivity = event => events.push(event);
+    const iso = '2024-08-10T11:00:00.000Z';
+    const history = [{ role: 'assistant', timestamp: iso }, { role: 'user', timestamp: 10 },
+        { role: 'system', timestamp: Date.now() }, { role: 'assistant', isThinking: true, timestamp: Date.now() }];
+    await fs.outputJson(queue.getHistoryPath(target.itemId, target.topicId), history);
+    const read = () => queue.getActivityTimes(target.itemId, [target.topicId, 'empty']);
+    assert.deepEqual(await read(), [[target.topicId, Date.parse(iso)], ['empty', 0]]);
+    assert.equal(events.length, 0);
+    await queue.replace(target, [{ role: 'user', timestamp: 10 }]);
+    assert.equal(events.at(-1).time, 10);
+    assert.deepEqual(await read(), [[target.topicId, 10], ['empty', 0]]);
+    await queue.replace(target, []);
+    assert.equal(events.at(-1).time, 0);
+    await assert.rejects(() => queue.getActivityTimes(target.itemId, ['../invalid']));
+});

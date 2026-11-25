@@ -257,7 +257,7 @@ function createFixture(options = {}) {
         },
         electronAPI,
         flowlockManager: options.flowlockManager,
-        uiHelper: { showToastNotification() {}, autoResizeTextarea() {}, openModal() {} },
+        uiHelper: { showToastNotification: options.showToastNotification || (() => {}), autoResizeTextarea() {}, openModal() {} },
         modules: {
             messageRenderer,
             streamManager: options.streamProjection || null,
@@ -1175,7 +1175,12 @@ for (const mode of ['manual', 'before-send', 'stream', 'stream-flowlock']) {
             flowlockManager: { isAgentLocked: () => mode === 'stream-flowlock' },
         });
         try {
-            fixture.configs['agent-a'].contextTokenLimit = 100;
+            fixture.configs['agent-a'].contextTokenLimit = mode === 'before-send' ? 500 : 100;
+            if (mode === 'before-send') {
+                fixture.setPersistedHistory('agent-a', 'topic-a', [
+                    { id: 'a-message', role: 'assistant', content: '旧'.repeat(440), timestamp: 1 },
+                ]);
+            }
             const selecting = fixture.chatManager.selectItem('agent-a', 'agent', 'Agent A', null, fixture.configs['agent-a']);
             await new Promise(resolve => setImmediate(resolve));
             fixture.topicRequests.get('agent-a').resolve(fixture.configs['agent-a'].topics);
@@ -1185,7 +1190,7 @@ for (const mode of ['manual', 'before-send', 'stream', 'stream-flowlock']) {
             if (mode === 'manual') {
                 await fixture.chatManager.compactContext();
             } else if (mode === 'before-send') {
-                input.value = '新问题'.repeat(100);
+                input.value = '新问题';
                 await fixture.chatManager.handleSendMessage();
             } else {
                 await fixture.chatManager.checkStreamContextBudget({
@@ -1618,4 +1623,79 @@ test('a stale context-menu scope cannot compress the newly selected topic', asyn
         }), /话题已切换/);
         assert.equal(calls, 0);
     } finally { await fixture.chatManager.dispose(); fixture.dom.window.close(); }
+});
+
+test('ordinary send preflight counts expanded text before compaction or admission (#361)', async () => {
+    for (const scenario of ['oversized', 'fits-after-compaction', 'still-oversized']) {
+        const oversized = scenario === 'oversized';
+        const notices = [];
+        const compacted = [];
+        const submitted = [];
+        let fixture;
+        const oldMessage = {
+            id: 'a-message', role: 'assistant', content: '旧'.repeat(oversized ? 100 : 250), timestamp: 1,
+        };
+        fixture = createFixture({
+            settings: { enableContextCompaction: true },
+            showToastNotification: (...args) => notices.push(args),
+            topicAdmissionSubmit: async request => {
+                submitted.push(request);
+                return { success: true, queued: true };
+            },
+            compactionService: {
+                isBusy: () => false, cancel: () => false, dispose() {},
+                async compact({ history, onCommitted }) {
+                    compacted.push(Array.from(history, message => message.id));
+                    const checkpoint = {
+                        id: 'checkpoint', role: 'user',
+                        content: scenario === 'still-oversized' ? '摘'.repeat(400) : '旧话题摘要',
+                        contextCompaction: { kind: 'vchat-context-checkpoint', version: 1, checkpoint: '旧话题摘要' },
+                    };
+                    await onCommitted([oldMessage, checkpoint], checkpoint);
+                    return { success: true };
+                },
+            },
+        });
+        try {
+            fixture.configs['agent-a'].contextTokenLimit = 500;
+            fixture.setPersistedHistory('agent-a', 'topic-a', [oldMessage]);
+            await selectAdmissionFixture(fixture);
+            const input = fixture.window.document.getElementById('messageInput');
+            input.value = '请阅读';
+            const extractedText = '文'.repeat(oversized ? 1000 : 200);
+            const attachment = {
+                file: { type: 'text/plain', size: extractedText.length }, originalName: 'note.txt',
+                localPath: '/tmp/note.txt', _fileManagerData: { extractedText },
+            };
+            const originalAttachments = fixture.attachmentRef.append(attachment);
+
+            await fixture.chatManager.handleSendMessage();
+
+            assert.equal(fixture.historySaveCount(), 0);
+            assert.equal(fixture.sentRequests.length, 0);
+            if (oversized) {
+                assert.deepEqual(compacted, []);
+                assert.deepEqual(submitted, []);
+                assert.match(notices.at(-1)?.[0], /草稿已保留.*展开附件.*超过上限 500/);
+                assert.equal(input.value, '请阅读');
+                assert.equal(fixture.attachmentRef.get(), originalAttachments);
+                assert.deepEqual(Array.from(fixture.state().history, message => message.id), ['a-message']);
+            } else {
+                assert.deepEqual(compacted, [['a-message']]);
+                if (scenario === 'still-oversized') {
+                    assert.deepEqual(submitted, []);
+                    assert.match(notices.at(-1)?.[0], /草稿已保留.*压缩后的请求.*超过上限 500/);
+                    assert.equal(input.value, '请阅读');
+                    assert.equal(fixture.attachmentRef.get(), originalAttachments);
+                    continue;
+                }
+                assert.equal(submitted.length, 1);
+                assert.equal(submitted[0].message.content, '请阅读');
+                assert.equal(submitted[0].message.attachments[0]._fileManagerData.extractedText, extractedText);
+                assert.equal(input.value, '');
+            }
+        } finally {
+            fixture.dom.window.close();
+        }
+    }
 });

@@ -17,6 +17,9 @@ const { HistoryMutationQueue } = require('../services/historyMutationQueue');
 const workspaceHandlers = require('./workspaceHandlers');
 const { removeSideChatChildrenOfParent } = require('./sideChatHandlers');
 const { hostHooks } = require('../hostHooks');
+const { describeChatRequestError, readChatHttpError, chatResponseError } = require('../chatRequestError');
+const { createSleepStreamIdle, getChatStreamDispatcher } = require('../chat/sleepStreamIdle');
+const { createSleepStreamRequests } = require('../chat/sleepStreamRequests');
 
 /**
  * 若 filePath 属于已登记工作区且是文本/代码文件，创建真实路径实时引用；否则返回 null，
@@ -199,7 +202,9 @@ function sanitizeFlowlockRequest(request) {
         createdAt: request.createdAt,
         heartbeatSeconds: Math.max(1, Math.min(86400, Number.parseInt(request.heartbeatSeconds, 10) || 5)),
         prompt: typeof request.prompt === 'string' ? request.prompt : '',
-        status: request.status
+        status: request.status,
+        idleOnly: request.idleOnly === true,
+        initialMessageId: request.initialMessageId,
     };
 }
 
@@ -287,6 +292,7 @@ function initialize(mainWindow, context) {
                     const request = sanitizeFlowlockRequest(topic.flowlockRequest);
                     if (!request || request.status !== 'pending') continue;
                     if (request.requestedByAgentId !== agentId) continue;
+                    if (request.idleOnly && constraints.skipIdleOnly === true) continue;
                     if (requestId && request.requestId !== requestId) continue;
                     if (topicId && topic.id !== topicId) continue;
                     if (createdAfter !== null && request.createdAt < createdAfter) continue;
@@ -308,6 +314,16 @@ function initialize(mainWindow, context) {
                                 : item)
                         }));
                         continue;
+                    }
+                    if (request.idleOnly) {
+                        const history = await historyMutationQueue.read({ itemId: agentId, itemType: 'agent', topicId: topic.id });
+                        const initialIndex = history.findIndex(message => message.id === request.initialMessageId);
+                        if (initialIndex < 0 || !history.slice(initialIndex + 1).some(message =>
+                            message.role === 'assistant' && message.admissionTerminal === true
+                            && message.agentId === agentId && !message.isThinking && !message.isPendingStream
+                            && message.finishReason !== 'error'
+                            && !/^\s*\[ERROR\]/i.test(typeof message.content === 'string' ? message.content : '')
+                        )) continue;
                     }
                     candidates.push({ topic, request });
                 }
@@ -335,7 +351,8 @@ function initialize(mainWindow, context) {
                 });
 
                 const [{ topic, request }, ...staleCandidates] = candidates;
-                const staleRequestIds = new Set(staleCandidates.map(entry => entry.request.requestId));
+                const staleRequestIds = new Set(request.idleOnly ? [] : staleCandidates
+                    .filter(entry => !entry.request.idleOnly).map(entry => entry.request.requestId));
                 const now = Date.now();
                 let claimed = false;
                 await agentConfigManager.updateAgentConfig(agentId, existing => ({
@@ -386,7 +403,8 @@ function initialize(mainWindow, context) {
                         requestId: request.requestId,
                         heartbeatSeconds: request.heartbeatSeconds,
                         prompt: request.prompt,
-                        createdAt: request.createdAt
+                        createdAt: request.createdAt,
+                        ...(request.idleOnly ? { idleOnly: true } : {}),
                     }
                 };
             } catch (error) {
@@ -448,7 +466,8 @@ function initialize(mainWindow, context) {
                                 topicId: topic.id,
                                 topicName: topic.name,
                                 requestId: request.requestId,
-                                createdAt: request.createdAt
+                                createdAt: request.createdAt,
+                                ...(request.idleOnly ? { idleOnly: true } : {}),
                             });
                         }
                     }
@@ -524,6 +543,9 @@ function initialize(mainWindow, context) {
             return { success: false, error: error.message };
         }
     });
+
+    ipcMain.handle('get-topic-activity-times', (_event, itemId, topicIds) =>
+        historyMutationQueue.getActivityTimes(itemId, topicIds));
 
     ipcMain.handle('search-topics-by-content', async (event, itemId, itemType, searchTerm) => {
         if (!itemId || !itemType || typeof searchTerm !== 'string' || searchTerm.trim() === '') {
@@ -736,7 +758,7 @@ function initialize(mainWindow, context) {
                 // Part A: 历史数据兼容处理 - 自动为缺少新字段的话题添加默认值
                 const normalizedTopics = config.topics.map(topic => ({
                     ...topic,
-                    locked: topic.locked !== undefined ? topic.locked : true,
+
                     unread: topic.unread !== undefined ? topic.unread : false,
                     creatorSource: topic.creatorSource || 'unknown'
                 }));
@@ -749,7 +771,7 @@ function initialize(mainWindow, context) {
         }
     });
 
-    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false, locked = true) => {
+    ipcMain.handle('create-new-topic-for-agent', async (event, agentId, topicName, isBranch = false) => {
         try {
             const newTopicId = `topic_${Date.now()}`;
             const timestamp = Date.now();
@@ -766,7 +788,6 @@ function initialize(mainWindow, context) {
                     id: newTopicId,
                     name: topicName || `新话题 ${existingTopics.length + 1}`,
                     createdAt: timestamp,
-                    locked: locked,
                     unread: false,
                     creatorSource: "ui"
                 };
@@ -1131,8 +1152,11 @@ function initialize(mainWindow, context) {
         let handoff = null;
         let streamTask = null;
         let streamTaskDetached = false;
+        let bodyIdle;
+        let observeSleep;
         let trajectoryCall = null; // 侧栏「调用轨迹」的记录句柄；记录器自己吞掉一切异常
         const finishStreamTask = () => {
+            bodyIdle?.close();
             handoff?.finish();
             if (activeHandoffs.get(messageId)?.handle === handoff) activeHandoffs.delete(messageId);
             if (!streamTask) return;
@@ -1442,6 +1466,11 @@ function initialize(mainWindow, context) {
                 });
                 activeHandoffs.set(messageId, { handle: handoff, sender: event.sender });
             }
+            if (modelConfig.stream === true && !isGroupCall) {
+                bodyIdle = createSleepStreamIdle();
+                observeSleep = await createSleepStreamRequests(bodyIdle);
+            }
+            const userSignal = streamTask?.controller.signal;
             const response = await fetch(finalVcpUrl, {
                 method: 'POST',
                 headers: {
@@ -1449,66 +1478,21 @@ function initialize(mainWindow, context) {
                     'Authorization': `Bearer ${vcpApiKey}`
                 },
                 body: serializedBody,
-                signal: streamTask?.controller.signal,
+                signal: bodyIdle && userSignal ? AbortSignal.any([userSignal, bodyIdle.signal]) : bodyIdle?.signal ?? userSignal,
+                ...(bodyIdle ? { dispatcher: getChatStreamDispatcher() } : {}),
             });
+            bodyIdle?.touch();
 
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[Main - sendToVCP] VCP请求失败. Status: ${response.status}, Response Text:`, errorText);
-                let errorData = { message: `服务器返回状态 ${response.status}`, details: errorText };
-                try {
-                    const parsedError = JSON.parse(errorText);
-                    if (typeof parsedError === 'object' && parsedError !== null) {
-                        errorData = parsedError;
-                    }
-                } catch (e) { /* Not JSON, use raw text */ }
-
-                // 🔧 改进错误消息构造，防止 [object Object]
-                let errorMessage = '';
-                if (errorData.message && typeof errorData.message === 'string') {
-                    errorMessage = errorData.message;
-                } else if (errorData.error) {
-                    if (typeof errorData.error === 'string') {
-                        errorMessage = errorData.error;
-                    } else if (errorData.error.message && typeof errorData.error.message === 'string') {
-                        errorMessage = errorData.error.message;
-                    } else if (typeof errorData.error === 'object') {
-                        // 如果error是对象，尝试JSON序列化
-                        errorMessage = JSON.stringify(errorData.error);
-                    }
-                } else if (typeof errorData === 'string') {
-                    errorMessage = errorData;
-                } else {
-                    errorMessage = '未知服务端错误';
+                const failure = await readChatHttpError(response);
+                console.error('[Main - sendToVCP]', failure.error);
+                trajectoryCall.finish({ error: { name: 'HTTPError', message: failure.error } });
+                if (modelConfig.stream === true) {
+                    sendStreamPayload({ type: 'error', ...failure, messageId, context });
+                    return { streamError: true, ...failure };
                 }
-
-                const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorMessage}`;
-                trajectoryCall.finish({ error: { name: 'HTTPError', message: errorMessageToPropagate } });
-
-                if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                    // 构造更详细的错误信息
-                    let detailedErrorMessage = `服务器返回状态 ${response.status}.`;
-                    if (errorData && errorData.message && typeof errorData.message === 'string') {
-                        detailedErrorMessage += ` 错误: ${errorData.message}`;
-                    } else if (errorData && errorData.error && errorData.error.message && typeof errorData.error.message === 'string') {
-                        detailedErrorMessage += ` 错误: ${errorData.error.message}`;
-                    } else if (typeof errorData === 'string' && errorData.length < 200) {
-                        detailedErrorMessage += ` 响应: ${errorData}`;
-                    } else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) {
-                        detailedErrorMessage += ` 详情: ${errorData.details}`;
-                    }
-
-                    const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
-                    if (context) errorPayload.context = context;
-                    sendStreamPayload(errorPayload);
-                    // 为函数返回值构造统一的 errorDetail.message
-                    const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorMessage}`;
-                    return { streamError: true, error: `VCP请求失败 (${response.status})`, errorDetail: { message: finalErrorMessageForReturn, originalData: errorData } };
-                }
-                const err = new Error(errorMessageToPropagate);
-                err.details = errorData;
-                err.status = response.status;
-                throw err;
+                if (!isGroupCall) hostHooks.emit('chat:stream-payload', { type: 'error', ...failure, messageId, context });
+                return failure;
             }
 
             if (modelConfig.stream === true) {
@@ -1530,6 +1514,7 @@ function initialize(mainWindow, context) {
                             const { done, value } = await reader.read();
                             bodyReachedEOF = done;
                             if (value) {
+                                bodyIdle?.touch();
                                 buffer += decoder.decode(value, { stream: true });
                             }
 
@@ -1556,11 +1541,15 @@ function initialize(mainWindow, context) {
                                     }
                                     try {
                                         const parsedChunk = JSON.parse(jsonData);
+                                        const responseError = chatResponseError(parsedChunk);
+                                        if (responseError) throw responseError;
+                                        observeSleep?.(parsedChunk.choices?.[0]?.delta?.content);
                                         trajectoryCall.chunk(parsedChunk);
                                         firstUsage = firstUsage || normalizeUsage(parsedChunk?.usage);
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         sendStreamPayload(dataPayload);
                                     } catch (e) {
+                                        if (e?.isChatResponseError) throw e;
                                         console.error(`解析VCP流数据块JSON失败 for messageId: ${messageId}:`, e, '原始数据:', jsonData);
                                         const errorChunkPayload = { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageId, context };
                                         sendStreamPayload(errorChunkPayload);
@@ -1578,10 +1567,14 @@ function initialize(mainWindow, context) {
                                 break; // 退出 while 循环
                             }
                         }
-                    } catch (streamError) {
+                    } catch (readError) {
+                        const streamError = !userSignal?.aborted && bodyIdle?.signal.aborted ? bodyIdle.signal.reason : readError;
                         console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
                         trajectoryCall.finish({ error: streamError, aborted: streamError?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
-                        const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
+                        const failure = streamError?.isChatResponseError
+                            ? { error: streamError.message, status: streamError.status }
+                            : describeChatRequestError(streamError, undefined, 'VCP流读取错误');
+                        const streamErrPayload = { type: 'error', ...failure, messageId };
                         if (context) streamErrPayload.context = context;
                         sendStreamPayload(streamErrPayload);
                     } finally {
@@ -1621,6 +1614,8 @@ function initialize(mainWindow, context) {
             } else { // Non-streaming
                 console.log('VCP响应: 非流式处理');
                 const vcpResponse = await response.json();
+                const responseError = chatResponseError(vcpResponse);
+                if (responseError) throw responseError;
                 trajectoryCall.finish({ response: vcpResponse });
                 if (!isGroupCall) hostHooks.emit('chat:full-response', messageId, context, vcpResponse);
                 // For non-streaming, wrap the response with the original context
@@ -1631,16 +1626,18 @@ function initialize(mainWindow, context) {
         } catch (error) {
             console.error('VCP请求错误 (catch block):', error);
             trajectoryCall?.finish({ error, aborted: error?.name === 'AbortError' || streamTask?.controller.signal.aborted === true });
+            const failure = error?.isChatResponseError
+                ? { error: error.message, status: error.status }
+                : describeChatRequestError(error, undefined, 'VCP请求错误');
             if (!isGroupCall && modelConfig.stream !== true) {
                 const aborted = error?.name === 'AbortError' || streamTask?.controller.signal.aborted === true;
-                hostHooks.emit('chat:stream-payload', { type: aborted ? 'end' : 'error', messageId, context, aborted });
+                hostHooks.emit('chat:stream-payload', { type: aborted ? 'end' : 'error', ...failure, messageId, context, aborted });
             }
-            if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
-                sendStreamPayload(catchErrorPayload);
-                return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
+            if (modelConfig.stream === true) {
+                sendStreamPayload({ type: 'error', ...failure, messageId, context });
+                return { streamError: true, ...failure };
             }
-            return { error: `VCP请求错误: ${error.message}` };
+            return failure;
         } finally {
             if (!streamTaskDetached) finishStreamTask();
         }
@@ -1693,20 +1690,22 @@ function initialize(mainWindow, context) {
                 signal: AbortSignal.timeout(INTERRUPT_TIMEOUT_MS)
             });
 
-            const result = await response.json();
-
             if (!response.ok) {
-                console.error(`[Main - interrupt] Failed to send interrupt signal:`, result);
-                return { success: false, error: result.message || `Server returned status ${response.status}` };
+                const failure = await readChatHttpError(response);
+                console.error('[Main - interrupt]', failure.error);
+                return { success: false, ...failure };
             }
 
+            const result = await response.json();
+            const responseError = chatResponseError(result);
+            if (responseError) return { success: false, error: responseError.message, status: responseError.status };
             console.log(`[Main - interrupt] Interrupt signal sent successfully for ${messageId}. Response:`, result.message);
             upstreamAccepted = true;
             return { success: true, message: result.message };
 
         } catch (error) {
             console.error(`[Main - interrupt] Error sending interrupt request for messageId ${messageId}:`, error);
-            return { success: false, error: error.message };
+            return { success: false, ...describeChatRequestError(error, undefined, '中止请求失败') };
         } finally {
             // 上游拒绝中止时，侧栏走本地流收尾；同时关闭本 IPC 调用者自己的
             // HTTP 读取。成功中止仍由上游发送终态，保留已接收内容的正常收尾路径。
@@ -1816,50 +1815,6 @@ function initialize(mainWindow, context) {
         } catch (error) {
             console.error('获取未读话题计数时出错:', error);
             return { success: false, error: error.message, counts: {} };
-        }
-    });
-
-    // Part A: 切换话题锁定状态
-    ipcMain.handle('toggle-topic-lock', async (event, agentId, topicId) => {
-        try {
-            if (!agentId || !topicId) {
-                return { success: false, error: '缺少 agentId 或 topicId。' };
-            }
-
-            if (!agentConfigManager) {
-                return { success: false, error: 'AgentConfigManager 未初始化，无法安全更新话题锁定状态。' };
-            }
-
-            let locked;
-            await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
-                if (!Array.isArray(existingConfig.topics)) {
-                    throw new Error('配置文件损坏或缺少话题列表');
-                }
-
-                let found = false;
-                const topics = existingConfig.topics.map(topic => {
-                    if (topic.id !== topicId) return topic;
-
-                    found = true;
-                    locked = topic.locked === undefined ? false : !topic.locked;
-                    return { ...topic, locked };
-                });
-
-                if (!found) {
-                    throw new Error(`未找到话题 ${topicId}`);
-                }
-
-                return { ...existingConfig, topics };
-            });
-
-            return {
-                success: true,
-                locked,
-                message: locked ? '话题已锁定' : '话题已解锁'
-            };
-        } catch (error) {
-            console.error('[toggleTopicLock] Error:', error);
-            return { success: false, error: error.message };
         }
     });
 

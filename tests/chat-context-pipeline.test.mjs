@@ -106,3 +106,52 @@ test('four entry points delegate and cannot own Tavern/system/workspace assembly
         assert.doesNotMatch(source, /\.applySystemSuffix\(|\.applyContextInject\(|\.expandWorkspacePlaceholders\(/, path);
     }
 });
+
+test('agent history window keeps the latest persisted floor, not thinking or temporary prompts', async () => {
+    const f = fixture();
+    const history = [
+        { id: 'old', role: 'user', content: 'outside-window', timestamp: 10 },
+        { id: 'new', role: 'user', content: 'current-floor', timestamp: 20 },
+        { id: 'thinking', role: 'assistant', content: 'placeholder', isThinking: true },
+    ];
+    const before = structuredClone(history);
+    const options = { ...f, context, history, tavernRules: [],
+        agentConfig: { ...f.agentConfig, contextMessageWindowSize: 1 } };
+    const manual = await createSingleChatRequestOrchestrator({ electronAPI: f.electronAPI }).buildRequest({
+        ...options, settings: {}, messageId: 'out', currentUserMessageId: 'new',
+    });
+    assert.deepEqual(manual.messages.map(m => m.role), ['system', 'user']);
+    assert.equal(manual.messages[1].content[0].text, 'current-floor');
+    assert.equal(manual.messages[1].__vcpchatTimestampMeta.timestamp, 20);
+    const auto = await assembleRequestMessages({ ...options, temporaryPrompt: 'continue' });
+    assert.deepEqual(auto.messagesForVCP.map(m => m.role), ['system', 'user', 'user']);
+    assert.equal(auto.messagesForVCP.at(-1).content[0].text, 'continue');
+    assert.equal(auto.messagesForVCP.at(-1).__vcpchatTimestampMeta, undefined);
+    assert.equal(JSON.stringify(auto.messagesForVCP).includes('outside-window'), false);
+    assert.deepEqual(history, before);
+
+    const unlimited = await assembleRequestMessages({ ...options, agentConfig: f.agentConfig });
+    assert.equal(unlimited.messagesForVCP[1].content[0].text, 'outside-window');
+});
+
+test('window does not cut a tool exchange or include a compacted earlier floor', async () => {
+    const f = fixture();
+    const history = [
+        { role: 'user', content: 'pre-checkpoint' },
+        { role: 'user', content: 'checkpoint', contextCompaction: {
+            kind: 'vchat-context-checkpoint', version: 1, checkpoint: 'raw',
+        } },
+        { role: 'assistant', content: '', tool_calls: [{ id: 'call-1' }] },
+        { role: 'tool', content: 'result', tool_call_id: 'call-1' },
+        { role: 'user', content: 'latest' },
+    ];
+    const options = { ...f, context, history, tavernRules: [] };
+    const run = async size => (await assembleRequestMessages({
+        ...options, agentConfig: { ...f.agentConfig, contextMessageWindowSize: size },
+    })).messagesForVCP;
+    assert.deepEqual((await run(2)).map(m => m.role), ['system', 'user']);
+    const fullExchange = await run(3);
+    assert.deepEqual(fullExchange.map(m => m.role), ['system', 'assistant', 'tool', 'user']);
+    assert.equal(fullExchange[2].tool_call_id, 'call-1');
+    assert.equal(JSON.stringify(await run(100)).includes('pre-checkpoint'), false);
+});

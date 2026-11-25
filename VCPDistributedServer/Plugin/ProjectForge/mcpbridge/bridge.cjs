@@ -11,7 +11,7 @@ const PROMPT_URI = 'projectforge://instructions';
 function loadConfig(filename) {
     if (!filename || !path.isAbsolute(filename)) throw new Error('--config requires an absolute JSON file path');
     const raw = JSON.parse(fs.readFileSync(filename, 'utf8').replace(/^\uFEFF/, ''));
-    const allowed = new Set(['workspaces', 'activeWorkspaceId', 'dbPath', 'binaryPath', 'maid', 'enableEval', 'enablePurge']);
+    const allowed = new Set(['workspaces', 'activeWorkspaceId', 'dbPath', 'binaryPath', 'maid', 'enableEval', 'enablePurge', 'enableBash']);
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Config must be an object');
     for (const key of Object.keys(raw)) if (!allowed.has(key)) throw new Error(`Unknown config field: ${key}`);
     if (!Array.isArray(raw.workspaces) || !raw.workspaces.length) throw new Error('Configure at least one explicit workspace');
@@ -34,14 +34,14 @@ function loadConfig(filename) {
     for (const key of ['dbPath', 'binaryPath']) {
         if (raw[key] !== undefined && (typeof raw[key] !== 'string' || !path.isAbsolute(raw[key]))) throw new Error(`${key} must be absolute`);
     }
-    for (const key of ['enableEval', 'enablePurge']) if (raw[key] !== undefined && typeof raw[key] !== 'boolean') throw new Error(`${key} must be boolean`);
+    for (const key of ['enableEval', 'enablePurge', 'enableBash']) if (raw[key] !== undefined && typeof raw[key] !== 'boolean') throw new Error(`${key} must be boolean`);
     if (raw.maid !== undefined && (typeof raw.maid !== 'string' || !raw.maid.trim() || raw.maid.length > 100)) throw new Error('maid must be 1–100 characters');
     return {
         ...raw, workspaces,
         activeWorkspaceId: raw.activeWorkspaceId || workspaces.find(ws => ws.enabled).id,
         dbPath: raw.dbPath || path.resolve(__dirname, '../../../../AppData/ProjectForge/mcp-projectforge.db'),
         maid: raw.maid || 'MCP',
-        enableEval: raw.enableEval === true, enablePurge: raw.enablePurge === true,
+        enableEval: raw.enableEval === true, enablePurge: raw.enablePurge === true, enableBash: raw.enableBash === true,
     };
 }
 
@@ -61,28 +61,33 @@ function convertResult(result) {
         }
         throw new Error(`Unsupported ProjectForge content type: ${part.type}`);
     });
-    // Avoid duplicating source/snapshots, but retain execution evidence unavailable in previews.
+    // Keep structured query results and execution evidence, not whole source/edit snapshots.
     const details = result.details || {};
-    const status = details.status;
-    const failed = details.command === 'EvalSymbol'
+    const { command, status } = details;
+    const failed = command === 'EvalSymbol'
         ? !['returned', 'passed', 'ambiguous'].includes(status)
-        : ['error', 'failed', 'conflict', 'rejected', 'unknown', 'planningRejected', 'syntaxRejected'].includes(status);
+        : command === 'Bash'
+            ? details.ok !== true
+            : ['error', 'failed', 'conflict', 'rejected', 'unknown', 'planningRejected', 'syntaxRejected'].includes(status);
     return {
         content,
-        ...(details.command === 'EvalSymbol' ? { structuredContent: details } : {}),
+        ...(['EvalSymbol', 'Query', 'Bash'].includes(command) ? { structuredContent: details } : {}),
         ...(result.isError === true || failed ? { isError: true } : {}),
     };
 }
 
 function createBridge(config, service) {
     const searcher = createSearcher(config);
-    const available = [...tools, searchTool].filter(tool => (tool.command !== 'EvalSymbol' || config.enableEval) && (tool.command !== 'PurgeProjects' || config.enablePurge));
+    const available = [...tools, searchTool].filter(tool =>
+        (tool.command !== 'EvalSymbol' || config.enableEval) &&
+        (tool.command !== 'PurgeProjects' || config.enablePurge) &&
+        (tool.command !== 'Bash' || config.enableBash === true));
     const byName = new Map(available.map(tool => [tool.name, tool]));
     let pending = 0;
     let closing = false;
     const prompt = () => fs.readFileSync(path.join(__dirname, 'MCPPrompt.md'), 'utf8');
     service.initialize({
-        config: { PROJECTFORGE_DB_PATH: config.dbPath },
+        config: { PROJECTFORGE_DB_PATH: config.dbPath, BASH_ENABLED: config.enableBash === true },
         ...(config.binaryPath ? { serviceBinaryPath: config.binaryPath, indexerBinaryPath: config.binaryPath } : {}),
         workspaceService: {
             list: () => config.workspaces.map(ws => ({ ...ws })),

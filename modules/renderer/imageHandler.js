@@ -1,5 +1,34 @@
 // modules/renderer/imageHandler.js
 import { prepareChatMediaHtml, cleanupChatMedia } from './mediaLifecycle.js';
+
+const MAX_GALLERY_IMAGES = 200;
+const MIN_GALLERY_EDGE = 48;
+
+function describeImage(image, src) {
+    const fileName = /^data:/i.test(src) ? '' : src.split(/[?#]/, 1)[0].split('/').pop();
+    const alt = image.alt.trim();
+    return { src, title: (!/^data:/i.test(alt) && alt) || fileName || 'AI 图片' };
+}
+
+function isEmoticonSource(src) {
+    return src.includes('表情包') || /%E8%A1%A8%E6%83%85%E5%8C%85/i.test(src);
+}
+
+function collectGallery(root, selectedImage) {
+    if (!root.contains(selectedImage)) return {};
+    const gallery = [];
+    let index = -1;
+    for (const image of root.querySelectorAll('.message-item .md-content img')) {
+        const src = image.currentSrc || image.src;
+        if (!src || isEmoticonSource(src) || isEmoticonSource(image.src)
+            || image.closest('.chat-avatar, .message-avatar, .avatar')
+            || image.naturalWidth < MIN_GALLERY_EDGE || image.naturalHeight < MIN_GALLERY_EDGE) continue;
+        if (image === selectedImage) index = gallery.length;
+        gallery.push(describeImage(image, src));
+        if (gallery.length === MAX_GALLERY_IMAGES) break;
+    }
+    return index >= 0 && gallery.length > 1 ? { gallery, index } : {};
+}
 /** Creates one image interaction owner for one MessageRenderer instance. */
 export function createImageHandler({ fixUrl = value => value } = {}) {
     let imageHandlerRefs = null;
@@ -36,7 +65,7 @@ export function createImageHandler({ fixUrl = value => value } = {}) {
     cleanupChatMedia(contentDiv);
     // Parse in an inert template before any autoplay attribute reaches live DOM.
     contentDiv.innerHTML = prepareChatMediaHtml(rawHtml, contentDiv.ownerDocument);
-    const transport = imageHandlerRefs.electronAPI;
+    const { electronAPI: transport, chatMessagesDiv } = imageHandlerRefs;
     const listenerDisposers = [];
 
     // 🟢 然后对所有 <img> 添加事件监听
@@ -58,12 +87,13 @@ export function createImageHandler({ fixUrl = value => value } = {}) {
         img.title = `点击在新窗口预览\n右键可复制图片`;
         
         const onClick = (e) => {
+            e.preventDefault(); // The viewer handles this click, including images inside anchors.
             e.stopPropagation();
             const currentTheme = contentDiv.ownerDocument.body.classList.contains('light-theme') ? 'light' : 'dark';
             transport.openImageViewer({
-                src: src,
-                title: img.alt || src.split('/').pop() || 'AI 图片',
-                theme: currentTheme
+                ...describeImage(img, img.currentSrc || img.src || src),
+                theme: currentTheme,
+                ...collectGallery(chatMessagesDiv, img),
             });
         };
 

@@ -3110,3 +3110,38 @@ body[data-vcp-theme="light"] .vcp-flowlock-bubble.state-prompt .vcp-flowlock-ico
 .vcp-chart-embed.is-playing .vcp-chart-poster {
     visibility: hidden;
 }
+
+.vcp-topic-river {
+    margin-block-start: 0.75em;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--secondary-text);
+    text-align: left;
+}
+
+.vcp-topic-river-summary,
+.vcp-topic-river-row-summary {
+    padding: 0.5em 0.75em;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.vcp-topic-river-summary {
+    font-weight: 600;
+}
+
+.vcp-topic-river-body {
+    max-height: 28rem;
+    overflow: auto;
+}
+
+.vcp-topic-river-row {
+    border-top: 1px solid var(--border-color);
+}
+
+.vcp-topic-river-text {
+    padding: 0.25em 0.75em 0.75em;
+    color: var(--primary-text);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

@@ -383,6 +383,8 @@ const settingsManager = (() => {
         if (agentMaxOutputTokensInput) agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens === null ? '' : (agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000);
         if (agentTopPInput) agentTopPInput.value = agentConfig.top_p === null ? '' : (agentConfig.top_p !== undefined ? agentConfig.top_p : '');
         if (agentTopKInput) agentTopKInput.value = agentConfig.top_k === null ? '' : (agentConfig.top_k !== undefined ? agentConfig.top_k : '');
+        const windowSizeInput = getAgentControl('agentContextMessageWindowSize');
+        if (windowSizeInput) windowSizeInput.value = agentConfig.contextMessageWindowSize ?? '';
 
         const streamOutput = agentConfig.streamOutput !== undefined ? agentConfig.streamOutput : true;
         const streamOutputTrue = getAgentControl('agentStreamOutputTrue');
@@ -566,6 +568,7 @@ const settingsManager = (() => {
             model: resolvedModel || 'gemini-pro',
             temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
             contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
+            contextMessageWindowSize: parseOptionalNumberInput(getAgentControl('agentContextMessageWindowSize'), Number),
             maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
             top_p: parseOptionalNumberInput(agentTopPInput, Number.parseFloat),
             top_k: parseOptionalNumberInput(agentTopKInput, value => Number.parseInt(value, 10)),
@@ -631,6 +634,16 @@ const settingsManager = (() => {
             uiHelper.showToastNotification("Agent名称不能为空！", 'error');
             reportSettingsSaveResult(agentSettingsForm, false, 'missing-name');
             return { success: false, error: 'missing-name' };
+        }
+
+        const windowSizeInput = getAgentControl('agentContextMessageWindowSize');
+        const windowSize = newConfig.contextMessageWindowSize;
+        if (windowSizeInput?.validity?.badInput
+            || (windowSize !== null && (!Number.isInteger(windowSize) || windowSize < 1 || windowSize > 10000))) {
+            uiHelper.showToastNotification('单聊上下文楼层上限必须留空，或填写 1 到 10000 的整数。', 'error');
+            windowSizeInput?.focus?.();
+            reportSettingsSaveResult(agentSettingsForm, false, 'invalid-context-message-window-size');
+            return { success: false, error: 'invalid-context-message-window-size' };
         }
 
         const croppedFile = mainRendererFunctions.getCroppedFile('agent');
@@ -2339,6 +2352,7 @@ function resolveRegexSlots() {
                 agentNameInput,
                 agentTemperatureInput,
                 agentContextTokenLimitInput,
+                getAgentControl('agentContextMessageWindowSize'),
                 agentMaxOutputTokensInput,
                 agentTopPInput,
                 agentTopKInput,

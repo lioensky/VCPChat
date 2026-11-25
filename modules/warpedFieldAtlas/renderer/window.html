@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none';">
+    <title>双曲场图</title>
+    <link rel="stylesheet" href="../../../styles/themes.css">
+    <link rel="stylesheet" href="./atlas.css">
+    <style>html, body { height: 100%; margin: 0; overflow: hidden; } body, body.light-theme { background: var(--primary-bg); } #app { height: 100%; }</style>
+</head>
+<body>
+    <div id="app"></div>
+    <template id="window-controls">
+        <div class="wa-window-controls" role="group" aria-label="窗口控制">
+            <button type="button" data-action="minimize" title="最小化" aria-label="最小化">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5h8"></path></svg>
+            </button>
+            <button type="button" data-action="maximize" title="最大化或还原" aria-label="最大化或还原">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="0.8"></rect></svg>
+            </button>
+            <button type="button" data-action="close" title="关闭" aria-label="关闭">
+                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m2.5 2.5 7 7m0-7-7 7"></path></svg>
+            </button>
+        </div>
+    </template>
+    <script type="module" src="./window.js"></script>
+</body>
+</html>

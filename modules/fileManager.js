@@ -471,31 +471,13 @@ async function _convertPdfToImages(pdfPath) {
     await fs.ensureDir(tempDir);
 
     try {
-        let opts = {
-            format: 'jpeg',
-            out_dir: tempDir,
-            out_prefix: path.basename(pdfPath, path.extname(pdfPath)),
-            page: null // Convert all pages
-        };
-
-        const poppler = require('pdf-poppler'); // Lazy load
-        await poppler.convert(pdfPath, opts);
-
-        const files = await fs.readdir(tempDir);
-        // Sort files numerically if they follow a standard pattern like 'file-1.jpg', 'file-2.jpg'
-        files.sort((a, b) => {
-            const numA = parseInt(a.match(/\d+/)[0], 10);
-            const numB = parseInt(b.match(/\d+/)[0], 10);
-            return numA - numB;
-        });
+        const { rasterizePdf } = require('./services/pdfRasterizer');
+        const files = await rasterizePdf(pdfPath, tempDir, 'page');
 
         for (const file of files) {
-            if (file.endsWith('.jpg') || file.endsWith('.jpeg')) {
-                const imagePath = path.join(tempDir, file);
-                const imageBuffer = await fs.readFile(imagePath);
-                imageFrames.push(imageBuffer.toString('base64'));
-                console.log(`[FileManager] Converted and encoded page: ${file}`);
-            }
+            const imageBuffer = await fs.readFile(path.join(tempDir, file));
+            imageFrames.push(imageBuffer.toString('base64'));
+            console.log(`[FileManager] Converted and encoded page: ${file}`);
         }
         console.log(`[FileManager] Finished converting ${imageFrames.length} pages to images.`);
     } catch (error) {
@@ -503,9 +485,9 @@ async function _convertPdfToImages(pdfPath) {
         // Re-throw the error to be caught by the calling function in getTextContent
         throw new Error(`Poppler conversion failed: ${error.message}`);
     } finally {
-        // Clean up the temporary directory
-        await fs.remove(tempDir);
-        console.log(`[FileManager] Cleaned up temporary directory: ${tempDir}`);
+        await fs.remove(tempDir).catch(error => {
+            console.warn(`[FileManager] Failed to clean up PDF images: ${tempDir}`, error.message);
+        });
     }
 
     return imageFrames;

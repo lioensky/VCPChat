@@ -145,7 +145,26 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
     win.addEventListener?.('vcp-agent-portrait-changed', onPortraitChanged);
     subscriptions.add({ dispose: () => win.removeEventListener?.('vcp-agent-portrait-changed', onPortraitChanged) });
 
-    // 新标签页的「应用」页：和顶部「+」启动台是同一批应用、同一套图标和打开方式。
+    const mijiaKind = 'mijia';
+    const openMijiaTab = async () => {
+        controller.setVisible(true);
+        return controller.openTab({ kind: mijiaKind, id: 'side-pane-mijia', title: '米家',
+            scopeMode: 'global', closable: true });
+    };
+    const unregisterMijia = controller.registerTabType({
+        kind: mijiaKind, label: '米家', icon: 'home', searchHint: '米家 智能家居 设备',
+        load: async () => {
+            const { mountMijiaPanel } = await import('../../Mijiamodules/panel.js');
+            return {
+                mountTab(_tab, view) {
+                    return mountMijiaPanel(view, chatAPI || win.electronAPI);
+                },
+            };
+        },
+    });
+    subscriptions.add({ dispose: unregisterMijia });
+
+    // 「应用」列表复用托盘目录，米家在右侧工作区内打开。
     // 应用页和「推荐」各自一套动态图标，重画一处不会把另一处的画布停掉
     const createLauncherIconSet = () => {
         let icons = null;
@@ -176,12 +195,15 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
     const toLauncherApp = (app, iconSet) => {
         const shell = win.VCPNextShellController;
         const tray = win.trayManager;
+        const inSidePane = app.action === 'open-mijia-window';
         return {
             id: app.id,
             label: app.name,
-            title: app.embed ? `${app.name}（在标签页中打开）` : `${app.name}（在独立窗口中打开）`,
+            title: inSidePane ? `${app.name}（在右侧栏打开）`
+                : app.embed ? `${app.name}（在标签页中打开）` : `${app.name}（在独立窗口中打开）`,
             mountIcon: iconSet.mount(app.icon, tray?.getIcon?.(app.icon) || ''),
-            open: () => (app.embed && shell?.openEmbeddedApp ? shell.openEmbeddedApp(app) : tray?.launchApp?.(app)),
+            open: inSidePane ? openMijiaTab
+                : () => (app.embed && shell?.openEmbeddedApp ? shell.openEmbeddedApp(app) : tray?.launchApp?.(app)),
         };
     };
     const appIcons = createLauncherIconSet();
@@ -195,7 +217,7 @@ export function createSidePaneLauncherWiring({ doc, win, chatAPI, chatManager, u
             id: `internal:${app.id}`,
             label: app.title,
             title: app.title,
-            mountIcon: appIcons.mount(app.id === 'ui-component-library' ? 'widgets' : app.launchpadIcon, ''),
+            mountIcon: appIcons.mount(app.id === 'ui-component-library' ? 'widgets' : app.launchpadIcon, app.iconSvg || ''),
             open: () => shell?.openInternalApp?.(app.id),
         }));
         return [...external, ...internal];

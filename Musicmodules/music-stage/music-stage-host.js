@@ -97,12 +97,25 @@
             emptyNotice: root.querySelector('.music-stage-empty-notice')
         };
 
-        const edgeContext = elements.edgeCanvas?.getContext('2d', { alpha: true });
+        // The spectrum lives in the outer band of the window, so each side has a
+        // strip canvas of its own instead of one canvas the size of the window.
+        const EDGE_SIDES = ['top', 'right', 'bottom', 'left'];
+        const edgeStrips = {};
+        EDGE_SIDES.forEach((side, index) => {
+            const canvas = index === 0 ? elements.edgeCanvas : elements.edgeCanvas?.cloneNode(false);
+            const context = canvas?.getContext?.('2d', { alpha: true });
+            if (!canvas || !context) return;
+            if (index > 0) elements.edgeCanvas.after(canvas);
+            edgeStrips[side] = { canvas, context, x: 0, y: 0, width: 0, height: 0 };
+        });
+        const edgeContext = edgeStrips.left ? edgeStrips.top.context : null;
         const prefersReducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const edgeCanvasState = {
             width: 0,
             height: 0,
             dpr: 1,
+            drawnAt: 0,
+            blank: false,
             top: new Float32Array(0),
             right: new Float32Array(0),
             bottom: new Float32Array(0),
@@ -196,6 +209,7 @@
                 { key: 'showParticles', label: '天球星空', type: 'toggle' },
                 { key: 'geometryMode', label: '取景方式', type: 'select', options: [['clouds', '电影取景'], ['corridor', '全幅取景']] },
                 { key: 'cabinFrame', label: '车窗前景（侧望窗外时淡入）', type: 'toggle' },
+                { key: 'rain', label: '雨（节能档减量）', type: 'select', options: [['off', '关'], ['light', '小雨'], ['heavy', '大雨']] },
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             luminous: [
@@ -253,7 +267,7 @@
             tunnel: [
                 { key: 'cameraSpeed', label: '穿行速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
                 { key: 'motionAmount', label: '空间运动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
-                { key: 'pauseDuration', label: '镜头停驻', type: 'range', min: 0, max: 3, step: 0.05, unit: 's' },
+                { key: 'pauseDuration', label: '句尾停驻（唱完后停留）', type: 'range', min: 0, max: 3, step: 0.05, unit: 's' },
                 { key: 'cameraBreath', label: '镜头呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'cameraShake', label: '镜头晃动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'objectDensity', label: '物体密度', type: 'range', min: 0.25, max: 2, step: 0.05, unit: 'x' },
@@ -265,6 +279,7 @@
                 { key: 'dissolveAmount', label: '点阵消散', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
                 { key: 'textHoldRatio', label: '歌词驻留', type: 'range', min: 0, max: 0.8, step: 0.05, unit: '%' },
                 { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
                 { key: 'glow', label: '点阵辉光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ]
@@ -280,6 +295,7 @@
             backgroundTimer: null,
             lastFrame: null,
             draggingProgress: false,
+            seekHold: null,
             lastTransportSignature: '',
             lastProgressWidth: '',
             lastCurrentTimeText: '',
@@ -331,6 +347,10 @@
             });
             state.stats.modeCreates += 1;
             localStorage.setItem('musicStageMode', state.modeId);
+            // The 3D modes paint every pixel themselves; see .stage-scene-3d.
+            const scene3d = state.modeId === 'diorama' || state.modeId === 'tunnel';
+            root.classList.toggle('stage-scene-3d', scene3d);
+            document.body.classList.toggle('music-stage-scene-3d', scene3d);
 
             elements.modeSwitcher.querySelectorAll('[data-stage-mode]').forEach((button) => {
                 const selected = button.dataset.stageMode === state.modeId;
@@ -445,7 +465,7 @@
             const modeFragment = document.createDocumentFragment();
             Modes.entries.forEach((entry) => {
                 const label = createElement('label', 'music-stage-mode-option', {
-                    title: `${entry.label} · ${entry.description}`
+                    title: entry.description ? `${entry.label} · ${entry.description}` : entry.label
                 });
                 const checkbox = createElement('input', '', {
                     type: 'checkbox',
@@ -607,6 +627,70 @@
             elements.commonControls.replaceChildren(commonFragment);
         };
 
+        /*
+         * The ambience behind the 2D modes is a heavily blurred picture. As a
+         * CSS filter that blur ran over the whole window on every frame; a
+         * blurred picture has no detail, so it is blurred once into a small
+         * canvas and stretched instead. Where a canvas cannot be had the
+         * layer keeps its picture and its filter.
+         */
+        const SOFT_SIZE = 160;
+        const softCanvas = (host, className) => {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext?.('2d');
+            if (!host || !context || !('filter' in context)) return null;
+            canvas.className = className;
+            host.prepend(canvas);
+            return { host, canvas, context };
+        };
+        const paintSoft = (soft, image, blur, saturate) => {
+            const { context, host } = soft;
+            const { canvas } = soft;
+            if (!image) {
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                host.classList.remove('is-soft');
+                return;
+            }
+            // The picture's own shape, so stretching it crops as the layer did.
+            const fit = SOFT_SIZE / Math.max(image.naturalWidth, image.naturalHeight);
+            canvas.width = Math.max(8, Math.round(image.naturalWidth * fit));
+            canvas.height = Math.max(8, Math.round(image.naturalHeight * fit));
+            // The blur radius the layer would have had, at the canvas's scale.
+            const stretch = Math.max(root.clientWidth / canvas.width, root.clientHeight / canvas.height, 1);
+            const radius = blur / stretch;
+            // Drawn a little past the edges so the blur has something to average there.
+            const margin = radius * 2;
+            context.filter = `blur(${radius.toFixed(2)}px) saturate(${saturate})`;
+            context.drawImage(image, -margin, -margin, canvas.width + margin * 2, canvas.height + margin * 2);
+            context.filter = 'none';
+            host.classList.add('is-soft');
+        };
+        const loadImage = (url) => new Promise((resolve) => {
+            const image = new Image();
+            image.decoding = 'async';
+            image.onload = () => resolve(image.naturalWidth ? image : null);
+            image.onerror = () => resolve(null);
+            image.src = url;
+        });
+        const softCurrent = softCanvas(elements.backdropCurrent, 'music-stage-backdrop-soft');
+        const softNext = softCanvas(elements.backdropNext, 'music-stage-backdrop-soft');
+        const softWallpaper = softCanvas(elements.backdropCurrent?.parentElement,
+            'music-stage-backdrop-soft music-stage-backdrop-wallpaper');
+        elements.backdropCurrent?.classList.add('is-empty');
+        elements.backdropNext?.classList.add('is-empty');
+
+        const updateWallpaper = async () => {
+            if (!softWallpaper) return;
+            const value = getComputedStyle(root).getPropertyValue('--stage-wallpaper').trim();
+            if (value === state.wallpaperValue) return;
+            state.wallpaperValue = value;
+            // Only a single picture can be drawn; gradients stay with the stylesheet.
+            const match = /^url\((['"]?)(.+?)\1\)$/.exec(value);
+            const image = match ? await loadImage(match[2]) : null;
+            if (state.destroyed || state.wallpaperValue !== value) return;
+            paintSoft(softWallpaper, image, 36, 0.85);
+        };
+
         const updateBackdrop = (coverUrl) => {
             const nextUrl = coverUrl || '';
             if (nextUrl === state.coverUrl) return;
@@ -618,13 +702,24 @@
                 state.backgroundTimer = null;
             }
 
-            elements.backdropNext.style.backgroundImage = cssImage;
-            root.classList.add('is-changing-cover');
-            state.backgroundTimer = setTimeout(() => {
-                elements.backdropCurrent.style.backgroundImage = cssImage;
-                root.classList.remove('is-changing-cover');
-                state.backgroundTimer = null;
-            }, 850);
+            const show = (image) => {
+                if (softNext && softCurrent) paintSoft(softNext, image, 46, 1.45);
+                // A layer with no picture is still a blurred layer to the compositor.
+                elements.backdropNext.classList.toggle('is-empty', !nextUrl);
+                elements.backdropNext.style.backgroundImage = cssImage;
+                root.classList.add('is-changing-cover');
+                state.backgroundTimer = setTimeout(() => {
+                    if (softNext && softCurrent) paintSoft(softCurrent, image, 46, 1.45);
+                    elements.backdropCurrent.classList.toggle('is-empty', !nextUrl);
+                    elements.backdropCurrent.style.backgroundImage = cssImage;
+                    root.classList.remove('is-changing-cover');
+                    state.backgroundTimer = null;
+                }, 850);
+            };
+            if (!nextUrl || !softNext || !softCurrent) { show(null); return; }
+            loadImage(nextUrl).then((image) => {
+                if (!state.destroyed && state.coverUrl === nextUrl) show(image);
+            });
         };
 
         const updateTrack = (track) => {
@@ -697,29 +792,60 @@
             elements.play.title = isPlaying ? '暂停' : '播放';
         };
 
+        // Thickness of the band a side can draw into: the line, its swing and its glow.
+        const edgeMetrics = (width, height) => {
+            const inset = clamp(Math.min(width, height) * 0.012, 7, 14);
+            const horizontalAmplitude = clamp(height * 0.052, 18, 48);
+            const verticalAmplitude = clamp(width * 0.038, 15, 42);
+            return { inset, horizontalAmplitude, verticalAmplitude,
+                horizontalBand: Math.ceil(inset + horizontalAmplitude + 24),
+                verticalBand: Math.ceil(inset + verticalAmplitude + 24) };
+        };
+
         const resizeEdgeCanvas = (frame) => {
-            if (!edgeContext || !elements.edgeCanvas) return false;
+            if (!edgeContext) return false;
             const width = Math.max(1, root.clientWidth);
             const height = Math.max(1, root.clientHeight);
-            const dpr = Math.min(1.75, frame.viewport?.dpr || global.devicePixelRatio || 1);
-            const pixelWidth = Math.round(width * dpr);
-            const pixelHeight = Math.round(height * dpr);
+            // A glowing line gains nothing from more than this.
+            const dpr = Math.min(1.5, frame.viewport?.dpr || global.devicePixelRatio || 1);
             if (
                 edgeCanvasState.width !== width
                 || edgeCanvasState.height !== height
                 || edgeCanvasState.dpr !== dpr
             ) {
-                elements.edgeCanvas.width = pixelWidth;
-                elements.edgeCanvas.height = pixelHeight;
-                elements.edgeCanvas.style.width = `${width}px`;
-                elements.edgeCanvas.style.height = `${height}px`;
+                const { horizontalBand, verticalBand } = edgeMetrics(width, height);
+                const boxes = {
+                    top: [0, 0, width, horizontalBand],
+                    bottom: [0, height - horizontalBand, width, horizontalBand],
+                    left: [0, 0, verticalBand, height],
+                    right: [width - verticalBand, 0, verticalBand, height]
+                };
+                EDGE_SIDES.forEach((side) => {
+                    const strip = edgeStrips[side];
+                    [strip.x, strip.y, strip.width, strip.height] = boxes[side];
+                    strip.canvas.width = Math.round(strip.width * dpr);
+                    strip.canvas.height = Math.round(strip.height * dpr);
+                    Object.assign(strip.canvas.style, {
+                        left: `${strip.x}px`, top: `${strip.y}px`,
+                        width: `${strip.width}px`, height: `${strip.height}px`
+                    });
+                    // Draw in window coordinates, whichever strip it is.
+                    strip.context.setTransform(dpr, 0, 0, dpr, -strip.x * dpr, -strip.y * dpr);
+                });
                 edgeCanvasState.width = width;
                 edgeCanvasState.height = height;
                 edgeCanvasState.dpr = dpr;
+                edgeCanvasState.drawnAt = 0;
+                edgeCanvasState.pausedAt = 0;
+                edgeCanvasState.blank = false;
             }
-            edgeContext.setTransform(dpr, 0, 0, dpr, 0, 0);
             return true;
         };
+
+        const clearEdgeStrips = () => EDGE_SIDES.forEach((side) => {
+            const strip = edgeStrips[side];
+            strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
+        });
 
         const getSpectrumSample = (spectrum, ratio, offset = 0) => {
             if (!spectrum?.length) return 0;
@@ -780,7 +906,7 @@
             }
         };
 
-        const strokeEdgePath = (points, color, alpha, blur) => {
+        const strokeEdgePath = (edgeContext, points, color, alpha, blur) => {
             if (!edgeContext || points.length < 4) return;
             edgeContext.save();
             edgeContext.beginPath();
@@ -808,14 +934,27 @@
             if (state.config.edgeSpectrum === false) return;
             if (!resizeEdgeCanvas(frame) || !edgeContext) return;
             const { width, height } = edgeCanvasState;
-            edgeContext.clearRect(0, 0, width, height);
-            if (prefersReducedMotion?.matches || !frame.audio.spectrum?.length) return;
+            if (prefersReducedMotion?.matches || !frame.audio.spectrum?.length) {
+                if (!edgeCanvasState.blank) clearEdgeStrips();
+                edgeCanvasState.blank = true;
+                return;
+            }
+            // A paused stage holds a faint, still line: let it settle for a
+            // moment after the pause, then leave the canvases alone.
+            const now = performance.now();
+            if (frame.isPlaying) edgeCanvasState.pausedAt = 0;
+            else {
+                edgeCanvasState.pausedAt ||= now;
+                if (now - edgeCanvasState.pausedAt > 1500 && !edgeCanvasState.blank) return;
+                if (now - edgeCanvasState.drawnAt < 250) return;
+            }
+            edgeCanvasState.drawnAt = now;
+            edgeCanvasState.blank = false;
+            clearEdgeStrips();
 
             const spectrum = frame.audio.spectrum;
             const color = global.MusicStageModeUtils.resolveAccent(app);
-            const inset = clamp(Math.min(width, height) * 0.012, 7, 14);
-            const horizontalAmplitude = clamp(height * 0.052, 18, 48);
-            const verticalAmplitude = clamp(width * 0.038, 15, 42);
+            const { inset, horizontalAmplitude, verticalAmplitude } = edgeMetrics(width, height);
             const horizontalCount = clamp(Math.round(width / 15), 44, 104);
             const verticalCount = clamp(Math.round(height / 15), 28, 72);
             const idleScale = frame.isPlaying ? 1 : 0.12;
@@ -830,14 +969,12 @@
             fillEdgePoints(left, 'left', spectrum, 0.34, inset, width, height, verticalAmplitude, idleScale);
 
             const alpha = 0.28 + frame.audio.power * 0.62;
-            strokeEdgePath(top, color, alpha * 0.38, 13);
-            strokeEdgePath(right, color, alpha * 0.38, 13);
-            strokeEdgePath(bottom, color, alpha * 0.38, 13);
-            strokeEdgePath(left, color, alpha * 0.38, 13);
-            strokeEdgePath(top, color, alpha, 2.5);
-            strokeEdgePath(right, color, alpha, 2.5);
-            strokeEdgePath(bottom, color, alpha, 2.5);
-            strokeEdgePath(left, color, alpha, 2.5);
+            // The wide soft pass stands in for the glow filters the canvas used to have.
+            [['top', top], ['right', right], ['bottom', bottom], ['left', left]].forEach(([side, points]) => {
+                const context = edgeStrips[side].context;
+                strokeEdgePath(context, points, color, alpha * 0.5, 18);
+                strokeEdgePath(context, points, color, alpha, 3.5);
+            });
         };
 
         const getPlayModePresentation = () => {
@@ -883,6 +1020,7 @@
 
         const updateFrame = (timestamp) => {
             if (!state.active || state.destroyed || document.hidden) return;
+            applySeekHold();
             const frame = Runtime.createFrame(app, timestamp);
             state.lastFrame = frame;
             state.stats.frameUpdates += 1;
@@ -910,6 +1048,43 @@
             state.modeInstance?.updateFrame?.(frame);
         };
 
+        // The player polls the engine every 250 ms. During a drag, and until the
+        // engine reports the committed position, those polls still carry the old
+        // position, so the target is re-asserted before every stage frame.
+        const holdSeek = (target, commit) => {
+            const now = Date.now();
+            state.seekHold = {
+                target,
+                stamp: now,
+                until: commit ? now + 1500 : Infinity,
+                origin: state.seekHold?.origin ?? (Number(app.lastKnownCurrentTime) || 0)
+            };
+            app.lastKnownCurrentTime = target;
+            app.lastStateUpdateTime = now;
+        };
+        const applySeekHold = () => {
+            const hold = state.seekHold;
+            if (!hold) return;
+            const now = Date.now();
+            const polled = Number(app.lastKnownCurrentTime) || 0;
+            const pollWrote = app.lastStateUpdateTime !== hold.stamp || polled !== hold.target;
+            if (hold.until !== Infinity
+                && (now > hold.until || (pollWrote && Math.abs(polled - hold.target) < 2))) {
+                state.seekHold = null;
+                return;
+            }
+            app.lastKnownCurrentTime = hold.target;
+            app.lastStateUpdateTime = now;
+            hold.stamp = now;
+        };
+        const cancelSeekHold = () => {
+            const hold = state.seekHold;
+            state.seekHold = null;
+            if (!hold || hold.until !== Infinity) return;
+            app.lastKnownCurrentTime = hold.origin;
+            app.lastStateUpdateTime = Date.now();
+        };
+
         const seekFromPointer = async (event, commit) => {
             const rect = elements.progressTrack.getBoundingClientRect();
             const ratio = clamp((event.clientX - rect.left) / Math.max(rect.width, 1));
@@ -922,8 +1097,7 @@
             const currentTimeText = app.formatTime?.(target) || '0:00';
             state.lastCurrentTimeText = currentTimeText;
             elements.currentTime.textContent = currentTimeText;
-            app.lastKnownCurrentTime = target;
-            app.lastStateUpdateTime = Date.now();
+            holdSeek(target, commit);
             if (commit && duration > 0) await app.api?.seekMusic?.(target);
         };
 
@@ -936,6 +1110,7 @@
                 root.style.setProperty('--stage-wallpaper', wallpaper || 'none');
                 root.classList.remove('stage-theme-custom', 'stage-theme-light', 'stage-theme-dark');
             }
+            void updateWallpaper();
             const palette = global.MusicStageModeUtils.refreshTheme(app, root);
             state.modeInstance?.updateTheme?.(palette);
             state.trackSignature = '';
@@ -968,7 +1143,7 @@
             state.active = false;
             app.isStageActive = false;
             root.classList.remove('is-visible');
-            document.body.classList.remove('music-stage-active');
+            document.body.classList.remove('music-stage-active', 'music-stage-scene-3d');
             setButtonState();
             const generation = ++state.generation;
             requestAnimationFrame(() => {
@@ -1036,7 +1211,7 @@
                 exit();
             } else if (event.code === 'Space' && !event.target.closest('button, input, select')) {
                 event.preventDefault();
-                app.isPlaying ? app.pauseTrack() : app.playTrack();
+                app.toggleTransport();
             } else if (event.key === 'ArrowLeft' && event.altKey) {
                 event.preventDefault();
                 app.prevTrack();
@@ -1106,7 +1281,7 @@
         });
         // 点击面板外部不关闭，避免调节控件时误触。
         scope.add(Config.subscribe(handleConfigChange));
-        scope.listen(elements.play, 'click', () => app.isPlaying ? app.pauseTrack() : app.playTrack());
+        scope.listen(elements.play, 'click', () => app.toggleTransport());
         scope.listen(elements.prev, 'click', () => app.prevTrack());
         scope.listen(elements.next, 'click', () => app.nextTrack());
         scope.listen(elements.playMode, 'click', () => {
@@ -1146,6 +1321,7 @@
         });
         scope.listen(elements.progressTrack, 'pointercancel', () => {
             state.draggingProgress = false;
+            cancelSeekHold();
         });
         scope.listen(elements.progressTrack, 'keydown', (event) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -1157,8 +1333,8 @@
             if (event.key === 'Home') target = 0;
             if (event.key === 'End') target = duration;
             target = clamp(target, 0, duration);
-            app.lastKnownCurrentTime = target;
-            app.lastStateUpdateTime = Date.now();
+            state.seekHold = null;
+            holdSeek(target, true);
             app.api?.seekMusic?.(target);
         });
         scope.listen(global, 'keydown', onKeyDown);
@@ -1213,13 +1389,14 @@
                 state.generation += 1;
                 if (state.backgroundTimer) clearTimeout(state.backgroundTimer);
                 destroyMode();
-                if (edgeContext && elements.edgeCanvas) {
-                    edgeContext.clearRect(0, 0, elements.edgeCanvas.width, elements.edgeCanvas.height);
-                    elements.edgeCanvas.width = 1;
-                    elements.edgeCanvas.height = 1;
-                }
+                EDGE_SIDES.forEach((side) => {
+                    const strip = edgeStrips[side];
+                    if (!strip) return;
+                    strip.canvas.width = 1;
+                    strip.canvas.height = 1;
+                });
                 scope.destroy();
-                document.body.classList.remove('music-stage-active');
+                document.body.classList.remove('music-stage-active', 'music-stage-scene-3d');
                 root.remove();
             }
         };

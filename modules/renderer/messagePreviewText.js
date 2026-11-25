@@ -5,20 +5,52 @@
  */
 const coldPreviews = new WeakMap();
 const EXCLUDED = '.thinking-indicator, style, script, .vcp-tool-use-bubble, details';
-const MAX_COLD_PREVIEW_CHARS = 223; // 220 displayed + two paragraph separators + overflow
+const MAX_PREVIEW_CHARS = 223; // 220 displayed + paragraph separator allowance + overflow
+const whitespace = /\s/u;
 
 function readBodyText(content) {
-    const clone = content.cloneNode(true);
-    clone.querySelectorAll(EXCLUDED).forEach(node => node.remove());
-    return clone.textContent || '';
+    const { NodeFilter } = content.ownerDocument.defaultView;
+    const walker = content.ownerDocument.createTreeWalker(content,
+        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                if (node.nodeType === 3) return NodeFilter.FILTER_ACCEPT;
+                return node.matches(EXCLUDED) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+            }
+        });
+    let text = '';
+    let pendingSpace = false;
+    let newlines = 0;
+    let secondParagraph = false;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const data = node.data;
+        for (let i = 0; i < data.length; i++) {
+            const ch = data[i];
+            if (whitespace.test(ch)) {
+                if (!text) continue;
+                pendingSpace = true;
+                if (ch === '\n' && ++newlines === 2 && secondParagraph) return text;
+                continue;
+            }
+            // Whitespace may span inline elements. Commit it only when followed by text.
+            if (pendingSpace) {
+                if (newlines >= 2) {
+                    text += '\n\n';
+                    secondParagraph = true;
+                } else {
+                    text += ' ';
+                }
+                pendingSpace = false;
+                newlines = 0;
+            }
+            text += ch;
+            if (text.length >= MAX_PREVIEW_CHARS) return text.slice(0, MAX_PREVIEW_CHARS);
+        }
+    }
+    return text;
 }
 
 export function retainMessagePreview(content) {
-    // Match the navigator's paragraph/whitespace semantics before bounding storage.
-    const text = readBodyText(content).trim().split(/\n\s*\n/u)
-        .map(paragraph => paragraph.replace(/\s+/gu, ' ').trim())
-        .filter(Boolean).slice(0, 2).join('\n\n');
-    coldPreviews.set(content, text.slice(0, MAX_COLD_PREVIEW_CHARS));
+    coldPreviews.set(content, readBodyText(content));
 }
 
 export function releaseMessagePreview(content) {

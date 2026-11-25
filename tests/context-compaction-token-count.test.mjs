@@ -148,3 +148,35 @@ test('the stream bridge carries end-event usage into the terminal', async () => 
     assert.deepEqual(persisted[0]?.usage, { inputTokens: 88 });
     await bridge.dispose();
 });
+
+test('sends outside the full preflight are refused when the measured context exceeds the limit', async () => {
+    const { assertContextWithinLimit } = await import('../modules/chat/contextCompactionService.js');
+    const history = [
+        { id: 'u1', role: 'user', content: 'x'.repeat(300) },
+        { id: 'a1', role: 'assistant', content: 'ok', contextUsage: { inputTokens: 900, prefixEstimate: 100 } },
+    ];
+    assert.doesNotThrow(() => assertContextWithinLimit(history, { contextTokenLimit: 1000 }, 'abc'));
+    assert.throws(() => assertContextWithinLimit(history, { contextTokenLimit: 1000 }, 'y'.repeat(600)), /估算 1101 token，超过上限 1000/);
+    // 没有设置上限时不检查。
+    assert.doesNotThrow(() => assertContextWithinLimit(history, {}, 'y'.repeat(60000)));
+});
+
+test('the send preflight counts server-side overhead known from provider usage', async () => {
+    const { preflightContextSend } = await import('../modules/chat/contextCompactionService.js');
+    const electronAPI = {};
+    const history = [
+        { id: 'u1', role: 'user', content: 'abc' },
+        { id: 'a1', role: 'assistant', content: 'ok', contextUsage: { inputTokens: 5000, prefixEstimate: 1 } },
+    ];
+    const pendingMessage = { id: 'u2', role: 'user', content: 'next' };
+    const run = (contextTokenLimit, extra = {}) => preflightContextSend({
+        electronAPI, agentConfig: { contextTokenLimit, systemPrompt: 'sys', ...extra }, context: { agentId: 'x', topicId: 't' },
+        history, pendingMessage,
+    });
+    // 客户端能看到的文本只有十几个 token，但上一轮上游实际收到了 5000。
+    assert.equal((await run(100000)).tokens >= 5000, true);
+    // 不可压缩的部分已经超过上限：直接报错，不白白发起压缩。
+    await assert.rejects(run(4000), /超过上限 4000/);
+    // 设了消息窗口时只发送部分历史，整段话题的用量基准不适用。
+    assert.ok((await run(4000, { contextMessageWindowSize: 1 })).tokens < 100);
+});

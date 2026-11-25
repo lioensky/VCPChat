@@ -21,6 +21,7 @@ const ASSISTANT_BAR_GLOBAL_HIDE_DELAY_MS = 60;
 const ASSISTANT_BAR_ANIMATION_MS = 80;
 let lastProcessedSelection = '';
 let selectionListenerActive = false;
+let selectionListenerGeneration = 0;
 let mouseListener = null;
 let hideBarTimeout = null;
 let assistantBarOutsideWatcher = null;
@@ -578,6 +579,7 @@ async function reconcileListenerModeAfterConfig(config) {
 }
 
 async function recoverRustRuntime(reason = 'unknown') {
+    const generation = selectionListenerGeneration;
     try {
         console.warn(`[Assistant] Rust runtime recovery triggered: ${reason}`);
 
@@ -594,6 +596,7 @@ async function recoverRustRuntime(reason = 'unknown') {
         }
 
         const rustConfig = await loadRustAssistantConfig();
+        if (generation !== selectionListenerGeneration) return;
         if (!shouldUseRustAssistant(rustConfig)) {
             listenerAdapter = null;
             listenerMode = 'disabled';
@@ -609,6 +612,7 @@ async function recoverRustRuntime(reason = 'unknown') {
         });
 
         await rustAdapter.initialize();
+        if (generation !== selectionListenerGeneration) return;
         rustAdapter.onSelection(processSelectedText);
         listenerAdapter = rustAdapter;
         listenerMode = 'rust';
@@ -621,11 +625,13 @@ async function recoverRustRuntime(reason = 'unknown') {
         const ready = typeof rustAdapter.waitUntilReady === 'function'
             ? await rustAdapter.waitUntilReady(10000)
             : rustAdapter.isActive();
+        if (generation !== selectionListenerGeneration) return;
         if (!ready) {
             throw new Error('Rust adapter did not become ready during recovery');
         }
 
         await applyRustGuardRules(rustAdapter, rustConfig);
+        if (generation !== selectionListenerGeneration) return;
         selectionListenerActive = rustAdapter.isActive();
 
         if (selectionListenerActive) {
@@ -634,6 +640,7 @@ async function recoverRustRuntime(reason = 'unknown') {
             console.error('[Assistant] Rust recovery finished but listener is not active.');
         }
     } catch (error) {
+        if (generation !== selectionListenerGeneration) return;
         console.error('[Assistant] Rust runtime recovery failed:', error);
         listenerAdapter = null;
         listenerMode = 'rust';
@@ -656,9 +663,11 @@ function startRustHealthMonitor() {
         }
 
         rustHealthCheckRunning = true;
+        const generation = selectionListenerGeneration;
 
         try {
             const rustConfig = await loadRustAssistantConfig();
+            if (generation !== selectionListenerGeneration) return;
             const fallbackConfig = rustConfig?.fallback || {};
             const diagnostics = (typeof listenerAdapter.getDiagnostics === 'function')
                 ? listenerAdapter.getDiagnostics()
@@ -695,7 +704,7 @@ function startRustHealthMonitor() {
                     unhealthy = true;
                 }
 
-                if (unhealthy) {
+                if (unhealthy && generation === selectionListenerGeneration) {
                     await recoverRustRuntime('Rust /status unhealthy or timeout');
                 }
             }
@@ -967,7 +976,9 @@ function hideAssistantBarAndStopListener() {
 }
 
 async function startSelectionListener() {
+    const generation = ++selectionListenerGeneration;
     const adapter = await ensureListenerAdapter();
+    if (generation !== selectionListenerGeneration) return;
     if (!adapter) {
         selectionListenerActive = false;
         return;
@@ -983,10 +994,13 @@ async function startSelectionListener() {
             const ready = typeof adapter.waitUntilReady === 'function'
                 ? await adapter.waitUntilReady(10000)
                 : adapter.isActive();
+            if (generation !== selectionListenerGeneration) return;
 
             if (ready) {
                 const rustConfig = await loadRustAssistantConfig();
+                if (generation !== selectionListenerGeneration) return;
                 await applyRustGuardRules(adapter, rustConfig);
+                if (generation !== selectionListenerGeneration) return;
             }
         }
 
@@ -994,6 +1008,7 @@ async function startSelectionListener() {
 
         if (!selectionListenerActive && listenerMode === 'rust') {
             await recoverRustRuntime('Rust adapter did not become active after start');
+            if (generation !== selectionListenerGeneration) return;
         }
 
         if (selectionListenerActive) {
@@ -1008,6 +1023,7 @@ async function startSelectionListener() {
             unregisterRustSuspendHotkey();
         }
     } catch (error) {
+        if (generation !== selectionListenerGeneration) return;
         console.error('[Assistant] Failed to start listener adapter:', error);
         selectionListenerActive = false;
         stopRustHealthMonitor();
@@ -1016,6 +1032,7 @@ async function startSelectionListener() {
 }
 
 function stopSelectionListener() {
+    ++selectionListenerGeneration;
     if (listenerAdapter) {
         try {
             listenerAdapter.stop();
@@ -1331,6 +1348,19 @@ async function initialize(options) {
             });
         } catch (error) {
             console.error('[Assistant] Error creating assistant window from action:', error);
+        }
+    });
+
+    // Restore the saved listener independently of renderer initialization.
+    // Neither settings I/O nor the Rust READY handshake should gate the main window.
+    const generation = selectionListenerGeneration;
+    void loadAssistantSettingsCached().then(settings => {
+        if (generation === selectionListenerGeneration && settings?.assistantEnabled === true) {
+            return startSelectionListener();
+        }
+    }).catch(error => {
+        if (error.code !== 'ENOENT') {
+            console.warn('[Assistant] Failed to restore selection listener at startup:', error);
         }
     });
 }

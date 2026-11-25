@@ -136,9 +136,16 @@ function mountStableAnimationIslands(contentDiv) {
     if (!records) return;
     for (const node of contentDiv.querySelectorAll('[data-vcp-animation-island]')) {
         const record = records.get(node.dataset.vcpAnimationIsland);
-        if (!record || record.node === node) continue;
-        record.node = node;
-        record.controller = processAnimationsInContent(node, visibilityOptimizer, { strictExecution: true });
+        if (!record || record.node?.contains(node)) continue;
+        // Scripts written for canonical message rendering query the authored
+        // outer DIV as a descendant of `container`. Keep a real, per-island
+        // container (not the shared stable block) alive through terminal adoption.
+        const host = node.ownerDocument.createElement('div');
+        host.style.display = 'contents';
+        node.replaceWith(host);
+        host.appendChild(node);
+        record.node = host;
+        record.controller = processAnimationsInContent(host, visibilityOptimizer, { strictExecution: true });
     }
 }
 
@@ -1357,7 +1364,7 @@ function findUnclosedStreamThoughtChain(text) {
     };
 }
 
-function parseStreamTailMarkdown(text) {
+function parseStreamTailMarkdown(text, options = {}) {
     if (collectToolBatchRanges(text).length) {
         return composeToolBatchHtml(splitToolBatchDomains(text), domain =>
             domain.type === 'text'
@@ -1437,7 +1444,11 @@ function parseStreamTailMarkdown(text) {
     const languageClass = unclosedFence.language
         ? ` language-${escapeHtml(unclosedFence.language)}`
         : '';
-    const codeLines = restoreToolResultSource(unclosedFence.code).replace(/\r\n?/g, '\n').split('\n');
+    const codeSource = restoreToolResultSource(unclosedFence.code).replace(/\r\n?/g, '\n');
+    // Only offer an already parsed, wholly literal tail. Protocol sealing,
+    // prefix Markdown and complete fences always use their canonical path.
+    if (!unclosedFence.prefix && options.patchOpenCode?.(codeSource, unclosedFence.language)) return null;
+    const codeLines = codeSource.split('\n');
     const completedLineCount = Math.max(0, codeLines.length - 1);
     const lineHtml = codeLines.map((lineText, lineIndex) => {
         const escapedLine = lineText ? escapeHtml(lineText) : '&#8203;';
@@ -1502,6 +1513,59 @@ const TOOL_RESULT_SHOW_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" f
 const TOOL_RESULT_DELETE_ICON = TOOL_RESULT_HIDE_ICON; // 兼容旧引用
 
 /**
+ * 原地无损同步单个工具结果气泡的显隐 DOM 状态与原文哈希，
+ * 避免因调用 updateMessageContent 重绘整条消息而导致高度瞬时塌缩与视口上抬回弹。
+ */
+function syncToolResultBubbleVisibilityDom(bubble, button, updatedRawBlock, targetHidden) {
+    if (!bubble || !bubble.isConnected) return false;
+
+    const nextHash = hashStringFNV1a(updatedRawBlock);
+    bubble.dataset.vcpToolResultHash = nextHash;
+    bubble.classList.toggle('vcp-tool-result-bubble--hidden', targetHidden);
+
+    const lazyId = bubble.dataset.vcpLazyToolId;
+    if (lazyId && lazyToolContents.has(lazyId)) {
+        const entry = lazyToolContents.get(lazyId);
+        if (entry) entry.raw = updatedRawBlock;
+    }
+
+    const toggleBtn = button || bubble.querySelector('.vcp-tool-result-delete-btn, .vcp-tool-result-toggle-btn');
+    if (toggleBtn) {
+        const btnTitle = targetHidden
+            ? '当前已从上下文中隐藏（点击恢复注入）'
+            : '当前已注入上下文（点击在上下文中隐藏）';
+        toggleBtn.classList.toggle('is-hidden', targetHidden);
+        toggleBtn.dataset.vcpHidden = targetHidden ? 'true' : 'false';
+        toggleBtn.title = btnTitle;
+        toggleBtn.setAttribute('aria-label', btnTitle);
+        toggleBtn.innerHTML = targetHidden ? TOOL_RESULT_HIDE_ICON : TOOL_RESULT_SHOW_ICON;
+    }
+
+    const header = bubble.querySelector(':scope > .vcp-tool-result-header');
+    if (header && !bubble.classList.contains('vcp-tool-presented')) {
+        let badge = header.querySelector(':scope > .vcp-tool-result-hidden-badge');
+        if (targetHidden && !badge) {
+            badge = header.ownerDocument.createElement('span');
+            badge.className = 'vcp-tool-result-hidden-badge';
+            badge.title = '当前工具结果已排除，后续对话不会注入到AI上下文中';
+            badge.textContent = '已隐藏';
+            const toggleIcon = header.querySelector(':scope > .vcp-result-toggle-icon');
+            if (toggleIcon) {
+                header.insertBefore(badge, toggleIcon);
+            } else if (toggleBtn && toggleBtn.parentElement === header) {
+                header.insertBefore(badge, toggleBtn);
+            } else {
+                header.appendChild(badge);
+            }
+        } else if (!targetHidden && badge) {
+            badge.remove();
+        }
+    }
+
+    return true;
+}
+
+/**
  * 切换工具结果的显隐状态（从上下文中隐藏或恢复）。
  */
 function handleToolResultDeleteClick(button) {
@@ -1517,7 +1581,9 @@ function handleToolResultDeleteClick(button) {
         messageItem,
         Number.isInteger(ordinal) ? ordinal : -1,
         bubble.dataset.vcpToolResultHash || '',
-        targetHidden
+        targetHidden,
+        bubble,
+        button
     );
 }
 
@@ -1526,7 +1592,7 @@ function handleToolResultDeleteClick(button) {
  * 隐藏后其效果与原先垃圾桶删除一致（在发给 AI 的上下文中完全剔除，节省 Token 且不干扰对话），
  * 且具备完全无损性，用户随时可以再次点击恢复注入。
  */
-function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetHidden) {
+function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetHidden, bubbleElement = null, buttonElement = null) {
     const notify = (text, type = 'info') => mainRendererReferences.uiHelper?.showToastNotification?.(text, type);
     const messageId = messageItem?.dataset?.messageId;
     if (!messageId) return false;
@@ -1580,6 +1646,7 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
         return false;
     }
 
+    const originalContentSnapshot = JSON.stringify(message.content);
     const updatedRawBlock = setToolResultHidden(target.raw, targetHidden);
     const newText = content.slice(0, target.start) + updatedRawBlock + content.slice(target.end);
 
@@ -1587,6 +1654,7 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
         ...message,
         content: isTextObject ? { ...message.content, text: newText } : newText
     };
+    const updatedContentSnapshot = JSON.stringify(updatedMessage.content);
     history[messageIndex] = updatedMessage;
     mainRendererReferences.currentChatHistoryRef.set(history);
     messageItem._vcpMessageModel = updatedMessage;
@@ -1602,7 +1670,8 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
         }, latest => {
             const index = latest.findIndex(item => item.id === messageId);
             if (index < 0) throw new Error('消息已删除，请刷新');
-            if (JSON.stringify(latest[index].content) !== JSON.stringify(message.content)) {
+            const latestSnapshot = JSON.stringify(latest[index].content);
+            if (latestSnapshot !== originalContentSnapshot && latestSnapshot !== updatedContentSnapshot) {
                 throw new Error('消息内容已变化，请刷新后重试');
             }
             latest[index] = { ...latest[index], content: updatedMessage.content };
@@ -1612,8 +1681,12 @@ function toggleToolResultVisibilityInMessage(messageItem, ordinal, hash, targetH
             notify('工具结果状态已更新，但保存历史失败', 'error');
         });
     }
-
-    updateMessageContent(messageId, updatedMessage.content);
+    const resolvedBubble = (bubbleElement && messageItem.contains(bubbleElement))
+        ? bubbleElement
+        : messageItem.querySelector(`.vcp-tool-result-bubble[data-vcp-tool-result-index="${target.ordinal}"]`);
+    if (!syncToolResultBubbleVisibilityDom(resolvedBubble, buttonElement, updatedRawBlock, targetHidden)) {
+        updateMessageContent(messageId, updatedMessage.content);
+    }
     if (targetHidden) {
         notify('已在上下文中隐藏此工具结果（不会注入给后续AI）', 'success');
     } else {
@@ -2905,6 +2978,7 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         cleanupAnimationsInContent(contentDiv);
         chartEmbedHost?.beforeReplace(contentDiv);
         toolPresentation?.capture(contentDiv);
+        cleanupMermaidViewers(contentDiv);
         // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器、
         // 动画/WebGL 资源及大工具结果完整文本。
         releaseLazyTools(contentDiv, rawHtml);
@@ -2932,6 +3006,15 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
 
     if (!isStillValid()) return;
 
+    // 新 HTML 一写入就套用工具呈现：下面渲染附件要 await，期间可能出帧，
+    // 不能让未折叠的原始工具卡片先露出来。
+    let toolsPresented = false;
+    if (typeof rawHtml === 'string') {
+        bindLazyTools(contentDiv);
+        toolPresentation?.apply(contentDiv);
+        toolsPresented = true;
+    }
+
     if (includeAttachments && message) {
         const existingAttachments = contentDiv.querySelector('.message-attachments');
         if (existingAttachments) {
@@ -2951,8 +3034,10 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
 
     if (!isStillValid()) return;
 
-    bindLazyTools(contentDiv);
-    toolPresentation?.apply(contentDiv);
+    if (!toolsPresented) {
+        bindLazyTools(contentDiv);
+        toolPresentation?.apply(contentDiv);
+    }
 
     // 原生 audio 负责媒体播放，自定义控件层负责一致的主题与交互。
     // 放在附件渲染之后，可同时覆盖 Markdown HTML 音频和消息附件音频。
@@ -3058,6 +3143,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         currentSelectedItem,
         { document: mainRendererReferences.document, window: mainRendererReferences.window }
     );
+    renderContext.batchOwned?.add(messageItem);
     // DOM 气泡拥有只用于交互解析的消息快照。JEV 的历史同步可能在右键事件
     // 到达时正处于替换窗口，不能因此让一个仍可见的气泡失去上下文菜单。
     messageItem._vcpMessageModel = message;
@@ -3274,6 +3360,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         if (rawHtml === null || rendererDisposed || !isRenderSessionActive(renderSessionId)) {
             releaseUnMountedHtml(rawHtml);
             cleanupMessageDomResources(messageItem);
+            renderContext.batchOwned?.delete(messageItem);
             if (!rendererDisposed && isRenderSessionActive(renderSessionId) && !renderContext.forceSyncTemplate) {
                 const latest = mainRendererReferences.currentChatHistoryRef.get().find(item => item.id === message.id);
                 if (latest) return renderMessage(latest, isInitialLoad, appendToDom, renderSessionId,
@@ -3290,6 +3377,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         imageHandler.setContentAndProcessImages(contentDiv, rawHtml, message.id);
         contentDiv._vcpRenderRevision = 1;
         bindLazyTools(contentDiv);
+        // 工具卡片的折叠/分组/整轮折叠必须在首帧之前定好。历史加载会先显示基础 DOM
+        // 再做后处理；若等到后处理才套用，用户会先看到未折叠的原始卡片再收起。
+        toolPresentation?.apply(contentDiv);
 
         // [Pretext集成] 延后填充文本高度缓存，避免阻塞首屏与批量历史渲染。
         // 必须传入当前消息自己的内容节点；传聊天根会令 querySelector 始终命中
@@ -3304,7 +3394,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         const runPostRenderProcessingOnce = async (postOptions = {}) => {
             if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected
                 || contentDiv._vcpRenderRevision !== initialRevision
-                || isActiveStreamRequest) {
+                || isActiveStreamRequest || streamManager.isMessageActive?.(message.id)) {
                 return;
             }
 
@@ -3979,61 +4069,57 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
     if (!isRenderSessionActive(renderSessionId)) return;
 
     const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
-    const fragment = renderRoot.ownerDocument.createDocumentFragment();
-    const messageElements = [];
-
-    // 使用 Promise.allSettled 避免单个失败影响整体
-    const results = await Promise.allSettled(
-        messages.map(msg => renderMessage(msg, true, false, renderSessionId, renderContext))
-    );
-
-    results.forEach((result, index) => {
-        if (result.status === 'fulfilled' && result.value) {
-            messageElements.push(result.value);
-        } else {
-            console.error(`Failed to render message ${messages[index].id}:`,
-                result.reason);
-        }
-    });
-
-    if (!isRenderSessionActive(renderSessionId)) return;
-
-    // 一次性添加到 fragment
-    messageElements.forEach(el => fragment.appendChild(el));
-
-    // 使用 owner-managed animation frame，Surface teardown 会取消并等待它。
-    return renderTaskOwner.animationFrame(renderRoot, async () => {
-            if (!isRenderSessionActive(renderSessionId)) return;
-
-            // 在异步批次构建期间，活动流恢复可能已经挂载了相同 message id。
-            // 不能只删除 fragment 中的历史快照，否则实时节点会留在旧位置并被
-            // 随后追加的历史消息压到顶部。把实时节点移动到快照槽位，才能同时
-            // 保持唯一身份和 history 数组定义的最终楼层。
-            messageElements.forEach((el, index) => {
-                const messageId = el.dataset?.messageId;
-                if (!messageId) return;
-                const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
-                if (mounted && mounted !== el) {
-                    cleanupMessageDomResources(el);
-                    el.replaceWith(mounted);
-                    messageElements[index] = mounted;
-                }
-            });
-
-            // Step 1: Append all elements to the DOM at once.
-            renderRoot.appendChild(fragment);
-            mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
-
-            await renderContext.onFirstBatchMounted?.();
-            if (!isRenderSessionActive(renderSessionId)) return;
-            // The owner tracks completion, including time-sliced math work.
-            await Promise.all(messageElements.map(el => processDeferredMessageElement(el, renderSessionId, renderContext)));
-
-            if (scrollToBottom && isRenderSessionActive(renderSessionId)) {
-                mainRendererReferences.uiHelper.scrollToBottom();
+    const batchOwned = new Set();
+    const context = { ...renderContext, batchOwned };
+    const build = async msg => {
+        try { return await renderMessage(msg, true, false, renderSessionId, context); }
+        catch (error) { console.error(`Failed to render message ${msg.id}:`, error); return null; }
+    };
+    try {
+        const snapshots = [];
+        if (context.prependHistory) {
+            for (const msg of messages) {
+                if (!isRenderSessionActive(renderSessionId)) return;
+                snapshots.push(await build(msg));
             }
-            return messageElements;
-    });
+        } else snapshots.push(...await Promise.all(messages.map(build)));
+        if (!isRenderSessionActive(renderSessionId)) return;
+
+        const schedule = context.prependHistory ? renderTaskOwner.idle : renderTaskOwner.animationFrame;
+        return await schedule(renderRoot, async () => {
+            if (!isRenderSessionActive(renderSessionId)) return;
+            const fragment = renderRoot.ownerDocument.createDocumentFragment();
+            const mounted = [];
+            const seen = new Set();
+            // Resolve each slot at commit. Until now a borrowed node remained
+            // connected and a cancelled batch could not steal a stream's DOM.
+            for (const snapshot of snapshots) {
+                if (!snapshot) continue;
+                const id = snapshot.dataset.messageId;
+                if (seen.has(id)) continue;
+                const live = renderRoot.querySelector(`.message-item[data-message-id="${escapeCssAttributeValue(id)}"]`);
+                const el = live || (batchOwned.has(snapshot) ? snapshot : null);
+                if (!el) continue;
+                seen.add(id);
+                mounted.push(el);
+                fragment.appendChild(el);
+            }
+            let before = context.prependHistory ? renderRoot.firstChild : null;
+            while (before?.classList?.contains('topic-timestamp-bubble')) before = before.nextSibling;
+            renderRoot.insertBefore(fragment, before);
+            for (const el of mounted) batchOwned.delete(el);
+            mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
+            if (!context.prependHistory) await context.onFirstBatchMounted?.();
+            if (!isRenderSessionActive(renderSessionId)) return;
+            await Promise.all(mounted.map(el => processDeferredMessageElement(el, renderSessionId, context)));
+            if (scrollToBottom && isRenderSessionActive(renderSessionId)) mainRendererReferences.uiHelper.scrollToBottom();
+            return mounted;
+        }, { timeout: 1000 });
+    } finally {
+        // Includes worker failures, losing snapshots and revoked frame/idle tasks.
+        for (const el of batchOwned) cleanupMessageDomResources(el);
+        batchOwned.clear();
+    }
 }
 
 /**
@@ -4056,55 +4142,10 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         const endIndex = Math.min(startIndex + batchSize, olderMessages.length);
         const batch = olderMessages.slice(startIndex, endIndex);
 
-        // 创建批次 fragment
         const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
-        const batchFragment = renderRoot.ownerDocument.createDocumentFragment();
-        const elementsForProcessing = [];
-
-        for (const msg of batch) {
-            if (!isRenderSessionActive(renderSessionId)) return;
-
-            const messageElement = await renderMessage(msg, true, false, renderSessionId, renderContext);
-            if (messageElement) {
-                batchFragment.appendChild(messageElement);
-                elementsForProcessing.push(messageElement);
-            }
-        }
-
-        // 🟢 owner-managed idle work，当前 root revoke/dispose 时会被取消。
-        await renderTaskOwner.idle(renderRoot, async () => {
-                if (!isRenderSessionActive(renderSessionId)) return;
-
-                // idle 等待期间流式恢复可能已建立同 ID 节点。用实时节点替换
-                // fragment 中的快照槽位，使节点随该批次进入准确的历史位置。
-                elementsForProcessing.forEach((el, index) => {
-                    const messageId = el.dataset?.messageId;
-                    if (!messageId) return;
-                    const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
-                    if (mounted && mounted !== el) {
-                        cleanupMessageDomResources(el);
-                        el.replaceWith(mounted);
-                        elementsForProcessing[index] = mounted;
-                    }
-                });
-
-                let insertPoint = renderRoot.firstChild;
-                while (insertPoint?.classList?.contains('topic-timestamp-bubble')) {
-                    insertPoint = insertPoint.nextSibling;
-                }
-
-                if (insertPoint) {
-                    renderRoot.insertBefore(batchFragment, insertPoint);
-                } else {
-                    renderRoot.appendChild(batchFragment);
-                }
-                mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
-
-                await Promise.all(elementsForProcessing.map(el => processDeferredMessageElement(el, renderSessionId, {
-                    ...renderContext,
-                    deferHeavy: true
-                })));
-        }, { timeout: 1000 });
+        await renderMessageBatch(batch, false, renderSessionId, {
+            ...renderContext, prependHistory: true, deferHeavy: true,
+        });
 
         if (!isRenderSessionActive(renderSessionId)) return;
 
@@ -4123,57 +4164,7 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
  * @param {Array<Message>} history 聊天历史
  */
 async function renderHistoryLegacy(history, renderSessionId = null, renderContext = {}) {
-    renderSessionId ||= getActiveRenderSessionId(renderContext.root || mainRendererReferences.chatMessagesDiv);
-    if (!isRenderSessionActive(renderSessionId)) return;
-
-    const renderRoot = renderContext.root || mainRendererReferences.chatMessagesDiv;
-    const fragment = renderRoot.ownerDocument.createDocumentFragment();
-    const allMessageElements = [];
-
-    // Phase 1: Create all message elements in memory without appending to DOM
-    for (const msg of history) {
-        if (!isRenderSessionActive(renderSessionId)) return;
-
-        const messageElement = await renderMessage(msg, true, false, renderSessionId, renderContext);
-        if (messageElement) {
-            allMessageElements.push(messageElement);
-        }
-    }
-
-    if (!isRenderSessionActive(renderSessionId)) return;
-
-    // Phase 2: Append all created elements at once using a DocumentFragment
-    allMessageElements.forEach(el => fragment.appendChild(el));
-
-    return renderTaskOwner.animationFrame(renderRoot, async () => {
-            if (!isRenderSessionActive(renderSessionId)) return;
-
-            // 构建 fragment 后到本帧挂载前，活动流补建可能已经恢复同 ID 节点。
-            // 将实时节点移入对应快照槽位，避免它停留在历史队列顶部。
-            allMessageElements.forEach((el, index) => {
-                const messageId = el.dataset?.messageId;
-                if (!messageId) return;
-                const mounted = renderRoot.querySelector(`.message-item[data-message-id="${messageId}"]`);
-                if (mounted && mounted !== el) {
-                    cleanupMessageDomResources(el);
-                    el.replaceWith(mounted);
-                    allMessageElements[index] = mounted;
-                }
-            });
-
-            // Step 1: Append all elements to the DOM.
-            renderRoot.appendChild(fragment);
-                mainRendererReferences.messageCommands.syncNextUiEmptyStateWithMessages?.();
-
-            await renderContext.onFirstBatchMounted?.();
-            if (!isRenderSessionActive(renderSessionId)) return;
-            await Promise.all(allMessageElements.map(el => processDeferredMessageElement(el, renderSessionId, renderContext)));
-
-            if (isRenderSessionActive(renderSessionId)) {
-                mainRendererReferences.uiHelper.scrollToBottom();
-            }
-            return allMessageElements;
-    });
+    return renderMessageBatch(history, true, renderSessionId, renderContext);
 }
 
 function refreshLayoutDependentState() {

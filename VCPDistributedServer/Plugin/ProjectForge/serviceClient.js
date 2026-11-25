@@ -205,10 +205,25 @@ class ProjectServiceClient {
         if (this.admitted) throw new ServiceError('RPC calls still pending', 'BUSY');
         if (!this.child) { this.closed = true; return; }
         const child = this.child;
+        // 子进程可能已自行退出，此时 'exit' 事件不会再触发，直接收尾避免挂死。
+        if (child.exitCode !== null || child.signalCode !== null) {
+            try { child.stdin.end(); } catch (_e) { /* 管道已关闭 */ }
+            this.child = null;
+            this.closed = true;
+            return;
+        }
         const exited = new Promise(resolve => child.once('exit', resolve));
-        await this.request('shutdown');
-        child.stdin.end();
+        try {
+            await this.request('shutdown');
+        } catch (error) {
+            // 子进程消失导致 shutdown 无回执是预期内的，不升级为致命错误。
+            if (error?.code !== 'CONNECTION_LOST' && error?.code !== 'EXITED') throw error;
+        } finally {
+            try { child.stdin.end(); } catch (_e) { /* 管道已关闭 */ }
+        }
         await exited;
+        this.child = null;
+        this.closed = true;
     }
 }
 

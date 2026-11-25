@@ -1,4 +1,5 @@
-import { effectiveContextHistory, prepareCompactionState } from './contextCompactionState.js';
+import { effectiveContextHistory, isContextCheckpoint, prepareCompactionState } from './contextCompactionState.js';
+import { assembleRequestMessages, buildDefaultMessageContent, normalizeAgentContextWindowSize } from './chatContextPipeline.js';
 import { readCompactionResponse } from './contextCompactionStream.js';
 import { compactionSettings, buildCompactionMessages, createCheckpointMessage } from './contextCompactionPrompts.js';
 
@@ -125,11 +126,87 @@ export function shouldCompactContext(history, agentConfig, pendingText = '') {
     return contextExceedsCompactableBudget([...effective, { role: 'user', content: pendingText }], agentConfig.systemPrompt || '', limit * 0.85);
 }
 
+/**
+ * Hard check for sends that do not go through the full preflight (continue,
+ * regenerate, heartbeat): refuse instead of sending a request the limit cannot hold.
+ * Uses the same measurement as the compaction trigger.
+ */
+export function assertContextWithinLimit(history, agentConfig, pendingText = '') {
+    const limit = Number(agentConfig?.contextTokenLimit);
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    const effective = effectiveContextHistory(history);
+    const { total } = measureContextTokens(
+        pendingText ? [...effective, { role: 'user', content: pendingText }] : effective,
+        agentConfig.systemPrompt || '');
+    if (total > limit) {
+        throw new Error(`当前上下文估算 ${total} token，超过上限 ${limit}；请先压缩上下文、缩短内容或调整上限。`);
+    }
+}
+
+/**
+ * Estimate assembled text only; encoded media bytes are not text tokens.
+ * The assembled request only contains what this client expands. Whatever the
+ * server adds (expanded prompt variables, memory, tool definitions) is known
+ * from the latest provider usage, so the larger of the two counts is used.
+ */
+export async function preflightContextSend({
+    electronAPI, agentConfig, context, history, pendingMessage,
+    extraContextHistory = [], createRequestTextOptions, afterCompaction = false,
+}) {
+    const limit = Number(agentConfig?.contextTokenLimit);
+    if (!Number.isFinite(limit) || limit <= 0) return { shouldCompact: false };
+
+    const assemble = (messages, conversationSnapshot) => assembleRequestMessages({
+        ...createRequestTextOptions?.(agentConfig, messages, pendingMessage.id),
+        electronAPI, agentConfig, context, history: messages, conversationSnapshot,
+        currentUserMessageId: pendingMessage.id,
+        buildMessageContent: args => buildDefaultMessageContent({ ...args, includeAttachmentFrames: false }),
+    });
+    const estimate = ({ messagesForVCP }) => estimateContextTokens(messagesForVCP.map(message => ({
+        ...message,
+        content: Array.isArray(message.content)
+            ? message.content.filter(part => part?.type === 'text')
+            : message.content,
+    })));
+    const full = await assemble([...extraContextHistory, ...history, pendingMessage]);
+    // A message window sends only part of the history, so the usage-anchored count of the whole topic does not apply.
+    const measured = normalizeAgentContextWindowSize(agentConfig.contextMessageWindowSize) === null
+        ? measureContextTokens([...extraContextHistory, ...history, pendingMessage], agentConfig.systemPrompt || '')
+        : { source: 'estimate', total: 0, fixed: 0 };
+    const anchored = measured.source === 'provider_usage';
+    const tokens = Math.max(estimate(full), anchored ? measured.total : 0);
+    if (tokens < limit * 0.85) return { shouldCompact: false, tokens };
+
+    const oldHistory = new Set(history);
+    const canCompact = !afterCompaction && full.retainedHistory.some(message =>
+        oldHistory.has(message) && !isContextCheckpoint(message));
+    if (canCompact) {
+        // Do not spend a compaction request if the new turn cannot fit even on its own.
+        const minimum = Math.max(
+            estimate(await assemble([pendingMessage], full.conversationSnapshot)),
+            anchored ? measured.fixed + estimateMessageTokens(pendingMessage) : 0);
+        if (minimum <= limit) return { shouldCompact: true, tokens };
+        throw new Error(`本轮内容（含展开附件）与提示词估算 ${minimum} token，超过上限 ${limit}；请缩短内容、移除附件或调整上限。`);
+    }
+    if (tokens > limit) {
+        const subject = afterCompaction ? '压缩后的请求' : '当前请求（含展开附件）';
+        throw new Error(`${subject}估算 ${tokens} token，超过上限 ${limit}；请缩短内容、移除附件或调整上限。`);
+    }
+    return { shouldCompact: false, tokens };
+}
 export async function requestContextCompaction({ settings, state, signal, requestId, fetchImpl = globalThis.fetch, onResponse = () => {} }) {
     const config = compactionSettings(settings);
-    if (!config.model) throw new Error('请先配置上下文压缩模型');
-    const url = new URL(settings.vcpServerUrl);
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('压缩服务器地址必须使用 HTTP 或 HTTPS');
+    let url;
+    let messages;
+    try {
+        if (!config.model) throw new Error('请先配置上下文压缩模型');
+        url = new URL(settings.vcpServerUrl);
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('压缩服务器地址必须使用 HTTP 或 HTTPS');
+        messages = buildCompactionMessages(state, settings);
+    } catch (error) {
+        // Changing the model cannot fix a shared request configuration.
+        throw Object.assign(error, { compactionNoFallback: true });
+    }
     // Never use chatvcp endpoint: compression must not execute historical tool requests.
     url.pathname = url.pathname.replace(/\/chatvcp\/completions\/?$/, '/chat/completions');
     const response = await fetchImpl(url.href, {
@@ -140,13 +217,19 @@ export async function requestContextCompaction({ settings, state, signal, reques
         },
         body: JSON.stringify({
             model: config.model,
-            messages: buildCompactionMessages(state, settings),
+            messages,
             stream: true,
             ...(requestId ? { requestId } : {}),
         }),
         signal,
     });
-    if (!response.ok) throw new Error(`上下文压缩请求失败（HTTP ${response.status}）`);
+    if (!response.ok) {
+        // Do not leave the failed attempt's response body running.
+        void response.body?.cancel?.().catch(() => {});
+        throw Object.assign(new Error(`上下文压缩请求失败（HTTP ${response.status}）`), {
+            compactionNoFallback: response.status === 401 || response.status === 403,
+        });
+    }
     return readCompactionResponse(response, { signal, model: config.model, onResponse });
 }
 
@@ -166,27 +249,73 @@ export function createContextCompactionService({
         return Boolean(scope?.itemId && scope?.topicId && pending.has(scopeKey(scope)));
     }
 
-    function cancel(scope) {
-        if (!scope?.itemId || !scope?.topicId) return false;
-        const controller = pending.get(scopeKey(scope));
-        if (!controller || controller.signal.aborted || controller.committing) return false;
-        // Same upstream Stop reply gateway; never wait for an unresponsive server
-        // before revoking the local request and rejecting late model results.
+    function interrupt(requestId) {
+        if (!requestId) return;
         try {
-            Promise.resolve(interruptRequest?.(controller.requestId)).catch(error =>
+            Promise.resolve(interruptRequest?.(requestId)).catch(error =>
                 console.warn('[ContextCompaction] Upstream interrupt failed:', error));
         } catch (error) {
             console.warn('[ContextCompaction] Upstream interrupt failed:', error);
         }
+    }
+
+    function cancel(scope) {
+        if (!scope?.itemId || !scope?.topicId) return false;
+        const controller = pending.get(scopeKey(scope));
+        if (!controller || controller.signal.aborted || controller.committing) return false;
+        const requestId = controller.requestId;
         controller.abort();
+        // Stop targets the active attempt and never blocks local cancellation.
+        interrupt(requestId);
         return true;
+    }
+
+    async function attemptCheckpoint({ controller, state, settings, record }) {
+        const attempt = new AbortController();
+        const requestId = `compaction_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+        controller.requestId = requestId;
+        let timer;
+        let cancelAttempt;
+        let active = true;
+        const deadline = new Promise((_, reject) => {
+            cancelAttempt = () => {
+                reject(new Error('上下文压缩已取消'));
+                attempt.abort();
+            };
+            controller.signal.addEventListener('abort', cancelAttempt, { once: true });
+            timer = setTimeout(() => {
+                reject(new Error('上下文压缩超时，请重试'));
+                attempt.abort();
+                interrupt(requestId);
+            }, timeoutMs);
+        });
+        let response;
+        try {
+            response = await Promise.race([
+                deadline,
+                (async () => request({
+                    settings, state, signal: attempt.signal, requestId,
+                    onResponse: diagnostic => { if (active && !attempt.signal.aborted) record.diagnostic = diagnostic; },
+                }))(),
+            ]);
+        } finally {
+            active = false;
+            clearTimeout(timer);
+            controller.signal.removeEventListener('abort', cancelAttempt);
+            controller.requestId = null;
+        }
+        if (controller.signal.aborted) throw new Error('上下文压缩已取消');
+        record.content = response;
+        return createCheckpointMessage(state, response, settings);
     }
 
     async function compact({ scope, history, settings, throughMessageId = null, onCommitted = () => {} }) {
         if (disposed) throw new Error('压缩服务已关闭');
         if (scope?.itemType !== 'agent') throw new Error('上下文压缩仅支持单聊');
         if (!historyMutationAuthority?.mutate) throw new Error('上下文压缩缺少历史写入权限');
-        if (!compactionSettings(settings).enabled) throw new Error('请先开启上下文智能压缩');
+        const { enabled, model, fallbackModel } = compactionSettings(settings);
+        if (!enabled) throw new Error('请先开启上下文智能压缩');
+        const models = fallbackModel && model && fallbackModel !== model ? [model, fallbackModel] : [model];
         if (isBusy(scope)) throw new Error('当前话题正在压缩上下文');
         if (history.some(message => message?.isThinking)) throw new Error('请等待当前回复结束后再压缩');
         const snapshot = structuredClone(history);
@@ -203,38 +332,39 @@ export function createContextCompactionService({
         if (!state.sourceCount) throw new Error('当前没有可压缩的上下文');
         const original = serializeCompactionState(state);
         const controller = new AbortController();
-        controller.requestId = `compaction_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+
         const key = scopeKey(scope);
         pending.set(key, controller);
         const notifyBusy = busy => {
             try { onBusyChanged(scope, busy); }
             catch (error) { console.error('[ContextCompaction] Busy projection failed:', error); }
         };
-        let timer;
-        let flowlockLease = null;
-        let responseDiagnostic = null;
-        let returnedContent;
+        const attempts = [];
         try {
-            flowlockLease = flowlock?.suspendForContextCompaction?.(scope.itemId, scope.topicId) || null;
+            const flowlockLease = flowlock?.suspendForContextCompaction?.(scope.itemId, scope.topicId) || null;
             notifyBusy(true);
-            const deadline = new Promise((_, reject) => {
-                timer = setTimeout(() => {
-                    controller.abort();
-                    reject(new Error('上下文压缩超时，请重试'));
-                }, timeoutMs);
-                controller.signal.addEventListener('abort', () => reject(new Error('上下文压缩已取消')), { once: true });
-            });
-            const response = await Promise.race([
-                request({
-                    settings, state, signal: controller.signal, requestId: controller.requestId,
-                    onResponse: diagnostic => { responseDiagnostic = diagnostic; },
-                }),
-                deadline,
-            ]);
-            clearTimeout(timer); // The request deadline must not abort durable history persistence.
-            if (disposed || controller.signal.aborted) throw new Error('上下文压缩已取消');
-            returnedContent = response;
-            const message = createCheckpointMessage(state, response, settings);
+            let message;
+            for (const attemptedModel of models) {
+                if (controller.signal.aborted) throw new Error('上下文压缩已取消');
+                const record = { model: attemptedModel };
+                attempts.push(record);
+                try {
+                    message = await attemptCheckpoint({
+                        controller, state, record,
+                        settings: { ...settings, contextCompactionModel: attemptedModel },
+                    });
+                    break;
+                } catch (error) {
+                    record.error = error;
+                    if (controller.signal.aborted) throw new Error('上下文压缩已取消');
+                    if (error.compactionNoFallback || attempts.length === models.length) {
+                        if (attempts.length === 1) throw error;
+                        throw new AggregateError(attempts.map(entry => entry.error),
+                            `主备模型压缩均失败：${attempts.map(entry => `${entry.model}：${entry.error.message}`).join('；')}`);
+                    }
+                }
+            }
+            if (controller.signal.aborted) throw new Error('上下文压缩已取消');
 
             const outcome = await historyMutationAuthority.mutate({
                 ...scope, category: 'context-compaction',
@@ -258,22 +388,29 @@ export function createContextCompactionService({
             catch (error) { console.error('[ContextCompaction] Committed checkpoint projection failed:', error); }
             return { message, history: outcome.history, warnings: state.warnings };
         } catch (error) {
-            if (responseDiagnostic || returnedContent !== undefined) {
-                const content = responseDiagnostic?.content ?? returnedContent;
-                const raw = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+            if (attempts.length > 1 || attempts.some(record => record.diagnostic || record.content !== undefined)) {
+                const details = attempts.map(record => {
+                    const diagnostic = record.diagnostic;
+                    const content = diagnostic?.content ?? record.content;
+                    const raw = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+                    const responseModel = diagnostic?.model && diagnostic.model !== record.model
+                        ? `（响应模型：${diagnostic.model}）` : '';
+                    return [
+                        `模型：${record.model || '未配置'}${responseModel}`,
+                        `服务端结束原因：${diagnostic?.finishReason ?? '未提供'}`,
+                        `尝试结果：${record.error?.message ?? (record.content === undefined ? '未返回正文' : '已返回正文')}`,
+                        '模型返回正文（非请求历史）：',
+                        raw ?? '（无正文）',
+                    ].join('\n');
+                });
                 error.compactionDiagnostic = [
-                    '上下文压缩失败诊断（原历史未修改）',
-                    `模型：${responseDiagnostic?.model || compactionSettings(settings).model}`,
-                    `服务端结束原因：${responseDiagnostic?.finishReason ?? '未提供'}`,
+                    '上下文压缩失败诊断',
                     `失败原因：${error.message}`,
-                    '',
-                    '以下为模型返回正文原文，不是待压缩历史；不包含请求密钥：',
-                    raw ?? '（无正文）',
-                ].join('\n');
+                    ...details,
+                ].join('\n\n');
             }
             throw error;
         } finally {
-            clearTimeout(timer);
             pending.delete(key);
             notifyBusy(false);
         }

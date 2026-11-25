@@ -245,10 +245,59 @@ class PluginManager {
                 detached: process.platform !== 'win32'
             });
 
-            let outputBuffer = '';
+            const outputChunks = [];
             let errorOutput = '';
             let initialResponseSent = false;
             const timeoutDuration = plugin.entryPoint?.timeout || plugin.communication?.timeout || (isAsyncPlugin ? 1800000 : 60000);
+
+            const extractFirstStatusJsonString = (text) => {
+                if (!text || typeof text !== 'string') return null;
+                const len = text.length;
+                let searchFrom = 0;
+                while (searchFrom < len) {
+                    const startIdx = text.indexOf('{', searchFrom);
+                    if (startIdx === -1) return null;
+                    let depth = 0;
+                    let inString = false;
+                    let escape = false;
+                    let endIdx = -1;
+                    for (let i = startIdx; i < len; i++) {
+                        const ch = text.charCodeAt(i);
+                        if (inString) {
+                            if (escape) escape = false;
+                            else if (ch === 92) escape = true;
+                            else if (ch === 34) inString = false;
+                            continue;
+                        }
+                        if (ch === 34) inString = true;
+                        else if (ch === 123) depth++;
+                        else if (ch === 125) {
+                            depth--;
+                            if (depth === 0) {
+                                endIdx = i;
+                                break;
+                            }
+                        }
+                    }
+                    if (endIdx === -1) {
+                        const nextBrace = text.indexOf('{', startIdx + 1);
+                        if (nextBrace === -1) return null;
+                        searchFrom = startIdx + 1;
+                        continue;
+                    }
+                    const candidate = text.slice(startIdx, endIdx + 1);
+                    try {
+                        const parsed = JSON.parse(candidate);
+                        if (parsed && typeof parsed === 'object' && (parsed.status === 'success' || parsed.status === 'error')) {
+                            return candidate;
+                        }
+                    } catch {
+                        // continue scanning
+                    }
+                    searchFrom = startIdx + 1;
+                }
+                return null;
+            };
 
             const timeoutId = setTimeout(() => {
                 if (!initialResponseSent) {
@@ -261,21 +310,15 @@ class PluginManager {
             pluginProcess.stdout.on('data', (data) => {
                 if (isAsyncPlugin && initialResponseSent) return;
 
-                outputBuffer += data;
+                outputChunks.push(data);
 
-                // 异步插件早期返回逻辑
-                if (isAsyncPlugin) {
-                    try {
-                        const potentialJsonMatch = outputBuffer.match(/(\{[\s\S]*?\})(?:\s|$)/);
-                        if (potentialJsonMatch && potentialJsonMatch[1]) {
-                            const parsedOutput = JSON.parse(potentialJsonMatch[1]);
-                            if (parsedOutput && (parsedOutput.status === "success" || parsedOutput.status === "error")) {
-                                initialResponseSent = true;
-                                resolve(outputBuffer.trim());
-                            }
-                        }
-                    } catch (e) {
-                        // Incomplete JSON, wait for more data
+                // 异步插件早期返回逻辑：仅在分块含 '}' 时用线性括号平衡扫描器提取首包
+                if (isAsyncPlugin && data.includes('}')) {
+                    const matchedJsonStr = extractFirstStatusJsonString(outputChunks.join(''));
+                    if (matchedJsonStr) {
+                        initialResponseSent = true;
+                        outputChunks.length = 0;
+                        resolve(matchedJsonStr);
                     }
                 }
             });
@@ -297,6 +340,9 @@ class PluginManager {
                     return;
                 }
 
+                const finalStdout = outputChunks.join('').trim();
+                outputChunks.length = 0;
+
                 if (code !== 0 && signal !== 'SIGKILL' && signal !== 'SIGTERM') {
                     const errMsg = `Plugin ${pluginName} exited with code ${code}. Stderr: ${errorOutput.trim()}`;
                     console.error(`[DistPluginManager] ${errMsg}`);
@@ -305,7 +351,7 @@ class PluginManager {
                     if (errorOutput.trim() && this.debugMode) {
                         console.warn(`[DistPluginManager] Plugin ${pluginName} produced stderr: ${errorOutput.trim()}`);
                     }
-                    if (!initialResponseSent) resolve(outputBuffer.trim());
+                    if (!initialResponseSent) resolve(finalStdout);
                 }
             });
 

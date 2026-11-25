@@ -415,10 +415,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     pendingTrack.title,
                     pendingPlayback?.stageMode || 'regular'
                 );
-                await app.playRequestedTrack(pendingPlayback);
+                // 引擎要把整首歌解码完才算加载好，可能要几秒。这里不等它：
+                // 侧栏、音效设置和“窗口就绪”信号都不该被第一首歌的解码挡住。
+                app.playRequestedTrack(pendingPlayback)
+                    .catch(error => console.error('[Music] Pending playback failed:', error));
             } else if (app.playlist.length > 0) {
-                // 没有待播放曲目，按默认行为加载第一首（不自动播放）
-                await app.loadTrack(0, false);
+                // 没有待播放曲目：回到上次听的那首（找不到就第一首），不自动播放。
+                let initialIndex = 0;
+                try {
+                    const lastPath = app.normalizePathForCompare(localStorage.getItem('musicLastTrackPath'));
+                    const found = lastPath
+                        ? app.playlist.findIndex(t => app.normalizePathForCompare(t.path) === lastPath)
+                        : -1;
+                    if (found !== -1) initialIndex = found;
+                } catch (error) {}
+                app.loadTrack(initialIndex, false)
+                    .catch(error => console.error('[Music] Initial track load failed:', error));
             }
 
             await app.loadCustomPlaylists();
@@ -662,7 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        app.playPauseBtn.onclick = () => app.isPlaying ? app.pauseTrack() : app.playTrack();
+        app.playPauseBtn.onclick = () => app.toggleTransport();
         app.prevBtn.onclick = () => app.prevTrack();
         app.nextBtn.onclick = () => app.nextTrack();
         app.modeBtn.onclick = () => {
@@ -672,7 +684,10 @@ document.addEventListener('DOMContentLoaded', () => {
         app.volumeSlider.oninput = (e) => {
             const val = parseFloat(e.target.value);
             app.updateVolumeSliderBackground(val);
-            app.api?.setMusicVolume?.(val);
+            if (app.api?.setMusicVolume) {
+                if (app.sendLatest) app.sendLatest('volume', () => app.api.setMusicVolume(val));
+                else app.api.setMusicVolume(val);
+            }
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
             app.saveSettings();
         };
@@ -688,10 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 app.progress.style.width = `${(newTime / app.lastKnownDuration) * 100}%`;
                 app.currentTimeEl.textContent = app.formatTime(newTime);
 
-                if (shouldSeek) {
-                    await app.api.seekMusic(newTime);
-                    if (app.isPlaying) app.startStatePolling();
-                }
+                if (shouldSeek) await app.seekTo(newTime);
             }
         };
 
@@ -938,9 +950,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         app.searchInput.oninput = (e) => {
             if (app.isSemanticSearchActive) return; // 语义搜索模式下不进行实时过滤
-            const query = e.target.value.toLowerCase();
-            app.currentFilteredTracks = query ? app.playlist.filter(t => (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query)) : null;
-            app.renderPlaylist(app.currentFilteredTracks);
+            // 连续输入时只在停顿后过滤一次，避免每敲一个字就重建整个列表。
+            clearTimeout(app.searchInputTimer);
+            app.searchInputTimer = setTimeout(() => {
+                if (app.isSemanticSearchActive) return;
+                const query = app.searchInput.value.toLowerCase();
+                app.currentFilteredTracks = query ? app.playlist.filter(t => (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query)) : null;
+                app.renderPlaylist(app.currentFilteredTracks);
+            }, 120);
         };
 
         app.searchInput.onkeydown = (e) => {
@@ -1052,32 +1069,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    app.updateUIWithState = (state) => {
+    app.updateUIWithState = (state, options = {}) => {
         if (!state) return;
+        // 切歌加载期间引擎报的还是上一首（或已停止）的状态，写进界面会让进度条和按钮乱跳。
+        if (app.isTrackLoading && !options.force) return;
         app.lastKnownCurrentTime = state.current_time; app.lastKnownDuration = state.duration;
         app.lastStateUpdateTime = Date.now();
-        if (state.duration > 0) {
+        if (state.duration > 0 && !app.dragInProgress) {
             const percent = (state.current_time / state.duration) * 100;
             app.progress.style.width = `${percent}%`;
             app.currentTimeEl.textContent = app.formatTime(state.current_time);
             app.durationEl.textContent = app.formatTime(state.duration);
         }
-        if (state.is_playing !== app.isPlaying) {
-            // Optimistic UI guard: Ignore polled state if we just sent a command
-            const now = Date.now();
-            if (app.isChangingState && (now - app.lastCommandTime < 800)) {
-                if (state.is_playing === app.expectedPlayingState) {
-                    app.isChangingState = false;
-                } else {
-                    // Skip update to prevent flickering
-                    return;
-                }
+        // 引擎的 is_playing 只在输出流建好之后才为真：刚发出播放、或者引擎重建输出流的那段时间，
+        // 它会报“未播放”，可声音其实马上就来（或者一直在响）。所以“在不在播”要结合进度看：
+        // 没有明确报告已暂停、且进度确实在往前走，就算在播。
+        const nowMs = Date.now();
+        const prev = app.lastEngineProgress;
+        app.lastEngineProgress = { time: state.current_time, at: nowMs };
+        let advancing = false;
+        if (prev && nowMs - prev.at < 3000) {
+            const moved = state.current_time - prev.time;
+            // 跳转造成的大幅位移不算“在播”
+            advancing = moved > 0.02 && moved < (nowMs - prev.at) / 1000 + 1;
+        }
+        const enginePlaying = state.is_playing === true || (state.is_paused !== true && advancing);
+        if (enginePlaying === app.isPlaying) {
+            app.stateMismatchPolls = 0;
+            if (enginePlaying === app.expectedPlayingState) app.isChangingState = false;
+        } else if (options.force) {
+            app.stateMismatchPolls = 0;
+            // 刚加载好的曲目一定是停止状态；用户想播放时由 loadTrack 接着发播放指令，这里不改按钮。
+            if (!app.playIntent) {
+                app.playIntent = enginePlaying;
+                app.applyPlayingUi(enginePlaying);
+                if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
             }
-
-            app.isPlaying = state.is_playing;
-            document.body.classList.toggle('music-playing', app.isPlaying);
-            app.playPauseBtn.classList.toggle('is-playing', app.isPlaying);
-            if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
+        } else {
+            // 刚发过指令：给引擎留出执行时间（建输出流可能要几秒），期间不拿旧状态去翻按钮。
+            const grace = app.expectedPlayingState ? 5000 : 1500;
+            const waitingForCommand = app.isChangingState && nowMs - (app.lastCommandTime || 0) < grace;
+            // 平时也要连续两次查询都不一致才认为状态真的变了。
+            if (!waitingForCommand && (app.stateMismatchPolls = (app.stateMismatchPolls || 0) + 1) >= 2) {
+                app.stateMismatchPolls = 0;
+                app.isChangingState = false;
+                app.playIntent = enginePlaying;
+                app.applyPlayingUi(enginePlaying);
+                if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
+            }
         }
         if (!app.isTrackLoading) app.publishCapsuleState?.();
         if (state.loudness_info) {

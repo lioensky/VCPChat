@@ -1084,3 +1084,68 @@ test('cold message with an active text selection remains mounted until selection
         assert.equal(item.dataset.vcpDomEvicted, 'true');
     } finally { await disposeFixture(fixture); }
 });
+
+test('toggling tool result visibility updates the bubble in place without replacing the message DOM subtree', async () => {
+    const fixture = await createRendererFixture(TRANSCRIPT, { toolPresentation: 'legacy', toolExpansion: 'none' });
+    try {
+        const item = fixture.messageItem;
+        const content = item.querySelector('.md-content');
+        const firstBubble = content.querySelector('.vcp-tool-result-bubble');
+        const secondBubble = content.querySelectorAll('.vcp-tool-result-bubble')[1];
+        assert.ok(firstBubble && secondBubble);
+
+        // 先展开第二个气泡并放一个哨兵属性，验证切换第一个气泡显隐不会把整条消息重绘冲掉第二个气泡的状态
+        secondBubble.classList.add('expanded');
+        secondBubble.dataset.inPlaceSentinel = 'preserved';
+
+        const toggleBtn = firstBubble.querySelector('.vcp-tool-result-delete-btn');
+        assert.ok(toggleBtn);
+        assert.equal(toggleBtn.dataset.vcpHidden, 'false');
+
+        // 第一次点击：隐藏
+        toggleBtn.dispatchEvent(new fixture.dom.window.MouseEvent('click', { bubbles: true }));
+        assert.equal(firstBubble.isConnected, true, 'bubble node must stay connected in place');
+        assert.equal(firstBubble.classList.contains('vcp-tool-result-bubble--hidden'), true);
+        assert.equal(toggleBtn.dataset.vcpHidden, 'true');
+        assert.ok(firstBubble.querySelector('.vcp-tool-result-hidden-badge'));
+        assert.equal(secondBubble.classList.contains('expanded'), true);
+        assert.equal(secondBubble.dataset.inPlaceSentinel, 'preserved');
+
+        // 第二次点击：恢复显示（验证更新后的 FNV-1a 哈希能连续命中）
+        toggleBtn.dispatchEvent(new fixture.dom.window.MouseEvent('click', { bubbles: true }));
+        assert.equal(firstBubble.isConnected, true);
+        assert.equal(firstBubble.classList.contains('vcp-tool-result-bubble--hidden'), false);
+        assert.equal(toggleBtn.dataset.vcpHidden, 'false');
+        assert.equal(firstBubble.querySelector('.vcp-tool-result-hidden-badge'), null);
+        assert.equal(secondBubble.dataset.inPlaceSentinel, 'preserved');
+
+        // 切换到 compact 模式后点击隐藏，再切回 legacy 模式：旧式徽章应当同步出现
+        fixture.dom.window.dispatchEvent(new fixture.dom.window.CustomEvent('vcp-appearance-changed', {
+            detail: { profile: { toolPresentation: 'compact', toolExpansion: 'none' } }
+        }));
+        toggleBtn.dispatchEvent(new fixture.dom.window.MouseEvent('click', { bubbles: true }));
+        assert.equal(firstBubble.classList.contains('vcp-tool-result-bubble--hidden'), true);
+        fixture.dom.window.dispatchEvent(new fixture.dom.window.CustomEvent('vcp-appearance-changed', {
+            detail: { profile: { toolPresentation: 'legacy', toolExpansion: 'none' } }
+        }));
+        assert.ok(firstBubble.querySelector('.vcp-tool-result-hidden-badge'), 'restoring to legacy mode must keep hidden badge');
+    } finally { await disposeFixture(fixture); }
+});
+
+test('history batch item carries its final tool presentation before it is mounted and revealed', async () => {
+    const fixture = await createRendererFixture('开场。', { toolPresentation: 'process', toolExpansion: 'attention' });
+    try {
+        const message = { id: 'tool-card-history', role: 'assistant', content: TRANSCRIPT, timestamp: Date.now() };
+        fixture.historyRef.set([...fixture.historyRef.get(), message]);
+        // 批量历史渲染：节点先建好、稍后才挂载并显示，后处理（_vcp_process）在显示之后才跑。
+        const item = await fixture.renderer.renderMessage(message, false, false);
+        assert.equal(typeof item._vcp_process, 'function', 'post-processing must still be deferred');
+        const content = item.querySelector('.md-content');
+        assert.equal(content.dataset.vcpToolPresentation, 'process');
+        const turn = content.querySelector('.vcp-tool-process[data-variant="turn"]');
+        assert.ok(turn, 'the whole tool turn must already be folded before the first paint');
+        assert.equal(turn.querySelector('.vcp-tool-process-body').hidden, true);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});

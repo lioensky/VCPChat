@@ -29,6 +29,7 @@ class TopicMessageAdmission {
         this.maxAutoRounds = Math.max(1, Number(maxAutoRounds) || 8);
         this.entries = [];
         this.standaloneLeases = [];
+        this.dispatchReceipts = new Map();
         this.leases = new Map();
         this.waiters = new Set();
         this.listeners = new Set();
@@ -58,6 +59,20 @@ class TopicMessageAdmission {
             if (!Array.isArray(saved) || !Array.isArray(state.standaloneLeases)) {
                 throw new TypeError('Invalid admission store');
             }
+            const receipts = state.dispatchReceipts ?? [];
+            if (!Array.isArray(receipts)) throw new TypeError('Invalid dispatch receipt journal');
+            this.dispatchReceipts.clear();
+            for (const receipt of receipts) {
+                conversationKey(receipt?.scope || {});
+                if (!/^[a-f0-9]{64}$/.test(receipt.key)
+                    || !/^[a-f0-9]{64}$/.test(receipt.fingerprint)
+                    || typeof receipt.messageId !== 'string' || !receipt.messageId
+                    || typeof receipt.entryId !== 'string' || !receipt.entryId
+                    || this.dispatchReceipts.has(receipt.key)) {
+                    throw new TypeError('Invalid or duplicate dispatch receipt');
+                }
+                this.dispatchReceipts.set(receipt.key, receipt);
+            }
             const leaseKeys = new Set();
             for (const lease of state.standaloneLeases) {
                 const key = conversationKey(lease?.scope || {});
@@ -81,7 +96,7 @@ class TopicMessageAdmission {
             // Drop the entire interrupted topic's staging, not durable chat history.
             this.entries = saved.filter(entry => !interrupted.has(conversationKey(entry.scope)))
                 .map(entry => ({ ...copy(entry), state: 'recovered', error: null }));
-            if (interrupted.size) await this.store.save(copy(this.entries), []);
+            if (interrupted.size) await this.store.save(copy(this.entries), [], copy([...this.dispatchReceipts.values()]));
             this.ready = true;
             this.notify();
         });
@@ -112,10 +127,13 @@ class TopicMessageAdmission {
         return copy(this.entries.filter(entry => !key || conversationKey(entry.scope) === key));
     }
 
-    async save(next, standaloneLeases = this.standaloneLeases) {
+    async save(next, standaloneLeases = this.standaloneLeases, dispatchReceipt = null) {
+        const receipts = [...this.dispatchReceipts.values()];
+        if (dispatchReceipt) receipts.push(dispatchReceipt);
         this.savingEntries = next;
-        try { await this.store.save(copy(next), copy(standaloneLeases)); }
+        try { await this.store.save(copy(next), copy(standaloneLeases), copy(receipts)); }
         finally { this.savingEntries = null; }
+        if (dispatchReceipt) this.dispatchReceipts.set(dispatchReceipt.key, dispatchReceipt);
         this.entries = next;
         this.standaloneLeases = standaloneLeases;
         const retainedIds = new Set(next.map(entry => entry.entryId));
@@ -251,7 +269,18 @@ class TopicMessageAdmission {
         }
         return null;
     }
-    submit({ scope, message, requestId, triggerPolicy = 'none', invitePrompt = '' }) {
+    getDispatchReceipt(key, fingerprint) {
+        this.assertReady();
+        const receipt = this.dispatchReceipts.get(key);
+        if (!receipt) return null;
+        if (receipt.fingerprint !== fingerprint) throw new Error('派工请求 ID 已用于不同的任务');
+        return {
+            ...copy(receipt), success: true, accepted: true, replayed: true,
+            queued: this.entries.some(entry => entry.entryId === receipt.entryId && entry.state === 'queued'),
+        };
+    }
+
+    submit({ scope, message, requestId, triggerPolicy = 'none', invitePrompt = '' }, dispatch = null) {
         return this.run(async () => {
             this.assertReady();
             conversationKey(scope);
@@ -259,6 +288,12 @@ class TopicMessageAdmission {
                 throw new TypeError('Message id and role required');
             }
             if (!['none', 'reply'].includes(triggerPolicy)) throw new TypeError('Invalid trigger policy');
+            if (dispatch) {
+                if (!/^[a-f0-9]{64}$/.test(dispatch.key) || !/^[a-f0-9]{64}$/.test(dispatch.fingerprint)
+                    || scope.itemType !== 'agent') throw new TypeError('Invalid dispatch identity');
+                const receipt = this.getDispatchReceipt(dispatch.key, dispatch.fingerprint);
+                if (receipt) return receipt;
+            }
             const existing = this.entries.find(entry =>
                 conversationKey(entry.scope) === conversationKey(scope)
                 && (entry.message.id === message.id || (requestId && entry.requestId === requestId)));
@@ -276,9 +311,14 @@ class TopicMessageAdmission {
                 deferred: this.leases.has(conversationKey(scope))
                     || this.entries.some(item => conversationKey(item.scope) === conversationKey(scope)),
             };
-            await this.save([...this.entries, entry]);
+            const receipt = dispatch ? {
+                key: dispatch.key, fingerprint: dispatch.fingerprint,
+                entryId: entry.entryId, messageId: message.id, scope: copy(scope),
+            } : null;
+            await this.save([...this.entries, entry], this.standaloneLeases, receipt);
             this.schedule(scope);
-            return { success: true, queued: true, entryId: entry.entryId };
+            return { success: true, queued: true, entryId: entry.entryId,
+                ...(receipt ? { accepted: true, messageId: receipt.messageId, scope: copy(scope) } : {}) };
         });
     }
 

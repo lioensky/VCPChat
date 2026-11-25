@@ -55,6 +55,9 @@ body.music-stage-active .music-player-container {
     opacity: 0;
     transform: scale(1.025);
     pointer-events: none;
+    /* 淡出结束后彻底不参与绘制和合成，舞台期间不再为看不见的普通界面付帧时间。 */
+    visibility: hidden;
+    transition: opacity 0.38s ease, transform 0.5s var(--stage-ease), visibility 0s linear 0.5s;
 }
 
 /* 标题栏始终是舞台唯一模式出口；进入舞台后只保留圆形切换键与窗口控制。 */
@@ -91,6 +94,8 @@ body.music-stage-active #custom-title-bar #stage-toggle-btn {
 
 body.music-stage-active #player-background {
     opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.45s ease, visibility 0s linear 0.45s;
 }
 
 #player-background {
@@ -3127,4 +3132,123 @@ body.light-theme .music-stage-settings-card option {
     box-shadow:
         0 14px 38px rgba(26, 45, 58, 0.16),
         inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+/*
+ * What sits around and over the stage is composited at the window's full
+ * resolution on every frame the stage changes, which is every frame.
+ *
+ * Frosted glass: a backdrop-filter re-blurs whatever moved behind it. The
+ * controls that are always on screen use a denser tint instead. The settings
+ * card keeps its glass over the 2D modes, where it is open only briefly; its
+ * full-window veil never blurs.
+ */
+body.music-stage-active #custom-title-bar,
+.music-stage .music-stage-mode-switcher,
+.music-stage .music-stage-chrome,
+.music-stage .music-stage-settings-toggle,
+.music-stage .music-stage-settings.is-open::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+.music-stage .music-stage-mode-switcher,
+.music-stage .music-stage-chrome {
+    background: color-mix(in srgb, var(--stage-bg) 46%, transparent);
+}
+
+/*
+ * The 3D modes draw an opaque picture: the blurred cover under it would be
+ * filtered and composited without ever showing, and glass over it would blur
+ * a moving 3D frame. Neither is drawn.
+ */
+.music-stage.stage-scene-3d .music-stage-backdrop {
+    display: none;
+}
+.music-stage.stage-scene-3d .music-stage-settings-card,
+.music-stage.stage-scene-3d .music-stage-settings-header,
+.music-stage.stage-scene-3d .music-stage-settings-footer {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+.music-stage.stage-scene-3d .music-stage-settings-card {
+    background:
+        linear-gradient(145deg, color-mix(in srgb, var(--stage-accent) 9%, transparent), transparent 38%),
+        color-mix(in srgb, var(--stage-control-bg) 95%, transparent);
+}
+
+/*
+ * Edge spectrum. It used to be one window-sized canvas inside a fading group,
+ * each with drop-shadow filters: a full-window offscreen pass and several
+ * full-window blurs per frame for a line that lives in the outer 80 pixels.
+ * Now each side is a strip canvas that carries its own glow, every part fades
+ * by itself, and the orbiting light steps at 30 a second without a filter.
+ */
+.music-stage .music-stage-edge-spectrum {
+    --stage-edge-fade: calc(0.26 + var(--stage-edge-energy) * 0.72);
+    opacity: 1;
+    transition: none;
+}
+.music-stage:not(.is-playing) .music-stage-edge-spectrum {
+    --stage-edge-fade: 0.22;
+    opacity: 1;
+}
+.music-stage .music-stage-edge-spectrum-canvas {
+    inset: auto;
+    opacity: calc(0.9 * var(--stage-edge-fade));
+    filter: none;
+}
+.music-stage .music-stage-edge-flow {
+    opacity: calc((0.32 + var(--stage-edge-energy) * 0.68) * var(--stage-edge-fade));
+    filter: none;
+    animation-timing-function: steps(270);
+    will-change: auto;
+}
+.music-stage:not(.is-playing) .music-stage-edge-flow {
+    animation-timing-function: steps(540);
+}
+.music-stage .music-stage-edge-corners i {
+    opacity: calc((0.2 + var(--stage-audio-bass, 0) * 0.74) * var(--stage-edge-fade));
+}
+
+/* The ambience blurred once into a small canvas (see softCanvas in the host). */
+.music-stage-backdrop-soft {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    pointer-events: none;
+}
+.is-soft > .music-stage-backdrop-soft {
+    display: block;
+}
+.music-stage-backdrop-layer.is-soft {
+    background-image: none !important;
+    filter: brightness(var(--stage-cover-brightness));
+}
+.music-stage-backdrop-wallpaper {
+    inset: -64px;
+    width: calc(100% + 128px);
+    height: calc(100% + 128px);
+    z-index: -1;
+    opacity: var(--stage-wallpaper-opacity);
+}
+.music-stage-backdrop.is-soft::before {
+    display: none;
+}
+.music-stage-backdrop-layer.is-empty {
+    display: none;
+}
+
+/* Nothing on a paused stage moves, so nothing should ask for frames: the flow
+   ring holds its place, and the settings dot only pulses while it is shown. */
+.music-stage:not(.is-playing) .music-stage-edge-flow {
+    animation-play-state: paused;
+}
+.music-stage-settings-toggle-pulse {
+    animation-play-state: paused;
+}
+.music-stage-settings-toggle:hover .music-stage-settings-toggle-pulse,
+.music-stage-settings-toggle:focus-visible .music-stage-settings-toggle-pulse {
+    animation-play-state: running;
 }

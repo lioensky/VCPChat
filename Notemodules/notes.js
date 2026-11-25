@@ -733,19 +733,111 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  const NOTE_IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg|bmp|ico|avif)(?:[?#].*)?$/i;
+  const NOTE_IMAGE_PATH_RE = /\/(?:images|image|comfyuigen|attachments)\//i;
+
+  function isNoteImageUrl(rawUrl) {
+    if (typeof rawUrl !== "string") return false;
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return false;
+    if (/^data:image\//i.test(trimmed)) return true;
+    try {
+      const parsed = new URL(trimmed, window.location.href);
+      const fullPath = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      return (
+        NOTE_IMAGE_EXT_RE.test(parsed.pathname) ||
+        NOTE_IMAGE_EXT_RE.test(fullPath) ||
+        NOTE_IMAGE_PATH_RE.test(parsed.pathname)
+      );
+    } catch {
+      return NOTE_IMAGE_EXT_RE.test(trimmed) || NOTE_IMAGE_PATH_RE.test(trimmed);
+    }
+  }
+
+  function openNoteImageInViewer(targetSrc, preferredTitle = "") {
+    if (!targetSrc) return;
+    const seen = new Set();
+    const gallery = [];
+    previewContentDiv.querySelectorAll("img, a[href]").forEach((node) => {
+      let src = "";
+      let title = "";
+      if (node.tagName === "IMG") {
+        src = (node.getAttribute("src") || node.src || "").trim();
+        title = (node.getAttribute("alt") || "").trim();
+      } else if (node.tagName === "A") {
+        const href = (node.getAttribute("href") || "").trim();
+        if (isNoteImageUrl(href)) {
+          src = node.href || href;
+          const linkText = (node.textContent || "").trim();
+          title = linkText && linkText !== href ? linkText : "";
+        }
+      }
+      if (!src || seen.has(src)) return;
+      seen.add(src);
+      gallery.push({ src, title: title || "图片预览" });
+    });
+
+    let index = gallery.findIndex((item) => item.src === targetSrc);
+    const title = preferredTitle || (index >= 0 ? gallery[index].title : "图片预览");
+    if (index < 0) {
+      gallery.push({ src: targetSrc, title });
+      index = gallery.length - 1;
+    }
+
+    const detectedTheme = document.body.classList.contains("light-theme")
+      ? "light"
+      : "dark";
+
+    if (api && api.openImageViewer) {
+      api.openImageViewer({
+        src: targetSrc,
+        title,
+        theme: detectedTheme,
+        ...(gallery.length > 1 ? { gallery, index } : {}),
+      });
+    } else if (api && api.openImageInNewWindow) {
+      api.openImageInNewWindow(targetSrc, title);
+    } else {
+      console.error("Image viewer API is not available.");
+    }
+  }
+
   function makeImagesClickable() {
     previewContentDiv.querySelectorAll("img").forEach((img) => {
-      img.style.cursor = "pointer";
+      img.style.cursor = "zoom-in";
       img.addEventListener("click", (e) => {
         e.preventDefault();
-        const imageUrl = img.getAttribute("src");
+        e.stopPropagation();
+        const imageUrl = img.src || img.getAttribute("src");
         const imageTitle = img.getAttribute("alt") || "图片预览";
-        if (api && api.openImageInNewWindow) {
-          api.openImageInNewWindow(imageUrl, imageTitle);
-        } else {
-          console.error("Image viewer API is not available.");
-        }
+        openNoteImageInViewer(imageUrl, imageTitle);
       });
+    });
+
+    previewContentDiv.querySelectorAll("a[href]").forEach((anchor) => {
+      const rawHref = (anchor.getAttribute("href") || "").trim();
+      if (!rawHref || rawHref.startsWith("#")) return;
+      const resolvedHref = anchor.href || rawHref;
+
+      if (isNoteImageUrl(rawHref) || isNoteImageUrl(resolvedHref)) {
+        anchor.style.cursor = "zoom-in";
+        anchor.title = anchor.title || "点击在独立图片视窗中查看";
+        anchor.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const linkText = (anchor.textContent || "").trim();
+          const title = linkText && linkText !== rawHref ? linkText : "画室图片预览";
+          openNoteImageInViewer(resolvedHref, title);
+        });
+      } else if (/^(?:https?:|file:|magnet:)/i.test(rawHref)) {
+        anchor.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (api && api.sendOpenExternalLink) {
+            api.sendOpenExternalLink(resolvedHref);
+          }
+        });
+      }
     });
   }
 

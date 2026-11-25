@@ -696,6 +696,7 @@ const TYPED_FIELD_DEFINITIONS = Object.freeze({
     topicSummaryModel: { path: 'topicSummaryModel', kind: 'string' },
     enableContextCompaction: { path: 'enableContextCompaction', kind: 'boolean' },
     contextCompactionModel: { path: 'contextCompactionModel', kind: 'string', trimValue: true },
+    contextCompactionFallbackModel: { path: 'contextCompactionFallbackModel', kind: 'string', trimValue: true },
     contextCompactionPrompt: { path: 'contextCompactionPrompt', kind: 'string' },
     contextCompactionSendPrompt: { path: 'contextCompactionSendPrompt', kind: 'string' },
     contextCompactionMainPrompt: { path: 'contextCompactionMainPrompt', kind: 'string' },
@@ -789,6 +790,7 @@ function mountTypedFieldOwner(root, form) {
         set('continueWritingPrompt', settings.continueWritingPrompt);
         check('enableContextCompaction', settings.enableContextCompaction === true);
         set('contextCompactionModel', settings.contextCompactionModel ?? '');
+        set('contextCompactionFallbackModel', settings.contextCompactionFallbackModel ?? '');
         set('contextCompactionPrompt', settings.contextCompactionPrompt ?? '');
         set('contextCompactionSendPrompt', settings.contextCompactionSendPrompt ?? '');
         set('contextCompactionMainPrompt', settings.contextCompactionMainPrompt ?? '');

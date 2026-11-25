@@ -98,7 +98,7 @@ test('CSS AST scoping recursively scopes nested rules and rejects external impor
     assert.equal(processor.scopeCss('@import url("https://example.test/x.css"); .card { color: red; }', 'message-scope'), '');
 });
 
-test('HTML code preview is sandboxed without same-origin authority', () => {
+test('HTML code preview stays sandboxed and a quick return leaves its source visible', async () => {
     const dom = new JSDOM('<body><section id="chat"><pre><code class="language-html"><script>parent.document.body.dataset.compromised="true"</script></code></pre></section></body>', {
         url: 'https://vcpchat.local/'
     });
@@ -114,6 +114,11 @@ test('HTML code preview is sandboxed without same-origin authority', () => {
     assert.ok(frame);
     assert.equal(frame.getAttribute('sandbox'), 'allow-scripts');
     assert.equal(frame.getAttribute('sandbox').includes('allow-same-origin'), false);
+    toggle.click();
+    assert.equal(root.querySelector('iframe'), null);
+    assert.equal(root.querySelector('pre').hasAttribute('data-vcp-has-timeout'), false);
+    await new Promise(resolve => setTimeout(resolve, 60));
+    assert.notEqual(root.querySelector('pre').style.display, 'none');
 
     processor.dispose();
     dom.window.close();

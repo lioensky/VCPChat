@@ -1,6 +1,6 @@
 # VCPChat 项目文件目录结构
 
-> 自动生成于：2026-11-15 22:38:01  
+> 自动生成于：2026-11-20 14:10:54  
 
 > 项目根目录：`H:\VCP\VCPMain\VCPChat`  
 
@@ -10,20 +10,20 @@
 
 ## 文件统计
 
-- **总目录数**：246
-- **总文件数**：1761
-- **文件类型数**：21
+- **总目录数**：251
+- **总文件数**：1823
+- **文件类型数**：23
 
 | 类型 | 扩展名 | 数量 |
 | :--- | :--- | ---: |
-| JavaScript | `.js` | 1113 |
-| CSS | `.css` | 159 |
-| JSON | `.json` | 153 |
-| Rust | `.rs` | 116 |
-| Markdown | `.md` | 67 |
-| HTML | `.html` | 49 |
-| Python | `.py` | 28 |
-| JavaScript (CommonJS) | `.cjs` | 12 |
+| JavaScript | `.js` | 1132 |
+| CSS | `.css` | 161 |
+| JSON | `.json` | 158 |
+| Rust | `.rs` | 137 |
+| Markdown | `.md` | 70 |
+| HTML | `.html` | 51 |
+| Python | `.py` | 29 |
+| JavaScript (CommonJS) | `.cjs` | 19 |
 | Batch Script | `.bat` | 10 |
 | .example | `.example` | 9 |
 | TOML | `.toml` | 8 |
@@ -36,8 +36,10 @@
 | TypeScript (React) | `.tsx` | 2 |
 | Shell Script | `.sh` | 2 |
 | C# | `.cs` | 1 |
+| JavaScript (ESM) | `.mjs` | 1 |
+| SQL | `.sql` | 1 |
 | .lock | `.lock` | 1 |
-| **合计** | - | **1761** |
+| **合计** | - | **1823** |
 
 ## 目录结构树
 
@@ -492,6 +494,15 @@ VCPChat/
 ├── migration/
 │   ├── migrateAvatars.js
 │   └── 头像迁移脚本readme.md
+├── Mijiamodules/
+│   ├── capabilities.json
+│   ├── device-art.js
+│   ├── device-controls.js
+│   ├── mijia.css
+│   ├── mijia.html
+│   ├── mijia_bridge.py
+│   ├── panel.js
+│   └── window.js
 ├── modules/
 │   ├── assistant/
 │   │   └── assistant-rust-adapter.js
@@ -647,6 +658,7 @@ VCPChat/
 │   │   ├── localSttHandlers.js
 │   │   ├── mainChatVoiceCoordinator.js
 │   │   ├── memoHandlers.js
+│   │   ├── mijiaHandlers.js
 │   │   ├── modelTrajectoryHandlers.js
 │   │   ├── musicHandlers.js
 │   │   ├── notesHandlers.js
@@ -740,6 +752,7 @@ VCPChat/
 │   │   ├── mainChatSurfaceAdapter.js
 │   │   ├── mainChatThemeOwner.js
 │   │   ├── markdownCodeDomainScanner.js
+│   │   ├── markdownPolicy.js
 │   │   ├── mathRenderer.js
 │   │   ├── mediaLifecycle.js
 │   │   ├── messageContextMenu.js
@@ -754,6 +767,7 @@ VCPChat/
 │   │   ├── pretext.bundle.js
 │   │   ├── pretext.esm.js
 │   │   ├── projectForgeTopicSurface.js
+│   │   ├── proseLinks.js
 │   │   ├── renderDependencies.js
 │   │   ├── renderSessionAuthority.js
 │   │   ├── renderTemplateCompiler.js
@@ -773,6 +787,7 @@ VCPChat/
 │   │   ├── streamSpeech.js
 │   │   ├── streamSpeechOwner.js
 │   │   ├── streamStableBoundary.js
+│   │   ├── strictAnimationIsland.js
 │   │   ├── surfaceTaskOwner.js
 │   │   ├── toolBatchDomains.js
 │   │   ├── toolBatchRegions.js
@@ -785,6 +800,7 @@ VCPChat/
 │   │   ├── topicAdmissionQueueView.js
 │   │   ├── topicSelectionReadiness.js
 │   │   ├── ttsSurfaceOwner.js
+│   │   ├── unsavedReplyRecovery.js
 │   │   ├── vcpDocumentScanner.js
 │   │   ├── vcpParseContext.js
 │   │   ├── visibilityOptimizer.js
@@ -1121,6 +1137,17 @@ VCPChat/
 │   │   ├── voiceComposerView.js
 │   │   ├── voiceWaveform.js
 │   │   └── wavAudioEncoder.js
+│   ├── warpedFieldAtlas/
+│   │   ├── renderer/
+│   │   │   ├── atlas-app.js
+│   │   │   ├── atlas.css
+│   │   │   ├── index.js
+│   │   │   ├── metric-slice.mjs
+│   │   │   ├── window.html
+│   │   │   └── window.js
+│   │   ├── feature.json
+│   │   ├── index.js
+│   │   └── preloadApi.js
 │   ├── agentMood.js
 │   ├── appFeatures.js
 │   ├── chatManager.js
@@ -1165,6 +1192,9 @@ VCPChat/
 │   └── webdavManager.js
 ├── Musicmodules/
 │   ├── music-stage/
+│   │   ├── assets/
+│   │   │   ├── coast-rock.js
+│   │   │   └── CREDITS.md
 │   │   ├── modes/
 │   │   │   ├── cadenza-manager.js
 │   │   │   ├── diorama-camera.js
@@ -1254,6 +1284,7 @@ VCPChat/
 │   │   ├── localStt.js
 │   │   ├── loom.js
 │   │   ├── memo.js
+│   │   ├── mijia.js
 │   │   ├── modelTrajectory.js
 │   │   ├── music.js
 │   │   ├── notes.js
@@ -1460,12 +1491,34 @@ VCPChat/
 │   │   │   ├── python.rs
 │   │   │   ├── rust_lang.rs
 │   │   │   └── types.rs
+│   │   ├── commit_coordinator.rs
+│   │   ├── commit_journal.rs
 │   │   ├── component.rs
+│   │   ├── edit.rs
+│   │   ├── edit_pipeline.rs
+│   │   ├── edit_service.rs
+│   │   ├── edit_tickets.rs
+│   │   ├── elision.rs
+│   │   ├── file_commit.rs
+│   │   ├── file_replace.rs
+│   │   ├── file_service.rs
 │   │   ├── geo.rs
 │   │   ├── lang.rs
+│   │   ├── line_diff.rs
 │   │   ├── main.rs
+│   │   ├── project_path.rs
 │   │   ├── scan.rs
-│   │   └── symbols.rs
+│   │   ├── service.rs
+│   │   ├── service_config.rs
+│   │   ├── storage.rs
+│   │   ├── storage_schema.sql
+│   │   ├── symbol_address.rs
+│   │   ├── symbols.rs
+│   │   ├── text_snapshot.rs
+│   │   ├── todo_refs.rs
+│   │   ├── transport.rs
+│   │   ├── validation.rs
+│   │   └── validation_process.rs
 │   ├── bench.js
 │   ├── build-runtime.js
 │   └── Cargo.toml
@@ -1534,6 +1587,7 @@ VCPChat/
 │   ├── scriptorium-svg-assets.js
 │   ├── scriptorium-table-view.css
 │   ├── scriptorium-table-view.js
+│   ├── scriptorium-text-fragment.js
 │   ├── scriptorium-text-view.js
 │   ├── scriptorium-visibility.js
 │   ├── scriptorium-web-page.js
@@ -1771,8 +1825,19 @@ VCPChat/
 │   │   │   ├── test_interactive_sequence.js
 │   │   │   └── test_security_check.js
 │   │   ├── ProjectForge/
+│   │   │   ├── mcpbridge/
+│   │   │   │   ├── bridge.cjs
+│   │   │   │   ├── bridge.test.cjs
+│   │   │   │   ├── config.example.json
+│   │   │   │   ├── MCPPrompt.md
+│   │   │   │   ├── package-lock.json
+│   │   │   │   ├── package.json
+│   │   │   │   ├── README.md
+│   │   │   │   ├── search.cjs
+│   │   │   │   ├── search.test.cjs
+│   │   │   │   ├── server.cjs
+│   │   │   │   └── tools.cjs
 │   │   │   ├── args.js
-│   │   │   ├── engine.js
 │   │   │   ├── evalProcess.js
 │   │   │   ├── evalRust.js
 │   │   │   ├── evalSymbol.js
@@ -1782,12 +1847,16 @@ VCPChat/
 │   │   │   ├── gui-revert-file.js
 │   │   │   ├── indexerClient.js
 │   │   │   ├── linkGraph.js
+│   │   │   ├── nativeEdit.js
+│   │   │   ├── nativeFiles.js
+│   │   │   ├── nativeService.js
 │   │   │   ├── plugin-manifest.json
 │   │   │   ├── ProjectForgeService.js
 │   │   │   ├── resolvers.js
-│   │   │   ├── store.js
+│   │   │   ├── rustStore.js
+│   │   │   ├── serviceClient.js
 │   │   │   ├── symbolResolver.js
-│   │   │   ├── tickets.js
+│   │   │   ├── validationWorker.cjs
 │   │   │   └── workspace.js
 │   │   ├── PromptSponsor/
 │   │   │   ├── .env.example

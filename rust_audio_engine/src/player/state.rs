@@ -9,7 +9,7 @@ use arc_swap::{ArcSwap, ArcSwapOption};
 use serde::Serialize;
 use std::path::Path;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use crate::processor::NoiseShaperCurve;
 
 // ============ Cache System ============
@@ -18,14 +18,7 @@ const CACHE_MAGIC: &[u8; 4] = b"VCP1";
 const CACHE_VERSION: u32 = 1;
 const CACHE_HEADER_SIZE: usize = 32;
 
-/// Calculate CRC32 checksum for cache validation
-fn calculate_checksum(data: &[f64]) -> u32 {
-    let mut hasher = crc32fast::Hasher::new();
-    for sample in data {
-        hasher.update(&sample.to_bits().to_le_bytes());
-    }
-    hasher.finalize()
-}
+const CACHE_BLOCK_BYTES: usize = 64 * 1024;
 
 fn read_u32_from_bytes(bytes: &[u8], offset: usize) -> u32 {
     u32::from_le_bytes(bytes[offset..offset+4].try_into().unwrap())
@@ -42,14 +35,27 @@ pub fn save_cache_with_header(
     sample_rate: u32,
     channels: u32,
 ) -> std::io::Result<()> {
-    let frame_count = (samples.len() / channels as usize) as u64;
-    let checksum = calculate_checksum(samples);
-
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+    if channels == 0 || samples.is_empty() || samples.len() % channels as usize != 0 {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid cache frame dimensions"));
     }
-
+    let frame_count = (samples.len() / channels as usize) as u64;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let mut file = fs::File::create(path)?;
+    file.write_all(&[0; CACHE_HEADER_SIZE])?;
+    let mut block = vec![0u8; CACHE_BLOCK_BYTES];
+    let mut hasher = crc32fast::Hasher::new();
+    for chunk in samples.chunks(CACHE_BLOCK_BYTES / 8) {
+        let bytes = &mut block[..chunk.len() * 8];
+        for (dst, sample) in bytes.chunks_exact_mut(8).zip(chunk) {
+            dst.copy_from_slice(&sample.to_le_bytes());
+        }
+        hasher.update(bytes);
+        file.write_all(bytes)?;
+    }
+    let checksum = hasher.finalize();
+    file.seek(SeekFrom::Start(0))?;
 
     // Write header explicitly (avoids unsafe transmute and padding issues)
     let mut header_bytes = [0u8; CACHE_HEADER_SIZE];
@@ -62,9 +68,6 @@ pub fn save_cache_with_header(
     // bytes 28..32 are reserved (already zero)
     file.write_all(&header_bytes)?;
 
-    for sample in samples {
-        file.write_all(&sample.to_le_bytes())?;
-    }
 
     log::info!("Saved {} samples to cache with header validation", samples.len());
     Ok(())
@@ -84,9 +87,9 @@ pub fn load_cache_with_header(
 ) -> Option<Vec<f64>> {
     let mut file = fs::File::open(path).ok()?;
     let metadata = file.metadata().ok()?;
-    let file_size = metadata.len() as usize;
+    let file_size = metadata.len();
 
-    if file_size < CACHE_HEADER_SIZE + 8 {
+    if file_size < CACHE_HEADER_SIZE as u64 + 8 {
         log::warn!("Cache file too small: {} bytes", file_size);
         return None;
     }
@@ -121,27 +124,23 @@ pub fn load_cache_with_header(
         return None;
     }
 
-    let expected_data_size = frame_count as usize * channels as usize * 8;
-    if file_size != CACHE_HEADER_SIZE + expected_data_size {
-        log::warn!("Cache file size mismatch: expected {}, got {}",
-            CACHE_HEADER_SIZE + expected_data_size, file_size);
+    let count = frame_count.checked_mul(u64::from(channels))?;
+    let expected_size = count.checked_mul(8)?.checked_add(CACHE_HEADER_SIZE as u64)?;
+    if file_size != expected_size || channels == 0 {
+        log::warn!("Cache dimensions do not match file size");
         return None;
     }
-
-    // FIX for Defect 6: Stream CRC32 computation while reading samples
-    // in a single pass, instead of reading all then checksumming all.
-    let sample_count = frame_count as usize * channels as usize;
-    let mut samples = Vec::with_capacity(sample_count);
+    let sample_count = usize::try_from(count).ok()?;
+    let mut samples = Vec::new();
+    samples.try_reserve_exact(sample_count).ok()?;
     let mut hasher = crc32fast::Hasher::new();
-    let mut sample_bytes = [0u8; 8];
-
-    for _ in 0..sample_count {
-        if file.read_exact(&mut sample_bytes).is_err() {
-            log::warn!("Failed to read all samples from cache");
-            return None;
-        }
-        hasher.update(&sample_bytes);
-        samples.push(f64::from_le_bytes(sample_bytes));
+    let mut block = vec![0u8; CACHE_BLOCK_BYTES];
+    while samples.len() < sample_count {
+        let n = (sample_count - samples.len()).min(CACHE_BLOCK_BYTES / 8);
+        let bytes = &mut block[..n * 8];
+        file.read_exact(bytes).ok()?;
+        hasher.update(bytes);
+        samples.extend(bytes.chunks_exact(8).map(|b| f64::from_le_bytes(b.try_into().unwrap())));
     }
 
     // Verify checksum computed during read
@@ -398,4 +397,84 @@ pub struct AudioDeviceInfo {
     pub name: String,
     pub is_default: bool,
     pub sample_rate: Option<u32>,
+}
+#[cfg(test)]
+mod cache_io_tests {
+    use super::*;
+    use std::time::Instant;
+
+    struct Scratch(std::path::PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) { let _ = fs::remove_file(&self.0); }
+    }
+    fn scratch() -> Scratch {
+        Scratch(std::env::temp_dir().join(format!("vcp-cache-test-{}-{}.bin", std::process::id(), rand::random::<u64>())))
+    }
+
+    fn legacy_header(samples: &[f64]) -> Vec<u8> {
+        let mut h = b"VCP1".to_vec();
+        for v in [1u32, 48000, 2] { h.extend(v.to_le_bytes()); }
+        h.extend(((samples.len() / 2) as u64).to_le_bytes());
+        let mut crc = crc32fast::Hasher::new();
+        for s in samples { crc.update(&s.to_le_bytes()); }
+        h.extend(crc.finalize().to_le_bytes());
+        h.extend([0; 4]);
+        h
+    }
+
+    #[test]
+    fn legacy_bytes_roundtrip_and_reject_corruption() {
+        let path = scratch();
+        let data: Vec<_> = (0..8194).map(|i| f64::from_bits([0x8000000000000000, 0x7ff8000000000017, i][i as usize % 3])).collect();
+        let mut legacy = legacy_header(&data);
+        for s in &data { legacy.extend(s.to_le_bytes()); }
+        fs::write(&path.0, &legacy).unwrap();
+        let got = load_cache_with_header(&path.0, 48000, 2).unwrap();
+        assert!(got.iter().map(|v| v.to_bits()).eq(data.iter().map(|v| v.to_bits())));
+        save_cache_with_header(&path.0, &data, 48000, 2).unwrap();
+        assert_eq!(fs::read(&path.0).unwrap(), legacy);
+        *legacy.last_mut().unwrap() ^= 1;
+        fs::write(&path.0, &legacy).unwrap();
+        assert!(load_cache_with_header(&path.0, 48000, 2).is_none());
+        legacy.pop();
+        fs::write(&path.0, &legacy).unwrap();
+        assert!(load_cache_with_header(&path.0, 48000, 2).is_none());
+    }
+
+    #[test]
+    #[ignore = "manual filesystem timing; no timing threshold"]
+    fn compare_cache_io() {
+        let path = scratch();
+        let data: Vec<_> = (0..262144).map(|i| i as f64).collect();
+        let t = Instant::now();
+        let mut f = fs::File::create(&path.0).unwrap();
+        f.write_all(&legacy_header(&data)).unwrap();
+        for s in &data { f.write_all(&s.to_le_bytes()).unwrap(); }
+        drop(f);
+        let old_write = t.elapsed();
+        let t = Instant::now();
+        let mut f = fs::File::open(&path.0).unwrap();
+        let mut header = [0; 32];
+        f.read_exact(&mut header).unwrap();
+        let mut crc = crc32fast::Hasher::new();
+        let mut decoded = Vec::with_capacity(data.len());
+        for _ in &data {
+            let mut b = [0; 8];
+            f.read_exact(&mut b).unwrap();
+            crc.update(&b);
+            decoded.push(f64::from_le_bytes(b));
+        }
+        let old_read = t.elapsed();
+        assert_eq!(crc.finalize(), read_u32_from_bytes(&header, 24));
+        assert_eq!(decoded, data);
+        drop(f);
+        let t = Instant::now();
+        save_cache_with_header(&path.0, &data, 48000, 2).unwrap();
+        let new_write = t.elapsed();
+        let t = Instant::now();
+        let got = load_cache_with_header(&path.0, 48000, 2).unwrap();
+        let new_read = t.elapsed();
+        assert_eq!(got, data);
+        println!("2 MiB payload | legacy write {old_write:?} read {old_read:?} | block write {new_write:?} read {new_read:?}");
+    }
 }

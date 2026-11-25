@@ -38,101 +38,36 @@
 }
 
 
-/*
- * =======================================================
- * 小吉的魔法时间：气泡边框流光动画 (Bubble Border Flow)
- * 替代原有的文字流光，以保证流式输出时的阅读体验
- * =======================================================
- */
-
-@keyframes vcp-border-flow {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 200% 50%;
-  }
+/* Main chat activity belongs to the composer, not the growing message. */
+.chat-input-area .chat-input-card {
+  position: relative;
 }
 
-.message-item.streaming .md-content::after {
+.chat-input-card.has-streaming-reply::before {
   content: "";
   position: absolute;
-  /* Draw the animated border inside the bubble to avoid containment clipping. */
-  inset: 0;
-  padding: 1px;
-  border-radius: 10px;
-  
-  /* 使用高亮色定义的流光渐变，移除深色背景干扰 */
-  background: linear-gradient(90deg,
-    transparent 0%,
-    var(--highlight-text) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  
-  /* 核心：使用 mask 技巧只显示边框部分，不遮挡气泡内容 */
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  
-  animation: vcp-border-flow 3s linear infinite;
-  pointer-events: none;
-  z-index: 1;
-  opacity: 0.8;
-}
-
-/* 针对用户侧气泡的适配 */
-.message-item.streaming.user .md-content::after {
-  border-bottom-right-radius: 4px;
-}
-
-/* 针对 AI 侧气泡的适配 */
-.message-item.streaming.assistant .md-content::after {
-  border-bottom-left-radius: 4px;
-}
-
-/*
- * Panel / immersive modes use a continuous document surface rather than
- * standalone bubbles. Replace the enclosing animated frame with a restrained
- * theme-colored activity rail beside the streaming content.
- */
-@keyframes vcp-stream-activity-rail {
-  0%, 100% {
-    opacity: 0.28;
-    transform: scaleY(0.72);
-  }
-  50% {
-    opacity: 0.82;
-    transform: scaleY(1);
-  }
-}
-
-body.chat-presentation-panel .message-item.streaming .md-content::after,
-body.chat-presentation-immersive .message-item.streaming .md-content::after {
-  top: 0.2em;
-  right: auto;
-  bottom: 0.2em;
-  left: -9px;
-  width: 2px;
-  height: auto;
-  padding: 0;
+  inset-block-start: 0;
+  inset-inline: 7%;
+  height: 2px;
   border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    transparent,
-    color-mix(in srgb, var(--highlight-text) 72%, var(--border-color)) 24%,
-    var(--highlight-text) 50%,
-    color-mix(in srgb, var(--highlight-text) 72%, var(--border-color)) 76%,
-    transparent
-  );
-  background-size: auto;
-  -webkit-mask: none;
-  mask: none;
-  animation: vcp-stream-activity-rail 1.8s ease-in-out infinite;
-  transform-origin: center;
-  opacity: 0.55;
+  background: linear-gradient(90deg, transparent, var(--highlight-text) 45%, var(--highlight-text) 55%, transparent);
+  pointer-events: none;
+  opacity: .8;
+  animation: vcp-composer-breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes vcp-composer-breathe {
+  0%, 100% { opacity: .32; }
+  50% { opacity: .92; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-input-card.has-streaming-reply::before { animation: none; }
+}
+
+/* Themes can pulse the bubble itself; keep child content animations intact. */
+body main [id="chatMessages"] .message-item.streaming:is(.agent, .assistant) .md-content {
+  animation: none;
 }
 
 /*
@@ -312,19 +247,6 @@ body.chat-presentation-immersive .message-item.streaming .md-content::after {
   min-width: 16px;
   height: 16px;
   padding: 0;
-}
-
-/* 话题列表中的未锁定指示器 */
-.unlocked-indicator {
-  display: inline-block;
-  padding: 2px 6px;
-  background: rgba(76, 175, 80, 0.2);
-  color: #4caf50;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: bold;
-  margin-right: 8px;
-  border: 1px solid rgba(76, 175, 80, 0.3);
 }
 
 /* 消息计数样式 */

@@ -785,6 +785,7 @@ function setupHtmlPreview(preElement, htmlContent) {
     const frameId = `vcp-frame-${Math.random().toString(36).substr(2, 9)}`;
 
     const destroyPreview = () => {
+        clearOwnedTimeouts(preElement);
         if (messageHandler) {
             ownerWindow.removeEventListener('message', messageHandler);
             messageHandler = null;
@@ -898,9 +899,12 @@ function setupHtmlPreview(preElement, htmlContent) {
                 container.appendChild(previewFrame);
             }
 
-            // 🟢 延迟隐藏代码块，确保iframe先显示
+            // Only the opening that scheduled this callback may hide the source.
+            const openedFrame = previewFrame;
             scheduleOwnedTimeout(preElement, () => {
-                preElement.style.display = 'none';
+                if (previewFrame === openedFrame && container.classList.contains('preview-mode')) {
+                    preElement.style.display = 'none';
+                }
             }, 50);
 
         } else {
