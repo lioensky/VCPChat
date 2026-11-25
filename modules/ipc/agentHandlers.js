@@ -279,8 +279,8 @@ function initialize(context) {
                         systemPrompt: `你是 ${folderName}。`,
                         model: '',
                         temperature: 0.7,
-                        contextTokenLimit: 4000,
-                        maxOutputTokens: 1000,
+                        contextTokenLimit: 1000000,
+                        maxOutputTokens: 60000,
                         disableCustomColors: true,
                         useThemeColorsInChat: true
                     };

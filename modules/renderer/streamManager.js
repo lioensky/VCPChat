@@ -2088,6 +2088,7 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
             context: storedContext,
             content: finalFullText,
             finishReason,
+            usage: finalPayload?.usage,
             visible: isForCurrentView,
         });
     } catch (error) {

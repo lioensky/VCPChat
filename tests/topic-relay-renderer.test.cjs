@@ -20,7 +20,7 @@ function fixture({ compress = false, pending = true, failCompact = false } = {})
         currentTopicIdRef: { get: () => 't' },
         currentChatHistoryRef: { get: () => [] },
         effectiveContextHistory: value => value,
-        estimateContextTokens: () => 100,
+        contextExceedsCompactableBudget: () => true,
         notifySendStateChanged() {},
         uiHelper: {},
         compactionFlowlock: { suspendForContextCompaction() { events.push('suspend'); } },

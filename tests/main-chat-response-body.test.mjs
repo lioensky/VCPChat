@@ -31,6 +31,8 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admi
         ['../contextSanitizer', require('../modules/contextSanitizer.js')],
         // 真实的调用轨迹模块：没有配置记录目录时只返回空操作，不写盘
         ['../modelTrajectory', require('../modules/modelTrajectory.js')],
+        ['../chat/sleepStreamIdle', require('../modules/chat/sleepStreamIdle.js')],
+        ['../chat/sleepStreamRequests', require('../modules/chat/sleepStreamRequests.js')],
         // 真实的心情模块：没有配置时 observe 是空操作
         ['../agentMood', require('../modules/agentMood.js')],
         ['../services/attachmentDialogState', {}], ['../../Groupmodules/topicTitleManager', {}],
@@ -417,5 +419,23 @@ test('failed ready control never invokes local stream cancellation', async () =>
         assert.equal(f.tasks().length, 1);
         controller.enqueue(encode('data: [DONE]\n\n'));
         await waitFor(() => !f.tasks().length);
+    } finally { f.close(); if (!body.locked) await body.cancel().catch(() => {}); }
+});
+
+test('the stream end event carries the first upstream usage of a tool loop', async () => {
+    let controller;
+    const body = new ReadableStream({ start(value) { controller = value; } });
+    const f = route(async () => ({ ok: true, body }), { settings: { vcpServerUrl: 'http://controlled.invalid/v1/chat/completions' } });
+    try {
+        controller.enqueue(encode('data: {"choices":[{"delta":{"content":"a"}}]}\n\n'));
+        controller.enqueue(encode('data: {"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":5}}\n\n'));
+        controller.enqueue(encode('data: {"choices":[{"delta":{"content":"b"}}]}\n\n'));
+        controller.enqueue(encode('data: {"choices":[],"usage":{"prompt_tokens":4000,"completion_tokens":7}}\n\n'));
+        controller.enqueue(encode('data: [DONE]\n\n'));
+        await f.start();
+        await waitFor(() => f.sent.some(item => item.event.type === 'end'));
+        const end = f.sent.find(item => item.event.type === 'end').event;
+        assert.equal(end.usage.inputTokens, 1000);
+        assert.equal(end.usage.outputTokens, 5);
     } finally { f.close(); if (!body.locked) await body.cancel().catch(() => {}); }
 });

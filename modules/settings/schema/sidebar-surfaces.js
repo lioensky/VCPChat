@@ -31,7 +31,7 @@ const agentFields = Object.freeze([
     field('agentNameInput', 'text', 'Agent 名称', { name: 'name', placeholder: 'Agent 名称', required: true, tooltip: '列表和聊天中显示的助手名称。', validation: { required: true } }),
     field('agentModel', 'text', 'Agent 模型', { name: 'model', placeholder: '例如 gemini-2.5-flash-preview-05-20', tooltip: '留空时使用服务端默认模型。' }),
     field('agentTemperature', 'number', 'Temperature (0-2)', { name: 'temperature', min: 0, max: 2, step: 0.1, validation: { min: 0, max: 2 } }),
-    field('agentContextTokenLimit', 'number', '上下文Token上限', { name: 'contextTokenLimit', min: 0, step: 100, validation: { min: 0 } }),
+    field('agentContextTokenLimit', 'number', '上下文Token上限', { name: 'contextTokenLimit', min: 0, step: 100, tooltip: '留空表示不限制。开启全局设置里的「上下文智能压缩」后，接近这个上限时会自动压缩历史，超过时不发送并提示原因；服务端开启上下文预算检查时，也按它处理超限的请求。建议填所用模型的上下文窗口减去为回复预留的部分。', validation: { min: 0 } }),
     field('agentMaxOutputTokens', 'number', '最大输出Token上限', { name: 'maxOutputTokens', min: 0, step: 50, validation: { min: 0 } }),
     field('agentTopP', 'number', 'Top P (0-2)', { name: 'top_p', min: 0, max: 2, step: 0.05, validation: { min: 0, max: 2 } }),
     field('agentTopK', 'number', 'Top K (0-64)', { name: 'top_k', min: 0, max: 64, step: 1, validation: { min: 0, max: 64 } }),
