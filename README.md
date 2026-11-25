@@ -19,6 +19,8 @@
   <a href="https://deepwiki.com/lioensky/VCPChat"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
 </p>
 
+> 🌐 **VCP 官网**：VCP 由四个仓库组成，每天都有多次更新。官网汇总了各仓库的[更新日志](https://www.vcptoolbox.com/?page=changelog)，并提供统一的[技术文档](https://www.vcptoolbox.com/?page=learn-vcp)。
+
 ---
 
 ## 🌟 什么是 VCPChat？
