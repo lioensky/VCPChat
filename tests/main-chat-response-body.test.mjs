@@ -86,6 +86,16 @@ test('interrupt rejection reads the nested message and keeps its HTTP status', a
     }
 });
 
+// 夹具换掉全局 AbortSignal 只是为了把中止请求的超时压到 20ms；其余静态方法必须沿用真实实现：
+// 非群聊流式请求会用 AbortSignal.any 合并用户中止和流看门狗信号，缺了它请求在 fetch 之前就抛错，
+// 这类用例就只证明了 TypeError，证明不了中断后的收尾。子信号仍是真实的，交给真实 any 处理。
+function stubAbortSignal() {
+    return {
+        any: signals => AbortSignal.any(signals),
+        timeout: () => { const timeout = new AbortController(); setTimeout(() => timeout.abort(new Error('timeout')), 20); return timeout.signal; }
+    };
+}
+
 // hung：服务卡住不回中止请求，超时后照样走本地收尾，停止按钮不跟着卡
 for (const failure of ['rejected', 'transport-error', 'missing-settings', 'hung']) {
     test(`failed interruption (${failure}) releases the caller's HTTP reader without a duplicate terminal`, async () => {
@@ -108,7 +118,7 @@ for (const failure of ['rejected', 'transport-error', 'missing-settings', 'hung'
             }, { once: true });
             return { ok: true, body };
         }, { settings: failure === 'missing-settings' ? null : { vcpServerUrl: 'http://controlled.invalid/v1/chat/completions' },
-            abortSignal: { timeout: () => { const timeout = new AbortController(); setTimeout(() => timeout.abort(new Error('timeout')), 20); return timeout.signal; } } });
+            abortSignal: stubAbortSignal() });
         try {
             controller.enqueue(encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
             await f.start(); await waitFor(() => f.sent.length === 1);
