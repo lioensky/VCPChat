@@ -63,6 +63,54 @@ export function compactionSettings(settings = {}) {
     };
 }
 
+// One stored tool result can run to hundreds of thousands of characters. The compaction
+// model only turns each call into a ledger line, so anything beyond head and tail is cut
+// before sending; without this a long-lived topic cannot be compacted at all, because the
+// compaction request itself exceeds the model window. The stored history is not touched.
+const MAX_TOOL_RESULT_CHARS = 24000;
+const TOOL_RESULT_START = '[[VCP调用结果信息汇总:';
+const TOOL_RESULT_END = 'VCP调用结果结束]]';
+
+function limitToolResultText(text) {
+    if (text.length <= MAX_TOOL_RESULT_CHARS) return text;
+    const head = text.slice(0, MAX_TOOL_RESULT_CHARS * 0.75).replace(/[\uD800-\uDBFF]$/, '');
+    const tail = text.slice(-MAX_TOOL_RESULT_CHARS * 0.25).replace(/^[\uDC00-\uDFFF]/, '');
+    return `${head}\n\n［工具结果过长，中段已截断 ${text.length - head.length - tail.length} 个字符］\n\n${tail}`;
+}
+
+export function limitToolResultsForCompaction(text) {
+    if (typeof text !== 'string' || text.length <= MAX_TOOL_RESULT_CHARS) return text;
+    if (/^\s*<!--\s*VCP_TOOL_PAYLOAD\s*-->/.test(text)) return limitToolResultText(text);
+    let out = '';
+    let cursor = 0;
+    while (cursor < text.length) {
+        const start = text.indexOf(TOOL_RESULT_START, cursor);
+        if (start === -1) break;
+        // Pair the markers so a result that quotes the markers itself stays one block.
+        let depth = 1;
+        let scan = start + TOOL_RESULT_START.length;
+        let end = -1;
+        while (depth > 0) {
+            const nextEnd = text.indexOf(TOOL_RESULT_END, scan);
+            if (nextEnd === -1) break;
+            const nextStart = text.indexOf(TOOL_RESULT_START, scan);
+            if (nextStart !== -1 && nextStart < nextEnd) {
+                depth++;
+                scan = nextStart + TOOL_RESULT_START.length;
+            } else {
+                depth--;
+                scan = nextEnd + TOOL_RESULT_END.length;
+                if (depth === 0) end = nextEnd;
+            }
+        }
+        if (end === -1) break;
+        const bodyStart = start + TOOL_RESULT_START.length;
+        out += text.slice(cursor, bodyStart) + limitToolResultText(text.slice(bodyStart, end)) + TOOL_RESULT_END;
+        cursor = end + TOOL_RESULT_END.length;
+    }
+    return cursor === 0 ? text : out + text.slice(cursor);
+}
+
 /** Send history as actual API messages, followed by an unambiguous audit task. */
 export function buildCompactionMessages(state, settings = {}) {
     const config = compactionSettings(settings);
@@ -73,6 +121,12 @@ export function buildCompactionMessages(state, settings = {}) {
         let content = message.content;
         if (content && !Array.isArray(content) && typeof content === 'object') {
             content = typeof content.text === 'string' ? content.text : JSON.stringify(content);
+        }
+        if (typeof content === 'string') {
+            content = message.role === 'tool' ? limitToolResultText(content) : limitToolResultsForCompaction(content);
+        } else if (Array.isArray(content)) {
+            content = content.map(part => (part && typeof part.text === 'string'
+                ? { ...part, text: limitToolResultsForCompaction(part.text) } : part));
         }
         const copy = { role: message.role, content: content ?? '' };
         // Historical system instructions are data, never additional engine authority.

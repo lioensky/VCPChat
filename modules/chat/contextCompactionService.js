@@ -24,8 +24,13 @@ const IMAGE_ATTACHMENT = /^image\//i;
 export function estimateTextTokens(text) {
     const source = String(text ?? '');
     if (!source) return 0;
-    const chineseChars = (source.match(/[\u4e00-\u9fff]/g) || []).length;
-    return Math.ceil((chineseChars * 2 + source.length - chineseChars) / ESTIMATED_TOKEN_CHAR_DIVISOR);
+    // Counted in a loop: a global regex match over megabytes of history allocates one string per character.
+    let chineseChars = 0;
+    for (let index = 0; index < source.length; index++) {
+        const code = source.charCodeAt(index);
+        if (code >= 0x4e00 && code <= 0x9fff) chineseChars++;
+    }
+    return Math.ceil((chineseChars + source.length) / ESTIMATED_TOKEN_CHAR_DIVISOR);
 }
 
 function estimateMessageTokens(message) {
@@ -76,6 +81,22 @@ export function estimateHistoryPrefixTokens(history, index) {
 }
 
 /**
+ * The usage anchor stored on an assistant reply that arrived whole (streaming off):
+ * provider input tokens plus the local estimate of the messages they covered.
+ */
+export function providerUsageAnchor(usage, history, index) {
+    if (!usage || typeof usage !== 'object' || usage.estimated === true) return undefined;
+    const inputTokens = Number(usage.inputTokens ?? usage.prompt_tokens);
+    if (!Number.isFinite(inputTokens) || inputTokens <= 0) return undefined;
+    const outputTokens = Number(usage.outputTokens ?? usage.completion_tokens);
+    return {
+        inputTokens: Math.round(inputTokens),
+        ...(Number.isFinite(outputTokens) && outputTokens >= 0 ? { outputTokens: Math.round(outputTokens) } : {}),
+        prefixEstimate: estimateHistoryPrefixTokens(history, index),
+    };
+}
+
+/**
  * Context size in provider tokens. With a provider-reported anchor `total` is
  * the anchor's input tokens plus a local estimate of the anchor reply and every
  * later message; without one the system prompt and all messages are estimated.
@@ -97,6 +118,17 @@ export function measureContextTokens(history, systemPrompt = '') {
     }
     const coveredNow = sum(estimates.slice(0, anchor.index));
     const covered = anchor.prefixEstimate ?? coveredNow;
+    if (covered > 0 && anchor.inputTokens < covered) {
+        // The provider received less than the local estimate of these messages: the server
+        // shortened old tool results before sending, or the estimate runs high for this text.
+        // Either way the provider count is what the next request will weigh, so the covered
+        // messages are scaled to it instead of being counted at full local size.
+        return {
+            total: Math.round(coveredNow * (anchor.inputTokens / covered)) + sum(estimates.slice(anchor.index)),
+            fixed: 0,
+            source: 'provider_usage',
+        };
+    }
     const fixed = Math.max(0, anchor.inputTokens - covered);
     return {
         total: fixed + coveredNow + sum(estimates.slice(anchor.index)),

@@ -194,3 +194,47 @@ test('message window: the hard check measures only the messages that will be sen
     assert.doesNotThrow(() => assertContextWithinLimit(history, { contextTokenLimit: 3000, contextMessageWindowSize: 10 }, 'next'));
     assert.throws(() => assertContextWithinLimit(history, { contextTokenLimit: 800, contextMessageWindowSize: 10 }, 'next'), /超过上限 800/);
 });
+
+test('provider count below the local estimate scales the covered messages instead of ignoring it', async () => {
+    const { measureContextTokens } = await import('../modules/chat/contextCompactionService.js');
+    // The server shortened old tool results: 700 estimated locally, 295 actually received.
+    const history = [
+        { role: 'user', content: 'x'.repeat(2100) },
+        { role: 'assistant', content: 'ok', contextUsage: { inputTokens: 295, prefixEstimate: 700 } },
+        { role: 'user', content: 'y'.repeat(288) },
+    ];
+    const measured = measureContextTokens(history);
+    assert.equal(measured.source, 'provider_usage');
+    assert.equal(measured.total, 295 + 1 + 96);
+});
+
+test('compaction request cuts oversized stored tool results, leaves everything else alone', async () => {
+    const { buildCompactionMessages, limitToolResultsForCompaction } = await import('../modules/chat/contextCompactionPrompts.js');
+    const block = body => `[[VCP调用结果信息汇总:\n- 工具名称: X\n- 返回内容: ${body}\nVCP调用结果结束]]`;
+    const huge = `先读文件。\n${block('旧'.repeat(500000))}\n结论：保留 src/core/kbm.rs。`;
+    const messages = buildCompactionMessages({ messages: [
+        { role: 'user', content: '问题' },
+        { role: 'assistant', content: huge },
+        { role: 'assistant', content: `短的 ${block('ok')}` },
+    ] });
+    const sent = messages[2].content;
+    assert.ok(sent.length < 25000);
+    assert.ok(sent.startsWith('先读文件。\n[[VCP调用结果信息汇总:\n- 工具名称: X'));
+    assert.ok(sent.endsWith('VCP调用结果结束]]\n结论：保留 src/core/kbm.rs。'));
+    assert.match(sent, /中段已截断 \d+ 个字符/);
+    assert.equal(messages[3].content, `短的 ${block('ok')}`);
+    // An emoji on the cut never leaves half a surrogate pair behind.
+    assert.ok(limitToolResultsForCompaction(block(`${'a'.repeat(17999)}${'🔍'.repeat(20000)}`)).isWellFormed());
+});
+
+test('a request refused for exceeding the context limit is an error, a tool loop stopped half-way is not', async () => {
+    const { createRequire } = await import('node:module');
+    const { chatResponseError } = createRequire(import.meta.url)('../modules/chatRequestError.js');
+    const chunk = stage => ({ vcp_incomplete: true, vcp_context_budget: { stage, estimated: 10, limit: 5 },
+        choices: [{ index: 0, delta: { content: '[ERROR] 本次请求展开后估算 10 token，超过上下文上限 5，未发送给模型。' }, finish_reason: 'stop' }] });
+    const refusal = chatResponseError(chunk('outbound'));
+    assert.equal(refusal.isChatResponseError, true);
+    assert.equal(refusal.message, '本次请求展开后估算 10 token，超过上下文上限 5，未发送给模型。');
+    assert.equal(chatResponseError(chunk('tool_loop')), null);
+    assert.equal(chatResponseError({ choices: [{ delta: { content: 'hi' } }] }), null);
+});
