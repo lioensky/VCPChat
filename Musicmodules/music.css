@@ -381,6 +381,11 @@ body.light-theme #lyrics-list li:hover {
     filter: none;
 }
 
+.lyric-original.is-wbyw > .lyric-word {
+    /* 逐词盒的首尾空格也是词界，必须保留并计入宽度。 */
+    white-space: break-spaces;
+}
+
 /* 活动行样式高亮 */
 #lyrics-list li.active {
     color: var(--music-text) !important;

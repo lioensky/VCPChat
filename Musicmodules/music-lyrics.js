@@ -1,6 +1,22 @@
 // Musicmodules/music-lyrics.js
 // 歌词获取、解析、渲染、动画
 
+function getScrollingLyricWordTexts(line) {
+    const texts = line.words.map(word => word.text ?? '');
+    const original = (line.original || line.fullText || '').trim();
+    const joined = texts.join('');
+    const collapse = text => text.trim().replace(/\s+/g, ' ');
+    const strip = text => text.replace(/\s+/g, '');
+
+    // 模拟逐词计时可能丢掉空格。只在正文和词元逐字符对齐时借用正文的词界。
+    if (/\s/.test(original) && collapse(joined) !== collapse(original) && strip(joined) === strip(original)) {
+        const characters = original.match(/\S\s*/gu);
+        let cursor = 0;
+        return texts.map(text => strip(text).replace(/\S/gu, () => characters[cursor++]));
+    }
+    return texts;
+}
+
 function setupLyrics(app) {
     app.disposeCurrentLyricsQuery = app.api?.onMusicCurrentLyricsRequest?.(({ requestId }) => {
         const track = app.pendingTrackPath
@@ -346,9 +362,10 @@ function setupLyrics(app) {
 
             if (line.isWordByWord && line.words && line.words.length > 0) {
                 originalSpan.classList.add('is-wbyw');
+                const wordTexts = getScrollingLyricWordTexts(line);
                 line.words.forEach((w, wIdx) => {
                     const wordSpan = document.createElement('span');
-                    wordSpan.textContent = w.text;
+                    wordSpan.textContent = wordTexts[wIdx];
                     wordSpan.className = 'lyric-word';
                     wordSpan.dataset.wordIndex = wIdx;
                     wordSpan.dataset.start = w.startTime;
