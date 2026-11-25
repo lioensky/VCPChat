@@ -364,6 +364,7 @@ let historyMutationQueue = null;
 let topicAdmissionHost = null;
 let topicConversationResolver = null;
 let pluginAgentOperationService = null;
+let topicReplyRuntime = null;
 let chartService = null;
 let gameService = null;
 let appSettingsManager = null;
@@ -742,6 +743,13 @@ async function performQuitCleanup() {
     }
 
     appQuitCleanupPromise = (async () => {
+        try {
+            await topicReplyRuntime?.dispose();
+        } catch {
+            console.warn('[TopicReply] shutdown incomplete');
+        } finally {
+            topicReplyRuntime = null;
+        }
         await historyWatcherLeases.dispose();
         await getAgentMoodStore()?.flush().catch(() => {});
         await appFeatures.disposeAll();
@@ -1311,6 +1319,16 @@ if (!gotTheLock) {
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,
             logger: console
         });
+
+        try {
+            const { createTopicReplyRuntime } = require('./modules/services/topicReplyRuntime');
+            topicReplyRuntime = await createTopicReplyRuntime({
+                appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+                processToolCall: pluginAgentOperationService.processToolCall.bind(pluginAgentOperationService),
+            });
+        } catch {
+            console.warn('[TopicReply] unavailable; continuing without it');
+        }
 
         // Phase 1: VCP-CDS runs only as an optional shadow mirror. Start it in
         // the background so database reconciliation can never delay the window

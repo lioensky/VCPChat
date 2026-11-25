@@ -79,6 +79,15 @@ npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test
 - Eval、Purge、Bash 默认从 `tools/list` 隐藏，`tools/call` 也拒绝；调用参数不能授权。
 - Eval 和 Bash 都不是安全沙箱，只对可信工程和 Agent 开启。Bash 以 MCP 进程的系统用户权限执行，工程工作目录不是文件系统或网络边界，写盘不生成 Forge 快照。Purge 会永久删除已软删工程的记录及快照，不能回退。
 
+### 可选 Topic 回信
+
+`config.example.json` 中的 `topic` 默认关闭；省略或填错该分区不影响 `pf_*`。
+显式开启并配置合法的 `baseUrl`（如 `http://127.0.0.1:6200`）和 `tokenEnv` 后，桥会暴露
+`topic_reply`、`topic_reply_status`。工具发现不连接 VChat；只有调用时才读取环境变量中的凭据并连接宿主。
+`timeoutMs` 可选，默认 14000，允许 100–30000 毫秒。不要在配置中填写原始令牌。
+宿主离线时只有 Topic 调用失败，不会自动重试；发送状态未知时用原 `requestId` 查询。
+完整授权、迁移及停用说明见 [Topic Reply](../../../../docs/topic-reply.md)。
+
 ## 启动
 
 在仓库根目录，使用已准备好的配置启动：

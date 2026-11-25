@@ -1,10 +1,16 @@
 {
   "workspaces": [
-    { "id": "vcpchat", "alias": "vcpchat", "path": "H:/VCP/VCPMain/VCPChat", "enabled": true }
+    { "id": "vcpchat", "alias": "vcpchat", "path": "<absolute-workspace-path>", "enabled": true }
   ],
   "activeWorkspaceId": "vcpchat",
   "maid": "Kerr",
   "enableEval": false,
   "enablePurge": false,
-  "enableBash": false
+  "enableBash": false,
+  "topic": {
+    "enabled": false,
+    "baseUrl": "http://127.0.0.1:6200",
+    "tokenEnv": "VCP_TOPIC_REPLY_TOKEN",
+    "timeoutMs": 14000
+  }
 }

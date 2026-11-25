@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { tools, validateArguments } = require('./tools.cjs');
 const { searchTool, createSearcher } = require('./search.cjs');
+const { createTopicClient } = require('./topic.cjs');
 
 const INSTRUCTIONS = 'Use ProjectForge tools for source investigation and edits instead of raw file writes. First reuse an existing projectId in the configured workspace; paths are relative to its root. Use pf_search for workspace content search via native CodeSearcher (no project required), Outline/FindSymbol for definitions and bounded ReadCode; batch same-file changes in EditCode.edits against one original snapshot. Supply reason for changes. Resolve ambiguous edits using returned tickets; never guess candidates or blindly retry uncertain writes. Read projectforge_development prompt (or projectforge://instructions) for full workflow. Keep terminal, Git and LSP diagnostics for builds, tests and validation. No VCPToolCall, ink or valet fields are used.';
 const PROMPT_URI = 'projectforge://instructions';
@@ -11,7 +12,7 @@ const PROMPT_URI = 'projectforge://instructions';
 function loadConfig(filename) {
     if (!filename || !path.isAbsolute(filename)) throw new Error('--config requires an absolute JSON file path');
     const raw = JSON.parse(fs.readFileSync(filename, 'utf8').replace(/^\uFEFF/, ''));
-    const allowed = new Set(['workspaces', 'activeWorkspaceId', 'dbPath', 'binaryPath', 'maid', 'enableEval', 'enablePurge', 'enableBash']);
+    const allowed = new Set(['workspaces', 'activeWorkspaceId', 'dbPath', 'binaryPath', 'maid', 'enableEval', 'enablePurge', 'enableBash', 'topic']);
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Config must be an object');
     for (const key of Object.keys(raw)) if (!allowed.has(key)) throw new Error(`Unknown config field: ${key}`);
     if (!Array.isArray(raw.workspaces) || !raw.workspaces.length) throw new Error('Configure at least one explicit workspace');
@@ -78,6 +79,7 @@ function convertResult(result) {
 
 function createBridge(config, service) {
     const searcher = createSearcher(config);
+    const topic = createTopicClient(config.topic);
     const available = [...tools, searchTool].filter(tool =>
         (tool.command !== 'EvalSymbol' || config.enableEval) &&
         (tool.command !== 'PurgeProjects' || config.enablePurge) &&
@@ -96,9 +98,10 @@ function createBridge(config, service) {
         logger: console,
     });
     return {
-        listTools: () => available.map(({ command, ...tool }) => tool),
+        listTools: () => [...available.map(({ command, ...tool }) => tool), ...(topic?.tools || [])],
         prompt,
         async call(name, args = {}) {
+            if (topic?.has(name)) return topic.call(name, args);
             const tool = byName.get(name);
             if (!tool) return { isError: true, content: [{ type: 'text', text: `Unknown or disabled tool: ${name}` }] };
             if (closing || pending >= 32) return { isError: true, content: [{ type: 'text', text: 'ProjectForge bridge is closing or busy; no operation admitted.' }] };
@@ -114,6 +117,7 @@ function createBridge(config, service) {
         },
         async close() {
             closing = true;
+            topic?.close();
             const results = await Promise.allSettled([searcher.close(), service.cleanup()]);
             const failed = results.find(result => result.status === 'rejected');
             if (failed) throw failed.reason;
