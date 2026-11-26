@@ -1138,6 +1138,9 @@
             document.body.classList.toggle('music-archive-on', on);
             document.body.classList.toggle('music-archive-off', !on);
             app.isArchiveActive = on;
+            // 标题栏的视图菜单：经典列表里显示「经典列表」，首页里显示当前布局
+            const sel = refs.layouts?.querySelector('.archive-layout-select');
+            if (sel) { const want = on ? state.layout : 'classic'; if (sel.value !== want) sel.value = want; }
             if (persist) { try { localStorage.setItem(VIEW_KEY, state.mode); } catch (e) { /* 只是记住上次的视图 */ } schedulePlace(); }
             if (on) {
                 app.destroyAmbientPixi?.();
@@ -1950,6 +1953,7 @@
             scanOff.forEach((off) => { if (typeof off === 'function') off(); });
             stopInertia();
             lyrics?.destroy();
+            if (refs.layouts && !root.contains(refs.layouts)) refs.layouts.remove(); // 挪到标题栏里的视图菜单跟着拆掉
             list?.closeBatchMenu?.();
             list?.endPress?.();
             list?.destroyDrop?.();
@@ -2161,11 +2165,33 @@
         let layoutSweepEl = null;
         /* 视图切换是一个下拉框（音乐窗口里的 <select> 会被 music-fluid-select 换成主程序同款的选项卡片），这里只同步它的值 */
         const layoutSelect = refs.layouts.querySelector('.archive-layout-select');
-        const markLayoutButtons = (layout) => { if (layoutSelect && layoutSelect.value !== layout) layoutSelect.value = layout; };
+        const markLayoutButtons = (layout) => { if (layoutSelect && state.mode !== 'classic' && layoutSelect.value !== layout) layoutSelect.value = layout; };
         // 「经典列表」也在这个菜单里（原来是页脚单独一个按钮）：选它就切到经典视图，菜单里仍然记着当前的首页布局。
+        // 「旧版界面」也是这个菜单的最后一项（原来是标题栏单独一个图标按钮）：选了就把整个音乐窗口换成上游原版界面。
+        // 只有主进程支持切换时才放进来；选它不改菜单的值，切换由 music-legacy-switch.js 去做。
+        const legacyApi = global.utilityAPI || global.electronAPI;
+        if (layoutSelect && legacyApi?.setMusicLegacyUI) {
+            const opt = document.createElement('option');
+            opt.value = 'legacy';
+            opt.textContent = '旧版界面';
+            opt.dataset.sep = '';
+            layoutSelect.append(opt);
+        }
+        // 菜单本身挪到窗口最顶上的标题栏右边（窗口按钮左侧），和舞台里的舞台下拉同一个位置；舞台打开时它让给舞台下拉。
+        // 测试页没有标题栏时留在首页顶栏里。
+        const titleSlot = document.querySelector('#custom-title-bar .titlebar-actions');
+        if (titleSlot && refs.layouts) titleSlot.insertBefore(refs.layouts, titleSlot.firstChild);
         layoutSelect?.addEventListener('change', () => {
-            if (layoutSelect.value === 'classic') { layoutSelect.value = state.layout; setMode('classic'); return; }
-            setLayout(layoutSelect.value);
+            const value = layoutSelect.value;
+            if (value === 'legacy') {
+                layoutSelect.value = state.mode === 'classic' ? 'classic' : state.layout;
+                global.MusicLegacySwitch?.switchToLegacy?.();
+                return;
+            }
+            if (value === 'classic') { setMode('classic'); return; }
+            // 在经典列表里选了某个首页布局：先回首页再换布局（直接换，不走纸面过场）
+            if (state.mode === 'classic') { setMode('archive'); applyLayout(value, true); return; }
+            setLayout(value);
         });
         const revealSweep = (el, w) => {
             el.classList.remove('is-covering');
