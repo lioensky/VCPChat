@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>archive harness</title>
+<link rel="stylesheet" href="/Musicmodules/music-theme/music-tokens.css">
+<link rel="stylesheet" href="/Musicmodules/music-archive/archive.css">
+<link rel="stylesheet" href="/Musicmodules/music-archive/archive-list.css">
+<link rel="stylesheet" href="/Musicmodules/music-archive/archive-lyrics.css">
+<link rel="stylesheet" href="/Musicmodules/music-archive/archive-tuning.css">
+<style>html,body{margin:0;height:100%;overflow:hidden}</style>
+</head>
+<body>
+<div id="music-archive-view" hidden></div>
+<button id="music-archive-return" class="archive-return" type="button">ARCHIVE ↙</button>
+<div class="music-player-container"></div>
+<script src="/vendor/three.min.js"></script>
+<script src="/Musicmodules/music-stage/music-stage-config.js"></script>
+<script src="/Musicmodules/music-app-hooks.js"></script>
+<script src="/Musicmodules/music-archive/archive-model.js"></script>
+<script src="/Musicmodules/music-archive/archive-scene.js"></script>
+<script src="/Musicmodules/music-archive/archive-index.js"></script>
+<script src="/Musicmodules/music-archive/archive-list.js"></script>
+<script src="/Musicmodules/music-archive/archive-lyrics.js"></script>
+<script src="/Musicmodules/music-dock/music-fluid-marker.js"></script>
+<script src="/Musicmodules/music-archive/archive-view.js"></script>
+<script>
+/* 假播放器：只有档案页用到的字段和函数。?n=曲目数 ?light ?dock=像素 ?empty ?emptypl */
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.has('light')) document.body.classList.add('light-theme');
+  if (q.has('dock')) document.body.style.setProperty('--music-dock-safe-bottom', q.get('dock') + 'px');
+  try { localStorage.clear(); } catch (e) {}
+  if (q.has('place')) localStorage.setItem('musicArchivePlace', q.get('place'));
+  const n = q.has('empty') ? 0 : Number(q.get('n') || 60);
+  const W1 = ['清晨的','黄昏','空车厢','潮汐','雨后的','末班','远处的','水面','玻璃','安静的','夏日','微光的'];
+  const W2 = ['站台','信号','回声','海风','长椅','倒影','灯塔','车窗','来信','航线','月台','旧磁带'];
+  const ART = ['Aki','Mio Kanata','Shirone','Hoshino','Ren','Lumi','Tsubame'];
+  const ALB = ['Low Tide','夜行列车','Paper Lanterns','窗边','Static Bloom'];
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const playlist = Array.from({ length: n }, (_, i) => ({
+    path: 'D:\\Music\\' + i + '.flac',
+    title: W1[Math.floor(rnd() * W1.length)] + W2[Math.floor(rnd() * W2.length)] + '.flac',
+    artist: ART[Math.floor(rnd() * ART.length)],
+    album: ALB[Math.floor(rnd() * ALB.length)]
+  }));
+  // ?long：一半曲目换成超长的标题、歌手、专辑，用来看截断
+  if (q.has('long')) playlist.forEach((t, i) => {
+    if (i % 2) return;
+    t.title = t.title.replace(/\.flac$/, '') + '（在很远很远的海边等最后一班电车 Extended Live Version 2026 Remaster）.flac';
+    t.artist = t.artist + ' feat. Hoshino Tsubame & The Paper Lanterns Orchestra';
+    t.album = t.album + ' — 夜行列车与玻璃信号 Deluxe Edition';
+  });
+  const pick = (k, off) => Array.from({ length: Math.min(n, k) }, (_, i) => playlist[(i * 7 + off) % n]?.path).filter(Boolean);
+  const app = window.app = {
+    playlist,
+    customPlaylists: n ? [
+      { id: 'a', name: '海边线路', tracks: pick(12, 1) },
+      { id: 'b', name: '夜间散步', tracks: pick(12, 3) },
+      { id: 'c', name: '雨天档案', tracks: pick(9, 5) },
+      { id: 'd', name: '专注白噪', tracks: pick(14, 2) }
+    ] : [],
+    currentTrackIndex: 0, isPlaying: q.has('playing'), calls: [],
+    loadTrack(i) { this.calls.push(['loadTrack', i]); this.currentTrackIndex = i; this.isPlaying = true; },
+    playTrack() { this.calls.push(['playTrack']); this.isPlaying = true; },
+    pauseTrack() { this.calls.push(['pauseTrack']); this.isPlaying = false; },
+    renderPlaylist() {}, showContextMenu(x, y) { this.calls.push(['ctx', x, y]); },
+    destroyAmbientPixi() {}, createAmbientPixi() {},
+    stageHost: { active: false, enter() { app.calls.push(['stageEnter']); this.active = true; app.isStageActive = true; document.body.classList.add('music-stage-active'); },
+                 exit() { this.active = false; app.isStageActive = false; document.body.classList.remove('music-stage-active'); } }
+  };
+  // ?late：像真实窗口一样，曲库启动后才读进来，播放器再晚一点恢复上次那首（不播放）
+  if (q.has('late')) {
+    app.playlist = [];
+    setTimeout(() => { app.playlist = playlist; }, 300);
+    setTimeout(() => { app.currentTrackIndex = Number(q.get('late') || 137) % Math.max(1, n); }, 700);
+  }
+  // ?lyrics：正在播放第 0 首，带一份歌词（部分行有译文），进度停在第 30 秒附近
+  if (q.has('lyrics')) {
+    const L1 = ['空车厢里只剩下光', '窗外的海一点点暗下来', '我数着经过的站台', 'まだ見ぬ朝を待っている', '信号灯在远处闪', '你说过会在终点等我', '潮水漫过了铁轨', '倒影里有另一个夏天', '把旧磁带倒回开头', '风把名字吹散', '下一站是哪里', '灯塔亮起的时候'];
+    app.currentLyrics = L1.map((text, i) => ({ time: i * 6 + 2, text, translation: i % 3 === 1 ? 'the sea fades slowly outside the window' : '' }));
+    app.isPlaying = true;
+    app.lastKnownCurrentTime = 31;
+    app.lastStateUpdateTime = Date.now();
+    app.seekTo = (t) => { app.calls.push(['seekTo', t]); };
+  }
+  // ?nolyrics：正在播放，但这首歌没有歌词
+  if (q.has('nolyrics')) { app.currentLyrics = []; app.isPlaying = true; app.lastKnownCurrentTime = 31; app.lastStateUpdateTime = Date.now(); app.openLyricsFetchModal = (i) => { app.calls.push(['fetchLyrics', i]); }; }
+  // 手动队列（批量菜单里的「下一首播放」「加入队列」用）
+  app.manualQueue = []; app.queueAdd = (t) => { app.manualQueue.push(t); return t; }; app.queuePlayNext = (t) => { app.manualQueue.unshift(t); return t; }; app.queueRemove = (i) => { app.manualQueue.splice(i, 1); };
+  app.saveCustomPlaylists = () => {};
+  // ?emptypl：多一个空歌单。扫描进度用 window.__scan(current, total) / window.__scan(null) 模拟
+  if (q.has('emptypl')) app.customPlaylists.unshift({ id: 'e', name: '还没放歌的歌单', tracks: [] });
+  const scanFns = { start: [], progress: [], complete: [] };
+  app.api = {
+    onMusicScanStart: (fn) => { scanFns.start.push(fn); }, onMusicScanProgress: (fn) => { scanFns.progress.push(fn); }, onMusicScanComplete: (fn) => { scanFns.complete.push(fn); }
+  };
+  window.__scan = (current, total) => {
+    if (current === null) scanFns.complete.forEach((fn) => fn({ tracks: playlist }));
+    else if (current === 0) scanFns.start.forEach((fn) => fn({ total }));
+    else scanFns.progress.forEach((fn) => fn({ current, total }));
+  };
+  window.MusicArchive.init(app);
+  window.__ready = true;
+})();
+</script>
+</body>
+</html>

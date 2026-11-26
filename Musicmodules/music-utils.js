@@ -10,10 +10,47 @@ function setupUtils(app) {
         return title.replace(/\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff|opus|wv)$/i, '');
     };
 
+    // 列表搜索框和歌单编辑框共用的匹配：全角半角、大小写、合字统一（NFKC），标题去掉扩展名，
+    // 歌手和专辑也算；空格分开的几个词都要命中（顺序不限）。
+    const searchKey = (text) => String(text || '').normalize('NFKC').toLowerCase();
+    app.searchTracks = (tracks, query) => {
+        const words = searchKey(query).split(/\s+/).filter(Boolean);
+        const list = Array.isArray(tracks) ? tracks : [];
+        if (!words.length) return list;
+        return list.filter((t) => {
+            if (!t) return false;
+            const hay = searchKey(`${app.stripAudioExtension(t.title || '')}\n${t.artist || ''}\n${t.album || ''}`);
+            return words.every((w) => hay.includes(w));
+        });
+    };
+
+    // 分享当前曲目到聊天；分享不了（远程曲目、文件已不在）时给个提示。
+    app.shareCurrentTrack = async () => {
+        if (!app.pendingTrackPath || !app.api?.shareMusicTrack) return;
+        try {
+            const result = await app.api.shareMusicTrack(app.pendingTrackPath);
+            if (result && result.success === false && result.message) window.MusicToast?.show?.({ message: result.message });
+        } catch (error) {
+            console.error('[Music] Share failed:', error);
+        }
+    };
+
+    // 本地文件路径转 file:// 地址：空格、中文、%、#、? 都要编码，不然用户名或缓存目录里带这些字符时封面出不来；
+    // 结果里没有引号，可以直接放进 CSS 的 url("...")。
+    app.fileUrl = (filePath) => {
+        if (!filePath) return '';
+        let p = String(filePath).replace(/\\/g, '/');
+        if (!p.startsWith('/')) p = '/' + p;
+        return 'file://' + encodeURI(p).replace(/[?#']/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+    };
+
+    // 和列表、档案页一样：一小时以上写成 1:02:03（以前写 62:03）；引擎还没报时长（undefined）时写 0:00，不是 NaN:NaN
     app.formatTime = (seconds) => {
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+        const total = Math.max(0, Math.floor(Number(seconds) || 0));
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const secs = String(total % 60).padStart(2, '0');
+        return h ? `${h}:${String(m).padStart(2, '0')}:${secs}` : `${m}:${secs}`;
     };
 
     app.normalizePathForCompare = (inputPath) => {
@@ -39,9 +76,14 @@ function setupUtils(app) {
         if (app.isSemanticSearching) return;
         app.isSemanticSearching = true;
         app.semanticSearchBtn.classList.add('loading');
+        // 结果回来时语义搜索已经关掉、或者框里已经换了别的字：这份结果不用了，不能盖掉现在的列表。
+        const stillWanted = () => app.isSemanticSearchActive && String(app.searchInput?.value || '').trim() === query;
+        const tell = (message) => { try { (globalThis.MusicToast?.show || (() => {}))({ message, kind: 'error' }); } catch (e) { /* 没有提示层 */ } };
 
         try {
             const settings = await api.loadSettings();
+            // 没配 VCP 服务器地址时以前在这里抛 TypeError，按钮转一下就没了下文。
+            if (!settings?.vcpServerUrl) throw new Error('还没有设置 VCP 服务器地址');
             let serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
             if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
 
@@ -70,13 +112,23 @@ tag_boost:「始」0.95「末」
             // 兼容 LightMemo 旧格式与新版内部 JSON / MCP content 数组格式
             const output = app.extractLightMemoOutput(data);
 
+            if (!stillWanted()) return;
             if (output) {
                 app.processSemanticSearchResults(output);
             } else {
                 console.error('[Music] Semantic search failed or returned empty:', data);
+                tell('语义搜索没有返回结果，检查 VCP 服务器和 LightMemo 插件');
             }
         } catch (err) {
             console.error('[Music] Semantic search error:', err);
+            if (stillWanted()) {
+                const raw = err?.message || String(err);
+                const reason = /^还没有设置/.test(raw) ? raw
+                    : /failed to fetch|networkerror|econnrefused/i.test(raw) ? '连不上 VCP 服务器'
+                    : /status: (401|403)/.test(raw) ? 'VCP 服务器拒绝了请求，检查 API Key'
+                    : (globalThis.MusicErrorText ? globalThis.MusicErrorText(raw, '原因不明') : raw);
+                tell(`语义搜索没有完成：${reason}`);
+            }
         } finally {
             app.isSemanticSearching = false;
             app.semanticSearchBtn.classList.remove('loading');
@@ -249,6 +301,7 @@ tag_boost:「始」0.95「末」
         if (categoryView) categoryView.style.display = 'none';
         if (app.playlistEl) app.playlistEl.style.display = 'block';
 
+        app.filteredPlaylistSource = null; // 搜索结果是整个曲库里找的，不再算某个歌单
         if (matchedTracks.length > 0) {
             app.currentFilteredTracks = matchedTracks;
             app.renderPlaylist(matchedTracks);

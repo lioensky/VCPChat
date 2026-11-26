@@ -322,8 +322,8 @@ test('music player repositions the sidebar after normal and gapless track change
     const renderThenPosition = /app\.renderPlaylist\(app\.currentFilteredTracks\);\s*app\.scrollCurrentTrackToSidebarTop\?\.\(\);/g;
     assert.equal(
         Array.from(source.matchAll(renderThenPosition)).length,
-        3,
-        'normal load plus exact and fuzzy gapless synchronization must reposition the current track'
+        1,
+        'normal load and the gapless switch share one showTrack, which repositions the current track'
     );
 });
 
@@ -344,6 +344,7 @@ test('music stage keeps one mode instance and releases canvases across switches'
     runScript(dom, 'Musicmodules/music-stage/modes/fume-manager.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-advanced-modes.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-modes.js');
+    runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-host.js');
 
     const { app, calls } = createApp();
@@ -355,10 +356,25 @@ test('music stage keeps one mode instance and releases canvases across switches'
     assert.equal(app.isStageActive, true);
     assert.equal(app.stageHost.getDebugSnapshot().modeRootChildren, 1);
 
+    // A switch builds the new mode behind the old one and keeps both for one
+    // soft-focus crossfade; drive frames until only the new one is left.
+    // 宿主按帧时间限帧：同一个时间戳只画一次，所以每轮往前走一步
+    let clock = 1000;
+    const settleSwitch = async () => {
+        for (let i = 0; i < 40; i++) {
+            clock += 100;
+            app.stageHost.updateFrame(clock);
+            if (!app.stageHost.getDebugSnapshot().switching) return;
+            await wait(dom.window, 100);
+        }
+        assert.fail('mode switch never finished');
+    };
+
     for (const mode of ['tempera', 'sonnet', 'diorama', 'fume', 'partita', 'cadenza', 'luminous', 'fume']) {
         app.stageHost.setMode(mode);
-        await wait(dom.window, 210);
-        app.stageHost.updateFrame(1000);
+        const during = app.stageHost.getDebugSnapshot();
+        assert.ok(during.modeRootChildren <= 2, 'at most the old and the new mode at once');
+        await settleSwitch();
         const snapshot = app.stageHost.getDebugSnapshot();
         assert.equal(snapshot.modeId, mode);
         assert.equal(snapshot.modeRootChildren, 1);
@@ -372,8 +388,7 @@ test('music stage keeps one mode instance and releases canvases across switches'
     }
 
     app.stageHost.setMode('starborn');
-    await wait(dom.window, 210);
-    app.stageHost.updateFrame(1200);
+    await settleSwitch();
     const starborn = app.stageHost.getDebugSnapshot();
     assert.equal(starborn.modeId, 'starborn');
     assert.equal(starborn.mode.excludesWebGLModes, true);
@@ -382,7 +397,7 @@ test('music stage keeps one mode instance and releases canvases across switches'
     assert.equal(starborn.mode.candidateModes.includes('sonnet'), true);
 
     app.stageHost.setMode('luminous');
-    await wait(dom.window, 210);
+    await settleSwitch();
     const afterFume = app.stageHost.getDebugSnapshot();
     assert.equal(afterFume.canvasCount, 0);
     assert.equal(afterFume.modeRootChildren, 1);
@@ -418,6 +433,7 @@ test('stage transport synchronizes play mode, mute and volume with the existing 
     runScript(dom, 'Musicmodules/music-stage/modes/fume-manager.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-advanced-modes.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-modes.js');
+    runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
     runScript(dom, 'Musicmodules/music-stage/music-stage-host.js');
 
     const { app, calls } = createApp();
@@ -454,4 +470,71 @@ test('stage transport synchronizes play mode, mute and volume with the existing 
 
     app.stageHost.destroy();
     dom.window.close();
+});
+test('3D stage waits for the new song\'s lyrics behind a fade instead of building twice', async () => {
+    const dom = createStageDom();
+    installCanvasStub(dom.window);
+    for (const file of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+        'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js', 'modes/luminous-manager.js',
+        'modes/partita-manager.js', 'modes/cadenza-manager.js', 'modes/diorama-manager.js',
+        'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js']) {
+        runScript(dom, `Musicmodules/music-stage/${file}`);
+    }
+    dom.window.localStorage.setItem('musicStageMode', 'diorama');
+    const { app } = createApp();
+    dom.window.setupMusicStage(app);
+    app.stageHost.enter();
+    await wait(dom.window, 20);
+    app.stageHost.updateFrame(1000);
+    const modeRoot = () => dom.window.document.querySelector('.music-stage-mode-root > .music-stage-mode');
+    assert.equal(app.stageHost.getDebugSnapshot().songHandover, null);
+
+    // The player switches songs: lyrics are emptied first and filled in later.
+    const lyrics = app.currentLyrics;
+    app.playlist.push({ ...app.playlist[0], path: 'C:\\Music\\next.flac', title: '下一首.flac' });
+    app.currentTrackIndex = 1;
+    app.currentLyrics = [];
+    app.stageHost.updateFrame(1100);
+    assert.equal(app.stageHost.getDebugSnapshot().songHandover, 'new-song');
+    assert.ok(modeRoot().classList.contains('is-song-leaving'));
+
+    await wait(dom.window, 400);
+    app.stageHost.updateFrame(1500);
+    // Faded out, but still no words: keep waiting rather than building a wordless journey.
+    assert.equal(app.stageHost.getDebugSnapshot().songHandover, 'new-song');
+
+    app.currentLyrics = lyrics.map((line) => ({ ...line }));
+    app.stageHost.updateFrame(1600);
+    assert.equal(app.stageHost.getDebugSnapshot().songHandover, null);
+    await wait(dom.window, 40);
+    assert.equal(modeRoot().classList.contains('is-song-leaving'), false);
+    app.stageHost.destroy();
+});
+
+test('lyric stages draw at most 60 frames a second unless the ultimate tier is chosen', async () => {
+    const frames = async (quality) => {
+        const dom = createStageDom();
+        installCanvasStub(dom.window);
+        for (const file of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js', 'modes/luminous-manager.js',
+            'modes/partita-manager.js', 'modes/cadenza-manager.js', 'modes/diorama-manager.js',
+            'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js']) {
+            runScript(dom, `Musicmodules/music-stage/${file}`);
+        }
+        dom.window.localStorage.setItem('musicStageMode', 'luminous');
+        if (quality) dom.window.MusicStageConfig.update({ quality });
+        const { app } = createApp();
+        dom.window.setupMusicStage(app);
+        app.stageHost.enter();
+        await wait(dom.window, 20);
+        const before = app.stageHost.getDebugSnapshot().frameUpdates;
+        // One second of a 120 Hz display.
+        for (let i = 0; i < 120; i++) app.stageHost.updateFrame(10000 + i * (1000 / 120));
+        const drawn = app.stageHost.getDebugSnapshot().frameUpdates - before;
+        app.stageHost.destroy();
+        return drawn;
+    };
+    const standard = await frames(null);
+    assert.ok(standard >= 58 && standard <= 62, `standard tier drew ${standard} of 120`);
+    assert.equal(await frames('ultimate'), 120);
 });

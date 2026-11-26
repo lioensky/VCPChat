@@ -1,0 +1,708 @@
+{
+  "$comment": "VMusic 模块登记。每个音乐相关文件必须且只能属于一个模块。说明见 Musicmodules/AGENTS.md；校验：npm run check:music；阅读包：npm run music:context -- <模块 id 或文件>。sizeBaseline / appWriterBaseline 由 node scripts/music-arch.mjs baseline 生成，只在评审过的改动里更新。",
+  "version": 1,
+  "modules": [
+    {
+      "id": "shell",
+      "title": "窗口骨架",
+      "purpose": "music.html：全部 DOM 骨架和脚本/样式加载顺序。加文件、调加载顺序都在这里。",
+      "paths": [
+        "Musicmodules/music.html"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-window-navigation.test.cjs",
+        "tests/music-legacy.test.js"
+      ]
+    },
+    {
+      "id": "core",
+      "title": "应用核心",
+      "purpose": "建 app 对象、按顺序调用各 setupX(app)、引擎状态回写界面、设置存取；以及窗口级小工具（弹窗焦点、菜单顺序、窗口标题、新旧版切换、报错文案）。",
+      "paths": [
+        "Musicmodules/music.js",
+        "Musicmodules/music-app-hooks.js",
+        "Musicmodules/music-utils.js",
+        "Musicmodules/music-error-text.js",
+        "Musicmodules/music-window-title.js",
+        "Musicmodules/music-modal-focus.js",
+        "Musicmodules/music-menu-order.js",
+        "Musicmodules/music-legacy-switch.js",
+        "Musicmodules/music-window-visibility.js"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-app-hooks.test.js",
+        "tests/music-error-text.test.js",
+        "tests/music-modal-focus.test.cjs",
+        "tests/music-menu-order.test.js",
+        "tests/music-time-format.test.cjs",
+        "tests/music-file-url.test.cjs",
+        "tests/music-markup-escape.test.cjs",
+        "tests/music-ime-keys.test.cjs",
+        "tests/music-save-failure.test.cjs",
+        "tests/music-share-error-text.test.cjs",
+        "tests/music-window-visibility.test.cjs"
+      ],
+      "tools": [
+        "tests/music-window-bench/surface.cjs",
+        "tests/music-window-bench/window-bench.cjs",
+        "tests/music-window-bench/script-cost.cjs",
+        "tests/music-window-bench/renderer-soak.cjs"
+      ]
+    },
+    {
+      "id": "player",
+      "title": "播放与引擎桥",
+      "purpose": "和 Rust 音频引擎说话的唯一一层：加载/播放/暂停/跳转、无缝与预载、WebSocket 状态、输出设备、EQ/DSP、声道、WebDAV 远程播放。界面只调 app 上的方法，不直接发引擎请求。",
+      "paths": [
+        "Musicmodules/music-player.js",
+        "Musicmodules/music-output.js",
+        "Musicmodules/music-effects.js",
+        "Musicmodules/music-device-sound.js",
+        "Musicmodules/music-channels.js",
+        "Musicmodules/music-eq-presets.js",
+        "Musicmodules/music-webdav.js",
+        "Musicmodules/socket.io.min.js"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-playback-races.test.js",
+        "tests/music-prev-restart.test.js",
+        "tests/music-engine-errors.test.cjs",
+        "tests/music-old-engine-fallback.test.cjs",
+        "tests/music-output-fallback.test.cjs",
+        "tests/music-eq-settings.test.cjs",
+        "tests/music-device-list-empty.test.cjs",
+        "tests/music-sound-page.test.cjs",
+        "tests/music-ws-reconnect.test.cjs",
+        "tests/music-webdav-engine.test.cjs",
+        "tests/music-webdav-errors.test.cjs",
+        "tests/music-now-playing-adapter.test.cjs",
+        "tests/music-now-playing-follow.test.cjs"
+      ],
+      "tools": [
+        "tests/music-window-bench/engine-soak.cjs",
+        "tests/music-window-bench/engine-protocol-record.cjs",
+        "tests/music-window-bench/stress.cjs"
+      ]
+    },
+    {
+      "id": "library",
+      "title": "曲库、歌单与队列",
+      "purpose": "曲库/歌单侧栏、喜欢、定位、睡眠定时、统计、电台、查重、M3U、按文件夹、排序、撤销移除、智能歌单。",
+      "paths": [
+        "Musicmodules/music-sidebar.js",
+        "Musicmodules/music-likes.js",
+        "Musicmodules/music-goto.js",
+        "Musicmodules/music-sleep.js",
+        "Musicmodules/music-stats.js",
+        "Musicmodules/music-stats-view.js",
+        "Musicmodules/music-stats-view.css",
+        "Musicmodules/music-radio.js",
+        "Musicmodules/music-dupes.js",
+        "Musicmodules/music-m3u.js",
+        "Musicmodules/music-track-file.js",
+        "Musicmodules/music-folders.js",
+        "Musicmodules/music-track-order.js",
+        "Musicmodules/music-queue-undo.js",
+        "Musicmodules/music-smart.js"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-likes.test.js",
+        "tests/music-goto.test.js",
+        "tests/music-sleep.test.js",
+        "tests/music-stats.test.js",
+        "tests/music-radio.test.js",
+        "tests/music-smart.test.js",
+        "tests/music-queue.test.js",
+        "tests/music-remove-scope.test.cjs",
+        "tests/music-playlist-editor.test.cjs",
+        "tests/music-playlist-save-guard.test.cjs",
+        "tests/music-list-search.test.cjs",
+        "tests/music-semantic-search.test.cjs",
+        "tests/music-library-identity.test.js",
+        "tests/music-add-dropped-paths.test.cjs",
+        "tests/music-scan-indicator.test.cjs",
+        "tests/music-scan-outcome.test.cjs"
+      ],
+      "tools": [
+        "tests/music-window-bench/interact-cost.cjs",
+        "tests/music-window-bench/classic-big-list.cjs",
+        "tests/music-library-bench/scan-bench.cjs"
+      ]
+    },
+    {
+      "id": "lyrics",
+      "title": "歌词（窗口内）",
+      "purpose": "歌词解析/显示/滚动/点击跳转、AI 找词、桌面歌词窗口。歌词抓取在主进程 main 模块。",
+      "paths": [
+        "Musicmodules/music-lyrics.js",
+        "Musicmodules/music-lyrics-ai.js",
+        "Musicmodules/music-desktop-lyrics.js",
+        "Musicmodules/desktop-lyrics/**"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-lyrics-click.test.js",
+        "tests/music-lyrics-scrolling-spacing.test.js",
+        "tests/music-lyrics-interlude.test.js",
+        "tests/music-lyrics-race-regression.test.js",
+        "tests/music-lyrics-auto-candidate.test.js",
+        "tests/music-desktop-lyrics.test.js",
+        "tests/music-lyric-encoding.test.cjs"
+      ]
+    },
+    {
+      "id": "visuals",
+      "title": "背景与频谱",
+      "purpose": "经典视图背景频谱、Pixi 氛围背景、频谱数据。",
+      "paths": [
+        "Musicmodules/music-visualizer.js",
+        "Musicmodules/music-ambient-pixi.js",
+        "Musicmodules/music-spectrum.js"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-visualizer-idle.test.cjs",
+        "tests/music-ambient-startup.test.cjs"
+      ]
+    },
+    {
+      "id": "classic",
+      "title": "经典视图与全局皮肤",
+      "purpose": "经典列表视图（music-ui.js、经典列表）、窗口通用样式 music.css 和 music-theme/ 下的色彩变量、皮肤、动效开关。",
+      "paths": [
+        "Musicmodules/music-ui.js",
+        "Musicmodules/music.css",
+        "Musicmodules/music-theme/**"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-classic-list.test.cjs",
+        "tests/music-classic-list-columns.test.cjs",
+        "tests/music-classic-empty-text.test.cjs",
+        "tests/music-control-labels.test.cjs",
+        "tests/music-context-submenu-fit.test.cjs",
+        "tests/music-palette-colon.test.js"
+      ]
+    },
+    {
+      "id": "archive",
+      "title": "首页（档案页）",
+      "purpose": "默认首页：3D 档案阵列、封面墙、平放/网格、目录表、检索、首页右侧歌词。",
+      "paths": [
+        "Musicmodules/music-archive/**"
+      ],
+      "docs": [
+        "Musicmodules/music-archive/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-archive.test.cjs",
+        "tests/music-archive-view.test.cjs",
+        "tests/music-archive-index.test.cjs",
+        "tests/music-archive-idle.test.cjs",
+        "tests/music-archive-lyrics-words.test.js"
+      ],
+      "tools": [
+        "tests/music-archive/shots.cjs",
+        "tests/music-archive/real-window.cjs",
+        "tests/music-archive/measure.cjs",
+        "tests/music-archive/timing.cjs"
+      ]
+    },
+    {
+      "id": "dock",
+      "title": "底栏与通用控件",
+      "purpose": "底栏胶囊、统一面板（封面/歌词/控制/播放列表/声音）、流体效果、Ctrl+K 命令面板、toast、对话框、全局同款下拉。",
+      "paths": [
+        "Musicmodules/music-dock/**"
+      ],
+      "docs": [
+        "Musicmodules/music-dock/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-dock.test.cjs",
+        "tests/music-dock-icons.test.cjs",
+        "tests/music-fluid-kit.test.cjs",
+        "tests/music-toast.test.cjs",
+        "tests/music-dialog.test.cjs"
+      ]
+    },
+    {
+      "id": "stage-host",
+      "title": "歌词舞台宿主",
+      "purpose": "舞台开关、帧时钟、模式创建/销毁/切换、舞台设置、边框频谱（edge）、播放状态快照（runtime）、模式登记表和星诞导演、舞台宿主样式。",
+      "paths": [
+        "Musicmodules/music-stage/music-stage-host.js",
+        "Musicmodules/music-stage/music-stage-edge.js",
+        "Musicmodules/music-stage/music-stage-runtime.js",
+        "Musicmodules/music-stage/music-stage-config.js",
+        "Musicmodules/music-stage/music-stage-modes.js",
+        "Musicmodules/music-stage/music-stage-advanced-modes.js",
+        "Musicmodules/music-stage/*.md",
+        "Musicmodules/music-stage/music-stage*.css"
+      ],
+      "docs": [
+        "Musicmodules/music-stage/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-stage-lifecycle.test.js",
+        "tests/music-stage-3d-regressions.test.js",
+        "tests/stream-stage2-animation-lifecycle.test.mjs",
+        "tests/music-stage-traits.test.js"
+      ],
+      "tools": [
+        "tests/music-stage-bench/bench.cjs",
+        "tests/music-stage-bench/leak.cjs",
+        "tests/music-stage-bench/transitions.cjs",
+        "tests/music-stage-bench/handover-abuse.cjs"
+      ]
+    },
+    {
+      "id": "stage-modes",
+      "title": "歌词舞台各模式",
+      "purpose": "每个舞台一个 *-manager.js（大的再拆 director/world/camera 等），共享的歌词排版/演出/Pixi 特效工具，以及模式用到的素材。",
+      "paths": [
+        "Musicmodules/music-stage/modes/**",
+        "Musicmodules/music-stage/assets/**"
+      ],
+      "docs": [
+        "Musicmodules/music-stage/AGENTS.md"
+      ],
+      "tests": [
+        "tests/pixi-stage-scenes.test.js",
+        "tests/stage-pixi-renderer-park.test.js",
+        "tests/stage-starbloom.test.js",
+        "tests/diorama-director.test.js",
+        "tests/diorama-events.test.js",
+        "tests/kowloon-signs-placement.test.js",
+        "tests/music-stage-folia-modes.test.js",
+        "tests/music-stage-inkdraft-pixi.test.js"
+      ],
+      "tools": [
+        "tests/music-stage-bench/harness.js",
+        "tests/music-stage-bench/stage2d.cjs",
+        "tests/music-stage-bench/kowloon-shots.cjs",
+        "tests/diorama-stations-smoke.cjs"
+      ]
+    },
+    {
+      "id": "intro",
+      "title": "开场动画",
+      "purpose": "音乐窗口打开时的开场。",
+      "paths": [
+        "Musicmodules/music-intro/**"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-intro.test.cjs"
+      ],
+      "tools": [
+        "tests/music-intro/shots.cjs"
+      ]
+    },
+    {
+      "id": "docs",
+      "title": "说明文档",
+      "purpose": "面向用户/上游的说明和本登记表。",
+      "paths": [
+        "Musicmodules/README.md",
+        "Musicmodules/STAGE_UPDATE_NOTES.md",
+        "Musicmodules/AGENTS.md",
+        "Musicmodules/architecture.json",
+        "Musicmodules/CLAUDE.md"
+      ],
+      "docs": [],
+      "tests": [
+        "tests/music-architecture.test.mjs"
+      ]
+    },
+    {
+      "id": "legacy",
+      "title": "旧版界面（冻结）",
+      "purpose": "上游原版音乐界面，逐字节冻结（UPSTREAM.sha256）。只有 legacy-bridge.js 可以改。",
+      "paths": [
+        "Musicmodules-legacy/**"
+      ],
+      "frozen": true,
+      "docs": [
+        "Musicmodules-legacy/README.md"
+      ],
+      "tests": [
+        "tests/music-legacy.test.js",
+        "tests/music-legacy-bridge-endpoint.test.cjs"
+      ]
+    },
+    {
+      "id": "main",
+      "title": "主进程",
+      "purpose": "音乐窗口创建与崩溃恢复、IPC 处理、曲库扫描/监视、歌单存盘、歌词抓取与翻译、WebDAV、缩略图按钮、引擎启动与端口。",
+      "paths": [
+        "modules/ipc/music*.js",
+        "modules/music*.js",
+        "modules/lyricFetcher.js",
+        "modules/lyrics/**",
+        "modules/webdavManager.js",
+        "modules/services/musicGrooveBus.js",
+        "modules/services/audioEngine*.js",
+        "modules/ui-system/music-capsule.js"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-library-scan.test.cjs",
+        "tests/music-tag-text.test.cjs",
+        "tests/music-track-match.test.cjs",
+        "tests/music-playlist-prompt.test.cjs",
+        "tests/music-info-injection.test.cjs",
+        "tests/music-webdav-load-account.test.cjs",
+        "tests/music-window-bounds.test.cjs",
+        "tests/music-window-crash-recovery.test.cjs",
+        "tests/music-control-window-race.test.cjs",
+        "tests/music-capsule.test.cjs",
+        "tests/music-capsule-layout.test.cjs",
+        "tests/lyric-cross-provider-audit.test.js",
+        "tests/audio-engine-orphan.test.cjs",
+        "tests/audio-engine-port.test.js",
+        "tests/deskpet-music-groove.test.mjs",
+        "tests/music-ipc-split.test.cjs"
+      ]
+    },
+    {
+      "id": "preload",
+      "title": "预加载接口",
+      "purpose": "渲染端能调的全部音乐 IPC（utility 角色）。加接口只在这里加一行，主进程在 musicHandlers.js 注册。",
+      "paths": [
+        "preloads/api/music.js"
+      ],
+      "docs": [
+        "preloads/README.md"
+      ],
+      "tests": [
+        "tests/music-legacy.test.js"
+      ]
+    },
+    {
+      "id": "controller",
+      "title": "AI 点歌插件",
+      "purpose": "VCP 分布式插件 MusicController：AI 点歌、读歌词、指定舞台。",
+      "paths": [
+        "VCPDistributedServer/Plugin/MusicController/**"
+      ],
+      "docs": [
+        "Musicmodules/AGENTS.md"
+      ],
+      "tests": [
+        "tests/music-controller-lyrics.test.cjs"
+      ]
+    }
+  ],
+  "unloadedAllowed": {
+    "$comment": "Musicmodules 下不由 music.html 加载、但确实有用的脚本/样式（别的页面、worker、测试引用）。新增条目要写明谁在用。",
+    "Musicmodules/desktop-lyrics/desktop-lyrics.js": "desktop-lyrics.html",
+    "Musicmodules/desktop-lyrics/desktop-lyrics.css": "desktop-lyrics.html",
+    "Musicmodules/music-stage/assets/coast-rock.js": "diorama-world.js 运行时按需注入"
+  },
+  "sizeBudgetBytes": 65536,
+  "sizeBaseline": {
+    "Musicmodules/music-archive/archive-list.js": 116571,
+    "Musicmodules/music-archive/archive-scene.js": 100013,
+    "Musicmodules/music-archive/archive-view.js": 132461,
+    "Musicmodules/music-archive/archive-wall.js": 69010,
+    "Musicmodules/music-dock/music-dock.js": 127903,
+    "Musicmodules/music-player.js": 75554,
+    "Musicmodules/music-stage/modes/diorama-world.js": 397621,
+    "Musicmodules/music-stage/modes/fogpane-manager.js": 80444,
+    "Musicmodules/music-stage/modes/hanabi-manager.js": 92423,
+    "Musicmodules/music-stage/modes/inkdraft-figures.js": 84766,
+    "Musicmodules/music-stage/modes/inkdraft-manager.js": 136721,
+    "Musicmodules/music-stage/modes/kowloon-alley.js": 132265,
+    "Musicmodules/music-stage/modes/kowloon-signs.js": 127405,
+    "Musicmodules/music-stage/modes/stage-mode-utils.js": 77121,
+    "Musicmodules/music-stage/modes/stage-pixi-effects.js": 79277,
+    "Musicmodules/music-stage/modes/tunnel-manager.js": 286561,
+    "Musicmodules/music-stage/music-stage-host.js": 105320,
+    "Musicmodules/music.html": 66437,
+    "Musicmodules/music.js": 87932
+  },
+  "appWriterBaseline": {
+    "_gaplessSwitchTimer": [
+      "Musicmodules/music-visualizer.js",
+      "Musicmodules/music.js"
+    ],
+    "_lyricLayout": [
+      "Musicmodules/music-lyrics-ai.js",
+      "Musicmodules/music-lyrics.js",
+      "Musicmodules/music-player.js"
+    ],
+    "_syncedEqType": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "_syncedFirTaps": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "backgroundTransitionTimer": [
+      "Musicmodules/music-ui.js",
+      "Musicmodules/music.js"
+    ],
+    "contextMenuScopeHint": [
+      "Musicmodules/music-archive/archive-list.js",
+      "Musicmodules/music.js"
+    ],
+    "contextMenuTrackIndex": [
+      "Musicmodules/music-archive/archive-list.js",
+      "Musicmodules/music-archive/archive-view.js",
+      "Musicmodules/music.js"
+    ],
+    "crossfeedEnabled": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "crossfeedMix": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "currentDeviceId": [
+      "Musicmodules/music-output.js",
+      "Musicmodules/music.js"
+    ],
+    "currentFilteredTracks": [
+      "Musicmodules/music-archive/archive-list.js",
+      "Musicmodules/music-archive/archive-view.js",
+      "Musicmodules/music-dock/music-dock-palette.js",
+      "Musicmodules/music-dupes.js",
+      "Musicmodules/music-folders.js",
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-radio.js",
+      "Musicmodules/music-sidebar.js",
+      "Musicmodules/music-utils.js",
+      "Musicmodules/music-webdav.js",
+      "Musicmodules/music.js"
+    ],
+    "currentLyricIndex": [
+      "Musicmodules/music-lyrics.js",
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-stage/music-stage-host.js",
+      "Musicmodules/music.js"
+    ],
+    "currentLyrics": [
+      "Musicmodules/music-lyrics-ai.js",
+      "Musicmodules/music-lyrics.js",
+      "Musicmodules/music.js"
+    ],
+    "currentLyricsData": [
+      "Musicmodules/music-lyrics.js",
+      "Musicmodules/music.js"
+    ],
+    "currentPlayMode": [
+      "Musicmodules/music-stage/music-stage-host.js",
+      "Musicmodules/music.js"
+    ],
+    "currentSidebarView": [
+      "Musicmodules/music-sidebar.js",
+      "Musicmodules/music-utils.js"
+    ],
+    "currentTrackIndex": [
+      "Musicmodules/music-archive/archive-list.js",
+      "Musicmodules/music-dupes.js",
+      "Musicmodules/music-folders.js",
+      "Musicmodules/music-player.js",
+      "Musicmodules/music.js"
+    ],
+    "customPlaylists": [
+      "Musicmodules/music-archive/archive-list.js",
+      "Musicmodules/music-dock/music-dock-queue.js",
+      "Musicmodules/music-dupes.js",
+      "Musicmodules/music-likes.js",
+      "Musicmodules/music-m3u.js",
+      "Musicmodules/music-sidebar.js",
+      "Musicmodules/music-smart.js"
+    ],
+    "disposeCurrentLyricsQuery": [
+      "Musicmodules/music-lyrics.js",
+      "Musicmodules/music.js"
+    ],
+    "dynamicLoudnessEnabled": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "dynamicLoudnessStrength": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "endedHandledForLoad": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-visualizer.js"
+    ],
+    "engineTrackPath": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music.js"
+    ],
+    "eqEnabled": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "filteredPlaylistSource": [
+      "Musicmodules/music-archive/archive-view.js",
+      "Musicmodules/music-dock/music-dock-palette.js",
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-sidebar.js",
+      "Musicmodules/music-utils.js",
+      "Musicmodules/music.js"
+    ],
+    "isChangingState": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music.js"
+    ],
+    "isPlaying": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-visualizer.js"
+    ],
+    "isPreloadingNext": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-visualizer.js"
+    ],
+    "lastKnownCurrentTime": [
+      "Musicmodules/music-archive/archive-lyrics.js",
+      "Musicmodules/music-lyrics.js",
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-stage/music-stage-host.js",
+      "Musicmodules/music.js"
+    ],
+    "lastKnownDuration": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music.js"
+    ],
+    "lastStateUpdateTime": [
+      "Musicmodules/music-archive/archive-lyrics.js",
+      "Musicmodules/music-lyrics.js",
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-stage/music-stage-host.js",
+      "Musicmodules/music.js"
+    ],
+    "loudnessEnabled": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "loudnessMode": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "loudnessPreampDb": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "manualQueue": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music-queue-undo.js"
+    ],
+    "modalSearchQuery": [
+      "Musicmodules/music-sidebar.js",
+      "Musicmodules/music.js"
+    ],
+    "noiseShaperCurve": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "outputBits": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "playIntent": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music.js"
+    ],
+    "playlist": [
+      "Musicmodules/music-dupes.js",
+      "Musicmodules/music-folders.js",
+      "Musicmodules/music.js"
+    ],
+    "saturationDrive": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "saturationEnabled": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "saturationMix": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "silentAudioUrl": [
+      "Musicmodules/music-ui.js",
+      "Musicmodules/music.js"
+    ],
+    "skipHistoryOnce": [
+      "Musicmodules/music-player.js",
+      "Musicmodules/music.js"
+    ],
+    "targetLufs": [
+      "Musicmodules/music-effects.js",
+      "Musicmodules/music.js"
+    ],
+    "targetUpsamplingRate": [
+      "Musicmodules/music-output.js",
+      "Musicmodules/music.js"
+    ],
+    "useWasapiExclusive": [
+      "Musicmodules/music-output.js",
+      "Musicmodules/music.js"
+    ],
+    "ws": [
+      "Musicmodules/music-visualizer.js",
+      "Musicmodules/music.js"
+    ]
+  },
+  "cssChains": {
+    "$comment": "按段拆开的样式表。数组顺序就是层叠顺序，music.html 里必须按这个顺序紧挨着加载；拆分时拼回去和原文件逐字节相同。",
+    "stage": [
+      "Musicmodules/music-stage/music-stage.css",
+      "Musicmodules/music-stage/music-stage-core-modes.css",
+      "Musicmodules/music-stage/modes/tunnel.css",
+      "Musicmodules/music-stage/music-stage-settings.css",
+      "Musicmodules/music-stage/music-stage-pixi-3d.css",
+      "Musicmodules/music-stage/modes/inkdraft.css",
+      "Musicmodules/music-stage/modes/fogpane.css",
+      "Musicmodules/music-stage/modes/lumiere.css",
+      "Musicmodules/music-stage/modes/hanabi.css",
+      "Musicmodules/music-stage/modes/clockwork.css",
+      "Musicmodules/music-stage/modes/orbit.css",
+      "Musicmodules/music-stage/modes/signal.css",
+      "Musicmodules/music-stage/modes/groupchat.css",
+      "Musicmodules/music-stage/modes/impression.css"
+    ],
+    "archive": [
+      "Musicmodules/music-archive/archive.css",
+      "Musicmodules/music-archive/archive-list.css",
+      "Musicmodules/music-archive/archive-lyrics.css",
+      "Musicmodules/music-archive/archive-tuning.css"
+    ],
+    "dock": [
+      "Musicmodules/music-dock/music-dock.css",
+      "Musicmodules/music-dock/music-dock-panel.css",
+      "Musicmodules/music-dock/music-dock-drawer.css"
+    ]
+  }
+}

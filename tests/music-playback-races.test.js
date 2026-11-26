@@ -30,7 +30,7 @@ function setup(api = {}) {
         navigator: {}
     });
     vm.runInContext('globalThis.__now = 0; const realNow = Date.now; Date.now = () => globalThis.__now || realNow();', context);
-    for (const name of ['music-lyrics.js', 'music-player.js']) {
+    for (const name of ['music-app-hooks.js', 'music-lyrics.js', 'music-player.js']) {
         vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules', name), 'utf8'), context);
     }
     // updateUIWithState 定义在 music.js 的大闭包里，单独取出来和播放逻辑一起测。
@@ -85,6 +85,7 @@ function setup(api = {}) {
     app.engineTrackPath = track.path; // 默认当作第一首已经在引擎里
     app.renderLyrics = () => {};
     app.setNow = value => { context.__now = value; };
+    app.vmContext = context;
     return app;
 }
 
@@ -176,6 +177,7 @@ test('state polls never overlap', async () => {
 
 test('an engine load error ends the wait at once and is shown', async () => {
     const app = setup();
+    app.failureSkipDelayMs = 60000;
     const startedAt = Date.now();
     const loading = app.loadTrack(0, true);
     await tick(20);
@@ -185,7 +187,8 @@ test('an engine load error ends the wait at once and is shown', async () => {
     assert.equal(app.isTrackLoading, false);
     assert.equal(app.isPlaying, false);
     assert.equal(app.calls.includes('play'), false);
-    assert.match(app.trackBitrate.textContent, /unsupported codec/);
+    assert.match(app.trackBitrate.textContent, /加载失败：不支持这种音频格式/);
+    app.cancelFailureSkip();
 });
 
 test('old-track state arriving during a load does not touch the progress bar', async () => {
@@ -243,6 +246,92 @@ test('lyric lines are restyled only when the current line changes', () => {
     assert.equal(app.currentLyricIndex, 2);
     assert.equal(styleWrites, 0, 'steady frames must not rewrite per-line styles');
     assert.equal(layoutReads, 0, 'steady frames must not force layout');
+});
+
+// --- 引擎推送（协议 2）---
+
+const hello = { type: 'hello', protocol: 2, features: ['playback_state', 'cmd_seq', 'spectrum_binary', 'streaming'] };
+const pushed = (fields) => ({
+    type: 'playback_state', state: 'playing', is_playing: true, position: 10, duration: 200,
+    file_path: 'C:/music/a.flac', rev: 1, applied_seq: 0, ...fields
+});
+
+test('an engine that pushes state turns polling off, and a dropped socket turns it back on', () => {
+    const app = setup();
+    app.isPlaying = true;
+    app.startStatePolling();
+    assert.notEqual(app.statePollInterval, null);
+    app.handleEngineHello(hello);
+    assert.equal(app.statePollInterval, null);
+    app.startStatePolling();
+    assert.equal(app.statePollInterval, null, 'no polling while pushes arrive');
+    app.handleEngineDisconnected();
+    assert.notEqual(app.statePollInterval, null, 'falls back to polling an old or vanished engine');
+    app.stopStatePolling();
+});
+
+test('an older engine without hello keeps polling', () => {
+    const app = setup();
+    app.handleEnginePlaybackState(pushed({ is_playing: false }));
+    assert.equal(app.enginePush, false);
+    app.startStatePolling();
+    assert.notEqual(app.statePollInterval, null);
+    app.stopStatePolling();
+});
+
+test('pushed state from before our last command is ignored', async () => {
+    const app = setup({ musicPlay: async () => ({ status: 'success', state: { cmd_seq: 7 } }) });
+    app.handleEngineHello(hello);
+    await app.playTrack();
+    assert.equal(app.isPlaying, true);
+    app.handleEnginePlaybackState(pushed({ rev: 2, applied_seq: 6, state: 'stopped', is_playing: false }));
+    assert.equal(app.isPlaying, true, 'state from before the play command must not flip the button back');
+    app.handleEnginePlaybackState(pushed({ rev: 3, applied_seq: 7, position: 42 }));
+    assert.equal(app.isPlaying, true);
+    assert.equal(app.lastKnownCurrentTime, 42);
+});
+
+test('a push that lands while the command is in flight is applied once the command returns', async () => {
+    const reply = deferred();
+    const app = setup({ musicPlay: () => reply.promise });
+    app.handleEngineHello(hello);
+    const playing = app.playTrack();
+    await tick(1);
+    // 引擎执行了播放但没有输出设备，立刻停了；HTTP 回包比推送晚到。
+    app.handleEnginePlaybackState(pushed({ rev: 5, applied_seq: 3, state: 'stopped', is_playing: false }));
+    assert.equal(app.isPlaying, true, 'held while the command is in flight');
+    reply.resolve({ status: 'success', state: { cmd_seq: 3 } });
+    await playing;
+    await tick(1);
+    assert.equal(app.isPlaying, false, 'the engine’s confirmed state wins over the optimistic button');
+});
+
+test('buffering is shown while the streamed track waits for the decoder', () => {
+    const app = setup();
+    app.handleEngineHello(hello);
+    app.handleEnginePlaybackState(pushed({ rev: 1, state: 'buffering' }));
+    assert.equal(app.isBuffering, true);
+    assert.equal(app.isPlaying, true, 'buffering is still playing, not paused');
+    app.handleEnginePlaybackState(pushed({ rev: 2, state: 'playing' }));
+    assert.equal(app.isBuffering, false);
+});
+
+test('binary spectrum frames decode to the same array the JSON frames carried', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../Musicmodules/music-visualizer.js'), 'utf8');
+    const start = source.indexOf('app.decodeEngineBinaryFrame = ');
+    const end = source.indexOf('app.destroyVisualizer = ');
+    assert.ok(start > 0 && end > start);
+    const app = {};
+    vm.runInNewContext(source.slice(start, end), { app, DataView, ArrayBuffer, Array });
+    const bins = [0.5, 0.25, 1];
+    const buffer = new ArrayBuffer(4 + bins.length * 4);
+    const view = new DataView(buffer);
+    view.setUint8(0, 1); view.setUint8(1, 1); view.setUint16(2, bins.length, true);
+    bins.forEach((v, i) => view.setFloat32(4 + i * 4, v, true));
+    // 跨 vm 上下文的数组原型不同，比较结构即可。
+    assert.equal(JSON.stringify(app.decodeEngineBinaryFrame(buffer)), JSON.stringify({ type: 'spectrum_data', data: bins }));
+    view.setUint8(0, 9);
+    assert.equal(app.decodeEngineBinaryFrame(buffer), null, 'unknown frame kinds are ignored');
 });
 
 test('play after a failed load retries the load instead of playing nothing', async t => {
@@ -476,6 +565,289 @@ test('an engine that reports paused is believed at once after the grace period',
     app.updateUIWithState(readyState({ is_paused: true, current_time: 8 }).state);
     assert.equal(app.isPlaying, false, 'paused wins even if the clock still creeps');
 });
+
+// 放不了的歌：提示「跳过」并自己跳下一首；连续几首都放不了就停下。
+function failingSetup(broken, extra = {}) {
+    const toasts = [];
+    const app = setup({
+        musicLoad: async t => {
+            app.calls.push(`load:${t.title}`);
+            app.lastLoadedPath = t.path;
+            return broken.has(t.title) ? { status: 'error', message: '文件不存在' } : { status: 'success', state: {} };
+        },
+        getMusicState: async () => ({
+            status: 'success',
+            state: { file_path: app.lastLoadedPath, is_loading: false, is_playing: false, current_time: 0, duration: 200 }
+        }),
+        ...extra
+    });
+    app.playlist = ['a', 'b', 'c', 'd', 'e'].map(title => ({ path: `C:/music/${title}.flac`, title, artist: 'x' }));
+    app.playModes = ['repeat', 'repeat-one', 'shuffle'];
+    app.currentPlayMode = 0;
+    app.engineTrackPath = null;
+    app.failureSkipDelayMs = 30;
+    app.vmContext.MusicToast = {
+        show: opts => { toasts.push(opts); return { close() {}, update() {} }; },
+        dismiss: id => { toasts.push({ dismissed: id }); }
+    };
+    app.toasts = toasts;
+    app.shown = () => toasts.filter(t => t.message);
+    return app;
+}
+const loads = app => app.calls.filter(c => c.startsWith('load:')).map(c => c.slice(5));
+
+test('a track that cannot be loaded offers to skip and moves on by itself', async t => {
+    const app = failingSetup(new Set(['a']));
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip(); });
+    await app.loadTrack(0, true);
+    const toast = app.shown().at(-1);
+    assert.match(toast.message, /无法播放「a」.*文件不存在/);
+    assert.equal(toast.action.label, '跳过');
+    assert.equal(app.isPlaying, false);
+    assert.deepEqual(loads(app), ['a'], 'does not jump before the notice had its time');
+    await tick(4200); // 提示层在时，兜底定时器比倒计时多等几秒
+    assert.deepEqual(loads(app), ['a', 'b']);
+    assert.equal(app.isPlaying, true);
+    assert.equal(app.failureStreak, 0, 'a track that plays ends the streak');
+});
+
+test('pressing skip on the notice moves on at once, and only once', async t => {
+    const app = failingSetup(new Set(['a']));
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip(); });
+    await app.loadTrack(0, true);
+    const { action } = app.shown().at(-1);
+    action.run();
+    action.run();
+    await tick(300);
+    assert.deepEqual(loads(app), ['a', 'b']);
+});
+
+test('three unplayable tracks in a row stop playback instead of racing through the list', async t => {
+    const app = failingSetup(new Set(['a', 'b', 'c', 'd', 'e']));
+    delete app.vmContext.MusicToast.show; // 没有提示层时也要能自己跳、自己停
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip(); });
+    await app.loadTrack(0, true);
+    await tick(600);
+    assert.deepEqual(loads(app), ['a', 'b', 'c'], 'stops after the third failure');
+    assert.equal(app.isPlaying, false);
+    assert.match(app.trackBitrate.textContent, /加载失败/);
+});
+
+test('the stop after three failures is announced', async t => {
+    const app = failingSetup(new Set(['a', 'b', 'c', 'd', 'e']));
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip(); });
+    await app.loadTrack(0, true);
+    for (let i = 0; i < 2; i++) { app.shown().at(-1).action.run(); await tick(250); }
+    const last = app.shown().at(-1);
+    assert.match(last.message, /连续 3 首无法播放，已停止/);
+    assert.equal(last.action, undefined, 'nothing left to skip to');
+    await tick(300);
+    assert.deepEqual(loads(app), ['a', 'b', 'c']);
+});
+
+test('choosing another track while the skip is counting down cancels the skip', async t => {
+    const app = failingSetup(new Set(['a']));
+    delete app.vmContext.MusicToast.show;
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip(); });
+    await app.loadTrack(0, true);
+    await app.loadTrack(3, true);
+    await tick(300);
+    assert.deepEqual(loads(app), ['a', 'd'], 'the automatic skip must not pull playback away from the chosen track');
+    assert.ok(app.toasts.some(t => t.dismissed === 'playback-failure'), 'the old notice is taken down');
+});
+
+test('a track that fails while only being restored is reported but nothing is skipped', async t => {
+    const app = failingSetup(new Set(['a']));
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip(); });
+    await app.loadTrack(0, false);
+    await tick(300);
+    assert.deepEqual(loads(app), ['a']);
+    assert.match(app.shown().at(-1).message, /无法播放「a」/);
+    assert.equal(app.shown().at(-1).action, undefined);
+    assert.equal(app.failureStreak, 0);
+});
+
+test('a play echo that arrives very late, after we already paused again, is not taken for a key press', async t => {
+    const app = failingSetup(new Set(['a']));
+    app.failureSkipDelayMs = 60000;
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip(); });
+    // 机器很卡：占位音频的事件过了几秒才派发
+    app.phantomAudio.play = function () { this.paused = false; return Promise.resolve(); };
+    app.phantomAudio.pause = function () { this.paused = true; };
+    await app.loadTrack(0, true);
+    assert.deepEqual(loads(app), ['a']);
+    assert.equal(app.phantomAudio.paused, true);
+    app.setNow(Date.now() + 5000);
+    app.phantomAudio.onplay();
+    app.phantomAudio.onpause();
+    await tick(50);
+    assert.deepEqual(loads(app), ['a'], 'the failed track must not be loaded again by a stale event');
+    assert.equal(app.failureStreak, 1);
+});
+
+test('a track that failed is remembered with its reason until it plays again', async t => {
+    const failing = new Set(['a']);
+    const app = failingSetup(failing);
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip(); });
+    await app.loadTrack(0, false);
+    const track = app.playlist[0];
+    assert.match(app.failedTracks.get(track) || '', /文件不存在/);
+    failing.delete('a');
+    await app.loadTrack(0, false);
+    assert.equal(app.failedTracks.has(track), false, 'playing it again clears the mark');
+});
+
+test('a seek to a position that could not be worked out (NaN) is not sent to the engine', async () => {
+    const app = setup();
+    const before = app.calls.length;
+    const result = await app.seekTo(NaN);
+    assert.equal(result.status, 'error');
+    assert.equal(app.calls.slice(before).some(c => c.startsWith('seek')), false, 'the engine would read NaN as 0 and restart the song');
+    await app.seekTo(12);
+    assert.ok(app.calls.slice(before).some(c => c.startsWith('seek')));
+});
+
+test('a gapless switch restarts the playback clock and clears an old failure mark', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    app.playModes = ['repeat'];
+    app.currentPlayMode = 0;
+    app.shuffleQueue = [];
+    app.fileUrl = p => p;
+    app.playlist[1].duration = 245;
+    // 第二首上次没加载成功，标灰过
+    app.failedTracks.set(app.playlist[1], '加载超时');
+    app.isPlaying = true;
+    app.lastKnownCurrentTime = 190;
+    app.lastStateUpdateTime = Date.now();
+    app.syncTrackIndexByPath('C:/music/b.flac');
+    assert.equal(app.currentTrackIndex, 1);
+    assert.equal(app.lastKnownCurrentTime, 0, 'lyrics and progress start from the top of the new song');
+    assert.equal(app.durationEl.textContent, '245');
+    assert.equal(app.progress.style.width, '0%');
+    assert.equal(app.failedTracks.has(app.playlist[1]), false, 'it played, so it is not broken');
+});
+
+test('a gapless switch reported with a different path spelling still finds the song by file name', async t => {
+    const app = setup();
+    t.after(() => app.stopStatePolling());
+    app.playModes = ['repeat'];
+    app.currentPlayMode = 0;
+    app.shuffleQueue = [];
+    app.syncTrackIndexByPath('\\\\?\\D:/elsewhere/B.FLAC');
+    assert.equal(app.currentTrackIndex, 1);
+});
+
+// 引擎进程退出（崩溃、被杀）：以前每次查询都失败也没人管，按钮一直是「在播」、进度照走，其实没声音。
+test('when the engine stops answering while playing, the player stops and says why', async t => {
+    let alive = true;
+    const app = setup({
+        getMusicState: async () => (alive ? readyState({ is_playing: true }) : { status: 'error', message: 'fetch failed' })
+    });
+    const notices = [];
+    app.showPlaybackNotice = (m) => notices.push(m);
+    t.after(() => app.stopStatePolling());
+    await app.playTrack();
+    await tick(20);
+    assert.equal(app.isPlaying, true);
+    alive = false;
+    for (let i = 0; i < 4; i++) await app.pollState();
+    assert.equal(app.isPlaying, false, 'the button no longer claims it is playing');
+    assert.equal(notices.length, 1, 'said once, not on every poll');
+    assert.match(notices[0], /连不上音频引擎/);
+    for (let i = 0; i < 4; i++) await app.pollState();
+    assert.equal(notices.length, 1);
+    // 主进程把引擎重新拉起来以后，按播放是重新加载这首，不是对着空引擎发「播放」
+    alive = true;
+    app.calls.length = 0;
+    await app.playTrack();
+    assert.deepEqual(app.calls.slice(0, 1), ['load:a']);
+});
+
+test('an engine that came back empty after a restart gets the track loaded again on play', async t => {
+    let reloaded = false;
+    const app = setup({
+        getMusicState: async () => (reloaded ? readyState() : { status: 'success', state: { file_path: null, is_loading: false, is_playing: false, current_time: 0, duration: 0 } }),
+        musicLoad: async (t) => { app.calls.push(`load:${t.title}`); reloaded = true; return { status: 'success', state: {} }; }
+    });
+    t.after(() => app.stopStatePolling());
+    await app.pollState();
+    app.calls.length = 0;
+    await app.playTrack();
+    assert.equal(app.calls[0], 'load:a', 'play reloads instead of sending play to an empty engine');
+});
+
+// 引擎进程没了的时候切歌：不是歌的问题，不能把好好的歌标成坏文件、再自动跳下一首（下一首也一样失败）。
+test('a load that fails because the engine is gone does not mark the song broken or skip', async t => {
+    const app = setup({ musicLoad: async () => ({ status: 'error', message: 'fetch failed' }) });
+    const notices = [];
+    app.showPlaybackNotice = (m) => notices.push(m);
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip?.(); });
+    await app.loadTrack(1, true);
+    assert.equal(app.failedTracks.has(app.playlist[1]), false, 'the song is not greyed out as broken');
+    assert.equal(app.currentTrackIndex, 1);
+    await tick(30);
+    assert.equal(app.currentTrackIndex, 1, 'no automatic skip to the next song');
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /加载中断：连不上音频引擎/);
+});
+
+test('when the engine dies in the middle of a load, the wait ends early with the same message', async t => {
+    const app = setup({ getMusicState: async () => ({ status: 'error', message: 'fetch failed' }) });
+    const notices = [];
+    app.showPlaybackNotice = (m) => notices.push(m);
+    t.after(() => { app.stopStatePolling(); app.cancelFailureSkip?.(); });
+    const started = Date.now();
+    await app.loadTrack(1, true);
+    assert.ok(Date.now() - started < 8000, 'does not sit out the 12 second load timeout');
+    assert.equal(app.isTrackLoading, false);
+    assert.equal(app.failedTracks.has(app.playlist[1]), false);
+    assert.match(notices[0] || '', /加载中断：连不上音频引擎/);
+});
+
+// 推送连接断开那几秒里正好放完：playback_ended 只发给当时连着的客户端，丢了就停在结尾不往下走。
+test('a song that ends while the push connection is down still moves on, and only once', async t => {
+    let ended = false;
+    const app = setup({
+        getMusicState: async () => readyState(app.lastLoadedPath === 'C:/music/b.flac'
+            ? { is_playing: true, current_time: 1, duration: 180, file_path: 'C:/music/b.flac' }
+            : ended ? { is_playing: false, current_time: 200, duration: 200 } : { is_playing: true, current_time: 199.4, duration: 200 })
+    });
+    app.playModes = app.playModes || ['repeat'];
+    app.currentPlayMode = app.currentPlayMode || 0;
+    t.after(async () => { await tick(300); app.stopStatePolling(); app.cancelFailureSkip?.(); });
+    await app.playTrack();
+    app.stopStatePolling(); // 下面手动一次次轮询
+    await tick(5);
+    await app.pollState();
+    assert.equal(app.isPlaying, true);
+    app.calls.length = 0;
+    ended = true;
+    await app.pollState();
+    // 同一次放完又从另一条路报上来（旧引擎没有推送、但连接上还会发 playback_ended）：不再切一次
+    assert.equal(app.handlePlaybackEnded('push'), false);
+    await tick(20);
+    assert.deepEqual(app.calls.filter(c => c.startsWith('load:')), ['load:b'], 'the next song is loaded');
+    app.stopStatePolling();
+    await app.pollState();
+    assert.deepEqual(app.calls.filter(c => c.startsWith('load:')), ['load:b'], 'and only once');
+});
+
+test('with the push connection up, a stopped engine at the end is left to the push event', async t => {
+    const app = setup({ getMusicState: async () => readyState({ is_playing: true, current_time: 100, duration: 200 }) });
+    app.playModes = ['repeat']; app.currentPlayMode = 0;
+    t.after(() => app.stopStatePolling());
+    await app.playTrack();
+    app.stopStatePolling();
+    await tick(5);
+    await app.pollState();
+    app.ws = { readyState: 1 };
+    app.api.getMusicState = async () => readyState({ is_playing: false, current_time: 200, duration: 200 });
+    app.calls.length = 0;
+    await app.pollState();
+    assert.deepEqual(app.calls.filter(c => c.startsWith('load:')), []);
+});
+
 test('loading intent does not advance the clock or send pause; readiness uses the accepted target', async t => {
     const canonical = 'D:/library/a.flac';
     const firstPoll = deferred();

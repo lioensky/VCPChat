@@ -22,16 +22,32 @@
         // Something other than the clock changed since the last drawn frame.
         let dirty = true, canvasSmoothing = null;
         const cap = U.createFrameCap();
+        // Song handover (host: songHandover). While the host waits for the new
+        // song's lyrics the old journey runs on, the camera tilting up to the
+        // sky and the words put away; the new journey then opens tilted up
+        // and settles down into its first shot, the old sky dissolving into
+        // the new. `leaving` holds the old song's last frame and when it went.
+        const veil = U.createHandoverVeil(mode.root);
+        const overlay = U.watchOverlay(mode.root);
+        // arriving: progress 0..1 of the settle into the new song (0 = none).
+        let leaving = null, arriving = 0, tiltClock = 0, revealPending = false;
+        // themeHold: one more picture in the old colours, kept for the dissolve.
+        let themeHold = false, revealMs = 1000, lastJumpAt = -Infinity, drawnAt = 0;
+        const LEAVE_TILT_S = 1.1, ARRIVE_TILT_S = 1.8, TILT_ANGLE = 0.95;
+        const ease = k => k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k);
         const Optics = () => global.MusicStageDioramaOptics;
         const wantsCanvasSmoothing = () => !(Optics()?.active(mode.config) ?? false);
         const onset = R.createAudioOnset();
-        const audio = { energy: 0, impact: 0, vocal: 0, spectrum: new Float32Array(24) };
-        const palette = () => services?.app?.stagePalette || {};
+        const audio = { energy: 0, impact: 0, onsets: 0, vocal: 0, spectrum: new Float32Array(24) };
+        let appliedPalette = null;
+        const palette = () => (themeHold && appliedPalette) || services?.app?.stagePalette || {};
         const dayLens = {};
+        // The settings as drawn: the chosen tier, less what the frame rate made it drop.
+        const drawn = () => renderScale.config(mode.config);
         const options = () => ({
             ...(mode.config.modes?.diorama || {}),
             animationIntensity: mode.config.animationIntensity ?? 1,
-            reducedMotion: Boolean(reduced?.matches), aspect: width / height, quality: mode.config.quality
+            reducedMotion: Boolean(reduced?.matches), aspect: width / height, quality: drawn().quality
         });
         const renderFallback = frame => {
             fallback.hidden = false;
@@ -45,6 +61,7 @@
             U.updateWords(Array.from(fallbackLine.children), frame.wordStates || []);
         };
         const renderScale = U.createRenderScale();
+        let lenslessWarm = false;
         const resize = () => {
             width = Math.max(1, mode.root.clientWidth || global.innerWidth || 1);
             height = Math.max(1, mode.root.clientHeight || global.innerHeight || 1);
@@ -66,6 +83,7 @@
             renderer?.forceContextLoss();
             renderer?.domElement.remove();
             renderer = camera = scene = null;
+            lenslessWarm = false;
             initialized = false;
             dirty = true;
             // A rebuilt stage starts with empty layers: compile the journey into them again.
@@ -94,9 +112,10 @@
             }, 800 * 2 ** contextRetries++);
         };
         // Settings that force the journey, lyric layout and events to be rebuilt.
+        const IDLE_DURATION = 240;
         const REBUILD_KEYS = ['cameraSpeed', 'motionAmount', 'animationIntensity', 'reducedMotion',
             'cameraCuts', 'aspect', 'lyricCarrier', 'showTranslation', 'fireworks',
-            'narrativeStations', 'stationIntensity'];
+            'narrativeStations', 'stationIntensity', 'lyricFont'];
         const update = (frame, force = false) => {
             if (mode.destroyed || mode.suspended) return;
             latest = frame;
@@ -107,12 +126,18 @@
             }
             // Paused with nothing changed: the last picture is still right, so
             // the GPU can rest. Playing: no more often than the tier's rate.
+            world.setCoverColour?.(services?.app?.stageCoverColour);
+            // A paused stage still finishes easing into a new cover's colour.
             const still = !frame.isPlaying && lastTime !== null
-                && R.finiteNumber(frame.playbackTime) === lastTime;
-            if (!force && !dirty && (still || !cap.take(performance.now(), mode.config.quality))) return;
+                && R.finiteNumber(frame.playbackTime) === lastTime && !world.coverSettling?.();
+            if (!force && !dirty && (still || !cap.take(performance.now(), drawn().quality))) return;
             dirty = false;
             const nextIdentity = frame.track?.path || frame.track?.title || 'last-train';
-            const nextDuration = R.finiteNumber(frame.duration, R.finiteNumber(frame.track?.duration));
+            // Nothing chosen yet (or a length not known yet): plan an ordinary
+            // journey so the waiting picture is a platform at dusk, not the
+            // terminus fog of an eight-second line.
+            const knownDuration = R.finiteNumber(frame.duration, R.finiteNumber(frame.track?.duration));
+            const nextDuration = knownDuration > 0 || frame.lines?.length ? knownDuration : IDLE_DURATION;
             const settings = options();
             const nextOptions = JSON.stringify(REBUILD_KEYS.map(key => settings[key]));
             const nextPalette = JSON.stringify(palette());
@@ -128,9 +153,16 @@
                 recompile = true;
                 onset.reset();
                 lastTime = null;
+                if (leaving) {
+                    leaving = null;
+                    arriving = 1e-6;
+                    lyrics.setVisible(true);
+                    revealPending = true;
+                }
             }
-            if (nextPalette !== paletteKey) {
-                world.setPalette(palette());
+            if (nextPalette !== paletteKey && !themeHold) {
+                appliedPalette = palette();
+                world.setPalette(appliedPalette);
                 paletteKey = nextPalette;
                 recompile = true;
             }
@@ -161,12 +193,18 @@
             const time = R.finiteNumber(frame.playbackTime);
             const dt = lastTime === null ? 0 : time - lastTime;
             const seek = lastTime === null || dt < 0 || dt > 0.5;
+            // The same song starting over (single-track repeat, or played again
+            // from its end): come down from the sky into its opening rather
+            // than cutting from the last shot straight back to the first.
+            if (dt < 0 && !leaving && time < 3 && Number.isFinite(compiledDuration)
+                && lastTime > compiledDuration - 12) arriving = 1e-6;
             // Freeze all live modulation, not just the camera, on repeated or paused frames.
             if (seek || frame.isPlaying && dt > 0) {
                 const live = onset.update(frame);
                 const gain = R.clamp(settings.audioReactivity ?? 1, 0, 2);
                 audio.energy = live.energy * gain;
                 audio.impact = live.impact * gain;
+                audio.onsets = live.onsets;
                 const target = R.clamp(frame.audio?.vocal) * gain;
                 audio.vocal = seek ? target : audio.vocal
                     + (target - audio.vocal) * (1 - Math.exp(-dt * (target > audio.vocal ? 16 : 5)));
@@ -194,13 +232,33 @@
             camera.up.set(0, 1, 0);
             camera.lookAt(pose.look.x, pose.look.y, pose.look.z);
             camera.rotateZ(pose.roll);
+            // Up to the sky on the way out of a song, down from it on the way
+            // into the next. Not inside the saloon: there the sky is a ceiling.
+            const outdoors = 1 - R.clamp(pose.cabinView || 0);
+            // Opening inside the saloon: no sky to come down from; the dissolve does it.
+            if (arriving && outdoors < 0.5) arriving = 0;
+            // Advance by real time, but a frame that took longer than a quarter
+            // second (the rebuild's first frame) counts for a thirtieth, so it
+            // cannot swallow the move; on a slow machine the move still keeps time.
+            const now = performance.now();
+            const gap = Math.max(0, (now - (tiltClock || now)) / 1000);
+            const step = gap > 0.25 ? 1 / 30 : Math.min(0.1, gap);
+            tiltClock = leaving || arriving ? now : 0;
+            if (leaving) leaving.tilt = Math.min(1, (leaving.tilt || 0) + step / LEAVE_TILT_S);
+            if (arriving) arriving = Math.min(1, arriving + step / ARRIVE_TILT_S);
+            const tilt = leaving ? ease(leaving.tilt) : arriving ? 1 - ease(arriving) : 0;
+            if (tilt > 0 && outdoors > 0) {
+                camera.position.y += tilt * outdoors * 1.6;
+                camera.rotateX(tilt * outdoors * TILT_ANGLE);
+            }
+            if (arriving >= 1) arriving = 0;
             if (camera.fov !== pose.fov) {
                 camera.fov = pose.fov;
                 camera.updateProjectionMatrix();
             }
             // Cabin window foreground: derived from gaze vs. track heading, never from history.
-            world.updateCabin?.(camera, pose, track, width / height, mode.config);
-            world.update(timeline, track, pose, settings.reducedMotion ? 0 : time, mode.config, audio);
+            world.updateCabin?.(camera, pose, track, width / height, drawn());
+            world.update(timeline, track, pose, settings.reducedMotion ? 0 : time, drawn(), audio);
             // Exposure: analytic chapter swell + low-frequency breathing (frozen on pause).
             const moving = !settings.reducedMotion && (settings.motionAmount ?? 1) > 0
                 && (settings.animationIntensity ?? 1) > 0;
@@ -209,13 +267,18 @@
             // The saloon is lit from its own ceiling and sits a little lower.
             renderer.toneMappingExposure = 1.15 * (1 + swell * 0.12 + breath) * (1 - 0.2 * (pose.cabinView || 0));
             const bars = settings.letterbox !== false && settings.geometryMode !== 'corridor'
-                ? Math.max(0, (height - width / 2.39) / 2) * (1 - pose.state.openness * 0.75) : 0;
-            // Lyrics stay clear of the frame edge and of the letterbox bars.
-            lyrics.update(time, settings, audio, camera, { x: 0.94, y: Math.max(0.5, 0.95 - 2 * bars / height) });
-            events.update(time, settings, mode.config.quality, palette(), audio);
+                // A tall window would lose most of the picture to a 2.39:1 frame;
+                // the bars stop at the depth they reach on a 16:9 desktop window.
+                ? Math.min(Math.max(0, (height - width / 2.39) / 2), height * 0.14)
+                    * (1 - pose.state.openness * 0.75) : 0;
+            // Lyrics stay clear of the frame edge, the letterbox bars and the track card.
+            lyrics.update(time, settings, audio, camera,
+                { x: 0.94, y: Math.max(0.5, 0.95 - 2 * bars / height), avoid: overlay.box });
+            events.update(time, settings, drawn().quality, palette(), audio);
             letterbox.style.setProperty('--diorama-bar', `${bars}px`);
             fallback.hidden = true;
-            if (frame.isPlaying && renderScale.tick(performance.now(), cap.aim(mode.config.quality))) resize();
+            if (frame.isPlaying && renderScale.tick(performance.now(), cap.aim(drawn().quality))) resize();
+            if (!lenslessWarm) lenslessWarm = U.warmLensless(T, renderer, scene, camera, renderScale, drawn().quality);
             renderer.info.reset();
             world.renderReflection(renderer, camera);
             // By day the paper-white sky is brighter than the lens's usual
@@ -225,9 +288,14 @@
             const tuned = mode.config.modes?.diorama || {};
             const lens = Object.assign(dayLens, tuned, {
                 threshold: palette().light ? 1.4 : tuned.threshold ?? 0.82, cabin: pose.cabinView || 0 });
-            if (optics) optics.render(renderer, scene, camera, settings.reducedMotion ? 0 : time, mode.config, lens);
+            if (optics) optics.render(renderer, scene, camera, settings.reducedMotion ? 0 : time, drawn(), lens);
             else renderer.render(scene, camera);
+            // Read back now: once this task ends the drawing buffer is gone.
+            if (leaving || themeHold) veil.capture(renderer.domElement, { every: themeHold ? 0 : 250 });
+            // Dissolve once the new song's first picture is really there.
+            else if (revealPending) { revealPending = false; veil.reveal(revealMs); revealMs = 1000; }
             lastTime = time;
+            drawnAt = performance.now();
         };
         const initialize = () => {
             if (initializing) return initializing;
@@ -260,7 +328,12 @@
                     if (renderer?.domElement !== canvas) return;
                     recoverContext();
                 });
+                // Built a step a frame, so the way in keeps moving meanwhile.
+                await U.breathe();
+                if (mode.destroyed || !renderer) return;
                 world = global.MusicStageDioramaWorld.create(T, scene);
+                await U.breathe();
+                if (mode.destroyed || !renderer) return;
                 lyrics = global.MusicStageDioramaLyrics.create(T, scene);
                 events = global.MusicStageDioramaEvents.create(T, scene);
                 optics = global.MusicStageDioramaOptics?.create(T);
@@ -269,7 +342,16 @@
                 // standard material recompiles the first time it appears.
                 world.prepareEnvironment?.(renderer);
                 // The lens draws the scene offscreen; without it only the water pass does.
-                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true });
+                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true, report: false });
+                if (mode.destroyed || !renderer) return;
+                await U.breathe();
+                if (mode.destroyed || !renderer) return;
+                if (!canvasSmoothing) await optics?.precompile?.(renderer);
+                if (mode.destroyed || !renderer) return;
+                // Lens programs included, so the first frame has nothing left to link.
+                await U.settlePrograms(renderer, () => !mode.destroyed && !!renderer);
+                if (mode.destroyed || !renderer) return;
+                await U.breathe();
                 if (mode.destroyed || !renderer) return;
                 initialized = true;
                 dirty = true;
@@ -284,10 +366,48 @@
             });
             return initializing;
         };
-        mode.updateFrame = frame => update(frame);
+        mode.updateFrame = frame => {
+            // The host moved on without a new song after all (skipped back): just carry on.
+            if (leaving && (frame.track?.path || frame.track?.title || 'last-train') === identity
+                && frame.lines === source) {
+                leaving = null;
+                arriving = 1e-6;
+                lyrics?.setVisible(true);
+            }
+            // A jump within the song (the progress bar, a skip of a few
+            // seconds) dissolves from where the ride was instead of cutting.
+            const at = R.finiteNumber(frame.playbackTime);
+            if (initialized && latest && lastTime !== null && !leaving && !arriving && !themeHold
+                && frame.lines === source && Math.abs(at - lastTime - (frame?.isPlaying ? (performance.now() - drawnAt) / 1000 : 0)) > 2 && !options().reducedMotion
+                && performance.now() - lastJumpAt > 600) {
+                lastJumpAt = performance.now();
+                themeHold = true;
+                try { update({ ...latest, playbackTime: lastTime }, true); } finally { themeHold = false; }
+                if (veil.captured) { revealPending = true; revealMs = 450; }
+            }
+            update(frame);
+        };
+        // Host: the next song is coming. Returns true when this mode shows the
+        // way there itself; the host then sends holdFrame until it is ready.
+        mode.beginSongHandover = () => {
+            if (!initialized || !latest || lastTime === null) return false;
+            if (!leaving) leaving = { since: performance.now(), frame: latest, time: lastTime };
+            lyrics.setVisible(false);
+            return true;
+        };
+        // The old journey running on while the host waits for the new song.
+        mode.holdFrame = frame => {
+            if (!leaving || !initialized) return;
+            const elapsed = (performance.now() - leaving.since) / 1000;
+            const held = { ...leaving.frame, audio: frame.audio, isPlaying: true,
+                playbackTime: leaving.time + elapsed };
+            update(held);
+        };
         mode.resize = () => { resize(); if (latest && initialized) update(latest, true); };
         const baseConfig = mode.updateConfig;
         mode.updateConfig = config => {
+            // A tier picked by hand starts the automatic stepping down afresh.
+            if (config?.quality !== mode.config.quality) renderScale.reset();
             baseConfig(config);
             // The canvas is antialiased only when the lens is off; that is fixed
             // when the context is made, so a change of tier rebuilds it.
@@ -300,10 +420,23 @@
             resize();
             if (latest) update(latest, true);
         };
-        mode.updateTheme = () => { if (latest) update(latest, true); };
+        // Day and night swap the whole sky: dissolve from the old picture
+        // into the new one rather than cutting, as a song change does.
+        mode.updateTheme = () => {
+            if (!latest) return;
+            if (initialized && !leaving && !options().reducedMotion
+                && JSON.stringify(palette()) !== paletteKey) {
+                themeHold = true;
+                try { update(latest, true); } finally { themeHold = false; }
+                if (veil.captured) { revealPending = true; revealMs = 700; }
+            }
+            update(latest, true);
+        };
         const resume = mode.resume;
         mode.resume = () => { resume(); cap.reset(); if (latest) update(latest, true); };
         // The layers hold nothing to describe until shaders are warm and the first frame has run.
+        // For the settings: how far below the chosen tier it is drawing (cheap, polled).
+        mode.getDegrade = () => ({ steps: renderScale.steps, quality: drawn().quality });
         mode.getDebugSnapshot = () => ({
             initialized, fallbackMode, rebuilds,
             ...(initialized ? { ...world?.snapshot(), ...lyrics?.snapshot(), ...events?.snapshot(camera) } : null),
@@ -312,12 +445,16 @@
             acts: timeline?.acts.map(a => ({ kind: a.kind, start: a.start, end: a.end })),
             cutsCount: timeline?.cuts.length || 0, rhythmSource: timeline?.rhythmSource,
             pixelRatio: renderer?.getPixelRatio(), renderScale: renderScale.factor,
+            degradeSteps: renderScale.steps, drawnQuality: drawn().quality,
+            handover: leaving ? 'leaving' : arriving ? 'arriving' : null,
             drawCalls: renderer?.info.render.calls, triangles: renderer?.info.render.triangles,
             geometries: renderer?.info.memory.geometries, textures: renderer?.info.memory.textures,
             programs: renderer?.info.programs?.length, canvasSmoothing,
             signSpectrum: Array.from(audio.spectrum)
         });
         mode.scope.add(() => {
+            veil.destroy();
+            overlay.destroy();
             global.clearTimeout(settleTimer);
             global.clearTimeout(contextTimer);
             disposeGraphics();

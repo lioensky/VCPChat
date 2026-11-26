@@ -140,9 +140,15 @@
         return normalized;
     };
 
+    // Lyric files carry marker lines and placeholder translations ("//",
+    // "●●●", dashes) that time a break but are not text. A string counts as
+    // text only if it holds a letter or a digit, in any script.
+    const readableText = (text) => /[\p{L}\p{N}]/u.test(String(text ?? ''));
+
     const resolveSupplementalText = (line) => {
-        const translation = String(line?.translation ?? '').trim();
-        const romanization = String(line?.romanization ?? '').trim();
+        const keep = text => { const value = String(text ?? '').trim(); return readableText(value) ? value : ''; };
+        const translation = keep(line?.translation);
+        const romanization = keep(line?.romanization);
         if (translation && romanization && translation !== romanization) {
             return `${romanization}\n${translation}`;
         }
@@ -400,6 +406,17 @@
         };
     };
 
+    const plainLinesCache = new WeakMap();
+    const plainLinesOf = (source) => {
+        if (!Array.isArray(source) || !source.length) return EMPTY_LINES;
+        let cached = plainLinesCache.get(source);
+        if (!cached) {
+            cached = Object.freeze(source.map(text => String(text ?? '').trim()).filter(readableText));
+            plainLinesCache.set(source, cached);
+        }
+        return cached;
+    };
+
     const createFrame = (app, now = performance.now()) => {
         const wallNow = Date.now();
         const lines = normalizeLines(app?.currentLyrics);
@@ -426,6 +443,9 @@
             lineProgress,
             ...wordState,
             lines,
+            // 只有纯文本、不带时间的歌词（app.currentLyricsPlainLines）：原样交给舞台，
+            // 要不要按时长铺开由舞台自己决定（MusicStageModeUtils.withPlainLyrics）
+            plainLines: lines.length ? EMPTY_LINES : plainLinesOf(app?.currentLyricsPlainLines),
             audio: resolveAudioBands(spectrum),
             viewport: {
                 width: global.innerWidth || 1,
@@ -586,6 +606,7 @@
         seededRandom,
         splitGraphemes,
         normalizeLines,
+        readableText,
         buildFallbackWords,
         buildGlyphTimeline,
         resolveSupplementalText,

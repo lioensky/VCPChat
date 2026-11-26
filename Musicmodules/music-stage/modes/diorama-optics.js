@@ -196,6 +196,31 @@
                     renderer.setRenderTarget(previous);
                 }
             },
+            // The lens's own passes are a scene of their own, so the stage's
+            // warm-up never sees them: compile them here, each for where it
+            // draws, or the first frame links them all while the window waits.
+            async precompile(renderer) {
+                if (dead) return;
+                const previous = renderer.getRenderTarget();
+                const probe = new T.WebGLRenderTarget(1, 1, { type: T.HalfFloatType, depthBuffer: false });
+                try {
+                    for (const [shader, destination] of [[prefilter, probe], [down, probe], [up, probe], [material, null]]) {
+                        quad.material = shader;
+                        renderer.setRenderTarget(destination);
+                        await global.MusicStageModeUtils.compileReady(renderer, scene, camera);
+                        if (dead) return;
+                        // One pass a frame: without background compiling each link blocks.
+                        await global.MusicStageModeUtils.breathe();
+                        if (dead) return;
+                    }
+                } catch (error) {
+                    console.warn('[MusicStage] lens warm-up skipped:', error);
+                } finally {
+                    quad.material = material;
+                    renderer.setRenderTarget(previous);
+                    probe.dispose();
+                }
+            },
             destroy() {
                 if (dead) return;
                 dead = true;

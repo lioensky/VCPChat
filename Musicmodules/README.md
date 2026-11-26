@@ -127,3 +127,22 @@ Folia / folia-major 为 VMusic 歌词舞台的早期探索提供了重要灵感�
 - 本地参考源码：`开发文档/folia-major-main`
 
 Folia 的版权和许可证文本以其上游仓库及本地参考源码中的 `LICENSE` 为准。上述归属不涵盖 VCP 自研 Rust 音频引擎、播放器主界面和其他明确标注为 VCP 原创的实现。
+
+## 其他第三方参考与许可证
+
+- **首页 3D 档案阵列**（[`music-archive/archive-scene.js`](music-archive/archive-scene.js)）：卡盒尺寸、阵列与端详着色、雾和后期的公式按 [Rhine-Music-Database](https://github.com/MikeQu223/Rhine-Music-Database)（提交 e52a6f4）的源码改写成 WebGL，逐项对照见 [`docs/music-archive-3d-source-mapping.md`](../docs/music-archive-3d-source-mapping.md)。未使用其模型、贴图、字体、标志。该项目以 MIT 许可证发布：
+
+  > MIT License
+  >
+  > Copyright (c) 2026 LBEILC
+  >
+  > Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+  >
+  > The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+  >
+  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+- **首页档案页与歌词栏的交互细节**（索引标尺、分组切换、行索引、状态标签、快捷键卡、颗粒质感等，注释里标了「借鉴 RhinE」）：参考 [RhinE](https://github.com/ericzhang12111-cell/RhinE)（MIT，Copyright (c) 2026 the Audio Archive authors）的做法重新实现，未复制其代码和素材。
+- **封面墙、墨痕等歌词舞台**：只参考 Folia 的思路，代码为 VMusic 自写（文件里不含 Folia 代码的不带 AGPL 注释）。
+- **曲库与播放的若干功能**（电台去重、听歌统计、频谱检查、歌单导入导出、EQ 预设等）：参考开源播放器 original-sound-hq-player（AGPL-3.0）的功能设计，代码为 VMusic 自写，未复制其源码。
+- 舞台贴图素材来源见 [`music-stage/assets/CREDITS.md`](music-stage/assets/CREDITS.md)。

@@ -35,7 +35,10 @@ function setupLyrics(app) {
                     original: line.original || line.fullText || '',
                     translation: line.translation || '',
                     romanization: line.romanization || ''
-                })) : []
+                })) : [],
+                // 刚切歌、还在找词时别让 AI 以为这首没有歌词。
+                loading: Boolean(track) && !app.currentLyrics.length
+                    && app.lyricsLoadingToken != null && app.lyricsLoadingToken === app.lyricsRequestToken
             }
         });
     });
@@ -44,7 +47,19 @@ function setupLyrics(app) {
     const LYRIC_MISS_TTL_MS = 10 * 60 * 1000;
     const LYRIC_SEARCH_SETTLE_MS = 500;
 
-    app.fetchAndDisplayLyrics = async (artist, title, options = {}) => {
+    // 找词期间记下这次请求；被新请求或手选歌词取代后自然不算在找。
+    app.fetchAndDisplayLyrics = async (...args) => {
+        const run = loadLyrics(...args);
+        const token = app.lyricsRequestToken;
+        app.lyricsLoadingToken = token;
+        try {
+            return await run;
+        } finally {
+            if (app.lyricsLoadingToken === token) app.lyricsLoadingToken = null;
+        }
+    };
+
+    const loadLyrics = async (artist, title, options = {}) => {
         app.resetLyrics();
         const requestToken = app.lyricsRequestToken;
         if (!app.api?.getMusicLyrics) return;
@@ -58,19 +73,30 @@ function setupLyrics(app) {
 
         // 先按原始标题读取，兼容历史上以“歌名.flac”保存的缓存；
         // 未命中时再读取规范化标题，新下载一律不携带音频扩展名。
-        let cached = await app.api.getMusicLyrics({
-            artist,
-            title: rawTitle,
-            rawObject: true
-        });
-        if (requestToken !== app.lyricsRequestToken) return;
-        if (!cached && normalizedTitle && normalizedTitle !== rawTitle) {
+        let cached = null;
+        try {
             cached = await app.api.getMusicLyrics({
                 artist,
-                title: normalizedTitle,
-                rawObject: true
+                title: rawTitle,
+                rawObject: true,
+                // 歌曲文件旁边同名的 .ttml / .lrc 优先
+                path: typeof options.path === 'string' ? options.path : undefined
             });
             if (requestToken !== app.lyricsRequestToken) return;
+            if (!cached && normalizedTitle && normalizedTitle !== rawTitle) {
+                cached = await app.api.getMusicLyrics({
+                    artist,
+                    title: normalizedTitle,
+                    rawObject: true
+                });
+                if (requestToken !== app.lyricsRequestToken) return;
+            }
+        } catch (error) {
+            // 读本地歌词本身出错：以前停在「正在加载歌词…」不动
+            if (requestToken !== app.lyricsRequestToken) return;
+            console.error('Failed to read saved lyrics:', error);
+            app.lyricsList.innerHTML = '<li class="no-lyrics">歌词读取失败，可以点「获取歌词」重新找一份</li>';
+            return;
         }
 
         if (cached) {
@@ -79,6 +105,12 @@ function setupLyrics(app) {
                 app.currentLyrics = app.normalizeStructuredLyrics(cached);
             } else if (typeof cached === 'string') {
                 app.currentLyrics = app.parseLrc(cached);
+            }
+            if (!app.currentLyrics.length) {
+                app.currentLyricsPlain = plainLyricCount(cached);
+                // 有歌词文件，但里面一句带时间的都没有（纯文本歌词、乱码、只有标题信息）：以前歌词区一片空白
+                app.lyricsList.innerHTML = '<li class="no-lyrics">这份歌词没有时间轴，没法跟着歌走；可以点「获取歌词」换一份</li>';
+                return;
             }
             app.renderLyrics();
         } else {
@@ -91,12 +123,15 @@ function setupLyrics(app) {
 
             // 自动下载与手动搜索严格复用同一条候选搜索、解析和写盘链路。
             // 这避免单体 fetchMusicLyrics 接口与手动候选接口出现 provider 行为差异。
-            app.lyricsList.innerHTML = '<li class="no-lyrics">正在跨平台审计高精度歌词...</li>';
+            app.lyricsList.innerHTML = '<li class="no-lyrics">正在找歌词…</li>';
             // 连续切歌时路过的歌不联网：停留片刻仍是这首才开始搜索。
             await new Promise(resolve => setTimeout(resolve, LYRIC_SEARCH_SETTLE_MS));
             if (requestToken !== app.lyricsRequestToken) return;
             try {
                 let fetched = null;
+                // 搜索或下载本身失败（多半是断网）不算「这首没有歌词」：不记进短期不再搜的名单，
+                // 网络好了再放这首就会重新找。
+                let failed = false;
                 if (app.api.searchMusicLyricsCandidates && app.api.applyMusicLyricsCandidate) {
                     const searchResult = await app.api.searchMusicLyricsCandidates({
                         artist,
@@ -105,6 +140,7 @@ function setupLyrics(app) {
                         album
                     });
                     if (requestToken !== app.lyricsRequestToken) return;
+                    if (searchResult?.success === false) failed = true;
 
                     const durationDifference = candidate => duration > 0 && candidate.durationMs > 0
                         ? Math.abs(candidate.durationMs - duration * 1000) : Infinity;
@@ -123,6 +159,7 @@ function setupLyrics(app) {
                             title: normalizedTitle
                         });
                         if (requestToken !== app.lyricsRequestToken) return;
+                        if (!applyResult?.success) failed = true;
                         if (applyResult?.success && applyResult.lyrics) {
                             fetched = applyResult.lyrics;
                             console.log(
@@ -153,7 +190,13 @@ function setupLyrics(app) {
                     } else if (typeof fetched === 'string') {
                         app.currentLyrics = app.parseLrc(fetched);
                     }
-                    app.renderLyrics();
+                    if (app.currentLyrics.length) app.renderLyrics();
+                    else {
+                        app.currentLyricsPlain = plainLyricCount(fetched);
+                        app.lyricsList.innerHTML = app.currentLyricsPlain ? '<li class="no-lyrics">这份歌词没有时间轴，没法跟着歌走；可以点「获取歌词」换一份</li>' : '<li class="no-lyrics">暂无歌词</li>';
+                    }
+                } else if (failed) {
+                    app.lyricsList.innerHTML = '<li class="no-lyrics">歌词获取失败，检查网络后重新播放这首</li>';
                 } else {
                     lyricSearchMisses.set(missKey, Date.now() + LYRIC_MISS_TTL_MS);
                     app.lyricsList.innerHTML = '<li class="no-lyrics">暂无歌词</li>';
@@ -161,7 +204,7 @@ function setupLyrics(app) {
             } catch (error) {
                 if (requestToken !== app.lyricsRequestToken) return;
                 console.error('Failed to fetch lyrics from network:', error);
-                app.lyricsList.innerHTML = '<li class="no-lyrics">歌词获取失败</li>';
+                app.lyricsList.innerHTML = '<li class="no-lyrics">歌词获取失败，检查网络后重新播放这首</li>';
             }
         }
     };
@@ -213,28 +256,40 @@ function setupLyrics(app) {
         if (!lrcContent || typeof lrcContent !== 'string') return [];
 
         const lines = lrcContent.replace(/^\uFEFF/, '').split(/\r?\n/);
-        const timeRegex = /\[(\d{2}):(\d{2})[.:](\d{2,3})\]/g;
+        const timeRegex = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
         const rawEntries = [];
+        // 只有时间戳、没有字的行是「这一句到这里结束」（间奏开始），记下来用来算每句的结束时间。
+        const breaks = [];
+        // 文件自带的 [offset:+500]（毫秒，正数表示歌词提前出现），按 LRC 的约定从每个时间戳里减掉。
+        let fileOffset = 0;
+        const offsetTag = /^\[offset:\s*([+-]?\d+)\s*\]/im.exec(lrcContent);
+        if (offsetTag) fileOffset = Math.max(-600, Math.min(600, Number(offsetTag[1]) / 1000)) || 0;
+        const stamp = (match) => {
+            const minutes = parseInt(match[1], 10);
+            const seconds = parseInt(match[2], 10);
+            const milliseconds = parseInt(String(match[3] || '0').padEnd(3, '0'), 10);
+            const raw = Math.max(0, minutes * 60 + seconds + milliseconds / 1000 - fileOffset);
+            return Number((raw * app.lyricSpeedFactor + app.lyricOffset).toFixed(3));
+        };
 
         for (const line of lines) {
             const trimmedLine = line.trim();
             if (!trimmedLine) continue;
-            // 忽略头部元数据（如 [ti:...], [ar:...] 等）
+            // 忽略头部元数据（如 [ti:...], [ar:...], [offset:...] 等）
             if (/^\[[a-zA-Z]+:/.test(trimmedLine)) continue;
 
             const text = trimmedLine.replace(timeRegex, '').trim();
-            if (!text || text === '//') continue;
-
             let match;
             timeRegex.lastIndex = 0;
-            while ((match = timeRegex.exec(trimmedLine)) !== null) {
-                const minutes = parseInt(match[1], 10);
-                const seconds = parseInt(match[2], 10);
-                const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
-                const time = (minutes * 60 + seconds + milliseconds / 1000) * app.lyricSpeedFactor + app.lyricOffset;
+            if (!text) {
+                while ((match = timeRegex.exec(trimmedLine)) !== null) breaks.push(stamp(match));
+                continue;
+            }
+            if (text === '//') continue;
 
+            while ((match = timeRegex.exec(trimmedLine)) !== null) {
                 rawEntries.push({
-                    time: Number(time.toFixed(3)),
+                    time: stamp(match),
                     text
                 });
             }
@@ -255,6 +310,21 @@ function setupLyrics(app) {
         };
 
         const resultLines = [];
+        const scriptOf = (text) => {
+            const t = String(text);
+            if (/[\u3040-\u30ff\u31f0-\u31ff]/.test(t)) return 'kana';
+            if (/[\uac00-\ud7af\u1100-\u11ff]/.test(t)) return 'hangul';
+            if (/[\u3400-\u9fff\uf900-\ufaff]/.test(t)) return 'han';
+            if (/[a-z]/i.test(t)) return 'latin';
+            return 'other';
+        };
+        const isTranslationOf = (a, b) => {
+            const gap = Math.abs(b.time - a.time);
+            if (gap <= 0.05) return true;
+            if (gap > 0.8) return false;
+            const sa = scriptOf(a.text), sb = scriptOf(b.text);
+            return sa !== sb && sa !== 'other' && sb !== 'other';
+        };
 
         if (isTimeDecreasingAtSomePoint()) {
             // 前后分段型：找到分割点
@@ -307,8 +377,10 @@ function setupLyrics(app) {
                 const current = rawEntries[i];
                 const next = rawEntries[i + 1];
 
-                // 如果下一行的时间差在 0.8 秒之内，且下一行与当前行大概率为 原文 + 翻译 的关系
-                if (next && Math.abs(next.time - current.time) <= 0.8) {
+                // 下一行是不是这一行的翻译：时间戳相同（常见的双语格式），或者差在 0.8 秒之内而且换了一种文字
+                // （日文 → 中文、英文 → 中文）。同一种文字的两句挨得很近（快歌、重复的短句）是两句歌词，不合并，
+                // 不然第二句会被当成翻译，关掉翻译时就看不到了。
+                if (next && isTranslationOf(current, next)) {
                     resultLines.push({
                         time: current.time,
                         original: current.text,
@@ -332,13 +404,41 @@ function setupLyrics(app) {
             }
         }
 
-        // 统一补全 endTime（方便后续计算）
+        // 统一补全 endTime（方便后续计算）：到下一句开始为止；中间有空的时间戳行（间奏开始）就在那里结束。
+        breaks.sort((a, b) => a - b);
+        let b = 0;
         for (let idx = 0; idx < resultLines.length; idx++) {
+            const line = resultLines[idx];
             const next = resultLines[idx + 1];
-            resultLines[idx].endTime = next ? next.time : resultLines[idx].time + 5.0;
+            let end = next ? next.time : line.time + 5.0;
+            while (b < breaks.length && breaks[b] <= line.time) b++;
+            if (b < breaks.length && breaks[b] < end) end = breaks[b];
+            line.endTime = end;
         }
 
         return resultLines;
+    };
+
+    // 当前该亮哪一句：最后一个开始时间不晚于 t 的句子（二分查找），没有就是 -1。
+    app.lyricIndexAt = (t, lines = app.currentLyrics) => {
+        let lo = 0, hi = (lines?.length || 0) - 1, at = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (lines[mid].time <= t) { at = mid; lo = mid + 1; } else hi = mid - 1;
+        }
+        return at;
+    };
+    // 间奏：上一句结束到下一句开始之间空了 5 秒以上（或者第一句前的前奏有 5 秒以上），
+    // 返回 { index: 间奏之后那一句, start, end, progress }，否则 null。
+    const INTERLUDE_MIN = 5;
+    app.lyricInterlude = (t, lines = app.currentLyrics) => {
+        if (!lines?.length) return null;
+        const at = app.lyricIndexAt(t, lines);
+        const next = lines[at + 1];
+        if (!next) return null;
+        const start = at < 0 ? 0 : Number(lines[at].endTime ?? next.time);
+        if (!(t >= start) || next.time - start < INTERLUDE_MIN) return null;
+        return { index: at + 1, start, end: next.time, progress: Math.min(1, Math.max(0, (t - start) / (next.time - start))) };
     };
 
     app.renderLyrics = () => {
@@ -385,9 +485,18 @@ function setupLyrics(app) {
                 li.appendChild(translationSpan);
             }
 
-            // 4. 点击跳转播放 (Seek-on-Click)
+            // 间奏等待点：放在间奏之后那一句的上方，间奏期间依次亮起
+            const gap = document.createElement('span');
+            gap.className = 'lyric-gap';
+            gap.setAttribute('aria-hidden', 'true');
+            gap.innerHTML = '<i></i><i></i><i></i>';
+            li.insertBefore(gap, li.firstChild);
+
+            // 4. 点击跳转播放 (Seek-on-Click)；正在选中歌词文字（想复制）时不跳
             li.onclick = (e) => {
                 e.stopPropagation();
+                const picked = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
+                if (picked && !picked.isCollapsed && li.contains(picked.anchorNode)) return;
                 if (typeof line.time === 'number' && app.api?.seekMusic) {
                     if (app.seekTo) app.seekTo(line.time); else app.api.seekMusic(line.time);
                     if (app.lastKnownDuration > 0) {
@@ -400,8 +509,11 @@ function setupLyrics(app) {
                     // 用户点击后暂时锁定手动滚动，强制恢复自动跟踪
                     app.lyricUserScrolling = false;
                     if (app.lyricUserScrollTimer) clearTimeout(app.lyricUserScrollTimer);
+                    // 暂停时点一句：跳过去并接着播（和主流播放器的歌词页一样，点了就从这句唱起）
+                    if (!app.isPlaying && !app.isTrackLoading && typeof app.playTrack === 'function') app.playTrack();
                 }
             };
+            if (typeof line.time === 'number' && app.formatTime) li.title = `从 ${app.formatTime(line.time)} 这句开始播放`;
 
             fragment.appendChild(li);
         });
@@ -428,23 +540,17 @@ function setupLyrics(app) {
         app.lyricsContainer.addEventListener('touchstart', handleUserScroll, { passive: true });
     }
 
-    app.animateLyrics = () => {
-        if (app.currentLyrics.length === 0 || !app.isPlaying || app.isTrackLoading) return;
+    // seek 为真时是跳播之后（拖进度条、系统媒体浮层、点歌词行）：暂停中也要重新定位，往回跳一点也照跳。
+    app.animateLyrics = (seek = false) => {
+        if (app.currentLyrics.length === 0 || (!app.isPlaying && !seek) || app.isTrackLoading) return;
 
-        const elapsedTime = (Date.now() - app.lastStateUpdateTime) / 1000;
+        const elapsedTime = app.isPlaying ? (Date.now() - app.lastStateUpdateTime) / 1000 : 0;
         const estimatedTime = app.lastKnownCurrentTime + elapsedTime;
 
-        let newLyricIndex = -1;
-        for (let i = 0; i < app.currentLyrics.length; i++) {
-            if (estimatedTime >= app.currentLyrics[i].time) {
-                newLyricIndex = i;
-            } else {
-                break;
-            }
-        }
+        let newLyricIndex = app.lyricIndexAt(estimatedTime);
 
         // 防回滚保护：当音乐正常向前播放时，如果只是一两帧估计时间的微小扰动，禁止行索引后退
-        if (newLyricIndex < app.currentLyricIndex) {
+        if (!seek && newLyricIndex < app.currentLyricIndex) {
             const currentLine = app.currentLyrics[app.currentLyricIndex];
             // 只有当播放进度比当前行开始时间倒退超过 1.5 秒（即用户确实做了拖动进度条倒退 Seek）时才允许回退
             if (currentLine && estimatedTime >= currentLine.time - 1.5) {
@@ -534,6 +640,23 @@ function setupLyrics(app) {
             }
         }
 
+        // 间奏：下一句上方的三个点按间奏进度依次亮起，刚唱完的那句淡下去。只在进出间奏时改 class。
+        const gap = app.lyricInterlude(estimatedTime);
+        const gapIndex = gap ? gap.index : -1;
+        if (layout.gapIndex !== gapIndex || layout.gapHead !== allLi[0]) {
+            for (const li of layout.gapMarked || []) li.classList.remove('gap-on', 'gap-rest');
+            layout.gapMarked = [];
+            if (gap) {
+                const on = allLi[gap.index];
+                const rest = allLi[gap.index - 1];
+                if (on) { on.classList.add('gap-on'); layout.gapMarked.push(on); }
+                if (rest) { rest.classList.add('gap-rest'); layout.gapMarked.push(rest); }
+            }
+            layout.gapIndex = gapIndex;
+            layout.gapHead = allLi[0];
+        }
+        if (gap) allLi[gap.index]?.style.setProperty('--gap-progress', gap.progress.toFixed(3));
+
         // --- 弹性阻尼平滑滚动引擎 (Spring Lerp Physics) ---
         if (app.currentLyricIndex > -1 && !app.lyricUserScrolling) {
             const currentLine = app.currentLyrics[app.currentLyricIndex];
@@ -588,16 +711,43 @@ function setupLyrics(app) {
         }
     };
 
+    // 跳播后歌词跟上。播放中由频谱循环每帧接着画；暂停时那个循环停着，这里自己补几十帧把滚动走完。
+    let seekFrames = 0;
+    app.syncLyricsAfterSeek = () => {
+        app.animateLyrics(true);
+        if (app.isPlaying || typeof requestAnimationFrame !== 'function') return;
+        const running = seekFrames > 0;
+        seekFrames = 40;
+        if (running) return;
+        const step = () => {
+            if (app.isPlaying || --seekFrames <= 0) { seekFrames = 0; return; }
+            app.animateLyrics(true);
+            requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+    };
+
+    // 歌词文件里有字、但一句带时间的都没有（纯文本歌词）：记下有几行，首页歌词栏据此说明「没有时间轴」而不是「没有歌词」
+    const plainLyricLines = (raw) => (typeof raw === 'string'
+        ? raw.split(/\r?\n/).map((s) => s.replace(/\[[^\]]*\]/g, '').trim()).filter(Boolean).slice(0, 400) : []);
+    // 纯文本行也留着（app.currentLyricsPlainLines），首页歌词栏照 RhinE 把它们静静摆出来、能用滚轮翻
+    const plainLyricCount = (raw) => {
+        app.currentLyricsPlainLines = plainLyricLines(raw);
+        return app.currentLyricsPlainLines.length;
+    };
+
     app.resetLyrics = () => {
         app.lyricsRequestToken = (app.lyricsRequestToken || 0) + 1;
         app.currentLyricsData = null;
         app.currentLyrics = [];
+        app.currentLyricsPlain = 0;
+        app.currentLyricsPlainLines = [];
         app.currentLyricIndex = -1;
         app.currentScrollY = 0;
         app.targetScrollY = 0;
         app.lyricUserScrolling = false;
         if (app.lyricUserScrollTimer) clearTimeout(app.lyricUserScrollTimer);
-        app.lyricsList.innerHTML = '<li class="no-lyrics">加载歌词中...</li>';
+        app.lyricsList.innerHTML = '<li class="no-lyrics">正在加载歌词…</li>';
         app.lyricsList.style.transform = 'translate3d(0, 0px, 0)';
     };
 }

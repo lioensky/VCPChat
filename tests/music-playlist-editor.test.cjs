@@ -1,0 +1,72 @@
+// 编辑歌单弹窗：列表是整个曲库，要经得起几千首。
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { JSDOM } = require('jsdom');
+
+function setup(n = 30) {
+    const dom = new JSDOM('<!doctype html><body><div id="sidebar-category-view"></div><div id="list"></div><span id="count"></span><h3 id="title"></h3></body>', { runScripts: 'outside-only' });
+    dom.window.eval(fs.readFileSync('Musicmodules/music-sidebar.js', 'utf8'));
+    const doc = dom.window.document;
+    const tracks = Array.from({ length: n }, (_, i) => ({ path: `D:/m/${i}.flac`, title: `t${i}`, artist: 'A' }));
+    const saves = [];
+    const app = {
+        playlist: tracks, stripAudioExtension: (s) => s,
+        customPlaylists: [{ id: '1', name: 'L', tracks: [tracks[0].path] }],
+        modalSongList: doc.getElementById('list'), modalCount: doc.getElementById('count'), modalPlaylistTitle: doc.getElementById('title'),
+        modalSearchInput: { value: '' }, playlistEditModal: doc.createElement('div'),
+        api: { saveCustomPlaylists: async (pls) => { saves.push(pls[0].tracks.slice()); return { success: true }; } },
+        searchTracks: (list, q) => list.filter((t) => t.title.includes(q))
+    };
+    dom.window.setupSidebar(app);
+    app.openPlaylistEditModal('1');
+    const rows = () => [...doc.querySelectorAll('.music-modal-song-item')];
+    const click = (el, shiftKey = false) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, shiftKey }));
+    return { dom, app, rows, click, saves, pl: app.customPlaylists[0] };
+}
+
+test('ticking a song and shift-ticking a range change those rows in place, without rebuilding or reordering the list', () => {
+    const { dom, rows, click, pl, app } = setup();
+    const before = rows();
+    assert.equal(before[0].textContent.includes('t0'), true, 'songs already in the playlist come first');
+    click(before[5]);
+    assert.ok(pl.tracks.includes('D:/m/5.flac'));
+    assert.ok(before[5].classList.contains('in-playlist'));
+    click(before[9], true);
+    const after = rows();
+    assert.equal(after[7], before[7], 'same row elements: the list was not rebuilt');
+    assert.deepEqual(after.map((r) => r.textContent), before.map((r) => r.textContent), 'nothing jumped to the top');
+    for (const i of [5, 6, 7, 8, 9]) assert.ok(after[i].classList.contains('in-playlist'), `row ${i}`);
+    assert.deepEqual(pl.tracks, ['D:/m/0.flac', 'D:/m/5.flac', 'D:/m/6.flac', 'D:/m/7.flac', 'D:/m/8.flac', 'D:/m/9.flac']);
+    // 再按住 Shift 从 9 点回 6：这一段取消
+    click(after[6]);
+    click(after[8], true);
+    assert.deepEqual(pl.tracks, ['D:/m/0.flac', 'D:/m/5.flac', 'D:/m/9.flac']);
+    assert.equal(app.modalCount.textContent, '3 首已添加');
+    dom.window.close();
+});
+
+test('a shift-click right after a new search does not reach back to a row of the old list', () => {
+    const { dom, rows, click, pl, app } = setup();
+    click(rows()[3]);
+    app.modalSearchQuery = 't2'; app.renderModalSongList();
+    const r = rows();
+    click(r[r.length - 1], true);
+    assert.equal(pl.tracks.length, 3, 'only the clicked song was added, not a range from the old row 3');
+    dom.window.close();
+});
+
+test('rows off screen are not laid out (the list is the whole library)', () => {
+    const css = fs.readFileSync('Musicmodules/music.css', 'utf8');
+    const rule = /\.music-modal-song-item \{[^}]*\}/.exec(css)[0];
+    assert.match(rule, /content-visibility:\s*auto/);
+    assert.match(rule, /contain-intrinsic-size/);
+});
+
+test('album and artist cards in the classic sidebar skip layout and covers off screen', () => {
+    // 5000 首、1200 张专辑、CPU 降速 4 倍：打开专辑页 1062 ms → 约 120 ms
+    const css = fs.readFileSync('Musicmodules/music.css', 'utf8');
+    const rule = /\n\.category-item \{[^}]*\}/.exec(css)[0];
+    assert.match(rule, /content-visibility:\s*auto/);
+    assert.match(rule, /contain-intrinsic-size/);
+});

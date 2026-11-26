@@ -1,0 +1,408 @@
+/*
+ * 音乐窗口底栏：正在播放药丸、进度胶囊、快捷行、面板把手、统一面板、舞台弹层、音效设置抽屉。
+ * 颜色只读 music-theme/music-tokens.css 的 --md-* / --mt-*，这里不定义颜色变量。
+ */
+
+/* ───────── 旧的播放卡片控件：DOM 留给播放器逻辑用，只是不再显示 ───────── */
+body.music-dock-on .music-player .progress-section,
+body.music-dock-on .music-player .controls {
+  display: none !important;
+}
+
+/* ───────── 公共 ───────── */
+#music-dock-root {
+  /* 整层浮在主界面和舞台（800）之上、弹窗（1000 起）之下；里面各块的层级只在这一层内比较。 */
+  position: fixed;
+  inset: 0;
+  z-index: var(--mt-z-dock-layer, 850);
+  pointer-events: none;
+  --md-t1: var(--md-tp);
+  --md-t2: rgba(var(--md-tp-rgb), .62);
+  --md-t3: rgba(var(--md-tp-rgb), .42);
+  --md-line: rgba(var(--md-tp-rgb), .08);
+  --md-line2: rgba(var(--md-tp-rgb), .16);
+  --md-fill: rgba(var(--md-tp-rgb), .07);
+  --md-fill2: rgba(var(--md-tp-rgb), .12);
+  --md-trackbar: rgba(var(--md-tp-rgb), .17);
+  font-family: var(--mt-font-ui);
+  line-height: 24px;
+  color: var(--md-tp);
+  -webkit-font-smoothing: antialiased;
+}
+#music-dock-root *,
+#music-dock-root *::before,
+#music-dock-root *::after { box-sizing: border-box; }
+#music-dock-root button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: inherit;
+  -webkit-app-region: no-drag;
+}
+#music-dock-root button:focus-visible,
+#music-dock-root [tabindex]:focus-visible {
+  outline: 2px solid rgba(var(--md-tp-rgb), .55);
+  outline-offset: 2px;
+}
+#music-dock-root .md-i { display: block; flex: none; }
+
+/* ───────── 流体播放条的颜色（底栏专用；以后可以搬进 music-tokens.css 的 --md-fluid-*） ───────── */
+#music-dock-root {
+  --md-bar-w: min(640px, calc(100vw - 32px));
+  --md-bar-h: 64px;
+  --md-fl-ink: #f1ece6;
+  --md-fl-ink2: rgba(241, 236, 230, .62);
+  --md-fl-ink-rgb: 241, 236, 230;
+  --md-fl-pb-bg: #f1ece6;
+  --md-fl-pb-fg: #1d1b1a;
+  --md-fl-bloom: .12;
+  --md-fl-mist: rgba(20, 18, 17, .22);
+  --md-fl-low-bg: #2b2927;
+  --md-fl-low-fill: #4a3a32;
+  --md-fl-low-edge: rgba(255, 255, 255, .08);
+  --md-fl-ring: #fff;
+}
+#music-dock-root.md-light {
+  /* 浅色抽屉底接近白：次要字 .62/.42 只有 4.3/2.5:1，小字要到 4.5:1 以上 */
+  --md-t2: rgba(var(--md-tp-rgb), .74);
+  --md-t3: rgba(var(--md-tp-rgb), .66);
+  --md-fl-ink: #2a2522;
+  --md-fl-ink2: rgba(42, 37, 34, .82); /* 奶黄底上要到 4.5:1：.6 只有 2.4–3.4，按封面取的最深黄底（约 225,170,80）算 .82 也够 */
+  --md-fl-ink-rgb: 42, 37, 34;
+  --md-fl-pb-bg: #2a2522;
+  --md-fl-pb-fg: #fff;
+  --md-fl-bloom: .55;
+  --md-fl-mist: rgba(255, 255, 255, .22);
+  --md-fl-low-bg: #f7f2ee;
+  --md-fl-low-fill: #f2d6c4;
+  --md-fl-low-edge: rgba(42, 37, 34, .08);
+}
+
+/* ───────── 流体层：雾床 + SVG 形状（music-dock-fluid.js 生成） ───────── */
+.md-mist {
+  position: fixed;
+  height: 250px;
+  z-index: 48;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(26px) saturate(1.3);
+  backdrop-filter: blur(26px) saturate(1.3);
+  background: radial-gradient(60% 70% at 50% 85%, var(--md-fl-mist), transparent 70%);
+  -webkit-mask-image: radial-gradient(55% 65% at 50% 82%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(55% 65% at 50% 82%, #000 30%, transparent 75%);
+}
+.md-fluid { position: fixed; z-index: 50; pointer-events: none; overflow: visible; }
+.md-fl-bloom { fill: #fff; opacity: var(--md-fl-bloom); }
+
+/* ───────── 底部中间：流体播放条 ───────── */
+.md-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  z-index: var(--mt-z-dock, 60);
+  width: var(--md-bar-w);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.md-dock-in {
+  pointer-events: auto;
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding-bottom: 24px;
+}
+.md-quick {
+  position: absolute;
+  bottom: 100%;
+  left: 64px;
+  display: flex;
+  pointer-events: none;
+}
+.md-quick-in {
+  pointer-events: none;
+  padding-bottom: 14px;
+  opacity: 0;
+  transform: translateY(6px);
+  visibility: hidden;
+  transition: opacity .16s ease-out, transform .16s ease-out, visibility 0s linear .16s;
+}
+.md-quick.md-show .md-quick-in {
+  pointer-events: auto;
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition: opacity .16s ease-out, transform .16s ease-out, visibility 0s;
+}
+.md-quick-g {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 9999px;
+  padding: 4px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  background: var(--md-quick-bg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, .25), 0 0 0 1px var(--md-edge);
+  color: var(--md-tp);
+}
+#music-dock-root .md-qb {
+  border-radius: 9999px;
+  padding: 8px;
+  opacity: .7;
+  transition: background-color .15s, opacity .15s;
+}
+#music-dock-root .md-qb:hover { opacity: 1; background: rgba(var(--md-tp-rgb), .1); }
+#music-dock-root .md-qb.md-on { opacity: 1; background: rgba(var(--md-tp-rgb), .12); }
+/* 流体档：快捷操作胶囊的形状由流体层画（从播放条里分裂上去），这里只留按钮 */
+#music-dock-root.md-fl-on .md-quick-in { transform: none; transition: opacity .2s ease-out .08s, visibility 0s linear .28s; }
+#music-dock-root.md-fl-on .md-quick.md-show .md-quick-in { transition: opacity .2s ease-out .12s, visibility 0s; }
+#music-dock-root.md-fl-on .md-quick-g { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; color: var(--md-fl-ink); }
+#music-dock-root.md-fl-on .md-qb:hover { background: rgba(var(--md-fl-ink-rgb), .1); }
+#music-dock-root.md-fl-on .md-qb.md-on { background: rgba(var(--md-fl-ink-rgb), .12); }
+#music-dock-root.md-fl-low .md-quick-g { background: var(--md-fl-low-bg); box-shadow: 0 0 0 1px var(--md-fl-low-edge), 0 12px 30px -14px rgba(0, 0, 0, .35); backdrop-filter: none; -webkit-backdrop-filter: none; color: var(--md-fl-ink); }
+.md-qsep { height: 16px; width: 1px; flex-shrink: 0; background: currentColor; opacity: .15; margin: 0 2px; }
+
+.md-cap {
+  position: relative;
+  width: 100%;
+  height: var(--md-bar-h);
+  border-radius: calc(var(--md-bar-h) / 2);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 10px 0 6px;
+  color: var(--md-fl-ink);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* 流体层开着时播放条本身透明，形状和材质都由 SVG 画；节能档退成不透明的实色。 */
+.md-fl-low .md-cap {
+  background: var(--md-fl-low-bg);
+  box-shadow: 0 0 0 1px var(--md-fl-low-edge), 0 12px 30px -14px rgba(0, 0, 0, .35);
+  overflow: hidden;
+}
+.md-cap > :not(.md-trk) { position: relative; z-index: 1; }
+
+/* 进度：整条都是拖动区。流体档里进度就是实心和雾的边界，这里不再画线；节能档里填一块浅色表示播过的部分。 */
+.md-trk {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  touch-action: none;
+  outline-offset: 3px;
+}
+.md-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--md-fl-low-fill);
+  transform-origin: left;
+  transform: scaleX(0);
+  display: none;
+}
+.md-fl-low .md-fill { display: block; }
+.md-kn-rail { position: absolute; inset: 0; pointer-events: none; }
+.md-kn {
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--md-fl-ink);
+  opacity: 0;
+  transition: opacity .15s;
+}
+.md-trk.md-held .md-kn,
+.md-trk:focus-visible .md-kn { opacity: .5; }
+
+#music-dock-root .md-pb {
+  display: grid;
+  place-items: center;
+  height: 52px;
+  width: 52px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--md-fl-pb-bg);
+  color: var(--md-fl-pb-fg);
+  transition: border-radius .5s cubic-bezier(.3, 1.7, .45, 1), transform .3s cubic-bezier(.3, 1.7, .45, 1);
+}
+#music-dock-root .md-pb[data-on="1"] { border-radius: 18px; }
+#music-dock-root .md-pb:active { transform: scale(.9); }
+#music-dock-root .md-pb:focus-visible { outline: 2px solid var(--md-fl-ink); outline-offset: 3px; }
+.md-play-nudge { display: block; margin-left: 3px; }
+
+/* 正在播放：歌名 + 「歌手 · 01:24 / 03:34」；悬停左右半边换成上一首 / 下一首的名字 */
+.md-ttl { flex: 1 1 auto; min-width: 0; pointer-events: none; transition: filter .6s, opacity .6s; }
+.md-tnav { position: relative; min-width: 0; }
+.md-zone { position: absolute; top: 0; height: 22px; width: 50%; display: flex; align-items: center; z-index: 1; pointer-events: auto; }
+.md-zone.md-l { left: -18px; justify-content: flex-start; }
+.md-zone.md-r { right: -4px; justify-content: flex-end; }
+#music-dock-root .md-arw {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  width: 20px;
+  border-radius: 9999px;
+  opacity: 0;
+  transition: opacity .2s;
+}
+.md-tnav:hover .md-arw,
+#music-dock-root .md-arw:focus-visible { opacity: .6; }
+#music-dock-root .md-arw:hover { opacity: 1; background: rgba(var(--md-fl-ink-rgb), .1); }
+.md-txt { position: relative; height: 22px; }
+.md-txt > div {
+  position: absolute;
+  inset: 0 18px 0 0;
+  display: flex;
+  align-items: center;
+  transition: opacity .22s ease-out, transform .22s ease-out;
+}
+.md-txt span {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 700 16px/22px var(--mt-font-ui);
+}
+.md-pv { opacity: 0; }
+.md-tnav.md-previewing .md-cur { opacity: 0; }
+.md-tnav.md-previewing .md-pv { opacity: .55; }
+.md-sub {
+  display: flex;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--md-fl-ink2);
+  white-space: nowrap;
+}
+.md-sub [data-md="artist"] { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.md-sub [data-md="artist"]:empty { display: none; }
+.md-sub [data-md="artist"]:not(:empty) + .md-tms::before { content: "·"; margin: 0 5px; }
+.md-tms { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+.md-slots { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+#music-dock-root .md-slot {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  opacity: .55;
+  transition: transform .18s cubic-bezier(.2, .8, .2, 1), background-color .15s, opacity .15s;
+}
+#music-dock-root .md-slot:hover { opacity: 1; background: rgba(var(--md-fl-ink-rgb), .08); }
+#music-dock-root .md-slot.md-on { opacity: 1; }
+#music-dock-root .md-slot:active { transform: scale(.9); }
+#music-dock-root .md-vslot.md-vshow,
+.md-vopen #music-dock-root .md-vslot,
+#music-dock-root.md-vopen .md-vslot { opacity: 1; }
+
+/* 暂停：条身和下一首化成雾；曲名、时间和按钮保持清楚，只淡到 70%；鼠标移上来（关注）又凝固 */
+#music-dock-root.md-vapor .md-ttl { opacity: .7; }
+
+/* 音量水滴里的竖条 */
+.md-vrail {
+  position: absolute;
+  z-index: 2;
+  width: 8px;
+  height: 78px;
+  margin-left: -4px;
+  border-radius: 6px;
+  background: rgba(var(--md-fl-ink-rgb), .18);
+  cursor: ns-resize;
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+}
+.md-vrail::before { content: ""; position: absolute; inset: -14px -20px; }
+.md-vfill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--md-fl-ink);
+  transform-origin: bottom;
+  transform: scaleY(0);
+}
+#music-dock-root.md-vopen .md-vrail { opacity: 1; pointer-events: auto; transition-delay: .18s; }
+/* 流体档：竖条的出现由水滴的高度带着走（--md-vgrow 由流体层每帧写入），不再单独计时 */
+#music-dock-root.md-fl-on .md-vrail { opacity: var(--md-vgrow, 0); transform: scaleY(calc(.35 + .65 * var(--md-vgrow, 0))); transform-origin: 50% 100%; transition: none; }
+#music-dock-root.md-fl-low .md-vrail { box-shadow: 0 0 0 14px var(--md-fl-low-bg), 0 0 0 15px var(--md-fl-low-edge), 0 14px 30px 6px rgba(0, 0, 0, .25); transition-delay: 0s; }
+
+.md-cap.md-notrack .md-tms,
+.md-cap.md-notrack .md-trk { visibility: hidden; }
+
+/* ───────── 设置小环（面板把手） ───────── */
+/* 节能档：固定在右下角的圆按钮。流体档：白色小环，平时停在播放条顶边，打开面板时飞到右下角。 */
+.md-hdl {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  z-index: calc(var(--mt-z-dock, 60) + 2);
+  pointer-events: auto;
+  width: 48px;
+  height: 48px;
+}
+#music-dock-root .md-hdl button {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .3s cubic-bezier(.4, 0, .2, 1);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -4px rgba(0, 0, 0, .1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: var(--md-handle-bg);
+  color: var(--md-handle-fg);
+}
+#music-dock-root .md-hdl.md-open button {
+  background: var(--md-handle-open-bg);
+  color: var(--md-handle-open-fg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.md-sw {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: opacity .22s, transform .22s var(--mt-ease, ease);
+}
+.md-sw.md-x { opacity: 0; transform: scale(.5); }
+.md-hdl.md-open .md-sw.md-g { opacity: 0; transform: scale(.5); }
+.md-hdl.md-open .md-sw.md-x { opacity: 1; transform: none; }
+
+#music-dock-root.md-fl-on .md-hdl { left: 0; top: 0; right: auto; bottom: auto; width: 40px; height: 40px; will-change: transform; }
+#music-dock-root.md-fl-on .md-hdl button,
+#music-dock-root.md-fl-on .md-hdl.md-open button {
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: 6px solid var(--md-fl-ring);
+  box-shadow: 0 0 18px 4px rgba(255, 255, 255, .7), inset 0 0 8px rgba(255, 255, 255, .8);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--md-fl-ring);
+  transition: transform .3s cubic-bezier(.3, 1.7, .45, 1), box-shadow .3s;
+}
+#music-dock-root.md-fl-on .md-hdl button:hover { transform: scale(1.08); box-shadow: 0 0 24px 6px rgba(255, 255, 255, .8), inset 0 0 8px rgba(255, 255, 255, .8); }
+#music-dock-root.md-fl-on .md-hdl button:focus-visible { outline: 2px solid var(--md-fl-ring); outline-offset: 4px; }
+#music-dock-root.md-fl-on .md-sw.md-g { display: none; }
+#music-dock-root.md-fl-on .md-sw .md-i { filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .45)); }
+

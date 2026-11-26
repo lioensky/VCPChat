@@ -1,0 +1,133 @@
+/* 桌面歌词条：透明窗口，字自己带描边和阴影，压在任何背景上都看得清 */
+:root {
+    --dl-size: 34px;
+    --dl-ink: #fbf7ee;
+    --dl-sung: #f5c451;
+    --dl-edge: rgba(12, 10, 8, 0.82);
+    --dl-panel: rgba(18, 16, 14, 0.58);
+    --dl-panel-line: rgba(255, 255, 255, 0.14);
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: "HarmonyOS Sans SC", "MiSans", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.dl-bar {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 6px 18px 10px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    transition: background-color .18s ease, border-color .18s ease;
+    -webkit-app-region: drag;
+}
+/* 悬停（没锁定）时出现底板和工具条，方便拖动 */
+body.hover:not(.locked) .dl-bar { background: var(--dl-panel); border-color: var(--dl-panel-line); }
+.dl-tools {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease;
+    -webkit-app-region: no-drag;
+}
+body.hover:not(.locked) .dl-tools { opacity: 1; pointer-events: auto; }
+.dl-tools button, .dl-lock {
+    -webkit-app-region: no-drag;
+    width: 30px;
+    height: 28px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--dl-ink);
+    cursor: pointer;
+    font: inherit;
+}
+.dl-tools button:hover, .dl-lock:hover { background: rgba(255, 255, 255, 0.14); }
+.dl-tools button:focus-visible, .dl-lock:focus-visible { outline: 2px solid var(--dl-sung); outline-offset: 1px; }
+.dl-tools svg, .dl-lock svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dl-tools button[data-cmd="toggle"] svg path { fill: currentColor; }
+.dl-tools button b { font-size: 13px; line-height: 1; }
+.dl-tools button small { font-size: 12px; line-height: 1; }
+.dl-tools button:has(b) { display: inline-flex; gap: 1px; align-items: center; justify-content: center; }
+.dl-sep { width: 1px; height: 16px; margin: 0 5px; background: rgba(255, 255, 255, 0.22); }
+#play .i-pause { display: none; }
+body.playing #play .i-pause { display: block; }
+body.playing #play .i-play { display: none; }
+
+/* 锁形按钮：没锁时跟工具条一起出现；锁定后悬停在歌词条上只露出它 */
+.dl-lock {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    opacity: 0;
+    transition: opacity .18s ease, background-color .18s ease;
+}
+body.hover .dl-lock { opacity: 1; }
+body.locked .dl-lock { background: var(--dl-panel); }
+.dl-lock .i-locked { display: none; }
+body.locked .dl-lock .i-locked { display: block; }
+body.locked .dl-lock .i-unlocked { display: none; }
+
+.dl-lines { width: 100%; text-align: center; pointer-events: none; }
+.dl-lines p {
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.02em;
+    paint-order: stroke fill;
+    -webkit-text-stroke: 4px var(--dl-edge);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+.dl-cur {
+    font-size: var(--dl-size);
+    font-weight: 700;
+    line-height: 1.32;
+    color: var(--dl-ink);
+}
+.dl-next {
+    font-size: calc(var(--dl-size) * 0.56);
+    font-weight: 600;
+    line-height: 1.4;
+    color: rgba(251, 247, 238, 0.78);
+    min-height: 1.4em;
+}
+/* 填色：每个字（没有逐字时间时是整句）上面叠一层同样的字，换成高亮色，按 --f 从左往右露出来。
+   不用 background-clip:text，因为它和描边一起用时描边也会被染色。 */
+.dl-cur .w { position: relative; display: inline-block; white-space: pre; }
+.dl-cur .w::after {
+    content: attr(data-t);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--f, 0%);
+    overflow: hidden;
+    white-space: pre;
+    color: var(--dl-sung);
+}
+.dl-cur.idle { color: rgba(251, 247, 238, 0.86); font-weight: 600; }
+body.paused .dl-lines { opacity: 0.8; }
+.dl-cur.swap { animation: dl-in .28s ease-out; }
+@keyframes dl-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+    .dl-cur.swap { animation: none; }
+    .dl-bar, .dl-tools, .dl-lock { transition: none; }
+}

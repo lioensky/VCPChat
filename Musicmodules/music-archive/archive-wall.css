@@ -1,0 +1,628 @@
+/*
+ * 档案页「封面墙」视图（archive-wall.js）。颜色只用 --ar-* 档案页变量，深浅主题跟着走。
+ * 墙只占目录、歌词、导航和页脚之间那块地方（位置由脚本写），四边淡出，不和左边目录的字叠在一起。
+ */
+.archive-wall {
+    position: absolute;
+    z-index: 3;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+    contain: strict;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%), linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%), linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+    mask-composite: intersect;
+}
+.archive-wall[hidden] { display: none; }
+.archive-wall.is-grabbing { cursor: grabbing; }
+.archive-wall.is-grabbing .aw-tile { pointer-events: none; }
+/* 封面墙开着时 3D 阵列不画也不显示（档案页那边同时停掉渲染循环） */
+#music-archive-view.layout-flat > .archive-canvas { visibility: hidden; }
+#music-archive-view.layout-flat .archive-counter { visibility: hidden; }
+
+.aw-world { position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; }
+/* 墙底下的光：两团很淡的强调色光（一团偏左上、一团偏右下），让墙不是一张平纸 */
+.archive-wall::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(60% 55% at 18% 12%, color-mix(in srgb, var(--ar-accent) 9%, transparent), transparent 70%),
+        radial-gradient(55% 60% at 88% 92%, color-mix(in srgb, var(--ar-accent) 7%, transparent), transparent 70%);
+}
+.aw-tile {
+    position: absolute;
+    left: 0;
+    top: 0;
+    contain: layout style;
+}
+.aw-world.aw-reflow .aw-tile {
+    transition: transform var(--aw-sp-flow-ms, .52s) var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1)), width var(--aw-sp-flow-ms, .52s) var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1)), height var(--aw-sp-flow-ms, .52s) var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1));
+}
+.aw-in {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    /* 没封面时的底：按曲名算出的色相，左上亮、右下深 */
+    background: linear-gradient(145deg, hsl(var(--aw-h, 200) 44% 62%), hsl(calc(var(--aw-h, 200) + 52) 40% 22%));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-ink) 10%, transparent), 0 1px 2px rgba(0, 0, 0, .08);
+    transition: transform .22s var(--mt-ease, ease), box-shadow .22s var(--mt-ease, ease), filter .22s var(--mt-ease, ease);
+}
+/* 悬停：每条边往外长同样的距离，颜色稍微提一点，底下多一层抬起的影子 */
+.aw-tile:hover .aw-in {
+    transform: scale(var(--hx, 1.025), var(--hy, 1.025));
+    filter: saturate(1.08) brightness(1.05);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-ink) 40%, transparent), 0 12px 32px rgba(0, 0, 0, .24), 0 2px 6px rgba(0, 0, 0, .12);
+}
+.aw-tile:hover, .aw-tile.is-focus, .aw-tile.is-open { z-index: 2; }
+.aw-tile.is-playing, .aw-tile.is-current { z-index: 1; }
+/* 选中：强调色描边外再套一圈细线，顶上一抹高光 */
+.aw-tile.is-focus .aw-in { box-shadow: 0 0 0 2px var(--ar-accent), 0 0 0 5px color-mix(in srgb, var(--ar-accent) 22%, transparent), 0 12px 32px rgba(0, 0, 0, .22); }
+.aw-in::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 42%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0));
+    opacity: 0;
+    transition: opacity .22s var(--mt-ease, ease);
+    pointer-events: none;
+    z-index: 3;
+}
+.aw-tile:hover .aw-in::before, .aw-tile.is-focus .aw-in::before { opacity: 1; }
+.aw-tile.is-open .aw-in::before { opacity: 0; }
+.aw-tile.is-open .aw-in { transform: none; filter: none; box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-ink) 30%, transparent), 0 42px 110px rgba(0, 0, 0, .34), 0 8px 24px rgba(0, 0, 0, .16); }
+/* 有一张展开时，其余的安静下来：压暗、去一点饱和，悬停的那张恢复 */
+.aw-world.aw-has-open .aw-tile:not(.is-open):not(:hover) .aw-in { filter: brightness(.74) saturate(.82); }
+
+.aw-art { position: absolute; inset: 0; }
+.aw-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; pointer-events: none; }
+.aw-tile.has-art .aw-art img { display: block; animation: aw-fade .32s var(--mt-ease, ease) both; }
+/* 封面还在解：色相底上斜着扫过一道微光，曲名先藏着，免得先闪一下字再换成图 */
+.aw-tile.is-wait .aw-art::after, .ag-cell.is-wait .ag-blank::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .16) 50%, transparent 65%) 0 0 / 260% 100% no-repeat; animation: aw-sheen 1.5s linear infinite; pointer-events: none; }
+.aw-tile.is-wait .aw-blank, .ag-cell.is-wait .ag-blank { color: transparent; }
+.aw-tile.is-wait .aw-blank::before, .ag-cell.is-wait .ag-blank::before { opacity: 0; }
+.ag-cell.is-wait .ag-blank { position: absolute; inset: 0; -webkit-line-clamp: unset; }
+@keyframes aw-sheen { from { background-position: 130% 0; } to { background-position: -30% 0; } }
+body.music-reduce-motion .aw-tile.is-wait .aw-art::after, body.music-reduce-motion .ag-cell.is-wait .ag-blank::after { animation: none; background: rgba(255, 255, 255, .06); }
+/* 没有封面：色相底上一道短线 + 曲名（大卡字大），像海报的题头 */
+.aw-blank {
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    top: 12%;
+    color: #fff;
+    opacity: .9;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+.aw-m .aw-blank { font-size: 17px; }
+.aw-l .aw-blank { font-size: 22px; letter-spacing: .3px; }
+.aw-tile.has-art .aw-blank { display: none; }
+.aw-tile:not(.aw-s) .aw-blank { display: none; }
+.aw-blank::before { content: ""; display: block; width: 22px; height: 2px; margin-bottom: 10px; background: var(--ar-accent); }
+
+/* 底部渐暗：中大卡常驻，标题压在上面；小卡悬停才出现 */
+.aw-shade {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(0deg, rgba(0, 0, 0, .74) 0, rgba(0, 0, 0, .42) 30%, rgba(0, 0, 0, 0) 62%);
+    pointer-events: none;
+    transition: opacity .22s var(--mt-ease, ease);
+}
+.aw-s .aw-shade { opacity: 0; }
+.aw-s:hover .aw-shade, .aw-s.is-focus .aw-shade { opacity: 1; }
+
+/* 编号徽标：左上角，中大卡常驻；正在播放的那张写「正在播放 · 编号」，用强调色 */
+.aw-no {
+    position: absolute;
+    left: 10px;
+    top: 9px;
+    z-index: 2;
+    max-width: calc(100% - 20px);
+    padding: 3px 6px;
+    font: 600 10px/1 var(--mt-font-mono, ui-monospace, monospace);
+    letter-spacing: .6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #fff;
+    /* 不用背景模糊：墙上同时有几百张卡，每张一层模糊滚动时太贵 */
+    background: rgba(0, 0, 0, .52);
+    pointer-events: none;
+    transition: opacity .2s, background-color .2s;
+}
+.aw-no:empty { display: none; }
+.aw-s .aw-no { opacity: 0; }
+.aw-s:hover .aw-no, .aw-s.is-focus .aw-no { opacity: 1; }
+.aw-tile.is-playing .aw-no, .aw-tile.is-current .aw-no { opacity: 1; background: var(--ar-accent); color: var(--ar-accent-on, #17130a); }
+.aw-tile.is-open .aw-no { display: none; }
+
+/* 标题：常驻在中大卡底部，字号跟卡宽走、字距收紧、最多三行 */
+.aw-cap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    padding: 0 12px 10px;
+    display: grid;
+    gap: 4px;
+    color: #fff;
+    text-shadow: 0 1px 12px rgba(0, 0, 0, .35);
+    pointer-events: none;
+    transition: opacity .18s var(--mt-ease, ease), transform .18s var(--mt-ease, ease);
+}
+.aw-cap b {
+    font-size: clamp(13px, calc(var(--tw, 200px) * .085), 34px);
+    font-weight: 700;
+    line-height: 1.04;
+    letter-spacing: -.035em;
+    text-wrap: balance;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+.aw-cap span { font-size: clamp(11px, calc(var(--tw, 200px) * .042), 13px); font-weight: 600; opacity: .82; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aw-l .aw-cap { padding: 0 16px 14px; }
+.aw-s .aw-cap { padding: 0 8px 7px; opacity: 0; transform: translateY(6px); }
+.aw-s .aw-cap b { font-size: 12px; -webkit-line-clamp: 2; letter-spacing: -.01em; }
+.aw-s .aw-cap span { display: none; }
+.aw-s:hover .aw-cap, .aw-s.is-focus .aw-cap { opacity: 1; transform: none; }
+.aw-tile.is-open .aw-cap { display: none; }
+
+/* 正在播放：2px 强调色内描边 + 一圈向里的光；暂停时只留描边 */
+.aw-in::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    box-shadow: inset 0 0 0 0 var(--ar-accent);
+    transition: box-shadow .3s var(--mt-ease, ease);
+    pointer-events: none;
+}
+.aw-tile.is-playing .aw-in::after { box-shadow: inset 0 0 0 2px var(--ar-accent), inset 0 0 26px color-mix(in srgb, var(--ar-accent) 45%, transparent); }
+.aw-tile.is-current .aw-in::after { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ar-accent) 70%, transparent); }
+.aw-tile.is-open .aw-in::after { box-shadow: none; }
+
+/* 悬停快捷播放：右上角圆键（中大卡） */
+#music-archive-view .aw-q {
+    position: absolute;
+    right: 10px;
+    top: 9px;
+    z-index: 4;
+    width: 32px;
+    height: 32px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .92);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .28);
+    opacity: 0;
+    transform: scale(.8);
+    transition: opacity .16s, transform .2s var(--mt-ease-spring, cubic-bezier(.2, .9, .25, 1)), background-color .15s;
+    cursor: pointer;
+}
+#music-archive-view .aw-q::before { content: ""; position: absolute; left: 12px; top: 9px; border-style: solid; border-width: 7px 0 7px 11px; border-color: transparent transparent transparent #111; }
+#music-archive-view .aw-tile:not(.aw-s):not(.is-open):hover .aw-q { opacity: 1; transform: none; }
+#music-archive-view .aw-q:hover { background: var(--ar-accent); }
+#music-archive-view .archive-wall.is-grabbing .aw-q { opacity: 0 !important; }
+
+/* 展开的大卡：封面铺满，左边和底下压暗，超大标题压在上面，控制条稍晚一点升上来 */
+.aw-tile.is-open .aw-shade { background: linear-gradient(90deg, rgba(0, 0, 0, .58) 0, rgba(0, 0, 0, .18) 46%, rgba(0, 0, 0, 0) 70%), linear-gradient(0deg, rgba(0, 0, 0, .82) 0, rgba(0, 0, 0, .44) 34%, rgba(0, 0, 0, 0) 66%); opacity: 1; }
+.aw-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    padding: 0 clamp(18px, calc(var(--tw, 400px) * .06), 34px) clamp(16px, calc(var(--tw, 400px) * .055), 30px);
+    display: grid;
+    gap: 8px;
+    color: #fff;
+    cursor: default;
+}
+.aw-panel > * { animation: aw-rise .24s .14s var(--mt-ease-out, cubic-bezier(.2, .8, .2, 1)) both; }
+.aw-panel > .aw-panel-title { animation-delay: .1s; }
+.aw-panel > .aw-panel-sub { animation-delay: .17s; }
+.aw-panel > .aw-panel-acts { animation-delay: .22s; }
+.aw-panel-head { display: flex; gap: 14px; font: 600 11px/1 var(--mt-font-mono, ui-monospace, monospace); letter-spacing: .8px; color: rgba(255, 255, 255, .72); }
+.aw-panel-head .aw-panel-no { color: var(--ar-accent); }
+.aw-panel-title {
+    font-size: clamp(30px, calc(var(--tw, 400px) * .115), 76px);
+    font-weight: 800;
+    line-height: .98;
+    letter-spacing: -.045em;
+    text-wrap: balance;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+    text-shadow: 0 2px 24px rgba(0, 0, 0, .35);
+}
+.aw-panel-sub { font-size: clamp(13px, calc(var(--tw, 400px) * .036), 17px); font-weight: 650; color: rgba(255, 255, 255, .84); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 卡里的歌词：压在标题上方，四行窗口，当前行亮、其余淡，上下边缘淡出 */
+.aw-lyric { position: absolute; left: 0; right: 0; bottom: calc(100% + 22px); padding: 0 clamp(18px, calc(var(--tw, 400px) * .06), 34px); height: 6.4em; overflow: hidden; font-size: clamp(13px, calc(var(--tw, 400px) * .036), 16px); line-height: 1.35; pointer-events: none; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 70%, transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 70%, transparent 100%); }
+.aw-lyric[hidden] { display: none; }
+.aw-lyric-roll { transition: transform .42s var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1)); }
+.aw-lyric p { margin: 0; padding: 2px 0; font-weight: 650; color: rgba(255, 255, 255, .42); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .3s, opacity .3s; }
+.aw-lyric p small { display: block; font-size: .82em; font-weight: 500; opacity: .8; }
+.aw-lyric p.is-now { color: #fff; font-size: 1.22em; letter-spacing: -.01em; text-shadow: 0 1px 14px rgba(0, 0, 0, .4); }
+body.music-reduce-motion .aw-lyric-roll { transition: none; }
+.aw-seek { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-top: 8px; font: 600 11px/1 var(--mt-font-mono, ui-monospace, monospace); letter-spacing: .4px; color: rgba(255, 255, 255, .78); cursor: pointer; touch-action: none; }
+.aw-seek[hidden] { display: none; }
+.aw-seek-bar { position: relative; height: 16px; }
+.aw-seek-bar::before { content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 2px; border-radius: 1px; background: rgba(255, 255, 255, .24); transition: height .15s, top .15s; }
+.aw-seek-bar i { position: absolute; left: 0; right: 0; top: 7px; height: 2px; border-radius: 1px; background: #fff; transform-origin: 0 50%; transform: scaleX(0); transition: height .15s, top .15s; }
+.aw-seek:hover .aw-seek-bar::before, .aw-seek:hover .aw-seek-bar i, .aw-seek.is-drag .aw-seek-bar::before, .aw-seek.is-drag .aw-seek-bar i { top: 6px; height: 4px; }
+.aw-seek:hover .aw-seek-bar i, .aw-seek.is-drag .aw-seek-bar i { background: var(--ar-accent); }
+.aw-panel-acts { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+#music-archive-view .aw-panel-acts button {
+    font-size: 13px;
+    letter-spacing: .3px;
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: 17px;
+    color: #fff;
+    background: rgba(255, 255, 255, .14);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    transition: background-color .15s, transform .15s var(--mt-ease, ease);
+}
+#music-archive-view .aw-panel-acts button:hover { background: rgba(255, 255, 255, .26); }
+#music-archive-view .aw-panel-acts button:active { transform: scale(.96); }
+#music-archive-view .aw-panel-acts .aw-primary { display: inline-flex; align-items: center; gap: 9px; padding: 0 18px 0 14px; background: #fff; color: #111; font-weight: 650; }
+#music-archive-view .aw-panel-acts .aw-primary i { width: 0; height: 0; border-style: solid; border-width: 6px 0 6px 10px; border-color: transparent transparent transparent currentColor; }
+#music-archive-view .aw-panel-acts .aw-primary.is-now i { width: 10px; height: 12px; border: 0; background: linear-gradient(90deg, currentColor 0 3px, transparent 3px 7px, currentColor 7px 10px); }
+#music-archive-view .aw-panel-acts .aw-primary:hover { background: var(--ar-accent); color: #111; }
+#music-archive-view .aw-panel-acts .aw-primary:disabled { opacity: 1; cursor: default; background: color-mix(in srgb, var(--ar-accent) 88%, #fff); color: #111; }
+
+/* 空状态：虚线勾出一块还没挂海报的展板（大中小六格），下面大字题头 + 编号行 + 一句去哪儿找 */
+.aw-empty, .ag-empty { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: min(440px, 82%); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: var(--ar-muted); font-size: 15px; pointer-events: none; animation: aw-fade .4s var(--mt-ease, ease) backwards; }
+.aw-empty[hidden], .ag-empty[hidden] { display: none; }
+.ae-ghost { width: 100%; aspect-ratio: 16 / 7; margin-bottom: 14px; display: grid; grid-template-columns: 3fr 2fr 2fr 3fr; grid-template-rows: 1fr 1fr; gap: 8px; }
+.ae-ghost i { border: 1px dashed color-mix(in srgb, var(--ar-ink) 22%, transparent); background: color-mix(in srgb, var(--ar-ink) 3%, transparent); animation: ae-breathe 3.6s var(--mt-ease, ease) infinite; }
+.ae-ghost .ae-a { grid-row: 1 / 3; }
+.ae-ghost .ae-d { grid-column: 4; grid-row: 1 / 3; animation-delay: .9s; }
+.ae-ghost .ae-b { animation-delay: .3s; }
+.ae-ghost .ae-c { animation-delay: .6s; }
+.ae-ghost .ae-e { grid-column: 2; grid-row: 2; animation-delay: 1.2s; }
+.ae-ghost .ae-f { grid-column: 3; grid-row: 2; animation-delay: 1.5s; }
+@keyframes ae-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+.ae-t { font-size: 26px; font-weight: 600; letter-spacing: .4px; color: var(--ar-ink); line-height: 1.2; }
+.ae-n { font: 500 11px/1 var(--mt-font-mono, ui-monospace, monospace); letter-spacing: 1.2px; color: var(--ar-muted); padding-bottom: 8px; border-bottom: 1px solid color-mix(in srgb, var(--ar-ink) 14%, transparent); align-self: stretch; }
+.ae-h { font-style: normal; font-size: 13px; color: var(--ar-muted); margin-top: 2px; }
+/* 平放：空展板也放倒在桌上，字立着 */
+.aw-table .aw-empty .ae-ghost { transform: perspective(900px) rotateX(48deg); transform-origin: 50% 100%; margin-bottom: 4px; }
+body.music-reduce-motion .ae-ghost i, body.music-reduce-motion .aw-empty, body.music-reduce-motion .ag-empty { animation: none; }
+
+/* 入场：从上方落下、缩小到 .88，弹簧带一点回弹；从视野左上角沿对角线一张张到 */
+.aw-tile.aw-entering .aw-in { animation: aw-drop var(--aw-sp-enter-ms, .5s) var(--aw-sp-enter, cubic-bezier(.2, .9, .25, 1)) backwards; }
+@keyframes aw-drop { from { opacity: 0; transform: translateY(-68px) scale(.88); } to { opacity: 1; transform: none; } }
+/* 拖动时新露出来的：原地淡入放大 */
+.aw-tile.aw-reveal .aw-in { animation: aw-pop .34s var(--mt-ease-out, cubic-bezier(.2, .8, .2, 1)) backwards; }
+@keyframes aw-pop { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+/* 换一组：旧墙整面抬起淡出 */
+.aw-ghost { pointer-events: none; z-index: 1; }
+.aw-ghost .aw-tile.aw-leaving .aw-in { animation: aw-leave .28s cubic-bezier(.4, 0, 1, 1) both; }
+@keyframes aw-leave { to { opacity: 0; transform: translateY(-68px) scale(.88); } }
+@keyframes aw-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes aw-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+body.music-reduce-motion .aw-in, body.music-reduce-motion .aw-cap, body.music-reduce-motion .aw-world.aw-reflow .aw-tile { transition: none; }
+body.music-reduce-motion .aw-tile .aw-in, body.music-reduce-motion .aw-panel > *, body.music-reduce-motion .aw-art img { animation: none; }
+
+/* 导航里切换视图：「阵列 / 封面墙 / 网格」，和目录分类同一种斜杠分隔的写法 */
+.archive-nav > .archive-layouts { display: flex; align-items: center; gap: 0; font-size: 14px; letter-spacing: .7px; pointer-events: auto; }
+.archive-layouts .archive-glyph-layout { display: inline-grid; grid-template-columns: 6px 6px; gap: 2px; margin-right: 12px; opacity: .8; }
+.archive-layouts .archive-glyph-layout i { width: 6px; height: 6px; border: 1px solid currentColor; box-sizing: border-box; }
+.archive-layouts .archive-glyph-layout i:first-child { grid-row: span 2; height: 14px; }
+/* 视图下拉：按钮和导航里别的字一样大、不带框，只显示当前视图名和一个小箭头；悬停/展开时才出底色。点开的选项卡片用全局同款（music-fluid-select） */
+#music-archive-view .archive-layouts > button.mfs-trigger:not(#mfs-0) { min-height: 28px; padding: 2px 6px 2px 8px; margin-left: -6px; gap: 6px; border-color: transparent; background: transparent; border-radius: 8px; font-size: 14px; letter-spacing: .7px; line-height: 1; color: var(--ar-ink); }
+#music-archive-view .archive-layouts > button.mfs-trigger:not(#mfs-0):hover, #music-archive-view .archive-layouts > button.mfs-trigger.mfs-open:not(#mfs-0) { background: color-mix(in srgb, var(--ar-ink) 8%, transparent); border-color: color-mix(in srgb, var(--ar-ink) 12%, transparent); }
+#music-archive-view .archive-layouts > button.mfs-trigger .mfs-chev { opacity: .6; }
+.archive-hud.narrow .archive-layouts .archive-glyph-layout { display: none; }
+
+/* ---------- 分节网格（archive-grid.js） ---------- */
+.archive-grid { position: absolute; z-index: 3; contain: strict; }
+.archive-grid[hidden] { display: none; }
+.ag-scroll { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 24px), transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 14px, #000 calc(100% - 24px), transparent 100%); }
+.ag-scroll::-webkit-scrollbar { width: 6px; }
+.ag-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ar-ink) 22%, transparent); border-radius: 3px; }
+.ag-scroll::-webkit-scrollbar-track { background: color-mix(in srgb, var(--ar-ink) 5%, transparent); }
+.ag-content { position: relative; }
+.ag-head, .ag-cell { position: absolute; left: 0; top: 0; }
+/* 节标题：大字 + 数量 + 一条结构线，和左边目录表的分组标题同一路 */
+.ag-head { height: 92px; display: flex; align-items: flex-end; gap: 16px; padding-bottom: 16px; box-sizing: border-box; color: var(--ar-ink); }
+.ag-head b { font-size: clamp(40px, 4vw, 60px); font-weight: 800; line-height: .9; letter-spacing: -.045em; max-width: 70%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-head em { padding-bottom: 6px; font: 600 11px/1 var(--mt-font-mono, ui-monospace, monospace); font-style: normal; letter-spacing: .8px; color: var(--ar-accent-text, var(--ar-accent)); }
+.ag-head span { font: 500 11px/1 var(--mt-font-mono, ui-monospace, monospace); letter-spacing: .6px; color: var(--ar-muted); padding-bottom: 6px; }
+.ag-head.ag-reveal > * { animation: ag-pop .34s var(--mt-ease-out, cubic-bezier(.2, .8, .2, 1)) both; }
+.ag-head i { position: absolute; left: 0; right: 0; bottom: 4px; height: 1.5px; background: color-mix(in srgb, var(--ar-ink) 26%, transparent); }
+.ag-sticky { position: absolute; left: 0; right: 8px; top: 0; height: 34px; display: flex; align-items: center; gap: 12px; padding: 0 2px; background: linear-gradient(180deg, var(--ar-paper) 78%, rgba(var(--ar-paper-rgb), 0)); height: 40px; pointer-events: none; z-index: 2; }
+.ag-sticky[hidden] { display: none; }
+.ag-sticky b { font-size: 19px; font-weight: 800; letter-spacing: -.03em; color: var(--ar-ink); max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-sticky span { font: 500 11px/1 var(--mt-font-mono, ui-monospace, monospace); letter-spacing: .6px; color: var(--ar-muted); }
+/* 和节题头同一套：强调色的「第几节 / 共几节」，底下一条结构细线 */
+.ag-sticky em { font: 600 11px/1 var(--mt-font-mono, ui-monospace, monospace); font-style: normal; letter-spacing: .8px; color: var(--ar-accent-text, var(--ar-accent)); }
+.ag-sticky i { position: absolute; left: 0; right: 0; bottom: 6px; height: 1px; background: color-mix(in srgb, var(--ar-ink) 16%, transparent); }
+.ag-sticky:not([hidden]) { animation: aw-fade .2s var(--mt-ease, ease) backwards; }
+.ag-sticky.ag-roll-up > :is(b, span, em) { animation: ag-roll-up .32s var(--mt-ease-out, cubic-bezier(.2, .8, .2, 1)) backwards; }
+.ag-sticky.ag-roll-down > :is(b, span, em) { animation: ag-roll-down .32s var(--mt-ease-out, cubic-bezier(.2, .8, .2, 1)) backwards; }
+.ag-sticky > span { animation-delay: 30ms !important; }
+.ag-sticky > em { animation-delay: 60ms !important; }
+@keyframes ag-roll-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes ag-roll-down { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+body.music-reduce-motion .ag-sticky, body.music-reduce-motion .ag-sticky > * { animation: none !important; }
+.ag-cell { cursor: pointer; }
+.ag-art { position: relative; aspect-ratio: 1; overflow: hidden; background: linear-gradient(145deg, hsl(var(--aw-h, 200) 44% 62%), hsl(calc(var(--aw-h, 200) + 52) 40% 22%)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-ink) 10%, transparent), 0 1px 2px rgba(0, 0, 0, .08); transition: transform .22s var(--mt-ease, ease), box-shadow .22s var(--mt-ease, ease), filter .22s var(--mt-ease, ease); }
+/* 顶上一抹高光（悬停、选中时） */
+.ag-art::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 42%; z-index: 1; background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0)); opacity: 0; transition: opacity .22s; pointer-events: none; }
+.ag-cell:hover .ag-art::before, .ag-cell.is-focus .ag-art::before { opacity: 1; }
+/* 编号徽标：悬停时出现；正在播放的那张常驻，强调色 */
+.ag-no { position: absolute; left: 8px; top: 8px; z-index: 2; padding: 3px 6px; font: 600 10px/1 var(--mt-font-mono, ui-monospace, monospace); letter-spacing: .6px; color: #fff; background: rgba(0, 0, 0, .52); opacity: 0; transition: opacity .18s; pointer-events: none; }
+.ag-no:empty { display: none; }
+.ag-cell:hover .ag-no, .ag-cell.is-focus .ag-no { opacity: 1; }
+.ag-cell.is-playing .ag-no, .ag-cell.is-current .ag-no { opacity: 1; background: var(--ar-accent); color: var(--ar-accent-on, #17130a); }
+.ag-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+.ag-cell.has-art .ag-art img { display: block; animation: aw-fade .3s var(--mt-ease, ease) both; }
+.ag-blank { position: absolute; left: 12%; right: 12%; top: 22%; font-size: 17px; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; color: #fff; opacity: .92; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; word-break: break-word; }
+.ag-blank::before { content: ""; display: block; width: 20px; height: 2px; margin-bottom: 9px; background: var(--ar-accent); }
+.ag-cell.has-art .ag-blank { display: none; }
+.ag-t { display: block; margin-top: 9px; font-size: 13px; font-weight: 600; color: var(--ar-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-a { display: block; margin-top: 3px; font-size: 12px; color: var(--ar-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-cell:hover .ag-art { transform: translateY(-4px) scale(1.015); filter: saturate(1.08) brightness(1.05); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-ink) 40%, transparent), 0 14px 32px rgba(0, 0, 0, .22), 0 2px 6px rgba(0, 0, 0, .1); }
+.ag-cell.is-focus .ag-art { box-shadow: 0 0 0 2px var(--ar-accent), 0 0 0 5px color-mix(in srgb, var(--ar-accent) 22%, transparent), 0 12px 28px rgba(0, 0, 0, .2); }
+.ag-cell:hover .ag-t { color: var(--ar-ink); }
+.ag-cell.is-focus .ag-t { color: var(--ar-accent-text, var(--ar-accent)); }
+/* 正在播放：封面底边琥珀短条（暂停时变细），和目录、封面墙一致 */
+.ag-art::after { content: ""; position: absolute; inset: 0; z-index: 1; box-shadow: inset 0 0 0 0 var(--ar-accent); transition: box-shadow .3s var(--mt-ease, ease); pointer-events: none; }
+.ag-cell.is-playing .ag-art::after { box-shadow: inset 0 0 0 2px var(--ar-accent), inset 0 0 24px color-mix(in srgb, var(--ar-accent) 45%, transparent); }
+.ag-cell.is-current .ag-art::after { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ar-accent) 70%, transparent); }
+.ag-cell.is-playing .ag-t, .ag-cell.is-current .ag-t { color: var(--ar-accent-text, var(--ar-accent)); }
+/* 换一组：格子从上方落下、弹簧回弹，按行列一波；滚动新露出的一行原地淡入 */
+.ag-cell.ag-entering > *, .ag-head.ag-entering > * { animation: ag-drop .6s var(--aw-sp-enter, cubic-bezier(.2, .9, .25, 1)) var(--ag-d, 0ms) backwards; }
+.ag-cell.ag-reveal > * { animation: ag-pop .34s var(--mt-ease-out, cubic-bezier(.2, .8, .2, 1)) var(--ag-d, 0ms) backwards; }
+@keyframes ag-drop { from { opacity: 0; transform: translateY(-40px) scale(.9); } to { opacity: 1; transform: none; } }
+@keyframes ag-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+body.music-reduce-motion .ag-cell > *, body.music-reduce-motion .ag-head > * { animation: none !important; }
+/* 悬停时右下角圆形播放键 */
+#music-archive-view .ag-play { position: absolute; right: 9px; bottom: 9px; width: 34px; height: 34px; border-radius: 50%; background: rgba(var(--ar-paper-rgb), .94); box-shadow: 0 4px 14px rgba(0, 0, 0, .22); opacity: 0; transform: translateY(6px); transition: opacity .16s, transform .16s var(--mt-ease, ease); pointer-events: auto; }
+#music-archive-view .ag-play::before { content: ""; position: absolute; left: 13px; top: 10px; border-style: solid; border-width: 7px 0 7px 11px; border-color: transparent transparent transparent var(--ar-ink); }
+#music-archive-view .ag-cell:hover .ag-play, #music-archive-view .ag-cell.is-focus .ag-play { opacity: 1; transform: none; }
+#music-archive-view .ag-play:hover { background: var(--ar-ink); }
+#music-archive-view .ag-play:hover::before { border-left-color: var(--ar-paper); }
+body.music-reduce-motion .ag-art, body.music-reduce-motion #music-archive-view .ag-play { transition: none; }
+
+/* ---------- 平放（archive-wall.js tilt）：封面平躺在桌面上，低机位往远处看，远处没进纸色的雾里 ---------- */
+.archive-wall.aw-table {
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%), linear-gradient(180deg, transparent 0, rgba(0, 0, 0, .25) 10%, #000 42%, #000 93%, transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%), linear-gradient(180deg, transparent 0, rgba(0, 0, 0, .25) 10%, #000 42%, #000 93%, transparent 100%);
+    perspective: 1500px;
+    perspective-origin: 50% 8%;
+}
+.aw-table .aw-world { transform-origin: 0 0; transform-style: preserve-3d; }
+.aw-table .aw-in { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-ink) 8%, transparent); }
+/* 平放悬停：像从桌上捏起一角，以下沿为轴微微立起 */
+.aw-table .aw-tile:hover { transform-style: preserve-3d; }
+.aw-table .aw-tile:hover .aw-in { transform-origin: 50% 100%; transform: rotateX(-16deg) translateZ(8px); filter: saturate(1.08) brightness(1.06); box-shadow: 0 0 0 1px var(--ar-ink), 0 0 0 4px rgba(var(--ar-paper-rgb), .5); }
+/* 平放：远处的小卡不画字，只留封面和徽标 */
+.aw-table .aw-s .aw-cap { display: none; }
+.aw-table .aw-tile.is-focus .aw-in { box-shadow: 0 0 0 3px var(--ar-accent); }
+/* 选中展开的那张：从后边缘为轴立起来，正对镜头，桌面上留一块影子 */
+.aw-table .aw-tile.is-open { transform-style: preserve-3d; z-index: 5; }
+.aw-table .aw-tile.is-open::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(closest-side, rgba(0, 0, 0, .34), rgba(0, 0, 0, 0));
+    transform: translateY(14%) scale(1.05, .7);
+    pointer-events: none;
+}
+.aw-table .aw-tile.is-open .aw-in {
+    transform-origin: 50% 100%;
+    transform: rotateX(-56deg) scale(.86);
+    transition: transform .55s var(--mt-ease-spring, cubic-bezier(.2, .9, .25, 1));
+    box-shadow: 0 0 0 1px var(--ar-ink), 0 42px 90px rgba(0, 0, 0, .34);
+    filter: none;
+    animation: aw-stand .6s var(--mt-ease-spring, cubic-bezier(.2, .9, .25, 1)) both;
+}
+@keyframes aw-stand { from { transform: rotateX(0deg) scale(1); } to { transform: rotateX(-56deg) scale(.86); } }
+body.music-reduce-motion .aw-table .aw-tile.is-open .aw-in { animation: none; }
+
+/* ---------- 换视图的扫描过场（archive-view.js layoutSweep） ---------- */
+.archive-layout-sweep { position: absolute; inset: 0; z-index: 4; overflow: hidden; pointer-events: none; }
+.archive-layout-sweep > i {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    background: var(--ar-paper);
+    border-left: 2px solid var(--ar-accent);
+    will-change: transform;
+}
+/* 盖上那一段：扫描头在面板右缘（往右推进的前缘），身后不拖细线 */
+.archive-layout-sweep.is-covering > i { border-left: 0; box-shadow: 2px 0 0 var(--ar-accent); }
+.archive-layout-sweep.is-covering > i::before { display: none; }
+/* 扫描头身后（已经露出来的那边）拖一段每 4px 一根的细线，越远越淡 */
+.archive-layout-sweep > i::before {
+    content: "";
+    position: absolute;
+    right: 100%;
+    top: 0;
+    bottom: 0;
+    width: 90px;
+    margin-right: 2px;
+    background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--ar-ink) 28%, transparent) 0 1px, transparent 1px 4px);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000);
+    mask-image: linear-gradient(90deg, transparent, #000);
+}
+
+/* 平放的景深：远处那一截（画面上方）透过一层渐进的模糊看，越远越糊；近处清楚 */
+.archive-wall.aw-table::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 34%;
+    z-index: 2;
+    pointer-events: none;
+    -webkit-backdrop-filter: blur(2.4px);
+    backdrop-filter: blur(2.4px);
+    -webkit-mask-image: linear-gradient(180deg, #000 0, rgba(0, 0, 0, .7) 45%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 0, rgba(0, 0, 0, .7) 45%, transparent 100%);
+}
+body.music-reduce-motion .archive-wall.aw-table::after { display: none; }
+
+/* 窗口窄、大卡小的时候：歌词收起，按钮缩小排成一行，标题也小一号 */
+.aw-tile.is-open .aw-in { container-type: size; container-name: awcard; }
+@container awcard (max-width: 340px) {
+    .aw-lyric { display: none; }
+    .aw-panel { gap: 6px; padding: 0 16px 14px; }
+    .aw-panel-title { font-size: 28px; }
+    .aw-panel-acts { margin-top: 4px; gap: 6px; flex-wrap: nowrap; }
+    #music-archive-view .aw-panel-acts button { min-height: 28px; padding: 0 10px; font-size: 12px; white-space: nowrap; }
+    #music-archive-view .aw-panel-acts .aw-primary { padding: 0 12px 0 10px; gap: 7px; }
+    .aw-seek { margin-top: 2px; }
+}
+@container awcard (max-height: 360px) {
+    .aw-lyric { display: none; }
+}
+
+/* 熄灯：除了正在播放的那张，其余慢慢暗下去（1.6 秒），亮回来快（0.25 秒） */
+.archive-wall .aw-in { transition: transform .22s var(--mt-ease, ease), box-shadow .22s var(--mt-ease, ease), filter .25s var(--mt-ease, ease); }
+.archive-wall.aw-dim .aw-tile:not(.is-playing) .aw-in { filter: brightness(.3) saturate(.6); transition: transform .22s var(--mt-ease, ease), box-shadow .22s var(--mt-ease, ease), filter 1.6s ease; }
+.archive-wall.aw-dim .aw-tile.is-playing .aw-in { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-accent) 60%, transparent), 0 18px 60px color-mix(in srgb, var(--ar-accent) 28%, transparent); }
+.archive-wall.aw-dim::before { opacity: .4; transition: opacity 1.6s ease; }
+
+/* 换视图：扫描线扫过时，封面从侧面翻过来（左边先、右边后，时间由脚本按位置给） */
+.aw-tile.aw-flip .aw-in { transform-origin: 0 50%; animation: aw-flip .56s var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1)) backwards; }
+/* 只动 transform 和 opacity（合成线程能独自跑）；以前带的 brightness 滤镜在平放几百张一起翻时太重，去掉 */
+@keyframes aw-flip { from { opacity: 0; transform: perspective(900px) rotateY(-88deg); } 60% { opacity: 1; } to { opacity: 1; transform: perspective(900px) rotateY(0deg); } }
+.ag-cell.ag-flip > .ag-art { transform-origin: 0 50%; animation: aw-flip .56s var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1)) var(--ag-d, 0ms) backwards; }
+.ag-cell.ag-flip > .ag-t, .ag-cell.ag-flip > .ag-a { animation: ag-pop .34s var(--mt-ease-out, cubic-bezier(.2, .8, .2, 1)) calc(var(--ag-d, 0ms) + 120ms) backwards; }
+body.music-reduce-motion .aw-tile.aw-flip .aw-in, body.music-reduce-motion .ag-cell.ag-flip > * { animation: none; }
+
+/* 定位正在播放：右下角圆键，准星；正在播放那张不在视野里时亮成强调色、外面一圈慢慢呼吸；点一下放出一圈波纹 */
+#music-archive-view .aw-locate {
+    position: absolute;
+    right: 40px;
+    bottom: 34px;
+    z-index: 6;
+    width: 40px;
+    height: 40px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 50%;
+    color: var(--ar-ink);
+    background: rgba(var(--ar-paper-rgb), .78);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-ink) 16%, transparent), 0 8px 22px rgba(0, 0, 0, .22);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    opacity: .7;
+    transition: opacity .2s, transform .2s var(--mt-ease-spring, cubic-bezier(.2, .9, .25, 1)), background-color .2s, color .2s;
+    cursor: pointer;
+}
+#music-archive-view .aw-locate[hidden] { display: none; }
+#music-archive-view .aw-locate:hover { opacity: 1; transform: scale(1.06); }
+#music-archive-view .aw-locate:active { transform: scale(.92); }
+/* 准星：一个圈 + 四个短刻度 */
+.aw-locate i { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 1.6px solid currentColor; border-radius: 50%; box-sizing: border-box; }
+.aw-locate i::before, .aw-locate i::after { content: ""; position: absolute; background: currentColor; }
+.aw-locate i::before { left: 50%; top: -6px; bottom: -6px; width: 1.6px; margin-left: -.8px; -webkit-mask-image: linear-gradient(180deg, #000 0 5px, transparent 5px calc(100% - 5px), #000 calc(100% - 5px)); mask-image: linear-gradient(180deg, #000 0 5px, transparent 5px calc(100% - 5px), #000 calc(100% - 5px)); }
+.aw-locate i::after { top: 50%; left: -6px; right: -6px; height: 1.6px; margin-top: -.8px; -webkit-mask-image: linear-gradient(90deg, #000 0 5px, transparent 5px calc(100% - 5px), #000 calc(100% - 5px)); mask-image: linear-gradient(90deg, #000 0 5px, transparent 5px calc(100% - 5px), #000 calc(100% - 5px)); }
+#music-archive-view .aw-locate.is-away { opacity: 1; color: #17130a; background: var(--ar-accent); }
+#music-archive-view .aw-locate.is-away::before { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 0 color-mix(in srgb, var(--ar-accent) 55%, transparent); animation: aw-breathe 2.4s ease-out infinite; pointer-events: none; }
+#music-archive-view .aw-locate.is-ping::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--ar-accent); animation: aw-ping .6s ease-out both; pointer-events: none; }
+@keyframes aw-breathe { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ar-accent) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 14px transparent; } }
+@keyframes aw-ping { from { transform: scale(1); opacity: 1; } to { transform: scale(2.2); opacity: 0; } }
+#music-archive-view .aw-table .aw-locate { right: 48px; }
+body.music-reduce-motion #music-archive-view .aw-locate.is-away::before, body.music-reduce-motion #music-archive-view .aw-locate.is-ping::after { animation: none; }
+.ag-locate { right: 30px !important; bottom: 30px !important; }
+
+/* 大卡是当前这首时：主键两边的上一首、下一首圆键 */
+#music-archive-view .aw-panel-acts .aw-round { width: 34px; min-width: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+#music-archive-view .aw-panel-acts .aw-round[hidden] { display: none; }
+.aw-round i { position: relative; width: 12px; height: 12px; }
+.aw-round i::before, .aw-round i::after { content: ""; position: absolute; top: 0; }
+.aw-prev i::before { left: 0; width: 2px; height: 12px; background: currentColor; }
+.aw-prev i::after { left: 2px; border-style: solid; border-width: 6px 10px 6px 0; border-color: transparent currentColor transparent transparent; }
+.aw-next i::before { right: 0; width: 2px; height: 12px; background: currentColor; }
+.aw-next i::after { right: 2px; border-style: solid; border-width: 6px 0 6px 10px; border-color: transparent transparent transparent currentColor; }
+@container awcard (max-width: 340px) { #music-archive-view .aw-panel-acts .aw-round { width: 28px; min-width: 28px; } #music-archive-view .aw-panel-acts:has(.aw-round:not([hidden])) [data-wall="stage"] { display: none; } }
+#music-archive-view .aw-panel-acts .aw-primary.is-now:not(:disabled) { background: color-mix(in srgb, var(--ar-accent) 88%, #fff); color: #111; }
+
+/* 浅色主题：压暗会发脏，改成往纸色里退（变淡、去饱和），熄灯同理 */
+body.light-theme .archive-wall .aw-in { transition: transform .22s var(--mt-ease, ease), box-shadow .22s var(--mt-ease, ease), filter .25s var(--mt-ease, ease), opacity .25s var(--mt-ease, ease); }
+body.light-theme .aw-world.aw-has-open .aw-tile:not(.is-open):not(:hover) .aw-in { filter: saturate(.72) brightness(1.04); opacity: .5; }
+body.light-theme .archive-wall.aw-dim .aw-tile:not(.is-playing) .aw-in { filter: saturate(.45) brightness(1.08); opacity: .24; transition: transform .22s var(--mt-ease, ease), box-shadow .22s var(--mt-ease, ease), filter 1.6s ease, opacity 1.6s ease; }
+body.light-theme .aw-tile.is-open .aw-in { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ar-ink) 18%, transparent), 0 36px 90px rgba(60, 40, 20, .26), 0 6px 18px rgba(60, 40, 20, .12); }
+
+/* 悬停快捷动作第二个键：「更多」（三个点），在播放键左边；网格同样 */
+#music-archive-view .aw-qm, #music-archive-view .ag-more {
+    position: absolute;
+    z-index: 4;
+    width: 32px;
+    height: 32px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, .46);
+    background-image: radial-gradient(circle at calc(50% - 7px) 50%, #fff 0 1.7px, transparent 2.2px), radial-gradient(circle at 50% 50%, #fff 0 1.7px, transparent 2.2px), radial-gradient(circle at calc(50% + 7px) 50%, #fff 0 1.7px, transparent 2.2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .24);
+    opacity: 0;
+    transform: scale(.8);
+    transition: opacity .16s, transform .2s var(--mt-ease-spring, cubic-bezier(.2, .9, .25, 1)), background-color .15s;
+    cursor: pointer;
+}
+#music-archive-view .aw-qm { right: 48px; top: 9px; }
+#music-archive-view .ag-more { right: 49px; bottom: 9px; width: 34px; height: 34px; }
+#music-archive-view .aw-tile:not(.aw-s):not(.is-open):hover .aw-qm, #music-archive-view .ag-cell:hover .ag-more { opacity: 1; transform: none; }
+#music-archive-view .aw-qm:hover, #music-archive-view .ag-more:hover { background-color: rgba(0, 0, 0, .72); }
+#music-archive-view .archive-wall.is-grabbing .aw-qm { opacity: 0 !important; }
+
+/* ---------- 键盘焦点：和全局按钮同一种「强调色虚线、外扩 4px」 ---------- */
+/* 主题和播放器皮肤里的全局焦点框带 :not(#messageInput)（算一个 id），这里也用 :not(#_) 抬到两个 id 才盖得过 */
+#music-archive-view :is(.archive-wall, .ag-scroll):focus:not(#_) { outline: none; }
+/* Tab 停在墙/网格上：选中的那张多一圈虚线，表示方向键现在管它 */
+.archive-wall:focus-visible .aw-tile.is-focus .aw-in,
+.ag-scroll:focus-visible .ag-cell.is-focus .ag-art { outline: 1px dashed var(--ar-accent); outline-offset: 5px; }
+/* 还没选中任何一张：整块区域内侧描一圈虚线 */
+#music-archive-view :is(.archive-wall, .ag-scroll):focus-visible:not(:has(.is-focus)):not(#_) { outline: 1px dashed var(--ar-accent); outline-offset: -6px; }
+/* 定位圆键：焦点圈贴近一点，跟着圆走 */
+#music-archive-view .aw-locate:focus-visible { outline-offset: 3px; }
+
+/* 大卡进度条可以 Tab 到：焦点时进度条外描一圈虚线 */
+#music-archive-view .aw-seek:focus:not(#_) { outline: none; }
+#music-archive-view .aw-seek:focus-visible .aw-seek-bar { outline: 1px dashed var(--ar-accent); outline-offset: 5px; }
+
+/* ---------- 换视图过场的配合（archive-view.js sweepToLayout） ---------- */
+/* 纸盖着：新视图的入场动画先停在第一帧，揭开时一起放 */
+#music-archive-view.layout-holding :is(.aw-tile.aw-flip .aw-in, .aw-tile.aw-entering .aw-in, .ag-cell.ag-flip > .ag-art, .ag-cell.ag-entering > *, .ag-head.ag-entering > *) { animation-play-state: paused; }
+/* 揭开的这半秒里平放的景深模糊先关掉（几百张一起翻时它每帧都要重算），扫完再淡回来 */
+.archive-wall.aw-table::after { transition: opacity .4s var(--mt-ease, ease); }
+#music-archive-view.layout-revealing .archive-wall.aw-table::after { opacity: 0; transition: none; }
+
+
+/* ---------- 镜头在动（archive-wall.js setMoving） ---------- */
+/* 滚动、拖动、惯性滑行时格子不接悬停：内容在光标下滑过时不会一张张立起又放下 */
+.archive-wall.aw-moving .aw-world { pointer-events: none; }
+/* 平放滚动时景深模糊先撤掉（它要每帧重算下面滑过的内容），停下再淡回来 */
+#music-archive-view .archive-wall.aw-table.aw-moving::after { opacity: 0; transition: opacity .12s linear; }

@@ -68,6 +68,7 @@ test('late initial snapshot cannot overwrite live push', async () => {
 test('player snapshot deduplicates state and gapless path publishes', () => {
     const context = { console, setInterval, clearInterval };
     vm.createContext(context);
+    vm.runInContext(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'), context);
     vm.runInContext(fs.readFileSync('Musicmodules/music-player.js', 'utf8'), context);
     const sent = [];
     const app = {
@@ -83,8 +84,12 @@ test('player snapshot deduplicates state and gapless path publishes', () => {
     app.publishCapsuleState();
     assert.equal(sent.length, 2);
     assert.equal(sent[1].playing, false);
+    // 引擎切进了曲库里没有的歌：不发布它，交给「下一首」接上
+    let advanced = 0;
+    app.nextTrack = () => { advanced++; };
     app.syncTrackIndexByPath('missing');
     assert.equal(sent.length, 2);
+    assert.equal(advanced, 1);
 });
 test('sidebar mode toast removed and capsule IPC validates publishers and commands', () => {
     assert.doesNotMatch(fs.readFileSync('modules/event-listeners.js', 'utf8'), /侧栏已切换|侧栏已恢复/);

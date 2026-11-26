@@ -9,16 +9,23 @@
     const { buildGlyphTimeline, resolveSupplementalText, createInterludeVisualizer } = R;
     const value = (v, fallback, min = 0, max = 2) => clamp(Number.isFinite(Number(v)) ? Number(v) : fallback, min, max);
     const ease = v => { const t = clamp(v); return t * t * t * (t * (t * 6 - 15) + 10); };
+    // Assigning text replaces the text node and lays it out again, even when
+    // the text is the same; each frame only writes what changed.
+    const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+    const setHidden = (node, hidden) => { if (node.hidden !== hidden) node.hidden = hidden; };
 
     const createManager = (container, services) => {
         const mode = makeModeBase('fume', '浮名', container, services);
         const canvas = createElement('canvas', 'fume-canvas');
         const world = createElement('div', 'fume-article-world');
+        // Screen-space frame so the page can fade out under the top chrome.
+        const frame = createElement('div', 'fume-article-frame');
+        frame.appendChild(world);
         const translation = createElement('div', 'stage-translation fume-article-subtitle');
         const heading = createElement('div', 'fume-article-heading');
         const empty = createElement('div', 'fume-article-empty', '等待音乐');
         const interlude = createInterludeVisualizer({ className: 'stage-interlude-fume' });
-        mode.root.append(canvas, world, heading, translation, empty, interlude.root);
+        mode.root.append(canvas, frame, heading, translation, empty, interlude.root);
         mode.scope.add(() => interlude.destroy());
         const context = canvas.getContext('2d');
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -29,12 +36,24 @@
         let cameraY = 0, cameraX = 0, cameraScale = 1;
         let paperWidth = 1, paperHeight = 1;
         let shapes = [];
+        const still = U.createStillGate();
         const tuning = () => mode.config.modes?.fume || {};
         const intensity = () => reduced?.matches ? 0 : value(mode.config.animationIntensity, 1);
 
+        // The size is known from the resize observer; reading it every frame
+        // makes the browser lay the page out again before each one.
+        let rootSize = null;
+        if (global.ResizeObserver) {
+            const observer = new global.ResizeObserver(() => { rootSize = null; });
+            observer.observe(mode.root);
+            mode.scope.add(() => observer.disconnect());
+        }
         const resize = () => {
-            const w = Math.max(1, mode.root.clientWidth || global.innerWidth || 1);
-            const h = Math.max(1, mode.root.clientHeight || global.innerHeight || 1);
+            if (!rootSize || !global.ResizeObserver) {
+                rootSize = { w: Math.max(1, mode.root.clientWidth || global.innerWidth || 1),
+                    h: Math.max(1, mode.root.clientHeight || global.innerHeight || 1) };
+            }
+            const { w, h } = rootSize;
             const budget = mode.config.quality === 'energy-saving' ? 1280 * 720 : 1920 * 1080 * 1.5;
             const dpr = Math.min(2, global.devicePixelRatio || 1, Math.sqrt(budget / (w * h)));
             if (w !== width || h !== height) dirty = true;
@@ -54,7 +73,9 @@
             const heroScale = value(t.heroScale, 1, 0.82, 1.32);
             const spacing = value(t.articleSpacing, 1, 0.65, 1.6);
             const columns = width < 600 ? 2 : width < 1100 ? 3 : 4;
-            const columnWidth = clamp(width * 0.42, 260, 460);
+            // Columns about a dozen glyphs wide, so the page reads as a dense
+            // article with the neighbouring lines in view, not one line adrift.
+            const columnWidth = clamp(width * 0.24, 260, 320);
             const gap = 18 * spacing;
             paperWidth = columns * columnWidth + (columns - 1) * gap;
             const skyline = Array(columns).fill(0);
@@ -70,8 +91,22 @@
                     order: R.hashString(`${trackKey}:${index}:${line.fullText}`)
                 };
             });
-            // Measure one block at a time using the same DOM and styles as the resident view.
+            // Measure with the same DOM and styles as the resident view. A block's
+            // height and glyph offsets do not depend on where it sits, so every
+            // block is measured in one layout instead of one layout per block.
             // Only numeric geometry survives compilation; detached glyph nodes are not cached.
+            const measured = blocks.map(block => mountBlock(block, true));
+            blocks.forEach((block, index) => {
+                const entry = measured[index];
+                block.height = Math.max(1, entry.element.offsetHeight);
+                // offset coordinates are independent of any ancestor camera transform.
+                block.glyphLayout = entry.glyphs.map(glyph => ({
+                    start: glyph.start, end: glyph.end, char: glyph.char,
+                    x: entry.text.offsetLeft + glyph.span.offsetLeft + glyph.span.offsetWidth * 0.5,
+                    y: entry.text.offsetTop + glyph.span.offsetTop + glyph.span.offsetHeight * 0.5
+                }));
+            });
+            measured.forEach(entry => entry.element.remove());
             const order = [...blocks].sort((a, b) => a.order - b.order || a.index - b.index);
             order.forEach(block => {
                 let column = 0, top = Infinity;
@@ -81,15 +116,6 @@
                 }
                 block.x = column * (columnWidth + gap);
                 block.y = top;
-                const entry = mountBlock(block, true);
-                block.height = Math.max(1, entry.element.offsetHeight);
-                // offset coordinates are independent of any ancestor camera transform.
-                block.glyphLayout = entry.glyphs.map(glyph => ({
-                    start: glyph.start, end: glyph.end, char: glyph.char,
-                    x: entry.text.offsetLeft + glyph.span.offsetLeft + glyph.span.offsetWidth * 0.5,
-                    y: entry.text.offsetTop + glyph.span.offsetTop + glyph.span.offsetHeight * 0.5
-                }));
-                entry.element.remove();
                 for (let c = column; c < column + block.span; c++) skyline[c] = top + block.height + gap;
             });
             paperHeight = Math.max(1, ...skyline);
@@ -98,7 +124,7 @@
 
         const mountBlock = (block, measuring = false) => {
             const element = createElement('article', `fume-article-block${block.hero ? ' is-hero' : ''}`);
-            const number = createElement('div', 'fume-article-number', `${String(block.index + 1).padStart(3, '0')} / ${block.hero ? 'VERSE' : 'TEXT'}`);
+            const number = createElement('div', 'fume-article-number', String(block.index + 1).padStart(3, '0'));
             const text = createElement('div', 'fume-article-text');
             element.style.width = `${block.width}px`;
             text.style.fontSize = `${block.fontSize}px`;
@@ -141,10 +167,38 @@
             wanted.forEach(i => { if (!mounted.has(i)) mountBlock(blocks[i]); });
         };
 
+        // The track card sits in the top-left corner; when it reaches down to the
+        // reading line, lines start to the right of it instead of underneath.
+        const card = U.watchOverlay(mode.root);
+        mode.scope.add(() => card.destroy());
+        const MARGIN = 28;
+        const leftLimit = () => {
+            const box = card.box;
+            if (!box) return MARGIN;
+            const cardBottom = (1 - box.bottom) / 2 * height;
+            if (cardBottom < height * 0.44 - 90) return MARGIN;
+            return Math.max(MARGIN, (box.right + 1) / 2 * width + 24);
+        };
+        // Reading zoom, capped so the whole line block fits across the viewport.
+        const readScale = block => Math.min(
+            clamp(Math.min(width, height) * 0.09 / block.fontSize, 0.9, 2),
+            Math.max(0.5, (width - leftLimit() - MARGIN) / block.width)
+        );
+        // Follow the reading head, but never pan so far that the current block
+        // runs off either side of the window (narrow windows cut lines otherwise).
+        const keepBlock = (block, pose) => {
+            const right = (width * 0.5 - MARGIN) / pose.scale;
+            const low = block.x + block.width - right;
+            const high = block.x + (width * 0.5 - leftLimit()) / pose.scale;
+            if (low <= high) pose.x = clamp(pose.x, low, high);
+            else if (low <= block.x + right) pose.x = clamp(pose.x, low, block.x + right);
+            return pose;
+        };
+
         const focusAt = (block, time, stepped = false) => {
             const glyphs = block.glyphLayout;
-            const scale = clamp(Math.min(width, height) * 0.09 / block.fontSize, 0.9, 2);
-            if (!glyphs.length) return { x: block.x + block.width / 2, y: block.y + block.height / 2, scale };
+            const scale = readScale(block);
+            if (!glyphs.length) return keepBlock(block, { x: block.x + block.width / 2, y: block.y + block.height / 2, scale });
             // Binary search the actual measured reading head, including whitespace timings.
             let low = 0, high = glyphs.length - 1, index = 0;
             while (low <= high) {
@@ -155,7 +209,7 @@
             const a = glyphs[index], b = glyphs[Math.min(index + 1, glyphs.length - 1)];
             const interval = b.start - a.start;
             const blend = stepped || interval <= 0 ? 0 : clamp((time - a.start) / interval);
-            return { x: block.x + a.x + (b.x - a.x) * blend, y: block.y + a.y + (b.y - a.y) * blend, scale };
+            return keepBlock(block, { x: block.x + a.x + (b.x - a.x) * blend, y: block.y + a.y + (b.y - a.y) * blend, scale });
         };
 
         const readingFocus = (block, time, stepped) => {
@@ -172,7 +226,7 @@
                 const wraps = Math.abs(dy) > block.fontSize * 0.5;
                 const interval = Math.max(0, b.start - a.start);
                 const screenDistance = Math.hypot(dx, dy)
-                    * clamp(Math.min(width, height) * 0.09 / block.fontSize, 0.9, 2);
+                    * readScale(block);
                 // A long-word line return must not finish within a single synthetic glyph.
                 const window = wraps
                     ? clamp(0.65 + screenDistance / 1400, 0.65, 1.25)
@@ -182,8 +236,8 @@
                 x += dx * progress;
                 y += dy * progress;
             }
-            const scale = clamp(Math.min(width, height) * 0.09 / block.fontSize, 0.9, 2);
-            return { x: block.x + x, y: block.y + y, scale };
+            const scale = readScale(block);
+            return keepBlock(block, { x: block.x + x, y: block.y + y, scale });
         };
 
         const overview = () => ({
@@ -301,6 +355,15 @@
             if (lines !== frame.lines || trackKey !== nextTrackKey) {
                 lines = frame.lines; trackKey = nextTrackKey; dirty = true;
             }
+            // Paused and nothing changed: the page and its background already
+            // show this frame, so neither is written or repainted again.
+            if (!dirty) {
+                const accent = resolveAccent(services?.app);
+                const box = card.box;
+                const extra = `${width}x${height}@${pixelRatio}|${accent.r},${accent.g},${accent.b}|${intensity()}`
+                    + `|${box ? `${box.left},${box.right},${box.top},${box.bottom}` : ''}`;
+                if (still.same(frame, extra)) return;
+            } else still.invalidate();
             if (dirty) compile();
             rebuildShapes();
             const t = tuning();
@@ -310,8 +373,8 @@
             const previous = blocks[Math.max(0, index - 1)];
             const showInstrumental = Boolean(frame.track && !block);
             interlude.update(frame, { visible: showInstrumental, intensity: intensity(), label: '纯音乐播放中' });
-            empty.hidden = Boolean(block || showInstrumental);
-            empty.textContent = '等待音乐';
+            setHidden(empty, Boolean(block || showInstrumental));
+            setText(empty, '等待音乐');
             if (block) {
                 const pose = resolveCamera(index, time);
                 cameraX = pose.x; cameraY = pose.y; cameraScale = pose.scale;
@@ -327,7 +390,8 @@
                     const current = i === index && time >= b.line.startTime;
                     const passed = time >= lineEnd;
                     const dim = passed ? ease((time - lineEnd) / hold) : 0;
-                    entry.element.style.opacity = String(current ? 1 : passed ? 0.58 - dim * 0.45 : 0.13);
+                    // Upcoming lines read as faint print (block dim only), not just a bare number.
+                    entry.element.style.opacity = String(current ? 1 : passed ? 0.58 - dim * 0.45 : 0.2);
                     entry.element.classList.toggle('is-current', current);
                     // Keep measured geometry stable when hiding the decorative header.
                     entry.number.style.visibility = t.hidePrintSymbols === true ? 'hidden' : 'visible';
@@ -335,18 +399,18 @@
                         const progress = clamp((time - glyph.start) / Math.max(0.04, glyph.end - glyph.start));
                         const printed = time >= glyph.start;
                         const active = printed && time < glyph.end;
-                        glyph.span.style.opacity = printed ? '1' : '0.22';
+                        glyph.span.style.opacity = printed || !current ? '1' : '0.22';
                         glyph.span.style.setProperty('--print-progress', `${progress * 100}%`);
                         glyph.span.style.setProperty('--print-pulse', String(active && intensity() > 0 ? Math.sin(progress * Math.PI) : 0));
                         glyph.span.classList.toggle('is-printing', active);
                         glyph.span.classList.toggle('is-printed', printed);
                     });
                 });
-                translation.textContent = resolveSupplementalText(frame.activeLine);
-                heading.textContent = `FUME / ${String(index + 1).padStart(3, '0')} — ${String(blocks.length).padStart(3, '0')}`;
+                setText(translation, resolveSupplementalText(frame.activeLine));
+                setText(heading, `浮名 · ${U.lineCounter(frame, 3)}`);
             } else {
-                translation.textContent = '';
-                heading.textContent = 'FUME / INSTRUMENTAL';
+                setText(translation, '');
+                setText(heading, `浮名 · ${blocks.length && frame.currentLineIndex >= 0 ? '间奏' : U.lineCounter(frame, 3)}`);
                 cameraX = cameraY = 0;
             }
             canvas.style.opacity = String(value(t.backgroundOpacity, 0.5, 0, 1));
@@ -362,12 +426,13 @@
             const after = config.modes?.fume || {};
             if (['heroScale', 'articleSpacing'].some(key => before[key] !== after[key])) dirty = true;
             updateConfig(config);
+            still.invalidate();
             if (latestFrame) mode.updateFrame(latestFrame);
         };
         mode.resize = () => { resize(); if (latestFrame) mode.updateFrame(latestFrame); };
         mode.suspend = () => { paused = true; };
-        mode.resume = () => { paused = false; if (latestFrame) mode.updateFrame(latestFrame); };
-        mode.updateTheme = () => { shapeKey = ''; dirty = true; };
+        mode.resume = () => { paused = false; still.invalidate(); if (latestFrame) mode.updateFrame(latestFrame); };
+        mode.updateTheme = () => { shapeKey = ''; dirty = true; still.invalidate(); };
         mode.scope.listen(document.fonts, 'loadingdone', () => {
             dirty = true;
             if (latestFrame) mode.updateFrame(latestFrame);

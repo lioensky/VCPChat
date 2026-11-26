@@ -112,8 +112,10 @@ function setupVisualizer(app) {
             || app.ws.readyState === WebSocket.CONNECTING
         )) return;
 
-        const socket = new WebSocket("ws://127.0.0.1:63789/ws");
+        // 端口由主进程启动引擎时探测决定，地址经 getAudioEngineEndpoint 下发；拿不到时退回默认端口。
+        const socket = new WebSocket(app.audioEngineWsUrl || "ws://127.0.0.1:63789/ws");
         app.ws = socket;
+        socket.binaryType = 'arraybuffer';
 
         socket.onopen = () => {
             if (app.visualizerDestroyed || app.ws !== socket) {
@@ -121,6 +123,7 @@ function setupVisualizer(app) {
                 return;
             }
             console.log('[Music.js] Connected to Rust Audio Engine via WebSocket.');
+            app.visualizerReconnectAttempts = 0;
             if (!app.animationFrameId) {
                 app.startVisualizerAnimation();
             }
@@ -129,8 +132,19 @@ function setupVisualizer(app) {
         socket.onmessage = (event) => {
             if (app.visualizerDestroyed || app.ws !== socket) return;
             try {
-                const message = JSON.parse(event.data);
-                if (message.type === 'spectrum_data') {
+                const message = typeof event.data === 'string'
+                    ? JSON.parse(event.data)
+                    : app.decodeEngineBinaryFrame(event.data);
+                if (!message) return;
+                if (message.type === 'hello') {
+                    // 新引擎：频谱改收二进制帧，播放状态改收推送。
+                    if (Array.isArray(message.features) && message.features.includes('spectrum_binary')) {
+                        socket.send(JSON.stringify({ type: 'subscribe', spectrum: 'binary' }));
+                    }
+                    app.handleEngineHello?.(message);
+                } else if (message.type === 'playback_state') {
+                    app.handleEnginePlaybackState?.(message);
+                } else if (message.type === 'spectrum_data') {
                     // 停着的时候只通知一次“没在播”，不再把每一帧频谱都经主进程转发出去。
                     const grooving = app.isPlaying === true && !app.isTrackLoading;
                     if (grooving || app._lastGroovePlaying !== false) {
@@ -142,6 +156,7 @@ function setupVisualizer(app) {
                         } : { playing: false });
                     }
                     if (app.isPlaying) {
+                        if (!app.animationFrameId) app.wakeVisualizer();
                         app._visualizerIdle = false;
                         app.targetVisualizerData = message.data;
                         if (app.currentVisualizerData.length === 0) {
@@ -168,16 +183,19 @@ function setupVisualizer(app) {
                         app._gaplessJustSwitched = false;
                         return;
                     }
-                    console.log('[Music.js] Playback ended, moving to next track');
-                    // 停止轮询，防止 pollState 中的状态更新与 nextTrack 冲突
-                    app.stopStatePolling();
-                    app.isPlaying = false;
-                    app.playPauseBtn.classList.remove('is-playing');
-                    app.nextTrack();
+                    // 停止轮询，防止 pollState 中的状态更新与 nextTrack 冲突（在 handlePlaybackEnded 里）
+                    if (app.handlePlaybackEnded) app.handlePlaybackEnded('push');
+                    else {
+                        app.stopStatePolling();
+                        app.isPlaying = false;
+                        app.playPauseBtn.classList.remove('is-playing');
+                        app.nextTrack();
+                    }
                 } else if (message.type === 'track_changed') {
                     console.log('[Music.js] Gapless track changed:', message.file_path);
                     // 设置 gapless 切歌标志，抑制紧随其后的 playback_ended 事件
                     app._gaplessJustSwitched = true;
+                    app.endedHandledForLoad = null; // 无缝切过去的这首放完时也要能往下切
                     // 安全兜底：如果 playback_ended 没有紧跟着来，在一定时间后清除标志
                     clearTimeout(app._gaplessSwitchTimer);
                     app._gaplessSwitchTimer = setTimeout(() => {
@@ -196,18 +214,36 @@ function setupVisualizer(app) {
             if (app.ws === socket) {
                 app.ws = null;
                 app.api?.publishMusicGroove?.({ playing: false });
+                app.handleEngineDisconnected?.();
             }
             if (app.visualizerDestroyed || app.visualizerReconnectTimer) return;
+            // 切歌、播完这些事件都走这条连接（引擎会攒着，连上再发），断开期间一首歌放完就会静音到重连为止。
+            // 所以先快后慢：0.5、1、2、4 秒，之后每 5 秒一次；连上就归零。
+            const attempt = app.visualizerReconnectAttempts || 0;
+            app.visualizerReconnectAttempts = attempt + 1;
             app.visualizerReconnectTimer = setTimeout(() => {
                 app.visualizerReconnectTimer = null;
                 app.connectWebSocket();
-            }, 5000);
+            }, Math.min(5000, 500 * 2 ** attempt));
         };
 
         socket.onerror = (err) => {
             if (!app.visualizerDestroyed) console.error('[Music.js] WebSocket error:', err);
             socket.close();
         };
+    };
+
+    // 引擎的二进制帧：[类型 u8][版本 u8][段数 u16 小端][段数 × f32 小端]，类型 1 是频谱。
+    app.decodeEngineBinaryFrame = (buffer) => {
+        if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 4) return null;
+        const view = new DataView(buffer);
+        const kind = view.getUint8(0);
+        const version = view.getUint8(1);
+        const count = view.getUint16(2, true);
+        if (kind !== 1 || version !== 1 || buffer.byteLength < 4 + count * 4) return null;
+        const data = new Array(count);
+        for (let i = 0; i < count; i++) data[i] = view.getFloat32(4 + i * 4, true);
+        return { type: 'spectrum_data', data };
     };
 
     app.destroyVisualizer = () => {
@@ -221,6 +257,12 @@ function setupVisualizer(app) {
         if (app.animationFrameId) {
             cancelAnimationFrame(app.animationFrameId);
             app.animationFrameId = null;
+        }
+        app._visualizerWakeObserver?.disconnect();
+        app._visualizerWakeObserver = null;
+        if (app._visualizerWakeOnVisible) {
+            document.removeEventListener('visibilitychange', app._visualizerWakeOnVisible);
+            window.removeEventListener('resize', app._visualizerWakeOnVisible);
         }
         const socket = app.ws;
         app.ws = null;
@@ -296,6 +338,35 @@ function setupVisualizer(app) {
         app.visualizerCtx.fill();
     };
 
+    // 这条循环该不该跑：
+    // - 窗口不可见：不跑。
+    // - 歌词舞台开着：舞台每一帧都是从这里驱动的（stageHost.updateFrame），要跑。
+    // - 经典视图被档案页盖住：不跑。
+    // - 正在播放：跑。暂停后只跑到频谱和封面落回静止为止。
+    app.visualizerShouldRun = () => {
+        if (app.visualizerDestroyed || document.hidden) return false;
+        if (app.isStageActive && app.stageHost?.active) return true;
+        if (document.body.classList.contains('music-archive-on')) return false;
+        if (app.isPlaying) return true;
+        if (performance.now() < (app._visualizerKeepUntil || 0)) return true; // 刚被叫醒：让背景把新状态画出来
+        const settling = app.targetVisualizerData.length > 0 && !app._visualizerIdle;
+        return settling || (Number.isFinite(app.bassScale) && app.bassScale !== 1.0);
+    };
+    // keepMs：暂停着也先画这么久（刚打开、换主题、改窗口大小后，背景要重画几帧才对）。
+    app.wakeVisualizer = (keepMs = 0) => {
+        if (keepMs > 0) app._visualizerKeepUntil = Math.max(app._visualizerKeepUntil || 0, performance.now() + keepMs);
+        if (!app.animationFrameId && app.visualizerShouldRun()) app.startVisualizerAnimation();
+    };
+    app._visualizerKeepUntil = performance.now() + 2500;
+    // 播放/暂停、进出舞台、档案页和经典视图互换都会改 body 的 class；再加上窗口重新可见。
+    if (!app._visualizerWakeObserver && typeof MutationObserver === 'function') {
+        app._visualizerWakeObserver = new MutationObserver(() => app.wakeVisualizer(1200));
+        app._visualizerWakeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        app._visualizerWakeOnVisible = () => app.wakeVisualizer(400);
+        document.addEventListener('visibilitychange', app._visualizerWakeOnVisible);
+        window.addEventListener('resize', app._visualizerWakeOnVisible);
+    }
+
     app.startVisualizerAnimation = () => {
         if (app.visualizerDestroyed || app.animationFrameId) return;
         const draw = (timestamp) => {
@@ -303,6 +374,16 @@ function setupVisualizer(app) {
                 app.animationFrameId = null;
                 return;
             }
+            // Pixi 的全局 system ticker（纹理回收、指针事件）自己会一直按满帧空转：
+            // 停掉它的自驱动，改成跟着这里的真实帧走，页面静止时它也静止。
+            const pixiTicker = window.PIXI?.Ticker?.system;
+            if (pixiTicker?.started) { pixiTicker.autoStart = false; pixiTicker.stop(); }
+            // 没有东西要画就整个停下，不再空排帧；wakeVisualizer 在状态变化时再把循环叫起来。
+            if (!app.visualizerShouldRun()) {
+                app.animationFrameId = null;
+                return;
+            }
+            pixiTicker?.update(timestamp);
             const isStageActive = Boolean(app.isStageActive && app.stageHost?.active);
 
             if (app.isPlaying && !isStageActive) {

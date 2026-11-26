@@ -21,7 +21,9 @@ function loadMusic(manager) {
             if (name === 'electron') return {
                 ipcMain: { handle: (name, handler) => handles.set(name, handler), on() {} }
             };
+            if (name === '../services/audioEngineEndpoint') return require('../modules/services/audioEngineEndpoint');
             if (name.startsWith('../')) return {};
+            if (name.startsWith('./')) return require(path.join(__dirname, '../modules/ipc', name));
             return require(name);
         }
     });
@@ -79,6 +81,10 @@ test('actual request injection block gates current music but preserves system pr
                 messages, settings: { musicInfoInjectionEnabled: enabled, agentMusicControl: control },
                 getMusicState: () => ({ currentSongInfo: { title: '歌曲', artist: '艺术家', album: '专辑' } }),
                 fs: { pathExists: async () => true, readJson: async () => [{ title: '列表曲目' }] },
+                require: (name) => {
+                    assert.equal(name, '../musicPlaylistPrompt');
+                    return { playlistPrompt: async () => require('../modules/musicPlaylistPrompt').formatPlaylistPrompt([{ title: '列表曲目' }]) };
+                },
                 path, APP_DATA_ROOT_IN_PROJECT: os.tmpdir(), console
             });
             await vm.runInContext(`(async () => { ${block} })()`, context);

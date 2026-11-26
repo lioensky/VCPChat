@@ -8,12 +8,36 @@ function setupEffects(app) {
             'balance': '平衡', 'classical': '古典', 'pop': '流行',
             'rock': '摇滚', 'electronic': '电子', 'acg_vocal': '萌系ACG'
         };
+        // 滑块拖得和哪个预设都不一样时显示「自定义」；这一项不能从列表里选。
+        const custom = document.createElement('option');
+        custom.value = 'custom';
+        custom.textContent = '自定义';
+        custom.disabled = true;
+        custom.hidden = true;
+        app.eqPresetSelect.appendChild(custom);
         for (const preset in app.eqPresets) {
             const option = document.createElement('option');
             option.value = preset;
             option.textContent = presetNames[preset] || preset;
             app.eqPresetSelect.appendChild(option);
         }
+        app.syncEqPresetSelect();
+    };
+
+    // 预设下拉要跟着滑块走：以前选了「摇滚」再拖一个频段，下拉还写着「摇滚」；
+    // 重开窗口时不管滑块是什么，下拉都停在第一项「平衡」。
+    app.syncEqPresetSelect = () => {
+        if (!app.eqPresetSelect || !app.eqPresets) return;
+        const current = {};
+        for (const band in app.eqBands || {}) {
+            const slider = document.getElementById(`eq-${band}`);
+            current[band] = Number(slider ? slider.value : app.eqBands[band]) || 0;
+        }
+        const match = Object.keys(app.eqPresets).find((name) => {
+            const preset = app.eqPresets[name];
+            return Object.keys(current).every((band) => (Number(preset[band]) || 0) === current[band]);
+        });
+        app.eqPresetSelect.value = match || 'custom';
     };
 
     app.updateEqSectionState = () => {
@@ -33,6 +57,7 @@ function setupEffects(app) {
             if (slider) slider.value = preset[band];
         }
         app.sendEqSettings();
+        app.syncEqPresetSelect();
     };
 
     app.createEqBands = () => {
@@ -48,11 +73,12 @@ function setupEffects(app) {
             slider.id = `eq-${band}`;
             slider.min = -15; slider.max = 15; slider.step = 1;
             slider.value = app.eqBands[band];
-            slider.addEventListener('input', () => app.sendEqSettings());
+            slider.addEventListener('input', () => { app.sendEqSettings(); app.syncEqPresetSelect(); });
             bandContainer.appendChild(label);
             bandContainer.appendChild(slider);
             app.eqBandsContainer.appendChild(bandContainer);
         }
+        app.syncEqPresetSelect();
     };
 
     // 拖动滑块时每个 input 事件都会触发一次设置。各次请求走独立的连接，
@@ -141,7 +167,7 @@ function setupEffects(app) {
 
     app.loadIrFile = async (filePath) => {
         if (!app.api?.musicLoadIr) return;
-        app.updateIrStatus('加载中...', 'idle');
+        app.updateIrStatus('加载中…', 'idle');
         try {
             const result = await app.api.musicLoadIr({ path: filePath });
             if (result.status === 'success') {
@@ -150,13 +176,29 @@ function setupEffects(app) {
                 app.irSwitch.checked = true;
                 app.updateIrStatus('加载成功', 'loaded');
             } else {
-                app.updateIrStatus(`错误: ${result.message}`, 'error');
+                app.updateIrStatus((window.MusicErrorText || ((m, f) => f))(result.message, '加载失败'), 'error');
                 app.irEnabled = false; app.irSwitch.checked = false;
             }
         } catch (e) {
-            app.updateIrStatus(`错误: ${e.message}`, 'error');
+            app.updateIrStatus((window.MusicErrorText || ((m, f) => f))(e, '加载失败'), 'error');
             app.irEnabled = false; app.irSwitch.checked = false;
         }
+    };
+
+    // 选 IR 文件。取消了选择时，开关和下拉要回到实际状态：没有加载着的 IR 就不能显示「开」或「自定义」。
+    app.pickIrFile = async () => {
+        let filePath = null;
+        try { filePath = await app.api?.selectMusicIrFile?.(); } catch (e) { filePath = null; }
+        if (filePath) return app.loadIrFile(filePath);
+        if (!app.irLoadedPath) {
+            app.irEnabled = false;
+            app.irSwitch.checked = false;
+            if (app.irPresetSelect?.value === 'custom') {
+                app.irPresetSelect.value = '';
+                if (app.irLoadBtn) app.irLoadBtn.style.display = 'none';
+            }
+        }
+        return undefined;
     };
 
     app.unloadIr = async () => {
@@ -190,7 +232,7 @@ function setupEffects(app) {
         app.saveSettings();
     };
 
-    app.updateLoudnessLufsDisplay = () => { app.loudnessLufsValue.textContent = app.loudnessLufsSlider.value; };
+    app.updateLoudnessLufsDisplay = () => { app.loudnessLufsValue.textContent = `${app.loudnessLufsSlider.value} LUFS`; };
     app.updateLoudnessPreampDisplay = () => {
         const val = parseFloat(app.loudnessPreampSlider.value);
         app.loudnessPreampValue.textContent = (val >= 0 ? '+' : '') + val + ' dB';
@@ -233,6 +275,9 @@ function setupEffects(app) {
         app.saveSettings();
     };
 
+    // --- 切歌交叉淡入：引擎在曲尾和预载好的下一首做等功率交叉，时长随设置一起保存 ---
+    app.crossfadeSelect?.addEventListener('change', () => app.saveSettings());
+
     app.updateDynamicLoudnessStrengthDisplay = () => { app.dynamicLoudnessStrengthValue.textContent = app.dynamicLoudnessStrengthSlider.value + '%'; };
 
     // --- Noise Shaper ---
@@ -243,6 +288,14 @@ function setupEffects(app) {
         await app.api.configureMusicOutputBits({ bits: app.outputBits });
         await app.api.setMusicNoiseShaperCurve({ curve: app.noiseShaperCurve });
         app.saveSettings();
+    };
+
+    // 「抖动处理」就是噪声整形的总开关：关掉时下面的位深和曲线不起作用，跟着变灰。
+    app.syncDitherSection = () => {
+        const on = !!app.ditherSwitch?.checked;
+        document.getElementById('noise-shaper-section')?.classList.toggle('is-inactive', !on);
+        if (app.outputBitsSelect) app.outputBitsSelect.disabled = !on;
+        if (app.noiseShaperCurveSelect) app.noiseShaperCurveSelect.disabled = !on;
     };
 
     app.updateOptimizations = async () => {

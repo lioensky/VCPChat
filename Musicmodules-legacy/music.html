@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>音乐播放器</title>
+    <link rel="stylesheet" href="music.css">
+    <link rel="stylesheet" href="music-stage/music-stage.css">
+    <link rel="stylesheet" href="music-stage/modes/stage-lyric-performance.css">
+    <!-- 仅加载主题覆盖，并置于模块样式之后以确保主题定义生效 -->
+    <link rel="stylesheet" href="../styles/themes.css">
+</head>
+
+<body>
+    <!-- Phantom audio element to enable Media Session API -->
+    <audio id="phantom-audio" loop style="display:none;"></audio>
+    <!-- Custom Title Bar -->
+    <div id="custom-title-bar">
+        <div class="title">VCP - 音乐播放器</div>
+        <div class="titlebar-actions">
+            <button id="sidebar-toggle-btn" class="window-control-btn sidebar-toggle-btn" title="收纳左侧列表" aria-label="收纳左侧列表">
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1" d="M3,1.5 L8,5 L3,8.5 Z"></path>
+                </svg>
+            </button>
+            <button id="stage-toggle-btn" class="window-control-btn stage-toggle-btn" type="button"
+                title="进入歌词舞台" aria-label="进入歌词舞台" aria-pressed="false">
+                <span class="stage-toggle-orbit" aria-hidden="true"></span>
+            </button>
+            <div class="window-controls">
+                <button id="minimize-music-btn" class="window-control-btn" title="最小化">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line>
+                    </svg>
+                </button>
+                <button id="maximize-music-btn" class="window-control-btn" title="最大化">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path>
+                    </svg>
+                </button>
+                <button id="close-music-btn" class="window-control-btn" title="关闭">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor"
+                            stroke-width="1.2"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- 用于显示模糊专辑封面的背景 -->
+    <div id="player-background"></div>
+
+    <div class="music-player-container">
+        <!-- Pixi.js v8 硬件加速背景声纹与气泡粒子容器 -->
+        <div id="ambient-wave-container" class="ambient-wave-container" aria-hidden="true"></div>
+        <!-- 左侧边栏 - 整合播放列表 -->
+        <div id="left-sidebar" class="left-sidebar glass-panel">
+            <!-- 顶部操作区 -->
+            <div class="sidebar-actions">
+                <div class="search-wrapper">
+                    <input type="text" id="search-input" placeholder="搜索歌曲...">
+                    <button id="semantic-search-btn" title="开启语义搜索 (AI)">
+                        <svg viewBox="0 0 24 24" width="16" height="16">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5.5-2.5l7.51-3.49L17.5 6.5 9.99 9.99 6.5 17.5zm5.5-6.6c.61 0 1.1.49 1.1 1.1s-.49 1.1-1.1 1.1-1.1-.49-1.1-1.1.49-1.1 1.1-1.1z" fill="currentColor"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="sidebar-action-btns">
+                    <button id="add-folder-btn" title="添加本地音乐">本地</button>
+                    <button id="add-webdav-btn" title="从 WebDAV 云端导入">云端导入</button>
+                </div>
+            </div>
+            <!-- 分类标签 -->
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-view="all">全部 <span class="tab-count" id="all-count">0</span></button>
+                <button class="sidebar-tab" data-view="albums">专辑</button>
+                <button class="sidebar-tab" data-view="artists">歌手</button>
+                <button class="sidebar-tab" data-view="playlists">歌单</button>
+            </div>
+            <!-- 播放列表/分类内容 -->
+            <div class="sidebar-list-container">
+                <ul id="playlist" class="playlist sidebar-playlist">
+                    <!-- 播放列表项将由 JS 动态生成 -->
+                </ul>
+                <div class="sidebar-category-view" id="sidebar-category-view" style="display:none;">
+                    <!-- 分类内容由 JS 渲染 -->
+                </div>
+            </div>
+            <div class="sidebar-footer" id="sidebar-footer" style="display:none;">
+                <button id="create-playlist-btn" class="create-playlist-btn">
+                    <span>+</span> 新建歌单
+                </button>
+            </div>
+            <div id="loading-indicator" class="loading-indicator" style="display: none;">
+                <div class="spinner"></div>
+                <div class="loading-text">
+                    <span>正在扫描音乐...</span>
+                    <div class="scan-progress-container" style="display: none;">
+                        <div class="scan-progress-bar"></div>
+                    </div>
+                    <span class="scan-progress-label"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- 上方的播放器核心控制区 -->
+            <div class="music-player glass-panel">
+                <div class="track-info">
+                    <div class="album-art-wrapper">
+                        <div class="album-art"></div>
+                    </div>
+                    <div class="track-details">
+                        <div class="track-title">未选择歌曲</div>
+                        <div class="track-artist">未知艺术家</div>
+                        <div class="track-bitrate"></div>
+                    </div>
+                    <button id="share-btn" class="control-btn" title="分享当前音频">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M18 16.08C17.24 16.08 16.56 16.38 16.04 16.85L8.91 12.7C8.96 12.47 9 12.24 9 12C9 11.76 8.96 11.53 8.91 11.3L16.04 7.15C16.56 7.62 17.24 7.92 18 7.92C19.66 7.92 21 6.58 21 4.92C21 3.26 19.66 1.92 18 1.92C16.34 1.92 15 3.26 15 4.92C15 5.16 15.04 5.39 15.09 5.61L7.96 9.75C7.44 9.28 6.76 8.98 6 8.98C4.34 8.98 3 10.32 3 11.98C3 13.64 4.34 14.98 6 14.98C6.76 14.98 7.44 14.68 7.96 14.21L15.09 18.35C15.04 18.57 15 18.8 15 19.04C15 20.7 16.34 22.04 18 22.04C19.66 22.04 21 20.7 21 19.04C21 17.38 19.66 16.08 18 16.08Z"
+                                fill="currentColor" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="progress-section">
+                    <canvas id="visualizer"></canvas>
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress"></div>
+                        </div>
+                    </div>
+                    <div class="time-display">
+                        <span class="current-time">0:00</span>
+                        <span class="duration">0:00</span>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button id="mode-btn" class="control-btn icon-btn"></button>
+                    <button id="prev-btn" class="control-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M19 5V19L12 12L19 5Z" fill="currentColor" />
+                            <path d="M5 5H7V19H5V5Z" fill="currentColor" />
+                        </svg>
+                    </button>
+                    <button id="play-pause-btn" class="control-btn play-btn">
+                        <svg class="play-icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 5V19L19 12L8 5Z" fill="currentColor" />
+                        </svg>
+                        <svg class="pause-icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <path d="M6 19H10V5H6V19ZM14 5V19H18V5H14Z" fill="currentColor" />
+                        </svg>
+                    </button>
+                    <button id="next-btn" class="control-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 5V19L12 12L5 5Z" fill="currentColor" />
+                            <path d="M17 5H19V19H17V5Z" fill="currentColor" />
+                        </svg>
+                    </button>
+                    <div class="volume-control">
+                        <button id="volume-btn" class="control-btn">
+                            <svg class="volume-icon" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M3 9V15H7L12 20V4L7 9H3ZM16.5 12C16.5 10.23 15.48 8.71 14 7.97V16.03C15.48 15.29 16.5 13.77 16.5 12Z"
+                                    fill="currentColor" />
+                                <path
+                                    d="M14 3.23V5.29C16.89 6.15 19 8.83 19 12C19 15.17 16.89 17.85 14 18.71V20.77C18.01 19.86 21 16.28 21 12C21 7.72 18.01 4.14 14 3.23Z"
+                                    fill="currentColor" />
+                            </svg>
+                            <svg class="mute-icon" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M16.5 12C16.5 10.23 15.48 8.71 14 7.97V10.18L16.45 12.63C16.48 12.43 16.5 12.21 16.5 12ZM19 12C19 12.94 18.8 13.82 18.46 14.64L19.97 16.15C20.62 14.91 21 13.5 21 12C21 7.72 18.01 4.14 14 3.23V5.29C16.89 6.15 19 8.83 19 12ZM1.27 4.27L3 6.01V15H7L12 20V13.28L14.73 16.01C14.5 16.02 14.25 16.03 14 16.03V18.71C14.73 18.71 15.43 18.58 16.08 18.33L18.73 20.98L20 19.71L4.27 3L3 4.27L12 13.27V4L7 9H3V6.01L1.27 4.27ZM12 4L9.91 6.09L12 8.18V4Z"
+                                    fill="currentColor" />
+                            </svg>
+                        </button>
+                        <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 高级设置面板 - 位于播放控件下方 -->
+            <div class="settings-container glass-panel">
+                <!-- 顶部：音频设备 (单独一行，因为设备名可能很长) -->
+                <div class="setting-row full-width">
+                    <label for="device-select">音频设备</label>
+                    <select id="device-select"></select>
+                </div>
+
+                <!-- 中部：紧凑网格布局 -->
+                <div class="settings-grid">
+                    <!-- 升频模式 -->
+                    <div class="setting-item">
+                        <label for="upsampling-select">升频</label>
+                        <select id="upsampling-select" class="compact-select">
+                            <option value="0">关闭</option>
+                            <option value="96000">96k</option>
+                            <option value="192000">192k</option>
+                        </select>
+                    </div>
+
+                    <!-- WASAPI -->
+                    <div class="setting-item toggle-item">
+                        <label for="wasapi-switch">独占模式</label>
+                        <label class="switch compact">
+                            <input type="checkbox" id="wasapi-switch">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <!-- Dither -->
+                    <div class="setting-item toggle-item">
+                        <label for="dither-switch">抖动处理</label>
+                        <label class="switch compact">
+                            <input type="checkbox" id="dither-switch" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <!-- ReplayGain -->
+                    <div class="setting-item toggle-item">
+                        <label for="replaygain-switch">动态增益</label>
+                        <label class="switch compact">
+                            <input type="checkbox" id="replaygain-switch" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 设置面板 -->
+                <div class="settings-sections">
+                    <!-- EQ 部分 (全宽) -->
+                    <div id="eq-section" class="settings-block full-width eq-collapsed">
+                        <div class="block-header">
+                            <div class="block-title-group">
+                                <h4>均衡器</h4>
+                            </div>
+                            <label class="switch compact scale-80">
+                                <input type="checkbox" id="eq-switch">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div id="eq-block-content" class="block-content" aria-hidden="true">
+                            <div class="eq-controls-row">
+                                <select id="eq-type-select" class="eq-type-select">
+                                    <option value="IIR">IIR (低延迟)</option>
+                                    <option value="FIR">FIR (线性相位)</option>
+                                </select>
+                                <select id="fir-taps-select" class="eq-type-select" style="display:none;" title="FIR 滤波器阶数">
+                                    <option value="511">511 taps</option>
+                                    <option value="1023" selected>1023 taps</option>
+                                    <option value="2047">2047 taps</option>
+                                    <option value="4095">4095 taps</option>
+                                </select>
+                                <select id="eq-preset-select" class="eq-preset-select">
+                                    <!-- Presets populated by JS -->
+                                </select>
+                            </div>
+                            <div id="eq-bands" class="eq-bands">
+                                <!-- EQ Bands generated by JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 两列网格布局 -->
+                    <div class="settings-grid-v2">
+                        <!-- IR Convolver 部分 -->
+                        <div id="ir-section" class="settings-block">
+                            <div class="block-header">
+                                <div class="block-title-group">
+                                    <h4>脉冲响应 <span class="help-icon" id="ir-help-icon" title="获取帮助">?</span></h4>
+                                </div>
+                                <label class="switch compact scale-80">
+                                    <input type="checkbox" id="ir-switch">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="block-content">
+                                <div class="ir-controls">
+                                    <select id="ir-preset-select" class="ir-preset-select">
+                                        <option value="">-- 选择预设 --</option>
+                                        <!-- 动态加载 IRPreset 文件夹内容 -->
+                                        <option value="custom">自定义 IR 文件...</option>
+                                    </select>
+                                    <button id="ir-load-btn" class="ir-load-btn" style="display: none;">
+                                        <svg viewBox="0 0 24 24" width="14" height="14">
+                                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div id="ir-status" class="ir-status">
+                                    <span class="ir-status-text">未加载</span>
+                                </div>
+                                <!-- IR 帮助提示框 -->
+                                <div id="ir-help-tip" class="help-tip-box" style="display: none;">
+                                    <div class="tip-content">
+                                        <p>1. 您可以在 <a href="#" id="ir-autoeq-link">AutoEq.app</a> 搜索耳机型号，下载 <b>Convolution EQ</b> 对应的 .wav 文件。</p>
+                                        <p style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                            2. 您也可以将 .wav 文件存放在 <code>audio_engine/IRPreset</code> 目录，随后即可在预设下拉框中选择。
+                                        </p>
+                                    </div>
+                                    <div class="tip-arrow"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Loudness Normalization 部分 -->
+                        <div id="loudness-section" class="settings-block">
+                            <div class="block-header">
+                                <div class="block-title-group">
+                                    <h4>响度归一化</h4>
+                                </div>
+                                <label class="switch compact scale-80">
+                                    <input type="checkbox" id="loudness-switch" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="block-content">
+                                <div class="loudness-controls">
+                                    <div class="setting-item">
+                                        <label for="loudness-mode-select">模式</label>
+                                        <select id="loudness-mode-select" class="compact-select">
+                                            <option value="track">单曲</option>
+                                            <option value="album">专辑</option>
+                                            <option value="streaming">流媒体</option>
+                                            <option value="replaygain_track">RG 单曲</option>
+                                            <option value="replaygain_album">RG 专辑</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label>目标</label>
+                                        <div class="slider-with-value">
+                                            <input type="range" id="loudness-lufs-slider" min="-23" max="-9" step="0.5" value="-12">
+                                            <span id="loudness-lufs-value">-12</span>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label>增益</label>
+                                        <div class="slider-with-value">
+                                            <input type="range" id="loudness-preamp-slider" min="-12" max="12" step="0.5" value="0">
+                                            <span id="loudness-preamp-value">0 dB</span>
+                                        </div>
+                                    </div>
+                                    <div id="loudness-info" class="loudness-info" style="display: none; margin-top: 4px; font-size: 10px;">
+                                        <span id="loudness-current-lufs">--</span> LUFS
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic Loudness 部分 -->
+                        <div id="dynamic-loudness-section" class="settings-block">
+                            <div class="block-header">
+                                <div class="block-title-group">
+                                    <h4>动态等响度</h4>
+                                </div>
+                                <label class="switch compact scale-80">
+                                    <input type="checkbox" id="dynamic-loudness-switch">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="block-content">
+                                <div class="dynamic-loudness-controls">
+                                    <div class="setting-item">
+                                        <label>强度</label>
+                                        <div class="slider-with-value">
+                                            <input type="range" id="dynamic-loudness-strength-slider" min="0" max="100" step="1" value="100">
+                                            <span id="dynamic-loudness-strength-value">100%</span>
+                                        </div>
+                                    </div>
+                                    <div id="dynamic-loudness-info" class="dynamic-loudness-info" style="font-size: 10px; margin-top: 4px;">
+                                        补偿: <span id="dynamic-loudness-factor">--</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Saturation Effect 部分 -->
+                        <div id="saturation-section" class="settings-block">
+                            <div class="block-header">
+                                <div class="block-title-group">
+                                    <h4>饱和效果</h4>
+                                </div>
+                                <label class="switch compact scale-80">
+                                    <input type="checkbox" id="saturation-switch">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="block-content">
+                                <div class="saturation-controls">
+                                    <div class="setting-item">
+                                        <label>类型</label>
+                                        <select id="saturation-type-select" class="compact-select" style="width: 60px;">
+                                            <option value="tube">电子管</option>
+                                            <option value="tape">磁带</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label>驱动</label>
+                                        <div class="slider-with-value">
+                                            <input type="range" id="saturation-drive-slider" min="0" max="100" step="1" value="25">
+                                            <span id="saturation-drive-value">25%</span>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label>混合</label>
+                                        <div class="slider-with-value">
+                                            <input type="range" id="saturation-mix-slider" min="0" max="100" step="1" value="20">
+                                            <span id="saturation-mix-value">20%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Crossfeed 部分 -->
+                        <div id="crossfeed-section" class="settings-block">
+                            <div class="block-header">
+                                <div class="block-title-group">
+                                    <h4>交叉馈送</h4>
+                                </div>
+                                <label class="switch compact scale-80">
+                                    <input type="checkbox" id="crossfeed-switch">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="block-content">
+                                <div class="crossfeed-controls">
+                                    <div class="setting-item">
+                                        <label>混合</label>
+                                        <div class="slider-with-value">
+                                            <input type="range" id="crossfeed-mix-slider" min="0" max="100" step="1" value="30">
+                                            <span id="crossfeed-mix-value">30%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Noise Shaper 部分 -->
+                        <div id="noise-shaper-section" class="settings-block">
+                            <div class="block-header">
+                                <div class="block-title-group">
+                                    <h4>噪声整形</h4>
+                                </div>
+                            </div>
+                            <div class="block-content">
+                                <div class="noise-shaper-controls">
+                                    <div class="setting-item">
+                                        <label>位深</label>
+                                        <select id="output-bits-select" class="compact-select">
+                                            <option value="32">32-bit</option>
+                                            <option value="24">24-bit</option>
+                                            <option value="16">16-bit</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label>曲线</label>
+                                        <select id="noise-shaper-curve-select" class="compact-select">
+                                            <option value="TpdfOnly">TPDF</option>
+                                            <option value="Lipshitz5">Lipshitz</option>
+                                            <option value="FWeighted9">F-W</option>
+                                            <option value="ModifiedE9">Mod E</option>
+                                            <option value="ImprovedE9">Imp E</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 重采样设置部分 -->
+                        <div id="resampling-section" class="settings-block">
+                            <div class="block-header">
+                                <div class="block-title-group">
+                                    <h4>重采样</h4>
+                                </div>
+                            </div>
+                            <div class="block-content">
+                                <div class="resampling-controls">
+                                    <div class="setting-item">
+                                        <label>质量</label>
+                                        <select id="resample-quality-select" class="compact-select" style="width: 60px;">
+                                            <option value="low">低</option>
+                                            <option value="std">标准</option>
+                                            <option value="hq" selected>高</option>
+                                            <option value="uhq">超高</option>
+                                        </select>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label>缓存</label>
+                                        <label class="switch compact">
+                                            <input type="checkbox" id="resample-cache-switch">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <div class="setting-item">
+                                        <label>预采样</label>
+                                        <label class="switch compact">
+                                            <input type="checkbox" id="preemptive-resample-switch" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-sidebar">
+            <div id="vocal-visualizer-container" class="vocal-visualizer-container glass-panel">
+                <div class="vocal-viz-header">
+                    <span class="vocal-viz-title">VOCAL PERFORMANCE</span>
+                    <div class="vocal-viz-status">ACTIVE</div>
+                </div>
+                <canvas id="vocal-visualizer"></canvas>
+            </div>
+            <div id="lyrics-container" class="lyrics-container glass-panel">
+                <!-- 歌词渲染区域 -->
+                <ul id="lyrics-list">
+                    <li class="no-lyrics">暂无歌词</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Folia-inspired immersive lyrics stage. Playback remains owned by the VCP audio engine. -->
+    <main id="music-stage" class="music-stage" tabindex="-1" hidden aria-hidden="true"
+        aria-label="沉浸式歌词舞台">
+        <div class="music-stage-backdrop" aria-hidden="true">
+            <div class="music-stage-backdrop-layer music-stage-backdrop-current"></div>
+            <div class="music-stage-backdrop-layer music-stage-backdrop-next"></div>
+            <div class="music-stage-backdrop-noise"></div>
+            <div class="music-stage-shade"></div>
+        </div>
+
+        <!-- 共用于四种演出模式的实时音频响应边缘频谱与流光。 -->
+        <div class="music-stage-edge-spectrum" aria-hidden="true">
+            <canvas class="music-stage-edge-spectrum-canvas"></canvas>
+            <div class="music-stage-edge-flow"></div>
+            <div class="music-stage-edge-corners">
+                <i></i><i></i><i></i><i></i>
+            </div>
+        </div>
+
+        <div class="music-stage-mode-root" aria-live="off"></div>
+
+        <header class="music-stage-top-chrome">
+            <div class="music-stage-wordmark" aria-hidden="true">
+                <span>VCP</span>
+                <i></i>
+                <span>LYRIC STAGE</span>
+            </div>
+            <nav class="music-stage-mode-switcher" aria-label="歌词演出模式"></nav>
+        </header>
+
+        <aside class="music-stage-settings" aria-label="舞台视觉设置">
+            <button class="music-stage-settings-toggle" type="button"
+                aria-expanded="false" aria-haspopup="dialog" aria-controls="music-stage-settings-card"
+                title="打开舞台控制舱">
+                <span class="music-stage-settings-glyph" aria-hidden="true">✦</span>
+                <span class="music-stage-settings-toggle-copy">
+                    <span class="music-stage-settings-toggle-kicker">STAGE LAB</span>
+                    <span class="music-stage-settings-toggle-label">控制舞台</span>
+                </span>
+                <span class="music-stage-settings-toggle-pulse" aria-hidden="true"></span>
+            </button>
+            <section id="music-stage-settings-card" class="music-stage-settings-card" role="dialog"
+                aria-modal="true" aria-labelledby="music-stage-settings-title"
+                aria-describedby="music-stage-settings-description" tabindex="-1" hidden>
+                <div class="music-stage-settings-header">
+                    <div class="music-stage-settings-heading">
+                        <span class="music-stage-settings-emblem" aria-hidden="true">S</span>
+                        <div>
+                            <div class="music-stage-settings-kicker">VCP · STAGE LAB / LIVE</div>
+                            <h2 id="music-stage-settings-title">舞台控制舱</h2>
+                            <p id="music-stage-settings-description">编排视觉语言、镜头响应与演出性能</p>
+                        </div>
+                    </div>
+                    <button class="music-stage-settings-close" type="button" aria-label="关闭舞台控制舱">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor"
+                                stroke-width="1.8" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="music-stage-settings-body">
+                    <section class="music-stage-settings-section">
+                        <div class="music-stage-settings-section-heading">
+                            <span class="music-stage-settings-section-index">01</span>
+                            <div>
+                                <div class="music-stage-settings-section-title">演出阵列</div>
+                                <div class="music-stage-settings-hint">选择要部署到顶部快速切换器的舞台模式</div>
+                            </div>
+                        </div>
+                        <div class="music-stage-mode-options"></div>
+                    </section>
+                    <section class="music-stage-settings-section">
+                        <div class="music-stage-settings-section-heading">
+                            <span class="music-stage-settings-section-index">02</span>
+                            <div>
+                                <div class="music-stage-settings-section-title">模式调制</div>
+                                <div class="music-stage-settings-hint music-stage-current-mode-hint"></div>
+                            </div>
+                        </div>
+                        <div class="music-stage-tuning-controls"></div>
+                    </section>
+                    <section class="music-stage-settings-section">
+                        <div class="music-stage-settings-section-heading">
+                            <span class="music-stage-settings-section-index">03</span>
+                            <div>
+                                <div class="music-stage-settings-section-title">全局输出</div>
+                                <div class="music-stage-settings-hint">作用于所有演出模式的渲染策略</div>
+                            </div>
+                        </div>
+                        <div class="music-stage-common-controls"></div>
+                    </section>
+                </div>
+                <div class="music-stage-settings-footer">
+                    <button class="music-stage-settings-reset" type="button">
+                        <span aria-hidden="true">↺</span> 恢复出厂编排
+                    </button>
+                    <span class="music-stage-settings-status" role="status" aria-live="polite"></span>
+                    <span class="music-stage-settings-footnote" aria-hidden="true">ESC TO CLOSE</span>
+                </div>
+            </section>
+        </aside>
+
+        <aside class="music-stage-id3" aria-label="当前曲目信息">
+            <div class="music-stage-cover" role="img"></div>
+            <div class="music-stage-track-copy">
+                <div class="music-stage-track-kicker">NOW PERFORMING</div>
+                <div class="music-stage-track-title">未选择歌曲</div>
+                <div class="music-stage-track-artist">未知艺术家</div>
+                <div class="music-stage-track-album" hidden></div>
+            </div>
+        </aside>
+
+        <div class="music-stage-empty-notice" hidden>选择一首歌曲，让文字开始演出</div>
+
+        <section class="music-stage-chrome" aria-label="播放控制">
+            <div class="music-stage-time music-stage-current-time">0:00</div>
+            <div class="music-stage-progress-track" role="slider" tabindex="0"
+                aria-label="播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="music-stage-progress-glow"></div>
+                <div class="music-stage-progress-fill"></div>
+            </div>
+            <div class="music-stage-time music-stage-duration">0:00</div>
+            <div class="music-stage-transport">
+                <button class="music-stage-play-mode-button" type="button" data-stage-action="play-mode"
+                    title="列表循环" aria-label="列表循环"></button>
+                <button type="button" data-stage-action="previous" title="上一首" aria-label="上一首"></button>
+                <button class="music-stage-play-button" type="button" data-stage-action="toggle-play"
+                    title="播放" aria-label="播放"></button>
+                <button type="button" data-stage-action="next" title="下一首" aria-label="下一首"></button>
+                <div class="music-stage-volume">
+                    <button class="music-stage-volume-button" type="button" data-stage-action="toggle-mute"
+                        title="静音" aria-label="静音"></button>
+                    <input class="music-stage-volume-slider" type="range" min="0" max="1" step="0.01"
+                        value="1" aria-label="音量">
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 右键菜单 -->
+    <div id="track-context-menu" class="context-menu">
+        <div class="context-menu-item" data-action="play">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+                <path d="M8 5v14l11-7z" fill="currentColor" />
+            </svg>
+            <span>播放</span>
+        </div>
+        <div class="context-menu-item" data-action="play-next">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+                <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" fill="currentColor" />
+            </svg>
+            <span>下一首播放</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" data-action="get-lyrics">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path d="M12 3v10.17l-3.59-3.58L7 11l5 5 5-5-1.41-1.41L13 13.17V3h-1zM5 19v2h14v-2H5z" fill="currentColor" />
+            </svg>
+            <span>获取歌词</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item has-submenu" data-action="add-to-playlist">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" />
+            </svg>
+            <span>添加到歌单</span>
+            <svg class="chevron" viewBox="0 0 24 24" width="12" height="12">
+                <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor" />
+            </svg>
+            <div class="context-submenu" id="playlist-submenu"></div>
+        </div>
+        <div class="context-menu-item" data-action="create-playlist-add">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+                <path
+                    d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9h-4v4h-2v-4H9V9h4V5h2v4h4v2z"
+                    fill="currentColor" />
+            </svg>
+            <span>新建歌单并添加</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" data-action="remove-from-list">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                    fill="currentColor" />
+            </svg>
+            <span>从列表中移除</span>
+        </div>
+    </div>
+
+    <!-- 多源歌词获取模态框 -->
+    <div id="lyrics-fetch-modal" class="music-modal-overlay" role="dialog" aria-modal="true"
+        aria-labelledby="lyrics-fetch-modal-title">
+        <div class="music-modal lyrics-fetch-modal">
+            <div class="music-modal-header">
+                <div>
+                    <h3 id="lyrics-fetch-modal-title">获取歌词版本</h3>
+                    <div id="lyrics-fetch-track" class="lyrics-fetch-track"></div>
+                </div>
+                <button class="music-modal-close-btn" id="lyrics-fetch-close" type="button"
+                    aria-label="关闭歌词获取窗口">✕</button>
+            </div>
+            <div class="lyrics-fetch-search">
+                <label>
+                    <span>歌曲</span>
+                    <input id="lyrics-fetch-title" type="text" autocomplete="off">
+                </label>
+                <label>
+                    <span>歌手</span>
+                    <input id="lyrics-fetch-artist" type="text" autocomplete="off">
+                </label>
+                <button id="lyrics-fetch-search-btn" class="dialog-btn confirm" type="button">搜索多个源</button>
+            </div>
+            <div class="lyrics-fetch-legend">
+                <span><i class="lyrics-capability word"></i>支持流式逐字符</span>
+                <span><i class="lyrics-capability line"></i>普通逐行</span>
+                <span>选择后将覆盖当前本地歌词文件</span>
+            </div>
+            <div id="lyrics-fetch-status" class="lyrics-fetch-status" aria-live="polite"></div>
+            <div id="lyrics-fetch-results" class="lyrics-fetch-results">
+                <div class="music-modal-empty">点击“搜索多个源”查找可用歌词版本</div>
+            </div>
+            <div class="music-modal-footer lyrics-fetch-footer">
+                <span id="lyrics-fetch-selection" class="modal-count">尚未选择歌词版本</span>
+                <button id="lyrics-fetch-apply" class="dialog-btn confirm" type="button" disabled>获取并覆盖</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebDAV 管理模态框 -->
+    <div id="webdav-modal" class="music-modal-overlay">
+        <div class="music-modal webdav-modal">
+            <div class="music-modal-header">
+                <h3>从云端导入 (WebDAV)</h3>
+                <button class="music-modal-close-btn" id="webdav-modal-close">✕</button>
+            </div>
+            <div class="webdav-modal-body">
+                <!-- 左侧：服务器列表 -->
+                <div class="webdav-server-panel">
+                    <div class="webdav-server-list" id="webdav-server-list"></div>
+                    <button class="dialog-btn confirm" id="webdav-add-server-btn" style="margin-top:8px;width:100%;flex:none;">+ 添加服务器</button>
+                </div>
+                <!-- 右侧：文件浏览 -->
+                <div class="webdav-file-panel">
+                    <div class="webdav-breadcrumb" id="webdav-breadcrumb"></div>
+                    <div class="webdav-file-list" id="webdav-file-list">
+                        <div class="no-lyrics" style="padding:20px;">请先选择或添加一个 WebDAV 服务器</div>
+                    </div>
+                                    <div class="webdav-file-actions">
+                                        <button class="dialog-btn" id="webdav-scan-btn" disabled>扫描全部音频</button>
+                                        <button class="dialog-btn confirm" id="webdav-import-btn" disabled>导入到全部</button>
+                                    </div>                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebDAV 添加服务器对话框 -->
+    <div id="webdav-server-dialog" class="dialog-overlay">
+        <div class="dialog glass-panel">
+            <h3>添加 WebDAV 服务器</h3>
+            <input type="text" id="webdav-server-name" placeholder="名称 (如：我的 NAS)" style="margin-bottom:8px;">
+            <input type="url" id="webdav-server-url" placeholder="URL (如：http://nas.local/dav/)" style="margin-bottom:8px;">
+            <input type="text" id="webdav-server-username" placeholder="用户名 (可选)" style="margin-bottom:8px;">
+            <input type="password" id="webdav-server-password" placeholder="密码 (可选)" style="margin-bottom:8px;">
+            <div class="dialog-actions">
+                <button class="dialog-btn cancel" id="webdav-dialog-cancel">取消</button>
+                <button class="dialog-btn" id="webdav-dialog-test">测试连接</button>
+                <button class="dialog-btn confirm" id="webdav-dialog-confirm">添加</button>
+            </div>
+            <div id="webdav-dialog-status" style="margin-top:6px;font-size:12px;"></div>
+        </div>
+    </div>
+
+    <!-- 新建歌单对话框 -->
+    <div id="playlist-dialog" class="dialog-overlay">
+        <div class="dialog glass-panel">
+            <h3>新建歌单</h3>
+            <input type="text" id="playlist-name-input" placeholder="输入歌单名称...">
+            <div class="dialog-actions">
+                <button class="dialog-btn cancel" id="dialog-cancel">取消</button>
+                <button class="dialog-btn confirm" id="dialog-confirm">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 歌单编辑模态框 -->
+    <div id="playlist-edit-modal" class="music-modal-overlay">
+        <div class="music-modal">
+            <div class="music-modal-header">
+                <h3 id="modal-playlist-title">编辑歌单</h3>
+                <button class="music-modal-close-btn" id="modal-close-btn">✕</button>
+            </div>
+            <div class="music-modal-search">
+                <input type="text" id="modal-search-input" placeholder="搜索歌曲...">
+            </div>
+            <div class="music-modal-content">
+                <div class="music-modal-song-list" id="modal-song-list">
+                    <!-- 动态生成 -->
+                </div>
+            </div>
+            <div class="music-modal-footer">
+                <span class="modal-count" id="modal-count">0 首歌曲</span>
+                <button class="dialog-btn confirm" id="modal-done-btn">完成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确保 JS 在 body 结束前加载 -->
+    <script src="legacy-bridge.js"></script>
+    <script src="../node_modules/pixi.js/dist/pixi.min.js"></script>
+    <script src="../vendor/three.min.js"></script>
+    <script src="socket.io.min.js"></script>
+    <script src="music-stage/music-stage-runtime.js"></script>
+    <script src="music-stage/music-stage-config.js"></script>
+    <script src="music-stage/modes/stage-mode-utils.js"></script>
+    <script src="music-stage/modes/stage-lyric-layout.js"></script>
+    <script src="music-stage/modes/stage-lyric-decor.js"></script>
+    <script src="music-stage/modes/stage-lyric-performance.js"></script>
+    <script src="music-stage/modes/luminous-manager.js"></script>
+    <script src="music-stage/modes/partita-manager.js"></script>
+    <script src="music-stage/modes/cadenza-manager.js"></script>
+    <script src="music-stage/modes/stage-pixi-effects.js"></script>
+    <script src="music-stage/modes/stage-starbloom.js"></script>
+    <script src="music-stage/modes/tempera-pixi-core.js"></script>
+    <script src="music-stage/modes/sonnet-pixi-core.js"></script>
+    <script src="music-stage/modes/tempera-manager.js"></script>
+    <script src="music-stage/modes/sonnet-manager.js"></script>
+    <script src="music-stage/modes/diorama-director.js"></script>
+    <script src="music-stage/modes/diorama-camera.js"></script>
+    <script src="music-stage/modes/diorama-world.js"></script>
+    <script src="music-stage/modes/diorama-lyrics.js"></script>
+    <script src="music-stage/modes/diorama-optics.js"></script>
+    <script src="music-stage/modes/diorama-events.js"></script>
+    <script src="music-stage/modes/diorama-manager.js"></script>
+    <script src="music-stage/modes/fume-manager.js"></script>
+    <script src="music-stage/modes/tunnel-manager.js"></script>
+    <script src="music-stage/music-stage-advanced-modes.js"></script>
+    <script src="music-stage/music-stage-modes.js"></script>
+    <script src="music-stage/music-stage-host.js"></script>
+    <script src="music-utils.js"></script>
+    <script src="music-ambient-pixi.js"></script>
+    <script src="music-visualizer.js"></script>
+    <script src="music-lyrics.js"></script>
+    <script src="music-player.js"></script>
+    <script src="music-output.js"></script>
+    <script src="music-effects.js"></script>
+    <script src="music-webdav.js"></script>
+    <script src="music-sidebar.js"></script>
+    <script src="music-ui.js"></script>
+    <script src="music.js"></script>
+
+</body>
+
+</html>

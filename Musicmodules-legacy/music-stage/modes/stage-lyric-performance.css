@@ -1,0 +1,274 @@
+/* Folia-inspired native layered lyric performance. AGPL-3.0. */
+.music-stage-mode.lyric-performance-mode {
+    --performance-ink: var(--stage-ink);
+    --performance-accent: var(--stage-accent);
+    padding: 0;
+    display: block;
+}
+.lyric-performance-viewport {
+    position: absolute;
+    inset: 11% 5% 27%;
+    overflow: visible;
+    pointer-events: none;
+}
+.lyric-performance-scene {
+    position: absolute;
+    inset: 0;
+    transform-origin: 50% 50%;
+    pointer-events: none;
+    will-change: opacity, transform;
+}
+.lyric-performance-field {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform-origin: center;
+}
+.lyric-performance-word {
+    position: absolute;
+    line-height: 1.22;
+    white-space: pre;
+    transform-origin: center;
+    will-change: transform, opacity;
+}
+.lyric-performance-body {
+    position: relative;
+    display: block;
+    z-index: 1;
+    white-space: pre;
+}
+.lyric-performance-glow {
+    position: absolute;
+    inset: 0;
+    display: block;
+    color: transparent;
+    white-space: pre;
+    pointer-events: none;
+}
+.lyric-performance-glow > span {
+    color: transparent;
+}
+.lyric-performance-ripple {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    height: 150%;
+    aspect-ratio: 1;
+    border: 1px solid var(--word-color);
+    border-radius: 50%;
+    pointer-events: none;
+    filter: blur(1px);
+}
+.lyric-performance-ripple[hidden],
+.lyric-performance-guide[hidden],
+.lyric-performance-empty[hidden] {
+    display: none;
+}
+.lyric-performance-chunk {
+    position: absolute;
+    transform-origin: center;
+}
+.lyric-performance-guide {
+    position: absolute;
+    left: -16px;
+    right: -20px;
+    bottom: -8px;
+    height: 1px;
+    background: var(--performance-accent);
+    box-shadow: 0 0 10px var(--performance-accent);
+    transform-origin: left;
+}
+.lyric-performance-guide::before {
+    content: "";
+    position: absolute;
+    left: 8px;
+    bottom: -8px;
+    height: 32px;
+    width: 1px;
+    background: inherit;
+}
+.lyric-performance-guide.is-right {
+    transform-origin: right;
+}
+.lyric-performance-guide.is-right::before {
+    left: auto;
+    right: 8px;
+}
+.lyric-performance-subtitle {
+    position: absolute;
+    left: 15%;
+    right: 15%;
+    bottom: 21%;
+    text-align: center;
+    pointer-events: none;
+}
+.lyric-performance-upcoming {
+    margin-top: 12px;
+    color: color-mix(in srgb, var(--stage-ink) 28%, transparent);
+    font-size: clamp(12px,1.6vw,16px);
+    filter: blur(.6px);
+}
+.lyric-performance-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, var(--stage-ink) 42%, transparent);
+    font-size: clamp(22px,3vw,38px);
+}
+
+/* A quiet vector rest, sharing the lyric composition rather than a HUD overlay. */
+.stage-interlude-visualizer {
+    --interlude-power: 0;
+    --interlude-phase: 0deg;
+    --interlude-radius: clamp(32px, 4vw, 48px);
+    --interlude-stroke: 1.5px;
+    --interlude-color: color-mix(in srgb, var(--stage-ink) 72%, var(--performance-accent, var(--stage-accent)));
+    position: absolute;
+    inset: 11% 5% 27%;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+}
+.stage-interlude-visualizer[hidden] {
+    display: none;
+}
+.stage-interlude-orbit {
+    position: relative;
+    width: calc(var(--interlude-radius) * 2);
+    aspect-ratio: 1;
+    color: var(--interlude-color);
+    transform: rotate(var(--interlude-phase));
+}
+.stage-interlude-orbit::before {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border: 1px solid currentColor;
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+    border-radius: 50%;
+    opacity: 0.12;
+}
+.stage-interlude-bars {
+    position: absolute;
+    inset: 0;
+}
+.stage-interlude-bars > i {
+    position: absolute;
+    left: calc(50% - var(--interlude-stroke) / 2);
+    top: calc(50% - 14px);
+    width: var(--interlude-stroke);
+    height: 14px;
+    border-radius: 0;
+    background: currentColor;
+    transform-origin: 50% 100%;
+}
+.stage-interlude-bars > i:nth-child(6n + 1) {
+    color: var(--performance-accent, var(--stage-accent));
+}
+.stage-interlude-visualizer:not(.is-playing) {
+    opacity: 0.65;
+}
+/* Luminous: soft strokes, only a trace of its existing vector glow. */
+.stage-interlude-luminous {
+    --interlude-color: color-mix(in srgb, var(--stage-ink) 48%, var(--performance-accent));
+}
+.stage-interlude-luminous .stage-interlude-bars {
+    filter: drop-shadow(0 0 2px color-mix(in srgb, var(--performance-accent) 25%, transparent));
+}
+.stage-interlude-luminous .stage-interlude-bars > i {
+    border-radius: 1px;
+}
+/* Partita: grouped, square-ended score ticks echo the stepped guides. */
+.stage-interlude-partita {
+    --interlude-stroke: 2px;
+}
+.stage-interlude-partita .stage-interlude-bars > i:nth-child(6n) {
+    visibility: hidden;
+}
+.stage-interlude-partita .stage-interlude-orbit::before {
+    border-radius: 0;
+    inset: 32%;
+    transform: rotate(45deg);
+}
+/* Cadenza: a restrained geometric accent, not another concentric dial. */
+.stage-interlude-cadenza .stage-interlude-orbit::before {
+    inset: 37%;
+    border-radius: 0;
+    transform: rotate(-45deg);
+    opacity: 0.22;
+}
+/* Fume: neutral ink and an open centre, matching the printed article world. */
+.stage-interlude-fume {
+    --interlude-color: var(--stage-ink);
+    --interlude-stroke: 1px;
+    inset: 12% 5% 24%;
+}
+.stage-interlude-fume .stage-interlude-orbit::before {
+    display: none;
+}
+.stage-interlude-fume .stage-interlude-bars > i {
+    color: inherit;
+}
+.music-stage-mode-partita.lyric-performance-mode::before,
+.music-stage-mode-partita.lyric-performance-mode::after {
+    display: none;
+}
+@media (max-width: 560px) {
+    .lyric-performance-viewport { inset: 12% 4% 33%; }
+    .lyric-performance-subtitle { left: 8%; right: 8%; bottom: 28%; }
+}
+
+/* Original vector accompaniment stays behind text and outside its central quiet zone. */
+.lyric-vector-decor {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    color: var(--performance-accent, var(--stage-accent));
+}
+.lyric-vector-decor.decor-luminous {
+    filter: drop-shadow(0 0 4px currentColor);
+}
+.lyric-performance-mode > .lyric-performance-viewport,
+.lyric-performance-mode > .lyric-performance-subtitle,
+.lyric-performance-mode > .lyric-performance-empty,
+.lyric-performance-mode > .stage-interlude-visualizer {
+    z-index: 1;
+}
+
+.lyric-performance-guide-head {
+    position: absolute;
+    top: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    background: var(--stage-ink);
+    box-shadow: 0 0 8px var(--performance-accent), 0 0 15px var(--performance-accent);
+    transform: translate(-50%, -50%) rotate(45deg);
+    pointer-events: none;
+}
+.lyric-performance-guide-head[hidden] {
+    display: none;
+}
+
+@media (max-width: 560px) {
+    .lyric-performance-mode > .stage-interlude-visualizer {
+        inset: 12% 4% 33%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .stage-interlude-orbit {
+        transform: none !important;
+    }
+    .stage-interlude-bars > i {
+        transform: rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(0.28) !important;
+        opacity: 0.3 !important;
+    }
+}

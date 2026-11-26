@@ -1,0 +1,168 @@
+/* 音乐窗口过场：开场（完整版/短版）与进出舞台。
+ * 颜色全部取令牌；浅色是纸面墨字，深色反过来。白场单独一个令牌，深色下压暗一些免得刺眼。 */
+body {
+    --mi-paper: var(--ar-paper, #11181b);
+    --mi-ink: var(--ar-ink, #e0e3dc);
+    --mi-muted: var(--ar-muted, #a6b0b1);
+    --mi-line: var(--ar-line, rgba(224, 227, 220, .24));
+    --mi-ring: var(--ar-ink-2, #c3cbc9);
+    /* 深色的白场用偏灰的纸色，不那么刺眼；但必须不透明，进出舞台靠它盖住切换。 */
+    --mi-flash: #b3b8b1;
+    --mi-flash-peak: 1;
+}
+
+body.light-theme {
+    --mi-flash: #fbfaf6;
+    --mi-flash-peak: 1;
+}
+
+.music-intro {
+    position: fixed;
+    inset: 40px 0 0;
+    /* 开场盖住一切（底栏、弹窗都还没意义）；标题栏留在外面，窗口始终能拖、能关。 */
+    z-index: 1200;
+    overflow: hidden;
+    color: var(--mi-ink);
+    background: var(--mi-paper);
+    font-family: var(--mt-font-archive, sans-serif);
+    cursor: default;
+    user-select: none;
+    contain: strict;
+}
+
+/* 进出舞台的过场：在舞台（800）之上、底栏（850）之下，播放控件一直看得见。 */
+.music-intro.is-transit {
+    z-index: 840;
+    background: transparent;
+    pointer-events: none;
+}
+
+/* 进场时压住旧界面的文字，圆环和曲名仍然清晰。 */
+.music-intro.is-transit[data-intro="enter"]:not([data-still])::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center,
+        color-mix(in srgb, var(--mi-paper) 92%, transparent),
+        color-mix(in srgb, var(--mi-paper) 76%, transparent) 80%);
+    backdrop-filter: blur(5px);
+    opacity: var(--mi-enter-backdrop, 0);
+}
+
+.music-intro svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.music-intro text {
+    fill: currentColor;
+    font-family: var(--mt-font-archive, sans-serif);
+    white-space: pre;
+}
+
+.music-intro .mi-mono {
+    font-family: var(--mt-font-mono, ui-monospace, monospace);
+}
+
+.music-intro .mi-muted {
+    fill: var(--mi-muted);
+}
+
+.music-intro .mi-stroke {
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: butt;
+}
+
+.music-intro .mi-ring-soft {
+    fill: none;
+    stroke: var(--mi-ring);
+}
+
+.music-intro .mi-block {
+    fill: var(--mi-ink);
+}
+
+.music-intro .mi-on-block {
+    fill: var(--mi-paper);
+}
+
+.music-intro .mi-veil {
+    fill: var(--mi-paper);
+}
+
+.music-intro .mi-flash {
+    position: absolute;
+    inset: 0;
+    background: var(--mi-flash);
+    opacity: 0;
+}
+
+.music-intro .mi-wipe {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    background: var(--ar-accent, var(--mi-ink));
+    opacity: 0;
+    pointer-events: none;
+}
+
+.music-intro .mi-skip {
+    position: absolute;
+    right: 28px;
+    bottom: 22px;
+    font: 500 10px/1 var(--mt-font-label, var(--mt-font-archive, sans-serif));
+    letter-spacing: .16em;
+    color: var(--mi-muted);
+    opacity: .8;
+}
+
+/* 页面一打开就有的底色层，开场接手时移除。冷启动可能超过 4 秒，保底不能太早（早了会先露出首页再盖上开场）；
+ * 启动出错时 music.js 会直接撤掉它，这里的保底只防脚本根本没跑起来，不会把界面挡死。 */
+.music-intro-cover {
+    pointer-events: none;
+    animation: music-intro-cover-out .3s ease-out 12s forwards;
+}
+
+@keyframes music-intro-cover-out {
+    to { opacity: 0; visibility: hidden; }
+}
+
+/* ---------- 进出舞台时按住舞台 ----------
+ * 进：舞台照常加载但先不露出，档案页（或经典视图）保持原样，直到白场盖严。
+ * 退：舞台先不淡出，白场盖严后一下撤掉。 */
+body.mi-stage-hold-enter .music-stage {
+    opacity: 0 !important;
+    transition: none !important;
+}
+
+body.mi-stage-hold-enter:not(.music-archive-on) .music-player-container {
+    opacity: 1 !important;
+    visibility: visible !important;
+    content-visibility: visible !important;
+    transform: none !important;
+    transition: none !important;
+}
+
+body.mi-stage-hold-exit .music-stage {
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+    transition: none !important;
+}
+
+body.mi-stage-snap .music-stage,
+body.mi-stage-snap .music-player-container,
+body.mi-stage-snap #music-archive-view {
+    transition: none !important;
+}
+
+/* 舞台自己会在退出 0.38 秒后把根节点设成 hidden；万一白场还没盖严（掉帧时），先别让它消失。 */
+body.mi-stage-hold-exit .music-stage[hidden] {
+    display: block !important;
+}

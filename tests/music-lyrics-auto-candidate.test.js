@@ -160,3 +160,34 @@ test('automatic lyric loading does not use the legacy one-shot endpoint when can
     assert.equal(legacyCalls, 0);
     assert.match(app.lyricsList.innerHTML, /暂无歌词/);
 });
+test('a lyric search that failed (offline) is not remembered as "no lyrics"', async () => {
+    const context = vm.createContext({ console: { log() {}, error() {}, warn() {} }, setTimeout, clearTimeout, document: {} });
+    vm.runInContext(source, context, { filename: 'Musicmodules/music-lyrics.js' });
+    let online = false;
+    let searches = 0;
+    const app = {
+        lyricsRequestToken: 0, currentLyrics: [], lyricsList: { innerHTML: '', style: {} }, lyricsContainer: null,
+        lyricSpeedFactor: 1, lyricOffset: 0, lastKnownDuration: 180,
+        stripAudioExtension: (v) => String(v).replace(/\.[^.]+$/, ''),
+        api: {
+            async getMusicLyrics() { return null; },
+            async searchMusicLyricsCandidates() {
+                searches += 1;
+                return online
+                    ? { success: true, candidates: [{ candidateKey: 'k', matchScore: 95 }] }
+                    : { success: false, message: 'getaddrinfo ENOTFOUND', candidates: [] };
+            },
+            async applyMusicLyricsCandidate() {
+                return { success: true, lyrics: { lines: [{ startTime: 0, endTime: 1, fullText: '回来了', words: [] }] } };
+            }
+        }
+    };
+    context.setupLyrics(app);
+    app.renderLyrics = () => {};
+    await app.fetchAndDisplayLyrics('歌手', '歌.flac', { duration: 180 });
+    assert.match(app.lyricsList.innerHTML, /获取失败/);
+    online = true;
+    await app.fetchAndDisplayLyrics('歌手', '歌.flac', { duration: 180 });
+    assert.equal(searches, 2, 'searched again once the network is back');
+    assert.equal(app.currentLyrics[0]?.original, '回来了');
+});

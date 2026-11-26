@@ -1,0 +1,208 @@
+/*
+ * 曲目档案阵列主视图。文字按 1920×1080 的设计坐标排版，整体按窗口高度缩放。
+ * 颜色全部来自 music-theme/music-tokens.css 的 --ar-* / --mt-*。
+ */
+#music-archive-view {
+    position: fixed;
+    inset: 0;
+    z-index: var(--mt-z-archive, 1);
+    background: var(--ar-paper);
+    color: var(--ar-ink);
+    font-family: var(--mt-font-archive);
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    contain: strict;
+    transition: opacity .6s var(--mt-ease);
+}
+#music-archive-view[hidden] { display: none; }
+/* 零优先级的按钮重置，具体按钮的字号字重写在各自的类上 */
+:where(#music-archive-view) :where(button) {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    text-align: inherit;
+    -webkit-app-region: no-drag;
+}
+#music-archive-view :where(button):focus-visible { outline: 1px dashed var(--ar-accent); outline-offset: 4px; }
+
+/* 档案页打开时，旧的曲库和控件不显示也不参与排版 */
+body.music-archive-on .music-player-container,
+body.music-archive-on #player-background { visibility: hidden; }
+/* 进入播放页（歌词舞台）时档案页淡出，渲染也停掉 */
+body.music-stage-active #music-archive-view { opacity: 0; pointer-events: none; }
+/* 过场期间（music-stage-entering）舞台还在淡入，档案页留在下面，选中卡的上浮看得见 */
+body.music-stage-active.music-stage-entering #music-archive-view { opacity: 1; }
+
+.archive-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: var(--mt-z-archive, 1); outline: none; }
+.archive-atmos {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    background:
+        linear-gradient(180deg, rgba(var(--ar-paper-rgb), .9) 0%, rgba(var(--ar-paper-rgb), .55) 11%, transparent 34%),
+        linear-gradient(0deg, rgba(var(--ar-paper-rgb), .94) 0%, transparent 19%),
+        radial-gradient(ellipse at 48% 48%, transparent 45%, rgba(var(--ar-paper-rgb), .18) 90%);
+}
+/* 3D 场景走后期时，上下压边和四角暗角在着色器里按参考播放器的比例做，这层就不再叠 */
+.archive-post-atmos .archive-atmos { display: none; }
+/* 颗粒：平铺的静止噪点，场景之上、HUD 之下，不挡点击 */
+.archive-grain { position: absolute; inset: 0; z-index: 3; pointer-events: none; background-repeat: repeat; image-rendering: pixelated; }
+
+.archive-hud {
+    --archive-toolbar-top: 56px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    transform-origin: 0 0;
+    pointer-events: none;
+    z-index: var(--mt-z-archive-hud, 5);
+    user-select: none;
+}
+.archive-hud button, .archive-hud input { pointer-events: auto; }
+
+/* 右上：检索、加入歌单、回到正在播放 */
+.archive-nav { position: absolute; right: 59px; top: var(--archive-toolbar-top); display: flex; align-items: center; gap: 34px; }
+.archive-nav > button { font-size: 14px; line-height: 1; min-height: 28px; letter-spacing: .7px; display: flex; align-items: center; gap: 12px; }
+.archive-nav > button:hover { color: var(--ar-accent-text, var(--ar-accent)); }
+.archive-glyph-search { width: 23px; height: 23px; position: relative; flex-shrink: 0; display: block; }
+.archive-glyph-search::before { content: ""; position: absolute; width: 60%; height: 60%; left: 30%; top: 8%; border: 2px solid currentColor; border-radius: 50%; box-sizing: border-box; }
+.archive-glyph-search::after { content: ""; position: absolute; width: 42%; height: 2px; left: 9%; top: 82%; background: currentColor; transform: rotate(-45deg); transform-origin: left center; }
+.archive-key { font-size: 11px; border: 1px solid var(--ar-key); display: inline-flex; justify-content: center; align-items: center; min-width: 19px; height: 21px; line-height: 1; opacity: .6; margin-left: 6px; }
+.archive-glyph-now { font-size: 27px; }
+/* 进入舞台：四角闪光星（和底栏舞台按钮同一个图标） */
+.archive-glyph-stage { width: 17px; height: 17px; display: block; flex-shrink: 0; }
+/* 随机抽取：两颗错开的骰点框，抽取进行中框会转 */
+.archive-glyph-pick { width: 15px; height: 15px; display: block; flex-shrink: 0; position: relative; border: 1.5px solid currentColor; border-radius: 3px; box-sizing: border-box; background: radial-gradient(circle, currentColor 1.6px, transparent 2.1px) 25% 25% / 50% 50% no-repeat, radial-gradient(circle, currentColor 1.6px, transparent 2.1px) 75% 75% / 50% 50% no-repeat; transition: transform .3s; }
+.archive-nav > button.running { color: var(--ar-accent-text, var(--ar-accent)); }
+.archive-nav > button.running .archive-glyph-pick { animation: archive-pick-roll .44s linear infinite; }
+@keyframes archive-pick-roll { to { transform: rotate(360deg); } }
+body.music-reduce-motion .archive-nav > button.running .archive-glyph-pick { animation: none; }
+.archive-hud.narrow .archive-nav > [data-act="pick"] { font-size: 0; gap: 0; }
+
+
+/* 曲库计数与页脚随播放栏高度上移。 */
+.archive-bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 400px; transform: translateY(calc(-1 * var(--archive-dock-lift, 0px))); transition: transform .48s cubic-bezier(.32, .72, 0, 1); }
+.archive-counter { position: absolute; bottom: 115px; left: 60px; }
+.archive-tiny { font-size: 11px; letter-spacing: 1.7px; }
+.archive-counter > div { font-size: 58px; line-height: 1.1; margin-top: 16px; display: flex; gap: 21px; align-items: baseline; }
+.archive-counter i { font-style: normal; font-weight: 300; font-size: 32px; color: var(--ar-slash, var(--ar-muted)); }
+/* 索引标尺：计数下面一排细刻线，当前位置一根高的强调色线；悬停显示曲名，按住拖动选曲 */
+/* 分组切换：计数上方一行「← 组 03 / 12 名称 →」，点名称打开目录 */
+.archive-lanes { position: absolute; bottom: calc(100% + 16px); left: -6px; display: flex; align-items: center; gap: 4px; pointer-events: auto; white-space: nowrap; }
+.archive-lanes[hidden] { display: none; }
+.archive-lanes > button { height: 28px; display: flex; align-items: center; color: var(--ar-muted); }
+.archive-lanes > button:not(.archive-lanes-name) { width: 22px; justify-content: center; font-size: 14px; }
+.archive-lanes > button:hover { color: var(--ar-accent-text, var(--ar-accent)); }
+.archive-lanes-name { gap: 10px; padding: 0 6px; max-width: 320px; }
+.archive-lanes-name b { font-weight: 500; font-size: 15px; letter-spacing: .4px; color: var(--ar-ink); overflow: hidden; text-overflow: ellipsis; }
+.archive-lanes-name:hover b { color: inherit; }
+.archive-hud.short .archive-lanes { display: none; }
+.archive-ruler { position: absolute; top: calc(100% + 14px); left: -6px; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+.archive-ruler[hidden] { display: none; }
+.archive-ruler > button { width: 22px; height: 22px; display: grid; place-items: center; font-size: 13px; line-height: 1; color: var(--ar-muted); }
+.archive-ruler > button:hover { color: var(--ar-accent-text, var(--ar-accent)); }
+.archive-ruler-track { --ticks: 32; position: relative; width: calc(var(--ticks) * 7px); height: 22px; cursor: ew-resize; touch-action: none;
+}
+.archive-ruler-tick { position: absolute; top: 6px; height: 10px; width: 1px; margin-left: -.5px; background: color-mix(in srgb, var(--ar-ink) 42%, transparent); text-decoration: none; pointer-events: none; }
+.archive-ruler-track:hover .archive-ruler-tick, .archive-ruler-track.drag .archive-ruler-tick { background: color-mix(in srgb, var(--ar-ink) 70%, transparent); }
+.archive-ruler-at { --at: 0; position: absolute; top: 0; bottom: 0; left: calc(var(--at) * 100%); width: 2px; margin-left: -1px; background: var(--ar-accent); transition: left .32s var(--mt-ease, ease); pointer-events: none; }
+.archive-ruler-track.drag .archive-ruler-at { transition: none; }
+.archive-ruler-track::after { content: ""; position: absolute; top: 2px; bottom: 2px; left: calc(var(--hover, 0) * 100%); width: 1px; margin-left: -.5px; background: var(--ar-ink); opacity: 0; transition: opacity .12s; pointer-events: none; }
+.archive-ruler-track.hovering::after { opacity: .85; }
+.archive-ruler-tip { position: absolute; bottom: calc(100% + 8px); left: 0; transform: translateX(-50%); padding: 3px 8px; font-size: 11px; font-weight: 400; letter-spacing: .5px; line-height: 16px; white-space: pre; max-width: 260px; overflow: hidden; text-overflow: ellipsis; color: var(--ar-paper, #fff); background: var(--ar-ink); opacity: 0; transition: opacity .15s; pointer-events: none; }
+.archive-ruler-tip.on { opacity: 1; }
+body.music-reduce-motion .archive-ruler-at { transition: none; }
+.archive-hud.short .archive-ruler { display: none; }
+.archive-count-total { font-size: 22px; color: var(--ar-count, var(--ar-muted)); font-variant-numeric: tabular-nums; }
+.archive-footer { position: absolute; bottom: 35px; left: 59px; right: 59px; font-size: 10px; letter-spacing: .9px; display: flex; gap: 44px; color: var(--ar-foot, var(--ar-muted)); }
+.archive-footer > span { display: flex; align-items: center; gap: 10px; }
+.archive-footer > span:nth-child(2) { margin-left: auto; }
+.archive-footer i { font-style: normal; margin: 0 5px; }
+.archive-status-light { width: 5px; height: 5px; background: var(--ar-light, var(--ar-ink)); display: inline-block; }
+.archive-footer button { font-size: 10px; letter-spacing: 1px; }
+.archive-footer button:hover { color: var(--ar-ink); }
+.archive-queue { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+.archive-queue b { font-weight: 600; color: var(--ar-ink); margin-left: 8px; letter-spacing: .6px; }
+
+/* 空曲库 */
+.archive-empty { position: absolute; left: 970px; top: 471px; width: 760px; display: none; }
+.archive-empty h2 { font-size: 28px; font-weight: 750; margin: 0 0 30px; }
+.archive-empty p { font-size: 14px; letter-spacing: .6px; color: var(--ar-muted); margin: 0 0 40px; }
+.archive-empty button { font-size: 14px; letter-spacing: 1px; margin-right: 56px; }
+.archive-empty button:hover { color: var(--ar-accent-text, var(--ar-accent)); }
+#music-archive-view.is-empty .archive-empty { display: block; }
+/* 空状态直接压在阵列上：垫一层纸色柔光，说明文字才够对比（两套主题小字都过 AA） */
+.archive-empty::before { content: ""; position: absolute; left: -110px; right: -60px; top: -80px; bottom: -80px; z-index: -1; pointer-events: none; background: radial-gradient(closest-side, rgba(var(--ar-paper-rgb), .94) 0, rgba(var(--ar-paper-rgb), .86) 55%, rgba(var(--ar-paper-rgb), 0) 100%); }
+#music-archive-view.is-scanning .archive-status { color: var(--ar-muted); }
+.archive-empty button span { margin-left: 12px; font-size: 10px; letter-spacing: 1.1px; color: var(--ar-muted); }
+.archive-empty button:hover span { color: inherit; }
+/* 扫描中：空状态换成进度（一条细线从左长到右），入口先收起；有歌时进度写在左下角状态里 */
+.archive-scan-bar { display: none; width: 420px; height: 1px; margin: -18px 0 40px; background: var(--ar-rule); }
+.archive-scan-bar i { display: block; height: 100%; background: var(--ar-ink); transform-origin: left; transform: scaleX(0); transition: transform .3s linear; }
+#music-archive-view.is-scanning .archive-scan-bar { display: block; }
+#music-archive-view.is-scanning .archive-empty button { display: none; }
+#music-archive-view.is-scanning .archive-status-light { animation: archive-scan-blink 1s steps(2, jump-none) infinite; }
+@keyframes archive-scan-blink { from { opacity: 1; } to { opacity: .25; } }
+body.music-reduce-motion #music-archive-view.is-scanning .archive-status-light { animation: none; }
+body.music-reduce-motion .archive-scan-bar i { transition: none; }
+.archive-status [data-ref="status"] { font-variant-numeric: tabular-nums; }
+#music-archive-view.is-loading .archive-counter,
+#music-archive-view.is-empty .archive-counter,
+#music-archive-view.is-empty .archive-list-foot,
+#music-archive-view.is-empty .archive-queue { display: none; }
+/* 曲库空时中间已经说明了怎么办，目录里不再重复一遍 */
+#music-archive-view.is-empty .archive-list-empty { visibility: hidden; }
+
+/* 窄窗口收起次要的导航和底部信息 */
+.archive-hud.narrow .archive-nav > [data-act="search"] .archive-key { display: none; }
+.archive-hud.narrow .archive-nav > [data-act="save"], .archive-hud.narrow .archive-queue { display: none; }
+.archive-hud.narrow .archive-empty { left: 59px; top: 300px; width: calc(100% - 59px); }
+.archive-hud.narrow .archive-nav { gap: 26px; }
+.archive-hud.narrow.short .archive-empty { top: 270px; }
+/* 矮窗口收紧底部计数 */
+.archive-hud.narrow.short .archive-counter { display: none; }
+.archive-hud.narrow.short .archive-list-foot { padding-top: 6px; }
+.archive-hud.narrow.short .archive-list-foot b { font-size: 30px; }
+.archive-hud.narrow.short .archive-list-foot i { font-size: 20px; }
+.archive-hud.narrow.short .archive-list-foot span { font-size: 15px; }
+
+/* 滚动数字 */
+.archive-roll { display: inline-flex; font-variant-numeric: tabular-nums; }
+.archive-roll .d { display: inline-block; height: 1.1em; overflow: hidden; position: relative; }
+.archive-roll .d > span { display: flex; flex-direction: column; transition: transform .46s var(--mt-ease), filter .46s; }
+.archive-roll .d > span > b { font-weight: inherit; height: 1.1em; line-height: 1.1em; }
+
+/* 经典视图里回到档案页的按钮，放在标题栏左侧标题后面 */
+.archive-return {
+    position: fixed;
+    top: 8px;
+    left: 190px;
+    z-index: 1001;
+    height: 24px;
+    padding: 0 12px;
+    font: 500 11px/24px var(--mt-font-archive);
+    letter-spacing: 1.2px;
+    color: inherit;
+    background: transparent;
+    border: 1px solid currentColor;
+    opacity: .55;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+    display: none;
+}
+.archive-return:hover { opacity: 1; }
+body.music-archive-off:not(.music-stage-active) .archive-return { display: block; }
+
+/* 降低动态：跟设置里的统一开关走（body.music-reduce-motion，默认跟随系统） */
+body.music-reduce-motion .archive-roll .d > span, body.music-reduce-motion .archive-bottom { transition: none; }
+
+/* ═════════ 左侧档案目录：字浮在场景上，不做面板 ═════════ */
+.archive-glyph-list { width: 18px; height: 14px; display: block; flex-shrink: 0; background: linear-gradient(currentColor, currentColor) 0 0 / 100% 2px no-repeat, linear-gradient(currentColor, currentColor) 0 6px / 70% 2px no-repeat, linear-gradient(currentColor, currentColor) 0 12px / 100% 2px no-repeat; }
+.archive-nav > button[aria-pressed="true"] { color: var(--ar-accent-text, var(--ar-accent)); }

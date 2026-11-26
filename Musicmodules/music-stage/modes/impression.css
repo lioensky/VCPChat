@@ -1,0 +1,142 @@
+/* 印象（impression）：封面重画成油画挂在墙上；歌词在右边像展签一样走。 */
+.music-stage-mode-impression {
+    isolation: isolate;
+    background: #0e0d0c;
+}
+body.light-theme .music-stage-mode-impression { background: #efece6; }
+.music-stage-mode-impression > .impression-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+    pointer-events: none;
+}
+.impression-rail {
+    position: absolute;
+    z-index: 2;
+    left: 58%;
+    right: max(5%, 40px);
+    top: 14%;
+    /* 留出下面的展签卡，歌词不压在卡上 */
+    bottom: max(calc(12% + 112px), 216px);
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 72%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 72%, transparent 100%);
+    pointer-events: none;
+}
+.impression-track {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1em;
+    transition: transform 0.75s cubic-bezier(0.25, 0.8, 0.25, 1);
+    font-weight: 600;
+    font-size: calc(clamp(19px, 1.7vw, 30px) * var(--impression-scale, 1));
+    color: var(--stage-ink);
+}
+.impression-line {
+    --d: 3;
+    /* 还没唱的：近处 0.62，往远每句淡 0.12；糊得也越来越多 */
+    opacity: max(0.2, calc(0.74 - var(--d) * 0.12));
+    font-size: 0.82em;
+    transition: opacity 0.6s ease, font-size 0.6s cubic-bezier(0.25, 0.8, 0.25, 1), filter 0.6s ease;
+    filter: blur(calc((var(--d) - 1) * 0.55px));
+}
+.impression-line.is-near { filter: none; }
+.impression-line.is-past {
+    opacity: max(0.12, calc(0.5 - var(--d) * 0.1));
+    filter: blur(calc(var(--d) * 0.45px));
+}
+.impression-line.is-current {
+    opacity: 1;
+    font-size: 1.26em;
+    filter: none;
+}
+.impression-text {
+    line-height: 1.45;
+    letter-spacing: 0.06em;
+    overflow-wrap: anywhere;
+}
+.impression-line.is-current .impression-text > span {
+    color: color-mix(in srgb, var(--stage-ink) 38%, transparent);
+    transition: color 0.35s ease, text-shadow 0.6s ease;
+}
+.impression-line.is-current .impression-text > span.is-sung {
+    color: var(--stage-ink);
+    text-shadow: 0 0 18px color-mix(in srgb, var(--stage-accent) 22%, transparent);
+    transition: color 0.35s ease, text-shadow 1.1s cubic-bezier(0.45, 0, 0.55, 1);
+}
+.impression-line.is-current .impression-text > span.is-glow {
+    text-shadow: 0 0 10px color-mix(in srgb, var(--stage-accent) 70%, transparent), 0 0 26px color-mix(in srgb, var(--stage-accent) 40%, transparent);
+    transition-duration: 0.35s, 0.28s;
+}
+.impression-line.is-chorus.is-current .impression-text > span.is-sung {
+    color: color-mix(in srgb, var(--stage-accent) 55%, var(--stage-ink));
+}
+.impression-tr {
+    /* 只有当前句带翻译（每句都带太碎）；收起时高度过渡，整列不跳 */
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.6s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.5s ease, margin-top 0.6s ease;
+    margin-top: 0;
+    font-size: 0.6em;
+    font-style: italic;
+    letter-spacing: 0.02em;
+    color: color-mix(in srgb, var(--stage-ink) 60%, transparent);
+}
+.impression-line.is-current .impression-tr { max-height: 4.5em; opacity: 1; margin-top: 0.45em; }
+.impression-label {
+    position: absolute;
+    z-index: 2;
+    left: 58%;
+    bottom: max(calc(12% + 26px), 128px);
+    display: grid;
+    gap: 3px;
+    padding: 10px 14px 10px 12px;
+    border-left: 2px solid color-mix(in srgb, var(--stage-accent) 70%, transparent);
+    color: var(--stage-ink);
+    font-family: inherit;
+    pointer-events: none;
+}
+.impression-label > b { font-size: 15px; font-weight: 600; }
+.impression-label > span { font-size: 12px; color: color-mix(in srgb, var(--stage-ink) 60%, transparent); }
+.impression-medium { letter-spacing: 0.12em; transition: color 1.2s ease; }
+.impression-kicker {
+    position: absolute;
+    z-index: 2;
+    top: calc(max(5%, 42px) + 26px);
+    right: calc(max(4%, 36px) + 2px);
+    color: color-mix(in srgb, var(--stage-ink) 50%, transparent);
+    font: 600 10px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.24em;
+    pointer-events: none;
+}
+.impression-notice[hidden] { display: none; }
+.impression-notice {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, var(--stage-ink) 66%, transparent);
+    font-size: 14px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .impression-track, .impression-line { transition: none; }
+}
+
+/* 九个 2D 歌词舞台统一用 Noto Sans SC（画布上的字也读这里的字体栈） */
+.music-stage-mode-inkdraft,
+.music-stage-mode-fogpane,
+.music-stage-mode-lumiere,
+.music-stage-mode-hanabi,
+.music-stage-mode-clockwork,
+.music-stage-mode-orbit,
+.music-stage-mode-signal,
+.music-stage-mode-groupchat,
+.music-stage-mode-impression {
+    font-family: "Noto Sans SC Variable", "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    font-synthesis: none;
+}

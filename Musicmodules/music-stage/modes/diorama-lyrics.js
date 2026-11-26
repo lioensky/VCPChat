@@ -214,7 +214,8 @@
                 glow: { value: 1 }, vocal: { value: 0 },
                 constellation: { value: constellation ? 1 : 0 },
                 entrance: { value: 1 }, departure: { value: 0 },
-                motion: { value: 0 }, style: { value: style }, waterEcho: { value: 0 },
+                motion: { value: 0 }, style: { value: style }, waterEcho: { value: 0 }, ghost: { value: 0 },
+                hop: { value: 0 }, hopStart: { value: -1 },
                 // Dark strokes blended over a pale sky in linear light come out
                 // far paler than their opacity suggests, so by day the words
                 // still to be sung are laid on more heavily.
@@ -226,10 +227,12 @@
             },
             vertexShader: `
                 attribute vec3 glyphTiming;
-                uniform float time,motion,constellation,entrance,departure,style,waterEcho;
+                attribute float glyphCenter;
+                uniform float time,motion,constellation,entrance,departure,style,waterEcho,hop,hopStart,ghost;
                 varying vec2 vUv;
+                varying float vGhost;
                 void main(){
-                    vUv=uv;
+                    vUv=uv;vGhost=0.0;
                     float age=max(0.0,time-glyphTiming.x);
                     float duration=max(0.04,glyphTiming.y-glyphTiming.x);
                     float singing=step(glyphTiming.x,time)*(1.0-step(glyphTiming.y,time));
@@ -242,6 +245,8 @@
                     p.y+=motion*(emphasis*mix(0.012,0.055,constellation)
                         -incoming*mix(0.045,0.38,constellation)
                         +departure*constellation*0.2);
+                    // The word being sung when the music hits hops and settles.
+                    p.y+=motion*hop*step(abs(glyphTiming.x-hopStart),0.001)*mix(0.05,0.16,constellation);
                     p.z+=motion*constellation*(incoming*(0.3+glyphTiming.z*0.45)
                         -departure*(0.5+glyphTiming.z*0.25));
                     p.x+=motion*constellation*(incoming*0.08-departure*0.14)
@@ -249,19 +254,45 @@
                     if(style>1.5 && style<2.5){
                         p.x+=motion*constellation*(incoming*0.2-departure*0.28);
                     }
+                    if(ghost>0.5){
+                        // A sung glyph lets go of a faint copy of itself that
+                        // rises, swells and fades; smaller on a board than on the sky.
+                        float after=time-glyphTiming.y;
+                        float k=clamp(after/0.6,0.0,1.0);
+                        float reach=motion*mix(0.3,1.0,constellation);
+                        float swell=1.0+0.3*k*reach;
+                        p.x=glyphCenter+(p.x-glyphCenter)*swell;
+                        p.y=p.y*swell+0.32*k*reach;
+                        vGhost=step(0.0,after)*(1.0-k)*(1.0-k)*smoothstep(0.0,0.06,after)*min(reach,1.0);
+                    }
                     gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
                 }`,
             fragmentShader: `uniform sampler2D map;uniform float time,fade,glow,vocal;
                 uniform float constellation,entrance,departure,style,waterEcho,rest;
                 uniform vec3 accent,ink,cold;uniform float ranges[64],starts[64],ends[64];
+                uniform float ghost;
                 varying vec2 vUv;
-                void main(){float start=1e8,end=1e8;float selected=0.0;
-                    for(int i=0;i<64;i++){if(selected<0.5 && vUv.x<=ranges[i]){
-                        start=starts[i];end=ends[i];selected=1.0;}}
+                varying float vGhost;
+                void main(){
+                    if(ghost>0.5){
+                        float a=texture2D(map,vUv).a*vGhost*fade*0.55*glow;
+                        if(a<0.004) discard;
+                        gl_FragColor=vec4(accent,a);
+                        #include <colorspace_fragment>
+                        return;
+                    }float start=1e8,end=1e8;float selected=0.0;
+                    float left=0.0,right=1.0;
+                    for(int i=0;i<64;i++){if(selected<0.5){if(vUv.x<=ranges[i]){
+                        start=starts[i];end=ends[i];right=ranges[i];selected=1.0;}else left=ranges[i];}}
                     float age=time-start;float singing=step(start,time)*(1.0-step(end,time));
                     float passed=step(end,time);float attack=smoothstep(0.0,0.08,age);
                     float peak=singing*attack*exp(-max(age-0.08,0.0)*8.0);
-                    vec3 color=mix(ink,accent,step(start,time));
+                    // The colour runs across each glyph over its own sung time, with
+                    // a soft leading edge, instead of the whole glyph flipping at once.
+                    float across=clamp((vUv.x-left)/max(right-left,1e-4),0.0,1.0);
+                    float sungPart=clamp(age/max(end-start,0.04),0.0,1.0)*1.3;
+                    float wipe=smoothstep(0.0,0.3,sungPart-across);
+                    vec3 color=mix(ink,accent,wipe);
                     color=mix(color,mix(accent,cold,0.55),passed*smoothstep(0.0,0.6,time-end));
                     float wave=sin(vUv.x*9.0+time*0.7)*0.012;
                     vec2 sampleUv=vUv+vec2(0.0,wave*constellation*(1.0-entrance));
@@ -287,7 +318,7 @@
                     float brightness=1.0+peak*glow*0.7;
                     brightness+=singing*step(0.8,end-start)*vocal*0.15*glow;
                     vec3 lit=mix(color,mix(cold,ink,0.55),constellation*0.38);
-                    gl_FragColor=vec4(lit*brightness,alpha*fade*mix(rest,0.95,step(start,time)));
+                    gl_FragColor=vec4(lit*brightness,alpha*fade*mix(rest,0.95,max(wipe,step(start,time)*0.35)));
                     #include <tonemapping_fragment>
                     #include <colorspace_fragment>
                 }`
@@ -335,7 +366,7 @@
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             // Microsoft YaHei has only regular and bold: anything under 600 is the
             // thin regular face, which loses its strokes against the sky.
-            const font = `700 144px "Microsoft YaHei","PingFang SC",sans-serif`;
+            const font = `700 144px ${global.MusicStageModeUtils.lyricFont(options.lyricFont)}`;
             ctx.font = font;
             const advances = phrase.glyphs.map(g => Math.max(1, ctx.measureText(g.text).width));
             const total = advances.reduce((a, b) => a + b, 0);
@@ -372,7 +403,7 @@
             width *= scale;
             // One atlas, one draw, independent glyph quads. Timing stays with
             // the actual glyph rather than a second detached effects emitter.
-            const vertices = [], uvs = [], timings = [], indices = [];
+            const vertices = [], uvs = [], timings = [], centers = [], indices = [];
             phrase.glyphs.forEach((glyph, index) => {
                 const left = index ? ranges[index - 1] : 0;
                 const right = index === phrase.glyphs.length - 1 ? 1 : ranges[index];
@@ -382,6 +413,7 @@
                     uvs.push(u, v);
                     timings.push(glyph.startTime, glyph.endTime,
                         index / Math.max(1, phrase.glyphs.length - 1));
+                    centers.push((left + ranges[index]) * 0.5 - 0.5);
                 }
                 indices.push(first, first + 1, first + 2, first, first + 2, first + 3);
             });
@@ -389,12 +421,22 @@
             glyphGeometry.setAttribute('position', new T.Float32BufferAttribute(vertices, 3));
             glyphGeometry.setAttribute('uv', new T.Float32BufferAttribute(uvs, 2));
             glyphGeometry.setAttribute('glyphTiming', new T.Float32BufferAttribute(timings, 3));
+            glyphGeometry.setAttribute('glyphCenter', new T.Float32BufferAttribute(centers, 1));
             glyphGeometry.setIndex(indices);
             const text = new T.Mesh(glyphGeometry, mat);
             text.frustumCulled = false;
             text.scale.set(width, height * scale, 1);
             text.position.z = 0.055;
             group.add(text);
+            const ghostMat = mat.clone();
+            ghostMat.uniforms.map.value = map;
+            ghostMat.uniforms.ghost.value = 1;
+            ghostMat.blending = T.AdditiveBlending;
+            materials.push(ghostMat);
+            const ghost = new T.Mesh(glyphGeometry, ghostMat);
+            ghost.frustumCulled = false;
+            ghost.renderOrder = 1;
+            text.add(ghost);
             const yaw = constellation ? reference.skyYaw ?? reference.yaw : reference.yaw;
             const right = new T.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
             const shift = constellation ? 0 : Math.min(2.5, halfHeight * aspect * 0.12);
@@ -431,7 +473,7 @@
                 // Size the translation against the lyric it accompanies, then
                 // shrink or wrap only as far as the text needs.
                 const wanted = encounter ? 0.74 : height * scale * 0.27;
-                const subFont = px => `500 ${Math.round(px)}px "Microsoft YaHei","PingFang SC",sans-serif`;
+                const subFont = px => `500 ${Math.round(px)}px ${global.MusicStageModeUtils.lyricFont(options.lyricFont)}`;
                 let rows = supplemental.split('\n').map(row => row.trim()).filter(Boolean).slice(0, 2);
                 let px = R.clamp(wanted / subWidth * 2048, 44, 116);
                 const widest = () => { sc.font = subFont(px); return Math.max(1, ...rows.map(row => sc.measureText(row).width)); };
@@ -503,7 +545,7 @@
                 sign.group.add(group);
             } else root.add(group);
             const subtitle = group.userData.subtitle;
-            return { group, materials, textures, mat, phrase, constellation, text, encounter, glyphGeometry,
+            return { group, materials, textures, mat, ghostMat, phrase, constellation, text, encounter, glyphGeometry,
                 echo, echoMat, style, home: group.position.clone(), homeYaw: group.rotation.y,
                 halfWidth: width / 2, halfHeight: height * scale / 2,
                 // Lower edge of the block once the translation rows are included.
@@ -583,8 +625,32 @@
                     const shared = (Math.min(maxX, boardRight) - Math.max(minX, boardLeft)) / Math.max(1e-6, maxX - minX);
                     lift = Math.max(lift, Math.max(0, boardTop + 0.05 - minY) * D.smooth(shared / 0.15));
                 });
-                const dx = behind ? 0 : correction(minX, maxX, limitX);
-                const dy = behind ? 0 : lift + correction(minY + lift, maxY + lift, limitY);
+                let dx = behind ? 0 : correction(minX, maxX, limitX);
+                let dy = behind ? 0 : lift + correction(minY + lift, maxY + lift, limitY);
+                // The track card covers a corner of the picture. A line that
+                // would run under it steps right or down, whichever is the
+                // shorter way out and still inside the frame; a line keeps
+                // the way it took until the card no longer touches it, so it
+                // does not flick between the two as the camera moves.
+                const card = !behind && frame?.avoid;
+                const margin = 0.03;
+                if (card && minX + dx < card.right + margin && maxX + dx > card.left - margin
+                    && minY + dy < card.top + margin && maxY + dy > card.bottom - margin) {
+                    const right = card.right + margin - (minX + dx);
+                    const down = card.bottom - margin - (maxY + dy);
+                    const rightFits = maxX + dx + right <= limitX;
+                    const downFits = minY + dy + down >= -limitY;
+                    let way = node.dodge;
+                    if (way === 'right' && !rightFits) way = null;
+                    if (way === 'down' && !downFits) way = null;
+                    if (!way) way = rightFits && (!downFits || right <= -down * 1.2) ? 'right'
+                        : downFits ? 'down' : 'right';
+                    node.dodge = way;
+                    if (way === 'right') dx += Math.min(right, Math.max(0, limitX - (maxX + dx)));
+                    else dy += down;
+                } else if (node.dodge) {
+                    node.dodge = null;
+                }
                 if (dx || dy) {
                     slide.set(0, 0, 0);
                     slide.addScaledVector(axis.setFromMatrixColumn(camera.matrixWorld, 0), dx * depth * tanH);
@@ -617,6 +683,9 @@
             return { sign, map, materials: [line, subtitle] };
         })();
         return {
+            // Hidden while the stage hands over to the next song (the old song's
+            // words would otherwise go on over the new song's music).
+            setVisible(visible) { root.visible = visible !== false; },
             reset(nextTimeline, nextTrack, nextOptions, nextPalette) {
                 timeline = nextTimeline; track = nextTrack; options = nextOptions; palette = nextPalette || {};
                 clear();
@@ -672,6 +741,18 @@
                     node.mat.uniforms.time.value = time;
                     node.mat.uniforms.glow.value = R.clamp(tuning.glow ?? 1, 0, 2);
                     node.mat.uniforms.vocal.value = R.clamp(audio.vocal);
+                    // A hit in the music picks the word being sung (or the last
+                    // one begun, between words) and keeps it through the fall,
+                    // so moving on to the next word does not cut the hop short.
+                    if (node.onsets !== audio.onsets) {
+                        node.onsets = audio.onsets;
+                        let picked = -1;
+                        if (time >= node.phrase.start && time < node.phrase.end) {
+                            for (const glyph of node.phrase.glyphs) if (glyph.startTime <= time) picked = glyph.startTime;
+                        }
+                        node.mat.uniforms.hopStart.value = picked;
+                    }
+                    node.mat.uniforms.hop.value = R.clamp(audio.impact) * R.clamp(tuning.lyricHop ?? 1, 0, 2);
                     const reflected = node.group.userData.reflectedSubtitle;
                     const subtitle = node.group.userData.subtitle;
                     const reflectionOn = tuning.waterReflection !== false && (tuning.waterStrength ?? 1) > 0;
@@ -688,8 +769,20 @@
                     const exitDuration = Math.min(node.constellation ? 2.4 : 0.4,
                         Math.max(0.001, (nextStart - node.phrase.end) * (node.constellation ? 1 : 0.5)));
                     const enter = D.smooth((time - node.phrase.start + enterDuration) / enterDuration);
-                    const exit = D.smooth((time - node.phrase.end) / exitDuration);
-                    node.mat.uniforms.fade.value = enter * (1 - exit);
+                    const ending = D.smooth((time - node.phrase.end) / exitDuration);
+                    // The last page on a board, when the next line goes up on
+                    // another board, stays on, dimmed, while the camera turns
+                    // from one board to the other: a blank board in the middle
+                    // of the picture reads as a fault, the line just heard on it
+                    // does not. It is gone by the time the next line starts, and
+                    // before the camera draws level with the board.
+                    const nextEncounter = phrases[i + 1] && track.pageEncounter.get(phrases[i + 1].id);
+                    const linger = node.encounter && track.timeAt && nextEncounter !== undefined
+                        && nextEncounter !== node.encounter.id
+                        ? R.clamp(Math.min(nextStart, track.timeAt(node.encounter.address)) - node.phrase.end, 0, 10) : 0;
+                    const exit = linger > 1 ? D.smooth((time - node.phrase.end - linger + 0.8) / 0.8) : ending;
+                    node.mat.uniforms.fade.value = enter * (1 - exit)
+                        * (linger > 1 ? 1 - 0.4 * D.smooth((time - node.phrase.end) / 0.8) : 1);
                     node.group.visible = node.mat.uniforms.fade.value > 0;
                     const moving = !options.reducedMotion && (tuning.motionAmount ?? 1) > 0
                         && (options.animationIntensity ?? 1) > 0;
@@ -704,9 +797,16 @@
                                 * (1 - D.smooth((time - node.phrase.end - 0.5) / 2.8))
                                 * node.mat.uniforms.fade.value * 0.18 : 0;
                         node.echoMat.uniforms.time.value = time;
+                        node.echoMat.uniforms.hop.value = node.mat.uniforms.hop.value;
+                        node.echoMat.uniforms.hopStart.value = node.mat.uniforms.hopStart.value;
                         node.echoMat.uniforms.fade.value = echoFade;
                         node.echo.visible = echoFade > 0;
                     }
+                    const ghost = node.ghostMat.uniforms;
+                    ghost.time.value = time;
+                    ghost.fade.value = node.mat.uniforms.fade.value;
+                    ghost.motion.value = node.mat.uniforms.motion.value;
+                    ghost.glow.value = node.mat.uniforms.glow.value;
                     if (node.encounter) {
                         const sign = signs.get(node.encounter.id);
                         const activation = node.phrase.glyphs.reduce((level, glyph) => {
@@ -715,11 +815,11 @@
                             const singing = time < glyph.endTime;
                             return Math.max(level, singing ? 0.55 + Math.exp(-age * 8) * 0.45
                                 : 0.4 * (1 - D.smooth((time - glyph.endTime) / 0.7)));
-                        }, 0) * enter * (1 - exit);
+                        }, 0) * enter * (1 - ending);
                         sign.performance.uniforms.light.value = Math.max(sign.performance.uniforms.light.value, activation);
                         sign.performance.uniforms.bins.value = audio.spectrum || sign.performance.uniforms.bins.value;
                         if (time >= node.phrase.end && time < node.phrase.end + exitDuration)
-                            sign.performance.uniforms.closing.value = exit;
+                            sign.performance.uniforms.closing.value = ending;
                         sign.back.emissiveIntensity = activation * 0.035;
                         // The lamps go down ahead of a line and come back only once
                         // the board has stood empty for a while, so they do not
@@ -728,7 +828,10 @@
                             * (1 - D.smooth((time - node.phrase.end - 1.6) / 2.4)));
                         sign.wash.value.copy(sign.back.emissive).multiplyScalar(standby * (1 - 0.8 * sign.held));
                     }
-                    if (subtitle) subtitle.material.opacity = (palette.light ? 0.96 : 0.82) * enter * (1 - exit);
+                    // The glyphs dissolve in the first half of the departure; the
+                    // translation goes with them rather than staying on alone.
+                    if (subtitle) subtitle.material.opacity = (palette.light ? 0.96 : 0.82) * node.mat.uniforms.fade.value
+                        * (1 - D.smooth(node.mat.uniforms.departure.value / 0.45));
                     if (node.constellation) keepInFrame(node, camera, frame);
                 }
                 // A malformed/overlapping vocal timeline can still produce two
@@ -783,6 +886,8 @@
                                         + (node.style === 2 ? incoming * 0.2 - departure * 0.28 : 0)),
                                 attributes.position.getY(v) + amount
                                     * (emphasis * (sky ? 0.055 : 0.012)
+                                        + uniforms.hop.value * (Math.abs(start - uniforms.hopStart.value) <= 0.001
+                                            ? (sky ? 0.16 : 0.05) : 0)
                                         - incoming * (sky ? 0.38 : 0.045) + departure * sky * 0.2),
                                 attributes.position.getZ(v) + amount * sky
                                     * (incoming * (0.3 + order * 0.45) - departure * (0.5 + order * 0.25))

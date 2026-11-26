@@ -1,0 +1,436 @@
+/* 群唱（groupchat）：歌词是一个群聊。全是 DOM。 */
+.music-stage-mode-groupchat {
+    --gc-w: min(760px, calc(100% - 48px));
+    /* 窄窗口：整列让开左上角的档案卡 */
+    --gc-left: max(calc((100% - var(--gc-w)) / 2), calc(var(--stage-card-right, 0px) + 20px));
+    --gc-bg: color-mix(in srgb, var(--stage-bg) 92%, #000);
+    --gc-bubble: color-mix(in srgb, var(--stage-ink) 9%, var(--gc-bg));
+    --gc-me: color-mix(in srgb, var(--stage-accent) 30%, var(--gc-bg));
+    --gc-line: color-mix(in srgb, var(--stage-ink) 12%, transparent);
+    isolation: isolate;
+    overflow: hidden;
+    background:
+        radial-gradient(ellipse 60% 45% at 18% 12%, color-mix(in srgb, var(--stage-accent) 10%, transparent), transparent 70%),
+        radial-gradient(ellipse 55% 50% at 86% 88%, color-mix(in srgb, var(--stage-accent) 7%, transparent), transparent 70%),
+        var(--gc-bg);
+}
+/* 聊天壁纸：很淡的音符和点 */
+.music-stage-mode-groupchat::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.05;
+    background-image:
+        radial-gradient(circle at 12px 12px, var(--stage-ink) 1.2px, transparent 1.6px),
+        radial-gradient(circle at 44px 40px, var(--stage-ink) 0.9px, transparent 1.3px);
+    background-size: 64px 64px;
+    pointer-events: none;
+}
+.music-stage-mode-groupchat::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: radial-gradient(ellipse 70% 40% at 50% 100%, color-mix(in srgb, var(--stage-accent) 22%, transparent), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.9s ease;
+    pointer-events: none;
+}
+.music-stage-mode-groupchat.is-chorus::after { opacity: 1; }
+body.light-theme .music-stage-mode-groupchat {
+    --gc-bg: color-mix(in srgb, var(--stage-bg) 94%, #fff);
+    --gc-bubble: color-mix(in srgb, var(--stage-ink) 5%, #fff);
+    --gc-me: color-mix(in srgb, var(--stage-accent) 22%, #fff);
+}
+
+.gc-head {
+    position: absolute;
+    z-index: 3;
+    top: calc(max(5%, 42px) + 14px);
+    left: var(--gc-left);
+    width: min(var(--gc-w), calc(100% - var(--gc-left) - 24px));
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 4px 12px;
+    border-bottom: 1px solid var(--gc-line);
+    color: var(--stage-ink);
+    pointer-events: none;
+}
+.gc-back {
+    font: 400 26px/1 system-ui, sans-serif;
+    font-style: normal;
+    opacity: 0.5;
+}
+.gc-title {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+.gc-title > b {
+    font-size: 16px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.gc-title > span {
+    font-size: 12px;
+    color: color-mix(in srgb, var(--stage-ink) 55%, transparent);
+    transition: color 0.3s ease;
+}
+.gc-head.is-typing .gc-title > span { color: var(--stage-accent); }
+.gc-level {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 18px;
+}
+.gc-level > i {
+    width: 3px;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--stage-accent);
+    transform-origin: bottom;
+    transform: scaleY(0.15);
+    transition: transform 0.12s linear;
+}
+
+.gc-kicker {
+    position: absolute;
+    z-index: 3;
+    top: calc(max(5%, 42px) + 26px);
+    right: calc(max(4%, 36px) + 2px);
+    color: color-mix(in srgb, var(--stage-ink) 45%, transparent);
+    font: 600 10px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.24em;
+    pointer-events: none;
+}
+
+/* 消息列：贴底排，新消息从下面顶上来 */
+.gc-viewport {
+    position: absolute;
+    z-index: 2;
+    top: calc(max(5%, 42px) + 82px);
+    bottom: max(calc(12% + 20px), 128px);
+    left: var(--gc-left);
+    width: min(var(--gc-w), calc(100% - var(--gc-left) - 24px));
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
+    pointer-events: none;
+}
+.gc-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 6px;
+    transition: transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1);
+    font-size: calc(clamp(16px, 1.2vw, 21px) * var(--gc-scale, 1));
+}
+.gc-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 100%;
+    transform-origin: left bottom;
+}
+.gc-row.is-right {
+    flex-direction: row-reverse;
+    transform-origin: right bottom;
+}
+.gc-row.is-continued { margin-top: -8px; }
+.gc-row.is-continued .gc-avatar { visibility: hidden; }
+.gc-row.is-enter { animation: gc-enter 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes gc-enter {
+    from { opacity: 0; transform: translateY(14px) scale(0.96); }
+    to { opacity: 1; transform: none; }
+}
+.gc-avatar, .gc-mini {
+    flex: none;
+    display: block;
+    width: 2.4em;
+    height: 2.4em;
+    border-radius: 50%;
+    overflow: hidden;
+    background: hsl(var(--gc-h, 210) 46% 78%);
+    color: var(--stage-ink);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+}
+.gc-avatar > .gcf, .gc-mini > .gcf, .gc-sticker > .gcf { display: block; width: 100%; height: 100%; }
+.gc-avatar.is-me, .gc-mini.is-me { background: var(--stage-accent); }
+/* 小脸的表情：平时眨眼（每人错开），正在唱的那句的人和跟唱的人张嘴 */
+.gcf .gcf-m-open { opacity: 0; }
+.music-stage-mode-groupchat.is-live .gcf-eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: gc-blink 5s infinite;
+    animation-delay: var(--gc-blink, 0s);
+}
+.music-stage-mode-groupchat.is-live .gc-row.is-active .gc-avatar .gcf-m-open,
+.music-stage-mode-groupchat.is-live .gc-row.is-active .gc-echo.is-on .gcf-m-open {
+    transform-box: fill-box;
+    transform-origin: center top;
+    animation: gc-sing 0.34s ease-in-out infinite alternate;
+}
+.music-stage-mode-groupchat.is-live .gc-row.is-active .gc-avatar .gcf-m-smile,
+.music-stage-mode-groupchat.is-live .gc-row.is-active .gc-echo.is-on .gcf-m-smile { opacity: 0; }
+@keyframes gc-blink {
+    0%, 93%, 100% { transform: scaleY(1); }
+    95.5% { transform: scaleY(0.12); }
+}
+@keyframes gc-sing {
+    from { opacity: 1; transform: scaleY(0.35); }
+    to { opacity: 1; transform: scaleY(1); }
+}
+.gc-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    min-width: 0;
+    max-width: min(72%, 560px);
+}
+.gc-row.is-right .gc-body { align-items: flex-end; }
+.gc-name {
+    font-size: 12px;
+    color: color-mix(in srgb, var(--stage-ink) 50%, transparent);
+    padding-left: 4px;
+}
+.gc-bubble {
+    position: relative;
+    padding: 0.66em 1em;
+    font-size: 0.94em;
+    border-radius: 1.3em 1.3em 1.3em 0.38em;
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 7%, transparent);
+    background: var(--gc-bubble);
+    color: var(--stage-ink);
+    line-height: 1.45;
+    box-shadow: 0 1px 0 rgb(0 0 0 / 0.12);
+    transition: font-size 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease, box-shadow 0.4s ease, background-color 0.4s ease;
+    overflow-wrap: anywhere;
+}
+.gc-row.is-right .gc-bubble {
+    border-radius: 1.3em 1.3em 0.38em 1.3em;
+    background: var(--gc-me);
+}
+/* 正在唱的那条明显大一号（字 1.34 倍、内边距更宽），唱过的缩小变淡：一眼看出唱到哪 */
+.gc-row.is-active .gc-bubble {
+    font-size: 1.4em;
+    padding: 0.62em 0.95em;
+    box-shadow: 0 14px 40px color-mix(in srgb, var(--stage-accent) 26%, transparent), 0 1px 0 rgb(0 0 0 / 0.12);
+}
+.gc-row.is-past .gc-bubble { opacity: 0.8; }
+.gc-row.is-past .gc-avatar { opacity: 0.8; }
+.gc-row.is-chorus .gc-bubble {
+    background:
+        linear-gradient(var(--gc-bubble), var(--gc-bubble)) padding-box,
+        linear-gradient(120deg, var(--stage-accent), color-mix(in srgb, var(--stage-accent) 30%, #ff6fa8)) border-box;
+    border: 1.5px solid transparent;
+}
+.gc-row.is-right.is-chorus .gc-bubble {
+    background:
+        linear-gradient(var(--gc-me), var(--gc-me)) padding-box,
+        linear-gradient(120deg, var(--stage-accent), color-mix(in srgb, var(--stage-accent) 30%, #ff6fa8)) border-box;
+}
+.gc-bubble.is-thump { animation: gc-thump 0.22s ease-out; }
+@keyframes gc-thump {
+    40% { transform: scale(1.025); }
+}
+.gc-text > span.is-new { animation: gc-glyph 0.22s ease-out both; }
+@keyframes gc-glyph {
+    from { opacity: 0; filter: blur(2px); }
+    to { opacity: 1; filter: none; }
+}
+.gc-tr {
+    margin-top: 0.35em;
+    padding-top: 0.35em;
+    border-top: 1px solid var(--gc-line);
+    font-size: 0.72em;
+    color: color-mix(in srgb, var(--stage-ink) 62%, transparent);
+    transition: opacity 0.4s ease;
+}
+.gc-tr.is-waiting { opacity: 0.35; }
+
+.gc-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 11px;
+    color: color-mix(in srgb, var(--stage-ink) 45%, transparent);
+}
+.gc-chip {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--stage-ink) 10%, transparent);
+    color: color-mix(in srgb, var(--stage-ink) 75%, transparent);
+}
+.gc-chip.is-pop { animation: gc-pop 0.38s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+@keyframes gc-pop {
+    from { opacity: 0; transform: scale(0.4); }
+    to { opacity: 1; transform: none; }
+}
+
+/* 副歌：几个人跟着一起唱 */
+.gc-echo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--stage-accent);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.gc-echo.is-on { opacity: 1; transform: none; }
+.gc-stack { display: flex; }
+.gc-mini {
+    width: 22px;
+    height: 22px;
+    margin-left: -6px;
+    border: 2px solid var(--gc-bg);
+}
+.gc-stack > .gc-mini:first-child { margin-left: 0; }
+.is-live .gc-echo.is-on .gc-mini { animation: gc-pop 0.36s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+.is-live .gc-echo.is-on .gc-mini:nth-child(2) { animation-delay: 0.08s; }
+.is-live .gc-echo.is-on .gc-mini:nth-child(3) { animation-delay: 0.16s; }
+.is-live .gc-echo.is-on .gc-mini:nth-child(4) { animation-delay: 0.24s; }
+
+/* 系统消息和时间戳 */
+.gc-system {
+    justify-content: center;
+    font-size: 12px;
+}
+.gc-system > span {
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--stage-ink) 8%, transparent);
+    color: color-mix(in srgb, var(--stage-ink) 55%, transparent);
+}
+.gc-system.is-stamp > span {
+    background: none;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+}
+
+/* 正在输入 */
+.gc-typing .gc-bubble {
+    display: flex;
+    gap: 5px;
+    padding: 0.85em 1em;
+}
+.gc-typing .gc-bubble > i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--stage-ink) 55%, transparent);
+    animation: gc-dot 1s ease-in-out infinite;
+}
+.gc-typing .gc-bubble > i:nth-child(2) { animation-delay: 0.15s; }
+.gc-typing .gc-bubble > i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes gc-dot {
+    0%, 60%, 100% { transform: none; opacity: 0.5; }
+    30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* 语音消息 */
+.gc-row.is-voice .gc-bubble {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 220px;
+}
+.gc-play {
+    width: 0;
+    height: 0;
+    border-left: 10px solid var(--stage-accent);
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+}
+.gc-row.is-voice.is-playing .gc-play {
+    width: 10px;
+    height: 12px;
+    border: 0;
+    border-left: 3px solid var(--stage-accent);
+    border-right: 3px solid var(--stage-accent);
+}
+.gc-wave {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 26px;
+}
+.gc-wave > i {
+    width: 3px;
+    height: 100%;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--stage-ink) 35%, transparent);
+    transform-origin: center;
+    transition: transform 0.1s linear;
+}
+.gc-wave > i.is-played { background: var(--stage-accent); }
+.gc-dur {
+    font-size: 12px;
+    color: color-mix(in srgb, var(--stage-ink) 55%, transparent);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 第二遍：正在唱的气泡上走一道光；唱完的往后退一点；头像落座时弹一下；表情；时间 */
+.gc-row.is-active .gc-bubble { overflow: hidden; }
+.gc-row.is-active .gc-bubble::after {
+    content: "";
+    position: absolute;
+    inset: -20% auto -20% 0;
+    width: 45%;
+    background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--stage-accent) 26%, transparent) 45%, color-mix(in srgb, #fff 18%, transparent) 50%, transparent);
+    transform: translateX(-120%) skewX(-12deg);
+    opacity: 0;
+    pointer-events: none;
+}
+.music-stage-mode-groupchat.is-live .gc-row.is-active .gc-bubble::after {
+    animation: gc-sweep 2.6s cubic-bezier(0.45, 0, 0.3, 1) 0.3s infinite;
+}
+@keyframes gc-sweep {
+    0% { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
+    15% { opacity: 1; }
+    60%, 100% { transform: translateX(260%) skewX(-12deg); opacity: 0; }
+}
+.gc-body { transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: inherit; }
+.gc-row.is-past .gc-body { transform: scale(0.92); }
+.music-stage-mode-groupchat.is-live .gc-row.is-enter .gc-avatar {
+    animation: gc-spring 0.62s cubic-bezier(0.3, 1.8, 0.5, 1) both;
+}
+@keyframes gc-spring {
+    from { transform: scale(0.35) translateY(8px); }
+    to { transform: none; }
+}
+.gc-sticker {
+    width: 5.2em;
+    height: 5.2em;
+    color: var(--stage-ink);
+    /* 贴纸：一圈白边，像剪下来的 */
+    filter: drop-shadow(1.6px 0 0 #fff) drop-shadow(-1.6px 0 0 #fff) drop-shadow(0 1.6px 0 #fff) drop-shadow(0 -1.6px 0 #fff) drop-shadow(0 3px 4px rgb(0 0 0 / 0.25));
+}
+.music-stage-mode-groupchat.is-live .gc-row.is-sticker.is-enter .gc-sticker {
+    animation: gc-pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+    transform-origin: left bottom;
+}
+.gc-time {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.7;
+}
+.gc-row.is-voice .gc-meta { white-space: nowrap; }
+@media (max-width: 1100px) {
+    .gc-kicker { display: none; }
+}
+
+.music-stage-mode-groupchat.is-suspended * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+    .gc-list, .gc-row, .gc-bubble, .gc-echo { transition: none !important; animation: none !important; }
+}
+

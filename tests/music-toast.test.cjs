@@ -1,0 +1,158 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { JSDOM } = require('jsdom');
+
+const ROOT = path.join(__dirname, '..');
+const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
+
+// 手动推进的时钟：提示层里的延迟、自动消失、倒计时都靠它来测。
+function fakeClock(window) {
+    let now = 0;
+    let nextId = 1;
+    const timers = new Map();
+    const add = (fn, ms, repeat) => { const id = nextId++; timers.set(id, { fn, at: now + Math.max(0, ms || 0), ms, repeat }); return id; };
+    window.setTimeout = (fn, ms) => add(fn, ms, false);
+    window.setInterval = (fn, ms) => add(fn, ms, true);
+    window.clearTimeout = window.clearInterval = (id) => { timers.delete(id); };
+    window.requestAnimationFrame = (fn) => add(fn, 16, false);
+    window.Date.now = () => now;
+    return {
+        advance(ms) {
+            const end = now + ms;
+            for (;;) {
+                let due = null;
+                for (const [id, t] of timers) if (t.at <= end && (!due || t.at < due[1].at)) due = [id, t];
+                if (!due) break;
+                const [id, t] = due;
+                now = t.at;
+                if (t.repeat) t.at += t.ms; else timers.delete(id);
+                t.fn();
+            }
+            now = end;
+        }
+    };
+}
+
+function setup() {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const clock = fakeClock(window);
+    window.eval(read('Musicmodules/music-dock/music-dock-icons.js'));
+    window.eval(read('Musicmodules/music-dock/music-toast.js'));
+    const doc = window.document;
+    const visible = () => [...doc.querySelectorAll('.mtst:not(.mtst-out)')];
+    return { window, doc, clock, toast: window.MusicToast, visible };
+}
+
+test('toasts stack up to three, update in place by id and expire', () => {
+    const { clock, toast, visible, doc } = setup();
+    toast.show('一');
+    toast.show({ id: 'scan', kind: 'progress', message: '正在扫描 1 / 10', progress: 0.1 });
+    toast.show({ id: 'scan', message: '正在扫描 5 / 10', progress: 0.5 });
+    assert.equal(visible().length, 2);
+    assert.equal(doc.querySelector('[data-key="scan"] .mtst-msg').textContent, '正在扫描 5 / 10');
+    assert.match(doc.querySelector('[data-key="scan"] .mtst-bar span').getAttribute('style'), /scaleX\(0\.5\)/);
+    toast.show('二');
+    toast.show('三');
+    assert.equal(visible().length, 3, 'oldest is pushed out');
+    assert.ok(!visible().some((el) => el.textContent.includes('一')));
+    clock.advance(4100);
+    assert.deepEqual(visible().map((el) => el.dataset.key), ['scan'], 'info toasts expire, progress stays');
+    toast.dismiss('scan');
+    assert.equal(visible().length, 0);
+});
+
+test('delay hides work that finishes quickly', () => {
+    const { clock, toast, visible } = setup();
+    const t = toast.show({ id: 'load', kind: 'progress', message: '加载中', delay: 300 });
+    clock.advance(200);
+    t.close();
+    clock.advance(500);
+    assert.equal(visible().length, 0);
+    toast.show({ id: 'load2', kind: 'progress', message: '加载中', delay: 300 });
+    clock.advance(320);
+    assert.equal(visible().length, 1);
+});
+
+test('skip countdown runs once, pauses on hover and can be pressed early', () => {
+    const { window, clock, toast, visible } = setup();
+    let skipped = 0;
+    toast.show({ id: 'playback', kind: 'error', message: '加载失败：坏文件', action: { label: '跳过', countdown: 5, run: () => { skipped++; } } });
+    clock.advance(20);
+    const el = visible()[0];
+    assert.equal(el.getAttribute('role'), 'alert');
+    assert.equal(el.querySelector('.mtst-act').textContent, '跳过 5');
+    clock.advance(2000);
+    assert.equal(el.querySelector('.mtst-act').textContent, '跳过 3');
+    el.dispatchEvent(new window.Event('pointerenter'));
+    clock.advance(10000);
+    assert.equal(skipped, 0, 'hover holds the countdown');
+    el.dispatchEvent(new window.Event('pointerleave'));
+    clock.advance(3100);
+    assert.equal(skipped, 1);
+    assert.equal(visible().length, 0);
+
+    toast.show({ kind: 'error', message: '加载失败', action: { label: '跳过', countdown: 5, run: () => { skipped++; } } });
+    visible()[0].querySelector('.mtst-act').click();
+    clock.advance(10000);
+    assert.equal(skipped, 2, 'pressing early runs it once, the timer does not run it again');
+});
+
+test('the dock routes playback failures and scan progress through the toast layer', () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="track-title">A</div><div class="track-artist"></div><div class="album-art"></div>
+        <span class="current-time">0:00</span><span class="duration">0:00</span>
+        <button id="mode-btn"></button><input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.5">
+        <ul id="playlist"></ul><div id="music-dock-root"></div></body>`, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const { window } = dom;
+    const clock = fakeClock(window);
+    window.eval(read('Musicmodules/music-app-hooks.js'));
+    for (const f of ['music-dock-icons.js', 'music-toast.js', 'music-dock-palette.js', 'music-dock-queue.js', 'music-dock-stage-settings.js', 'music-dock.js']) window.eval(read(`Musicmodules/music-dock/${f}`));
+    const doc = window.document;
+    const scan = {};
+    const calls = [];
+    const notices = [];
+    const app = {
+        playlist: [{ path: 'a', title: 'A' }, { path: 'b', title: 'B' }],
+        currentTrackIndex: 0, isPlaying: false, playModes: ['repeat'], currentPlayMode: 0,
+        trackTitle: doc.querySelector('.track-title'), trackArtist: doc.querySelector('.track-artist'), albumArt: doc.querySelector('.album-art'),
+        currentTimeEl: doc.querySelector('.current-time'), durationEl: doc.querySelector('.duration'), modeBtn: doc.getElementById('mode-btn'),
+        volumeSlider: doc.getElementById('volume-slider'), playlistEl: doc.getElementById('playlist'),
+        showPlaybackNotice: (m) => notices.push(m),
+        nextTrack() { calls.push('next'); },
+        api: {
+            onMusicScanStart: (fn) => { scan.start = fn; },
+            onMusicScanProgress: (fn) => { scan.progress = fn; },
+            onMusicScanComplete: (fn) => { scan.complete = fn; }
+        }
+    };
+    const dock = window.initMusicDock(app);
+    try {
+        app.showPlaybackNotice('播放失败：音频引擎没有响应');
+        assert.deepEqual(notices, ['播放失败：音频引擎没有响应'], 'old notice still runs');
+        clock.advance(20);
+        const err = doc.querySelector('.mtst-error');
+        assert.ok(err);
+        assert.equal(err.querySelector('.mtst-msg').textContent, '播放失败：音频引擎没有响应');
+        // 加载失败的提示（带「跳过」）由播放器自己出，底栏不再补第二条。
+        app.cancelFailureSkip = () => {};
+        app.showPlaybackNotice('加载失败：解码错误');
+        clock.advance(20);
+        assert.equal(doc.querySelectorAll('.mtst-error').length, 1);
+        assert.equal(doc.querySelector('.mtst-error .mtst-msg').textContent, '播放失败：音频引擎没有响应');
+        assert.deepEqual(calls, []);
+
+        scan.start();
+        scan.progress({ current: 3, total: 12 });
+        clock.advance(400);
+        assert.equal(doc.querySelector('.mtst-progress .mtst-msg').textContent, '正在扫描 3 / 12');
+        scan.complete({ tracks: [1, 2, 3], folderPath: 'C:/Music' });
+        clock.advance(20);
+        assert.equal(doc.querySelector('.mtst-success .mtst-msg').textContent, '扫描完成，这个文件夹里有 3 首');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

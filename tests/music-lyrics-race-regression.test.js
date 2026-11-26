@@ -13,7 +13,7 @@ function deferred() {
 
 function setup(api = {}) {
     const context = vm.createContext({ console, setTimeout, clearTimeout });
-    for (const name of ['music-lyrics.js', 'music-player.js']) {
+    for (const name of ['music-app-hooks.js', 'music-lyrics.js', 'music-player.js']) {
         vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules', name), 'utf8'), context);
     }
     const app = {
@@ -124,4 +124,24 @@ test('backend ties prefer word timing, then target duration proximity', () => {
     const near = entry(180500, true);
     assert.equal(near.durationDifference, 500);
     assert.strictEqual(rankAuditedLyrics([line, far, near])[0], near);
+});
+test('a saved lyrics file with no timed lines says so instead of leaving the pane blank', async () => {
+    let searched = false;
+    const app = setup({
+        getMusicLyrics: async () => '[ti:夜航]\n[ar:远舟]\n只是一段没有时间的歌词\n第二行',
+        searchMusicLyricsCandidates: async () => { searched = true; return { success: true, candidates: [] }; }
+    });
+    let rendered = 0;
+    app.renderLyrics = () => { rendered++; };
+    await app.fetchAndDisplayLyrics('远舟', '夜航');
+    assert.equal(rendered, 0);
+    assert.match(app.lyricsList.innerHTML, /没有时间轴/);
+    assert.equal(searched, false, 'does not go and replace the user\'s own file');
+});
+
+test('a failing saved-lyrics read ends the loading message', async () => {
+    const app = setup({ getMusicLyrics: async () => { throw new Error('EACCES'); } });
+    await app.fetchAndDisplayLyrics('远舟', '夜航');
+    assert.match(app.lyricsList.innerHTML, /歌词读取失败/);
+    assert.equal(app.lyricsLoadingToken, null);
 });

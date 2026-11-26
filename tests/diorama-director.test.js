@@ -418,3 +418,20 @@ test('the ride sets out at dusk and the afterglow is gone by the first chorus', 
     assert.equal(a.sample(Math.min(first.start, 160 * 0.4) + 0.01).dusk, 0);
     for (let t = 0.25; t <= 60; t += 0.25) assert.ok(a.sample(t).dusk <= a.sample(t - 0.25).dusk);
 });
+
+test('each line gets one move suited to it, never the same three lines running', () => {
+    const a = D.compile({ lines, trackId: 'test', duration: 160 });
+    const shots = C.planShots(a);
+    assert.equal(shots.length, lines.length);
+    assert.deepEqual(plain(shots), plain(C.planShots(D.compile({ lines, trackId: 'test', duration: 160 }))));
+    assert.ok(new Set(shots).size >= 4, `only ${[...new Set(shots)]}`);
+    for (let i = 2; i < shots.length; i++) assert.ok(!(shots[i] === shots[i - 1] && shots[i] === shots[i - 2]));
+    // The moves still meet at the line boundaries: no jump where one line hands over to the next.
+    const track = C.createTrack(a, 1);
+    for (const line of lines.slice(1)) {
+        const before = C.pose(a, track, line.startTime - 0.01), after = C.pose(a, track, line.startTime + 0.01);
+        assert.ok(Math.hypot(after.position.x - before.position.x, after.position.y - before.position.y,
+            after.position.z - before.position.z) < 0.3);
+        assert.ok(Math.abs(after.fov - before.fov) < 0.5);
+    }
+});

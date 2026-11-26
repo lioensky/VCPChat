@@ -133,3 +133,34 @@ test('a band failure is retryable without rebuilding a successfully synchronized
     await app.sendEqSettings();
     assert.deepEqual(calls, ['type:FIR', 'enabled:true', 'save']);
 });
+
+function presetFixture(bands) {
+    const sliders = {};
+    for (const [band, v] of Object.entries(bands)) sliders[`eq-${band}`] = { value: String(v) };
+    const select = { value: '', options: [], appendChild(o) { this.options.push(o); } };
+    const app = {
+        eqBands: { ...bands },
+        eqPresetSelect: select,
+        eqPresets: {
+            balance: { 32: 0, '1k': 0 },
+            rock: { 32: 4, '1k': -2 }
+        },
+        sendEqSettings() {}
+    };
+    const context = { app, document: { getElementById: (id) => sliders[id] || null, createElement: () => ({}) } };
+    vm.runInNewContext(fs.readFileSync('Musicmodules/music-effects.js', 'utf8') + '\nsetupEffects(app);', context);
+    return { app, select, sliders };
+}
+
+test('the preset list shows the preset the sliders match, or 自定义 once a band is moved', () => {
+    const { app, select, sliders } = presetFixture({ 32: 4, '1k': -2 });
+    app.populateEqPresets();
+    assert.equal(select.value, 'rock', 'opening the window with rock saved shows rock, not the first entry');
+    const custom = select.options.find((o) => o.value === 'custom');
+    assert.ok(custom && custom.disabled, '自定义 can be shown but not picked');
+    sliders['eq-32'].value = '5';
+    app.syncEqPresetSelect();
+    assert.equal(select.value, 'custom');
+    app.applyEqPreset('balance');
+    assert.equal(select.value, 'balance');
+});

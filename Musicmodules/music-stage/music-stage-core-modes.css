@@ -1,0 +1,749 @@
+/* 流光 / Luminous */
+.music-stage-mode-luminous {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.luminous-aura {
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    width: min(74vw, 900px);
+    aspect-ratio: 1.7;
+    border-radius: 50%;
+    background:
+        radial-gradient(ellipse, color-mix(in srgb, var(--stage-accent) calc(11% + var(--stage-vocal, 0) * 22%), transparent), transparent 66%);
+    filter: blur(28px);
+    opacity: 0.8;
+    transform: translate3d(-50%, -50%, 0);
+}
+
+.luminous-line {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    width: min(82vw, 1180px);
+    min-height: 240px;
+    padding: 40px;
+    font-size: clamp(38px, 6.2vw, 88px);
+    font-weight: 760;
+    line-height: 1.22;
+    letter-spacing: -0.035em;
+    text-align: center;
+    perspective: 900px;
+}
+
+.luminous-line.is-entering {
+    animation: luminous-line-enter 0.72s var(--stage-ease);
+}
+
+@keyframes luminous-line-enter {
+    from {
+        opacity: 0;
+        filter: blur(18px);
+        transform: scale(0.91);
+    }
+}
+
+.luminous-line.is-empty {
+    color: color-mix(in srgb, var(--stage-ink) 35%, transparent);
+    font-size: clamp(30px, 4vw, 54px);
+    font-weight: 480;
+}
+
+.luminous-word {
+    margin: 0 calc(0.11em * var(--stage-luminous-spacing, 1));
+    transform: translate3d(var(--word-x), var(--word-y), 0) rotate(var(--word-rotate)) scale(0.84);
+    filter: blur(8px);
+    opacity: 0.2;
+    transition:
+        color 0.22s linear,
+        opacity 0.48s ease,
+        filter 0.46s ease,
+        transform 0.58s var(--stage-ease),
+        text-shadow 0.25s ease;
+    transition-delay: var(--word-delay, 0ms);
+--stage-word-rotation: var(--word-rotate);
+}
+
+.luminous-word.is-active {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(var(--word-x), calc(var(--word-y) - 5px), 35px)
+        rotate(calc(var(--stage-word-rotation, var(--word-rotate)) * var(--stage-luminous-rotation, 1)))
+        scale(var(--word-scale));
+    text-shadow:
+        0 0 calc(12px + var(--stage-vocal, 0) * 22px * var(--stage-luminous-glow, 1)) color-mix(in srgb, var(--stage-accent) 80%, transparent),
+        0 0 calc(30px + var(--stage-vocal, 0) * 38px * var(--stage-luminous-glow, 1)) color-mix(in srgb, var(--stage-accent) 44%, transparent);
+}
+
+.luminous-word.is-passed {
+    opacity: 0.82;
+    filter: blur(0);
+    transform: translate3d(var(--word-x), var(--word-y), 0) rotate(calc(var(--word-rotate) * -0.6)) scale(0.98);
+    text-shadow: 0 0 14px color-mix(in srgb, var(--stage-accent) 22%, transparent);
+}
+
+.luminous-context {
+    position: absolute;
+    left: 50%;
+    width: min(70vw, 900px);
+    color: color-mix(in srgb, var(--stage-ink) 18%, transparent);
+    font-size: clamp(14px, 1.4vw, 20px);
+    letter-spacing: 0.04em;
+    text-align: center;
+    transform: translateX(-50%);
+    filter: blur(1.5px);
+}
+
+.luminous-context-previous {
+    top: 20%;
+}
+
+.luminous-context-next {
+    bottom: 21%;
+}
+
+.luminous-translation {
+    position: absolute;
+    left: 50%;
+    bottom: 16%;
+    width: min(72vw, 900px);
+    transform: translateX(-50%);
+}
+
+/* 云阶 / Partita */
+.music-stage-mode-partita {
+    padding: 10vh 7vw 17vh;
+    box-sizing: border-box;
+}
+
+.music-stage-mode-partita::before,
+.music-stage-mode-partita::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.music-stage-mode-partita::before {
+    inset: 10vh 6vw 14vh;
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 8%, transparent);
+}
+
+.music-stage-mode-partita::after {
+    top: 10vh;
+    bottom: 14vh;
+    left: 38.2%;
+    width: 1px;
+    background: linear-gradient(transparent, color-mix(in srgb, var(--stage-ink) 16%, transparent), transparent);
+}
+
+.music-stage-mode-partita.stage-hide-guide-lines::before,
+.music-stage-mode-partita.stage-hide-guide-lines::after {
+    display: none;
+}
+
+.partita-eyebrow {
+    position: absolute;
+    top: 12vh;
+    left: 8vw;
+    color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 0.32em;
+    writing-mode: vertical-rl;
+}
+
+.partita-grid {
+    position: relative;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(110px, 1fr);
+    align-items: center;
+    gap: clamp(10px, 2.2vw, 38px);
+    height: 68vh;
+    width: min(82vw, 1280px);
+    margin: 0 auto;
+    perspective: 1200px;
+}
+
+.partita-block {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 16px 8px;
+    transform: translateY(var(--block-offset)) rotate(var(--block-angle));
+    animation: partita-block-enter 0.72s var(--stage-ease) both;
+    animation-delay: calc(var(--block-order) * 70ms);
+}
+
+@keyframes partita-block-enter {
+    from {
+        opacity: 0;
+        filter: blur(9px);
+        transform: translateY(calc(var(--block-offset) + 50px)) rotate(var(--block-angle));
+    }
+}
+
+.partita-marker {
+    color: color-mix(in srgb, var(--stage-ink) 28%, transparent);
+    font-family: Consolas, monospace;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+}
+
+.partita-block-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: clamp(27px, 3.5vw, 56px);
+    font-weight: 730;
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+}
+
+.partita-word {
+    max-width: 100%;
+    color: color-mix(in srgb, var(--stage-ink) 20%, transparent);
+    opacity: 0.38;
+    transform: translateX(-12px);
+    filter: blur(2.5px);
+    transition: color 0.32s ease, opacity 0.35s ease, transform 0.48s var(--stage-ease), filter 0.35s ease;
+}
+
+.partita-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
+    opacity: 0.82;
+    transform: translateX(0);
+    filter: blur(0);
+}
+
+.partita-word.is-active {
+    color: var(--stage-ink);
+    opacity: 1;
+    transform: translateX(8px) scale(1.08);
+    filter: blur(0);
+    text-shadow: 0 0 28px color-mix(in srgb, var(--stage-accent) 55%, transparent);
+}
+
+.partita-translation {
+    position: absolute;
+    right: 8vw;
+    bottom: 16vh;
+    width: min(50vw, 700px);
+    text-align: right;
+}
+
+.partita-empty {
+    grid-column: 1 / -1;
+    color: color-mix(in srgb, var(--stage-ink) 32%, transparent);
+    font-size: 42px;
+    text-align: center;
+}
+
+/* 心象 / Cadenza */
+.music-stage-mode-cadenza {
+    padding: 12vh 8vw 18vh;
+    box-sizing: border-box;
+}
+
+.cadenza-title {
+    position: absolute;
+    right: 5vw;
+    top: 19vh;
+    color: color-mix(in srgb, var(--stage-ink) 13%, transparent);
+    font-size: clamp(52px, 11vw, 164px);
+    font-weight: 820;
+    letter-spacing: -0.07em;
+    writing-mode: vertical-rl;
+}
+
+.cadenza-viewport {
+    position: relative;
+    width: min(78vw, 1250px);
+    height: 66vh;
+    margin: 0 auto;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+}
+
+.cadenza-axis {
+    position: absolute;
+    top: 0;
+    left: 38.2%;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(transparent, color-mix(in srgb, var(--stage-accent) 30%, transparent), transparent);
+}
+
+.cadenza-axis::before {
+    content: "";
+    position: absolute;
+    top: 38.2%;
+    left: -3px;
+    width: 7px;
+    height: 7px;
+    border: 1px solid var(--stage-accent);
+    border-radius: 50%;
+    box-shadow: 0 0 16px var(--stage-accent);
+}
+
+.cadenza-composition {
+    position: absolute;
+    inset: 0;
+    transition: transform 0.16s linear;
+}
+
+.cadenza-line {
+    position: absolute;
+    max-width: 80%;
+    color: color-mix(in srgb, var(--stage-ink) 18%, transparent);
+    font-weight: 540;
+    line-height: 1.12;
+    letter-spacing: -0.035em;
+    white-space: nowrap;
+    filter: blur(1.5px);
+    transition: opacity 0.4s ease, filter 0.4s ease;
+    animation: cadenza-enter 0.7s var(--stage-ease) both;
+}
+
+@keyframes cadenza-enter {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+        filter: blur(10px);
+    }
+}
+
+.cadenza-line.is-current {
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    color: color-mix(in srgb, var(--stage-ink) 24%, transparent);
+    filter: none;
+    white-space: normal;
+}
+
+.cadenza-word {
+    margin-right: 0.1em;
+    opacity: 0.34;
+    transform: translateY(12px) scale(var(--cadenza-font-scale, 1)) skewX(-5deg);
+    transition: color 0.28s ease, opacity 0.3s ease, transform 0.5s var(--stage-ease), text-shadow 0.28s ease;
+}
+
+.music-stage-mode-cadenza .cadenza-word.is-active {
+    text-shadow:
+        0 0 calc(15px + var(--stage-vocal, 0) * 30px * var(--cadenza-glow, 1)) color-mix(in srgb, var(--stage-accent) 72%, transparent),
+        0 14px 30px rgba(0, 0, 0, 0.3);
+}
+
+.cadenza-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 74%, var(--stage-ink));
+    opacity: 0.82;
+    transform: translateY(0);
+}
+
+.cadenza-word.is-active {
+    color: var(--stage-ink);
+    opacity: 1;
+    transform: translateY(-5px) scale(calc(1.08 * var(--cadenza-font-scale, 1)));
+    text-shadow:
+        0 0 calc(15px + var(--stage-vocal, 0) * 30px * var(--cadenza-glow, 1)) color-mix(in srgb, var(--stage-accent) 72%, transparent),
+        0 14px 30px rgba(0, 0, 0, 0.3);
+}
+
+.cadenza-empty {
+    position: absolute;
+    left: 50%;
+    top: 45%;
+    color: color-mix(in srgb, var(--stage-ink) 32%, transparent);
+    font-size: 44px;
+    transform: translate(-50%, -50%);
+}
+
+/* 浮名 / Fume */
+.music-stage-mode-fume {
+    background:
+        linear-gradient(115deg, color-mix(in srgb, var(--stage-ink) 2.5%, transparent), transparent 38%),
+        radial-gradient(circle at 70% 40%, color-mix(in srgb, var(--stage-accent) 9%, transparent), transparent 45%);
+}
+
+.music-stage-mode-fume.stage-hide-fume-background {
+    background: transparent;
+}
+
+.music-stage-mode-fume .fume-canvas {
+    opacity: var(--fume-background-opacity, 0.5);
+}
+
+.music-stage-mode-fume .fume-paper {
+    transform: translate(-50%, -50%) rotate(-1.2deg) scale(var(--fume-hero-scale, 1));
+}
+
+.music-stage-mode-fume .fume-word.is-active {
+    text-shadow:
+        0 0 calc(14px + var(--stage-vocal, 0) * 26px * var(--fume-glow-intensity, 1)) color-mix(in srgb, var(--stage-accent) 64%, transparent),
+        0 0 calc(38px + var(--stage-vocal, 0) * 44px * var(--fume-glow-intensity, 1)) color-mix(in srgb, var(--stage-accent) 25%, transparent);
+}
+
+.fume-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.fume-world {
+    position: absolute;
+    inset: 0;
+    transition: transform 0.14s linear;
+    will-change: transform;
+}
+
+.fume-paper {
+    position: absolute;
+    left: 50%;
+    top: 48%;
+    width: min(66vw, 980px);
+    min-height: 46vh;
+    padding: clamp(36px, 5vw, 76px);
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 12%, transparent);
+    background:
+        linear-gradient(135deg, color-mix(in srgb, var(--stage-ink) 7.5%, transparent), color-mix(in srgb, var(--stage-ink) 1.5%, transparent)),
+        color-mix(in srgb, var(--stage-bg) 20%, transparent);
+    box-shadow:
+        0 35px 90px rgba(0, 0, 0, 0.24),
+        inset 0 0 0 1px color-mix(in srgb, var(--stage-ink) 2.5%, transparent);
+    backdrop-filter: blur(8px);
+    transform: translate(-50%, -50%) rotate(-1.2deg);
+}
+
+.fume-paper::before,
+.fume-paper::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.fume-paper::before {
+    left: 26px;
+    top: 26px;
+    width: 52px;
+    height: 52px;
+    border-left: 1px solid color-mix(in srgb, var(--stage-accent) 45%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--stage-accent) 45%, transparent);
+}
+
+.fume-paper::after {
+    right: 24px;
+    bottom: 24px;
+    width: 80px;
+    height: 1px;
+    background: color-mix(in srgb, var(--stage-accent) 55%, transparent);
+    box-shadow: 0 -5px 0 color-mix(in srgb, var(--stage-ink) 10%, transparent);
+}
+
+.fume-paper.is-entering {
+    animation: fume-paper-enter 0.85s var(--stage-ease);
+}
+
+@keyframes fume-paper-enter {
+    from {
+        opacity: 0;
+        filter: blur(15px);
+        transform: translate(-50%, -46%) rotate(1deg) scale(0.94);
+    }
+}
+
+.fume-meta {
+    margin-bottom: clamp(28px, 4vh, 48px);
+    color: color-mix(in srgb, var(--stage-ink) 35%, transparent);
+    font-size: 8px;
+    font-weight: 720;
+    letter-spacing: 0.34em;
+}
+
+.fume-hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    min-height: 120px;
+    color: color-mix(in srgb, var(--stage-ink) 20%, transparent);
+    font-family: Georgia, "Times New Roman", "Noto Serif SC", serif;
+    font-size: clamp(42px, 6vw, 86px);
+    font-weight: 620;
+    line-height: 1.06;
+    letter-spacing: -0.05em;
+}
+
+.fume-word {
+    margin-right: 0.08em;
+    opacity: 0.25;
+    filter: blur(3px);
+    transform: translateY(14px);
+    transition: color 0.3s linear, opacity 0.38s ease, filter 0.42s ease, transform 0.52s var(--stage-ease), text-shadow 0.28s ease;
+}
+
+.fume-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 67%, var(--stage-ink));
+    opacity: 0.84;
+    filter: blur(0);
+    transform: translateY(0);
+}
+
+.fume-word.is-active {
+    color: var(--stage-ink);
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(-7px) scale(1.055);
+    text-shadow:
+        0 0 calc(14px + var(--stage-vocal, 0) * 26px) color-mix(in srgb, var(--stage-accent) 64%, transparent),
+        0 0 calc(38px + var(--stage-vocal, 0) * 44px) color-mix(in srgb, var(--stage-accent) 25%, transparent);
+}
+
+.fume-context {
+    overflow: hidden;
+    color: color-mix(in srgb, var(--stage-ink) 20%, transparent);
+    font-family: Georgia, "Times New Roman", "Noto Serif SC", serif;
+    font-size: clamp(13px, 1.2vw, 18px);
+    font-style: italic;
+    letter-spacing: 0.02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fume-before {
+    margin-bottom: 18px;
+}
+
+.fume-after {
+    margin-top: 26px;
+    text-align: right;
+}
+
+.fume-translation {
+    margin-top: 20px;
+    text-align: left;
+}
+
+/* 星诞 / Starborn：依据歌词段落特征自动导演四种基础演出。 */
+.music-stage-mode-starborn {
+    overflow: hidden;
+}
+
+.starborn-performance-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 1;
+    filter: blur(0) brightness(1);
+    transform: scale(1);
+    transition:
+        opacity 0.52s ease,
+        filter 0.52s ease,
+        transform 0.64s var(--stage-ease);
+}
+
+.starborn-performance-layer.is-entering {
+    opacity: 0;
+    filter: blur(15px) brightness(1.45);
+    transform: scale(1.025);
+}
+
+.starborn-performance-layer.is-leaving {
+    opacity: 0;
+    filter: blur(12px) brightness(0.72);
+    transform: scale(0.985);
+    pointer-events: none;
+}
+
+.starborn-performance-layer > .music-stage-mode {
+    inset: 0;
+}
+
+.starborn-transition-burst {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.starborn-transition-burst::before,
+.starborn-transition-burst::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.starborn-transition-burst::before {
+    left: 50%;
+    top: 46%;
+    width: min(78vw, 1080px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle,
+        color-mix(in srgb, var(--stage-accent) 38%, var(--stage-ink)) 0,
+        color-mix(in srgb, var(--stage-accent) 18%, transparent) 16%,
+        transparent 62%
+    );
+    filter: blur(8px);
+    transform: translate(-50%, -50%) scale(0.16);
+}
+
+.starborn-transition-burst::after {
+    left: 8%;
+    right: 8%;
+    top: 46%;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, var(--stage-accent) 68%, var(--stage-ink)) 28%,
+        var(--stage-ink) 50%,
+        color-mix(in srgb, var(--stage-accent) 68%, var(--stage-ink)) 72%,
+        transparent
+    );
+    box-shadow:
+        0 0 9px color-mix(in srgb, var(--stage-accent) 78%, transparent),
+        0 0 32px color-mix(in srgb, var(--stage-accent) 45%, transparent);
+    transform: scaleX(0);
+}
+
+.starborn-transition-burst.is-active {
+    animation: starborn-burst-veil 0.78s var(--stage-ease) both;
+}
+
+.starborn-transition-burst.is-active::before {
+    animation: starborn-burst-orb 0.78s var(--stage-ease) both;
+}
+
+.starborn-transition-burst.is-active::after {
+    animation: starborn-burst-line 0.72s var(--stage-ease) both;
+}
+
+.starborn-director-cue {
+    position: absolute;
+    top: clamp(74px, 10vh, 108px);
+    right: clamp(24px, 4vw, 64px);
+    z-index: 12;
+    padding: 5px 9px;
+    border-right: 1px solid color-mix(in srgb, var(--stage-accent) 52%, transparent);
+    color: color-mix(in srgb, var(--stage-accent) 62%, var(--stage-ink));
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    opacity: 0.42;
+    text-shadow: 0 0 12px color-mix(in srgb, var(--stage-accent) 45%, transparent);
+    animation: starborn-cue-pulse 4.8s ease-in-out infinite;
+}
+
+.music-stage-mode-starborn > .starborn-star {
+    position: absolute;
+    top: 12%;
+    right: 8%;
+    z-index: 11;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--stage-ink);
+    box-shadow:
+        -9vw 7vh 0 -1px color-mix(in srgb, var(--stage-accent) 68%, transparent),
+        -19vw -3vh 0 -1px color-mix(in srgb, var(--stage-ink) 35%, transparent),
+        5vw 14vh 0 -1px color-mix(in srgb, var(--stage-ink) 30%, transparent),
+        -31vw 22vh 0 -1px color-mix(in srgb, var(--stage-accent) 42%, transparent);
+    opacity: calc(0.18 + var(--stage-audio-vocal, 0) * 0.48);
+    pointer-events: none;
+}
+
+.starborn-director-cue.is-switching {
+    animation: starborn-cue-switch 0.9s var(--stage-ease) both;
+}
+
+@keyframes starborn-burst-veil {
+    0% {
+        opacity: 0;
+    }
+
+    18% {
+        opacity: calc(0.52 + var(--stage-audio-power, 0) * 0.34);
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes starborn-burst-orb {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.12);
+    }
+
+    30% {
+        opacity: 0.9;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.25);
+    }
+}
+
+@keyframes starborn-burst-line {
+    0% {
+        opacity: 0;
+        transform: scaleX(0);
+    }
+
+    28% {
+        opacity: 1;
+        transform: scaleX(1);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scaleX(0.72);
+    }
+}
+
+@keyframes starborn-cue-switch {
+    0% {
+        opacity: 0;
+        filter: blur(8px);
+        transform: translateX(14px);
+    }
+
+    32% {
+        opacity: 1;
+        filter: blur(0);
+        transform: translateX(0);
+    }
+
+    100% {
+        opacity: 0.42;
+    }
+}
+
+@keyframes starborn-cue-pulse {
+    50% {
+        opacity: 0.72;
+        text-shadow:
+            0 0 10px color-mix(in srgb, var(--stage-accent) 72%, transparent),
+            0 0 24px color-mix(in srgb, var(--stage-accent) 32%, transparent);
+    }
+}
+

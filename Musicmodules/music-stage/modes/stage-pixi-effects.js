@@ -79,7 +79,12 @@ void main() {
     float vignette = smoothstep(0.52,1.08,radius)*uVignette*0.6;
     finalColor = mix(color,vec4(uPaper,1.0),vignette);
 }`;
-    const createPostProcess = (PIXI, stage) => {
+    // Whether a stage created with this config draws through the print filter.
+    // The directors leave the canvas without multisampling when it does.
+    const lensOn = (config, mode) => config?.quality !== 'energy-saving'
+        && config?.modes?.[mode]?.postProcess !== false;
+    const createPostProcess = (PIXI, stage, options = {}) => {
+        const canvasAntialias = options.canvasAntialias !== false;
         const descriptors = {};
         ['Distortion', 'Dispersion', 'Rgb', 'Grain', 'Contrast', 'Halftone', 'Vignette', 'Time']
             .forEach(key => { descriptors[`u${key}`] = { value: 0, type: 'f32' }; });
@@ -90,6 +95,22 @@ void main() {
             resources: { opticalUniforms: uniforms },
             antialias: 'on'
         });
+        // With the print filter on, the stage is drawn into the filter's own
+        // multisampled target and the canvas only receives one full-screen
+        // quad, so a canvas created for that case has no multisampling of its
+        // own (a second multisampled buffer and resolve every frame, for
+        // nothing). If the filter is switched off later on such a canvas, a
+        // pass that copies the stage unchanged keeps the edges smoothed.
+        const copy = canvasAntialias ? null : new PIXI.AlphaFilter({ alpha: 1, antialias: 'on' });
+        let applied = null;
+        const apply = (next, width, height) => {
+            if (applied !== next) { stage.filters = next ? [next] : null; applied = next; }
+            if (!next) return;
+            if (!stage.filterArea) stage.filterArea = new PIXI.Rectangle();
+            stage.filterArea.x = stage.filterArea.y = 0;
+            stage.filterArea.width = width;
+            stage.filterArea.height = height;
+        };
         return {
             update(frame, tuning, width, height) {
                 const kick = motionScale(tuning) * amount(tuning.opticalImpact, 0.65, 1) * clamp(tuning.performance?.impact || 0);
@@ -104,19 +125,15 @@ void main() {
                 };
                 const enabled = tuning.postProcess !== false && tuning.quality !== 'energy-saving'
                     && Object.values(values).some(value => value > 0);
-                stage.filters = enabled ? [filter] : null;
+                apply(enabled ? filter : copy, width, height);
                 if (!enabled) return;
-                if (!stage.filterArea) stage.filterArea = new PIXI.Rectangle();
-                stage.filterArea.x = stage.filterArea.y = 0;
-                stage.filterArea.width = width;
-                stage.filterArea.height = height;
                 Object.entries(values).forEach(([key, value]) => { uniforms.uniforms[`u${key}`] = value; });
                 uniforms.uniforms.uTime = frame.playbackTime || 0;
                 const paper = tuning.palette?.background || '#171a1d';
                 const n = parseInt(paper.slice(1), 16);
                 uniforms.uniforms.uPaper.set([(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]);
             },
-            destroy() { stage.filters = null; filter.destroy(); }
+            destroy() { stage.filters = null; applied = null; filter.destroy(); copy?.destroy(); }
         };
     };
 
@@ -186,22 +203,75 @@ void main() {
     // path through Runtime's resolvedWords fallback and retains legacy behavior.
     const glyphTiming = line => R.buildGlyphTimeline(line);
 
+    // Where each word begins and how long it runs, in glyphs, so a phrase is
+    // never cut inside a word ("隧道" stays whole). Without a segmenter every
+    // CJK glyph counts as a word, as before.
+    const wordSegmenter = typeof Intl !== 'undefined' && Intl.Segmenter
+        ? new Intl.Segmenter('zh', { granularity: 'word' }) : null;
+    const wordRuns = glyphs => {
+        const runs = new Array(glyphs.length).fill(0);
+        if (!wordSegmenter) return runs;
+        const starts = [];
+        let offset = 0;
+        glyphs.forEach(glyph => { starts.push(offset); offset += glyph.text.length; });
+        let at = 0;
+        for (const part of wordSegmenter.segment(glyphs.map(glyph => glyph.text).join(''))) {
+            while (at < glyphs.length && starts[at] < part.index) at += 1;
+            let length = 0;
+            while (at + length < glyphs.length && starts[at + length] < part.index + part.segment.length) length += 1;
+            if (at < glyphs.length) runs[at] = length;
+        }
+        return runs;
+    };
+
     // Lightweight phrase compiler: punctuation and vocal gaps are boundaries; source timing is unchanged.
-    const compilePhrases = (line, tuning) => {
+    // capacity: how many full-width glyphs fit on one row, when the caller
+    // lays the phrases out in rows (a Latin letter is about half of one).
+    const compilePhrases = (line, tuning, capacity = Infinity) => {
         const glyphs = glyphTiming(line);
         const limit = Math.round(amount(tuning.phraseLength, 12, 24)) || 12;
-        let phrase = 0, count = 0;
+        const runs = wordRuns(glyphs);
+        const wide = text => /[\u1100-\u11ff\u2e80-\ua4cf\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/u.test(text) ? 1 : 0.55;
+        let phrase = 0, count = 0, span = 0;
+        const cuts = [];
         glyphs.forEach((glyph, index) => {
             const previous = glyphs[index - 1];
             const naturalBreak = previous && (/[，。！？；、,.!?;:：]/u.test(previous.text)
                 || glyph.startTime - previous.endTime > 0.4);
-            const wordBreak = previous && (/\s/u.test(previous.text) || /[\u3040-\u30ff\u3400-\u9fff]/u.test(glyph.text));
-            if (count >= 3 && (naturalBreak || (count >= limit && wordBreak))) {
+            const wordStart = wordSegmenter ? runs[index] > 0 && Boolean(glyph.text.trim())
+                : previous && (/\s/u.test(previous.text) || /[\u3040-\u30ff\u3400-\u9fff]/u.test(glyph.text));
+            const word = glyphs.slice(index, index + Math.max(1, runs[index]));
+            const wordSpan = word.reduce((sum, item) => sum + wide(item.text), 0);
+            // Break before a word that would run past the phrase length or the
+            // row, never inside one, unless one word is longer than a phrase.
+            const overflow = wordStart && (count + word.length > limit || span + wordSpan > capacity);
+            if (count >= 3 && (naturalBreak || overflow || count >= limit + 4)) {
                 phrase += 1;
                 count = 0;
+                span = 0;
             }
+            if (count === 0 && phrase > 0 && !naturalBreak) cuts.push(index);
             glyph.phrase = phrase;
             if (glyph.text.trim()) count += 1;
+            span += wide(glyph.text);
+        });
+        // A row cut that leaves a single glyph on its own (an eight-glyph
+        // line on a seven-glyph row) moves back to the word start nearest
+        // the middle, so the line splits into two balanced rows.
+        cuts.forEach(cut => {
+            const phraseAt = glyphs[cut].phrase;
+            const tail = glyphs.filter(g => g.phrase === phraseAt && g.text.trim()).length;
+            if (tail !== 1) return;
+            const first = glyphs.findIndex(g => g.phrase === phraseAt - 1);
+            const end = cut + glyphs.slice(cut).filter(g => g.phrase === phraseAt).length;
+            const middle = (first + end) / 2;
+            let best = -1;
+            for (let i = first + 2; i <= end - 2; i += 1) {
+                const starts = wordSegmenter ? runs[i] > 0 : /[぀-ヿ㐀-鿿]/u.test(glyphs[i].text);
+                if (starts && glyphs[i].text.trim() && (best < 0 || Math.abs(i - middle) < Math.abs(best - middle))) best = i;
+            }
+            if (best < 0) return;
+            for (let i = best; i < cut; i += 1) glyphs[i].phrase = phraseAt;
         });
         const groups = [];
         glyphs.forEach(glyph => {
@@ -225,7 +295,10 @@ void main() {
         const rows = [[]];
         let rowWidth = 0;
         const layout = tuning.lyricLayout || 'phrases';
-        const nodes = compilePhrases(line, tuning).map((glyph, index) => {
+        // Roughly how many full-width glyphs a row holds, so a phrase is cut
+        // where a word ends instead of where the row runs out.
+        const capacity = Math.max(3, maxWidth / (fontSize * 1.15));
+        const nodes = compilePhrases(line, tuning, layout === 'lines' ? Infinity : capacity).map((glyph, index) => {
             const node = new PIXI.Text({
                 text: glyph.text,
                 style: {
@@ -941,7 +1014,7 @@ void main() {
             entryDecor.addChild(graphic);
 
             const marker = new PIXI.Text({
-                text: `${String(lineIndex + 1).padStart(2, '0')} / ${point.vertical ? 'VERTICAL' : 'HORIZONTAL'}`,
+                text: String(lineIndex + 1).padStart(2, '0'),
                 style: {
                     fontFamily: '"Segoe UI", sans-serif',
                     fontSize: Math.max(9, fontSize * 0.16),
@@ -1289,8 +1362,85 @@ void main() {
         };
     };
 
+    // Renderers kept for a moment after their stage goes away. Starborn mounts
+    // a new Tempera or Sonnet on many line cuts, and a new WebGL context has to
+    // compile every shader again on its first frame, which shows as a hitch
+    // right at the cut. A director that is torn down parks its application
+    // here instead; the next one created with the same canvas settings takes
+    // it with an empty stage. Anything left unclaimed is destroyed shortly.
+    const PARK_LIMIT = 2;
+    const PARK_MS = 45000;
+    const parked = [];
+    // An opaque canvas (backgroundAlpha 1) is a different WebGL context from a
+    // transparent one, so the two are never handed to each other.
+    const applicationKey = options => `${options.antialias ? 1 : 0}:${options.resolution}:${options.preference || ''}${(options.backgroundAlpha ?? 1) >= 1 ? ':opaque' : ''}`;
+    const takeApplication = (PIXI, options) => {
+        const key = applicationKey(options);
+        const index = parked.findIndex(entry => entry.PIXI === PIXI && entry.key === key);
+        if (index < 0) return null;
+        const [entry] = parked.splice(index, 1);
+        clearTimeout(entry.timer);
+        return entry.app;
+    };
+    const dispose = app => {
+        try { app.destroy(true, { children: true }); } catch (error) { console.warn('[MusicStage] PIXI cleanup failed:', error); }
+    };
+    const createApplication = async (PIXI, options) => {
+        const reused = takeApplication(PIXI, options);
+        if (reused) return reused;
+        const app = new PIXI.Application();
+        app.__stageParkKey = applicationKey(options);
+        app.__stagePixi = PIXI;
+        try {
+            await app.init(options);
+        } catch (error) {
+            dispose(app);
+            throw error;
+        }
+        return app;
+    };
+    // Returns false when the application was destroyed instead of parked.
+    const releaseApplication = app => {
+        if (!app) return false;
+        const key = app.__stageParkKey;
+        if (!key || !app.renderer || !app.stage || parked.length >= PARK_LIMIT || global.document?.hidden) {
+            dispose(app);
+            return false;
+        }
+        try {
+            app.stop();
+            for (const child of app.stage.removeChildren()) child.destroy({ children: true });
+            const stage = app.stage;
+            stage.filters = null;
+            stage.filterArea = null;
+            stage.mask = null;
+            stage.alpha = 1;
+            stage.visible = true;
+            stage.rotation = 0;
+            stage.position.set(0, 0);
+            stage.pivot.set(0, 0);
+            stage.scale.set(1, 1);
+            // Leave the canvas transparent so it shows nothing stale when it
+            // is attached again before the next stage has drawn.
+            app.render();
+            app.canvas.remove();
+        } catch (error) {
+            dispose(app);
+            return false;
+        }
+        const entry = { app, key, PIXI: app.__stagePixi };
+        entry.timer = setTimeout(() => {
+            const index = parked.indexOf(entry);
+            if (index >= 0) parked.splice(index, 1);
+            dispose(app);
+        }, PARK_MS);
+        parked.push(entry);
+        return true;
+    };
+
     global.MusicStagePixiEffects = Object.freeze({
-        createRetirement, createEditorialTrack,
+        createApplication, releaseApplication,
+        createRetirement, createEditorialTrack, lensOn,
         createPerformance, buildPhraseStage, animatePhraseStage, createAccentChoreography,
         amount, ease, expo, clear, camera, shotKind, glyphTiming, buildLyrics, animateLyrics, motionScale, createPostProcess,
         applyQuality, transition, buildMotif, compilePhrases

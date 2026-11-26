@@ -1,0 +1,1121 @@
+/* ───────── 流体玻璃：手碰得到的控件共用的一套外观 ─────────
+ * 结构（档案、列表、细线、黑字）不动；只有弹出来给手用的东西换成这层材质：
+ * 奶白（深色下烟灰）的厚玻璃，颜色是从里面透出来的一团光，四周发柔光而不投硬影，没有描边。
+ * 长出来的动作在 music-fluid-kit.js（MusicFluid.bud）。 */
+:root,
+#music-dock-root:not(.md-light) {
+  --mf-fill: rgba(44, 44, 49, .93);
+  --mf-ink: #f1f0ee;
+  --mf-ink2: rgba(241, 240, 238, .58);
+  --mf-hover: rgba(255, 255, 255, .08);
+  --mf-rule: rgba(255, 255, 255, .08);
+  --mf-tint: var(--ar-accent, #d9773f);
+  --mf-glow: inset 0 0 0 .5px rgba(255, 255, 255, .07), 0 24px 52px -20px rgba(0, 0, 0, .6), 0 0 30px -8px rgba(0, 0, 0, .4);
+  --mf-radius: 18px;
+}
+body.light-theme,
+#music-dock-root.md-light {
+  --mf-fill: rgba(252, 252, 253, .95);
+  --mf-ink: #1c1b19;
+  --mf-ink2: rgba(28, 27, 25, .66); /* 弹窗白底上 .5 只有 3.3:1，小字要到 4.5:1 */
+  --mf-hover: rgba(28, 22, 16, .06);
+  --mf-rule: rgba(28, 22, 16, .08);
+  --mf-glow: inset 0 0 0 .5px rgba(40, 28, 16, .06), 0 20px 44px -18px rgba(70, 48, 26, .3), 0 0 26px -8px rgba(70, 48, 26, .18);
+}
+
+.mf-glass,
+.context-menu,
+.context-submenu,
+.archive-batch-menu,
+.archive-list-sort-menu {
+  background:
+    radial-gradient(120% 70% at 50% 115%, color-mix(in srgb, var(--mf-tint) 16%, transparent), transparent 62%),
+    var(--mf-fill);
+  border: 0;
+  border-radius: var(--mf-radius);
+  box-shadow: var(--mf-glow);
+  color: var(--mf-ink);
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+}
+body.music-fl-low :is(.mf-glass, .context-menu, .context-submenu, .archive-batch-menu, .archive-list-sort-menu) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 菜单里的行：圆角、留边，悬停是一层很淡的亮，危险项只换字色 */
+.context-menu, .archive-batch-menu, .archive-list-sort-menu { padding: 4px; border-radius: 12px; }
+.context-submenu { padding: 4px; border-radius: 12px; }
+:is(.context-menu-item, .submenu-item) { border-radius: 7px; color: var(--mf-ink); }
+/* 行收紧到和主程序设置页下拉差不多：一行约 28px、小圆角、字号 12.5 */
+.context-menu-item, .submenu-item { box-sizing: border-box; min-height: 28px; padding: 5px 10px; gap: 8px; font-size: 12.5px; line-height: 18px; }
+.context-menu { min-width: 168px; }
+:is(.context-menu-item, .submenu-item):hover { background: var(--mf-hover); color: var(--mf-ink); }
+.context-menu-item svg { opacity: .62; }
+.context-menu-divider { background: var(--mf-rule); margin-left: 10px; margin-right: 10px; }
+.archive-batch-menu header { padding: 6px 10px 4px; color: var(--mf-ink2); font-weight: 500; }
+.archive-batch-menu hr { margin: 4px 8px; border-top-color: var(--mf-rule); opacity: 1; }
+:is(.archive-batch-menu, .archive-list-sort-menu) button { border-radius: 7px; color: var(--mf-ink); }
+.archive-batch-menu button { box-sizing: border-box; min-height: 28px; align-items: center; padding: 5px 10px; gap: 12px; font-size: 12.5px; line-height: 18px; }
+.archive-list-sort-menu button { box-sizing: border-box; min-height: 28px; align-items: center; padding: 5px 10px 5px 22px; gap: 12px; font-size: 12.5px; line-height: 18px; }
+.archive-list-sort-menu button[aria-checked="true"]::before { left: 10px; }
+.archive-list-sort-menu { min-width: 150px; }
+:is(.archive-batch-menu, .archive-list-sort-menu) button:is(:hover, :focus-visible) { background: var(--mf-hover); }
+:is(.archive-batch-menu, .archive-list-sort-menu) button i { color: var(--mf-ink2); }
+.archive-list-sort-menu { top: calc(100% + 10px); }
+
+/* 收起：不是缩小消失，而是像雾一样散开 */
+.context-menu:not(.visible) { transform: scale(1.03); filter: blur(6px); transition: opacity .2s ease, transform .2s ease, filter .2s ease; }
+.context-menu.visible { filter: none; transition: opacity .18s ease, transform .18s ease, filter .18s ease; }
+
+/* 长出来的那一下：液体先画，本体在液体快鼓满时才显现 */
+.mf-goo { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; overflow: visible; }
+.mf-budding { opacity: 0 !important; filter: blur(4px); transition: none !important; }
+body.music-reduce-motion .context-menu { transition: opacity .12s linear; transform: none; filter: none; }
+
+/* ───────── 抽屉里的分段开关和底部页签：选中标记像液体流过去（MusicFluid.slide） ─────────
+ * 分段开关里那块是一小团奶白玻璃；底部页签下是一道短短的实心线，代替原来的 1px 细线。 */
+#music-dock-root .md-seg .md-mk { transition: none; }
+#music-dock-root .md-pnl .md-seg:not(.md-dockrow .md-seg) .md-mk {
+  background: var(--mf-fill);
+  border-radius: 9999px;
+  box-shadow: var(--mf-glow);
+}
+#music-dock-root .md-pnl .md-seg:not(.md-dockrow .md-seg) { border-radius: 9999px; }
+#music-dock-root .md-pnl .md-seg:not(.md-dockrow .md-seg) button { border-radius: 9999px; }
+#music-dock-root .md-dockrow .md-mk {
+  display: block;
+  top: auto;
+  bottom: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--md-t1);
+  box-shadow: none;
+}
+#music-dock-root .md-dockrow .md-seg button.md-on::after { display: none; }
+
+/* ───────── 搜索面板（Ctrl+K）：同一层玻璃，从播放条顶边长出来 ─────────
+ * 液体由 MusicFluid.bud 画；原来用 CSS 缩放做的鼓出和细颈在能画液体时让开，不能画时（节能、降低动态）仍按原样。 */
+#music-dock-root .md-cmd .md-cmd-box,
+#music-dock-root .md-cmd.md-open .md-cmd-box {
+  border: 0;
+  border-radius: 26px;
+  background:
+    radial-gradient(120% 60% at 50% 115%, color-mix(in srgb, var(--mf-tint) 16%, transparent), transparent 62%),
+    var(--mf-fill);
+  box-shadow: var(--mf-glow);
+  color: var(--mf-ink);
+}
+#music-dock-root .md-cmd-list { padding: 6px; }
+#music-dock-root .md-cmd-row { border-radius: 14px; }
+body:not(.music-fl-low):not(.music-reduce-motion) #music-dock-root .md-cmd .md-cmd-box { transform: none; filter: none; opacity: 1; transition: none; }
+body:not(.music-fl-low):not(.music-reduce-motion) #music-dock-root .md-cmd .md-cmd-box::after { display: none; }
+body:not(.music-fl-low):not(.music-reduce-motion) #music-dock-root .md-cmd:not(.md-open) .md-cmd-box { opacity: 0; }
+
+/* ───────── 弹窗和里面的按钮组 ─────────
+ * 弹窗是给手用的：同一层玻璃、大圆角；正文照常清楚，不做任何糊化。
+ * 按钮是胶囊：确认是实心墨色，次要是一层淡玻璃，取消只换字色；输入框是一道浅浅的凹槽。 */
+:is(.music-modal-overlay, .dialog-overlay) :is(.music-modal, .dialog) {
+  background:
+    radial-gradient(120% 50% at 50% 112%, color-mix(in srgb, var(--mf-tint) 14%, transparent), transparent 60%),
+    var(--mf-fill);
+  border: 0;
+  border-radius: 26px;
+  box-shadow: var(--mf-glow);
+  color: var(--mf-ink);
+  backdrop-filter: blur(26px) saturate(1.2);
+  -webkit-backdrop-filter: blur(26px) saturate(1.2);
+}
+body.music-fl-low :is(.music-modal-overlay, .dialog-overlay) :is(.music-modal, .dialog) { backdrop-filter: none; -webkit-backdrop-filter: none; }
+:is(.music-modal-overlay, .dialog-overlay) :is(.music-modal-header, .music-modal-footer, .lyrics-fetch-footer) { border-color: var(--mf-rule); }
+.dialog-btn,
+body.light-theme .dialog-btn {
+  border: 0;
+  border-radius: 9999px;
+  padding-left: 18px;
+  padding-right: 18px;
+  background: var(--mf-hover);
+  color: var(--mf-ink);
+  transition: background-color .15s, transform .18s cubic-bezier(.2, .8, .2, 1);
+}
+.dialog-btn:hover { background: color-mix(in srgb, var(--mf-ink) 12%, transparent); border: 0; }
+.dialog-btn:active { transform: scale(.96); }
+.dialog-btn.confirm,
+body.light-theme .dialog-btn.confirm { background: var(--mf-ink); color: #1c1b19; }
+body.light-theme .dialog-btn.confirm { color: #fcfcfd; }
+.dialog-btn.confirm:hover { background: color-mix(in srgb, var(--mf-ink) 86%, var(--mf-tint)); }
+/* 取消是中性的退路，只换字色；红色只留给真正会删东西的确认按钮（.danger） */
+.dialog-btn.cancel,
+body.light-theme .dialog-btn.cancel { background: transparent; color: var(--mf-ink2); }
+.dialog-btn.cancel:hover { background: var(--mf-hover); color: var(--mf-ink); }
+.dialog-btn.confirm.danger,
+body.light-theme .dialog-btn.confirm.danger { background: var(--ar-danger, #dc3c3c); color: #fff; }
+.dialog-btn.confirm.danger:hover { background: color-mix(in srgb, var(--ar-danger, #dc3c3c) 88%, #000); }
+/* 弹窗底栏左边是计数、右边只有一个按钮时，按钮按字宽，不拉满整行 */
+.music-modal-footer > .modal-count + .dialog-btn { flex: 0 0 auto; min-width: 96px; }
+/* MusicDialog.confirm：标题一行、说明一段，按钮和「新建歌单」一样左右对半 */
+.music-dialog .dialog { width: min(360px, calc(100vw - 48px)); }
+.music-dialog .dialog h3 { margin: 0 0 8px; line-height: 1.45; overflow-wrap: anywhere; }
+.music-dialog .music-dialog-msg { margin: 0; color: var(--mf-ink2); font-size: 13px; line-height: 1.6; }
+body .dialog-btn:disabled,
+body .dialog-btn.confirm:disabled,
+body.light-theme .dialog-btn.confirm:disabled { background: var(--mf-hover); color: var(--mf-ink2); opacity: .5; cursor: default; }
+:is(.dialog, .music-modal) input:is([type="text"], [type="url"], [type="password"], :not([type])) {
+  border: 0;
+  border-radius: 14px;
+  padding-left: 12px;
+  padding-right: 12px;
+  background: var(--mf-hover);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+  color: var(--mf-ink);
+}
+/* 关闭按钮是和底栏一样的 32px 圆形图标钮，× 用线条图标，不靠字体里的 ✕ 字形 */
+.music-modal-close-btn { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 9999px; }
+.music-modal-close-btn:hover { background: var(--mf-hover); }
+/* 新建歌单这类小对话框：外层的面板样式把内边距清掉了，这里补回来 */
+.dialog-overlay .dialog.glass-panel { padding: 22px 22px 18px; width: 340px; }
+.dialog-overlay .dialog h3 { margin: 0 0 16px; }
+.dialog-overlay .dialog-actions { gap: 10px; margin-top: 18px; }
+
+/* ───────── 搜索框：平时是一道线，点进去凝成一汪玻璃 ─────────
+ * 关注决定凝固：不用的时候它只是档案里的一道细线（结构不变）；聚焦时那道线从底下鼓起来，
+ * 凝成一块圆角的奶白玻璃托住文字；离开时再化开、塌回那道线。文字始终在玻璃上面，不糊。 */
+.archive-list-search,
+.sidebar-actions .search-wrapper { position: relative; isolation: isolate; }
+.archive-list-search::after,
+.sidebar-actions .search-wrapper::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -12px;
+  right: -12px;
+  top: -8px;
+  bottom: -2px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(120% 90% at 50% 120%, color-mix(in srgb, var(--mf-tint) 18%, transparent), transparent 64%),
+    var(--mf-fill);
+  box-shadow: var(--mf-glow);
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: 50% 100%;
+  transform: scale(.98, .04);
+  filter: blur(6px);
+  transition: transform .34s cubic-bezier(.32, .72, 0, 1), opacity .22s ease, filter .3s ease;
+}
+.archive-list-search:focus-within::after,
+.sidebar-actions .search-wrapper:focus-within::after {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  transition: transform .46s cubic-bezier(.34, 1.4, .5, 1), opacity .16s ease, filter .2s ease;
+}
+.sidebar-actions .search-wrapper::after { top: -2px; bottom: -2px; left: -8px; right: -8px; }
+.archive-list-toolbar:has(.archive-list-search:focus-within) { border-bottom-color: transparent; }
+/* 玻璃本身就是聚焦提示，里面的输入框不再另画一圈焦点框 */
+/* 要压过全局 :focus-visible:not(#messageInput)… 那条，所以同样带上 :not(#messageInput) */
+.archive-list-search:focus-within input:is(:focus, :focus-visible):not(#messageInput) { outline: none; box-shadow: none; }
+body .sidebar-actions .search-wrapper:focus-within #search-input,
+#left-sidebar .sidebar-actions .search-wrapper:focus-within #search-input:is(:focus, :focus-visible) { border-bottom-color: transparent; }
+.archive-list-search:focus-within input,
+.sidebar-actions .search-wrapper:focus-within #search-input { color: var(--mf-ink); }
+.archive-list-toolbar,
+.sidebar-actions #search-input { transition: border-color .2s ease; }
+body.music-reduce-motion :is(.archive-list-search, .sidebar-actions .search-wrapper)::after { transition: opacity .12s linear; transform: none; filter: none; }
+
+/* ───────── 提示条：同一层玻璃 ─────────
+ * 长出来、停留时慢慢化雾的动作还是原来的（music-dock.css 里的 mtst-bud / mtst-mist），这里只换成同一套材质：
+ * 没有描边，四周柔光，颜色从里面透出来。错误提示的那团光是暖红，不再整条变色。 */
+.mtst { border: 0; box-shadow: var(--mf-glow); color: var(--mf-ink); }
+.mtst::after {
+  background:
+    radial-gradient(90% 140% at 0% 50%, color-mix(in srgb, var(--mf-tint) 22%, transparent), transparent 62%),
+    var(--mf-fill);
+}
+.mtst.mtst-error::after {
+  background:
+    radial-gradient(90% 140% at 0% 50%, color-mix(in srgb, var(--ar-danger, #dc3c3c) 24%, transparent), transparent 62%),
+    var(--mf-fill);
+}
+.mtst .mtst-act { border-radius: 9999px; }
+body.music-fl-low .mtst { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* ───────── 档案筛选：选中的那一项下面有一道液态的线 ─────────
+ * 位置由 archive-list.js 量好、用 MusicFluid.slide 流过去；这里只管样子：一道圆头的细线，颜色从强调色里透出来。 */
+.archive-list-kinds { position: relative; }
+.archive-kind-mark {
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  width: 0;
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--mf-tint);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--mf-tint) 55%, transparent);
+  pointer-events: none;
+}
+
+/* ───────── 播放队列：正在播放那一行、悬停、拖着的那一行 ─────────
+ * 抽屉本身已经是一块玻璃，里面的行不再叠一块灰底：正在播放那一行是从左边透出来的一团强调色的光，
+ * 左边那道硬竖线换成一滴会发光的圆头短线；拖起来的那一行像从玻璃里拎出来的一滴，柔光、略放大、不透明。 */
+#music-dock-root .md-qi { border-radius: 14px; }
+#music-dock-root .md-qi:hover { background: var(--mf-hover); }
+#music-dock-root .md-qi.md-cur {
+  background:
+    radial-gradient(70% 160% at 0% 50%, color-mix(in srgb, var(--mf-tint) 20%, transparent), transparent 70%),
+    var(--mf-hover);
+}
+#music-dock-root .md-qi.md-cur::before {
+  left: 3px;
+  top: 50%;
+  bottom: auto;
+  width: 4px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 9999px;
+  background: var(--mf-tint);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--mf-tint) 60%, transparent);
+}
+#music-dock-root .md-qi.md-qdrag {
+  border-radius: 16px;
+  /* 下面垫一层不透明的底，拖着的那行和让位的行叠在一起时仍然看得清 */
+  background: linear-gradient(var(--mf-fill), var(--mf-fill)), var(--md-menu);
+  box-shadow: var(--mf-glow);
+  scale: 1.02; /* 用单独的 scale：拖动时位置由行内的 translateY 管，两者叠加 */
+}
+
+/* ───────── 抽屉里的滑杆：手一靠近，细线鼓成一管液体 ─────────
+ * 平时是 4px 的细线；悬停或键盘聚焦时上下鼓到 8px，按住拖动时再鼓到 10px，
+ * 滑块周围透出一圈强调色的柔光。键盘聚焦的提示画在滑块上，不再框住整条。只动高度和位置，不碰 JS 写的填充比例和滑块位置。 */
+#music-dock-root .md-sld-tr { transition: top .28s cubic-bezier(.34, 1.4, .5, 1), height .28s cubic-bezier(.34, 1.4, .5, 1); }
+#music-dock-root .md-sld:is(:hover, :focus-visible) .md-sld-tr { top: 8px; height: 8px; }
+#music-dock-root .md-sld.md-held .md-sld-tr { top: 7px; height: 10px; }
+#music-dock-root .md-sld-kn { transition: transform .2s cubic-bezier(.34, 1.4, .5, 1), box-shadow .2s ease; }
+#music-dock-root .md-sld.md-held .md-sld-kn {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .1), 0 0 0 5px color-mix(in srgb, var(--mf-tint) 22%, transparent), 0 2px 8px rgba(0, 0, 0, .3);
+}
+#music-dock-root .md-sld:focus-visible:not(#messageInput) { outline: none; }
+#music-dock-root .md-sld:focus-visible .md-sld-kn { box-shadow: 0 0 0 1px rgba(0, 0, 0, .1), 0 0 0 3px var(--mf-ink); }
+body.music-reduce-motion #music-dock-root :is(.md-sld-tr, .md-sld-kn) { transition: none; }
+
+/* ───────── 底栏的心形：点亮时像一滴液体鼓起来 ─────────
+ * 没喜欢时是一道线框；喜欢了就填满强调色。点亮那一下先压扁再鼓过头、回弹，外面荡开一圈淡淡的光。 */
+#music-dock-root .md-like { position: relative; }
+#music-dock-root .md-like svg { transition: color .2s ease; }
+#music-dock-root .md-like.md-liked { opacity: 1; color: var(--mf-tint); }
+#music-dock-root .md-like.md-liked svg path { fill: currentColor; }
+#music-dock-root .md-like:disabled { opacity: .3; pointer-events: none; }
+#music-dock-root .md-like.md-like-pop svg { animation: mf-like-pop .52s cubic-bezier(.34, 1.4, .5, 1); }
+#music-dock-root .md-like.md-like-pop::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mf-tint) 60%, transparent);
+  animation: mf-like-ring .52s ease-out forwards;
+}
+@keyframes mf-like-pop {
+  0% { transform: scale(1); }
+  22% { transform: scale(.72, .66); }
+  60% { transform: scale(1.22, 1.16); }
+  100% { transform: scale(1); }
+}
+@keyframes mf-like-ring {
+  0% { opacity: .9; transform: scale(.6); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+body.music-reduce-motion #music-dock-root .md-like.md-like-pop svg,
+body.music-reduce-motion #music-dock-root .md-like.md-like-pop::after { animation: none; }
+
+/* ───────── 抽屉里的开关块和小开关：按下去像按进一汪液体 ─────────
+ * 开关块（播放模式、歌词舞台……）和歌词页的小开关（翻译）换成同一套玻璃：圆角更大，
+ * 打开时不是换一块更亮的灰底，而是从下面透出一团强调色的光、四周柔光；
+ * 按下时压扁一点，松手时鼓过头再回来。 */
+#music-dock-root .md-tile {
+  border-radius: 18px;
+  transition: background .18s ease, color .18s ease, box-shadow .22s ease, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+#music-dock-root .md-tile:hover { background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--md-fill); }
+#music-dock-root .md-tile:active { transform: scale(.95, .92); transition-duration: .1s; }
+#music-dock-root .md-tile.md-lit,
+#music-dock-root .md-chip.md-lit {
+  background:
+    radial-gradient(110% 90% at 30% 120%, color-mix(in srgb, var(--mf-tint) 26%, transparent), transparent 66%),
+    var(--mf-fill);
+  color: var(--mf-ink);
+  box-shadow: var(--mf-glow);
+}
+/* 深色下抽屉底比玻璃本色还亮，打开的那块要更亮一层才像浮起来，不然看着像按下去了 */
+#music-dock-root:not(.md-light) :is(.md-tile, .md-chip).md-lit {
+  background:
+    radial-gradient(110% 90% at 30% 120%, color-mix(in srgb, var(--mf-tint) 30%, transparent), transparent 66%),
+    rgba(255, 255, 255, .14);
+}
+#music-dock-root .md-tile.md-lit .md-ti,
+#music-dock-root .md-chip.md-lit svg { color: var(--mf-tint); }
+#music-dock-root .md-chip {
+  border-radius: 9999px;
+  padding: 0 12px;
+  transition: background .18s ease, color .18s ease, box-shadow .22s ease, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+#music-dock-root .md-chip:active:not(:disabled) { transform: scale(.94, .9); transition-duration: .1s; }
+body.music-reduce-motion #music-dock-root :is(.md-tile, .md-chip) { transition: background .12s, color .12s; }
+body.music-reduce-motion #music-dock-root :is(.md-tile, .md-chip):active { transform: none; }
+
+/* ───────── 舞台格子、歌词偏移步进器 ─────────
+ * 舞台格子展开时由 MusicFluid.bud 从「舞台」按钮里长出来；格子本身是小块玻璃，选中的那块透出强调色。
+ * 歌词偏移的「− 0.0 秒 +」是一整条玻璃胶囊，两头的按钮按下时压扁回弹。 */
+#music-dock-root .md-scn.mf-budding { animation: none; }
+#music-dock-root .md-scn-b {
+  border-radius: 9999px;
+  background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--md-fill);
+  transition: background .18s ease, color .18s ease, box-shadow .22s ease, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+#music-dock-root .md-scn-b:active { transform: scale(.94, .9); transition-duration: .1s; }
+#music-dock-root .md-scn-b.md-on {
+  background:
+    radial-gradient(110% 120% at 50% 130%, color-mix(in srgb, var(--mf-tint) 34%, transparent), transparent 70%),
+    var(--mf-fill);
+  color: var(--mf-ink);
+  box-shadow: var(--mf-glow);
+}
+#music-dock-root:not(.md-light) .md-scn-b.md-on {
+  background:
+    radial-gradient(110% 120% at 50% 130%, color-mix(in srgb, var(--mf-tint) 38%, transparent), transparent 70%),
+    rgba(255, 255, 255, .16);
+}
+#music-dock-root .md-off { border-radius: 9999px; padding: 3px; background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--md-fill); }
+#music-dock-root .md-off .md-ib { border-radius: 9999px; transition: transform .34s cubic-bezier(.34, 1.56, .5, 1), background-color .12s; }
+#music-dock-root .md-off .md-ib:active { transform: scale(.86); transition-duration: .1s; }
+#music-dock-root .md-offv { border-radius: 9999px; }
+#music-dock-root .md-offv.md-lit { color: var(--mf-tint); }
+body.music-reduce-motion #music-dock-root :is(.md-scn-b, .md-off .md-ib):active { transform: none; }
+
+/* ───────── 开关：方块像一滴液体流到另一头 ─────────
+ * 外形还是音乐窗口那套细线方框里的方块（music-skin.css），只换动作：
+ * 不再整块平移，而是前沿先到、后沿慢半拍跟上，中途被拉长，到了再收回原来的大小。
+ * 用 left/right 两条边分别过渡；过渡时长取「目标状态」上写的，所以往哪边走，哪边的边就快。 */
+.switch .slider::before,
+.switch .slider.round::before {
+  width: auto;
+  right: 16px;
+  transform: none;
+  transition: left .14s cubic-bezier(.3, .7, 0, 1), right .44s cubic-bezier(.3, .7, 0, 1), background-color .2s ease;
+}
+.switch input:checked + .slider::before {
+  left: 16px;
+  right: 2px;
+  transform: none;
+  transition: right .14s cubic-bezier(.3, .7, 0, 1), left .44s cubic-bezier(.3, .7, 0, 1), background-color .2s ease;
+}
+body.music-reduce-motion .switch .slider::before { transition: background-color .12s; }
+
+/* ───────── 定时关闭 ─────────
+ * 控制页第三块开关；点开后时长选项从那块里长出来（MusicFluid.bud），一排玻璃小开关。
+ * 开着的时候底栏心形左边多一颗小胶囊显示剩余时间，数字等宽、不跳。 */
+/* 七个选项排成整齐的两行四格（「播完这首」占两格），不再随宽度折成参差的一行半 */
+#music-dock-root .md-slp { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px 0 2px; }
+#music-dock-root .md-slp .md-chip { justify-content: center; min-width: 0; padding-left: 4px; padding-right: 4px; white-space: nowrap; }
+#music-dock-root .md-slp .md-chip:last-child { grid-column: span 2; }
+#music-dock-root .md-slp .md-chip { height: 30px; background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--md-fill); }
+#music-dock-root .md-slp .md-chip.md-lit { background: radial-gradient(110% 90% at 30% 120%, color-mix(in srgb, var(--mf-tint) 26%, transparent), transparent 66%), var(--mf-fill); }
+#music-dock-root:not(.md-light) .md-slp .md-chip.md-lit { background: radial-gradient(110% 90% at 30% 120%, color-mix(in srgb, var(--mf-tint) 30%, transparent), transparent 66%), rgba(255, 255, 255, .14); }
+#music-dock-root .md-sleep {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  height: 28px;
+  gap: 4px;
+  padding: 0 9px 0 8px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 1;
+  /* 底栏本身是彩色的流体，强调色字会糊进去；用底栏的墨色，底下垫一层淡淡的墨 */
+  color: rgb(var(--md-fl-ink-rgb, 255, 255, 255));
+  background: rgba(var(--md-fl-ink-rgb, 255, 255, 255), .12);
+}
+#music-dock-root .md-sleep:hover { background: rgba(var(--md-fl-ink-rgb, 255, 255, 255), .2); }
+#music-dock-root .md-sleep[hidden] { display: none; }
+#music-dock-root .md-tile .md-slp-v { font-variant-numeric: tabular-nums; }
+
+/* ───────── 快捷键表：同一层玻璃，从按下的地方长出来 ─────────
+ * 按键帽是玻璃上的小凹槽；整块从 MusicFluid.bud 长出来（music-dock.js 的 openHelp）。 */
+#music-dock-root .md-keys-box {
+  border-radius: 26px;
+  background:
+    radial-gradient(120% 70% at 50% 115%, color-mix(in srgb, var(--mf-tint) 16%, transparent), transparent 62%),
+    var(--mf-fill);
+  color: var(--mf-ink);
+  box-shadow: var(--mf-glow);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  backdrop-filter: blur(22px) saturate(1.25);
+}
+body.music-fl-low #music-dock-root .md-keys-box { -webkit-backdrop-filter: none; backdrop-filter: none; }
+#music-dock-root .md-keys-box kbd { border-radius: 8px; background: var(--mf-hover); box-shadow: inset 0 0 0 .5px var(--mf-rule); }
+/* 命令面板里的按键（Esc、行尾的快捷键）和快捷键表用同一种键帽，不再是直角细框 */
+#music-dock-root :is(.md-cmd-chip, .md-cmd-kbd, .md-cmd-foot kbd) { border-radius: 6px; background: var(--mf-hover); box-shadow: inset 0 0 0 .5px var(--mf-rule); }
+/* 命令面板空状态：浅色玻璃上原来只有 1.5–2:1，几乎看不见；提示按意思分成两行，不在「专辑:叶惠美」中间断开 */
+#music-dock-root .md-cmd-empty { color: var(--mf-ink); }
+#music-dock-root .md-cmd-empty .md-cmd-tip { color: var(--mf-ink2); font-size: 12px; line-height: 18px; }
+#music-dock-root .md-keys-box dd { color: var(--mf-ink2); }
+/* 面板本身拿焦点只是为了让键盘留在里面，不画全局焦点框（要压过 :focus-visible:not(#messageInput) 那条） */
+#music-dock-root .md-keys-box:focus-visible:not(#messageInput) { outline: none; }
+
+/* ───────── 歌词页：当前那一行背后的一滴玻璃 ─────────
+ * 位置由 music-dock.js 用 MusicFluid.slide（竖着）流过去；这里只管样子。文字在它上面，不糊。 */
+#music-dock-root .md-lyrl { position: relative; isolation: isolate; }
+#music-dock-root .md-lyr-drop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 0;
+  z-index: -1;
+  border-radius: 14px;
+  pointer-events: none;
+  background:
+    radial-gradient(80% 140% at 0% 50%, color-mix(in srgb, var(--mf-tint) 18%, transparent), transparent 70%),
+    var(--mf-hover);
+}
+#music-dock-root .md-lyrl p { border-radius: 14px; }
+/* 浅色玻璃上 .42 的墨色只有约 2.7:1，没唱到的行也要读得清；当前行靠粗细和纯墨色区分 */
+#music-dock-root.md-light .md-lyrl p:not(.md-on) { color: var(--md-t2); }
+#music-dock-root .md-lyrl p:hover { background: var(--mf-hover); }
+#music-dock-root .md-lyrl p.md-on:hover { background: none; }
+
+/* ───────── 命令面板：选中的那一行背后的一滴 ─────────
+ * 位置由 music-dock-palette.js 用 MusicFluid.slide（竖着）流过去；选中的行本身不再换底色。 */
+#music-dock-root .md-cmd-list { position: relative; isolation: isolate; }
+#music-dock-root .md-cmd-drop {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0;
+  height: 0;
+  z-index: -1;
+  border-radius: 14px;
+  pointer-events: none;
+  background:
+    radial-gradient(80% 140% at 0% 50%, color-mix(in srgb, var(--mf-tint) 20%, transparent), transparent 70%),
+    var(--mf-hover);
+}
+#music-dock-root .md-cmd-list:has(> .md-cmd-drop) .md-cmd-row.md-act { background: none; }
+
+/* ───────── 按下的手感统一：压扁一点，松手时鼓过头再回来 ─────────
+ * 抽屉里的圆形小按钮、弹窗按钮、提示条上的按钮都用同一条回弹曲线；按下时快、松手时慢。
+ * 抽屉里的小图标按钮也换成圆的，和玻璃的圆角一致。 */
+#music-dock-root .md-ib {
+  border-radius: 9999px;
+  transition: background-color .12s, color .12s, opacity .12s, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+#music-dock-root .md-ib:active { transform: scale(.86); transition-duration: .1s; }
+.dialog-btn,
+body.light-theme .dialog-btn { transition: background-color .15s, transform .34s cubic-bezier(.34, 1.56, .5, 1); }
+.dialog-btn:active:not(:disabled) { transform: scale(.94, .9); transition-duration: .1s; }
+.mtst .mtst-act { transition: background-color .15s, transform .34s cubic-bezier(.34, 1.56, .5, 1); }
+.mtst .mtst-act:active { transform: scale(.92, .88); transition-duration: .1s; }
+body.music-reduce-motion :is(#music-dock-root .md-ib, .dialog-btn, .mtst .mtst-act):active { transform: none; }
+
+/* ───────── 歌单编辑弹窗里的歌曲列表 ─────────
+ * 列表区不再另铺一层底色，和弹窗是同一块玻璃；每一行是圆角的一汪，已在歌单里的那几行从左边透出强调色光，
+ * 勾选框是圆的，勾上时被强调色填满。 */
+.music-modal-overlay .music-modal-content { background: transparent; padding: 8px; }
+.music-modal-overlay .music-modal-search { border-color: var(--mf-rule); }
+.music-modal-overlay .music-modal-search input { border: 0; border-radius: 9999px; background: var(--mf-hover); color: var(--mf-ink); }
+.music-modal-overlay .music-modal-search input:focus { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--mf-tint) 60%, transparent); }
+.music-modal-overlay .music-modal-song-item { border-radius: 14px; padding: 9px 14px; color: var(--mf-ink); }
+.music-modal-overlay .music-modal-song-item:hover { background: var(--mf-hover); }
+.music-modal-overlay .music-modal-song-item.in-playlist {
+  background:
+    radial-gradient(70% 160% at 0% 50%, color-mix(in srgb, var(--mf-tint) 18%, transparent), transparent 70%),
+    var(--mf-hover);
+}
+.music-modal-overlay .music-modal-song-checkbox {
+  border-radius: 9999px;
+  border: 1.5px solid var(--mf-ink2);
+  transition: background-color .2s ease, border-color .2s ease, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+.music-modal-overlay .music-modal-song-item.in-playlist .music-modal-song-checkbox { background: var(--mf-tint); border-color: var(--mf-tint); color: #fff; }
+.music-modal-overlay .music-modal-song-item:active .music-modal-song-checkbox { transform: scale(.84); transition-duration: .1s; }
+body.music-reduce-motion .music-modal-overlay .music-modal-song-item:active .music-modal-song-checkbox { transform: none; }
+
+/* ───────── 云端导入（WebDAV）弹窗 ─────────
+ * 左边服务器、右边文件，都和弹窗是同一块玻璃：分隔线换成玻璃里的细线，每一行是圆角的一汪。
+ * 选中的服务器和音频文件从左边透出强调色光；路径上的每一级是一颗小胶囊，按下时压扁回弹。 */
+.webdav-modal .webdav-server-panel { border-right-color: var(--mf-rule); }
+.webdav-modal :is(.webdav-breadcrumb, .webdav-file-actions) { border-color: var(--mf-rule); }
+.webdav-modal :is(.webdav-server-item, .webdav-file-item) {
+  border-radius: 14px;
+  color: var(--mf-ink);
+  transition: background-color .15s, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+.webdav-modal .webdav-file-item { margin: 1px 8px; padding: 8px 14px; }
+.webdav-modal :is(.webdav-server-item, .webdav-file-item):hover { background: var(--mf-hover); }
+.webdav-modal :is(.webdav-server-item, .webdav-file-item.is-dir, .webdav-file-item.is-audio):active { transform: scale(.98, .94); transition-duration: .1s; }
+.webdav-modal .webdav-server-item.active {
+  color: var(--mf-ink);
+  background:
+    radial-gradient(80% 160% at 0% 50%, color-mix(in srgb, var(--mf-tint) 24%, transparent), transparent 70%),
+    var(--mf-hover);
+}
+.webdav-modal .webdav-file-item.is-audio { color: var(--mf-ink); }
+.webdav-modal .webdav-file-item.is-audio .webdav-file-icon { color: var(--mf-tint); }
+.webdav-modal .webdav-server-remove {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 9999px;
+  color: var(--mf-ink2);
+  transition: background-color .15s, color .15s, opacity .15s;
+}
+.webdav-modal .webdav-server-remove:hover { background: var(--mf-hover); color: #e5484d; }
+.webdav-modal .webdav-crumb {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  color: var(--mf-ink);
+  opacity: 1;
+  transition: background-color .15s, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+.webdav-modal .webdav-crumb:hover { background: var(--mf-hover); text-decoration: none; }
+.webdav-modal .webdav-crumb:last-child { background: color-mix(in srgb, var(--mf-tint) 16%, transparent); }
+.webdav-modal .webdav-crumb:active { transform: scale(.92); transition-duration: .1s; }
+body.music-reduce-motion .webdav-modal :is(.webdav-server-item, .webdav-file-item, .webdav-crumb):active { transform: none; }
+
+/* ───────── 获取歌词版本：候选卡片 ─────────
+ * 卡片不再描边、不再另铺暗底，是玻璃里圆角的一汪；悬停时亮一点，不再往上跳。
+ * 选中的那张从左边透出强调色光，圆点被强调色填满时先压一下再鼓出来。分隔线换成玻璃里的细线。 */
+.lyrics-fetch-modal :is(.lyrics-fetch-legend, .lyrics-fetch-footer) { border-color: var(--mf-rule); }
+.lyrics-fetch-modal .lyrics-candidate {
+  border: 0;
+  border-radius: 18px;
+  background: var(--mf-hover);
+  box-shadow: none;
+  transition: background-color .18s ease, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+.lyrics-fetch-modal .lyrics-candidate:hover {
+  transform: none;
+  background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--mf-hover);
+}
+.lyrics-fetch-modal .lyrics-candidate:active { transform: scale(.985, .96); transition-duration: .1s; }
+.lyrics-fetch-modal .lyrics-candidate.selected {
+  box-shadow: none;
+  background:
+    radial-gradient(60% 180% at 0% 50%, color-mix(in srgb, var(--mf-tint) 26%, transparent), transparent 72%),
+    var(--mf-hover);
+}
+.lyrics-fetch-modal .lyrics-candidate:focus-visible:not(#messageInput) {
+  outline: none;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--mf-tint) 60%, transparent);
+}
+.lyrics-fetch-modal .lyrics-candidate-radio { border: 1.5px solid var(--mf-ink2); }
+.lyrics-fetch-modal .lyrics-candidate.selected .lyrics-candidate-radio {
+  border-color: var(--mf-tint);
+  background: var(--mf-tint);
+  box-shadow: inset 0 0 0 3.5px var(--mf-fill);
+  animation: mf-like-pop .46s cubic-bezier(.34, 1.4, .5, 1);
+}
+.lyrics-fetch-modal :is(.lyrics-candidate-title) { color: var(--mf-ink); }
+.lyrics-fetch-modal :is(.lyrics-candidate-meta, .lyrics-candidate-preview) { color: var(--mf-ink2); }
+.lyrics-fetch-modal .lyrics-source-badge { background: var(--mf-hover); color: var(--mf-ink2); }
+.lyrics-fetch-modal .lyrics-candidate-score { color: var(--mf-tint); }
+body.music-reduce-motion .lyrics-fetch-modal .lyrics-candidate:active { transform: none; }
+body.music-reduce-motion .lyrics-fetch-modal .lyrics-candidate.selected .lyrics-candidate-radio { animation: none; }
+.lyrics-fetch-modal .lyrics-feature-badge { background: var(--mf-hover); color: var(--mf-ink2); }
+.lyrics-fetch-modal .lyrics-feature-badge.word { background: rgba(56, 217, 150, .16); color: #62e5aa; }
+body.light-theme .lyrics-fetch-modal .lyrics-feature-badge.word { background: rgba(26, 160, 104, .12); color: #11865a; }
+.lyrics-fetch-modal .lyrics-feature-badge.translation { color: var(--mf-tint); }
+
+/* ───────── 弹窗里的输入框 ─────────
+ * 不描边，是玻璃里一汪圆角的浅坑；聚焦时坑底亮一点，四周凝出一圈强调色细光，过渡带一点回弹。
+ * 新建歌单、添加云端服务器、获取歌词版本里的输入框都用这一种。 */
+:is(.dialog, .lyrics-fetch-search) input {
+  border: 0;
+  border-radius: 14px;
+  background: var(--mf-hover);
+  color: var(--mf-ink);
+  box-shadow: 0 0 0 0 transparent;
+  transition: background-color .18s ease, box-shadow .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+:is(.dialog, .lyrics-fetch-search) input::placeholder { color: var(--mf-ink2); }
+:is(.dialog, .lyrics-fetch-search) input:is(:focus, :focus-visible):not(#messageInput) {
+  outline: none;
+  background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--mf-hover);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--mf-tint) 62%, transparent), 0 0 14px -2px color-mix(in srgb, var(--mf-tint) 40%, transparent);
+}
+body.music-reduce-motion :is(.dialog, .lyrics-fetch-search) input { transition: none; }
+
+/* ───────── 顶部的「音频引擎没有启动」提示 ─────────
+ * 不再是红描边的方框：一块和别处一样的玻璃，红色从左边里面透出来，标题前一颗小红点，出现后呼吸几下就停（不常驻动画，省电）。
+ * 出现时从窗口顶边正中滴下来再鼓满（music-fluid-kit.js 里的 watchNotices）。 */
+.audio-engine-notice {
+  border: 0;
+  border-radius: 20px;
+  padding: 11px 18px 11px 34px;
+  color: var(--mf-ink);
+  background:
+    radial-gradient(70% 160% at 0% 30%, rgba(229, 72, 77, .2), transparent 70%),
+    var(--mf-fill);
+  box-shadow: 0 10px 30px -8px rgba(0, 0, 0, .35), 0 0 0 .5px var(--mf-rule);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+}
+.audio-engine-notice-title { position: relative; }
+.audio-engine-notice-title::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: .5em;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #e5484d;
+  box-shadow: 0 0 10px rgba(229, 72, 77, .7);
+  animation: mf-notice-breathe 2.4s ease-in-out 5;
+}
+.audio-engine-notice-detail { color: var(--mf-ink2); }
+@keyframes mf-notice-breathe { 50% { opacity: .45; transform: scale(.8); } }
+body.music-fl-low .audio-engine-notice { backdrop-filter: none; -webkit-backdrop-filter: none; }
+body:is(.music-reduce-motion, .music-fl-low) .audio-engine-notice-title::before { animation: none; }
+
+/* ───────── 档案顶栏（目录、检索、加入歌单……）和「播放 / 详情」：手底下的那一汪 ─────────
+ * 按钮本身不变；指针进到这一排时，手底下那个按钮背后凝出一汪浅玻璃，换按钮时流过去，离开就淡掉。
+ * 位置由 music-fluid-kit.js 的 watchTrails 用 MusicFluid.slide 推。 */
+.mf-trail {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 0;
+  height: var(--mf-trail-h, 38px);
+  margin-top: calc(var(--mf-trail-h, 38px) / -2);
+  z-index: -1;
+  border-radius: 9999px;
+  pointer-events: none;
+  background:
+    radial-gradient(90% 140% at 50% 120%, color-mix(in srgb, var(--mf-tint) 14%, transparent), transparent 70%),
+    var(--mf-hover);
+  opacity: 0;
+  transform: scale(.7, .5);
+  transition: opacity .22s ease, transform .3s cubic-bezier(.34, 1.56, .5, 1);
+}
+.mf-trail.mf-on { opacity: 1; transform: none; }
+.archive-nav { isolation: isolate; }
+/* 曲库空着时的「添加音乐文件夹 / 从云端导入」：和提示卡的按钮一样，手底下一汪浅玻璃。
+ * 整块里还有标题和说明，所以竖直位置也按按钮量（axis: 'xy'），不用整块的中线。 */
+.archive-empty { isolation: isolate; }
+.archive-empty > .mf-trail { top: 0; margin-top: 0; height: 0; }
+body.music-reduce-motion .mf-trail { transition: opacity .12s; transform: none; }
+/* 底栏抽屉的播放队列：同样竖着流；有这一汪时行本身不再换底色，拖动排序时藏起来 */
+#music-dock-root .md-ql { isolation: isolate; }
+#music-dock-root .md-ql > .mf-trail {
+  top: 0;
+  margin-top: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 0;
+  border-radius: 14px;
+  transform: scale(.96, .7);
+}
+#music-dock-root .md-ql > .mf-trail.mf-on { transform: none; }
+#music-dock-root .md-ql:has(> .mf-trail.mf-on) .md-qi:not(.md-cur):hover { background: none; }
+#music-dock-root .md-ql:has(.md-qdrag) > .mf-trail { opacity: 0; }
+/* 右键菜单、子菜单、档案的批量菜单和排序菜单：那一汪在菜单项之间竖着流；有它时菜单项本身不再换底色 */
+:is(.context-menu, .context-submenu, .archive-batch-menu, .archive-list-sort-menu) { isolation: isolate; }
+:is(.context-menu, .context-submenu, .archive-batch-menu, .archive-list-sort-menu) > .mf-trail {
+  top: 0;
+  margin-top: 0;
+  left: 6px;
+  right: 6px;
+  width: auto;
+  height: 0;
+  border-radius: 11px;
+  transform: scale(.94, .7);
+  background:
+    radial-gradient(80% 160% at 0% 50%, color-mix(in srgb, var(--mf-tint) 16%, transparent), transparent 70%),
+    var(--mf-hover);
+}
+:is(.context-menu, .context-submenu, .archive-batch-menu, .archive-list-sort-menu) > .mf-trail.mf-on { transform: none; }
+:is(.context-menu, .context-submenu):has(> .mf-trail.mf-on) :is(.context-menu-item, .submenu-item):hover,
+:is(.archive-batch-menu, .archive-list-sort-menu):has(> .mf-trail.mf-on) > button:is(:hover, :focus-visible) { background: none; }
+/* 键盘移到菜单项上：不要全局那圈硬描边，换成和输入框一样的一圈强调色细光 */
+:is(.archive-batch-menu, .archive-list-sort-menu) > button:focus-visible:not(#messageInput) {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--mf-tint) 55%, transparent);
+}
+
+/* ───────── 底栏右端的圆按钮（喜欢、更多）和上方那一团快捷按钮 ─────────
+ * 手底下的按钮背后是一颗圆的浅玻璃；换按钮时它被拉成胶囊流过去，到了再收回成圆。
+ * 底栏是有颜色的液体，所以这颗用条上的墨色调淡，不用弹层的浅玻璃。 */
+#music-dock-root :is(.md-quick-g, .md-slots) { position: relative; isolation: isolate; }
+#music-dock-root .md-quick-g { --mf-trail-h: 36px; }
+#music-dock-root .md-slots { --mf-trail-h: 34px; }
+#music-dock-root :is(.md-quick-g, .md-slots) > .mf-trail {
+  background: rgba(var(--md-fl-ink-rgb, 128, 128, 128), .1);
+  transform: scale(.5);
+}
+#music-dock-root :is(.md-quick-g, .md-slots) > .mf-trail.mf-on { transform: none; }
+#music-dock-root :is(.md-quick-g, .md-slots):has(> .mf-trail.mf-on) > .md-slot:hover { background: none; }
+
+/* ───────── 弹窗里的列表（歌单编辑的歌曲、云端导入的服务器和文件）：手底下那一汪竖着流 ─────────
+ * 有它时行本身不再换悬停底色；已在歌单里、已选中的行保留自己的强调色光。 */
+:is(#modal-song-list, .webdav-file-list, .webdav-server-list) { position: relative; isolation: isolate; }
+:is(#modal-song-list, .webdav-file-list, .webdav-server-list) > .mf-trail {
+  top: 0;
+  margin-top: 0;
+  height: 0;
+  border-radius: 14px;
+  transform: scale(.96, .7);
+}
+:is(#modal-song-list, .webdav-file-list, .webdav-server-list) > .mf-trail.mf-on { transform: none; }
+#modal-song-list:has(> .mf-trail.mf-on) > .music-modal-song-item:not(.in-playlist):hover,
+.webdav-file-list:has(> .mf-trail.mf-on) > .webdav-file-item:hover,
+.webdav-server-list:has(> .mf-trail.mf-on) > .webdav-server-item:not(.active):hover { background: none; }
+/* 键盘焦点：那一汪跟着焦点走时，焦点提示画在它身上（一圈强调色细光），不再在按钮外面另套一个方框 */
+:is(.archive-nav, .archive-empty):has(> button:focus-visible) > .mf-trail.mf-on {
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--mf-tint) 60%, transparent);
+}
+#music-archive-view :is(.archive-nav, .archive-empty):has(> .mf-trail.mf-on) > button:focus-visible:not(#messageInput) { outline: none; }
+
+/* ───────── 弹窗里的滚动条 ─────────
+ * 全局滚动条是 6px、强调色的滑块（themes.css，带 !important），在玻璃弹窗里太跳。
+ * 这里只换它读的颜色变量：轨道透明，滑块是一根淡淡的墨色胶囊，指针移上去才深一点。 */
+:is(.music-modal-overlay, .dialog-overlay) {
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: color-mix(in srgb, var(--mf-ink) 18%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--mf-ink) 34%, transparent);
+}
+
+/* ───────── 目录里就地起名（新建歌单、重命名） ─────────
+ * 输入框出现时先是档案那条细线，随即凝成一汪浅玻璃：底线淡掉，四周起一圈强调色细光（和弹窗输入框一样）。
+ * 分组标题上的「播放这一组」小胶囊：按下压扁、松手回弹。 */
+.archive-list-name {
+  border-radius: 10px;
+  padding: 0 8px 2px;
+  margin-left: -8px;
+  width: calc(100% + 8px);
+  background: var(--mf-hover);
+  border-bottom-color: transparent;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--mf-tint) 55%, transparent);
+  animation: mf-name-condense .42s cubic-bezier(.34, 1.3, .5, 1) both;
+}
+@keyframes mf-name-condense {
+  from { border-radius: 0; background-color: transparent; border-bottom-color: var(--ar-ink, currentColor); box-shadow: 0 0 0 0 transparent; }
+  45% { border-bottom-color: transparent; }
+}
+.archive-list-group .gplay { transition: opacity .15s, color .12s, background-color .12s, transform .34s cubic-bezier(.34, 1.56, .5, 1); }
+.archive-list-group .gplay:active { transform: scale(.9, .84); transition-duration: .1s; }
+body.music-reduce-motion .archive-list-name { animation: none; }
+body.music-reduce-motion .archive-list-group .gplay:active { transform: none; }
+#music-archive-view .archive-list-name:is(:focus, :focus-visible):not(#messageInput) { outline: none; }
+
+/* ───────── 底栏和队列里还没回弹的小按钮 ─────────
+ * 上一首/下一首小箭头、「接下来」两首的歌名、队列行尾的 ×、「清空」：都换成同一条按下压扁、松手回弹的曲线。
+ * × 和「清空」改成圆的，和别处的玻璃按钮一致。 */
+#music-dock-root .md-arw { transition: opacity .2s, background-color .15s, transform .34s cubic-bezier(.34, 1.56, .5, 1); }
+#music-dock-root .md-arw:active { transform: scale(.8); transition-duration: .1s; }
+#music-dock-root .md-nxb { transition: opacity .3s, transform .34s cubic-bezier(.34, 1.56, .5, 1); }
+#music-dock-root .md-nxb:active { transform: scale(.95, .9); transition-duration: .1s; }
+#music-dock-root .md-qx { border-radius: 9999px; transition: opacity .12s, background-color .12s, transform .34s cubic-bezier(.34, 1.56, .5, 1); }
+#music-dock-root .md-qx:hover { background: var(--mf-hover); }
+#music-dock-root .md-qx:active { transform: scale(.8); transition-duration: .1s; }
+#music-dock-root .md-qclr { border-radius: 9999px; padding: 0 9px; transition: color .12s, background-color .12s, transform .34s cubic-bezier(.34, 1.56, .5, 1); }
+#music-dock-root .md-qclr:active { transform: scale(.9, .84); transition-duration: .1s; }
+body.music-reduce-motion #music-dock-root :is(.md-arw, .md-nxb, .md-qx, .md-qclr):active { transform: none; }
+
+/* ───────── 歌词：点一行跳过去 ─────────
+ * 首页右侧滚动歌词：手底下那一行背后一汪浅玻璃，在行之间流动（行会跟着歌往上走，那一汪也在同一层里一起走）。
+ * 首页和底栏抽屉的歌词行，按下时往左边轻轻压一下再弹回，表示「跳到这里」。 */
+.archive-lyrics-track { position: relative; isolation: isolate; }
+.archive-lyrics-track > .mf-trail {
+  top: 0;
+  margin-top: 0;
+  height: 0;
+  border-radius: 16px;
+  transform: scale(.96, .7);
+}
+.archive-lyrics-track > .mf-trail.mf-on { transform: none; }
+:is(.archive-lyrics-track > p, #music-dock-root .md-lyrl p) {
+  transform-origin: 0 50%;
+  transition: color .2s, background-color .12s, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+}
+:is(.archive-lyrics-track > p, #music-dock-root .md-lyrl p):active { transform: scale(.97); transition-duration: .1s; }
+body.music-reduce-motion :is(.archive-lyrics-track > p, #music-dock-root .md-lyrl p):active { transform: none; }
+
+
+/* ───────── 节能档的底栏 ─────────
+ * 节能档关掉流体层后播放条是一块实色胶囊，播过的部分是一块浅色。原来浅色块靠 scaleX 拉长，右端的圆角被压扁成一个歪的弧。
+ * 这里改成按进度裁出来（clip-path 的 inset 带圆角），右端始终是一个正圆的头，像一截液体在条里往前长；
+ * 条底下再垫一层静止的强调色柔光，接上流体档的暖光。都是静态样式，不跑动画、不做模糊。 */
+#music-dock-root.md-fl-low .md-fill {
+  transform: none !important;
+  clip-path: inset(0 calc((1 - var(--md-edge, 0)) * 100%) 0 0 round calc(var(--md-bar-h, 64px) / 2));
+}
+#music-dock-root.md-fl-low .md-cap {
+  box-shadow:
+    0 0 0 1px var(--md-fl-low-edge),
+    0 12px 30px -14px rgba(0, 0, 0, .35),
+    0 18px 44px -20px color-mix(in srgb, var(--md-fl-tint, var(--mf-tint)) 70%, transparent);
+}
+
+/* ───────── 下拉选项（music-fluid-select.js）─────────
+ * 和主程序设置页同一种：圆角框里显示当前值、右边一个小箭头；点开是一张选项卡片，当前项打勾。
+ * 卡片是这套流体玻璃，按钮跟着所在面板的字色走。原生 <select> 还在原处当数据源，只是看不见。 */
+select.mfs-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  clip-path: inset(50%) !important;
+}
+button.mfs-trigger:not(#mfs-0) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 30px;
+  max-width: 100%;
+  padding: 4px 8px 4px 12px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+}
+.mfs-trigger[hidden] { display: none; }
+button.mfs-trigger:not(#mfs-0):hover:not(:disabled) { background: color-mix(in srgb, currentColor 10%, transparent); border-color: color-mix(in srgb, currentColor 28%, transparent); }
+button.mfs-trigger:not(#mfs-0):active:not(:disabled) { transform: scale(.97); }
+button.mfs-trigger.mfs-open:not(#mfs-0) { border-color: color-mix(in srgb, var(--mf-tint) 70%, transparent); }
+button.mfs-trigger:not(#mfs-0):disabled { opacity: .45; cursor: not-allowed; }
+.mfs-trigger:focus-visible:not(#messageInput) { outline: 2px solid var(--mf-tint); outline-offset: 2px; }
+.mfs-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mfs-chev { flex: none; opacity: .6; transition: transform .2s ease; }
+.mfs-trigger.mfs-open .mfs-chev { transform: rotate(180deg); }
+/* 原来占满一行的（输出设备那种 full-width 行）照旧占满 */
+.setting-row.full-width > select.mfs-native + button.mfs-trigger:not(#mfs-0), #device-select + button.mfs-trigger:not(#mfs-0) { width: 100%; }
+
+.mfs-menu {
+  position: fixed;
+  z-index: 1300;
+  box-sizing: border-box;
+  max-width: min(320px, calc(100vw - 20px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  font-size: 12.5px;
+  line-height: 18px;
+  /* 尺寸对齐主程序设置页的下拉：外框留 4、行高 28、小圆角 */
+  padding: 4px;
+  border-radius: 12px;
+}
+.mfs-group { padding: 6px 8px 2px; color: var(--mf-ink2); font-size: 11px; font-weight: 600; letter-spacing: .3px; }
+.mfs-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 5px 8px 5px 10px;
+  border-radius: 7px;
+  color: var(--mf-ink);
+  cursor: pointer;
+  outline: none;
+}
+.mfs-item > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mfs-item:focus, .mfs-item:hover { background: var(--mf-hover); }
+.mfs-item[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+.mfs-check { flex: none; visibility: hidden; color: var(--mf-tint); }
+.mfs-item.mfs-on .mfs-check { visibility: visible; }
+.mfs-item.mfs-on { font-weight: 600; }
+
+/* ───────── 抽屉里的开关：圆角玻璃胶囊 ─────────
+ * 首页（档案页）那套细线方框开关是结构的一部分，不动；底栏抽屉里的控件都是圆角玻璃，开关跟着换成胶囊，
+ * 和主程序设置页的开关一个样子。圆点照样像一滴液体流过去（前沿先到、后沿慢半拍）。 */
+#music-dock-root .switch,
+#music-dock-root .switch.compact,
+#music-dock-root .switch.scale-80 { width: 36px; height: 20px; }
+#music-dock-root .switch .slider,
+#music-dock-root .switch .slider.round {
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-t1, currentColor) 16%, transparent);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--md-t1, currentColor) 12%, transparent);
+  transition: background-color .22s ease;
+}
+#music-dock-root .switch .slider::before,
+#music-dock-root .switch .slider.round::before {
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  right: 18px;
+  width: auto;
+  height: auto;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+}
+#music-dock-root .switch input:checked + .slider { background: var(--mf-tint); box-shadow: none; }
+#music-dock-root .switch input:checked + .slider::before { left: 18px; right: 2px; background: #fff; }
+#music-dock-root .switch input:disabled + .slider { opacity: .4; }
+#music-dock-root .switch input:focus-visible + .slider { outline: 2px solid var(--mf-tint); outline-offset: 2px; }
+
+/* ───────── 抽屉里舞台设置的分段选项（music-skin.js 把选项少的下拉换成的那一排）─────────
+ * 原来的样子（细线框、无内边距）是给舞台浮层写的，进了抽屉以后字挤成一串（「平静原作标准奔放」）。
+ * 在抽屉里统一成底栏自己的分段开关：浅底圆角槽，选中那段是一块凸起的玻璃。 */
+#music-dock-root .music-skin-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--md-fill);
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+#music-dock-root .music-skin-segmented button,
+#music-dock-root .music-skin-segmented button + button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--md-t2);
+  font-size: 12px;
+  line-height: 26px;
+  white-space: nowrap;
+  text-align: center;
+  transition: background-color .16s ease, color .16s ease, box-shadow .16s ease;
+}
+#music-dock-root .music-skin-segmented button:hover { color: var(--md-t1); }
+#music-dock-root .music-skin-segmented button[aria-pressed="true"] {
+  background: var(--md-raise);
+  color: var(--md-t1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+}
+#music-dock-root .music-skin-segmented button:focus-visible { outline: 2px solid var(--mf-tint); outline-offset: 1px; }
+
+/* 抽屉声音页标题旁的「?」：圆形小按钮，不是方框 */
+#music-dock-root .md-fx-sc .help-icon {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--md-t1, currentColor) 12%, transparent);
+  color: var(--md-t2);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  cursor: help;
+  transition: background-color .16s ease, color .16s ease;
+}
+#music-dock-root .md-fx-sc .help-icon:hover { background: color-mix(in srgb, var(--md-t1, currentColor) 22%, transparent); color: var(--md-t1); }
+
+/* 抽屉里舞台设置的开关（原生复选框画成的）也换成同一种胶囊 */
+#music-dock-root .music-stage-tuning-row input[type="checkbox"] {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-t1, currentColor) 16%, transparent);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--md-t1, currentColor) 12%, transparent);
+  transition: background-color .22s ease;
+}
+#music-dock-root .music-stage-tuning-row input[type="checkbox"]::after {
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+  transition: transform .3s cubic-bezier(.3, .7, 0, 1);
+}
+#music-dock-root .music-stage-tuning-row input[type="checkbox"]:checked { background: var(--mf-tint); box-shadow: none; }
+#music-dock-root .music-stage-tuning-row input[type="checkbox"]:checked::after { background: #fff; transform: translateX(16px); }
+#music-dock-root .music-stage-tuning-row input[type="checkbox"]:focus-visible { outline: 2px solid var(--mf-tint); outline-offset: 2px; }
+
+/* 抽屉里的滑条（声音页、舞台设置）：和音量条一个样子——圆头、细圆角轨道，不是方块 */
+#music-dock-root :is(.md-fx-sc, .md-stage-in) input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--md-t1, currentColor) 18%, transparent);
+}
+#music-dock-root :is(.md-fx-sc, .md-stage-in) input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .3), 0 0 0 .5px rgba(0, 0, 0, .08);
+  transition: transform .16s ease;
+}
+#music-dock-root :is(.md-fx-sc, .md-stage-in) input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+#music-dock-root :is(.md-fx-sc, .md-stage-in) input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.25); }
+#music-dock-root :is(.md-fx-sc, .md-stage-in) input[type="range"]:focus-visible { outline: 2px solid var(--mf-tint); outline-offset: 4px; }
+
+/* 播放队列每行右边的时长（music-dock.js queueDuration） */
+#music-dock-root .md-qplay .md-qi-tx { flex: 1 1 auto; }
+#music-dock-root .md-qdur { flex: none; margin-left: 8px; font-size: 12px; line-height: 16px; color: var(--md-t3); font-variant-numeric: tabular-nums; }
+
+/* 播放队列在抽屉里铺满到底部页签上沿：原来固定 300px 高，下面空出一大截 */
+#music-dock-root .md-pnl .md-body > .md-tab:has(> .md-ql) { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+#music-dock-root .md-pnl .md-body > .md-tab:has(> .md-ql) > .md-ql { flex: 1 1 0; height: auto; min-height: 240px; }
+
+/* 抽屉「封面」页：封面原来顶在上面、下面空出半屏；放到可用高度的视觉中心（略偏上），加一层落在玻璃上的柔影 */
+#music-dock-root .md-pnl .md-body > .md-tab:has(> .md-bigcv) { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; min-height: 0; padding-bottom: 6%; }
+#music-dock-root .md-pnl .md-bigcv { flex: 0 0 auto; width: 100%; box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .45); }
+
+/* ───────── 键盘焦点：底栏、抽屉、弹窗里的按钮统一成一种 ─────────
+ * 原来同一窗口里有三种：抽屉里是全局的 2px 直角框（套在圆角胶囊上是方的）、弹窗里是 1px 虚线、下拉和开关是 2px 强调色。
+ * 现在都是 2px 强调色实线，跟着按钮自己的圆角走。
+ * 优先级 (1,5,0)：压过全局 (1,3,0) 和皮肤里弹窗的虚线 (1,4,0)，但让给各处 #music-dock-root 开头、用那一汪代替焦点框的 outline:none。 */
+:where(#music-dock-root, .music-modal-overlay, .dialog-overlay) :is(button, [role="tab"], [role="option"]):focus-visible:not(#messageInput):not(.chat-message-input):not(.vcp-ui-scope *):not(.lyrics-candidate) {
+  outline: 2px solid var(--mf-tint);
+  outline-offset: 2px;
+}
+/* 抽屉底部页签本身没有底色，给个圆角让焦点框是胶囊而不是直角框 */
+#music-dock-root .md-dockrow .md-seg button[role="tab"] { border-radius: 10px; }
+
+/* 云端导入：还没进任何目录时面包屑是空的，别留一条多出来的分隔线；左栏没有服务器时说一句，而不是一块空白 */
+.webdav-modal .webdav-breadcrumb:empty { display: none; }
+.webdav-modal .webdav-server-list:empty::before {
+  content: '还没有服务器';
+  display: block;
+  padding: 18px 8px;
+  color: var(--mf-ink2);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 表单控件默认不继承字体，弹窗里的输入框和按钮会落到 Arial，和标题的字体对不上 */
+:is(.music-modal-overlay, .dialog-overlay) :is(input, button, textarea, select) { font-family: inherit; }
+/* 添加服务器：字段名写在框上面，输进内容后也看得到这一格是什么 */
+#webdav-server-dialog .music-field-label { display: block; margin: 0 0 4px 2px; color: var(--mf-ink2); font-size: 12px; text-align: left; }
+
+/* 声音页里不再显示和声音无关的三行（它们在控制页「播放」「显示」组里；离开控制页时放回音效卡，只为经典视图） */
+#music-dock-root [data-md="fx-scroll"] .setting-item:has(#autoplay-switch, #desktop-lyrics-switch, #legacy-ui-switch) { display: none !important; }
+/* 搬到控制页的开关行：和控制页别的行同样的左右内边距；功能不可用时（hidden）照旧藏起来 */
+#music-dock-root .md-moved { padding: 0; }
+#music-dock-root .md-moved .setting-item[hidden] { display: none !important; }
+#music-dock-root .md-moved .setting-item { min-height: 44px; padding: 6px 4px !important; }
+#music-dock-root .md-play-grp { margin-bottom: 4px; }

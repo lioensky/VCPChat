@@ -68,12 +68,30 @@
         return kinds;
     };
 
+    // Glyph indices where a word begins, so a sign page is never cut inside a
+    // word ("隧 / 道"). Without a segmenter every glyph may start a page.
+    const wordSegmenter = typeof Intl !== 'undefined' && Intl.Segmenter
+        ? new Intl.Segmenter('zh', { granularity: 'word' }) : null;
+    const wordStarts = glyphs => {
+        if (!wordSegmenter) return null;
+        const at = new Map();
+        let offset = 0;
+        glyphs.forEach((glyph, index) => { at.set(offset, index); offset += glyph.text.length; });
+        const starts = new Set();
+        for (const part of wordSegmenter.segment(glyphs.map(glyph => glyph.text).join(''))) {
+            if (at.has(part.index)) starts.add(at.get(part.index));
+        }
+        return starts;
+    };
+
     // Timings are never synthesized again here: Runtime owns glyph timing.
     const compilePhrases = lines => {
         const phrases = [];
         lines.forEach((line, lineIndex) => {
             const glyphs = buildGlyphTimeline(line);
             const cjkLine = /[\u3040-\u30ff\u3400-\u9fff]/u.test(line.fullText);
+            const starts = wordStarts(glyphs);
+            const startsWord = index => !starts || starts.has(index);
             const groups = [];
             let group = [];
             const flush = () => { if (group.length) groups.push(group); group = []; };
@@ -85,7 +103,8 @@
                 // Latin spaces delimit words, not shots. Keep several words together.
                 const punctuation = previous && /[，。！？；,.!?;:：]/u.test(previous.text);
                 if (cjkLine
-                    ? (group.length >= 4 && boundary || group.length >= 12 && cjk || group.length >= 24)
+                    ? (group.length >= 4 && boundary || group.length >= 12 && cjk && startsWord(i)
+                        || group.length >= 16 && cjk || group.length >= 24)
                     : (group.length >= 36 && boundary || group.length >= 18 && punctuation
                         || group.length >= 64)) flush();
                 group.push(glyph);
@@ -99,7 +118,13 @@
                 const natural = /[\s，。！？；,.!?;:：]/u.test(groups[i - 1].at(-1).text);
                 if (joined.length <= 14) groups.splice(i - 1, 2, joined);
                 else if (!natural) {
-                    const cut = Math.ceil(joined.length / 2);
+                    // Halve at the word start nearest the middle.
+                    const first = groups.slice(0, i - 1).reduce((sum, group) => sum + group.length, 0);
+                    let cut = Math.ceil(joined.length / 2);
+                    for (let step = 0; step < joined.length / 2; step++) {
+                        if (startsWord(first + cut + step)) { cut += step; break; }
+                        if (startsWord(first + cut - step)) { cut -= step; break; }
+                    }
                     groups.splice(i - 1, 2, joined.slice(0, cut), joined.slice(cut));
                 }
             }
@@ -126,7 +151,9 @@
         // screen up for a name. They are left to the lyric panel.
         const credit = line => CREDIT.test(String(line.fullText ?? line.text ?? ''));
         const firstSung = sorted.findIndex(line => !credit(line));
-        const lines = firstSung > 0 ? sorted.slice(firstSung) : sorted;
+        // Marker lines ("●●●", "//") time a break; they get no screen.
+        const lines = (firstSung > 0 ? sorted.slice(firstSung) : sorted)
+            .filter(line => R.readableText(line.fullText ?? line.text));
         const seed = String(input.trackId || 'last-train');
         const lastEnd = lines.reduce((end, line) => Math.max(end, vocalEnd(line),
             finiteNumber(line.renderHints?.renderEndTime, 0)), 0);

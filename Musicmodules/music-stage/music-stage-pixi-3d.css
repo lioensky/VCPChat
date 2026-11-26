@@ -1,0 +1,761 @@
+/* 四大核心模式独立管理器 */
+
+/* 凝彩 / Tempera */
+.music-stage-mode-tempera {
+    display: grid;
+    place-items: center;
+    isolation: isolate;
+    background: radial-gradient(circle at 48% 42%, color-mix(in srgb, var(--stage-ink) 4%, transparent), transparent 56%);
+}
+
+/* Keep the entire Pixi scene below the independent DOM subtitle overlay. */
+.music-stage-mode-tempera > .tempera-stage-container {
+    z-index: 0;
+    pointer-events: none;
+}
+
+.music-stage-mode-tempera > .tempera-kicker {
+    position: absolute;
+    top: 12%;
+    left: 8%;
+    right: 8%;
+    z-index: 1;
+    /* Right side: the track card owns the top-left corner. */
+    text-align: right;
+    pointer-events: none;
+}
+
+/* Inside the auto-directed stage the director cue already names the scene. */
+.starborn-performance-layer .tempera-kicker {
+    display: none;
+}
+
+.music-stage-mode-tempera > .tempera-translation {
+    position: absolute;
+    left: 50%;
+    bottom: max(calc(16% + 12px), 122px);
+    z-index: 2;
+    width: max-content;
+    max-width: min(76%, 1000px);
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    transform: translateX(-50%);
+    overflow-wrap: anywhere;
+    pointer-events: none;
+}
+
+.music-stage-mode-tempera > .tempera-translation:empty {
+    display: none;
+}
+.tempera-canvas,
+.tempera-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.tempera-field {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--stage-ink) 4%, transparent), transparent 48%);
+    mix-blend-mode: var(--stage-blend);
+}
+.tempera-shot {
+    position: absolute;
+    left: 50%;
+    top: 48%;
+    z-index: 2;
+    width: min(78vw, 1180px);
+    min-height: 220px;
+    padding: clamp(34px, 5vw, 82px);
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 13%, transparent);
+    background: color-mix(in srgb, var(--stage-surface) 32%, transparent);
+    box-shadow: 0 30px 90px rgba(0,0,0,0.24), inset 0 0 0 1px color-mix(in srgb, var(--stage-ink) 3.5%, transparent);
+    backdrop-filter: blur(8px);
+    transform: translate(-50%, -50%);
+}
+.tempera-shot.is-entering {
+    animation: tempera-shot-enter 0.72s var(--stage-ease);
+}
+@keyframes tempera-shot-enter {
+    from { opacity: 0; filter: blur(16px); transform: translate(-50%, -46%) rotate(var(--tempera-angle)) scale(0.92); }
+}
+.tempera-kicker,
+.sonnet-eyebrow,
+.fume-meta {
+    color: color-mix(in srgb, var(--stage-accent) 68%, var(--stage-ink));
+    font: 750 9px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.25em;
+}
+.tempera-line,
+.sonnet-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    margin-top: 34px;
+    color: color-mix(in srgb, var(--stage-ink) 22%, transparent);
+    font-size: clamp(42px, 6.6vw, 96px);
+    font-weight: 780;
+    line-height: 1.08;
+    letter-spacing: -0.06em;
+    text-align: center;
+}
+.tempera-line.is-empty,
+.sonnet-line.is-empty {
+    color: color-mix(in srgb, var(--stage-ink) 38%, transparent);
+    font-size: clamp(28px, 4vw, 56px);
+    font-weight: 480;
+}
+.tempera-word {
+    margin: 0 0.06em;
+    filter: blur(5px);
+    opacity: 0.25;
+    transform: translateY(18px) scale(0.9);
+    transition: color .28s linear, opacity .35s ease, filter .4s ease, transform .5s var(--stage-ease);
+}
+.tempera-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
+    filter: none;
+    opacity: .78;
+    transform: translateY(0);
+}
+.tempera-word.is-active {
+    color: var(--stage-ink);
+    filter: none;
+    opacity: 1;
+    transform: translateY(-8px) scale(calc(1.04 + var(--stage-word-progress, 0) * .08));
+    text-shadow: 0 0 calc(16px + var(--stage-vocal, 0) * 30px) var(--stage-accent);
+}
+.tempera-translation,
+.sonnet-translation {
+    margin-top: 24px;
+}
+.tempera-decor {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+}
+.tempera-mark {
+    position: absolute;
+    height: 1px;
+    background: var(--stage-accent);
+    opacity: calc(.16 + var(--stage-vocal, 0) * .35);
+    box-shadow: 0 0 12px var(--stage-accent);
+    transition: opacity .2s ease;
+}
+.tempera-no-blocks .tempera-shot {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+.tempera-no-decor .tempera-decor {
+    display: none;
+}
+.tempera-no-inversion .tempera-word.is-active {
+    color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
+}
+
+/* 商籁 / Sonnet */
+.music-stage-mode-sonnet {
+    display: grid;
+    place-items: center;
+    background:
+        linear-gradient(90deg, transparent 49.95%, color-mix(in srgb, var(--stage-ink) 7%, transparent) 50%, transparent 50.05%),
+        radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--stage-accent) 9%, transparent), transparent 58%);
+}
+.sonnet-frame,
+.sonnet-guide {
+    position: absolute;
+    inset: 8vh 6vw 13vh;
+    border: 1px solid color-mix(in srgb, var(--stage-ink) 10%, transparent);
+    pointer-events: none;
+}
+.sonnet-guide {
+    inset: 13vh 11vw 18vh;
+    border: 0;
+}
+.sonnet-guide-mark {
+    position: absolute;
+    left: var(--guide-position);
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(transparent, color-mix(in srgb, var(--stage-accent) 42%, transparent), transparent);
+    opacity: .45;
+}
+.sonnet-giant {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 0;
+    color: transparent;
+    font-size: clamp(100px, 24vw, 360px);
+    font-weight: 900;
+    letter-spacing: -.1em;
+    line-height: .8;
+    opacity: .12;
+    text-align: center;
+    -webkit-text-stroke: 1px color-mix(in srgb, var(--stage-accent) 72%, transparent);
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+    pointer-events: none;
+}
+.sonnet-scene {
+    position: relative;
+    z-index: 2;
+    width: min(76vw, 1120px);
+    padding: clamp(30px, 5vw, 76px);
+    border-left: 2px solid color-mix(in srgb, var(--stage-accent) 62%, transparent);
+    background: linear-gradient(110deg, color-mix(in srgb, var(--stage-ink) 7%, transparent), transparent 66%);
+    box-shadow: 25px 30px 80px rgba(0,0,0,.24);
+}
+.sonnet-scene.is-entering {
+    animation: sonnet-scene-enter .62s var(--stage-ease);
+}
+@keyframes sonnet-scene-enter {
+    from { opacity: 0; filter: blur(12px); transform: translateY(22px) rotate(-2deg) scale(.96); }
+}
+.sonnet-shadow {
+    min-height: 24px;
+    color: color-mix(in srgb, var(--stage-ink) 16%, transparent);
+    font-size: clamp(14px, 1.5vw, 22px);
+    filter: blur(2px);
+}
+.sonnet-word {
+    margin: 0 .05em;
+    opacity: .25;
+    filter: blur(3px);
+    transform: translateY(16px);
+    transition: color .28s ease, opacity .34s ease, filter .35s ease, transform .46s var(--stage-ease);
+}
+.sonnet-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 70%, var(--stage-ink));
+    opacity: .8;
+    filter: none;
+    transform: none;
+}
+.sonnet-word.is-active {
+    color: var(--stage-ink);
+    opacity: 1;
+    filter: none;
+    transform: translateY(-6px) scale(1.06);
+    text-shadow: 0 0 calc(14px + var(--stage-power, 0) * 30px) var(--stage-accent);
+}
+.sonnet-hud {
+    position: absolute;
+    right: 7vw;
+    bottom: 18vh;
+    z-index: 4;
+    color: color-mix(in srgb, var(--stage-accent) 62%, var(--stage-ink));
+    font: 700 9px/1.4 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: .18em;
+}
+.sonnet-hide-guide .sonnet-guide,
+.sonnet-hide-background .sonnet-giant,
+.sonnet-hide-decor .sonnet-frame {
+    display: none;
+}
+.sonnet-post-process-off .sonnet-scene {
+    box-shadow: none;
+}
+
+/* 镜台 / Last Train: cinematic framing follows the playback clock. */
+.music-stage-mode-diorama {
+    background: var(--stage-bg);
+    overflow: hidden;
+}
+.diorama-letterbox {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    --diorama-bar: 0px;
+}
+.diorama-letterbox::before,
+.diorama-letterbox::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--diorama-bar);
+    background: #030508;
+}
+.diorama-letterbox::before { top: 0; }
+.diorama-letterbox::after { bottom: 0; }
+.diorama-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.diorama-vector-decor {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    mix-blend-mode: var(--stage-blend);
+    opacity: 0.82;
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--stage-accent) 55%, transparent));
+    transition: opacity 0.3s ease;
+}
+
+/* 2D 屏幕角标与刻度线 */
+.diorama-hud-bracket {
+    fill: none;
+    stroke: color-mix(in srgb, var(--stage-accent) 85%, var(--stage-ink));
+    stroke-width: 2.2;
+    stroke-linecap: square;
+    opacity: 0.85;
+}
+
+.diorama-hud-cross {
+    fill: none;
+    stroke: var(--stage-ink);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    opacity: 0.75;
+}
+
+.diorama-hud-circle-dashed {
+    fill: none;
+    stroke: color-mix(in srgb, var(--stage-accent) 70%, var(--stage-ink));
+    stroke-width: 1.4;
+    stroke-dasharray: 3 8;
+    opacity: 0.55;
+    animation: diorama-hud-spin 60s linear infinite;
+    transform-origin: 120px 200px;
+}
+
+.diorama-hud-circle-dashed:last-of-type {
+    transform-origin: 880px 800px;
+    animation-duration: 75s;
+    animation-direction: reverse;
+}
+
+.diorama-hud-circle-thin {
+    fill: none;
+    stroke: color-mix(in srgb, var(--stage-ink) 35%, transparent);
+    stroke-width: 1.0;
+    opacity: 0.5;
+}
+
+.diorama-hud-gridline {
+    stroke: color-mix(in srgb, var(--stage-accent) 60%, transparent);
+    stroke-width: 1.2;
+    stroke-dasharray: 10 15;
+    opacity: 0.55;
+}
+
+@keyframes diorama-hud-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-mode-diorama .diorama-vector-decor {
+        animation: none;
+    }
+}
+.diorama-fallback {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    padding: 10vw;
+    text-align: center;
+}
+.diorama-fallback[hidden] {
+    display: none;
+}
+.diorama-fallback-line {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    color: color-mix(in srgb, var(--stage-ink) 32%, transparent);
+    font-size: clamp(38px, 6vw, 86px);
+    font-weight: 760;
+}
+.diorama-word {
+    margin: 0 .06em;
+    opacity: .3;
+    transition: color .25s ease, opacity .3s ease, transform .35s var(--stage-ease);
+}
+.diorama-word.is-passed {
+    color: color-mix(in srgb, var(--stage-accent) 76%, var(--stage-ink));
+    opacity: .7;
+}
+.diorama-word.is-active {
+    color: var(--stage-ink);
+    opacity: 1;
+    transform: translateY(-8px) scale(1.06);
+    text-shadow: 0 0 24px var(--stage-accent);
+}
+.diorama-fallback-translation {
+    position: absolute;
+    bottom: 22%;
+}
+
+/* 核心模式窄屏适配 */
+@media (max-width: 560px) {
+    .tempera-shot,
+    .sonnet-scene {
+        width: 88vw;
+        padding: 30px 24px;
+    }
+    .tempera-line,
+    .sonnet-line {
+        font-size: clamp(31px, 9vw, 58px);
+    }
+    .sonnet-frame {
+        inset: 10vh 4vw 16vh;
+    }
+    .sonnet-hud {
+        right: 7vw;
+        bottom: 26vh;
+    }
+}
+
+/* Fume native article world: transforms are evaluated by the playback clock, not CSS transitions. */
+/* Neighbouring lines fade out before they reach the mode switcher and track card. */
+.fume-article-frame {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    /* Second layer clears a band behind the translation line (.fume-article-subtitle). */
+    --fume-sub-mask: linear-gradient(to top, #000 0, #000 calc(23% - 24px), transparent calc(23% - 4px),
+        transparent calc(23% + 60px), #000 calc(23% + 90px));
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 56px, #000 150px), var(--fume-sub-mask);
+    -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(to bottom, transparent 0, transparent 56px, #000 150px), var(--fume-sub-mask);
+    mask-composite: intersect;
+}
+.fume-article-world {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+    pointer-events: none;
+}
+.fume-article-block {
+    position: absolute;
+    box-sizing: border-box;
+    transform-origin: center center;
+    color: var(--stage-ink);
+    padding: 14px 18px;
+    border-left: 1px solid color-mix(in srgb, var(--stage-accent) 24%, transparent);
+}
+.fume-article-number {
+    margin-bottom: 10px;
+    font: 600 9px/1.3 Consolas, monospace;
+    letter-spacing: .2em;
+    color: color-mix(in srgb, var(--stage-accent) 65%, var(--stage-ink));
+}
+.fume-article-number[hidden],
+.fume-article-empty[hidden] { display: none; }
+.fume-article-text {
+    position: relative;
+    font-family: Georgia, "Noto Serif SC", "Microsoft YaHei", serif;
+    font-weight: 600;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+.fume-article-block.is-hero .fume-article-text { font-weight: 800; }
+.fume-article-block.is-current {
+    border-left-color: var(--stage-accent);
+}
+.fume-print-glyph {
+    position: relative;
+    display: inline-block;
+    white-space: pre;
+    color: color-mix(in srgb, var(--stage-ink) 65%, transparent);
+}
+.fume-print-glyph.is-printed { color: var(--stage-ink); }
+.fume-print-glyph.is-printing {
+    color: transparent;
+    background: linear-gradient(90deg, var(--stage-accent) var(--print-progress), var(--stage-ink) var(--print-progress));
+    background-clip: text;
+    -webkit-background-clip: text;
+    text-shadow: 0 0 calc(18px * var(--fume-glow-intensity, 1)) color-mix(in srgb, var(--stage-accent) 45%, transparent);
+}
+.fume-print-glyph.is-printing::after {
+    content: "";
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: -.06em;
+    height: 2px;
+    background: var(--stage-accent);
+    opacity: var(--print-pulse, 0);
+    transform: scaleX(var(--print-pulse, 0));
+}
+.fume-hide-print-symbols .fume-print-glyph::after { display: none; }
+.fume-article-subtitle {
+    position: absolute;
+    bottom: 23%;
+    left: 15%;
+    width: 70%;
+    padding: 10px 0;
+    margin: 0;
+    pointer-events: none;
+}
+.fume-article-heading {
+    position: absolute;
+    top: 12%;
+    right: 8%;
+    /* Right side: the track card owns the top-left corner. */
+    text-align: right;
+    color: color-mix(in srgb, var(--stage-ink) 40%, transparent);
+    font: 600 9px/1.4 Consolas, monospace;
+    letter-spacing: .22em;
+}
+.fume-article-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, var(--stage-ink) 45%, transparent);
+    font-size: clamp(24px,4vw,48px);
+}
+
+/* 舞台自定义主题的浅色控制层：不依赖 body.light-theme，避免影响主播放器。 */
+.music-stage.stage-theme-light {
+    color-scheme: light;
+    --stage-control-bg: #eef3f6;
+    --stage-control-surface: #f8fafb;
+    --stage-control-surface-raised: #ffffff;
+    --stage-control-text: #101820;
+    --stage-control-muted: #5c6872;
+    --stage-wallpaper-opacity: 0.24;
+    --stage-cover-brightness: 1.08;
+    --stage-cover-opacity: 0.18;
+    --stage-blend: normal;
+}
+
+.music-stage.stage-theme-light .music-stage-settings-card {
+    color-scheme: light;
+    background:
+        linear-gradient(145deg, color-mix(in srgb, var(--stage-accent) 8%, transparent), transparent 38%),
+        color-mix(in srgb, var(--stage-control-bg) 76%, transparent);
+    backdrop-filter: blur(30px) saturate(135%) brightness(1.04);
+    -webkit-backdrop-filter: blur(30px) saturate(135%) brightness(1.04);
+    box-shadow:
+        -24px 28px 80px rgba(26, 45, 58, 0.22),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.music-stage.stage-theme-light .music-stage-tuning-row select,
+.music-stage.stage-theme-light .music-stage-settings-card select {
+    color-scheme: light;
+}
+
+.music-stage.stage-theme-light .music-stage-tuning-row select option,
+.music-stage.stage-theme-light .music-stage-settings-card option {
+    color: #101820;
+    background-color: #ffffff;
+}
+
+.music-stage.stage-theme-light .music-stage-settings-toggle,
+.music-stage.stage-theme-light .music-stage-chrome {
+    box-shadow:
+        0 14px 38px rgba(26, 45, 58, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+/*
+ * What sits around and over the stage is composited at the window's full
+ * resolution on every frame the stage changes, which is every frame.
+ *
+ * Frosted glass: a backdrop-filter re-blurs whatever moved behind it. The
+ * controls that are always on screen use a denser tint instead. The settings
+ * card keeps its glass over the 2D modes, where it is open only briefly; its
+ * full-window veil never blurs.
+ */
+body.music-stage-active #custom-title-bar,
+.music-stage .music-stage-mode-switcher,
+.music-stage .music-stage-chrome,
+.music-stage .music-stage-settings-toggle,
+.music-stage .music-stage-settings.is-open::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+.music-stage .music-stage-mode-switcher,
+.music-stage .music-stage-chrome {
+    background: color-mix(in srgb, var(--stage-bg) 46%, transparent);
+}
+
+/*
+ * The 3D modes draw an opaque picture: the blurred cover under it would be
+ * filtered and composited without ever showing, and glass over it would blur
+ * a moving 3D frame. Neither is drawn.
+ */
+.music-stage.stage-scene-3d .music-stage-backdrop {
+    display: none;
+}
+.music-stage.stage-scene-3d .music-stage-settings-card,
+.music-stage.stage-scene-3d .music-stage-settings-header,
+.music-stage.stage-scene-3d .music-stage-settings-footer {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+.music-stage.stage-scene-3d .music-stage-settings-card {
+    background:
+        linear-gradient(145deg, color-mix(in srgb, var(--stage-accent) 9%, transparent), transparent 38%),
+        color-mix(in srgb, var(--stage-control-bg) 95%, transparent);
+}
+
+/*
+ * Edge spectrum. It used to be one window-sized canvas inside a fading group,
+ * each with drop-shadow filters: a full-window offscreen pass and several
+ * full-window blurs per frame for a line that lives in the outer 80 pixels.
+ * Now each side is a strip canvas that carries its own glow, every part fades
+ * by itself, and the orbiting light steps at 30 a second without a filter.
+ */
+.music-stage .music-stage-edge-spectrum {
+    --stage-edge-fade: calc(0.26 + var(--stage-edge-energy) * 0.72);
+    opacity: 1;
+    transition: none;
+}
+.music-stage:not(.is-playing) .music-stage-edge-spectrum {
+    --stage-edge-fade: 0.22;
+    opacity: 1;
+}
+.music-stage .music-stage-edge-spectrum-canvas {
+    inset: auto;
+    opacity: calc(0.9 * var(--stage-edge-fade));
+    filter: none;
+}
+.music-stage .music-stage-edge-flow {
+    opacity: calc((0.32 + var(--stage-edge-energy) * 0.68) * var(--stage-edge-fade));
+    filter: none;
+    animation-timing-function: steps(270);
+    will-change: auto;
+}
+.music-stage:not(.is-playing) .music-stage-edge-flow {
+    animation-timing-function: steps(540);
+}
+.music-stage .music-stage-edge-corners i {
+    opacity: calc((0.2 + var(--stage-audio-bass, 0) * 0.74) * var(--stage-edge-fade));
+}
+/* The orbiting light is a child the size of the ring's diagonal carrying the
+   same conic gradient; turning it about the centre draws what the moving
+   `from` angle drew, but as a compositor transform: the ring is no longer
+   restyled and its masked gradient no longer repainted at every step. */
+.music-stage .music-stage-edge-flow {
+    container-type: size;
+    background: none;
+    animation: none;
+}
+.music-stage-edge-flow-light {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: hypot(100cqw, 100cqh);
+    height: hypot(100cqw, 100cqh);
+    translate: -50% -50%;
+    background: conic-gradient(
+        from 0deg,
+        transparent 0deg 36deg,
+        color-mix(in srgb, var(--stage-accent) 16%, transparent) 58deg,
+        color-mix(in srgb, var(--stage-accent) 90%, var(--stage-ink)) 76deg,
+        transparent 101deg 192deg,
+        color-mix(in srgb, var(--stage-ink) 28%, transparent) 220deg,
+        color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink)) 242deg,
+        transparent 270deg 360deg
+    );
+    animation: stage-edge-flow-turn 9s steps(270) infinite;
+}
+.music-stage:not(.is-playing) .music-stage-edge-flow-light {
+    animation-duration: 18s;
+    animation-timing-function: steps(540);
+    animation-play-state: paused;
+}
+@keyframes stage-edge-flow-turn {
+    to {
+        rotate: 360deg;
+    }
+}
+
+/* The ambience blurred once into a small canvas (see softCanvas in the host). */
+.music-stage-backdrop-soft {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    pointer-events: none;
+}
+.is-soft > .music-stage-backdrop-soft {
+    display: block;
+}
+.music-stage-backdrop-layer.is-soft {
+    background-image: none !important;
+    filter: brightness(var(--stage-cover-brightness));
+}
+.music-stage-backdrop-wallpaper {
+    inset: -64px;
+    width: calc(100% + 128px);
+    height: calc(100% + 128px);
+    z-index: -1;
+    opacity: var(--stage-wallpaper-opacity);
+}
+.music-stage-backdrop.is-soft::before {
+    display: none;
+}
+.music-stage-backdrop-layer.is-empty {
+    display: none;
+}
+
+/* Nothing on a paused stage moves, so nothing should ask for frames: the flow
+   ring holds its place, and the settings dot only pulses while it is shown. */
+.music-stage:not(.is-playing) .music-stage-edge-flow {
+    animation-play-state: paused;
+}
+.music-stage-settings-toggle-pulse {
+    animation-play-state: paused;
+}
+.music-stage-settings-toggle:hover .music-stage-settings-toggle-pulse,
+.music-stage-settings-toggle:focus-visible .music-stage-settings-toggle-pulse {
+    animation-play-state: running;
+}
+
+/* The last picture of the old song, dissolving over the new one (createHandoverVeil). */
+.stage-handover-veil {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    /* Over the scene's canvas, under its text fallback and letterbox. */
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    display: none;
+}
+
+.stage-handover-veil.is-showing {
+    display: block;
+}
+
+/* Under the tier picker: the 3D stage drew below it to keep its frame rate. */
+.music-stage-degrade-note {
+    margin: -4px 0 6px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--stage-muted, currentColor);
+    opacity: 0.78;
+}
+
+.music-stage-mode-tunnel > .stage-handover-veil {
+    z-index: 1;
+}

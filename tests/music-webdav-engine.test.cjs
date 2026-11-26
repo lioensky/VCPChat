@@ -1,0 +1,113 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+// 引擎只记一套 WebDAV 凭据；这里换成假引擎，检查「配凭据 + 发请求」不被别的请求插队、
+// 读不到服务器时报错、引擎卡住时有超时、日志里没有密码。
+const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'webdavManager.js'), 'utf8');
+
+function load({ engine, fastTimers = false } = {}) {
+    const logs = [];
+    const keep = (...a) => logs.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
+    const module = { exports: {} };
+    const context = {
+        module, exports: module.exports, process, URL, AbortController, clearTimeout, Promise,
+        setTimeout: fastTimers ? (fn) => setTimeout(fn, 20) : setTimeout,
+        console: { log: keep, error: keep, warn: keep },
+        require(name) {
+            if (name === './services/audioEngineEndpoint') return { getBaseUrl: () => 'http://engine' };
+            if (name === 'fs-extra') return { pathExists: async () => false, ensureDir: async () => {}, writeJson: async () => {} };
+            return require(name);
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(source, context);
+    context.fakeFetch = engine;
+    vm.runInContext('fetch = fakeFetch;', context);
+    return { api: module.exports, logs };
+}
+
+const reply = (body, ok = true) => ({ ok, json: async () => body, text: async () => JSON.stringify(body) });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function fakeEngine() {
+    let creds = null;
+    const seen = [];
+    const engine = async (url, options) => {
+        const endpoint = url.replace('http://engine', '');
+        if (endpoint === '/webdav/configure') {
+            await wait(5);
+            creds = JSON.parse(options.body);
+            return reply({ status: 'success' });
+        }
+        const used = creds && creds.username;
+        await wait(endpoint.startsWith('/load') ? 15 : 10);
+        seen.push({ endpoint, used });
+        if (endpoint.startsWith('/webdav/browse')) {
+            return reply({ status: 'success', path: '/', entries: [{ display_name: 'a.flac', href: '/a.flac', url: 'https://b.example/dav/a.flac', is_dir: false }] });
+        }
+        return reply({ status: 'success' });
+    };
+    return { engine, seen };
+}
+
+test('browsing one server while loading from another keeps each request on its own account', async () => {
+    const { engine, seen } = fakeEngine();
+    const { api } = load({ engine });
+    const a = api.addServer({ url: 'https://a.example/dav', username: 'alice', password: 'pa' });
+    api.addServer({ url: 'https://b.example/dav', username: 'bob', password: 'pb' });
+    const creds = api.getServerCredentials(a.id);
+    await Promise.all([
+        api.listDirectory({ ...creds, path: '/' }),
+        api.configureAndLoad({ url: 'https://b.example/dav/x.flac', serverId: 'webdav_2' }),
+        api.listDirectory({ ...creds, path: '/sub' })
+    ]);
+    assert.deepEqual(seen.map((s) => [s.endpoint.split('?')[0], s.used]), [
+        ['/webdav/browse', 'alice'], ['/load', 'bob'], ['/webdav/browse', 'alice']
+    ]);
+});
+
+test('a scan that cannot read its starting folder is an error, not "0 tracks"; nothing logs the password', async () => {
+    const engine = async (url) => (url.includes('/browse')
+        ? reply({ status: 'error', message: '401 Unauthorized' })
+        : reply({ status: 'success' }));
+    const { api, logs } = load({ engine });
+    const result = await api.scanAudioFiles({ url: 'https://a.example/dav', username: 'alice', password: 'hunter2-secret', path: '/' });
+    assert.equal(result.status, 'error');
+    assert.match(result.message, /401/);
+    assert.ok(!logs.some((l) => l.includes('hunter2-secret')), 'password ended up in the log');
+
+    const { engine: ok } = fakeEngine();
+    const good = await load({ engine: ok }).api.scanAudioFiles({ url: 'https://b.example/dav', username: 'b', password: 'p', path: '/' });
+    assert.equal(good.status, 'success');
+    assert.equal(good.tracks.length, 1);
+});
+
+test('an engine that never answers times out instead of leaving the window waiting', async () => {
+    const engine = (url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    });
+    const { api } = load({ engine, fastTimers: true });
+    const result = await api.listDirectory({ url: 'https://a.example/dav', username: 'a', password: 'p', path: '/' });
+    assert.equal(result.status, 'error');
+    assert.match(result.message, /没有响应/);
+    // 卡住的那次不挡后面的请求
+    const after = await api.testConnection({ url: 'https://a.example/dav', username: 'a', password: 'p' });
+    assert.equal(after.status, 'error');
+});
+
+test('credentials for a remote track: by server id, else by the server its address sits under', () => {
+    const { api } = load({ engine: async () => reply({}) });
+    api.addServer({ url: 'https://nas/dav', username: 'u1', password: 'p1' });
+    api.addServer({ url: 'https://nas/dav2/', username: 'u2', password: 'p2' });
+    api.addServer({ url: 'https://nas/dav/music', username: 'u3', password: 'p3' });
+    assert.equal(api.credentialsForTrack({ serverId: 'webdav_2', path: 'https://nas/dav/x.flac' }).username, 'u2');
+    assert.equal(api.credentialsForTrack({ path: 'https://nas/dav2/x.flac' }).username, 'u2');
+    assert.equal(api.credentialsForTrack({ path: 'https://nas/dav/x.flac' }).username, 'u1');
+    assert.equal(api.credentialsForTrack({ path: 'https://nas/dav/music/x.flac' }).username, 'u3');
+    assert.equal(api.credentialsForTrack({ path: 'D:\\Music\\x.flac' }), null);
+    assert.equal(api.credentialsForTrack({ path: 'https://other/x.flac' }), null);
+    assert.equal(api.credentialsForTrack({ serverId: 'gone', path: 'https://nas/dav2/y.flac' }).username, 'u2');
+});

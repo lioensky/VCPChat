@@ -6,8 +6,18 @@
 
     // 商籁 Pixi 动态图形与排版导演类
     class SonnetPixiDirector {
-        constructor(container) {
+        constructor(container, options = {}) {
+            // Multisampled canvas only when the stage will not be drawn through
+            // the print filter's own multisampled target (createPostProcess).
+            this.canvasAntialias = options.canvasAntialias !== false;
             this.container = container;
+            // The size is known from the resize observer; reading it every
+            // frame makes the browser lay the page out again before each one.
+            this.sizeKnown = false;
+            if (globalThis.ResizeObserver) {
+                this.sizeObserver = new globalThis.ResizeObserver(() => { this.sizeKnown = false; });
+                this.sizeObserver.observe(container);
+            }
             this.app = null;
             this.sceneContainer = null;
             this.frameDecorContainer = null;
@@ -38,27 +48,23 @@
             const PIXI = global.PIXI;
             if (!PIXI) throw new Error('PIXI is not loaded');
 
-            const application = new PIXI.Application();
-            this.app = application;
-            await application.init({
+            // A renderer parked by a stage that just went away is reused when
+            // its canvas settings match (see createApplication).
+            const application = await Effects.createApplication(PIXI, {
                 backgroundAlpha: 0,
                 preference: 'webgl',
                 autoStart: false,
-                antialias: true,
+                // See canvasAntialias in the constructor.
+                antialias: this.canvasAntialias,
                 resolution: Math.min(2, global.devicePixelRatio || 1),
                 autoDensity: true
             });
-
-            if (this.destroyed || this.app !== application) {
-                // The mode may be destroyed while initialization is awaiting
-                // GPU setup. Avoid dereferencing or destroying an application
-                // which the synchronous teardown path has already released.
-                if (this.app === application) {
-                    application.destroy(true, { children: true });
-                    this.app = null;
-                }
+            if (this.destroyed) {
+                // destroy() ran while the renderer was being set up.
+                Effects.releaseApplication(application);
                 return;
             }
+            this.app = application;
             this.app.stop();
             this.container.appendChild(this.app.canvas);
             this.app.canvas.className = 'sonnet-pixi-canvas';
@@ -85,7 +91,7 @@
             this.sceneContainer.addChild(this.bloomContainer);
             this.app.stage.addChild(this.sceneContainer);
 
-            this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
+            this.postProcess = Effects.createPostProcess(PIXI, this.app.stage, { canvasAntialias: this.canvasAntialias });
             this.retirement = Effects.createRetirement(PIXI, this.app.stage, { dissolve: true });
             this.initialized = true;
             this.resize();
@@ -94,6 +100,8 @@
 
         resize() {
             if (!this.initialized || !this.app) return;
+            if (this.sizeKnown && this.sizeObserver) return;
+            this.sizeKnown = true;
             const width = Math.max(1, this.container.clientWidth);
             const height = Math.max(1, this.container.clientHeight);
             if (width === this.width && height === this.height) return;
@@ -246,7 +254,7 @@
                 this.giantText.destroy();
                 this.giantText = null;
             }
-            const giantStr = line?.fullText ? global.MusicStageRuntime.splitGraphemes(line.fullText).slice(0, 8).join('') : 'SONNET';
+            const giantStr = line?.fullText ? global.MusicStageRuntime.splitGraphemes(line.fullText).slice(0, 8).join('') : '商籁';
             this.giantText = new PIXI.Text({
                 text: giantStr,
                 style: {
@@ -390,6 +398,8 @@
         }
 
         destroy() {
+            this.sizeObserver?.disconnect();
+            this.sizeObserver = null;
             if (this.destroyed && !this.app) return;
             this.destroyed = true;
             this.pendingShot = null;
@@ -407,15 +417,11 @@
             this.retirement = null;
             this.postProcess?.destroy();
             this.postProcess = null;
-            // A rejected or interrupted init can allocate the renderer before
-            // `initialized` is set. Destroy any existing application regardless
-            // of that flag to release its WebGL context and canvas references.
+            // The renderer is parked for the next stage with the same canvas
+            // settings, or destroyed; an unclaimed one is destroyed shortly.
+            // (An init that fails disposes its own application.)
             if (this.app) {
-                try {
-                    this.app.destroy(true, { children: true });
-                } catch (error) {
-                    console.warn('[MusicStage:Sonnet] PIXI cleanup failed:', error);
-                }
+                Effects.releaseApplication(this.app);
                 this.app = null;
             }
             this.sceneContainer = null;

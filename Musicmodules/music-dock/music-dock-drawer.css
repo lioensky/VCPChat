@@ -1,0 +1,725 @@
+/* ───────── 面板改成右侧抽屉 ─────────
+ * 贴着窗口右边，从标题栏下沿到底栏上沿；底色是单独一层 .md-drbg，从右往左渐隐，
+ * 没有边框和圆角；打开时从右侧滑入并淡入。控制页和舞台调制子页都在里面。 */
+.md-pnl {
+  top: 40px;
+  right: 0;
+  bottom: var(--music-dock-safe-bottom, 96px);
+  width: 400px;
+  max-width: 100vw;
+  max-height: none;
+  margin: 0;
+  padding: 18px 20px 14px;
+  overflow: hidden;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transform: translateX(56px);
+  transform-origin: right center;
+  transition: opacity .22s var(--mt-ease, ease), transform .26s var(--mt-ease, ease), visibility 0s linear .26s;
+}
+.md-pnl.md-open { transition: opacity .32s var(--mt-ease, ease), transform .42s var(--mt-ease, ease), visibility 0s; }
+.md-pnl .md-body { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.md-pnl .md-body::-webkit-scrollbar { display: none; }
+.md-pnl .md-dockrow { margin-top: auto; padding-top: 12px; height: auto; }
+.md-drbg {
+  position: fixed;
+  top: 40px;
+  right: 0;
+  bottom: 0;
+  z-index: calc(var(--mt-z-panel, 59) - 1);
+  width: min(680px, 100vw);
+  pointer-events: none;
+  background:
+    radial-gradient(420px 360px at 100% 0%, color-mix(in srgb, var(--md-accent) 16%, transparent), transparent 70%),
+    linear-gradient(to left, var(--md-glass) 0, var(--md-glass) var(--md-dr-tint, 46%), transparent 100%);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  /* 横向从右往左渐隐；纵向在底栏那一段往下渐隐，和底栏衔接，不留方形底 */
+  -webkit-mask-image: linear-gradient(to left, #000 50%, transparent 100%), linear-gradient(to top, transparent 0, #000 calc(var(--music-dock-safe-bottom, 96px) + 8px));
+  mask-image: linear-gradient(to left, #000 50%, transparent 100%), linear-gradient(to top, transparent 0, #000 calc(var(--music-dock-safe-bottom, 96px) + 8px));
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  opacity: 0;
+  transform: translateX(80px);
+  visibility: hidden;
+  transition: opacity .22s var(--mt-ease, ease), transform .26s var(--mt-ease, ease), visibility 0s linear .26s;
+}
+.md-pnl.md-open + .md-drbg {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition: opacity .36s var(--mt-ease, ease), transform .42s var(--mt-ease, ease), visibility 0s;
+}
+#music-dock-root.md-fl-low .md-drbg { backdrop-filter: none; -webkit-backdrop-filter: none; }
+@media (max-width: 639.98px) {
+  .md-pnl { right: 0; bottom: var(--music-dock-safe-bottom, 96px); width: 100vw; max-width: 100vw; max-height: none; margin: 0; }
+  .md-drbg {
+    width: 100vw;
+    background: var(--md-glass);
+    -webkit-mask-image: linear-gradient(to top, transparent 0, #000 calc(var(--music-dock-safe-bottom, 96px) + 8px));
+    mask-image: linear-gradient(to top, transparent 0, #000 calc(var(--music-dock-safe-bottom, 96px) + 8px));
+  }
+}
+
+/* ───────── 抽屉底部页签：没有底块，选中是墨色文字加一条细线 ───────── */
+#music-dock-root .md-dockrow .md-seg { background: transparent; padding: 0; border-radius: 0; box-shadow: inset 0 1px 0 var(--md-line); }
+#music-dock-root .md-dockrow .md-mk { display: none; }
+#music-dock-root .md-dockrow .md-seg button { border-radius: 0; color: var(--md-t2); }
+#music-dock-root .md-dockrow .md-seg button:hover { color: var(--md-t1); background: none; }
+#music-dock-root .md-dockrow .md-seg button.md-on { color: var(--md-t1); font-weight: 600; }
+#music-dock-root .md-dockrow .md-seg button.md-on::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 18px;
+  height: 1px;
+  margin-left: -9px;
+  background: currentColor;
+}
+
+/* ───────── 音效设置子页 ─────────
+ * 原音效卡片搬进来后改成单列：一行一个控制，分区标题前是左边距里的大号细字编号（01 输出、02 均衡器……），
+ * 下拉框是文字加下划线，开关和舞台调制子页一样是方框里一个方块。颜色只用 --md-* 令牌。 */
+.md-fx-sc {
+  --fx-gutter: 34px;
+  counter-reset: md-fx 1;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  padding: 4px 14px 16px calc(var(--fx-gutter) + 10px);
+  color: var(--md-t1);
+}
+.md-fx-sc::-webkit-scrollbar { display: none; }
+#music-dock-root .md-fx-sc .md-fx-h,
+#music-dock-root .md-fx-sc .settings-block .block-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  margin: 16px 0 2px;
+  padding: 0;
+}
+#music-dock-root .md-fx-sc .md-fx-h { margin-top: 12px; }
+#music-dock-root .md-fx-sc .md-fx-h b,
+#music-dock-root .md-fx-sc .settings-block .block-header h4 {
+  margin: 0;
+  color: var(--md-t1);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  line-height: 20px;
+}
+#music-dock-root .md-fx-sc .md-fx-n,
+#music-dock-root .md-fx-sc .settings-block .block-header::before {
+  position: absolute;
+  left: calc(-1 * var(--fx-gutter));
+  top: 50%;
+  width: calc(var(--fx-gutter) - 10px);
+  transform: translateY(-50%);
+  color: var(--md-t3);
+  font: 300 22px/1 var(--mt-font-archive, inherit);
+  text-align: right;
+}
+#music-dock-root .md-fx-sc .settings-block { counter-increment: md-fx; }
+#music-dock-root .md-fx-sc .settings-block .block-header::before { content: counter(md-fx, decimal-leading-zero); }
+
+/* 卡片外壳、折叠头和网格都去掉 */
+#music-dock-root .md-fx-sc .settings-container {
+  overflow: visible !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: auto !important;
+  max-height: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#music-dock-root .md-fx-sc .acoustic-drawer-toggle { display: none !important; }
+#music-dock-root .md-fx-sc .acoustic-drawer-body {
+  display: block !important;
+  max-height: none !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  animation: none !important;
+}
+#music-dock-root .md-fx-sc .settings-grid,
+#music-dock-root .md-fx-sc .settings-grid-v2,
+#music-dock-root .md-fx-sc .settings-sections { display: block !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; gap: 0 !important; }
+#music-dock-root .md-fx-sc .settings-block {
+  overflow: visible !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#music-dock-root .md-fx-sc .block-title-group { display: flex; align-items: center; gap: 6px; }
+#music-dock-root .md-fx-sc .block-content { padding: 0 !important; margin: 0 !important; background: transparent !important; }
+
+/* 一行一个控制：名字在左，开关 / 下拉在右；滑条放在名字下面一行 */
+#music-dock-root .md-fx-sc .setting-row,
+#music-dock-root .md-fx-sc .setting-item {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  min-height: 36px;
+  margin: 0 !important;
+  padding: 4px 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+#music-dock-root .md-fx-sc .setting-row > label,
+#music-dock-root .md-fx-sc .setting-item > label:first-child {
+  margin: 0 !important;
+  color: var(--md-t1) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  opacity: 1 !important;
+}
+#music-dock-root .md-fx-sc .setting-row.full-width { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
+/* 滑条和控制页一样排：名字在左、数值在同一行右边，滑条在下面占满一整行 */
+#music-dock-root .md-fx-sc .setting-item:has(.slider-with-value) { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+#music-dock-root .md-fx-sc .slider-with-value { display: contents; }
+#music-dock-root .md-fx-sc .slider-with-value input[type="range"] { grid-column: 1 / -1; grid-row: 2; width: 100%; margin: 0; }
+#music-dock-root .md-fx-sc .slider-with-value span,
+#music-dock-root .md-fx-sc [id$="-value"] {
+  justify-self: end;
+  color: var(--md-t2) !important;
+  font-family: var(--mt-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 下拉框：文字加下划线 */
+#music-dock-root .md-fx-sc select {
+  -webkit-appearance: none;
+  appearance: none;
+  justify-self: end;
+  width: auto !important;
+  min-width: 0;
+  max-width: 220px;
+  height: 28px;
+  margin: 0;
+  padding: 0 16px 0 0 !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--md-line2) !important;
+  border-radius: 0 !important;
+  color: var(--md-t1) !important;
+  background-color: transparent !important;
+  background-image: linear-gradient(45deg, transparent 50%, var(--md-t2) 50%), linear-gradient(135deg, var(--md-t2) 50%, transparent 50%) !important;
+  background-position: calc(100% - 7px) 12px, calc(100% - 3px) 12px !important;
+  background-size: 4px 4px, 4px 4px !important;
+  background-repeat: no-repeat !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  text-align: right;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+#music-dock-root .md-fx-sc select:hover,
+#music-dock-root .md-fx-sc select:focus { border-bottom-color: var(--md-t1) !important; outline: none; }
+#music-dock-root .md-fx-sc select:focus-visible { outline: 2px solid var(--md-t1); outline-offset: 2px; }
+#music-dock-root .md-fx-sc select option { color: var(--md-t1); background: var(--md-menu); }
+#music-dock-root .md-fx-sc .setting-row.full-width select { justify-self: stretch; max-width: none; width: 100% !important; text-align: left; }
+#music-dock-root .md-fx-sc .eq-controls-row,
+#music-dock-root .md-fx-sc .ir-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 0 0 4px; }
+#music-dock-root .md-fx-sc .eq-controls-row select,
+#music-dock-root .md-fx-sc .ir-controls select { flex: 0 1 auto; text-align: left; }
+
+/* 开关的样子用音乐窗口共用的那一段（music-skin.css 的 .switch），这里只管它在一行里靠右 */
+#music-dock-root .md-fx-sc .switch { justify-self: end; }
+
+/* 滑条：细线加方形滑块 */
+#music-dock-root .md-fx-sc input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2px;
+  margin: 8px 0;
+  border-radius: 0;
+  background: var(--md-line2);
+  accent-color: var(--md-t1);
+}
+#music-dock-root .md-fx-sc input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 0;
+  background: var(--md-t1);
+  box-shadow: none;
+}
+#music-dock-root .md-fx-sc input[type="range"]:focus-visible { outline: 2px solid var(--md-t1); outline-offset: 4px; }
+
+/* 均衡器十段：竖条在窄面板里横向排开，放不下时内部横滚 */
+#music-dock-root .md-fx-sc .eq-bands { margin: 4px 0 0; overflow-x: auto; scrollbar-width: none; }
+#music-dock-root .md-fx-sc .eq-band { color: var(--md-t2); font-size: 10px; }
+#music-dock-root .md-fx-sc .eq-band input[type="range"] { width: 100px; margin: 0; }
+
+/* 小字说明、状态和帮助 */
+#music-dock-root .md-fx-sc .ir-status,
+#music-dock-root .md-fx-sc .loudness-info,
+#music-dock-root .md-fx-sc .dynamic-loudness-info {
+  margin: 0 0 4px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--md-t2) !important;
+  font-size: 12px !important;
+}
+#music-dock-root .md-fx-sc .help-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  border: 1px solid var(--md-line2);
+  border-radius: 0;
+  background: transparent;
+  color: var(--md-t2);
+  font-size: 10px;
+  letter-spacing: 0;
+  cursor: help;
+}
+#music-dock-root .md-fx-sc .ir-load-btn { color: var(--md-t1); background: transparent; border: 1px solid var(--md-line2); border-radius: 0; }
+#music-dock-root .md-fx-sc .help-tip-box { color: var(--md-t1); background: var(--md-menu); border: 1px solid var(--md-line2); border-radius: 0; box-shadow: var(--md-panel-shadow); }
+
+/* ───────── 搜索面板（Ctrl+K）收小：和右侧抽屉、目录同一套写法 ─────────
+ * 不再是大圆角卡片加图标圆圈：细线方框、一行一个结果，选中行是墨色文字、前面一个实心小方块。 */
+.md-cmd-scrim { background: rgba(0, 0, 0, .22); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+#music-dock-root.md-light .md-cmd-scrim { background: rgba(250, 250, 249, .3); }
+.md-cmd-box {
+  max-width: 30rem;
+  border-radius: 2px;
+  border: 1px solid var(--md-line2);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .45);
+  clip-path: inset(calc(100% - 44px) 20% 0 20%);
+}
+.md-cmd.md-open .md-cmd-box { clip-path: inset(0 0 0 0); }
+.md-cmd-list { height: auto; max-height: min(360px, 45vh); padding: 4px 0; gap: 0; }
+#music-dock-root .md-cmd-row { gap: 10px; border-radius: 0; padding: 7px 16px; }
+#music-dock-root .md-cmd-row.md-act { background: var(--md-fill); }
+.md-cmd-ri { width: 16px; height: 16px; border: 0; border-radius: 0; color: var(--md-t3); }
+.md-cmd-ri .md-i { width: 14px; height: 14px; }
+.md-cmd-row.md-cur .md-cmd-ri { background: none; color: var(--md-t1); }
+.md-cmd-row.md-act .md-cmd-title { color: var(--md-t1); font-weight: 600; }
+.md-cmd-title { font-size: 13px; font-weight: 400; color: var(--md-t1); }
+.md-cmd-desc { font-size: 11px; opacity: 1; color: var(--md-t2); }
+.md-cmd-grp { padding: 0; letter-spacing: .08em; opacity: 1; color: var(--md-t3); }
+.md-cmd-chip { border-radius: 0; background: none; box-shadow: inset 0 0 0 1px var(--md-line2); }
+.md-cmd-sec { padding: 8px 16px 2px; letter-spacing: .16em; opacity: 1; color: var(--md-t3); }
+.md-cmd-empty { margin: 0; padding: 14px 16px; gap: 4px; align-items: flex-start; font-size: 13px; opacity: 1; color: var(--md-t2); }
+.md-cmd-tip { font-size: 11px; color: var(--md-t3); }
+.md-cmd-hd { padding: 10px 16px; }
+.md-cmd-in { font-size: 14px; }
+.md-cmd-kbd { border-radius: 0; background: none; box-shadow: inset 0 0 0 1px var(--md-line2); }
+.md-cmd-foot kbd { border-radius: 0; }
+
+/* ───────── 抽屉打开时播放条往左让位 ─────────
+ * --md-shift 由 music-dock.js 算；播放条、流体层和雾床用同一个 translate 一起滑，流体层量位置时会扣掉它。 */
+#music-dock-root .md-dock,
+#music-dock-root .md-fluid,
+#music-dock-root .md-mist,
+.md-fluid, .md-mist {
+  translate: var(--md-shift, 0px) 0;
+  transition: translate .52s cubic-bezier(.32, .72, 0, 1);
+}
+/* 播放条的长短也跟着布局变（目录开着时缩短，见 music-dock.js 的 syncShift）：宽度和位置一起滑，流体层每帧跟着量 */
+#music-dock-root .md-dock { transition: translate .52s cubic-bezier(.32, .72, 0, 1), width .52s cubic-bezier(.32, .72, 0, 1); }
+/* 小环停在播放条上时跟着播放条一起平移（它的位置是按没平移的播放条算的）；抽屉开着时它在右下角，不跟。 */
+#music-dock-root.md-fl-on .md-hdl { translate: var(--md-shift, 0px) 0; transition: translate .52s cubic-bezier(.32, .72, 0, 1); }
+#music-dock-root.md-fl-on .md-hdl.md-open { translate: 0 0; }
+body.music-reduce-motion #music-dock-root.md-fl-on .md-hdl { transition: none; }
+/* 播放条挪到目录右边以后，目录不用再给它让出底部那一段，一直拉到窗口底 */
+body.music-dock-beside-list #music-archive-view .archive-hud.list-open .archive-list { bottom: 30px; }
+body.music-reduce-motion #music-dock-root .md-dock,
+body.music-reduce-motion .md-fluid,
+body.music-reduce-motion .md-mist { transition: none; }
+
+/* ───────── 抽屉一直到窗口底，右下角让出一个凹口给小环 ─────────
+ * 凹口是遮罩里减掉的一块形状（右下角 120px 见方的 SVG）：抽屉的右下角整块退后一步，
+ * 两头是外凸的圆角，里角是一段大的内凹圆弧，中间是直边，没有鼓包也没有颈。
+ * 小环悬在让出来的空处，和抽屉的边隔着差不多一个环半径的空隙，互不相碰；没有描边。
+ * 圆心距右、下各 40px，和流体层 cornerLocal 一致。 */
+.md-pnl { bottom: 20px; }
+.md-pnl .md-dockrow { padding-right: 88px; }
+.md-drbg {
+  -webkit-mask-image: linear-gradient(to left, #000 var(--md-dr-solid, 50%), transparent 100%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cpath d='M120 24A18 18 0 0 1 102 42L72 42A30 30 0 0 0 42 72L42 102A18 18 0 0 1 24 120H120Z'/%3E%3C/svg%3E");
+  mask-image: linear-gradient(to left, #000 var(--md-dr-solid, 50%), transparent 100%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cpath d='M120 24A18 18 0 0 1 102 42L72 42A30 30 0 0 0 42 72L42 102A18 18 0 0 1 24 120H120Z'/%3E%3C/svg%3E");
+  -webkit-mask-size: 100% 100%, 120px 120px;
+  mask-size: 100% 100%, 120px 120px;
+  -webkit-mask-position: 0 0, right bottom;
+  mask-position: 0 0, right bottom;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-composite: source-out;
+  mask-composite: subtract;
+}
+@media (max-width: 639.98px) {
+  .md-pnl { bottom: var(--music-dock-safe-bottom, 96px); }
+  /* 窄窗口下小环还悬在页签这一行的右端：给它让出位置，「声音」页签不再被盖住 */
+  .md-pnl .md-dockrow { padding-right: 56px; }
+  .md-drbg {
+    -webkit-mask-image: linear-gradient(to top, transparent 0, #000 calc(var(--music-dock-safe-bottom, 96px) + 8px));
+    mask-image: linear-gradient(to top, transparent 0, #000 calc(var(--music-dock-safe-bottom, 96px) + 8px));
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-composite: source-over;
+    mask-composite: add;
+  }
+}
+/* 节能档（没有流体层）的把手也停在凹口圆心上 */
+#music-dock-root.md-fl-low .md-hdl { right: 16px; bottom: 16px; }
+/* 抽屉左边放不下播放条时（music-dock.js syncShift 的 md-raise）：抽屉底边抬到播放条上面，底色往下渐隐 */
+#music-dock-root.md-raise .md-pnl { bottom: var(--music-dock-safe-bottom, 96px); }
+#music-dock-root.md-raise .md-pnl .md-dockrow { padding-right: 0; }
+
+/* ───────── 播放头：平时是贴在进度线上的小珠子，指针移上去放大并显示时间 ───────── */
+#music-dock-root.md-fl-on .md-hdl.md-hdl-bead:not(.md-open) button { box-shadow: 0 0 10px 2px rgba(255, 255, 255, .55), inset 0 0 6px rgba(255, 255, 255, .7); }
+.md-hdl-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font: 600 12px/16px var(--md-font-num, inherit);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--md-t1);
+  background: var(--md-glass);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 0 0 1px rgba(var(--md-tp-rgb), .1), 0 0 18px color-mix(in srgb, var(--md-fl-tint, var(--md-accent)) 35%, transparent);
+  transform: translate(-50%, 4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s, transform .2s var(--mt-ease, ease);
+}
+.md-hdl.md-tip .md-hdl-tip { opacity: 1; transform: translate(-50%, 0); }
+.md-hdl.md-open .md-hdl-tip { display: none; }
+
+/* ───────── 提示：从播放条分出来的一滴 ─────────
+ * 出现：从播放条的位置鼓出一滴，拉着一截细颈升上来再收圆；
+ * 停留：实心底色慢慢化成雾（--mtst-ms 是剩下的停留时间），只剩毛玻璃，文字始终清楚；悬停时重新凝固；
+ * 消失：化开、轻微放大后散掉。降低动态时只做透明度。 */
+.mtst {
+  background: transparent;
+  transform-origin: 50% 140%;
+  transform: translateY(40px) scale(.22, .5);
+  filter: blur(6px);
+  transition: opacity 220ms var(--mt-ease, ease-out), transform 420ms cubic-bezier(.32, .72, 0, 1), filter 420ms ease-out;
+}
+.mtst.mtst-in { transform: none; filter: none; animation: mtst-bud 560ms cubic-bezier(.32, .72, 0, 1); }
+@keyframes mtst-bud {
+  0% { transform: translateY(40px) scale(.22, .5); filter: blur(6px); }
+  55% { transform: translateY(-3px) scale(1.03, .96); filter: blur(0); }
+  100% { transform: none; }
+}
+/* 实心底色单独一层，蒸发就是这一层慢慢变淡 */
+.mtst::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(100deg, color-mix(in srgb, var(--md-fl-tint, #d9773f) 26%, transparent), transparent 62%),
+    var(--md-capsule-bg-open, var(--md-capsule-bg));
+  pointer-events: none;
+  transition: opacity 260ms ease-out;
+}
+.mtst.mtst-evap::after { animation: mtst-mist var(--mtst-ms, 4000ms) linear forwards; }
+@keyframes mtst-mist { 0% { opacity: 1; } 100% { opacity: .28; } }
+/* 细颈：出现的那一下从下沿往播放条方向拉出一截，随即收回 */
+.mtst::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -26px;
+  width: 22px;
+  height: 30px;
+  margin-left: -11px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--md-fl-tint, #d9773f) 40%, var(--md-capsule-bg-open, var(--md-capsule-bg)));
+  opacity: 0;
+  pointer-events: none;
+}
+.mtst.mtst-in::before { animation: mtst-neck 520ms ease-out; }
+@keyframes mtst-neck { 0% { opacity: .9; transform: scaleY(1.4); } 100% { opacity: 0; transform: scaleY(.2); } }
+.mtst > *:not(.mtst-bar) { position: relative; z-index: 1; }
+.mtst > .mtst-bar { z-index: 1; }
+.mtst.mtst-out { opacity: 0; transform: translateY(-6px) scale(1.06); filter: blur(10px); transition-duration: 300ms; }
+body.music-reduce-motion .mtst,
+body.music-reduce-motion .mtst.mtst-in,
+body.music-reduce-motion .mtst.mtst-out { animation: none; transform: none; filter: none; }
+body.music-reduce-motion .mtst::before { display: none; }
+
+/* ───────── 通用流体选中标记（music-fluid-marker.js） ───────── */
+.mfm { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 0; transition: opacity .2s; }
+.mfm-body { fill: var(--mfm-color, var(--md-fl-tint, currentColor)); opacity: .92; }
+
+/* 远离选中项的舞台页签淡一点，悬停和键盘焦点时恢复清晰。 */
+.music-stage-mode-switcher .music-stage-mode-button { z-index: 1; transition: color .2s, opacity .3s, filter .3s; }
+.music-stage-mode-switcher .music-stage-mode-button[data-md-dist="2"] { opacity: .86; }
+.music-stage-mode-switcher .music-stage-mode-button[data-md-dist="3"] { opacity: .74; filter: blur(.2px); }
+.music-stage-mode-switcher .music-stage-mode-button[data-md-dist="4"] { opacity: .64; filter: blur(.35px); }
+.music-stage-mode-switcher:hover .music-stage-mode-button,
+.music-stage-mode-switcher .music-stage-mode-button:focus-visible { opacity: 1; filter: none; }
+body.music-reduce-motion .music-stage-mode-switcher .music-stage-mode-button { filter: none; }
+
+/* ───────── 搜索框从播放条鼓出来，关掉时并回去 ─────────
+ * 播放条留在原处（不再隐藏），遮罩只盖播放条以上；框从播放条上沿的中间鼓出一滴、拉一截细颈再展开。 */
+body.music-dock-cmd-open .md-dock,
+body.music-dock-cmd-open .md-fluid,
+body.music-dock-cmd-open .md-mist { opacity: 1; pointer-events: auto; }
+body.music-dock-cmd-open .md-fluid, body.music-dock-cmd-open .md-mist { pointer-events: none; }
+.md-cmd-scrim { bottom: calc(var(--md-cmd-bottom, 110px) - 14px); -webkit-mask-image: linear-gradient(to top, transparent 0, #000 60px); mask-image: linear-gradient(to top, transparent 0, #000 60px); }
+.md-cmd-box {
+  clip-path: none;
+  transform-origin: 50% calc(100% + 30px);
+  transform: translateY(34px) scale(.18, .3);
+  filter: blur(8px);
+  opacity: 0;
+  border-radius: 22px;
+  transition: transform .42s cubic-bezier(.32, .72, 0, 1), filter .32s ease-out, opacity .2s ease-out, border-radius .42s cubic-bezier(.32, .72, 0, 1);
+}
+.md-cmd.md-open .md-cmd-box { clip-path: none; transform: none; filter: none; opacity: 1; border-radius: 2px; }
+.md-cmd-box::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -24px;
+  width: 26px;
+  height: 28px;
+  margin-left: -13px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--md-fl-tint, #d9773f) 45%, var(--md-glass));
+  opacity: 0;
+  pointer-events: none;
+}
+.md-cmd.md-open .md-cmd-box::after { animation: mtst-neck 480ms ease-out; }
+.md-cmd-box { overflow: visible; }
+.md-cmd-body { overflow: hidden; border-radius: inherit; }
+#music-dock-root .md-cmd-row[data-md-dist="2"] { opacity: .86; }
+#music-dock-root .md-cmd-row[data-md-dist="3"] { opacity: .72; }
+#music-dock-root .md-cmd-row[data-md-dist="4"] { opacity: .6; filter: blur(.35px); }
+#music-dock-root .md-cmd-row.md-act,
+#music-dock-root .md-cmd-row:hover { opacity: 1; filter: none; }
+body.music-reduce-motion .md-cmd-box { transform: none; filter: none; transition: opacity .12s; }
+body.music-reduce-motion .md-cmd-box::after { display: none; }
+
+/* 停在凹口里时光收紧，只留一圈贴着环的亮，不在角上铺一团雾 */
+#music-dock-root.md-fl-on .md-hdl.md-open button { box-shadow: 0 0 8px 1px rgba(255, 255, 255, .5), inset 0 0 6px rgba(255, 255, 255, .6); }
+#music-dock-root.md-fl-on .md-hdl.md-open button:hover { box-shadow: 0 0 14px 3px rgba(255, 255, 255, .6), inset 0 0 6px rgba(255, 255, 255, .6); }
+#music-dock-root.md-light.md-fl-on .md-hdl.md-open button { color: var(--md-t1); }
+#music-dock-root.md-light.md-fl-on .md-hdl.md-open .md-sw .md-i { filter: none; }
+
+/* ───────── 抽屉磨砂的面积按画质档位收放 ─────────
+ * 背景模糊的开销跟面积走，跟模糊半径几乎无关（实测）。标准档只糊内容那一条（480px，左边 80px 是淡出），半径也小一些，舞台不会被糊成一片；
+ * 极致档才铺满 680px；节能档不糊（上面的 .md-fl-low）。渐隐的比例跟着宽度调，左缘始终是淡出去的。 */
+#music-dock-root:not(.md-q-ultimate) .md-drbg {
+  width: min(480px, 100vw);
+  --md-dr-solid: 84%;
+  --md-dr-tint: 82%;
+  backdrop-filter: blur(12px) saturate(1.15);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+}
+#music-dock-root.md-fl-low .md-drbg { backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* 浅色主题下白色焦点圈看不见，换成墨色 */
+#music-dock-root.md-light.md-fl-on .md-hdl button:focus-visible { outline-color: var(--md-t1); }
+
+/* ───────── 窗口不够宽、抽屉又开着：播放条收窄让位（宽度由 music-dock.js 写进 --md-bar-w），内容按紧凑档收 ───────── */
+body.music-reduce-motion .mtst-layer { transition: none; }
+
+/* ───────── 抽屉的材质：奶白（深色下是烟灰）的厚玻璃，不透出脏灰 ─────────
+ * 抽屉本体比底下的页面明显亮一档，凹口里露出来的才是页面本身，这样右下角退后的那一步看得清。
+ * 小环在凹口里悬空：白环、中间透空，只有一圈很淡的光；浅色下加一点落影，免得白环化在浅底里。 */
+.md-drbg {
+  background:
+    radial-gradient(420px 360px at 100% 0%, color-mix(in srgb, var(--md-accent) 14%, transparent), transparent 70%),
+    linear-gradient(to left, var(--md-dr-glass, var(--md-glass)) 0, var(--md-dr-glass, var(--md-glass)) var(--md-dr-tint, 46%), transparent 100%);
+}
+/* 窄窗里抽屉铺满整个宽度，内容贴着左边：底色也要铺满（标准档的 480px 宽度在这里不适用），
+   也不能从右往左淡出，否则左边一列的设置项文字压在舞台的曲目卡片和切换条上。 */
+@media (max-width: 639.98px) {
+  #music-dock-root .md-drbg,
+  #music-dock-root:not(.md-q-ultimate) .md-drbg {
+    width: 100vw;
+    background:
+      radial-gradient(420px 360px at 100% 0%, color-mix(in srgb, var(--md-accent) 14%, transparent), transparent 70%),
+      var(--md-dr-glass, var(--md-glass));
+  }
+}
+/* 阵列曲库的抽屉沿用左侧目录的纸色和透明过渡，留出背景唱片的轮廓。 */
+body.music-archive-on:not(.music-stage-active) #music-dock-root .md-drbg {
+  top: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body.music-archive-on:not(.music-stage-active) #music-dock-root .md-drbg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to left,
+    rgba(var(--ar-paper-rgb), .92),
+    rgba(var(--ar-paper-rgb), .85) var(--md-dr-tint, 60%),
+    transparent);
+  /* 上沿穿过透明标题栏渐入，外层遮罩仍负责侧边和右下角。 */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 76px);
+  mask-image: linear-gradient(to bottom, transparent, #000 76px);
+}
+/* 和歌词栏的纸色交叠，延长抽屉左侧的渐隐。 */
+body.music-archive-on:not(.music-stage-active):has(.archive-hud.beside-drawer.lyrics-open) #music-dock-root .md-drbg {
+  --md-dr-solid: 74%;
+  --md-dr-tint: 76%;
+}
+@media (max-width: 639.98px) {
+  body.music-archive-on:not(.music-stage-active) #music-dock-root .md-drbg::before {
+    background: rgba(var(--ar-paper-rgb), .92);
+  }
+}
+#music-dock-root.md-fl-on .md-hdl.md-open button { box-shadow: 0 0 10px 1px rgba(255, 255, 255, .35); }
+#music-dock-root.md-fl-on .md-hdl.md-open button:hover { box-shadow: 0 0 14px 3px rgba(255, 255, 255, .5); }
+#music-dock-root.md-light.md-fl-on .md-hdl.md-open button { box-shadow: 0 2px 10px rgba(40, 30, 20, .16), 0 0 0 .5px rgba(40, 30, 20, .06); }
+#music-dock-root.md-light.md-fl-on .md-hdl.md-open button:hover { box-shadow: 0 3px 14px rgba(40, 30, 20, .22), 0 0 0 .5px rgba(40, 30, 20, .08); }
+
+/* ───────── 快捷行长在播放条右端 ─────────
+ * 条上右边是歌词舞台和「更多」；循环、播放列表、喜欢、音效、音量都在「更多」上方，
+ * 指针停在「更多」上就从条里长出来。靠右对齐，音量在最右，音量水滴从它头顶接着往上长。 */
+.md-quick { left: auto; right: 34px; }
+.md-quick-in { padding-bottom: 20px; }
+@media (max-width: 639.98px) { .md-quick { left: auto; right: 12px; } }
+#music-dock-root .md-quick-g .md-slot { width: 36px; height: 36px; padding: 0; opacity: .7; }
+#music-dock-root .md-quick-g .md-slot:hover,
+#music-dock-root .md-quick-g .md-slot.md-on,
+#music-dock-root .md-quick-g .md-slot:focus-visible { opacity: 1; }
+#music-dock-root .md-quick-g .md-like[hidden] { display: none; }
+#music-dock-root .md-stage-slot.md-on,
+#music-dock-root .md-more.md-on { opacity: 1; background: rgba(var(--md-fl-ink-rgb), .1); }
+
+/* 队列页顶上「播放过的」：比接下来要放的淡一些，悬停时恢复 */
+.md-qi.md-hist { opacity: .55; transition: opacity .2s; }
+.md-qi.md-hist:hover, .md-qi.md-hist:focus-within { opacity: 1; }
+
+/* 声音页的音效卡在抽屉里停着时（music-dock.js syncFx）：不占地方、不画，但排版留着，切过来不用整张重排 */
+#music-dock-root .md-fx-sc.md-fx-park {
+  content-visibility: hidden;
+  contain-intrinsic-size: auto none;
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* 空闲预热那一下（music-dock.js warmFx）：照常算样式和排版，但仍不占地方、看不见 */
+#music-dock-root .md-fx-sc.md-fx-park.md-fx-warm { content-visibility: visible; }
+
+/* ───────── 进度细轨（2026-11-24 底栏重排） ─────────
+ * 面板关着时进度由白环播放头表示和拖动，细轨藏起来（只隐藏不移除，播放头拖动要借它量尺寸）；
+ * 面板一开白环飞去当关闭键，细轨就出现在播放条下沿：从歌名左缘到右边按钮前
+ * （--md-a / --md-b 由 music-dock.js 量出来写进去）。平时 2px，悬停变 4px、露出圆点和指针处的时间，
+ * 按下就跳、按住拖动跟手。 */
+#music-dock-root:not(.md-panel-open) .md-trk { visibility: hidden; pointer-events: none; }
+#music-dock-root .md-trk {
+  inset: auto 0 3px 0;
+  height: 14px;
+  border-radius: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+#music-dock-root .md-trk::before,
+#music-dock-root .md-trk::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 2px;
+  transition: height .15s, margin-top .15s;
+  pointer-events: none;
+}
+#music-dock-root .md-trk::before {
+  left: calc(var(--md-a, .1) * 100%);
+  right: calc((1 - var(--md-b, .9)) * 100%);
+  background: rgba(var(--md-fl-ink-rgb), .16);
+}
+#music-dock-root .md-trk::after {
+  left: calc(var(--md-a, .1) * 100%);
+  width: calc(max(0, var(--md-edge, 0) - var(--md-a, .1)) * 100%);
+  background: rgba(var(--md-fl-ink-rgb), .72);
+}
+#music-dock-root .md-trk:hover::before,
+#music-dock-root .md-trk:hover::after,
+#music-dock-root .md-trk.md-held::before,
+#music-dock-root .md-trk.md-held::after { height: 4px; margin-top: -2px; }
+#music-dock-root .md-trk:hover::after,
+#music-dock-root .md-trk.md-held::after { background: var(--md-fl-ink); }
+#music-dock-root .md-fill { display: none; }
+#music-dock-root .md-kn {
+  top: 50%;
+  bottom: auto;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--md-fl-ink);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+  opacity: 0;
+  transform: scale(.5);
+  transition: opacity .15s, transform .15s;
+}
+#music-dock-root .md-trk:hover .md-kn,
+#music-dock-root .md-trk.md-held .md-kn,
+#music-dock-root .md-trk:focus-visible .md-kn { opacity: 1; transform: none; }
+#music-dock-root .md-trk:focus-visible { outline: none; }
+#music-dock-root .md-trk:focus-visible::before { box-shadow: 0 0 0 2px rgba(var(--md-fl-ink-rgb), .5); }
+/* 指针处的时间：小胶囊浮在细轨上方，盖住副标题那一行一会儿 */
+.md-seek-tip {
+  position: absolute;
+  bottom: 13px;
+  left: 0;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font: 600 11px/16px var(--mt-font-ui);
+  font-variant-numeric: tabular-nums;
+  background: var(--md-fl-pb-bg);
+  color: var(--md-fl-pb-fg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+  transform: translate(-50%, 3px);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity .12s, transform .12s;
+}
+#music-dock-root .md-trk.md-tipon .md-seek-tip { opacity: 1; transform: translate(-50%, 0); }
+/* 细轨出现时歌名和副标题整体往上让一点，给它留出呼吸 */
+#music-dock-root .md-ttl { transition: filter .6s, opacity .6s, margin-top .3s; }
+#music-dock-root.md-panel-open .md-ttl { margin-top: -6px; }
+/* 节能档没有流体层，播放条不用再裁出整块进度底色 */
+.md-fl-low .md-cap { overflow: visible; }
+
+/* 面板按钮：播放条最右边；面板开着时亮着 */
+#music-dock-root .md-pnl-slot.md-on { opacity: 1; background: rgba(var(--md-fl-ink-rgb), .1); }
+
+/* 播放列表页头：队列来自哪一组（原来写在首页页脚「正在播放 全部曲目」） */
+.md-qh .md-qsrc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--md-t3); }
+.md-qh .md-qsrc::before { content: "·"; margin-right: 6px; }

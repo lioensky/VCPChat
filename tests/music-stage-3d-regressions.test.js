@@ -120,6 +120,65 @@ test('mode settings keep their own ranges', () => {
     dom.window.close();
 });
 
+test('the sung-word hop and the lyric face are settings of the two 3D stages only', () => {
+    const dom = createDom();
+    const { MusicStageConfig: Config } = loadStage(dom);
+    assert.equal(Config.get().modes.diorama.lyricHop, 1);
+    assert.equal(Config.get().modes.tunnel.lyricHop, 1);
+    Config.setModePatch('diorama', { lyricHop: 5 });
+    assert.equal(Config.get().modes.diorama.lyricHop, 2);
+    Config.setModePatch('tunnel', { lyricHop: 0 });
+    assert.equal(Config.get().modes.tunnel.lyricHop, 0);
+    assert.equal(Config.get().modes.luminous.lyricHop, undefined);
+    assert.equal(Config.get().modes.diorama.lyricFont, 'sans');
+    Config.setModePatch('diorama', { lyricFont: 'serif' });
+    assert.equal(Config.get().modes.diorama.lyricFont, 'serif');
+    Config.setModePatch('tunnel', { lyricFont: 'comic' });
+    assert.equal(Config.get().modes.tunnel.lyricFont, 'sans');
+    assert.equal(Config.get().modes.luminous.lyricFont, undefined);
+    dom.window.close();
+});
+
+test('the 3D stages take the cover\'s most vivid hue into their sky, and a grey cover gives none', () => {
+    const dom = createDom();
+    const { MusicStageConfig: Config, MusicStageModeUtils: U } = loadStage(dom);
+    assert.equal(Config.get().modes.diorama.coverTint, 0.5);
+    Config.setModePatch('diorama', { coverTint: 3 });
+    assert.equal(Config.get().modes.diorama.coverTint, 1);
+    assert.equal(Config.get().modes.tunnel.coverTint, 0.5);
+    assert.equal(Config.get().modes.luminous.coverTint, undefined);
+    const pixels = (list) => Uint8ClampedArray.from(list.flatMap(([r, g, b]) => [r, g, b, 255]));
+    // A red square on black: black has no hue, so red is the colour.
+    const red = pixels([...Array(30).fill([200, 40, 60]), ...Array(70).fill([0, 0, 0])]);
+    assert.equal(U.dominantHue(red), '#c8283c');
+    // Mostly sky blue with a sand strip: the larger vivid area wins.
+    const sky = pixels([...Array(60).fill([90, 160, 230]), ...Array(40).fill([232, 216, 176])]);
+    assert.equal(U.dominantHue(sky), '#5aa0e6');
+    // Greys, black and white only.
+    const grey = pixels(Array.from({ length: 100 }, (_, i) => [i * 2.5, i * 2.5, i * 2.5]));
+    assert.equal(U.dominantHue(grey), null);
+    dom.window.close();
+});
+
+test('marker lines and placeholder translations never reach a 3D stage', () => {
+    const dom = createDom();
+    const { MusicStageRuntime: R, MusicStageDioramaDirector: Director } = loadStage(dom, 'Musicmodules/music-stage/modes/diorama-director.js');
+    assert.equal(R.readableText('●●●'), false);
+    assert.equal(R.readableText(' // '), false);
+    assert.equal(R.readableText('——'), false);
+    assert.equal(R.readableText('海'), true);
+    assert.equal(R.readableText('Love 2'), true);
+    assert.equal(R.resolveSupplementalText({ translation: '//' }), '');
+    assert.equal(R.resolveSupplementalText({ translation: ' Sea ' }), 'Sea');
+    const lines = R.normalizeLines([
+        { time: 10, original: '清晨的站台' }, { time: 14, original: '●●●' },
+        { time: 30, original: '//' }, { time: 34, original: '列车带走昨夜的梦' }
+    ]);
+    const timeline = Director.compile({ lines, trackId: 't', duration: 60 });
+    assert.deepEqual(timeline.lines.map(line => line.fullText), ['清晨的站台', '列车带走昨夜的梦']);
+    dom.window.close();
+});
+
 test('diorama rain is off unless chosen, and only takes its three settings', () => {
     const dom = createDom();
     const { MusicStageConfig: Config } = loadStage(dom);
@@ -171,7 +230,7 @@ test('3D modes draw to a pixel budget and step down while frames are slow', () =
     scale.tick(now);
     assert.equal(run(16.7, 600), 0, 'a held frame rate changes nothing');
     assert.equal(run(4000, 3), 0, 'a hidden window is not a slow renderer');
-    assert.ok(run(33.3, 200) >= 1, 'thirty frames a second steps down');
+    assert.ok(run(33.3, 100) >= 1, 'thirty frames a second steps down');
     assert.ok(scale.factor < 1 && scale.factor >= 0.55);
     assert.ok(scale.ratio('standard', 2560, 1440) < large);
     const low = scale.factor;
@@ -194,4 +253,120 @@ test('a wobbling duration does not rebuild the diorama song', () => {
     assert.match(manager, /U\.durationChanged\(compiledDuration, nextDuration\)/);
     assert.doesNotMatch(manager, /compiledDuration !== nextDuration/);
     dom.window.close();
+});
+
+test('3D stages step down pixels, then a tier, and only get pixels back on their own', () => {
+    const dom = createDom();
+    const { MusicStageModeUtils: U } = loadStage(dom);
+    const scale = U.createRenderScale();
+    const config = { quality: 'standard', modes: {} };
+    let now = 1000;
+    // Feed frames at a steady interval until the ladder moves (or give up).
+    const run = (interval, aim, limit = 400) => {
+        for (let i = 0; i < limit; i++) {
+            now += interval;
+            if (scale.tick(now, aim)) return true;
+        }
+        return false;
+    };
+    assert.equal(scale.config(config), config, 'nothing dropped: the same settings object');
+    // 30 fps against a 60 fps cap: fewer pixels first, twice, before any effect goes.
+    assert.ok(run(33, 16.7)); assert.ok(run(33, 16.7));
+    assert.equal(scale.steps, 2);
+    assert.equal(scale.quality('standard'), 'standard');
+    assert.ok(scale.factor < 0.75);
+    // One slow judgement more is not enough to give up an effect tier: a song
+    // change or another busy app can do that for a second.
+    for (let i = 0; i < 50; i++) { now += 33; assert.equal(scale.tick(now, 16.7), false); }
+    assert.equal(scale.quality('standard'), 'standard');
+    // Still slow: the tier below (no lens, 30 fps cap).
+    assert.ok(run(33, 16.7));
+    assert.equal(scale.quality('standard'), 'energy-saving');
+    assert.equal(scale.config(config).quality, 'energy-saving');
+    assert.equal(scale.config(config), scale.config(config), 'derived settings are stable between frames');
+    // Holding 30 fps under the 30 fps cap is fine: no further drop, and the tier is not retried.
+    assert.equal(run(33, 33.3, 3000), false);
+    assert.equal(scale.steps, 3);
+    // Picking a tier again starts from the top.
+    scale.reset();
+    assert.equal(scale.steps, 0);
+    assert.equal(scale.quality('ultimate'), 'ultimate');
+});
+
+test('the canvas shaders for a lens-less tier are compiled in the background before the drop', () => {
+    const dom = createDom();
+    const { MusicStageModeUtils: U } = loadStage(dom);
+    const compiled = [];
+    const renderer = (parallel) => ({
+        extensions: { has: (name) => parallel && name === 'KHR_parallel_shader_compile' },
+        getRenderTarget: () => null,
+        setRenderTarget(target) { this.target = target; },
+        compileAsync() { throw new Error('the renderer\'s own wait is not used'); },
+        compile(scene) { compiled.push([scene, this.target]); return new Set([{}]); },
+        properties: { get: () => ({ currentProgram: { isReady: () => true } }) },
+        getContext: () => null,
+        info: { programs: [] }
+    });
+    const T = { WebGLRenderTarget: class { dispose() {} }, HalfFloatType: 1 };
+    const scene = {}, camera = {};
+    // Not on the way down yet: nothing to do.
+    assert.equal(U.warmLensless(T, renderer(true), scene, camera, { steps: 0 }, 'standard'), false);
+    // Standard keeps its lens until the drop to the saving tier, which draws to the canvas.
+    assert.equal(U.warmLensless(T, renderer(true), scene, camera, { steps: 1 }, 'standard'), true);
+    assert.deepEqual(compiled, [[scene, null]]);
+    // The top tier drops to standard, which still has its lens: wait for the next rung.
+    assert.equal(U.warmLensless(T, renderer(true), scene, camera, { steps: 1 }, 'ultimate'), false);
+    // Without background compiling it would only move the stall, so it is skipped (and marked done).
+    assert.equal(U.warmLensless(T, renderer(false), scene, camera, { steps: 1 }, 'standard'), true);
+    assert.equal(compiled.length, 1);
+});
+
+
+test('the track card box is handed to 3D modes in picture units, and only when it is shown', () => {
+    const dom = createDom();
+    const { MusicStageModeUtils: U } = loadStage(dom);
+    const doc = dom.window.document;
+    const stage = doc.createElement('div'); stage.className = 'music-stage';
+    const root = doc.createElement('section');
+    const card = doc.createElement('aside'); card.className = 'music-stage-id3';
+    stage.append(root, card); doc.body.append(stage);
+    root.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 500 });
+    card.getBoundingClientRect = () => ({ left: 16, right: 216, top: 50, bottom: 175, width: 200, height: 125 });
+    let observed = 0;
+    dom.window.ResizeObserver = class { constructor(fn) { this.fn = fn; } observe() { observed += 1; } disconnect() {} };
+    const overlay = U.watchOverlay(root);
+    assert.equal(observed, 2, 'card and stage are watched, nothing is read per frame');
+    assert.equal(overlay.box, null);
+    overlay.measure();
+    const box = overlay.box;
+    assert.ok(Math.abs(box.left - -0.96) < 1e-9 && Math.abs(box.right - -0.46) < 1e-9);
+    assert.ok(Math.abs(box.top - 0.8) < 1e-9 && Math.abs(box.bottom - 0.3) < 1e-9);
+    card.style.display = 'none';
+    overlay.measure();
+    assert.equal(overlay.box, null, 'a hidden card is not avoided');
+    overlay.destroy();
+    assert.equal(U.watchOverlay(doc.createElement('div')).box, null, 'a mode outside the stage has no card');
+});
+
+test('the handover veil reads the 3D picture back at most four times a second while waiting', () => {
+    const dom = createDom();
+    const { MusicStageModeUtils: U } = loadStage(dom);
+    const root = dom.window.document.createElement('div');
+    const veil = U.createHandoverVeil(root);
+    const canvas = root.querySelector('canvas');
+    let reads = 0;
+    canvas.getContext = () => ({ drawImage() { reads += 1; } });
+    let now = 1000;
+    dom.window.performance.now = () => now;
+    const source = { width: 640, height: 360 };
+    for (let i = 0; i < 60; i++) { veil.capture(source); now += 16.7; }
+    assert.ok(veil.captured);
+    assert.equal(reads, 4, 'one second at 60 fps: four reads');
+    // A theme switch needs exactly the picture on screen now.
+    veil.capture(source, { every: 0 });
+    assert.equal(reads, 5);
+    // A new size is read at once.
+    veil.capture({ width: 800, height: 450 });
+    assert.equal(reads, 6);
+    veil.destroy();
 });

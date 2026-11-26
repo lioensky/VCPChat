@@ -9,10 +9,11 @@
         { id: 'partita', label: '云阶', manager: global.MusicStagePartitaManager },
         { id: 'cadenza', label: '心象', manager: global.MusicStageCadenzaManager }
     ];
+    const NO_TRAITS = Object.freeze({ scene3d: false, opaque: false, night: false });
     const registry = new Map();
     core.forEach(({ id, label, manager }) => {
         if (!manager?.create) throw new Error(`Music stage manager missing: ${id}`);
-        registry.set(id, { id, label, create: (container, services) => manager.create(container, services) });
+        registry.set(id, { id, label, traits: NO_TRAITS, create: (container, services) => manager.create(container, services) });
     });
     global.MusicStageAdvancedModes?.entries?.forEach(entry => registry.set(entry.id, entry));
 
@@ -76,9 +77,13 @@
         const mode = makeModeBase('starborn', '星诞', container, services);
         const cue = createElement('div', 'starborn-director-cue');
         const burst = createElement('div', 'starborn-transition-burst');
+        // The small star cluster reads the vocal level; as an element of its own
+        // it takes that level without restyling the performances beside it.
+        const star = createElement('div', 'starborn-star');
         cue.setAttribute('aria-hidden', 'true');
         burst.setAttribute('aria-hidden', 'true');
-        mode.root.append(cue, burst);
+        star.setAttribute('aria-hidden', 'true');
+        mode.root.append(cue, burst, star);
         const children = new Set();
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         let current = null;
@@ -118,7 +123,7 @@
             count += 1;
             recent.unshift(entry.id);
             recent.splice(2);
-            cue.textContent = `STAR BORN · ${String(count).padStart(2, '0')} / ${entry.label}`;
+            cue.textContent = `星诞 · ${String(count).padStart(2, '0')} / ${entry.label}`;
             mode.root.dataset.directedMode = entry.id;
             mode.root.dataset.transitionCount = String(count);
             lastTransition = frame.playbackTime;
@@ -186,7 +191,10 @@
                 if (retired && elapsed >= duration) { release(child); return; }
                 const progress = Math.max(0, Math.min(1, elapsed / duration));
                 child.layer.style.opacity = String(retired ? 1 - progress : progress);
-                child.layer.style.filter = `blur(${(retired ? progress : 1 - progress) * 12}px)`;
+                // A settled layer needs no filter: blur(0) is drawn the same,
+                // but still costs a whole-stage offscreen pass every frame.
+                const blur = (retired ? progress : 1 - progress) * 12;
+                child.layer.style.filter = blur > 0 ? `blur(${blur}px)` : 'none';
                 child.mode.updateFrame(frame);
             });
         };
@@ -221,6 +229,8 @@
         ids: Object.freeze(Array.from(registry.keys())),
         entries: Object.freeze(Array.from(registry.values())),
         get(id) { return registry.get(id) || registry.get('luminous'); },
+        // 模式的外观特性（见 music-stage-advanced-modes.js）；不认识的 id 一律当普通 2D 模式
+        traits(id) { return registry.get(id)?.traits || NO_TRAITS; },
         create(id, container, services) { return this.get(id).create(container, services); }
     });
 })(window);

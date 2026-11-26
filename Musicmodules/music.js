@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const PLAY_MODES = Object.freeze(['repeat', 'repeat-one', 'shuffle']);
     const storedPlayMode = localStorage.getItem(PLAY_MODE_STORAGE_KEY);
     const initialPlayModeIndex = Math.max(0, PLAY_MODES.indexOf(storedPlayMode));
+    const LOUDNESS_MODE_ALIASES = Object.freeze({ album: 'replaygain_album', streaming: 'track' });
+    const normalizeLoudnessMode = (mode) => LOUDNESS_MODE_ALIASES[mode] || mode || 'track';
 
     const app = {
         // --- DOM Elements ---
@@ -72,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
         crossfeedMixSlider: document.getElementById('crossfeed-mix-slider'),
         crossfeedMixValue: document.getElementById('crossfeed-mix-value'),
         dynamicLoudnessSwitch: document.getElementById('dynamic-loudness-switch'),
+        crossfadeSelect: document.getElementById('crossfade-select'),
         dynamicLoudnessStrengthSlider: document.getElementById('dynamic-loudness-strength-slider'),
         dynamicLoudnessStrengthValue: document.getElementById('dynamic-loudness-strength-value'),
         dynamicLoudnessFactor: document.getElementById('dynamic-loudness-factor'),
@@ -81,7 +84,6 @@ document.addEventListener('DOMContentLoaded', () => {
         minimizeBtn: document.getElementById('minimize-music-btn'),
         maximizeBtn: document.getElementById('maximize-music-btn'),
         closeBtn: document.getElementById('close-music-btn'),
-        sidebarToggleBtn: document.getElementById('sidebar-toggle-btn'),
         leftSidebar: document.getElementById('left-sidebar'),
         sidebarTabs: document.querySelectorAll('.sidebar-tab'),
         sidebarFooter: document.getElementById('sidebar-footer'),
@@ -270,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.remove('sidebar-is-scrolling');
 
         if ('mediaSession' in navigator) {
-            ['play', 'pause', 'previoustrack', 'nexttrack'].forEach((action) => {
+            ['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'].forEach((action) => {
                 try { navigator.mediaSession.setActionHandler(action, null); } catch (error) {}
             });
             navigator.mediaSession.metadata = null;
@@ -295,20 +297,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.addEventListener('beforeunload', app.destroy, { once: true });
-
-
-    app.updateSidebarToggleState = (isSidebarCollapsed) => {
-        document.body.classList.toggle('sidebar-collapsed', isSidebarCollapsed);
-        app.sidebarToggleBtn?.classList.toggle('is-collapsed', isSidebarCollapsed);
-        app.sidebarToggleBtn?.setAttribute('title', isSidebarCollapsed ? '展开左侧列表' : '收纳左侧列表');
-        app.sidebarToggleBtn?.setAttribute('aria-label', isSidebarCollapsed ? '展开左侧列表' : '收纳左侧列表');
-        app.sidebarToggleBtn?.setAttribute('aria-pressed', String(isSidebarCollapsed));
-        localStorage.setItem('musicSidebarCollapsed', String(isSidebarCollapsed));
-    };
-
-    app.toggleSidebarPanel = () => {
-        app.updateSidebarToggleState(!document.body.classList.contains('sidebar-collapsed'));
-    };
 
 
     const normalizePlaybackRequest = (payload) => {
@@ -354,12 +342,70 @@ document.addEventListener('DOMContentLoaded', () => {
             app.playlist.push(track);
             trackIndex = app.playlist.length - 1;
             app.renderPlaylist(app.currentFilteredTracks);
-            await app.api?.saveMusicPlaylist?.(app.playlist);
+            await app.saveLibrary();
         }
 
         await app.loadTrack(trackIndex, true);
         return true;
     };
+
+    // --- Audio engine endpoint & status ---
+    // 引擎端口由主进程启动时探测决定；引擎没起来时在窗口顶部说明原因，而不是只显示时长 0:00。
+    const audioEngineNotice = document.getElementById('audio-engine-notice');
+    const applyAudioEngineEndpoint = (endpoint) => {
+        if (!endpoint) return;
+        const previousUrl = app.audioEngineWsUrl;
+        if (endpoint.wsUrl) app.audioEngineWsUrl = endpoint.wsUrl;
+        const failed = endpoint.state === 'failed';
+        if (audioEngineNotice) {
+            audioEngineNotice.hidden = !failed;
+            const detail = audioEngineNotice.querySelector('.audio-engine-notice-detail');
+            if (detail) detail.textContent = failed ? (endpoint.message || '') : '';
+        }
+        // 引擎换了端口重新就绪后，立即连到新地址，不等 5 秒重连。
+        if (endpoint.state === 'ready' && previousUrl && previousUrl !== app.audioEngineWsUrl) {
+            try { app.ws?.close(); } catch (_) { /* ignore */ }
+            app.ws = null;
+            app.connectWebSocket();
+        }
+        recoverAfterEngineRestart(endpoint.state);
+    };
+    // 引擎用着用着崩了又被重启：新引擎里什么都没加载。把那首歌重新加载回去、跳回原来的位置，
+    // 原来在放就接着放。只认「就绪过 → 断了 → 又就绪」，窗口刚打开时的启动过程不算。
+    let engineSeenReady = false;
+    let engineLost = false;
+    const recoverAfterEngineRestart = (state) => {
+        if (state === 'ready') {
+            const lost = engineLost;
+            engineSeenReady = true;
+            engineLost = false;
+            if (!lost) return;
+            const track = app.playlist[app.currentTrackIndex];
+            app.engineTrackPath = null;
+            if (!track) return;
+            const wasPlaying = app.isPlaying === true || app.playIntent === true;
+            const resumeAt = Math.max(0, Number(app.lastKnownCurrentTime) || 0);
+            const index = app.currentTrackIndex;
+            app.skipHistoryOnce = true;
+            // 先加载、跳到原位置再播，不从头响一下。
+            Promise.resolve(app.loadTrack(index, false)).then(async () => {
+                if (app.currentTrackIndex !== index || app.engineTrackPath !== track.path) return; // 期间换了歌
+                if (resumeAt > 1) await app.seekTo(resumeAt);
+                if (wasPlaying && app.currentTrackIndex === index) app.playTrack();
+            }).catch(error => console.warn('[Music] Reload after engine restart failed:', error));
+        } else if (engineSeenReady && (state === 'failed' || state === 'starting' || state === 'stopped')) {
+            engineLost = true;
+        }
+    };
+    const refreshAudioEngineEndpoint = async () => {
+        if (!app.api?.getAudioEngineEndpoint) return;
+        try {
+            applyAudioEngineEndpoint(await app.api.getAudioEngineEndpoint());
+        } catch (error) {
+            console.warn('[Music] Failed to read audio engine endpoint:', error);
+        }
+    };
+    app.api?.onAudioEngineStatus?.(applyAudioEngineEndpoint);
 
     // --- Initialization ---
     const init = async () => {
@@ -377,10 +423,31 @@ document.addEventListener('DOMContentLoaded', () => {
         setupSidebar(app);
         setupUI(app);
         setupMusicStage(app);
+        window.setupMusicSkin?.(app);
+        window.MusicArchive?.init(app);
 
         // --- Handlers & Listeners ---
         setupEventListeners();
         setupElectronHandlers();
+        window.setupMusicLikes?.(app); // 「喜欢」：右键菜单那一项要包在上面的菜单入口外面
+        window.setupMusicGoto?.(app); // 右键「转到歌手 / 转到专辑」
+        window.setupMusicSleep?.(app); // 定时关闭（入口在底栏抽屉）
+        window.setupMusicStats?.(app); // 听歌记录（次数、上次播放、跳过），只存本机
+        window.setupMusicRadio?.(app); // 电台与自动续播：一组放完接着放相似的歌，右键「从这首开电台」
+        // 下面这些以前由 music-radio.js 在 setupMusicRadio 末尾顺带装上，顺序不变
+        const installLater = (name, lib, fn) => { try { window[lib]?.[fn]?.(app); } catch (e) { console.warn(`[Music] ${name} 没装上:`, e); } };
+        installLater('频谱检查', 'MusicSpectrum', 'setupMusicSpectrum'); // 右键「看频谱」
+        installLater('按设备记 EQ', 'MusicDeviceSound', 'setupMusicDeviceSound');
+        installLater('M3U 导入导出', 'MusicM3u', 'setupMusicM3u');
+        installLater('在文件夹中显示', 'MusicTrackFile', 'setupMusicTrackFile');
+        installLater('曲库文件夹', 'MusicFolders', 'setupMusicFolders');
+        installLater('EQ 预设', 'MusicEqPresets', 'setupMusicEqPresets');
+        installLater('声道', 'MusicChannels', 'setupMusicChannels'); // 新引擎才有
+        installLater('窗口标题', 'MusicWindowTitle', 'setupMusicWindowTitle');
+        installLater('撤销移除', 'MusicQueueUndo', 'setupMusicQueueUndo');
+        window.setupMusicLyricsAi?.(app); // 外语歌词没有翻译时用 VCP 的模型翻成中文
+        window.setupMusicSmart?.(app); // 智能歌单：检索框里的条件词（喜欢、没听过、次数>N……），存下来自己更新
+        window.setupMusicDesktopLyrics?.(app); // 桌面歌词：开着时把当前行送给桌面上的歌词条
         app.setupWebDavHandlers();
         app.setupMediaSessionHandlers();
 
@@ -389,17 +456,20 @@ document.addEventListener('DOMContentLoaded', () => {
         app.visualizerCanvas.width = app.visualizerCanvas.clientWidth;
         app.visualizerCanvas.height = app.visualizerCanvas.clientHeight;
         app.recreateParticles();
+        await refreshAudioEngineEndpoint();
         app.connectWebSocket();
         if (!app.animationFrameId) app.startVisualizerAnimation();
         app.updateModeButton();
         await initializeTheme();
+        window.MusicIntroLib?.init(app);
 
-        app.updateSidebarToggleState(localStorage.getItem('musicSidebarCollapsed') === 'true');
+        if (typeof initMusicDock === 'function') initMusicDock(app);
 
         app.phantomAudio.src = app.createSilentAudio();
         app.wnpAdapter = new WebNowPlayingAdapter(app);
 
         if (app.api?.getMusicPlaylist) {
+            let restoreQueueAfterSidebar = false;
             const savedPlaylist = await app.api.getMusicPlaylist();
             if (savedPlaylist && savedPlaylist.length > 0) {
                 app.playlist = savedPlaylist;
@@ -420,9 +490,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 app.playRequestedTrack(pendingPlayback)
                     .catch(error => console.error('[Music] Pending playback failed:', error));
             } else if (app.playlist.length > 0) {
-                // 没有待播放曲目：回到上次听的那首（找不到就第一首），不自动播放。
+                // 没有待播放曲目：回到上次听的那首和进度（找不到就第一首），不自动播放。
                 let initialIndex = 0;
-                try {
+                const resume = app.sessionStartPoint?.();
+                if (resume) initialIndex = resume.index;
+                else try {
                     const lastPath = app.normalizePathForCompare(localStorage.getItem('musicLastTrackPath'));
                     const found = lastPath
                         ? app.playlist.findIndex(t => app.normalizePathForCompare(t.path) === lastPath)
@@ -430,11 +502,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (found !== -1) initialIndex = found;
                 } catch (error) {}
                 app.loadTrack(initialIndex, false)
+                    .then(() => {
+                        // 加载期间用户没换歌，才跳回上次的进度
+                        const total = Number(app.lastKnownDuration) || 0;
+                        if (resume && resume.time > 1 && !(total > 0 && resume.time > total - 3)
+                            && app.currentTrackIndex === initialIndex && !app.playIntent) app.seekTo(resume.time);
+                    })
                     .catch(error => console.error('[Music] Initial track load failed:', error));
+                restoreQueueAfterSidebar = !pendingTrack;
             }
 
             await app.loadCustomPlaylists();
             app.renderSidebarContent('all');
+            // 侧栏初始化会清掉当前列表，所以上次的上下文和手动队列放在它之后恢复。
+            if (restoreQueueAfterSidebar) app.applySessionQueue?.();
 
             const initialState = await app.api.getMusicState();
             if (initialState?.state?.volume !== undefined) {
@@ -442,6 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 app.updateVolumeSliderBackground(initialState.state.volume);
             }
             syncInitialSettings(initialState);
+            app.refreshAcousticSummary?.();
         }
         app.populateDeviceList(false);
 
@@ -458,11 +540,32 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const setupEventListeners = () => {
+        // 从资源管理器拖进来的文件：拦下默认动作，不然 Chromium 会跳去打开那个文件，整个播放器被换掉。
+        // 能拿到本地路径时（新 preload）把拖进来的歌和文件夹加进曲库；拿不到就只是拦下。
+        // 窗口里自己的拖拽（行拖到底栏入队）不带 Files，不受影响。
+        const isFileDrag = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+        const canImport = () => typeof app.api?.getPathForFile === 'function' && typeof app.api?.addMusicPaths === 'function';
+        document.addEventListener('dragover', (event) => {
+            if (!isFileDrag(event)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = canImport() ? 'copy' : 'none';
+        });
+        document.addEventListener('drop', (event) => {
+            if (!isFileDrag(event)) return;
+            event.preventDefault();
+            if (!canImport()) return;
+            const paths = Array.from(event.dataTransfer.files || [])
+                .map((file) => { try { return app.api.getPathForFile(file); } catch (_) { return ''; } })
+                .filter(Boolean);
+            if (paths.length) app.api.addMusicPaths(paths)?.catch?.((error) => console.error('[Music] Adding dropped files failed:', error));
+        });
+
         const formatCandidateDuration = (durationMs) => {
             const seconds = Math.max(0, Math.round((durationMs || 0) / 1000));
             return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
         };
 
+        const errText = (err, fallback) => (window.MusicErrorText ? window.MusicErrorText(err, fallback) : (err?.message || err || fallback));
         const setLyricsFetchStatus = (message = '', type = '') => {
             app.lyricsFetchStatus.textContent = message;
             app.lyricsFetchStatus.className = `lyrics-fetch-status${type ? ` ${type}` : ''}`;
@@ -579,7 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
             app.lyricsFetchCandidates = [];
             app.lyricsFetchSelection.textContent = '尚未选择歌词版本';
             app.lyricsFetchResults.innerHTML = '<div class="music-modal-empty"><div class="spinner"></div><div>正在并行搜索并检测歌词格式...</div></div>';
-            setLyricsFetchStatus('正在连接网易云、QQ 音乐、酷狗与 AMLL...');
+            setLyricsFetchStatus('正在连接网易云、QQ 音乐、酷狗与 AMLL…');
 
             try {
                 const result = await app.api.searchMusicLyricsCandidates({
@@ -594,14 +697,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 setLyricsFetchStatus(
                     result?.success
                         ? `找到 ${app.lyricsFetchCandidates.length} 个可用版本`
-                        : (result?.message || '歌词搜索失败'),
+                        : errText(result?.message, '歌词搜索失败'),
                     result?.success ? 'success' : 'error'
                 );
             } catch (error) {
                 if (requestToken !== app.lyricsFetchRequestToken) return;
                 app.lyricsFetchCandidates = [];
                 renderLyricsCandidates();
-                setLyricsFetchStatus(error?.message || '歌词搜索失败', 'error');
+                setLyricsFetchStatus(errText(error, '歌词搜索失败'), 'error');
             } finally {
                 if (requestToken === app.lyricsFetchRequestToken) {
                     app.lyricsFetchSearchBtn.disabled = false;
@@ -619,7 +722,7 @@ document.addEventListener('DOMContentLoaded', () => {
             app.lyricsFetchTitle.value = app.stripAudioExtension(track.title) || '';
             app.lyricsFetchArtist.value = track.artist || '';
             app.lyricsFetchTrack.textContent = `${app.stripAudioExtension(track.title) || '未知歌曲'} · ${track.artist || '未知艺术家'}`;
-            app.lyricsFetchResults.innerHTML = '<div class="music-modal-empty">点击“搜索多个源”查找可用歌词版本</div>';
+            app.lyricsFetchResults.innerHTML = '<div class="music-modal-empty">点「搜索多个源」查找可用的歌词版本</div>';
             app.lyricsFetchSelection.textContent = '尚未选择歌词版本';
             app.lyricsFetchApply.disabled = true;
             app.lyricsFetchSearchBtn.disabled = false;
@@ -631,8 +734,9 @@ document.addEventListener('DOMContentLoaded', () => {
         app.lyricsFetchSearchBtn.onclick = searchLyricsCandidates;
         app.lyricsFetchClose.onclick = closeLyricsFetchModal;
         // 点击遮罩不关闭；仅允许通过 Esc 或 × 主动关闭窗口。
+        // 中文输入法选词时按的回车、Esc 是给输入法的（isComposing），不算确定或关闭。
         app.lyricsFetchTitle.onkeydown = app.lyricsFetchArtist.onkeydown = (event) => {
-            if (event.key === 'Enter') searchLyricsCandidates();
+            if (event.key === 'Enter' && !event.isComposing) searchLyricsCandidates();
         };
         app.lyricsFetchApply.onclick = async () => {
             const track = app.playlist[app.lyricsFetchTrackIndex];
@@ -643,7 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (app.pendingTrackPath === track.path) app.lyricsRequestToken++;
             app.lyricsFetchApply.disabled = true;
             app.lyricsFetchSearchBtn.disabled = true;
-            setLyricsFetchStatus('正在覆盖当前歌词文件...');
+            setLyricsFetchStatus('正在覆盖当前歌词文件…');
             try {
                 const result = await app.api.applyMusicLyricsCandidate({
                     candidateKey: app.selectedLyricsCandidateKey,
@@ -652,7 +756,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (requestToken !== app.lyricsFetchRequestToken) return;
                 if (!result?.success) {
-                    setLyricsFetchStatus(result?.message || '覆盖歌词失败', 'error');
+                    setLyricsFetchStatus(errText(result?.message, '覆盖歌词失败'), 'error');
                     app.lyricsFetchApply.disabled = false;
                     return;
                 }
@@ -667,7 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 获取成功后保留窗口及结果，由用户主动关闭。
             } catch (error) {
                 if (requestToken !== app.lyricsFetchRequestToken) return;
-                setLyricsFetchStatus(error?.message || '覆盖歌词失败', 'error');
+                setLyricsFetchStatus(errText(error, '覆盖歌词失败'), 'error');
                 app.lyricsFetchApply.disabled = false;
             } finally {
                 if (requestToken === app.lyricsFetchRequestToken) app.lyricsFetchSearchBtn.disabled = false;
@@ -697,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const offsetX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
             const width = rect.width;
 
-            if (app.lastKnownDuration > 0) {
+            if (app.lastKnownDuration > 0 && width > 0) {
                 const newTime = (offsetX / width) * app.lastKnownDuration;
                 // Update UI immediately
                 app.progress.style.width = `${(newTime / app.lastKnownDuration) * 100}%`;
@@ -730,9 +834,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
         app.addFolderBtn.onclick = () => app.api?.addMusicFolder?.();
-        app.shareBtn.onclick = () => {
-            if (app.pendingTrackPath) app.api?.shareMusicTrack?.(app.pendingTrackPath);
-        };
+        app.shareBtn.onclick = () => app.shareCurrentTrack();
 
         app.deviceSelect.onchange = () => app.configureOutput();
         app.wasapiSwitch.onchange = () => { if (!app.wasapiSwitch._programmaticUpdate) app.configureOutput(); };
@@ -746,10 +848,12 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         app.firTapsSelect.onchange = () => app.sendEqSettings();
         app.eqPresetSelect.onchange = (e) => app.applyEqPreset(e.target.value);
-        app.ditherSwitch.onchange = () => app.updateOptimizations();
+        app.ditherSwitch.onchange = () => { app.syncDitherSection(); app.updateOptimizations(); };
         app.replaygainSwitch.onchange = () => {
             if (app.replaygainSwitch._programmaticUpdate) return;
             app.loudnessModeSelect.value = app.replaygainSwitch.checked ? 'replaygain_track' : 'track';
+            // 只换模式不开归一化，开关亮了却什么都不变。
+            if (app.replaygainSwitch.checked) app.loudnessSwitch.checked = true;
             app.updateLoudnessSettings();
         };
         app.upsamplingSelect.onchange = () => app.configureUpsampling();
@@ -808,10 +912,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         app.loadAvailableIrPresets();
-        app.irLoadBtn.onclick = async () => {
-            const filePath = await app.api.selectMusicIrFile();
-            if (filePath) app.loadIrFile(filePath);
-        };
+        app.irLoadBtn.onclick = () => app.pickIrFile();
 
         // --- IR Help Tip Logic ---
         const irHelpIcon = document.getElementById('ir-help-icon');
@@ -880,12 +981,28 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         app.playlistEl.addEventListener('scroll', markSidebarScrolling, { passive: true });
 
+        // 经典列表当前显示的顺序（可能按标题、歌手等排过序）。
+        app.classicOrder = () => {
+            // 档案页开着时经典列表还没重画，按它待画的那组歌算
+            if (app.classicPendingSongs) { const inLib = new Set(app.playlist); return app.classicPendingSongs.filter(t => inLib.has(t)); }
+            // 列表只建了看得见的那些行，顺序按它要显示的整组歌算
+            const shown = app.classicShownSongs?.();
+            if (Array.isArray(shown)) { const inLib = new Set(app.playlist); return shown.filter(t => inLib.has(t)); }
+            return Array.from(app.playlistEl.children, li => app.playlist[Number(li.dataset.index)]).filter(Boolean);
+        };
         app.playlistEl.addEventListener('click', (e) => {
-            if (e.target.tagName === 'LI') app.loadTrack(parseInt(e.target.dataset.index, 10));
+            const li = e.target.closest?.('li');
+            if (!li || !app.playlistEl.contains(li)) return;
+            const index = parseInt(li.dataset.index, 10);
+            // 从经典列表点播：上下文就是看到的这一组、按看到的顺序。
+            if (typeof app.playFromContext === 'function') {
+                app.playFromContext(app.classicOrder(), index, { source: app.filteredPlaylistSource, origin: 'classic', render: false });
+            } else app.loadTrack(index);
         });
         app.playlistEl.addEventListener('contextmenu', (e) => {
-            if (e.target.tagName === 'LI') {
-                e.preventDefault(); app.contextMenuTrackIndex = parseInt(e.target.dataset.index, 10);
+            const li = e.target.closest?.('li');
+            if (li && app.playlistEl.contains(li)) {
+                e.preventDefault(); app.contextMenuTrackIndex = parseInt(li.dataset.index, 10);
                 app.showContextMenu(e.clientX, e.clientY);
             }
         });
@@ -904,23 +1021,159 @@ document.addEventListener('DOMContentLoaded', () => {
             const name = app.playlistNameInput.value.trim();
             if (name && app.pendingAddToPlaylist) { app.pendingAddToPlaylist(name); app.hidePlaylistDialog(); }
         };
-        app.playlistNameInput.onkeydown = (e) => { if (e.key === 'Enter') app.dialogConfirm.click(); if (e.key === 'Escape') app.dialogCancel.click(); };
+        app.playlistNameInput.onkeydown = (e) => {
+            if (e.isComposing) return; // 输入法还在选词：回车是把拼音上屏，不是确定
+            if (e.key === 'Enter') app.dialogConfirm.click();
+            if (e.key === 'Escape') app.dialogCancel.click();
+        };
 
         app.modalCloseBtn.onclick = app.modalDoneBtn.onclick = () => { app.playlistEditModal.classList.remove('visible'); if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists'); };
         app.modalSearchInput.oninput = (e) => { app.modalSearchQuery = e.target.value; app.renderModalSongList(); };
 
         document.addEventListener('click', (e) => { if (!app.contextMenu.contains(e.target)) app.contextMenu.classList.remove('visible'); });
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && app.lyricsFetchModal.classList.contains('visible')) closeLyricsFetchModal();
+            if (e.key === 'Escape' && !e.isComposing && app.lyricsFetchModal.classList.contains('visible')) closeLyricsFetchModal();
         });
+        // ── 右键菜单的作用范围 ──
+        // 「从列表中移除」要按右键时所在的视图决定删哪里，而不是按上一次从哪里点播。
+        // 经典列表记下它此刻显示的是哪一组；档案页由档案视图告诉我们选中的是哪一列。
+        const appHooks = (globalThis.MusicAppHooks || require('./music-app-hooks.js'));
+        app.playlistViewSource = null;
+        appHooks.wrap(app, 'renderPlaylist', 'menu-scope', (renderPlaylistBase) => (filtered) => {
+            let source = filtered ? (app.filteredPlaylistSource || { type: 'filter' }) : null;
+            if (source?.type === 'playlist') {
+                // 语义搜索等别的入口不会清掉旧的歌单来源：显示的歌不全在这个歌单里，就不算歌单视图。
+                const pl = app.customPlaylists.find(p => p.id === source.id);
+                const paths = new Set(pl ? pl.tracks : []);
+                if (!pl || !filtered.every(t => paths.has(t.path))) source = { type: 'filter' };
+            }
+            app.playlistViewSource = source;
+            const result = renderPlaylistBase(filtered);
+            // 正在放的上下文是从经典列表点出来的：列表换了排序（同一组歌），队列跟着换顺序。
+            if (app.contextFrom?.('classic') && app.classicOrder) app.reorderContext(app.classicOrder(), 'classic');
+            return result;
+        });
+        let pendingMenuSurface = null;
+        document.addEventListener('contextmenu', (e) => {
+            pendingMenuSurface = e.target?.closest?.('#playlist') ? 'classic'
+                : e.target?.closest?.('#music-archive-view') ? 'archive' : null;
+        }, true);
+        document.addEventListener('click', (e) => {
+            if (e.target?.closest?.('#music-archive-view [data-act="save"]')) pendingMenuSurface = 'archive';
+        }, true);
+        const archiveMenuScope = () => {
+            if (app.contextMenuScopeHint !== undefined) { const hint = app.contextMenuScopeHint; app.contextMenuScopeHint = undefined; return hint; }
+            try {
+                const d = app.archiveView?.debug?.();
+                const n = d?.columns?.length || 0;
+                const id = n ? d.columns[((d.lane % n) + n) % n].id : '';
+                if (id.startsWith('playlist:')) {
+                    const plId = id.slice('playlist:'.length);
+                    const pl = app.customPlaylists.find(p => String(p.id) === plId);
+                    if (pl) return { type: 'playlist', id: pl.id, name: pl.name };
+                }
+            } catch (err) { /* 拿不到就按曲库处理，曲库移除会先确认 */ }
+            return null;
+        };
+        appHooks.wrap(app, 'showContextMenu', 'menu-scope', (showContextMenuBase) => (x, y) => {
+            const surface = pendingMenuSurface;
+            pendingMenuSurface = null;
+            app.contextMenuScope = surface === 'classic' ? app.playlistViewSource
+                : surface === 'archive' ? archiveMenuScope() : null;
+            return showContextMenuBase(x, y);
+        });
+        const notify = (message, action) => {
+            try { window.MusicToast?.show?.({ message, action }); } catch (err) { /* 提示层不在时只是没有撤销 */ }
+        };
+        const removeFromPlaylist = (scope, track) => {
+            const pl = app.customPlaylists.find(p => p.id === scope.id);
+            if (!pl) return;
+            const at = pl.tracks.indexOf(track.path);
+            if (at < 0) return;
+            pl.tracks.splice(at, 1);
+            const refresh = () => {
+                app.saveCustomPlaylists();
+                if (app.playlistViewSource?.type === 'playlist' && app.playlistViewSource.id === pl.id) {
+                    app.currentFilteredTracks = pl.tracks.map(p => app.playlist.find(tr => tr.path === p)).filter(Boolean);
+                    app.renderPlaylist(app.currentFilteredTracks);
+                }
+                app.archiveView?.refresh?.();
+                app.refreshPreload?.();
+            };
+            refresh();
+            notify(`已从歌单「${pl.name}」移除`, { label: '撤销', run: () => { if (!pl.tracks.includes(track.path)) { pl.tracks.splice(Math.min(at, pl.tracks.length), 0, track.path); refresh(); } } });
+        };
+        const removeFromLibrary = async (index) => {
+            const track = app.playlist[index];
+            if (!track) return;
+            const name = app.stripAudioExtension ? app.stripAudioExtension(track.title || '') : (track.title || '');
+            const ask = { title: `从曲库移除「${name}」？`, message: '只是不再显示在播放器里，磁盘上的文件不会删除。', confirmText: '移除', danger: true };
+            const ok = window.MusicDialog ? await window.MusicDialog.confirm(ask) : confirm(`${ask.title}\n${ask.message}`);
+            // 确认框开着时列表可能已经变了（扫描、别处删除）：按对象重新找位置。
+            if (!ok) return;
+            index = app.playlist.indexOf(track);
+            if (index < 0) return;
+            const wasCurrent = app.currentTrackIndex === index;
+            // 删的正是在放的这首：先按当前列表记下它后面那首，删完直接接上（不跳过一首）。
+            const active = app.currentFilteredTracks || app.playlist;
+            const pos = active.indexOf(track);
+            const follower = wasCurrent && active.length > 1 ? active[(pos + 1) % active.length] : null;
+            const wasPlaying = Boolean(app.isPlaying || app.playIntent);
+            app.playlist.splice(index, 1);
+            if (Array.isArray(app.currentFilteredTracks)) app.currentFilteredTracks = app.currentFilteredTracks.filter(t => t !== track);
+            if (!wasCurrent && app.currentTrackIndex > index) app.currentTrackIndex--;
+            const view = app.playlistViewSource;
+            if (view && Array.isArray(app.currentFilteredTracks)) app.renderPlaylist(app.currentFilteredTracks);
+            else app.renderPlaylist();
+            if (wasCurrent) {
+                const next = follower && follower !== track ? app.playlist.indexOf(follower) : -1;
+                if (next >= 0) app.loadTrack(next, wasPlaying);
+                else { app.pauseTrack?.(); app.currentTrackIndex = Math.min(index, app.playlist.length - 1); }
+            }
+            app.saveLibrary();
+            app.archiveView?.refresh?.();
+            if (!wasCurrent) app.refreshPreload?.();
+            notify(`已从曲库列表移除「${name}」`, { label: '撤销', run: () => {
+                if (app.playlist.includes(track)) return;
+                const at = Math.min(index, app.playlist.length);
+                app.playlist.splice(at, 0, track);
+                if (app.currentTrackIndex >= at) app.currentTrackIndex++;
+                if (Array.isArray(app.currentFilteredTracks) && view && pos >= 0 && !app.currentFilteredTracks.includes(track)) {
+                    const list = app.currentFilteredTracks.slice();
+                    list.splice(Math.min(pos, list.length), 0, track);
+                    app.currentFilteredTracks = list;
+                }
+                if (app.currentFilteredTracks && view) app.renderPlaylist(app.currentFilteredTracks); else app.renderPlaylist();
+                app.saveLibrary();
+                app.archiveView?.refresh?.();
+                app.refreshPreload?.();
+            } });
+        };
+        app.removeTrackInScope = (index, scope = app.contextMenuScope) => {
+            const track = app.playlist[index];
+            if (!track) return;
+            if (scope?.type === 'playlist') removeFromPlaylist(scope, track);
+            else removeFromLibrary(index);
+        };
+
         app.contextMenu.querySelectorAll('.context-menu-item').forEach(item => {
             item.onclick = (e) => {
                 const action = item.dataset.action; if (!action || action === 'add-to-playlist') return;
                 if (action === 'play') app.loadTrack(app.contextMenuTrackIndex);
                 else if (action === 'get-lyrics') app.openLyricsFetchModal(app.contextMenuTrackIndex);
-                else if (action === 'play-next') {
+                else if (action === 'play-next' || action === 'add-to-queue') {
+                    // 进播放器的手动队列；引擎的预载槽由队列自己去填，不在这里直接写。
                     const t = app.playlist[app.contextMenuTrackIndex];
-                    if (app.api?.queueNextMusicTrack) app.api.queueNextMusicTrack({ path: t.path, username: t.username, password: t.password });
+                    const next = action === 'play-next';
+                    const before = app.queueSnapshot?.() || [];
+                    const queued = next ? app.queuePlayNext?.(t) : app.queueAdd?.(t);
+                    if (queued) {
+                        const name = app.stripAudioExtension ? app.stripAudioExtension(queued.title || '') : (queued.title || '');
+                        try {
+                            window.MusicToast?.show({ id: 'queue', kind: 'success', message: `${next ? '下一首播放' : '已加入队列'}：${name}`,
+                                action: { label: '撤销', run: () => app.queueRevert([queued], before) } });
+                        } catch (err) { /* 没有提示层也不影响入队 */ }
+                    }
                 } else if (action === 'create-playlist-add') {
                     app.showPlaylistDialog((name) => {
                         const id = Date.now().toString(), track = app.playlist[app.contextMenuTrackIndex];
@@ -928,40 +1181,33 @@ document.addEventListener('DOMContentLoaded', () => {
                         app.saveCustomPlaylists(); if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists');
                     });
                 } else if (action === 'remove-from-list') {
-                    if (app.filteredPlaylistSource?.type === 'playlist') {
-                        const pl = app.customPlaylists.find(p => p.id === app.filteredPlaylistSource.id);
-                        if (pl) {
-                            const t = app.playlist[app.contextMenuTrackIndex];
-                            pl.tracks = pl.tracks.filter(tp => tp !== t.path);
-                            app.currentFilteredTracks = pl.tracks.map(p => app.playlist.find(tr => tr.path === p)).filter(Boolean);
-                            app.saveCustomPlaylists(); app.renderPlaylist(app.currentFilteredTracks);
-                        }
-                    } else {
-                        const t = app.playlist[app.contextMenuTrackIndex];
-                        app.playlist.splice(app.contextMenuTrackIndex, 1);
-                        if (app.currentTrackIndex === app.contextMenuTrackIndex) app.nextTrack();
-                        else if (app.currentTrackIndex > app.contextMenuTrackIndex) app.currentTrackIndex--;
-                        app.renderPlaylist(); app.api?.saveMusicPlaylist?.(app.playlist);
-                    }
+                    app.removeTrackInScope(app.contextMenuTrackIndex);
                 }
                 app.contextMenu.classList.remove('visible');
             };
         });
 
         app.searchInput.oninput = (e) => {
-            if (app.isSemanticSearchActive) return; // 语义搜索模式下不进行实时过滤
+            if (app.isSemanticSearchActive) {
+                // 语义搜索模式下不随输入过滤；但把框清空就回到整个曲库，不然还停在上一次的语义结果上。
+                if (!app.searchInput.value.trim() && app.currentFilteredTracks) {
+                    app.currentFilteredTracks = null; app.filteredPlaylistSource = null;
+                    app.renderPlaylist(null);
+                }
+                return;
+            }
             // 连续输入时只在停顿后过滤一次，避免每敲一个字就重建整个列表。
             clearTimeout(app.searchInputTimer);
             app.searchInputTimer = setTimeout(() => {
                 if (app.isSemanticSearchActive) return;
-                const query = app.searchInput.value.toLowerCase();
-                app.currentFilteredTracks = query ? app.playlist.filter(t => (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query)) : null;
+                const query = app.searchInput.value.trim();
+                app.currentFilteredTracks = query ? app.searchTracks(app.playlist, query) : null; app.filteredPlaylistSource = null; // 搜索结果是整个曲库里搜的，不再算某个歌单
                 app.renderPlaylist(app.currentFilteredTracks);
             }, 120);
         };
 
         app.searchInput.onkeydown = (e) => {
-            if (e.key === 'Enter' && app.isSemanticSearchActive) {
+            if (e.key === 'Enter' && !e.isComposing && app.isSemanticSearchActive) {
                 const query = app.searchInput.value.trim();
                 if (query) app.performSemanticSearch(query);
             }
@@ -970,17 +1216,16 @@ document.addEventListener('DOMContentLoaded', () => {
         app.semanticSearchBtn.onclick = () => {
             app.isSemanticSearchActive = !app.isSemanticSearchActive;
             app.semanticSearchBtn.classList.toggle('active', app.isSemanticSearchActive);
-            app.searchInput.placeholder = app.isSemanticSearchActive ? "输入描述进行语义搜索..." : "搜索歌曲...";
+            app.searchInput.placeholder = app.isSemanticSearchActive ? "描述想听的歌，按语义搜索" : "搜索歌曲";
             
             if (!app.isSemanticSearchActive) {
                 // 退出语义搜索时恢复普通搜索
-                const query = app.searchInput.value.toLowerCase();
-                app.currentFilteredTracks = query ? app.playlist.filter(t => (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query)) : null;
+                const query = app.searchInput.value.trim();
+                app.currentFilteredTracks = query ? app.searchTracks(app.playlist, query) : null; app.filteredPlaylistSource = null; // 搜索结果是整个曲库里搜的，不再算某个歌单
                 app.renderPlaylist(app.currentFilteredTracks);
             }
         };
 
-        app.sidebarToggleBtn.onclick = () => app.toggleSidebarPanel();
         app.minimizeBtn.onclick = () => { app.api?.minimizeWindow?.(); };
         app.maximizeBtn.onclick = () => { app.api?.maximizeWindow?.(); };
         app.closeBtn.onclick = () => { app.api?.closeWindow?.(); };
@@ -995,15 +1240,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const setupElectronHandlers = () => {
         if (!app.api?.onMusicScanStart) return;
-        app.api.onMusicScanStart(() => { app.loadingIndicator.style.display = 'flex'; app.scanProgressContainer.style.display = 'none'; });
+        // 同时在扫几个文件夹（连着拖进来、或扫描途中又加了一个）：先扫完的那个不能把「正在扫描」藏掉。
+        let activeScans = 0;
+        app.api.onMusicScanStart(() => { activeScans += 1; app.loadingIndicator.style.display = 'flex'; app.scanProgressContainer.style.display = 'none'; });
         app.api.onMusicScanProgress((data) => {
             app.scanProgressContainer.style.display = 'block';
-            const percent = (data.current / data.total) * 100;
+            const percent = data.total > 0 ? Math.min(100, (data.current / data.total) * 100) : 0;
             app.scanProgressBar.style.width = `${percent}%`;
             app.scanProgressLabel.textContent = `正在扫描: ${data.current} / ${data.total}`;
         });
+        // 扫描途中先把新读到的曲目接到列表末尾，不用等整个文件夹读完才看得到歌；
+        // 列表最多每 400 毫秒重排一次。扫描结束时下面的 complete 再按磁盘顺序整理并保存。
+        let scanBatchTimer = 0;
+        let scanKnownPaths = null;
+        let scanAddedPaths = null;
+        const flushScanBatches = () => {
+            scanBatchTimer = 0;
+            app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView);
+        };
+        app.api.onMusicScanBatch?.((data) => {
+            const incoming = data && Array.isArray(data.tracks) ? data.tracks : [];
+            if (!scanKnownPaths) scanKnownPaths = new Set(app.playlist.map(t => t.path));
+            const fresh = incoming.filter(t => t && t.path && !scanKnownPaths.has(t.path));
+            if (!fresh.length) return;
+            if (!scanAddedPaths) scanAddedPaths = new Set();
+            fresh.forEach(t => { scanKnownPaths.add(t.path); scanAddedPaths.add(t.path); });
+            // 换一个新数组：各视图靠数组身份判断曲库变了没有。
+            app.playlist = app.playlist.concat(fresh);
+            if (!scanBatchTimer) scanBatchTimer = setTimeout(flushScanBatches, 400);
+        });
         app.api.onMusicScanComplete((data) => {
-            app.loadingIndicator.style.display = 'none';
+            clearTimeout(scanBatchTimer); scanBatchTimer = 0; scanKnownPaths = null;
+            // 途中先接上去的曲目按读完的先后排着，这里让它们回到磁盘顺序。
+            const addedDuringScan = scanAddedPaths;
+            const playingPath = app.playlist[app.currentTrackIndex]?.path;
+            activeScans = Math.max(0, activeScans - 1);
+            if (!activeScans) app.loadingIndicator.style.display = 'none';
             // data may be { tracks, folderPath } (new format) or plain array (legacy)
             const newPlaylist = Array.isArray(data) ? data : (data.tracks || []);
             const folderPath = Array.isArray(data) ? null : (data.folderPath || null);
@@ -1012,18 +1284,31 @@ document.addEventListener('DOMContentLoaded', () => {
             const scannedMap = new Map(newPlaylist.map(t => [t.path, t]));
             const scannedPaths = new Set(scannedMap.keys());
 
-            // Normalize folder path for prefix matching (ensure trailing separator)
-            const folderPrefix = folderPath ? folderPath.replace(/[\\/]+$/, '') : null;
+            // 只有真的在这个文件夹里面的曲目才算「这次该扫到」：D:\Music 不能把 D:\Music2 里的歌也算进来。
+            // 扫描本身失败（failed）时什么都不删，免得一次读取错误把整个文件夹从曲库里清掉。
+            const folderKey = folderPath && !data.failed
+                ? String(app.normalizePathForCompare(folderPath) || '').replace(/\/+$/, '') + '/'
+                : null;
+            const insideFolder = (p) => Boolean(folderKey) && String(app.normalizePathForCompare(p) || '').startsWith(folderKey);
 
             const updatedPlaylist = [];
             const handledPaths = new Set();
+            // 这次扫描途中先接上去的曲目：先从原位置拿掉，下面按磁盘顺序放回（用同一个对象）。
+            // 同时在扫的另一个文件夹接上去的不归这次管，留在原处。
+            const appended = new Map();
 
             for (const track of app.playlist) {
+                if (addedDuringScan?.has(track.path) && scannedPaths.has(track.path)) {
+                    appended.set(track.path, track);
+                    addedDuringScan.delete(track.path);
+                    continue;
+                }
                 if (scannedPaths.has(track.path)) {
-                    // Track exists in new scan — use updated metadata
-                    updatedPlaylist.push(scannedMap.get(track.path));
+                    // 已有的曲目原地更新信息，保住对象本身：歌单视图、队列、播放历史都拿着它。
+                    Object.assign(track, scannedMap.get(track.path));
+                    updatedPlaylist.push(track);
                     handledPaths.add(track.path);
-                } else if (folderPrefix && track.path.startsWith(folderPrefix)) {
+                } else if (insideFolder(track.path)) {
                     // Track belongs to the scanned folder but was NOT found in new scan
                     // → file was deleted from disk, remove it from playlist
                     // (skip adding it)
@@ -1036,13 +1321,19 @@ document.addEventListener('DOMContentLoaded', () => {
             // Add brand-new tracks that weren't in the existing playlist
             for (const track of newPlaylist) {
                 if (!handledPaths.has(track.path)) {
-                    updatedPlaylist.push(track);
+                    const early = appended.get(track.path);
+                    updatedPlaylist.push(early ? Object.assign(early, track) : track);
                 }
             }
 
+            if (scanAddedPaths && !scanAddedPaths.size) scanAddedPaths = null;
             app.playlist = updatedPlaylist;
+            if (playingPath) {
+                const at = updatedPlaylist.findIndex(t => t.path === playingPath);
+                if (at !== -1) app.currentTrackIndex = at;
+            }
             app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView);
-            app.api.saveMusicPlaylist(app.playlist);
+            app.saveLibrary();
         });
         if (app.api?.onThemeUpdated) {
             app.api.onThemeUpdated((theme) => app.applyTheme(theme));
@@ -1069,12 +1360,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // 换歌时清掉上一首的进度样本，免得新歌第一次状态被当成「在往前走」。
+    app.resetEngineProgress = () => { app.lastEngineProgress = null; };
     app.updateUIWithState = (state, options = {}) => {
         if (!state) return;
+        app.syncOutputFallback?.(state);
         // 切歌加载期间引擎报的还是上一首（或已停止）的状态，写进界面会让进度条和按钮乱跳。
         if (app.isTrackLoading && !options.force) return;
+        // 引擎重启过（主进程会自动拉起）：里面已经没有歌了。记下来，再按播放就重新加载这首，
+        // 而不是对着空引擎发「播放」、一直报播放失败。
+        if ('file_path' in state && !state.file_path && !state.is_loading && app.engineTrackPath) app.engineTrackPath = null;
         app.lastKnownCurrentTime = state.current_time; app.lastKnownDuration = state.duration;
         app.lastStateUpdateTime = Date.now();
+        app.syncMediaPosition?.();
         if (state.duration > 0 && !app.dragInProgress) {
             const percent = (state.current_time / state.duration) * 100;
             app.progress.style.width = `${percent}%`;
@@ -1093,10 +1391,19 @@ document.addEventListener('DOMContentLoaded', () => {
             // 跳转造成的大幅位移不算“在播”
             advancing = moved > 0.02 && moved < (nowMs - prev.at) / 1000 + 1;
         }
-        const enginePlaying = state.is_playing === true || (state.is_paused !== true && advancing);
+        // 引擎推送的状态带指令序号确认过（options.confirmed），不需要靠进度推断，也不需要防抖。
+        const enginePlaying = options.confirmed
+            ? state.is_playing === true
+            : state.is_playing === true || (state.is_paused !== true && advancing);
         if (enginePlaying === app.isPlaying) {
             app.stateMismatchPolls = 0;
             if (enginePlaying === app.expectedPlayingState) app.isChangingState = false;
+        } else if (options.confirmed) {
+            app.stateMismatchPolls = 0;
+            app.isChangingState = false;
+            app.playIntent = enginePlaying;
+            app.applyPlayingUi(enginePlaying);
+            if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
         } else if (options.force) {
             app.stateMismatchPolls = 0;
             // 刚加载好的曲目一定是停止状态；用户想播放时由 loadTrack 接着发播放指令，这里不改按钮。
@@ -1125,6 +1432,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (state.dynamic_loudness_factor !== undefined) {
             app.dynamicLoudnessFactor.textContent = state.dynamic_loudness_factor.toFixed(2) + 'x';
+            // 引擎报上来之前不显示「补偿：--」这种占位
+            const info = app.dynamicLoudnessFactor.parentElement;
+            if (info?.hidden) info.hidden = false;
         }
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
     };
@@ -1136,6 +1446,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.deviceSelect.value = s.device_id === null ? 'default' : s.device_id;
         app.wasapiSwitch._programmaticUpdate = true; app.wasapiSwitch.checked = s.exclusive_mode;
         Promise.resolve().then(() => app.wasapiSwitch._programmaticUpdate = false);
+        app.syncOutputFallback?.(s);
         if (s.eq_enabled !== undefined) {
             app.eqEnabled = s.eq_enabled; app.eqSwitch._programmaticUpdate = true;
             app.eqSwitch.checked = s.eq_enabled;
@@ -1152,6 +1463,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app._syncedFirTaps = parseInt(app.firTapsSelect.value, 10) || 1023;
         if (s.dither_enabled !== undefined) {
             app.ditherSwitch._programmaticUpdate = true; app.ditherSwitch.checked = s.dither_enabled;
+            app.syncDitherSection();
             Promise.resolve().then(() => app.ditherSwitch._programmaticUpdate = false);
         }
         if (s.output_bits !== undefined) {
@@ -1187,8 +1499,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (s.loudness_enabled !== undefined) {
             app.loudnessEnabled = s.loudness_enabled;
             app.loudnessSwitch.checked = s.loudness_enabled;
-            app.loudnessMode = s.loudness_mode;
-            app.loudnessModeSelect.value = s.loudness_mode;
+            // 「专辑」和「流媒体」两档已并掉：引擎里专辑就是按专辑标签，流媒体和单曲实测一样。
+            app.loudnessMode = normalizeLoudnessMode(s.loudness_mode);
+            app.loudnessModeSelect.value = app.loudnessMode;
             app.targetLufs = s.target_lufs;
             app.loudnessLufsSlider.value = s.target_lufs;
             app.loudnessPreampDb = s.preamp_db;
@@ -1224,6 +1537,13 @@ document.addEventListener('DOMContentLoaded', () => {
             app.updateDynamicLoudnessStrengthDisplay();
             app.updateDynamicLoudnessSettings(); // Sync to engine
         }
+        // 旧引擎不认识 crossfade_ms：没有这个字段就不显示，免得开关点了没反应
+        const crossfadeBlock = document.getElementById('crossfade-section');
+        if (crossfadeBlock) crossfadeBlock.style.display = s.crossfade_ms === undefined ? 'none' : '';
+        if (s.crossfade_ms !== undefined && app.crossfadeSelect) {
+            const ms = String(s.crossfade_ms);
+            app.crossfadeSelect.value = [...app.crossfadeSelect.options].some((o) => o.value === ms) ? ms : '0';
+        }
     };
 
     app.setPlayMode = (modeOrIndex) => {
@@ -1236,6 +1556,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem(PLAY_MODE_STORAGE_KEY, app.playModes[app.currentPlayMode]);
         app.updateModeButton();
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+        app.refreshPreload?.();
     };
 
     app.updateModeButton = () => {
@@ -1280,6 +1601,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         crossfeed_mix: app.crossfeedMix,
                         dynamic_loudness_enabled: app.dynamicLoudnessEnabled,
                         dynamic_loudness_strength: app.dynamicLoudnessStrength,
+                        crossfade_ms: parseInt(app.crossfadeSelect?.value, 10) || 0,
                         eq_type: app.eqTypeSelect?.value || 'IIR',
                         eq_enabled: app.eqSwitch?.checked ?? false,
                         eq_bands: app.buildEqBandsPayload(),
@@ -1302,5 +1624,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    init();
+    // 启动中途出错就别让开窗底色层继续盖着；错误照常往外抛
+    init().catch((error) => { window.MusicIntroLib?.dropCover?.(); throw error; });
 });

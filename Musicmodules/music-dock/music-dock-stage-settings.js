@@ -1,0 +1,154 @@
+// Musicmodules/music-dock/music-dock-stage-settings.js
+// 底栏控制页里的舞台设置：把舞台控制舱里的三块（当前舞台的专属设置、全局输出、演出阵列）和「恢复出厂编排」
+// 搬到控制页对应的位置（appendChild，不重建，舞台宿主绑在上面的事件和引用都还在），给专属设置排序、拆说明，
+// 以及控制页下半的「显示」一组（renderExt）和直达舞台设置（openStageSettings）。
+//
+// 从 music-dock.js 拆出来，代码原样搬过来；和底栏共用的状态（state、el）和小工具通过 create(ctx) 传进来。
+(function (global) {
+    'use strict';
+
+    function create(ctx) {
+        const {
+            state, el, cleanups, listen, openPanel,
+            stageActive, currentStageMode, segment, escapeHtml, icon
+        } = ctx;
+
+        const stageRoot = document.getElementById('music-stage');
+        const stageParts = [
+            ['.music-stage-tuning-controls', el.tuneSlot],
+            ['.music-stage-common-controls', el.commonSlot],
+            ['.music-stage-mode-options', el.arraySlot],
+            ['.music-stage-settings-footer', el.advActs]
+        ].map(([selector, slot]) => ({ node: stageRoot?.querySelector(selector), slot })).filter((part) => part.node);
+        const stageSettingsHome = stageParts.map(({ node }) => ({ node, parent: node.parentNode, next: node.nextSibling }));
+        for (const { node, slot } of stageParts) slot.appendChild(node);
+        if (stageParts.length) document.body.classList.add('music-dock-stage-settings');
+        cleanups.push(() => {
+            for (const { node, parent, next } of stageSettingsHome.slice().reverse()) {
+                if (parent?.isConnected) parent.insertBefore(node, next?.parentNode === parent ? next : null);
+            }
+            document.body.classList.remove('music-dock-stage-settings');
+        });
+        const tuningNode = el.tuneSlot.firstElementChild;
+
+        // 每个舞台先露出最常动的几项，其余的收在「全部 N 项」里原地展开。没列出的舞台按定义顺序取前几项。
+        const TUNE_FIRST = Object.freeze({
+            diorama: ['rain', 'lyricCarrier', 'showTranslation', 'letterbox', 'cameraCuts', 'fireworks'],
+            tunnel: ['cameraSpeed', 'showTranslation', 'fontScale', 'starfield', 'showPlanets', 'showShips'],
+            kowloon: ['rain', 'cameraMode', 'lightning', 'reflections', 'showTranslation', 'fog'],
+            orbit: ['tilt', 'roll', 'axisLine', 'showTranslation'],
+            signal: ['panel', 'showSpectrum', 'pulseRate', 'showTranslation'],
+            groupchat: ['echoes', 'voiceNotes', 'fontScale', 'showTranslation'],
+            impression: ['timeOfDay', 'flecks', 'frame', 'showTranslation'],
+            clockwork: ['secondHand', 'fontScale', 'waitingOpacity', 'showTranslation'],
+            hanabi: ['density', 'trails', 'reflection', 'showTranslation'],
+            lumiere: ['smoke', 'dust', 'fontScale', 'showTranslation'],
+            fogpane: ['fog', 'rain', 'drops', 'drips', 'cameraSpeed', 'showTranslation'],
+            inkdraft: ['cameraCuts', 'figures', 'collisions', 'halftone', 'inkFlip', 'showTranslation'],
+            luminous: ['fontScale', 'layoutStyle', 'showTranslation', 'showUpcoming', 'glow'],
+            partita: ['fontScale', 'layoutStyle', 'showTranslation', 'showUpcoming', 'glow'],
+            cadenza: ['fontScale', 'showTranslation', 'showUpcoming', 'heroEmphasis', 'glow'],
+            fume: ['cameraMode', 'cameraSpeed', 'geometricBackground', 'glow', 'heroScale']
+        });
+        const TUNE_FIRST_COUNT = 6;
+        let tuneBusy = false;
+        // 宿主每次换舞台都会重建这些行。这里只做三件事：把「名字（说明）」拆成名字和一行小字说明、
+        // 把常用项排到前面、给其余的行打上记号；控件本身和它上面的事件不动。
+        const dressTuning = () => {
+            if (!tuningNode || tuneBusy) return;
+            tuneBusy = true;
+            try {
+                const rows = Array.from(tuningNode.children);
+                const keyOf = (row) => row.querySelector('[data-stage-config-key]')?.dataset.stageConfigKey || '';
+                for (const row of rows) {
+                    const label = row.querySelector('.music-stage-tuning-label');
+                    if (!label || label.dataset.mdDone) continue;
+                    label.dataset.mdDone = '1';
+                    const match = /^(.+?)（(.+)）$/.exec(label.textContent || '');
+                    if (match) {
+                        label.textContent = match[1];
+                        const note = document.createElement('small');
+                        note.className = 'md-tune-note';
+                        note.textContent = match[2];
+                        label.appendChild(note);
+                    }
+                }
+                const scene = currentStageMode();
+                const wanted = TUNE_FIRST[scene?.id] || [];
+                let first = wanted.map((key) => rows.find((row) => keyOf(row) === key)).filter(Boolean);
+                if (rows.length <= TUNE_FIRST_COUNT + 2) first = rows.slice();
+                else if (first.length < 3) first = rows.slice(0, TUNE_FIRST_COUNT);
+                const rest = rows.filter((row) => !first.includes(row));
+                const ordered = first.concat(rest);
+                if (ordered.some((row, i) => row !== rows[i])) ordered.forEach((row) => tuningNode.appendChild(row));
+                rest.forEach((row) => row.classList.add('md-tune-rest'));
+                first.forEach((row) => row.classList.remove('md-tune-rest'));
+                el.tuneSec.hidden = rows.length === 0;
+                el.tuneMore.hidden = rest.length === 0;
+                el.tuneSlot.classList.toggle('md-tune-all', state.tuneAll || rest.length === 0);
+                el.tuneMore.setAttribute('aria-expanded', String(state.tuneAll));
+                el.tuneMore.innerHTML = `<span>${state.tuneAll ? '只看常用项' : `全部 ${rows.length} 项`}</span>${icon(state.tuneAll ? 'chevron-up' : 'chevron-down', 14)}`;
+                el.tuneTitle.textContent = scene ? `${scene.label}设置` : '舞台设置';
+                el.tuneHint.textContent = scene?.description || '';
+            } finally {
+                tuneBusy = false;
+            }
+        };
+        if (tuningNode) {
+            const tuneObserver = new MutationObserver(() => { dressTuning(); tuneObserver.takeRecords(); });
+            tuneObserver.observe(tuningNode, { childList: true });
+            cleanups.push(() => tuneObserver.disconnect());
+        }
+        listen(el.tuneMore, 'click', () => { state.tuneAll = !state.tuneAll; dressTuning(); });
+        listen(el.advToggle, 'click', () => {
+            const open = el.advBody.hidden;
+            el.advBody.hidden = !open;
+            el.advToggle.setAttribute('aria-expanded', String(open));
+            el.advToggle.classList.toggle('md-open', open);
+        });
+
+        // 「显示」和开场回放在曲库、舞台都可用；当前舞台和共用舞台选项只在演出时可见。
+        function renderExt(show) {
+            el.ext.hidden = !show;
+            if (!show) return;
+            dressTuning();
+            const light = document.body.classList.contains('light-theme');
+            let html = '<div class="md-grp-h"><b>显示</b></div>'
+                + `<div class="md-nrow"><span class="md-lb">外观</span><span class="md-r">`
+                + segment('data-act="theme"', [{ html: icon('sun', 15), aria: '浅色' }, { html: icon('moon', 15), aria: '深色' }], light ? 0 : 1, 'md-inline')
+                + '</span></div>';
+            const motion = global.MusicMotion;
+            if (motion && Array.isArray(motion.PREFERENCES)) {
+                const prefs = motion.PREFERENCES;
+                const at = Math.max(0, prefs.findIndex((p) => p.value === motion.preference));
+                html += `<div class="md-nrow"><span class="md-lb">降低动态</span><span class="md-r">`
+                    + segment('data-act="motion"', prefs.map((p) => ({ html: escapeHtml(p.label), aria: `降低动态：${p.label}` })), at, 'md-inline md-seg-tx')
+                    + '</span></div>';
+            }
+            el.body2.innerHTML = html;
+            const hasIntro = typeof global.MusicIntro?.replay === 'function';
+            el.advToggle.closest('.md-adv').hidden = !hasIntro && !stageActive();
+            let introBtn = el.advActs.querySelector('[data-act="intro"]');
+            if (hasIntro && !introBtn) {
+                el.advActs.insertAdjacentHTML('afterbegin', `<button class="md-wide md-intro" type="button" data-act="intro">${icon('clapperboard', 15)}<span>播放完整开场</span>${icon('chevron-right', 14)}</button>`);
+            } else if (!hasIntro && introBtn) introBtn.remove();
+        }
+        // 以前这里是「舞台调制」子页；现在只是打开控制页并滚到舞台那一段。
+        function openStageSettings() {
+            openPanel('控制');
+            if (!stageActive()) return;
+            // offsetTop counts from the panel, not from the scrolling body below its header,
+            // so it overshot by the header height and hid the section title and first label.
+            const scroller = el.ext.parentElement;
+            if (scroller) {
+                const top = el.tuneSec.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 8;
+                if (top > 0) scroller.scrollTop = top;
+            }
+            el.body.querySelector('[data-act="scene-pick"]')?.focus({ preventScroll: true });
+        }
+
+        return { renderExt, openStageSettings };
+    }
+
+    global.MusicDockStageSettings = { create };
+})(window);

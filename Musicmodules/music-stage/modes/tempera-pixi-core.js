@@ -45,6 +45,43 @@
     const rectPolygon = (x, y, w, h) => [x, y, x + w, y, x + w, y + h, x, y + h];
     const diamondPolygon = (cx, cy, rx, ry) => [cx, cy - ry, cx + rx, cy, cx, cy + ry, cx - rx, cy];
 
+    // Hatch lines cut to their (convex) panel by geometry instead of a
+    // stencil mask: each drift step redraws only the visible segments.
+    const clipSegment = (polygon, x1, y1, x2, y2) => {
+        let t0 = 0, t1 = 1;
+        const n = polygon.length / 2;
+        let cx = 0, cy = 0;
+        for (let i = 0; i < polygon.length; i += 2) { cx += polygon[i]; cy += polygon[i + 1]; }
+        cx /= n; cy /= n;
+        const dx = x2 - x1, dy = y2 - y1;
+        for (let i = 0; i < n; i += 1) {
+            const ax = polygon[i * 2], ay = polygon[i * 2 + 1];
+            const bx = polygon[((i + 1) % n) * 2], by = polygon[((i + 1) % n) * 2 + 1];
+            let nx = -(by - ay), ny = bx - ax;
+            if ((cx - ax) * nx + (cy - ay) * ny < 0) { nx = -nx; ny = -ny; }
+            const num = (x1 - ax) * nx + (y1 - ay) * ny;
+            const den = dx * nx + dy * ny;
+            if (den === 0) { if (num < 0) return null; continue; }
+            const t = -num / den;
+            if (den > 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
+            if (t0 >= t1) return null;
+        }
+        return [x1 + dx * t0, y1 + dy * t0, x1 + dx * t1, y1 + dy * t1];
+    };
+    const drawClippedHatch = (hatch, ox, oy) => {
+        if (hatch.x === ox && hatch.y === oy) return;
+        hatch.x = ox; hatch.y = oy;
+        const g = hatch.graphics;
+        g.clear();
+        let any = false;
+        for (const l of hatch.lines) {
+            const c = clipSegment(hatch.polygon, l.x1 + ox, l.y1 + oy, l.x2 + ox, l.y2 + oy);
+            if (!c) continue;
+            g.moveTo(c[0], c[1]).lineTo(c[2], c[3]);
+            any = true;
+        }
+        if (any) g.stroke({ color: hatch.color, width: 1.2, alpha: 0.45 });
+    };
     const buildHatchLines = (polygon, angle, spacing) => {
         if (polygon.length < 6 || spacing <= 0) return [];
         const xs = [], ys = [];
@@ -194,8 +231,18 @@
 
     // Pixi 渲染器实现
     class TemperaPixiDirector {
-        constructor(container) {
+        constructor(container, options = {}) {
+            // Multisampled canvas only when the stage will not be drawn through
+            // the print filter's own multisampled target (createPostProcess).
+            this.canvasAntialias = options.canvasAntialias !== false;
             this.container = container;
+            // The size is known from the resize observer; reading it every
+            // frame makes the browser lay the page out again before each one.
+            this.sizeKnown = false;
+            if (globalThis.ResizeObserver) {
+                this.sizeObserver = new globalThis.ResizeObserver(() => { this.sizeKnown = false; });
+                this.sizeObserver.observe(container);
+            }
             this.app = null;
             this.sceneContainer = null;
             this.blocksContainer = null;
@@ -226,27 +273,23 @@
             const PIXI = global.PIXI;
             if (!PIXI) throw new Error('PIXI is not loaded');
 
-            const application = new PIXI.Application();
-            this.app = application;
-            await application.init({
+            // A renderer parked by a stage that just went away is reused when
+            // its canvas settings match (see createApplication).
+            const application = await Effects.createApplication(PIXI, {
                 backgroundAlpha: 0,
                 preference: 'webgl',
                 autoStart: false,
-                antialias: true,
+                // See canvasAntialias in the constructor.
+                antialias: this.canvasAntialias,
                 resolution: Math.min(2, global.devicePixelRatio || 1),
                 autoDensity: true
             });
-
-            if (this.destroyed || this.app !== application) {
-                // destroy() may have already released this application while
-                // init was pending. PIXI destruction is not guaranteed to be
-                // safely repeatable, so only dispose it here while still owned.
-                if (this.app === application) {
-                    application.destroy(true, { children: true });
-                    this.app = null;
-                }
+            if (this.destroyed) {
+                // destroy() ran while the renderer was being set up.
+                Effects.releaseApplication(application);
                 return;
             }
+            this.app = application;
             this.app.stop();
             this.container.appendChild(this.app.canvas);
             this.app.canvas.className = 'tempera-pixi-canvas';
@@ -273,7 +316,7 @@
             this.sceneContainer.addChild(this.bloomContainer);
             this.app.stage.addChild(this.sceneContainer);
 
-            this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
+            this.postProcess = Effects.createPostProcess(PIXI, this.app.stage, { canvasAntialias: this.canvasAntialias });
             this.retirement = Effects.createRetirement(PIXI, this.app.stage);
             this.initialized = true;
             this.resize();
@@ -282,6 +325,8 @@
 
         resize() {
             if (!this.initialized || !this.app) return;
+            if (this.sizeKnown && this.sizeObserver) return;
+            this.sizeKnown = true;
             const width = Math.max(1, this.container.clientWidth);
             const height = Math.max(1, this.container.clientHeight);
             if (width === this.width && height === this.height) return;
@@ -359,13 +404,11 @@
                     const hg = new PIXI.Graphics();
                     const angle = (rand() - 0.5) * Math.PI * 0.5;
                     const lines = buildHatchLines(panel.polygon, angle, 14);
-                    lines.forEach(l => hg.moveTo(l.x1, l.y1).lineTo(l.x2, l.y2));
-                    hg.stroke({ color: this.palette.accent, width: 1.2, alpha: 0.45 });
-                    const clip = new PIXI.Graphics().poly(panel.polygon).fill(0xffffff);
                     const wrapper = new PIXI.Container();
-                    wrapper.addChild(hg, clip);
-                    hg.mask = clip;
-                    wrapper.dataset = { delay: i * 0.08 + 0.05, enterDX: panel.enterDX, enterDY: panel.enterDY, hatch: hg };
+                    wrapper.addChild(hg);
+                    const hatch = { graphics: hg, lines, polygon: panel.polygon, color: this.palette.accent, x: NaN, y: NaN };
+                    drawClippedHatch(hatch, 0, 0);
+                    wrapper.dataset = { delay: i * 0.08 + 0.05, enterDX: panel.enterDX, enterDY: panel.enterDY, hatch };
                     this.hatchContainer.addChild(wrapper);
                 }
             });
@@ -474,7 +517,7 @@
                 const ease = 1 - Math.pow(1 - enterProg, 3);
                 const intensity = Effects.amount(tuning.performanceIntensity, 1.25) * motion;
                 h.position.set(d.enterDX * (1 - ease) * motion, d.enterDY * (1 - ease) * motion);
-                d.hatch.position.set(
+                drawClippedHatch(d.hatch,
                     Math.sin(frame.playbackTime * 0.5 + d.delay) * 24 * intensity + tuning.performance.impact * 18,
                     Math.cos(frame.playbackTime * 0.35) * 16 * intensity
                 );
@@ -510,6 +553,8 @@
         }
 
         destroy() {
+            this.sizeObserver?.disconnect();
+            this.sizeObserver = null;
             if (this.destroyed && !this.app) return;
             this.destroyed = true;
             this.pendingShot = null;
@@ -525,16 +570,11 @@
             this.retirement = null;
             this.postProcess?.destroy();
             this.postProcess = null;
-            // PIXI.Application may already own a renderer/canvas even when init()
-            // rejected before `initialized` became true. Always destroy the
-            // application object so failed or interrupted stage entries cannot
-            // retain a WebGL context.
+            // The renderer is parked for the next stage with the same canvas
+            // settings, or destroyed; an unclaimed one is destroyed shortly.
+            // (An init that fails disposes its own application.)
             if (this.app) {
-                try {
-                    this.app.destroy(true, { children: true });
-                } catch (error) {
-                    console.warn('[MusicStage:Tempera] PIXI cleanup failed:', error);
-                }
+                Effects.releaseApplication(this.app);
                 this.app = null;
             }
             this.sceneContainer = null;

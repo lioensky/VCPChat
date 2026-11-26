@@ -1,0 +1,1008 @@
+/*
+ * 舞台页浮层皮肤：顶部模式页签、舞台档案卡、舞台设置抽屉、边缘频谱、旧播放条。
+ * 舞台里的歌词和 3D 场景保持各模式自己的配色，这里只管浮在上面的界面。
+ * 颜色读 --ms-*（深浅随应用主题，舞台自定义主题时随舞台主题）。
+ */
+
+/* ---------- 边缘频谱：去掉金色波浪框，留一圈很淡的单色细线随声音起伏 ---------- */
+.music-stage .music-stage-edge-spectrum {
+    filter: grayscale(1);
+    opacity: .38;
+}
+
+.music-stage .music-stage-edge-corners i {
+    border-color: var(--ms-line);
+    box-shadow: none;
+}
+
+/* ---------- 顶部：字标 + 常显的模式页签 ---------- */
+.music-stage-top-chrome {
+    top: 52px;
+    left: 32px;
+    right: 32px;
+}
+
+.music-stage-wordmark {
+    color: var(--ms-muted);
+    font-family: var(--mt-font-label);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-shadow: var(--ms-text-shadow);
+}
+
+.music-stage-wordmark i {
+    width: 24px;
+    background: var(--ms-line);
+}
+
+.music-stage-mode-switcher,
+.music-stage-mode-switcher:hover,
+.music-stage-mode-switcher:focus-within {
+    width: auto;
+    max-width: min(720px, calc(100vw - 360px));
+    height: 36px;
+    flex-basis: auto;
+    gap: 0;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 2px;
+    background: var(--ms-glass);
+    box-shadow: none;
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    opacity: 1;
+    justify-content: safe center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+
+.music-stage-mode-switcher::-webkit-scrollbar {
+    display: none;
+}
+
+.music-stage-mode-switcher .music-stage-mode-button,
+.music-stage-mode-switcher:hover .music-stage-mode-button,
+.music-stage-mode-switcher:focus-within .music-stage-mode-button,
+.music-stage-mode-switcher .music-stage-mode-button.is-active,
+.music-stage-mode-switcher:hover .music-stage-mode-button.is-active,
+.music-stage-mode-switcher:focus-within .music-stage-mode-button.is-active {
+    position: relative;
+    left: auto;
+    transform: none;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 0;
+    opacity: 1;
+    pointer-events: auto;
+    background: transparent;
+    box-shadow: none;
+    color: var(--ms-muted);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .04em;
+    transition: color var(--mt-dur-1) var(--mt-ease-std);
+}
+
+/* 沿用曲库顶栏的圆角悬停层，舞台主题决定底色的明暗。 */
+.music-stage-mode-switcher {
+    --mf-trail-h: 30px;
+    --mf-hover: color-mix(in srgb, var(--ms-ink) 7%, transparent);
+}
+
+.music-stage-mode-switcher .music-stage-mode-button:is(:hover, :focus-visible) {
+    color: color-mix(in srgb, var(--mf-tint) 48%, var(--ms-ink));
+}
+
+.music-stage-mode-switcher .music-stage-mode-button.is-active,
+.music-stage-mode-switcher:is(:hover, :focus-within) .music-stage-mode-button.is-active {
+    color: var(--ms-ink);
+    font-weight: 650;
+}
+
+.music-stage-mode-switcher .music-stage-mode-button:focus-visible {
+    outline: 2px solid var(--ms-ink);
+    outline-offset: -2px;
+}
+
+/* ---------- 舞台档案卡：替换原 NOW PERFORMING，移到左上，封面交给底栏药丸 ---------- */
+/* 字标和舞台下拉已经挪进标题栏，卡片上面不再留那一行的位置：贴着标题栏下面一点 */
+.music-stage-id3 {
+    top: 60px;
+    bottom: auto;
+    left: 32px;
+    align-items: flex-start;
+    max-width: min(34vw, 420px);
+}
+
+.music-stage-id3 {
+    padding: 14px 16px 12px;
+    border: 1px solid var(--ms-glass-edge);
+    border-radius: 2px;
+    background: var(--ms-glass);
+    backdrop-filter: blur(16px) saturate(1.2);
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+}
+
+.music-stage-id3 .music-stage-cover {
+    display: none;
+}
+
+.music-stage-track-copy {
+    padding: 0;
+    text-shadow: var(--ms-text-shadow);
+}
+
+.music-stage-track-kicker {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+    color: var(--ms-muted);
+    font-family: var(--mt-font-label);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .14em;
+}
+
+.music-stage-track-file {
+    color: var(--ms-ink);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+
+.music-stage-track-title {
+    color: var(--ms-ink);
+    font-size: clamp(20px, 2vw, 32px);
+    font-weight: 700;
+    text-shadow: var(--ms-text-shadow);
+}
+
+.music-stage-track-rule {
+    position: relative;
+    width: min(260px, 100%);
+    height: 1px;
+    margin: 10px 0 8px;
+    background: var(--ms-line);
+}
+
+.music-stage-track-rule i {
+    position: absolute;
+    left: 0;
+    top: -2px;
+    width: 5px;
+    height: 5px;
+    background: var(--ms-ink);
+}
+
+.music-stage-track-artist,
+.music-stage-track-album {
+    margin-top: 2px;
+    color: var(--ms-muted);
+    font-size: 12px;
+}
+
+.music-stage-track-specs {
+    margin-top: 8px;
+    color: var(--ms-muted);
+    font-family: var(--mt-font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.music-stage-track-specs:empty {
+    display: none;
+}
+
+/* 镜台、隧图是全屏 3D 画面，镜台还有黑色遮幅：字标不再浮在画面上，档案卡收淡 */
+.music-stage:has(.music-stage-mode-diorama, .music-stage-mode-tunnel) .music-stage-wordmark {
+    visibility: hidden;
+}
+
+.music-stage:has(.music-stage-mode-diorama, .music-stage-mode-tunnel) .music-stage-id3 {
+    opacity: .82;
+}
+
+/* ---------- 旧的舞台播放条：新底栏在时收起，避免两套控件叠在一起 ---------- */
+body.music-dock-on .music-stage .music-stage-chrome {
+    display: none;
+}
+
+/* ---------- 舞台设置的各项（演出阵列、模式调制、全局输出） ----------
+ * 这些节点由底栏搬进控制面板的「舞台调制」子页（见文件末尾 .md-sp-sc 一节），原来的右上角入口和抽屉外壳已经不用，样式也删了。
+ * 写法照首页档案目录：左侧大号细体编号做分区，选项是带方块的文字，不做卡片和格子。 */
+.music-stage-settings-status {
+    color: var(--ms-muted);
+    font-family: var(--mt-font-label);
+    font-size: 11px;
+    letter-spacing: .14em;
+}
+
+.music-stage-settings-footnote {
+    display: none;
+}
+
+.music-stage-settings-section {
+    position: relative;
+    padding: 20px 0 6px var(--sd-gutter, 34px);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.music-stage-settings-section-heading {
+    display: block;
+}
+
+/* 编号：左边距里的大号细体数字，和目录的首字母一样 */
+.music-stage-settings-section-index {
+    position: absolute;
+    left: 0;
+    top: 16px;
+    width: calc(var(--sd-gutter, 34px) - 14px);
+    padding: 0;
+    color: var(--ms-line);
+    font: 300 26px/1 var(--mt-font-archive);
+    letter-spacing: 0;
+    text-align: right;
+    opacity: 1;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+.music-stage-settings-section-title {
+    color: var(--ms-ink);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .16em;
+}
+
+/* 说明只留「模式调制」那一条（说的是当前模式），一行写不下就截断 */
+.music-stage-settings-hint {
+    display: none;
+}
+
+.music-stage-settings-hint.music-stage-current-mode-hint {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
+    color: var(--ms-muted);
+    font-size: 11px;
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 演出阵列：不再是格子按钮，排成一段文字。勾上的是墨色粗体带实心方块，没勾的是灰字空心方块 */
+.music-stage-mode-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 18px;
+    margin-top: 10px;
+}
+
+.music-stage-mode-option,
+.music-stage-mode-option:hover,
+.music-stage-mode-option:has(input:checked) {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 30px;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: 14px;
+    transform: none;
+}
+
+.music-stage-mode-option {
+    color: var(--ms-muted);
+}
+
+.music-stage-mode-option::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    flex: none;
+    box-sizing: border-box;
+    border: 1px solid currentColor;
+}
+
+.music-stage-mode-option:hover {
+    color: var(--ms-ink);
+}
+
+.music-stage-mode-option:has(input:checked) {
+    color: var(--ms-ink);
+    font-weight: 700;
+}
+
+.music-stage-mode-option:has(input:checked)::before {
+    background: currentColor;
+}
+
+.music-stage-mode-option:focus-within {
+    outline: 2px solid var(--ms-ink);
+    outline-offset: 2px;
+}
+
+.music-stage-mode-option:has(input:disabled) {
+    cursor: not-allowed;
+}
+
+/* 调节项：一行一个，名字在左、数值或开关在右，滑条在下面一整行 */
+.music-stage-tuning-controls,
+.music-stage-common-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-top: 8px;
+}
+
+.music-stage-tuning-row,
+.music-stage-tuning-row:hover,
+.music-stage-tuning-row:focus-within {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+    row-gap: 2px;
+    min-height: 36px;
+    padding: 4px 0;
+    border: 0;
+    border-radius: 0;
+    color: var(--ms-muted);
+    background: transparent;
+    box-shadow: none;
+}
+
+.music-stage-tuning-label {
+    color: var(--ms-ink);
+    font-size: 13px;
+}
+
+.music-stage-tuning-row:hover .music-stage-tuning-label,
+.music-stage-tuning-row:focus-within .music-stage-tuning-label {
+    font-weight: 600;
+}
+
+/* 开关和选项自己就看得出当前值，不再重复写一遍 */
+.music-stage-tuning-row:has(input[type="checkbox"]) .music-stage-tuning-value,
+.music-stage-tuning-row:has(select) .music-stage-tuning-value {
+    display: none;
+}
+
+.music-stage-tuning-value {
+    justify-self: end;
+    color: var(--ms-muted);
+    font-family: var(--mt-font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+}
+
+.music-stage-tuning-row input[type="range"] {
+    height: 2px;
+    margin: 8px 0 4px;
+    border-radius: 0;
+    background: var(--ms-line);
+    accent-color: var(--ms-ink);
+}
+
+.music-stage-tuning-row input[type="range"]::-webkit-slider-thumb {
+    width: 10px;
+    height: 10px;
+    border: 0;
+    border-radius: 0;
+    background: var(--ms-ink);
+    box-shadow: none;
+}
+
+.music-stage-tuning-row input[type="range"]:focus-visible {
+    box-shadow: none;
+    outline: 2px solid var(--ms-ink);
+    outline-offset: 4px;
+}
+
+/* 开关：细线方框里一个方块，开的时候墨色填满 */
+.music-stage-tuning-row input[type="checkbox"] {
+    width: 30px;
+    height: 16px;
+    border: 1px solid var(--ms-line);
+    border-radius: 0;
+    background: transparent;
+    accent-color: var(--ms-ink);
+}
+
+.music-stage-tuning-row input[type="checkbox"]::after {
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 0;
+    background: var(--ms-muted);
+}
+
+.music-stage-tuning-row input[type="checkbox"]:checked {
+    border-color: var(--ms-ink);
+    background: var(--ms-ink);
+}
+
+.music-stage-tuning-row input[type="checkbox"]:checked::after {
+    background: var(--ms-glass-strong);
+    transform: translateX(14px);
+}
+
+.music-stage-tuning-row input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--ms-ink);
+    outline-offset: 3px;
+}
+
+/* 选项多的下拉框（比如舞台主题）放在名字右边，不再单独占一行 */
+.music-stage-tuning-row select {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    width: auto;
+    max-width: 190px;
+    min-height: 28px;
+    padding: 0 24px 0 8px;
+    border: 1px solid var(--ms-line);
+    border-radius: 2px;
+    color: var(--ms-ink);
+    background-color: transparent;
+    background-position: calc(100% - 13px) 12px, calc(100% - 9px) 12px;
+    box-shadow: none;
+    font-size: 12px;
+}
+
+.music-stage-tuning-row select:hover,
+.music-stage-tuning-row select:focus {
+    border-color: var(--ms-ink);
+    background-color: transparent;
+}
+
+/* 多选一的下拉框由 music-skin.js 换成分段控件，原下拉框留着承载值和事件 */
+.music-skin-segmented-source {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.music-skin-segmented {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    width: max-content;
+    max-width: 100%;
+    border: 1px solid var(--ms-line);
+    border-radius: 2px;
+}
+
+.music-skin-segmented button {
+    height: 26px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ms-muted);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color var(--mt-dur-2) var(--mt-ease-std), color var(--mt-dur-2) var(--mt-ease-std);
+}
+
+.music-skin-segmented button + button {
+    border-left: 1px solid var(--ms-line);
+}
+
+.music-skin-segmented button:hover {
+    color: var(--ms-ink);
+}
+
+.music-skin-segmented button[aria-pressed="true"] {
+    background: var(--ms-ink);
+    color: var(--ms-glass-strong);
+}
+
+.music-skin-segmented button:focus-visible {
+    outline: 2px solid var(--ms-ink);
+    outline-offset: -2px;
+}
+
+/* ---------- 窄窗口 ---------- */
+@media (max-width: 900px) {
+    .music-stage-wordmark {
+        display: none;
+    }
+
+    .music-stage-mode-switcher,
+    .music-stage-mode-switcher:hover,
+    .music-stage-mode-switcher:focus-within {
+        max-width: calc(100vw - 180px);
+    }
+
+    .music-stage-top-chrome .music-stage-mode-switcher {
+        left: 0;
+        transform: none;
+    }
+
+    .music-stage-id3 {
+        top: 56px;
+        left: 16px;
+        max-width: calc(100vw - 32px);
+    }
+}
+
+@media (max-width: 560px) {
+    .music-stage-track-specs,
+    .music-stage-track-rule {
+        display: none;
+    }
+
+    .music-stage-track-title {
+        font-size: 18px;
+    }
+}
+
+/* ---------- 镜台遮幅条接上标题栏 ----------
+ * 舞台模式层从标题栏下方开始，标题栏后面露出的是舞台底色；遮幅条原来是纯黑，
+ * 浅色时变成「纸色标题栏 + 黑条」两截。遮幅条改用同一个舞台底色，顶部连成一整条，
+ * 深色下与原来的黑几乎看不出差别。 */
+.music-stage .diorama-letterbox::before,
+.music-stage .diorama-letterbox::after {
+    background: var(--stage-bg);
+}
+
+/* ---------- 标题栏按键的键盘焦点 ----------
+ * 退出舞台后焦点回到舞台开关。全局焦点框取 --highlight-text（主题强调色），
+ * 在单色界面里是一圈红/金；只在标题栏按键上把它换成墨色。 */
+#custom-title-bar button {
+    --highlight-text: var(--ar-ink);
+}
+
+body.music-stage-active #custom-title-bar button {
+    --highlight-text: var(--ms-ink);
+}
+
+/* ---------- 底栏控制面板里的「舞台调制」子页 ----------
+ * 舞台设置的内容节点被底栏搬进了控制面板，这里沿用上面抽屉的写法（左侧大号细字编号、带方块的文字、方形开关），
+ * 颜色换成底栏面板的令牌；不再在面板里做卡片和格子。选择器都带 #music-dock-root，盖过底栏自己的样式。 */
+#music-dock-root .md-sp-sc {
+    --ms-ink: var(--md-t1);
+    --ms-muted: var(--md-t2);
+    --ms-faint: var(--md-t3);
+    --ms-line: var(--md-line2);
+    --ms-glass-edge: var(--md-fill);
+    --ms-glass-strong: var(--md-menu);
+    --sd-gutter: 34px;
+    padding: 4px 14px 4px 10px;
+}
+
+/* 抽屉里正文自己滚动、底部渐隐；搬进来后由子页滚动，正文不再遮罩 */
+#music-dock-root .md-sp-sc .music-stage-settings-body {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+#music-dock-root .md-sp-sc .music-stage-settings-section {
+    padding: 16px 0 4px var(--sd-gutter, 34px);
+}
+
+#music-dock-root .md-sp-sc .music-stage-settings-section-index {
+    top: 13px;
+    width: calc(var(--sd-gutter, 34px) - 10px);
+    font-size: 22px;
+    color: var(--md-t3);
+}
+
+/* 当前舞台：一行一个名字，选中的前面一个实心小方块，后面一条细线拉到行尾，和首页目录的选中一样 */
+#music-dock-root .md-sp-sc .md-sp-sec {
+    padding: 12px 0 6px var(--sd-gutter, 34px);
+    border-bottom: 0;
+}
+
+#music-dock-root .md-sp-sc .md-sp-k {
+    padding: 0 0 4px;
+    color: var(--md-t1);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    line-height: 20px;
+}
+
+#music-dock-root .md-sp-sc .md-pop-g {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+}
+
+#music-dock-root .md-sp-sc .md-op {
+    position: relative;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    width: 100%;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--md-t2);
+    font-size: 14px;
+    font-weight: 400;
+    text-align: left;
+    cursor: pointer;
+}
+
+#music-dock-root .md-sp-sc .md-op .md-th {
+    display: none;
+}
+
+#music-dock-root .md-sp-sc .md-op::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    flex: none;
+}
+
+#music-dock-root .md-sp-sc .md-op:hover {
+    color: var(--md-t1);
+}
+
+#music-dock-root .md-sp-sc .md-op.md-on {
+    color: var(--md-t1);
+    font-weight: 700;
+}
+
+#music-dock-root .md-sp-sc .md-op.md-on::before {
+    background: currentColor;
+}
+
+#music-dock-root .md-sp-sc .md-op.md-on::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    margin-left: 4px;
+    background: var(--md-line2);
+}
+
+#music-dock-root .md-sp-sc .md-op:focus-visible {
+    outline: 2px solid var(--md-t1);
+    outline-offset: 2px;
+}
+
+/* 调节项在 360 宽的面板里：分段控件和下拉放到名字下面一行，长名字也不挤 */
+#music-dock-root .md-sp-sc .music-skin-segmented,
+#music-dock-root .md-sp-sc .music-stage-tuning-row select:not(.music-skin-segmented-source) {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: start;
+    max-width: 100%;
+    margin-top: 2px;
+}
+
+#music-dock-root .md-sp-sc .music-stage-tuning-label {
+    line-height: 1.4;
+}
+
+/* 恢复出厂编排：底栏把它放在正文后面一行，和正文对齐 */
+#music-dock-root .md-sp-sc .music-stage-settings-footer {
+    height: auto;
+    justify-content: flex-start;
+    padding-left: var(--sd-gutter, 34px) !important;
+    border-top: 0;
+}
+
+#music-dock-root .md-sp-sc .music-stage-settings-reset {
+    margin-left: -6px;
+}
+
+/* 底栏给面板里所有按钮清了内边距和边框，分段控件和恢复按钮要补回来 */
+#music-dock-root .md-sp-sc .music-skin-segmented button {
+    height: 26px;
+    padding: 0 10px;
+    color: var(--md-t2);
+    font-size: 12px;
+    text-align: center;
+}
+
+#music-dock-root .md-sp-sc .music-skin-segmented button + button {
+    border-left: 1px solid var(--md-line2);
+}
+
+#music-dock-root .md-sp-sc .music-skin-segmented button:hover {
+    color: var(--md-t1);
+}
+
+#music-dock-root .md-sp-sc .music-skin-segmented button[aria-pressed="true"] {
+    background: var(--md-t1);
+    color: var(--md-menu);
+}
+
+#music-dock-root .md-sp-sc .music-stage-settings-reset {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 6px;
+    border-radius: 2px;
+    color: var(--md-t2);
+    font-size: 12px;
+}
+
+#music-dock-root .md-sp-sc .music-stage-settings-reset:hover {
+    color: var(--md-t1);
+    background: var(--md-fill);
+}
+
+/* 舞台左上的曲目卡：「TRACK DATABASE / FILE NUMBER: TRK-xxxx」是样板里的装饰英文，编号也是随便算出来的，
+   对听歌的人没有意义；卡片直接从歌名开始。 */
+.music-stage-track-kicker { display: none; }
+/* 专辑本来想接在歌手后面同一行，可歌手是块级，专辑总是掉到下一行，行首还挂着一个「 · 」；索性各占一行，去掉点 */
+.music-stage-track-album { display: block; }
+.music-stage-track-album::before { content: none; }
+
+/* ---------- 舞台切换：右上角一个按钮写着当前舞台，点开竖着弹出全部舞台 ----------
+ * 横排页签舞台一多就挤满顶上、还要横着滚；改成角落里一个按钮。弹出的列表和主程序设置页的下拉一个规格：
+ * 外框留 4、圆角 12，每行 28 高、圆角 7、字号 12.5，当前项右边打勾；放不下时列表自己滚动。 */
+.music-stage-top-chrome .music-stage-mode-picker {
+    grid-column: 3;
+    justify-self: end;
+    position: relative;
+    pointer-events: auto;
+}
+
+.music-stage-mode-picker-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    box-sizing: border-box;
+    padding: 0 9px 0 13px;
+    border: 1px solid var(--ms-glass-edge);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--stage-bg, #101214) 46%, transparent);
+    color: var(--ms-ink);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-shadow: var(--ms-text-shadow);
+    cursor: pointer;
+    transition: background-color var(--mt-dur-1, .15s) ease, border-color var(--mt-dur-1, .15s) ease;
+}
+
+.music-stage-mode-picker-toggle:hover,
+.music-stage-mode-picker.is-open .music-stage-mode-picker-toggle {
+    background: color-mix(in srgb, var(--stage-bg, #101214) 64%, transparent);
+    border-color: var(--ms-line);
+}
+
+.music-stage-mode-picker-toggle:focus-visible {
+    outline: 2px solid var(--ms-ink);
+    outline-offset: 2px;
+}
+
+.music-stage-mode-picker-chevron {
+    display: inline-flex;
+    opacity: .62;
+    transition: transform .2s ease;
+}
+
+.music-stage-mode-picker.is-open .music-stage-mode-picker-chevron {
+    transform: rotate(180deg);
+}
+
+.music-stage-mode-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 132px;
+    max-height: min(520px, calc(100vh - 240px));
+    box-sizing: border-box;
+    padding: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    border: 1px solid var(--ms-glass-edge);
+    border-radius: 12px;
+    background: var(--ms-glass-strong);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .38);
+    transform-origin: top right;
+    animation: music-stage-mode-menu-in .16s cubic-bezier(.2, .7, .2, 1);
+}
+
+.music-stage-mode-menu[hidden] {
+    display: none;
+}
+
+@keyframes music-stage-mode-menu-in {
+    from { opacity: 0; transform: translateY(-4px) scale(.98); }
+}
+
+body.music-reduce-motion .music-stage-mode-menu {
+    animation: none;
+}
+
+.music-stage-mode-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 28px;
+    box-sizing: border-box;
+    padding: 5px 8px 5px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--ms-muted);
+    font: inherit;
+    font-size: 12.5px;
+    line-height: 18px;
+    letter-spacing: .04em;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+}
+
+.music-stage-mode-menu-item-label {
+    flex: 1;
+    white-space: nowrap;
+}
+
+.music-stage-mode-menu-item-check {
+    display: inline-flex;
+    visibility: hidden;
+    color: var(--ms-ink);
+}
+
+.music-stage-mode-menu-item:hover,
+.music-stage-mode-menu-item:focus {
+    background: color-mix(in srgb, var(--ms-ink) 9%, transparent);
+    color: var(--ms-ink);
+}
+
+.music-stage-mode-menu-item:focus-visible {
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ms-ink) 55%, transparent);
+}
+
+.music-stage-mode-menu-item.is-active {
+    color: var(--ms-ink);
+    font-weight: 650;
+}
+
+.music-stage-mode-menu-item.is-active .music-stage-mode-menu-item-check {
+    visibility: visible;
+}
+
+/* ---------- 标题栏里的「返回首页」和舞台下拉 ----------
+ * 舞台打开时，标题栏左边的「VCP - 音乐播放器」换成「‹ VCP —— 歌词舞台」返回按钮，
+ * 右边窗口按钮左侧放舞台下拉；都不再浮在舞台画面上。标题栏是拖动区，这两样设成 no-drag。
+ * 返回按钮平时和字标一样安静，悬停浮出和下拉同规格的底（30 高、圆角 8），箭头左挪 2px。 */
+#custom-title-bar .music-stage-home,
+#custom-title-bar .music-stage-mode-picker {
+    display: none;
+}
+
+body.music-stage-active #custom-title-bar .title {
+    display: none;
+}
+
+body.music-stage-active #custom-title-bar .music-stage-home {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+    box-sizing: border-box;
+    margin: 0 0 0 -6px;
+    padding: 0 12px 0 6px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ms-muted);
+    font-family: var(--mt-font-label);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+    transition: color var(--mt-dur-1, .15s) ease, background-color var(--mt-dur-1, .15s) ease,
+        border-color var(--mt-dur-1, .15s) ease;
+}
+
+#custom-title-bar .music-stage-home i {
+    display: block;
+    width: 24px;
+    height: 1px;
+    background: var(--ms-line);
+}
+
+.music-stage-home-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: -2px;
+    transition: transform .2s ease;
+}
+
+body.music-stage-active #custom-title-bar .music-stage-home:hover {
+    color: var(--ms-ink);
+    background: var(--ms-glass);
+    border-color: var(--ms-glass-edge);
+}
+
+.music-stage-home:hover .music-stage-home-icon {
+    transform: translateX(-2px);
+}
+
+.music-stage-home:active .music-stage-home-icon {
+    transform: translateX(-3px);
+}
+
+.music-stage-home:focus-visible {
+    outline: 2px solid var(--ms-ink);
+    outline-offset: 2px;
+}
+
+body.music-stage-active #custom-title-bar .music-stage-mode-picker {
+    display: block;
+    position: relative;
+    margin-right: 4px;
+    -webkit-app-region: no-drag;
+}
+
+#custom-title-bar .music-stage-mode-picker-toggle {
+    background: transparent;
+    border-color: transparent;
+    color: var(--ms-ink);
+    text-shadow: none;
+}
+
+#custom-title-bar .music-stage-mode-picker-toggle:hover,
+#custom-title-bar .music-stage-mode-picker.is-open .music-stage-mode-picker-toggle {
+    background: var(--ms-glass);
+    border-color: var(--ms-glass-edge);
+}
+
+#custom-title-bar .music-stage-mode-menu {
+    max-height: min(520px, calc(100vh - 120px));
+}
+
+@media (max-width: 900px) {
+    body.music-stage-active #custom-title-bar .music-stage-home {
+        width: 30px;
+        padding: 0;
+        margin-left: 0;
+        justify-content: center;
+    }
+
+    #custom-title-bar .music-stage-home > :not(.music-stage-home-icon) {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-home-icon {
+        transition: none;
+    }
+}

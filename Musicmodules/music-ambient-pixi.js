@@ -493,9 +493,12 @@
             }
         });
 
-        if (!app.isStageActive) {
-            app.createAmbientPixi();
-        }
+        // 等这一轮启动代码跑完再决定要不要建：默认的档案页紧接着就会接管背景、把它销毁，
+        // 先建一个 WebGL 上下文、编译着色器再立刻拆掉，是启动时最大的一块白干的活。
+        // 档案页在同一轮里把 createAmbientPixi 换成「档案页开着就不建」，所以这里调的是换过的那个。
+        queueMicrotask(() => {
+            if (!app.isStageActive && !app.isArchiveActive) app.createAmbientPixi?.();
+        });
     }
 
     global.setupAmbientPixi = setupAmbientPixi;

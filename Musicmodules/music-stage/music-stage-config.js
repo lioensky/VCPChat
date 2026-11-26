@@ -2,7 +2,9 @@
     'use strict';
 
     const STORAGE_KEY = 'musicStageConfig';
-    const VERSION = 4;
+    const VERSION = 14;
+    // 后来加的模式：旧版本存下的启用列表里没有它们，读到旧版本时补上。
+    const ADDED_IN = Object.freeze({ kowloon: 5, inkdraft: 6, fogpane: 7, lumiere: 8, hanabi: 9, clockwork: 10, orbit: 11, signal: 12, groupchat: 13, impression: 14 });
     const clamp = (value, min, max, fallback) => {
         const number = Number(value);
         if (!Number.isFinite(number)) return fallback;
@@ -20,7 +22,17 @@
         { id: 'partita', label: '云阶', description: '分块排版与引导线' },
         { id: 'cadenza', label: '心象', description: '空间排版与镜头漂移' },
         { id: 'starborn', label: '星诞', description: '按歌词段落自动导演' },
-        { id: 'tunnel', label: '隧图', description: '点阵星际穿行、实体化歌词与深空物体演出' }
+        { id: 'tunnel', label: '隧图', description: '点阵星际穿行、实体化歌词与深空物体演出' },
+        { id: 'kowloon', label: '町景', description: '雨夜叠楼城寨：霓虹招牌、窄巷与广告屏上的歌词' },
+        { id: 'inkdraft', label: '墨痕', description: '墨团凝成歌词、演算纸线稿、半调网点与踩词硬切' },
+        { id: 'fogpane', label: '雾笺', description: '雨夜车窗起了雾，手指一笔一笔写下歌词，透出窗外街景' },
+        { id: 'lumiere', label: '绘光', description: '舞台顶光、烟雾和浮尘，每一句歌词被光束照亮' },
+        { id: 'hanabi', label: '花火', description: '夏夜河边的烟花大会，每句歌词升起一发烟花，倒映在河面上' },
+        { id: 'clockwork', label: '时计', description: '一组咬合的齿轮，歌词像指针从轴心伸出，每唱一句齿轮转一格' },
+        { id: 'orbit', label: '回环', description: '一圈斜着的椭圆轨道，歌词排在轨道上，唱到的字转到最前面' },
+        { id: 'signal', label: '信号', description: '一条∞形的信号环，脉冲沿环流动，频谱和电平跟着音乐跳，歌词在监视窗里' },
+        { id: 'groupchat', label: '群唱', description: '歌词变成一个群聊：大家轮流发消息、一字一字打出来，副歌一起唱，间奏发语音' },
+        { id: 'impression', label: '印象', description: '封面重画成一幅油画挂在墙上，每段换一个时辰的光，歌词像展签一样走' }
     ]);
 
     const PIXI_DEFAULTS = Object.freeze({
@@ -35,7 +47,7 @@
         rgbShift: 0, grain: 0, contrast: 0, halftone: 0, vignette: 0.18
     });
     const DEFAULTS = Object.freeze({
-        enabledModes: ['tempera', 'sonnet', 'diorama', 'fume', 'luminous', 'partita', 'cadenza', 'starborn', 'tunnel'],
+        enabledModes: ['tempera', 'sonnet', 'diorama', 'fume', 'luminous', 'partita', 'cadenza', 'starborn', 'tunnel', 'kowloon', 'inkdraft', 'fogpane', 'lumiere', 'hanabi', 'clockwork', 'orbit', 'signal', 'groupchat', 'impression'],
         quality: 'standard',
         animationIntensity: 1,
         edgeSpectrum: true,
@@ -79,6 +91,9 @@
                 cameraSpeed: 1,
                 motionAmount: 1,
                 audioReactivity: 1,
+                lyricHop: 1,
+                lyricFont: 'sans',
+                coverTint: 0.5,
                 showParticles: true,
                 geometryMode: 'clouds',
                 cabinFrame: true,
@@ -146,7 +161,126 @@
                 textHoldRatio: 0.32,
                 fontScale: 1,
                 glow: 1,
+                audioReactivity: 1,
+                lyricHop: 1,
+                lyricFont: 'sans',
+                coverTint: 0.5
+            },
+            kowloon: {
+                cameraMode: 'sandbox',
+                rain: 'light',
+                lightning: true,
+                reflections: true,
+                fog: 1,
+                postProcess: true,
+                glow: 1,
+                grain: 0.06,
+                vignette: 0.28,
+                showTranslation: true,
                 audioReactivity: 1
+            },
+            inkdraft: {
+                cameraCuts: true,
+                figures: true,
+                collisions: true,
+                inkFlip: false,
+                negativeShots: true,
+                inkScene: 'auto',
+                halftone: 0.8,
+                cloud: 0.75,
+                keywords: true,
+                grain: 0.5,
+                fontScale: 1,
+                waitingOpacity: 0.35,
+                showTranslation: true,
+                audioReactivity: 1
+            },
+            fogpane: {
+                fontScale: 1,
+                fog: 1,
+                rain: 'light',
+                view: 'alternate',
+                drops: true,
+                drips: true,
+                fireflies: 1,
+                spotlights: 0,
+                cameraSpeed: 1,
+                grain: 0.4,
+                showTranslation: true
+            },
+            lumiere: {
+                fontScale: 1,
+                smoke: 1,
+                dust: 1,
+                waitingOpacity: 0.22,
+                audioReactivity: 1,
+                grain: 0.4,
+                flare: 1,
+                bokeh: 1,
+                showTranslation: true
+            },
+            hanabi: {
+                fontScale: 1,
+                density: 1,
+                trails: 1,
+                smoke: 1,
+                reflection: true,
+                waitingOpacity: 0.25,
+                audioReactivity: 1,
+                grain: 0.3,
+                bloom: 1,
+                collage: true,
+                showTranslation: true
+            },
+            clockwork: {
+                fontScale: 1,
+                waitingOpacity: 0.35,
+                secondHand: true,
+                smoke: 1,
+                wireframe: true,
+                perspective: true,
+                parallax: 1,
+                audioReactivity: 1,
+                grain: 0.3,
+                showTranslation: true
+            },
+            orbit: {
+                fontScale: 1,
+                tilt: 0.3,
+                roll: -12,
+                axisLine: true,
+                nebula: 1,
+                waitingOpacity: 0.3,
+                audioReactivity: 1,
+                grain: 0.3,
+                showTranslation: true
+            },
+            impression: {
+                fontScale: 1,
+                flecks: 1,
+                lamp: 1,
+                frame: true,
+                timeOfDay: true,
+                audioReactivity: 1,
+                grain: 0.3,
+                showTranslation: true
+            },
+            groupchat: {
+                fontScale: 1,
+                voiceNotes: true,
+                echoes: true,
+                reactions: true,
+                audioReactivity: 1,
+                showTranslation: true
+            },
+            signal: {
+                fontScale: 1,
+                panel: 'lyrics',
+                showSpectrum: true,
+                pulseRate: 1,
+                audioReactivity: 1,
+                grain: 0.3,
+                showTranslation: true
             }
         }
     });
@@ -216,10 +350,56 @@
             waterStrength: clamp(source.waterStrength, 0, 2, fallback.waterStrength),
             motionAmount: clamp(source.motionAmount, 0, 2, fallback.motionAmount),
             audioReactivity: clamp(source.audioReactivity, 0, 2, fallback.audioReactivity),
+            lyricHop: fallback.lyricHop === undefined ? source.lyricHop : clamp(source.lyricHop, 0, 2, fallback.lyricHop),
+            lyricFont: fallback.lyricFont === undefined ? source.lyricFont : enumValue(source.lyricFont, ['sans', 'serif', 'kai'], fallback.lyricFont),
+            coverTint: fallback.coverTint === undefined ? source.coverTint : clamp(source.coverTint, 0, 1, fallback.coverTint),
             showParticles: bool(source.showParticles, fallback.showParticles),
             geometryMode: enumValue(source.geometryMode, ['clouds', 'corridor'], fallback.geometryMode),
             cabinFrame: bool(source.cabinFrame, fallback.cabinFrame),
-            rain: enumValue(source.rain, ['off', 'light', 'heavy'], fallback.rain),
+            rain: enumValue(source.rain, ['off', 'light', 'heavy', 'snow'], fallback.rain),
+            fog: fallback.fog === undefined ? source.fog : clamp(source.fog, 0.5, 1.5, fallback.fog),
+            lightning: fallback.lightning === undefined ? source.lightning : bool(source.lightning, fallback.lightning),
+            reflections: fallback.reflections === undefined ? source.reflections : bool(source.reflections, fallback.reflections),
+            cameraMode: fallback.cameraMode === undefined ? source.cameraMode : enumValue(source.cameraMode, ['sandbox', 'auto', 'diorama'], fallback.cameraMode),
+            figures: fallback.figures === undefined ? source.figures : bool(source.figures, fallback.figures),
+            collisions: fallback.collisions === undefined ? source.collisions : bool(source.collisions, fallback.collisions),
+            inkFlip: fallback.inkFlip === undefined ? source.inkFlip : bool(source.inkFlip, fallback.inkFlip),
+            negativeShots: fallback.negativeShots === undefined ? source.negativeShots : bool(source.negativeShots, fallback.negativeShots),
+            inkScene: fallback.inkScene === undefined ? source.inkScene : enumValue(source.inkScene, ['auto', 'notebook', 'rail', 'sea', 'night', 'city', 'flora', 'letters', 'weather', 'score'], fallback.inkScene),
+            drops: fallback.drops === undefined ? source.drops : bool(source.drops, fallback.drops),
+            drips: fallback.drips === undefined ? source.drips : bool(source.drips, fallback.drips),
+            keywords: fallback.keywords === undefined ? source.keywords : bool(source.keywords, fallback.keywords),
+            collage: fallback.collage === undefined ? source.collage : bool(source.collage, fallback.collage),
+            view: fallback.view === undefined ? source.view : enumValue(source.view, ['street', 'aquarium', 'alternate'], fallback.view),
+            fireflies: fallback.fireflies === undefined ? source.fireflies : clamp(source.fireflies, 0, 2, fallback.fireflies),
+            spotlights: fallback.spotlights === undefined ? source.spotlights : clamp(source.spotlights, 0, 2, fallback.spotlights),
+            nebula: fallback.nebula === undefined ? source.nebula : clamp(source.nebula, 0, 2, fallback.nebula),
+            bloom: fallback.bloom === undefined ? source.bloom : clamp(source.bloom, 0, 2, fallback.bloom),
+            flare: fallback.flare === undefined ? source.flare : clamp(source.flare, 0, 2, fallback.flare),
+            bokeh: fallback.bokeh === undefined ? source.bokeh : clamp(source.bokeh, 0, 2, fallback.bokeh),
+            cloud: fallback.cloud === undefined ? source.cloud : clamp(source.cloud, 0, 1, fallback.cloud),
+            smoke: fallback.smoke === undefined ? source.smoke : clamp(source.smoke, 0, 2, fallback.smoke),
+            dust: fallback.dust === undefined ? source.dust : clamp(source.dust, 0, 2, fallback.dust),
+            density: fallback.density === undefined ? source.density : clamp(source.density, 0.4, 1.6, fallback.density),
+            trails: fallback.trails === undefined ? source.trails : clamp(source.trails, 0, 1.6, fallback.trails),
+            reflection: fallback.reflection === undefined ? source.reflection : bool(source.reflection, fallback.reflection),
+            perspective: fallback.perspective === undefined ? source.perspective : bool(source.perspective, fallback.perspective),
+            parallax: fallback.parallax === undefined ? source.parallax : clamp(source.parallax, 0, 2, fallback.parallax),
+            wireframe: fallback.wireframe === undefined ? source.wireframe : bool(source.wireframe, fallback.wireframe),
+            secondHand: fallback.secondHand === undefined ? source.secondHand : bool(source.secondHand, fallback.secondHand),
+            tilt: fallback.tilt === undefined ? source.tilt : clamp(source.tilt, 0.15, 0.6, fallback.tilt),
+            roll: fallback.roll === undefined ? source.roll : clamp(source.roll, -30, 30, fallback.roll),
+            flecks: fallback.flecks === undefined ? source.flecks : clamp(source.flecks, 0, 2, fallback.flecks),
+            lamp: fallback.lamp === undefined ? source.lamp : clamp(source.lamp, 0, 1.5, fallback.lamp),
+            frame: fallback.frame === undefined ? source.frame : bool(source.frame, fallback.frame),
+            timeOfDay: fallback.timeOfDay === undefined ? source.timeOfDay : bool(source.timeOfDay, fallback.timeOfDay),
+            voiceNotes: fallback.voiceNotes === undefined ? source.voiceNotes : bool(source.voiceNotes, fallback.voiceNotes),
+            echoes: fallback.echoes === undefined ? source.echoes : bool(source.echoes, fallback.echoes),
+            reactions: fallback.reactions === undefined ? source.reactions : bool(source.reactions, fallback.reactions),
+            panel: fallback.panel === undefined ? source.panel : enumValue(source.panel, ['lyrics', 'history', 'off'], fallback.panel),
+            showSpectrum: fallback.showSpectrum === undefined ? source.showSpectrum : bool(source.showSpectrum, fallback.showSpectrum),
+            pulseRate: fallback.pulseRate === undefined ? source.pulseRate : clamp(source.pulseRate, 0, 2, fallback.pulseRate),
+            axisLine: fallback.axisLine === undefined ? source.axisLine : bool(source.axisLine, fallback.axisLine),
             wordRotation: bool(source.wordRotation, fallback.wordRotation),
             breathing: clamp(source.breathing, 0, 2, fallback.breathing),
             wordSpacing: clamp(source.wordSpacing, 0, 2, fallback.wordSpacing),
@@ -262,7 +442,10 @@
 
     const normalize = (candidate) => {
         const source = candidate && typeof candidate === 'object' ? candidate : {};
-        const requestedModes = Array.isArray(source.enabledModes) ? source.enabledModes : DEFAULTS.enabledModes;
+        const savedVersion = Number(source.version) || 0;
+        const requestedModes = Array.isArray(source.enabledModes)
+            ? source.enabledModes.concat(Object.keys(ADDED_IN).filter((id) => savedVersion < ADDED_IN[id]))
+            : DEFAULTS.enabledModes;
         const enabledModes = MODE_META
             .map((entry) => entry.id)
             .filter((id) => requestedModes.includes(id));
