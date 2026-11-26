@@ -78,6 +78,8 @@
             this.bandOffset = config.bandOffset || 0;
             this.baseWidth = config.baseWidth || 1.8;
             this.colorType = config.colorType || 'primary'; // 'primary' | 'soft' | 'highlight'
+            this.xs = new Float32Array(this.segments + 1);
+            this.ys = new Float32Array(this.segments + 1);
         }
 
         advance(dt, energyFactor) {
@@ -346,7 +348,8 @@
                 // 振幅随向外扩散略微舒展
                 const waveAmp = minDim * (0.02 + currentBass * 0.09) * Math.sqrt(ringScale);
                 const segments = ring.segments;
-                const points = [];
+                const xs = ring.xs;
+                const ys = ring.ys;
 
                 for (let i = 0; i <= segments; i++) {
                     const ratio = i / segments;
@@ -356,23 +359,17 @@
                     const organicSway = Math.sin(ratio * TAU * 3 + ring.phase * TAU) * 0.12;
                     const r = ringRadius + (specVal * 1.1 + organicSway) * waveAmp;
 
-                    points.push({
-                        x: cx + Math.cos(theta) * r,
-                        y: cy + Math.sin(theta) * r
-                    });
+                    xs[i] = cx + Math.cos(theta) * r;
+                    ys[i] = cy + Math.sin(theta) * r;
                 }
 
-                if (points.length > 2) {
-                    this.waveLayer.moveTo(points[0].x, points[0].y);
-                    for (let i = 0; i < points.length - 1; i++) {
-                        const p0 = points[i];
-                        const p1 = points[i + 1];
-                        const mx = (p0.x + p1.x) * 0.5;
-                        const my = (p0.y + p1.y) * 0.5;
-                        this.waveLayer.quadraticCurveTo(p0.x, p0.y, mx, my);
+                if (segments >= 2) {
+                    this.waveLayer.moveTo(xs[0], ys[0]);
+                    for (let i = 0; i < segments; i++) {
+                        const x0 = xs[i], y0 = ys[i];
+                        this.waveLayer.quadraticCurveTo(x0, y0, (x0 + xs[i + 1]) * 0.5, (y0 + ys[i + 1]) * 0.5);
                     }
-                    const last = points[points.length - 1];
-                    this.waveLayer.lineTo(last.x, last.y);
+                    this.waveLayer.lineTo(xs[segments], ys[segments]);
                     this.waveLayer.stroke({ color: ringColor, alpha: ringAlpha, width: strokeWidth });
                 }
             });

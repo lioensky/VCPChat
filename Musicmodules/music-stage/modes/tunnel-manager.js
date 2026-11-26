@@ -4386,6 +4386,8 @@
         let height = 1;
         let lastTime = null;
         let paletteKey = '';
+        let lastPaletteRef = null;
+        let lastPaletteJson = '';
         // themeHold: one more picture in the old colours, kept for the dissolve.
         let themeHold = false, revealMs = 1000, lastJumpAt = -Infinity, drawnAt = 0;
         // Something other than the clock changed since the last drawn frame.
@@ -4521,7 +4523,11 @@
 
             const settings = tuning();
             const stagePal = services?.app?.stagePalette || {};
-            const nextPalette = JSON.stringify(stagePal);
+            if (stagePal !== lastPaletteRef) {
+                lastPaletteRef = stagePal;
+                lastPaletteJson = JSON.stringify(stagePal);
+            }
+            const nextPalette = lastPaletteJson;
             if (nextPalette !== paletteKey && !themeHold) {
                 paletteKey = nextPalette;
                 world?.setPalette?.(stagePal);

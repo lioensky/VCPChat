@@ -135,7 +135,7 @@
 
         let queued = 0;
         const decorateSoon = () => {
-            if (queued) return;
+            if (queued || !shown()) return;
             queued = requestAnimationFrame(() => { queued = 0; decorate(); });
         };
         list.addEventListener('scroll', decorateSoon, { passive: true });

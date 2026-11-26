@@ -216,6 +216,7 @@
             if (stepped || intensity() === 0) return focusAt(block, time, true);
             const glyphs = block.glyphLayout;
             if (!glyphs.length) return focusAt(block, time);
+            const scale = readScale(block);
             // Sum continuous displacement ramps instead of resampling a discontinuous index.
             // Quintic ramps have zero endpoint velocity/acceleration, including duplicate timings.
             // No frame-history state: pause, reverse seek and direct seek evaluate the same curve.
@@ -225,8 +226,7 @@
                 const dx = b.x - a.x, dy = b.y - a.y;
                 const wraps = Math.abs(dy) > block.fontSize * 0.5;
                 const interval = Math.max(0, b.start - a.start);
-                const screenDistance = Math.hypot(dx, dy)
-                    * readScale(block);
+                const screenDistance = Math.hypot(dx, dy) * scale;
                 // A long-word line return must not finish within a single synthetic glyph.
                 const window = wraps
                     ? clamp(0.65 + screenDistance / 1400, 0.65, 1.25)
@@ -236,7 +236,6 @@
                 x += dx * progress;
                 y += dy * progress;
             }
-            const scale = readScale(block);
             return keepBlock(block, { x: block.x + x, y: block.y + y, scale });
         };
 
@@ -347,6 +346,10 @@
             }
         };
 
+        let lastCanvasOp = '';
+        let lastGlowVal = '';
+        let lastHideBg = null;
+        let lastHideSym = null;
         mode.updateFrame = frame => {
             if (mode.destroyed || paused) return;
             latestFrame = frame;
@@ -358,11 +361,13 @@
             // Paused and nothing changed: the page and its background already
             // show this frame, so neither is written or repainted again.
             if (!dirty) {
-                const accent = resolveAccent(services?.app);
-                const box = card.box;
-                const extra = `${width}x${height}@${pixelRatio}|${accent.r},${accent.g},${accent.b}|${intensity()}`
-                    + `|${box ? `${box.left},${box.right},${box.top},${box.bottom}` : ''}`;
-                if (still.same(frame, extra)) return;
+                if (!frame.isPlaying) {
+                    const accent = resolveAccent(services?.app);
+                    const box = card.box;
+                    const extra = `${width}x${height}@${pixelRatio}|${accent.r},${accent.g},${accent.b}|${intensity()}`
+                        + `|${box ? `${box.left},${box.right},${box.top},${box.bottom}` : ''}`;
+                    if (still.same(frame, extra)) return;
+                } else still.invalidate();
             } else still.invalidate();
             if (dirty) compile();
             rebuildShapes();
@@ -370,9 +375,9 @@
             const time = frame.playbackTime;
             const index = Math.max(0, Math.min(blocks.length - 1, frame.currentLineIndex));
             const block = blocks[index];
-            const previous = blocks[Math.max(0, index - 1)];
             const showInstrumental = Boolean(frame.track && !block);
-            interlude.update(frame, { visible: showInstrumental, intensity: intensity(), label: '纯音乐播放中' });
+            const curIntensity = intensity();
+            interlude.update(frame, { visible: showInstrumental, intensity: curIntensity, label: '纯音乐播放中' });
             setHidden(empty, Boolean(block || showInstrumental));
             setText(empty, '等待音乐');
             if (block) {
@@ -383,6 +388,8 @@
                 const songDuration = (lines[lines.length - 1]?.endTime || 0) - (lines[0]?.startTime || 0);
                 const holdRatio = value(t.textHoldRatio, 0.35, 0, 1);
                 const hold = holdRatio >= 1 ? Infinity : clamp(songDuration * holdRatio, 2.4, 130);
+                const hideSymbols = t.hidePrintSymbols === true;
+                const numVis = hideSymbols ? 'hidden' : 'visible';
                 mounted.forEach((entry, i) => {
                     const b = blocks[i];
                     const lineEnd = Number(b.line.renderHints?.renderEndTime)
@@ -391,19 +398,23 @@
                     const passed = time >= lineEnd;
                     const dim = passed ? ease((time - lineEnd) / hold) : 0;
                     // Upcoming lines read as faint print (block dim only), not just a bare number.
-                    entry.element.style.opacity = String(current ? 1 : passed ? 0.58 - dim * 0.45 : 0.2);
-                    entry.element.classList.toggle('is-current', current);
+                    const blockOp = current ? '1' : passed ? (0.58 - dim * 0.45).toFixed(3) : '0.2';
+                    if (entry._op !== blockOp) { entry._op = blockOp; entry.element.style.opacity = blockOp; }
+                    if (entry._cur !== current) { entry._cur = current; entry.element.classList.toggle('is-current', current); }
                     // Keep measured geometry stable when hiding the decorative header.
-                    entry.number.style.visibility = t.hidePrintSymbols === true ? 'hidden' : 'visible';
+                    if (entry._vis !== numVis) { entry._vis = numVis; entry.number.style.visibility = numVis; }
                     entry.glyphs.forEach(glyph => {
                         const progress = clamp((time - glyph.start) / Math.max(0.04, glyph.end - glyph.start));
                         const printed = time >= glyph.start;
                         const active = printed && time < glyph.end;
-                        glyph.span.style.opacity = printed || !current ? '1' : '0.22';
-                        glyph.span.style.setProperty('--print-progress', `${progress * 100}%`);
-                        glyph.span.style.setProperty('--print-pulse', String(active && intensity() > 0 ? Math.sin(progress * Math.PI) : 0));
-                        glyph.span.classList.toggle('is-printing', active);
-                        glyph.span.classList.toggle('is-printed', printed);
+                        const gOp = printed || !current ? '1' : '0.22';
+                        if (glyph._op !== gOp) { glyph._op = gOp; glyph.span.style.opacity = gOp; }
+                        const progStr = `${(progress * 100).toFixed(1)}%`;
+                        if (glyph._prog !== progStr) { glyph._prog = progStr; glyph.span.style.setProperty('--print-progress', progStr); }
+                        const pulseStr = active && curIntensity > 0 ? Math.sin(progress * Math.PI).toFixed(3) : '0';
+                        if (glyph._pulse !== pulseStr) { glyph._pulse = pulseStr; glyph.span.style.setProperty('--print-pulse', pulseStr); }
+                        if (glyph._active !== active) { glyph._active = active; glyph.span.classList.toggle('is-printing', active); }
+                        if (glyph._printed !== printed) { glyph._printed = printed; glyph.span.classList.toggle('is-printed', printed); }
                     });
                 });
                 setText(translation, resolveSupplementalText(frame.activeLine));
@@ -413,10 +424,14 @@
                 setText(heading, `浮名 · ${blocks.length && frame.currentLineIndex >= 0 ? '间奏' : U.lineCounter(frame, 3)}`);
                 cameraX = cameraY = 0;
             }
-            canvas.style.opacity = String(value(t.backgroundOpacity, 0.5, 0, 1));
-            mode.root.style.setProperty('--fume-glow-intensity', String(value(t.glow, 1)));
-            mode.root.classList.toggle('stage-hide-fume-background', t.geometricBackground === false);
-            mode.root.classList.toggle('fume-hide-print-symbols', t.hidePrintSymbols === true);
+            const nextCanvasOp = String(value(t.backgroundOpacity, 0.5, 0, 1));
+            if (nextCanvasOp !== lastCanvasOp) { lastCanvasOp = nextCanvasOp; canvas.style.opacity = nextCanvasOp; }
+            const nextGlow = String(value(t.glow, 1));
+            if (nextGlow !== lastGlowVal) { lastGlowVal = nextGlow; mode.root.style.setProperty('--fume-glow-intensity', nextGlow); }
+            const hideBg = t.geometricBackground === false;
+            if (hideBg !== lastHideBg) { lastHideBg = hideBg; mode.root.classList.toggle('stage-hide-fume-background', hideBg); }
+            const hideSym = t.hidePrintSymbols === true;
+            if (hideSym !== lastHideSym) { lastHideSym = hideSym; mode.root.classList.toggle('fume-hide-print-symbols', hideSym); }
             drawBackground(frame);
         };
 

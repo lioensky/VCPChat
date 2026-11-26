@@ -190,11 +190,13 @@
                 const elapsed = frame.playbackTime - (retired ? child.retireAt : child.born);
                 if (retired && elapsed >= duration) { release(child); return; }
                 const progress = Math.max(0, Math.min(1, elapsed / duration));
-                child.layer.style.opacity = String(retired ? 1 - progress : progress);
+                const nextOp = String(retired ? 1 - progress : progress);
+                if (child._op !== nextOp) { child._op = nextOp; child.layer.style.opacity = nextOp; }
                 // A settled layer needs no filter: blur(0) is drawn the same,
                 // but still costs a whole-stage offscreen pass every frame.
                 const blur = (retired ? progress : 1 - progress) * 12;
-                child.layer.style.filter = blur > 0 ? `blur(${blur}px)` : 'none';
+                const nextFilter = blur > 0 ? `blur(${blur}px)` : 'none';
+                if (child._filter !== nextFilter) { child._filter = nextFilter; child.layer.style.filter = nextFilter; }
                 child.mode.updateFrame(frame);
             });
         };

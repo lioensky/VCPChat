@@ -14,11 +14,13 @@ function publish(payload, now = Date.now()) {
     snapshot = {
         playing,
         trackKey: typeof payload.trackKey === 'string' ? payload.trackKey.slice(0, 4096) : '',
-        data: playing ? data.slice() : [],
+        data: playing && listeners.size ? data.slice() : [],
     };
     lastPublish = now;
-    for (const listener of listeners) {
-        try { listener(snapshot); } catch (error) { console.warn('[MusicGroove] subscriber:', error.message); }
+    if (listeners.size) {
+        for (const listener of listeners) {
+            try { listener(snapshot); } catch (error) { console.warn('[MusicGroove] subscriber:', error.message); }
+        }
     }
     return true;
 }

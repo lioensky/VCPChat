@@ -364,7 +364,7 @@ body.music-dock-on .music-player .controls {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all .3s cubic-bezier(.4, 0, .2, 1);
+  transition: background-color .3s cubic-bezier(.4, 0, .2, 1), color .3s cubic-bezier(.4, 0, .2, 1), transform .3s cubic-bezier(.4, 0, .2, 1), box-shadow .3s cubic-bezier(.4, 0, .2, 1);
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -4px rgba(0, 0, 0, .1);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);

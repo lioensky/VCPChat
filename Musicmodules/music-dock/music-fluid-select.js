@@ -249,11 +249,18 @@
         if (openState && !openState.menu.contains(event.target)) close(false);
     }, true);
 
-    // 页面里已有的和以后插进来的下拉框都换掉（舞台切模式会重建一批）
+    // 页面里已有的和以后插进来的下拉框都换掉（舞台切模式会重建一批）。
+    // 跳过叶节点和不可能包含 <select> 的标签，避免列表滚动、搜索敲字、歌词渲染时整棵子树跑 querySelectorAll。
+    const LEAF_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'PATH', 'I', 'BR', 'HR', 'INPUT', 'BUTTON', 'OPTION', 'OPTGROUP', 'A', 'AUDIO', 'VIDEO', 'STYLE', 'SCRIPT', 'LINK']);
     const scan = (root) => {
-        if (root.nodeType !== 1) return;
-        if (root.tagName === 'SELECT') dress(root);
-        else root.querySelectorAll?.('select').forEach(dress);
+        if (root.nodeType !== 1 || !root.isConnected) return;
+        const tag = root.tagName;
+        if (tag === 'SELECT') { dress(root); return; }
+        if (!root.firstElementChild || LEAF_TAGS.has(tag)) return;
+        if (root.classList?.contains('mfs-menu')) return;
+        const selects = root.getElementsByTagName?.('select');
+        if (!selects || !selects.length) return;
+        for (let i = 0; i < selects.length; i += 1) dress(selects[i]);
     };
     let pending = null;
     const flush = () => { const list = pending; pending = null; list.forEach(scan); };
@@ -262,6 +269,9 @@
         new MutationObserver((records) => {
             for (const r of records) for (const n of r.addedNodes) {
                 if (n.nodeType !== 1) continue;
+                const tag = n.tagName;
+                if (tag !== 'SELECT' && (!n.firstElementChild || LEAF_TAGS.has(tag))) continue;
+                if (n.classList?.contains('mfs-trigger') || n.classList?.contains('mfs-menu')) continue;
                 if (!pending) { pending = new Set(); queueMicrotask(flush); }
                 pending.add(n);
             }

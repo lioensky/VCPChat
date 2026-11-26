@@ -251,6 +251,7 @@
         let trackKey = '';
         let currentLine = null;
         let layoutKey = '';
+        let layoutStamp = '';
         let fontEpoch = 0;
         let force = true;
         let pretext = null;
@@ -325,12 +326,16 @@
                 invalidate();
             }
             const family = tuning.fontFamily || '"Segoe UI","Microsoft YaHei",sans-serif';
-            const key = JSON.stringify([width, height, family, tuning.fontScale, tuning.widthRatio,
-                tuning.wordSpacing, tuning.semanticLayout, tuning.staggerMin, tuning.staggerMax,
-                tuning.power, tuning.layoutStyle, tuning.heroEmphasis, tuning.wordColors, motion, fontEpoch, Boolean(pretext)]);
-            if (key !== layoutKey) {
-                layoutKey = key;
-                invalidate();
+            const stamp = `${width}|${height}|${configEpoch}|${fontEpoch}|${motion}|${Boolean(pretext)}`;
+            if (stamp !== layoutStamp) {
+                layoutStamp = stamp;
+                const key = JSON.stringify([width, height, family, tuning.fontScale, tuning.widthRatio,
+                    tuning.wordSpacing, tuning.semanticLayout, tuning.staggerMin, tuning.staggerMax,
+                    tuning.power, tuning.layoutStyle, tuning.heroEmphasis, tuning.wordColors, motion, fontEpoch, Boolean(pretext)]);
+                if (key !== layoutKey) {
+                    layoutKey = key;
+                    invalidate();
+                }
             }
             const nextAccent = accent
                 ? `rgb(${clamp(accent.r, 0, 255)},${clamp(accent.g, 0, 255)},${clamp(accent.b, 0, 255)})`

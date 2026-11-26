@@ -556,7 +556,8 @@
             const vals = [a.bass, a.lowMid, a.vocal, a.treble];
             levels.forEach((el, i) => {
                 const v = frame.isPlaying && !s.reducedMotion ? clamp((Number(vals[i]) || 0) * 1.3 * s.audioReactivity, 0.08, 1) : 0.15;
-                el.style.transform = `scaleY(${v.toFixed(2)})`;
+                const tr = `scaleY(${v.toFixed(2)})`;
+                if (el._tr !== tr) { el._tr = tr; el.style.transform = tr; }
             });
         };
 

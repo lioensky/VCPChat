@@ -149,7 +149,8 @@
             const motion = Math.max(0, finite(tuning.decorMotion, 1) * intensity);
             const time = frame.playbackTime * motion;
             const energy = clamp(frame.audio.vocal * 0.65 + frame.audio.bass * 0.35) * Math.min(1, motion);
-            svg.style.opacity = String(opacity);
+            const opStr = String(opacity);
+            if (svg.style.opacity !== opStr) svg.style.opacity = opStr;
             const progress = motion > 0 ? frame.lineProgress : 0.5;
             parts.forEach(part => {
                 let alpha = part.alpha;

@@ -25,6 +25,7 @@
         const still = Utils.createStillGate();
 
         let latestFrame = null;
+        let lastPalRef = undefined, lastPalJson = 'null';
         const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const getTuning = () => ({
             ...mode.config.modes?.sonnet,
@@ -73,8 +74,11 @@
             const caption = Utils.lineCounter(currentFrame);
             if (hud.textContent !== caption) hud.textContent = caption;
             // Paused and nothing changed: the canvas already shows this frame.
-            if (still.same(currentFrame, `${Boolean(director?.initialized)}|${director?.width}x${director?.height}`
-                + `|${JSON.stringify(tuning.palette ?? null)}|${tuning.reducedMotion}`)) return;
+            if (!currentFrame.isPlaying) {
+                const pal = tuning.palette ?? null;
+                if (pal !== lastPalRef) { lastPalRef = pal; lastPalJson = JSON.stringify(pal); }
+                if (still.same(currentFrame, `${Boolean(director?.initialized)}|${director?.width}x${director?.height}|${lastPalJson}|${tuning.reducedMotion}`)) return;
+            } else still.invalidate();
             director?.update(currentFrame, tuning);
         };
 

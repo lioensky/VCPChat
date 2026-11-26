@@ -682,7 +682,6 @@ async function handleMusicControl(args) {
 }
 
 function initialize(options) {
-    console.error('[Music] ========== INITIALIZE CALLED ==========');
     console.log('[Music] initialize called');
     mainWindow = options.mainWindow;
     openChildWindows = options.openChildWindows;

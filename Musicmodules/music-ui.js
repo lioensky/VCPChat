@@ -144,8 +144,8 @@ function setupUI(app) {
     };
     let windowQueued = 0;
     const renderWindowSoon = () => {
-        if (windowQueued) return;
-        const run = () => { windowQueued = 0; renderWindow(); };
+        if (windowQueued || classicHidden()) return;
+        const run = () => { windowQueued = 0; if (!classicHidden()) renderWindow(); };
         windowQueued = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(run) : (setTimeout(run, 16) || 1);
     };
     if (app.playlistEl) {
@@ -153,7 +153,9 @@ function setupUI(app) {
         if (typeof window !== 'undefined') window.addEventListener('resize', renderWindowSoon);
         if (typeof MutationObserver === 'function') {
             // 列表从隐藏变显示（切回曲目分页、离开档案页）时才量得到视口，补画一次
-            const reveal = new MutationObserver(() => { if (app.playlistEl.style.display !== 'none') renderWindowSoon(); });
+            const reveal = new MutationObserver(() => {
+                if (!classicHidden() && app.playlistEl.style.display !== 'none') renderWindowSoon();
+            });
             reveal.observe(app.playlistEl, { attributes: true, attributeFilter: ['style'] });
             reveal.observe(document.body, { attributes: true, attributeFilter: ['class'] });
         }

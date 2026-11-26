@@ -29,6 +29,7 @@
             trigger.setAttribute('aria-label', `当前音乐；${trigger.title}`);
             trigger.setAttribute('aria-busy', String(injectionPending));
         };
+        let lastExpandedWidth = 0;
         const updateWidth = () => {
             if (disposed || root.hidden) return;
             measure.textContent = title.textContent;
@@ -44,7 +45,10 @@
                 + number(detailsStyle.columnGap) * (details.children.length - 1)
                 + number(surfaceStyle.borderLeftWidth) + number(surfaceStyle.borderRightWidth)
                 + number(surfaceStyle.paddingLeft) + number(surfaceStyle.paddingRight));
-            root.style.setProperty('--music-capsule-expanded-width', `${width}px`);
+            if (width !== lastExpandedWidth) {
+                lastExpandedWidth = width;
+                root.style.setProperty('--music-capsule-expanded-width', `${width}px`);
+            }
         };
         const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(updateWidth) : null;
         resizeObserver?.observe(root);

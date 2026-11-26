@@ -954,6 +954,19 @@ function setupPlayer(app) {
         const track = app.playlist?.[app.currentTrackIndex];
         if (track) writeStore(SESSION_TIME_KEY, { track: track.path, time: sessionTime(), at: Date.now() });
     };
+    let lastSessionStructure = '';
+    const sessionStructureKey = () => {
+        const track = app.playlist?.[app.currentTrackIndex];
+        if (!track) return '';
+        const ctx = app.currentFilteredTracks && app.currentFilteredTracks !== app.playlist ? app.currentFilteredTracks : null;
+        const activeList = ctx || app.playlist;
+        const mode = app.playModes?.[app.currentPlayMode] || '';
+        const shuf = mode === 'shuffle' && app.lastShuffleList === activeList && app.shuffleQueue?.length ? app.shuffleQueue : null;
+        const mq = app.manualQueue;
+        const src = app.filteredPlaylistSource;
+        const origin = app.contextFrom?.(app.playbackContext?.origin) ? app.playbackContext.origin : '';
+        return `${track.path}|${ctx ? ctx.length + ':' + (ctx[0]?.path || '') + ':' + (ctx[ctx.length - 1]?.path || '') : 'ALL'}|${src?.type || ''}:${src?.id || ''}:${src?.name || ''}|${origin}|${mq?.length || 0}:${mq?.[0]?.path || ''}:${mq?.[mq.length - 1]?.path || ''}|${mode}|${shuf ? shuf.length + ':' + shuf[0] + ':' + shuf[shuf.length - 1] : ''}`;
+    };
     const pathsOf = (list) => (list || []).map(t => t && t.path).filter(Boolean);
     app.saveSession = () => {
         const track = app.playlist?.[app.currentTrackIndex];
@@ -975,6 +988,7 @@ function setupPlayer(app) {
             savedAt: Date.now()
         };
         try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (error) { /* 存不下就算了 */ }
+        lastSessionStructure = sessionStructureKey();
         app.saveSessionTime();
     };
     app.readSession = () => {
@@ -1042,13 +1056,15 @@ function setupPlayer(app) {
         sessionTimer = setTimeout(() => { sessionTimer = null; app.saveSession(); }, 1000);
     };
     app.scheduleSessionSave = scheduleSessionSave;
-    // 播放中每秒记一次进度（小键），每 5 秒存一次整份会话。
+    // 播放中每秒记一次进度（小键），每 5 秒仅在队列/曲目结构变化时才重写整份大 JSON，
+    // 避免大曲库/随机模式下每 5 秒同步序列化数百 KB 到 localStorage 造成微卡顿。
     if (typeof setInterval === 'function') {
         let ticks = 0;
         const sessionTick = setInterval(() => {
             if (!app.isPlaying) return;
             ticks += 1;
-            if (ticks % 5 === 0) app.saveSession(); else app.saveSessionTime();
+            if (ticks % 5 === 0 && sessionStructureKey() !== lastSessionStructure) app.saveSession();
+            else app.saveSessionTime();
         }, 1000);
         sessionTick?.unref?.();
     }
@@ -1084,7 +1100,9 @@ function setupPlayer(app) {
         const activeList = app.currentFilteredTracks || app.playlist;
         const mode = app.playModes[app.currentPlayMode];
         manualHead();
-        const manual = app.manualQueue.filter(t => app.playlist.includes(t));
+        const manual = app.manualQueue.length
+            ? (() => { const lib = new Set(app.playlist); return app.manualQueue.filter(t => lib.has(t)); })()
+            : [];
         const context = [];
         if (mode === 'repeat-one') {
             const current = app.playlist[app.currentTrackIndex];

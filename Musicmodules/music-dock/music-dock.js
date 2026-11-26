@@ -1773,22 +1773,41 @@
             observers.push(observer);
         };
         // 进出舞台、切换首页或经典视图时，重新计算播放条的位置。
-        observe(document.body, { attributes: true, attributeFilter: ['class'] }, queueShift);
         observe(document.getElementById('music-archive-view'), { attributes: true, attributeFilter: ['class'] }, queueShift);
         queueShift();
-        // 首页和经典视图来回切时，停着的音效卡跟着挪：首页留在抽屉里，经典视图送回原处。
-        if (dspCard) observe(document.body, { attributes: true, attributeFilter: ['class'] }, () => { if (!(state.panelOpen && state.tab === '声音')) syncFx(false); });
         if (dspCard) syncFx(false);
         let lastPlaying = null;
         let lastStage = null;
         let lastTheme = null;
+        const bodyLayoutKey = () => {
+            const c = document.body.classList;
+            return `${c.contains('music-stage-active') ? 1 : 0}${c.contains('music-archive-on') ? 1 : 0}${c.contains('music-stage-entering') ? 1 : 0}`;
+        };
+        let lastBodyLayout = bodyLayoutKey();
         // 主题文件换了（样式表重新加载、换了 href）或舞台换了自定义主题：颜色跟着换。
         let glowTimer = 0;
-        const queueGlow = () => { clearTimeout(glowTimer); glowTimer = setTimeout(syncGlow, 60); timers.add(glowTimer); };
+        const queueGlow = () => {
+            if (glowTimer) { clearTimeout(glowTimer); timers.delete(glowTimer); }
+            const id = setTimeout(() => { timers.delete(id); glowTimer = 0; syncGlow(); }, 60);
+            glowTimer = id;
+            timers.add(id);
+        };
         observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] }, queueGlow);
         listen(document, 'load', (event) => { if (event.target?.tagName === 'LINK') queueGlow(); }, true);
         const stageRootEl = document.getElementById('music-stage');
-        if (stageRootEl) observe(stageRootEl, { attributes: true, attributeFilter: ['class'] }, queueGlow);
+        if (stageRootEl) {
+            const stageGlowKey = () => {
+                const c = stageRootEl.classList;
+                return `${c.contains('stage-theme-custom') ? 1 : 0}${c.contains('stage-theme-light') ? 1 : 0}${c.contains('stage-theme-dark') ? 1 : 0}${c.contains('stage-night') ? 1 : 0}${c.contains('stage-scene-3d') ? 1 : 0}${c.contains('stage-opaque') ? 1 : 0}${c.contains('is-visible') ? 1 : 0}`;
+            };
+            let lastStageGlow = stageGlowKey();
+            observe(stageRootEl, { attributes: true, attributeFilter: ['class'] }, () => {
+                const next = stageGlowKey();
+                if (next === lastStageGlow) return;
+                lastStageGlow = next;
+                queueGlow();
+            });
+        }
         // 离选中项越远的舞台页签越淡，切换舞台时也更新播放条配色。
         const switcher = stageRootEl?.querySelector('.music-stage-mode-switcher');
         if (switcher) {
@@ -1806,7 +1825,14 @@
             });
             syncStageTabDistances();
         }
+        // 合并原三条 document.body class 监听，仅在布局相关类变化时才触发 queueShift/syncFx
         observe(document.body, { attributes: true, attributeFilter: ['class'] }, () => {
+            const nextLayout = bodyLayoutKey();
+            if (nextLayout !== lastBodyLayout) {
+                lastBodyLayout = nextLayout;
+                queueShift();
+                if (dspCard && !(state.panelOpen && state.tab === '声音')) syncFx(false);
+            }
             const playing = app.isPlaying === true;
             if (playing !== lastPlaying) { lastPlaying = playing; renderPlay(); kickProgress(); }
             const inStage = stageActive();

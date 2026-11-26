@@ -27,12 +27,27 @@
     const updateWord = (element, state, index) => {
         if (!element) return;
         const progress = clamp(Number(state?.progress) || 0);
-        element.dataset.text = state?.text || element.textContent || '';
-        element.style.setProperty('--stage-word-progress', `${(progress * 100).toFixed(2)}%`);
-        element.style.setProperty('--stage-word-order', String(index));
-        element.classList.toggle('is-active', state?.status === 'active');
-        element.classList.toggle('is-passed', state?.status === 'passed');
-        element.classList.toggle('is-waiting', state?.status === 'waiting');
+        const text = state?.text || element.textContent || '';
+        if (element._stageText !== text) {
+            element._stageText = text;
+            element.dataset.text = text;
+        }
+        const prog = `${(progress * 100).toFixed(2)}%`;
+        if (element._stageProg !== prog) {
+            element._stageProg = prog;
+            element.style.setProperty('--stage-word-progress', prog);
+        }
+        if (element._stageOrder !== index) {
+            element._stageOrder = index;
+            element.style.setProperty('--stage-word-order', String(index));
+        }
+        const status = state?.status || '';
+        if (element._stageStatus !== status) {
+            element._stageStatus = status;
+            element.classList.toggle('is-active', status === 'active');
+            element.classList.toggle('is-passed', status === 'passed');
+            element.classList.toggle('is-waiting', status === 'waiting');
+        }
     };
 
     const renderWords = (container, frame, className = '') => {
@@ -160,6 +175,8 @@
     const SCALE_STEP = 0.84;
     const createRenderScale = () => {
         let rung = 0;
+        let scales = 0;
+        let drops = 0;
         let last = 0;
         let average = 0;
         let frames = 0;
@@ -167,23 +184,27 @@
         let patience = 900;
         let longRun = 0, strikes = 0;
         let derivedFrom = null, derived = null, derivedDrop = 0;
-        const taken = () => LADDER.slice(0, rung);
-        const scaleSteps = () => taken().filter(step => step === 'scale').length;
-        const tierDrops = () => taken().filter(step => step === 'tier').length;
+        const setRung = (next) => {
+            rung = next;
+            scales = 0;
+            drops = 0;
+            for (let i = 0; i < rung; i += 1) {
+                if (LADDER[i] === 'scale') scales += 1;
+                else if (LADDER[i] === 'tier') drops += 1;
+            }
+        };
         return {
-            get factor() { return Math.max(0.55, SCALE_STEP ** scaleSteps()); },
+            get factor() { return Math.max(0.55, SCALE_STEP ** scales); },
             // How many rungs down the ladder this mode has gone, for the settings.
             get steps() { return rung; },
             // The tier this mode draws at: the chosen one, less what it had to drop.
             quality(quality) {
-                const drops = tierDrops();
                 if (!drops) return quality;
                 const from = Math.max(0, TIER_ORDER.indexOf(quality));
                 return TIER_ORDER[Math.min(TIER_ORDER.length - 1, from + drops)];
             },
             // The configuration with that tier, the same object while nothing changes.
             config(config) {
-                const drops = tierDrops();
                 if (!drops || !config) return config;
                 if (derivedFrom !== config || derivedDrop !== drops) {
                     derivedFrom = config; derivedDrop = drops;
@@ -198,7 +219,7 @@
                 return Math.max(0.5, Math.min(cap, global.devicePixelRatio || 1, fit) * this.factor);
             },
             // Start again from the top, e.g. after the listener chose a tier.
-            reset() { rung = 0; frames = 0; steady = 0; patience = 900; strikes = 0; },
+            reset() { setRung(0); frames = 0; steady = 0; patience = 900; strikes = 0; },
             // Feed the time of every drawn frame, and the interval the frame
             // cap aims for. Returns true when the drawing changed.
             tick(now, aim = 0) {
@@ -226,7 +247,7 @@
                     // it takes two slow judgements in a row.
                     if (LADDER[rung] === 'tier' && ++strikes < 2) return false;
                     strikes = 0;
-                    rung += 1;
+                    setRung(rung + 1);
                     return true;
                 }
                 strikes = 0;
@@ -237,7 +258,7 @@
                     steady += 1;
                     if (steady > patience) {
                         // Try the rung above again, and wait longer before the next try.
-                        rung -= 1;
+                        setRung(rung - 1);
                         patience *= 2; frames = 0; steady = 0;
                         return true;
                     }

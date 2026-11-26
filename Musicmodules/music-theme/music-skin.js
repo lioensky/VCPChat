@@ -66,13 +66,23 @@
     const DRAWER_KEY = 'musicAcousticDrawerOpen';
 
     window.setupMusicSkin = (app) => {
-        const fields = (name) => document.querySelectorAll(`[data-track-field="${name}"]`);
+        const fieldCache = new Map();
+        const fields = (name) => {
+            let list = fieldCache.get(name);
+            if (!list || list.some((el) => !el.isConnected)) {
+                list = Array.from(document.querySelectorAll(`[data-track-field="${name}"]`));
+                fieldCache.set(name, list);
+            }
+            return list;
+        };
         const setText = (name, value, empty = '—') => {
+            const text = value || empty;
+            const hide = !value && (!empty || empty === '—');
             for (const el of fields(name)) {
-                el.textContent = value || empty;
+                if (el.textContent !== text) el.textContent = text;
                 // 规格栏里读不出来的项（只剩一个「—」）整格收起，不摆一排破折号
                 const cell = el.closest('.track-specs > div');
-                if (cell) cell.hidden = !value && (!empty || empty === '—');
+                if (cell && cell.hidden !== hide) cell.hidden = hide;
             }
         };
 
@@ -107,12 +117,11 @@
             setText('bitrate', bitrate(track));
             setText('specs', summary(track), '');
             if (changed) {
-                // 换曲时编号和曲名一起向上滚入；减少动态时 CSS 会把动画关掉。
-                for (const el of document.querySelectorAll('.track-file-number, .music-stage-track-file')) {
-                    el.classList.remove('is-rolling');
-                    void el.offsetWidth;
-                    el.classList.add('is-rolling');
-                }
+                // 换曲时编号和曲名一起向上滚入；批量读写只触发一次回流。
+                const rollers = Array.from(document.querySelectorAll('.track-file-number, .music-stage-track-file'));
+                for (const el of rollers) el.classList.remove('is-rolling');
+                if (rollers.length) void rollers[0].offsetWidth;
+                for (const el of rollers) el.classList.add('is-rolling');
             }
         };
 

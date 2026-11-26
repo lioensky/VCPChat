@@ -59,8 +59,10 @@
             tuneBusy = true;
             try {
                 const rows = Array.from(tuningNode.children);
-                const keyOf = (row) => row.querySelector('[data-stage-config-key]')?.dataset.stageConfigKey || '';
+                const rowByKey = new Map();
                 for (const row of rows) {
+                    const key = row.querySelector('[data-stage-config-key]')?.dataset.stageConfigKey || '';
+                    if (key && !rowByKey.has(key)) rowByKey.set(key, row);
                     const label = row.querySelector('.music-stage-tuning-label');
                     if (!label || label.dataset.mdDone) continue;
                     label.dataset.mdDone = '1';
@@ -75,7 +77,7 @@
                 }
                 const scene = currentStageMode();
                 const wanted = TUNE_FIRST[scene?.id] || [];
-                let first = wanted.map((key) => rows.find((row) => keyOf(row) === key)).filter(Boolean);
+                let first = wanted.map((key) => rowByKey.get(key)).filter(Boolean);
                 if (rows.length <= TUNE_FIRST_COUNT + 2) first = rows.slice();
                 else if (first.length < 3) first = rows.slice(0, TUNE_FIRST_COUNT);
                 const rest = rows.filter((row) => !first.includes(row));

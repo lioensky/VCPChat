@@ -34,6 +34,7 @@
         const still = Utils.createStillGate();
 
         let latestFrame = null;
+        let lastPalRef = undefined, lastPalJson = 'null';
         const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const getTuning = () => ({
             ...mode.config.modes?.tempera,
@@ -83,8 +84,11 @@
             if (kicker.textContent !== caption) kicker.textContent = caption;
             const tuning = getTuning();
             // Paused and nothing changed: the canvas already shows this frame.
-            if (still.same(frame, `${Boolean(director?.initialized)}|${director?.width}x${director?.height}`
-                + `|${JSON.stringify(tuning.palette ?? null)}|${tuning.reducedMotion}`)) return;
+            if (!frame.isPlaying) {
+                const pal = tuning.palette ?? null;
+                if (pal !== lastPalRef) { lastPalRef = pal; lastPalJson = JSON.stringify(pal); }
+                if (still.same(frame, `${Boolean(director?.initialized)}|${director?.width}x${director?.height}|${lastPalJson}|${tuning.reducedMotion}`)) return;
+            } else still.invalidate();
             director?.update(frame, tuning);
             // No --stage-vocal here: the words are drawn by Pixi, nothing under
             // this root reads it, and setting it restyled the root every frame.

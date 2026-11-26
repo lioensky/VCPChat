@@ -691,18 +691,29 @@
             const y = cur ? Math.max(0, cur.offsetTop - (before ? before.offsetHeight : 0)) : 0;
             lyricRoll.style.transform = 'translateY(' + (-y) + 'px)';
         };
+        let lastSeekKey = '';
         const paintSeek = () => {
-            if (!seekIsLive()) { seekEl.hidden = true; lyricEl.hidden = true; clearInterval(seekTimer); seekTimer = 0; return; }
+            if (!seekIsLive()) { seekEl.hidden = true; lyricEl.hidden = true; clearInterval(seekTimer); seekTimer = 0; lastSeekKey = ''; return; }
+            if (document.hidden && !seekDrag) return;
             const p = opts.progress();
             const t = seekDrag ? seekDrag.t : p.t;
-            seekEl.hidden = !(p.d > 0);
-            seekFill.style.transform = 'scaleX(' + (p.d ? Math.min(1, t / p.d) : 0).toFixed(4) + ')';
-            seekEl.firstChild.textContent = fmt(t);
-            seekEl.lastChild.textContent = fmt(p.d);
-            seekEl.setAttribute('aria-valuemin', '0');
-            seekEl.setAttribute('aria-valuemax', String(Math.round(p.d)));
-            seekEl.setAttribute('aria-valuenow', String(Math.round(t)));
-            seekEl.setAttribute('aria-valuetext', fmt(t) + ' / ' + fmt(p.d));
+            const ratio = p.d ? Math.min(1, t / p.d).toFixed(4) : '0.0000';
+            const tSec = Math.round(t);
+            const dSec = Math.round(p.d);
+            const key = `${p.d > 0 ? 1 : 0}|${ratio}|${tSec}|${dSec}`;
+            if (key !== lastSeekKey) {
+                lastSeekKey = key;
+                seekEl.hidden = !(p.d > 0);
+                seekFill.style.transform = 'scaleX(' + ratio + ')';
+                const tStr = fmt(t);
+                const dStr = fmt(p.d);
+                if (seekEl.firstChild.textContent !== tStr) seekEl.firstChild.textContent = tStr;
+                if (seekEl.lastChild.textContent !== dStr) seekEl.lastChild.textContent = dStr;
+                seekEl.setAttribute('aria-valuemin', '0');
+                seekEl.setAttribute('aria-valuemax', String(dSec));
+                seekEl.setAttribute('aria-valuenow', String(tSec));
+                seekEl.setAttribute('aria-valuetext', tStr + ' / ' + dStr);
+            }
             if (st.expanded && st.expanded.w >= 0) paintLyric(t);
         };
         const syncSeek = () => {
@@ -1124,8 +1135,9 @@
             if (el.classList.contains('aw-dim')) el.classList.remove('aw-dim');
         };
         const checkDim = () => {
+            if (document.hidden) return;
             const p = opts.playing();
-            const want = st.on && p.active && p.index >= 0 && !st.expanded && !reduced() && performance.now() - (st.touchedAt || 0) > DIM_AFTER && st.ids.includes(p.index);
+            const want = st.on && p.active && p.index >= 0 && !st.expanded && !reduced() && performance.now() - (st.touchedAt || 0) > DIM_AFTER && st.idIndex.has(p.index);
             el.classList.toggle('aw-dim', want);
         };
         el.addEventListener('pointermove', () => { if (el.classList.contains('aw-dim') || performance.now() - (st.touchedAt || 0) > 1000) wake(); }, { passive: true });
@@ -1175,14 +1187,14 @@
                     st.dirty = true;
                     // 大卡展开着的是刚才在放的那首、现在换到下一首了：大卡跟着换到新的这首
                     if (st.expanded && prevIndex !== undefined && prevIndex !== p.index && p.index >= 0 && (st.followExpand || st.ids[st.expanded.item] === prevIndex)) {
-                        const pos = st.ids.indexOf(p.index);
-                        if (pos >= 0 && st.g) focusInstance(nearestOf(st.g, pos, viewCenter(), st.gap), { expand: true });
+                        const pos = st.idIndex.get(p.index);
+                        if (pos !== undefined && st.g) focusInstance(nearestOf(st.g, pos, viewCenter(), st.gap), { expand: true });
                     }
                     st.followExpand = false;
                     // 换歌了：用户这几秒没在摆弄墙的话，镜头自己滑到正在播放的那张（不改选中、不展开）
                     if (p.active && prevIndex !== undefined && prevIndex !== p.index && performance.now() - (st.touchedAt || 0) > 6000) {
-                        const pos = st.ids.indexOf(p.index);
-                        if (pos >= 0 && st.g && !st.expanded) {
+                        const pos = st.idIndex.get(p.index);
+                        if (pos !== undefined && st.g && !st.expanded) {
                             const inst = nearestOf(st.g, pos, viewCenter(), st.gap);
                             const r = rectOf(inst);
                             const pad = Math.min(st.room.width, st.room.height) * 0.18;
