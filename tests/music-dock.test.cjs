@@ -979,7 +979,7 @@ test('sleep timer entry: a tile on the control page (third in the stage), choice
         const announce = () => w.document.dispatchEvent(new w.CustomEvent('music-sleep-change', { detail: st }));
         a.sleepTimer = {
             state: () => st,
-            set: (m) => { calls.push(['set', m]); st = { mode: 'time', endsAt: 1, remaining: m * 60 }; announce(); },
+            set: (m) => { calls.push(['set', m]); st = { mode: 'time', endsAt: 1, remaining: m * 60, minutes: m }; announce(); },
             setTrackEnd: () => { calls.push('track'); st = { mode: 'track', endsAt: 0, remaining: 0 }; announce(); },
             cancel: () => { calls.push('cancel'); st = { mode: 'off', endsAt: 0, remaining: 0 }; announce(); }
         };
@@ -1006,11 +1006,14 @@ test('sleep timer entry: a tile on the control page (third in the stage), choice
         assert.equal(doc.querySelector('[data-md="sleep-t"]').textContent, '30:00');
         assert.ok(doc.querySelector('[data-act="sleep-pick"]').classList.contains('md-lit'));
         // 倒计时只改文字
-        st = { mode: 'time', endsAt: 1, remaining: 59 };
+        st = { mode: 'time', endsAt: 1, remaining: 59, minutes: 30 };
         doc.dispatchEvent(new window.CustomEvent('music-sleep-change', { detail: st }));
         assert.equal(doc.querySelector('[data-md="sleep-t"]').textContent, '0:59');
         assert.equal(doc.querySelector('.md-slp-v').textContent, '0:59 后停');
         doc.querySelector('[data-act="sleep-pick"]').click();
+        // 定时开着时再展开，点亮的是当初选的那一档（不是一个都不亮）
+        assert.deepEqual([...doc.querySelectorAll('.md-slp .md-lit')].map((b) => b.dataset.v), ['30']);
+        assert.equal(doc.querySelector('[data-act="sleep-pick"]').getAttribute('aria-expanded'), 'true');
         doc.querySelector('.md-slp [data-v="track"]').click();
         assert.equal(calls.pop(), 'track');
         assert.equal(doc.querySelector('[data-md="sleep-t"]').textContent, '本曲');

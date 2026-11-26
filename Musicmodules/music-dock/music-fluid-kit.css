@@ -333,13 +333,35 @@ body.music-reduce-motion #music-dock-root .md-like.md-like-pop::after { animatio
  * 开关块（播放模式、歌词舞台……）和歌词页的小开关（翻译）换成同一套玻璃：圆角更大，
  * 打开时不是换一块更亮的灰底，而是从下面透出一团强调色的光、四周柔光；
  * 按下时压扁一点，松手时鼓过头再回来。 */
+/* 开关块收成一行（图标 + 字），高 40、圆角 10，和下面的时长选项、主程序设置页的控件同一套尺寸；
+ * 打开的那块不再从底下透一团暖光（看着像脏了），改成整块淡淡的强调色底 + 一圈细边 + 强调色图标，一眼能分出开关。 */
 #music-dock-root .md-tile {
-  border-radius: 18px;
-  transition: background .18s ease, color .18s ease, box-shadow .22s ease, transform .34s cubic-bezier(.34, 1.56, .5, 1);
+  min-height: 40px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 10px 0 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease, transform .3s cubic-bezier(.34, 1.4, .5, 1);
 }
+#music-dock-root .md-tile .md-ti { flex: none; }
+#music-dock-root .md-tile .md-tl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#music-dock-root .md-tile .md-tchev { flex: none; display: flex; color: var(--md-t3); transition: transform .22s cubic-bezier(.2, .8, .2, 1); }
+#music-dock-root .md-tile .md-tchev.md-up { transform: rotate(180deg); }
 #music-dock-root .md-tile:hover { background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--md-fill); }
-#music-dock-root .md-tile:active { transform: scale(.95, .92); transition-duration: .1s; }
+#music-dock-root .md-tile:active { transform: scale(.97); transition-duration: .1s; }
 #music-dock-root .md-tile.md-lit,
+#music-dock-root .md-slp .md-chip.md-lit {
+  background: color-mix(in srgb, var(--mf-tint) 15%, var(--md-fill));
+  color: var(--md-t1);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mf-tint) 45%, transparent);
+}
+#music-dock-root .md-tile.md-lit:hover,
+#music-dock-root .md-slp .md-chip.md-lit:hover { background: color-mix(in srgb, var(--mf-tint) 21%, var(--md-fill)); }
 #music-dock-root .md-chip.md-lit {
   background:
     radial-gradient(110% 90% at 30% 120%, color-mix(in srgb, var(--mf-tint) 26%, transparent), transparent 66%),
@@ -348,12 +370,13 @@ body.music-reduce-motion #music-dock-root .md-like.md-like-pop::after { animatio
   box-shadow: var(--mf-glow);
 }
 /* 深色下抽屉底比玻璃本色还亮，打开的那块要更亮一层才像浮起来，不然看着像按下去了 */
-#music-dock-root:not(.md-light) :is(.md-tile, .md-chip).md-lit {
+#music-dock-root:not(.md-light) .md-chip.md-lit:not(.md-slp .md-chip) {
   background:
     radial-gradient(110% 90% at 30% 120%, color-mix(in srgb, var(--mf-tint) 30%, transparent), transparent 66%),
     rgba(255, 255, 255, .14);
 }
 #music-dock-root .md-tile.md-lit .md-ti,
+#music-dock-root .md-tile.md-lit .md-tchev,
 #music-dock-root .md-chip.md-lit svg { color: var(--mf-tint); }
 #music-dock-root .md-chip {
   border-radius: 9999px;
@@ -416,12 +439,26 @@ body.music-reduce-motion .switch .slider::before { transition: background-color 
  * 控制页第三块开关；点开后时长选项从那块里长出来（MusicFluid.bud），一排玻璃小开关。
  * 开着的时候底栏心形左边多一颗小胶囊显示剩余时间，数字等宽、不跳。 */
 /* 七个选项排成整齐的两行四格（「播完这首」占两格），不再随宽度折成参差的一行半 */
-#music-dock-root .md-slp { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 10px 0 2px; }
-#music-dock-root .md-slp .md-chip { justify-content: center; min-width: 0; padding-left: 4px; padding-right: 4px; white-space: nowrap; }
-#music-dock-root .md-slp .md-chip:last-child { grid-column: span 2; }
-#music-dock-root .md-slp .md-chip { height: 30px; background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--md-fill); }
-#music-dock-root .md-slp .md-chip.md-lit { background: radial-gradient(110% 90% at 30% 120%, color-mix(in srgb, var(--mf-tint) 26%, transparent), transparent 66%), var(--mf-fill); }
-#music-dock-root:not(.md-light) .md-slp .md-chip.md-lit { background: radial-gradient(110% 90% at 30% 120%, color-mix(in srgb, var(--mf-tint) 30%, transparent), transparent 66%), rgba(255, 255, 255, .14); }
+/* 选项和上面的开关块同一套：圆角 8、行高 28、选中的是淡强调色底 + 细边 + 加粗，不靠「亮一点点的灰」区分。
+ * 展开/收起由 music-dock.js 的 unfoldSleep / foldSleep 用高度过渡做，下面的内容跟着让位；.md-slp-ghost 是收起时的影子。 */
+#music-dock-root :is(.md-slp, .md-slp-ghost) { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 6px 0 0; }
+#music-dock-root .md-slp-ghost { overflow: hidden; pointer-events: none; }
+#music-dock-root :is(.md-slp, .md-slp-ghost) .md-chip {
+  justify-content: center;
+  min-width: 0;
+  height: 28px;
+  padding: 0 4px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--md-t2);
+  background: var(--md-fill);
+  font-variant-numeric: tabular-nums;
+}
+#music-dock-root :is(.md-slp, .md-slp-ghost) .md-chip:last-child { grid-column: span 2; }
+#music-dock-root .md-slp .md-chip:hover:not(.md-lit) { color: var(--md-t1); background: linear-gradient(var(--mf-hover), var(--mf-hover)), var(--md-fill); }
+#music-dock-root :is(.md-slp, .md-slp-ghost) .md-chip.md-lit { color: var(--md-t1); font-weight: 600; }
+#music-dock-root .md-slp-ghost .md-chip.md-lit { background: color-mix(in srgb, var(--mf-tint) 15%, var(--md-fill)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mf-tint) 45%, transparent); }
 #music-dock-root .md-sleep {
   display: inline-flex;
   align-items: center;
