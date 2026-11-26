@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { renderHostedAssistantSegments } from '../modules/renderer/hostedToolCallRendering.js';
 
 const { marked } = createRequire(import.meta.url)('marked');
-const args = JSON.stringify({ tool_name: '<em>Lookup</em>', query: '<img src="test">' });
+const args = JSON.stringify({ tool_name: '<em>Lookup</em>', query: '<img src="test">\nnext line\\n', limit: 2 });
 const call = id => ({
     id, type: 'function', function: { name: 'vcptools', arguments: args },
 });
@@ -25,7 +25,8 @@ test('saved hosted calls render between their text segments with original parall
         ['A', 'a', 'b', '回执一', 'B', 'c', '回执二', 'C']);
     const card = root.querySelector('[data-vcp-block-type="tool-use"]');
     const payload = card.querySelector('template').content;
-    assert.equal(payload.querySelector('pre').textContent, args);
+    assert.equal(payload.querySelector('pre').textContent, 'tool_name: <em>Lookup</em>\nquery: <img src="test">\n  next line\\n\nlimit: 2');
+    assert.equal(history[1].tool_calls[0].function.arguments, args);
     assert.equal(card.querySelector('.vcp-tool-name-highlight').textContent, '<em>Lookup</em>');
     assert.equal(card.querySelector('em, img'), null);
     assert.equal(payload.querySelector('img'), null);

@@ -12,10 +12,17 @@ export function createHostedToolCallCard(document, calls) {
         const summary = document.createElement('div');
         summary.className = 'vcp-tool-summary';
         let label = call.function.name;
+        let payloadText = call.function.arguments;
         try {
-            const args = JSON.parse(call.function.arguments);
+            const args = JSON.parse(payloadText);
             if (typeof args?.tool_name === 'string' && args.tool_name.trim()) label = args.tool_name.trim();
-        } catch { /* Show raw arguments below. */ }
+            if (args && typeof args === 'object' && !Array.isArray(args) && Object.keys(args).length) {
+                payloadText = Object.entries(args).map(([key, value]) => {
+                    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+                    return `${key}: ${text.replace(/\r\n?/g, '\n').replace(/\n/g, '\n  ')}`;
+                }).join('\n');
+            }
+        } catch { /* Keep the original text if it is not valid JSON. */ }
         const title = document.createElement('span');
         title.className = 'vcp-tool-name-highlight';
         title.textContent = label || '未命名';
@@ -25,7 +32,7 @@ export function createHostedToolCallCard(document, calls) {
         const template = document.createElement('template');
         template.className = 'vcp-tool-details-template';
         const payload = document.createElement('pre');
-        payload.textContent = call.function.arguments;
+        payload.textContent = payloadText;
         template.content.append(payload);
         details.append(summary, body, template);
         batch.append(details);
