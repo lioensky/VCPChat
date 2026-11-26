@@ -443,6 +443,8 @@
                 .map((c) => (hud.classList.contains(c) ? c : '')).join('|') + '|' + hud.style.width;
             let open = layoutKey();
             let before = null;
+            const flying = [];
+            let follow = 0;
             // 以元素为键（all: true 的一条会量到好几个）；只量得到 0 大小的（被藏起来的）记成 null
             const targets = () => {
                 const out = [];
@@ -474,7 +476,11 @@
                 open = now;
                 const first = before && Date.now() - before.at < 1500 ? before.map : null;
                 before = null;
-                if (!first || !enabled()) return;
+                // 上一段让位还没走完又换了档（比如按下时抽屉收起、松开时又打开）：先停掉旧的，
+                // 从刚才那一帧看到的位置接着走（first 是动画进行中每帧刷新的），不然新旧位移叠在一起会乱飞
+                const hadRunning = flying.length > 0;
+                flying.splice(0).forEach((a) => a.cancel());
+                if (!first || !enabled()) { if (hadRunning) global.cancelAnimationFrame(follow); return; }
                 const last = measure();
                 // 首页整层按窗口高度 transform: scale() 过：屏幕上量到的位移要换回层内的单位，否则开头会先跳一截（差 1 - scale）
                 const k0 = hud.offsetWidth ? hud.getBoundingClientRect().width / hud.offsetWidth : 1;
@@ -493,9 +499,9 @@
                     if (!from) {
                         // 新出现的：一点点淡入。外层本来就在（只是里面多出一项）时原地淡入；外层也是新出现的就跟着外层，不单独动
                         if (!t.in || !outerEl || !last.get(outerEl)) {
-                            to.el.animate([{ opacity: 0, transform: 'translateX(-18px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: ease, composite: 'add' });
+                            flying.push(to.el.animate([{ opacity: 0, transform: 'translateX(-18px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: ease, composite: 'add' }));
                         } else if (first.get(outerEl)) {
-                            to.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: ease });
+                            flying.push(to.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: ease }));
                         }
                         continue;
                     }
@@ -503,11 +509,20 @@
                     const dx = (from.x - to.x - (outer?.dx || 0)) / unit, dy = (from.y - to.y - (outer?.dy || 0)) / unit;
                     const k = t.font && from.fs && to.fs ? from.fs / to.fs : 1;
                     if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(k - 1) < 0.02) continue;
-                    to.el.animate([
+                    flying.push(to.el.animate([
                         { transformOrigin: '0 0', transform: `translate(${dx}px, ${dy}px) scale(${k})` },
                         { transformOrigin: '0 0', transform: 'none' }
-                    ], { duration: 520, easing: ease, composite: 'add' }); // 叠在块自己的 transform 上（底部一排有让底栏的上移），结束时不跳
+                    ], { duration: 520, easing: ease, composite: 'add' })); // 叠在块自己的 transform 上（底部一排有让底栏的上移），结束时不跳
                 }
+                // 动画进行中每帧记一次看得见的位置，好让中途再换档时从这里接着走
+                global.cancelAnimationFrame(follow);
+                const until = Date.now() + 560;
+                const track = () => {
+                    if (!flying.length || Date.now() > until) { flying.length = 0; return; }
+                    before = { at: Date.now(), map: measure(), live: true };
+                    follow = global.requestAnimationFrame(track);
+                };
+                follow = global.requestAnimationFrame(track);
             }).observe(hud, { attributes: true, attributeFilter: ['class', 'style'] });
         };
         attach();

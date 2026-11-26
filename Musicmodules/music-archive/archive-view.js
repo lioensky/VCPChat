@@ -1643,6 +1643,13 @@
         };
         root.addEventListener('wheel', onHudWheel, { passive: false });
 
+        // 记下按下「设置」那一刻抽屉开着没有（抽屉自己在 document 捕获阶段按「点到外面」收起，这里挂在 window 捕获阶段，抢在它前面）
+        let controlsDownOpen = null;
+        const onControlsDown = (e) => {
+            const hit = e.target && e.target.closest && e.target.closest('[data-act="controls"]');
+            controlsDownOpen = hit && root.contains(hit) ? !!app.musicDock?.panelOpen : null;
+        };
+        global.addEventListener('pointerdown', onControlsDown, true);
         root.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-act]');
             if (btn) {
@@ -1658,7 +1665,15 @@
                     case 'now': locatePlaying(); break;
                     case 'stage': if (app.stageHost && !app.stageHost.active) { try { app.stageHost.enter(); } catch (e) { /* 舞台没准备好就留在这里 */ } } break;
                     case 'lyrics': wantLyrics(!state.lyricsOn); break;
-                    case 'controls': openControls(); break;
+                    case 'controls': {
+                        // 再点一次是收起：抽屉在按下时就被「点到外面」收掉了，这里不再重新打开（不然永远关不掉，还来回重排）
+                        const dock = app.musicDock;
+                        const wasOpen = controlsDownOpen != null ? controlsDownOpen : !!dock?.panelOpen;
+                        controlsDownOpen = null;
+                        if (wasOpen) { if (dock?.panelOpen) dock.closePanel?.(); break; }
+                        openControls();
+                        break;
+                    }
                     case 'classic': setMode('classic'); break;
                     case 'layout': setLayout(btn.dataset.layout); break;
                     case 'add-local': document.getElementById('add-folder-btn')?.click(); break;
@@ -1959,6 +1974,7 @@
             state.scene?.dispose();
             state.scene = null;
             if (unwrapAmbient) unwrapAmbient();
+            global.removeEventListener('pointerdown', onControlsDown, true);
             if (typeof unhookPick === 'function') unhookPick();
             pickItem?.remove();
         };
