@@ -970,7 +970,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Step 7: Restore the protected code blocks.
         if (codeBlockMap.size > 0) {
             for (const [placeholder, block] of codeBlockMap.entries()) {
-                processed = processed.replace(placeholder, block);
+                processed = processed.replace(placeholder, () => block);
             }
         }
 

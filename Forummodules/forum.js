@@ -1481,7 +1481,7 @@ function restoreProtectedMath(html, mathMap) {
 
     let restored = html;
     for (const [placeholder, mathText] of mathMap.entries()) {
-        restored = restored.replaceAll(placeholder, escapeHtml(mathText));
+        restored = restored.replaceAll(placeholder, () => escapeHtml(mathText));
     }
     return restored;
 }
@@ -1525,7 +1525,7 @@ function enhanceMarkdown(markdown) {
         // Restore code blocks before returning
         if (codeBlockMap.size > 0) {
             for (const [placeholder, block] of codeBlockMap.entries()) {
-                processed = processed.replace(placeholder, block);
+                processed = processed.replace(placeholder, () => block);
             }
         }
         // For HTML-heavy content, skip text enhancement
@@ -1559,7 +1559,7 @@ function enhanceMarkdown(markdown) {
     // Step 6: Restore code blocks
     if (codeBlockMap.size > 0) {
         for (const [placeholder, block] of codeBlockMap.entries()) {
-            processed = processed.replace(placeholder, block);
+            processed = processed.replace(placeholder, () => block);
         }
     }
 
@@ -1640,7 +1640,7 @@ function renderFullContent(container, markdown, uid) {
     // Step 3: 恢复代码块
     if (codeBlockMap.size > 0) {
         for (const [placeholder, block] of codeBlockMap.entries()) {
-            processed = processed.replace(placeholder, block);
+            processed = processed.replace(placeholder, () => block);
         }
     }
     // === 预处理完成 ===
