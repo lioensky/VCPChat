@@ -28,10 +28,15 @@ pub struct AtomicLoudnessState {
     current_gain_db: AtomicF64,
     /// Smoothing coefficient per sample (< 1.0, for multiplication)
     smoothing_coeff: AtomicF64,
-    /// Album gain for Album mode (same for all tracks in album)
+    /// Manual album gain from the `/set_album_gain` API (reported only; album mode
+    /// now reads each file's album tag into `target_gain_db`)
     album_gain_db: AtomicF64,
-    /// Preamp gain for headroom adjustment (default -3 dB)
+    /// Preamp gain for headroom adjustment (default -1 dB)
     preamp_gain_db: AtomicF64,
+    /// Loudness the current settings aim for, and the level ReplayGain tags are written
+    /// against: the audio thread needs both to turn a tag or a measurement into a gain.
+    target_lufs: AtomicF64,
+    reference_lufs: AtomicF64,
     /// Enable/disable normalization
     enabled: AtomicBool,
     /// Normalization mode: 0=Track, 1=Album, 2=Streaming,
@@ -60,6 +65,8 @@ impl AtomicLoudnessState {
             smoothing_coeff: AtomicF64::new(smoothing_coeff),
             album_gain_db: AtomicF64::new(0.0),
             preamp_gain_db: AtomicF64::new(-1.0), // Reduced headroom for better dynamics
+            target_lufs: AtomicF64::new(f64::NAN),
+            reference_lufs: AtomicF64::new(-18.0),
             enabled: AtomicBool::new(true),
             mode: AtomicU8::new(0),
         })
@@ -91,6 +98,38 @@ impl AtomicLoudnessState {
     }
 
     /// Set enabled state
+    /// Set the loudness target. A gain already worked out for the playing track was
+    /// `old target - track loudness`, so it moves by the same amount: the slider is heard
+    /// right away instead of from the next track.
+    pub fn set_target_lufs(&self, target_lufs: f64) {
+        if !target_lufs.is_finite() {
+            return;
+        }
+        // Only the main thread writes these, so load-then-store does not race a writer.
+        let old = self.target_lufs.load(Ordering::Relaxed);
+        self.target_lufs.store(target_lufs, Ordering::Relaxed);
+        if old.is_finite() && old != target_lufs {
+            let gain = self.target_gain_db.load(Ordering::Relaxed) + (target_lufs - old);
+            self.target_gain_db.store(gain, Ordering::Relaxed);
+        }
+    }
+
+    /// Loudness target in LUFS (NaN until a normalizer has set it).
+    pub fn target_lufs(&self) -> f64 {
+        self.target_lufs.load(Ordering::Relaxed)
+    }
+
+    pub fn set_reference_lufs(&self, reference_lufs: f64) {
+        if reference_lufs.is_finite() {
+            self.reference_lufs.store(reference_lufs, Ordering::Relaxed);
+        }
+    }
+
+    /// Level that ReplayGain tags bring a track to (ReplayGain 2.0: -18 LUFS).
+    pub fn reference_lufs(&self) -> f64 {
+        self.reference_lufs.load(Ordering::Relaxed)
+    }
+
     pub fn set_enabled(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::Relaxed);
     }
@@ -177,20 +216,14 @@ impl AtomicLoudnessState {
             return 1.0;
         }
 
-        let mode = self.mode.load(Ordering::Relaxed);
         let target = self.target_gain_db.load(Ordering::Relaxed);
         let current = self.current_gain_db.load(Ordering::Relaxed);
         let coeff = self.smoothing_coeff.load(Ordering::Relaxed);
         let preamp = self.preamp_gain_db.load(Ordering::Relaxed);
 
-        // Select gain based on mode
-        let effective_target = match mode {
-            1 => self.album_gain_db.load(Ordering::Relaxed), // Album mode
-            _ => target,                                     // Track or Streaming mode
-        };
-
-        // Add preamp
-        let effective_target = effective_target + preamp;
+        // Every mode puts its per-track gain in `target` (album mode uses the album tag
+        // when the file has one); only the preamp is added here.
+        let effective_target = target + preamp;
 
         // Smooth gain transition using exponential smoothing
         // FIX for Defect 27: Correct formula is coeff^frames, not (1-coeff)^frames
@@ -305,5 +338,26 @@ mod tests {
             state.smoothing_coefficient().to_bits(),
         ];
         assert_eq!(after, before);
+    }
+
+    #[test]
+    fn moving_the_target_moves_the_playing_tracks_gain() {
+        let state = AtomicLoudnessState::new(0.0, 48_000).unwrap();
+        state.set_target_lufs(-12.0);
+        state.set_target_gain(-3.0); // track measured at -9 LUFS
+        state.set_target_lufs(-16.0);
+        assert_eq!(state.target_gain_db(), -7.0);
+        state.set_target_lufs(f64::NAN);
+        assert_eq!(state.target_lufs(), -16.0);
+    }
+
+    #[test]
+    fn album_mode_plays_the_tracks_own_gain() {
+        let state = AtomicLoudnessState::new(0.0, 48_000).unwrap();
+        state.set_preamp_gain(0.0);
+        state.set_normalization_mode(NormalizationMode::Album);
+        state.set_target_gain(-6.0);
+        let linear = state.process_gain(64);
+        assert!((linear - db_to_linear(-6.0)).abs() < 1e-12, "{linear}");
     }
 }

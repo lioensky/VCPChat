@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_AAC, CODEC_TYPE_NULL};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{MetadataOptions, StandardTagKey, Value};
@@ -230,6 +230,11 @@ struct RangeStream {
 }
 
 const RANGE_PREFETCH: usize = 256 * 1024; // 256 KB per fetch
+/// Waits before each retry of a failed chunk: about 4 s in all, then the error stands.
+#[cfg(not(test))]
+const RANGE_RETRY_DELAYS_MS: [u64; 4] = [250, 500, 1000, 2000];
+#[cfg(test)]
+const RANGE_RETRY_DELAYS_MS: [u64; 4] = [1, 1, 1, 1];
 
 impl RangeStream {
     fn new(url: String, credentials: Option<HttpCredentials>) -> Result<Self, DecoderError> {
@@ -301,15 +306,42 @@ impl RangeStream {
         })
     }
 
+    /// One chunk of the file. A dropped connection, a timeout or a busy server (5xx, 408,
+    /// 429) is retried a few times: a Wi-Fi hiccup or a NAS waking up used to end the song
+    /// right there and skip to the next one.
     fn fetch_range(&mut self, start: u64, len: usize) -> Result<Vec<u8>, DecoderError> {
         // Handle zero-length request to prevent underflow
         if len == 0 {
             return Ok(Vec::new());
         }
+        let mut attempt = 0;
+        loop {
+            match self.fetch_range_once(start, len) {
+                Ok(data) => return Ok(data),
+                Err((error, retryable)) => {
+                    if !retryable || attempt >= RANGE_RETRY_DELAYS_MS.len() {
+                        return Err(error);
+                    }
+                    log::warn!(
+                        "Range fetch at {} failed ({}), retry {} of {}",
+                        start,
+                        error,
+                        attempt + 1,
+                        RANGE_RETRY_DELAYS_MS.len()
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(RANGE_RETRY_DELAYS_MS[attempt]));
+                    attempt += 1;
+                }
+            }
+        }
+    }
 
+    /// One request; the error says whether trying again can help.
+    fn fetch_range_once(&self, start: u64, len: usize) -> Result<Vec<u8>, (DecoderError, bool)> {
         // Calculate end position safely using checked arithmetic
-        let end = start.checked_add(len as u64 - 1)
-            .ok_or_else(|| DecoderError::Http("Range end overflow".into()))?;
+        let end = start
+            .checked_add(len as u64 - 1)
+            .ok_or_else(|| (DecoderError::Http("Range end overflow".into()), false))?;
 
         let mut req = self.client.get(&self.url)
             .header("Range", format!("bytes={}-{}", start, end));
@@ -317,22 +349,26 @@ impl RangeStream {
             req = req.basic_auth(&creds.username, Some(&creds.password));
         }
 
-        let response = req.send()
-            .map_err(|e| DecoderError::Http(e.to_string()))?;
+        let response = req.send().map_err(|e| (DecoderError::Http(e.to_string()), true))?;
 
-        // Check if server returned partial content (Range was honored)
         let status = response.status();
-        if !status.is_success() && status.as_u16() != 206 {
-            // Server doesn't support Range requests or returned error
-            return Err(DecoderError::Http(
-                format!("Server returned {} (expected 206 Partial Content)", status)
+        let code = status.as_u16();
+        // A 200 answer to a Range request is the whole file from byte 0: using it as the
+        // chunk at `start` would feed the decoder the wrong bytes.
+        if code != 206 && !(code == 200 && start == 0) {
+            let retryable = status.is_server_error() || code == 408 || code == 429;
+            return Err((
+                DecoderError::Http(format!("Server returned {} (expected 206 Partial Content)", status)),
+                retryable,
             ));
         }
 
-        Ok(response
+        let mut data = response
             .bytes()
-            .map_err(|e| DecoderError::Http(e.to_string()))?
-            .to_vec())
+            .map_err(|e| (DecoderError::Http(e.to_string()), true))?
+            .to_vec();
+        data.truncate(len);
+        Ok(data)
     }
 
     /// Ensure buf covers [pos, pos+need)
@@ -612,8 +648,24 @@ impl StreamingDecoder {
 
         // Read encoder delay and end padding for gapless playback
         // These are set by encoders like MP3, AAC, Opus to ensure sample-accurate decoding
-        let encoder_delay = codec_params.delay.unwrap_or(0);
-        let end_padding = codec_params.padding.unwrap_or(0);
+        let mut encoder_delay = codec_params.delay.unwrap_or(0);
+        let mut end_padding = codec_params.padding.unwrap_or(0);
+        let mut duration_secs = duration_secs;
+
+        // AAC in MP4/M4A: the demuxer leaves the priming in (edit list / iTunSMPB are not applied),
+        // so every track of a gapless album would start with ~23-48 ms of encoder warm-up.
+        if !is_url && encoder_delay == 0 && end_padding == 0 && codec_params.codec == CODEC_TYPE_AAC {
+            if let Some(g) = crate::mp4_gapless::read_file(path.as_ref(), sample_rate) {
+                encoder_delay = g.delay.min(u32::MAX as u64) as u32;
+                if let (Some(total), Some(valid)) = (total_frames, g.valid_frames) {
+                    let after = total.saturating_sub(g.delay);
+                    // Within rounding of the edit list the sample table is the better length.
+                    let keep = if after.abs_diff(valid) <= g.tolerance { after } else { valid.min(after) };
+                    end_padding = total.saturating_sub(g.delay).saturating_sub(keep).min(u32::MAX as u64) as u32;
+                    duration_secs = Some(keep as f64 / sample_rate as f64);
+                }
+            }
+        }
 
         if encoder_delay > 0 || end_padding > 0 {
             log::debug!(
@@ -826,5 +878,103 @@ impl StreamingDecoder {
         self.samples_output = 0;
         
         Ok(())
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod range_retry_tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// A tiny HTTP server for `body`. `fail(n)` decides what the n-th ranged GET gets:
+    /// 0 = served, 1 = 503, 2 = half the body and a dropped connection, 3 = 200 with the whole file.
+    pub(crate) fn serve(body: Vec<u8>, fail: fn(usize) -> u8) -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/song.flac", listener.local_addr().unwrap());
+        let gets = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&gets);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut first = String::new();
+                if reader.read_line(&mut first).is_err() { continue; }
+                let mut range = None;
+                loop {
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" { break; }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("range: bytes=") {
+                        let mut it = v.trim().split('-');
+                        let a: usize = it.next().unwrap().parse().unwrap();
+                        let b: usize = it.next().unwrap().parse().unwrap();
+                        range = Some((a, b.min(body.len() - 1)));
+                    }
+                }
+                if first.starts_with("HEAD") {
+                    let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n", body.len());
+                    continue;
+                }
+                let (a, b) = range.unwrap_or((0, body.len() - 1));
+                let n = counter.fetch_add(1, Ordering::SeqCst);
+                match fail(n) {
+                    1 => { let _ = write!(stream, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); }
+                    2 => {
+                        let part = &body[a..=b];
+                        let _ = write!(stream, "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nConnection: close\r\n\r\n", part.len(), a, b, body.len());
+                        let _ = stream.write_all(&part[..part.len() / 2]);
+                    }
+                    3 => {
+                        let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                        let _ = stream.write_all(&body);
+                    }
+                    _ => {
+                        let part = &body[a..=b];
+                        let _ = write!(stream, "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nConnection: close\r\n\r\n", part.len(), a, b, body.len());
+                        let _ = stream.write_all(part);
+                    }
+                }
+            }
+        });
+        (url, gets)
+    }
+
+    fn body() -> Vec<u8> {
+        (0..(RANGE_PREFETCH * 2 + 1234)).map(|i| (i * 7 % 251) as u8).collect()
+    }
+
+    fn read_all(url: &str) -> std::io::Result<Vec<u8>> {
+        let mut stream = RangeStream::new(url.to_string(), None).unwrap();
+        assert!(stream.supports_range);
+        let mut out = Vec::new();
+        stream.read_to_end(&mut out)?;
+        Ok(out)
+    }
+
+    #[test]
+    fn a_busy_server_or_a_dropped_connection_mid_song_is_retried() {
+        let data = body();
+        // Second chunk: 503, then a connection cut halfway, then served.
+        let (url, gets) = serve(data.clone(), |n| match n { 1 => 1, 2 => 2, _ => 0 });
+        assert_eq!(read_all(&url).unwrap(), data);
+        assert!(gets.load(Ordering::SeqCst) >= 5);
+    }
+
+    #[test]
+    fn a_whole_file_answer_to_a_range_request_is_not_used_as_the_chunk() {
+        let data = body();
+        // Every non-first chunk gets the whole file with 200: must fail, not play wrong bytes.
+        let (url, _) = serve(data.clone(), |n| if n == 0 { 0 } else { 3 });
+        let result = read_all(&url);
+        assert!(result.is_err(), "decoded the wrong bytes instead of failing");
+    }
+
+    #[test]
+    fn a_server_that_stays_down_still_ends_in_an_error() {
+        let (url, gets) = serve(body(), |n| if n == 0 { 0 } else { 1 });
+        assert!(read_all(&url).is_err());
+        assert_eq!(gets.load(Ordering::SeqCst), 1 + 1 + RANGE_RETRY_DELAYS_MS.len());
     }
 }

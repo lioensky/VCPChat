@@ -2233,6 +2233,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtrb"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "342e1478a6e1c839e7405033eabfdc954d4d5dabd39f34e83420a43a95acfb04"
+
+[[package]]
 name = "rubato"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3168,6 +3174,7 @@ dependencies = [
  "rayon",
  "realfft",
  "reqwest",
+ "rtrb",
  "rubato",
  "rusqlite",
  "rustfft",

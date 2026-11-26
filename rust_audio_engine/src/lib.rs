@@ -5,6 +5,7 @@
 
 pub mod channel_layout;
 pub mod decoder;
+pub mod mp4_gapless;
 pub mod player;
 pub mod processor;
 pub mod runtime;

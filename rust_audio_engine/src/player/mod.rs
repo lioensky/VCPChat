@@ -8,11 +8,16 @@ mod gapless;
 mod callback;
 mod audio_thread;
 mod spectrum;
+mod stream_decode;
+mod track_buffer;
 
 // Re-exports
 pub use state::{AudioCommand, PlayerState, SharedState, AudioDeviceInfo,
     EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR, EVENT_TRACK_CHANGED,
-    EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD_RESET};
+    EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD_RESET, EVENT_COMMAND_APPLIED,
+    EVENT_DECODE_COMPLETE, output_fallback_names, OUTPUT_FELL_BACK_FROM_EXCLUSIVE,
+    OUTPUT_FELL_BACK_TO_DEFAULT_DEVICE, resolve_output_device};
+pub use track_buffer::{TrackBuffer, CHUNK_FRAMES};
 pub use gapless::GaplessManager;
 
 use std::sync::Arc;
@@ -39,7 +44,7 @@ use crate::processor::{
 // Import internal modules
 use state::{save_cache_with_header, load_cache_with_header};
 use audio_thread::audio_thread_main;
-use spectrum::spectrum_thread_main;
+use spectrum::{spectrum_thread_main, SpectrumTap};
 
 /// The main audio player - thread-safe wrapper
 pub struct AudioPlayer {
@@ -84,6 +89,8 @@ pub struct AudioPlayer {
     fir_bands: [(f64, f64); 10],
     fir_phase_mode: FirPhaseMode,
     ir_loaded: bool,
+    /// Measured loudness of untagged tracks, so the next play starts at the right level.
+    loudness_cache: Option<Arc<crate::processor::LoudnessDatabase>>,
     ir_path: Option<String>,
 
     config: AppConfig,
@@ -109,7 +116,7 @@ impl AudioPlayer {
         ));
         let loudness_state = loudness_normalizer.lock().atomic_state();
 
-        let (spectrum_tx, spectrum_rx) = crossbeam::channel::bounded::<f64>(4096);
+        let (spectrum_tap, spectrum_rx) = SpectrumTap::new();
 
         let spec_state = Arc::clone(&shared_state);
         let spec_analyzer = Arc::clone(&spectrum_analyzer);
@@ -153,7 +160,9 @@ impl AudioPlayer {
 
         {
             lockfree_noise_shaper_params.set_enabled(true);
-            lockfree_noise_shaper_params.set_bits(24);
+            let bits = config.output_bits.unwrap_or(24).max(16);
+            lockfree_noise_shaper_params.set_bits(bits);
+            shared_state.output_bits.store(bits, Ordering::Relaxed);
             lockfree_noise_shaper_params.set_curve(NoiseShaperCurve::Lipshitz5);
         }
 
@@ -170,7 +179,6 @@ impl AudioPlayer {
         let lf_dl_telemetry = Arc::clone(&dynamic_loudness_telemetry);
         let lf_loudness_state = Arc::clone(&loudness_state);
         let phase_response = config.phase_response;
-        let target_lufs = config.loudness.target_lufs;
 
         let audio_thread = thread::spawn(move || {
             audio_thread_main(
@@ -186,9 +194,8 @@ impl AudioPlayer {
                 lf_dl_telemetry,
                 lf_loudness_state,
                 config.output_bits.unwrap_or(24),  // M-1 fix: read from config instead of hardcoded 24
-                spectrum_tx,
+                spectrum_tap,
                 phase_response,
-                target_lufs,
             );
         });
 
@@ -216,6 +223,7 @@ impl AudioPlayer {
             fir_bands: STANDARD_BANDS,
             fir_phase_mode: FirPhaseMode::Linear,
             ir_loaded: false,
+            loudness_cache: None,
             ir_path: None,
             config,
             device_id: None,
@@ -261,6 +269,43 @@ impl AudioPlayer {
         Ok(())
     }
 
+    /// Choose the output device by id (its position in `list_devices`) and
+    /// remember its name, so the same device is found again after the list
+    /// shifts. Returns the name that was recorded.
+    pub fn select_device_by_list(&mut self, device_id: Option<usize>, names: &[String]) -> Option<String> {
+        let name = device_id.and_then(|id| names.get(id).cloned());
+        *self.shared_state.device_name.write() = name.clone();
+        let _ = self.select_device(device_id);
+        name
+    }
+
+    /// Put back a saved output choice: find the saved device by name in the
+    /// current list (falls back to the saved position for settings written
+    /// before names were kept).
+    pub fn restore_device(&mut self, saved_name: Option<&str>, saved_id: Option<usize>, names: &[String]) {
+        let (index, missing) = resolve_output_device(names, saved_name, saved_id);
+        if missing {
+            log::warn!("Saved output device {:?} / {:?} not present, using the default", saved_name, saved_id);
+        }
+        // Keep the name even when the device is away, so it is picked again once plugged back in.
+        *self.shared_state.device_name.write() = saved_name.map(str::to_string)
+            .or_else(|| index.and_then(|i| names.get(i).cloned()));
+        let _ = self.select_device(index);
+    }
+
+    /// Names of the output devices, in list order (what `list_devices` ids index).
+    pub fn output_device_names() -> Vec<String> {
+        let host = cpal::default_host();
+        host.output_devices()
+            .map(|devices| devices.map(|d| d.name().unwrap_or_default()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Remember EBU R128 measurements across plays (and restarts).
+    pub fn set_loudness_cache(&mut self, cache: Option<Arc<crate::processor::LoudnessDatabase>>) {
+        self.loudness_cache = cache;
+    }
+
     pub fn load(&mut self, path: &str) -> Result<(), String> {
         self.load_with_credentials(path, None)
     }
@@ -291,93 +336,127 @@ impl AudioPlayer {
         let cmd_tx = self.cmd_tx.clone();
         let config = self.config.clone();
         let device_id = self.device_id;
-        
+        let loudness_state = self.loudness_normalizer.lock().atomic_state();
+        let loudness_cache = self.loudness_cache.clone();
 
-        // Spawn background thread for decoding
-        thread::spawn(move || {
-            let result = Self::decode_file_internal(
-                &path_owned,
-                credentials_owned.as_ref(),
-                &config,
-                device_id,
-                &shared_state,
-                load_generation,
-            );
-
-            if shared_state.load_generation.load(Ordering::Acquire) != load_generation {
-                return;
-            }
-            match result {
-                Ok(load_result) => {
-                    // NOTE: is_loading is cleared by the audio thread after
-                    // LoadComplete is processed and file_path is updated.
-                    // Clearing it here would create a race condition where
-                    // the frontend sees is_loading=false but file_path is
-                    // still the old value, causing waitForTrackReady to time out.
-                    let _ = cmd_tx.send(AudioCommand::LoadComplete {
-                        generation: load_generation,
-                        result: load_result,
-                    });
-                }
-                Err(e) => {
-                    log::error!("Async load failed: {}", e);
-                    let _ = cmd_tx.send(AudioCommand::LoadError {
-                        generation: load_generation,
-                        error: e,
-                    });
-                }
-            }
-        });
+        // Decode on a background thread. The track is handed to the audio
+        // thread as soon as about one second is decoded; decoding continues
+        // into the same buffer while it plays.
+        thread::Builder::new()
+            .name("vcp-decode".into())
+            .spawn(move || {
+                Self::stream_load(
+                    &path_owned,
+                    credentials_owned.as_ref(),
+                    &config,
+                    device_id,
+                    &shared_state,
+                    &cmd_tx,
+                    &loudness_state,
+                    load_generation,
+                    loudness_cache.as_deref(),
+                );
+            })
+            .map_err(|e| format!("Failed to start decode thread: {e}"))?;
 
         Ok(())
     }
 
-    /// Internal decode function for async loading
-    fn decode_file_internal(
+    fn output_sample_rate_for(config: &AppConfig, device_id: Option<usize>, original_sr: u32) -> u32 {
+        config.target_samplerate.unwrap_or_else(|| {
+            let host = cpal::default_host();
+            let device = match device_id {
+                Some(id) => host.output_devices().ok().and_then(|mut d| d.nth(id)),
+                None => host.default_output_device(),
+            };
+            device
+                .and_then(|d| d.default_output_config().ok())
+                .map(|c| c.sample_rate().0)
+                .unwrap_or(original_sr)
+        })
+    }
+
+    fn resample_cache_path(
+        config: &AppConfig,
+        path: &str,
+        target_sr: u32,
+        estimated_input_frames: usize,
+    ) -> Option<PathBuf> {
+        if !config.use_cache {
+            return None;
+        }
+        let cache_dir = config.cache_dir.clone().unwrap_or_else(|| PathBuf::from("resample_cache"));
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(path.as_bytes());
+        hasher.update(target_sr.to_le_bytes());
+        let q_byte = match config.resample_quality {
+            ResampleQuality::Low => 0,
+            ResampleQuality::Standard => 1,
+            ResampleQuality::High => 2,
+            ResampleQuality::UltraHigh => 3,
+        };
+        hasher.update(&[q_byte]);
+        hasher.update(estimated_input_frames.to_le_bytes());
+        hasher.update(&[config.phase_response as u8]);
+
+        if !path.starts_with("http://") && !path.starts_with("https://") {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                hasher.update(metadata.len().to_le_bytes());
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+                        hasher.update(duration.as_secs().to_le_bytes());
+                        hasher.update(duration.subsec_nanos().to_le_bytes());
+                    }
+                }
+            }
+        }
+        let hash = hex::encode(hasher.finalize());
+        Some(cache_dir.join(format!("{}.bin", hash)))
+    }
+
+    /// Body of the decode thread for one load request.
+    #[allow(clippy::too_many_arguments)]
+    fn stream_load(
         path: &str,
         credentials: Option<&crate::decoder::HttpCredentials>,
         config: &AppConfig,
         device_id: Option<usize>,
         shared_state: &Arc<SharedState>,
-        load_generation: u64,
-    ) -> Result<state::LoadResult, String> {
+        cmd_tx: &Sender<AudioCommand>,
+        loudness_state: &Arc<crate::processor::AtomicLoudnessState>,
+        generation: u64,
+        loudness_cache: Option<&crate::processor::LoudnessDatabase>,
+    ) {
         use crate::decoder::StreamingDecoder;
-        use crate::processor::StreamingResampler;
+        use crate::processor::{LoudnessMeter, StreamingResampler};
+        use stream_decode::{Pump, PumpOutcome};
 
-        let check_current = || {
-            if shared_state.load_generation.load(Ordering::Acquire) == load_generation {
-                Ok(())
-            } else {
-                Err(String::from("load superseded"))
+        let is_current = || shared_state.load_generation.load(Ordering::Acquire) == generation;
+        let send_error = |error: String| {
+            log::error!("Async load failed: {}", error);
+            let _ = cmd_tx.send(AudioCommand::LoadError { generation, error });
+        };
+
+        let mut decoder = match StreamingDecoder::open_with_credentials(path, credentials) {
+            Ok(decoder) => decoder,
+            Err(e) => {
+                log::error!("Failed to open decoder for {}: {}", path, e);
+                send_error(e.to_string());
+                return;
             }
         };
-        check_current()?;
-        let mut decoder = StreamingDecoder::open_with_credentials(path, credentials)
-            .map_err(|e| {
-                log::error!("Failed to open decoder for {}: {}", path, e);
-                e.to_string()
-            })?;
+        if !is_current() {
+            return;
+        }
 
         let info = decoder.info.clone();
         let original_sr = info.sample_rate;
         let channels = info.channels;
-
-        let target_sr = config.target_samplerate
-            .unwrap_or_else(|| {
-                let host = cpal::default_host();
-                let device = match device_id {
-                    Some(id) => host.output_devices().ok().and_then(|mut d| d.nth(id)),
-                    None => host.default_output_device(),
-                };
-                device
-                    .and_then(|d| d.default_output_config().ok())
-                    .map(|c| c.sample_rate().0)
-                    .unwrap_or(original_sr)
-            });
-
+        let target_sr = Self::output_sample_rate_for(config, device_id, original_sr);
         let need_resample = target_sr != original_sr;
         let estimated_input_frames = info.total_frames.unwrap_or(0) as usize;
-        
+
         // If preemptive_resample is false, skip pre-resampling and keep original sample rate
         let (final_target_sr, final_need_resample) = if need_resample && !config.preemptive_resample {
             log::info!("preemptive_resample=false: keeping original {} Hz (will resample at playback)", original_sr);
@@ -386,151 +465,192 @@ impl AudioPlayer {
             (target_sr, need_resample)
         };
 
-        // Calculate cache path
-        let cache_path = if config.use_cache && final_need_resample {
-            let cache_dir = config.cache_dir.clone().unwrap_or_else(|| PathBuf::from("resample_cache"));
-            use sha2::{Sha256, Digest};
-            let mut hasher = Sha256::new();
-            hasher.update(path.as_bytes());
-            hasher.update(final_target_sr.to_le_bytes());
-            let q_byte = match config.resample_quality {
-                ResampleQuality::Low => 0,
-                ResampleQuality::Standard => 1,
-                ResampleQuality::High => 2,
-                ResampleQuality::UltraHigh => 3,
-            };
-            hasher.update(&[q_byte]);
-            hasher.update(estimated_input_frames.to_le_bytes());
-            hasher.update(&[config.phase_response as u8]);
+        // Unless the mode takes this file's gain from a ReplayGain tag, its gain comes
+        // from its EBU R128 loudness: measure while streaming (track mode included,
+        // which used to leave a picked song at the previous song's gain).
+        let needs_r128 = loudness_state.enabled()
+            && !crate::processor::LoudnessNormalizer::has_tag_gain(loudness_state.get_mode(), &info.metadata);
+        // Measured on an earlier play: apply it from the first second instead of
+        // starting at preamp-only and jumping once the whole track is decoded.
+        let cached_lufs = if needs_r128 { cached_loudness(loudness_cache, path) } else { None };
+        let needs_r128 = needs_r128 && cached_lufs.is_none();
 
-            if !path.starts_with("http://") && !path.starts_with("https://") {
-                if let Ok(metadata) = std::fs::metadata(path) {
-                    hasher.update(metadata.len().to_le_bytes());
-                    if let Ok(modified) = metadata.modified() {
-                        if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
-                            hasher.update(duration.as_secs().to_le_bytes());
-                            hasher.update(duration.subsec_nanos().to_le_bytes());
-                        }
-                    }
-                }
-            }
-            let hash = hex::encode(hasher.finalize());
-            Some(cache_dir.join(format!("{}.bin", hash)))
+        let make_result = |buffer: Arc<TrackBuffer>, total_frames: u64| state::LoadResult {
+            buffer,
+            sample_rate: final_target_sr,
+            channels,
+            total_frames,
+            file_path: path.to_string(),
+            loudness_info: None,
+            metadata: info.metadata.clone(),
+        };
+
+        let cache_path = if final_need_resample {
+            Self::resample_cache_path(config, path, final_target_sr, estimated_input_frames)
         } else {
             None
         };
 
-        // Try cache first
+        // Cache hit: the file is already at the output rate.
         if let Some(ref cp) = cache_path {
             if cp.exists() {
-                if let Some(cached_samples) = load_cache_with_header(cp, final_target_sr, channels as u32) {
-                    let total_frames = cached_samples.len() / channels;
+                if let Some(buffer) = load_cache_with_header(cp, final_target_sr, channels as u32) {
+                    let total_frames = buffer.ready_frames();
                     log::info!("Loaded from cache: {} frames", total_frames);
-                    return Ok(state::LoadResult {
-                        samples: cached_samples,  // Move instead of clone — avoids copying hundreds of MB
-                        sample_rate: final_target_sr,
-                        channels,
-                        total_frames: total_frames as u64,
-                        file_path: path.to_string(),
-                        loudness_info: None,
-                        metadata: info.metadata,
+                    if !is_current() {
+                        return;
+                    }
+                    shared_state.load_progress.store(100, Ordering::Relaxed);
+                    let lufs = if needs_r128 {
+                        LoudnessMeter::new(channels, final_target_sr).ok().map(|mut meter| {
+                            buffer.for_each_chunk(|chunk| {
+                                let _ = meter.process(chunk);
+                            });
+                            let lufs = meter.integrated_loudness();
+                            store_loudness(loudness_cache, path, lufs);
+                            lufs
+                        })
+                    } else {
+                        cached_lufs
+                    };
+                    let _ = cmd_tx.send(AudioCommand::LoadComplete {
+                        generation,
+                        result: make_result(buffer, total_frames),
                     });
-                } else {
-                    log::warn!("Cache validation failed, will re-decode");
+                    if let Some(integrated_lufs) = lufs {
+                        let _ = cmd_tx.send(AudioCommand::LoudnessMeasured { generation, integrated_lufs });
+                    }
+                    shared_state.raise_events(EVENT_DECODE_COMPLETE);
+                    return;
                 }
+                log::warn!("Cache validation failed, will re-decode");
             }
         }
 
-        if final_need_resample {
+        let resampler = if final_need_resample {
             log::info!(
                 "Streaming {} resampling {} -> {} Hz",
                 crate::processor::RESAMPLER_BACKEND_NAME,
                 original_sr,
                 final_target_sr
             );
-        }
-
-        let estimated_output_frames = if final_need_resample {
-            (estimated_input_frames as f64 * final_target_sr as f64 / original_sr as f64).ceil() as usize
-        } else {
-            estimated_input_frames
-        };
-        check_current()?;
-        let mut samples = Vec::with_capacity(estimated_output_frames * channels);
-
-        let mut resampler = if final_need_resample {
             match StreamingResampler::with_phase(channels, original_sr, final_target_sr, config.phase_response) {
                 Ok(rs) => Some(rs),
                 Err(e) => {
-                    return Err(format!("Failed to create resampler: {} -> {}: {}", original_sr, final_target_sr, e));
+                    send_error(format!("Failed to create resampler: {} -> {}: {}", original_sr, final_target_sr, e));
+                    return;
                 }
             }
         } else {
             None
         };
 
-        let total_estimated = estimated_input_frames.max(1);
-        let mut chunk_count = 0;
-        let mut decoded_frames = 0;
+        let estimated_output_frames = if estimated_input_frames == 0 {
+            None
+        } else if final_need_resample {
+            Some((estimated_input_frames as f64 * final_target_sr as f64 / original_sr as f64).ceil() as u64)
+        } else {
+            Some(estimated_input_frames as u64)
+        };
 
-        loop {
-            check_current()?;
-            let Some(decoded_chunk) = decoder.decode_next().map_err(|e| e.to_string())? else { break };
-            check_current()?;
-            decoded_frames += decoded_chunk.len() / channels;
-            if let Some(ref mut rs) = resampler {
-                let resampled = rs.process_chunk(&decoded_chunk)
-                    .map_err(|e| format!("Rubato streaming process failed: {e}"))?;
-                samples.extend(resampled);
-            } else {
-                samples.extend(decoded_chunk);
-            }
-            chunk_count += 1;
+        let (buffer, mut writer) = TrackBuffer::new(channels, estimated_output_frames);
+        let mut pump = Pump {
+            decoder: &mut decoder,
+            resampler,
+            source_channels: channels,
+            output_channels: channels,
+            meter: if needs_r128 { LoudnessMeter::new(channels, final_target_sr).ok() } else { None },
+        };
 
-            // Update progress
-            let progress = ((decoded_frames as f64 / total_estimated as f64) * 100.0).min(99.0) as u64;
-            shared_state.load_progress.store(progress, Ordering::Relaxed);
+        // Start playback once this much is decoded (about one second).
+        let preroll_frames = (final_target_sr as u64).max(1);
+        let total_estimate = estimated_output_frames.unwrap_or(0);
+        let mut announced = false;
+        let started = std::time::Instant::now();
 
-            if chunk_count % 100 == 0 {
-                log::debug!("Streaming progress: {} chunks, {} decoded frames, {}%",
-                    chunk_count, decoded_frames, progress);
-            }
-        }
-
-        if let Some(ref mut rs) = resampler {
-            samples.extend(
-                rs.flush()
-                    .map_err(|e| format!("Rubato streaming finish failed: {e}"))?,
-            );
-        }
-
-        check_current()?;
-
-        log::info!(
-            "Streaming decode complete: {} chunks, {} output samples ({}→{} Hz)",
-            chunk_count, samples.len(), original_sr, final_target_sr
+        let mut decode_failed = false;
+        let outcome = pump.run(
+            &mut writer,
+            || !is_current(),
+            |writer, decoded_input_frames| {
+                if estimated_input_frames > 0 {
+                    let progress = ((decoded_input_frames as f64 / estimated_input_frames as f64) * 100.0).min(99.0) as u64;
+                    shared_state.load_progress.store(progress, Ordering::Relaxed);
+                }
+                if !announced && writer.buffer().ready_frames() >= preroll_frames {
+                    announced = true;
+                    log::info!(
+                        "Streaming start after {:?}: {} frames ready",
+                        started.elapsed(),
+                        writer.buffer().ready_frames()
+                    );
+                    let _ = cmd_tx.send(AudioCommand::LoadComplete {
+                        generation,
+                        result: make_result(Arc::clone(writer.buffer()), total_estimate),
+                    });
+                    if let Some(integrated_lufs) = cached_lufs {
+                        let _ = cmd_tx.send(AudioCommand::LoudnessMeasured { generation, integrated_lufs });
+                    }
+                }
+            },
         );
 
-        // Save to cache
-        if final_need_resample {
-            if let Some(ref cp) = cache_path {
-                if let Err(e) = save_cache_with_header(cp, &samples, final_target_sr, channels as u32) {
-                    log::warn!("Failed to save cache: {}", e);
-                }
+        match outcome {
+            Ok(PumpOutcome::Cancelled) => {
+                log::info!("Decode of {} abandoned: a newer load started", path);
+                return;
             }
+            Err(e) if !announced => {
+                send_error(e);
+                return;
+            }
+            Err(e) => {
+                // Already playing: keep what was decoded and end the track there.
+                log::error!("Decode error after playback started ({}): {}", path, e);
+                decode_failed = true;
+            }
+            Ok(PumpOutcome::Finished) => {}
         }
 
-        let total_frames = samples.len() / channels;
+        let integrated_lufs = pump.integrated_loudness();
+        if let Some(lufs) = integrated_lufs.filter(|_| !decode_failed) {
+            store_loudness(loudness_cache, path, lufs);
+        }
+        let total_frames = writer.finish();
+        shared_state.load_progress.store(100, Ordering::Relaxed);
+        log::info!(
+            "Streaming decode complete in {:?}: {} frames ({}->{} Hz)",
+            started.elapsed(),
+            total_frames,
+            original_sr,
+            final_target_sr
+        );
 
-        Ok(state::LoadResult {
-            samples,
-            sample_rate: final_target_sr,
-            channels,
-            total_frames: total_frames as u64,
-            file_path: path.to_string(),
-            loudness_info: None,
-            metadata: info.metadata,
-        })
+        if !announced && is_current() {
+            if total_frames == 0 {
+                send_error("Decoded track is empty".to_string());
+                return;
+            }
+            let _ = cmd_tx.send(AudioCommand::LoadComplete {
+                generation,
+                result: make_result(Arc::clone(&buffer), total_frames),
+            });
+        }
+        if is_current() {
+            if let Some(integrated_lufs) = integrated_lufs.or(if announced { None } else { cached_lufs }) {
+                let _ = cmd_tx.send(AudioCommand::LoudnessMeasured { generation, integrated_lufs });
+            }
+            shared_state.raise_events(EVENT_DECODE_COMPLETE);
+        }
+
+        // A track cut short by a read error is not cached: the cache would replay the cut
+        // version every time, even once the file or the network is fine again. Its partial
+        // loudness is not remembered either.
+        if let Some(ref cp) = cache_path.as_ref().filter(|_| !decode_failed) {
+            if let Err(e) = save_cache_with_header(cp, &buffer, final_target_sr, channels as u32) {
+                log::warn!("Failed to save cache: {}", e);
+            }
+        }
     }
 
     /// Check if a file is currently being loaded
@@ -563,6 +683,10 @@ impl AudioPlayer {
     }
 
     pub fn seek(&mut self, time_secs: f64) -> Result<(), String> {
+        // `(NaN * rate) as u64` is 0: a bad position used to restart the song.
+        if !time_secs.is_finite() || time_secs < 0.0 {
+            return Err(format!("Invalid seek position: {time_secs}"));
+        }
         self.cmd_tx.send(AudioCommand::Seek(time_secs))
             .map_err(|e| format!("Failed to send seek command: {}", e))
     }
@@ -582,6 +706,15 @@ impl AudioPlayer {
 
     pub fn get_state(&self) -> PlayerState {
         self.shared_state.state.load()
+    }
+
+    /// Queue a sequence marker behind the commands sent so far. The audio
+    /// thread publishes it as `applied_seq` once they have all run, so a
+    /// client that sent command N can ignore any state with `applied_seq < N`.
+    pub fn mark_applied(&self) -> u64 {
+        let seq = self.shared_state.next_cmd_seq();
+        let _ = self.cmd_tx.send(AudioCommand::Applied(seq));
+        seq
     }
 
     pub fn shared_state(&self) -> Arc<SharedState> {
@@ -910,6 +1043,7 @@ impl AudioPlayer {
             credentials,
             self.loudness_enabled,
             mode,
+            self.loudness_cache.clone(),
         )
     }
 
@@ -1065,5 +1199,202 @@ impl Drop for AudioPlayer {
         if let Some(handle) = self.audio_thread.take() {
             let _ = handle.join();
         }
+    }
+}
+
+/// Integrated loudness from an earlier measurement of this unchanged local file.
+fn cached_loudness(cache: Option<&crate::processor::LoudnessDatabase>, path: &str) -> Option<f64> {
+    let db = cache?;
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return None;
+    }
+    match db.needs_scan(path) {
+        Ok(false) => db.get(path).ok().flatten().map(|t| t.integrated_lufs).filter(|l| l.is_finite()),
+        _ => None,
+    }
+}
+
+/// Keep a playback measurement for the next time this file is played.
+fn store_loudness(cache: Option<&crate::processor::LoudnessDatabase>, path: &str, integrated_lufs: f64) {
+    let Some(db) = cache else { return };
+    if !integrated_lufs.is_finite() || path.starts_with("http://") || path.starts_with("https://") {
+        return;
+    }
+    // True peak is not measured while streaming; 0 dBTP is the conservative "unknown".
+    let track = crate::processor::TrackLoudness::new(
+        path,
+        integrated_lufs,
+        0.0,
+        None,
+        crate::processor::DEFAULT_STREAMING_TARGET_LUFS,
+    );
+    if let Err(e) = db.upsert(&track) {
+        log::warn!("Could not remember loudness of {}: {}", path, e);
+    }
+}
+
+#[cfg(test)]
+mod loudness_cache_tests {
+    use super::*;
+    use crate::processor::LoudnessDatabase;
+
+    fn write_wav(path: &std::path::Path, seconds: f64) {
+        let sr = 44_100u32;
+        let frames = (sr as f64 * seconds) as u32;
+        let mut data = Vec::with_capacity(frames as usize * 4);
+        for i in 0..frames {
+            let v = ((i as f64 * 0.0627).sin() * 0.3 * 32767.0) as i16;
+            data.extend_from_slice(&v.to_le_bytes());
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        let mut f = Vec::new();
+        f.extend_from_slice(b"RIFF");
+        f.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+        f.extend_from_slice(b"WAVEfmt ");
+        f.extend_from_slice(&16u32.to_le_bytes());
+        f.extend_from_slice(&1u16.to_le_bytes());
+        f.extend_from_slice(&2u16.to_le_bytes());
+        f.extend_from_slice(&sr.to_le_bytes());
+        f.extend_from_slice(&(sr * 4).to_le_bytes());
+        f.extend_from_slice(&4u16.to_le_bytes());
+        f.extend_from_slice(&16u16.to_le_bytes());
+        f.extend_from_slice(b"data");
+        f.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        f.extend_from_slice(&data);
+        std::fs::write(path, f).unwrap();
+    }
+
+    /// Run one load and return the loudness the decode thread reported.
+    fn load_once(path: &str, db: &LoudnessDatabase) -> Option<f64> {
+        load_in_mode(path, db, crate::config::NormalizationMode::ReplayGainTrack)
+    }
+
+    fn load_in_mode(path: &str, db: &LoudnessDatabase, mode: crate::config::NormalizationMode) -> Option<f64> {
+        let shared = Arc::new(SharedState::new());
+        let generation = shared.load_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        let (tx, rx) = unbounded::<AudioCommand>();
+        let loudness = Arc::new(crate::processor::AtomicLoudnessState::new(200.0, 44_100).unwrap());
+        loudness.set_normalization_mode(mode);
+        let config = AppConfig { target_samplerate: Some(44_100), ..AppConfig::default() };
+        AudioPlayer::stream_load(path, None, &config, None, &shared, &tx, &loudness, generation, Some(db));
+        drop(tx);
+        let mut seen_complete = false;
+        let mut measured = None;
+        for cmd in rx.iter() {
+            match cmd {
+                AudioCommand::LoadComplete { .. } => seen_complete = true,
+                AudioCommand::LoudnessMeasured { integrated_lufs, .. } => {
+                    assert!(seen_complete, "gain is applied after the load, never overwritten by it");
+                    measured = Some(integrated_lufs);
+                }
+                _ => {}
+            }
+        }
+        measured
+    }
+
+    #[test]
+    fn untagged_track_is_measured_once_then_starts_at_the_remembered_level() {
+        let dir = std::env::temp_dir().join(format!("vcp-loudness-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("untagged.wav");
+        write_wav(&wav, 2.5);
+        let path = wav.to_string_lossy().to_string();
+        let db = LoudnessDatabase::in_memory().unwrap();
+
+        let first = load_once(&path, &db).expect("measured while streaming");
+        let stored = cached_loudness(Some(&db), &path).expect("measurement remembered");
+        assert!((stored - first).abs() < 1e-9);
+
+        // A remembered value is used as is (no second measurement): plant a marker.
+        store_loudness(Some(&db), &path, -30.0);
+        assert_eq!(load_once(&path, &db), Some(-30.0));
+
+        // The file changes: the old value is not trusted any more.
+        write_wav(&wav, 1.5);
+        assert_eq!(cached_loudness(Some(&db), &path), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_stream_that_had_to_fall_back_says_so() {
+        // 独占打不开（这台机器根本没有独占）、选的设备不在了：都要能从 /state 看出来，
+        // 不然界面一直显示「独占」「某某声卡」，实际在用共享模式、默认设备。
+        let dir = std::env::temp_dir().join(format!("vcp-fallback-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("a.wav");
+        write_wav(&wav, 1.0);
+        let mut player = AudioPlayer::new(AppConfig::default());
+        let shared = player.shared_state();
+        player.exclusive_mode = true;
+        shared.exclusive_mode.store(true, Ordering::Relaxed);
+        player.select_device(Some(4096)).unwrap();
+        player.load(&wav.to_string_lossy()).unwrap();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while player.is_loading() && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        player.play().unwrap();
+        while shared.output_fallback.load(Ordering::Relaxed) == 0 && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let bits = shared.output_fallback.load(Ordering::Relaxed);
+        let names = output_fallback_names(bits);
+        assert!(names.contains(&"device"), "{names:?}");
+        // 没有独占的平台上一定是退回了共享模式（Windows 上取决于声卡，这里不判）
+        if !cfg!(windows) { assert!(names.contains(&"exclusive"), "{names:?}"); }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn track_mode_measures_a_picked_song_too() {
+        let dir = std::env::temp_dir().join(format!("vcp-loudness-track-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("picked.wav");
+        write_wav(&wav, 2.0);
+        let path = wav.to_string_lossy().to_string();
+        let db = LoudnessDatabase::in_memory().unwrap();
+        for mode in [crate::config::NormalizationMode::Track, crate::config::NormalizationMode::Album] {
+            assert!(load_in_mode(&path, &db, mode).is_some(), "{mode:?} left the gain unset");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_song_cut_short_by_a_read_error_is_not_cached() {
+        // 3 s of 44.1 kHz WAV over HTTP; every chunk after the second fails for good, so the
+        // decode stops after playback has started.
+        let dir = std::env::temp_dir().join(format!("vcp-cut-cache-{}", std::process::id()));
+        let cache_dir = dir.join("cache");
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let wav = dir.join("song.wav");
+        write_wav(&wav, 3.0);
+        let (url, _) = crate::decoder::range_retry_tests::serve(std::fs::read(&wav).unwrap(), |n| if n < 2 { 0 } else { 1 });
+
+        let shared = Arc::new(SharedState::new());
+        let generation = shared.load_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        let (tx, rx) = unbounded::<AudioCommand>();
+        let loudness = Arc::new(crate::processor::AtomicLoudnessState::new(200.0, 44_100).unwrap());
+        let config = AppConfig {
+            target_samplerate: Some(48_000),
+            use_cache: true,
+            cache_dir: Some(cache_dir.clone()),
+            ..AppConfig::default()
+        };
+        AudioPlayer::stream_load(&url, None, &config, None, &shared, &tx, &loudness, generation, None);
+        drop(tx);
+        assert!(rx.iter().any(|c| matches!(c, AudioCommand::LoadComplete { .. })), "playback started");
+        let cached = std::fs::read_dir(&cache_dir).map(|d| d.count()).unwrap_or(0);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(cached, 0, "the cut-short decode was saved to the resample cache");
+    }
+
+    #[test]
+    fn a_seek_to_nan_or_a_negative_time_is_refused() {
+        let mut player = AudioPlayer::new(AppConfig::default());
+        assert!(player.seek(f64::NAN).is_err());
+        assert!(player.seek(-1.0).is_err());
+        assert!(player.seek(f64::INFINITY).is_err());
+        assert!(player.seek(12.5).is_ok());
     }
 }

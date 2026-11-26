@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::channel::Receiver;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Stream, StreamConfig};
 
@@ -13,9 +13,10 @@ use cpal::{Stream, StreamConfig};
 use assert_no_alloc::assert_no_alloc;
 
 use super::callback::{audio_callback_lockfree, LockfreeDspContext};
+use super::spectrum::SpectrumTap;
 use super::state::{
     AudioCommand, PlayerState, SharedState,
-    EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR,
+    EVENT_COMMAND_APPLIED, EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR,
 };
 use crate::config::PhaseResponse;
 use crate::processor::{
@@ -51,18 +52,20 @@ pub fn audio_thread_main(
     dynamic_loudness_telemetry: Arc<AtomicDynamicLoudnessTelemetry>,
     loudness_state: Arc<AtomicLoudnessState>,
     noise_shaper_bits: u32,
-    spectrum_tx: Sender<f64>,
+    spectrum_tap: SpectrumTap,
     phase_response: PhaseResponse,
-    target_lufs: f64,
 ) {
     log::info!("Audio thread started, initializing cpal host...");
     let mut stream: Option<Stream> = None;
+    // Geometry of the open shared-mode stream: (device id, source rate,
+    // channels). Consecutive tracks with the same geometry reuse the stream
+    // instead of re-enumerating the device and rebuilding it on every switch.
+    let mut stream_key: Option<(i64, u32, u16)> = None;
+    let stream_failed = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    // Keep a default output bit-depth hint for downstream components.
-    shared_state
-        .output_bits
-        .store(noise_shaper_bits.max(16), Ordering::Relaxed);
-    noise_shaper_params.set_bits(noise_shaper_bits.max(16));
+    // The starting bit depth is set in AudioPlayer::new before this thread exists:
+    // storing it here raced the saved settings applied right after startup and could
+    // put the noise shaper back to the config default.
 
     let initial_channels = shared_state.channels.load(Ordering::Relaxed).max(1) as usize;
     let initial_sample_rate = shared_state.sample_rate.load(Ordering::Relaxed).max(1) as f64;
@@ -88,25 +91,73 @@ pub fn audio_thread_main(
                 log::info!("Received Play command");
                 if shared_state.state.load() == PlayerState::Paused {
                     if let Some(ref s) = stream {
+                        // Resume from silence and fade in.
+                        shared_state.fade_gain.store(0.0f32.to_bits(), Ordering::Relaxed);
+                        shared_state.fade_target.store(1.0f32.to_bits(), Ordering::Release);
                         let _ = s.play();
                     }
                     shared_state.state.store(PlayerState::Playing);
                     continue;
                 }
+                // A fresh start plays at full level from the first sample.
+                shared_state.fade_gain.store(1.0f32.to_bits(), Ordering::Relaxed);
+                shared_state.fade_target.store(1.0f32.to_bits(), Ordering::Release);
 
                 let use_exclusive = shared_state.exclusive_mode.load(Ordering::Relaxed);
 
+                let key = (
+                    shared_state.device_id.load(Ordering::Relaxed),
+                    shared_state.sample_rate.load(Ordering::Relaxed) as u32,
+                    shared_state.channels.load(Ordering::Relaxed) as u16,
+                );
+                if !use_exclusive && stream_key == Some(key) && !stream_failed.load(Ordering::Acquire) {
+                    if let Some(ref s) = stream {
+                        // Same format as the previous track: restart the
+                        // existing stream. The callback resets DSP and
+                        // resampler state before its next block.
+                        shared_state.dsp_needs_rebuild.store(true, Ordering::Release);
+                        if s.play().is_ok() {
+                            shared_state.state.store(PlayerState::Playing);
+                            log::info!("Reusing output stream ({} Hz, {} ch)", key.1, key.2);
+                            continue;
+                        }
+                    }
+                }
+                stream = None;
+                stream_key = None;
+                stream_failed.store(false, Ordering::Release);
+
+                let mut fallback = 0u8;
+                // Exclusive mode opens the device by position too: point it at
+                // the named device's current position first.
                 #[cfg(windows)]
                 if use_exclusive {
-                    if handle_wasapi_exclusive(
+                    let wanted_name = shared_state.device_name.read().clone();
+                    if let Some(name) = wanted_name {
+                        let names = super::AudioPlayer::output_device_names();
+                        if let (Some(i), _) = super::resolve_output_device(&names, Some(&name), None) {
+                            shared_state.device_id.store(i as i64, Ordering::Relaxed);
+                        }
+                    }
+                }
+                #[cfg(windows)]
+                if use_exclusive {
+                    match handle_wasapi_exclusive(
                         &cmd_rx,
                         &shared_state,
                         &dsp_ctx,
                         &loudness_state,
-                        &spectrum_tx,
+                        &spectrum_tap,
                     ) {
-                        continue;
+                        ExclusiveOutcome::Handled => continue,
+                        // Asked to shut down while playing exclusively: don't
+                        // reopen the device in shared mode on the way out.
+                        ExclusiveOutcome::Shutdown => break,
+                        ExclusiveOutcome::CouldNotOpen => {}
                     }
+                }
+                if use_exclusive {
+                    fallback |= super::OUTPUT_FELL_BACK_FROM_EXCLUSIVE;
                 }
 
                 let host = cpal::default_host();
@@ -118,18 +169,28 @@ pub fn audio_thread_main(
                     None
                 };
 
-                let device = if let Some(id) = requested_device_id {
-                    log::info!("Attempting to select device by ID: {}", id);
-                    host.output_devices()
-                        .ok()
-                        .and_then(|mut devices| devices.nth(id))
-                        .or_else(|| {
-                            log::warn!("Device ID {} not found, falling back to default", id);
-                            host.default_output_device()
-                        })
+                // The chosen device is looked up by name when we have one: its
+                // position shifts when other devices are plugged in or out.
+                let wanted_name = shared_state.device_name.read().clone();
+                let device = if requested_device_id.is_some() || wanted_name.is_some() {
+                    let mut listed: Vec<cpal::Device> = host.output_devices().map(|d| d.collect()).unwrap_or_default();
+                    let names: Vec<String> = listed.iter().map(|d| d.name().unwrap_or_default()).collect();
+                    let (index, missing) = super::resolve_output_device(&names, wanted_name.as_deref(), requested_device_id);
+                    if let Some(i) = index {
+                        shared_state.device_id.store(i as i64, Ordering::Relaxed);
+                    }
+                    if missing {
+                        log::warn!("Output device {:?} / {:?} not found, falling back to default", wanted_name, requested_device_id);
+                        fallback |= super::OUTPUT_FELL_BACK_TO_DEFAULT_DEVICE;
+                    }
+                    match index {
+                        Some(i) => Some(listed.swap_remove(i)),
+                        None => host.default_output_device(),
+                    }
                 } else {
                     host.default_output_device()
                 };
+                shared_state.output_fallback.store(fallback, Ordering::Relaxed);
 
                 let device = match device {
                     Some(d) => {
@@ -276,7 +337,7 @@ pub fn audio_thread_main(
 
                 let cb_shared = Arc::clone(&shared_state);
                 let cb_loudness_state = Arc::clone(&loudness_state);
-                let cb_spectrum_tx = spectrum_tx.clone();
+                let mut cb_spectrum_tx = spectrum_tap.producer();
 
                 // Build the callback-owned pipeline from the negotiated source
                 // and device geometry before entering the realtime thread.
@@ -323,6 +384,7 @@ pub fn audio_thread_main(
                 let mut callback_output_f64 = vec![0.0; 8192 * channels as usize];
 
                 log::info!("Building output stream...");
+                let failed_flag = Arc::clone(&stream_failed);
                 let new_stream = device.build_output_stream(
                     &config,
                     move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
@@ -340,7 +402,7 @@ pub fn audio_thread_main(
                                 &mut cb_dsp_chain,
                                 &mut convolver,
                                 &cb_loudness_state,
-                                &cb_spectrum_tx,
+                                &mut cb_spectrum_tx,
                                 channels as usize,
                                 &mut process_buffer,
                                 &mut resampler,
@@ -362,7 +424,7 @@ pub fn audio_thread_main(
                                 &mut cb_dsp_chain,
                                 &mut convolver,
                                 &cb_loudness_state,
-                                &cb_spectrum_tx,
+                                &mut cb_spectrum_tx,
                                 channels as usize,
                                 &mut process_buffer,
                                 &mut resampler,
@@ -376,7 +438,10 @@ pub fn audio_thread_main(
                             }
                         }
                     },
-                    |err| log::error!("Stream error: {}", err),
+                    move |err| {
+                        log::error!("Stream error: {}", err);
+                        failed_flag.store(true, Ordering::Release);
+                    },
                     None,
                 );
 
@@ -384,6 +449,7 @@ pub fn audio_thread_main(
                     Ok(s) => {
                         let _ = s.play();
                         stream = Some(s);
+                        stream_key = Some(key);
                         shared_state.state.store(PlayerState::Playing);
 
                         let detected_bits: u32 = match device.default_output_config() {
@@ -396,9 +462,11 @@ pub fn audio_thread_main(
                             Err(_) => noise_shaper_bits.max(16),
                         };
 
-                        shared_state.output_bits.store(detected_bits, Ordering::Relaxed);
+                        // Only logged: output_bits is the depth the user picked for the noise
+                        // shaper, which /state reports and the settings save; overwriting it
+                        // with the device's format made the page show 24-bit after any choice.
                         log::info!(
-                            "Stream started successfully at {} Hz, {}-bit output",
+                            "Stream started successfully at {} Hz, device format ~{}-bit",
                             actual_sample_rate,
                             detected_bits
                         );
@@ -431,7 +499,7 @@ pub fn audio_thread_main(
                             dsp_ctx.reclaim_retired_convolver();
                             let cb_shared = Arc::clone(&shared_state);
                             let cb_loudness_state = Arc::clone(&loudness_state);
-                            let cb_spectrum_tx = spectrum_tx.clone();
+                            let mut cb_spectrum_tx = spectrum_tap.producer();
                             // Build a fresh DspChain for the fallback path
                             let (_, fallback_chain) = LockfreeDspContext::new(
                                 fallback_channels,
@@ -482,6 +550,7 @@ pub fn audio_thread_main(
                             let mut fallback_callback_output_f64 =
                                 vec![0.0; 8192 * fallback_channels];
 
+                            let failed_flag = Arc::clone(&stream_failed);
                             match device.build_output_stream(
                                 &fallback_config,
                                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
@@ -500,7 +569,7 @@ pub fn audio_thread_main(
                                             &mut fb_dsp_chain,
                                             &mut fallback_convolver,
                                             &cb_loudness_state,
-                                            &cb_spectrum_tx,
+                                            &mut cb_spectrum_tx,
                                             fallback_channels,
                                             &mut process_buffer,
                                             &mut fallback_resampler,
@@ -524,7 +593,7 @@ pub fn audio_thread_main(
                                             &mut fb_dsp_chain,
                                             &mut fallback_convolver,
                                             &cb_loudness_state,
-                                            &cb_spectrum_tx,
+                                            &mut cb_spectrum_tx,
                                             fallback_channels,
                                             &mut process_buffer,
                                             &mut fallback_resampler,
@@ -540,12 +609,16 @@ pub fn audio_thread_main(
                                         }
                                     }
                                 },
-                                |err| log::error!("Stream error: {}", err),
+                                move |err| {
+                        log::error!("Stream error: {}", err);
+                        failed_flag.store(true, Ordering::Release);
+                    },
                                 None,
                             ) {
                                 Ok(s) => {
                                     let _ = s.play();
                                     stream = Some(s);
+                                    stream_key = Some(key);
                                     shared_state.state.store(PlayerState::Playing);
 
                                     let detected_bits: u32 = match device.default_output_config() {
@@ -557,10 +630,9 @@ pub fn audio_thread_main(
                                         },
                                         Err(_) => noise_shaper_bits.max(16),
                                     };
-                                    shared_state.output_bits.store(detected_bits, Ordering::Relaxed);
 
                                     log::info!(
-                                        "Stream started with device default config, {}-bit output",
+                                        "Stream started with device default config, device format ~{}-bit",
                                         detected_bits
                                     );
                                 }
@@ -581,6 +653,12 @@ pub fn audio_thread_main(
             }
             Ok(AudioCommand::Pause) => {
                 if let Some(ref s) = stream {
+                    if shared_state.state.load() == PlayerState::Playing {
+                        // Fade out before stopping the device so pausing
+                        // does not click; the fade takes ~8 ms.
+                        shared_state.fade_target.store(0.0f32.to_bits(), Ordering::Release);
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                    }
                     let _ = s.pause();
                 }
                 shared_state.state.store(PlayerState::Paused);
@@ -592,7 +670,14 @@ pub fn audio_thread_main(
                 shared_state.position_frames.store(new_pos, Ordering::Relaxed);
             }
             Ok(AudioCommand::Stop) => {
-                stream = None;
+                // Keep the stream (paused) so the next track can reuse it.
+                if let Some(ref s) = stream {
+                    if shared_state.state.load() == PlayerState::Playing {
+                        shared_state.fade_target.store(0.0f32.to_bits(), Ordering::Release);
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                    }
+                    let _ = s.pause();
+                }
                 shared_state.position_frames.store(0, Ordering::Relaxed);
                 shared_state.state.store(PlayerState::Stopped);
             }
@@ -644,15 +729,15 @@ pub fn audio_thread_main(
                     .store(result.total_frames, Ordering::Relaxed);
                 shared_state.position_frames.store(0, Ordering::Relaxed);
                 shared_state.state.store(PlayerState::Stopped);
-                let channels = result.channels;
                 let _sr = result.sample_rate as f64;
                 let sr_u32 = result.sample_rate;
                 let metadata = result.metadata;
                 let file_path = result.file_path;
 
-                // Lock-free buffer swap via ArcSwap — move samples into Arc
-                let samples_arc = Arc::new(result.samples);
-                shared_state.audio_buffer.store(Arc::clone(&samples_arc));
+                // Lock-free buffer swap via ArcSwap. The buffer may still be
+                // filling; the callback only reads published frames.
+                shared_state.buffering.store(false, Ordering::Relaxed);
+                shared_state.audio_buffer.store(result.buffer);
                 *shared_state.file_path.write() = Some(file_path.clone());
 
                 *shared_state.track_metadata.write() = metadata.clone();
@@ -671,113 +756,13 @@ pub fn audio_thread_main(
 
                 loudness_state.set_smoothing(200.0, sr_u32);
 
-                let _mode = loudness_state.get_mode();
-                let preamp = loudness_state.preamp_gain_db();
-
-                let calc_safe_gain = |rg_gain_db: f64, peak: Option<f64>, preamp_db: f64| -> f64 {
-                    let requested_gain = rg_gain_db + preamp_db;
-
-                    if requested_gain <= 0.0 {
-                        return requested_gain;
-                    }
-
-                    if let Some(peak_val) = peak {
-                        if peak_val > 0.0 {
-                            const HEADROOM: f64 = 0.99;
-                            let max_linear = HEADROOM / peak_val;
-                            let max_gain_db = 20.0 * max_linear.log10();
-
-                            if requested_gain > max_gain_db {
-                                log::info!(
-                                    "Peak protection: peak={:.4}, requested={:.2} dB, limited to {:.2} dB",
-                                    peak_val,
-                                    requested_gain,
-                                    max_gain_db
-                                );
-                                return max_gain_db;
-                            }
-                        }
-                    }
-
-                    requested_gain
-                };
-
-                match loudness_state.get_mode() {
-                    crate::config::NormalizationMode::ReplayGainTrack => {
-                        if let Some(rg_gain) = metadata.rg_track_gain {
-                            let peak = metadata.rg_track_peak;
-                            let effective_gain = calc_safe_gain(rg_gain, peak, preamp);
-                            loudness_state.set_target_gain(effective_gain);
-                            log::info!(
-                                "ReplayGain Track: {:.2} dB + preamp {:.2} dB -> {:.2} dB (peak: {:?})",
-                                rg_gain,
-                                preamp,
-                                effective_gain,
-                                peak
-                            );
-                        } else {
-                            log::warn!("No ReplayGain track gain found, falling back to EBU R128 analysis");
-                            let loudness = crate::processor::LoudnessMeter::new(channels, sr_u32)
-                                .and_then(|mut meter| {
-                                    meter.process(&samples_arc)?;
-                                    Ok(meter.integrated_loudness())
-                                })
-                                .unwrap_or(f64::NEG_INFINITY);
-                            if loudness.is_finite() {
-                                let gain = target_lufs - loudness + preamp;
-                                loudness_state.set_target_gain(gain);
-                                log::info!(
-                                    "EBU R128 fallback: {:.2} LUFS -> gain {:.2} dB (target: {:.2} LUFS)",
-                                    loudness,
-                                    gain,
-                                    target_lufs
-                                );
-                            } else {
-                                loudness_state.set_target_gain(preamp);
-                                log::warn!(
-                                    "EBU R128 analysis failed, using preamp only: {:.2} dB",
-                                    preamp
-                                );
-                            }
-                        }
-                    }
-                    crate::config::NormalizationMode::ReplayGainAlbum => {
-                        let rg_gain = metadata.rg_album_gain.or(metadata.rg_track_gain);
-                        let peak = metadata.rg_album_peak.or(metadata.rg_track_peak);
-                        if let Some(gain) = rg_gain {
-                            let effective_gain = calc_safe_gain(gain, peak, preamp);
-                            loudness_state.set_target_gain(effective_gain);
-                            log::info!(
-                                "ReplayGain Album: {:.2} dB + preamp {:.2} dB -> {:.2} dB (peak: {:?})",
-                                gain,
-                                preamp,
-                                effective_gain,
-                                peak
-                            );
-                        } else {
-                            log::warn!("No ReplayGain gain found, falling back to EBU R128 analysis");
-                            let loudness = crate::processor::LoudnessMeter::new(channels, sr_u32)
-                                .and_then(|mut meter| {
-                                    meter.process(&samples_arc)?;
-                                    Ok(meter.integrated_loudness())
-                                })
-                                .unwrap_or(f64::NEG_INFINITY);
-                            if loudness.is_finite() {
-                                let gain = target_lufs - loudness + preamp;
-                                loudness_state.set_target_gain(gain);
-                                log::info!(
-                                    "EBU R128 fallback: {:.2} LUFS -> gain {:.2} dB (target: {:.2} LUFS)",
-                                    loudness,
-                                    gain,
-                                    target_lufs
-                                );
-                            } else {
-                                loudness_state.set_target_gain(preamp);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
+                // Every track sets its own gain here. Without a tag the mode can use, it
+                // starts at 0 dB and the decode thread's measurement (or the remembered one)
+                // follows as LoudnessMeasured; keeping the previous track's gain instead
+                // made a picked song as loud or quiet as whatever played before it.
+                let gain = gain_at_load(&loudness_state, &metadata);
+                loudness_state.set_target_gain(gain);
+                log::info!("Loudness gain at load: {:.2} dB ({:?})", gain, loudness_state.get_mode());
 
                 log::debug!("DSP context updated for {} Hz sample rate", sr_u32);
 
@@ -786,7 +771,7 @@ pub fn audio_thread_main(
                 // is_loading=false but file_path is still the old value.
                 shared_state.load_progress.store(100, Ordering::Relaxed);
                 shared_state.is_loading.store(false, Ordering::Release);
-                shared_state.event_flags.fetch_or(EVENT_LOAD_COMPLETE, Ordering::Release);
+                shared_state.raise_events(EVENT_LOAD_COMPLETE);
             }
             Ok(AudioCommand::LoadError { generation, error }) => {
                 let current_generation = shared_state.load_generation.load(Ordering::Acquire);
@@ -804,11 +789,81 @@ pub fn audio_thread_main(
                 *shared_state.load_error.write() = Some(error);
                 shared_state.is_loading.store(false, Ordering::Release);
                 shared_state.state.store(PlayerState::Stopped);
-                shared_state.event_flags.fetch_or(EVENT_LOAD_ERROR, Ordering::Release);
+                shared_state.raise_events(EVENT_LOAD_ERROR);
             }
+            Ok(AudioCommand::LoudnessMeasured { generation, integrated_lufs }) => {
+                apply_measured_loudness(&shared_state, &loudness_state, generation, integrated_lufs);
+            }
+            Ok(AudioCommand::Applied(seq)) => publish_applied(&shared_state, seq),
             Ok(AudioCommand::Shutdown) | Err(_) => break,
         }
     }
+}
+
+/// Record that every command queued before marker `seq` has run.
+fn publish_applied(shared_state: &SharedState, seq: u64) {
+    shared_state.applied_seq.fetch_max(seq, Ordering::AcqRel);
+    shared_state.raise_events(EVENT_COMMAND_APPLIED);
+}
+
+/// Gain for a track that has just loaded: from its ReplayGain tag when the mode reads one,
+/// otherwise 0 dB until its loudness is measured.
+fn gain_at_load(loudness_state: &AtomicLoudnessState, metadata: &crate::decoder::TrackMetadata) -> f64 {
+    crate::processor::LoudnessNormalizer::planned_gain_db(
+        loudness_state.get_mode(),
+        metadata,
+        None,
+        loudness_state.target_lufs(),
+        loudness_state.reference_lufs(),
+        loudness_state.preamp_gain_db(),
+    )
+    .unwrap_or(0.0)
+}
+
+/// Apply the loudness the decode thread measured (or remembered) for the current track,
+/// unless the mode takes this track's gain from a tag.
+fn apply_measured_loudness(
+    shared_state: &SharedState,
+    loudness_state: &AtomicLoudnessState,
+    generation: u64,
+    integrated_lufs: f64,
+) {
+    if shared_state.load_generation.load(Ordering::Acquire) != generation {
+        return;
+    }
+    let mode = loudness_state.get_mode();
+    if crate::processor::LoudnessNormalizer::has_tag_gain(mode, &shared_state.track_metadata.read()) {
+        return;
+    }
+    match crate::processor::LoudnessNormalizer::planned_gain_db(
+        mode,
+        &crate::decoder::TrackMetadata::default(),
+        Some(integrated_lufs),
+        loudness_state.target_lufs(),
+        loudness_state.reference_lufs(),
+        loudness_state.preamp_gain_db(),
+    ) {
+        Some(gain) => {
+            loudness_state.set_target_gain(gain);
+            log::info!(
+                "Measured loudness {:.2} LUFS -> gain {:.2} dB (target {:.2} LUFS)",
+                integrated_lufs,
+                gain,
+                loudness_state.target_lufs()
+            );
+        }
+        None => log::warn!("Loudness measurement unusable ({:.2}), keeping 0 dB", integrated_lufs),
+    }
+}
+
+#[cfg(windows)]
+enum ExclusiveOutcome {
+    /// Played (or failed in a way that must not fall back); back to the command loop.
+    Handled,
+    /// The exclusive device could not be opened: open a shared stream instead.
+    CouldNotOpen,
+    /// Shutdown arrived while playing exclusively.
+    Shutdown,
 }
 
 #[cfg(windows)]
@@ -818,8 +873,8 @@ fn handle_wasapi_exclusive(
     shared_state: &Arc<SharedState>,
     dsp_ctx: &Arc<LockfreeDspContext>,
     loudness_state: &Arc<AtomicLoudnessState>,
-    spectrum_tx: &Sender<f64>,
-) -> bool {
+    spectrum_tap: &SpectrumTap,
+) -> ExclusiveOutcome {
     log::info!("Starting TRUE WASAPI exclusive mode playback...");
 
     let sample_rate = shared_state.sample_rate.load(Ordering::Relaxed) as u32;
@@ -828,19 +883,19 @@ fn handle_wasapi_exclusive(
     if channels == 0 {
         log::error!("Invalid channels");
         shared_state.state.store(PlayerState::Stopped);
-        return true;
+        return ExclusiveOutcome::Handled;
     }
 
     if let Err(error) = dsp_ctx.set_convolver_sample_rate(sample_rate) {
         log::error!("Failed to configure WASAPI convolver source rate: {}", error);
         shared_state.state.store(PlayerState::Stopped);
-        return true;
+        return ExclusiveOutcome::Handled;
     }
     dsp_ctx.reclaim_retired_convolver();
 
     let cb_shared = Arc::clone(shared_state);
     let cb_loudness_state = Arc::clone(loudness_state);
-    let cb_spectrum_tx = spectrum_tx.clone();
+    let mut cb_spectrum_tx = spectrum_tap.producer();
 
     let mut process_buffer = Vec::with_capacity(8192 * channels);
     process_buffer.resize(8192 * channels, 0.0);
@@ -870,14 +925,14 @@ fn handle_wasapi_exclusive(
             Ok(mut processor) => {
                 if processor.set_sample_rate(sample_rate).is_err() {
                     shared_state.state.store(PlayerState::Stopped);
-                    return true;
+                    return ExclusiveOutcome::Handled;
                 }
                 processor
             }
             Err(error) => {
                 log::error!("Failed to acquire WASAPI convolver consumer: {}", error);
                 shared_state.state.store(PlayerState::Stopped);
-                return true;
+                return ExclusiveOutcome::Handled;
             }
         };
 
@@ -904,7 +959,7 @@ fn handle_wasapi_exclusive(
                         &mut wasapi_dsp_chain,
                         &mut wasapi_convolver,
                         &cb_loudness_state,
-                        &cb_spectrum_tx,
+                        &mut cb_spectrum_tx,
                         cb_channels,
                         &mut process_buffer,
                         &mut unused_resampler,
@@ -941,7 +996,7 @@ fn handle_wasapi_exclusive(
             if let Err(e) = wasapi_player.play() {
                 log::error!("Failed to start WASAPI playback: {}", e);
                 shared_state.state.store(PlayerState::Stopped);
-                return true;
+                return ExclusiveOutcome::Handled;
             }
 
             shared_state.state.store(PlayerState::Playing);
@@ -955,7 +1010,7 @@ fn handle_wasapi_exclusive(
             if wasapi_player.get_state() == WasapiState::Stopped {
                 log::error!("WASAPI: Failed to start playback after waiting");
                 shared_state.state.store(PlayerState::Stopped);
-                return true;
+                return ExclusiveOutcome::Handled;
             }
 
             log::info!("WASAPI: Playback started, entering monitoring loop");
@@ -1006,7 +1061,16 @@ fn handle_wasapi_exclusive(
                         }
                         AudioCommand::Shutdown => {
                             drop(wasapi_player);
-                            return false;
+                            return ExclusiveOutcome::Shutdown;
+                        }
+                        AudioCommand::Applied(seq) => publish_applied(shared_state, seq),
+                        AudioCommand::LoudnessMeasured { generation, integrated_lufs } => {
+                            apply_measured_loudness(
+                                shared_state,
+                                loudness_state,
+                                generation,
+                                integrated_lufs,
+                            );
                         }
                         _ => {}
                     }
@@ -1021,11 +1085,64 @@ fn handle_wasapi_exclusive(
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
 
-            true
+            ExclusiveOutcome::Handled
         }
         Err(e) => {
             log::error!("Failed to create WASAPI player: {}. Falling back to cpal.", e);
-            false
+            ExclusiveOutcome::CouldNotOpen
         }
+    }
+}
+
+#[cfg(test)]
+mod loudness_at_load_tests {
+    use super::*;
+    use crate::config::NormalizationMode;
+    use crate::decoder::TrackMetadata;
+
+    fn state(mode: NormalizationMode) -> AtomicLoudnessState {
+        let s = AtomicLoudnessState::new(0.0, 44_100).unwrap();
+        s.set_target_lufs(-12.0);
+        s.set_reference_lufs(-18.0);
+        s.set_preamp_gain(-1.0);
+        s.set_normalization_mode(mode);
+        s
+    }
+
+    #[test]
+    fn a_picked_track_does_not_keep_the_previous_tracks_gain() {
+        let s = state(NormalizationMode::Track);
+        s.set_target_gain(-9.0); // whatever the song before ended on
+        assert_eq!(gain_at_load(&s, &TrackMetadata::default()), 0.0);
+    }
+
+    #[test]
+    fn tag_gain_at_load_matches_the_gapless_path_and_counts_preamp_once() {
+        let s = state(NormalizationMode::ReplayGainTrack);
+        let md = TrackMetadata { rg_track_gain: Some(-5.0), ..Default::default() };
+        // -5 dB written against -18 LUFS, target -12: +1 dB. The -1 dB preamp is added
+        // by process_gain, not here as well.
+        assert_eq!(gain_at_load(&s, &md), 1.0);
+    }
+
+    #[test]
+    fn measured_loudness_applies_in_track_mode_with_the_current_target() {
+        let shared = SharedState::new();
+        let generation = shared.load_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        let s = state(NormalizationMode::Track);
+        s.set_target_lufs(-14.0);
+        apply_measured_loudness(&shared, &s, generation, -8.0);
+        assert_eq!(s.target_gain_db(), -6.0);
+
+        // A stale measurement (another track loaded since) is ignored.
+        apply_measured_loudness(&shared, &s, generation + 1, -30.0);
+        assert_eq!(s.target_gain_db(), -6.0);
+
+        // A tag the mode reads wins over the measurement.
+        let rg = state(NormalizationMode::ReplayGainTrack);
+        rg.set_target_gain(2.5);
+        *shared.track_metadata.write() = TrackMetadata { rg_track_gain: Some(-3.5), ..Default::default() };
+        apply_measured_loudness(&shared, &rg, generation, -30.0);
+        assert_eq!(rg.target_gain_db(), 2.5);
     }
 }

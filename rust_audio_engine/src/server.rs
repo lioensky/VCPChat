@@ -96,16 +96,33 @@ where
 /// - Local paths are validated to prevent directory traversal
 /// - Local paths MUST exist and be accessible (canonicalize must succeed)
 /// - Returns Ok(validated_path) or Err(error_message)
-fn validate_path(path: &str) -> Result<String, String> {
+/// Host of the configured WebDAV server, the one private address the engine may fetch from.
+fn webdav_host(data: &AppState) -> Option<String> {
+    let cfg = data.webdav_config.lock();
+    if cfg.base_url.is_empty() { None } else { extract_host(&cfg.base_url) }
+}
+
+/// Check a path or URL before the engine opens it, for a request that may play from the configured WebDAV server: a NAS
+/// at home is on a private address (192.168.x.x, 10.x, localhost), and every song on it
+/// used to fail with "private/internal address" although browsing it worked.
+fn validate_path_for(path: &str, trusted_host: Option<&str>) -> Result<String, String> {
     // Allow HTTP(S) URLs - they have their own security (TLS, authentication)
     if path.starts_with("http://") || path.starts_with("https://") {
-        // Basic URL validation - check for obvious injection attempts
-        if path.contains("..") || path.contains('\\') {
+        // Basic URL validation: a `..` path segment (also percent-encoded) or a backslash.
+        // Two dots inside a file name ("Ver..mp3") are not traversal.
+        let route = path.split(['?', '#']).next().unwrap_or(path);
+        let traversal = route.split('/').any(|seg| {
+            let seg = seg.to_ascii_lowercase().replace("%2e", ".");
+            seg == ".."
+        });
+        if traversal || path.contains('\\') || route.to_ascii_lowercase().contains("%5c") {
             return Err("Invalid URL: path traversal characters not allowed".into());
         }
-        // SSRF protection: reject private/link-local IP ranges
+        // SSRF protection: reject private/link-local IP ranges, except the WebDAV server
+        // the user configured.
         if let Some(host) = extract_host(path) {
-            if is_private_host(&host) {
+            let trusted = trusted_host.map_or(false, |t| t.eq_ignore_ascii_case(&host));
+            if is_private_host(&host) && !trusted {
                 return Err(format!("URL host '{}' is not allowed (private/internal address)", host));
             }
         }
@@ -168,9 +185,15 @@ fn validate_path(path: &str) -> Result<String, String> {
 fn extract_host(url: &str) -> Option<String> {
     // Skip "http://" or "https://"
     let after_scheme = url.split("//").nth(1)?;
-    let host_port = after_scheme.split('/').next()?;
-    // Remove port if present
-    Some(host_port.split(':').next()?.to_string())
+    let authority = after_scheme.split(['/', '?', '#']).next()?;
+    let host_port = authority.rsplit('@').next()?;
+    // Remove port if present (an IPv6 literal keeps its brackets)
+    let host = if host_port.starts_with('[') {
+        host_port.split(']').next()?.trim_start_matches('[')
+    } else {
+        host_port.split(':').next()?
+    };
+    Some(host.to_ascii_lowercase())
 }
 
 /// Check if a host is a private/internal address (SSRF protection)
@@ -328,12 +351,27 @@ pub struct StateResponse {
     is_playing: bool,
     is_paused: bool,
     is_loading: bool,
+    /// Playing but starved, waiting for the streaming decoder.
+    is_buffering: bool,
+    /// Seconds of the current track decoded so far.
+    buffered: f64,
+    /// False while a streamed track is still decoding (duration is an estimate).
+    decode_complete: bool,
+    /// Id of the latest load request; `load_complete` events carry the same id.
+    load_id: u64,
+    /// Sequence number of the newest control command accepted by the engine.
+    cmd_seq: u64,
+    /// Newest command sequence number that has taken effect on the audio thread.
+    applied_seq: u64,
     duration: f64,
     current_time: f64,
     file_path: Option<String>,
     volume: f32,
     device_id: Option<usize>,
     exclusive_mode: bool,
+    /// What the output had to fall back from when it was last opened:
+    /// "exclusive" (playing shared) and/or "device" (playing on the default device).
+    output_fallback: Vec<&'static str>,
     eq_type: String,
     eq_enabled: bool,
     fir_taps: usize,
@@ -361,6 +399,8 @@ pub struct StateResponse {
     dynamic_loudness_enabled: bool,
     dynamic_loudness_strength: f64,
     dynamic_loudness_factor: f64,
+    // Crossfade between tracks (ms, 0 = off)
+    crossfade_ms: u64,
     // Noise shaper fields
     output_bits: u32,
     noise_shaper_curve: String,
@@ -429,8 +469,87 @@ impl ApiResponse {
 // ============ Helper Functions ============
 
 #[cfg(test)]
+mod path_policy_tests {
+    use super::*;
+
+    #[test]
+    fn the_configured_webdav_server_may_be_on_the_home_network() {
+        let song = "http://192.168.1.20:5005/dav/music/a.flac";
+        assert!(validate_path_for(song, None).is_err(), "an arbitrary LAN address stays blocked");
+        assert_eq!(validate_path_for(song, Some("192.168.1.20")).unwrap(), song);
+        // Only that host: another private address is still refused.
+        assert!(validate_path_for("http://10.0.0.1/x.flac", Some("192.168.1.20")).is_err());
+        // Credentials in the URL do not hide the real host.
+        assert!(validate_path_for("http://nas@10.0.0.1/x.flac", Some("nas")).is_err());
+        assert_eq!(extract_host("http://u:p@NAS.local:8080/a").as_deref(), Some("nas.local"));
+    }
+
+    #[test]
+    fn two_dots_in_a_remote_file_name_are_not_traversal() {
+        let song = "https://dav.example.com/music/02.%20One%20More%20Wish%20Ver..mp3";
+        assert!(validate_path_for(song, None).is_ok());
+        for bad in [
+            "https://dav.example.com/music/../secret.mp3",
+            "https://dav.example.com/music/%2e%2e/secret.mp3",
+            "https://dav.example.com/music/%2E%2E/secret.mp3",
+            "https://dav.example.com/music/a%5c..%5csecret.mp3",
+        ] {
+            assert!(validate_path_for(bad, None).is_err(), "{bad}");
+        }
+    }
+}
+
+#[cfg(test)]
 mod settings_eq_tests {
     use super::*;
+
+    #[test]
+    fn the_chosen_output_bits_are_what_the_shaper_uses_and_what_is_reported() {
+        let config = crate::config::AppConfig { output_bits: Some(16), ..Default::default() };
+        let mut player = AudioPlayer::new(config);
+        assert_eq!(player.lockfree_noise_shaper_params.read().bits, 16);
+        assert_eq!(player.get_output_bits(), 16);
+        let settings = PersistentSettings { output_bits: 20, ..PersistentSettings::default() };
+        apply_settings_to_player(&mut player, &settings);
+        // The audio thread starting up must not put the config default back.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert_eq!(player.lockfree_noise_shaper_params.read().bits, 20);
+        assert_eq!(player.get_output_bits(), 20);
+    }
+
+    #[test]
+    fn the_output_choice_survives_a_restart_and_follows_the_device_by_name() {
+        // 选好的声卡和独占模式以前不存盘，每次重开都回到默认设备、共享模式。
+        let names = vec!["Speakers".to_string(), "USB DAC".to_string()];
+        let mut player = AudioPlayer::new(crate::config::AppConfig::default());
+        let saved = player.select_device_by_list(Some(1), &names);
+        assert_eq!(saved.as_deref(), Some("USB DAC"));
+
+        // 重开时多插了一个耳机，USB DAC 排到了第 3 个
+        let settings = PersistentSettings { device_id: Some(1), device_name: saved, exclusive_mode: true, ..PersistentSettings::default() };
+        let later = vec!["Speakers".to_string(), "Headphones".to_string(), "USB DAC".to_string()];
+        let mut player = AudioPlayer::new(crate::config::AppConfig::default());
+        restore_output_choice(&mut player, &settings, &later);
+        let shared = player.shared_state();
+        assert_eq!(shared.device_id.load(std::sync::atomic::Ordering::Relaxed), 2, "still the USB DAC, not the headphones");
+        assert!(player.exclusive_mode && shared.exclusive_mode.load(std::sync::atomic::Ordering::Relaxed));
+
+        // 拔掉了：用默认设备，但记着名字，插回来还用它
+        let unplugged = vec!["Speakers".to_string()];
+        let mut player = AudioPlayer::new(crate::config::AppConfig::default());
+        restore_output_choice(&mut player, &settings, &unplugged);
+        assert_eq!(player.shared_state().device_id.load(std::sync::atomic::Ordering::Relaxed), -1);
+        assert_eq!(player.shared_state().device_name.read().as_deref(), Some("USB DAC"));
+    }
+
+    #[test]
+    fn settings_written_before_device_names_still_restore_by_position() {
+        let settings = PersistentSettings { device_id: Some(1), ..PersistentSettings::default() };
+        let mut player = AudioPlayer::new(crate::config::AppConfig::default());
+        restore_output_choice(&mut player, &settings, &["A".to_string(), "B".to_string()]);
+        assert_eq!(player.shared_state().device_id.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(player.shared_state().device_name.read().as_deref(), Some("B"));
+    }
 
     #[test]
     fn applying_saved_dither_updates_the_actual_dsp_snapshot() {
@@ -469,11 +588,22 @@ mod settings_eq_tests {
 }
 
 /// Apply persisted settings to player on startup
+/// Output device and exclusive mode chosen last time. The device is found by
+/// name (its list position shifts when USB devices come and go).
+fn restore_output_choice(player: &mut AudioPlayer, settings: &PersistentSettings, names: &[String]) {
+    player.exclusive_mode = settings.exclusive_mode;
+    player.shared_state().exclusive_mode.store(settings.exclusive_mode, std::sync::atomic::Ordering::Relaxed);
+    if settings.device_name.is_some() || settings.device_id.is_some() {
+        player.restore_device(settings.device_name.as_deref(), settings.device_id, names);
+    }
+}
+
 fn apply_settings_to_player(player: &mut AudioPlayer, settings: &PersistentSettings) {
     // Volume
     player.set_volume(settings.volume as f64);
     
-    // Device settings are applied separately via configure_output API
+    // Output device and exclusive mode: restored once at start-up (restore_output_choice),
+    // not on every /save_settings, which would enumerate devices each time.
     
     // EQ — gate on persisted enable flag so a disabled EQ stays off across restarts
     // Also used by /save_settings on a live player: remove the old FIR backend
@@ -562,6 +692,9 @@ fn apply_settings_to_player(player: &mut AudioPlayer, settings: &PersistentSetti
     // Dynamic Loudness
     player.set_dynamic_loudness_enabled(settings.dynamic_loudness_enabled);
     player.set_dynamic_loudness_strength(settings.dynamic_loudness_strength);
+
+    // Crossfade
+    player.shared_state().crossfade_ms.store(u64::from(settings.crossfade_ms.min(12_000)), std::sync::atomic::Ordering::Relaxed);
     
     // Resampling
     player.target_sample_rate = settings.target_samplerate;
@@ -639,12 +772,22 @@ fn get_player_state(player: &AudioPlayer) -> StateResponse {
         is_playing: state == PlayerState::Playing,
         is_paused: state == PlayerState::Paused,
         is_loading: shared.is_loading.load(std::sync::atomic::Ordering::Acquire),
+        is_buffering: state == PlayerState::Playing
+            && shared.buffering.load(std::sync::atomic::Ordering::Relaxed),
+        buffered: shared.buffered_secs(),
+        decode_complete: shared.decode_complete(),
+        load_id: shared.load_generation.load(std::sync::atomic::Ordering::Acquire),
+        cmd_seq: shared.cmd_seq.load(std::sync::atomic::Ordering::Acquire),
+        applied_seq: shared.applied_seq.load(std::sync::atomic::Ordering::Acquire),
         duration: shared.duration_secs(),
         current_time: shared.current_time_secs(),
         file_path,
         volume,
         device_id: if device_id >= 0 { Some(device_id as usize) } else { None },
         exclusive_mode: player.exclusive_mode,
+        output_fallback: crate::player::output_fallback_names(
+            shared.output_fallback.load(std::sync::atomic::Ordering::Relaxed),
+        ),
         eq_type,
         eq_enabled,
         fir_taps,
@@ -671,6 +814,7 @@ fn get_player_state(player: &AudioPlayer) -> StateResponse {
         // Dynamic Loudness fields
         dynamic_loudness_enabled: player.is_dynamic_loudness_enabled(),
         dynamic_loudness_strength: player.get_dynamic_loudness_strength(),
+        crossfade_ms: player.shared_state().crossfade_ms.load(std::sync::atomic::Ordering::Relaxed),
         dynamic_loudness_factor: player.get_dynamic_loudness_factor(),
         // Noise shaper fields
         output_bits: player.get_output_bits(),
@@ -716,6 +860,22 @@ async fn shutdown_server(data: web::Data<Arc<AppState>>) -> HttpResponse {
 
 use crate::config::AppConfig;
 
+/// Drops the shared state from inside the async runtime without blocking it.
+///
+/// `AppState` owns a multi-thread Tokio runtime; dropping that runtime directly in an
+/// async context panics ("Cannot drop a runtime in a context where blocking is not
+/// allowed"), which on Windows ends the process with 0xC0000409 instead of a clean error.
+fn release_state_without_blocking(state: Arc<AppState>) {
+    match Arc::try_unwrap(state) {
+        Ok(app_state) => match Arc::try_unwrap(app_state.analysis_runtime) {
+            Ok(runtime) => runtime.shutdown_background(),
+            Err(shared_runtime) => std::mem::forget(shared_runtime),
+        },
+        // Something still holds the state; leak it rather than risk dropping the runtime here.
+        Err(shared_state) => std::mem::forget(shared_state),
+    }
+}
+
 pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSettingsManager) -> std::io::Result<()> {
     // Load WebDAV config from env if present
     let webdav_config = WebDavConfig {
@@ -740,6 +900,14 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
 
     // Create player with config
     let mut player = AudioPlayer::new(config);
+    // A second connection to the same database for the decode thread: untagged tracks
+    // measured once start at the right level on every later play.
+    if loudness_db.is_some() {
+        match LoudnessDatabase::open(&loudness_db_path) {
+            Ok(db) => player.set_loudness_cache(Some(Arc::new(db))),
+            Err(e) => log::warn!("Loudness cache for playback disabled: {}", e),
+        }
+    }
 
     let analysis_parallelism = std::env::var("ANALYSIS_MAX_CONCURRENCY")
         .ok()
@@ -785,6 +953,7 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
     {
         let settings = settings_manager.lock().get_settings();
         apply_settings_to_player(&mut player, &settings);
+        restore_output_choice(&mut player, &settings, &AudioPlayer::output_device_names());
         log::info!("Applied persisted settings to audio engine");
     }
 
@@ -804,10 +973,7 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
     });
     
     log::info!("Starting VCP Audio Engine on http://127.0.0.1:{}", port);
-    
-    // Print ready signal for parent process
-    println!("RUST_AUDIO_ENGINE_READY");
-    
+
     let server_state = Arc::clone(&state);
     let server = HttpServer::new(move || {
         App::new()
@@ -827,9 +993,27 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
                 .configure(settings_handlers::configure_routes)
                 .configure(webdav_handlers::configure_routes)
                 .configure(ws_handlers::configure_routes)
-    })
-    .bind(("127.0.0.1", port))?
-    .run();
+    });
+
+    // Bind before announcing readiness: the parent process treats the ready line as
+    // "the HTTP API is reachable". On Windows the port may sit inside a range the
+    // system reserved at boot (Hyper-V/WinNAT), which surfaces here as a bind error.
+    let server = match server.bind(("127.0.0.1", port)) {
+        Ok(bound) => bound.run(),
+        Err(e) => {
+            log::error!(
+                "Failed to bind 127.0.0.1:{}: {}. The port is in use or reserved by the system; start the engine with another --port.",
+                port,
+                e
+            );
+            eprintln!("RUST_AUDIO_ENGINE_BIND_FAILED port={} error={}", port, e);
+            release_state_without_blocking(state);
+            return Err(e);
+        }
+    };
+
+    // Print ready signal for parent process
+    println!("RUST_AUDIO_ENGINE_READY");
 
     {
         let mut shutdown_handle = state.shutdown_handle.lock();
@@ -838,13 +1022,15 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
 
     let server_result = server.await;
 
-    if let Ok(app_state) = Arc::try_unwrap(state) {
-        if let Ok(runtime) = Arc::try_unwrap(app_state.analysis_runtime) {
-            let _ = actix_web::rt::task::spawn_blocking(move || {
+    // Release the state on a blocking thread so the analysis runtime is never dropped
+    // inside the async context, even if a clone of the state or runtime is still alive.
+    let _ = actix_web::rt::task::spawn_blocking(move || {
+        if let Ok(app_state) = Arc::try_unwrap(state) {
+            if let Ok(runtime) = Arc::try_unwrap(app_state.analysis_runtime) {
                 runtime.shutdown_timeout(Duration::from_secs(2));
-            }).await;
+            }
         }
-    }
+    }).await;
 
     server_result
 }
