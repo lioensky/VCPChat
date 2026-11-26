@@ -38,6 +38,13 @@
         }
         return soft;
     };
+    // 离开墨痕时释放两张全尺寸草稿画布，省下约 19 MB 离屏内存；下次进入再按需建回
+    const releaseSoft = () => {
+        if (!soft) return;
+        soft.canvas.width = 0; soft.canvas.height = 0;
+        soft.blurred.width = 0; soft.blurred.height = 0;
+        soft = null;
+    };
     // 把草稿上 box 那一块（已含模糊外沿）模糊后按 gain 倍加回主画布，再清掉草稿
     const flushSoft = (main, layer, box, blur, gain) => {
         const cw = main.canvas.width, ch = main.canvas.height;
@@ -1460,5 +1467,5 @@
         return pen.order;
     };
 
-    global.MusicStageInkFigures = Object.freeze({ createPen, softLayer, flushSoft, drawFigure, KINDS, SCENES, NOTE_FONT });
+    global.MusicStageInkFigures = Object.freeze({ createPen, softLayer, flushSoft, releaseSoft, drawFigure, KINDS, SCENES, NOTE_FONT });
 })(window);

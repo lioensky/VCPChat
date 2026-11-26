@@ -309,15 +309,24 @@ class WebNowPlayingAdapter {
         this.app = app;
         this.ws = null;
         this.reconnectTimer = null;
+        this.reconnectDelay = 5000;
+        this.lastSentPayload = '';
         this.destroyed = false;
         this.connect();
     }
     scheduleReconnect() {
         if (this.destroyed || this.reconnectTimer) return;
+        const delay = this.reconnectDelay;
+        // 未安装桌面插件时逐次退避（5s → 60s），减少后台频繁探测本机端口与控制台报错
+        this.reconnectDelay = Math.min(60000, Math.round(this.reconnectDelay * 2));
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
+            if (typeof document !== 'undefined' && document.hidden) {
+                this.scheduleReconnect();
+                return;
+            }
             this.connect();
-        }, 5000);
+        }, delay);
     }
     connect() {
         if (this.destroyed) return;
@@ -329,6 +338,8 @@ class WebNowPlayingAdapter {
                     socket.close();
                     return;
                 }
+                this.reconnectDelay = 5000;
+                this.lastSentPayload = '';
                 this.sendUpdate();
             };
             socket.onerror = () => socket.close();
@@ -352,7 +363,12 @@ class WebNowPlayingAdapter {
             repeat: this.app.playModes[this.app.currentPlayMode] === 'repeat-one' ? 1 : (this.app.playModes[this.app.currentPlayMode] === 'repeat' ? 2 : 0),
             shuffle: this.app.playModes[this.app.currentPlayMode] === 'shuffle' ? 1 : 0
         };
-        try { this.ws.send(JSON.stringify(data)); } catch (e) {}
+        try {
+            const payload = JSON.stringify(data);
+            if (payload === this.lastSentPayload) return;
+            this.lastSentPayload = payload;
+            this.ws.send(payload);
+        } catch (e) {}
     }
     destroy() {
         if (this.destroyed) return;

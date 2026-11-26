@@ -60,16 +60,23 @@ function setupOutput(app) {
         exclusive: '独占模式没能打开（声卡被别的程序占着，或不支持这首歌的格式），现在用共享模式播放。',
         device: '选的音频设备不在了（拔掉了或编号变了），现在用默认设备播放。'
     };
+    let fallbackNoteEl = null;
     app.syncOutputFallback = (state) => {
-        const note = document.getElementById('output-fallback-note');
-        if (!note || !state || !Array.isArray(state.output_fallback)) return;
+        if (!state || !Array.isArray(state.output_fallback)) return;
+        const note = (fallbackNoteEl && fallbackNoteEl.isConnected) ? fallbackNoteEl : (fallbackNoteEl = document.getElementById('output-fallback-note'));
+        if (!note) return;
         // 独占这句只在开关还开着时说；用户已经关掉独占就不用提了。
-        const lines = state.output_fallback
-            .filter((k) => k !== 'exclusive' || app.wasapiSwitch?.checked)
-            .map((k) => FALLBACK_TEXT[k])
-            .filter(Boolean);
-        note.textContent = lines.join(' ');
-        note.hidden = lines.length === 0;
+        let text = '';
+        if (state.output_fallback.length > 0) {
+            const lines = state.output_fallback
+                .filter((k) => k !== 'exclusive' || app.wasapiSwitch?.checked)
+                .map((k) => FALLBACK_TEXT[k])
+                .filter(Boolean);
+            text = lines.join(' ');
+        }
+        const hidden = text.length === 0;
+        if (note.textContent !== text) note.textContent = text;
+        if (note.hidden !== hidden) note.hidden = hidden;
     };
     // 输出是在开始播放时才真正打开的，所以开播后和改设置后过一会儿再问一次。
     let fallbackCheckTimer = null;

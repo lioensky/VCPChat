@@ -919,21 +919,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const irHelpTip = document.getElementById('ir-help-tip');
         const irAutoEqLink = document.getElementById('ir-autoeq-link');
 
-        console.log('[IR Help] Found elements:', { irHelpIcon: !!irHelpIcon, irHelpTip: !!irHelpTip });
-
         if (irHelpIcon && irHelpTip) {
             irHelpIcon.onclick = (e) => {
-                console.log('[IR Help] Icon clicked');
                 e.stopPropagation();
                 const isHidden = irHelpTip.style.display === 'none';
                 irHelpTip.style.display = isHidden ? 'block' : 'none';
-                console.log('[IR Help] Tooltip display set to:', irHelpTip.style.display);
             };
             
             if (irAutoEqLink) {
                 irAutoEqLink.onclick = (e) => {
                     e.preventDefault();
-                    console.log('[IR Help] AutoEq link clicked');
                     if (app.api?.sendOpenExternalLink) {
                         app.api.sendOpenExternalLink('https://autoeq.app/');
                     }
@@ -1094,7 +1089,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const refresh = () => {
                 app.saveCustomPlaylists();
                 if (app.playlistViewSource?.type === 'playlist' && app.playlistViewSource.id === pl.id) {
-                    app.currentFilteredTracks = pl.tracks.map(p => app.playlist.find(tr => tr.path === p)).filter(Boolean);
+                    const byPath = new Map();
+                    for (const tr of app.playlist) if (tr && tr.path && !byPath.has(tr.path)) byPath.set(tr.path, tr);
+                    app.currentFilteredTracks = pl.tracks.map(p => byPath.get(p)).filter(Boolean);
                     app.renderPlaylist(app.currentFilteredTracks);
                 }
                 app.archiveView?.refresh?.();
@@ -1232,9 +1229,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
         window.addEventListener('resize', () => {
-            app.visualizerCanvas.width = app.visualizerCanvas.clientWidth;
-            app.visualizerCanvas.height = app.visualizerCanvas.clientHeight;
-            app.recreateParticles();
+            const w = app.visualizerCanvas.clientWidth;
+            const h = app.visualizerCanvas.clientHeight;
+            if (w > 0 && h > 0 && (app.visualizerCanvas.width !== w || app.visualizerCanvas.height !== h)) {
+                app.visualizerCanvas.width = w;
+                app.visualizerCanvas.height = h;
+                app.recreateParticles();
+            }
         });
     };
 
@@ -1375,9 +1376,12 @@ document.addEventListener('DOMContentLoaded', () => {
         app.syncMediaPosition?.();
         if (state.duration > 0 && !app.dragInProgress) {
             const percent = (state.current_time / state.duration) * 100;
-            app.progress.style.width = `${percent}%`;
-            app.currentTimeEl.textContent = app.formatTime(state.current_time);
-            app.durationEl.textContent = app.formatTime(state.duration);
+            const widthStr = `${percent.toFixed(2)}%`;
+            if (app.progress.style.width !== widthStr) app.progress.style.width = widthStr;
+            const curText = app.formatTime(state.current_time);
+            if (app.currentTimeEl.textContent !== curText) app.currentTimeEl.textContent = curText;
+            const durText = app.formatTime(state.duration);
+            if (app.durationEl.textContent !== durText) app.durationEl.textContent = durText;
         }
         // 引擎的 is_playing 只在输出流建好之后才为真：刚发出播放、或者引擎重建输出流的那段时间，
         // 它会报“未播放”，可声音其实马上就来（或者一直在响）。所以“在不在播”要结合进度看：
@@ -1427,11 +1431,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (!app.isTrackLoading) app.publishCapsuleState?.();
         if (state.loudness_info) {
-            app.loudnessInfo.style.display = 'block';
-            app.loudnessCurrentLufs.textContent = state.loudness_info.current_lufs.toFixed(1);
+            if (app.loudnessInfo.style.display !== 'block') app.loudnessInfo.style.display = 'block';
+            const lufsText = state.loudness_info.current_lufs.toFixed(1);
+            if (app.loudnessCurrentLufs.textContent !== lufsText) app.loudnessCurrentLufs.textContent = lufsText;
         }
         if (state.dynamic_loudness_factor !== undefined) {
-            app.dynamicLoudnessFactor.textContent = state.dynamic_loudness_factor.toFixed(2) + 'x';
+            const factorText = state.dynamic_loudness_factor.toFixed(2) + 'x';
+            if (app.dynamicLoudnessFactor.textContent !== factorText) app.dynamicLoudnessFactor.textContent = factorText;
             // 引擎报上来之前不显示「补偿：--」这种占位
             const info = app.dynamicLoudnessFactor.parentElement;
             if (info?.hidden) info.hidden = false;
@@ -1496,6 +1502,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Restore missing effects settings (Structural Fix)
+        // 引擎启动时已经按本机设置生效并在 initialState 中返回，这里只回填界面状态，
+        // 仅当旧版 loudness_mode 别名被归一时才写回引擎，避免每次打开重复发 4 轮 HTTP 与写盘。
         if (s.loudness_enabled !== undefined) {
             app.loudnessEnabled = s.loudness_enabled;
             app.loudnessSwitch.checked = s.loudness_enabled;
@@ -1508,7 +1516,7 @@ document.addEventListener('DOMContentLoaded', () => {
             app.loudnessPreampSlider.value = s.preamp_db;
             app.updateLoudnessLufsDisplay();
             app.updateLoudnessPreampDisplay();
-            app.updateLoudnessSettings(); // Sync to engine
+            if (app.loudnessMode !== s.loudness_mode) app.updateLoudnessSettings();
         }
         if (s.saturation_enabled !== undefined) {
             app.saturationEnabled = s.saturation_enabled;
@@ -1519,7 +1527,6 @@ document.addEventListener('DOMContentLoaded', () => {
             app.saturationMixSlider.value = s.saturation_mix * 100;
             app.updateSaturationDriveDisplay();
             app.updateSaturationMixDisplay();
-            app.updateSaturationSettings(); // Sync to engine
         }
         if (s.crossfeed_enabled !== undefined) {
             app.crossfeedEnabled = s.crossfeed_enabled;
@@ -1527,7 +1534,6 @@ document.addEventListener('DOMContentLoaded', () => {
             app.crossfeedMix = s.crossfeed_mix;
             app.crossfeedMixSlider.value = s.crossfeed_mix * 100;
             app.updateCrossfeedMixDisplay();
-            app.updateCrossfeedSettings(); // Sync to engine
         }
         if (s.dynamic_loudness_enabled !== undefined) {
             app.dynamicLoudnessEnabled = s.dynamic_loudness_enabled;
@@ -1535,7 +1541,6 @@ document.addEventListener('DOMContentLoaded', () => {
             app.dynamicLoudnessStrength = s.dynamic_loudness_strength;
             app.dynamicLoudnessStrengthSlider.value = s.dynamic_loudness_strength * 100;
             app.updateDynamicLoudnessStrengthDisplay();
-            app.updateDynamicLoudnessSettings(); // Sync to engine
         }
         // 旧引擎不认识 crossfade_ms：没有这个字段就不显示，免得开关点了没反应
         const crossfadeBlock = document.getElementById('crossfade-section');

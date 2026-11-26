@@ -520,7 +520,12 @@
                 if (note) char = char.slice(NOTE_PREFIX.length);
                 const key = splat ? char : `${note ? 'note' : family}|${char}`;
                 const hit = cells.get(key);
-                if (hit) return hit;
+                if (hit) {
+                    // LRU 刷新：命中时移到队尾，避免满容整表清空引发换句卡顿
+                    cells.delete(key);
+                    cells.set(key, hit);
+                    return hit;
+                }
                 ctx.clearRect(0, 0, GLYPH_CELL, GLYPH_CELL);
                 ctx.font = note ? `italic 500 ${GLYPH_EM}px ${Figures.NOTE_FONT}` : `${INK_WEIGHT} ${GLYPH_EM}px ${family}`;
                 ctx.textAlign = 'center';
@@ -538,7 +543,7 @@
                     out[i * 2] = Math.round(Math.min(1, tight[i]) * 255);
                     out[i * 2 + 1] = Math.round(Math.min(1, wide[i] * gain) * 255);
                 }
-                if (cells.size > 400) cells.clear();
+                if (cells.size >= 600) cells.delete(cells.keys().next().value);
                 cells.set(key, out);
                 return out;
             }
@@ -1383,109 +1388,157 @@
     };
 
     // 某一刻的墨团（世界像素：x, y, 半径, 强度）和冲击环。
-    const wander = (d, local) => [Math.sin(local * d.w1 + d.p1) * d.ax, Math.sin(local * d.w2 + d.p2) * d.ay];
     const blobsAt = (cue, t, out, rings, accentsOut, bass, beatAge = Infinity, cloudsOut = null) => {
         let n = 0;
-        const push = (x, y, r, s = 1) => { if (n < MAX_BLOBS && r > 0.5) { out[n * 4] = x; out[n * 4 + 1] = y; out[n * 4 + 2] = r; out[n * 4 + 3] = s; n += 1; } };
+        const push = (x, y, r, s = 1) => { if (n < MAX_BLOBS && r > 0.5) { const o = n * 4; out[o] = x; out[o + 1] = y; out[o + 2] = r; out[o + 3] = s; n += 1; } };
         const local = t - cue.cue.start;
         const appear = smooth(0, 0.8, local);
-        [cue.mass, cue.mass2].forEach((m, k) => {
-            if (!m) return;
+        for (let k = 0; k < 2; k += 1) {
+            const m = k === 0 ? cue.mass : cue.mass2;
+            if (!m) continue;
             const breath = 1 + 0.05 * Math.sin(local * 0.7 + k * 2.1) + bass * 0.06;
             push(m.x, m.y, m.r * breath * appear);
-            m.sats.forEach((s) => {
+            const sats = m.sats;
+            for (let i = 0; i < sats.length; i += 1) {
+                const s = sats[i];
                 const a = s.phase + local * s.speed;
                 push(m.x + Math.cos(a) * m.r * s.orbit, m.y + Math.sin(a) * m.r * s.orbit * 0.8, m.r * s.size * appear);
-            });
-        });
-        (cue.drops || []).forEach((d) => {
-            const [ox, oy] = wander(d, local);
-            push(d.x + ox, d.y + oy, d.r * appear * (1 + bass * 0.08));
-        });
+            }
+        }
+        const drops = cue.drops;
+        if (drops) {
+            const dropGain = appear * (1 + bass * 0.08);
+            for (let i = 0; i < drops.length; i += 1) {
+                const d = drops[i];
+                push(
+                    d.x + Math.sin(local * d.w1 + d.p1) * d.ax,
+                    d.y + Math.sin(local * d.w2 + d.p2) * d.ay,
+                    d.r * dropGain
+                );
+            }
+        }
         if (cloudsOut) {
             cloudsOut.fill(0);
-            (cue.clouds || []).slice(0, MAX_CLOUDS).forEach((c, i) => {
-                const [ox, oy] = wander(c, local);
-                cloudsOut[i * 4] = c.x + ox; cloudsOut[i * 4 + 1] = c.y + oy;
-                cloudsOut[i * 4 + 2] = c.r * (1 + bass * 0.05); cloudsOut[i * 4 + 3] = c.level * smooth(0, 1.2, local);
-            });
+            const clouds = cue.clouds;
+            if (clouds) {
+                const cloudFade = smooth(0, 1.2, local);
+                const cloudGain = 1 + bass * 0.05;
+                const count = Math.min(clouds.length, MAX_CLOUDS);
+                for (let i = 0; i < count; i += 1) {
+                    const c = clouds[i];
+                    const o = i * 4;
+                    cloudsOut[o] = c.x + Math.sin(local * c.w1 + c.p1) * c.ax;
+                    cloudsOut[o + 1] = c.y + Math.sin(local * c.w2 + c.p2) * c.ay;
+                    cloudsOut[o + 2] = c.r * cloudGain;
+                    cloudsOut[o + 3] = c.level * cloudFade;
+                }
+            }
         }
         rings.fill(0);
         let ringCount = 0;
-        cue.collisions.forEach((c) => {
+        const collisions = cue.collisions;
+        for (let ci = 0; ci < collisions.length; ci += 1) {
+            const c = collisions[ci];
             const tau = t - c.t;
-            if (tau < -1.6 || tau > 2.6) return;
+            if (tau < -1.6 || tau > 2.6) continue;
             const dx = Math.cos(c.angle), dy = Math.sin(c.angle);
             if (tau < 0) {
                 const d = c.dist * (tau / -1.6) ** 2;
                 push(c.x - dx * d, c.y - dy * d, c.r);
                 push(c.x + dx * d, c.y + dy * d, c.r);
-                return;
+                continue;
             }
             if (tau < 0.9) push(c.x, c.y, c.r * 1.5 * (1 - tau / 0.9));
             if (ringCount < MAX_RINGS && tau < 1.6) {
-                rings[ringCount * 4] = c.x; rings[ringCount * 4 + 1] = c.y;
-                rings[ringCount * 4 + 2] = c.dist * 1.05 * (1 - Math.exp(-tau * 2.4));
-                rings[ringCount * 4 + 3] = c.r * 0.22 * (1 - tau / 1.6);
+                const o = ringCount * 4;
+                rings[o] = c.x; rings[o + 1] = c.y;
+                rings[o + 2] = c.dist * 1.05 * (1 - Math.exp(-tau * 2.4));
+                rings[o + 3] = c.r * 0.22 * (1 - tau / 1.6);
                 ringCount += 1;
             }
             const spread = 1 - Math.exp(-tau * 1.8);
             const fade = 1 - tau / 2.6;
+            const back = 1 - Math.exp(-Math.max(0, tau - 0.2) * 1.8);
+            const rr = c.dist * 1.15 * spread;
+            const rb = c.dist * 1.15 * back;
+            const stepA = TAU / c.fragments;
             for (let k = 0; k < c.fragments; k += 1) {
-                const a = c.angle + k * TAU / c.fragments + c.spin * spread;
-                const rr = c.dist * 1.15 * spread;
+                const baseA = c.angle + k * stepA;
+                const a = baseA + c.spin * spread;
                 push(c.x + Math.cos(a) * rr, c.y + Math.sin(a) * rr, c.r * 0.34 * fade);
-                const back = 1 - Math.exp(-Math.max(0, tau - 0.2) * 1.8);
-                const ab = c.angle + k * TAU / c.fragments + c.spin * back;
-                push(c.x + Math.cos(ab) * c.dist * 1.15 * back, c.y + Math.sin(ab) * c.dist * 1.15 * back, c.r * 0.14 * fade);
+                const ab = baseA + c.spin * back;
+                push(c.x + Math.cos(ab) * rb, c.y + Math.sin(ab) * rb, c.r * 0.14 * fade);
             }
-        });
+        }
         // 词开唱：字块外扩一道细墨环
-        (cue.beats || []).forEach((b) => {
-            const tau = t - b.t;
-            if (ringCount >= MAX_RINGS || tau < 0 || tau > 0.9) return;
-            rings[ringCount * 4] = b.x; rings[ringCount * 4 + 1] = b.y;
-            rings[ringCount * 4 + 2] = b.r * (0.9 + 0.55 * (1 - Math.exp(-tau * 4)));
-            rings[ringCount * 4 + 3] = b.r * 0.018 * (1 - tau / 0.9);
-            ringCount += 1;
-        });
+        const beats = cue.beats;
+        if (beats && ringCount < MAX_RINGS) {
+            for (let i = 0; i < beats.length; i += 1) {
+                if (ringCount >= MAX_RINGS) break;
+                const b = beats[i];
+                const tau = t - b.t;
+                if (tau < 0 || tau > 0.9) continue;
+                const o = ringCount * 4;
+                rings[o] = b.x; rings[o + 1] = b.y;
+                rings[o + 2] = b.r * (0.9 + 0.55 * (1 - Math.exp(-tau * 4)));
+                rings[o + 3] = b.r * 0.018 * (1 - tau / 0.9);
+                ringCount += 1;
+            }
+        }
         // 鼓点：墨团外一圈冲击环
         if (cue.mass && beatAge < 0.7 && ringCount < MAX_RINGS) {
             const m = cue.mass;
-            rings[ringCount * 4] = m.x; rings[ringCount * 4 + 1] = m.y;
-            rings[ringCount * 4 + 2] = m.r * (1.05 + beatAge * 1.6);
-            rings[ringCount * 4 + 3] = m.r * 0.06 * (1 - beatAge / 0.7);
+            const o = ringCount * 4;
+            rings[o] = m.x; rings[o + 1] = m.y;
+            rings[o + 2] = m.r * (1.05 + beatAge * 1.6);
+            rings[o + 3] = m.r * 0.06 * (1 - beatAge / 0.7);
             ringCount += 1;
         }
         // 唱到的字甩出一对螺旋墨点，后面拖两颗小点
-        (cue.sparks || []).forEach((sp) => {
-            const tau = t - sp.t;
-            if (tau < 0 || tau > 1.5 || n >= MAX_BLOBS - 6) return;
-            for (let side = 0; side < 2; side += 1) {
-                for (let k = 0; k < 3; k += 1) {
-                    const tk = Math.max(0, tau - k * 0.07);
-                    const reach = sp.s * (0.45 + 1.5 * (1 - Math.exp(-tk * 2.2)));
-                    const ang = sp.a + side * Math.PI + sp.spin * tk;
-                    const r = sp.s * (k ? 0.022 : 0.04) * (1 - tau / 1.5);
-                    push(sp.x + Math.cos(ang) * reach, sp.y + Math.sin(ang) * reach * 0.8, r, 1.4);
+        const sparks = cue.sparks;
+        if (sparks) {
+            for (let i = 0; i < sparks.length; i += 1) {
+                if (n >= MAX_BLOBS - 6) break;
+                const sp = sparks[i];
+                const tau = t - sp.t;
+                if (tau < 0 || tau > 1.5) continue;
+                const fade = 1 - tau / 1.5;
+                for (let side = 0; side < 2; side += 1) {
+                    const sideA = sp.a + side * Math.PI;
+                    for (let k = 0; k < 3; k += 1) {
+                        const tk = Math.max(0, tau - k * 0.07);
+                        const reach = sp.s * (0.45 + 1.5 * (1 - Math.exp(-tk * 2.2)));
+                        const ang = sideA + sp.spin * tk;
+                        const r = sp.s * (k ? 0.022 : 0.04) * fade;
+                        push(sp.x + Math.cos(ang) * reach, sp.y + Math.sin(ang) * reach * 0.8, r, 1.4);
+                    }
                 }
             }
-        });
+        }
         let a = 0;
         accentsOut.fill(0);
-        (cue.drifters || []).forEach((d) => {
-            if (a >= MAX_ACCENT) return;
-            const [ox, oy] = wander(d, local);
-            accentsOut[a * 4] = d.x + ox; accentsOut[a * 4 + 1] = d.y + oy; accentsOut[a * 4 + 2] = d.r * appear * (1 + bass * 0.05); accentsOut[a * 4 + 3] = 1;
-            a += 1;
-        });
-        cue.accents.forEach((acc) => {
-            if (a >= MAX_ACCENT) return;
+        const drifters = cue.drifters;
+        if (drifters) {
+            const driftGain = appear * (1 + bass * 0.05);
+            for (let i = 0; i < drifters.length && a < MAX_ACCENT; i += 1) {
+                const d = drifters[i];
+                const o = a * 4;
+                accentsOut[o] = d.x + Math.sin(local * d.w1 + d.p1) * d.ax;
+                accentsOut[o + 1] = d.y + Math.sin(local * d.w2 + d.p2) * d.ay;
+                accentsOut[o + 2] = d.r * driftGain;
+                accentsOut[o + 3] = 1;
+                a += 1;
+            }
+        }
+        const accents = cue.accents;
+        for (let i = 0; i < accents.length && a < MAX_ACCENT; i += 1) {
+            const acc = accents[i];
             const grow = smooth(acc.start - 0.05, acc.start + 0.3, t) * (1 - smooth(acc.end + 0.2, acc.end + 0.8, t));
-            if (grow <= 0.001) return;
-            accentsOut[a * 4] = acc.x; accentsOut[a * 4 + 1] = acc.y; accentsOut[a * 4 + 2] = acc.r * grow; accentsOut[a * 4 + 3] = 1;
+            if (grow <= 0.001) continue;
+            const o = a * 4;
+            accentsOut[o] = acc.x; accentsOut[o + 1] = acc.y; accentsOut[o + 2] = acc.r * grow; accentsOut[o + 3] = 1;
             a += 1;
-        });
+        }
         return { blobs: n, accents: a };
     };
 
@@ -1569,10 +1622,16 @@ float vn(vec2 p) {
 void main() {
     // 手写的抖：字形在图集里被一层低频噪声推一推（按图集像素算，抖动钉在字上，镜头动它不游），
     // 笔画边不再是印刷体那样一条光滑的线（Folia 的字边也是抖的，这里抖得更慢、更像笔压不匀）
-    vec2 tsz = vec2(textureSize(uAtlas, 0));
-    vec2 q = vUv * tsz;
-    vec2 wob = (vec2(vn(q * 0.035), vn(q * 0.035 + 17.3)) - 0.5) * 4.0 + (vec2(vn(q * 0.16 + 5.1), vn(q * 0.16 + 31.7)) - 0.5) * 1.3;
-    vec2 g = texture(uAtlas, vUv + wob * uWobble / tsz).rg;
+    vec2 sampleUv = vUv;
+    if (uWobble > 0.0) {
+        vec2 tsz = vec2(textureSize(uAtlas, 0));
+        vec2 q = vUv * tsz;
+        vec2 wob = (vec2(vn(q * 0.035), vn(q * 0.035 + 17.3)) - 0.5) * 4.0 + (vec2(vn(q * 0.16 + 5.1), vn(q * 0.16 + 31.7)) - 0.5) * 1.3;
+        sampleUv += wob * uWobble / tsz;
+    }
+    vec2 g = texture(uAtlas, sampleUv).rg;
+    // 透明留白角直接丢弃：加法混合下输出恒为 0，省下后面指数与洇墨噪声计算和显存写入
+    if (g.r + g.g <= 0.0001) discard;
     float dt = uTime - vT.x;
     float on = step(0.0, dt);
     float age = max(dt, 0.0);
@@ -1582,11 +1641,15 @@ void main() {
     float ink = g.r * set + g.g * (bulge * 1.25 + 0.3 * set);
     // 洇墨（Folia 没有）：唱过的字在纸上慢慢洇开——墨顺着纸的纤维往外渗，纤维是一个方向拉长的噪声，
     // 所以渗出去的是一丝一丝的毛刺，不是均匀变胖；只在字边那一圈（宽通道里）发生，两三秒后停住
-    vec2 cp = gl_FragCoord.xy / uCss;
-    vec2 fp = vec2(cp.x * 0.94 + cp.y * 0.34, -cp.x * 0.34 + cp.y * 0.94);
-    float fibre = vn(fp * vec2(0.05, 0.55)) * 0.65 + vn(fp * vec2(0.11, 1.3) + 17.0) * 0.35;
-    float bleed = uBleed * on * smoothstep(0.3, 3.2, age) * smoothstep(0.42, 0.95, fibre);
-    ink += g.g * bleed * 0.55 * (1.0 - g.r);
+    float bleed = 0.0;
+    bool isNote = vT.w > 0.5 && vT.w <= 1.5;
+    if (uBleed > 0.0 && !isNote && on > 0.0 && age > 0.3 && g.g > 0.001 && g.r < 0.999) {
+        vec2 cp = gl_FragCoord.xy / uCss;
+        vec2 fp = vec2(cp.x * 0.94 + cp.y * 0.34, -cp.x * 0.34 + cp.y * 0.94);
+        float fibre = vn(fp * vec2(0.05, 0.55)) * 0.65 + vn(fp * vec2(0.11, 1.3) + 17.0) * 0.35;
+        bleed = uBleed * smoothstep(0.3, 3.2, age) * smoothstep(0.42, 0.95, fibre);
+        ink += g.g * bleed * 0.55 * (1.0 - g.r);
+    }
     // 没唱到的字只是一层网点的影子；唱过的字周围留一圈网点
     float tone = (g.r * (1.0 - set) * 0.85 + g.g * (0.3 + 0.45 * set)) * uReveal;
     // 注记到时候直接出现：细的墨字，没有那一团；周围一圈淡网点，和线两边的毛边一样
@@ -1594,7 +1657,7 @@ void main() {
         // 溅开的墨：一下就是实的，边上沾一点网点；也会洇
         ink = g.r * on * 1.15 + g.g * bleed * 0.4 * (1.0 - g.r);
         tone = min(0.4, g.g * 0.8) * on;
-    } else if (vT.w > 0.5) {
+    } else if (isNote) {
         ink = g.r * on * 1.12;
         tone = min(0.55, g.g * 1.6) * on;
     }
@@ -1679,9 +1742,10 @@ void main() {
         vec4 b = uBlobs[i];
         vec2 d = wp - b.xy;
         float dd = dot(d, d);
+        float rr = b.z * b.z;
         // 远处的墨团贡献不到 0.2%，不算
-        if (dd > b.z * b.z * 500.0) continue;
-        field += b.z * b.z / (dd + 1.0) * b.w;
+        if (dd > rr * 500.0) continue;
+        field += rr / (dd + 1.0) * b.w;
     }
     float ring = 0.0;
     for (int i = 0; i < ${MAX_RINGS}; i++) {
@@ -1808,7 +1872,6 @@ void main() {
     vec2 uv = w / uWorld;
     bool inside = all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
     vec4 m = inside ? texture(uMain, uv) : vec4(0.0);
-    vec2 haloRG = inside ? textureLod(uMain, uv, 4.0).rg : vec2(0.0);
     vec4 idv = inside ? texelFetch(uIds, min(ivec2(uv * uIdSize), ivec2(uIdSize) - 1), 0) : vec4(0.0);
     float so = floor(idv.g * 255.0 + 0.5);
 
@@ -1844,20 +1907,26 @@ void main() {
     float vig = smoothstep(0.4, 0.85, length(sp * vec2(1.0, 0.8)));
     float T = m.b * uTone + clamp(field * 0.18, 0.0, 0.35) * smoothstep(0.2, 0.0, a);
     T = max(T, sm.a * uCloud);
-    // 线稿两边一圈网点：线不是干干净净浮在纸上的，跟着这一笔一起出现
-    T = max(T, clamp(haloRG.g * 2.6, 0.0, 0.6) * lineOn * smoothstep(0.3, 0.0, a));
+    // 线稿两边一圈网点：线不是干干净净浮在纸上的，跟着这一笔一起出现（显式 LOD，无笔处跳过采样）
+    if (inside && lineOn > 0.001 && a < 0.3) {
+        float haloG = textureLod(uMain, uv, 4.0).g;
+        T = max(T, clamp(haloG * 2.6, 0.0, 0.6) * lineOn * smoothstep(0.3, 0.0, a));
+    }
     T = max(T, vig * 0.6 * uCloud);
     // 字周围的网点：没唱到的字的影子、唱过的字周围那一圈、墨边阈值以下的那一截（Folia 隐喻的做法）
     T = max(T, clamp(gf.g * 0.9 + gInk * 0.5, 0.0, 1.0));
     // 网点格钉在屏幕上（7 个 CSS 像素一格，大特写也不会放出一颗颗大圆片），每个镜头换一个网角
-    float ca = cos(uDotAngle), sa = sin(uDotAngle);
-    vec2 sf = gl_FragCoord.xy / uDotPx;
-    vec2 g = vec2(sf.x * ca - sf.y * sa, sf.x * sa + sf.y * ca) / 7.0;
-    float dist = length(fract(g) - 0.5);
-    // 最浓的地方圆点也只是刚好相连，留着格子间的纸
-    // 网点跟着低音呼吸：鼓点上来时圆点胀一点（Folia 的网点不动）
-    float radius = sqrt(clamp(T, 0.0, 1.0)) * 0.6 * (1.0 + uBeat * 0.14);
-    float dots = (1.0 - smoothstep(radius - 0.13, radius + 0.13, dist)) * uHalftone * step(0.012, T);
+    float dots = 0.0;
+    if (uHalftone > 0.0 && T > 0.012) {
+        float ca = cos(uDotAngle), sa = sin(uDotAngle);
+        vec2 sf = gl_FragCoord.xy / uDotPx;
+        vec2 g = vec2(sf.x * ca - sf.y * sa, sf.x * sa + sf.y * ca) / 7.0;
+        float dist = length(fract(g) - 0.5);
+        // 最浓的地方圆点也只是刚好相连，留着格子间的纸
+        // 网点跟着低音呼吸：鼓点上来时圆点胀一点（Folia 的网点不动）
+        float radius = sqrt(clamp(T, 0.0, 1.0)) * 0.6 * (1.0 + uBeat * 0.14);
+        dots = (1.0 - smoothstep(radius - 0.13, radius + 0.13, dist)) * uHalftone;
+    }
 
     vec3 paper = mix(uPaper, uInk, uNeg);
     vec3 ink = mix(uInk, uPaper, uNeg);
@@ -1898,7 +1967,6 @@ void main() {
         vec2 uq = wq / uWorld;
         if (all(greaterThanEqual(uq, vec2(0.0))) && all(lessThanEqual(uq, vec2(1.0)))) {
             vec4 pm = texture(uPrev, uq);
-            float ph = textureLod(uPrev, uq, 4.0).r;
             float Fp = pm.r + pm.g * 1.1;
             float breakUp = (vnoise(wq / (k * 0.05)) - 0.5) * 0.9;
             float tp = uSmash > 0.0 ? 0.5 + rough + step(1.0 - uSmash * 1.15, h) * 9.0
@@ -1943,17 +2011,23 @@ void main() {
     }
     // 颗粒按 CSS 像素算：画面按原生分辨率画了，颗粒大小不跟着屏幕像素密度变
     vec2 cssPx = gl_FragCoord.xy / max(uDotPx, 0.5);
-    float gr = hash12(floor(cssPx / 1.5) + uGrainStep * 17.0) - 0.5;
-    float fibre = vnoise(cssPx / 3.0 + uGrainStep * 5.0) - 0.5;
-    // 墨里的颗粒压一半：墨是一层实的，不像砂纸
-    col *= 1.0 + (gr * 0.44 * (1.0 - a * 0.6) + fibre * 0.2) * uGrain;
+    if (uGrain > 0.0) {
+        float gr = hash12(floor(cssPx / 1.5) + uGrainStep * 17.0) - 0.5;
+        float fibre = vnoise(cssPx / 3.0 + uGrainStep * 5.0) - 0.5;
+        // 墨里的颗粒压一半：墨是一层实的，不像砂纸
+        col *= 1.0 + (gr * 0.44 * (1.0 - a * 0.6) + fibre * 0.2) * uGrain;
+    }
     // 纸纹：纤维、绒、帘纹，钉在屏幕上不动（沸腾的只是上面那层颗粒）；墨里也透一点——干的墨盖不住纸的纤维
-    float pt = texture(uPaperTex, cssPx / 256.0).r - 0.5;
-    float pk = uPaperGrain * (1.0 - a * 0.55);
-    col = col * (1.0 + pt * 0.26 * pk) + pt * 0.035 * pk;
+    if (uPaperGrain > 0.0) {
+        float pt = texture(uPaperTex, cssPx / 256.0).r - 0.5;
+        float pk = uPaperGrain * (1.0 - a * 0.55);
+        col = col * (1.0 + pt * 0.26 * pk) + pt * 0.035 * pk;
+    }
     // 杂点：纸上是墨色的点，墨里是纸色的点（印刷没压实的地方）
-    float speck = step(0.988, hash12(floor(cssPx / 2.2) + uGrainStep * 3.7 + 0.5));
-    col = mix(col, mix(ink, paper, a), speck * 0.55 * (1.0 - a * 0.7) * min(uGrain * 2.0, 1.0));
+    if (uGrain > 0.0) {
+        float speck = step(0.988, hash12(floor(cssPx / 2.2) + uGrainStep * 3.7 + 0.5));
+        col = mix(col, mix(ink, paper, a), speck * 0.55 * (1.0 - a * 0.7) * min(uGrain * 2.0, 1.0));
+    }
     outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
@@ -2002,6 +2076,8 @@ void main() {
         for (let i = 0; i < N * N; i += 1) out[i] = Math.max(0, Math.min(255, Math.round(128 + v[i] * 64)));
         return out;
     };
+    let paperTileCache = null;
+    const getPaperTile = () => (paperTileCache || (paperTileCache = makePaperTile()));
 
     /* ───────────────────────── 舞台 ───────────────────────── */
 
@@ -2142,32 +2218,36 @@ void main() {
             cuesFor = { lines: frame.lines, key };
             glState?.slots.forEach((slot) => { slot.key = null; slot.data = null; });
             // 字体分片还没下载完：下载完把字图作废重画（字宽变了，分镜也要重排）
-            Utils.loadLyricFont(frame.lines, [INK_WEIGHT], () => { glyphSource.clear(); glState?.slots.forEach((slot) => { slot.key = null; slot.data = null; }); redraw(); }, frame.track?.title || '');
+            Utils.loadLyricFont(frame.lines, [INK_WEIGHT], () => {
+                if (mode.destroyed) return;
+                glyphSource.clear();
+                glState?.slots.forEach((slot) => { slot.key = null; slot.data = null; });
+                redraw();
+            }, frame.track?.title || '');
         };
 
         // 只有会改变纹理和分镜的设置进键；网点、颗粒、配色这些只是着色器参数。
-        const slotKey = (index) => {
-            const s = settings();
-            return `${cuesFor?.key}|${index}|${world.W}x${world.H}|${s.fontScale}|${s.figures}|${s.collisions}|${s.cameraCuts}|${s.negativeShots}|${s.figureScale}|${s.reducedMotion}|${s.spatter}|${s.figureDetail}|${s.scene}`;
-        };
-        const slotFor = (index, build = true) => {
+        const slotKeyWith = (index, s) =>
+            `${cuesFor?.key}|${index}|${world.W}x${world.H}|${s.fontScale}|${s.figures}|${s.collisions}|${s.cameraCuts}|${s.negativeShots}|${s.figureScale}|${s.reducedMotion}|${s.spatter}|${s.figureDetail}|${s.scene}`;
+        const slotFor = (index, build = true, currentSettings = null) => {
             if (!glState || index < 0 || index >= cues.length) return null;
-            const key = slotKey(index);
+            const s = currentSettings || settings();
+            const key = slotKeyWith(index, s);
             const hit = glState.slots.find(slot => slot.key === key);
             if (hit) { hit.used = performance.now(); return hit; }
             if (!build) return null;
             const started = performance.now();
             const current = latestFrame;
             const data = prepareCue(cues[index], index, {
-                W: world.W, H: world.H, aspect: world.aspect, family: fontFamily(), settings: settings(),
+                W: world.W, H: world.H, aspect: world.aspect, family: fontFamily(), settings: s,
                 trackKey: trackKey(current || {}), title: String(current?.track?.title || '').replace(/\.(flac|mp3|wav|m4a|ogg|opus|ape|aac|wma|alac|dsf)$/i, ''),   // 没有标签时标题是文件名，去掉扩展名
                 prevCue: cues[index - 1] || null,
-                scene: sceneFor(trackKey(current || {}), settings().scene),
+                scene: sceneFor(trackKey(current || {}), s.scene),
                 mainCanvas, idsCanvas
             });
             // 最久没用的槽，但不动正在画的这一段和上一段
-            const busy = new Set([stats.cue, stats.cue - 1].map(i => (i >= 0 ? slotKey(i) : '')));
-            const slot = glState.slots.filter(s => !busy.has(s.key)).sort((a, b) => a.used - b.used)[0] || glState.slots[0];
+            const busy = new Set([stats.cue, stats.cue - 1].map(i => (i >= 0 ? slotKeyWith(i, s) : '')));
+            const slot = glState.slots.filter(sl => !busy.has(sl.key)).sort((a, b) => a.used - b.used)[0] || glState.slots[0];
             glState.fill(slot, mainCanvas, idsCanvas, data);
             data.atlas = { width: data.atlas.width, height: data.atlas.height };
             slot.key = key;
@@ -2179,27 +2259,26 @@ void main() {
         };
 
         // 下一段在空闲时备好，换句时不卡。
-        const scheduleNext = (index) => {
-            if (idleHandle || !glState || index + 1 >= cues.length || slotFor(index + 1, false)) return;
+        const scheduleNext = (index, hasNext = false) => {
+            if (idleHandle || !glState || index + 1 >= cues.length || hasNext) return;
             const run = () => {
                 idleHandle = 0;
-                if (!mode.destroyed && !lostContext) slotFor(index + 1, true);
+                if (!mode.destroyed && !lostContext && !paused) slotFor(index + 1, true);
             };
             idleHandle = global.requestIdleCallback ? global.requestIdleCallback(run, { timeout: 700 }) : global.setTimeout(run, 120);
         };
 
-        const draw = (frame) => {
+        const draw = (frame, s) => {
             if (!glState || lostContext) return;
             const width = buffer.w, height = buffer.h;
             const t = frame.playbackTime;
             const index = findCue(cues, t);
-            const slot = slotFor(index, true);
+            const slot = slotFor(index, true, s);
             if (!slot) return;
             const data = slot.data;
             stats.cue = index;
             const view = viewAt(data.shots, t);
             stats.lastShot = view.shot;
-            const s = settings();
             const audio = frame.audio || {};
             const bass = clamp((audio.bass || 0) * s.audioReactivity, 0, 1.5);
             if (Number.isFinite(audio.onsets) && audio.onsets !== lastOnsets) {
@@ -2218,7 +2297,7 @@ void main() {
             // 墨化 0.38 秒就收（再长，上一句的碎笔会在新字周围飘太久）；碎开 0.5 秒
             const prevLen = data.transition === 'ink' ? 0.38 : 0.5;
             if ((data.transition === 'ink' || data.transition === 'smash') && since < prevLen && index > 0) {
-                prevSlot = slotFor(index - 1, false);
+                prevSlot = slotFor(index - 1, false, s);
                 if (prevSlot) {
                     prevFade = smooth(0, prevLen, since) * 0.999 + 0.001;
                     prevView = viewAt(prevSlot.data.shots, data.cue.start - 0.001);
@@ -2263,7 +2342,8 @@ void main() {
             u.uSmash = smash;
             // 扫笔跨在换句上：换句前 0.2 秒笔头进画，换句后 0.4 秒飞白裂开
             let sweepU = -1, sweepP = null;
-            const nextData = cues[index + 1] ? slotFor(index + 1, false)?.data : null;
+            const nextSlot = cues[index + 1] ? slotFor(index + 1, false, s) : null;
+            const nextData = nextSlot ? nextSlot.data : null;
             if (!s.reducedMotion) {
                 if (data.transition === 'sweep' && since >= 0 && since < SWEEP_AFTER) { sweepU = (SWEEP_BEFORE + since) / (SWEEP_BEFORE + SWEEP_AFTER); sweepP = data.sweep; }
                 else if (nextData?.transition === 'sweep' && t > nextData.cue.start - SWEEP_BEFORE) {
@@ -2294,15 +2374,15 @@ void main() {
             // 三遍：逐字层进墨场、低分辨率的平滑场、原生像素的主遍
             glState.render(slot, prevSlot, smoothSize);
             stats.draws += 1;
-            scheduleNext(index);
+            scheduleNext(index, Boolean(nextSlot));
         };
 
-        const updateOverlay = (frame) => {
+        const updateOverlay = (frame, showTranslation) => {
             const next = `墨痕 · ${Utils.lineCounter(frame)}`;
             if (next !== caption) { caption = next; kicker.textContent = next; }
             const tc = formatTime(frame.playbackTime).slice(0, 5);
             if (tc !== lastTimecode) { lastTimecode = tc; timecode.textContent = tc; }
-            const text = settings().showTranslation ? resolveSupplementalText(frame.activeLine) : '';
+            const text = showTranslation ? resolveSupplementalText(frame.activeLine) : '';
             if (text !== lastTranslation) { lastTranslation = text; translation.textContent = text; translation.hidden = !text; }
         };
 
@@ -2312,16 +2392,20 @@ void main() {
             latestFrame = frame;
             if (!palette) readPalette();
             ensureCues(frame);
-            updateOverlay(frame);
+            const s = settings();
+            updateOverlay(frame, s.showTranslation);
             if (!glState) return;
-            const quality = mode.config.quality || 'standard';
-            const aim = 1000 / tierOf(quality).fps;
+            const aim = 1000 / tierOf(s.quality).fps;
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
             if (frame.isPlaying && now - lastDraw < aim - 3) return;
-            if (still.same(frame, `${buffer.w}x${buffer.h}|${stats.builds}`)) return;
+            if (!frame.isPlaying) {
+                if (still.same(frame, `${buffer.w}x${buffer.h}|${stats.builds}`)) return;
+            } else {
+                still.invalidate();
+            }
             lastDraw = aim && now - lastDraw < aim * 2 ? lastDraw + aim : now;
-            draw(frame);
+            draw(frame, s);
         };
 
         const redraw = () => {
@@ -2338,7 +2422,11 @@ void main() {
             redraw();
         };
         mode.resize = () => { resize(); redraw(); };
-        mode.suspend = () => { paused = true; mode.root.classList.add('is-suspended'); };
+        mode.suspend = () => {
+            paused = true;
+            if (idleHandle) { (global.cancelIdleCallback || global.clearTimeout)(idleHandle); idleHandle = 0; }
+            mode.root.classList.add('is-suspended');
+        };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readPalette(); redraw(); };
         mode.getDebugSnapshot = () => ({
@@ -2374,7 +2462,7 @@ void main() {
                     glyphFloats: GLYPH_FLOATS,
                     limits: { blobs: MAX_BLOBS, rings: MAX_RINGS, accents: MAX_ACCENT, clouds: MAX_CLOUDS },
                     buffers: { blobs: blobBuffer, rings: ringBuffer, accents: accentBuffer, clouds: cloudBuffer },
-                    paperTile: { size: PAPER_TILE, data: makePaperTile() }
+                    paperTile: { size: PAPER_TILE, data: getPaperTile() }
                 });
                 if (!made) { Effects.releaseApplication(app); fail(); return; }
                 pixiApp = app;
@@ -2392,7 +2480,7 @@ void main() {
             }
         };
         mode.scope.add(() => {
-            if (idleHandle) (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            if (idleHandle) { (global.cancelIdleCallback || global.clearTimeout)(idleHandle); idleHandle = 0; }
             if (glState) {
                 glState.canvas.removeEventListener('webglcontextlost', onLost);
                 glState.canvas.removeEventListener('webglcontextrestored', onRestored);
@@ -2402,6 +2490,9 @@ void main() {
             glState = null;
             if (pixiApp) pixiParts().Effects.releaseApplication(pixiApp);
             pixiApp = null;
+            mainCanvas.width = 0; mainCanvas.height = 0;
+            idsCanvas.width = 0; idsCanvas.height = 0;
+            Figures.releaseSoft?.();
         });
 
         resize();

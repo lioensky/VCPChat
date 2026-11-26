@@ -76,13 +76,17 @@ function setupSidebar(app) {
             app.playlistEl.style.display = 'none'; categoryView.style.display = 'block';
             const groups = view === 'albums' ? app.getAlbumGroups() : app.getArtistGroups();
             categoryView.innerHTML = '';
+            const frag = document.createDocumentFragment();
             groups.forEach(g => {
                 const div = document.createElement('div');
                 div.className = 'category-item';
                 div.innerHTML = `
                     <div class="cover ${view==='artists'?'artist-avatar':''}"></div>
                     <div class="info"><div class="name">${esc(g.name)}</div><div class="count">${g.tracks.length} 首</div></div>`;
-                if (g.art) div.querySelector('.cover').style.backgroundImage = `url("file://${encodeURI(g.art.replace(/\\/g, '/'))}")`;
+                if (g.art) {
+                    const artUrl = app.fileUrl ? app.fileUrl(g.art) : `file://${encodeURI(g.art.replace(/\\/g, '/'))}`;
+                    div.querySelector('.cover').style.backgroundImage = `url("${artUrl}")`;
+                }
                 div.addEventListener('click', () => {
                     app.filteredPlaylistSource = { type: view==='albums'?'album':'artist', name: g.name };
                     app.currentFilteredTracks = g.tracks;
@@ -91,11 +95,13 @@ function setupSidebar(app) {
                     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
                     document.querySelector('.sidebar-tab[data-view="all"]').classList.add('active');
                 });
-                categoryView.appendChild(div);
+                frag.appendChild(div);
             });
+            categoryView.appendChild(frag);
         } else if (view === 'playlists') {
             app.playlistEl.style.display = 'none'; categoryView.style.display = 'block';
             categoryView.innerHTML = '';
+            const frag = document.createDocumentFragment();
             app.customPlaylists.forEach(pl => {
                 const div = document.createElement('div'); div.className = 'category-item';
                 div.innerHTML = `
@@ -114,14 +120,17 @@ function setupSidebar(app) {
                 });
                 div.addEventListener('click', () => {
                     app.filteredPlaylistSource = { type: 'playlist', name: pl.name, id: pl.id };
-                    app.currentFilteredTracks = pl.tracks.map(p => app.playlist.find(t => t.path === p)).filter(Boolean);
+                    const byPath = new Map();
+                    for (const t of app.playlist) if (t && t.path && !byPath.has(t.path)) byPath.set(t.path, t);
+                    app.currentFilteredTracks = pl.tracks.map(p => byPath.get(p)).filter(Boolean);
                     app.playlistEl.style.display = 'block'; categoryView.style.display = 'none';
                     app.renderPlaylist(app.currentFilteredTracks);
                     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
                     document.querySelector('.sidebar-tab[data-view="all"]').classList.add('active');
                 });
-                categoryView.appendChild(div);
+                frag.appendChild(div);
             });
+            categoryView.appendChild(frag);
         }
     };
 
@@ -161,12 +170,18 @@ function setupSidebar(app) {
     };
 
     app.updatePlaylistSubmenu = () => {
-        app.playlistSubmenu.innerHTML = app.customPlaylists.length === 0 ? '<div class="submenu-empty">暂无歌单</div>' : '';
+        if (app.customPlaylists.length === 0) {
+            app.playlistSubmenu.innerHTML = '<div class="submenu-empty">暂无歌单</div>';
+            return;
+        }
+        app.playlistSubmenu.innerHTML = '';
+        const frag = document.createDocumentFragment();
         app.customPlaylists.forEach(pl => {
             const item = document.createElement('div'); item.className = 'submenu-item'; item.textContent = pl.name; item.title = pl.name;
             item.addEventListener('click', (e) => { e.stopPropagation(); app.addSelectedTracksToPlaylist(pl.id); app.contextMenu.classList.remove('visible'); });
-            app.playlistSubmenu.appendChild(item);
+            frag.appendChild(item);
         });
+        app.playlistSubmenu.appendChild(frag);
     };
 
     app.addSelectedTracksToPlaylist = (playlistId) => {
@@ -224,22 +239,23 @@ function setupSidebar(app) {
         const t = rows[i];
         if (!pl || !t) return;
         const items = app.modalSongList.children;
-        const paint = (j) => { const el = items[j]; if (el) el.classList.toggle('in-playlist', pl.tracks.includes(rows[j].path)); };
+        const paint = (j, selected) => { const el = items[j]; if (el) el.classList.toggle('in-playlist', selected); };
         if (e.shiftKey && app.lastModalClickIndex !== -1 && rows[app.lastModalClickIndex]) {
             const [s, eIdx] = [Math.min(app.lastModalClickIndex, i), Math.max(app.lastModalClickIndex, i)];
-            const targetState = !pl.tracks.includes(t.path);
             const inList = new Set(pl.tracks);
+            const targetState = !inList.has(t.path);
             for (let j = s; j <= eIdx; j++) {
                 const path = rows[j].path;
                 if (targetState && !inList.has(path)) { pl.tracks.push(path); inList.add(path); }
                 else if (!targetState && inList.has(path)) { inList.delete(path); }
             }
             if (!targetState) { const keep = pl.tracks.filter((p) => inList.has(p)); pl.tracks.length = 0; pl.tracks.push(...keep); }
-            for (let j = s; j <= eIdx; j++) paint(j);
+            for (let j = s; j <= eIdx; j++) paint(j, inList.has(rows[j].path));
         } else {
             const idx = pl.tracks.indexOf(t.path);
-            if (idx === -1) pl.tracks.push(t.path); else pl.tracks.splice(idx, 1);
-            paint(i);
+            const added = idx === -1;
+            if (added) pl.tracks.push(t.path); else pl.tracks.splice(idx, 1);
+            paint(i, added);
         }
         app.saveCustomPlaylists();
         app.lastModalClickIndex = i; app.modalCount.textContent = `${pl.tracks.length} 首已添加`;

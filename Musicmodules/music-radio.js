@@ -106,19 +106,25 @@
         }
         scored.sort((a, b) => b[0] - a[0]);
         const out = [];
+        const picked = new Set();
         const perArtist = new Map();
         const perAlbum = new Map();
         const artistCap = Math.max(2, Math.ceil(size / 3));
+        let prevArtist1 = '';
+        let prevArtist2 = '';
         const pass = (strict) => {
             for (const [, t] of scored) {
                 if (out.length >= size) return;
-                if (out.includes(t)) continue;
+                if (picked.has(t)) continue;
                 const a = artistsOf(t)[0] || '';
                 const al = norm(t.album) + '\n' + norm(t.artist);
                 if (strict && ((perArtist.get(a) || 0) >= artistCap || (norm(t.album) && (perAlbum.get(al) || 0) >= 3))) continue;
                 // 同一歌手不连着放两首以上
-                if (strict && out.length >= 2 && a && artistsOf(out[out.length - 1])[0] === a && artistsOf(out[out.length - 2])[0] === a) continue;
+                if (strict && out.length >= 2 && a && prevArtist1 === a && prevArtist2 === a) continue;
                 out.push(t);
+                picked.add(t);
+                prevArtist2 = prevArtist1;
+                prevArtist1 = a;
                 perArtist.set(a, (perArtist.get(a) || 0) + 1);
                 perAlbum.set(al, (perAlbum.get(al) || 0) + 1);
             }

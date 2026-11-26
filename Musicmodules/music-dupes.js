@@ -58,6 +58,7 @@
         if (!app || app.openDupesView) return;
         const doc = global.document;
         let overlay = null;
+        let previousFocus = null;
         const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
         const toast = (message, action) => { try { global.MusicToast?.show?.({ message, action, duration: action ? 10000 : undefined }); } catch (e) { /* 没有提示层 */ } };
@@ -68,6 +69,9 @@
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
             setTimeout(() => o.remove(), 320);
+            const back = previousFocus;
+            previousFocus = null;
+            if (back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
         const onKey = (e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
@@ -120,8 +124,9 @@
             return () => {
                 const current2 = app.playlist?.[app.currentTrackIndex] || null;
                 const kept = new Set(app.playlist);
+                const beforeSet = new Set(beforeLibrary);
                 // 撤销期间又加进来的歌也留着
-                app.playlist = beforeLibrary.filter((t) => drop.has(t) || kept.has(t)).concat(app.playlist.filter((t) => !beforeLibrary.includes(t)));
+                app.playlist = beforeLibrary.filter((t) => drop.has(t) || kept.has(t)).concat(app.playlist.filter((t) => !beforeSet.has(t)));
                 if (current2) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current2));
                 if (Array.isArray(beforeFiltered)) app.currentFilteredTracks = beforeFiltered;
                 if (listsChanged) { try { app.customPlaylists = JSON.parse(beforeLists); app.saveCustomPlaylists?.(); } catch (e) { /* 歌单保持现状 */ } }
@@ -170,6 +175,7 @@
 
         app.openDupesView = () => {
             if (overlay) return;
+            previousFocus = doc.activeElement;
             overlay = el('div', 'dialog-overlay music-stats-dialog music-dupes-dialog');
             const dialog = el('div', 'dialog glass-panel mstats mdupes');
             dialog.setAttribute('role', 'dialog');
