@@ -522,7 +522,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Step 3: Restore the protected ```html blocks.
     if (htmlBlockMap.size > 0) {
       for (const [placeholder, block] of htmlBlockMap.entries()) {
-        processed = processed.replace(placeholder, block);
+        processed = processed.replace(placeholder, () => block);
       }
     }
 
