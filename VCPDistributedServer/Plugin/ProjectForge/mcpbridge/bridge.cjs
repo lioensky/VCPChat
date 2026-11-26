@@ -6,7 +6,7 @@ const { tools, validateArguments } = require('./tools.cjs');
 const { searchTool, createSearcher } = require('./search.cjs');
 const { DEFAULT_VCP_URL, topicTools, normalizeVcpUrl, createTopicClient } = require('./topic.cjs');
 
-const INSTRUCTIONS = 'Use ProjectForge tools for source investigation and edits instead of raw file writes. First reuse an existing projectId in the configured workspace; paths are relative to its root. Use pf_search for workspace content search via native CodeSearcher (no project required), Outline/FindSymbol for definitions and bounded ReadCode; batch same-file changes in EditCode.edits against one original snapshot. Supply reason for changes. Resolve ambiguous edits using returned tickets; never guess candidates or blindly retry uncertain writes. Read projectforge_development prompt (or projectforge://instructions) for full workflow. Keep terminal, Git and LSP diagnostics for builds, tests and validation. No VCPToolCall, ink or valet fields are used.';
+const INSTRUCTIONS = 'Use ProjectForge tools for source investigation and edits instead of raw file writes. First reuse an existing projectId in the configured workspace; paths are relative to its root. Use pf_search for workspace content search via native CodeSearcher (no project required), Outline/FindSymbol for definitions and bounded ReadCode; batch same-file changes in EditCode.edits against one original snapshot. Supply reason for changes. Resolve ambiguous edits using returned tickets; never guess candidates or blindly retry uncertain writes. When topic tools are enabled, read topics progressively via tm_list_topics -> tm_outline_topic / tm_search_topic -> bounded tm_get_topic_content, and pass structured contextItems or riverLast on ts_reply_to_topic. Read projectforge_development prompt (or projectforge://instructions) for full workflow. Keep terminal, Git and LSP diagnostics for builds, tests and validation. No VCPToolCall, ink or valet fields are used.';
 const PROMPT_URI = 'projectforge://instructions';
 
 function loadConfig(filename) {
@@ -15,6 +15,7 @@ function loadConfig(filename) {
     const allowed = new Set([
         'workspaces', 'activeWorkspaceId', 'dbPath', 'binaryPath', 'maid',
         'enableEval', 'enablePurge', 'enableBash', 'enableTopic', 'vcpUrl', 'vcpKey',
+        'vcpAppDataPath', 'topicReadMode',
     ]);
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Config must be an object');
     for (const key of Object.keys(raw)) if (!allowed.has(key)) throw new Error(`Unknown config field: ${key}`);
@@ -35,8 +36,11 @@ function loadConfig(filename) {
     });
     if (!workspaces.some(ws => ws.enabled)) throw new Error('At least one workspace must be enabled');
     if (raw.activeWorkspaceId !== undefined && !workspaces.some(ws => ws.id === raw.activeWorkspaceId && ws.enabled)) throw new Error('activeWorkspaceId must name an enabled workspace');
-    for (const key of ['dbPath', 'binaryPath']) {
+    for (const key of ['dbPath', 'binaryPath', 'vcpAppDataPath']) {
         if (raw[key] !== undefined && (typeof raw[key] !== 'string' || !path.isAbsolute(raw[key]))) throw new Error(`${key} must be absolute`);
+    }
+    if (raw.topicReadMode !== undefined && !['auto', 'local', 'http'].includes(raw.topicReadMode)) {
+        throw new Error('topicReadMode must be auto, local or http');
     }
     for (const key of ['enableEval', 'enablePurge', 'enableBash', 'enableTopic']) {
         if (raw[key] !== undefined && typeof raw[key] !== 'boolean') throw new Error(`${key} must be boolean`);
@@ -106,7 +110,8 @@ function createBridge(config, service) {
     const byName = new Map(available.map(tool => [tool.name, tool]));
     let pending = 0;
     let closing = false;
-    const prompt = () => fs.readFileSync(path.join(__dirname, 'MCPPrompt.md'), 'utf8');
+    const promptFile = ['myMCPPrompt.md', 'MCPPrompt.md'].map(f => path.join(__dirname, f)).find(p => fs.existsSync(p));
+    const prompt = () => fs.readFileSync(promptFile, 'utf8');
     service.initialize({
         config: { PROJECTFORGE_DB_PATH: config.dbPath, BASH_ENABLED: config.enableBash === true },
         ...(config.binaryPath ? { serviceBinaryPath: config.binaryPath, indexerBinaryPath: config.binaryPath } : {}),

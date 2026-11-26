@@ -180,16 +180,19 @@ ts_check_new_topics(maid, days?)
 ts_check_unread_messages(maid)
 ts_check_topic_ownership(topicId, callerName, maid?)
 ts_create_topic(maid, topicName, initialMessage)
-ts_reply_to_topic(message, senderId?|senderName?, topicId, sourceTopicId?)
-ts_reply_to_topic(message, senderId?|senderName?, mode="new_topic", sourceTopicId, targetAgent, topicName?, flowlock?)
-tm_list_topics(maid)
-tm_get_topic_content(topicId, maid?)
+ts_create_flowlock_topic(maid, topicName, initialMessage, flowlockHeartbeat?, flowlockPrompt?)
+ts_reply_to_topic(message, senderId?|senderName?, topicId, sourceTopicId?, riverTopicId?, riverLast?, contextItems?)
+ts_reply_to_topic(message, senderId?|senderName?, mode="new_topic", sourceTopicId, targetAgent, topicName?, flowlock?, riverLast?, contextItems?)
+tm_list_topics(maid, query?, unreadOnly?, limit?, offset?)
+tm_outline_topic(topicId, maid?, startSeq?, endSeq?, limit?)
+tm_search_topic(topicId, query, maid?, isRegex?, caseSensitive?, includeTools?, maxResults?)
+tm_get_topic_content(topicId, maid?, tail?, startSeq?, endSeq?, maxCharsPerTurn?, includeTools?)
 ```
 
-- 默认不暴露也不允许调用；仅在桥本地配置 `enableTopic=true` 且 VCPToolBox 与 VChat 客户端在线时可用。
-- 先用 `ts_list_agents` / `ts_list_groups` 确认注册名称与 ID，再用 `ts_list_recent_topics`（最近 5 条元数据）或 `tm_list_topics`（完整历史列表）定位真实 `topicId`，按需用 `tm_get_topic_content` 读取对话正文；`tm_get_topic_content` 与 `ts_check_topic_ownership` 省略 `maid` 时按 `topicId` 全域反查。
-- `ts_reply_to_topic` 必须提供注册 Agent 的 `senderId` 或 `senderName`：回复已有话题传目的 `topicId` 并省略 `mode`；派工新建任务话题传 `mode="new_topic"`、`sourceTopicId` 与 `targetAgent`，不传目的 `topicId`。
-- MCP 桥不暴露 `river` 自动上下文注入；需要附带代码坐标、日志或前序结论时，直接整理写入 `message`。
+- 默认不暴露也不允许调用；仅在桥本地配置 `enableTopic=true` 时可用（本机同仓部署下 `tm_*` 支持只读直连本地 `AppData`，`ts_*` 写入及远程查询需 VCPToolBox 与 VChat 客户端在线）。
+- 渐进阅读流程：先用 `ts_list_agents` / `ts_list_groups` 确认注册名称与 ID，再用 `ts_list_recent_topics` 或 `tm_list_topics`（支持 `query`、`unreadOnly`、`limit`/`offset` 分页）定位真实 `topicId`；面对长话题优先以 `tm_outline_topic` 查看楼层序号 `#seq` 与首行摘要、用 `tm_search_topic` 检索目标楼层，再调用 `tm_get_topic_content` 按 `tail` 或 `startSeq`–`endSeq` 有界切片读取（超长话题未指定区间时默认自动截取尾部窗口并保留代码块缩进与泛型尖括号）。
+- `ts_reply_to_topic` 必须提供注册 Agent 的 `senderId` 或 `senderName`：回复已有话题传目的 `topicId` 并省略 `mode`；派工新建任务话题传 `mode="new_topic"`、`sourceTopicId` 与 `targetAgent`（可选 `flowlock=true`），不传目的 `topicId`；独立创建自主接力话题用 `ts_create_flowlock_topic`。
+- 结构化上下文传递：可通过可选 `riverLast`（配合 `sourceTopicId` 或 `riverTopicId` 自动抽取本地源话题最近 N 轮干净对话）及 `contextItems`（`[{ kind?, name?, content }]` 携带代码切片、日志或诊断摘要），由桥自动编码为前端原生折叠卡片 `[VCP_TOPIC_RIVER_V2]`。
 
 ## 长期施工与交付
 

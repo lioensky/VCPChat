@@ -71,9 +71,11 @@ npm --prefix VCPDistributedServer/Plugin/ProjectForge/mcpbridge test
 | `enableEval` | 默认 `false`；显式设为 `true` 才暴露并允许 `pf_eval_symbol` |
 | `enablePurge` | 默认 `false`；显式设为 `true` 才暴露并允许 `pf_purge_projects`，调用仍须 `confirm=true` |
 | `enableBash` | 默认 `false`；在桥的本地配置设为 `true` 后重启 MCP，再由客户端刷新工具列表 |
-| `enableTopic` | 默认 `false`；显式设为 `true` 才暴露并允许 `ts_*` / `tm_*` 话题工具，需要运行中的 VCPToolBox 与在线 VChat |
+| `enableTopic` | 默认 `false`；显式设为 `true` 才暴露并允许 `ts_*` / `tm_*` 话题工具 |
 | `vcpUrl` | 可选 HTTP(S) 服务根地址，默认 `http://127.0.0.1:6005`（不含路径、查询参数或凭据） |
 | `vcpKey` | 可选 VCP API Key；`enableTopic=true` 时必需，也可省略该字段改由环境变量 `VCP_API_KEY` 提供 |
+| `vcpAppDataPath` | 可选 VChat `AppData` 绝对目录；省略且使用默认本机 `vcpUrl` 时自动探测宿主 `AppData` 供 `TopicMemo` 本地只读直连 |
+| `topicReadMode` | 可选 `auto`（默认）、`local` 或 `http`，控制 `tm_*` 优先走本地只读直连还是远程 HTTP |
 
 桥从 JSON 构造只读工作区门面并注入 `ProjectForgeService`，将 `dbPath` 和 `binaryPath` 映射到服务初始化选项，不从 GUI 读取工作区或依赖后端配置。这里的配置字段不等于额外工具参数。
 
@@ -164,12 +166,12 @@ node VCPDistributedServer/Plugin/ProjectForge/mcpbridge/server.cjs --config H:/V
 
 ### TopicSponsor 与 TopicMemo 可选话题工具
 
-仅当 `enableTopic=true` 且配置了 `vcpKey`（或环境变量 `VCP_API_KEY`）时启用，参数同样采用 MCP camelCase，桥内部映射为插件字段并通过 `POST <vcpUrl>/v1/human/tool` 调用：
+仅当 `enableTopic=true` 且配置了 `vcpKey`（或环境变量 `VCP_API_KEY`）时启用，参数同样采用 MCP camelCase。本机同仓部署下 `tm_*` 优先直接只读访问本地 `AppData`（毫秒级无子进程开销，远端 URL 自动回退 HTTP），`ts_*` 通过 `POST <vcpUrl>/v1/human/tool` 转发并返回可读 Markdown 报告与 `structuredContent`：
 
-- **TopicSponsor（`ts_*`）**：`ts_list_agents`、`ts_list_groups`、`ts_list_recent_topics`、`ts_check_new_topics`、`ts_check_unread_messages`、`ts_check_topic_ownership`、`ts_create_topic`、`ts_reply_to_topic`。
-- **TopicMemo（`tm_*`）**：`tm_list_topics`、`tm_get_topic_content`。
-- `ts_reply_to_topic` 区分已有话题留言（传 `topicId`，省略 `mode`）与跨话题新建派工（传 `mode="new_topic"`、`sourceTopicId`、`targetAgent`，不传 `topicId`）；发言者 `senderId` 或 `senderName` 须匹配已注册 Agent。
-- `/v1/human/tool` 链路不注入 VCP 对话循环的 `river` 上下文，因此桥不暴露 `river` 字段；需要传递背景时由调用方直接写入 `message`。插件业务错误（HTTP 500 `plugin_error`）统一映射为 MCP `isError: true`。
+- **TopicSponsor（`ts_*`）**：`ts_list_agents`、`ts_list_groups`、`ts_list_recent_topics`、`ts_check_new_topics`、`ts_check_unread_messages`、`ts_check_topic_ownership`、`ts_create_topic`、`ts_create_flowlock_topic`、`ts_reply_to_topic`。
+- **TopicMemo（`tm_*` 四阶渐进阅读）**：`tm_list_topics`（关键词过滤、未读筛选与分页）、`tm_outline_topic`（轻量楼层序号与首行摘要）、`tm_search_topic`（单话题内字面/正则定位楼层）、`tm_get_topic_content`（长话题自动尾窗截断，支持 `tail`、`startSeq`–`endSeq`、`maxCharsPerTurn`、`includeTools`，完整保护 Markdown 代码缩进与泛型尖括号）。
+- `ts_reply_to_topic` 区分已有话题留言（传 `topicId`，省略 `mode`）与跨话题新建派工（传 `mode="new_topic"`、`sourceTopicId`、`targetAgent`，可选 `flowlock`，不传 `topicId`）；发言者 `senderId` 或 `senderName` 须匹配已注册 Agent。
+- 支持可选 `riverLast`（抽取源话题最近 N 轮干净对话）与 `contextItems`（附加结构化代码切片、日志或工具回执），由桥自动编码为前端原生折叠引用卡 `[VCP_TOPIC_RIVER_V2]`。插件业务错误（HTTP 500 `plugin_error`）统一映射为 MCP `isError: true`。
 
 ### Instructions、Prompts 与 Resources
 
