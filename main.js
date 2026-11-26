@@ -198,6 +198,9 @@ const docxHandlers = {
 };
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
+const audioEngineEndpoint = require('./modules/services/audioEngineEndpoint');
+const { launchAudioEngine, describeExit: describeAudioEngineExit } = require('./modules/services/audioEngineLauncher');
+const audioEngineOrphan = require('./modules/services/audioEngineOrphan');
 const { createEmbeddedAppSessionManager } = require('./modules/services/embeddedAppSessionManager');
 const { SenderTaskRegistry } = require('./modules/services/senderTaskRegistry');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
@@ -352,6 +355,7 @@ const CANVAS_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'canvas'); // Canva
 const NOTES_AGENT_ID = 'notes_attachments_agent';
 
 let audioEngineProcess = null; // To hold the python audio engine process
+let audioEngineOrphanChecked = false;
 let mainWindow;
 let tray = null;
 let vcpLogWebSocket;
@@ -603,14 +607,42 @@ function toggleDevToolsForWindow(focusedWindow) {
 
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
+let audioEngineStartPromise = null;
+
+// 引擎在用着的时候崩了（音乐窗口开着）：一秒后自动重启，音乐窗口收到「就绪」后会重新加载那首歌、
+// 回到原来的位置。五分钟内最多自动重启三次，再崩就停下，由窗口顶部的提示说明原因。
+const AUDIO_ENGINE_RESTART_WINDOW_MS = 5 * 60 * 1000;
+const AUDIO_ENGINE_RESTART_LIMIT = 3;
+let audioEngineRestarts = [];
+let audioEngineRestartTimer = null;
+function scheduleAudioEngineRestart() {
+    const musicWindow = musicHandlers.getMusicWindow?.();
+    if (!musicWindow || musicWindow.isDestroyed() || app.isQuitting) return false;
+    const now = Date.now();
+    audioEngineRestarts = audioEngineRestarts.filter(at => now - at < AUDIO_ENGINE_RESTART_WINDOW_MS);
+    if (audioEngineRestarts.length >= AUDIO_ENGINE_RESTART_LIMIT) return false;
+    audioEngineRestarts.push(now);
+    clearTimeout(audioEngineRestartTimer);
+    audioEngineRestartTimer = setTimeout(() => {
+        audioEngineRestartTimer = null;
+        if (app.isQuitting) return;
+        console.warn('[Main] Restarting the audio engine after an unexpected exit.');
+        startAudioEngine().catch(err => console.error('[Main] Audio engine restart failed:', err?.message || err));
+    }, 1000);
+    return true;
+}
+
 function startAudioEngine() {
-    return new Promise((resolve, reject) => {
-        // --- Uniqueness Check ---
-        if (audioEngineProcess && !audioEngineProcess.killed) {
-            console.log('[Main] Audio Engine process is already running.');
-            resolve(); // Already running, so we can consider it "ready"
-            return;
-        }
+    // --- Uniqueness Check ---
+    if (audioEngineProcess && !audioEngineProcess.killed && audioEngineEndpoint.getStatus().state === 'ready') {
+        console.log('[Main] Audio Engine process is already running.');
+        return Promise.resolve();
+    }
+    // 预热和打开音乐窗口可能同时调用，共用同一次启动。
+    if (audioEngineStartPromise) return audioEngineStartPromise;
+
+    audioEngineStartPromise = (async () => {
+        if (audioEngineStopPromise) await audioEngineStopPromise.catch(() => {});
 
         // Use the Rust audio server binary (moved to audio_engine directory)
         const binaryName = process.platform === 'win32' ? 'audio_server.exe' : 'audio_server';
@@ -630,54 +662,65 @@ function startAudioEngine() {
         if (!fs.existsSync(rustBinaryPath)) {
             const errorMsg = `Rust audio engine binary not found at: ${rustBinaryPath}. Please run 'cargo build --release' in rust_audio_engine directory.`;
             console.error(`[Main] ${errorMsg}`);
-            reject(new Error(errorMsg));
-            return;
+            audioEngineEndpoint.markFailed(`找不到音频引擎程序：${rustBinaryPath}`);
+            throw new Error(errorMsg);
         }
 
         audioEngineStopPromise = null;
         isAudioEngineStopping = false;
 
-        const args = ['--port', '63789'];
-        audioEngineProcess = spawn(rustBinaryPath, args);
+        // 上次 VCPChat 被强行结束时留下的引擎：确认是它以后先结束掉，免得一直占内存、端口，还可能在出声。
+        const enginePidFile = path.join(APP_DATA_ROOT_IN_PROJECT, 'audio-engine.pid.json');
+        if (!audioEngineOrphanChecked) {
+            audioEngineOrphanChecked = true;
+            await audioEngineOrphan.reapOrphan(enginePidFile, { binaryPath: rustBinaryPath }).catch((error) => {
+                console.warn('[Main] Leftover audio engine check failed:', error?.message || error);
+            });
+        }
 
-        const readyTimeout = setTimeout(() => {
-            console.error('[Main] Audio Engine failed to start within 10 seconds.');
-            reject(new Error('Audio Engine timed out.'));
-        }, 10000); // 10-second timeout (Rust starts faster)
-
-        audioEngineProcess.stdout.on('data', (data) => {
-            const output = data.toString().trim();
-            console.log(`[AudioEngine STDOUT]: ${output}`);
-            // Check for our ready signal from Rust server
-            if (output.includes('RUST_AUDIO_ENGINE_READY')) {
-                console.log('[Main] Rust Audio Engine is ready.');
-                clearTimeout(readyTimeout);
-                resolve();
-            }
+        const { port } = await launchAudioEngine({
+            binaryPath: rustBinaryPath,
+            spawnProcess: spawn,
+            onStdout: (text) => console.log(`[AudioEngine STDOUT]: ${text.trim()}`),
+            onProcess: (child, attemptPort) => {
+                audioEngineProcess = child;
+                if (child.pid) audioEngineOrphan.writeRecord(enginePidFile, { pid: child.pid, ownerPid: process.pid, binary: rustBinaryPath, at: Date.now() });
+                child.stderr.on('data', (data) => {
+                    const logLine = data.toString().trim();
+                    if (logLine && !logLine.includes('GET /state HTTP/1.1')) {
+                        const logMethod = isAudioEngineStopping ? console.warn : console.error;
+                        logMethod(`[AudioEngine STDERR]: ${logLine}`);
+                    }
+                });
+                child.on('close', (code, signal) => {
+                    console.log(`[Main] Audio Engine process on port ${attemptPort} exited with code ${code}`);
+                    audioEngineOrphan.clearRecord(enginePidFile, child.pid);
+                    if (audioEngineProcess !== child) return;
+                    const wasReady = audioEngineEndpoint.getStatus().state === 'ready';
+                    const wasStopping = isAudioEngineStopping;
+                    audioEngineProcess = null;
+                    audioEngineStopPromise = null;
+                    isAudioEngineStopping = false;
+                    if (wasStopping) {
+                        audioEngineEndpoint.markStopped();
+                    } else if (wasReady) {
+                        const restarting = scheduleAudioEngineRestart();
+                        audioEngineEndpoint.markFailed(restarting
+                            ? `音频引擎意外退出（${describeAudioEngineExit(code, signal)}），正在重新启动…`
+                            : `音频引擎意外退出（${describeAudioEngineExit(code, signal)}），重新打开音乐窗口会再启动一次。`);
+                    }
+                });
+                child.on('error', (err) => {
+                    console.error('[Main] Failed to start Audio Engine process.', err);
+                });
+            },
         });
-
-        audioEngineProcess.stderr.on('data', (data) => {
-            const logLine = data.toString().trim();
-            if (logLine && !logLine.includes('GET /state HTTP/1.1')) {
-                const logMethod = isAudioEngineStopping ? console.warn : console.error;
-                logMethod(`[AudioEngine STDERR]: ${logLine}`);
-            }
-        });
-
-        audioEngineProcess.on('close', (code) => {
-            console.log(`[Main] Audio Engine process exited with code ${code}`);
-            clearTimeout(readyTimeout);
-            audioEngineProcess = null;
-            audioEngineStopPromise = null;
-            isAudioEngineStopping = false;
-        });
-
-        audioEngineProcess.on('error', (err) => {
-            console.error('[Main] Failed to start Audio Engine process.', err);
-            clearTimeout(readyTimeout);
-            reject(err);
-        });
+        console.log(`[Main] Rust Audio Engine is ready on port ${port}.`);
+    })().finally(() => {
+        audioEngineStartPromise = null;
     });
+
+    return audioEngineStartPromise;
 }
 
 async function stopAudioEngine() {
@@ -701,7 +744,7 @@ async function stopAudioEngine() {
             const controller = new AbortController();
             const shutdownTimer = setTimeout(() => controller.abort(), 2000);
             try {
-                await fetch('http://127.0.0.1:63789/shutdown', {
+                await fetch(`${audioEngineEndpoint.getBaseUrl()}/shutdown`, {
                     method: 'POST',
                     signal: controller.signal
                 });

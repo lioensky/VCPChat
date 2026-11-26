@@ -55,6 +55,28 @@ process.stdin.on('end', () => {
             '镜台': 'diorama',
             fume: 'fume',
             '浮名': 'fume',
+            tunnel: 'tunnel',
+            '隧图': 'tunnel',
+            kowloon: 'kowloon',
+            '町景': 'kowloon',
+            inkdraft: 'inkdraft',
+            '墨痕': 'inkdraft',
+            fogpane: 'fogpane',
+            '雾笺': 'fogpane',
+            lumiere: 'lumiere',
+            '绘光': 'lumiere',
+            hanabi: 'hanabi',
+            '花火': 'hanabi',
+            clockwork: 'clockwork',
+            '时计': 'clockwork',
+            orbit: 'orbit',
+            '回环': 'orbit',
+            signal: 'signal',
+            '信号': 'signal',
+            groupchat: 'groupchat',
+            '群唱': 'groupchat',
+            impression: 'impression',
+            '印象': 'impression',
             starborn: 'starborn',
             '星诞': 'starborn'
         };
@@ -67,7 +89,7 @@ process.stdin.on('end', () => {
             stageMode = stageModeAliases[requestedStageMode.trim().toLowerCase()];
             if (!stageMode) {
                 throw new Error(
-                    `Unknown stage mode '${requestedStageMode}'. Supported modes: luminous, partita, cadenza, tempera, sonnet, diorama, fume, starborn.`
+                    `Unknown stage mode '${requestedStageMode}'. Supported modes: luminous, partita, cadenza, tempera, sonnet, diorama, fume, tunnel, kowloon, inkdraft, fogpane, lumiere, hanabi, clockwork, orbit, signal, groupchat, impression, starborn.`
                 );
             }
         }

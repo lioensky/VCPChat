@@ -1283,16 +1283,10 @@ function initialize(mainWindow, context) {
                     // 2. 如果启用了音乐控制，则注入播放列表和控制器
                     if (settings.agentMusicControl) {
                         // 2a. 构建播放列表信息 (注入到顶部)
-                        const songlistPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
-                        if (await fs.pathExists(songlistPath)) {
-                            const songlistJson = await fs.readJson(songlistPath);
-                            if (Array.isArray(songlistJson) && songlistJson.length > 0) {
-                                const titles = songlistJson.map(song => song.title).filter(Boolean);
-                                if (titles.length > 0) {
-                                    topParts.push(`[播放列表——\n${titles.join('\n')}\n]`);
-                                }
-                            }
-                        }
+                        // 曲库没变就用上次的结果；几千首时整份列表会占掉几万 token，超出部分截断并说明。
+                        const { playlistPrompt } = require('../musicPlaylistPrompt');
+                        const playlistText = await playlistPrompt(path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json'));
+                        if (playlistText) topParts.push(playlistText);
 
                         // 2b. 注入插件权限
                         bottomParts.push(`点歌台{{VCPMusicController}}`);

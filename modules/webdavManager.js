@@ -2,7 +2,7 @@
 // WebDAV 服务器管理模块
 // 管理服务器配置并通过 Rust 音频引擎 HTTP API 进行 WebDAV 操作
 
-const AUDIO_ENGINE_URL = 'http://127.0.0.1:63789';
+const audioEngineEndpoint = require('./services/audioEngineEndpoint');
 const path = require('path');
 const fs = require('fs-extra');
 
@@ -45,30 +45,51 @@ async function saveServers() {
     }
 }
 
-// 调用 Rust 音频引擎 API
+// 调用 Rust 音频引擎 API。引擎自己对远端有 30 秒（整首下载 120 秒）的超时，
+// 这里再兜一层，引擎卡住时不让界面一直等。
+const ENGINE_TIMEOUT_MS = { '/load': 150000 };
 async function audioEngineApi(endpoint, method = 'POST', body = null) {
     if (!fetch) {
         fetch = (await import('node-fetch')).default;
     }
     
-    const url = `${AUDIO_ENGINE_URL}${endpoint}`;
+    const url = `${audioEngineEndpoint.getBaseUrl()}${endpoint}`;
+    const timeoutMs = ENGINE_TIMEOUT_MS[endpoint] || 45000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const options = {
         method,
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal
     };
     if (body) {
         options.body = JSON.stringify(body);
     }
     
-    const response = await fetch(url, options);
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Audio engine error: ${response.status} - ${errorText}`);
+    try {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Audio engine error: ${response.status} - ${errorText}`);
+        }
+        return await response.json();
+    } catch (err) {
+        if (err?.name === 'AbortError') throw new Error(`WebDAV 服务器 ${Math.round(timeoutMs / 1000)} 秒内没有响应`);
+        throw err;
+    } finally {
+        clearTimeout(timer);
     }
-    return await response.json();
 }
 
-// 添加服务器
+// 引擎只记一套 WebDAV 凭据：「配置凭据 + 用它发请求」必须成对执行，
+// 否则同时扫一台、播另一台时，请求会带着另一台的账号发出去。
+let engineQueue = Promise.resolve();
+function withEngineCredentials(task) {
+    const run = engineQueue.then(task, task);
+    engineQueue = run.catch(() => {});
+    return run;
+}
+
 function addServer(config) {
     const id = `webdav_${serverIdCounter++}`;
     const server = {
@@ -127,15 +148,14 @@ function getServerCredentials(serverId) {
 // 测试连接
 async function testConnection(config) {
     try {
-        // 先配置 Rust 引擎的 WebDAV
-        await audioEngineApi('/webdav/configure', 'POST', {
-            base_url: config.url.replace(/\/$/, ''),
-            username: config.username || null,
-            password: config.password || null
+        const result = await withEngineCredentials(async () => {
+            await audioEngineApi('/webdav/configure', 'POST', {
+                base_url: config.url.replace(/\/$/, ''),
+                username: config.username || null,
+                password: config.password || null
+            });
+            return audioEngineApi('/webdav/browse?path=/', 'GET');
         });
-        
-        // 尝试浏览根目录
-        const result = await audioEngineApi('/webdav/browse?path=/', 'GET');
         
         if (result.status === 'success') {
             return { status: 'success', message: '连接成功' };
@@ -151,15 +171,14 @@ async function testConnection(config) {
 // 浏览目录 - 接受完整凭据
 async function listDirectory(config) {
     try {
-        // 配置 Rust 引擎的 WebDAV
-        await audioEngineApi('/webdav/configure', 'POST', {
-            base_url: config.url.replace(/\/$/, ''),
-            username: config.username || null,
-            password: config.password || null
+        const result = await withEngineCredentials(async () => {
+            await audioEngineApi('/webdav/configure', 'POST', {
+                base_url: config.url.replace(/\/$/, ''),
+                username: config.username || null,
+                password: config.password || null
+            });
+            return audioEngineApi(`/webdav/browse?path=${encodeURIComponent(config.path || '/')}`, 'GET');
         });
-        
-        // 浏览目录
-        const result = await audioEngineApi(`/webdav/browse?path=${encodeURIComponent(config.path || '/')}`, 'GET');
         
         if (result.status === 'success') {
             // 规范化返回格式
@@ -186,7 +205,6 @@ const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac
 
 // 递归扫描音频文件
 async function scanAudioFiles(config, progressCallback) {
-    console.log('[WebDAV] scanAudioFiles called with config:', JSON.stringify(config));
     const tracks = [];
     const visitedDirs = new Set();
     
@@ -199,7 +217,8 @@ async function scanAudioFiles(config, progressCallback) {
     };
     console.log('[WebDAV] scanAudioFiles starting with config:', { url: scanConfig.url, hasCredentials: !!(scanConfig.username && scanConfig.password) });
     
-    async function scanDir(dirPath) {
+    let rootError = null;
+    async function scanDir(dirPath, isRoot = false) {
         if (visitedDirs.has(dirPath)) return;
         visitedDirs.add(dirPath);
         
@@ -207,6 +226,7 @@ async function scanAudioFiles(config, progressCallback) {
             const result = await listDirectory({ ...scanConfig, path: dirPath });
             if (result.status !== 'success') {
                 console.log('[WebDAV] scanDir failed for', dirPath, ':', result.message);
+                if (isRoot) rootError = result.message || '浏览失败';
                 return;
             }
             
@@ -234,8 +254,10 @@ async function scanAudioFiles(config, progressCallback) {
         }
     }
     
-    await scanDir(scanConfig.path);
+    await scanDir(scanConfig.path, true);
     console.log('[WebDAV] scanAudioFiles complete, found', tracks.length, 'tracks');
+    // 连起点都读不到（断网、密码错）就报错，不报「扫完了，0 首」。
+    if (rootError) return { status: 'error', message: rootError, tracks: [] };
     return { status: 'success', tracks };
 }
 
@@ -309,19 +331,31 @@ async function configureAndLoad(config) {
             }
         }
         
-        // 配置 Rust 引擎的 WebDAV 凭据
-        await audioEngineApi('/webdav/configure', 'POST', {
-            base_url: baseUrl,
-            username: config.username || null,
-            password: config.password || null
+        // 配置 Rust 引擎的 WebDAV 凭据，紧接着用它加载曲目
+        return await withEngineCredentials(async () => {
+            await audioEngineApi('/webdav/configure', 'POST', {
+                base_url: baseUrl,
+                username: config.username || null,
+                password: config.password || null
+            });
+            return audioEngineApi('/load', 'POST', { path: config.url });
         });
-        
-        // 加载曲目
-        return await audioEngineApi('/load', 'POST', { path: config.url });
     } catch (err) {
         console.error('[WebDAV] Configure and load failed:', err.message);
         return { status: 'error', message: err.message };
     }
+}
+
+// 远程曲目的凭据：先按 serverId，找不到再按地址落在哪台服务器下面。
+function credentialsForTrack({ serverId, path: trackPath } = {}) {
+    const byId = serverId ? getServerCredentials(serverId) : null;
+    if (byId) return byId;
+    const url = String(trackPath || '');
+    if (!/^https?:\/\//i.test(url)) return null;
+    const server = servers
+        .filter(s => { const base = String(s.url || '').replace(/\/$/, ''); return base && (url === base || url.startsWith(base + '/')); })
+        .sort((a, b) => b.url.length - a.url.length)[0];
+    return server ? getServerCredentials(server.id) : null;
 }
 
 // 初始化时加载服务器列表
@@ -337,5 +371,6 @@ module.exports = {
     listDirectory,
     scanAudioFiles,
     getFileUrl,
-    configureAndLoad
+    configureAndLoad,
+    credentialsForTrack
 };

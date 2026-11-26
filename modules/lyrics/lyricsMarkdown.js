@@ -3,7 +3,7 @@
 // 只输出可读正文，不向工具结果暴露逐字计时等内部 JSON。
 function escapeMarkdown(value) {
     return (typeof value === 'string' ? value : '')
-        .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/([\\`*_{}\[\]()#+.!|~-])/g, '\\$1')
         .replace(/\r\n?|\n/g, ' ').trim();
 }
@@ -32,7 +32,7 @@ function formatCurrentLyrics(snapshot) {
     }
     return header.join('\n') + '\n\n' + (paragraphs.length
         ? '#### 歌词\n\n' + paragraphs.join('\n\n')
-        : '当前歌曲暂无歌词。');
+        : snapshot.loading ? '歌词还在加载，过几秒再读一次。' : '当前歌曲暂无歌词。');
 }
 
 module.exports = { formatCurrentLyrics };

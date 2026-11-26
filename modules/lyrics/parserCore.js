@@ -36,7 +36,7 @@ function buildTimedWords(text, startTime, endTime) {
     const tokens = [];
     let totalWeight = 0;
 
-    for (const token of rawTokens) {
+    rawTokens.forEach((token, tokenIndex) => {
         if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(token)) {
             token.split('').forEach(char => {
                 const isPunctuation = /[，。！？、：；"'）\s]/.test(char);
@@ -49,7 +49,9 @@ function buildTimedWords(text, startTime, endTime) {
             tokens.push({ text: token, weight });
             totalWeight += weight;
         }
-    }
+        // 原文里词和词之间的空格留在前一个词的末尾（和网易云逐字歌词一样），英文逐字显示时才不会粘成一串
+        if (tokenIndex < rawTokens.length - 1) tokens[tokens.length - 1].text += ' ';
+    });
 
     if (totalWeight === 0) totalWeight = 1;
 
@@ -357,64 +359,146 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
  * Parses Apple Music-like TTML xml text
  * Format: <p begin="00:01.000" end="00:05.000"><span begin="00:01.000" end="00:02.000">Word</span>...</p>
  */
-function parseTTML(ttmlString) {
-    const lines = [];
-    const pRegex = /<p\b[^>]*?\bbegin="([^"]+)"[^>]*?\bend="([^"]+)"[^>]*?>([\s\S]*?)<\/p>/gi;
-    const spanRegex = /<span\b[^>]*?\bbegin="([^"]+)"[^>]*?\bend="([^"]+)"[^>]*?>([\s\S]*?)<\/span>/gi;
-
-    function parseTimeStr(str) {
-        if (!str) return 0;
-        const parts = str.split(':');
-        if (parts.length === 2) {
-            return parseInt(parts[0], 10) * 60 + parseFloat(parts[1]);
-        } else if (parts.length === 3) {
-            return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseFloat(parts[2]);
+/*
+ * TTML（Apple Music / AMLL 的逐字歌词格式）。不用 DOM，按标签顺序走一遍：
+ *   - <p begin end> 是一行，带 begin/end 的 <span> 是一个词；词与词之间的空白算进前一个词（英文才不粘连）；
+ *   - <span ttm:role="x-translation"> / "x-roman" 是这一行的翻译 / 罗马音；"x-bg" 是和声，放在主唱后面、加括号；
+ *   - 头部 <iTunesMetadata> 里按 itunes:key 对行的 <translation>/<transliteration> 也认（有中文优先用中文）；
+ *   - &amp; 之类的实体、"12.5s" / "1:02.3" / "00:01:02.300" 这几种时间写法都认。
+ */
+const TTML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+function decodeXmlText(text) {
+    return String(text || '').replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, name) => {
+        if (name[0] === '#') {
+            const code = name[1].toLowerCase() === 'x' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
+            return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : all;
         }
-        return parseFloat(str) || 0;
+        const hit = TTML_ENTITIES[name.toLowerCase()];
+        return hit === undefined ? all : hit;
+    });
+}
+function parseTtmlTime(str) {
+    const text = String(str || '').trim();
+    if (!text) return NaN;
+    let m = /^(-?\d+(?:\.\d+)?)(h|m|s|ms)$/i.exec(text);
+    if (m) {
+        const v = parseFloat(m[1]);
+        const unit = m[2].toLowerCase();
+        return unit === 'h' ? v * 3600 : unit === 'm' ? v * 60 : unit === 'ms' ? v / 1000 : v;
     }
+    const parts = text.split(':');
+    if (parts.some(part => !/^\d+(?:\.\d+)?$/.test(part))) return NaN;
+    return parts.reduce((sum, part) => sum * 60 + parseFloat(part), 0);
+}
+function ttmlAttr(attrs, name) {
+    const m = new RegExp('(?:^|\\s)(?:[\\w-]+:)?' + name + '\\s*=\\s*("([^"]*)"|\'([^\']*)\')', 'i').exec(attrs || '');
+    return m ? decodeXmlText(m[2] !== undefined ? m[2] : m[3]) : '';
+}
+function ttmlHeadTexts(ttmlString, tag) {
+    // <translation xml:lang="zh-Hans"><text for="L1">…</text></translation>；有几种语言时中文优先
+    const blocks = [];
+    const blockRe = new RegExp('<' + tag + '\\b([^>]*)>([\\s\\S]*?)</' + tag + '>', 'gi');
+    let m;
+    while ((m = blockRe.exec(ttmlString)) !== null) blocks.push({ lang: ttmlAttr(m[1], 'lang'), body: m[2] });
+    if (!blocks.length) return new Map();
+    const pick = blocks.find(b => /^zh/i.test(b.lang)) || blocks[0];
+    const out = new Map();
+    const textRe = /<text\b([^>]*)>([\s\S]*?)<\/text>/gi;
+    while ((m = textRe.exec(pick.body)) !== null) {
+        const key = ttmlAttr(m[1], 'for');
+        const value = decodeXmlText(m[2].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+        if (key && value) out.set(key, value);
+    }
+    return out;
+}
+
+function parseTTML(ttmlString) {
+    const source = String(ttmlString || '');
+    const lines = [];
+    const headTranslations = ttmlHeadTexts(source, 'translation');
+    const headRomanizations = ttmlHeadTexts(source, 'transliteration');
+    const body = source.replace(/<head\b[\s\S]*?<\/head>/i, '');
+    const pRegex = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
+    const tokenRe = /<(\/?)([\w:-]+)\b([^>]*?)(\/?)>|([^<]+)/g;
 
     let pMatch;
-    while ((pMatch = pRegex.exec(ttmlString)) !== null) {
-        const lineStart = parseTimeStr(pMatch[1]);
-        const lineEnd = parseTimeStr(pMatch[2]);
-        const innerContent = pMatch[3];
+    while ((pMatch = pRegex.exec(body)) !== null) {
+        const lineStart = parseTtmlTime(ttmlAttr(pMatch[1], 'begin'));
+        const lineEndRaw = parseTtmlTime(ttmlAttr(pMatch[1], 'end'));
+        if (!Number.isFinite(lineStart)) continue;
+        const key = ttmlAttr(pMatch[1], 'key');
 
-        const words = [];
-        let fullText = '';
-        let spanMatch;
-
-        spanRegex.lastIndex = 0;
-        while ((spanMatch = spanRegex.exec(innerContent)) !== null) {
-            const wordStart = parseTimeStr(spanMatch[1]);
-            const wordEnd = parseTimeStr(spanMatch[2]);
-            const text = spanMatch[3].replace(/<[^>]+>/g, '');
-
-            if (text) {
-                words.push({
-                    text,
-                    startTime: Number(wordStart.toFixed(3)),
-                    endTime: Number(wordEnd.toFixed(3))
-                });
-                fullText += text;
+        const main = [];
+        const background = [];
+        let translation = '';
+        let romanization = '';
+        let plain = '';
+        const stack = []; // 每层 span：{ role, word }
+        let tm;
+        tokenRe.lastIndex = 0;
+        while ((tm = tokenRe.exec(pMatch[2])) !== null) {
+            if (tm[5] !== undefined) {
+                const text = decodeXmlText(tm[5]);
+                const roles = stack.map(f => f.role);
+                if (roles.includes('x-translation')) { translation += text; continue; }
+                if (roles.includes('x-roman')) { romanization += text; continue; }
+                const target = roles.includes('x-bg') ? background : main;
+                const word = [...stack].reverse().find(f => f.word);
+                if (word && word.word) word.word.text += text;
+                else if (/^\s+$/.test(text)) {
+                    // 词之间的空格保留；带换行的是排版缩进（美化过的文件），不算
+                    if (!/[\r\n]/.test(text) && target.length) target[target.length - 1].text += ' ';
+                }
+                else plain += text; // 没有逐字时间的字：整行退回按字均分
+                continue;
             }
-        }
-
-        if (words.length === 0) {
-            const cleanText = innerContent.replace(/<[^>]+>/g, '').trim();
-            if (cleanText) {
-                words.push(...buildTimedWords(cleanText, lineStart, lineEnd));
-                fullText = cleanText;
+            const closing = tm[1] === '/';
+            const tag = tm[2].toLowerCase().replace(/^.*:/, '');
+            if (tag === 'br' && !closing) { if (main.length) main[main.length - 1].text += ' '; continue; }
+            if (tag !== 'span') continue;
+            if (closing) { stack.pop(); continue; }
+            const attrs = tm[3];
+            const role = ttmlAttr(attrs, 'role');
+            const begin = parseTtmlTime(ttmlAttr(attrs, 'begin'));
+            const end = parseTtmlTime(ttmlAttr(attrs, 'end'));
+            let word = null;
+            if (!role && Number.isFinite(begin)) {
+                word = { text: '', startTime: begin, endTime: Number.isFinite(end) && end >= begin ? end : begin };
+                (stack.some(f => f.role === 'x-bg') ? background : main).push(word);
             }
+            if (tm[4] === '/') continue; // <span/> 自闭合
+            stack.push({ role, word });
         }
 
-        if (words.length > 0) {
-            lines.push({
-                words,
-                startTime: Number(lineStart.toFixed(3)),
-                endTime: Number(lineEnd.toFixed(3)),
-                fullText
-            });
+        let words = main.filter(w => w.text !== '');
+        const bg = background.filter(w => w.text.trim() !== '');
+        if (!words.length) {
+            const cleanText = plain.replace(/\s+/g, ' ').trim();
+            const end = Number.isFinite(lineEndRaw) ? lineEndRaw : lineStart + 4;
+            if (cleanText) words = buildTimedWords(cleanText, lineStart, end);
         }
+        if (bg.length) {
+            if (words.length && !/\s$/.test(words[words.length - 1].text)) words[words.length - 1].text += ' ';
+            bg[0].text = '(' + bg[0].text.replace(/^\s+/, '');
+            bg[bg.length - 1].text = bg[bg.length - 1].text.replace(/\s+$/, '') + ')';
+            words = words.concat(bg);
+        }
+        if (!words.length) continue;
+        const last = words[words.length - 1];
+        last.text = last.text.replace(/\s+$/, '');
+        words = words.map(w => ({ text: w.text, startTime: Number(w.startTime.toFixed(3)), endTime: Number(w.endTime.toFixed(3)) }));
+        const lineEnd = Number.isFinite(lineEndRaw) ? lineEndRaw : Math.max(lineStart, ...words.map(w => w.endTime));
+        const line = {
+            words,
+            startTime: Number(lineStart.toFixed(3)),
+            endTime: Number(Math.max(lineStart, lineEnd).toFixed(3)),
+            fullText: words.map(w => w.text).join('')
+        };
+        const tr = (translation.replace(/\s+/g, ' ').trim()) || (key && headTranslations.get(key)) || '';
+        const ro = (romanization.replace(/\s+/g, ' ').trim()) || (key && headRomanizations.get(key)) || '';
+        if (tr) line.translation = tr;
+        if (ro) line.romanization = ro;
+        lines.push(line);
     }
 
     lines.sort((a, b) => a.startTime - b.startTime);
