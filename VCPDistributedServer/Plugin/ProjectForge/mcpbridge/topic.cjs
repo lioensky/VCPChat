@@ -6,7 +6,9 @@ const {
     executeTopicMemo,
     findOwnerByTopicId,
     findUserName,
+    loadTopicHistory,
     cleanHtmlContent,
+    safeSlice,
 } = require('../../TopicMemo/TopicMemo.js');
 
 const DEFAULT_VCP_URL = 'http://127.0.0.1:6005';
@@ -370,9 +372,9 @@ const escapeQuoteText = text => String(text).replace(/[&<>[\]{}\\`*_~!#@|\u2028\
 function clipQuoteContent(text, maxChars = MAX_RIVER_ITEM_CHARS) {
     const normalized = String(text || '').trim();
     if (normalized.length <= maxChars) return normalized;
-    const head = normalized.slice(0, Math.floor(maxChars * 0.75)).replace(/[\uD800-\uDBFF]$/, '');
-    const tail = normalized.slice(-Math.floor(maxChars * 0.25)).replace(/^[\uDC00-\uDFFF]/, '');
-    return `${head}\n\n［随附内容过长，中段已截断］\n\n${tail}`;
+    const headLen = Math.floor(maxChars * 0.75);
+    const tailLen = Math.max(50, Math.floor(maxChars * 0.25));
+    return `${safeSlice(normalized, 0, headLen)}\n\n［随附内容过长，中段已截断］\n\n${safeSlice(normalized, normalized.length - tailLen, normalized.length)}`;
 }
 
 function encodeV2RiverRows(items = []) {
@@ -398,11 +400,9 @@ async function readLocalSourceRows(vchatDataDir, topicId, lastN) {
     if (!vchatDataDir || !topicId || !lastN) return [];
     const owner = await findOwnerByTopicId(vchatDataDir, topicId);
     if (!owner) return [];
-    const historyFile = path.join(vchatDataDir, 'UserData', owner.uuid, 'topics', topicId, 'history.json');
     let history = [];
     try {
-        const raw = JSON.parse(await fs.promises.readFile(historyFile, 'utf8'));
-        history = Array.isArray(raw) ? raw : (Array.isArray(raw?.messages) ? raw.messages : []);
+        ({ history } = await loadTopicHistory(vchatDataDir, owner, topicId));
     } catch {
         return [];
     }
@@ -410,7 +410,7 @@ async function readLocalSourceRows(vchatDataDir, topicId, lastN) {
     const recent = [];
     for (let i = history.length - 1; i >= 0 && recent.length < lastN; i--) {
         const entry = history[i];
-        if (!entry || (entry.role !== 'user' && entry.role !== 'assistant')) continue;
+        if (!entry || entry.isThinking === true || (entry.role !== 'user' && entry.role !== 'assistant')) continue;
         const rawText = typeof entry.content === 'string'
             ? entry.content
             : (Array.isArray(entry.content)
@@ -419,9 +419,11 @@ async function readLocalSourceRows(vchatDataDir, topicId, lastN) {
         if (/^\s*<!--\s*VCP_TOOL_PAYLOAD\s*-->/.test(rawText) || /^\s*\[(?:系统提示|系统邀请指令)[:：]?\]/.test(rawText)) {
             continue;
         }
-        const cleaned = cleanHtmlContent(
-            rawText.replace(/^\[VCP_TOPIC_RIVER_(V[12])\]\r?\n[\s\S]*?^\[\/VCP_TOPIC_RIVER_\1\][ \t]*$/gm, ''),
-        );
+        let bodyText = rawText.replace(/^\[VCP_TOPIC_RIVER_(V[12])\]\r?\n[\s\S]*?^\[\/VCP_TOPIC_RIVER_\1\][ \t]*$/gm, '');
+        if (entry.role === 'user') {
+            bodyText = bodyText.replace(/^[ \t]*\[系统通知\][ \t]*\r?\n[\s\S]*?^[ \t]*\[系统通知结束\][ \t]*(?=\r?\n|$)(?:\r?\n)?/gm, '');
+        }
+        const cleaned = cleanHtmlContent(bodyText);
         if (!cleaned) continue;
         const speaker = entry.role === 'user'
             ? (entry.name || userName)
@@ -429,6 +431,20 @@ async function readLocalSourceRows(vchatDataDir, topicId, lastN) {
         recent.unshift({ kind: entry.role, name: speaker, content: cleaned });
     }
     return recent;
+}
+
+function parseMarkdownTopicTurns(markdownText, lastN) {
+    if (typeof markdownText !== 'string' || !markdownText.trim()) return [];
+    const rows = [];
+    const blocks = markdownText.split(/(?:^|\n)### \[#\d+\]\s+/);
+    for (let i = 1; i < blocks.length; i++) {
+        const idx = blocks[i].indexOf('\n');
+        if (idx < 0) continue;
+        const speaker = blocks[i].slice(0, idx).trim();
+        const body = blocks[i].slice(idx + 1).trim();
+        if (speaker && body) rows.push({ kind: 'assistant', name: speaker, content: body });
+    }
+    return rows.slice(-lastN);
 }
 
 function formatToolRequest(plugin, command, rawFields = {}) {
@@ -663,6 +679,12 @@ function createTopicClient(config = {}) {
                         if (localAppDataDir) {
                             const localRows = await readLocalSourceRows(localAppDataDir, sourceId, args.riverLast);
                             rows.push(...localRows);
+                        } else {
+                            const remoteGet = topicTools.find(t => t.name === 'tm_get_topic_content');
+                            const remoteRes = await callViaHttp(remoteGet, { topic_id: sourceId, tail: args.riverLast });
+                            if (!remoteRes.isError && remoteRes.content?.[0]?.text) {
+                                rows.push(...parseMarkdownTopicTurns(remoteRes.content[0].text, args.riverLast));
+                            }
                         }
                     }
                     if (Array.isArray(args.contextItems)) {

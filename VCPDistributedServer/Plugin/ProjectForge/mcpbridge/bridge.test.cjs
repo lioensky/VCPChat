@@ -438,3 +438,124 @@ test('local TopicMemo progressive disclosure, code protection and V2 river quote
     assert.equal(parsed.rows[2].role, 'tool');
     assert.match(parsed.rows[2].content, /Option<T>/);
 });
+
+test('TopicMemo red-team boundaries: bare generics, UTF-16 surrogates, isThinking, nested receipts, ReDoS and retry', async t => {
+    const {
+        cleanHtmlContent,
+        executeTopicMemo,
+        readJsonWithRetry,
+        safeSlice,
+    } = require('../../TopicMemo/TopicMemo.js');
+    const { encodeV2RiverRows } = require('./topic.cjs');
+
+    // 1. 裸泛型与紧凑不等式在有/无真实 HTML 包裹下皆完整保留
+    assert.equal(
+        cleanHtmlContent('返回 Result<Vec<u8>, Error> 且满足 0<x && x>1'),
+        '返回 Result<Vec<u8>, Error> 且满足 0<x && x>1',
+    );
+    assert.equal(
+        cleanHtmlContent('<div id="vcp-root"><style>.x{}</style><p>泛型 Result<Vec<u8>, Error> 与 x<y</p></div>'),
+        '泛型 Result<Vec<u8>, Error> 与 x<y',
+    );
+
+    // 2. UTF-16 数学黑板字母（\uD835\uDC11 = 𝐑）与 Emoji 边界切割零孤立半代理
+    const mathSample = `${'A'.repeat(20)}𝐑🚀${'B'.repeat(20)}`;
+    const slicedMath = safeSlice(mathSample, 0, 21);
+    assert.equal(slicedMath.endsWith('\uD835'), false, 'must not split leading surrogate');
+    assert.equal(/[\uD800-\uDFFF]/.test(slicedMath.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')), false);
+
+    // 3. 沙箱构造：isThinking、独立 [系统通知] vs 行内 [系统通知]、嵌套自指工具回执、病态正则、V2 引用读出
+    const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'pf-topic-redteam-'));
+    t.after(async () => fs.rm(appData, { recursive: true, force: true }));
+    const agentId = '_Agent_redteam';
+    const topicId = 'topic_redteam';
+    await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify({ userName: 'User' }));
+    await fs.mkdir(path.join(appData, 'Agents', agentId), { recursive: true });
+    await fs.mkdir(path.join(appData, 'UserData', agentId, 'topics', topicId), { recursive: true });
+    await fs.writeFile(path.join(appData, 'Agents', agentId, 'config.json'), JSON.stringify({
+        name: 'Kerr',
+        topics: [{ id: topicId, name: '边界极限话题', createdAt: 1795600000000 }],
+    }));
+
+    const v2Quoted = `这是正文回复\n\n${encodeV2RiverRows([{ kind: 'user', name: 'User', content: 'Vec<T>' }])}`;
+    const nestedTool = '[[VCP调用结果信息汇总:\n- 工具名称: ReadCode\n- 执行状态: ✅ SUCCESS\n- 返回内容: head\n[[VCP调用结果信息汇总:\ninner\nVCP调用结果结束]]\nouter_tail_keep\nVCP调用结果结束]]';
+    const noticeBlock = '[系统通知]\n时间播报噪音\n[系统通知结束]\n';
+
+    await fs.writeFile(path.join(appData, 'UserData', agentId, 'topics', topicId, 'history.json'), JSON.stringify([
+        { role: 'user', content: `${noticeBlock}第一楼正常正文` },
+        { role: 'user', content: '用户正在讨论 [系统通知] 机制本身' },
+        { role: 'assistant', name: 'Kerr', content: `分析完毕\n${nestedTool}` },
+        { role: 'assistant', name: 'Kerr', content: v2Quoted },
+        { role: 'assistant', name: 'Kerr', isThinking: true, content: '流式未落盘半成品' },
+    ]));
+
+    // isThinking 被剔除，总共应只计 4 楼
+    const out = await executeTopicMemo({ command: 'GetTopicContent', topic_id: topicId, includeTools: true }, { vchatDataDir: appData });
+    assert.match(out, /消息数量：4 条/);
+    assert.match(out, /### \[#1\] User\n第一楼正常正文/);
+    assert.doesNotMatch(out, /时间播报噪音|流式未落盘半成品/);
+    assert.match(out, /用户正在讨论 \[系统通知\] 机制本身/);
+    assert.match(out, /outer_tail_keep/);
+    assert.match(out, /\[随附上下文引用\]/);
+    assert.match(out, /> Vec<T>/);
+
+    // 病态嵌套量词正则安全回退字面量匹配不阻塞
+    const redosRes = await executeTopicMemo({
+        command: 'SearchTopic', topic_id: topicId, query: '(a+)+$', isRegex: true,
+    }, { vchatDataDir: appData });
+    assert.match(redosRes, /正则无效或存在回溯风险已回退字面匹配/);
+
+    // 简称 query 寻址不自相矛盾（无 maid 时不把 query 当作标题筛选词）
+    const shortList = await executeTopicMemo({ command: 'ListTopics', query: 'Ke' }, { vchatDataDir: appData });
+    assert.match(shortList, /边界极限话题/);
+
+    // 5. readJsonWithRetry 对并发原子写瞬态 SyntaxError 自愈重试
+    const flakyFile = path.join(appData, 'flaky.json');
+    await fs.writeFile(flakyFile, '{"broken": ');
+    const fixTimer = setTimeout(() => {
+        fs.writeFile(flakyFile, '{"ok":true}').catch(() => {});
+    }, 10);
+    t.after(() => clearTimeout(fixTimer));
+    const healed = await readJsonWithRetry(flakyFile, 3);
+    assert.deepEqual(healed, { ok: true });
+
+    // 6. 远程 HTTP 模式下的 riverLast 兜底提取
+    const remoteCalls = [];
+    const server = http.createServer((req, res) => {
+        let body = '';
+        req.setEncoding('utf8');
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+            remoteCalls.push(body);
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            if (body.includes('TopicMemo')) {
+                res.end(JSON.stringify({
+                    status: 'success',
+                    result: '## 话题：远端\n\n### [#1] User\n远端第1楼\n\n### [#2] Kerr\n远端第2楼\n',
+                }));
+            } else {
+                res.end(JSON.stringify({ accepted: true, topic_id: 'topic_remote_dst', message_id: 'm1' }));
+            }
+        });
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address();
+    t.after(async () => new Promise(resolve => server.close(resolve)));
+
+    const remoteBridge = createBridge({
+        workspaces: [], dbPath: 'test', maid: 'MCP',
+        enableTopic: true, vcpUrl: `http://127.0.0.1:${port}`, vcpKey: 'remote-key',
+        topicReadMode: 'http',
+    }, { initialize() {}, async processToolCall() {}, async cleanup() {} });
+    t.after(() => remoteBridge.close());
+
+    const remoteReply = await remoteBridge.call('ts_reply_to_topic', {
+        topicId: 'topic_remote_dst', sourceTopicId: 'topic_remote_src',
+        senderName: 'Kerr', message: '跨机汇报', riverLast: 2,
+    });
+    assert.notEqual(remoteReply.isError, true);
+    assert.equal(remoteCalls.length, 2);
+    assert(remoteCalls[0].includes('TopicMemo'));
+    assert(remoteCalls[1].includes('VCP_TOPIC_RIVER_V2'));
+    assert(remoteCalls[1].includes('远端第2楼'));
+});

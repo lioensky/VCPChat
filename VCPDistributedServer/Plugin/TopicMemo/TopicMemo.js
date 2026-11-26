@@ -16,8 +16,42 @@ const DEFAULT_MAX_CHARS_PER_TURN = 12000;
 const EXPLICIT_SLICE_MAX_CHARS_PER_TURN = 48000;
 const TOOL_RESULT_START_MARKER = '[[' + 'VCP调用结果信息汇总:';
 const TOOL_RESULT_END_MARKER = 'VCP调用结果结束]' + ']';
+const HTML_TAG_NAMES = new Set([
+    'a', 'abbr', 'address', 'article', 'aside', 'audio', 'b', 'bdi', 'bdo', 'blockquote', 'body', 'br', 'button',
+    'canvas', 'caption', 'cite', 'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del', 'details', 'dfn',
+    'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset', 'figcaption', 'figure', 'footer', 'form', 'g',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hgroup', 'hr', 'html', 'i', 'iframe', 'img', 'input',
+    'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map', 'mark', 'math', 'menu', 'meta', 'meter',
+    'nav', 'noscript', 'object', 'ol', 'optgroup', 'option', 'output', 'p', 'param', 'path', 'picture', 'pre',
+    'progress', 'q', 'rect', 'rp', 'rt', 'ruby', 's', 'samp', 'script', 'section', 'select', 'small', 'source',
+    'span', 'strong', 'style', 'sub', 'summary', 'sup', 'svg', 'table', 'tbody', 'td', 'template', 'textarea',
+    'tfoot', 'th', 'thead', 'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr', 'circle',
+    'ellipse', 'line', 'polygon', 'polyline', 'text', 'tspan', 'defs', 'lineargradient', 'stop', 'use',
+]);
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function safeSlice(str, start = 0, end = str.length) {
+    const s = String(str ?? '');
+    const len = s.length;
+    let from = Math.max(0, Math.min(len, start < 0 ? len + start : start));
+    let to = Math.max(from, Math.min(len, end < 0 ? len + end : end));
+    if (from > 0 && from < len) {
+        const code = s.charCodeAt(from);
+        if (code >= 0xDC00 && code <= 0xDFFF) from += 1;
+    }
+    if (to > from && to < len) {
+        const prev = s.charCodeAt(to - 1);
+        if (prev >= 0xD800 && prev <= 0xDBFF) to -= 1;
+    }
+    return s.slice(from, to);
+}
+
+function isSafeRegexPattern(pattern) {
+    if (typeof pattern !== 'string' || !pattern || pattern.length > 300) return false;
+    // 防御指数级回溯（如 (a+)+ 或 ([a-z]+)*）
+    return !/\((?:[^()\\]|\\.)*[+*}\]]\s*\)\s*(?:[+*?]|\{\d+,)/.test(pattern);
+}
 
 async function readJsonWithRetry(filePath, retries = 2) {
     let lastError;
@@ -80,6 +114,53 @@ function protectCodeRegions(text) {
     };
 }
 
+function protectNonHtmlAngles(text) {
+    let hasRealHtml = false;
+    const htmlTokens = [];
+    // 正向匹配合法标准 HTML/SVG 标签与注释，仅保留白名单内的真实标签，其余所有孤立 < 一律转义为文本
+    const stashed = text.replace(
+        /<!--[\s\S]*?-->|<(\/?)([A-Za-z][A-Za-z0-9-]*)((?:\s+(?:[^<>"']|"[^"]*"|'[^']*')*)?\s*\/?)>/g,
+        (full, slash = '', tag = '', tail = '') => {
+            if (full.startsWith('<!--')) {
+                hasRealHtml = true;
+                const marker = `\uE002VCP_HTML_${htmlTokens.length}\uE003`;
+                htmlTokens.push(full);
+                return marker;
+            }
+            if (!HTML_TAG_NAMES.has(tag.toLowerCase()) || /[<,]/.test(tail)) {
+                return full;
+            }
+            hasRealHtml = true;
+            const marker = `\uE002VCP_HTML_${htmlTokens.length}\uE003`;
+            htmlTokens.push(`<${slash}${tag}${tail}>`);
+            return marker;
+        }
+    );
+    const escaped = stashed
+        .replace(/</g, '&lt;')
+        .replace(/\uE002VCP_HTML_(\d+)\uE003/g, (_, idx) => htmlTokens[Number(idx)] ?? '');
+    return { escaped, hasRealHtml };
+}
+
+function findBalancedToolResultEnd(text, start) {
+    let depth = 1;
+    let cursor = start + TOOL_RESULT_START_MARKER.length;
+    while (cursor < text.length) {
+        const nextOpen = text.indexOf(TOOL_RESULT_START_MARKER, cursor);
+        const nextClose = text.indexOf(TOOL_RESULT_END_MARKER, cursor);
+        if (nextClose < 0) return -1;
+        if (nextOpen >= 0 && nextOpen < nextClose) {
+            depth += 1;
+            cursor = nextOpen + TOOL_RESULT_START_MARKER.length;
+        } else {
+            cursor = nextClose + TOOL_RESULT_END_MARKER.length;
+            depth -= 1;
+            if (depth === 0) return cursor;
+        }
+    }
+    return -1;
+}
+
 function extractVisibleToolSnippets(rawText, maxChars = 600) {
     if (typeof rawText !== 'string' || !rawText.includes(TOOL_RESULT_START_MARKER)) return [];
     const snippets = [];
@@ -87,9 +168,9 @@ function extractVisibleToolSnippets(rawText, maxChars = 600) {
     while (cursor < rawText.length) {
         const start = rawText.indexOf(TOOL_RESULT_START_MARKER, cursor);
         if (start < 0) break;
-        const end = rawText.indexOf(TOOL_RESULT_END_MARKER, start + TOOL_RESULT_START_MARKER.length);
+        const end = findBalancedToolResultEnd(rawText, start);
         if (end < 0) break;
-        const block = rawText.slice(start + TOOL_RESULT_START_MARKER.length, end);
+        const block = rawText.slice(start + TOOL_RESULT_START_MARKER.length, end - TOOL_RESULT_END_MARKER.length);
         const firstLine = block.split(/\r?\n/, 1)[0] || '';
         const hidden = /\[HIDDEN\]/i.test(firstLine) || /\n\s*-\s*注入上下文:\s*隐藏/.test(block);
         if (!hidden) {
@@ -98,13 +179,27 @@ function extractVisibleToolSnippets(rawText, maxChars = 600) {
                 const name = match[1].trim();
                 const status = match[2].trim();
                 let body = match[3].replace(/data:[^,\s"'<>]*;base64,[A-Za-z0-9+/_=-]*/gi, '').trim();
-                if (body.length > maxChars) body = `${body.slice(0, maxChars)}…（已截断，总计 ${body.length} 字符）`;
+                if (body.length > maxChars) body = `${safeSlice(body, 0, maxChars)}…（已截断，总计 ${body.length} 字符）`;
                 if (name && body) snippets.push({ name, status, body });
             }
         }
-        cursor = end + TOOL_RESULT_END_MARKER.length;
+        cursor = end;
     }
     return snippets;
+}
+
+function decodeTopicRiverV2Block(text) {
+    if (typeof text !== 'string') return '';
+    return text.replace(
+        /(?:\r?\n){2}\[VCP_TOPIC_RIVER_V2\]\r?\n([\s\S]+?)\r?\n\[\/VCP_TOPIC_RIVER_V2\]((?:\r?\n){2}\[该发言发送自[^\r\n\]]+话题\])?[ \t\r\n]*$/,
+        (_full, body, footer = '') => {
+            const decoded = body.replace(/&#(\d{1,5});/g, (entity, digits) => {
+                const code = Number(digits);
+                return code <= 127 || code === 8232 || code === 8233 ? String.fromCharCode(code) : entity;
+            });
+            return `\n\n[随附上下文引用]\n${decoded}${footer}`;
+        }
+    );
 }
 
 function formatMessageAttachments(entry) {
@@ -120,12 +215,10 @@ function formatMessageAttachments(entry) {
     return lines;
 }
 
-function normalizeEntryText(entry, includeTools = false) {
-    let raw = '';
-    if (typeof entry?.content === 'string') {
-        raw = entry.content;
-    } else if (Array.isArray(entry?.content)) {
-        raw = entry.content
+function extractRawEntryContent(entry) {
+    if (typeof entry?.content === 'string') return entry.content;
+    if (Array.isArray(entry?.content)) {
+        return entry.content
             .map(part => {
                 if (part?.type === 'text' && typeof part.text === 'string') return part.text;
                 if (part?.type === 'image_url') {
@@ -136,11 +229,24 @@ function normalizeEntryText(entry, includeTools = false) {
             })
             .filter(Boolean)
             .join('\n');
-    } else if (entry?.content && typeof entry.content === 'object') {
-        raw = entry.content.text || '';
     }
+    if (entry?.content && typeof entry.content === 'object') return entry.content.text || '';
+    return '';
+}
+
+function stripIndependentNoticeShell(text, role) {
+    if (role !== 'user' || typeof text !== 'string' || !text.includes('[系统通知]')) return text;
+    return text.replace(
+        /^[ \t]*\[系统通知\][ \t]*\r?\n[\s\S]*?^[ \t]*\[系统通知结束\][ \t]*(?=\r?\n|$)(?:\r?\n)?/gm,
+        ''
+    );
+}
+
+function normalizeEntryText(entry, includeTools = false) {
+    let raw = extractRawEntryContent(entry);
     const toolSnippets = includeTools ? extractVisibleToolSnippets(raw) : [];
-    const cleaned = cleanHtmlContent(raw);
+    raw = stripIndependentNoticeShell(raw, entry?.role);
+    const cleaned = decodeTopicRiverV2Block(cleanHtmlContent(raw));
     const attachmentLines = formatMessageAttachments(entry);
     const parts = [];
     if (cleaned) parts.push(cleaned);
@@ -150,7 +256,7 @@ function normalizeEntryText(entry, includeTools = false) {
     if (attachmentLines.length) parts.push(attachmentLines.join('\n'));
     return {
         text: parts.join('\n\n').trim(),
-        toolCount: extractVisibleToolSnippets(raw, 200).length,
+        toolCount: extractVisibleToolSnippets(extractRawEntryContent(entry), 200).length,
         attachmentCount: attachmentLines.length,
     };
 }
@@ -160,25 +266,41 @@ function resolveSpeakerName(entry, agentInfo, userName) {
     return entry?.name || entry?.speakerName || entry?._metadata?.speaker_name || agentInfo.name;
 }
 
-function buildTurns(history, agentInfo, userName, includeTools = false) {
-    const turns = [];
+// 轻量骨架筛选：不跑 Cheerio，只过滤瞬态占位/私有载荷以确定稳定楼层 seq，供惰性切片按需清洗
+function prepareTurns(history, agentInfo, userName) {
+    const entries = [];
     for (const entry of history) {
-        if (!entry || !entry.role || (entry.content === undefined && !Array.isArray(entry.attachments))) continue;
-        const { text, toolCount, attachmentCount } = normalizeEntryText(entry, includeTools);
-        if (!text && toolCount === 0 && attachmentCount === 0) continue;
-        const seq = turns.length + 1;
-        turns.push({
-            seq,
+        if (!entry || !entry.role || entry.isThinking === true) continue;
+        if (entry.content === undefined && !Array.isArray(entry.attachments)) continue;
+        const raw = extractRawEntryContent(entry);
+        const hasAttachments = Array.isArray(entry.attachments) && entry.attachments.length > 0;
+        if (/^\s*<!--\s*VCP_TOOL_PAYLOAD\s*-->/.test(raw) && !hasAttachments) continue;
+        const strippedNotice = stripIndependentNoticeShell(raw, entry.role).trim();
+        if (!strippedNotice && !hasAttachments) continue;
+        entries.push({
+            seq: entries.length + 1,
+            entry,
             role: entry.role,
             speaker: resolveSpeakerName(entry, agentInfo, userName),
             timestamp: Number.isFinite(entry.timestamp) ? entry.timestamp : null,
-            text,
-            chars: text.length,
-            toolCount,
-            attachmentCount,
+            rawLength: raw.length,
         });
     }
-    return turns;
+    return entries;
+}
+
+function hydrateTurn(item, includeTools = false) {
+    const { text, toolCount, attachmentCount } = normalizeEntryText(item.entry, includeTools);
+    return {
+        seq: item.seq,
+        role: item.role,
+        speaker: item.speaker,
+        timestamp: item.timestamp,
+        text,
+        chars: text.length,
+        toolCount,
+        attachmentCount,
+    };
 }
 
 // --- 主逻辑 ---
@@ -198,6 +320,7 @@ async function main() {
 async function executeTopicMemo(args = {}, { vchatDataDir } = {}) {
     const VchatDataURL = vchatDataDir || path.join(__dirname, '..', '..', '..', 'AppData');
     const command = args.command || (args.topic_id ? 'GetTopicContent' : 'ListTopics');
+    const hasExplicitOwner = Boolean(args.maid || args.group);
     const maidName = args.maid || args.group || args.query;
     const topicId = args.topic_id;
 
@@ -206,7 +329,7 @@ async function executeTopicMemo(args = {}, { vchatDataDir } = {}) {
     }
 
     let agentInfo = null;
-    if (maidName && !(command !== 'ListTopics' && topicId && !args.maid && !args.group)) {
+    if (maidName && !(command !== 'ListTopics' && topicId && !hasExplicitOwner)) {
         agentInfo = await findAgentInfo(VchatDataURL, maidName);
     }
     if (!agentInfo && command !== 'ListTopics' && topicId) {
@@ -218,7 +341,8 @@ async function executeTopicMemo(args = {}, { vchatDataDir } = {}) {
     }
 
     if (command === 'ListTopics') {
-        return listTopics(agentInfo, args);
+        const listArgs = hasExplicitOwner ? args : { ...args, query: undefined };
+        return listTopics(agentInfo, listArgs);
     }
 
     if (!topicId) throw new Error("请求中缺少 'topic_id' 参数。");
@@ -247,7 +371,7 @@ function parseToolArgs(input) {
     let args;
     try {
         args = JSON.parse(input);
-    } catch (e) {
+    } catch {
         console.error(JSON.stringify({ status: 'error', error: `[TopicMemo] 无效的输入格式，无法解析JSON: ${input}` }));
         process.exit(1);
     }
@@ -413,11 +537,11 @@ async function listTopics(agentInfo, options = {}) {
     return result;
 }
 
-// --- 指令2: 话题楼层大纲（渐进暴露 L1） ---
+// --- 指令2: 话题楼层大纲（两阶段惰性解析，仅对窗口内楼层执行 DOM 提纯） ---
 async function outlineTopic(vchatPath, agentInfo, topicId, userName, options = {}) {
     const { topicInfo, history } = await loadTopicHistory(vchatPath, agentInfo, topicId);
-    const turns = buildTurns(history, agentInfo, userName, false);
-    const total = turns.length;
+    const prepared = prepareTurns(history, agentInfo, userName);
+    const total = prepared.length;
     if (total === 0) {
         return `## 话题大纲：${topicInfo.name}\n\n该话题暂无有效对话楼层。`;
     }
@@ -427,7 +551,7 @@ async function outlineTopic(vchatPath, agentInfo, topicId, userName, options = {
     let endSeq = clampInt(options.endSeq ?? options.end_seq, Math.min(total, startSeq + limit - 1), startSeq, total);
     if (endSeq - startSeq + 1 > MAX_OUTLINE_LIMIT) endSeq = startSeq + MAX_OUTLINE_LIMIT - 1;
 
-    const sliced = turns.slice(startSeq - 1, endSeq);
+    const sliced = prepared.slice(startSeq - 1, endSeq).map(item => hydrateTurn(item, false));
     const createdDate = Number.isFinite(topicInfo.createdAt)
         ? new Date(topicInfo.createdAt).toLocaleString('zh-CN')
         : '未知时间';
@@ -443,7 +567,7 @@ async function outlineTopic(vchatPath, agentInfo, topicId, userName, options = {
     for (const turn of sliced) {
         const timeStr = turn.timestamp ? new Date(turn.timestamp).toLocaleString('zh-CN', { hour12: false }) : '-';
         const firstLine = (turn.text.split(/\r?\n/).find(l => l.trim()) || '').trim().replace(/\s+/g, ' ');
-        const preview = firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine;
+        const preview = firstLine.length > 80 ? `${safeSlice(firstLine, 0, 80)}…` : firstLine;
         const extras = [];
         if (turn.toolCount > 0) extras.push(`工具×${turn.toolCount}`);
         if (turn.attachmentCount > 0) extras.push(`附件×${turn.attachmentCount}`);
@@ -457,14 +581,14 @@ async function outlineTopic(vchatPath, agentInfo, topicId, userName, options = {
     return lines.join('\n');
 }
 
-// --- 指令3: 话题内检索楼层（渐进暴露 L2） ---
+// --- 指令3: 话题内检索楼层（渐进暴露 L2 + ReDoS 防御） ---
 async function searchTopic(vchatPath, agentInfo, topicId, userName, options = {}) {
     const query = String(options.query || '').trim();
     if (!query) throw new Error("SearchTopic 缺少 'query' 参数。");
 
     const { topicInfo, history } = await loadTopicHistory(vchatPath, agentInfo, topicId);
     const includeTools = toBooleanFlag(options.includeTools ?? options.include_tools, true);
-    const turns = buildTurns(history, agentInfo, userName, includeTools);
+    const prepared = prepareTurns(history, agentInfo, userName);
     const isRegex = toBooleanFlag(options.isRegex ?? options.is_regex, false);
     const caseSensitive = toBooleanFlag(options.caseSensitive ?? options.case_sensitive, false);
     const maxResults = clampInt(options.maxResults ?? options.max_results, DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT);
@@ -472,7 +596,7 @@ async function searchTopic(vchatPath, agentInfo, topicId, userName, options = {}
     let matcher = null;
     let fallbackLiteral = false;
     if (isRegex) {
-        if (query.length > 300) {
+        if (!isSafeRegexPattern(query)) {
             fallbackLiteral = true;
         } else {
             try {
@@ -485,7 +609,8 @@ async function searchTopic(vchatPath, agentInfo, topicId, userName, options = {}
     const needle = caseSensitive ? query : query.toLowerCase();
 
     const hits = [];
-    for (const turn of turns) {
+    for (const item of prepared) {
+        const turn = hydrateTurn(item, includeTools);
         const haystack = turn.text;
         let matchIndex = -1;
         let matchLen = query.length;
@@ -502,7 +627,7 @@ async function searchTopic(vchatPath, agentInfo, topicId, userName, options = {}
         if (matchIndex >= 0) {
             const snippetStart = Math.max(0, matchIndex - 60);
             const snippetEnd = Math.min(haystack.length, matchIndex + matchLen + 140);
-            const snippet = haystack.slice(snippetStart, snippetEnd).replace(/\s+/g, ' ').trim();
+            const snippet = safeSlice(haystack, snippetStart, snippetEnd).replace(/\s+/g, ' ').trim();
             hits.push({
                 seq: turn.seq,
                 speaker: turn.speaker,
@@ -515,7 +640,7 @@ async function searchTopic(vchatPath, agentInfo, topicId, userName, options = {}
 
     const header = [
         `## 话题内检索：${topicInfo.name}`,
-        `查询：\`${query}\`（共 ${turns.length} 楼，命中 ${hits.length} 处${fallbackLiteral ? '，正则无效已回退字面匹配' : ''}）`,
+        `查询：\`${query}\`（共 ${prepared.length} 楼，命中 ${hits.length} 处${fallbackLiteral ? '，正则无效或存在回溯风险已回退字面匹配' : ''}）`,
         '',
     ];
     if (hits.length === 0) return `${header.join('\n')}未找到匹配楼层。`;
@@ -526,12 +651,12 @@ async function searchTopic(vchatPath, agentInfo, topicId, userName, options = {}
     return header.join('\n');
 }
 
-// --- 指令4: 获取话题内容（支持 tail / startSeq..endSeq 有界切片与代码保护） ---
+// --- 指令4: 获取话题内容（两阶段惰性提纯 + UTF-16 安全折叠 + 代码保护） ---
 async function getTopicContent(vchatPath, agentInfo, topicId, userName, options = {}) {
     const { topicInfo, history } = await loadTopicHistory(vchatPath, agentInfo, topicId);
     const includeTools = toBooleanFlag(options.includeTools ?? options.include_tools, false);
-    const turns = buildTurns(history, agentInfo, userName, includeTools);
-    const total = turns.length;
+    const prepared = prepareTurns(history, agentInfo, userName);
+    const total = prepared.length;
 
     if (total === 0) {
         return `## 话题：${topicInfo.name}\n\n该话题暂无聊天记录。`;
@@ -539,7 +664,7 @@ async function getTopicContent(vchatPath, agentInfo, topicId, userName, options 
 
     const hasExplicitTail = options.tail !== undefined && options.tail !== null && options.tail !== '';
     const hasExplicitRange = (options.startSeq ?? options.start_seq ?? options.endSeq ?? options.end_seq) !== undefined;
-    const totalChars = turns.reduce((acc, t) => acc + t.chars, 0);
+    const totalRawChars = prepared.reduce((acc, t) => acc + t.rawLength, 0);
 
     let startSeq = 1;
     let endSeq = total;
@@ -554,7 +679,7 @@ async function getTopicContent(vchatPath, agentInfo, topicId, userName, options 
         const tailN = clampInt(options.tail, DEFAULT_TAIL_COUNT, 1, total);
         startSeq = Math.max(1, total - tailN + 1);
         endSeq = total;
-    } else if (total > AUTO_TAIL_MESSAGE_THRESHOLD || totalChars > AUTO_TAIL_CHAR_THRESHOLD) {
+    } else if (total > AUTO_TAIL_MESSAGE_THRESHOLD || totalRawChars > AUTO_TAIL_CHAR_THRESHOLD) {
         windowMode = 'auto_tail';
         startSeq = Math.max(1, total - DEFAULT_TAIL_COUNT + 1);
         endSeq = total;
@@ -580,13 +705,13 @@ async function getTopicContent(vchatPath, agentInfo, topicId, userName, options 
     }
     result += `）\n\n---\n\n`;
 
-    const selected = turns.slice(startSeq - 1, endSeq);
+    const selected = prepared.slice(startSeq - 1, endSeq).map(item => hydrateTurn(item, includeTools));
     for (const turn of selected) {
         let body = turn.text;
         if (body.length > maxCharsPerTurn) {
             const headLen = Math.floor(maxCharsPerTurn * 0.75);
             const tailLen = Math.max(100, maxCharsPerTurn - headLen);
-            body = `${body.slice(0, headLen)}\n\n…［第 #${turn.seq} 楼单条内容共 ${body.length} 字，中段已按 maxCharsPerTurn=${maxCharsPerTurn} 折叠，可传更大 maxCharsPerTurn 查看全文］…\n\n${body.slice(-tailLen)}`;
+            body = `${safeSlice(body, 0, headLen)}\n\n…［第 #${turn.seq} 楼单条内容共 ${body.length} 字，中段已按 maxCharsPerTurn=${maxCharsPerTurn} 折叠，可传更大 maxCharsPerTurn 查看全文］…\n\n${safeSlice(body, body.length - tailLen, body.length)}`;
         }
         result += `### [#${turn.seq}] ${turn.speaker}\n${body}\n\n`;
     }
@@ -594,7 +719,7 @@ async function getTopicContent(vchatPath, agentInfo, topicId, userName, options 
     return result;
 }
 
-// --- HTML 内容清理（先保护 Markdown 代码块与行内代码，再安全投影协议与 DOM 降噪） ---
+// --- HTML 内容清理（代码区隔离 ➔ 媒体转换 ➔ 非HTML泛型转义保护 ➔ Cheerio 降噪 ➔ 无损还原） ---
 function cleanHtmlContent(htmlContent) {
     if (htmlContent && typeof htmlContent === 'object') htmlContent = htmlContent.text;
     if (!htmlContent || typeof htmlContent !== 'string') {
@@ -606,9 +731,11 @@ function cleanHtmlContent(htmlContent) {
 
     const { protectedText, restore } = protectCodeRegions(text);
     let working = extractMediaMarkers(protectedText);
+    const { escaped, hasRealHtml } = protectNonHtmlAngles(working);
+    working = escaped;
 
-    if (!/<[^>]+>/.test(working)) {
-        return restore(working).trim();
+    if (!hasRealHtml) {
+        return restore(working.replace(/&lt;/g, '<').replace(/&gt;/g, '>')).trim();
     }
 
     try {
@@ -621,7 +748,6 @@ function cleanHtmlContent(htmlContent) {
         $('[style]').removeAttr('style');
         $('[class]').removeAttr('class');
 
-        // 将无危险属性的普通 HTML 块转为可读纯文本，保留段落呼吸同时不触碰被占位的 Markdown 代码块
         let extracted = $.text();
         extracted = extracted
             .replace(/[\r\n]+/g, '\n')
@@ -637,6 +763,8 @@ function cleanHtmlContent(htmlContent) {
             .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
             .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
             .replace(/<[^>]+>/g, '')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
             .replace(/[ \t]+/g, ' ')
             .trim();
         return restore(fallback).trim();
@@ -649,9 +777,12 @@ module.exports = {
     getTopicContent,
     outlineTopic,
     searchTopic,
+    loadTopicHistory,
     findAgentInfo,
     findOwnerByTopicId,
     findUserName,
     listTopics,
     executeTopicMemo,
+    readJsonWithRetry,
+    safeSlice,
 };
