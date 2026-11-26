@@ -48,9 +48,7 @@
                 const settings = await window.electronAPI.invoke('vcp-ht-get-settings');
 
                 if (settings.vcpServerUrl) {
-                    const url = new URL(settings.vcpServerUrl);
-                    url.pathname = '/v1/human/tool';
-                    this.VCP_SERVER_URL = url.toString();
+                    this.VCP_SERVER_URL = globalThis.vcpServerRoutes.vcpServerEndpoint(settings.vcpServerUrl, 'humanTool');
                 }
                 this.VCP_API_KEY = settings.vcpApiKey || '';
                 this.USER_NAME = settings.userName || 'Human';

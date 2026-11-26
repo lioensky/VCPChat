@@ -2,6 +2,7 @@
 // 话题标题自动生成管理模块 - 从 groupchat.js 中独立出来，方便后续优化
 
 const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext } = require('../modules/modelTrajectory');
+const { vcpChatUrl } = require('../modules/utils/vcpServerRoutes');
 
 // 话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
@@ -158,7 +159,7 @@ async function generateTitleFromAI(summaryContent, globalVcpSettings = {}, trace
 
     let response;
     try {
-        response = await fetch(globalVcpSettings.vcpUrl, {
+        response = await fetch(vcpChatUrl(globalVcpSettings.vcpUrl), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

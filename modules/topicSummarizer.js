@@ -41,7 +41,7 @@ async function summarizeTopicFromMessages(messages, agentName) {
     const summaryPrompt = `[待总结聊天记录: ${recentMessagesContent}]\n请根据以上对话内容，仅返回一个简洁的话题标题。要求：1. 标题长度控制在10个汉字以内。2. 标题本身不能包含任何标点符号、数字编号或任何非标题文字。3. 直接给出标题文字，不要添加任何解释或前缀。`;
     let vcpSummaryResponse = null;
     try {
-        const response = await fetch(settings.vcpServerUrl, {
+        const response = await fetch(globalThis.vcpServerRoutes.vcpChatUrl(settings.vcpServerUrl), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

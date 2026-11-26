@@ -22,8 +22,8 @@ export const serverConnectionSection = section('server-connection', '服务器�
         fields: [
             text('vcpServerUrl', {
                 inputType: 'url',
-                label: 'VCP 服务器 URL',
-                placeholder: '将自动补全 /v1/chat/completions',
+                label: 'VCP 服务器根地址',
+                placeholder: '例如 http://localhost:5890（不填 /v1）',
                 required: true,
                 stacked: true,
                 hintStyle: null,

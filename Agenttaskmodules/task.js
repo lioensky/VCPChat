@@ -231,7 +231,8 @@ async function initializeApi() {
             return;
         }
 
-        serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
+        serverBaseUrl = globalThis.vcpServerRoutes.normalizeVcpServerUrl(settings.vcpServerUrl);
+        if (!serverBaseUrl) throw new Error('Invalid VCP server address');
         if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
         
         // Use the same Basic Auth as the forum module since they all share /admin_api

@@ -29,16 +29,16 @@
                 console.log('[VCPdesktop] vcpAPI credentials loaded, base:', _vcpCredentials.apiBaseUrl);
 
                 // 加载 VCP Chat API 凭据（Bearer Token 方式，用于 OpenAI 兼容接口）
-                if (result.vcpServerUrl && result.vcpApiKey) {
+                if (result.vcpChatUrl && result.vcpApiKey) {
                     _vcpApiCredentials = {
-                        vcpServerUrl: result.vcpServerUrl,
+                        vcpChatUrl: result.vcpChatUrl,
                         vcpApiKey: result.vcpApiKey,
                         // 可选，来自 AppData/settings.json 的 desktopWidgetModel
                         defaultModel: typeof result.desktopWidgetModel === 'string' ? result.desktopWidgetModel : '',
                     };
                     console.log('[VCPdesktop] VCP Chat API credentials loaded');
                 } else {
-                    console.warn('[VCPdesktop] VCP Chat API credentials not available (vcpServerUrl or vcpApiKey missing)');
+                    console.warn('[VCPdesktop] VCP Chat API credentials not available (vcpChatUrl or vcpApiKey missing)');
                 }
 
                 return true;
@@ -95,7 +95,7 @@
      */
     async function vcpPost(messages, options = {}) {
         if (!_vcpApiCredentials) {
-            throw new Error('VCP Chat API not initialized - vcpServerUrl or vcpApiKey not available');
+            throw new Error('VCP Chat API not initialized - vcpChatUrl or vcpApiKey not available');
         }
 
         const { model, temperature, max_tokens, ...extraOptions } = options;
@@ -118,7 +118,7 @@
         requestBody.stream = false;
 
         try {
-            const response = await fetch(_vcpApiCredentials.vcpServerUrl, {
+            const response = await fetch(_vcpApiCredentials.vcpChatUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

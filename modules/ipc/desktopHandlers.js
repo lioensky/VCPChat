@@ -1,3 +1,4 @@
+const { normalizeVcpServerUrl, vcpChatUrl } = require('../utils/vcpServerRoutes');
 /**
  * modules/ipc/desktopHandlers.js
  * VCPdesktop IPC 处理模块
@@ -710,22 +711,10 @@ function registerManagedWindows() {
         owner: 'desktopHandlers',
         getWindow: () => vchatTranslatorWindow,
         open: async () => {
-            let settings = {};
-            try {
-                const settingsPath = path.join(PROJECT_ROOT, 'AppData', 'settings.json');
-                if (await fs.pathExists(settingsPath)) {
-                    settings = await fs.readJson(settingsPath);
-                }
-            } catch (e) { /* ignore */ }
-
-            const vcpServerUrl = settings.vcpServerUrl || '';
-            const vcpApiKey = settings.vcpApiKey || '';
-
             vchatTranslatorWindow = createOrFocusChildWindow(vchatTranslatorWindow, {
                 width: 1000, height: 700, minWidth: 800, minHeight: 600,
                 title: 'Translator',
                 htmlPath: path.join(app.getAppPath(), 'Translatormodules', 'translator.html'),
-                queryParams: `vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`,
             });
             return vchatTranslatorWindow;
         },
@@ -1685,19 +1674,12 @@ function initialize(params) {
                 } catch (e) { /* ignore */ }
             }
 
-            // 从 vcpServerUrl 推导出 admin API base URL
-            let apiBaseUrl = '';
-            if (vcpServerUrl) {
-                try {
-                    const urlObj = new URL(vcpServerUrl);
-                    apiBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
-                } catch (e) { /* ignore */ }
-            }
+            const apiBaseUrl = normalizeVcpServerUrl(vcpServerUrl);
 
             return {
                 success: true,
                 apiBaseUrl,
-                vcpServerUrl,
+                vcpChatUrl: apiBaseUrl ? vcpChatUrl(apiBaseUrl) : '',
                 vcpApiKey,
                 desktopWidgetModel,
                 username,

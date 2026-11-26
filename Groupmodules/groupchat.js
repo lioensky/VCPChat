@@ -31,6 +31,7 @@ const {
 const topicTitleManager = require('./topicTitleManager');
 const { noteToolApprovalMessage, isWaitingForToolApproval, isWatchdogAbort, withWatchdogNote, getGroupErrorMessage, normalizeGroupFetchError } = require('./streamWatchdog');
 const { resolveGroupChatUrl } = require('./groupChatUrl');
+const { vcpServerEndpoint } = require('../modules/utils/vcpServerRoutes');
 const { readChatHttpError, chatResponseError } = require('../modules/chatRequestError');
 const { CHAT_STREAM_TIMEOUT_MS, getChatStreamDispatcher } = require('../modules/chat/sleepStreamIdle');
 
@@ -166,9 +167,7 @@ async function sendRemoteGroupInterrupt(messageId) {
         const globalSettings = await getVcpGlobalSettings();
         if (!globalSettings.vcpUrl || !globalSettings.vcpApiKey) return false;
 
-        const urlObj = new URL(globalSettings.vcpUrl);
-        urlObj.pathname = '/v1/interrupt';
-        const interruptUrl = urlObj.toString();
+        const interruptUrl = vcpServerEndpoint(globalSettings.vcpUrl, 'interrupt');
 
         console.log(`[GroupChat] Sending remote interrupt request to: ${interruptUrl}`);
         const response = await fetch(interruptUrl, {

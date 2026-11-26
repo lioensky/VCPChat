@@ -42,8 +42,7 @@ function setupUtils(app) {
 
         try {
             const settings = await api.loadSettings();
-            let serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
-            if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
+            const toolUrl = globalThis.vcpServerRoutes.vcpServerEndpoint(settings.vcpServerUrl, 'humanTool');
 
             const toolRequest = `<<<[TOOL_REQUEST]>>>
 maid:「始」MusicPlay「末」,
@@ -53,7 +52,7 @@ k:「始」10「末」,
 tag_boost:「始」0.95「末」
 <<<[END_TOOL_REQUEST]>>>`;
 
-            const res = await fetch(`${serverBaseUrl}v1/human/tool`, {
+            const res = await fetch(toolUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'text/plain;charset=UTF-8',

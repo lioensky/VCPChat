@@ -163,7 +163,8 @@ async function getServerUrl() {
     try {
         const settings = await api.loadSettings();
         if (!settings?.vcpServerUrl) throw new Error('VCP Server URL not configured');
-        serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
+        serverBaseUrl = globalThis.vcpServerRoutes.normalizeVcpServerUrl(settings.vcpServerUrl);
+        if (!serverBaseUrl) throw new Error('Invalid VCP server address');
         if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
         return serverBaseUrl;
     } catch (error) {

@@ -2,6 +2,7 @@ import { effectiveContextHistory, isContextCheckpoint, prepareCompactionState } 
 import { assembleRequestMessages, buildDefaultMessageContent, normalizeAgentContextWindowSize } from './chatContextPipeline.js';
 import { readCompactionResponse } from './contextCompactionStream.js';
 import { compactionSettings, buildCompactionMessages, createCheckpointMessage } from './contextCompactionPrompts.js';
+import { vcpChatUrl } from '../utils/vcpServerRoutes.mjs';
 
 const scopeKey = scope => `${scope.itemType || 'agent'}:${scope.itemId}:${scope.topicId}`;
 
@@ -237,16 +238,14 @@ export async function requestContextCompaction({ settings, state, signal, reques
     let messages;
     try {
         if (!config.model) throw new Error('请先配置上下文压缩模型');
-        url = new URL(settings.vcpServerUrl);
-        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('压缩服务器地址必须使用 HTTP 或 HTTPS');
+        // Compression uses standard Chat Completions, never the tool-injection route.
+        url = vcpChatUrl(settings.vcpServerUrl);
         messages = buildCompactionMessages(state, settings);
     } catch (error) {
         // Changing the model cannot fix a shared request configuration.
         throw Object.assign(error, { compactionNoFallback: true });
     }
-    // Never use chatvcp endpoint: compression must not execute historical tool requests.
-    url.pathname = url.pathname.replace(/\/chatvcp\/completions\/?$/, '/chat/completions');
-    const response = await fetchImpl(url.href, {
+    const response = await fetchImpl(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

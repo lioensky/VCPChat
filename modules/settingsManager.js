@@ -5,36 +5,8 @@
  * Handles displaying, populating, saving, and deleting items.
  */
 const settingsManager = (() => {
-    /**
-     * Completes a VCP Server URL to the full completions endpoint.
-     * @param {string} url - The URL to complete.
-     * @returns {string} The completed URL.
-     */
     function completeVcpUrl(url) {
-        if (!url) return '';
-        let trimmedUrl = url.trim();
-        if (trimmedUrl === '') return '';
-
-        // If it doesn't have a protocol, add http://
-        if (!/^https?:\/\//i.test(trimmedUrl)) {
-            trimmedUrl = 'http://' + trimmedUrl;
-        }
-
-        try {
-            const urlObject = new URL(trimmedUrl);
-            const requiredPath = '/v1/chat/completions';
-
-            // For any other case (e.g., root path '/', or some other path),
-            // we set the path to the required one.
-            urlObject.pathname = requiredPath;
-            return urlObject.toString();
-
-        } catch (e) {
-            // If URL parsing fails, it's likely an invalid URL.
-            // We return the original input for the user to see and correct.
-            console.warn(`Could not parse and complete URL: ${url}`, e);
-            return url;
-        }
+        return globalThis.vcpServerRoutes.normalizeVcpServerUrl(url) || String(url ?? '').trim();
     }
 
     // --- Private Variables ---
@@ -1467,8 +1439,8 @@ const settingsManager = (() => {
             const vcpServerUrlInput = document.getElementById('vcpServerUrl');
             if (vcpServerUrlInput) {
                 vcpServerUrlInput.addEventListener('blur', () => {
-                    const completedUrl = completeVcpUrl(vcpServerUrlInput.value);
-                    vcpServerUrlInput.value = completedUrl;
+                    const rootUrl = completeVcpUrl(vcpServerUrlInput.value);
+                    vcpServerUrlInput.value = rootUrl;
                 });
             }
         },

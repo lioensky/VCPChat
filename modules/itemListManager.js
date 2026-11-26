@@ -260,11 +260,6 @@ window.itemListManager = (() => {
             .replace(/[^\p{L}\p{N}_-]/gu, '');
     }
 
-    function stripVcpChatEndpoint(url) {
-        const base = String(url || '').trim().replace(/\/v1\/chat\/completions\/?$/, '');
-        return base ? `${base.replace(/\/+$/, '')}/` : '';
-    }
-
     function resolveAxisLabel(groupName, key) {
         const group = OPENHER_PERSONA_LABELS[groupName] || {};
         return group[key] || key;
@@ -559,7 +554,8 @@ window.itemListManager = (() => {
         personaStatusCache.pending = (async () => {
             try {
                 const settings = await electronAPI.loadSettings();
-                const baseUrl = stripVcpChatEndpoint(settings?.vcpServerUrl);
+                const origin = settings?.vcpServerUrl && globalThis.vcpServerRoutes.normalizeVcpServerUrl(settings.vcpServerUrl);
+                const baseUrl = origin ? `${origin}/` : '';
                 if (!baseUrl) throw new Error('VCP Server URL not configured');
 
                 let username = settings?.adminUsername || '';

@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const { normalizePromptSettings } = require('../services/workspacePromptPlaceholders');
 const { replaceFile } = require('./atomicReplace');
+const { normalizeVcpServerUrl } = require('./vcpServerRoutes');
 
 class SettingsValidator {
     static validate(settings, defaultSettings) {
@@ -30,6 +31,8 @@ class SettingsValidator {
                 validated[key] = null;
             }
         }
+
+        validated.vcpServerUrl = normalizeVcpServerUrl(validated.vcpServerUrl);
 
         // 数值范围检查
         if (validated.sidebarWidth < 100 || validated.sidebarWidth > 800) {
@@ -436,6 +439,9 @@ class SettingsManager extends EventEmitter {
         const settings = JSON.parse(text);
         if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
             throw new TypeError('Settings root must be an object.');
+        }
+        if (typeof settings.vcpServerUrl === 'string') {
+            settings.vcpServerUrl = normalizeVcpServerUrl(settings.vcpServerUrl) || settings.vcpServerUrl;
         }
         if (settings.topicSummaryModel === undefined || settings.topicSummaryModel === null) {
             settings.topicSummaryModel = this.defaultSettings.topicSummaryModel;

@@ -117,7 +117,8 @@ async function initApp() {
             alert('请先在主设置中配置 VCP 服务器 URL');
             return;
         }
-        serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
+        serverBaseUrl = globalThis.vcpServerRoutes.normalizeVcpServerUrl(settings.vcpServerUrl);
+        if (!serverBaseUrl) throw new Error('Invalid VCP server address');
         if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
 
         // 2. 读取论坛配置获取 Auth
@@ -1316,7 +1317,8 @@ async function performSemanticSearch(query) {
         // 竞态检查：如果在 await 期间有新搜索发起，放弃当前搜索
         if (myAbortController.signal.aborted || myAbortController !== searchAbortController) return;
 
-        let serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
+        let serverBaseUrl = globalThis.vcpServerRoutes.normalizeVcpServerUrl(settings.vcpServerUrl);
+        if (!serverBaseUrl) throw new Error('Invalid VCP server address');
         if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
 
         const toolRequest = `<<<[TOOL_REQUEST]>>>

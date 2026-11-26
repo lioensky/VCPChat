@@ -4,9 +4,9 @@
  * 天气预报服务模块：从VCP后端拉取天气数据，渲染天气卡片到通知栏。
  * 
  * 工作原理：
- * 1. 从 settings.json 中读取 vcpServerUrl（如 http://192.168.2.179:5890/v1/chat/completions）
- * 2. 从 forum.config.json 中读取 username/password（VCP后端面板的账号密码）
- * 3. 拼接出天气API URL：将 /v1/chat/completions 替换为 /admin_api/weather
+ * 1. 从 settings.json 读取 VCP 根地址
+ * 2. 从 forum.config.json 读取 VCP 后端面板凭据
+ * 3. 使用统一的天气 API 路由
  * 4. 使用 Basic Auth 认证拉取天气 JSON 数据
  * 5. 渲染为通知栏顶部的天气小卡片
  */
@@ -19,18 +19,10 @@ const weatherService = (() => {
     let refreshTimer = null;
     let getGlobalSettings = () => ({});
 
-    /**
-     * 从 vcpServerUrl 推导出天气 API 的 URL
-     * 例如：http://url:5890/v1/chat/completions → http://url:5890/admin_api/weather
-     */
     function deriveWeatherApiUrl(vcpServerUrl) {
-        if (!vcpServerUrl) return null;
         try {
-            const urlObj = new URL(vcpServerUrl);
-            urlObj.pathname = '/admin_api/weather';
-            return urlObj.toString();
-        } catch (e) {
-            console.warn('[WeatherService] Failed to parse vcpServerUrl:', e);
+            return globalThis.vcpServerRoutes.vcpServerEndpoint(vcpServerUrl, 'weather');
+        } catch {
             return null;
         }
     }

@@ -3,6 +3,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import routes from '../modules/utils/vcpServerRoutes.js';
+
+globalThis.vcpServerRoutes = routes;
 
 test('missing topicSummaryModel uses the settings-page default', async () => {
     const root = process.cwd();
@@ -22,11 +25,12 @@ test('missing topicSummaryModel uses the settings-page default', async () => {
     globalThis.window = {
         chatAPI: {
             async loadSettings() {
-                return { vcpServerUrl: 'https://vcpchat.test/v1/chat/completions', vcpApiKey: 'key' };
+                return { vcpServerUrl: 'https://vcpchat.test', vcpApiKey: 'key' };
             },
         },
     };
-    globalThis.fetch = async (_url, options) => {
+    globalThis.fetch = async (url, options) => {
+        assert.equal(url, 'https://vcpchat.test/v1/chat/completions');
         requestBody = JSON.parse(options.body);
         return { ok: true, async json() { return { choices: [{ message: { content: '测试标题' } }] }; } };
     };
