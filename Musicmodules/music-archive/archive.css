@@ -176,7 +176,7 @@ body.music-reduce-motion .archive-scan-bar i { transition: none; }
 /* 滚动数字 */
 .archive-roll { display: inline-flex; font-variant-numeric: tabular-nums; }
 .archive-roll .d { display: inline-block; height: 1.1em; overflow: hidden; position: relative; }
-.archive-roll .d > span { display: flex; flex-direction: column; transition: transform .46s var(--mt-ease), filter .46s; }
+.archive-roll .d > span { display: flex; flex-direction: column; transition: transform .46s var(--mt-ease); }
 .archive-roll .d > span > b { font-weight: inherit; height: 1.1em; line-height: 1.1em; }
 
 /* 经典视图里回到档案页的按钮，放在标题栏左侧标题后面 */

@@ -446,6 +446,8 @@
             if (!firstShow && !force) leave();
             st.key = sig;
             st.ids = ids;
+            st.idIndex = new Map();
+            for (let k = 0; k < ids.length; k++) st.idIndex.set(ids[k], k);
             st.name = it.name || '';
             rebuildGeometry(st.g ? st.g.pitch : pitchFor(st.room.height || 800));
             for (const node of st.nodes.values()) recycle(node);
@@ -503,7 +505,7 @@
             const sel = opts.selected();
             if (sel === st.selIndex && st.focus) return;
             st.selIndex = sel;
-            const pos = st.ids.indexOf(sel);
+            const pos = st.idIndex ? (st.idIndex.has(sel) ? st.idIndex.get(sel) : -1) : st.ids.indexOf(sel);
             if (pos < 0 || !st.g) { st.focus = null; setExpanded(null); st.dirty = true; schedule(); return; }
             if (st.focus && st.focus.item === pos) return;
             const keepExpanded = Boolean(st.expanded);
@@ -836,8 +838,9 @@
             const sel = st.focus ? st.focus.id : '';
             const exp = st.expanded ? st.expanded.id : '';
             const play = opts.playing();
-            const playPos = play.index >= 0 ? st.ids.indexOf(play.index) : -1;
+            const playPos = play.index >= 0 ? (st.idIndex ? (st.idIndex.has(play.index) ? st.idIndex.get(play.index) : -1) : st.ids.indexOf(play.index)) : -1;
             let count = 0;
+            let frag = null;
             for (let br = r0; br <= r1 && count < maxTiles; br++) {
                 for (let bc = c0; bc <= c1 && count < maxTiles; bc++) {
                     for (let s = 0; s < SLOTS; s++) {
@@ -853,7 +856,8 @@
                             st.nodes.set(inst.id, node);
                             node.x = node.y = node.w = node.h = NaN;
                             node.el.dataset.id = inst.id;
-                            world.appendChild(node.el);
+                            if (!frag) frag = document.createDocumentFragment();
+                            frag.appendChild(node.el);
                             node.el.classList.remove('aw-entering', 'aw-reveal', 'aw-flip');
                             const sweep = entering && sweepAt();
                             if (sweep) {
@@ -898,6 +902,7 @@
                     }
                 }
             }
+            if (frag) world.appendChild(frag);
             for (const [id, node] of st.nodes) {
                 if (!keep.has(id)) { st.nodes.delete(id); recycle(node); }
             }

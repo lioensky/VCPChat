@@ -354,7 +354,7 @@ void main() {
      * 两块合成一个几何体，只有位置和法线。
      */
     const cassetteGeometry = (THREE) => {
-        const tray = roundedBox(THREE, 4.986, 3.68, 0.32, 3, 0.022);   // 外框圆角照参考模型量的 0.018–0.035，取 0.022
+        const tray = roundedBox(THREE, 4.986, 3.68, 0.32, 2, 0.022);   // 外框圆角取 0.022；2 段细分兼顾圆角轮廓与实例化顶点数
         tray.translate(0, 1.85, 0.03);            // z -0.13 … 0.19
         const B = 0.012;                          // 面板倒角
         const shape = new THREE.Shape();
@@ -367,7 +367,7 @@ void main() {
             hole.absarc(cx, cy, 0.082 + B, 0, Math.PI * 2, true);
             shape.holes.push(hole);
         }
-        const plate = new THREE.ExtrudeGeometry(shape, { depth: 0.032 - 2 * B, bevelEnabled: true, bevelThickness: B, bevelSize: B, bevelSegments: 2, curveSegments: 14 });
+        const plate = new THREE.ExtrudeGeometry(shape, { depth: 0.032 - 2 * B, bevelEnabled: true, bevelThickness: B, bevelSize: B, bevelSegments: 1, curveSegments: 10 });
         plate.translate(0, 0, 0.174 + B);         // z 0.174 … 0.206
         const parts = [tray, plate.index ? plate.toNonIndexed() : plate];
         const count = parts.reduce((n, g) => n + g.attributes.position.count, 0);
@@ -502,14 +502,15 @@ void main() {
         const LABEL_LANES = tier.shadows ? 1 : 0;          // 省电档只贴当前这一列
         const LABEL_ROWS = [-8, 10];
         const LABEL_POOL = (LABEL_LANES * 2 + 1) * (LABEL_ROWS[1] - LABEL_ROWS[0] + 1);
-        const LABEL_DRAWS_PER_FRAME = 8;
+        const LABEL_DRAWS_PER_FRAME = 4;                   // 分摊到多帧上传，避免翻列时单帧贴图上传尖峰
+        const LABEL_CW = 512, LABEL_CH = 40;
         const LABEL_W = 3.5, LABEL_H = 0.26;
         const labelGeo = new THREE.PlaneGeometry(LABEL_W, LABEL_H);
         labelGeo.translate(0.2, 3.5, FRONT + 0.004);
         const labelInk = { ink: 'rgba(224,227,220,.86)', muted: 'rgba(166,176,177,.8)' };
         const labels = Array.from({ length: LABEL_POOL }, () => {
             const c = document.createElement('canvas');
-            c.width = 768; c.height = 58;
+            c.width = LABEL_CW; c.height = LABEL_CH;
             const tex = new THREE.CanvasTexture(c);
             tex.colorSpace = THREE.SRGBColorSpace;
             tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
@@ -517,25 +518,26 @@ void main() {
             const mesh = new THREE.Mesh(labelGeo, mat);
             mesh.visible = false;
             scene.add(mesh);
-            return { mesh, canvas: c, tex, mat, cell: null, drawn: null };
+            return { mesh, canvas: c, ctx: c.getContext('2d'), tex, mat, cell: null, drawn: null };
         });
         let labelFor = null;                 // (lane, row) => { key, title, code } | null
         let labelEpoch = 0;                  // 主题、字体、数据变了就加一，旧的画面全部作废
         const drawLabel = (L, info) => {
-            const g = L.canvas.getContext('2d');
-            g.clearRect(0, 0, 768, 58);
+            const g = L.ctx || L.canvas.getContext('2d');
+            if (!g) return;
+            g.clearRect(0, 0, LABEL_CW, LABEL_CH);
             g.textBaseline = 'middle';
-            g.font = '500 20px ' + fontStack;
+            g.font = '500 14px ' + fontStack;
             const code = String(info.code || '');
             const codeW = code ? g.measureText(code).width : 0;
             g.fillStyle = labelInk.muted;
-            if (code) g.fillText(code, 768 - 8 - codeW, 30);
-            g.font = '500 30px ' + fontStack;
+            if (code) g.fillText(code, LABEL_CW - 6 - codeW, 20);
+            g.font = '500 21px ' + fontStack;
             g.fillStyle = labelInk.ink;
             let title = String(info.title || '');
-            const room = 768 - 16 - codeW - 36;
+            const room = LABEL_CW - 12 - codeW - 24;
             if (g.measureText(title).width > room) {
-                // 二分找能放下的最长前缀（原来逐字删，长标题一张要量上百次，翻列时一帧画 8 张会卡一下）
+                // 二分找能放下的最长前缀（原来逐字删，长标题一张要量上百次，翻列时一帧画多张会卡一下）
                 let lo = 1, hi = title.length - 1;
                 while (lo < hi) {
                     const mid = (lo + hi + 1) >> 1;
@@ -543,12 +545,14 @@ void main() {
                 }
                 title = title.slice(0, lo) + '…';
             }
-            g.fillText(title, 8, 31);
+            g.fillText(title, 6, 21);
             L.tex.needsUpdate = true;
             L.drawn = info.key + '#' + labelEpoch;
         };
         const labelWanted = new Map();
         const wantSpare = [];   // 贴标题的格子信息每帧复用，不每帧新建对象
+        const labelFree = [];
+        const labelTaken = new Set();
         // 'lane:row' 键字符串缓存：每帧要查几百次，不再每次拼新字符串
         const cellKeys = new Map();
         const cellKey = (lane, row) => {
@@ -564,29 +568,45 @@ void main() {
         let labelsPending = false;
         const placeLabels = () => {
             labelsPending = false;
-            const free = [];
-            for (const L of labels) {
-                if (L.cell && labelWanted.has(L.cell)) continue;
-                L.cell = null;
-                free.push(L);
+            labelFree.length = 0;
+            labelTaken.clear();
+            for (let idx = 0; idx < labels.length; idx++) {
+                const L = labels[idx];
+                if (L.cell && labelWanted.has(L.cell)) {
+                    labelTaken.add(L.cell);
+                } else {
+                    L.cell = null;
+                    labelFree.push(L);
+                }
             }
-            const taken = new Set();
-            for (const L of labels) if (L.cell) taken.add(L.cell);
-            for (const [cell] of labelWanted) {
-                if (taken.has(cell)) continue;
+            const epochSuffix = '#' + labelEpoch;
+            for (const [cell, entry] of labelWanted) {
+                if (labelTaken.has(cell)) continue;
+                const freeLen = labelFree.length;
+                if (!freeLen) break;
                 // 优先用之前就画着这张卡的贴片，省得重画
-                const want = labelWanted.get(cell).info;
-                let k = free.findIndex((L) => L.drawn === want.key + '#' + labelEpoch);
-                if (k === -1) k = free.length - 1;
-                if (k < 0) break;
-                const L = free.splice(k, 1)[0];
+                const wantDrawn = entry.info.key + epochSuffix;
+                let k = -1;
+                for (let j = 0; j < freeLen; j++) {
+                    if (labelFree[j].drawn === wantDrawn) { k = j; break; }
+                }
+                let L;
+                if (k === -1) {
+                    L = labelFree.pop();
+                } else {
+                    L = labelFree[k];
+                    labelFree[k] = labelFree[freeLen - 1];
+                    labelFree.pop();
+                }
                 L.cell = cell;
             }
+            const targetCell = detailOn && artMat.map ? cellKey(target.lane, target.row) : '';
             let draws = 0;
-            for (const L of labels) {
+            for (let idx = 0; idx < labels.length; idx++) {
+                const L = labels[idx];
                 const w = L.cell ? labelWanted.get(L.cell) : null;
-                if (!w || (detailOn && artMat.map && L.cell === target.lane + ':' + target.row)) { L.mesh.visible = false; continue; }
-                if (L.drawn !== w.info.key + '#' + labelEpoch) {
+                if (!w || (targetCell && L.cell === targetCell)) { L.mesh.visible = false; continue; }
+                if (L.drawn !== w.info.key + epochSuffix) {
                     if (draws >= LABEL_DRAWS_PER_FRAME) { L.mesh.visible = false; labelsPending = true; continue; }
                     drawLabel(L, w.info);
                     draws++;
@@ -603,12 +623,20 @@ void main() {
         let labelMasks = [];
         const projA = new THREE.Vector3(), projB = new THREE.Vector3();
         const underMask = (w) => {
-            if (!labelMasks.length) return false;
+            const mLen = labelMasks.length;
+            if (!mLen) return false;
             projA.set(w.x + 0.2 - LABEL_W / 2, w.y + 3.5, w.z + FRONT).project(camera);
             projB.set(w.x + 0.2 + LABEL_W / 2, w.y + 3.5, w.z + FRONT).project(camera);
-            const x0 = (Math.min(projA.x, projB.x) + 1) / 2 * W, x1 = (Math.max(projA.x, projB.x) + 1) / 2 * W;
-            const y0 = (1 - Math.max(projA.y, projB.y)) / 2 * H, y1 = (1 - Math.min(projA.y, projB.y)) / 2 * H;
-            return labelMasks.some((r) => x1 > r.left && x0 < r.right && y1 > r.top && y0 < r.bottom);
+            const hw = W * 0.5, hh = H * 0.5;
+            const ax = (projA.x + 1) * hw, bx = (projB.x + 1) * hw;
+            const ay = (1 - projA.y) * hh, by = (1 - projB.y) * hh;
+            const x0 = ax < bx ? ax : bx, x1 = ax < bx ? bx : ax;
+            const y0 = ay < by ? ay : by, y1 = ay < by ? by : ay;
+            for (let j = 0; j < mLen; j++) {
+                const r = labelMasks[j];
+                if (x1 > r.left && x0 < r.right && y1 > r.top && y0 < r.bottom) return true;
+            }
+            return false;
         };
         /* rects：画布像素坐标 { left, top, right, bottom } */
         const setLabelMask = (rects) => { labelMasks = Array.isArray(rects) ? rects : []; invalidate(); };
@@ -1104,6 +1132,9 @@ vec3 archiveUntone(vec3 y) {
         const pointer = { x: 0, y: 0 };      // 镜头视差用的指针位置
         const pointerAim = { x: 0, y: 0 };   // 指针实际在哪；取出端详时先记着，不动镜头
         const cellAt = new Int32Array(POOL * 2);
+        const cardCoords = new Float32Array(POOL * 3);
+        const rowWaves = new Float32Array(ROWS_BEFORE + ROWS_AFTER);
+        const rowHalfWaves = new Float32Array(ROWS_BEFORE + ROWS_AFTER + 1);
         const dummy = new THREE.Object3D();
         const view = new THREE.Vector3(-Math.sin(YAW) * Math.cos(ELEV), Math.sin(ELEV), Math.cos(YAW) * Math.cos(ELEV));
         const aim = new THREE.Vector3(AIM[0], AIM[1], AIM[2]);
@@ -1158,12 +1189,15 @@ vec3 archiveUntone(vec3 y) {
          * dragAxes() 给出选中卡中心附近「卡片整体移动一列 / 一行」在画布上对应的像素向量，外面据此把指针位移反解成格数。
          */
         let held = null;
+        let heldActiveUntil = 0;
         const hold = (lane, row, vl = 0, vr = 0) => {
+            const now = performance.now();
+            if (!held || Math.abs(lane - held.lane) > 0.004 || Math.abs(row - held.row) > 0.004) heldActiveUntil = now + 120;
             held = { lane, row, vl, vr };
-            lastInput = performance.now();
+            lastInput = now;
             invalidate();
         };
-        const unhold = () => { if (held) { held = null; invalidate(); } };
+        const unhold = () => { if (held) { held = null; heldActiveUntil = 0; invalidate(); } };
         const camAt = () => ({ lane: camLane.v, row: camRow.v });
         const dragAxes = () => {
             const c = new THREE.Vector3((target.lane - camLane.v) * COLUMN_SPACING, BASE_Y + 1.85, (target.row - camRow.v) * ROW_SPACING - 2.17);
@@ -1386,65 +1420,114 @@ vec3 archiveUntone(vec3 y) {
             // 取出端详时换曲目不再在背景里荡波纹（参考播放器 m_pulseGain：取出时按 8 收到 0）
             pulseGain += ((detailOn ? 0 : 1) - pulseGain) * (reduced ? 1 : 1 - Math.exp(-dt * 8));
             if (pulseGain < 0.001) { pulseGain = 0; pulses.length = 0; }   // 看不见的波纹不再让画面一直画
-            // 整片档案的起伏高度：肩部隆起 × 列聚焦 + 待机起伏 + 换选中的波纹（参考播放器 ArchiveField::sample）
-            const fieldAt = (row, lane) => {
-                let h = settlingWave(row - shoulder.v) * columnStrength(lane, focus.v);
-                if (idleGain > 0.001) h += idleWave(row, lane, T) * idleGain;
-                if (pulses.length) {
-                    let rip = 0;
-                    for (const p of pulses) rip += selectionWave(Math.hypot(row - p.row, (lane - p.lane) * 2.2), T - p.t);
-                    h += Math.max(-0.6, Math.min(0.6, rip)) * pulseGain;
-                }
-                return h;
-            };
             const baseLane = Math.round(camLane.v);
             const baseRow = Math.round(camRow.v);
             for (const w of labelWanted.values()) wantSpare.push(w);
             labelWanted.clear();
             fitQ = smoother(lift.v / 0.4);
+            const hasIdle = idleGain > 0.001;
+            const hasPulses = pulses.length > 0 && pulseGain > 0;
+            const hasHover = hoverLifts.size > 0;
+            const hasReturning = returning.size > 0;
+            const playingActive = isPlaying && playing && !reduced && bounceGain > 0;
+            const rowSpan = ROWS_BEFORE + ROWS_AFTER;
+            for (let rIdx = 0; rIdx < rowSpan; rIdx++) {
+                const ri = ROWS_AFTER - 1 - rIdx;
+                rowWaves[rIdx] = settlingWave(baseRow + ri - shoulder.v);
+                rowHalfWaves[rIdx] = settlingWave(baseRow + ri + 0.5 - shoulder.v);
+            }
+            rowHalfWaves[rowSpan] = settlingWave(baseRow - ROWS_BEFORE - 0.5 - shoulder.v);
+            const imArr = cards.instanceMatrix && cards.instanceMatrix.array;
+            const fitArr = fittings.matrix && fittings.matrix.elements;
+            const entryZ = -2.17 - 28 * (1 - reveal);
+            const tiltScale = 0.024 * (1 - detailK);
             let i = 0, targetIdx = -1;
             for (let li = -LANES_HALF; li <= LANES_HALF; li++) {
-                let upper = fieldAt(baseRow + ROWS_AFTER - 0.5, baseLane + li);   // 行从后往前走，这一行的下半格就是上一行的上半格，复用省掉三分之一的采样
-                for (let ri = ROWS_AFTER - 1; ri >= -ROWS_BEFORE; ri--) {   // 近处的行先画：深度测试挡掉后面被遮住的像素，复杂的卡盒着色只算看得见的
-                    const lane = baseLane + li;
+                const lane = baseLane + li;
+                const colStr = columnStrength(lane, focus.v);
+                const px = (lane - camLane.v) * COLUMN_SPACING;
+                const dl = lane - target.lane;
+                const inLabelLane = Boolean(labelFor && dl >= -LABEL_LANES && dl <= LABEL_LANES);
+                const isPlayingLane = playingActive && lane === playing.lane;
+                const extraAt = (rVal) => {
+                    let e = hasIdle ? idleWave(rVal, lane, T) * idleGain : 0;
+                    if (hasPulses) {
+                        let rip = 0;
+                        for (let pk = 0; pk < pulses.length; pk++) {
+                            const p = pulses[pk];
+                            rip += selectionWave(Math.hypot(rVal - p.row, (lane - p.lane) * 2.2), T - p.t);
+                        }
+                        e += Math.max(-0.6, Math.min(0.6, rip)) * pulseGain;
+                    }
+                    return e;
+                };
+                let upper = rowHalfWaves[0] * colStr + ((hasIdle || hasPulses) ? extraAt(baseRow + ROWS_AFTER - 0.5) : 0);
+                for (let rIdx = 0; rIdx < rowSpan; rIdx++) {   // 近处的行先画：深度测试挡掉后面被遮住的像素，复杂的卡盒着色只算看得见的
+                    const ri = ROWS_AFTER - 1 - rIdx;
                     const row = baseRow + ri;
-                    let f = fieldAt(row, lane);
-                    // 卡顺着起伏的坡度前后微倾（参考播放器 NativeSceneUpdate.cpp：slope × 0.024 × (1 − 取出进度)）
-                    const lower = fieldAt(row - 0.5, lane);
-                    const tilt = (upper - lower) * 0.024 * (1 - detailK);
+                    let f = rowWaves[rIdx] * colStr + ((hasIdle || hasPulses) ? extraAt(row) : 0);
+                    // 卡顺着起伏的坡度前后微倾（slope × 0.024 × (1 − 取出进度)）
+                    const lower = rowHalfWaves[rIdx + 1] * colStr + ((hasIdle || hasPulses) ? extraAt(row - 0.5) : 0);
+                    const tilt = (upper - lower) * tiltScale;
                     upper = lower;
-                    if (isPlaying && playing && !reduced && bounceGain > 0 && lane === playing.lane) {
+                    if (isPlayingLane) {
                         const dd = Math.abs(row - playing.row);
                         if (dd < 8) f += 0.06 * Math.abs(Math.sin(T * 6.1 + row * 1.3)) * (1 - dd / 8) * bounceGain;
                     }
-                    const hl = hoverLifts.size ? hoverLifts.get(cellKey(lane, row)) || 0 : 0;   // 没有悬停的卡时不为每张卡拼字符串
+                    const hl = hasHover ? hoverLifts.get(cellKey(lane, row)) || 0 : 0;   // 没有悬停的卡时不为每张卡拼字符串
                     let y = BASE_Y + f + hl;
                     const isTarget = lane === target.lane && row === target.row;
                     if (isTarget) y += lift.v;
                     let backRot = 0;
                     let backQ = 0;
-                    if (!isTarget && returning.size) { const r = returning.get(cellKey(lane, row)); if (r) { y += r.v; backRot = r.rot || 0; backQ = smoother(r.v / 0.4); } }
-                    dummy.position.set((lane - camLane.v) * COLUMN_SPACING, y, (row - camRow.v) * ROW_SPACING - 2.17 - 28 * (1 - reveal));
-                    // 参考播放器：坡度倾斜 × (1 − quality)，quality = smooth(lift / 0.4)；落回中的卡也一样，抬着时不跟坡度晃
-                    dummy.rotation.x = tilt * (1 - (isTarget ? fitQ : backQ));
-                    dummy.rotation.y = isTarget ? inspect.v : backRot;
-                    if (isTarget) { targetPos.copy(dummy.position); targetIdx = i; }
+                    if (!isTarget && hasReturning) { const r = returning.get(cellKey(lane, row)); if (r) { y += r.v; backRot = r.rot || 0; backQ = smoother(r.v / 0.4); } }
+                    const pz = (row - camRow.v) * ROW_SPACING + entryZ;
+                    const rx = tilt * (1 - (isTarget ? fitQ : backQ));
+                    const ry = isTarget ? inspect.v : backRot;
+                    if (isTarget) { targetPos.set(px, y, pz); targetIdx = i; }
                     // 贴标题的范围按选中格算（不按还在飞的相机），当前列就是选中的那一列
-                    const dl = lane - target.lane, dr = row - target.row;
-                    if (labelFor && dl >= -LABEL_LANES && dl <= LABEL_LANES && dr >= LABEL_ROWS[0] && dr <= LABEL_ROWS[1]) {
-                        const info = labelFor(lane, row);
-                        if (info) {
-                            const w = wantSpare.pop() || {};
-                            w.info = info; w.li = dl; w.x = dummy.position.x; w.y = y; w.z = dummy.position.z; w.tilt = dummy.rotation.x; w.turn = dummy.rotation.y;
-                            labelWanted.set(cellKey(lane, row), w);
+                    if (inLabelLane) {
+                        const dr = row - target.row;
+                        if (dr >= LABEL_ROWS[0] && dr <= LABEL_ROWS[1]) {
+                            const info = labelFor(lane, row);
+                            if (info) {
+                                const w = wantSpare.pop() || {};
+                                w.info = info; w.li = dl; w.x = px; w.y = y; w.z = pz; w.tilt = rx; w.turn = ry;
+                                labelWanted.set(cellKey(lane, row), w);
+                            }
                         }
                     }
-                    dummy.updateMatrix();
-                    if (isTarget) { fittings.matrix.copy(dummy.matrix); fittings.matrixWorldNeedsUpdate = true; }
-                    for (const layer of layers) layer.setMatrixAt(i, dummy.matrix);
+                    if (imArr) {
+                        const o = i * 16;
+                        const cx = Math.cos(rx), sx = Math.sin(rx);
+                        if (ry === 0) {
+                            imArr[o] = 1; imArr[o + 1] = 0; imArr[o + 2] = 0; imArr[o + 3] = 0;
+                            imArr[o + 4] = 0; imArr[o + 5] = cx; imArr[o + 6] = sx; imArr[o + 7] = 0;
+                            imArr[o + 8] = 0; imArr[o + 9] = -sx; imArr[o + 10] = cx; imArr[o + 11] = 0;
+                        } else {
+                            const cy = Math.cos(ry), sy = Math.sin(ry);
+                            imArr[o] = cy; imArr[o + 1] = sx * sy; imArr[o + 2] = -cx * sy; imArr[o + 3] = 0;
+                            imArr[o + 4] = 0; imArr[o + 5] = cx; imArr[o + 6] = sx; imArr[o + 7] = 0;
+                            imArr[o + 8] = sy; imArr[o + 9] = -sx * cy; imArr[o + 10] = cx * cy; imArr[o + 11] = 0;
+                        }
+                        imArr[o + 12] = px; imArr[o + 13] = y; imArr[o + 14] = pz; imArr[o + 15] = 1;
+                        if (isTarget && fitArr) {
+                            for (let m = 0; m < 16; m++) fitArr[m] = imArr[o + m];
+                            fittings.matrixWorldNeedsUpdate = true;
+                        }
+                    } else {
+                        dummy.position.set(px, y, pz);
+                        dummy.rotation.x = rx;
+                        dummy.rotation.y = ry;
+                        dummy.updateMatrix();
+                        if (isTarget) { fittings.matrix.copy(dummy.matrix); fittings.matrixWorldNeedsUpdate = true; }
+                        for (const layer of layers) layer.setMatrixAt(i, dummy.matrix);
+                    }
                     if (tinting) {
                         for (const [mesh, part] of TINTED) mesh.setColorAt(i, colorAt(part, lane, row, T, waves.length - 1, tmpC));
                     }
+                    const c3 = i * 3;
+                    cardCoords[c3] = px; cardCoords[c3 + 1] = y; cardCoords[c3 + 2] = pz;
                     cellAt[i * 2] = lane;
                     cellAt[i * 2 + 1] = row;
                     i++;
@@ -1509,7 +1592,8 @@ vec3 archiveUntone(vec3 y) {
                  * 参考播放器同样是降渲染比例再放大（RenderModePolicy.h 的 renderPercent 50–200%）。
                  */
                 const speed = Math.abs(camLane.vel) + Math.abs(camRow.vel);
-                const gliding = detailK < 0.001 && !detailOn && speed > 0.25;
+                const heldMoving = Boolean(held) && now < heldActiveUntil;
+                const gliding = detailK < 0.001 && !detailOn && (speed > 0.25 || heldMoving);
                 const flying = detailK < 0.5 && Math.abs(lift.vel) > 1.5;
                 const s = !reduced && post.px && (gliding || flying) ? 0.67 : 1;
                 const px = post.px || { x: 1, y: 1 };
@@ -1547,22 +1631,22 @@ vec3 archiveUntone(vec3 y) {
             };
         };
 
-        // ---- 拾取：每张卡当作轴对齐的盒子求交，比逐三角形快得多 ----
+        // ---- 拾取：每张卡当作轴对齐的盒子求交，直接读本帧坐标数组 ----
         const ray = new THREE.Raycaster();
         const ndc = new THREE.Vector2();
         const boxMin = new THREE.Vector3(), boxMax = new THREE.Vector3(), hit = new THREE.Vector3();
         const tmpBox = new THREE.Box3();
-        const m4 = new THREE.Matrix4();
         const pick = (clientX, clientY, rect) => {
             ndc.set((clientX - rect.left) / rect.width * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
             ray.setFromCamera(ndc, camera);
             let best = null;
             let bestDist = Infinity;
+            const hw = CARD_W / 2, hd = CARD_D / 2;
             for (let i = 0; i < POOL; i++) {
-                cards.getMatrixAt(i, m4);
-                const x = m4.elements[12], y = m4.elements[13], z = m4.elements[14];
-                boxMin.set(x - CARD_W / 2, y, z - CARD_D / 2 + 0.02);
-                boxMax.set(x + CARD_W / 2, y + CARD_H, z + CARD_D / 2 + 0.02);
+                const c3 = i * 3;
+                const x = cardCoords[c3], y = cardCoords[c3 + 1], z = cardCoords[c3 + 2];
+                boxMin.set(x - hw, y, z - hd + 0.02);
+                boxMax.set(x + hw, y + CARD_H, z + hd + 0.02);
                 tmpBox.set(boxMin, boxMax);
                 if (ray.ray.intersectBox(tmpBox, hit)) {
                     const d = hit.distanceToSquared(ray.ray.origin);
@@ -1579,10 +1663,11 @@ vec3 archiveUntone(vec3 y) {
             invalidate();
         };
         /*
-         * 照参考播放器 NativeSceneUpdate.cpp：只有能浏览（没取出卡）时指针才带动镜头视差。
+         * 只有能浏览（没取出卡）时指针才带动镜头视差。
          * 卡取出端详时晃鼠标不再整帧重画；放回的过渡里（本来就在逐帧画）视差再缓缓跟上指针，不跳。
          */
         const setPointer = (x, y) => {
+            if (Math.abs(x - pointerAim.x) < 0.0004 && Math.abs(y - pointerAim.y) < 0.0004) return;
             pointerAim.x = x; pointerAim.y = y; lastPointer = performance.now();
             if (detailOn || reducedMotion()) return;
             if (detailK < 0.001) { pointer.x = x; pointer.y = y; }

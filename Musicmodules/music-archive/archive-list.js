@@ -408,11 +408,18 @@
             state.ordWidth = Math.max(2, String(out.count || 0).length);
             el.style.setProperty('--no-digits', String(state.ordWidth));
             state.heads = [];
+            state.trackRows = new Map();
             let y = 0;
             let nth = 0;
             out.rows.forEach((row, k) => {
                 state.offsets[k] = y;
-                if (row.type === 'track') state.ord[k] = ++nth;
+                if (row.type === 'track') {
+                    state.ord[k] = ++nth;
+                    let bucket = state.trackRows.get(row.i);
+                    if (bucket === undefined) state.trackRows.set(row.i, k);
+                    else if (typeof bucket === 'number') state.trackRows.set(row.i, [bucket, k]);
+                    else bucket.push(k);
+                }
                 if (row.type === 'head') state.heads.push(k);
                 y += row.type === 'head' ? (isLetter(row) ? LETTER_H : LABEL_H) : ROW_H;
             });
@@ -447,7 +454,7 @@
             // 歌单、为你、检索结果有自己的顺序，不跟排序菜单走；表头按这个决定标不标排序列
             el.dataset.kind = state.query.trim() ? 'search' : state.kind;
             paintSort();
-            for (const node of state.rendered.values()) node.remove();
+            for (const node of state.rendered.values()) recycleNode(node);
             state.rendered.clear();
             if (multi.size) {
                 // 重排后还在的才留着
@@ -481,12 +488,12 @@
          * 检索时把命中的字标出来（字面命中才标；拼音首字母这类命中不标，免得标错位置）。
          * 检索词按空格拆开，每段各自标；大小写不分。
          */
-        const markHit = (text) => {
-            const words = state.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-            if (!words.length) return esc(text);
+        const markHit = (text, words) => {
+            if (!words || !words.length) return esc(text);
             const low = String(text).toLowerCase();
             const hit = new Uint8Array(low.length);
-            for (const w of words) {
+            for (let wi = 0; wi < words.length; wi++) {
+                const w = words[wi];
                 for (let at = low.indexOf(w); at !== -1; at = low.indexOf(w, at + w.length)) hit.fill(1, at, at + w.length);
             }
             let out = '';
@@ -498,6 +505,62 @@
                 a = b;
             }
             return out;
+        };
+        const EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i;
+        const rowPool = [];
+        const ROW_POOL_MAX = 64;
+        let rowProto = null;
+        const recycleNode = (node) => {
+            node.remove();
+            if (node._r && rowPool.length < ROW_POOL_MAX) {
+                node.className = 'archive-list-row';
+                node.removeAttribute('title');
+                delete node.dataset.tipBad;
+                rowPool.push(node);
+            }
+        };
+        const acquireTrackNode = () => {
+            if (rowPool.length) return rowPool.pop();
+            if (!rowProto) {
+                rowProto = document.createElement('div');
+                rowProto.className = 'archive-list-row';
+                rowProto.setAttribute('role', 'option');
+                rowProto.innerHTML = '<span class="no" aria-hidden="true"></span>'
+                    + '<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>'
+                    + '<button type="button" class="go" data-go tabindex="-1" aria-label="播放"><svg viewBox="0 0 12 12" aria-hidden="true"><path class="go-play" d="M3 1.6v8.8L10.2 6z"/><path class="go-pause" d="M2.6 1.8h2.4v8.4H2.6zM7 1.8h2.4v8.4H7z"/></svg></button>'
+                    + '<span class="tx"><b></b><em></em></span>'
+                    + '<span class="rt"><s class="lk" title="喜欢" aria-label="喜欢" hidden>♥</s><i></i></span>';
+            }
+            const node = rowProto.cloneNode(true);
+            const ch = node.children;
+            node._r = {
+                no: ch[0],
+                b: ch[3].firstChild,
+                em: ch[3].lastChild,
+                lk: ch[4].firstChild,
+                tm: ch[4].lastChild
+            };
+            return node;
+        };
+        const fillTrackNode = (node, row, k, words) => {
+            const t = tracks()[row.i] || {};
+            const meta = t.artist && t.album ? t.artist + ' · ' + t.album : (t.artist || t.album || '未知歌手');
+            const rawTitle = String(t.title || '');
+            const title = (EXT_RE.test(rawTitle) ? rawTitle.replace(EXT_RE, '') : rawTitle) || '未知标题';
+            const time = durationOf(t, row.i);
+            const liked = typeof app.isLiked === 'function' && app.isLiked(t);
+            const p = node._r;
+            p.no.textContent = pad(state.ord?.[k] || 0, state.ordWidth || 2);
+            if (words && words.length) {
+                p.b.innerHTML = markHit(title, words);
+                p.em.innerHTML = markHit(meta, words);
+            } else {
+                p.b.textContent = title;
+                p.em.textContent = meta;
+            }
+            p.lk.hidden = !liked;
+            p.tm.textContent = time > 0 ? fmtTime(time) : '';
+            p.tm.hidden = !(time > 0);
         };
         /* 分组标题上「播放这一组」：歌手、专辑、歌单、检索结果都有；首字母分隔和「全部」没有 */
         const groupPlayable = (row) => row && row.type === 'head' && !isLetter(row) && state.kind !== 'all';
@@ -622,7 +685,7 @@
             node.classList.toggle('playing', current && Boolean(app.isPlaying));
             if (row.type === 'head') {
                 node.classList.toggle('stuck', k === state.stuck);
-                // 正在放的歌在这一组里：组标题前亮一个小点（和 Spotify 侧栏里正在放的歌单一样）
+                // 正在放的歌在这一组里：组标题前亮一个小点
                 const live = !isLetter(row) && playingHeads().has(k);
                 node.classList.toggle('has-playing', live);
                 node.classList.toggle('live-on', live && Boolean(app.isPlaying));
@@ -630,8 +693,15 @@
             if (row.type === 'track') {
                 const failed = app.failedTracks instanceof Map ? app.failedTracks.get(tracks()[row.i]) : null;
                 node.classList.toggle('bad', Boolean(failed));
-                // 悬停看完整的歌名、歌手、专辑（窄目录里常被省略号截掉）
-                if (failed) node.title = `上次没能播放：${failed}`; else node.title = fullName(tracks()[row.i]);
+                // 失败原因立刻更新；普通曲目悬停提示推迟到 pointerover 时按需计算，避免滚动每帧对 30 行跑正则与日期格式化
+                if (failed) {
+                    const msg = `上次没能播放：${failed}`;
+                    if (node.title !== msg) node.title = msg;
+                } else if (node.dataset.tipBad === '1') {
+                    node.removeAttribute('title');
+                    delete node.dataset.tipBad;
+                }
+                if (failed) node.dataset.tipBad = '1';
                 const picked = multi.size > 0 && multi.has(keyOf(row));
                 node.classList.toggle('picked', picked);
                 node.setAttribute('aria-selected', String(on || picked));
@@ -645,14 +715,15 @@
             // 滚在最上面时顶上没有东西可淡出，第一行不该被遮淡
             r.viewport.classList.toggle('at-top', top <= 1);
             const h = r.viewport.clientHeight || 600;
-            // 滚到底时最后一行也不该被下沿渐隐遮淡
-            r.viewport.classList.toggle('at-bottom', top + h >= r.viewport.scrollHeight - 1);
+            const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
+            // 滚到底时最后一行也不该被下沿渐隐遮淡（直接用已知总高，避免每帧读 scrollHeight 强制同步排版）
+            r.viewport.classList.toggle('at-bottom', top + h >= totalH - 1);
             syncThumb(top, h);
             if (!state.rows.length) { r.sticky.textContent = ''; return; }
             const first = Math.max(0, rowAt(top) - OVERSCAN);
             const last = Math.min(state.rows.length - 1, rowAt(top + h) + OVERSCAN);
             for (const [k, node] of state.rendered) {
-                if (k < first || k > last) { node.remove(); state.rendered.delete(k); }
+                if (k < first || k > last) { recycleNode(node); state.rendered.delete(k); }
             }
             // 吸附的首字母：当前可见第一行所属的分组（只有首字母分组才吸附）
             let headK = -1;
@@ -660,26 +731,35 @@
             if (headK === -1 && state.heads.length) headK = state.heads[0];
             const stuckRow = state.rows[headK];
             state.stuck = stuckRow && isLetter(stuckRow) ? headK : -1;
+            const qTrim = state.query.trim();
+            const qWords = qTrim ? qTrim.toLowerCase().split(/\s+/).filter(Boolean) : null;
+            let frag = null;
             for (let k = first; k <= last; k++) {
                 const row = state.rows[k];
                 let node = state.rendered.get(k);
                 if (!node) {
-                    node = document.createElement('div');
-                    node.className = row.type === 'track' ? 'archive-list-row' : isLetter(row) ? 'archive-list-letter' : 'archive-list-group';
-                    node.dataset.k = k;
                     if (row.type === 'track') {
-                        node.setAttribute('role', 'option');
+                        node = acquireTrackNode();
+                        node.dataset.k = k;
                         // 下面紧跟分组标题的那一行不画底线，免得和标题的结构线叠成两道
                         if (state.rows[k + 1]?.type === 'head') node.classList.add('before-head');
+                        node.style.transform = `translateY(${state.offsets[k]}px)`;
+                        fillTrackNode(node, row, k, qWords);
+                    } else {
+                        node = document.createElement('div');
+                        node.className = isLetter(row) ? 'archive-list-letter' : 'archive-list-group';
+                        node.dataset.k = k;
+                        if (playlistOfHead(row)) node.classList.add('is-playlist');
+                        node.style.transform = `translateY(${state.offsets[k]}px)`;
+                        node.innerHTML = rowHtml(row, k);
                     }
-                    else if (playlistOfHead(row)) node.classList.add('is-playlist');
-                    node.style.transform = `translateY(${state.offsets[k]}px)`;
-                    node.innerHTML = rowHtml(row, k);
-                    r.spacer.appendChild(node);
+                    if (!frag) frag = document.createDocumentFragment();
+                    frag.appendChild(node);
                     state.rendered.set(k, node);
                 }
                 paintRow(node, row, k);
             }
+            if (frag) r.spacer.appendChild(frag);
             // 吸附字母停在顶上，下一组的字母顶上来时把它推上去
             let stickyY = null;
             if (state.stuck === -1 || INLINE_HEADS) {
@@ -720,7 +800,11 @@
         }
         const schedule = () => { if (!state.raf) state.raf = requestAnimationFrame(render); };
         // 底部计数：选中了一首是「012 / 120」；没选中时不放「--- / 120」这种占位，直接说「120 首」
+        let lastFootKey = '';
         function setFoot(nth, count) {
+            const fk = nth + ':' + count;
+            if (fk === lastFootKey) return;
+            lastFootKey = fk;
             const idle = !(nth > 0);
             r.pos.textContent = pad(idle ? count : nth, 3);
             r.sep.hidden = idle;
@@ -820,6 +904,16 @@
 
         const findRow = (i, ctx) => {
             if (i < 0) return -1;
+            const bucket = state.trackRows && state.trackRows.get(i);
+            if (bucket !== undefined) {
+                if (typeof bucket === 'number') return bucket;
+                if (!ctx) return bucket[0];
+                for (let j = 0; j < bucket.length; j++) {
+                    const row = state.rows[bucket[j]];
+                    if (row && row.ctx === ctx) return bucket[j];
+                }
+                return bucket[0];
+            }
             let first = -1;
             for (let k = 0; k < state.rows.length; k++) {
                 const row = state.rows[k];
@@ -1101,6 +1195,16 @@
         r.viewport.addEventListener('keydown', onKey);
 
         r.viewport.addEventListener('scroll', schedule, { passive: true });
+        // 悬停时按需生成完整曲名/听歌记录提示，避免虚拟滚动每帧对全部可见行执行正则与日期格式化
+        r.viewport.addEventListener('pointerover', (e) => {
+            const node = e.target && e.target.closest ? e.target.closest('.archive-list-row') : null;
+            if (!node || node.dataset.tipBad === '1') return;
+            const k = Number(node.dataset.k);
+            const row = state.rows[k];
+            if (!row || row.type !== 'track') return;
+            const tip = fullName(tracks()[row.i]);
+            if (node.title !== tip) node.title = tip;
+        }, { passive: true });
         r.viewport.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
         r.viewport.addEventListener('click', (e) => {
             const gplay = e.target.closest('[data-gplay]');

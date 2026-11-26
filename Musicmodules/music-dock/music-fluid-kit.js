@@ -347,6 +347,7 @@
         { row: '.archive-batch-menu', item: '.archive-batch-menu > button', key: 'ar-batch', axis: 'y', pad: 0 },
         { row: '.archive-list-sort-menu', item: '.archive-list-sort-menu > button', key: 'ar-sort', axis: 'y', pad: 0 },
     ];
+    const ALL_TRAIL_ROWS = TRAILS.map((t) => t.row).join(', ');
     const watchTrails = () => {
         const doc = global.document;
         const dropOf = (row) => {
@@ -370,6 +371,7 @@
             };
         };
         const follow = (target) => {
+            if (!target.closest(ALL_TRAIL_ROWS)) return;
             for (const t of TRAILS) {
                 const btn = target.closest(t.item);
                 const row = btn?.closest(t.row);
@@ -403,7 +405,7 @@
         }, true);
         doc.addEventListener('focusout', (event) => {
             const target = event.target;
-            if (!(target instanceof global.Element)) return;
+            if (!(target instanceof global.Element) || !target.closest(ALL_TRAIL_ROWS)) return;
             for (const t of TRAILS) {
                 const row = target.closest(t.row);
                 if (!row) continue;
@@ -424,7 +426,7 @@
         // 在按钮之间的空隙里不算离开；指针出了整排才淡掉
         doc.addEventListener('pointerout', (event) => {
             const target = event.target;
-            if (!(target instanceof global.Element)) return;
+            if (!(target instanceof global.Element) || !target.closest(ALL_TRAIL_ROWS)) return;
             for (const t of TRAILS) {
                 const row = target.closest(t.row);
                 if (!row) continue;
@@ -505,11 +507,23 @@
                 }
                 return out;
             };
-            // 开合都是由一次按键或点击触发的：在它的处理函数之前（捕获阶段）先记下旧位置
+            // 只在可能触发布局切换的交互前才量一次旧位置，避免普通点击、拖动、方向键选歌和打字时每次都强制全页同步重排
+            const LAYOUT_TRIGGERS = '[data-act="list"], [data-act="controls"], [data-act="lyrics"], [data-act="search"], [data-md="panel"], [data-md="close"], .md-hdl, .md-slot';
             const remember = () => { if (enabled()) before = { at: Date.now(), map: measure() }; };
+            const onPointerDown = (event) => {
+                const target = event.target;
+                if (!(target instanceof global.Element)) return;
+                if (doc.body.classList.contains('music-drawer-open') || target.closest(LAYOUT_TRIGGERS)) remember();
+            };
+            const onKeyDown = (event) => {
+                const k = event.key;
+                if (k === 'Escape' || k === '/' || (!hud.classList.contains('list-open') && k && k.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey)) {
+                    remember();
+                }
+            };
             // 挂在 window 的捕获阶段：底栏在 document 上处理 Esc 时会同步收抽屉，首页随即重排，挂 document 上就晚了一步
-            global.addEventListener('pointerdown', remember, true);
-            global.addEventListener('keydown', remember, true);
+            global.addEventListener('pointerdown', onPointerDown, true);
+            global.addEventListener('keydown', onKeyDown, true);
             new global.MutationObserver(() => {
                 const now = layoutKey();
                 if (now === open) return;

@@ -351,14 +351,17 @@
 
         // ---------- HUD ----------
         const rollTo = (el, str) => {
+            if (el.dataset.roll === str) return;
+            el.dataset.roll = str;
             if (el.childElementCount !== str.length) {
                 el.innerHTML = [...str].map(() => `<span class="d"><span>${'0123456789'.split('').map((n) => `<b>${n}</b>`).join('')}</span></span>`).join('');
             }
-            [...el.children].forEach((c, i) => {
-                const s = c.firstChild;
+            const children = el.children;
+            for (let i = 0; i < children.length; i++) {
+                const s = children[i].firstChild;
                 const next = `translateY(-${(+str[i] || 0) * 1.1}em)`;
                 if (s.style.transform !== next) s.style.transform = next;
-            });
+            }
         };
 
         const renderHud = () => {
@@ -503,7 +506,12 @@
         };
         const capped = (map, key, value, max) => {
             map.set(key, value);
-            if (map.size > max) map.delete(map.keys().next().value);
+            if (map.size > max) {
+                const oldestKey = map.keys().next().value;
+                const oldest = map.get(oldestKey);
+                map.delete(oldestKey);
+                if (oldest && oldest.small) { oldest.small.width = 0; oldest.small.height = 0; oldest.small = null; }
+            }
             return value;
         };
         const probeDir = (dir) => {
@@ -982,10 +990,23 @@
             fromList = false;
         };
         let fromList = false;
-        const syncList = (quiet = false) => {
+        let syncListRaf = 0;
+        let syncListQuiet = false;
+        const flushSyncList = () => {
+            if (syncListRaf) { cancelAnimationFrame(syncListRaf); syncListRaf = 0; }
             if (!list || fromList || !listOpen()) return;
             const col = column();
-            list.reveal(selectedIndex(), col ? col.id : null, { quiet: quiet === true });
+            list.reveal(selectedIndex(), col ? col.id : null, { quiet: syncListQuiet });
+        };
+        const syncList = (quiet = false) => {
+            if (!list || fromList || !listOpen()) return;
+            syncListQuiet = quiet === true;
+            // 滚轮高速翻卡或按住拖拽阵列时合并到一帧同步一次目录，避免每次跨卡都强制同步重绘列表
+            if (wheelBrowsing || (plane && plane.active)) {
+                if (!syncListRaf) syncListRaf = requestAnimationFrame(flushSyncList);
+                return;
+            }
+            flushSyncList();
         };
 
         const playIndex = (i, ctx, playback) => {
@@ -1212,12 +1233,22 @@
             refs.hud.classList.toggle('low-power', sceneQuality === 'energy-saving');
             root.insertBefore(state.scene.canvas, root.firstChild);
             bindCanvas(state.scene.canvas);
-            // 卡面标题：近处几张卡印曲名和档案号
+            // 卡面标题：近处几张卡印曲名和档案号（按曲目对象缓存，避免每帧重复正则截扩展名与新建对象）
+            const labelCache = new WeakMap();
             state.scene.setLabeler?.((lane, row) => {
                 const index = Model.cellTrack(state.columns, lane, row);
                 const t = index >= 0 ? tracks()[index] : null;
                 if (!t) return null;
-                return { key: index + ':' + (t.path || ''), title: Model.stripExtension(t.title) || '未知标题', code: fmtDur(trackDuration(t)) };
+                const dur = trackDuration(t);
+                let cached = labelCache.get(t);
+                if (!cached || cached.index !== index || cached.dur !== dur) {
+                    cached = {
+                        index, dur,
+                        info: { key: index + ':' + (t.path || ''), title: Model.stripExtension(t.title) || '未知标题', code: fmtDur(dur) }
+                    };
+                    labelCache.set(t, cached);
+                }
+                return cached.info;
             });
             applyTheme();
             resize();
@@ -1242,7 +1273,13 @@
             return inset > 0 && inset < w * 0.6 ? inset : 0;
         };
         let lastInset = 0;
+        let cachedCanvasRect = null;
+        let cachedRootRect = null;
+        const getRootRect = () => cachedRootRect || (cachedRootRect = root.getBoundingClientRect());
+        const getCanvasRect = (canvas) => cachedCanvasRect || (cachedCanvasRect = canvas.getBoundingClientRect());
         const resize = () => {
+            cachedCanvasRect = null;
+            cachedRootRect = null;
             const full = root.clientWidth || global.innerWidth;
             const inset = drawerInset(full);
             lastInset = inset;
@@ -1330,14 +1367,19 @@
         let pickRaf = 0;
         let turning = null;
         /* 鼠标指着的卡（不是选中那张）：在指针旁边写出曲名和歌手，远处的卡也能认出是哪首 */
+        let tipKey = '';
         const showTip = (c, at) => {
             const index = c && !(c.lane === state.lane && c.row === state.row) ? Model.cellTrack(state.columns, c.lane, c.row) : -1;
             const t = index >= 0 ? tracks()[index] : null;
-            if (!t || !at) { refs.tip.classList.remove('on'); return; }
-            refs.tip.firstChild.textContent = Model.stripExtension(t.title) || '未知标题';
-            refs.tip.lastChild.textContent = [t.artist, fmtDur(trackDuration(t))].filter(Boolean).join(' · ');
-            const base = root.getBoundingClientRect();
-            refs.tip.style.transform = `translate(${Math.round(at.x - base.left + 16)}px, ${Math.round(at.y - base.top + 18)}px)`;
+            if (!t || !at) { tipKey = ''; refs.tip.classList.remove('on'); return; }
+            const k = index + ':' + (t.path || '');
+            if (k !== tipKey) {
+                tipKey = k;
+                refs.tip.firstChild.textContent = Model.stripExtension(t.title) || '未知标题';
+                refs.tip.lastChild.textContent = [t.artist, fmtDur(trackDuration(t))].filter(Boolean).join(' · ');
+            }
+            const base = getRootRect();
+            refs.tip.style.transform = `translate3d(${Math.round(at.x - base.left + 16)}px, ${Math.round(at.y - base.top + 18)}px, 0)`;
             refs.tip.classList.add('on');
         };
         let turned = false;
@@ -1402,10 +1444,13 @@
             return [(b.lane - a.lane) * k, (b.row - a.row) * k];
         };
         const bindCanvas = (canvas) => {
+            cachedCanvasRect = null;
             canvas.addEventListener('pointermove', (e) => {
                 lastPtr = { x: e.clientX, y: e.clientY };
-                const rect = canvas.getBoundingClientRect();
-                state.scene?.setPointer((e.clientX - rect.left) / rect.width - 0.5, (e.clientY - rect.top) / rect.height - 0.5);   // 照原版 ±0.5
+                const rect = getCanvasRect(canvas);
+                if (rect.width > 0 && rect.height > 0) {
+                    state.scene?.setPointer((e.clientX - rect.left) / rect.width - 0.5, (e.clientY - rect.top) / rect.height - 0.5);
+                }
                 if (plane && (e.buttons & 1)) {
                     const dx = e.clientX - plane.x0, dy = e.clientY - plane.y0;
                     if (!plane.active && Math.hypot(dx, dy) < 10) return;
@@ -1442,11 +1487,11 @@
                     const dx = e.clientX - turning.x;
                     turning.x = e.clientX;
                     if (Math.abs(e.clientX - turning.x0) > 4) turned = true;
-                    state.scene?.turn(dx * 0.004);   // 参考播放器每像素 0.004 弧度
+                    state.scene?.turn(dx * 0.004);   // 每像素 0.004 弧度
                     kick();
                     return;
                 }
-                if (wheelBrowsing || onDetailCard(e)) {
+                if (wheelBrowsing || onDetailCard(e, rect)) {
                     pendingPick = null;
                     state.scene?.setHover(null);
                     showTip(null);
@@ -1461,7 +1506,7 @@
                         const c = state.scene.pick(pendingPick.x, pendingPick.y, pendingPick.rect);
                         state.scene.setHover(c);
                         showTip(c, pendingPick);
-                        // 卡上是手指；卡已放回时空白处显示「可抓」，提示能按住拖动整片档案（参考播放器 m_cursor = "grab"）
+                        // 卡上是手指；卡已放回时空白处显示「可抓」，提示能按住拖动整片档案
                         const browsing = !cardExpanded && !state.scene.detail;
                         canvas.style.cursor = c && Model.cellTrack(state.columns, c.lane, c.row) >= 0 ? 'pointer' : browsing ? 'grab' : '';
                     });
@@ -1470,10 +1515,11 @@
             });
             canvas.addEventListener('pointerleave', () => { lastPtr = null; clearTimeout(rehoverTimer); pendingPick = null; state.scene?.setHover(null); showTip(null); kick(); });
             // 取出时按住卡左右拖可以转着看，松手转回正面；按在卡外面（没拖）就把卡放回去
-            const onDetailCard = (e) => {
+            const onDetailCard = (e, rectArg) => {
                 const r = state.scene?.detailRect();
-                const rect = canvas.getBoundingClientRect();
-                return Boolean(r) && e.clientX - rect.left >= r.left && e.clientX - rect.left <= r.right && e.clientY - rect.top >= r.top && e.clientY - rect.top <= r.bottom;
+                if (!r) return false;
+                const rect = rectArg || getCanvasRect(canvas);
+                return e.clientX - rect.left >= r.left && e.clientX - rect.left <= r.right && e.clientY - rect.top >= r.top && e.clientY - rect.top <= r.bottom;
             };
             canvas.addEventListener('pointerdown', (e) => {
                 turned = false;
@@ -1567,6 +1613,7 @@
         const finishWheel = () => {
             if (!wheelBrowsing) return;
             wheelBrowsing = false;
+            flushSyncList();
             syncCard();
             rehoverSoon();
         };
@@ -1820,12 +1867,18 @@
             grainTiles[k] = url;
             return url;
         };
+        let lastGrainKey = '';
         const syncGrain = () => {
             const el = refs.grain;
             if (!el) return;
-            const url = grainTile(document.body.classList.contains('light-theme'));
+            const light = document.body.classList.contains('light-theme');
+            const dpr = global.devicePixelRatio || 1;
+            const key = (light ? '1' : '0') + '@' + dpr;
+            if (key === lastGrainKey) return;
+            lastGrainKey = key;
+            const url = grainTile(light);
             el.style.backgroundImage = url ? `url("${url}")` : 'none';
-            el.style.backgroundSize = (GRAIN_TILE / (global.devicePixelRatio || 1)) + 'px';
+            el.style.backgroundSize = (GRAIN_TILE / dpr) + 'px';
         };
         syncGrain();
         const grainObserver = new MutationObserver(syncGrain);
@@ -1885,7 +1938,7 @@
         const offMotion = global.MusicMotion && typeof global.MusicMotion.onChange === 'function' ? global.MusicMotion.onChange(onMotion) : null;
 
         const clockTimer = setInterval(() => {
-            if (!isShown()) return;
+            if (!isShown() || document.hidden) return;
             if (dataChanged()) rebuildSoon();
             updatePlaying();
             recordDuration();
@@ -1898,6 +1951,8 @@
             savePlace();
             state.destroyed = true;
             clearInterval(clockTimer);
+            if (syncListRaf) { cancelAnimationFrame(syncListRaf); syncListRaf = 0; }
+            if (pickRaf) { cancelAnimationFrame(pickRaf); pickRaf = 0; }
             drawerObserver?.disconnect();
             cancelAnimationFrame(drawerFrame);
             clearTimeout(scan.timer);

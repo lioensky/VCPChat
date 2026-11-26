@@ -1417,13 +1417,27 @@
         let roomRight = 0;
         let widthTimer = 0;
         const followWidth = () => {
-            // 宽度有 CSS 过渡；流体层每帧跟着量一次，过渡结束再落一次
+            // 宽度有 CSS 过渡；流体层跟随实际宽度变化更新，连续稳定后提前结束循环
             if (!fluid) return;
             const end = performance.now() + 560;
             cancelAnimationFrame(widthTimer);
+            let prevW = -1;
+            let steady = 0;
             const step = () => {
-                fluid.layout();
-                widthTimer = performance.now() < end && !state.destroyed ? requestAnimationFrame(step) : 0;
+                const w = el.cap.offsetWidth;
+                if (Math.abs(w - prevW) >= 0.5) {
+                    prevW = w;
+                    steady = 0;
+                    fluid.layout();
+                } else {
+                    steady++;
+                }
+                if (steady < 4 && performance.now() < end && !state.destroyed) {
+                    widthTimer = requestAnimationFrame(step);
+                } else {
+                    widthTimer = 0;
+                    if (!state.destroyed) fluid.layout();
+                }
             };
             widthTimer = requestAnimationFrame(step);
         };

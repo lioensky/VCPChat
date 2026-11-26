@@ -158,13 +158,19 @@
         // 右侧抽屉打开时播放条整体往左让位（CSS 的 translate 属性，流体层同步平移）。
         // 这里量位置时扣掉当前的平移量，层自己的 left 记的是没平移时的位置。
         const dockEl = bar.closest('.md-dock');
-        const shiftX = () => {
+        let cachedShift = 0;
+        let shiftAt = -1e9;
+        const shiftX = (fresh = false) => {
+            const now = (win.performance || Date).now();
+            if (!fresh && now - shiftAt < 120) return cachedShift;
             const t = dockEl ? win.getComputedStyle(dockEl).translate : '';
             const n = parseFloat(t);
-            return Number.isFinite(n) ? n : 0;
+            cachedShift = Number.isFinite(n) ? n : 0;
+            shiftAt = now;
+            return cachedShift;
         };
         const layout = () => {
-            const sx = shiftX();
+            const sx = shiftX(true);
             const raw = bar.getBoundingClientRect();
             const rect = { left: raw.left - sx, right: raw.right - sx, top: raw.top, bottom: raw.bottom, width: raw.width, height: raw.height };
             const vh = win.innerHeight || doc.documentElement.clientHeight || 0;
