@@ -914,6 +914,7 @@
         };
 
         let list = null;
+        let playlistsChanged = () => {};
         let lyrics = null;
         let wall = null;            // 封面墙（archive-wall.js），没有那个文件时只有档案阵列
         let grid = null;            // 分节网格（archive-grid.js）
@@ -1666,6 +1667,14 @@
                     case 'save': {
                         const index = selectedIndex();
                         if (index < 0) break;
+                        // 只弹歌单选择器，不再弹整张曲目右键菜单（歌单藏在二级菜单里，点开是十几项）
+                        const track = app.playlist?.[index];
+                        if (global.MusicPlaylistPicker?.isOpen?.()) { global.MusicPlaylistPicker.close(); break; }
+                        if (global.MusicPlaylistPicker && track?.path) {
+                            const title = app.stripAudioExtension ? app.stripAudioExtension(track.title || '') : (track.title || '');
+                            global.MusicPlaylistPicker.open({ app, paths: [track.path], anchor: btn, label: title, onChange: playlistsChanged });
+                            break;
+                        }
                         const r = btn.getBoundingClientRect();
                         app.contextMenuTrackIndex = index;
                         app.showContextMenu?.(r.left, r.bottom + 8);
@@ -1954,6 +1963,12 @@
             if (target < 0) return;
             stepLane(target - Model.wrap(state.lane, n));
         };
+        // 歌单改过（加歌、改名、新建）：目录和阵列重排；正在放的歌单改了名，底栏「正在播放」后面的名字跟着改
+        playlistsChanged = () => {
+            warming = null; rebuild({ steady: true });
+            const playing = app.filteredPlaylistSource;
+            if (playing && playing.type === 'playlist' && app.playbackSourceName) setQueueName(app.playbackSourceName(playing));
+        };
         if (ListLib && IndexLib) {
             list = ListLib.create({
                 host: refs.hud,
@@ -1967,12 +1982,7 @@
                 getRecent: recentIndices, durationOf,
                 columnOfGroup,
                 fileNumber: (t, i) => fileNumber(t, i),
-                onPlaylistsChanged: () => {
-                    warming = null; rebuild({ steady: true });
-                    // 正在放的歌单改了名：底栏「正在播放」后面的名字跟着改
-                    const playing = app.filteredPlaylistSource;
-                    if (playing && playing.type === 'playlist' && app.playbackSourceName) setQueueName(app.playbackSourceName(playing));
-                },
+                onPlaylistsChanged: () => playlistsChanged(),
                 onLibraryChanged: () => { warming = null; rebuild({ steady: true }); },
                 onResults: (q, _count, first) => {
                     // 有结果时阵列跟到第一条结果，免得还停在检索前那首

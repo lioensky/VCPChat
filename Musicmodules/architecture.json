@@ -241,7 +241,8 @@
         "tests/music-dock-icons.test.cjs",
         "tests/music-fluid-kit.test.cjs",
         "tests/music-toast.test.cjs",
-        "tests/music-dialog.test.cjs"
+        "tests/music-dialog.test.cjs",
+        "tests/music-playlist-picker.test.cjs"
       ]
     },
     {
