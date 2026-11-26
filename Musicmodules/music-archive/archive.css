@@ -84,7 +84,6 @@ body.music-stage-active.music-stage-entering #music-archive-view { opacity: 1; }
 .archive-nav > button.running .archive-glyph-pick { animation: archive-pick-roll .44s linear infinite; }
 @keyframes archive-pick-roll { to { transform: rotate(360deg); } }
 body.music-reduce-motion .archive-nav > button.running .archive-glyph-pick { animation: none; }
-.archive-hud.narrow .archive-nav > [data-act="pick"] { font-size: 0; gap: 0; }
 
 
 /* 曲库计数与页脚随播放栏高度上移。 */
@@ -162,7 +161,9 @@ body.music-reduce-motion .archive-scan-bar i { transition: none; }
 
 /* 窄窗口收起次要的导航和底部信息 */
 .archive-hud.narrow .archive-nav > [data-act="search"] .archive-key { display: none; }
-.archive-hud.narrow .archive-nav > [data-act="save"], .archive-hud.narrow .archive-queue { display: none; }
+/* 窄档里「操作」只留图标（菜单里还有随机抽取，不能藏掉） */
+.archive-hud.narrow .archive-nav > [data-act="save"] { font-size: 0; gap: 0; }
+.archive-hud.narrow .archive-queue { display: none; }
 .archive-hud.narrow .archive-empty { left: 59px; top: 300px; width: calc(100% - 59px); }
 .archive-hud.narrow .archive-nav { gap: 26px; }
 .archive-hud.narrow.short .archive-empty { top: 270px; }

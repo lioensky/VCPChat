@@ -422,6 +422,9 @@
     const HUD_FLIP = [
         { s: '.archive-counter', in: '.archive-bottom' },
         { s: '.archive-nav' },
+        // 导航里的按钮各自也要跟：抽屉让位时会换档（间距变小、「操作」只剩图标、检索收起），
+        // 只动外层的话里面的按钮先瞬间跳到新间距、再跟着外层滑，看着像卡了一下
+        { s: '.archive-nav > :is(button, .archive-layouts)', in: '.archive-nav', all: true },
         { s: '.archive-bottom' },
         { s: '.archive-list' },
         { s: '.archive-list-foot', in: '.archive-list' },
@@ -440,18 +443,26 @@
                 .map((c) => (hud.classList.contains(c) ? c : '')).join('|') + '|' + hud.style.width;
             let open = layoutKey();
             let before = null;
+            // 以元素为键（all: true 的一条会量到好几个）；只量得到 0 大小的（被藏起来的）记成 null
+            const targets = () => {
+                const out = [];
+                for (const t of HUD_FLIP) {
+                    const els = t.all ? [...hud.querySelectorAll(t.s)] : [hud.querySelector(t.s)].filter(Boolean);
+                    for (const el of els) out.push({ t, el });
+                }
+                return out;
+            };
             const measure = () => {
                 const out = new Map();
-                for (const t of HUD_FLIP) {
-                    const el = hud.querySelector(t.s);
-                    if (!el) continue;
+                for (const { t, el } of targets()) {
                     const r = el.getBoundingClientRect();
-                    out.set(t.s, r.width || r.height
-                        ? { el, x: r.left, y: r.top, w: r.width, h: r.height, fs: t.font ? parseFloat(global.getComputedStyle(el).fontSize) || 0 : 0 }
+                    out.set(el, r.width || r.height
+                        ? { el, t, x: r.left, y: r.top, w: r.width, h: r.height, fs: t.font ? parseFloat(global.getComputedStyle(el).fontSize) || 0 : 0 }
                         : null);
                 }
                 return out;
             };
+            const outerOf = (el, t) => (t.in ? el.parentElement?.closest(t.in) || null : null);
             // 开合都是由一次按键或点击触发的：在它的处理函数之前（捕获阶段）先记下旧位置
             const remember = () => { if (enabled()) before = { at: Date.now(), map: measure() }; };
             // 挂在 window 的捕获阶段：底栏在 document 上处理 Esc 时会同步收抽屉，首页随即重排，挂 document 上就晚了一步
@@ -465,25 +476,31 @@
                 before = null;
                 if (!first || !enabled()) return;
                 const last = measure();
+                // 首页整层按窗口高度 transform: scale() 过：屏幕上量到的位移要换回层内的单位，否则开头会先跳一截（差 1 - scale）
+                const k0 = hud.offsetWidth ? hud.getBoundingClientRect().width / hud.offsetWidth : 1;
+                const unit = k0 > 0.05 ? k0 : 1;
                 const ease = 'cubic-bezier(.32, .72, 0, 1)';
                 const delta = new Map();
-                for (const t of HUD_FLIP) {
-                    const to = last.get(t.s), from = first.get(t.s);
-                    if (to && from) delta.set(t.s, { dx: from.x - to.x, dy: from.y - to.y });
+                for (const [el, to] of last) {
+                    const from = first.get(el);
+                    if (to && from) delta.set(el, { dx: from.x - to.x, dy: from.y - to.y });
                 }
-                for (const t of HUD_FLIP) {
-                    const to = last.get(t.s);
+                for (const [el, to] of last) {
                     if (!to) continue;
-                    const from = first.get(t.s);
+                    const t = to.t;
+                    const from = first.get(el);
+                    const outerEl = outerOf(el, t);
                     if (!from) {
-                        // 新出现的：从左边一点点淡入（嵌在别的块里的不单独动，跟着外层）
-                        if (!t.in || !last.get(t.in) || first.get(t.in)) {
+                        // 新出现的：一点点淡入。外层本来就在（只是里面多出一项）时原地淡入；外层也是新出现的就跟着外层，不单独动
+                        if (!t.in || !outerEl || !last.get(outerEl)) {
                             to.el.animate([{ opacity: 0, transform: 'translateX(-18px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: ease, composite: 'add' });
+                        } else if (first.get(outerEl)) {
+                            to.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: ease });
                         }
                         continue;
                     }
-                    const outer = t.in ? delta.get(t.in) : null;
-                    const dx = from.x - to.x - (outer?.dx || 0), dy = from.y - to.y - (outer?.dy || 0);
+                    const outer = outerEl ? delta.get(outerEl) : null;
+                    const dx = (from.x - to.x - (outer?.dx || 0)) / unit, dy = (from.y - to.y - (outer?.dy || 0)) / unit;
                     const k = t.font && from.fs && to.fs ? from.fs / to.fs : 1;
                     if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(k - 1) < 0.02) continue;
                     to.el.animate([
