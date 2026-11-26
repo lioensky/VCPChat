@@ -291,14 +291,16 @@ void main() {
         vec4 paint = texture(uPaint, p + wob);
         vec3 pc = grade(paint.rgb);
         // 光斑：画上细碎的、横着的小光块，跟音乐闪；夜里变成灯
-        vec2 g = p * vec2(34.0, 48.0);
-        vec2 cell = floor(g);
-        float hcell = hash12(cell);
-        float bright = mix(smoothstep(0.35, 0.8, luma(paint.rgb)), 1.0 - smoothstep(0.15, 0.5, luma(paint.rgb)), uNight);
-        float tw = pow(0.5 + 0.5 * sin(uTime * (0.8 + 2.2 * hcell) + hcell * 40.0), 6.0);
-        vec2 d = (fract(g) - 0.5) * vec2(1.0, 2.4);
-        float fleck = exp(-dot(d, d) * 26.0) * tw * step(mix(0.8, 0.9, uNight), hcell) * bright * (0.35 + 1.4 * uEnergy) * uFlecks;
-        pc += uFleck * fleck * 0.55;
+        if (uFlecks > 0.0) {
+            vec2 g = p * vec2(34.0, 48.0);
+            vec2 cell = floor(g);
+            float hcell = hash12(cell);
+            float bright = mix(smoothstep(0.35, 0.8, luma(paint.rgb)), 1.0 - smoothstep(0.15, 0.5, luma(paint.rgb)), uNight);
+            float tw = pow(0.5 + 0.5 * sin(uTime * (0.8 + 2.2 * hcell) + hcell * 40.0), 6.0);
+            vec2 d = (fract(g) - 0.5) * vec2(1.0, 2.4);
+            float fleck = exp(-dot(d, d) * 26.0) * tw * step(mix(0.8, 0.9, uNight), hcell) * bright * (0.35 + 1.4 * uEnergy) * uFlecks;
+            pc += uFleck * fleck * 0.55;
+        }
         // 鼓点：光圈从画心荡开
         if (uRipple.y > 0.0) {
             float dr = abs(length(c) - uRipple.x * 0.75);
@@ -414,7 +416,7 @@ void main() {
         col = mix(col, brass, 1.0 - smoothstep(0.0, 1.2, min(arm, bar)));
         col += warm * exp(-pow(max(abs(q.x) - hw * 0.92, 0.0) / 3.0, 2.0) - pow((q.y - hw * 0.015) / 1.6, 2.0)) * 0.7 * uLamp.w;
     }
-    col += (hash12(floor(frag / 1.5) + uGrainStep * 11.0) - 0.5) * 0.035 * uGrain;
+    if (uGrain > 0.0) col += (hash12(floor(frag / 1.5) + uGrainStep * 11.0) - 0.5) * 0.035 * uGrain;
     outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
@@ -571,6 +573,7 @@ void main() {
             const { tex: target, fbo } = glState.sheets[glState.cur];
             // 太大的图先缩到 1024 以内
             let source = image;
+            let scratchCanvas = null;
             const longest = Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height) || 1;
             if (longest > 1024) {
                 const k = 1024 / longest;
@@ -579,12 +582,14 @@ void main() {
                 c2.height = Math.max(1, Math.round((image.naturalHeight || image.height) * k));
                 c2.getContext('2d').drawImage(image, 0, 0, c2.width, c2.height);
                 source = c2;
+                scratchCanvas = c2;
             }
             const iw = source.naturalWidth || source.width, ih = source.naturalHeight || source.height;
             gl.bindTexture(gl.TEXTURE_2D, cover);
             gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
             gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+            if (scratchCanvas) { scratchCanvas.width = scratchCanvas.height = 0; scratchCanvas = null; }
             gl.generateMipmap(gl.TEXTURE_2D);
             const side = Math.min(iw, ih);
             const crop = [(iw - side) / 2 / iw, (ih - side) / 2 / ih, side / iw, side / ih];
@@ -847,7 +852,8 @@ void main() {
             updateRail(frame, s);
             updateLabel(frame, phase);
             if (!glState || lostContext) return;
-            if (!revealing && still.same(frame, `${canvas.width}x${canvas.height}|${stats.paints}|${phase}`)) return;
+            if (!revealing && !frame.isPlaying && still.same(frame, `${canvas.width}x${canvas.height}|${stats.paints}|${phase}`)) return;
+            if (frame.isPlaying || revealing) still.invalidate();
             lastDraw = now - lastDraw < aim * 2 ? lastDraw + aim : now;
             draw(frame, s);
         };

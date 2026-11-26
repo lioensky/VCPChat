@@ -55,7 +55,6 @@
     let skelCanvas = null;
     const thin = (img, w, h) => {
         // Zhang–Suen 细化
-        const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : img[y * w + x]);
         let changed = true;
         const kill = [];
         while (changed) {
@@ -63,26 +62,48 @@
             for (let pass = 0; pass < 2; pass += 1) {
                 kill.length = 0;
                 for (let y = 0; y < h; y += 1) {
+                    const row = y * w;
+                    const rowUp = row - w;
+                    const rowDn = row + w;
+                    const hasUp = y > 0;
+                    const hasDn = y + 1 < h;
                     for (let x = 0; x < w; x += 1) {
-                        if (!img[y * w + x]) continue;
-                        const n = [at(x, y - 1), at(x + 1, y - 1), at(x + 1, y), at(x + 1, y + 1), at(x, y + 1), at(x - 1, y + 1), at(x - 1, y), at(x - 1, y - 1)];
-                        const b = n.reduce((sum, v) => sum + v, 0);
+                        if (!img[row + x]) continue;
+                        const hasL = x > 0;
+                        const hasR = x + 1 < w;
+                        const n0 = hasUp ? img[rowUp + x] : 0;
+                        const n1 = hasUp && hasR ? img[rowUp + x + 1] : 0;
+                        const n2 = hasR ? img[row + x + 1] : 0;
+                        const n3 = hasDn && hasR ? img[rowDn + x + 1] : 0;
+                        const n4 = hasDn ? img[rowDn + x] : 0;
+                        const n5 = hasDn && hasL ? img[rowDn + x - 1] : 0;
+                        const n6 = hasL ? img[row + x - 1] : 0;
+                        const n7 = hasUp && hasL ? img[rowUp + x - 1] : 0;
+                        const b = n0 + n1 + n2 + n3 + n4 + n5 + n6 + n7;
                         if (b < 2 || b > 6) continue;
-                        let a = 0;
-                        for (let k = 0; k < 8; k += 1) if (!n[k] && n[(k + 1) % 8]) a += 1;
+                        const a = (!n0 && n1 ? 1 : 0) + (!n1 && n2 ? 1 : 0) + (!n2 && n3 ? 1 : 0) + (!n3 && n4 ? 1 : 0)
+                            + (!n4 && n5 ? 1 : 0) + (!n5 && n6 ? 1 : 0) + (!n6 && n7 ? 1 : 0) + (!n7 && n0 ? 1 : 0);
                         if (a !== 1) continue;
-                        if (pass === 0 ? (n[0] * n[2] * n[4] || n[2] * n[4] * n[6]) : (n[0] * n[2] * n[6] || n[0] * n[4] * n[6])) continue;
-                        kill.push(y * w + x);
+                        if (pass === 0 ? (n0 * n2 * n4 || n2 * n4 * n6) : (n0 * n2 * n6 || n0 * n4 * n6)) continue;
+                        kill.push(row + x);
                     }
                 }
-                if (kill.length) { changed = true; kill.forEach((i) => { img[i] = 0; }); }
+                if (kill.length) {
+                    changed = true;
+                    for (let k = 0; k < kill.length; k += 1) img[kill[k]] = 0;
+                }
             }
         }
         return img;
     };
     const skeletonOf = (ch, font) => {
         const key = `${ch}|${font}`;
-        if (skeletonCache.has(key)) return skeletonCache.get(key);
+        if (skeletonCache.has(key)) {
+            const cached = skeletonCache.get(key);
+            skeletonCache.delete(key);
+            skeletonCache.set(key, cached);
+            return cached;
+        }
         if (!skelCanvas) { skelCanvas = document.createElement('canvas'); skelCanvas.width = SKEL; skelCanvas.height = SKEL; }
         const c = skelCanvas.getContext('2d', { willReadFrequently: true });
         c.clearRect(0, 0, SKEL, SKEL);
@@ -581,12 +602,13 @@ float written(sampler2D atlas, sampler2D data, vec4 info, vec2 uv) {
     vec2 au = vec2(uv.x, 1.0 - uv.y);
     float cov = texture(atlas, au).r;
     if (cov < 0.01) return 0.0;
-    int id = int(texelFetch(atlas, min(ivec2(au * uAtlasSize), ivec2(uAtlasSize) - 1), 0).g * 255.0 + 0.5);
+    vec4 cell = texelFetch(atlas, min(ivec2(au * uAtlasSize), ivec2(uAtlasSize) - 1), 0);
+    int id = int(cell.g * 255.0 + 0.5);
     if (id <= 0) return 0.0;
     vec4 tw = texelFetch(data, ivec2(id, 0), 0);
     vec4 box = texelFetch(data, ivec2(id, 1), 0);
     // 写到哪：B 是骨架上这一点在字里的进度（笔画一笔一笔写出来）；没有骨架的字从左上往右下扫
-    float stroke = texelFetch(atlas, min(ivec2(au * uAtlasSize), ivec2(uAtlasSize) - 1), 0).b;
+    float stroke = cell.b;
     vec2 local = (au - box.xy) / max(box.zw - box.xy, vec2(1e-4));
     float s = stroke > 0.0 ? stroke : clamp(dot(local, vec2(0.42, 0.58)) + (vnoise(local * 6.0 + info.z) - 0.5) * 0.18, 0.0, 1.0);
     float prog = clamp((uTime - tw.x) / max(tw.y, 0.05), 0.0, 1.0) * 1.12;
@@ -911,6 +933,7 @@ void main() {
         const stats = { builds: 0, buildMs: 0, draws: 0, visible: 0 };
         const dripBuffer = new Float32Array(24);
         const dripTop = new Float32Array(6);
+        const lineInfo = new Float32Array(LINE_SLOTS * 4);
 
         const settings = () => {
             const tuning = mode.config.modes?.fogpane || {};
@@ -991,8 +1014,7 @@ void main() {
         const fontFor = (size) => `600 ${size.toFixed(1)}px ${Utils.STAGE_FONT}`;
         const measure = (text, size, cjk) => { measureCtx.font = fontFor(size, cjk); return measureCtx.measureText(text).width; };
 
-        const ensurePlan = (frame) => {
-            const s = settings();
+        const ensurePlan = (frame, s = settings()) => {
             const b = card.box;
             const avoid = b ? [(b.left + 1) / 2 * world.W - 12, (1 - b.top) / 2 * world.H - 12, (b.right + 1) / 2 * world.W + 12, (1 - b.bottom) / 2 * world.H + 12].map(Math.round) : null;
             const key = `${frame.track?.path || frame.track?.title || ''}|${world.W}x${world.H}|${s.fontScale}|${avoid || ''}`;
@@ -1000,7 +1022,7 @@ void main() {
             plan = planSong(frame.lines || [], world.W, world.H, s.fontScale, measure, `${frame.track?.path || frame.track?.title || ''}|${world.W}x${world.H}|${s.fontScale}`, avoid);
             planFor = { lines: frame.lines, key };
             glState?.slots.forEach((slot) => { slot.key = null; });
-            Utils.loadLyricFont(frame.lines, [600], () => { planFor = null; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
+            Utils.loadLyricFont(frame.lines, [600], () => { if (mode.destroyed) return; planFor = null; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
         };
 
         // 一句的指痕图：G 通道是字的编号，R 通道是手指擦过的形状（字描粗、圆头）。
@@ -1092,11 +1114,17 @@ void main() {
             return out;
         };
 
+        const cancelIdle = () => {
+            if (!idleHandle) return;
+            (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            idleHandle = 0;
+        };
+
         const scheduleNext = (t) => {
-            if (idleHandle || !glState) return;
+            if (idleHandle || paused || !glState) return;
             const next = plan.find(p => p.start > t);
             if (!next || slotFor(next, false)) return;
-            const run = () => { idleHandle = 0; if (!mode.destroyed && !lostContext) slotFor(next, true); };
+            const run = () => { idleHandle = 0; if (!mode.destroyed && !paused && !lostContext) slotFor(next, true); };
             idleHandle = global.requestIdleCallback ? global.requestIdleCallback(run, { timeout: 700 }) : global.setTimeout(run, 120);
         };
 
@@ -1164,10 +1192,9 @@ void main() {
 
         let lastKick = -1, bumpAt = -Infinity, bumpAmp = 0, heardAt = -Infinity;
         const beam = { x: 0.5, y: 0.5, vx: 0, vy: 0, level: 0, wall: null };
-        const draw = (frame) => {
+        const draw = (frame, s = settings()) => {
             if (!glState || lostContext) return;
             const { gl, scene, main, vao } = glState;
-            const s = settings();
             const t = frame.playbackTime;
             const visible = visibleAt(t);
             stats.visibleKeys = visible.map(p => `${planFor?.key}|${p.index}`);
@@ -1234,7 +1261,7 @@ void main() {
             gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, fogBlur.level(2)); gl.uniform1i(u.uFogBlur, 8);
             gl.activeTexture(gl.TEXTURE9); gl.bindTexture(gl.TEXTURE_2D, fogBlur.level(3)); gl.uniform1i(u.uFogGlow, 9);
             gl.uniform2f(u.uFogNorm, 1 / (fogBlur.levels - 2), 1 / (fogBlur.levels - 3));
-            const lineInfo = new Float32Array(LINE_SLOTS * 4);
+            lineInfo.fill(0);
             for (let i = 0; i < LINE_SLOTS; i += 1) {
                 const slot = slots[i];
                 gl.activeTexture(gl.TEXTURE1 + i); gl.bindTexture(gl.TEXTURE_2D, slot ? slot.atlas : glState.blank); gl.uniform1i(u[`uAtlas${i}`], 1 + i);
@@ -1253,39 +1280,47 @@ void main() {
             gl.uniform4fv(u.uDrips, dripBuffer);
             gl.uniform1fv(u.uDripTop, dripTop);
             // 指尖：正在写的字
-            let spot = [0, 0, 0, 0];
-            for (const p of visible) {
-                for (const it of p.items) {
+            let spotX = 0, spotY = 0, spotR = 0, spotA = 0;
+            for (let vi = 0; vi < visible.length; vi += 1) {
+                const items = visible[vi].items;
+                for (let ii = 0; ii < items.length; ii += 1) {
+                    const it = items[ii];
                     if (t >= it.g.start - 0.05 && t < it.g.end + 0.25) {
-                        spot = [(it.x + it.w / 2) / world.W, 1 - (it.baseline - it.size * 0.4) / world.H, it.size / world.H * 1.4, 1 - smooth(it.g.end, it.g.end + 0.25, t)];
+                        spotX = (it.x + it.w / 2) / world.W;
+                        spotY = 1 - (it.baseline - it.size * 0.4) / world.H;
+                        spotR = it.size / world.H * 1.4;
+                        spotA = 1 - smooth(it.g.end, it.g.end + 0.25, t);
                     }
                 }
             }
-            gl.uniform4f(u.uSpot, spot[0], spot[1], spot[2], s.reducedMotion ? 0 : spot[3]);
+            gl.uniform4f(u.uSpot, spotX, spotY, spotR, s.reducedMotion ? 0 : spotA);
             // 聚光灯的落点：沿着正在写的字滑过去（临界阻尼弹簧，速度连续）；这句写完唱完 0.8 秒后慢慢熄
-            let aim = null, lit = 0;
-            for (const p of visible) {
+            let hasAim = false, aimX = 0, aimY = 0, lit = 0;
+            for (let vi = 0; vi < visible.length; vi += 1) {
+                const p = visible[vi];
                 if (t < p.start - 0.2 || t > p.end + 2.2) continue;
                 const items = p.items;
-                let k = items.findIndex(it => t < it.g.end);
+                let k = -1;
+                for (let ii = 0; ii < items.length; ii += 1) { if (t < items[ii].g.end) { k = ii; break; } }
                 if (k < 0) k = items.length - 1;
                 const a = items[k], b = items[Math.min(items.length - 1, k + 1)];
                 const f = clamp((t - a.g.start) / Math.max(0.05, a.g.end - a.g.start), 0, 1);
                 const x = (a.x + a.w / 2) * (1 - f) + (b.x + b.w / 2) * f;
                 const y = (a.baseline - a.size * 0.4) * (1 - f) + (b.baseline - b.size * 0.4) * f;
-                aim = [x / world.W, 1 - y / world.H];
+                hasAim = true;
+                aimX = x / world.W;
+                aimY = 1 - y / world.H;
                 lit = smooth(p.start - 0.2, p.start + 0.4, t) * (1 - smooth(p.end + 0.8, p.end + 2.2, t));
             }
             const dtBeam = clamp(wall - (beam.wall ?? wall), 0, 0.1);
             beam.wall = wall;
-            if (aim) {
-                if (!frame.isPlaying || beam.level <= 0.01) { beam.x = aim[0]; beam.y = aim[1]; beam.vx = 0; beam.vy = 0; } else {
-                    const w = 7;
-                    for (const [p, v, target] of [['x', 'vx', aim[0]], ['y', 'vy', aim[1]]]) {
-                        const acc = w * w * (target - beam[p]) - 2 * w * beam[v];
-                        beam[v] += acc * dtBeam;
-                        beam[p] += beam[v] * dtBeam;
-                    }
+            if (hasAim) {
+                if (!frame.isPlaying || beam.level <= 0.01) { beam.x = aimX; beam.y = aimY; beam.vx = 0; beam.vy = 0; } else {
+                    const w = 7, w2 = 49, d2 = 14;
+                    beam.vx += (w2 * (aimX - beam.x) - d2 * beam.vx) * dtBeam;
+                    beam.x += beam.vx * dtBeam;
+                    beam.vy += (w2 * (aimY - beam.y) - d2 * beam.vy) * dtBeam;
+                    beam.y += beam.vy * dtBeam;
                 }
             }
             beam.level = frame.isPlaying ? beam.level + (lit - beam.level) * (1 - Math.exp(-dtBeam * 5)) : lit;
@@ -1341,10 +1376,10 @@ void main() {
             scheduleNext(t);
         };
 
-        const updateOverlay = (frame) => {
+        const updateOverlay = (frame, s = settings()) => {
             const next = `雾笺 · ${frame.titleOnly ? '暂无歌词' : frame.inCredits ? '片尾' : Utils.lineCounter(frame)}`;
             if (next !== caption) { caption = next; kicker.textContent = next; }
-            const text = settings().showTranslation ? resolveSupplementalText(frame.activeLine) : '';
+            const text = s.showTranslation ? resolveSupplementalText(frame.activeLine) : '';
             if (text !== lastTranslation) { lastTranslation = text; translation.textContent = text; translation.hidden = !text; }
         };
 
@@ -1424,16 +1459,18 @@ void main() {
             frame = withCredits(frame);
             latestFrame = frame;
             if (!colours) readColours();
-            ensurePlan(frame);
-            updateOverlay(frame);
+            const s = settings();
+            ensurePlan(frame, s);
+            updateOverlay(frame, s);
             if (!glState) return;
-            const aim = 1000 / (FPS[mode.config.quality || 'standard'] || 30);
+            const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
             if (frame.isPlaying && now - lastDraw < aim - 3) return;
-            if (still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (!frame.isPlaying && still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (frame.isPlaying) still.invalidate();
             lastDraw = now - lastDraw < aim * 2 ? lastDraw + aim : now;
-            draw(frame);
+            draw(frame, s);
         };
 
         const redraw = () => {
@@ -1444,7 +1481,7 @@ void main() {
         const updateConfig = mode.updateConfig;
         mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); redraw(); };
         mode.resize = () => { card.measure(); resize(); redraw(); };
-        mode.suspend = () => { paused = true; mode.root.classList.add('is-suspended'); };
+        mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
@@ -1461,7 +1498,7 @@ void main() {
         mode.scope.add(() => {
             canvas.removeEventListener('webglcontextlost', onLost);
             canvas.removeEventListener('webglcontextrestored', onRestored);
-            if (idleHandle) (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            cancelIdle();
             if (glState) {
                 const { gl } = glState;
                 glState.slots.forEach((slot) => { gl.deleteTexture(slot.atlas); gl.deleteTexture(slot.data); });
@@ -1474,6 +1511,8 @@ void main() {
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;
+            atlasCanvas.width = atlasCanvas.height = 0;
+            if (strokeCanvas) { strokeCanvas.width = strokeCanvas.height = 0; strokeCanvas = null; }
         });
 
         resize();

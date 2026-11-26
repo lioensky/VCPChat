@@ -111,19 +111,27 @@
             strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
         });
 
-        const getSpectrumSample = (spectrum, ratio, offset = 0) => {
-            if (!spectrum?.length) return 0;
-            const wrappedRatio = (clamp(ratio) * 0.86 + offset) % 1;
-            const center = Math.floor(Math.pow(wrappedRatio, 1.55) * (spectrum.length - 1));
-            const radius = Math.max(1, Math.floor(spectrum.length / 180));
-            let total = 0;
-            let count = 0;
-            for (let index = Math.max(0, center - radius); index <= Math.min(spectrum.length - 1, center + radius); index += 1) {
-                total += Number(spectrum[index]) || 0;
-                count += 1;
+        const edgeLookupCache = new Map();
+        const getEdgeLookup = (side, count, offset, specLen) => {
+            const key = `${side}|${count}|${specLen}`;
+            let entry = edgeLookupCache.get(key);
+            if (entry) return entry;
+            const ratios = new Float32Array(count);
+            const fades = new Float32Array(count);
+            const centers = new Int32Array(count);
+            const denom = Math.max(1, count - 1);
+            const maxIdx = Math.max(0, specLen - 1);
+            for (let index = 0; index < count; index += 1) {
+                const ratio = index / denom;
+                ratios[index] = ratio;
+                fades[index] = Math.pow(Math.sin(ratio * Math.PI), 0.42);
+                const wrappedRatio = (clamp(ratio) * 0.86 + offset) % 1;
+                centers[index] = Math.floor(Math.pow(wrappedRatio, 1.55) * maxIdx);
             }
-            const value = total / Math.max(1, count);
-            return clamp(Math.pow(Math.max(0, value - 0.025), 0.78));
+            entry = { ratios, fades, centers, radius: Math.max(1, Math.floor(specLen / 180)) };
+            if (edgeLookupCache.size > 16) edgeLookupCache.clear();
+            edgeLookupCache.set(key, entry);
+            return entry;
         };
 
         const ensureEdgeBuffer = (side, pointCount) => {
@@ -146,13 +154,26 @@
             idleScale
         ) => {
             const count = points.length / 2;
+            const specLen = spectrum?.length || 0;
+            const lookup = specLen ? getEdgeLookup(side, count, offset, specLen) : null;
             const span = side === 'top' || side === 'bottom'
                 ? width - inset * 2
                 : height - inset * 2;
+            const radius = lookup ? lookup.radius : 1;
+            const maxIdx = specLen - 1;
             for (let index = 0; index < count; index += 1) {
-                const ratio = index / Math.max(1, count - 1);
-                const edgeFade = Math.pow(Math.sin(ratio * Math.PI), 0.42);
-                const energy = getSpectrumSample(spectrum, ratio, offset) * edgeFade * idleScale;
+                const ratio = lookup ? lookup.ratios[index] : index / Math.max(1, count - 1);
+                let energy = 0;
+                if (lookup) {
+                    const center = lookup.centers[index];
+                    const lo = center > radius ? center - radius : 0;
+                    const hi = center + radius < maxIdx ? center + radius : maxIdx;
+                    let total = 0;
+                    for (let bi = lo; bi <= hi; bi += 1) total += Number(spectrum[bi]) || 0;
+                    const value = total / (hi - lo + 1);
+                    const sample = value > 0.025 ? clamp(Math.pow(value - 0.025, 0.78)) : 0;
+                    energy = sample * lookup.fades[index] * idleScale;
+                }
                 const coordinateIndex = index * 2;
                 if (side === 'top') {
                     points[coordinateIndex] = inset + ratio * span;
@@ -233,18 +254,25 @@
             fillEdgePoints(left, 'left', spectrum, 0.34, inset, width, height, verticalAmplitude, idleScale);
 
             const alpha = 0.28 + frame.audio.power * 0.62;
+            const glowAlpha = alpha * 0.5;
             // The wide soft pass stands in for the glow filters the canvas used to have.
-            [['top', top], ['right', right], ['bottom', bottom], ['left', left]].forEach(([side, points]) => {
-                const context = edgeStrips[side].context;
-                strokeEdgePath(context, points, color, alpha * 0.5, 18);
-                strokeEdgePath(context, points, color, alpha, 3.5);
-            });
+            strokeEdgePath(edgeStrips.top.context, top, color, glowAlpha, 18);
+            strokeEdgePath(edgeStrips.top.context, top, color, alpha, 3.5);
+            strokeEdgePath(edgeStrips.right.context, right, color, glowAlpha, 18);
+            strokeEdgePath(edgeStrips.right.context, right, color, alpha, 3.5);
+            strokeEdgePath(edgeStrips.bottom.context, bottom, color, glowAlpha, 18);
+            strokeEdgePath(edgeStrips.bottom.context, bottom, color, alpha, 3.5);
+            strokeEdgePath(edgeStrips.left.context, left, color, glowAlpha, 18);
+            strokeEdgePath(edgeStrips.left.context, left, color, alpha, 3.5);
         };
 
         return {
             draw: drawEdgeSpectrum,
             invalidate: () => { rootSize = null; edgeCanvasState.width = 0; edgeCanvasState.height = 0; },
             release: () => {
+                edgeCanvasState.width = 0;
+                edgeCanvasState.height = 0;
+                edgeCanvasState.blank = false;
                 EDGE_SIDES.forEach((side) => {
                     const strip = edgeStrips[side];
                     if (!strip) return;

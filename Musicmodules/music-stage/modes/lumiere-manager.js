@@ -292,14 +292,16 @@ void main() {
         air *= 1.0 - smoothstep(0.05, 0.55, occ) * 0.7 * uLights;
     }
     // 浮尘：一格一粒，慢慢飘，只在光里亮
-    vec2 grid = vec2(aspect * 44.0, 44.0);
-    vec2 dp = uv + vec2(uTime * 0.004, uTime * 0.007);
-    vec2 cell = floor(dp * grid);
-    vec2 h = hash22(cell);
-    vec2 centre = (cell + 0.5 + (h - 0.5) * 0.8 + vec2(sin(uTime * 0.5 + h.x * 6.3), cos(uTime * 0.4 + h.y * 6.3)) * 0.12) / grid;
-    float dist = length((dp - centre) * vec2(aspect, 1.0)) * 44.0;
-    float mote = smoothstep(0.08 + h.y * 0.06, 0.0, dist) * step(0.7, h.x);
-    air += light * mote * 1.6 * uDust;
+    if (uDust > 0.0) {
+        vec2 grid = vec2(aspect * 44.0, 44.0);
+        vec2 dp = uv + vec2(uTime * 0.004, uTime * 0.007);
+        vec2 cell = floor(dp * grid);
+        vec2 h = hash22(cell);
+        vec2 centre = (cell + 0.5 + (h - 0.5) * 0.8 + vec2(sin(uTime * 0.5 + h.x * 6.3), cos(uTime * 0.4 + h.y * 6.3)) * 0.12) / grid;
+        float dist = length((dp - centre) * vec2(aspect, 1.0)) * 44.0;
+        float mote = smoothstep(0.08 + h.y * 0.06, 0.0, dist) * step(0.7, h.x);
+        air += light * mote * 1.6 * uDust;
+    }
 
     // 底色里也有一层慢慢翻的烟，中间亮四角暗
     float vig = 1.12 - length((uv - 0.5) * vec2(1.0, 1.25)) * 0.75;
@@ -580,15 +582,14 @@ vec2 home(vec2 t) {
             cues = buildCues(frame.lines || [], frame.duration, key);
             cuesFor = { lines: frame.lines, key };
             glState?.slots.forEach((slot) => { slot.key = null; });
-            Utils.loadLyricFont(frame.lines, [500], () => { glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
+            Utils.loadLyricFont(frame.lines, [500], () => { if (mode.destroyed) return; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
         };
 
         const family = () => global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
 
         // 一句的字形图：居中成几行，同一个字号；G 是字编号（字框）
-        const slotFor = (index, build = true) => {
+        const slotFor = (index, build = true, s = settings()) => {
             if (!glState || index < 0 || index >= cues.length) return null;
-            const s = settings();
             const key = `${cuesFor?.key}|${index}|${world.W}x${world.H}|${s.fontScale}`;
             const hit = glState.slots.find(slot => slot.key === key);
             if (hit) { hit.used = performance.now(); return hit; }
@@ -758,20 +759,25 @@ vec2 home(vec2 t) {
             return slot;
         };
 
-        const scheduleNext = (index) => {
-            if (idleHandle || !glState || index + 1 >= cues.length || slotFor(index + 1, false)) return;
-            const run = () => { idleHandle = 0; if (!mode.destroyed && !lostContext) slotFor(index + 1, true); };
+        const cancelIdle = () => {
+            if (!idleHandle) return;
+            (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            idleHandle = 0;
+        };
+
+        const scheduleNext = (index, s = settings()) => {
+            if (idleHandle || paused || !glState || index + 1 >= cues.length || slotFor(index + 1, false, s)) return;
+            const run = () => { idleHandle = 0; if (!mode.destroyed && !paused && !lostContext) slotFor(index + 1, true); };
             idleHandle = global.requestIdleCallback ? global.requestIdleCallback(run, { timeout: 700 }) : global.setTimeout(run, 120);
         };
 
-        const draw = (frame) => {
+        const draw = (frame, s = settings()) => {
             if (!glState || lostContext) return;
             const { gl, program, uniforms: u, vao } = glState;
-            const s = settings();
             const t = frame.playbackTime;
             const index = findCue(cues, t);
             const cue = cues[index];
-            const slot = slotFor(index, true);
+            const slot = slotFor(index, true, s);
             if (!cue || !slot) return;
             stats.cue = index;
             stats.rig = cue.rig;
@@ -781,7 +787,7 @@ vec2 home(vec2 t) {
             const sectionEnds = !nextCue || nextCue.sectionStart;
             const lights = (cue.sectionStart && !cue.flash ? smooth(0, 0.6, local) : 1) * (sectionEnds ? 1 - smooth(cue.end - 0.4, cue.end, t) * 0.85 : 1);
             const beams = beamsAt(cue.rig, cue.seed, t, colours, beamBuffer, beamColours);
-            const prev = index > 0 && local < 0.4 ? slotFor(index - 1, false) : null;
+            const prev = index > 0 && local < 0.4 ? slotFor(index - 1, false, s) : null;
             const prevFade = prev ? 1 - smooth(0, 0.4, local) : 0;
             const zoom = 1 + clamp(local / Math.max(1, cue.end - cue.start), 0, 1) * 0.045;
             const prevCue = cues[index - 1];
@@ -796,7 +802,9 @@ vec2 home(vec2 t) {
             let sparks = 0;
             sparkBuffer.fill(0);
             if (!s.reducedMotion) {
-                for (const g of slot.glyphs || []) {
+                const gs = slot.glyphs || [];
+                for (let gi = 0; gi < gs.length; gi += 1) {
+                    const g = gs[gi];
                     const tau = t - g.start;
                     if (tau < -0.05 || tau > 0.7 || sparks >= MAX_SPARKS) continue;
                     const sx = (g.x + g.w * 0.45 - 0.5) * zoom + 0.5;
@@ -808,9 +816,11 @@ vec2 home(vec2 t) {
                 }
             }
             // 光源点：第一束光的出发点拉回画面角上
-            let flare = [0, 0, 0];
+            let flareX = 0, flareY = 0, flareA = 0;
             if (beams > 0 && cue.rig !== 'caustic' && cue.rig !== 'motes') {
-                flare = [clamp(beamBuffer[0], 0.07, 0.93), 0.9, (0.55 + beat * 0.5) * lights * s.flare];
+                flareX = clamp(beamBuffer[0], 0.07, 0.93);
+                flareY = 0.9;
+                flareA = (0.55 + beat * 0.5) * lights * s.flare;
             }
             // 段首闪光切：一半的段落从一片白里亮起来，另一半熄灯再亮
             const flash = cue.sectionStart && cue.flash && !s.reducedMotion ? Math.pow(1 - smooth(0, 0.35, local), 2) * 0.85 : 0;
@@ -847,7 +857,7 @@ vec2 home(vec2 t) {
             gl.uniform1f(u.uWaiting, s.waitingOpacity);
             gl.uniform4fv(u.uSpark, sparkBuffer);
             gl.uniform1i(u.uSparkCount, sparks);
-            gl.uniform4f(u.uFlare, flare[0], flare[1], flare[2], flash);
+            gl.uniform4f(u.uFlare, flareX, flareY, flareA, flash);
             gl.uniform1f(u.uBokeh, s.reducedMotion ? 0 : s.bokeh);
             // 焦点拉：段内换句时新句从虚到实，旧句跟着虚掉（每段约一半的句子用）
             const focus = !s.reducedMotion && cue.focusPull && local < 0.55 ? 1 - smooth(0, 0.55, local) : 0;
@@ -892,10 +902,10 @@ vec2 home(vec2 t) {
                 stats.glyphs = n;
             }
             stats.draws += 1;
-            scheduleNext(index);
+            scheduleNext(index, s);
         };
 
-        const updateOverlay = (frame) => {
+        const updateOverlay = (frame, s = settings()) => {
             const next = `绘光 · ${Utils.lineCounter(frame)}`;
             if (next !== caption) { caption = next; kicker.textContent = next; }
             const ci = cues.length > 1 ? findCue(cues, frame.playbackTime) : -1;
@@ -908,7 +918,7 @@ vec2 home(vec2 t) {
                 }
                 credits.classList.toggle('is-on', outro);
             }
-            const text = settings().showTranslation ? resolveSupplementalText(frame.activeLine) : '';
+            const text = s.showTranslation ? resolveSupplementalText(frame.activeLine) : '';
             if (text !== lastTranslation) { lastTranslation = text; translation.textContent = text; translation.hidden = !text; }
         };
 
@@ -917,23 +927,25 @@ vec2 home(vec2 t) {
             frame = Utils.withPlainLyrics(frame);   // 只有纯文本歌词时按时长铺开
             latestFrame = frame;
             if (!colours) readColours();
+            const s = settings();
             ensureCues(frame);
-            updateOverlay(frame);
+            updateOverlay(frame, s);
             if (!glState) return;
-            const aim = 1000 / (FPS[mode.config.quality || 'standard'] || 30);
+            const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
             if (frame.isPlaying && now - lastDraw < aim - 3) return;
-            if (still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (!frame.isPlaying && still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (frame.isPlaying) still.invalidate();
             lastDraw = now - lastDraw < aim * 2 ? lastDraw + aim : now;
-            draw(frame);
+            draw(frame, s);
         };
 
         const redraw = () => { still.invalidate(); lastDraw = -Infinity; if (latestFrame) mode.updateFrame(latestFrame); };
         const updateConfig = mode.updateConfig;
         mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); redraw(); };
         mode.resize = () => { resize(); redraw(); };
-        mode.suspend = () => { paused = true; mode.root.classList.add('is-suspended'); };
+        mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
@@ -948,7 +960,7 @@ vec2 home(vec2 t) {
         mode.scope.add(() => {
             canvas.removeEventListener('webglcontextlost', onLost);
             canvas.removeEventListener('webglcontextrestored', onRestored);
-            if (idleHandle) (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            cancelIdle();
             if (glState) {
                 const { gl } = glState;
                 glState.slots.forEach((slot) => { gl.deleteTexture(slot.text); gl.deleteTexture(slot.glyph); });
@@ -956,6 +968,7 @@ vec2 home(vec2 t) {
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;
+            textCanvas.width = textCanvas.height = 0;
         });
 
         resize();

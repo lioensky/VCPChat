@@ -941,14 +941,14 @@ vec2 home(vec2 t) {
         };
 
         const trackKey = frame => frame.track?.path || frame.track?.title || '';
-        const ensureCues = (frame) => {
-            const density = settings().density;
+        const ensureCues = (frame, s = settings()) => {
+            const density = s.density;
             const key = `${trackKey(frame)}|${Math.round(frame.duration || 0)}`;
             if (cuesFor && cuesFor.lines === frame.lines && cuesFor.key === key && cuesFor.density === density) return;
             cues = buildCues(frame.lines || [], frame.duration);
             bursts = planShow(cues, key, density);
             cuesFor = { lines: frame.lines, key, density };
-            Utils.loadLyricFont(frame.lines, [800], () => { glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
+            Utils.loadLyricFont(frame.lines, [800], () => { if (mode.destroyed) return; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
             stats.bursts = bursts.length;
             glState?.slots.forEach((slot) => { slot.key = null; });
             if (glState) glState.burstsKey = null;
@@ -986,9 +986,8 @@ vec2 home(vec2 t) {
         };
 
         // 一句的字形图：在河岸上方居中，同一个字号；G 是字编号（字框）
-        const slotFor = (index, build = true) => {
+        const slotFor = (index, build = true, s = settings()) => {
             if (!glState || index < 0 || index >= cues.length) return null;
-            const s = settings();
             const key = `${cuesFor?.key}|${index}|${world.W}x${world.H}|${s.fontScale}|${s.collage}`;
             const hit = glState.slots.find(slot => slot.key === key);
             if (hit) { hit.used = performance.now(); return hit; }
@@ -1300,12 +1299,21 @@ vec2 home(vec2 t) {
             return slot;
         };
 
-        const scheduleNext = (index) => {
-            if (idleHandle || !glState || index + 1 >= cues.length || slotFor(index + 1, false)) return;
-            const run = () => { idleHandle = 0; if (!mode.destroyed && !lostContext) slotFor(index + 1, true); };
+        const cancelIdle = () => {
+            if (!idleHandle) return;
+            (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            idleHandle = 0;
+        };
+
+        const scheduleNext = (index, s = settings()) => {
+            if (idleHandle || paused || !glState || index + 1 >= cues.length || slotFor(index + 1, false, s)) return;
+            const run = () => { idleHandle = 0; if (!mode.destroyed && !paused && !lostContext) slotFor(index + 1, true); };
             idleHandle = global.requestIdleCallback ? global.requestIdleCallback(run, { timeout: 700 }) : global.setTimeout(run, 120);
         };
 
+        const enterBuf = new Float32Array(4);
+        const enter2Buf = new Float32Array(2);
+        const sortByPowerDesc = (a, b) => b.power - a.power;
         // 照亮天空和字的闪光：挑此刻最亮的几发
         const pickLights = (t, count) => {
             lightPick.length = 0;
@@ -1317,31 +1325,34 @@ vec2 home(vec2 t) {
                 const power = b.size * (Math.exp(-tau * 3.2) * 1.1 + 0.22 * (1 - smooth(0, life, tau))) * (b.kind === KIND.pop ? 0.5 : 1);
                 lightPick.push({ b, power, radius: 0.16 + Math.min(tau, 1.2) * 0.14 * b.size });
             }
-            lightPick.sort((a, b) => b.power - a.power);
+            if (lightPick.length > 1) lightPick.sort(sortByPowerDesc);
             const n = Math.min(MAX_LIGHTS, lightPick.length);
             for (let i = 0; i < n; i += 1) {
                 const { b, power, radius } = lightPick[i];
-                lights.set([b.x, b.y, power * 0.55, radius], i * 4);
-                lightColours.set(b.colour, i * 3);
+                const o4 = i * 4;
+                lights[o4] = b.x; lights[o4 + 1] = b.y; lights[o4 + 2] = power * 0.55; lights[o4 + 3] = radius;
+                const o3 = i * 3;
+                lightColours[o3] = b.colour[0]; lightColours[o3 + 1] = b.colour[1]; lightColours[o3 + 2] = b.colour[2];
             }
             return n;
         };
 
-        const draw = (frame) => {
+        const draw = (frame, s = settings()) => {
             if (!glState || lostContext) return;
             const { gl, sky, spark, vao } = glState;
-            const s = settings();
             const t = frame.playbackTime;
             const index = findCue(cues, t);
             const cue = cues[index];
-            const slot = slotFor(index, true);
+            const slot = slotFor(index, true, s);
             if (!cue || !slot) return;
             uploadBursts();
             stats.cue = index;
             const local = t - cue.start;
-            const prev = index > 0 && local < 0.4 ? slotFor(index - 1, false) : null;
+            const prev = index > 0 && local < 0.4 ? slotFor(index - 1, false, s) : null;
             // 段落进场：长间奏后的第一句。三种：从上方带着速度落下来（上升）、闪白、从大到小开花
-            const enter = [0, 0, 0, 1], enter2 = [1, 0];
+            enterBuf[0] = 0; enterBuf[1] = 0; enterBuf[2] = 0; enterBuf[3] = 1;
+            enter2Buf[0] = 1; enter2Buf[1] = 0;
+            const enter = enterBuf, enter2 = enter2Buf;
             if (!s.reducedMotion && cue.kind === 'line' && index > 0 && cues[index - 1].kind === 'rest' && local < ENTER) {
                 const p = clamp(local / ENTER, 0, 1);
                 const launch = x => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (2 - x));
@@ -1382,12 +1393,15 @@ vec2 home(vec2 t) {
                     }
                 }
                 if (!s.reducedMotion) {
-                    for (const g of placed) {
+                    for (let gi = 0; gi < placed.length; gi += 1) {
+                        const g = placed[gi];
                         const tau = t - g.start;
                         if (tau < -0.05 || tau > 0.7 || sparks >= 6) continue;
-                        const sx = (g.x + g.w * 0.45 - 0.5) * zoom + 0.5;
-                        const sy = 1 - ((g.y - g.size * 0.45 - 0.5) * zoom + 0.5);
-                        sparkBuffer.set([sx, sy, g.size * 2.2, Math.sin(clamp((tau + 0.05) / 0.75, 0, 1) * Math.PI) * 0.8], sparks * 4);
+                        const o = sparks * 4;
+                        sparkBuffer[o] = (g.x + g.w * 0.45 - 0.5) * zoom + 0.5;
+                        sparkBuffer[o + 1] = 1 - ((g.y - g.size * 0.45 - 0.5) * zoom + 0.5);
+                        sparkBuffer[o + 2] = g.size * 2.2;
+                        sparkBuffer[o + 3] = Math.sin(clamp((tau + 0.05) / 0.75, 0, 1) * Math.PI) * 0.8;
                         sparks += 1;
                     }
                 }
@@ -1575,10 +1589,10 @@ vec2 home(vec2 t) {
                 gl.disable(gl.BLEND);
             }
             stats.draws += 1;
-            scheduleNext(index);
+            scheduleNext(index, s);
         };
 
-        const updateOverlay = (frame) => {
+        const updateOverlay = (frame, s = settings()) => {
             const next = `花火 · ${Utils.lineCounter(frame)}`;
             if (next !== caption) { caption = next; kicker.textContent = next; }
             const ci = cues.length > 1 ? findCue(cues, frame.playbackTime || 0) : -1;
@@ -1596,7 +1610,7 @@ vec2 home(vec2 t) {
                 }
                 credits.classList.toggle('is-on', outro);
             }
-            const text = settings().showTranslation ? resolveSupplementalText(frame.activeLine) : '';
+            const text = s.showTranslation ? resolveSupplementalText(frame.activeLine) : '';
             if (text !== lastTranslation) { lastTranslation = text; translation.textContent = text; translation.hidden = !text; }
         };
 
@@ -1605,23 +1619,25 @@ vec2 home(vec2 t) {
             frame = Utils.withPlainLyrics(frame);   // 只有纯文本歌词时按时长铺开
             latestFrame = frame;
             if (!colours) readColours();
-            ensureCues(frame);
-            updateOverlay(frame);
+            const s = settings();
+            ensureCues(frame, s);
+            updateOverlay(frame, s);
             if (!glState) return;
-            const aim = 1000 / (FPS[mode.config.quality || 'standard'] || 30);
+            const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
             if (frame.isPlaying && now - lastDraw < aim - 3) return;
-            if (still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (!frame.isPlaying && still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (frame.isPlaying) still.invalidate();
             lastDraw = now - lastDraw < aim * 2 ? lastDraw + aim : now;
-            draw(frame);
+            draw(frame, s);
         };
 
         const redraw = () => { still.invalidate(); lastDraw = -Infinity; if (latestFrame) mode.updateFrame(latestFrame); };
         const updateConfig = mode.updateConfig;
         mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); redraw(); };
         mode.resize = () => { resize(); redraw(); };
-        mode.suspend = () => { paused = true; mode.root.classList.add('is-suspended'); };
+        mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
@@ -1636,7 +1652,7 @@ vec2 home(vec2 t) {
         mode.scope.add(() => {
             canvas.removeEventListener('webglcontextlost', onLost);
             canvas.removeEventListener('webglcontextrestored', onRestored);
-            if (idleHandle) (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            cancelIdle();
             if (glState) {
                 const { gl } = glState;
                 glState.slots.forEach((slot) => { gl.deleteTexture(slot.text); gl.deleteTexture(slot.card); gl.deleteTexture(slot.glyph); });
@@ -1647,6 +1663,8 @@ vec2 home(vec2 t) {
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;
+            textCanvas.width = textCanvas.height = 0;
+            cardCanvas.width = cardCanvas.height = 0;
         });
 
         resize();

@@ -115,9 +115,11 @@
                 gl_FragColor=vec4(color,1.0);
                 #include <tonemapping_fragment>
                 #include <colorspace_fragment>
-                float n=fract(sin(dot(gl_FragCoord.xy+floor(time*24.0),
-                    vec2(12.9898,78.233)))*43758.5453)-0.5;
-                gl_FragColor.rgb=clamp(gl_FragColor.rgb+n*grain*0.08,0.0,1.0);
+                if (grain > 0.0) {
+                    float n=fract(sin(dot(gl_FragCoord.xy+floor(time*24.0),
+                        vec2(12.9898,78.233)))*43758.5453)-0.5;
+                    gl_FragColor.rgb=clamp(gl_FragColor.rgb+n*grain*0.08,0.0,1.0);
+                }
             }`, {
             image: { value: target.texture }, glowMap: { value: chain[0].texture },
             time: { value: 0 }, grain: { value: 0.08 }, vignette: { value: 0.22 }, bloom: { value: 0.6 },
@@ -133,6 +135,7 @@
             renderer.render(scene, camera);
         };
         let dead = false;
+        const drawSize = new T.Vector2();
         return {
             active,
             // The diorama's own settings unless another mode passes its own.
@@ -151,7 +154,7 @@
                     target.dispose();
                 }
                 material.uniforms.smoothing.value = samples ? 0 : 1;
-                const size = renderer.getDrawingBufferSize(new T.Vector2());
+                const size = renderer.getDrawingBufferSize(drawSize);
                 material.uniforms.texel.value.set(1 / size.x, 1 / size.y);
                 if (target.width !== size.x || target.height !== size.y) {
                     target.setSize(size.x, size.y);

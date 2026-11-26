@@ -533,7 +533,7 @@ void main() {
             sung = sungLines(frame.lines);
             sungFor = frame.lines;
             glState?.slots.forEach((slot) => { slot.key = null; });
-            Utils.loadLyricFont(frame.lines, [700], () => { glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, frame.track?.title || '');
+            Utils.loadLyricFont(frame.lines, [700], () => { if (mode.destroyed) return; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, frame.track?.title || '');
         };
 
         const family = () => global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
@@ -588,25 +588,47 @@ void main() {
             return slot;
         };
 
+        const cancelIdle = () => {
+            if (!idleHandle) return;
+            (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            idleHandle = 0;
+        };
+
         const scheduleNext = (index) => {
-            if (idleHandle || !glState || index + 1 >= sung.length || slotFor(index + 1, false)) return;
-            const run = () => { idleHandle = 0; if (!mode.destroyed && !lostContext) slotFor(index + 1, true); };
+            if (idleHandle || paused || !glState || index + 1 >= sung.length || slotFor(index + 1, false)) return;
+            const run = () => { idleHandle = 0; if (!mode.destroyed && !paused && !lostContext) slotFor(index + 1, true); };
             idleHandle = global.requestIdleCallback ? global.requestIdleCallback(run, { timeout: 700 }) : global.setTimeout(run, 120);
         };
+
+        const placePool = Array.from({ length: MAX_GLYPHS }, () => ({
+            z: 0, a0: 0, a1: 0, a2: 0, a3: 0, b0: 0, b1: 0, b2: 0, b3: 0
+        }));
+        const placeList = [];
+        const sortByZDesc = (p, q) => q.z - p.z;
+        let lastArcA = -1, lastArcB = -1, lastPerimeter = 0;
 
         // 把一句的字排上轨道，写进 bufA/bufB 的 [from, …)，返回写了几个
         const place = (line, t, geo, fade, from, rest, chorusAmt = 0) => {
             const { items, centres } = line;
-            const g = rest ? items.length : singingPosition(items, t);
+            const itemCount = items.length;
+            const g = rest ? itemCount : singingPosition(items, t);
             const turn = arcAt(centres, g - 0.5);
-            const span = items.length ? centres.at(-1) - centres[0] + items[0].advance : 1;
+            const span = itemCount ? centres[itemCount - 1] - centres[0] + items[0].advance : 1;
             // 字图像素换成轨道长度（已按透视折算）；太长的句子整体收紧
-            const unit = Math.min(geo.size * 1.06 / 88, geo.perimeter * SPAN / span);
+            const baseUnit = geo.size * 1.06 / 88;
+            const unit = Math.min(baseUnit, geo.perimeter * SPAN / span);
             // 收紧了字距，字也跟着缩，不然长句的字会叠在一起
-            const shrink = unit / (geo.size * 1.06 / 88);
-            const list = [];
-            items.forEach((item, i) => {
-                const theta = thetaAlong(geo.table, geo.perimeter, (centres[i] - turn) * unit) + (rest ? -0.25 * (1 - fade) : 0);
+            const shrink = unit / baseUnit;
+            const outward = rest ? (1 - fade) * 0.06 : 0;
+            const outScale = 1 + outward;
+            const restAngle = rest ? -0.25 * (1 - fade) : 0;
+            const staggerScale = chorusAmt * geo.size * shrink * (0.06 + geo.power * 0.12);
+            const sizeShrink = geo.size * shrink;
+            const limit = Math.min(itemCount, MAX_GLYPHS);
+            placeList.length = 0;
+            for (let i = 0; i < limit; i += 1) {
+                const item = items[i];
+                const theta = thetaAlong(geo.table, geo.perimeter, (centres[i] - turn) * unit) + restAngle;
                 const pt = project(theta, geo.A, geo.B, geo.roll);
                 const singing = !rest && t >= item.start - 0.05 && t < Math.max(item.end, item.start + 0.2) + 0.3 ? 1 - smooth(item.end, item.end + 0.3, t) : 0;
                 const sungAmount = t >= item.start ? 1 : 0;
@@ -614,35 +636,41 @@ void main() {
                 const charP = (t - item.start) / Math.max(0.05, item.end - item.start);
                 const flash = !rest && !geo.still && charP >= 0 && charP < 0.4 ? Math.pow(1 - charP / 0.4, 2) * 0.65 : 0;
                 // 副歌：单双字上下错开，随低音起伏
-                const stagger = chorusAmt * geo.size * shrink * pt.s * (0.06 + geo.power * 0.12) * (i % 2 ? -1 : 1);
+                const stagger = staggerScale * pt.s * (i % 2 ? -1 : 1);
                 const back = smooth(-0.2, 1, pt.z);
                 const alpha = fade * (1 - back * 0.72);
                 // 字跟着轨道的切线稍微转一点，最多 ±15°
-                const tangent = Math.atan2(Math.cos(theta) * geo.B, -Math.sin(theta) * geo.A) + geo.roll;
-                let rot = tangent;
+                let rot = Math.atan2(Math.cos(theta) * geo.B, -Math.sin(theta) * geo.A) + geo.roll;
                 while (rot > Math.PI / 2) rot -= Math.PI;
                 while (rot < -Math.PI / 2) rot += Math.PI;
                 rot = clamp(rot, -0.26, 0.26);
-                const outward = rest ? (1 - fade) * 0.06 : 0;
-                list.push({
-                    z: pt.z,
-                    a: [geo.cx + pt.x * (1 + outward), geo.cy + pt.y * (1 + outward) + stagger, geo.size * shrink * pt.s * (1 + singing * 0.12), rot],
-                    b: [item.cell + clamp(back, 0, 1) * 0.9, alpha, singing + flash * singing, sungAmount]
-                });
-            });
-            list.sort((p, q) => q.z - p.z);
+                const entry = placePool[i];
+                entry.z = pt.z;
+                entry.a0 = geo.cx + pt.x * outScale;
+                entry.a1 = geo.cy + pt.y * outScale + stagger;
+                entry.a2 = sizeShrink * pt.s * (1 + singing * 0.12);
+                entry.a3 = rot;
+                entry.b0 = item.cell + clamp(back, 0, 1) * 0.9;
+                entry.b1 = alpha;
+                entry.b2 = singing + flash * singing;
+                entry.b3 = sungAmount;
+                placeList.push(entry);
+            }
+            placeList.sort(sortByZDesc);
             let n = 0;
-            list.forEach((entry) => {
+            for (let i = 0; i < placeList.length; i += 1) {
                 const k = from + n;
-                if (k >= MAX_GLYPHS) return;
-                bufA.set(entry.a, k * 4);
-                bufB.set(entry.b, k * 4);
+                if (k >= MAX_GLYPHS) break;
+                const entry = placeList[i];
+                const o = k * 4;
+                bufA[o] = entry.a0; bufA[o + 1] = entry.a1; bufA[o + 2] = entry.a2; bufA[o + 3] = entry.a3;
+                bufB[o] = entry.b0; bufB[o + 1] = entry.b1; bufB[o + 2] = entry.b2; bufB[o + 3] = entry.b3;
                 n += 1;
-            });
+            }
             return n;
         };
 
-        const drawGlyphs = (slot, count, chorusLine = 0) => {
+        const drawGlyphs = (slot, count, chorusLine = 0, waitingOpacity = 0.3) => {
             if (!count) return;
             const { gl, glyph } = glState;
             const u = glyph.uniforms;
@@ -654,16 +682,15 @@ void main() {
             gl.uniform2f(u.uRes, canvas.width, canvas.height);
             gl.uniform3fv(u.uInk, colours.ink);
             gl.uniform3fv(u.uAccent, colours.accent);
-            gl.uniform1f(u.uWaiting, settings().waitingOpacity);
+            gl.uniform1f(u.uWaiting, waitingOpacity);
             gl.uniform1f(u.uChorusLine, chorusLine);
             gl.uniform1f(u.uHalo, colours.light || !BLOOM ? 1 : 0.35);
             gl.drawArrays(gl.TRIANGLES, 0, count * 6);
         };
 
-        const draw = (frame) => {
+        const draw = (frame, s = settings()) => {
             if (!glState || lostContext) return;
             const { gl, field, vao } = glState;
-            const s = settings();
             const t = frame.playbackTime;
             const index = lineIndexAt(sung, t);
             const slot = slotFor(index, true);
@@ -674,12 +701,16 @@ void main() {
             const prev = index >= 0 && since < FADE ? slotFor(index - 1, false) : null;
             const aspect = canvas.width / canvas.height;
             const A = Math.min(0.62 * aspect, 0.78) * 0.62;
+            const B = A * s.tilt;
+            if (A !== lastArcA || B !== lastArcB) {
+                lastArcA = A;
+                lastArcB = B;
+                lastPerimeter = ellipseTable(A, B, arcTable);
+            }
             const geo = {
-                cx: aspect / 2, cy: 0.53, A, B: A * s.tilt, roll: s.roll * Math.PI / 180,
-                size: 0.06 * s.fontScale
+                cx: aspect / 2, cy: 0.53, A, B, roll: s.roll * Math.PI / 180,
+                size: 0.06 * s.fontScale, table: arcTable, perimeter: lastPerimeter
             };
-            geo.table = arcTable;
-            geo.perimeter = ellipseTable(geo.A, geo.B, arcTable);
             const audio = frame.audio || {};
             const bass = clamp((audio.bass || 0) * s.audioReactivity, 0, 1.5);
             geo.power = s.reducedMotion ? 0 : clamp(bass, 0, 1);
@@ -725,14 +756,21 @@ void main() {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
 
             const fadeIn = index >= 0 ? smooth(-0.1, 0.35, since) : smooth(0, 0.8, t);
+            const hasPrev = Boolean(prev?.line);
+            const singleCount = hasPrev ? 0 : place(slot.line, t, geo, fadeIn, 0, false, s.reducedMotion ? 0 : chorusNow);
+            if (!hasPrev) stats.glyphs = singleCount;
             const drawText = () => {
                 gl.bindVertexArray(vao);
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-                if (prev?.line) drawGlyphs(prev, place(prev.line, t, geo, 1 - smooth(0, FADE, since), 0, true, s.reducedMotion ? 0 : chorusPrev), chorusPrev);
-                const n = place(slot.line, t, geo, fadeIn, 0, false, s.reducedMotion ? 0 : chorusNow);
-                stats.glyphs = n;
-                drawGlyphs(slot, n, chorusNow);
+                if (hasPrev) {
+                    drawGlyphs(prev, place(prev.line, t, geo, 1 - smooth(0, FADE, since), 0, true, s.reducedMotion ? 0 : chorusPrev), chorusPrev, s.waitingOpacity);
+                    const n = place(slot.line, t, geo, fadeIn, 0, false, s.reducedMotion ? 0 : chorusNow);
+                    stats.glyphs = n;
+                    drawGlyphs(slot, n, chorusNow, s.waitingOpacity);
+                } else {
+                    drawGlyphs(slot, singleCount, chorusNow, s.waitingOpacity);
+                }
                 gl.disable(gl.BLEND);
             };
             // 泛光的种子：字也在小图上画一遍（透明底），和画面合起来取亮部
@@ -751,10 +789,10 @@ void main() {
             scheduleNext(index);
         };
 
-        const updateOverlay = (frame) => {
+        const updateOverlay = (frame, s = settings()) => {
             const next = `回环 · ${Utils.lineCounter(frame)}`;
             if (next !== caption) { caption = next; kicker.textContent = next; }
-            const text = settings().showTranslation ? resolveSupplementalText(frame.activeLine) : '';
+            const text = s.showTranslation ? resolveSupplementalText(frame.activeLine) : '';
             if (text !== lastTranslation) { lastTranslation = text; translation.textContent = text; translation.hidden = !text; }
         };
 
@@ -763,23 +801,25 @@ void main() {
             frame = Utils.withPlainLyrics(frame);   // 只有纯文本歌词时按时长铺开
             latestFrame = frame;
             if (!colours) readColours();
+            const s = settings();
             ensureLines(frame);
-            updateOverlay(frame);
+            updateOverlay(frame, s);
             if (!glState) return;
-            const aim = 1000 / (FPS[mode.config.quality || 'standard'] || 30);
+            const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
             if (frame.isPlaying && now - lastDraw < aim - 3) return;
-            if (still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (!frame.isPlaying && still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (frame.isPlaying) still.invalidate();
             lastDraw = now - lastDraw < aim * 2 ? lastDraw + aim : now;
-            draw(frame);
+            draw(frame, s);
         };
 
         const redraw = () => { still.invalidate(); lastDraw = -Infinity; if (latestFrame) mode.updateFrame(latestFrame); };
         const updateConfig = mode.updateConfig;
         mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); redraw(); };
         mode.resize = () => { resize(); redraw(); };
-        mode.suspend = () => { paused = true; mode.root.classList.add('is-suspended'); };
+        mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
@@ -794,7 +834,7 @@ void main() {
         mode.scope.add(() => {
             canvas.removeEventListener('webglcontextlost', onLost);
             canvas.removeEventListener('webglcontextrestored', onRestored);
-            if (idleHandle) (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            cancelIdle();
             if (glState) {
                 const { gl } = glState;
                 glState.slots.forEach((slot) => gl.deleteTexture(slot.atlas));
@@ -805,6 +845,7 @@ void main() {
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;
+            atlas.width = atlas.height = 0;
         });
 
         resize();

@@ -963,13 +963,39 @@
             });
         };
 
+        let lastTrackObj = undefined;
+        let lastTrackPath = null;
+        let lastTrackTitle = null;
+        let lastTrackArtist = null;
+        let lastTrackAlbum = null;
+        let lastTrackArt = null;
+        let lastTrackTheme = null;
         const updateTrack = (track) => {
+            const theme = app.currentTheme;
+            if (
+                state.trackSignature
+                && track === lastTrackObj
+                && theme === lastTrackTheme
+                && (track?.path ?? null) === lastTrackPath
+                && (track?.title ?? null) === lastTrackTitle
+                && (track?.artist ?? null) === lastTrackArtist
+                && (track?.album ?? null) === lastTrackAlbum
+                && (track?.albumArt ?? null) === lastTrackArt
+            ) return;
+            lastTrackObj = track;
+            lastTrackPath = track?.path ?? null;
+            lastTrackTitle = track?.title ?? null;
+            lastTrackArtist = track?.artist ?? null;
+            lastTrackAlbum = track?.album ?? null;
+            lastTrackArt = track?.albumArt ?? null;
+            lastTrackTheme = theme;
+
             const title = app.stripAudioExtension?.(track?.title) || track?.title || '未选择歌曲';
             const artist = track?.artist || '未知艺术家';
             const album = track?.album || '';
             const coverUrl = fileUrl(track?.albumArt);
             const identity = track?.path || `${title}\u0001${artist}`;
-            const signature = `${identity}\u0001${title}\u0001${artist}\u0001${album}\u0001${coverUrl}\u0001${app.currentTheme}`;
+            const signature = `${identity}\u0001${title}\u0001${artist}\u0001${album}\u0001${coverUrl}\u0001${theme}`;
             if (signature === state.trackSignature) return;
             state.trackSignature = signature;
 
@@ -1188,7 +1214,9 @@
                 }
             }
         };
-        let audioSinkChildren = null;
+        const audioSinkRefs = [];
+        const audioSinkClasses = [];
+        let audioSinkInitialized = false;
         const writeAudioLevels = (audio) => {
             const power = audio.power.toFixed(4);
             const bass = audio.bass.toFixed(4);
@@ -1196,12 +1224,29 @@
             const key = `${power}|${bass}|${vocal}`;
             // Mode roots come and go with switches; the list follows them.
             const children = elements.modeRoot?.children;
-            const signature = children ? Array.prototype.map.call(children, child => child.className).join('\n') : '';
-            if (signature !== audioSinkChildren) {
-                audioSinkChildren = signature;
+            const len = children ? children.length : 0;
+            let changed = !audioSinkInitialized || len !== audioSinkRefs.length;
+            if (!changed) {
+                for (let i = 0; i < len; i += 1) {
+                    const child = children[i];
+                    if (child !== audioSinkRefs[i] || child.className !== audioSinkClasses[i]) {
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            if (changed) {
+                audioSinkInitialized = true;
+                audioSinkRefs.length = len;
+                audioSinkClasses.length = len;
+                for (let i = 0; i < len; i += 1) {
+                    audioSinkRefs[i] = children[i];
+                    audioSinkClasses[i] = children[i].className;
+                }
                 collectAudioSinks();
             }
-            for (const node of audioSinks) {
+            for (let i = 0; i < audioSinks.length; i += 1) {
+                const node = audioSinks[i];
                 if (audioWritten.get(node) === key) continue;
                 audioWritten.set(node, key);
                 node.style.setProperty('--stage-audio-power', power);
@@ -1363,6 +1408,7 @@
             scope.timeout(() => {
                 if (state.active || state.destroyed || generation !== state.generation) return;
                 destroyMode();
+                edge.release();
                 state.lastFrame = null;
                 root.hidden = true;
                 root.setAttribute('aria-hidden', 'true');
@@ -1489,6 +1535,10 @@
                 }
             } else if (event.key === 'Escape') {
                 event.preventDefault();
+                if (picker.open) {
+                    setModePickerOpen(false, { focus: 'toggle' });
+                    return;
+                }
                 if (state.settingsOpen) {
                     setSettingsOpen(false);
                     return;

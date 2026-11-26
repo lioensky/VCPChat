@@ -405,17 +405,28 @@
         outlines.frustumCulled = false;
         root.add(outlines);
         let lineCursor = 0;
+        const curvePt = new T.Vector3();
+        const prevPt = new T.Vector3();
+        const nextPt = new T.Vector3();
         const contour = (knots, transform, closed = false) => {
-            const curve = new T.CatmullRomCurve3(knots.map(p => new T.Vector3(...p)), closed, 'centripetal');
+            const pts = new Array(knots.length);
+            for (let i = 0; i < knots.length; i += 1) pts[i] = new T.Vector3(knots[i][0], knots[i][1], knots[i][2]);
+            const curve = new T.CatmullRomCurve3(pts, closed, 'centripetal');
             const divisions = knots.length * 5;
-            let previous = transform(curve.getPoint(0));
-            for (let i = 1; i <= divisions; i++) {
-                const next = transform(curve.getPoint(i / divisions));
+            curve.getPoint(0, curvePt);
+            transform(curvePt, prevPt);
+            for (let i = 1; i <= divisions; i += 1) {
+                curve.getPoint(i / divisions, curvePt);
+                transform(curvePt, nextPt);
                 if (lineCursor + 6 > linePositions.length) break;
-                previous.toArray(linePositions, lineCursor);
-                next.toArray(linePositions, lineCursor + 3);
+                linePositions[lineCursor] = prevPt.x;
+                linePositions[lineCursor + 1] = prevPt.y;
+                linePositions[lineCursor + 2] = prevPt.z;
+                linePositions[lineCursor + 3] = nextPt.x;
+                linePositions[lineCursor + 4] = nextPt.y;
+                linePositions[lineCursor + 5] = nextPt.z;
                 lineCursor += 6;
-                previous = next;
+                prevPt.copy(nextPt);
             }
         };
         const drawAnimal = (event, performance) => {
@@ -423,10 +434,13 @@
             const pose = performance.body;
             const yaw = event.yaw + (event.kind === 'rabbit' ? pose.turn : 0);
             const cy = Math.cos(yaw), sy = Math.sin(yaw);
-            const transform = (offset = [0, 0, 0]) => p => {
+            const transform = (offset = [0, 0, 0]) => (p, out) => {
                 const x = p.x + offset[0], y = p.y + offset[1], z = p.z + offset[2];
-                return new T.Vector3(pose.x + x * cy - z * sy, pose.y + y,
-                    pose.z + x * sy + z * cy);
+                const tx = pose.x + x * cy - z * sy;
+                const ty = pose.y + y;
+                const tz = pose.z + x * sy + z * cy;
+                if (out) return out.set(tx, ty, tz);
+                return new T.Vector3(tx, ty, tz);
             };
             if (event.kind === 'rabbit') {
                 const tuck = pose.hop * 0.35;
@@ -681,11 +695,15 @@
                 if (whaleMesh.visible) {
                     bodyMaterial.color.copy(cold).lerp(warm, 0.08);
                     bodyMaterial.uniforms.opacity.value = state.fade * (palette.light ? 0.07 : 0.13);
-                    whaleRest.forEach(([patch, u, v], i) => {
-                        const local = whaleSurface(patch, u, v, state.age);
+                    for (let i = 0; i < whaleRest.length; i += 1) {
+                        const wr = whaleRest[i];
+                        const local = whaleSurface(wr[0], wr[1], wr[2], state.age);
                         const p = bodyPoint(local.x, local.y, local.z);
-                        whaleVertices.set([p.x, p.y, p.z], i * 3);
-                    });
+                        const o = i * 3;
+                        whaleVertices[o] = p.x;
+                        whaleVertices[o + 1] = p.y;
+                        whaleVertices[o + 2] = p.z;
+                    }
                     whaleGeometry.attributes.position.needsUpdate = true;
                     whaleGeometry.computeVertexNormals();
                 }

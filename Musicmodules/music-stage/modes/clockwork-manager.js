@@ -642,9 +642,12 @@ void main() {
             mode.root.style.setProperty('--clockwork-field', `rgb(${colours.field.map(v => Math.round(v * 255)).join(',')})`);
         };
 
+        let viewW = 0, viewH = 0;
         const resize = () => {
             const w = Math.max(1, mode.root.clientWidth || global.innerWidth || 1);
             const h = Math.max(1, mode.root.clientHeight || global.innerHeight || 1);
+            viewW = mode.root.clientWidth || 0;
+            viewH = mode.root.clientHeight || 0;
             const quality = mode.config.quality || 'standard';
             const dpr = Math.min(RATIO[quality] || 1.5, global.devicePixelRatio || 1);
             const scale = Math.min(dpr, Math.sqrt((PIXELS[quality] || PIXELS.standard) / (w * h)));
@@ -657,18 +660,18 @@ void main() {
             sung = sungLines(frame.lines);
             sungFor = frame.lines;
             glState?.slots.forEach((slot) => { slot.key = null; });
-            Utils.loadLyricFont(frame.lines, [400], () => { glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, frame.track?.title || '');
+            Utils.loadLyricFont(frame.lines, [400], () => { if (mode.destroyed) return; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, frame.track?.title || '');
         };
 
         const family = () => global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
 
         // 以第 index 句为中心的七行字图；只有中间那行写字编号
-        const slotFor = (index, build = true) => {
+        const slotFor = (index, build = true, s = settings()) => {
             if (!glState) return null;
             // 一行字最长能占多少：从 R0 到窗口右边（留一点边）。窄窗口里长句缩小，不出画
             const aspect = canvas.width / Math.max(1, canvas.height);
             const avail = aspect - Math.min(0.3, aspect * 0.16) - 0.42 - 0.06;
-            const fitPx = Math.round(clamp(avail * 100 / (0.052 * settings().fontScale), 400, ATLAS_W - 24) / 40) * 40;
+            const fitPx = Math.round(clamp(avail * 100 / (0.052 * s.fontScale), 400, ATLAS_W - 24) / 40) * 40;
             const key = `${index}|${sung.length}|${fitPx}`;
             const hit = glState.slots.find(slot => slot.key === key);
             if (hit) { hit.used = performance.now(); return hit; }
@@ -729,20 +732,25 @@ void main() {
             return slot;
         };
 
-        const scheduleNext = (index) => {
-            if (idleHandle || !glState || index + 1 >= sung.length || slotFor(index + 1, false)) return;
-            const run = () => { idleHandle = 0; if (!mode.destroyed && !lostContext) slotFor(index + 1, true); };
+        const cancelIdle = () => {
+            if (!idleHandle) return;
+            (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            idleHandle = 0;
+        };
+
+        const scheduleNext = (index, s = settings()) => {
+            if (idleHandle || paused || !glState || index + 1 >= sung.length || slotFor(index + 1, false, s)) return;
+            const run = () => { idleHandle = 0; if (!mode.destroyed && !paused && !lostContext) slotFor(index + 1, true); };
             idleHandle = global.requestIdleCallback ? global.requestIdleCallback(run, { timeout: 700 }) : global.setTimeout(run, 120);
         };
 
-        const draw = (frame) => {
+        const draw = (frame, s = settings()) => {
             if (!glState || lostContext) return;
             const { gl, program, uniforms: u, vao } = glState;
-            const s = settings();
             const t = frame.playbackTime;
             const wheel = wheelAt(sung, t);
             const index = wheel.index;
-            const slot = slotFor(index, true);
+            const slot = slotFor(index, true, s);
             if (!slot) return;
             stats.index = index;
             const turned = s.reducedMotion ? Math.max(index, -1) : wheel.turned;
@@ -824,35 +832,38 @@ void main() {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
             stats.draws += 1;
             placeTranslation(tiltX, tiltY, s.fontScale);
-            scheduleNext(index);
+            scheduleNext(index, s);
         };
 
         // 翻译贴在当前句下面（跟着表盘的透视走），只在位置变了半个像素以上时才写样式
         let placed = '';
         const placeTranslation = (tiltX, tiltY, fontScale) => {
-            const W = mode.root.clientWidth || 0, H = mode.root.clientHeight || 0;
-            if (!W || !H || translation.hidden) return;
+            if (translation.hidden) return;
+            const W = viewW || mode.root.clientWidth || 0;
+            const H = viewH || mode.root.clientHeight || 0;
+            if (!W || !H) return;
             const aspect = W / H, D = 1.6;
             const hubX = Math.min(0.3, aspect * 0.16);
             // 表盘平面上的点 → 屏幕（dialPoint 的逆）
-            const toScreen = (px, py) => {
-                const X2 = px - aspect / 2, Y2 = py - 0.5;
-                const cx = Math.cos(tiltY), sx = Math.sin(tiltY), cy = Math.cos(tiltX), sy = Math.sin(tiltX);
-                const Y = Y2 * D * cx / (D + Y2 * sx);
-                const X = X2 * D / (D + Y2 * sx);
-                return [(X * D * cy / (D + X * sy) + aspect / 2) * H, (1 - (Y * D / (D + X * sy) + 0.5)) * H];
-            };
-            const [x, y] = toScreen(hubX + 0.425, 0.5 - 0.052 * fontScale * 0.7);
+            const X2 = hubX + 0.425 - aspect / 2;
+            const Y2 = -0.052 * fontScale * 0.7;
+            const cx = Math.cos(tiltY), sx = Math.sin(tiltY), cy = Math.cos(tiltX), sy = Math.sin(tiltX);
+            const denom1 = D + Y2 * sx;
+            const Y = Y2 * D * cx / denom1;
+            const X = X2 * D / denom1;
+            const denom2 = D + X * sy;
+            const x = (X * D * cy / denom2 + aspect / 2) * H;
+            const y = (1 - (Y * D / denom2 + 0.5)) * H;
             const key = `${Math.round(x * 2)}|${Math.round(y * 2)}`;
             if (key === placed) return;
             placed = key;
             translation.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
         };
 
-        const updateOverlay = (frame) => {
+        const updateOverlay = (frame, s = settings()) => {
             const next = `时计 · ${Utils.lineCounter(frame)}`;
             if (next !== caption) { caption = next; kicker.textContent = next; }
-            const text = settings().showTranslation ? resolveSupplementalText(frame.activeLine) : '';
+            const text = s.showTranslation ? resolveSupplementalText(frame.activeLine) : '';
             if (text !== lastTranslation) { lastTranslation = text; translation.textContent = text; translation.hidden = !text; placed = ''; }
         };
 
@@ -861,23 +872,25 @@ void main() {
             frame = Utils.withPlainLyrics(frame);   // 只有纯文本歌词时按时长铺开
             latestFrame = frame;
             if (!colours) readColours();
+            const s = settings();
             ensureLines(frame);
-            updateOverlay(frame);
+            updateOverlay(frame, s);
             if (!glState) return;
-            const aim = 1000 / (FPS[mode.config.quality || 'standard'] || 30);
+            const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
             if (frame.isPlaying && now - lastDraw < aim - 3) return;
-            if (still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (!frame.isPlaying && still.same(frame, `${canvas.width}x${canvas.height}|${stats.builds}`)) return;
+            if (frame.isPlaying) still.invalidate();
             lastDraw = now - lastDraw < aim * 2 ? lastDraw + aim : now;
-            draw(frame);
+            draw(frame, s);
         };
 
         const redraw = () => { still.invalidate(); lastDraw = -Infinity; if (latestFrame) mode.updateFrame(latestFrame); };
         const updateConfig = mode.updateConfig;
         mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); };
         mode.resize = () => { resize(); redraw(); };
-        mode.suspend = () => { paused = true; mode.root.classList.add('is-suspended'); };
+        mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
@@ -892,7 +905,7 @@ void main() {
         mode.scope.add(() => {
             canvas.removeEventListener('webglcontextlost', onLost);
             canvas.removeEventListener('webglcontextrestored', onRestored);
-            if (idleHandle) (global.cancelIdleCallback || global.clearTimeout)(idleHandle);
+            cancelIdle();
             if (glState) {
                 const { gl } = glState;
                 glState.slots.forEach((slot) => { gl.deleteTexture(slot.text); gl.deleteTexture(slot.glyph); });
@@ -903,6 +916,7 @@ void main() {
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;
+            atlas.width = atlas.height = 0;
         });
 
         resize();

@@ -65,16 +65,24 @@ void main() {
     dispersion.x /= aspect;
     vec2 offset = dispersion * uOutputFrame.zw * uInputSize.zw + vec2(0.9063,0.4226)*uRgb*3.0*uInputSize.zw;
     vec4 center = sampleInside(uv);
-    vec4 red = sampleInside(uv + offset);
-    vec4 blue = sampleInside(uv - offset);
-    float alpha = max(center.a,max(red.a,blue.a));
-    vec3 rgb = max(center.rgb*(0.84-clamp(max(uDispersion,uRgb),0.0,1.0)*0.18),vec3(red.r,center.g,blue.b));
+    float alpha = center.a;
+    vec3 rgb = center.rgb;
+    if (uDispersion > 0.0 || uRgb > 0.0) {
+        vec4 red = sampleInside(uv + offset);
+        vec4 blue = sampleInside(uv - offset);
+        alpha = max(alpha, max(red.a, blue.a));
+        rgb = max(center.rgb * (0.84 - clamp(max(uDispersion, uRgb), 0.0, 1.0) * 0.18), vec3(red.r, center.g, blue.b));
+    }
     if (alpha > 0.0001) rgb /= alpha;
     rgb = clamp((rgb-0.5)*(1.0+uContrast*0.5)+0.5,0.0,1.0);
-    vec3 dots = vec3(screenDot(gl_FragCoord.xy,0.2618,rgb.r),screenDot(gl_FragCoord.xy,1.309,rgb.g),screenDot(gl_FragCoord.xy,0.0,rgb.b));
-    rgb = mix(rgb,dots,uHalftone);
-    float noise = fract(sin(dot(gl_FragCoord.xy + floor(uTime*24.0),vec2(12.9898,78.233)))*43758.5453)-0.5;
-    rgb = clamp(rgb + noise*uGrain*0.18,0.0,1.0);
+    if (uHalftone > 0.0) {
+        vec3 dots = vec3(screenDot(gl_FragCoord.xy,0.2618,rgb.r),screenDot(gl_FragCoord.xy,1.309,rgb.g),screenDot(gl_FragCoord.xy,0.0,rgb.b));
+        rgb = mix(rgb,dots,uHalftone);
+    }
+    if (uGrain > 0.0) {
+        float noise = fract(sin(dot(gl_FragCoord.xy + floor(uTime*24.0),vec2(12.9898,78.233)))*43758.5453)-0.5;
+        rgb = clamp(rgb + noise*uGrain*0.18,0.0,1.0);
+    }
     vec4 color = vec4(rgb*alpha,alpha);
     float vignette = smoothstep(0.52,1.08,radius)*uVignette*0.6;
     finalColor = mix(color,vec4(uPaper,1.0),vignette);
@@ -103,6 +111,7 @@ void main() {
         // pass that copies the stage unchanged keeps the edges smoothed.
         const copy = canvasAntialias ? null : new PIXI.AlphaFilter({ alpha: 1, antialias: 'on' });
         let applied = null;
+        let lastPaper = '';
         const apply = (next, width, height) => {
             if (applied !== next) { stage.filters = next ? [next] : null; applied = next; }
             if (!next) return;
@@ -114,24 +123,34 @@ void main() {
         return {
             update(frame, tuning, width, height) {
                 const kick = motionScale(tuning) * amount(tuning.opticalImpact, 0.65, 1) * clamp(tuning.performance?.impact || 0);
-                const values = {
-                    Distortion: amount(tuning.lensDistortion, 0.35),
-                    Dispersion: amount(tuning.lensDispersion, 0.18, 1),
-                    Rgb: clamp(amount(tuning.rgbShift, 0, 1) + kick * 0.45),
-                    Grain: amount(tuning.grain, 0, 1),
-                    Contrast: amount(tuning.contrast, 0, 1),
-                    Halftone: amount(tuning.halftone, 0, 1),
-                    Vignette: amount(tuning.vignette, 0.18, 1)
-                };
+                const distortion = amount(tuning.lensDistortion, 0.35);
+                const dispersion = amount(tuning.lensDispersion, 0.18, 1);
+                const rgb = clamp(amount(tuning.rgbShift, 0, 1) + kick * 0.45);
+                const grain = amount(tuning.grain, 0, 1);
+                const contrast = amount(tuning.contrast, 0, 1);
+                const halftone = amount(tuning.halftone, 0, 1);
+                const vignette = amount(tuning.vignette, 0.18, 1);
                 const enabled = tuning.postProcess !== false && tuning.quality !== 'energy-saving'
-                    && Object.values(values).some(value => value > 0);
+                    && (distortion > 0 || dispersion > 0 || rgb > 0 || grain > 0 || contrast > 0 || halftone > 0 || vignette > 0);
                 apply(enabled ? filter : copy, width, height);
                 if (!enabled) return;
-                Object.entries(values).forEach(([key, value]) => { uniforms.uniforms[`u${key}`] = value; });
-                uniforms.uniforms.uTime = frame.playbackTime || 0;
+                const u = uniforms.uniforms;
+                u.uDistortion = distortion;
+                u.uDispersion = dispersion;
+                u.uRgb = rgb;
+                u.uGrain = grain;
+                u.uContrast = contrast;
+                u.uHalftone = halftone;
+                u.uVignette = vignette;
+                u.uTime = frame.playbackTime || 0;
                 const paper = tuning.palette?.background || '#171a1d';
-                const n = parseInt(paper.slice(1), 16);
-                uniforms.uniforms.uPaper.set([(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]);
+                if (paper !== lastPaper) {
+                    lastPaper = paper;
+                    const n = parseInt(paper.slice(1), 16);
+                    u.uPaper[0] = (n >> 16 & 255) / 255;
+                    u.uPaper[1] = (n >> 8 & 255) / 255;
+                    u.uPaper[2] = (n & 255) / 255;
+                }
             },
             destroy() { stage.filters = null; applied = null; filter.destroy(); copy?.destroy(); }
         };
@@ -145,18 +164,33 @@ void main() {
     const camera = (frame, tuning, kind, width, height, glyphs = []) => {
         const p = clamp(frame.lineProgress || 0);
         const e = ease(p);
-        const paths = {
-            'editorial-column': [-0.055 + e * 0.095, 0.025 - e * 0.04, 0.98 + e * 0.07, -0.006 + e * 0.01],
-            'type-impact': [-0.025 + e * 0.05, 0.012 - e * 0.02, 1 + Math.sin(e * Math.PI) * 0.055, -0.004 + e * 0.008],
-            'fragment-collage': [-0.045 + e * 0.085, 0.028 - Math.sin(e * Math.PI) * 0.055, 0.97 + e * 0.09, -0.014 + e * 0.028],
-            'tracking-ribbon': [-0.16 + e * 0.28, 0.05 - e * 0.085, 0.98 + e * 0.07, 0.008 - e * 0.014],
-            'mask-reveal': [0.035 - e * 0.065, 0.1 - e * 0.135, 0.96 + e * 0.12, -0.006 + e * 0.009],
-            'poster-blocks': [-0.012 + e * 0.024, 0.008 - e * 0.016, 0.99 + e * 0.025, -0.0015 + e * 0.003],
-            'quiet-tableau': [-0.022 + e * 0.04, 0.014 - e * 0.025, 1 + e * 0.028, -0.002 + e * 0.003]
-        };
-        const path = paths[kind] || paths['quiet-tableau'];
+        let px, py, ps, pr;
+        switch (kind) {
+            case 'editorial-column':
+                px = -0.055 + e * 0.095; py = 0.025 - e * 0.04; ps = 0.98 + e * 0.07; pr = -0.006 + e * 0.01;
+                break;
+            case 'type-impact':
+                px = -0.025 + e * 0.05; py = 0.012 - e * 0.02; ps = 1 + Math.sin(e * Math.PI) * 0.055; pr = -0.004 + e * 0.008;
+                break;
+            case 'fragment-collage':
+                px = -0.045 + e * 0.085; py = 0.028 - Math.sin(e * Math.PI) * 0.055; ps = 0.97 + e * 0.09; pr = -0.014 + e * 0.028;
+                break;
+            case 'tracking-ribbon':
+                px = -0.16 + e * 0.28; py = 0.05 - e * 0.085; ps = 0.98 + e * 0.07; pr = 0.008 - e * 0.014;
+                break;
+            case 'mask-reveal':
+                px = 0.035 - e * 0.065; py = 0.1 - e * 0.135; ps = 0.96 + e * 0.12; pr = -0.006 + e * 0.009;
+                break;
+            case 'poster-blocks':
+                px = -0.012 + e * 0.024; py = 0.008 - e * 0.016; ps = 0.99 + e * 0.025; pr = -0.0015 + e * 0.003;
+                break;
+            default:
+                px = -0.022 + e * 0.04; py = 0.014 - e * 0.025; ps = 1 + e * 0.028; pr = -0.002 + e * 0.003;
+                break;
+        }
         const strength = amount(tuning.cameraIntensity, 1) * motionScale(tuning);
-        const time = (frame.playbackTime || 0) * Math.PI * 2;
+        const playbackTime = frame.playbackTime || 0;
+        const time = playbackTime * Math.PI * 2;
         const breath = amount(tuning.cameraBreath, 0.5);
         let focusX = width / 2, focusY = height / 2;
         const softness = amount(tuning.cameraSoftness, 0.75, 1);
@@ -164,18 +198,23 @@ void main() {
             // Folia-style normalized focus weights: temporal averaging, not frame-history damping.
             // Subtract the closest distance before exponentiation to remain stable during long gaps.
             const sigma = 0.18 + softness * 0.65;
-            const distance = d => Math.max(d.startTime - frame.playbackTime, frame.playbackTime - d.endTime, 0);
+            const invTwoSigma2 = 1 / (2 * sigma * sigma);
             let nearest = Infinity;
-            glyphs.forEach(node => { nearest = Math.min(nearest, distance(node.dataset)); });
+            for (let i = 0; i < glyphs.length; i += 1) {
+                const d = glyphs[i].dataset;
+                const delta = Math.max(d.startTime - playbackTime, playbackTime - d.endTime, 0);
+                if (delta < nearest) nearest = delta;
+            }
+            const nearest2 = nearest * nearest;
             let total = 0, x = 0, y = 0;
-            glyphs.forEach(node => {
-                const d = node.dataset;
-                const delta = distance(d);
-                const weight = Math.exp(-(delta * delta - nearest * nearest) / (2 * sigma * sigma));
+            for (let i = 0; i < glyphs.length; i += 1) {
+                const d = glyphs[i].dataset;
+                const delta = Math.max(d.startTime - playbackTime, playbackTime - d.endTime, 0);
+                const weight = Math.exp(-(delta * delta - nearest2) * invTwoSigma2);
                 total += weight;
                 x += d.baseX * weight;
                 y += d.baseY * weight;
-            });
+            }
             focusX = x / total;
             focusY = y / total;
         }
@@ -188,13 +227,13 @@ void main() {
         const envelope = ease((frame.playbackTime - start) / ramp) * ease((end - frame.playbackTime) / ramp);
         const travel = strength * envelope * (1 - softness * 0.4);
         return {
-            x: width / 2 + (path[0] * width * 0.35 - clamp(focusX - width / 2, -width * 0.12, width * 0.12) * tracking) * travel
+            x: width / 2 + (px * width * 0.35 - clamp(focusX - width / 2, -width * 0.12, width * 0.12) * tracking) * travel
                 + Math.sin(time * 0.13) * width * 0.003 * breath * strength,
-            y: height / 2 + (path[1] * height * 0.3 - clamp(focusY - height / 2, -height * 0.08, height * 0.08) * tracking) * travel
+            y: height / 2 + (py * height * 0.3 - clamp(focusY - height / 2, -height * 0.08, height * 0.08) * tracking) * travel
                 + Math.cos(time * 0.11) * height * 0.003 * breath * strength,
-            scale: 1 + (path[2] - 1) * travel
+            scale: 1 + (ps - 1) * travel
                 + clamp(tuning.performance?.impact || 0) * 0.035 * strength,
-            rotation: (path[3] * travel + (tuning.performance?.impact || 0) * 0.012 * strength)
+            rotation: (pr * travel + (tuning.performance?.impact || 0) * 0.012 * strength)
                 * amount(tuning.cameraRoll, 0.25, 1)
         };
     };
@@ -354,39 +393,43 @@ void main() {
         const renderEnd = Number.isFinite(Number(hints.renderEndTime)) ? Number(hints.renderEndTime) : lineEnd;
         const exitStart = Math.max(lineEnd, renderEnd - release);
         const exit = release > 0 ? ease((time - exitStart) / release) : time > renderEnd ? 1 : 0;
-        nodes.forEach(node => {
+        const performance = amount(tuning.performanceIntensity, 1.25) * strength;
+        const isTempera = tuning.performanceMode === 'tempera';
+        const phraseEmphasis = amount(tuning.phraseEmphasis, 0.4, 1);
+        const waitingOpacity = amount(tuning.waitingOpacity, 0.25, 1);
+        const allowInvert = tuning.textInversion !== false;
+        const ink = parseInt((tuning.palette?.ink || '#f2f0e9').slice(1), 16);
+        const exitAlpha = 1 - exit * 0.8;
+        for (let i = 0; i < nodes.length; i += 1) {
+            const node = nodes[i];
             const d = node.dataset;
             const progress = clamp((time - d.startTime) / Math.max(0.04, d.endTime - d.startTime));
             const entry = 1 - expo((time - d.startTime + 0.12) / 0.42);
             const active = time >= d.startTime && time < d.endTime;
             const bounce = active ? Math.sin(progress * Math.PI) : 0;
             const direction = d.index % 2 ? 1 : -1;
+            const phraseAge = time - d.phraseStart;
+            const punch = phraseAge >= 0 ? Math.sin(Math.min(1, phraseAge / 0.48) * Math.PI) * Math.exp(-phraseAge * 3) : 0;
             node.position.set(
-                d.baseX + (style === 'scatter' ? direction * entry * d.fontSize * 0.65 : 0) * strength,
+                d.baseX + (style === 'scatter' ? direction * entry * d.fontSize * 0.65 : 0) * strength
+                    + (isTempera ? direction * punch * d.fontSize * 0.12 : -entry * d.fontSize * 0.45) * performance,
                 d.baseY + (entry * d.fontSize * (style === 'scatter' ? direction : 1) * 0.65 - bounce * d.fontSize * 0.08 - exit * d.fontSize * 0.35) * strength
+                    - punch * d.fontSize * (isTempera ? 0.18 : 0.07) * performance
             );
             node.rotation = style === 'scatter' ? d.angle * (entry + bounce) * strength : 0;
             const pop = style === 'impact' ? -entry * 0.38 + bounce * 0.2 : bounce * 0.1 - entry * 0.12;
-            const phraseAge = time - d.phraseStart;
-            const punch = phraseAge >= 0 ? Math.sin(Math.min(1, phraseAge / 0.48) * Math.PI) * Math.exp(-phraseAge * 3) : 0;
-            const performance = amount(tuning.performanceIntensity, 1.25) * strength;
-            const isTempera = tuning.performanceMode === 'tempera';
-            node.position.x += (isTempera ? direction * punch * d.fontSize * 0.12 : -entry * d.fontSize * 0.45) * performance;
-            node.position.y -= punch * d.fontSize * (isTempera ? 0.18 : 0.07) * performance;
             node.skew.x = (isTempera ? -punch * 0.09 : entry * 0.16) * performance;
             node.scale.set(
                 d.fit * Math.max(0.2, 1 + pop * strength + punch * 0.12 * performance),
                 d.fit * Math.max(0.2, 1 + pop * strength - punch * 0.08 * performance)
             );
-            const phraseEmphasis = amount(tuning.phraseEmphasis, 0.4, 1);
             const phraseWeight = ease((time - d.phraseStart + 0.3) / 0.3)
                 * (1 - ease((time - d.phraseEnd) / 0.65));
             const focusAlpha = 1 - phraseEmphasis * 0.5 * (1 - phraseWeight);
-            node.alpha = (time < d.startTime ? amount(tuning.waitingOpacity, 0.25, 1) : 1) * (1 - exit * 0.8) * focusAlpha;
+            node.alpha = (time < d.startTime ? waitingOpacity : 1) * exitAlpha * focusAlpha;
             // Keep the raster white for tinting; choose the theme ink on the GPU.
-            node.tint = active && tuning.textInversion !== false
-                ? color : parseInt((tuning.palette?.ink || '#f2f0e9').slice(1), 16);
-        });
+            node.tint = active && allowInvert ? color : ink;
+        }
     };
 
     const applyQuality = (app, width, height, quality) => {
@@ -524,6 +567,9 @@ void main() {
                 }
             }
         }
+        const SPIRAL_SWEEP = Math.PI * 2.6;
+        const SPIRAL_GROWTH = Math.log(1.618034) / (Math.PI / 2);
+        const SPIRAL_INV_DENOM = 1 / (Math.exp(SPIRAL_SWEEP * SPIRAL_GROWTH) - 1);
         return {
             update(frame, tuning) {
                 const strength = motionScale(tuning) * amount(tuning.accentMotion, 1);
@@ -534,7 +580,11 @@ void main() {
                 if (!enabled) return;
                 const time = frame.playbackTime;
                 const viewportSpan = Math.min(frame.viewport?.width || 900, frame.viewport?.height || 600);
-                particles.forEach(({ target, trail, angle, index, arm, direction, radiusScale, lead }) => {
+                const isSaving = tuning.quality === 'energy-saving';
+                const armBudget = tuning.quality === 'ultimate' ? 5 : isSaving ? 2 : 4;
+                const clampedStrength = Math.min(1.5, strength);
+                for (let pi = 0; pi < particles.length; pi += 1) {
+                    const { target, trail, angle, index, arm, direction, radiusScale, lead } = particles[pi];
                     const d = target.dataset;
                     // Approach starts inside this shot, arriving shortly after onset.
                     const arrival = d.startTime + Math.min(0.12, (d.endTime - d.startTime) * 0.3);
@@ -543,29 +593,30 @@ void main() {
                     const glow = p >= 1 ? Math.exp(-(time - arrival) * 7) : 0;
                     if (mode === 'sonnet' && arm === 0 && glow > 0.01) {
                         target.tint = color;
-                        target.scale.x *= 1 + glow * 0.07 * strength;
-                        target.scale.y *= 1 + glow * 0.07 * strength;
+                        const boost = 1 + glow * 0.07 * strength;
+                        target.scale.x *= boost;
+                        target.scale.y *= boost;
                     }
-                    trail.forEach((dot, j) => {
+                    const reach = Math.min(viewportSpan * 0.44, Math.max(130, d.fontSize * 4.2))
+                        * radiusScale * clampedStrength;
+                    const armAlpha = arm === 0 ? 0.8 : 0.55;
+                    const invLen = 1 / trail.length;
+                    const armAllowed = mode === 'sonnet' && arm < armBudget;
+                    for (let j = 0; j < trail.length; j += 1) {
+                        const dot = trail[j];
                         const u = p - j * 0.014;
-                        const armBudget = tuning.quality === 'ultimate' ? 5
-                            : tuning.quality === 'energy-saving' ? 2 : 4;
-                        dot.visible = mode === 'sonnet' && u >= 0 && u <= 1 && arm < armBudget
-                            && (tuning.quality !== 'energy-saving' || (index === 0 && j < 8));
-                        if (!dot.visible) return;
-                        const sweep = Math.PI * 2.6;
-                        const turn = (1 - u) * sweep;
+                        dot.visible = armAllowed && u >= 0 && u <= 1 && (!isSaving || (index === 0 && j < 8));
+                        if (!dot.visible) continue;
+                        const turn = (1 - u) * SPIRAL_SWEEP;
                         // Normalized logarithmic spiral: large, viewport-bounded
                         // entrances converge to the glyph, regardless of font size.
-                        const growth = Math.log(1.618034) / (Math.PI / 2);
-                        const reach = Math.min(viewportSpan * 0.44, Math.max(130, d.fontSize * 4.2))
-                            * radiusScale * Math.min(1.5, strength);
-                        const radius = (Math.exp(turn * growth) - 1) / (Math.exp(sweep * growth) - 1) * reach;
-                        dot.position.set(target.x + Math.cos(angle + turn * direction) * radius,
-                            target.y + Math.sin(angle + turn * direction) * radius * 0.86);
-                        dot.alpha = ease(u / 0.08) * (1 - j / trail.length) * (arm === 0 ? 0.8 : 0.55);
-                    });
-                });
+                        const radius = (Math.exp(turn * SPIRAL_GROWTH) - 1) * SPIRAL_INV_DENOM * reach;
+                        const theta = angle + turn * direction;
+                        dot.position.set(target.x + Math.cos(theta) * radius,
+                            target.y + Math.sin(theta) * radius * 0.86);
+                        dot.alpha = ease(u / 0.08) * (1 - j * invLen) * armAlpha;
+                    }
+                }
                 const age = time - (group?.start ?? frame.activeLine.startTime) + 0.15;
                 const draw = clamp(age / 1.15) * frameSegments.length;
                 if (pen) {
@@ -1151,14 +1202,28 @@ void main() {
                 const glyphStrength = amount(tuning.typographyMotion ?? tuning.glyphMotion, 1) * motion;
                 const glyphStyle = tuning.glyphStyle || 'rise';
                 const ink = parseInt((tuning.palette?.ink || '#f2f0e9').slice(1), 16);
-                entries.forEach(entry => {
+                const waitingOpacity = amount(tuning.waitingOpacity, 0.25, 1);
+                const allowInvert = tuning.textInversion !== false;
+                const isSaving = tuning.quality === 'energy-saving';
+                const armBudget = tuning.quality === 'ultimate' ? 4 : isSaving ? 2 : 3;
+                const clampedGlyphStrength = Math.min(1.5, glyphStrength);
+                const activeHasAccent = tuning.accentEffects !== false
+                    && tuning.showDecor !== false
+                    && glyphStrength > 0
+                    && accentCues(frame.lines, `${mode}:${seed}`).has(activeIndex);
+                const activeStart = frame.activeLine?.startTime || time;
+                for (let ei = 0; ei < entries.length; ei += 1) {
+                    const entry = entries[ei];
                     const relative = entry.lineIndex - activeIndex;
-                    const lead = Math.max(0.8, Math.min(4.5, entry.line.startTime - (frame.activeLine?.startTime || time)));
+                    const lead = Math.max(0.8, Math.min(4.5, entry.line.startTime - activeStart));
                     const paved = relative <= 0 ? 1 : ease(1 - (entry.line.startTime - time) / lead);
                     const retired = relative < 0 ? Math.max(0.12, 0.42 - Math.abs(relative) * 0.11) : 1;
                     entry.root.alpha = paved * retired;
                     entry.root.scale.set(0.94 + paved * 0.06);
-                    entry.nodes.forEach(node => {
+                    const nodes = entry.nodes;
+                    const vertical = entry.point.vertical;
+                    for (let ni = 0; ni < nodes.length; ni += 1) {
+                        const node = nodes[ni];
                         const d = node.dataset;
                         const p = clamp((time - d.startTime) / Math.max(0.04, d.endTime - d.startTime));
                         const arrival = 1 - expo((time - d.startTime + 0.18) / 0.52);
@@ -1170,8 +1235,8 @@ void main() {
                             offsetX = direction * arrival * d.fontSize * 0.72;
                             offsetY = -direction * arrival * d.fontSize * 0.48;
                         } else {
-                            offsetX = entry.point.vertical ? arrival * d.fontSize * 0.7 : 0;
-                            offsetY = entry.point.vertical ? 0 : arrival * d.fontSize * 0.7;
+                            offsetX = vertical ? arrival * d.fontSize * 0.7 : 0;
+                            offsetY = vertical ? 0 : arrival * d.fontSize * 0.7;
                         }
                         node.position.set(
                             d.baseX + offsetX * glyphStrength,
@@ -1183,16 +1248,11 @@ void main() {
                         const activePulse = active ? Math.sin(p * Math.PI) * 0.08 : 0;
                         const entryScale = glyphStyle === 'impact' ? arrival * 0.48 : arrival * 0.16;
                         node.scale.set(Math.max(0.28, 1 - entryScale * glyphStrength + activePulse * glyphStrength));
-                        node.alpha = time < d.startTime ? amount(tuning.waitingOpacity, 0.25, 1) : 1;
-                        node.tint = active && tuning.textInversion !== false ? nextColor : ink;
-                    });
+                        node.alpha = time < d.startTime ? waitingOpacity : 1;
+                        node.tint = active && allowInvert ? nextColor : ink;
+                    }
 
-                    const cueSeed = `${mode}:${seed}`;
-                    const accentEnabled = entry.lineIndex === activeIndex
-                        && tuning.accentEffects !== false
-                        && tuning.showDecor !== false
-                        && glyphStrength > 0
-                        && accentCues(frame.lines, cueSeed).has(activeIndex);
+                    const accentEnabled = entry.lineIndex === activeIndex && activeHasAccent;
                     const accent = entry.accent;
                     accent.layer.visible = accentEnabled;
                     if (accentEnabled && mode === 'tempera' && accent.pen) {
@@ -1209,37 +1269,43 @@ void main() {
                         accent.pen.rotation = Math.PI / 4;
                         accent.pen.alpha = ease(age / 0.1) * (1 - ease((age - 1.25) / 0.35));
                         const draw = clamp(age / 1.2) * accent.segments.length;
-                        accent.segments.forEach((segmentNode, segmentIndex) => {
-                            const head = draw - segmentIndex;
-                            const tail = ease((age - 1.55 - segmentIndex * 0.008) / 0.65);
-                            segmentNode.alpha = head < 0 ? 0
+                        const segs = accent.segments;
+                        for (let si = 0; si < segs.length; si += 1) {
+                            const head = draw - si;
+                            const tail = ease((age - 1.55 - si * 0.008) / 0.65);
+                            segs[si].alpha = head < 0 ? 0
                                 : (0.28 + Math.exp(-head * 0.7) * 0.72) * (1 - tail);
-                        });
+                        }
                     } else if (accentEnabled && mode === 'sonnet') {
-                        accent.particles.forEach(particle => {
+                        const parts = accent.particles;
+                        for (let pi = 0; pi < parts.length; pi += 1) {
+                            const particle = parts[pi];
                             const d = particle.target.dataset;
                             const arrivalTime = d.startTime + Math.min(0.12, (d.endTime - d.startTime) * 0.3);
                             const duration = Math.min(1.45, Math.max(0.35, arrivalTime - entry.line.startTime));
                             const travel = (time - arrivalTime + duration) / duration;
-                            const armBudget = tuning.quality === 'ultimate' ? 4
-                                : tuning.quality === 'energy-saving' ? 2 : 3;
-                            particle.trail.forEach((dot, dotIndex) => {
+                            const trail = particle.trail;
+                            const invLen = 1 / trail.length;
+                            const armAlpha = particle.arm ? 0.55 : 0.85;
+                            const armAllowed = particle.arm < armBudget;
+                            const reachScale = particle.reach * clampedGlyphStrength;
+                            for (let dotIndex = 0; dotIndex < trail.length; dotIndex += 1) {
+                                const dot = trail[dotIndex];
                                 const u = travel - dotIndex * 0.018;
-                                dot.visible = particle.arm < armBudget && u >= 0 && u <= 1
-                                    && (tuning.quality !== 'energy-saving' || dotIndex < 8);
-                                if (!dot.visible) return;
+                                dot.visible = armAllowed && u >= 0 && u <= 1 && (!isSaving || dotIndex < 8);
+                                if (!dot.visible) continue;
                                 const turn = (1 - u) * Math.PI * 2.35;
-                                const radius = (1 - ease(u)) * particle.reach * Math.min(1.5, glyphStrength);
+                                const radius = (1 - ease(u)) * reachScale;
+                                const theta = particle.angle + turn * particle.direction;
                                 dot.position.set(
-                                    d.baseX + Math.cos(particle.angle + turn * particle.direction) * radius,
-                                    d.baseY + Math.sin(particle.angle + turn * particle.direction) * radius * 0.84
+                                    d.baseX + Math.cos(theta) * radius,
+                                    d.baseY + Math.sin(theta) * radius * 0.84
                                 );
-                                dot.alpha = ease(u / 0.08) * (1 - dotIndex / particle.trail.length)
-                                    * (particle.arm ? 0.55 : 0.85);
-                            });
-                        });
+                                dot.alpha = ease(u / 0.08) * (1 - dotIndex * invLen) * armAlpha;
+                            }
+                        }
                     }
-                });
+                }
 
                 const point = layout[activeIndex];
                 const hasNext = activeIndex + 1 < layout.length;

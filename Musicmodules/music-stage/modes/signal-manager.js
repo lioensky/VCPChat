@@ -45,19 +45,20 @@
     const planeMatrix = (ax, ay, out) => {
         const cx = Math.cos(ax), sx = Math.sin(ax), cy = Math.cos(ay), sy = Math.sin(ay);
         // R = Ry · Rx
-        const r00 = cy, r01 = sy * sx, r10 = 0, r11 = cx, r20 = -sy, r21 = cy * sx;
-        const Z = CAMERA;
-        const a = [Z * r00, Z * r01, 0, Z * r10, Z * r11, 0, r20, r21, Z];
-        const det = a[0] * (a[4] * a[8] - a[5] * a[7]) - a[1] * (a[3] * a[8] - a[5] * a[6]) + a[2] * (a[3] * a[7] - a[4] * a[6]);
-        const inv = [
-            (a[4] * a[8] - a[5] * a[7]) / det, (a[2] * a[7] - a[1] * a[8]) / det, (a[1] * a[5] - a[2] * a[4]) / det,
-            (a[5] * a[6] - a[3] * a[8]) / det, (a[0] * a[8] - a[2] * a[6]) / det, (a[2] * a[3] - a[0] * a[5]) / det,
-            (a[3] * a[7] - a[4] * a[6]) / det, (a[1] * a[6] - a[0] * a[7]) / det, (a[0] * a[4] - a[1] * a[3]) / det
-        ];
-        // 行主序 inv → 列主序
-        out[0] = inv[0]; out[1] = inv[3]; out[2] = inv[6];
-        out[3] = inv[1]; out[4] = inv[4]; out[5] = inv[7];
-        out[6] = inv[2]; out[7] = inv[5]; out[8] = inv[8];
+        const a0 = CAMERA * cy, a1 = CAMERA * sy * sx;
+        const a4 = CAMERA * cx;
+        const a6 = -sy, a7 = cy * sx, a8 = CAMERA;
+        const invDet = 1 / (a0 * a4 * a8);
+        // 行主序 inv → 列主序（a2 = a3 = a5 = 0）
+        out[0] = (a4 * a8) * invDet;
+        out[1] = 0;
+        out[2] = (-a4 * a6) * invDet;
+        out[3] = (-a1 * a8) * invDet;
+        out[4] = (a0 * a8) * invDet;
+        out[5] = (a1 * a6 - a0 * a7) * invDet;
+        out[6] = 0;
+        out[7] = 0;
+        out[8] = (a0 * a4) * invDet;
         return out;
     };
     const applyPlane = (m, x, y) => {
@@ -553,12 +554,18 @@ void main() {
                 pulses.push({ p: Math.random(), v: (0.035 + 0.05 * Math.random()) * s.pulseRate, len: 0.05 + 0.05 * energy, a: 0.6 + 0.5 * clamp((audio.bass || 0) * 1.5, 0, 1) });
                 cool = 0.38 / Math.max(0.3, s.pulseRate);
             }
-            for (const p of pulses) {
-                if (!playing) continue;
+            for (let i = 0; i < pulses.length; i += 1) {
+                if (!playing) break;
+                const p = pulses[i];
                 p.p = (p.p + p.v * dt * (1 + 2.2 * energy)) % 1;
                 p.a *= Math.pow(p.fast ? 0.35 : 0.86, dt);
             }
-            pulses = pulses.filter(p => p.a > 0.08).slice(-7);
+            let write = 0;
+            for (let i = 0; i < pulses.length; i += 1) {
+                if (pulses[i].a > 0.08) pulses[write++] = pulses[i];
+            }
+            pulses.length = write;
+            if (pulses.length > 7) pulses.splice(0, pulses.length - 7);
             stats.pulses = pulses.length;
             // 频谱：上去快、下来慢
             const spectrum = audio.spectrum || [];
@@ -584,10 +591,9 @@ void main() {
             }
         };
 
-        const draw = (frame) => {
+        const draw = (frame, s = settings()) => {
             if (!glState || lostContext) return;
             const { gl, program, uniforms: u, vao } = glState;
-            const s = settings();
             const t = frame.playbackTime;
             const now = (frame.now ?? performance.now()) / 1000;
             const dt = lastT === null ? 0 : clamp(now - lastT, 0, 0.1);
@@ -611,9 +617,14 @@ void main() {
             gl.uniform3fv(u.uAccent, colours.accent);
             gl.uniform3fv(u.uBody, colours.body);
             pulseBuf.fill(0);
-            pulses.slice(0, MAX_PULSES).forEach((p, i) => { pulseBuf[i * 4] = p.p; pulseBuf[i * 4 + 1] = p.len; pulseBuf[i * 4 + 2] = p.a; });
+            const pulseCount = Math.min(MAX_PULSES, pulses.length);
+            for (let i = 0; i < pulseCount; i += 1) {
+                const p = pulses[i];
+                const o = i * 4;
+                pulseBuf[o] = p.p; pulseBuf[o + 1] = p.len; pulseBuf[o + 2] = p.a;
+            }
             gl.uniform4fv(u.uPulse, pulseBuf);
-            gl.uniform1i(u.uPulseCount, Math.min(MAX_PULSES, pulses.length));
+            gl.uniform1i(u.uPulseCount, pulseCount);
             gl.uniform1fv(u.uBands, bands);
             const stripY = H * (1 - 0.66);
             gl.uniform4f(u.uStrip, stripY, Math.min(W * 0.2, k * 2.2), H * 0.024, s.showSpectrum ? 1 : 0);
@@ -627,9 +638,9 @@ void main() {
             const ax = sway * (0.09 + 0.15 * inter) * Math.sin(t * 0.17 + 0.6);
             const ay = sway * (0.13 + 0.2 * inter) * Math.sin(t * 0.11 + 2.1);
             gl.uniformMatrix3fv(u.uPlane, false, planeMatrix(ax, ay, plane));
-            const L = [-0.45 + ay * 0.9, 0.65 - ax * 0.9, 0.62];
-            const ln = Math.hypot(...L);
-            gl.uniform3f(u.uLightP, L[0] / ln, L[1] / ln, L[2] / ln);
+            const lx = -0.45 + ay * 0.9, ly = 0.65 - ax * 0.9, lz = 0.62;
+            const ln = Math.hypot(lx, ly, lz);
+            gl.uniform3f(u.uLightP, lx / ln, ly / ln, lz / ln);
             gl.uniform1f(u.uKick, s.reducedMotion ? 0 : kick);
             gl.uniform1f(u.uCharge, charge);
             gl.uniform3f(u.uRipple, ripple.age, s.reducedMotion || ripple.age >= 1 ? 0 : ripple.str, ripple.wide);
@@ -650,8 +661,7 @@ void main() {
             return Infinity;
         };
         let lastChorus = null;
-        const updateOverlay = (frame) => {
-            const s = settings();
+        const updateOverlay = (frame, s = settings()) => {
             const next = `信号 · ${Utils.lineCounter(frame)}`;
             if (next !== caption) { caption = next; kicker.textContent = next; }
             const active = frame.activeLine;
@@ -692,16 +702,18 @@ void main() {
             frame = Utils.withPlainLyrics(frame);   // 只有纯文本歌词时按时长铺开
             latestFrame = frame;
             if (!colours) readColours();
-            updateOverlay(frame);
+            const s = settings();
+            updateOverlay(frame, s);
             if (!glState) return;
-            const aim = 1000 / (FPS[mode.config.quality || 'standard'] || 30);
+            const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
             if (frame.isPlaying && now - lastDraw < aim - 3) return;
             if (!frame.isPlaying) lastT = null;
-            if (still.same(frame, `${canvas.width}x${canvas.height}`)) return;
+            if (!frame.isPlaying && still.same(frame, `${canvas.width}x${canvas.height}`)) return;
+            if (frame.isPlaying) still.invalidate();
             lastDraw = now - lastDraw < aim * 2 ? lastDraw + aim : now;
-            draw(frame);
+            draw(frame, s);
         };
 
         const applyScale = () => mode.root.style.setProperty('--signal-scale', String(settings().fontScale));
