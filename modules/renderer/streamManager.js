@@ -1031,7 +1031,7 @@ function ensureStreamMessageAtFinalFloor(messageItem) {
 function publishStreamScopedCss(segmentState, scopeId, messageItem) {
     if (!segmentState.scopedCssDirty) return;
     refs.updateStreamScopedCss?.(
-        [...segmentState.stableCssChunks, ...segmentState.tailCssChunks],
+        [...(segmentState.hostedCss || []), ...segmentState.stableCssChunks, ...segmentState.tailCssChunks],
         scopeId, messageItem
     );
     segmentState.scopedCssDirty = false;
@@ -1073,46 +1073,61 @@ function renderStreamFrame(messageId) {
         return;
     }
 
-    const { contentDiv, messageItem } = cachedDom;
+    let { contentDiv, messageItem } = cachedDom;
     ensureStreamMessageAtFinalFloor(messageItem);
     const receivedText = accumulatedStreamText.get(messageId) || "";
     const segmentState = getOrCreateStreamSegmentState(messageId);
+    let frameText = receivedText;
+    let frameOffset = 0;
     if (segmentState.hostedSegments) {
+        const messageRoot = contentDiv;
         if (segmentState.hostedRoot !== contentDiv) {
             refs.cleanupStreamContent?.(contentDiv);
             cleanupChatMedia(contentDiv);
             contentDiv.replaceChildren();
             segmentState.hostedRoot = contentDiv;
             segmentState.hostedNodes = [];
+            segmentState.hostedSealedCount = 0;
+            segmentState.hostedSealedChars = 0;
+            segmentState.hostedCss = [];
         }
         const settings = refs.globalSettingsRef?.get?.();
         let toolsChanged = false;
-        for (const [index, segment] of segmentState.hostedSegments.entries()) {
+        let activeTail = null;
+        for (let index = segmentState.hostedSealedCount; index < segmentState.hostedSegments.length; index++) {
+            const segment = segmentState.hostedSegments[index];
             const previous = segmentState.hostedNodes[index];
             const source = segment.content ?? segment.tool_calls;
             const sealed = Boolean(segment.tool_calls || segment.receipt || index < segmentState.hostedSegments.length - 1);
-            if (previous?.source === source && previous.sealed === sealed) continue;
+            
             const node = previous?.node ?? contentDiv.ownerDocument.createElement('div');
             if (!previous) contentDiv.append(node);
+            if (!sealed) {
+                activeTail = node;
+                frameOffset = segmentState.hostedSealedChars;
+                frameText = source;
+                segmentState.hostedNodes[index] = { node };
+                break;
+            }
+            segmentState.hostedSealedCount++;
+            segmentState.hostedSealedChars += segment.content?.length || 0;
             if (segment.tool_calls) {
                 const batch = createHostedToolCallCard(contentDiv.ownerDocument, segment.tool_calls);
                 node.replaceWith(...batch.childNodes);
                 toolsChanged = true;
             } else {
                 const scoped = refs.processAssistantScopedHtmlContent?.(source, messageItem.id || null, messageItem, {
-                    injectStyles: false, mode: 'stream',
+                    injectStyles: false, mode: 'stream', cssChunks: segmentState.hostedCss,
                 }) ?? source;
                 const model = streamMessageModels.get(messageId);
-                const html = sealed
-                    ? parseFullStreamContent(scoped, { messageRole: 'assistant', depth: model?.depth || 0 })
-                    : parseStreamTail(scoped);
+                const html = parseFullStreamContent(scoped, { messageRole: 'assistant', depth: model?.depth || 0 });
                 if (segment.receipt) {
                     // A sealed receipt never grows. Publish its full result cards next to the FC
                     // cards so the message-level presenter can group them and mount lazy details.
                     refs.setContentAndProcessImages(node, html, messageId);
                     node.replaceWith(...node.childNodes);
                     toolsChanged = true;
-                } else if (sealed && typeof refs.renderPostProcessedHtml === 'function') {
+                } else if (typeof refs.renderPostProcessedHtml === 'function') {
                     void refs.renderPostProcessedHtml(node, html, {
                         messageId, settings, runHeavy: false, includeAttachments: false, processScripts: false,
                     }).catch(error => console.error('[HostedFC] Stream render failed:', error));
@@ -1122,13 +1137,29 @@ function renderStreamFrame(messageId) {
         }
         messageItem.classList.add('streaming');
         messageItem.classList.remove('thinking');
-        if (toolsChanged) refs.presentStreamTools?.(contentDiv);
-        return true;
+        if (toolsChanged) refs.presentStreamTools?.(messageRoot);
+        if (!activeTail) return true;
+        contentDiv = activeTail;
+        if (segmentState.activeHostedTail !== activeTail) {
+            segmentState.activeHostedTail = activeTail;
+            clearOwnedTimeout(segmentState.islandGateTimer);
+            segmentState.islandGateTimer = null;
+            segmentState.islandGate = createStreamIslandGate();
+            segmentState.boundaryScanner = createStableBoundaryState();
+            segmentState.sourceEpoch = {};
+            resetStableBlockState(segmentState);
+            segmentState.stableCutoff = 0;
+            segmentState.stableCssChunks = [];
+            segmentState.tailCssChunks = [];
+            segmentState.scopedCssDirty = true;
+            segmentState.openCode = null;
+        }
     }
     const visibleTextLength = shouldEnableSmoothStreaming()
-        ? Math.min(receivedText.length, Math.max(0, segmentState.visibleTextLength))
-        : receivedText.length;
-    let textForRendering = receivedText.slice(0, visibleTextLength);
+        ? Math.max(0, segmentState.visibleTextLength - frameOffset)
+        : frameText.length;
+    let textForRendering = frameText.slice(0, visibleTextLength);
+    if (segmentState.hostedSegments && !textForRendering.trim()) return true;
     const gate = segmentState.islandGate.update(textForRendering, {
         epoch: segmentState.sourceEpoch,
         owner: contentDiv,
@@ -2016,8 +2047,26 @@ function appendStreamChunk(messageId, chunkData, context, streamOperationId = nu
     const hostedState = streamSegmentStates.get(messageId);
     if (hostedState?.hostedSegments) {
         hostedState.hostedSegments = appendAssistantSegmentText(hostedState.hostedSegments, textToAppend);
-        renderChunkDirectlyToDOM(messageId);
-        return;
+        // A single network chunk can close a receipt AND begin ordinary prose.
+        // Catch up only through the atomic boundary, then enqueue the remainder.
+        const tail = hostedState.hostedSegments.at(-1);
+        const queue = streamingChunkQueues.get(messageId);
+        if (queue && tail.receipt) {
+            flushSmoothQueueForBurst(messageId, queue);
+            hostedState.toolResultDepth = 0;
+            hostedState.toolResultScannedTo = currentAccumulated.length;
+            renderChunkDirectlyToDOM(messageId);
+            return;
+        }
+        if (queue && hostedState.hostedSegments.at(-2)?.receipt && tail.content.length < textToAppend.length) {
+            queue.length = 0;
+            hostedState.queuedChars = 0;
+            hostedState.visibleTextLength = currentAccumulated.length - tail.content.length;
+            hostedState.toolResultDepth = 0;
+            hostedState.toolResultScannedTo = hostedState.visibleTextLength;
+            pendingDirectRenderMessages.add(messageId);
+            textToAppend = tail.content;
+        }
     }
 
     // Update context if provided
