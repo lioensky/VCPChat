@@ -2177,10 +2177,62 @@
             opt.dataset.sep = '';
             layoutSelect.append(opt);
         }
+        // 标题栏里的视图菜单只露一个图标（和标题栏其他按钮一个样子），鼠标移上去就展开，移开一会儿收起；点一下也能开关。
+        const LAYOUT_ICON = '<svg class="archive-layouts-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 8h18M9 8v12"></path></svg>';
+        const iconLayoutTrigger = () => {
+            const Select = global.MusicFluidSelect;
+            if (!layoutSelect || !Select) return;
+            Select.dress(layoutSelect);
+            const trigger = layoutSelect.nextElementSibling;
+            if (!trigger || !trigger.classList.contains('mfs-trigger') || trigger.querySelector('.archive-layouts-icon')) return;
+            trigger.classList.add('archive-layouts-iconic');
+            trigger.insertAdjacentHTML('afterbegin', LAYOUT_ICON);
+            const label = () => `视图：${layoutSelect.options[layoutSelect.selectedIndex]?.textContent?.trim() || ''}`;
+            // 下拉按钮每次同步都会把原 <select> 的 title 抄过来，所以提示写在 select 上
+            const relabel = () => { layoutSelect.title = label(); trigger.title = label(); trigger.setAttribute('aria-label', label()); };
+            relabel();
+            layoutSelect.addEventListener('change', relabel);
+            const isOpen = () => trigger.classList.contains('mfs-open');
+            const menuEl = () => { const id = trigger.getAttribute('aria-controls'); return id ? document.getElementById(id) : null; };
+            let hoverAt = 0, leaveTimer = 0;
+            const stay = () => { clearTimeout(leaveTimer); leaveTimer = 0; };
+            const leaveSoon = () => {
+                stay();
+                leaveTimer = setTimeout(() => {
+                    leaveTimer = 0;
+                    const m = menuEl();
+                    if (!isOpen() || trigger.matches(':hover') || (m && m.matches(':hover'))) return;
+                    Select.close();
+                }, 280);
+            };
+            trigger.addEventListener('pointerenter', (e) => {
+                if (e.pointerType && e.pointerType !== 'mouse') return;
+                stay();
+                if (isOpen()) return;
+                hoverAt = Date.now();
+                trigger.click();
+                const m = menuEl();
+                if (m) {
+                    m.addEventListener('pointerenter', stay);
+                    m.addEventListener('pointerleave', leaveSoon);
+                    // 鼠标悬停打开的不画键盘焦点框（当前项照样有勾）
+                    const cur = m.querySelector('.mfs-on') || m.querySelector('.mfs-item');
+                    if (cur && m.contains(document.activeElement)) { cur.blur(); cur.focus({ preventScroll: true, focusVisible: false }); }
+                }
+            });
+            trigger.addEventListener('pointerleave', (e) => { if (!e.pointerType || e.pointerType === 'mouse') leaveSoon(); });
+            // 刚被悬停打开时紧接着的一下点击不要又把它关掉
+            trigger.addEventListener('click', (e) => {
+                if (isOpen() && Date.now() - hoverAt < 700 && e.isTrusted) { e.stopImmediatePropagation(); e.preventDefault(); }
+            }, true);
+        };
         // 菜单本身挪到窗口最顶上的标题栏右边（窗口按钮左侧），和舞台里的舞台下拉同一个位置；舞台打开时它让给舞台下拉。
         // 测试页没有标题栏时留在首页顶栏里。
         const titleSlot = document.querySelector('#custom-title-bar .titlebar-actions');
-        if (titleSlot && refs.layouts) titleSlot.insertBefore(refs.layouts, titleSlot.firstChild);
+        if (titleSlot && refs.layouts) {
+            titleSlot.insertBefore(refs.layouts, titleSlot.firstChild);
+            iconLayoutTrigger();
+        }
         layoutSelect?.addEventListener('change', () => {
             const value = layoutSelect.value;
             if (value === 'legacy') {

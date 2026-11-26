@@ -635,3 +635,9 @@ body.light-theme .aw-tile.is-open .aw-in { box-shadow: 0 0 0 1px color-mix(in sr
 .archive-wall.aw-moving .aw-world { pointer-events: none; }
 /* 平放滚动时景深模糊先撤掉（它要每帧重算下面滑过的内容），停下再淡回来 */
 #music-archive-view .archive-wall.aw-table.aw-moving::after { opacity: 0; transition: opacity .12s linear; }
+
+/* 标题栏里的视图菜单：只露图标，和旁边的标题栏按钮同一个样子（悬停展开在 archive-view.js） */
+#custom-title-bar .archive-layouts > button.mfs-trigger.archive-layouts-iconic:not(#mfs-0) { width: 30px; height: 30px; min-height: 30px; padding: 0; gap: 0; justify-content: center; border-radius: 8px; }
+#custom-title-bar .archive-layouts > button.archive-layouts-iconic .mfs-text,
+#custom-title-bar .archive-layouts > button.archive-layouts-iconic .mfs-chev { display: none; }
+#custom-title-bar .archive-layouts > button.archive-layouts-iconic .archive-layouts-icon { display: block; flex: none; }
