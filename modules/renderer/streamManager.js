@@ -1,3 +1,5 @@
+import { createHostedToolCallCard, renderHostedAssistantSegments } from './hostedToolCallRendering.js';
+import { appendAssistantSegmentText } from '../chat/hostedToolHistory.js';
 import { collectToolBatchRanges } from './toolBatchRegions.js';
 import { createStreamIslandGate } from './streamIslandGate.js';
 import { findExplicitStablePrefix, createStableBoundaryState } from './streamStableBoundary.js';
@@ -1075,6 +1077,41 @@ function renderStreamFrame(messageId) {
     ensureStreamMessageAtFinalFloor(messageItem);
     const receivedText = accumulatedStreamText.get(messageId) || "";
     const segmentState = getOrCreateStreamSegmentState(messageId);
+    if (segmentState.hostedSegments) {
+        if (segmentState.hostedRoot !== contentDiv) {
+            refs.cleanupStreamContent?.(contentDiv);
+            cleanupChatMedia(contentDiv);
+            contentDiv.replaceChildren();
+            segmentState.hostedRoot = contentDiv;
+            segmentState.hostedNodes = [];
+        }
+        const settings = refs.globalSettingsRef?.get?.();
+        for (const [index, segment] of segmentState.hostedSegments.entries()) {
+            const previous = segmentState.hostedNodes[index];
+            const source = segment.content ?? segment.tool_calls;
+            if (previous && previous.source === source) continue;
+            const node = previous?.node ?? contentDiv.ownerDocument.createElement('div');
+            if (segment.tool_calls) {
+                node.replaceChildren(createHostedToolCallCard(contentDiv.ownerDocument, segment.tool_calls));
+            } else {
+                const scoped = refs.processAssistantScopedHtmlContent?.(source, messageItem.id || null, messageItem, {
+                    injectStyles: false, mode: 'stream',
+                }) ?? source;
+                const model = streamMessageModels.get(messageId);
+                const html = parseFullStreamContent(scoped, { messageRole: 'assistant', depth: model?.depth || 0 });
+                if (typeof refs.renderPostProcessedHtml === 'function') {
+                    void refs.renderPostProcessedHtml(node, html, {
+                        messageId, settings, runHeavy: false, includeAttachments: false, processScripts: false,
+                    }).catch(error => console.error('[HostedFC] Stream render failed:', error));
+                } else refs.setContentAndProcessImages(node, html, messageId);
+            }
+            if (!previous) contentDiv.append(node);
+            segmentState.hostedNodes[index] = { source, node };
+        }
+        messageItem.classList.add('streaming');
+        messageItem.classList.remove('thinking');
+        return true;
+    }
     const visibleTextLength = shouldEnableSmoothStreaming()
         ? Math.min(receivedText.length, Math.max(0, segmentState.visibleTextLength))
         : receivedText.length;
@@ -1928,6 +1965,18 @@ function appendStreamChunk(messageId, chunkData, context, streamOperationId = nu
 
     const activeContext = messageContextMap.get(messageId);
     if (streamOperationId && activeContext?.streamOperationId && activeContext.streamOperationId !== streamOperationId) return false;
+    const hostedCalls = chunkData?.vcpHostedToolCalls;
+    if (Array.isArray(hostedCalls) && hostedCalls.length) {
+        const state = getOrCreateStreamSegmentState(messageId);
+        const text = accumulatedStreamText.get(messageId);
+        state.hostedSegments ??= text ? [{ content: text }] : [];
+        state.hostedSegments.push({ tool_calls: hostedCalls });
+        const queue = streamingChunkQueues.get(messageId);
+        if (queue) queue.length = 0;
+        state.queuedChars = 0;
+        renderChunkDirectlyToDOM(messageId);
+        return;
+    }
     // Extract text from chunk
     // 如果检测到 JSON 解析错误，直接过滤掉，不显示给用户
     if (chunkData?.error === 'json_parse_error') {
@@ -1951,6 +2000,12 @@ function appendStreamChunk(messageId, chunkData, context, streamOperationId = nu
     let currentAccumulated = accumulatedStreamText.get(messageId) || "";
     currentAccumulated += textToAppend; // 保留完整文本用于最终渲染
     accumulatedStreamText.set(messageId, currentAccumulated);
+    const hostedState = streamSegmentStates.get(messageId);
+    if (hostedState?.hostedSegments) {
+        hostedState.hostedSegments = appendAssistantSegmentText(hostedState.hostedSegments, textToAppend);
+        renderChunkDirectlyToDOM(messageId);
+        return;
+    }
 
     // Update context if provided
     if (context) {
@@ -2070,11 +2125,12 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
 
     // 终态 payload 是生产端给出的规范完整响应；有可用 payload 时不再按长度猜测权威来源。
     // payload 缺失时才回退到渲染端累计文本。
-    let finalFullText = payloadResponseIsUsable
+    const assistantSegments = finalPayload?.assistantSegments;
+    let finalFullText = Array.isArray(assistantSegments) || payloadResponseIsUsable
         ? payloadFullResponse
         : (streamedTextIsUsable ? accumulatedText : "");
 
-    if (!finalFullText || isThinkingPlaceholderText(finalFullText)) {
+    if (!Array.isArray(assistantSegments) && (!finalFullText || isThinkingPlaceholderText(finalFullText))) {
         if (payloadError) {
             finalFullText = `[系统错误] ${payloadError}`;
         } else {
@@ -2087,6 +2143,7 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
             messageId,
             context: storedContext,
             content: finalFullText,
+            assistantSegments,
             finishReason,
             usage: finalPayload?.usage,
             visible: isForCurrentView,
@@ -2152,24 +2209,19 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
             if (contentDiv) {
                 // Replacement owns cleanup, including island-instance preservation.
 
-                const preparedFinal = typeof refs.prepareFinalTextForRender === 'function'
-                    ? refs.prepareFinalTextForRender(messageId, finalFullText, message.role || 'assistant', historyForThisMessage)
-                    : { text: finalFullText, role: message.role || 'assistant', depth: 0 };
-                const islandFinalText = preparedFinal.role === 'assistant'
-                    ? (refs.prepareAnimationIslands?.(preparedFinal.text, messageItem, { terminal: true }) ?? preparedFinal.text)
-                    : preparedFinal.text;
-                const finalRenderText = preparedFinal.role === 'assistant'
-                    && typeof refs.processAssistantScopedHtmlContent === 'function'
-                    ? refs.processAssistantScopedHtmlContent(
-                        islandFinalText,
-                        messageItem.id || null,
-                        messageItem
-                    )
-                    : islandFinalText;
-                const rawHtml = parseFullStreamContent(finalRenderText, {
-                    messageRole: preparedFinal.role,
-                    depth: preparedFinal.depth
-                });
+                const renderText = source => {
+                    const prepared = refs.prepareFinalTextForRender?.(messageId, source, message.role || 'assistant', historyForThisMessage)
+                        ?? { text: source, role: message.role || 'assistant', depth: 0 };
+                    let text = prepared.text;
+                    if (prepared.role === 'assistant') {
+                        text = refs.prepareAnimationIslands?.(text, messageItem, { terminal: true }) ?? text;
+                        text = refs.processAssistantScopedHtmlContent?.(text, messageItem.id || null, messageItem) ?? text;
+                    }
+                    return parseFullStreamContent(text, { messageRole: prepared.role, depth: prepared.depth });
+                };
+                const rawHtml = Array.isArray(assistantSegments)
+                    ? renderHostedAssistantSegments(assistantSegments, renderText, contentDiv.ownerDocument)
+                    : renderText(finalFullText);
 
                 if (typeof refs.renderPostProcessedHtml === 'function') {
                     await refs.renderPostProcessedHtml(contentDiv, rawHtml, {

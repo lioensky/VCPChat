@@ -1,5 +1,6 @@
 /** Pure stream-session protocol; readers, DOM, Electron and persistence stay outside. */
 import { normalizeChatTerminal, STREAM_TERMINAL_KINDS } from './chatEventContract.js';
+import { appendAssistantSegmentText } from './hostedToolHistory.js';
 
 const TERMINALS = new Set(STREAM_TERMINAL_KINDS);
 const freeze = value => Object.freeze(value);
@@ -48,9 +49,26 @@ export function createStreamSession(request = {}) {
         },
         pushChunk(chunk, candidateGeneration = generation) {
             if (disposed || state.terminal || candidateGeneration !== generation) return false;
+            const calls = chunk?.vcpHostedToolCalls;
+            if (Array.isArray(calls) && calls.length) {
+                const segments = state.assistantSegments ?? (state.text ? [freeze({ content: state.text })] : []);
+                const tool_calls = freeze(calls.map(call => freeze({
+                    id: call.id,
+                    type: call.type,
+                    function: freeze({ name: call.function.name, arguments: call.function.arguments }),
+                })));
+                return update({
+                    status: 'streaming',
+                    assistantSegments: freeze([...segments, freeze({ tool_calls })]),
+                }, { type: 'hosted_tool_calls', tool_calls });
+            }
             const text = typeof chunk === 'string' ? chunk : String(chunk?.text || '');
             if (!text) return false;
-            return update({ status: 'streaming', chunkCount: state.chunkCount + 1, text: state.text + text }, { type: 'chunk', text });
+            const segments = state.assistantSegments && freeze(appendAssistantSegmentText(state.assistantSegments, text));
+            return update({
+                status: 'streaming', chunkCount: state.chunkCount + 1, text: state.text + text,
+                ...(segments ? { assistantSegments: segments } : {}),
+            }, { type: 'chunk', text });
         },
         terminal(kind, payload = {}, candidateGeneration = generation) {
             if (!TERMINALS.has(kind)) throw new Error(`unsupported stream terminal: ${kind}`);

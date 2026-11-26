@@ -1,3 +1,4 @@
+import { renderHostedAssistantSegments } from './renderer/hostedToolCallRendering.js';
 import { collectStrictAnimationIslands } from './renderer/strictAnimationIsland.js';
 import { createOffscreenDomWindow } from './renderer/offscreenDomWindow.js';
 import { createRenderWorkerClient } from './renderer/renderWorkerClient.js';
@@ -1816,14 +1817,22 @@ async function restoreMessageContent(item, isValid) {
     const revision = content._vcpRenderRevision;
     const model = mainRendererReferences.currentChatHistoryRef.get().find(message => message.id === item.dataset.messageId);
     if (!model) throw new Error('Message no longer belongs to the current projection');
-    const prepared = prepareFinalTextForRender(model.id, model.content, model.role);
-    let text = prepared.text;
-    if (model.role === 'assistant') text = processAssistantScopedHtmlContent(text, item.id, item);
+    const prepare = source => {
+        const prepared = prepareFinalTextForRender(model.id, source, model.role);
+        const text = model.role === 'assistant' ? processAssistantScopedHtmlContent(prepared.text, item.id, item) : prepared.text;
+        return { ...prepared, text };
+    };
     const valid = () => isValid() && content._vcpRenderRevision === revision && isRenderSessionActive(session);
-    const html = await renderHistoryTemplate(text, {
-        message: model, settings: mainRendererReferences.globalSettingsRef.get(),
-        messageRole: prepared.role, depth: prepared.depth,
-    }, root, session, model, valid);
+    const settings = mainRendererReferences.globalSettingsRef.get();
+    const html = Array.isArray(model.assistantSegments)
+        ? renderHostedAssistantSegments(model.assistantSegments, source => {
+            const { text, role, depth } = prepare(source);
+            return renderMarkdownToHtml(text, { message: model, settings, messageRole: role, depth });
+        }, item.ownerDocument)
+        : await (async () => {
+            const { text, role, depth } = prepare(model.content);
+            return renderHistoryTemplate(text, { message: model, settings, messageRole: role, depth }, root, session, model, valid);
+        })();
     if (!valid()) { releaseUnMountedHtml(html); return; }
     if (html === null) throw new Error('Render settings changed during offscreen restoration');
     delete item.dataset.vcpHeavyActivated;
@@ -3297,9 +3306,11 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
     const isActiveStreamRequest = message.role === 'assistant'
         && typeof streamManager.isMessageActive === 'function'
         && streamManager.isMessageActive(message.id);
-    const messageTextIsEmpty = message.content === null
+    const hostedSegments = message.role === 'assistant' && Array.isArray(message.assistantSegments)
+        ? message.assistantSegments : null;
+    const messageTextIsEmpty = !hostedSegments && (message.content === null
         || message.content === undefined
-        || (typeof message.content === 'string' && message.content.trim() === '');
+        || (typeof message.content === 'string' && message.content.trim() === ''));
 
     if (message.isThinking || (isActiveStreamRequest && messageTextIsEmpty)) {
         contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
@@ -3326,7 +3337,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
         if (message.role === 'user') {
             textToRender = prepareUserMessageText(textToRender);
-        } else if (message.role === 'assistant') {
+        } else if (message.role === 'assistant' && !hostedSegments) {
             textToRender = processAssistantScopedHtmlContent(textToRender, scopeId, messageItem);
         }
 
@@ -3348,15 +3359,19 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         // 核心修复：将正则规则应用移出 preprocessFullContent，以避免在流式传输的块上执行
         // 这样可以确保正则表达式在完整的消息内容上运行
         const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
-        if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes)) {
-            textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, message.role, depth);
-        }
+        const applyDisplayRules = source => Array.isArray(agentConfigForRegex?.stripRegexes)
+            ? applyFrontendRegexRules(source, agentConfigForRegex.stripRegexes, message.role, depth) : source;
+        if (!hostedSegments) textToRender = applyDisplayRules(textToRender);
         // --- 正则规则应用结束 ---
 
         const templateOptions = { message, settings: globalSettings, messageRole: message.role, depth };
-        let rawHtml = isInitialLoad && !appendToDom && !renderContext.forceSyncTemplate
-            ? await renderHistoryTemplate(textToRender, templateOptions, renderRoot, renderSessionId, message)
-            : renderMarkdownToHtml(textToRender, templateOptions);
+        let rawHtml = hostedSegments
+            ? renderHostedAssistantSegments(hostedSegments, source => renderMarkdownToHtml(
+                applyDisplayRules(processAssistantScopedHtmlContent(source, scopeId, messageItem)), templateOptions
+            ), messageItem.ownerDocument)
+            : isInitialLoad && !appendToDom && !renderContext.forceSyncTemplate
+                ? await renderHistoryTemplate(textToRender, templateOptions, renderRoot, renderSessionId, message)
+                : renderMarkdownToHtml(textToRender, templateOptions);
         if (rawHtml === null || rendererDisposed || !isRenderSessionActive(renderSessionId)) {
             releaseUnMountedHtml(rawHtml);
             cleanupMessageDomResources(messageItem);

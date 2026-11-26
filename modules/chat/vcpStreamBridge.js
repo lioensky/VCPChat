@@ -106,7 +106,11 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
         }
         if (!operation.cancelPromise) {
             operation.accepting = false;
-            operation.cancelPromise = operation.chain.then(() => operation.handle.cancel(reason));
+            operation.cancelPromise = operation.chain.then(() => {
+                const consumer = consumers.get(sessionId);
+                for (const chunk of consumer?.flushChunks?.() ?? []) operation.controls.pushChunk(chunk);
+                return operation.handle.cancel(reason);
+            });
         }
         return operation.cancelPromise;
     };
@@ -122,10 +126,12 @@ export function createVcpStreamBridge({ createConsumer, reportError = console.er
                 await consumer?.prepare?.(event);
                 if (!operation.projecting) return;
                 if (event.type === 'data') {
-                    const normalized = consumer?.normalizeChunk?.(event.chunk) ?? event.chunk;
-                    operation.controls.pushChunk(normalized);
+                    const normalized = consumer?.normalizeChunks?.(event.chunk)
+                        ?? [consumer?.normalizeChunk?.(event.chunk) ?? event.chunk];
+                    for (const chunk of normalized) operation.controls.pushChunk(chunk);
                 }
                 if (event.type === 'end' || event.type === 'error') {
+                    for (const chunk of consumer?.flushChunks?.() ?? []) operation.controls.pushChunk(chunk);
                     const terminal = event.type === 'end'
                         ? { kind: event.finish_reason || 'completed', fullResponse: event.fullResponse, context: event.context, ...(event.usage ? { usage: event.usage } : {}) }
                         : { kind: 'failed', error: event.error, fullResponse: event.fullResponse || event.accumulatedResponse, context: event.context };

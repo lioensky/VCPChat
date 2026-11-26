@@ -89,7 +89,7 @@ export function createStreamTransientHistory({ repository, currentHistory } = {}
                 currentHistory.replace([...history, { ...placeholder, content }]);
             }
         },
-        async finalize({ messageId, context, content, finishReason, usage, visible = false } = {}) {
+        async finalize({ messageId, context, content, assistantSegments, finishReason, usage, visible = false } = {}) {
             if (disposed) return null;
             const epoch = prepareEpochs.get(messageId) || 0;
             const history = await readFor(context, visible, messageId);
@@ -113,6 +113,8 @@ export function createStreamTransientHistory({ repository, currentHistory } = {}
                 isThinking: false,
             };
             delete message.isPendingStream;
+            if (Array.isArray(assistantSegments)) message.assistantSegments = assistantSegments;
+            else delete message.assistantSegments;
             // 上游报告的用量是压缩触发的计数基准；没有时显式清空，重生成不会沿用旧回复的用量。
             // 同时记下它覆盖的消息的本地估算，之后编辑或删除前文时据此修正。
             message.contextUsage = normalizeContextUsage(usage, estimateHistoryPrefixTokens(history, index));

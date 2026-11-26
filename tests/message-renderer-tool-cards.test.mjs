@@ -1149,3 +1149,55 @@ test('history batch item carries its final tool presentation before it is mounte
         await disposeFixture(fixture);
     }
 });
+
+test('hosted FC cards appear before receipts and keep the same order after reopening history', { timeout: 5000 }, async () => {
+    const fixture = await createRendererFixture('');
+    try {
+        const { streamProjection, renderer, messageItem, historyRef } = fixture;
+        const id = messageItem.dataset.messageId;
+        const context = { agentId: 'tool-card-agent', topicId: 'tool-card-topic' };
+        const call = id => ({ id, type: 'function', function: { name: 'vcptools', arguments: '{"tool_name":"Demo"}' } });
+        const first = [call('a'), call('b')], second = [call('c')];
+        const receipt = stamp => '\n<<<[ROLE_DIVIDE_USER]>>>\n' +
+            `<<<[VCP_TOOL_BATCH_START:${stamp}]>>>\n` +
+            '[本轮工具调用摘要:]\nDemo 调用成功。\n[本轮工具调用摘要结束]\n' +
+            `<<<[VCP_TOOL_BATCH_END:${stamp}]>>>\n<<<[END_ROLE_DIVIDE_USER]>>>\n\n`;
+        const one = receipt('2026-11-26T20:00:00.000+08:00');
+        const two = receipt('2026-11-26T20:00:01.000+08:00');
+        const append = chunk => streamProjection.appendStreamChunk(id, chunk, context);
+        const order = item => [...item.querySelectorAll('.md-content h2, .md-content details[data-vcp-tool-call-id]')]
+            .map(node => node.dataset.vcpToolCallId || node.textContent);
+        const waitFor = async predicate => {
+            for (let i = 0; i < 100 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 10));
+            assert.ok(predicate(), 'stream DOM did not reach expected state');
+        };
+        await streamProjection.startStreamingMessage({ ...historyRef.get()[0], ...context }, messageItem);
+        append('## A\n\n');
+        append({ vcpHostedToolCalls: first });
+        await waitFor(() => order(messageItem).length === 3);
+        assert.deepEqual(order(messageItem), ['A', 'a', 'b']);
+        const existing = messageItem.querySelector('[data-vcp-tool-call-id="a"]');
+        append(one + '## B\n\n');
+        append({ vcpHostedToolCalls: second });
+        append(two + '## C\n');
+        await waitFor(() => order(messageItem).includes('C'));
+        const live = order(messageItem);
+        assert.deepEqual(live, ['A', 'a', 'b', 'B', 'c', 'C']);
+        assert.equal(messageItem.querySelector('[data-vcp-tool-call-id="a"]'), existing);
+        const assistantSegments = [
+            { content: '## A\n\n' }, { tool_calls: first }, { content: one + '## B\n\n' },
+            { tool_calls: second }, { content: two + '## C\n' },
+        ];
+        const terminal = await streamProjection.projectStreamTerminal(id, 'completed', context, {
+            fullResponse: assistantSegments.map(segment => segment.content ?? '').join(''), assistantSegments,
+        });
+        assert.ok(terminal);
+        assert.deepEqual(order(messageItem), live);
+        const reopenedModel = JSON.parse(JSON.stringify(historyRef.get().find(message => message.id === id)));
+        messageItem.remove();
+        const reopened = await renderer.renderMessage(reopenedModel, true, true);
+        assert.deepEqual(order(reopened), live);
+    } finally {
+        await disposeFixture(fixture);
+    }
+});

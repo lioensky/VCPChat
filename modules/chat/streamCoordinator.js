@@ -124,7 +124,11 @@ export function createStreamCoordinator({ run, persist, reportError = console.er
             signal: abortController.signal,
             pushChunk(chunk) {
                 if (!owns(record) || !record.session.pushChunk(chunk, generation)) return false;
-                publish(record, { type: 'chunk', text: typeof chunk === 'string' ? chunk : String(chunk?.text || '') });
+                if (Array.isArray(chunk?.vcpHostedToolCalls) && chunk.vcpHostedToolCalls.length) {
+                    publish(record, { type: 'hosted_tool_calls', tool_calls: record.session.snapshot.assistantSegments.at(-1).tool_calls });
+                } else {
+                    publish(record, { type: 'chunk', text: typeof chunk === 'string' ? chunk : String(chunk?.text || '') });
+                }
                 return true;
             },
             final(payload = {}) {
