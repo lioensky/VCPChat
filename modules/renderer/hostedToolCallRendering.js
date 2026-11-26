@@ -1,4 +1,40 @@
 import { composeToolBatchHtml } from './toolBatchDomains.js';
+import { renderDailyNoteCard } from './dailyNoteCard.js';
+import { sanitizeToolDataHtml } from './toolDataHtml.js';
+import { escapeHtml } from '../ui-system/text-escape.js';
+
+const textField = (...values) => values.find(value => typeof value === 'string' && value.trim()) ?? '';
+
+function createHostedDailyNoteCard(document, call, args) {
+    if (call.function.name !== 'vcptools' || textField(args?.tool_name).trim().toLowerCase() !== 'dailynote') return null;
+    const command = textField(args.command).trim().toLowerCase();
+    const content = textField(args.Content, args.content);
+    const target = textField(args.target);
+    const replace = typeof args.replace === 'string' ? args.replace : null;
+    const update = command === 'update' || (!command && target && replace !== null);
+    if (update ? !target || replace === null : !content || (command && command !== 'create')) return null;
+
+    const template = document.createElement('template');
+    const marked = document.defaultView?.marked;
+    template.innerHTML = renderDailyNoteCard({
+        command: update ? 'update' : 'create',
+        maid: textField(args.maid, args.maidName),
+        valet: textField(args.valet, args.valetName),
+        date: textField(args.Date, args.date),
+        fileName: textField(args.fileName),
+        folder: textField(args.folder),
+        content, tag: textField(args.Tag, args.tag), target, replace,
+    }, text => {
+        try {
+            const html = marked?.parse?.(text, { mangle: false, headerIds: false });
+            if (typeof html === 'string') return sanitizeToolDataHtml(html, document);
+        } catch { /* Fall back to plain text if Markdown cannot be parsed. */ }
+        return escapeHtml(text).replace(/\r\n?|\n/g, '<br>');
+    });
+    const card = template.content.firstElementChild;
+    card.dataset.vcpToolCallId = call.id;
+    return card;
+}
 
 export function createHostedToolCallCard(document, calls) {
     const batch = document.createElement('div');
@@ -15,6 +51,11 @@ export function createHostedToolCallCard(document, calls) {
         let payloadText = call.function.arguments;
         try {
             const args = JSON.parse(payloadText);
+            const diary = createHostedDailyNoteCard(document, call, args);
+            if (diary) {
+                batch.append(diary);
+                continue;
+            }
             if (typeof args?.tool_name === 'string' && args.tool_name.trim()) label = args.tool_name.trim();
             if (args && typeof args === 'object' && !Array.isArray(args) && Object.keys(args).length) {
                 payloadText = Object.entries(args).map(([key, value]) => {
