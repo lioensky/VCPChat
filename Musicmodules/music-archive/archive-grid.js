@@ -65,9 +65,11 @@
             st.cell = cell;
             st.rowH = cell + TEXT_H + GAP_Y;
             st.rows = [];
+            st.secRowStart = new Int32Array(st.secs.length);
             let y = 0;
             st.secs.forEach((sec, s) => {
                 if (st.secs.length > 1) { st.rows.push({ type: 'head', y, s }); y += HEAD_H; }
+                st.secRowStart[s] = st.rows.length;
                 const n = sec.ids.length;
                 for (let k = 0; k < n; k += cols) { st.rows.push({ type: 'row', y, s, k }); y += st.rowH; }
                 y += 18;
@@ -148,12 +150,17 @@
             const keep = new Set(), keepHeads = new Set();
             const dpr = global.devicePixelRatio || 1;
             const play = opts.playing();
+            const now = performance.now();
+            const entering = now < (st.enterUntil || 0);
+            const sweepOn = entering && now - (st.shownAt || 0) < 400 && Boolean(opts.host.querySelector('.archive-layout-sweep'));
+            const hostW = sweepOn ? (opts.host.clientWidth || global.innerWidth || 1600) : 0;
+            let frag = null;
             for (let r = rowAt(Math.max(0, view0)); r < st.rows.length && st.rows[r].y < view1; r++) {
                 const row = st.rows[r];
                 if (row.type === 'head') {
                     keepHeads.add(row.s);
                     let h = st.heads.get(row.s);
-                    if (!h) { h = headNode(row.s); st.heads.set(row.s, h); content.appendChild(h); }
+                    if (!h) { h = headNode(row.s); st.heads.set(row.s, h); if (!frag) frag = document.createDocumentFragment(); frag.appendChild(h); }
                     h.style.transform = `translate3d(${st.left}px,${row.y}px,0)`;
                     h.style.width = (st.cols * st.cell + (st.cols - 1) * GAP_X) + 'px';
                     continue;
@@ -169,20 +176,19 @@
                         n = makeNode();
                         st.nodes.set(id, n);
                         n.el.dataset.id = id;
-                        content.appendChild(n.el);
+                        if (!frag) frag = document.createDocumentFragment();
+                        frag.appendChild(n.el);
                         n.idx = -1;
                         n.el.classList.remove('ag-entering', 'ag-reveal', 'ag-flip');
-                        const sweep = performance.now() < (st.enterUntil || 0) && performance.now() - (st.shownAt || 0) < 400 && opts.host.querySelector('.archive-layout-sweep');
-                        if (sweep) {
+                        if (sweepOn) {
                             // 换视图时跟着扫描线从左往右翻过来
-                            const w = opts.host.clientWidth || global.innerWidth || 1600;
-                            const ms = Math.min(720, 380 + w * 0.16);
+                            const ms = Math.min(720, 380 + hostW * 0.16);
                             const sx = st.room.left + st.left + c * (st.cell + GAP_X);
                             const at = global.MusicArchiveWall?.sweepTimeAt;
-                            const u = Math.max(0, Math.min(1, sx / (w + 90)));
+                            const u = Math.max(0, Math.min(1, sx / (hostW + 90)));
                             n.el.style.setProperty('--ag-d', Math.round((at ? at(u) : u) * ms) + 'ms');
                             n.el.classList.add('ag-flip');
-                        } else if (performance.now() < (st.enterUntil || 0)) {
+                        } else if (entering) {
                             const vr = Math.max(0, (row.y - top) / st.rowH);
                             n.el.style.setProperty('--ag-d', Math.round(Math.min(360, (vr + c * 0.6) * 45)) + 'ms');
                             n.el.classList.add('ag-entering');
@@ -231,6 +237,7 @@
                     if (badge !== n.badge) { n.badge = badge; n.no.textContent = badge; }
                 }
             }
+            if (frag) content.appendChild(frag);
             for (const [id, n] of st.nodes) if (!keep.has(id)) { st.nodes.delete(id); recycle(n); }
             for (const [s, h] of st.heads) if (!keepHeads.has(s)) { h.remove(); st.heads.delete(s); }
             // 吸顶节标题：最上面那一行属于哪一节（节标题自己还在视野里时不显示，免得叠两层）
@@ -265,7 +272,8 @@
         const rectOf = (i) => {
             const w = st.where.get(i);
             if (!w) return null;
-            const r = st.rows.find((x) => x.type === 'row' && x.s === w.s && x.k <= w.k && w.k < x.k + st.cols);
+            const rowIdx = st.secRowStart ? st.secRowStart[w.s] + Math.floor(w.k / st.cols) : -1;
+            const r = rowIdx >= 0 ? st.rows[rowIdx] : st.rows.find((x) => x.type === 'row' && x.s === w.s && x.k <= w.k && w.k < x.k + st.cols);
             if (!r) return null;
             return { y: r.y, h: st.cell + TEXT_H, col: w.k - r.k };
         };

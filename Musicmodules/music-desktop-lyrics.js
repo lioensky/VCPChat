@@ -33,11 +33,21 @@
         return base + Math.max(0, Date.now() - app.lastStateUpdateTime) / 1000;
     };
 
+    // 按原数组引用缓存过滤后的有效歌词行，避免每 250ms 轮询都重新过滤整首歌
+    let cachedLyricsSrc = null;
+    let cachedLyricsLines = [];
+    const filteredLines = (all) => {
+        if (all === cachedLyricsSrc && cachedLyricsLines.length <= all.length) return cachedLyricsLines;
+        cachedLyricsSrc = all;
+        cachedLyricsLines = all.filter((l) => textOf(l));
+        return cachedLyricsLines;
+    };
+
     // 唱到第几行、这一行和下一行（空行跳过，间奏时显示下一句）
     function snapshot(app, t = position(app)) {
         const track = Array.isArray(app.playlist) ? app.playlist[app.currentTrackIndex] : null;
         const all = Array.isArray(app.currentLyrics) ? app.currentLyrics : [];
-        const lines = all.filter((l) => textOf(l));
+        const lines = filteredLines(all);
         const k = lineAt(lines, t);
         const line = k >= 0 ? lines[k] : null;
         const nextLine = lines[k + 1] || null;

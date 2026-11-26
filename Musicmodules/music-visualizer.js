@@ -145,10 +145,12 @@ function setupVisualizer(app) {
                 } else if (message.type === 'playback_state') {
                     app.handleEnginePlaybackState?.(message);
                 } else if (message.type === 'spectrum_data') {
-                    // 停着的时候只通知一次“没在播”，不再把每一帧频谱都经主进程转发出去。
+                    // 停着的时候只通知一次“没在播”，播放时按 40ms 节流（与主进程 musicGrooveBus 节流窗口对齐），避免 60Hz 冗余 IPC 序列化。
                     const grooving = app.isPlaying === true && !app.isTrackLoading;
-                    if (grooving || app._lastGroovePlaying !== false) {
+                    const nowMs = performance.now();
+                    if ((grooving && nowMs - (app._lastGrooveSentAt || 0) >= 40) || (!grooving && app._lastGroovePlaying !== false)) {
                         app._lastGroovePlaying = grooving;
+                        app._lastGrooveSentAt = nowMs;
                         app.api?.publishMusicGroove?.(grooving ? {
                             playing: true,
                             trackKey: app.playlist?.[app.currentTrackIndex]?.path || '',
@@ -234,17 +236,21 @@ function setupVisualizer(app) {
     };
 
     // 引擎的二进制帧：[类型 u8][版本 u8][段数 u16 小端][段数 × f32 小端]，类型 1 是频谱。
-    app.decodeEngineBinaryFrame = (buffer) => {
-        if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 4) return null;
-        const view = new DataView(buffer);
-        const kind = view.getUint8(0);
-        const version = view.getUint8(1);
-        const count = view.getUint16(2, true);
-        if (kind !== 1 || version !== 1 || buffer.byteLength < 4 + count * 4) return null;
-        const data = new Array(count);
-        for (let i = 0; i < count; i++) data[i] = view.getFloat32(4 + i * 4, true);
-        return { type: 'spectrum_data', data };
-    };
+    // 复用解码数组，避免 60Hz 频谱帧每秒新建 60 个数组（闭包自包含，兼容单测片段执行）。
+    app.decodeEngineBinaryFrame = (() => {
+        let buf = [];
+        return (buffer) => {
+            if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 4) return null;
+            const view = new DataView(buffer);
+            const kind = view.getUint8(0);
+            const version = view.getUint8(1);
+            const count = view.getUint16(2, true);
+            if (kind !== 1 || version !== 1 || buffer.byteLength < 4 + count * 4) return null;
+            if (buf.length !== count) buf = new Array(count);
+            for (let i = 0; i < count; i++) buf[i] = view.getFloat32(4 + i * 4, true);
+            return { type: 'spectrum_data', data: buf };
+        };
+    })();
 
     app.destroyVisualizer = () => {
         if (app.visualizerDestroyed) return;
@@ -463,10 +469,14 @@ function setupVisualizer(app) {
 
             if (isStageActive) {
                 app.stageHost.updateFrame(timestamp);
-                app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+                if (!app._visualizerClearedForStage) {
+                    app._visualizerClearedForStage = true;
+                    app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+                }
                 app.animationFrameId = requestAnimationFrame(draw);
                 return;
             }
+            app._visualizerClearedForStage = false;
 
             app.updateAmbientPixi?.(0.016);
             app.drawVisualizer(app.currentVisualizerData);

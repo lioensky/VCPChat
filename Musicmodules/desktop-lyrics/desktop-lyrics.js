@@ -48,18 +48,20 @@
             lineSpan = null;
             if (line && line.text) {
                 if (Array.isArray(line.words) && line.words.length) {
+                    const frag = document.createDocumentFragment();
                     words = line.words.map((w) => {
                         const el = wordSpan(w.text);
-                        cur.appendChild(el);
-                        return { el, s: w.s, e: w.e };
+                        frag.appendChild(el);
+                        return { el, s: w.s, e: w.e, last: '' };
                     });
+                    cur.appendChild(frag);
                 } else {
                     // 整句按到下一句的时间填（最长 8 秒，免得长间奏前的一句填得太慢）
                     const s = line.time;
                     const nextAt = snap.next ? snap.next.time : s + 4;
                     const el = wordSpan(line.text);
                     cur.appendChild(el);
-                    lineSpan = { el, s, e: s + Math.min(8, Math.max(0.6, nextAt - s)) };
+                    lineSpan = { el, s, e: s + Math.min(8, Math.max(0.6, nextAt - s)), last: '' };
                 }
                 cur.classList.remove('swap');
                 void cur.offsetWidth;
@@ -72,9 +74,9 @@
             const nx = snap && snap.next;
             const nextText = line && line.tr ? line.tr : nx ? nx.text : '';
             next.textContent = nextText || (snap && !snap.hasLyrics && snap.path ? '这首歌没有歌词' : '');
+            fit();
         }
         paint();
-        fit();
     };
 
     const paint = () => {
@@ -83,12 +85,20 @@
         if (words) {
             for (const w of words) {
                 const f = pct(t, w.s, w.e);
-                w.el.style.setProperty('--f', f.toFixed(1) + '%');
+                const val = f.toFixed(1) + '%';
+                if (val !== w.last) {
+                    w.last = val;
+                    w.el.style.setProperty('--f', val);
+                }
                 if (f < 100) moving = true;
             }
         } else if (lineSpan) {
             const f = pct(t, lineSpan.s, lineSpan.e);
-            lineSpan.el.style.setProperty('--f', f.toFixed(1) + '%');
+            const val = f.toFixed(1) + '%';
+            if (val !== lineSpan.last) {
+                lineSpan.last = val;
+                lineSpan.el.style.setProperty('--f', val);
+            }
             moving = f < 100;
         }
         cancelAnimationFrame(frame);

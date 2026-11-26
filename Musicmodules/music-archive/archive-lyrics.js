@@ -74,13 +74,14 @@
             const src = Array.isArray(app.currentLyrics) ? app.currentLyrics : [];
             state.source = app.currentLyrics;
             state.lines = src.filter((l) => l && textOf(l));
+            state.lineWords = state.lines.map((l) => wordsOf(l));
             state.offsets = [];
             let y = 0;
             r.track.innerHTML = state.lines.map((l, k) => {
                 state.offsets.push(y);
                 const tr = String(l.translation || '').trim();
                 y += tr ? LINE_H_TR : LINE_H;
-                const words = wordsOf(l);
+                const words = state.lineWords[k];
                 const body = words ? words.map((w) => `<span class="w">${esc(w.text)}</span>`).join('') : esc(textOf(l));
                 return `<p data-k="${k}"${tr ? ' class="tr"' : ''}><b${words ? ' class="ww"' : ''}>${body}</b>${tr ? `<em>${esc(tr)}</em>` : ''}</p>`;
             }).join('');
@@ -139,15 +140,20 @@
         let fitRaf = 0;
         const fitLines = () => {
             fitRaf = 0;
-            // 原文和译文各算各的（译文行 <em> 同样先缩字再省略）
+            // 原文和译文各算各的（译文行 <em> 同样先缩字再省略）；拆成清属性 → 批量量 → 批量写，避免逐行读写交替触发 N 次重排
             const nodes = [...r.track.querySelectorAll('p:not(.plain-note) > b, p:not(.plain-note) > em')];
-            const need = nodes.map((b) => {
-                const prev = b.style.getPropertyValue('--fit');
-                if (prev) b.style.removeProperty('--fit');
+            for (let i = 0; i < nodes.length; i++) {
+                if (nodes[i].style.getPropertyValue('--fit')) nodes[i].style.removeProperty('--fit');
+            }
+            const need = new Float32Array(nodes.length);
+            for (let i = 0; i < nodes.length; i++) {
+                const b = nodes[i];
                 const avail = b.clientWidth, full = b.scrollWidth;
-                return avail > 0 && full > avail ? Math.max(FIT_MIN, Math.floor(avail / (full * 1.05) * 100) / 100) : 1;
-            });
-            nodes.forEach((b, k) => { if (need[k] < 1) b.style.setProperty('--fit', String(need[k])); });
+                need[i] = avail > 0 && full > avail ? Math.max(FIT_MIN, Math.floor(avail / (full * 1.05) * 100) / 100) : 1;
+            }
+            for (let i = 0; i < nodes.length; i++) {
+                if (need[i] < 1) nodes[i].style.setProperty('--fit', String(need[i]));
+            }
         };
         const fitSoon = () => { if (!fitRaf) fitRaf = requestAnimationFrame(fitLines); };
 
@@ -301,8 +307,7 @@
         };
         const paintWords = (t) => {
             const k = state.index;
-            const line = k >= 0 ? state.lines[k] : null;
-            const words = line && wordsOf(line);
+            const words = k >= 0 && state.lineWords ? state.lineWords[k] : (k >= 0 && state.lines[k] ? wordsOf(state.lines[k]) : null);
             const node = words ? r.track.children[k]?.querySelector('b.ww') : null;
             paintLineProgress(t, Boolean(node));
             if (!node) { state.words = null; return; }
@@ -390,12 +395,14 @@
             }, FOLLOW_AFTER);
         }, { passive: false });
 
-        // 只在显示着、而且在播放时走表（暂停时停在原处）
+        // 只在显示着、窗口可见且在播放时走表（暂停或最小化时停表省电）
         const schedule = () => {
-            const want = state.shown && Boolean(app.isPlaying);
+            const want = state.shown && Boolean(app.isPlaying) && !document.hidden;
             if (want && !state.timer) state.timer = setInterval(tick, TICK_MS);
             else if (!want && state.timer) { clearInterval(state.timer); state.timer = 0; }
         };
+        const onVis = () => { schedule(); if (!document.hidden && state.shown) tick(); };
+        document.addEventListener('visibilitychange', onVis);
 
         /* 滚轮翻看时（5 秒后自己滑回）下方出现「回到当前句」：点一下马上回去 */
         r.back?.addEventListener('click', () => {
@@ -434,7 +441,7 @@
             tick,
             setAllowed: (on) => { state.allowed = Boolean(on); sync(); },
             get shown() { return state.shown; },
-            destroy: () => { resizeObserver.disconnect(); cancelAnimationFrame(fitRaf); if (state.timer) clearInterval(state.timer); state.timer = 0; clearTimeout(state.noneTimer); clearTimeout(state.noneRefresh); clearTimeout(state.manualTimer); el.remove(); },
+            destroy: () => { document.removeEventListener('visibilitychange', onVis); resizeObserver.disconnect(); cancelAnimationFrame(fitRaf); if (state.timer) clearInterval(state.timer); state.timer = 0; clearTimeout(state.noneTimer); clearTimeout(state.noneRefresh); clearTimeout(state.manualTimer); el.remove(); },
             debug: () => ({ shown: state.shown, none: state.none, lines: state.lines.length, index: state.index, ticking: Boolean(state.timer) })
         };
     };

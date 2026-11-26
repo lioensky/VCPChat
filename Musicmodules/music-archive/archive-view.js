@@ -2265,6 +2265,7 @@
             setLayout,
             get wall() { return wall; },
             get grid() { return grid; },
+            getSearchIndex: () => searchIndex,
             debug: () => ({
                 mode: state.mode, layout: state.layout, wall: wall ? wall.debug() : null, grid: grid ? grid.debug() : null, lane: state.lane, row: state.row, columns: state.columns.map((c) => ({ id: c.id, n: c.items.length })),
                 selected: selectedIndex(), rendering: Boolean(state.raf || state.wait), allowed: renderAllowed(), scene: state.scene?.debug() || null,

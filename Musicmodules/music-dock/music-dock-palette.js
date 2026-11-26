@@ -204,8 +204,8 @@
             notify(`${front ? '下一首播放' : '已加入队列'}：${label}`);
         };
 
-        const songItem = (track, group) => {
-            const index = app.playlist.indexOf(track);
+        const songItem = (track, group, knownIndex) => {
+            const index = Number.isInteger(knownIndex) ? knownIndex : app.playlist.indexOf(track);
             const isCurrent = index === app.currentTrackIndex;
             return {
                 id: `song:${track.path}`,
@@ -222,12 +222,12 @@
             };
         };
 
-        const playlistTracks = (pl) => {
-            const byPath = new Map((app.playlist || []).map((t) => [t.path, t]));
-            return (pl.tracks || []).map((p) => byPath.get(p)).filter(Boolean);
+        const playlistTracks = (pl, byPath) => {
+            const map = byPath || new Map((app.playlist || []).map((t) => [t.path, t]));
+            return (pl.tracks || []).map((p) => map.get(p)).filter(Boolean);
         };
-        const playlistItem = (pl, group = '歌单') => {
-            const tracks = playlistTracks(pl);
+        const playlistItem = (pl, group = '歌单', byPath) => {
+            const tracks = playlistTracks(pl, byPath);
             return {
                 id: `playlist:${pl.id}`,
                 section: '歌单',
@@ -269,13 +269,17 @@
             };
         };
         const getIndex = () => {
+            const tracks = app.playlist || [];
+            // 优先复用首页已经预热好的拼音检索索引，避免首次按 Ctrl+K 同步重建整份曲库索引卡顿且占双倍内存
+            const shared = app.archiveView?.getSearchIndex?.();
+            if (shared && shared.size === tracks.length) return shared;
             const Lib = global.MusicArchiveIndex;
             if (!Lib || typeof Lib.createIndex !== 'function') return null;
             const pinyin = pinyinFn();
-            if (searchIndex && indexedList === app.playlist && indexedLength === app.playlist.length && indexedPinyin === Boolean(pinyin)) return searchIndex;
-            try { searchIndex = Lib.createIndex(app.playlist || [], { pinyin }); } catch (error) { searchIndex = null; }
+            if (searchIndex && indexedList === app.playlist && indexedLength === tracks.length && indexedPinyin === Boolean(pinyin)) return searchIndex;
+            try { searchIndex = Lib.createIndex(tracks, { pinyin }); } catch (error) { searchIndex = null; }
             indexedList = app.playlist;
-            indexedLength = (app.playlist || []).length;
+            indexedLength = tracks.length;
             indexedPinyin = Boolean(pinyin);
             return searchIndex;
         };
@@ -298,14 +302,14 @@
             return score;
         };
 
-        /* 按检索词找歌，返回曲库里的歌（按得分排好）。有索引用索引，没有就用简单匹配。 */
+        /* 按检索词找歌，返回 { track, index }（按得分排好），避免后续 60 次 O(N) indexOf。 */
         const findSongs = (q, limit) => {
             const tracks = app.playlist || [];
             const index = getIndex();
             if (!index) {
                 const strip = app.stripAudioExtension;
-                return tracks.map((track) => ({ track, s: scoreTrack(track, q, strip) }))
-                    .filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, limit).map((x) => x.track);
+                return tracks.map((track, idx) => ({ track, index: idx, s: scoreTrack(track, q, strip) }))
+                    .filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, limit);
             }
             let order = q.text ? index.query(q.text, { limit: Math.max(limit * 4, 400) }) : tracks.map((_, i) => i);
             const keep = (kind, value) => {
@@ -320,17 +324,23 @@
                 const strip = app.stripAudioExtension;
                 order = order.filter((i) => lower(strip ? strip(tracks[i]?.title) : tracks[i]?.title).includes(want));
             }
-            return order.slice(0, limit).map((i) => tracks[i]).filter(Boolean);
+            return order.slice(0, limit).map((i) => (tracks[i] ? { track: tracks[i], index: i } : null)).filter(Boolean);
         };
 
         const recentItems = () => {
             const all = commands();
-            const byPath = new Map((app.playlist || []).map((t) => [`song:${t.path}`, t]));
+            const byPath = new Map();
+            const bySongId = new Map();
+            (app.playlist || []).forEach((t, i) => {
+                if (!t) return;
+                byPath.set(t.path, t);
+                bySongId.set(`song:${t.path}`, { track: t, index: i });
+            });
             return readRecent().map((id) => {
-                if (id.startsWith('song:')) { const t = byPath.get(id); return t ? { ...songItem(t, '最近'), section: '最近' } : null; }
+                if (id.startsWith('song:')) { const hit = bySongId.get(id); return hit ? { ...songItem(hit.track, '最近', hit.index), section: '最近' } : null; }
                 if (id.startsWith('playlist:')) {
                     const pl = (app.customPlaylists || []).find((p) => `playlist:${p.id}` === id);
-                    return pl ? { ...playlistItem(pl, '最近'), section: '最近' } : null;
+                    return pl ? { ...playlistItem(pl, '最近', byPath), section: '最近' } : null;
                 }
                 const cmd = all.find((c) => c.id === id);
                 return cmd ? { ...cmd, group: '最近', section: '最近' } : null;
@@ -359,21 +369,24 @@
                         .sort((a, b) => b.s - a.s)
                         .slice(0, 6)
                         .forEach((x) => { if (x.s >= 3) commandPrefix = true; cmds.push({ ...x.c, section: '命令' }); });
-                    (app.customPlaylists || [])
+                    const matchedPlaylists = (app.customPlaylists || [])
                         .map((pl) => ({ pl, s: nameMatches(pl.name || '', q.text) }))
                         .filter((x) => x.s > 0)
                         .sort((a, b) => b.s - a.s)
-                        .slice(0, 6)
-                        .forEach((x) => playlists.push(playlistItem(x.pl)));
+                        .slice(0, 6);
+                    if (matchedPlaylists.length) {
+                        const byPath = new Map((app.playlist || []).map((t) => [t.path, t]));
+                        matchedPlaylists.forEach((x) => playlists.push(playlistItem(x.pl, '歌单', byPath)));
+                    }
                 }
                 if (hasSongFilter(q)) {
                     const found = findSongs(q, MAX_SONGS);
                     const queue = app.currentFilteredTracks && app.currentFilteredTracks !== app.playlist ? new Set(app.currentFilteredTracks) : null;
                     // 当前列表里的排前面，其余按得分。
-                    const inQueue = queue ? found.filter((t) => queue.has(t)).slice(0, 20) : [];
-                    const picked = new Set(inQueue);
-                    inQueue.forEach((t) => songs.push(songItem(t, '队列')));
-                    found.forEach((t) => { if (!picked.has(t)) songs.push(songItem(t, '曲库')); });
+                    const inQueue = queue ? found.filter((hit) => queue.has(hit.track)).slice(0, 20) : [];
+                    const picked = new Set(inQueue.map((hit) => hit.track));
+                    inQueue.forEach((hit) => songs.push(songItem(hit.track, '队列', hit.index)));
+                    found.forEach((hit) => { if (!picked.has(hit.track)) songs.push(songItem(hit.track, '曲库', hit.index)); });
                 }
                 // 默认歌曲贴着输入框；输入像是在找操作（命令名开头命中、又没有歌名开头命中）时命令排前。
                 const songPrefix = songs.some((it) => lower(it.title).startsWith(lower(q.text)));
@@ -568,8 +581,9 @@
             event.stopPropagation();
             toggle();
         };
+        const onResize = () => { if (state.open) place(); };
         document.addEventListener('keydown', onGlobalKey, true);
-        global.addEventListener('resize', place);
+        global.addEventListener('resize', onResize);
 
         return {
             open,
@@ -579,7 +593,7 @@
             destroy() {
                 close(false);
                 document.removeEventListener('keydown', onGlobalKey, true);
-                global.removeEventListener('resize', place);
+                global.removeEventListener('resize', onResize);
                 root.remove();
             }
         };

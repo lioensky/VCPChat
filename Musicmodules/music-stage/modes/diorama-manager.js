@@ -16,6 +16,7 @@
         let initialized = false, fallbackMode = false, initializing = null;
         let latest = null, source = null, identity = null, timeline = null, track = null;
         let compiledDuration = null, optionsKey = '', paletteKey = '', pose = null;
+        let lastPaletteRef = null, lastPaletteJson = '', lastBar = '';
         let width = 1, height = 1, lastTime = null;
         let pendingOptions = null, pendingSince = 0, settleTimer = 0, builtSettings = {}, rebuilds = 0;
         let contextRetries = 0, contextTimer = 0, lastContextLoss = 0;
@@ -139,8 +140,14 @@
             const knownDuration = R.finiteNumber(frame.duration, R.finiteNumber(frame.track?.duration));
             const nextDuration = knownDuration > 0 || frame.lines?.length ? knownDuration : IDLE_DURATION;
             const settings = options();
-            const nextOptions = JSON.stringify(REBUILD_KEYS.map(key => settings[key]));
-            const nextPalette = JSON.stringify(palette());
+            let nextOptions = '';
+            for (let i = 0; i < REBUILD_KEYS.length; i++) nextOptions += `${i ? '|' : ''}${settings[REBUILD_KEYS[i]]}`;
+            const currentPalette = palette();
+            if (currentPalette !== lastPaletteRef) {
+                lastPaletteRef = currentPalette;
+                lastPaletteJson = JSON.stringify(currentPalette);
+            }
+            const nextPalette = lastPaletteJson;
             let recompile = false;
             if (!timeline || source !== frame.lines || identity !== nextIdentity || U.durationChanged(compiledDuration, nextDuration)) {
                 source = frame.lines;
@@ -275,7 +282,11 @@
             lyrics.update(time, settings, audio, camera,
                 { x: 0.94, y: Math.max(0.5, 0.95 - 2 * bars / height), avoid: overlay.box });
             events.update(time, settings, drawn().quality, palette(), audio);
-            letterbox.style.setProperty('--diorama-bar', `${bars}px`);
+            const barVal = `${bars}px`;
+            if (barVal !== lastBar) {
+                lastBar = barVal;
+                letterbox.style.setProperty('--diorama-bar', barVal);
+            }
             fallback.hidden = true;
             if (frame.isPlaying && renderScale.tick(performance.now(), cap.aim(drawn().quality))) resize();
             if (!lenslessWarm) lenslessWarm = U.warmLensless(T, renderer, scene, camera, renderScale, drawn().quality);

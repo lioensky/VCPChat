@@ -2230,11 +2230,10 @@ void main() {
             const flooding = (data.transition === 'flood' || data.transition === 'burst') && since >= 0 && since < floodLen && !s.reducedMotion;
             const floodR = flooding ? 1.9 * (1 - Math.pow(1 - since / floodLen, 2.4)) : 0;
 
-            const put = (target, ...values) => { for (let i = 0; i < values.length; i += 1) target[i] = values[i]; };
-            // 逐字层的参数
+            // 逐字层的参数（直接按分量写入，避免每帧新建闭包与 rest 参数数组）
             if (data.glyphCount) {
                 const gu = glState.glyphUniforms;
-                put(gu.uView, view.c[0], view.c[1], view.h, view.roll);
+                gu.uView[0] = view.c[0]; gu.uView[1] = view.c[1]; gu.uView[2] = view.h; gu.uView[3] = view.roll;
                 gu.uAspect = width / height;
                 gu.uTime = t;
                 gu.uPop = s.reducedMotion ? 0 : 1;
@@ -2246,13 +2245,13 @@ void main() {
             }
             // 平滑场和主遍共用的参数（uRes、uAspect 每遍不同，渲染器自己填；墨团那几个数组就是 blobBuffer 它们本身）
             const u = glState.uniforms;
-            put(u.uWorld, world.W, world.H);
-            put(u.uIdSize, idsCanvas.width, idsCanvas.height);
-            put(u.uView, view.c[0], view.c[1], view.h, view.roll);
-            if (prevView) put(u.uPrevView, prevView.c[0], prevView.c[1], prevView.h, prevView.roll);
+            u.uWorld[0] = world.W; u.uWorld[1] = world.H;
+            u.uIdSize[0] = idsCanvas.width; u.uIdSize[1] = idsCanvas.height;
+            u.uView[0] = view.c[0]; u.uView[1] = view.c[1]; u.uView[2] = view.h; u.uView[3] = view.roll;
+            if (prevView) { u.uPrevView[0] = prevView.c[0]; u.uPrevView[1] = prevView.c[1]; u.uPrevView[2] = prevView.h; u.uPrevView[3] = prevView.roll; }
             u.uPrevFade = prevSlot ? prevFade : 0;
             u.uTime = t;
-            put(u.uStroke, data.strokeStart, data.strokeStep);
+            u.uStroke[0] = data.strokeStart; u.uStroke[1] = data.strokeStep;
             const local = t - data.cue.start;
             u.uTone = smooth(0.05, 0.9, local);
             u.uBlobCount = counts.blobs;
@@ -2260,7 +2259,7 @@ void main() {
             u.uBlobCol.set(palette.blob);
             u.uDotPx = height / Math.max(1, size.h);
             u.uDotAngle = view.angle ?? 0.26;
-            put(u.uFlood, data.flood[0], data.flood[1], floodR, flooding ? 1 : 0);
+            u.uFlood[0] = data.flood[0]; u.uFlood[1] = data.flood[1]; u.uFlood[2] = floodR; u.uFlood[3] = flooding ? 1 : 0;
             u.uSmash = smash;
             // 扫笔跨在换句上：换句前 0.2 秒笔头进画，换句后 0.4 秒飞白裂开
             let sweepU = -1, sweepP = null;
@@ -2271,7 +2270,7 @@ void main() {
                     sweepU = (t - nextData.cue.start + SWEEP_BEFORE) / (SWEEP_BEFORE + SWEEP_AFTER); sweepP = nextData.sweep;
                 }
             }
-            put(u.uSweep, sweepU, sweepP ? sweepP[0] : 0, sweepP ? sweepP[1] : 0, sweepP ? 1 : 0);
+            u.uSweep[0] = sweepU; u.uSweep[1] = sweepP ? sweepP[0] : 0; u.uSweep[2] = sweepP ? sweepP[1] : 0; u.uSweep[3] = sweepP ? 1 : 0;
             u.uCloud = s.cloud;
             const exiting = !s.reducedMotion && (!nextData || nextData.transition === 'cut') && data.cue.kind === 'line';
             u.uExit = exiting ? smooth(data.cue.end - 0.45, data.cue.end, t) : 0;

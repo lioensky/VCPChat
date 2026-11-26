@@ -316,33 +316,38 @@
 
     const resolveAudioBands = (spectrum) => {
         const values = spectrum || [];
-        if (!values.length) {
+        const length = values.length;
+        if (!length) {
             return { power: 0, bass: 0, lowMid: 0, mid: 0, vocal: 0, treble: 0, spectrum: values };
         }
 
-        const length = values.length;
-        const ranges = [
-            [Math.max(0, Math.floor(length * 0.01)), Math.min(length, Math.max(1, Math.ceil(length * 0.10)))],
-            [Math.max(0, Math.floor(length * 0.10)), Math.min(length, Math.max(Math.floor(length * 0.10) + 1, Math.ceil(length * 0.24)))],
-            [Math.max(0, Math.floor(length * 0.24)), Math.min(length, Math.max(Math.floor(length * 0.24) + 1, Math.ceil(length * 0.46)))],
-            [Math.max(0, Math.floor(length * 0.18)), Math.min(length, Math.max(Math.floor(length * 0.18) + 1, Math.ceil(length * 0.58)))],
-            [Math.max(0, Math.floor(length * 0.58)), Math.min(length, Math.max(Math.floor(length * 0.58) + 1, Math.ceil(length * 0.98)))]
-        ];
-        const totals = [0, 0, 0, 0, 0];
+        const r0a = Math.max(0, Math.floor(length * 0.01));
+        const r0b = Math.min(length, Math.max(1, Math.ceil(length * 0.10)));
+        const r1a = Math.max(0, Math.floor(length * 0.10));
+        const r1b = Math.min(length, Math.max(r1a + 1, Math.ceil(length * 0.24)));
+        const r2a = Math.max(0, Math.floor(length * 0.24));
+        const r2b = Math.min(length, Math.max(r2a + 1, Math.ceil(length * 0.46)));
+        const r3a = Math.max(0, Math.floor(length * 0.18));
+        const r3b = Math.min(length, Math.max(r3a + 1, Math.ceil(length * 0.58)));
+        const r4a = Math.max(0, Math.floor(length * 0.58));
+        const r4b = Math.min(length, Math.max(r4a + 1, Math.ceil(length * 0.98)));
 
-        // One spectrum traversal; additions within every band retain the original
-        // ascending-index order, preserving the previous audio response values.
+        let t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
+        // One spectrum traversal with scalar accumulators; avoids per-frame array allocations.
         for (let index = 0; index < length; index += 1) {
             const value = Number(values[index]) || 0;
-            for (let band = 0; band < ranges.length; band += 1) {
-                if (index >= ranges[band][0] && index < ranges[band][1]) totals[band] += value;
-            }
+            if (index >= r0a && index < r0b) t0 += value;
+            if (index >= r1a && index < r1b) t1 += value;
+            if (index >= r2a && index < r2b) t2 += value;
+            if (index >= r3a && index < r3b) t3 += value;
+            if (index >= r4a && index < r4b) t4 += value;
         }
 
-        const averages = totals.map((total, index) => clamp(
-            total / Math.max(1, ranges[index][1] - ranges[index][0])
-        ));
-        const [bass, lowMid, mid, vocal, treble] = averages;
+        const bass = clamp(t0 / Math.max(1, r0b - r0a));
+        const lowMid = clamp(t1 / Math.max(1, r1b - r1a));
+        const mid = clamp(t2 / Math.max(1, r2b - r2a));
+        const vocal = clamp(t3 / Math.max(1, r3b - r3a));
+        const treble = clamp(t4 / Math.max(1, r4b - r4a));
         const power = clamp(bass * 0.25 + lowMid * 0.2 + mid * 0.2 + vocal * 0.25 + treble * 0.1);
         return { power, bass, lowMid, mid, vocal, treble, spectrum: values };
     };
@@ -482,12 +487,15 @@
         let visible = false;
         let destroyed = false;
         let lastLabel = '';
+        let settledIdle = false;
+        const reducedMotionQuery = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const update = (frame, state = {}) => {
             if (destroyed) return;
             const nextVisible = state.visible !== false;
             if (nextVisible !== visible) {
                 visible = nextVisible;
                 root.hidden = !visible;
+                settledIdle = false;
             }
             const label = String(state.label || '音乐间奏');
             if (label !== lastLabel) {
@@ -498,7 +506,7 @@
 
             const spectrum = frame?.audio?.spectrum || EMPTY_WORDS;
             const hasSpectrum = spectrum.length > 0;
-            const motion = global.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+            const motion = reducedMotionQuery?.matches
                 ? 0 : clamp(finiteNumber(state.intensity, 1), 0, 2);
             const time = finiteNumber(frame?.playbackTime, 0) * motion;
             const playing = Boolean(frame?.isPlaying);
@@ -507,6 +515,8 @@
             root.style.setProperty('--interlude-power', power.toFixed(4));
             // Same absolute phase on pause: no change of angular speed that jumps the ring.
             root.style.setProperty('--interlude-phase', `${(time * 3) % 360}deg`);
+            if (!playing && settledIdle) return;
+            settledIdle = !playing;
 
             barsList.forEach((bar, index) => {
                 const ratio = index / barCount;

@@ -58,7 +58,11 @@
             rows.nowTop = current ? y - QUEUE_ROW_H : 0;
             if (up.manual.length) {
                 push({ type: 'head', label: '接下来播放', count: up.manual.length, clear: true }, QUEUE_HEAD_H);
+                rows.manualStart = rows.length;
                 up.manual.forEach((track, i) => push({ type: 'manual', i, track }, QUEUE_ROW_H));
+                rows.manualEnd = rows.length;
+            } else {
+                rows.manualStart = rows.manualEnd = 0;
             }
             if (up.context.length) {
                 const mode = playMode();
@@ -123,10 +127,18 @@
             const rows = state.queueRows || [];
             const top = scroller.scrollTop - QUEUE_ROW_H * 4;
             const bottom = scroller.scrollTop + (scroller.clientHeight || 300) + QUEUE_ROW_H * 4;
-            let first = 0;
-            while (first < rows.length && rows[first].top + rows[first].h < top) first++;
-            let last = first;
-            while (last < rows.length && rows[last].top < bottom) last++;
+            let lo = 0, hi = rows.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (rows[mid].top + rows[mid].h < top) lo = mid + 1; else hi = mid;
+            }
+            const first = lo;
+            lo = first; hi = rows.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (rows[mid].top < bottom) lo = mid + 1; else hi = mid;
+            }
+            const last = lo;
             const key = `${first}:${last}:${app.currentTrackIndex}:${rows.length}`;
             if (!force && scroller.dataset.window === key) return;
             scroller.dataset.window = key;
@@ -134,7 +146,9 @@
             // 手动队列的行总是全画出来，拖动排序时才有地方让位。
             const keep = new Set();
             for (let k = first; k < last; k++) keep.add(k);
-            rows.forEach((row, k) => { if (row.type === 'manual' && rows.length < 400) keep.add(k); });
+            if (rows.length < 400 && rows.manualEnd > rows.manualStart) {
+                for (let k = rows.manualStart; k < rows.manualEnd; k++) keep.add(k);
+            }
             scroller.firstElementChild.innerHTML = [...keep].sort((a, b) => a - b).map((k) => queueRowHtml(rows[k], k, current)).join('');
         }
 
@@ -189,10 +203,10 @@
                     d.moved = true;
                     rowEl.classList.add('md-qdrag');
                     scroller.classList.add('md-qdragging');
+                    const rect = scroller.getBoundingClientRect();
                     const loop = () => {
-                        const r = scroller.getBoundingClientRect();
-                        if (d.y < r.top + 32) scroller.scrollTop -= 6;
-                        else if (d.y > r.bottom - 32) scroller.scrollTop += 6;
+                        if (d.y < rect.top + 32) scroller.scrollTop -= 6;
+                        else if (d.y > rect.bottom - 32) scroller.scrollTop += 6;
                         layoutDrag();
                         d.raf = requestAnimationFrame(loop);
                     };

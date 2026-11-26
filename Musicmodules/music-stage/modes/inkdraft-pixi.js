@@ -168,6 +168,7 @@
         });
 
         const baseResolution = renderer.resolution;
+        const CLEAR_ZERO = [0, 0, 0, 0];
         let destroyed = false;
 
         return {
@@ -220,9 +221,9 @@
                 if (field.source.pixelWidth !== width || field.source.pixelHeight !== height) field.source.resize(width, height, 1);
                 if (slot.data.glyphCount) {
                     glyphShader.resources.uAtlas = slot.atlas;
-                    renderer.render({ container: slot.scene, target: field, clear: true, clearColor: [0, 0, 0, 0] });
+                    renderer.render({ container: slot.scene, target: field, clear: true, clearColor: CLEAR_ZERO });
                 } else {
-                    renderer.render({ container: emptyScene, target: field, clear: true, clearColor: [0, 0, 0, 0] });
+                    renderer.render({ container: emptyScene, target: field, clear: true, clearColor: CLEAR_ZERO });
                 }
                 const [sw, sh] = smoothSize;
                 if (smoothField.pixelWidth !== sw || smoothField.pixelHeight !== sh) smoothTarget.resize(sw, sh, 1);
@@ -253,6 +254,8 @@
                 glyphShader.destroy();
                 field.destroy(true);
                 smoothTarget.destroy();
+                smoothField.destroy();
+                smoothWarp.destroy();
                 // 交还之前把分辨率改回去，下一个用这只渲染器的舞台按它自己的算
                 try { renderer.resize(renderer.screen.width, renderer.screen.height, baseResolution); } catch (error) { /* 渲染器已经没了 */ }
             }

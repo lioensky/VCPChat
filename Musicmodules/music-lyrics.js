@@ -630,7 +630,11 @@ function setupLyrics(app) {
                 } else {
                     const wordDuration = Math.max(0.001, word.end - word.start);
                     const progress = Math.min(1, Math.max(0, (estimatedTime - word.start) / wordDuration));
-                    word.span.style.setProperty('--word-progress', `${(progress * 100).toFixed(1)}%`);
+                    const pct = `${(progress * 100).toFixed(1)}%`;
+                    if (pct !== word.pct) {
+                        word.pct = pct;
+                        word.span.style.setProperty('--word-progress', pct);
+                    }
                     if (word.state !== 'singing') {
                         word.state = 'singing';
                         word.span.classList.add('singing');
@@ -654,8 +658,15 @@ function setupLyrics(app) {
             }
             layout.gapIndex = gapIndex;
             layout.gapHead = allLi[0];
+            layout.gapProg = '';
         }
-        if (gap) allLi[gap.index]?.style.setProperty('--gap-progress', gap.progress.toFixed(3));
+        if (gap) {
+            const gapProg = gap.progress.toFixed(3);
+            if (gapProg !== layout.gapProg) {
+                layout.gapProg = gapProg;
+                allLi[gap.index]?.style.setProperty('--gap-progress', gapProg);
+            }
+        }
 
         // --- 弹性阻尼平滑滚动引擎 (Spring Lerp Physics) ---
         if (app.currentLyricIndex > -1 && !app.lyricUserScrolling) {
