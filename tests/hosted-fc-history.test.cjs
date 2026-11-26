@@ -119,3 +119,19 @@ test('request assembly sends standard messages and closes every original call ID
     assert.deepEqual(messagesForVCP.filter(message => message.role === 'tool').map(message => message.tool_call_id), ['a', 'b', 'c']);
     assert.ok(messagesForVCP.every(message => !Object.hasOwn(message, '__vcpHostedHistoryCalls')));
 });
+
+
+test('editing model prose keeps flattened history and structured FC replay in sync', async () => {
+    const { reconcileEditedAssistantSegments, expandHostedHistoryMessage } = await import('../modules/chat/hostedToolHistory.js');
+    const original = 'before' + batch('one') + 'after';
+    const segments = [{ content: 'before' }, { tool_calls: [call('a')] },
+        { content: batch('one'), receipt: true }, { content: 'after' }];
+    assert.equal(reconcileEditedAssistantSegments(segments, original), segments);
+    for (const text of [original.replace('before', 'new before'), original + '!', '']) {
+        const edited = reconcileEditedAssistantSegments(segments, text);
+        assert.equal(edited.map(segment => segment.content ?? '').join(''), text);
+        assert.equal(edited[1], segments[1]);
+        const replay = expandHostedHistoryMessage(JSON.parse(JSON.stringify({ role: 'assistant', content: text, assistantSegments: edited })));
+        assert.deepEqual(replay.filter(message => message.role === 'tool').map(message => message.tool_call_id), text ? ['a'] : []);
+    }
+});

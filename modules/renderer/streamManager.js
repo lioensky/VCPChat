@@ -1086,30 +1086,43 @@ function renderStreamFrame(messageId) {
             segmentState.hostedNodes = [];
         }
         const settings = refs.globalSettingsRef?.get?.();
+        let toolsChanged = false;
         for (const [index, segment] of segmentState.hostedSegments.entries()) {
             const previous = segmentState.hostedNodes[index];
             const source = segment.content ?? segment.tool_calls;
-            if (previous && previous.source === source) continue;
+            const sealed = Boolean(segment.tool_calls || segment.receipt || index < segmentState.hostedSegments.length - 1);
+            if (previous?.source === source && previous.sealed === sealed) continue;
             const node = previous?.node ?? contentDiv.ownerDocument.createElement('div');
+            if (!previous) contentDiv.append(node);
             if (segment.tool_calls) {
-                node.replaceChildren(createHostedToolCallCard(contentDiv.ownerDocument, segment.tool_calls));
+                const batch = createHostedToolCallCard(contentDiv.ownerDocument, segment.tool_calls);
+                node.replaceWith(...batch.childNodes);
+                toolsChanged = true;
             } else {
                 const scoped = refs.processAssistantScopedHtmlContent?.(source, messageItem.id || null, messageItem, {
                     injectStyles: false, mode: 'stream',
                 }) ?? source;
                 const model = streamMessageModels.get(messageId);
-                const html = parseFullStreamContent(scoped, { messageRole: 'assistant', depth: model?.depth || 0 });
-                if (typeof refs.renderPostProcessedHtml === 'function') {
+                const html = sealed
+                    ? parseFullStreamContent(scoped, { messageRole: 'assistant', depth: model?.depth || 0 })
+                    : parseStreamTail(scoped);
+                if (segment.receipt) {
+                    // A sealed receipt never grows. Publish its full result cards next to the FC
+                    // cards so the message-level presenter can group them and mount lazy details.
+                    refs.setContentAndProcessImages(node, html, messageId);
+                    node.replaceWith(...node.childNodes);
+                    toolsChanged = true;
+                } else if (sealed && typeof refs.renderPostProcessedHtml === 'function') {
                     void refs.renderPostProcessedHtml(node, html, {
                         messageId, settings, runHeavy: false, includeAttachments: false, processScripts: false,
                     }).catch(error => console.error('[HostedFC] Stream render failed:', error));
                 } else refs.setContentAndProcessImages(node, html, messageId);
             }
-            if (!previous) contentDiv.append(node);
-            segmentState.hostedNodes[index] = { source, node };
+            segmentState.hostedNodes[index] = { source, node, sealed };
         }
         messageItem.classList.add('streaming');
         messageItem.classList.remove('thinking');
+        if (toolsChanged) refs.presentStreamTools?.(contentDiv);
         return true;
     }
     const visibleTextLength = shouldEnableSmoothStreaming()

@@ -88,3 +88,30 @@ export function expandHostedHistoryMessage(message) {
         ];
     });
 }
+
+/** The flat editor edits text, never the structured call records. */
+export function reconcileEditedAssistantSegments(segments, text) {
+    if (!Array.isArray(segments) || typeof text !== 'string') return segments;
+    const original = segments.map(segment => segment.content ?? '').join('');
+    if (text === original) return segments;
+    let start = 0;
+    while (start < original.length && start < text.length && original[start] === text[start]) start++;
+    let end = original.length, newEnd = text.length;
+    while (end > start && newEnd > start && original[end - 1] === text[newEnd - 1]) { end--; newEnd--; }
+    const inserted = text.slice(start, newEnd);
+    const result = segments.slice();
+    let offset = 0, placed = false;
+    for (const [index, segment] of segments.entries()) {
+        if (typeof segment.content !== 'string') continue;
+        const next = offset + segment.content.length;
+        if (next > start && offset < end || !placed && start >= offset && start < next) {
+            const from = Math.max(0, start - offset);
+            const to = Math.min(segment.content.length, end - offset);
+            result[index] = { ...segment, content: segment.content.slice(0, from) + (placed ? '' : inserted) + segment.content.slice(to) };
+            placed = true;
+        }
+        offset = next;
+    }
+    if (!placed && inserted) result.push({ content: inserted });
+    return result;
+}

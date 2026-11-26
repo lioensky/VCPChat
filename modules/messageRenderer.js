@@ -1,4 +1,5 @@
 import { renderHostedAssistantSegments } from './renderer/hostedToolCallRendering.js';
+import { reconcileEditedAssistantSegments } from './chat/hostedToolHistory.js';
 import { collectStrictAnimationIslands } from './renderer/strictAnimationIsland.js';
 import { createOffscreenDomWindow } from './renderer/offscreenDomWindow.js';
 import { createRenderWorkerClient } from './renderer/renderWorkerClient.js';
@@ -2357,6 +2358,10 @@ function initializeMessageRenderer(refs) {
             }
         },
         chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+        presentStreamTools(content) {
+            bindLazyTools(content);
+            toolPresentation?.apply(content);
+        },
         parseTail: parseStreamTailMarkdown,
         parseFull: parseFullMarkdown,
         prepareFinalTextForRender: prepareFinalTextForRender,
@@ -3894,25 +3899,21 @@ function updateMessageContent(messageId, newContent) {
     // --- 应用前端正则规则 (修复流式处理问题) ---
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
-    if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes) && messageInHistory) {
-        textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, messageInHistory.role, depthForUpdate);
-    }
-    // --- 正则规则应用结束 ---
-    if ((messageInHistory?.role || 'assistant') === 'assistant') {
-        let scopedMessageId = messageItem.id;
-        if (!scopedMessageId) {
-            scopedMessageId = generateUniqueId();
-            messageItem.id = scopedMessageId;
+    const role = messageInHistory?.role || 'assistant';
+    const renderText = source => {
+        if (Array.isArray(agentConfigForRegex?.stripRegexes) && messageInHistory) {
+            source = applyFrontendRegexRules(source, agentConfigForRegex.stripRegexes, role, depthForUpdate);
         }
-        textToRender = processAssistantScopedHtmlContent(textToRender, scopedMessageId, messageItem);
-    }
-
-    const rawHtml = renderMarkdownToHtml(textToRender, {
-        message: messageInHistory,
-        settings: globalSettings,
-        messageRole: messageInHistory?.role || 'assistant',
-        depth: depthForUpdate
-    });
+        if (role === 'assistant') {
+            if (!messageItem.id) messageItem.id = generateUniqueId();
+            source = processAssistantScopedHtmlContent(source, messageItem.id, messageItem);
+        }
+        return renderMarkdownToHtml(source, { message: messageInHistory, settings: globalSettings, messageRole: role, depth: depthForUpdate });
+    };
+    const segments = role === 'assistant' && reconcileEditedAssistantSegments(messageInHistory?.assistantSegments, newContent);
+    const rawHtml = Array.isArray(segments)
+        ? renderHostedAssistantSegments(segments, renderText, contentDiv.ownerDocument)
+        : renderText(textToRender);
 
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 

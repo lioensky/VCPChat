@@ -1,3 +1,4 @@
+import { reconcileEditedAssistantSegments } from '../chat/hostedToolHistory.js';
 // modules/renderer/messageContextMenu.js
 import { effectiveContextHistory, isContextCheckpoint } from '../chat/contextCompactionState.js';
 import { assertContextWithinLimit } from '../chat/contextCompactionService.js';
@@ -775,9 +776,13 @@ function toggleEditMode(messageItem, message) {
                             nextHistory.splice(liveIndex, 0, restoredMessage);
                         }
 
+                        const previous = nextHistory[liveIndex];
                         nextHistory[liveIndex] = {
-                            ...nextHistory[liveIndex],
+                            ...previous,
                             content: newContent,
+                            ...(Array.isArray(previous.assistantSegments) ? {
+                                assistantSegments: reconcileEditedAssistantSegments(previous.assistantSegments, newContent),
+                            } : {}),
                             updatedAt
                         };
                         return nextHistory;
