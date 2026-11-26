@@ -37,7 +37,7 @@
             <nav class="archive-nav" data-ref="nav">
                 <button type="button" data-act="list" data-ref="listBtn" title="显示或收起左侧目录" aria-pressed="false"><span class="archive-glyph-list" aria-hidden="true"></span> 目录</button>
                 <button type="button" data-act="search" title="检索曲目（/，或直接打字）"><span class="archive-glyph-search" aria-hidden="true"></span> 检索 <span class="archive-key" aria-hidden="true">/</span></button>
-                <button type="button" data-act="save" title="把选中的曲目加入歌单">＋ 加入歌单</button>
+                <button type="button" data-act="save" title="选中曲目的操作：播放、下一首、加入歌单、转到歌手……（Shift+F10）" aria-haspopup="menu"><svg class="archive-glyph-stage" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="18.5" cy="12" r="1.9" fill="currentColor"/></svg> 操作</button>
                 <button type="button" data-act="lyrics" data-ref="lyricsBtn" title="显示或收起右侧歌词" aria-pressed="false">歌词</button>
                 <span class="archive-layouts" data-ref="layouts"><span class="archive-glyph-layout" aria-hidden="true"><i></i><i></i><i></i></span><select class="archive-layout-select" aria-label="视图" title="换一种看法"><option value="array">阵列</option><option value="wall">封面墙</option><option value="table">平放</option><option value="grid">网格</option><option value="classic">经典列表</option></select></span>
                 <button type="button" data-act="controls" title="音效、舞台与播放设置">设置 <span aria-hidden="true">↗</span></button>
@@ -1667,18 +1667,10 @@
                     case 'save': {
                         const index = selectedIndex();
                         if (index < 0) break;
-                        // 只弹歌单选择器，不再弹整张曲目右键菜单（歌单藏在二级菜单里，点开是十几项）
-                        const track = app.playlist?.[index];
-                        if (global.MusicPlaylistPicker?.isOpen?.()) { global.MusicPlaylistPicker.close(); break; }
-                        if (global.MusicPlaylistPicker && track?.path) {
-                            const title = app.stripAudioExtension ? app.stripAudioExtension(track.title || '') : (track.title || '');
-                            global.MusicPlaylistPicker.open({ app, paths: [track.path], anchor: btn, label: title, onChange: playlistsChanged });
-                            break;
-                        }
                         const r = btn.getBoundingClientRect();
                         app.contextMenuTrackIndex = index;
                         app.showContextMenu?.(r.left, r.bottom + 8);
-                        ListLib?.menuKeyboard?.(app, { restore: btn, playlist: true });
+                        ListLib?.menuKeyboard?.(app, { restore: btn });
                         break;
                     }
                     default: break;

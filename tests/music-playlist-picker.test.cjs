@@ -147,16 +147,13 @@ function archive() {
     return { w, app, view, calls, close: () => { view.destroy(); w.close(); } };
 }
 
-test('首页顶栏「＋ 加入歌单」弹歌单选择器，不弹整张右键菜单', () => {
+test('首页顶栏「⋯ 操作」打开整张曲目操作菜单（加入歌单在里面），不是歌单选择器', () => {
     const f = archive();
     try {
-        f.w.document.querySelector('[data-act="save"]').click();
-        assert.equal(f.calls.length, 0, '没有打开曲目右键菜单');
-        const picker = f.w.document.querySelector('.mpp');
-        assert.ok(picker);
-        assert.deepEqual([...picker.querySelectorAll('.mpp-pl .mpp-name')].map((e) => e.textContent), ['夜间散步']);
-        picker.querySelector('.mpp-pl').click();
-        const sel = f.app.playlist[f.view.debug().selected].path;
-        assert.ok(f.app.customPlaylists[0].tracks.includes(sel));
+        const btn = f.w.document.querySelector('[data-act="save"]');
+        assert.match(btn.textContent, /操作/);
+        btn.click();
+        assert.deepEqual(f.calls, ['ctx'], '打开了曲目右键菜单');
+        assert.equal(f.w.document.querySelector('.mpp'), null);
     } finally { f.close(); }
 });
