@@ -132,10 +132,36 @@ function setupSidebar(app) {
 
     app.hidePlaylistDialog = () => { app.playlistDialog.classList.remove('visible'); app.pendingAddToPlaylist = null; };
 
+    // 从按钮打开（首页顶栏「操作」）时：菜单从按钮那边展开，按钮在菜单开着时保持点亮（aria-expanded）；再点一下按钮是收起。
+    // 打开前把按钮挂在菜单的 __mfAnchor 上（不走参数：showContextMenu 外面还包着几层，只传 x, y）。
+    let menuAnchor = null;
+    const watchMenuClose = () => {
+        const menu = app.contextMenu;
+        if (!menu || menu.__mfCloseWatch || typeof MutationObserver !== 'function') return;
+        menu.__mfCloseWatch = true;
+        let wasOpen = menu.classList.contains('visible');
+        new MutationObserver(() => {
+            const open = menu.classList.contains('visible');
+            if (open === wasOpen) return;
+            wasOpen = open;
+            if (open || !menuAnchor) return;
+            const anchor = menuAnchor;
+            menuAnchor = null;
+            anchor.setAttribute('aria-expanded', 'false');
+        }).observe(menu, { attributes: true, attributeFilter: ['class'] });
+    };
+
     app.showContextMenu = (x, y) => {
+        watchMenuClose();
+        const anchor = app.contextMenu.__mfAnchor || null;
+        app.contextMenu.__mfAnchor = null;
+        if (menuAnchor && menuAnchor !== anchor) menuAnchor.setAttribute('aria-expanded', 'false');
+        menuAnchor = anchor;
+        if (anchor) anchor.setAttribute('aria-expanded', 'true');
         app.updatePlaylistSubmenu();
         app.contextMenu.style.left = `${x}px`; app.contextMenu.style.top = `${y}px`;
-        app.contextMenu.classList.add('visible');
+        // 下一帧量好位置再一起展开；这一帧先别露出来，免得整块先闪一下
+        app.contextMenu.classList.add('mf-opening', 'visible');
         requestAnimationFrame(() => {
             const rect = app.contextMenu.getBoundingClientRect();
             if (rect.right > window.innerWidth) app.contextMenu.style.left = `${window.innerWidth - rect.width - 10}px`;
@@ -156,7 +182,8 @@ function setupSidebar(app) {
             const room = Math.floor(left ? roomLeft : roomRight);
             if (sub && subWidth > room) sub.style.maxWidth = `${Math.max(room, 120)}px`;
             // 从按下右键的那一点长出来
-            window.MusicFluid?.bud(app.contextMenu, { x, y });
+            app.contextMenu.classList.remove('mf-opening');
+            window.MusicFluid?.bud(app.contextMenu, anchor && anchor.isConnected ? anchor : { x, y });
         });
     };
 

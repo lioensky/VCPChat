@@ -64,14 +64,38 @@ body.music-fl-low :is(.mf-glass, .context-menu, .context-submenu, .archive-batch
 :is(.archive-batch-menu, .archive-list-sort-menu) button i { color: var(--mf-ink2); }
 .archive-list-sort-menu { top: calc(100% + 10px); }
 
-/* 收起：不是缩小消失，而是像雾一样散开 */
-.context-menu:not(.visible) { transform: scale(1.03); filter: blur(6px); transition: opacity .2s ease, transform .2s ease, filter .2s ease; }
-.context-menu.visible { filter: none; transition: opacity .18s ease, transform .18s ease, filter .18s ease; }
+/* 收起：朝展开的那一点缩一点点、淡出（transform-origin 由 MusicFluid.bud 打开时写上）；打开由 bud 的动画负责 */
+.context-menu:not(.visible) { transform: scale(.97); filter: none; transition: opacity .13s cubic-bezier(.4, 0, 1, 1), transform .13s cubic-bezier(.4, 0, 1, 1); }
+.context-menu.visible { filter: none; transform: none; transition: none; }
+.context-menu.mf-opening { opacity: 0 !important; }
 
-/* 长出来的那一下：液体先画，本体在液体快鼓满时才显现 */
-.mf-goo { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; overflow: visible; }
-.mf-budding { opacity: 0 !important; filter: blur(4px); transition: none !important; }
+
 body.music-reduce-motion .context-menu { transition: opacity .12s linear; transform: none; filter: none; }
+/* 显现时行依次浮上来（MusicFluid.bud 显现那一刻加 .mf-reveal，并给每行编号 --mf-i） */
+@keyframes mf-row-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.mf-reveal > :is(.context-menu-item, .context-menu-divider, .submenu-item, .mfs-item, .mfs-group, header, hr, button, .mpp-head, .mpp-search, .mpp-list, .mpp-foot) {
+  animation: mf-row-in .22s cubic-bezier(.2, .9, .25, 1) both;
+  animation-delay: min(calc(20ms + var(--mf-i, 0) * 12ms), 150ms);
+}
+body.music-reduce-motion .mf-reveal > * { animation: none; }
+/* 二级菜单（加入歌单 ›）：从这一行的边上展开，带一点缩放；移开时晚 120ms 才收，斜着移过去不会闪掉 */
+.has-submenu .context-submenu {
+  transform-origin: left top;
+  transform: translateX(-6px) scale(.96);
+  transition: opacity .14s ease .12s, transform .2s cubic-bezier(.2, .8, .2, 1) .12s;
+}
+.context-menu.sub-left .has-submenu .context-submenu { transform-origin: right top; transform: translateX(6px) scale(.96); }
+.has-submenu:is(:hover, .archive-kbd-sub) .context-submenu,
+.context-menu.sub-left .has-submenu:is(:hover, .archive-kbd-sub) .context-submenu {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity .16s ease .04s, transform .24s cubic-bezier(.2, .8, .2, 1) .04s;
+}
+.has-submenu:is(:hover, .archive-kbd-sub) .context-submenu > .submenu-item { animation: mf-row-in .22s cubic-bezier(.2, .8, .2, 1) both; }
+body.music-reduce-motion .has-submenu .context-submenu { transform: none; transition: opacity .12s linear; }
+/* 首页顶栏「操作」开着菜单时保持点亮 */
+.archive-nav > button[data-act="save"][aria-expanded="true"] { color: var(--ar-accent-text, var(--ar-accent)); }
 
 /* ───────── 抽屉里的分段开关和底部页签：选中标记像液体流过去（MusicFluid.slide） ─────────
  * 分段开关里那块是一小团奶白玻璃；底部页签下是一道短短的实心线，代替原来的 1px 细线。 */

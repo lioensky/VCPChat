@@ -1,15 +1,13 @@
 // 音乐窗口里「手碰得到的东西」共用的一套流体动作。
 //
-//   MusicFluid.bud(el, origin)      弹出层从触发的那一点长出来：先是一滴，拉出细颈，再鼓成整块，内容随后显现
-//   MusicFluid.melt(snap, to)       关掉时反过来：整块缩回一滴流回那一点（snap 来自 MusicFluid.snapshot(el)，打开时记下）
-//   MusicFluid.enabled()            降低动态、节能档时为 false（只淡入，不画液体）
+//   MusicFluid.bud(el, origin)      弹出层从触发的那一点方向轻轻放大、淡入，里面的行依次浮上来
+//   MusicFluid.melt(snap, to)       关掉时朝那一点缩一点、淡出（snap 来自 MusicFluid.snapshot(el)，打开时记下）
+//   MusicFluid.enabled()            降低动态、节能档时为 false
 //
 // 外观在 music-fluid-kit.css：.mf-glass 是奶白（深色下烟灰）的厚玻璃，颜色从里面透出来，发光不投硬影，没有描边。
-// 液体只在长出来的那 0.45 秒里画（一层临时 SVG，结束就拿掉），平时一帧都不画。
 (function (global) {
     'use strict';
-    const NS = 'http://www.w3.org/2000/svg';
-    const DURATION = 460;
+    const DURATION = 220; // 弹出动画多长，打开后等这么久再记下样子（收起时用）
     const running = new WeakMap();
 
     const enabled = () => {
@@ -20,11 +18,6 @@
         return typeof global.requestAnimationFrame === 'function';
     };
 
-    // 快速起、软着陆，末尾略微回弹一点点，像液体鼓满
-    const ease = (t) => {
-        const c = 1 - Math.pow(1 - t, 3);
-        return c + Math.sin(Math.PI * t) * 0.06 * (1 - t);
-    };
     const lerp = (a, b, t) => a + (b - a) * t;
 
     const pointOf = (origin) => {
@@ -37,92 +30,62 @@
         return null;
     };
 
-    let seq = 0;
-    const overlay = (doc, z) => {
-        const id = `mfk${++seq}`;
-        const svg = doc.createElementNS(NS, 'svg');
-        svg.setAttribute('class', 'mf-goo');
-        svg.setAttribute('aria-hidden', 'true');
-        svg.style.zIndex = String(z);
-        svg.innerHTML = `<defs><filter id="${id}" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">`
-            + '<feGaussianBlur in="SourceGraphic" stdDeviation="9" result="b"/>'
-            + '<feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -10" result="g"/>'
-            + '<feGaussianBlur in="g" stdDeviation="1.2"/>'
-            + `</filter></defs><g filter="url(#${id})"><circle/><rect/></g>`;
-        doc.body.appendChild(svg);
-        return { svg, drop: svg.querySelector('circle'), body: svg.querySelector('rect') };
+    // 本体显现时，里面的行从上往下依次浮上来（每行晚 14ms，最多 160ms），而不是整块一下子出现。
+    // 只给菜单里一行一行的东西编号；手底下那一汪（.mf-trail）不动。
+    const ROWS = ':scope > :is(.context-menu-item, .context-menu-divider, .submenu-item, .mfs-item, .mfs-group, header, hr, button, .mpp-head, .mpp-search, .mpp-list, .mpp-foot)';
+    const MENUS_STAGGER = '.context-menu, .archive-batch-menu, .archive-list-sort-menu, .mfs-menu, .mpp';
+    function stagger(el) {
+        if (!el.matches?.(MENUS_STAGGER)) return;
+        let i = 0;
+        for (const row of el.querySelectorAll(ROWS)) {
+            if (row.offsetParent === null && row.getClientRects().length === 0) continue;
+            row.style.setProperty('--mf-i', String(i++));
+        }
+        el.classList.remove('mf-reveal');
+        void el.offsetWidth;
+        el.classList.add('mf-reveal');
+    }
+
+    // ───────── 弹出、收起 ─────────
+    // 原来是一层临时 SVG 画「一滴液体长成整块」，再让本体显现：一块没有内容的深色色块先冒出来，看着拖沓也不精致。
+    // 现在直接动本体：从触发的那一点方向轻轻放大、淡入（200ms，快起软停，不回弹），里面的行随后依次浮上来；
+    // 收起时用打开时记下的样子（snapshot 里的一份副本）朝点下去的方向缩一点点、淡出（140ms）。
+    const OPEN = 200, CLOSE = 140;
+    const EASE_OUT = 'cubic-bezier(.2, .9, .25, 1)', EASE_IN = 'cubic-bezier(.4, 0, 1, 1)';
+    const reduced = () => !!global.document?.body?.classList.contains('music-reduce-motion');
+    // 变换原点：触发点落在弹层里的位置（落在外面就夹到边上），这样放大像是从按钮那边长出来
+    const originOf = (rect, p) => {
+        if (!p) return 'top left';
+        const x = Math.max(0, Math.min(rect.width, p.x - rect.left));
+        const y = Math.max(0, Math.min(rect.height, p.y - rect.top));
+        return `${x.toFixed(0)}px ${y.toFixed(0)}px`;
     };
 
     // 弹出层 el 此时已经放好位置、可见（display 不为 none）。
-    function bud(el, origin, { duration = DURATION } = {}) {
+    function bud(el, origin, { duration = OPEN } = {}) {
         if (!el || !el.isConnected) return Promise.resolve();
         cancel(el);
-        const doc = el.ownerDocument;
-        const from = pointOf(origin);
-        if (!enabled() || !from) {
-            el.classList.remove('mf-budding');
-            return Promise.resolve();
-        }
+        el.classList.remove('mf-budding');
         const rect = el.getBoundingClientRect();
-        if (!rect.width || !rect.height) return Promise.resolve();
-        const cs = global.getComputedStyle(el);
-        const radius = Math.min(rect.height / 2, parseFloat(cs.borderTopLeftRadius) || 16);
-        const fill = cs.getPropertyValue('--mf-fill').trim() || cs.backgroundColor || 'rgba(128,128,128,.9)';
-        // 液体要画在弹出层所在那一层上面：取它自己和外层里最大的 z-index
-        let z = parseInt(cs.zIndex, 10) || 0;
-        for (let node = el.parentElement; node && node !== doc.body; node = node.parentElement) {
-            z = Math.max(z, parseInt(global.getComputedStyle(node).zIndex, 10) || 0);
+        if (!rect.width || !rect.height || typeof el.animate !== 'function') return Promise.resolve();
+        const from = pointOf(origin);
+        el.style.transformOrigin = originOf(rect, from);
+        if (!global.document?.body || reduced()) {
+            const a = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'linear' });
+            return a.finished.catch(() => {});
         }
-        z = z || 1000;
-        const layer = overlay(doc, z);
-        layer.drop.setAttribute('fill', fill);
-        layer.body.setAttribute('fill', fill);
-        el.classList.add('mf-budding');
-        // 起点那一滴贴着触发点；整块从起点附近一个小圆角块长到目标大小
-        const start = { x: from.x - 14, y: from.y - 14, w: 28, h: 28 };
-        let frame = 0;
-        let revealed = false;
-        return new Promise((resolve) => {
-            const clock = () => global.performance?.now?.() ?? Date.now();
-            const t0 = clock();
-            const done = () => {
-                global.cancelAnimationFrame(frame);
-                layer.svg.remove();
-                el.classList.remove('mf-budding');
-                running.delete(el);
-                resolve();
-            };
-            running.set(el, done);
-            const step = () => {
-                const t = Math.min(1, (clock() - t0) / duration);
-                // 横竖不同步：沿离起点远的方向先流过去，另一个方向稍晚才铺开，像倒出来的液体
-                const e = ease(t);
-                const lagX = Math.abs(rect.left + rect.width / 2 - from.x) < Math.abs(rect.top + rect.height / 2 - from.y);
-                const eLag = ease(Math.max(0, (t - 0.1) / 0.9));
-                const ex = lagX ? eLag : e, ey = lagX ? e : eLag;
-                const x = lerp(start.x, rect.left, ex), y = lerp(start.y, rect.top, ey);
-                const w = lerp(start.w, rect.width, ex), h = lerp(start.h, rect.height, ey);
-                const b = layer.body;
-                b.setAttribute('x', x.toFixed(1)); b.setAttribute('y', y.toFixed(1));
-                b.setAttribute('width', Math.max(0, w).toFixed(1)); b.setAttribute('height', Math.max(0, h).toFixed(1));
-                // 刚长出来时是圆滚滚的一团，鼓满时才收成面板的圆角
-                const round = Math.min(w, h) / 2;
-                b.setAttribute('rx', Math.min(lerp(round, radius, e * e), h / 2, w / 2).toFixed(1));
-                // 起点那一滴先鼓一下再缩回去，和整块之间由滤镜自己拉出细颈
-                const d = layer.drop;
-                d.setAttribute('cx', from.x.toFixed(1)); d.setAttribute('cy', from.y.toFixed(1));
-                d.setAttribute('r', Math.max(0, 15 * Math.sin(Math.PI * Math.min(1, t * 1.25))).toFixed(1));
-                layer.svg.style.opacity = t < 0.72 ? '1' : String(Math.max(0, 1 - (t - 0.72) / 0.28));
-                if (!revealed && t >= 0.55) { revealed = true; el.classList.remove('mf-budding'); }
-                if (t >= 1) { done(); return; }
-                frame = global.requestAnimationFrame(step);
-            };
-            step();
-        });
+        // 弹层在触发点下面就从上往下展开一点，在上面就从下往上
+        const dy = from ? (from.y <= rect.top + rect.height / 2 ? -6 : 6) : -4;
+        const anim = el.animate([
+            { opacity: 0, transform: `translateY(${dy}px) scale(.96)` },
+            { opacity: 1, transform: 'none' }
+        ], { duration: Math.min(duration, 240), easing: EASE_OUT });
+        stagger(el);
+        running.set(el, () => anim.cancel());
+        return anim.finished.catch(() => {}).then(() => { running.delete(el); });
     }
 
-    // 关掉的时候反过来：整块缩回一滴，流回原来那一点再没掉。
-    // 弹出层这时往往已经隐藏（量不到大小），所以传它打开时的样子：snap = MusicFluid.snapshot(el)。
+    // 收起时要用打开时的样子（弹层往往已经隐藏或拿掉了）：snapshot 记下位置和一份副本
     function snapshot(el) {
         if (!el || !el.isConnected) return null;
         const rect = el.getBoundingClientRect();
@@ -132,49 +95,36 @@
         for (let node = el.parentElement; node && node !== el.ownerDocument.body; node = node.parentElement) {
             z = Math.max(z, parseInt(global.getComputedStyle(node).zIndex, 10) || 0);
         }
+        const clone = el.cloneNode(true);
+        clone.removeAttribute('id');
+        clone.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+        clone.classList.remove('mf-reveal', 'mf-melting');
+        clone.setAttribute('aria-hidden', 'true');
         return {
             doc: el.ownerDocument,
             rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+            clone,
             radius: Math.min(rect.height / 2, parseFloat(cs.borderTopLeftRadius) || 16),
-            fill: cs.getPropertyValue('--mf-fill').trim() || cs.backgroundColor || 'rgba(128,128,128,.9)',
             z: z || 1000
         };
     }
-    function melt(snap, origin, { duration = 300 } = {}) {
-        const to = pointOf(origin);
-        if (!snap || !to || !enabled()) return Promise.resolve();
-        const { rect, radius, fill } = snap;
-        const layer = overlay(snap.doc, snap.z);
-        layer.drop.setAttribute('fill', fill);
-        layer.body.setAttribute('fill', fill);
-        const end = { x: to.x - 12, y: to.y - 12, w: 24, h: 24 };
-        const lagX = Math.abs(rect.left + rect.width / 2 - to.x) < Math.abs(rect.top + rect.height / 2 - to.y);
-        const easeIn = (t) => t * t;
-        return new Promise((resolve) => {
-            const clock = () => global.performance?.now?.() ?? Date.now();
-            const t0 = clock();
-            let frame = 0;
-            const step = () => {
-                const t = Math.min(1, (clock() - t0) / duration);
-                // 远的那个方向先收，近的那个方向晚一点才跟上，像被吸回去
-                const e = easeIn(t);
-                const eLag = easeIn(Math.max(0, (t - 0.12) / 0.88));
-                const ex = lagX ? eLag : e, ey = lagX ? e : eLag;
-                const x = lerp(rect.left, end.x, ex), y = lerp(rect.top, end.y, ey);
-                const w = lerp(rect.width, end.w, ex), h = lerp(rect.height, end.h, ey);
-                const b = layer.body;
-                b.setAttribute('x', x.toFixed(1)); b.setAttribute('y', y.toFixed(1));
-                b.setAttribute('width', Math.max(0, w).toFixed(1)); b.setAttribute('height', Math.max(0, h).toFixed(1));
-                b.setAttribute('rx', Math.min(lerp(radius, Math.min(w, h) / 2, e), h / 2, w / 2).toFixed(1));
-                const d = layer.drop;
-                d.setAttribute('cx', to.x.toFixed(1)); d.setAttribute('cy', to.y.toFixed(1));
-                d.setAttribute('r', Math.max(0, 13 * Math.sin(Math.PI * Math.max(0, (t - 0.35) / 0.65))).toFixed(1));
-                layer.svg.style.opacity = t < 0.6 ? '1' : String(Math.max(0, 1 - (t - 0.6) / 0.4));
-                if (t >= 1) { global.cancelAnimationFrame(frame); layer.svg.remove(); resolve(); return; }
-                frame = global.requestAnimationFrame(step);
-            };
-            step();
+    function melt(snap, origin, { duration = CLOSE } = {}) {
+        if (!snap || !snap.clone || reduced() || !global.document?.body) return Promise.resolve();
+        const { rect, clone, doc } = snap;
+        const ghost = clone;
+        Object.assign(ghost.style, {
+            position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`,
+            margin: '0', right: 'auto', bottom: 'auto', maxHeight: 'none', zIndex: String(snap.z + 1), pointerEvents: 'none',
+            transition: 'none', opacity: '1', transform: 'none', filter: 'none', visibility: 'visible', display: global.getComputedStyle(ghost).display === 'none' ? 'block' : ''
         });
+        ghost.style.transformOrigin = originOf(rect, pointOf(origin));
+        doc.body.appendChild(ghost);
+        if (typeof ghost.animate !== 'function') { ghost.remove(); return Promise.resolve(); }
+        const anim = ghost.animate([
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'scale(.97)' }
+        ], { duration: Math.min(duration, 180), easing: EASE_IN, fill: 'forwards' });
+        return anim.finished.catch(() => {}).then(() => ghost.remove());
     }
 
     // 选中标记（分段开关里那块、页签下那条）换位置时像一滴液体流过去：
@@ -304,11 +254,8 @@
             snap = null;
         }).observe(node, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
     }
-    const watchMenus = () => {
-        for (const node of global.document.querySelectorAll('.context-menu')) {
-            watchPop(node, (n) => n.classList.contains('visible') && n.style.display !== 'none');
-        }
-    };
+    // 右键菜单常驻在页面里，收起由它自己的 CSS 过渡淡出（music-fluid-kit.css），不用再叠一份副本
+    const watchMenus = () => {};
 
     // 顶部的「音频引擎没有启动」提示：出现时从窗口顶边正中滴下来再鼓满
     const watchNotices = () => {

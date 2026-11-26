@@ -41,7 +41,6 @@
                 <button type="button" data-act="lyrics" data-ref="lyricsBtn" title="显示或收起右侧歌词" aria-pressed="false">歌词</button>
                 <span class="archive-layouts" data-ref="layouts"><span class="archive-glyph-layout" aria-hidden="true"><i></i><i></i><i></i></span><select class="archive-layout-select" aria-label="视图" title="换一种看法"><option value="array">阵列</option><option value="wall">封面墙</option><option value="table">平放</option><option value="grid">网格</option><option value="classic">经典列表</option></select></span>
                 <button type="button" data-act="controls" title="音效、舞台与播放设置">设置 <span aria-hidden="true">↗</span></button>
-                <button type="button" data-act="pick" data-ref="pickBtn" title="随机抽一首：选择框在列间跑一段，停在哪首就取出来播放（Shift+R）。按 ? 看全部快捷键"><span class="archive-glyph-pick" aria-hidden="true"></span> 随机抽取</button>
                 <button type="button" data-act="stage" title="进入歌词舞台（Shift+Enter 播放选中并进舞台；回到正在播放用 Ctrl+L）"><svg class="archive-glyph-stage" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6c.55 4.9 4.5 8.85 9.4 9.4-4.9.55-8.85 4.5-9.4 9.4-.55-4.9-4.5-8.85-9.4-9.4 4.9-.55 8.85-4.5 9.4-9.4Z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg> 进入舞台</button>
             </nav>
             <div class="archive-empty" role="status">
@@ -1667,8 +1666,15 @@
                     case 'save': {
                         const index = selectedIndex();
                         if (index < 0) break;
+                        // 菜单开着时再点按钮就是收起（不然会先被点外面关掉、又马上重新长一次）
+                        const menu = app.contextMenu || document.getElementById('track-context-menu');
+                        if (menu && menu.classList.contains('visible') && btn.getAttribute('aria-expanded') === 'true') {
+                            menu.classList.remove('visible');
+                            break;
+                        }
                         const r = btn.getBoundingClientRect();
                         app.contextMenuTrackIndex = index;
+                        if (menu) menu.__mfAnchor = btn;
                         app.showContextMenu?.(r.left, r.bottom + 8);
                         ListLib?.menuKeyboard?.(app, { restore: btn });
                         break;
@@ -1679,6 +1685,27 @@
                 return;
             }
         });
+        // 「随机抽取」放在顶栏「操作」菜单里（只在从那个按钮打开时出现，右键单曲时不出现），Shift+R 照旧
+        const ctxMenu = app.contextMenu || document.getElementById('track-context-menu');
+        let pickItem = null, unhookPick = null;
+        if (ctxMenu && global.MusicAppHooks) {
+            pickItem = document.createElement('div');
+            pickItem.className = 'context-menu-item';
+            pickItem.dataset.action = 'archive-pick';
+            pickItem.title = '选择框在列间跑一段，停在哪首就取出来播放（Shift+R）';
+            pickItem.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="9" r="1.6" fill="currentColor"/><circle cx="15" cy="15" r="1.6" fill="currentColor"/><circle cx="15" cy="9" r="1.6" fill="currentColor"/><circle cx="9" cy="15" r="1.6" fill="currentColor"/></svg><span>随机抽取</span>';
+            pickItem.style.display = 'none';
+            pickItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                ctxMenu.classList.remove('visible');
+                randomPick();
+            });
+            ctxMenu.insertBefore(pickItem, ctxMenu.firstChild);
+            unhookPick = global.MusicAppHooks.before(app, 'showContextMenu', 'archive-pick', () => {
+                const fromNav = !!ctxMenu.__mfAnchor && refs.nav?.contains(ctxMenu.__mfAnchor);
+                pickItem.style.display = fromNav ? '' : 'none';
+            });
+        }
         // 别让档案页的点击把右键菜单立刻关掉
         root.addEventListener('mousedown', () => { stopInertia(); state.scene?.touch(); });
         returnBtn?.addEventListener('click', () => setMode('archive'));
@@ -1932,6 +1959,8 @@
             state.scene?.dispose();
             state.scene = null;
             if (unwrapAmbient) unwrapAmbient();
+            if (typeof unhookPick === 'function') unhookPick();
+            pickItem?.remove();
         };
         // 关窗、刷新、离开页面时都彻底停掉：取消渲染循环和计时器，释放 WebGL 上下文（forceContextLoss），
         // 不让已经关掉的页面还在占用显卡或软件渲染。beforeunload 不一定触发（比如直接关进程），pagehide 兜底

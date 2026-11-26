@@ -6,6 +6,20 @@ const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..');
 
+
+// jsdom 没有 Element.animate：记下每次动画的关键帧和参数，finished 由测试手动结束
+function fakeAnimate(window) {
+    const log = [];
+    window.Element.prototype.animate = function (frames, opts) {
+        let resolve;
+        const finished = new Promise((r) => { resolve = r; });
+        const a = { el: this, frames, opts, cancelled: false, finished, finish: () => resolve(), cancel() { a.cancelled = true; resolve(); } };
+        log.push(a);
+        return a;
+    };
+    return log;
+}
+
 function setup({ reduce = false, low = false } = {}) {
     const dom = new JSDOM(`<!doctype html><body class="${reduce ? 'music-reduce-motion' : ''}"><div id="music-dock-root" class="${low ? 'md-fl-low' : 'md-fl-on'}"></div><div class="menu" style="position:fixed"></div></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
     const { window } = dom;
@@ -14,49 +28,46 @@ function setup({ reduce = false, low = false } = {}) {
     window.performance.now = () => now;
     window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
     window.cancelAnimationFrame = () => {};
+    const anims = fakeAnimate(window);
     window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
     const menu = window.document.querySelector('.menu');
     menu.getBoundingClientRect = () => ({ left: 100, top: 200, width: 220, height: 300, right: 320, bottom: 500 });
     const run = (ms) => { now += ms; const due = frames.splice(0); due.forEach((fn) => fn()); };
-    return { window, doc: window.document, menu, run };
+    return { window, doc: window.document, menu, run, anims };
 }
 
-test('a menu grows out of the point it was opened from, then the liquid layer is removed', async () => {
-    const { window, doc, menu, run } = setup();
+test('a menu opens from the point it was opened from: scales up and fades in on itself, no extra layer', async () => {
+    const { window, doc, menu, anims } = setup();
     assert.equal(window.MusicFluid.enabled(), true);
     const done = window.MusicFluid.bud(menu, { x: 110, y: 205 });
-    assert.ok(menu.classList.contains('mf-budding'), 'content waits for the liquid');
-    const goo = doc.querySelector('svg.mf-goo');
-    assert.ok(goo, 'a temporary liquid layer is drawn');
-    assert.equal(goo.querySelector('circle').getAttribute('cx'), '110.0', 'the drop sits on the opening point');
-    run(150);
-    const w1 = Number(goo.querySelector('rect').getAttribute('width'));
-    assert.ok(w1 > 28 && w1 < 220, 'the body is still growing');
-    run(150);
-    assert.ok(!menu.classList.contains('mf-budding'), 'content shows before the liquid finishes');
-    run(200);
+    assert.equal(doc.querySelector('svg'), null, 'no temporary liquid layer');
+    assert.equal(anims.length, 1);
+    assert.equal(anims[0].el, menu);
+    assert.equal(anims[0].frames[0].opacity, 0);
+    assert.match(anims[0].frames[0].transform, /scale\(\.96\)/);
+    assert.equal(anims[0].frames[1].transform, 'none');
+    assert.ok(anims[0].opts.duration <= 240, 'short');
+    assert.equal(menu.style.transformOrigin, '10px 5px', 'grows from where it was opened');
+    anims[0].finish();
     await done;
-    assert.equal(doc.querySelector('svg.mf-goo'), null, 'nothing is left drawing afterwards');
 });
 
-test('opening again mid-way cancels the first growth instead of stacking layers', () => {
-    const { window, doc, menu, run } = setup();
+test('opening again mid-way cancels the first animation instead of stacking', () => {
+    const { window, menu, anims } = setup();
     window.MusicFluid.bud(menu, { x: 110, y: 205 });
-    run(100);
     window.MusicFluid.bud(menu, { x: 300, y: 480 });
-    assert.equal(doc.querySelectorAll('svg.mf-goo').length, 1);
-    run(600);
-    assert.equal(doc.querySelectorAll('svg.mf-goo').length, 0);
+    assert.equal(anims.length, 2);
+    assert.equal(anims[0].cancelled, true);
+    assert.equal(menu.style.transformOrigin, '200px 280px');
 });
 
-test('reduced motion and the low quality tier skip the liquid entirely', async () => {
-    for (const opts of [{ reduce: true }, { low: true }]) {
-        const { window, doc, menu } = setup(opts);
-        assert.equal(window.MusicFluid.enabled(), false);
-        await window.MusicFluid.bud(menu, { x: 110, y: 205 });
-        assert.equal(doc.querySelector('svg.mf-goo'), null);
-        assert.ok(!menu.classList.contains('mf-budding'));
-    }
+test('reduced motion only fades, without scaling', async () => {
+    const { window, doc, menu, anims } = setup({ reduce: true });
+    assert.equal(window.MusicFluid.enabled(), false);
+    window.MusicFluid.bud(menu, { x: 110, y: 205 });
+    assert.equal(doc.querySelector('svg'), null);
+    assert.equal(anims.length, 1);
+    assert.equal(anims[0].frames[0].transform, undefined);
 });
 
 test('a selection marker flows to its new place: the leading edge arrives first, the trailing edge follows', () => {
@@ -77,14 +88,13 @@ test('a selection marker flows to its new place: the leading edge arrives first,
     assert.equal(parseFloat(fresh.style.width), 40);
 });
 
-test('a dialog opened anywhere grows out of the last press, without the opening code knowing', async () => {
+test('a dialog opened anywhere opens from the last press and closes back toward the button that was pressed', async () => {
     const dom = new JSDOM(`<!doctype html><body><div class="dialog-overlay"><div class="dialog"></div></div></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
     const { window } = dom;
     const frames = [];
-    let now = 0;
-    window.performance.now = () => now;
     window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
     window.cancelAnimationFrame = () => {};
+    const anims = fakeAnimate(window);
     window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
     const doc = window.document;
     if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
@@ -94,27 +104,28 @@ test('a dialog opened anywhere grows out of the last press, without the opening 
     doc.querySelector('.dialog-overlay').classList.add('visible');
     await new Promise((r) => setTimeout(r, 0)); // 等 MutationObserver
     frames.splice(0).forEach((fn) => fn());
-    const goo = doc.querySelector('svg.mf-goo');
-    assert.ok(goo, 'liquid drawn for the dialog');
-    assert.equal(goo.querySelector('circle').getAttribute('cx'), '90.0');
-    // 关掉再开，又会长一次；没关的时候改别的类不会重来
-    for (let i = 0; i < 40; i++) { now += 50; frames.splice(0).forEach((fn) => fn()); }
-    assert.equal(doc.querySelector('svg.mf-goo'), null);
+    assert.equal(anims.length, 1, 'the panel animates');
+    assert.equal(anims[0].el, panel);
+    assert.equal(panel.style.transformOrigin, '0px 180px', 'from the corner nearest the press');
+    anims[0].finish();
+    await new Promise((r) => setTimeout(r, 0));
     doc.querySelector('.dialog-overlay').classList.add('other');
     await new Promise((r) => setTimeout(r, 0));
     frames.splice(0).forEach((fn) => fn());
-    assert.equal(doc.querySelector('svg.mf-goo'), null, 'no regrowth while it stays open');
-    // 关掉：面板此时已经量不到大小，靠打开时记下的样子缩回一滴，流回刚按下的「取消」
-    await Promise.resolve();
+    assert.equal(anims.length, 1, 'no replay while it stays open');
+    // 关掉：用打开时记下的副本朝刚按下的「取消」缩一点、淡出，结束就拿掉
     panel.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 });
     doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 700, clientY: 360 }));
     doc.querySelector('.dialog-overlay').classList.remove('visible');
     await new Promise((r) => setTimeout(r, 0));
-    const back = doc.querySelector('svg.mf-goo');
-    assert.ok(back, 'liquid drawn for the closing dialog');
-    assert.equal(back.querySelector('rect').getAttribute('width'), '340.0', 'starts from the open size');
-    for (let i = 0; i < 20; i++) { now += 50; frames.splice(0).forEach((fn) => fn()); }
-    assert.equal(doc.querySelector('svg.mf-goo'), null, 'layer removed after melting');
+    assert.equal(anims.length, 2);
+    const ghost = anims[1].el;
+    assert.notEqual(ghost, panel);
+    assert.equal(ghost.style.width, '340px', 'the copy has the open size');
+    assert.equal(anims[1].frames[1].opacity, 0);
+    anims[1].finish();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(ghost.isConnected, false, 'copy removed afterwards');
 });
 
 test('slide also runs vertically (top/height), leading edge first, and lands exactly', () => {
@@ -135,35 +146,28 @@ test('slide also runs vertically (top/height), leading edge first, and lands exa
     assert.equal(parseFloat(drop.style.height), 30);
 });
 
-test('a watched menu melts back to the item that was clicked when it closes, and only after it finished growing', async () => {
-    const dom = new JSDOM(`<!doctype html><body><div class="context-menu"></div></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+test('a watched pop-up (sort menu) fades out toward the press after it finished opening; too-quick closes skip it', async () => {
+    const dom = new JSDOM(`<!doctype html><body><div class="sort-menu" hidden><button>A</button></div></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
     const { window } = dom;
-    const frames = [];
-    let now = 0;
-    window.performance.now = () => now;
-    window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
-    window.cancelAnimationFrame = () => {};
     const timers = [];
     window.setTimeout = (fn) => { timers.push(fn); return timers.length; };
     window.clearTimeout = () => {};
+    const anims = fakeAnimate(window);
     window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
     const doc = window.document;
-    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
-    const menu = doc.querySelector('.context-menu');
+    const menu = doc.querySelector('.sort-menu');
     menu.getBoundingClientRect = () => ({ left: 300, top: 120, width: 200, height: 260, right: 500, bottom: 380 });
-    const tick = () => new Promise((r) => window.queueMicrotask ? window.queueMicrotask(r) : Promise.resolve().then(r));
-    // 关得太快（还没长完）：不画
-    menu.classList.add('visible'); await tick();
-    menu.classList.remove('visible'); await tick();
-    assert.equal(doc.querySelector('svg.mf-goo'), null);
-    // 长完再关：缩回一滴，流向点的那一项
-    menu.classList.add('visible'); await tick();
+    window.MusicFluid.watchPop(menu);
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    menu.hidden = false; await tick();
+    menu.hidden = true; await tick();
+    assert.equal(anims.length, 0, 'closed before it finished opening: nothing drawn');
+    menu.hidden = false; await tick();
     timers.splice(0).forEach((fn) => fn());
     doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 360, clientY: 200 }));
-    menu.classList.remove('visible'); await tick();
-    const goo = doc.querySelector('svg.mf-goo');
-    assert.ok(goo, 'melting drawn');
-    assert.equal(goo.querySelector('circle').getAttribute('cx'), '360.0');
-    for (let i = 0; i < 20; i++) { now += 40; frames.splice(0).forEach((fn) => fn()); }
-    assert.equal(doc.querySelector('svg.mf-goo'), null);
+    menu.hidden = true; await tick();
+    assert.equal(anims.length, 1);
+    assert.equal(anims[0].el.style.transformOrigin, '60px 80px');
+    anims[0].finish(); await tick();
+    assert.equal(anims[0].el.isConnected, false);
 });
