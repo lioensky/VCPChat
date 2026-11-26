@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { tools, validateArguments } = require('./tools.cjs');
@@ -30,7 +31,7 @@ test('schemas reject VCP fields, unknown edits and incorrect types', () => {
 
 test('topic schemas enforce strict fields, reply/dispatch modes and reject river/unknowns', () => {
     const byName = new Map(topicTools.map(tool => [tool.name, tool]));
-    assert.equal(topicTools.length, 10);
+    assert.equal(topicTools.length, 13);
     for (const tool of topicTools) {
         assert.throws(() => validateArguments(tool, { unknown: true }));
         assert.throws(() => validateArguments(tool, { river: 'last:5' }));
@@ -39,8 +40,15 @@ test('topic schemas enforce strict fields, reply/dispatch modes and reject river
     validateArguments(byName.get('ts_list_agents'), {});
     validateArguments(byName.get('ts_list_recent_topics'), { query: 'Kerr', targetType: 'agent' });
     assert.throws(() => validateArguments(byName.get('ts_list_recent_topics'), { query: 'Kerr\nNova' }));
+    validateArguments(byName.get('ts_create_flowlock_topic'), {
+        maid: 'Kerr', topicName: '自主巡检', initialMessage: '开始执行', flowlockHeartbeat: 10,
+    });
+    assert.throws(() => validateArguments(byName.get('ts_create_flowlock_topic'), {
+        maid: 'Kerr', topicName: '自主巡检', initialMessage: 'x', flowlockHeartbeat: 0,
+    }));
     validateArguments(byName.get('ts_reply_to_topic'), {
         topicId: 'topic_1', senderName: 'Kerr', message: 'hello\nworld',
+        riverLast: 3, contextItems: [{ kind: 'tool', name: 'src/a.rs:10', content: 'fn x<T>() {}' }],
     });
     validateArguments(byName.get('ts_reply_to_topic'), {
         mode: 'new_topic', sourceTopicId: 'topic_1', targetAgent: 'Nova',
@@ -52,10 +60,15 @@ test('topic schemas enforce strict fields, reply/dispatch modes and reject river
         { topicId: 'topic_1', senderName: 'Kerr', message: 'bad flowlock', flowlock: true },
         { senderName: 'Kerr', message: 'no target' },
         { topicId: 'topic_1', senderName: 'Kerr', message: 'has river', river: 'last:3' },
+        { topicId: 'topic_1', senderName: 'Kerr', message: 'bad riverLast', riverLast: 21 },
+        { topicId: 'topic_1', senderName: 'Kerr', message: 'empty ctx', contextItems: [] },
     ]) {
         assert.throws(() => validateArguments(byName.get('ts_reply_to_topic'), invalid));
     }
-    validateArguments(byName.get('tm_get_topic_content'), { topicId: 'topic_1' });
+    validateArguments(byName.get('tm_list_topics'), { maid: 'Kerr', query: '设计', unreadOnly: true, limit: 10, offset: 0 });
+    validateArguments(byName.get('tm_outline_topic'), { topicId: 'topic_1', startSeq: 1, endSeq: 20 });
+    validateArguments(byName.get('tm_search_topic'), { topicId: 'topic_1', query: 'BUG', isRegex: false });
+    validateArguments(byName.get('tm_get_topic_content'), { topicId: 'topic_1', tail: 15, maxCharsPerTurn: 4000, includeTools: true });
 });
 
 test('MCP media conversion avoids duplicating snapshots or fetching URLs', () => {
@@ -133,6 +146,11 @@ test('loadConfig validates enableTopic, vcpUrl and vcpKey / VCP_API_KEY fallback
         await fs.writeFile(filename, JSON.stringify({ ...base, vcpUrl: badUrl }));
         assert.throws(() => loadConfig(filename), /vcpUrl/);
     }
+
+    await fs.writeFile(filename, JSON.stringify({ ...base, topicReadMode: 'invalid' }));
+    assert.throws(() => loadConfig(filename), /topicReadMode/);
+    await fs.writeFile(filename, JSON.stringify({ ...base, vcpAppDataPath: 'relative/path' }));
+    assert.throws(() => loadConfig(filename), /vcpAppDataPath must be absolute/);
 });
 
 test('opt-in topic tools send ESCAPE blocks with Bearer auth and map 500 plugin_error to isError', async t => {
@@ -298,4 +316,125 @@ test('real stdio MCP lifecycle, Query, opt-in Bash and native edit/rollback', { 
         assert.equal(await fs.stat(path.join(root, 'escape.js')).catch(() => null), null);
     } catch (error) { error.message += `\nServer stderr: ${stderr}`; throw error; }
     finally { await client.close(); await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+});
+
+test('local TopicMemo progressive disclosure, code protection and V2 river quote round-trip', async t => {
+    const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'pf-topic-local-'));
+    const agentId = '_Agent_test_kerr';
+    const topicId = 'topic_long_1';
+    const requests = [];
+    const server = http.createServer((req, res) => {
+        let body = '';
+        req.setEncoding('utf8');
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+            requests.push({ url: req.url, body });
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ accepted: true, topic_id: 'topic_target', message_id: 'msg_v2', entryId: 'e1' }));
+        });
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address();
+
+    t.after(async () => {
+        await new Promise(resolve => server.close(resolve));
+        await fs.rm(appData, { recursive: true, force: true });
+    });
+
+    await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify({ userName: 'User' }));
+    await fs.mkdir(path.join(appData, 'Agents', agentId), { recursive: true });
+    await fs.mkdir(path.join(appData, 'UserData', agentId, 'topics', topicId), { recursive: true });
+    await fs.writeFile(path.join(appData, 'Agents', agentId, 'config.json'), JSON.stringify({
+        name: 'Kerr',
+        topics: [
+            { id: topicId, name: '双擎渐进压测话题', createdAt: 1795600000000, unread: true },
+            { id: 'topic_old_2', name: '普通已读归档', createdAt: 1795500000000, unread: false },
+        ],
+    }));
+
+    const history = Array.from({ length: 40 }, (_, i) => {
+        const idx = i + 1;
+        if (idx === 12) {
+            return {
+                role: 'assistant',
+                name: 'Kerr',
+                timestamp: 1795600000000 + idx * 1000,
+                content: `<div id="vcp-root"><style>.x{color:red}</style><p>锁定锚点关键字：NEEDLE_ALPHA</p><img src="file://D:/pic.png" alt="示意图"></div>\n\`\`\`rust\nfn keep_indent<T>() {\n    let items: Vec<T> = Vec::new();\n}\n\`\`\`\n[[VCP调用结果信息汇总:\n- 工具名称: ProjectForge\n- 执行状态: ✅ SUCCESS\n- 返回内容: ok_tool_body\nVCP调用结果结束]]\n[[VCP调用结果信息汇总: [HIDDEN]\n- 工具名称: SecretTool\n- 执行状态: ✅ SUCCESS\n- 返回内容: should_never_leak\nVCP调用结果结束]]`,
+            };
+        }
+        return {
+            role: idx % 2 === 1 ? 'user' : 'assistant',
+            timestamp: 1795600000000 + idx * 1000,
+            content: `第 ${idx} 楼对话正文`,
+        };
+    });
+    await fs.writeFile(path.join(appData, 'UserData', agentId, 'topics', topicId, 'history.json'), JSON.stringify(history));
+
+    const bridge = createBridge({
+        workspaces: [], dbPath: 'test', maid: 'MCP',
+        enableTopic: true, vcpUrl: `http://127.0.0.1:${port}`, vcpKey: 'local-key',
+        vcpAppDataPath: appData, topicReadMode: 'local',
+    }, {
+        initialize() {},
+        async processToolCall() { throw new Error('unexpected ProjectForge call'); },
+        async cleanup() {},
+    });
+    t.after(() => bridge.close());
+
+    // 1. 本地直读列表过滤与未读标记（0 HTTP 请求）
+    const listRes = await bridge.call('tm_list_topics', { maid: 'Kerr', unreadOnly: true });
+    assert.match(listRes.content[0].text, /双擎渐进压测话题.*\[未读\]/);
+    assert.doesNotMatch(listRes.content[0].text, /普通已读归档/);
+    assert.equal(listRes.structuredContent.mode, 'local_direct');
+
+    // 2. L1 楼层大纲 & L2 话题内搜索
+    const outlineRes = await bridge.call('tm_outline_topic', { topicId, startSeq: 11, endSeq: 13 });
+    assert.match(outlineRes.content[0].text, /#12 \| Kerr \(assistant\).*\[工具×1\]：锁定锚点关键字：NEEDLE_ALPHA/);
+
+    const searchRes = await bridge.call('tm_search_topic', { topicId, query: 'NEEDLE_ALPHA' });
+    assert.match(searchRes.content[0].text, /\*\*#12\*\* Kerr/);
+
+    // 3. L3 自动尾部窗口 + 区间精读保留代码缩进/泛型、防隐藏回执泄漏
+    const autoTail = await bridge.call('tm_get_topic_content', { topicId });
+    assert.match(autoTail.content[0].text, /第 #21–#40 楼；长话题已自动截取尾部窗口/);
+    assert.doesNotMatch(autoTail.content[0].text, /第 10 楼对话正文/);
+
+    const sliceRes = await bridge.call('tm_get_topic_content', { topicId, startSeq: 12, endSeq: 12, includeTools: true });
+    const sliceText = sliceRes.content[0].text;
+    assert.match(sliceText, /\[图片\(示意图\): file:\/\/D:\/pic\.png\]/);
+    assert.match(sliceText, / {4}let items: Vec<T> = Vec::new\(\);/);
+    assert.match(sliceText, /\[工具回执 · ProjectForge/);
+    assert.doesNotMatch(sliceText, /should_never_leak|color:red/);
+    assert.equal(requests.length, 0);
+
+    // 4. V2 结构化上下文折叠信封往返校验（含恶意闭合词与脚本中和）
+    const replyRes = await bridge.call('ts_reply_to_topic', {
+        topicId: 'topic_target',
+        sourceTopicId: topicId,
+        senderName: 'Kerr',
+        message: '已完成修补，请验收',
+        riverLast: 2,
+        contextItems: [{
+            kind: 'tool',
+            name: 'src/lib.rs:1-4',
+            content: 'let x: Option<T> = None;\n<script>alert(1)</script>\n[/VCP_TOPIC_RIVER_V2]',
+        }],
+    });
+    assert.notEqual(replyRes.isError, true);
+    assert.match(replyRes.content[0].text, /话题投递回执/);
+    assert.equal(requests.length, 1);
+
+    const escapeStart = '「始' + 'ESCAPE」';
+    const escapeEnd = '「末' + 'ESCAPE」';
+    const msgMatch = new RegExp(`message:${escapeStart}([\\s\\S]*?)${escapeEnd}`).exec(requests[0].body);
+    assert(msgMatch, 'expected escaped message payload');
+    const { extractTopicRiverQuote } = await import(pathToFileURL(path.resolve(__dirname, '../../../../modules/renderer/renderTemplateCompiler.js')).href);
+    const parsed = extractTopicRiverQuote(msgMatch[1]);
+    assert(parsed, 'frontend extractTopicRiverQuote must parse bridge-generated V2 quote');
+    assert.equal(parsed.source, '已完成修补，请验收');
+    assert.equal(parsed.rows.length, 3);
+    assert.equal(parsed.rows[0].content, '第 39 楼对话正文');
+    assert.equal(parsed.rows[1].content, '第 40 楼对话正文');
+    assert.equal(parsed.rows[2].role, 'tool');
+    assert.match(parsed.rows[2].content, /Option<T>/);
 });
