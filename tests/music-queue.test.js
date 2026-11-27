@@ -578,3 +578,35 @@ test('Batch 65: syncTrackIndexByPath resolves via O(1) byPathIndexMap, keeps fir
     app.syncTrackIndexByPath('D:/moved/dir/7.flac');
     assert.equal(app.currentTrackIndex, 7, 'filename fallback locates moved track');
 });
+
+test('Batch 71: app.queueBatch coalesces nested queue mutations into one notification and preload refresh, even on error', async () => {
+    const { app, playlist, preloads, preload, events } = setup({ count: 12 });
+    await preload();
+    app.isPreloadingNext = false;
+    const preloadsBefore = preloads.length;
+    const eventsBefore = events.filter((e) => e === 'music-queue-change').length;
+
+    app.queueBatch(() => {
+        app.queueAdd(playlist[2]);
+        app.queueBatch(() => {
+            app.queueAdd(playlist[3]);
+            app.queuePlayNext(playlist[4]);
+        });
+        app.queueAdd(playlist[5]);
+        assert.equal(events.filter((e) => e === 'music-queue-change').length, eventsBefore, 'no intermediate music-queue-change inside queueBatch');
+    });
+    assert.equal(events.filter((e) => e === 'music-queue-change').length, eventsBefore + 1, 'exactly one music-queue-change flushed after nested queueBatch');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(preloads.length, preloadsBefore + 1, 'refreshPreload invoked once for the whole batch');
+    assert.equal(preloads.at(-1), 'C:/m/4.flac');
+    assert.deepEqual(titles(app.manualQueue), ['t4', 't2', 't3', 't5']);
+
+    // Error inside queueBatch still restores batch depth and flushes partial edits cleanly
+    assert.throws(() => app.queueBatch(() => {
+        app.queueAdd(playlist[6]);
+        throw new Error('boom');
+    }), /boom/);
+    assert.equal(events.filter((e) => e === 'music-queue-change').length, eventsBefore + 2, 'finally flushes dirty batch on throw');
+    app.queueAdd(playlist[7]);
+    assert.equal(events.filter((e) => e === 'music-queue-change').length, eventsBefore + 3, 'subsequent standalone edits still notify immediately');
+});

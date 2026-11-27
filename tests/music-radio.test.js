@@ -228,3 +228,36 @@ test('pickSimilar preserves multi-artist diversity caps and setupMusicRadio clea
         globalThis.addEventListener = origAdd;
     }
 });
+
+test('Batch 71: alternateCopy skips non-matching artists via cache, strips audio extensions, and selects highest-ranked playable copy', () => {
+    const failed = { path: '/m/a/song.mp3', title: 'Midnight Echo.mp3', artist: 'Artist One', bitrate: 128000 };
+    const remoteFlac = { path: 'https://dav.example/song.flac', title: 'Midnight Echo.flac', artist: ' artist one ', isRemote: true, lossless: true };
+    const localMp3 = { path: '/m/a/song-320.mp3', title: 'Midnight Echo.mp3', artist: 'ARTIST ONE', bitrate: 320000 };
+    const localHiRes = { path: '/m/a/song-hi.flac', title: 'Midnight Echo.flac', artist: 'Artist One', lossless: true, bitsPerSample: 24, sampleRate: 96000 };
+    const wrongTitle = { path: '/m/a/other.flac', title: 'Other Track.flac', artist: 'Artist One', lossless: true };
+    const otherArtists = Array.from({ length: 200 }, (_, i) => ({
+        path: `/m/other/${i}.flac`,
+        title: 'Midnight Echo.flac',
+        artist: `Other Artist ${i % 20}`,
+        lossless: true
+    }));
+    const store = new Map();
+    const app = {
+        playlist: [failed, remoteFlac, ...otherArtists, localMp3, wrongTitle, localHiRes],
+        currentTrackIndex: 0,
+        playModes: ['repeat'],
+        currentPlayMode: 0,
+        failedTracks: new Map(),
+        loadTrack: async () => {}
+    };
+    setupMusicRadio(app, { storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) } });
+
+    assert.equal(app.alternateCopy(failed), localHiRes, 'prefers local hi-res lossless copy with normalized artist & stripped ext');
+    app.failedTracks.set(localHiRes, true);
+    assert.equal(app.alternateCopy(failed), localMp3, 'skips failed hi-res copy and picks local 320k mp3 over remote');
+    app.failedTracks.set(localMp3, true);
+    assert.equal(app.alternateCopy(failed), remoteFlac, 'falls back to remote flac when all local copies failed');
+    app.failedTracks.set(remoteFlac, true);
+    assert.equal(app.alternateCopy(failed), null, 'returns null once every matching copy has failed');
+    assert.equal(app.alternateCopy({ path: '/x.flac', title: 'No Artist.flac', artist: '' }), null, 'returns null when artist is empty');
+});

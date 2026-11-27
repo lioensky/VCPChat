@@ -1821,3 +1821,77 @@ test('Batch 69: dock scopes --md-shift/--md-bar-w/--md-vgrow off #music-dock-roo
         window.close();
     }
 });
+
+test('Batch 71: queue drawer pools rows in-place, skips closed scroll, batches palette playlist queueing, and short-circuits followWidth on reduced motion', () => {
+    const rafs = [];
+    const { window, doc, app, dock, calls } = setup((a, w) => {
+        w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+        w.cancelAnimationFrame = () => {};
+        for (let i = 0; i < 80; i += 1) {
+            a.playlist.push({ path: `C:/pool${i}.flac`, title: `Pool Song ${i}.flac`, artist: `Art ${i}`, duration: 180 });
+        }
+        a.manualQueue = [a.playlist[2], a.playlist[3]];
+        a.getUpNext = () => ({ manual: a.manualQueue.slice(), context: a.playlist.slice(4) });
+        a.customPlaylists = [{ id: 'pl-batch', name: 'Batch Mix', tracks: [a.playlist[5].path, a.playlist[6].path, a.playlist[7].path] }];
+        a.queueAdd = (t) => { calls.push(['qadd', t.path]); return t; };
+        a.queuePlayNext = (t) => { calls.push(['qnext', t.path]); return t; };
+        let batchCalls = 0;
+        a.queueBatch = (fn) => { batchCalls += 1; return fn(); };
+        a._getBatchCalls = () => batchCalls;
+    });
+    try {
+        dock.openPanel('播放列表');
+        const scroller = doc.querySelector('.md-ql');
+        const sizer = scroller.firstElementChild;
+        let clientHeightReads = 0;
+        Object.defineProperty(scroller, 'clientHeight', { configurable: true, get() { clientHeightReads += 1; return 280; } });
+
+        // 1. In-place rerenderQueue keeps the same .md-ql scroller & reuses existing row elements
+        const initialTrackNode = sizer.querySelector('.md-qi:not(.md-now):not(.md-man)');
+        assert.ok(initialTrackNode);
+        app.manualQueue.push(app.playlist[10]);
+        doc.dispatchEvent(new window.Event('music-queue-change'));
+        assert.equal(doc.querySelector('.md-ql'), scroller, 'rerenderQueue patches in-place without rebuilding .md-ql');
+        assert.equal(doc.querySelector('.md-qh > span').textContent, String(app.manualQueue.length + app.playlist.length - 4));
+
+        // 2. Disjoint scroll reuses pooled track DOM nodes instead of re-allocating via innerHTML
+        const beforeTrackNodes = new Set([...sizer.querySelectorAll('.md-qi:not(.md-now):not(.md-man)')]);
+        scroller.scrollTop = 1800;
+        scroller.dispatchEvent(new window.Event('scroll'));
+        const afterTrackNodes = [...sizer.querySelectorAll('.md-qi:not(.md-now):not(.md-man)')];
+        const reused = afterTrackNodes.filter((n) => beforeTrackNodes.has(n)).length;
+        assert.ok(reused > 0, `disjoint scroll reuses pooled row DOM nodes (reused=${reused}/${afterTrackNodes.length})`);
+
+        // 3. Closed drawer ignores delayed scroll events without reading clientHeight
+        dock.closePanel();
+        clientHeightReads = 0;
+        scroller.scrollTop = 2200;
+        scroller.dispatchEvent(new window.Event('scroll'));
+        assert.equal(clientHeightReads, 0, 'closed queue scroller ignores scroll events without layout reads');
+
+        // 4. Palette multi-track playlist queueing routes through app.queueBatch
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        input.value = 'Batch Mix';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const plRow = [...doc.querySelectorAll('.md-cmd-row')].find((r) => r.querySelector('.md-cmd-title')?.textContent === 'Batch Mix');
+        assert.ok(plRow);
+        plRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true, ctrlKey: true }));
+        assert.equal(app._getBatchCalls(), 1, 'palette multi-track queue wraps loop in app.queueBatch');
+        assert.deepEqual(calls.slice(-3), [['qadd', 'C:/pool3.flac'], ['qadd', 'C:/pool4.flac'], ['qadd', 'C:/pool5.flac']]);
+        dock.closePalette();
+
+        // 5. Reduced-motion followWidth settles in 1 rAF instead of 560ms polling
+        doc.body.classList.add('music-reduce-motion');
+        rafs.length = 0;
+        dock.openPanel('控制');
+        const pendingCount = rafs.length;
+        const batch = rafs.splice(0);
+        for (const cb of batch) cb(16);
+        assert.equal(rafs.length, 0, `reduced-motion followWidth does not chain polling rAFs (initial=${pendingCount})`);
+        dock.closePanel();
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

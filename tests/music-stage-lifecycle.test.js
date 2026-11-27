@@ -1800,3 +1800,65 @@ test('Batch 67: edge spectrum uses ResizeObserver contentRect without layout rea
         dom.window.close();
     }
 });
+
+test('Batch 71: edge spectrum skips clearRect/stroke per quiet strip when another strip moves and recovers immediately after empty spectrum', () => {
+    const dom = createStageDom();
+    try {
+        let roCb = null;
+        dom.window.ResizeObserver = class {
+            constructor(cb) { roCb = cb; }
+            observe() {}
+            disconnect() {}
+        };
+        runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
+        const root = dom.window.document.getElementById('music-stage');
+        const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        const accent = Object.freeze({ r: 40, g: 120, b: 220 });
+        dom.window.MusicStageModeUtils = { resolveAccent: () => accent };
+        let strokes = 0;
+        let clears = 0;
+        dom.window.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, {
+            get(t, p) {
+                if (p === 'stroke') return () => { strokes += 1; };
+                if (p === 'clearRect') return () => { clears += 1; };
+                return p in t ? t[p] : () => {};
+            },
+            set(t, p, v) { t[p] = v; return true; }
+        });
+        const scope = new dom.window.MusicStageRuntime.DisposableScope();
+        const app = { stagePalette: { accentRgb: accent } };
+        const edge = dom.window.MusicStageEdge.create({
+            app, root, elements: { edgeSpectrum, edgeCanvas },
+            state: { config: { edgeSpectrum: true, quality: 'standard' } },
+            scope, clamp: dom.window.MusicStageRuntime.clamp
+        });
+
+        roCb([{ contentRect: { width: 1000, height: 600 } }]);
+        const silent = new Float32Array(64);
+        // Frame 1: draw initial flat borders on all 4 edges (4 clears, 8 strokes)
+        edge.draw({ now: 1000, isPlaying: true, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(clears, 4);
+        assert.equal(strokes, 8);
+
+        // Frame 2: energize only bin 0 so only the top strip (offset 0) moves while right/bottom/left stay flat at same power=0
+        const partial = new Float32Array(64);
+        partial[0] = 0.8;
+        edge.draw({ now: 1060, isPlaying: true, audio: { spectrum: partial, power: 0 }, viewport: { dpr: 1 } });
+        assert.ok(clears < 8, `quiet strips skip clearRect when only a subset moves (clears=${clears})`);
+        assert.ok(strokes < 16, `quiet strips skip glow strokes when only a subset moves (strokes=${strokes})`);
+
+        // Empty spectrum blanks strips; immediate next frame (within throttle window) must redraw without waiting 33ms
+        edge.draw({ now: 1070, isPlaying: true, audio: { spectrum: [], power: 0 }, viewport: { dpr: 1 } });
+        const clearsAfterBlank = clears;
+        const strokesAfterBlank = strokes;
+        edge.draw({ now: 1075, isPlaying: true, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(clears - clearsAfterBlank, 4, 'recovering from blank bypasses playing throttle and redraws all 4 edges');
+        assert.equal(strokes - strokesAfterBlank, 8);
+
+        scope.destroy();
+    } finally {
+        dom.window.close();
+    }
+});

@@ -643,3 +643,80 @@ test('Batch 68: music-ui patches sorted rows in-place with zero DOM moves, visib
     window.dispatchEvent(new window.Event('beforeunload'));
     window.close();
 });
+
+test('Batch 71: music-skin deduplicates music-has-track/is-spec class toggles and supports keyboard nav on segmented controls', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="track-title">Song A</div>
+        <div class="track-bitrate">320 kbps</div>
+        <div id="music-stage"></div>
+        <div id="music-stage-settings-card"><div class="music-stage-settings-body">
+            <label><span class="music-stage-tuning-label">画质</span>
+                <select id="s71">
+                    <option value="low">节能</option>
+                    <option value="mid" disabled>中档</option>
+                    <option value="std">标准</option>
+                    <option value="max">极致</option>
+                </select>
+            </label>
+        </div></div></body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    const doc = w.document;
+    const titleEl = doc.querySelector('.track-title');
+    const bitrateEl = doc.querySelector('.track-bitrate');
+    const app = {
+        playlist: [
+            { path: '/a.flac', title: 'Song A', codec: 'FLAC' },
+            { path: '/b.flac', title: 'Song B', codec: 'FLAC' }
+        ],
+        currentTrackIndex: 0,
+        trackTitle: titleEl,
+        trackBitrate: bitrateEl
+    };
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+    w.setupMusicSkin(app);
+    assert.equal(doc.body.classList.contains('music-has-track'), true);
+    assert.equal(bitrateEl.classList.contains('is-spec'), true);
+
+    let bodyToggleCalls = 0;
+    const origBodyToggle = doc.body.classList.toggle.bind(doc.body.classList);
+    doc.body.classList.toggle = (cls, force) => { if (cls === 'music-has-track') bodyToggleCalls += 1; return origBodyToggle(cls, force); };
+    let specToggleCalls = 0;
+    const origSpecToggle = bitrateEl.classList.toggle.bind(bitrateEl.classList);
+    bitrateEl.classList.toggle = (cls, force) => { if (cls === 'is-spec') specToggleCalls += 1; return origSpecToggle(cls, force); };
+
+    // Switching to another valid track & another kbps value must NOT call classList.toggle redundantly
+    app.currentTrackIndex = 1;
+    titleEl.textContent = 'Song B';
+    bitrateEl.textContent = '960 kbps';
+    await new Promise((r) => setImmediate(r));
+    assert.equal(bodyToggleCalls, 0, 'unchanged hasTrack skips redundant body.classList.toggle');
+    assert.equal(specToggleCalls, 0, 'unchanged isSpec skips redundant trackBitrate.classList.toggle');
+
+    // Clearing to non-kbps updates is-spec once
+    bitrateEl.textContent = 'FLAC 24/96';
+    await new Promise((r) => setImmediate(r));
+    assert.equal(specToggleCalls, 1);
+    assert.equal(bitrateEl.classList.contains('is-spec'), false);
+
+    // Keyboard navigation on .music-skin-segmented skips disabled option and wraps cleanly
+    const sel = doc.getElementById('s71');
+    const group = doc.querySelector('.music-skin-segmented');
+    const btns = [...group.querySelectorAll('button')];
+    const key = (k) => group.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    btns[0].focus();
+    key('ArrowRight');
+    assert.equal(sel.value, 'std', 'ArrowRight skips disabled mid option to std');
+    assert.equal(doc.activeElement, btns[2]);
+    key('End');
+    assert.equal(sel.value, 'max', 'End jumps to last enabled option');
+    assert.equal(doc.activeElement, btns[3]);
+    key('ArrowRight');
+    assert.equal(sel.value, 'low', 'ArrowRight wraps from last to first enabled option');
+    key('Home');
+    assert.equal(sel.value, 'low');
+    key('ArrowLeft');
+    assert.equal(sel.value, 'max', 'ArrowLeft wraps from first to last enabled option');
+
+    w.dispatchEvent(new w.Event('beforeunload'));
+    w.close();
+});
