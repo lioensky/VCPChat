@@ -353,7 +353,7 @@ body.music-reduce-motion .aw-tile .aw-in, body.music-reduce-motion .aw-panel > *
 .ag-head span { font: 500 11px/1 var(--mt-font-mono, ui-monospace, monospace); letter-spacing: .6px; color: var(--ar-muted); padding-bottom: 6px; }
 .ag-head.ag-reveal > * { animation: ag-pop .34s var(--mt-ease-out, cubic-bezier(.2, .8, .2, 1)) both; }
 .ag-head i { position: absolute; left: 0; right: 0; bottom: 4px; height: 1.5px; background: color-mix(in srgb, var(--ar-ink) 26%, transparent); }
-.ag-sticky { position: absolute; left: 0; right: 8px; top: 0; height: 34px; display: flex; align-items: center; gap: 12px; padding: 0 2px; background: linear-gradient(180deg, var(--ar-paper) 78%, rgba(var(--ar-paper-rgb), 0)); height: 40px; pointer-events: none; z-index: 2; }
+.ag-sticky { position: absolute; left: 0; right: 8px; top: 0; height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 2px; background: linear-gradient(180deg, var(--ar-paper) 78%, rgba(var(--ar-paper-rgb), 0)); pointer-events: none; z-index: 2; }
 .ag-sticky[hidden] { display: none; }
 .ag-sticky b { font-size: 19px; font-weight: 800; letter-spacing: -.03em; color: var(--ar-ink); max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ag-sticky span { font: 500 11px/1 var(--mt-font-mono, ui-monospace, monospace); letter-spacing: .6px; color: var(--ar-muted); }
@@ -489,7 +489,12 @@ body.music-reduce-motion .aw-table .aw-tile.is-open .aw-in { animation: none; }
     -webkit-mask-image: linear-gradient(180deg, #000 0, rgba(0, 0, 0, .7) 45%, transparent 100%);
     mask-image: linear-gradient(180deg, #000 0, rgba(0, 0, 0, .7) 45%, transparent 100%);
 }
-body.music-reduce-motion .archive-wall.aw-table::after { display: none; }
+body.music-reduce-motion .archive-wall.aw-table::after,
+body.music-fl-low .archive-wall.aw-table::after { display: none; }
+body.music-fl-low #music-archive-view .aw-panel-acts button,
+body.music-fl-low #music-archive-view .aw-locate { -webkit-backdrop-filter: none; backdrop-filter: none; }
+body.music-fl-low #music-archive-view .aw-panel-acts button:not(.aw-primary) { background: rgba(18, 22, 28, .62); }
+body.music-fl-low #music-archive-view .aw-locate { background: rgba(var(--ar-paper-rgb), .94); }
 
 /* 窗口窄、大卡小的时候：歌词收起，按钮缩小排成一行，标题也小一号 */
 .aw-tile.is-open .aw-in { container-type: size; container-name: awcard; }
@@ -549,9 +554,9 @@ body.music-reduce-motion .aw-tile.aw-flip .aw-in, body.music-reduce-motion .ag-c
 .aw-locate i::before { left: 50%; top: -6px; bottom: -6px; width: 1.6px; margin-left: -.8px; -webkit-mask-image: linear-gradient(180deg, #000 0 5px, transparent 5px calc(100% - 5px), #000 calc(100% - 5px)); mask-image: linear-gradient(180deg, #000 0 5px, transparent 5px calc(100% - 5px), #000 calc(100% - 5px)); }
 .aw-locate i::after { top: 50%; left: -6px; right: -6px; height: 1.6px; margin-top: -.8px; -webkit-mask-image: linear-gradient(90deg, #000 0 5px, transparent 5px calc(100% - 5px), #000 calc(100% - 5px)); mask-image: linear-gradient(90deg, #000 0 5px, transparent 5px calc(100% - 5px), #000 calc(100% - 5px)); }
 #music-archive-view .aw-locate.is-away { opacity: 1; color: #17130a; background: var(--ar-accent); }
-#music-archive-view .aw-locate.is-away::before { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 0 color-mix(in srgb, var(--ar-accent) 55%, transparent); animation: aw-breathe 2.4s ease-out infinite; pointer-events: none; }
+#music-archive-view .aw-locate.is-away::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--ar-accent); animation: aw-breathe 2.4s ease-out infinite; pointer-events: none; }
 #music-archive-view .aw-locate.is-ping::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--ar-accent); animation: aw-ping .6s ease-out both; pointer-events: none; }
-@keyframes aw-breathe { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ar-accent) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 14px transparent; } }
+@keyframes aw-breathe { 0% { transform: scale(1); opacity: .62; } 70%, 100% { transform: scale(1.7); opacity: 0; } }
 @keyframes aw-ping { from { transform: scale(1); opacity: 1; } to { transform: scale(2.2); opacity: 0; } }
 #music-archive-view .aw-table .aw-locate { right: 48px; }
 body.music-reduce-motion #music-archive-view .aw-locate.is-away::before, body.music-reduce-motion #music-archive-view .aw-locate.is-ping::after { animation: none; }

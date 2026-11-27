@@ -104,6 +104,11 @@
         const later = () => { if (timer || !hasSmart()) return; timer = global.setTimeout(() => { timer = null; app.refreshSmartPlaylists(); }, 4000); };
         global.document?.addEventListener?.('music-stats-change', later);
         global.document?.addEventListener?.('music-like-change', later);
+        global.addEventListener?.('beforeunload', () => {
+            if (timer) { global.clearTimeout?.(timer); timer = null; }
+            global.document?.removeEventListener?.('music-stats-change', later);
+            global.document?.removeEventListener?.('music-like-change', later);
+        }, { once: true });
         later();
     }
 

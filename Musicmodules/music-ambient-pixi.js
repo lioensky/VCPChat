@@ -200,12 +200,14 @@
                 const pixiApp = new PIXI.Application();
                 this.pixiApp = pixiApp;
 
+                const lowPower = this.app?.currentStageQuality === 'energy-saving'
+                    || Boolean(global.document?.body?.classList?.contains('music-fl-low'));
                 await pixiApp.init({
                     backgroundAlpha: 0,
                     preference: 'webgl',
                     autoStart: false,
-                    antialias: true,
-                    resolution: Math.min(1.5, global.devicePixelRatio || 1),
+                    antialias: !lowPower,
+                    resolution: lowPower ? 1 : Math.min(1.5, global.devicePixelRatio || 1),
                     autoDensity: true
                 });
 
@@ -491,13 +493,19 @@
         };
 
         let resizeRaf = 0;
-        window.addEventListener('resize', () => {
+        const onResize = () => {
             if (app.isStageActive || resizeRaf) return;
             resizeRaf = requestAnimationFrame(() => {
                 resizeRaf = 0;
                 if (!app.isStageActive) app.ambientPixiController?.resize();
             });
-        });
+        };
+        window.addEventListener('resize', onResize);
+        window.addEventListener('beforeunload', () => {
+            if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
+            window.removeEventListener('resize', onResize);
+            releaseController();
+        }, { once: true });
 
         // 等这一轮启动代码跑完再决定要不要建：默认的档案页紧接着就会接管背景、把它销毁，
         // 先建一个 WebGL 上下文、编译着色器再立刻拆掉，是启动时最大的一块白干的活。

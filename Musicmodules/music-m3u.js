@@ -131,7 +131,14 @@
             // 从资源管理器拖文件进来时整个窗口给个落点提示（以前拖进来什么反应都没有，不知道能不能放）
             let hint = null;
             let depth = 0;
-            const isFileDrag = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+            const isFileDrag = (event) => {
+                const types = event.dataTransfer?.types;
+                if (!types) return false;
+                if (typeof types.includes === 'function') return types.includes('Files');
+                if (typeof types.contains === 'function') return types.contains('Files');
+                for (let i = 0; i < types.length; i++) if (types[i] === 'Files') return true;
+                return false;
+            };
             const showHint = () => {
                 if (!hint) {
                     hint = doc.createElement('div');
@@ -144,14 +151,11 @@
             };
             // 保险：拖着悬停时 dragover 每几十毫秒来一次；停了大半秒还没来（按了 Esc、拖到别的窗口没收到 dragleave）就收起，提示不会卡在屏幕上
             let idle = 0;
-            const hideHint = () => { depth = 0; clearTimeout(idle); if (hint) hint.classList.remove('visible'); };
-            doc.addEventListener('dragenter', (event) => { if (!isFileDrag(event)) return; depth++; showHint(); }, true);
-            doc.addEventListener('dragover', (event) => { if (!isFileDrag(event)) return; clearTimeout(idle); idle = setTimeout(hideHint, 700); }, true);
-            doc.addEventListener('dragleave', (event) => { if (!isFileDrag(event)) return; depth = Math.max(0, depth - 1); if (!depth) hideHint(); }, true);
-            doc.addEventListener('dragend', hideHint, true);
-            global.addEventListener?.('blur', hideHint);
-            doc.addEventListener('drop', hideHint, true);
-            doc.addEventListener('drop', (event) => {
+            const hideHint = () => { depth = 0; clearTimeout(idle); idle = 0; if (hint) hint.classList.remove('visible'); };
+            const onDragEnter = (event) => { if (!isFileDrag(event)) return; depth++; showHint(); };
+            const onDragOver = (event) => { if (!isFileDrag(event)) return; clearTimeout(idle); idle = setTimeout(hideHint, 700); };
+            const onDragLeave = (event) => { if (!isFileDrag(event)) return; depth = Math.max(0, depth - 1); if (!depth) hideHint(); };
+            const onDrop = (event) => {
                 // 文件夹名也可能带点（「Vol.1」）：用 webkitGetAsEntry 认出文件夹，只看真正的文件
                 if (isFileDrag(event)) {
                     const items = Array.from(event.dataTransfer?.items || []);
@@ -168,7 +172,25 @@
                     try { p = api().getPathForFile(f); } catch (e) { p = ''; }
                     if (p) importFile(p);
                 }
-            });
+            };
+            doc.addEventListener('dragenter', onDragEnter, true);
+            doc.addEventListener('dragover', onDragOver, true);
+            doc.addEventListener('dragleave', onDragLeave, true);
+            doc.addEventListener('dragend', hideHint, true);
+            global.addEventListener?.('blur', hideHint);
+            doc.addEventListener('drop', hideHint, true);
+            doc.addEventListener('drop', onDrop);
+            global.addEventListener?.('beforeunload', () => {
+                clearTimeout(idle);
+                idle = 0;
+                doc.removeEventListener('dragenter', onDragEnter, true);
+                doc.removeEventListener('dragover', onDragOver, true);
+                doc.removeEventListener('dragleave', onDragLeave, true);
+                doc.removeEventListener('dragend', hideHint, true);
+                global.removeEventListener?.('blur', hideHint);
+                doc.removeEventListener('drop', hideHint, true);
+                doc.removeEventListener('drop', onDrop);
+            }, { once: true });
         }
 
         app.m3u = { importFile, exportPlaylist, commands };

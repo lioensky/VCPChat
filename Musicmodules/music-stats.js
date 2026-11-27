@@ -184,14 +184,17 @@
             else if (!playing && timer !== null) { tick(); clearTimer(timer); timer = null; }
             else tick();
         };
+        let bodyObserver = null;
+        const onQueueChange = () => tick();
         if (observe && global.MutationObserver && global.document?.body) {
             // 播放状态切换时 body 上的 music-playing 会变；切歌时也会经过这里
             let was = global.document.body.classList.contains('music-playing');
-            new global.MutationObserver(() => {
+            bodyObserver = new global.MutationObserver(() => {
                 const is = global.document.body.classList.contains('music-playing');
                 if (is !== was) { was = is; sync(); }
-            }).observe(global.document.body, { attributes: true, attributeFilter: ['class'] });
-            global.document.addEventListener?.('music-queue-change', () => tick());
+            });
+            bodyObserver.observe(global.document.body, { attributes: true, attributeFilter: ['class'] });
+            global.document.addEventListener?.('music-queue-change', onQueueChange);
         }
 
         // ---- 查询 ----
@@ -254,7 +257,8 @@
                 const tracks = [...plays.entries()]
                     .map(([k, n]) => ({ path: table[k] ? table[k][4] : k, plays: n, last: table[k] ? table[k][1] : 0 }))
                     .sort((a, b) => b.plays - a.plays || b.last - a.last);
-                const firstDay = Object.keys(log).sort()[0] || '';
+                let firstDay = '';
+                for (const k of Object.keys(log)) if (!firstDay || k < firstDay) firstDay = k;
                 return { seconds: Math.round(seconds), plays: count, activeDays, hours: hours.map(Math.round), tracks, since: firstDay, daily };
             },
             tick,
@@ -267,7 +271,13 @@
             }
         };
         app.musicStats = api;
-        global.addEventListener?.('beforeunload', () => api.flush());
+        global.addEventListener?.('beforeunload', () => {
+            if (timer !== null) { clearTimer(timer); timer = null; }
+            bodyObserver?.disconnect();
+            bodyObserver = null;
+            global.document?.removeEventListener?.('music-queue-change', onQueueChange);
+            api.flush();
+        }, { once: true });
         sync();
         return api;
     }

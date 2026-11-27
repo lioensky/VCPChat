@@ -94,9 +94,27 @@
             state.sent = snap; state.sentKey = k; state.sentAt = now;
             try { api.publishDesktopLyrics(snap); } catch (e) { /* 主进程没有这个接口 */ }
         };
+        let bodyObserver = null;
+        const onUpdate = () => publish(false);
+        const startBodyObserver = () => {
+            if (!bodyObserver && global.MutationObserver && global.document?.body) {
+                bodyObserver = new global.MutationObserver(onUpdate);
+                bodyObserver.observe(global.document.body, { attributes: true, attributeFilter: ['class'] });
+            }
+        };
+        const stopBodyObserver = () => {
+            if (bodyObserver) { bodyObserver.disconnect(); bodyObserver = null; }
+        };
         const run = () => {
-            if (state.on && state.timer === null) { publish(true); state.timer = global.setInterval(() => publish(false), POLL_MS); }
-            if (!state.on && state.timer !== null) { global.clearInterval(state.timer); state.timer = null; }
+            if (state.on && state.timer === null) {
+                startBodyObserver();
+                publish(true);
+                state.timer = global.setInterval(() => publish(false), POLL_MS);
+            }
+            if (!state.on) {
+                stopBodyObserver();
+                if (state.timer !== null) { global.clearInterval(state.timer); state.timer = null; }
+            }
         };
         const apply = (p) => {
             if (!p || typeof p !== 'object') return;
@@ -130,20 +148,16 @@
             sw.addEventListener('change', () => app.desktopLyrics.toggle(sw.checked));
             doc.addEventListener('music-desktop-lyrics-change', () => { sw.checked = state.on; });
         }
-        api?.onDesktopLyricsChanged?.(apply);
+        const unsubChanged = api?.onDesktopLyricsChanged?.(apply);
         try { api?.getDesktopLyrics?.().then(apply).catch(() => {}); } catch (e) { /* 同上 */ }
         // 换歌、播放状态、翻译/偏移变了马上检查一次（内容没变就不送）
-        const onUpdate = () => publish(false);
-        ['music-queue-change', 'music-lyrics-change', 'music-lyrics-translated', 'music-lyrics-offset'].forEach((name) => global.document?.addEventListener?.(name, onUpdate));
-        let bodyObserver = null;
-        if (global.MutationObserver && global.document?.body) {
-            bodyObserver = new global.MutationObserver(onUpdate);
-            bodyObserver.observe(global.document.body, { attributes: true, attributeFilter: ['class'] });
-        }
+        const updateEvents = ['music-queue-change', 'music-lyrics-change', 'music-lyrics-translated', 'music-lyrics-offset'];
+        updateEvents.forEach((name) => global.document?.addEventListener?.(name, onUpdate));
         global.addEventListener?.('beforeunload', () => {
             if (state.timer !== null) { global.clearInterval(state.timer); state.timer = null; }
-            bodyObserver?.disconnect();
-            bodyObserver = null;
+            stopBodyObserver();
+            updateEvents.forEach((name) => global.document?.removeEventListener?.(name, onUpdate));
+            try { if (typeof unsubChanged === 'function') unsubChanged(); } catch (e) { /* 同上 */ }
         }, { once: true });
         announce(); // 让已经画好的入口（歌词面板的按钮）知道这个功能在
     }

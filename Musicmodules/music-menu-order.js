@@ -79,14 +79,20 @@
         if (!menu) return;
         arrange(menu);
         tidyDividers(menu);
-        new MutationObserver(() => arrange(menu)).observe(menu, { childList: true });
+        const childObserver = new MutationObserver(() => arrange(menu));
+        childObserver.observe(menu, { childList: true });
         let wasVisible = menu.classList.contains('visible');
-        new MutationObserver(() => {
+        const classObserver = new MutationObserver(() => {
             const visible = menu.classList.contains('visible');
             if (visible) tidyDividers(menu);
             if (visible && !wasVisible) attachKeyboard(menu);
             wasVisible = visible;
-        }).observe(menu, { attributes: true, attributeFilter: ['class'] });
+        });
+        classObserver.observe(menu, { attributes: true, attributeFilter: ['class'] });
+        global.addEventListener?.('beforeunload', () => {
+            childObserver.disconnect();
+            classObserver.disconnect();
+        }, { once: true });
     }
 
     global.MusicMenuOrder = { arrange, tidyDividers, GROUPS };

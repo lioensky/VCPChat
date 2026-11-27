@@ -157,13 +157,14 @@
         if (fitRaf) return;
         fitRaf = requestAnimationFrame(() => { fitRaf = 0; fit(); });
     });
+    const unsubState = api?.onDesktopLyricsState?.((s) => { if (s && typeof s === 'object') { snap = s; render(); } });
+    const unsubPrefs = api?.onDesktopLyricsPrefs?.(applyPrefs);
     window.addEventListener('beforeunload', () => {
         cancelAnimationFrame(frame); frame = 0;
         if (fitRaf) { cancelAnimationFrame(fitRaf); fitRaf = 0; }
+        try { if (typeof unsubState === 'function') unsubState(); } catch (e) { /* noop */ }
+        try { if (typeof unsubPrefs === 'function') unsubPrefs(); } catch (e) { /* noop */ }
     }, { once: true });
-
-    api?.onDesktopLyricsState?.((s) => { if (s && typeof s === 'object') { snap = s; render(); } });
-    api?.onDesktopLyricsPrefs?.(applyPrefs);
     render();
 
     window.__desktopLyrics = { debug: () => ({ key: lineKey, cur: cur.textContent, next: next.textContent, words: words ? words.map((w) => w.el.style.getPropertyValue('--f')) : null, locked, size }) };

@@ -102,6 +102,16 @@ function setupOutput(app) {
         app.wasapiSwitch.disabled = true;
 
         const previous = { device: app.currentDeviceId, exclusive: app.useWasapiExclusive };
+        const rollback = (message) => {
+            // 引擎没换成（没连上、旧引擎不认或 IPC 抛错）：界面退回原来的设备和开关，不然显示的是没生效的新设备，
+            // 再选一次同一个还会被上面「没变化」直接挡掉，怎么也换不过去。
+            app.currentDeviceId = previous.device;
+            app.useWasapiExclusive = previous.exclusive;
+            app.wasapiSwitch.checked = previous.exclusive;
+            app.deviceSelect.value = previous.device === null ? 'default' : previous.device;
+            const reason = message ? (globalThis.MusicErrorText ? globalThis.MusicErrorText(message, '音频引擎没有响应') : message) : '音频引擎没有响应';
+            app.showPlaybackNotice?.(`切换输出没有成功：${reason}`);
+        };
         try {
             app.currentDeviceId = selectedId;
             app.useWasapiExclusive = useExc;
@@ -110,20 +120,14 @@ function setupOutput(app) {
                 exclusive: app.useWasapiExclusive
             });
             if (result?.status === 'success') app.syncOutputFallback(result.state);
-            else {
-                // 引擎没换成（没连上、旧引擎不认）：界面退回原来的设备和开关，不然显示的是没生效的新设备，
-                // 再选一次同一个还会被上面「没变化」直接挡掉，怎么也换不过去。
-                app.currentDeviceId = previous.device;
-                app.useWasapiExclusive = previous.exclusive;
-                app.wasapiSwitch.checked = previous.exclusive;
-                const reason = result?.message ? (globalThis.MusicErrorText ? globalThis.MusicErrorText(result.message, '音频引擎没有响应') : result.message) : '音频引擎没有响应';
-                app.showPlaybackNotice?.(`切换输出没有成功：${reason}`);
-            }
+            else rollback(result?.message);
             app.checkOutputFallbackSoon();
             await app.populateDeviceList(false);
             app.deviceSelect.value = app.currentDeviceId === null ? 'default' : app.currentDeviceId;
-        } catch (e) { console.error("Error configuring output:", e); }
-        finally {
+        } catch (e) {
+            console.error("Error configuring output:", e);
+            rollback(e?.message || String(e));
+        } finally {
             app.deviceSelect.disabled = false;
             app.wasapiSwitch.disabled = false;
         }
@@ -133,20 +137,37 @@ function setupOutput(app) {
         if (!app.api?.configureMusicUpsampling) return;
         const rate = parseInt(app.upsamplingSelect.value, 10);
         if (rate === app.targetUpsamplingRate) return;
+        const prevRate = app.targetUpsamplingRate;
         app.targetUpsamplingRate = rate;
-        await app.api.configureMusicUpsampling({
-            target_samplerate: app.targetUpsamplingRate > 0 ? app.targetUpsamplingRate : null
-        });
-        app.saveSettings();
+        try {
+            await app.api.configureMusicUpsampling({
+                target_samplerate: app.targetUpsamplingRate > 0 ? app.targetUpsamplingRate : null
+            });
+            app.saveSettings();
+        } catch (e) {
+            console.error("Error configuring upsampling:", e);
+            app.targetUpsamplingRate = prevRate;
+            if (app.upsamplingSelect) app.upsamplingSelect.value = String(prevRate || 0);
+        }
     };
 
     app.configureResampling = async () => {
         if (!app.api?.configureMusicResampling) return;
-        await app.api.configureMusicResampling({
-            quality: app.resampleQualitySelect.value,
-            use_cache: app.resampleCacheSwitch.checked,
-            preemptive_resample: app.preemptiveResampleSwitch.checked
-        });
-        app.saveSettings();
+        try {
+            await app.api.configureMusicResampling({
+                quality: app.resampleQualitySelect.value,
+                use_cache: app.resampleCacheSwitch.checked,
+                preemptive_resample: app.preemptiveResampleSwitch.checked
+            });
+            app.saveSettings();
+        } catch (e) {
+            console.error("Error configuring resampling:", e);
+        }
     };
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('beforeunload', () => {
+            if (fallbackCheckTimer) { clearTimeout(fallbackCheckTimer); fallbackCheckTimer = null; }
+        }, { once: true });
+    }
 }

@@ -43,8 +43,10 @@
         const toast = (message, undo) => {
             try { global.MusicToast?.show?.({ message, action: undo ? { label: '撤销', run: undo } : undefined }); } catch (e) { /* 没有提示层 */ }
         };
+        let unfadeTimer = null;
         const stopTimer = () => { if (timer !== null) { clearTimer(timer); timer = null; } };
-        const unfade = () => { if (fading) { fading = false; engineVolume(sliderVolume()); } };
+        const clearUnfadeTimer = () => { if (unfadeTimer !== null) { global.clearTimeout?.(unfadeTimer); unfadeTimer = null; } };
+        const unfade = () => { clearUnfadeTimer(); if (fading) { fading = false; engineVolume(sliderVolume()); } };
         const finish = (message) => {
             stopTimer();
             mode = 'off';
@@ -52,7 +54,10 @@
             const wasFading = fading;
             Promise.resolve(app.isPlaying ? app.pauseTrack?.() : null).catch(() => {}).finally(() => {
                 // 先停再把音量还回去，不然最后一下会突然响一声
-                if (wasFading) global.setTimeout?.(unfade, 300); else unfade();
+                if (wasFading) {
+                    clearUnfadeTimer();
+                    unfadeTimer = global.setTimeout?.(() => { unfadeTimer = null; unfade(); }, 300) ?? null;
+                } else unfade();
             });
             toast(message);
             announce();
@@ -116,6 +121,10 @@
             else if (s.mode === 'track') api.setTrackEnd({ quiet: true });
             else api.cancel({ quiet: true });
         };
+        global.addEventListener?.('beforeunload', () => {
+            stopTimer();
+            unfade();
+        }, { once: true });
         app.sleepTimer = api;
         return api;
     }
