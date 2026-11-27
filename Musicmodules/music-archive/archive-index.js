@@ -155,33 +155,56 @@
          */
         const query = (q, { kind = 'all', only = null, limit = Infinity } = {}) => {
             // 智能条件词（喜欢、没听过、次数>N、>5分钟……，见 music-smart.js）先筛一遍，剩下的词照常检索
-            let pool = only ? only : entries.map((_, i) => i);
+            let pool = only || null;
             const smart = global.MusicSmart && global.MusicSmart.ctx ? global.MusicSmart.parse(q) : null;
             if (smart && smart.preds.length) {
                 const ctx = global.MusicSmart.ctx();
-                pool = pool.filter((i) => list[i] && smart.preds.every((p) => p.test(list[i], ctx)));
+                const filtered = [];
+                if (pool) {
+                    for (let k = 0; k < pool.length; k++) {
+                        const i = pool[k];
+                        if (list[i] && smart.preds.every((p) => p.test(list[i], ctx))) filtered.push(i);
+                    }
+                } else {
+                    for (let i = 0; i < entries.length; i++) {
+                        if (list[i] && smart.preds.every((p) => p.test(list[i], ctx))) filtered.push(i);
+                    }
+                }
+                pool = filtered;
                 q = smart.text;
                 if (!norm(q).trim()) return pool.slice(0, limit);
             }
-            const terms = norm(q).split(/\s+/).filter(Boolean);
+            const rawTerms = norm(q).split(/\s+/).filter(Boolean);
             const fields = kind === 'artist' ? [['artist', 2]] : kind === 'album' ? [['album', 1]] : FIELDS;
-            if (!terms.length) return only ? pool.slice(0, limit) : [];
+            if (!rawTerms.length) return only ? pool.slice(0, limit) : [];
+            const terms = rawTerms.map((term) => ({ term, ascii: /^[a-z0-9]+$/.test(term) }));
             const hits = [];
-            pool.forEach((i, order) => {
+            const scoreItem = (i, order) => {
                 const e = entries[i];
                 if (!e) return;
                 let total = 0;
-                for (const term of terms) {
-                    const ascii = /^[a-z0-9]+$/.test(term);
+                for (let t = 0; t < terms.length; t++) {
+                    const { term, ascii } = terms[t];
                     let best = 0;
-                    for (const [f, w] of fields) best = Math.max(best, termScore(e, f, w, term, ascii));
+                    for (let fi = 0; fi < fields.length; fi++) {
+                        const s = termScore(e, fields[fi][0], fields[fi][1], term, ascii);
+                        if (s > best) best = s;
+                    }
                     if (!best) return;
                     total += best;
                 }
                 hits.push({ i, total, order });
-            });
+            };
+            if (pool) {
+                for (let order = 0; order < pool.length; order++) scoreItem(pool[order], order);
+            } else {
+                for (let i = 0; i < entries.length; i++) scoreItem(i, i);
+            }
             hits.sort((a, b) => b.total - a.total || a.order - b.order);
-            return hits.slice(0, limit).map((h) => h.i);
+            const capped = hits.length > limit ? hits.slice(0, limit) : hits;
+            const out = new Array(capped.length);
+            for (let k = 0; k < capped.length; k++) out[k] = capped[k].i;
+            return out;
         };
 
         return {
@@ -485,10 +508,13 @@
                 if (!groups.has(name)) groups.set(name, []);
                 groups.get(name).push(i);
             }
-            const sortName = (n) => romanize(n, null).py;
-            [...groups.entries()]
-                .sort((a, b) => (q ? 0 : sortName(a[0]).localeCompare(sortName(b[0]))))
-                .forEach(([name, items]) => {
+            const ordered = q
+                ? [...groups.entries()]
+                : [...groups.entries()]
+                    .map(([name, items]) => ({ name, items, key: romanize(name, null).py }))
+                    .sort((a, b) => a.key.localeCompare(b.key))
+                    .map(({ name, items }) => [name, items]);
+            ordered.forEach(([name, items]) => {
                     const ctx = field === 'album' ? 'album:' + name : null;
                     head(name, field + ':' + name, items.length);
                     // 专辑按碟号、曲号排（排序方式是默认的「标题」时）；选了时长、加入时间就照选的排

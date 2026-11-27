@@ -9,18 +9,21 @@ function setupEffects(app) {
             'rock': '摇滚', 'electronic': '电子', 'acg_vocal': '萌系ACG'
         };
         // 滑块拖得和哪个预设都不一样时显示「自定义」；这一项不能从列表里选。
+        const useFrag = typeof document.createDocumentFragment === 'function';
+        const target = useFrag ? document.createDocumentFragment() : app.eqPresetSelect;
         const custom = document.createElement('option');
         custom.value = 'custom';
         custom.textContent = '自定义';
         custom.disabled = true;
         custom.hidden = true;
-        app.eqPresetSelect.appendChild(custom);
+        target.appendChild(custom);
         for (const preset in app.eqPresets) {
             const option = document.createElement('option');
             option.value = preset;
             option.textContent = presetNames[preset] || preset;
-            app.eqPresetSelect.appendChild(option);
+            target.appendChild(option);
         }
+        if (useFrag) app.eqPresetSelect.appendChild(target);
         app.syncEqPresetSelect();
     };
 
@@ -62,6 +65,8 @@ function setupEffects(app) {
 
     app.createEqBands = () => {
         app.eqBandsContainer.innerHTML = '';
+        const useFrag = typeof document.createDocumentFragment === 'function';
+        const target = useFrag ? document.createDocumentFragment() : app.eqBandsContainer;
         for (const band in app.eqBands) {
             const bandContainer = document.createElement('div');
             bandContainer.className = 'eq-band';
@@ -76,8 +81,9 @@ function setupEffects(app) {
             slider.addEventListener('input', () => { app.sendEqSettings(); app.syncEqPresetSelect(); });
             bandContainer.appendChild(label);
             bandContainer.appendChild(slider);
-            app.eqBandsContainer.appendChild(bandContainer);
+            target.appendChild(bandContainer);
         }
+        if (useFrag) app.eqBandsContainer.appendChild(target);
         app.syncEqPresetSelect();
     };
 
@@ -119,7 +125,8 @@ function setupEffects(app) {
         const newBands = {};
         for (const band in app.eqBands) {
             const slider = document.getElementById(`eq-${band}`);
-            newBands[band] = parseInt(slider.value, 10);
+            const parsed = parseInt(slider ? slider.value : app.eqBands[band], 10);
+            newBands[band] = Number.isFinite(parsed) ? parsed : 0;
         }
         const enabled = app.eqSwitch.checked;
         const eqType = app.eqTypeSelect?.value;
@@ -165,11 +172,14 @@ function setupEffects(app) {
         else if (state === 'error') app.irStatus.classList.add('error');
     };
 
+    let irLoadSeq = 0;
     app.loadIrFile = async (filePath) => {
         if (!app.api?.musicLoadIr) return;
+        const seq = ++irLoadSeq;
         app.updateIrStatus('加载中…', 'idle');
         try {
             const result = await app.api.musicLoadIr({ path: filePath });
+            if (seq !== irLoadSeq) return;
             if (result.status === 'success') {
                 app.irLoadedPath = filePath;
                 app.irEnabled = true;
@@ -180,6 +190,7 @@ function setupEffects(app) {
                 app.irEnabled = false; app.irSwitch.checked = false;
             }
         } catch (e) {
+            if (seq !== irLoadSeq) return;
             app.updateIrStatus((window.MusicErrorText || ((m, f) => f))(e, '加载失败'), 'error');
             app.irEnabled = false; app.irSwitch.checked = false;
         }
@@ -203,8 +214,10 @@ function setupEffects(app) {
 
     app.unloadIr = async () => {
         if (!app.api?.musicUnloadIr) return;
+        const seq = ++irLoadSeq;
         try {
             await app.api.musicUnloadIr();
+            if (seq !== irLoadSeq) return;
             app.irLoadedPath = null; app.irEnabled = false; app.irSwitch.checked = false;
             app.updateIrStatus('未加载', 'idle');
         } catch (e) {}
@@ -283,10 +296,14 @@ function setupEffects(app) {
     // --- Noise Shaper ---
     app.updateNoiseShaperSettings = async () => {
         if (!app.api?.configureMusicOutputBits || !app.api?.setMusicNoiseShaperCurve) return;
-        app.outputBits = parseInt(app.outputBitsSelect.value, 10);
-        app.noiseShaperCurve = app.noiseShaperCurveSelect.value;
-        await app.api.configureMusicOutputBits({ bits: app.outputBits });
-        await app.api.setMusicNoiseShaperCurve({ curve: app.noiseShaperCurve });
+        const bits = parseInt(app.outputBitsSelect.value, 10);
+        const curve = app.noiseShaperCurveSelect.value;
+        app.outputBits = bits;
+        app.noiseShaperCurve = curve;
+        await app.sendLatest('noise-shaper', async () => {
+            await app.api.configureMusicOutputBits({ bits });
+            return app.api.setMusicNoiseShaperCurve({ curve });
+        });
         app.saveSettings();
     };
 
@@ -300,7 +317,8 @@ function setupEffects(app) {
 
     app.updateOptimizations = async () => {
         if (!app.api?.configureMusicOptimizations) return;
-        await app.api.configureMusicOptimizations({ dither_enabled: app.ditherSwitch.checked });
+        const ditherEnabled = app.ditherSwitch.checked;
+        await app.sendLatest('optimizations', () => app.api.configureMusicOptimizations({ dither_enabled: ditherEnabled }));
         app.saveSettings();
     };
 }

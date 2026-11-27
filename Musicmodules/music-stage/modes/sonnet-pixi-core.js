@@ -343,32 +343,54 @@
             const time = frame.playbackTime;
             const intensity = motion * Effects.amount(tuning.performanceIntensity, 1.25);
             const kick = tuning.performance.impact;
-            this.orbits.forEach((orbit, index) => {
-                orbit.visible = tuning.quality !== 'energy-saving' || index < 2;
-                const direction = index % 2 ? -1 : 1;
+            const showBg = tuning.showBackground !== false;
+            const showHud = showBg && tuning.guideLines !== false;
+            const showDecor = tuning.showDecor !== false;
+            this.hudContainer.visible = showHud;
+            this.frameDecorContainer.visible = showDecor;
+            this.geoContainer.visible = showBg;
+
+            if (showHud) {
                 const circular = this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery';
-                orbit.rotation = circular
-                    ? (time * (0.07 + index * 0.025) + kick * 0.15) * direction * intensity
-                    : Math.sin(time * 0.16 + index) * 0.012 * intensity;
-                const depth = this.backgroundKind === 'perspective'
-                    ? Math.sin(time * 0.55 - index * 0.5) * 0.06 * intensity : 0;
-                const scale = 1 + depth + kick * (0.025 + index * 0.015) * intensity;
-                orbit.scale.set(scale, scale * (orbit.dataset?.flattened || 1));
-                orbit.position.set(this.width / 2,
-                    this.height / 2 + (circular ? 0 : Math.sin(time * 0.4 + index * 0.7) * 12 * intensity));
-                orbit.alpha = 0.55 + tuning.performance.energy * 0.35;
-            });
-            this.scan.rotation = time * 0.32 * intensity;
-            this.motif.visible = this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery';
-            this.motif.rotation = -time * 0.035 * intensity;
-            this.motif.scale.set(1 + Math.sin(time * 0.6) * 0.025 * intensity);
-            this.frameDecorContainer.scale.set(1 + kick * 0.008 * intensity);
-            if (this.giantText) {
-                this.giantText.alpha = this.backgroundKind === 'editorial-lattice' ? 0.12 : 0.055;
-                this.giantText.scale.set(1 + tuning.performance.energy * 0.06 * intensity);
-                this.giantText.position.set(this.width * 0.5 + Math.sin(time * 0.14) * this.width * 0.12 * intensity,
-                    this.height * 0.5 - 20 + Math.cos(time * 0.19) * 18 * intensity);
-                this.giantText.rotation = Math.sin(time * 0.12) * 0.035 * intensity;
+                const isPerspective = this.backgroundKind === 'perspective';
+                const lowQuality = tuning.quality === 'energy-saving';
+                const energyAlpha = 0.55 + tuning.performance.energy * 0.35;
+                const orbits = this.orbits;
+                for (let index = 0; index < orbits.length; index += 1) {
+                    const orbit = orbits[index];
+                    const visible = !lowQuality || index < 2;
+                    orbit.visible = visible;
+                    if (!visible) continue;
+                    const direction = index % 2 ? -1 : 1;
+                    orbit.rotation = circular
+                        ? (time * (0.07 + index * 0.025) + kick * 0.15) * direction * intensity
+                        : Math.sin(time * 0.16 + index) * 0.012 * intensity;
+                    const depth = isPerspective
+                        ? Math.sin(time * 0.55 - index * 0.5) * 0.06 * intensity : 0;
+                    const scale = 1 + depth + kick * (0.025 + index * 0.015) * intensity;
+                    orbit.scale.set(scale, scale * (orbit.dataset?.flattened || 1));
+                    orbit.position.set(this.width / 2,
+                        this.height / 2 + (circular ? 0 : Math.sin(time * 0.4 + index * 0.7) * 12 * intensity));
+                    orbit.alpha = energyAlpha;
+                }
+                this.scan.rotation = time * 0.32 * intensity;
+            }
+            if (showBg) {
+                this.motif.visible = this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery';
+                if (this.motif.visible) {
+                    this.motif.rotation = -time * 0.035 * intensity;
+                    this.motif.scale.set(1 + Math.sin(time * 0.6) * 0.025 * intensity);
+                }
+                if (this.giantText) {
+                    this.giantText.alpha = this.backgroundKind === 'editorial-lattice' ? 0.12 : 0.055;
+                    this.giantText.scale.set(1 + tuning.performance.energy * 0.06 * intensity);
+                    this.giantText.position.set(this.width * 0.5 + Math.sin(time * 0.14) * this.width * 0.12 * intensity,
+                        this.height * 0.5 - 20 + Math.cos(time * 0.19) * 18 * intensity);
+                    this.giantText.rotation = Math.sin(time * 0.12) * 0.035 * intensity;
+                }
+            }
+            if (showDecor) {
+                this.frameDecorContainer.scale.set(1 + kick * 0.008 * intensity);
             }
 
             if (!trackMode && !bloomMode) {
@@ -377,10 +399,6 @@
                 this.accents?.update(frame, tuning);
             }
 
-            // 4. 图层开关
-            this.hudContainer.visible = tuning.showBackground !== false && tuning.guideLines !== false;
-            this.frameDecorContainer.visible = tuning.showDecor !== false;
-            this.geoContainer.visible = tuning.showBackground !== false;
             const backgroundAlpha = this.retirement.update(frame, tuning) ?? 1;
             this.geoContainer.alpha = backgroundAlpha;
             this.hudContainer.alpha = backgroundAlpha;

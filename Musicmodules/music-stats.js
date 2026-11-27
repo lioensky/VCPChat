@@ -61,12 +61,23 @@
             const raw = JSON.parse(storage?.getItem(LOG_KEY) || 'null');
             if (raw && raw.v === 1 && raw.d && typeof raw.d === 'object') log = raw.d;
         } catch (e) { log = {}; }
-        const dayKey = (t) => {
+        // 缓存当前小时窗口对应的本地日期与小时号，播放时每秒 tick 免去重复构造 Date 和拼串（跨小时自动重算，兼顾夏令时）
+        let cachedHourStart = -1;
+        let cachedHourEnd = -1;
+        let cachedHourDayKey = '';
+        let cachedHourNum = 0;
+        const dayAndHour = (t) => {
+            if (t >= cachedHourStart && t < cachedHourEnd) return { k: cachedHourDayKey, h: cachedHourNum };
             const d = new Date(t);
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const h = d.getHours();
+            cachedHourDayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            cachedHourNum = h;
+            cachedHourStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).getTime();
+            cachedHourEnd = cachedHourStart + 3600000;
+            return { k: cachedHourDayKey, h: cachedHourNum };
         };
-        const dayOf = (t) => {
-            const k = dayKey(t);
+        const dayKey = (t) => dayAndHour(t).k;
+        const dayOfKey = (k) => {
             if (!log[k]) {
                 log[k] = { s: new Array(24).fill(0), p: {} };
                 const keys = Object.keys(log).sort();
@@ -74,6 +85,7 @@
             }
             return log[k];
         };
+        const dayOf = (t) => dayOfKey(dayKey(t));
         let resumeSaved = 0;
         const setResume = (next, force = false) => {
             const changed = (resume && resume.path) !== (next && next.path);
@@ -148,8 +160,9 @@
                 const step = Math.min(5, Math.max(0, (at - session.lastTick) / 1000));
                 session.listened += step;
                 if (step > 0) {
-                    const day = dayOf(at);
-                    day.s[new Date(at).getHours()] += step;
+                    const dh = dayAndHour(at);
+                    const day = dayOfKey(dh.k);
+                    day.s[dh.h] += step;
                     unsaved += step;
                     if (unsaved >= 30) { unsaved = 0; save(); } // 听歌时长每半分钟存一次
                 }

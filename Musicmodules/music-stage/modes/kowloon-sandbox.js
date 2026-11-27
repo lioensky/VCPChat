@@ -83,8 +83,13 @@
             if (!force && now - scanAt < 1000) return;
             scanAt = now;
             scene.traverse(o => {
-                if (!o.material) return;
-                (Array.isArray(o.material) ? o.material : [o.material]).forEach(patchMaterial);
+                const mat = o.material;
+                if (!mat) return;
+                if (Array.isArray(mat)) {
+                    for (let i = 0; i < mat.length; i += 1) patchMaterial(mat[i]);
+                } else {
+                    patchMaterial(mat);
+                }
             });
         };
 

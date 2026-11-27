@@ -46,38 +46,57 @@
     const diamondPolygon = (cx, cy, rx, ry) => [cx, cy - ry, cx + rx, cy, cx, cy + ry, cx - rx, cy];
 
     // Hatch lines cut to their (convex) panel by geometry instead of a
-    // stencil mask: each drift step redraws only the visible segments.
-    const clipSegment = (polygon, x1, y1, x2, y2) => {
-        let t0 = 0, t1 = 1;
+    // stencil mask: precompute inward edge normals once per panel and reuse a
+    // single 4-number scratch buffer so drifting frames allocate nothing.
+    const buildClipEdges = (polygon) => {
         const n = polygon.length / 2;
         let cx = 0, cy = 0;
         for (let i = 0; i < polygon.length; i += 2) { cx += polygon[i]; cy += polygon[i + 1]; }
         cx /= n; cy /= n;
-        const dx = x2 - x1, dy = y2 - y1;
+        const edges = new Array(n);
         for (let i = 0; i < n; i += 1) {
             const ax = polygon[i * 2], ay = polygon[i * 2 + 1];
             const bx = polygon[((i + 1) % n) * 2], by = polygon[((i + 1) % n) * 2 + 1];
             let nx = -(by - ay), ny = bx - ax;
             if ((cx - ax) * nx + (cy - ay) * ny < 0) { nx = -nx; ny = -ny; }
-            const num = (x1 - ax) * nx + (y1 - ay) * ny;
-            const den = dx * nx + dy * ny;
-            if (den === 0) { if (num < 0) return null; continue; }
-            const t = -num / den;
-            if (den > 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
-            if (t0 >= t1) return null;
+            edges[i] = { ax, ay, nx, ny };
         }
-        return [x1 + dx * t0, y1 + dy * t0, x1 + dx * t1, y1 + dy * t1];
+        return edges;
+    };
+    const CLIP_OUT = new Float64Array(4);
+    const clipSegmentEdges = (edges, x1, y1, x2, y2) => {
+        let t0 = 0, t1 = 1;
+        const dx = x2 - x1, dy = y2 - y1;
+        for (let i = 0; i < edges.length; i += 1) {
+            const e = edges[i];
+            const num = (x1 - e.ax) * e.nx + (y1 - e.ay) * e.ny;
+            const den = dx * e.nx + dy * e.ny;
+            if (den === 0) { if (num < 0) return false; continue; }
+            const t = -num / den;
+            if (den > 0) { if (t > t0) t0 = t; }
+            else if (t < t1) t1 = t;
+            if (t0 >= t1) return false;
+        }
+        CLIP_OUT[0] = x1 + dx * t0;
+        CLIP_OUT[1] = y1 + dy * t0;
+        CLIP_OUT[2] = x1 + dx * t1;
+        CLIP_OUT[3] = y1 + dy * t1;
+        return true;
     };
     const drawClippedHatch = (hatch, ox, oy) => {
-        if (hatch.x === ox && hatch.y === oy) return;
-        hatch.x = ox; hatch.y = oy;
+        const qx = Math.round(ox * 2) * 0.5;
+        const qy = Math.round(oy * 2) * 0.5;
+        if (hatch.x === qx && hatch.y === qy) return;
+        hatch.x = qx; hatch.y = qy;
         const g = hatch.graphics;
         g.clear();
+        const edges = hatch.edges;
+        const lines = hatch.lines;
         let any = false;
-        for (const l of hatch.lines) {
-            const c = clipSegment(hatch.polygon, l.x1 + ox, l.y1 + oy, l.x2 + ox, l.y2 + oy);
-            if (!c) continue;
-            g.moveTo(c[0], c[1]).lineTo(c[2], c[3]);
+        for (let i = 0; i < lines.length; i += 1) {
+            const l = lines[i];
+            if (!clipSegmentEdges(edges, l.x1 + qx, l.y1 + qy, l.x2 + qx, l.y2 + qy)) continue;
+            g.moveTo(CLIP_OUT[0], CLIP_OUT[1]).lineTo(CLIP_OUT[2], CLIP_OUT[3]);
             any = true;
         }
         if (any) g.stroke({ color: hatch.color, width: 1.2, alpha: 0.45 });
@@ -406,7 +425,7 @@
                     const lines = buildHatchLines(panel.polygon, angle, 14);
                     const wrapper = new PIXI.Container();
                     wrapper.addChild(hg);
-                    const hatch = { graphics: hg, lines, polygon: panel.polygon, color: this.palette.accent, x: NaN, y: NaN };
+                    const hatch = { graphics: hg, lines, edges: buildClipEdges(panel.polygon), polygon: panel.polygon, color: this.palette.accent, x: NaN, y: NaN };
                     drawClippedHatch(hatch, 0, 0);
                     wrapper.dataset = { delay: i * 0.08 + 0.05, enterDX: panel.enterDX, enterDY: panel.enterDY, hatch };
                     this.hatchContainer.addChild(wrapper);
@@ -493,51 +512,60 @@
             this.blocksContainer.position.set(fixedOffsetX, fixedOffsetY);
             this.hatchContainer.position.set(fixedOffsetX, fixedOffsetY);
 
+            const showBlocks = tuning.showBlocks !== false;
+            const showDecor = tuning.showDecor !== false;
+            this.blocksContainer.visible = showBlocks;
+            this.decorContainer.visible = showDecor;
+            this.hatchContainer.visible = showDecor;
+
+            const intensity = Effects.amount(tuning.performanceIntensity, 1.25) * motion;
+            const kick = tuning.performance.impact;
+
             // 2. 色块进场阻尼动画
-            this.blocksContainer.children.forEach(b => {
-                const d = b.dataset;
-                if (!d) return;
-                const enterProg = motion > 0 ? clamp((elapsed - d.delay) / 0.45) : 1;
-                const ease = 1 - Math.pow(1 - enterProg, 3);
-                const intensity = Effects.amount(tuning.performanceIntensity, 1.25) * motion;
-                const phase = frame.playbackTime * 0.65 + d.delay * 13;
-                const kick = tuning.performance.impact;
-                b.position.set(
-                    d.enterDX * (1 - ease) * motion + Math.sin(phase) * 14 * intensity + d.enterDX * kick * 0.07,
-                    d.enterDY * (1 - ease) * motion + Math.cos(phase * 0.8) * 10 * intensity + d.enterDY * kick * 0.07
-                );
-                b.alpha = ease;
-            });
+            if (showBlocks) {
+                const blocks = this.blocksContainer.children;
+                for (let i = 0; i < blocks.length; i += 1) {
+                    const b = blocks[i];
+                    const d = b.dataset;
+                    if (!d) continue;
+                    const enterProg = motion > 0 ? clamp((elapsed - d.delay) / 0.45) : 1;
+                    const ease = 1 - Math.pow(1 - enterProg, 3);
+                    const phase = frame.playbackTime * 0.65 + d.delay * 13;
+                    b.position.set(
+                        d.enterDX * (1 - ease) * motion + Math.sin(phase) * 14 * intensity + d.enterDX * kick * 0.07,
+                        d.enterDY * (1 - ease) * motion + Math.cos(phase * 0.8) * 10 * intensity + d.enterDY * kick * 0.07
+                    );
+                    b.alpha = ease;
+                }
+            }
 
             // 3. 网点进场
-            this.hatchContainer.children.forEach(h => {
-                const d = h.dataset;
-                if (!d) return;
-                const enterProg = motion > 0 ? clamp((elapsed - d.delay) / 0.5) : 1;
-                const ease = 1 - Math.pow(1 - enterProg, 3);
-                const intensity = Effects.amount(tuning.performanceIntensity, 1.25) * motion;
-                h.position.set(d.enterDX * (1 - ease) * motion, d.enterDY * (1 - ease) * motion);
-                drawClippedHatch(d.hatch,
-                    Math.sin(frame.playbackTime * 0.5 + d.delay) * 24 * intensity + tuning.performance.impact * 18,
-                    Math.cos(frame.playbackTime * 0.35) * 16 * intensity
+            if (showDecor) {
+                const hatches = this.hatchContainer.children;
+                for (let i = 0; i < hatches.length; i += 1) {
+                    const h = hatches[i];
+                    const d = h.dataset;
+                    if (!d) continue;
+                    const enterProg = motion > 0 ? clamp((elapsed - d.delay) / 0.5) : 1;
+                    const ease = 1 - Math.pow(1 - enterProg, 3);
+                    h.position.set(d.enterDX * (1 - ease) * motion, d.enterDY * (1 - ease) * motion);
+                    drawClippedHatch(d.hatch,
+                        Math.sin(frame.playbackTime * 0.5 + d.delay) * 24 * intensity + kick * 18,
+                        Math.cos(frame.playbackTime * 0.35) * 16 * intensity
+                    );
+                    h.alpha = ease * (0.45 + kick * 0.25);
+                }
+                this.decorContainer.position.set(
+                    fixedOffsetX + Math.sin(frame.playbackTime * 0.4) * 25 * motion,
+                    fixedOffsetY + Math.cos(frame.playbackTime * 0.32) * 18 * motion
                 );
-                h.alpha = ease * (0.45 + tuning.performance.impact * 0.25);
-            });
-
-            this.decorContainer.position.set(
-                fixedOffsetX + Math.sin(frame.playbackTime * 0.4) * 25 * motion,
-                fixedOffsetY + Math.cos(frame.playbackTime * 0.32) * 18 * motion
-            );
+            }
             if (!trackMode && !bloomMode) {
                 Effects.animateLyrics(this.words, frame, tuning, this.numPrimary);
                 Effects.animatePhraseStage(this.phrases, frame, tuning, this.cameraKind);
                 this.accents?.update(frame, tuning);
             }
 
-            // 显隐开关
-            this.blocksContainer.visible = tuning.showBlocks !== false;
-            this.decorContainer.visible = tuning.showDecor !== false;
-            this.hatchContainer.visible = tuning.showDecor !== false;
             this.retirement.update(frame, tuning);
             this.postProcess.update(frame, tuning, this.width, this.height);
             this.app.render();

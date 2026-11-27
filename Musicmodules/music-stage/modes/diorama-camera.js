@@ -325,13 +325,14 @@
     };
     const motionOf = options => options.reducedMotion ? 0 : clamp(options.motionAmount ?? 1, 0, 2)
         * clamp(options.animationIntensity ?? 1, 0, 2);
+    const blendAngle = (a, b, weight) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * weight;
     // How far the nose of the train runs ahead of the camera.
-    const leadAt = (timeline, scenes, t, motion) => {
+    const leadAt = (timeline, scenesBox, t, motion) => {
         if (!motion) return -0.4;
         const state = timeline.sample(t);
         const act = timeline.acts[state.actIndex];
         const move = crane(act, timeline.acts[Math.max(0, state.actIndex - 1)], t, timeline);
-        const staged = sceneAt({ scenes }, t);
+        const staged = sceneAt(scenesBox, t);
         const beside = staged?.scene.kind === 'TRACKSIDE' ? staged : null;
         const riding = rideAt(timeline, t);
         if (beside) return passing(beside.progress);
@@ -353,12 +354,13 @@
         const step = Math.max(1 / 30, duration / 120000);
         const count = Math.max(1, Math.ceil(duration / step));
         const train = new Float64Array(count + 1), camera = new Float64Array(count + 1);
-        let base = timeline.distanceAt(0, speed), lead = leadAt(timeline, scenes, 0, motion), ahead = 0;
+        const scenesBox = { scenes };
+        let base = timeline.distanceAt(0, speed), lead = leadAt(timeline, scenesBox, 0, motion), ahead = 0;
         train[0] = base - 0.4; camera[0] = train[0] - lead;
         for (let i = 1; i <= count; i++) {
             const t = Math.min(duration, i * step);
             const next = timeline.distanceAt(t, speed), travel = next - base;
-            const nextLead = leadAt(timeline, scenes, t, motion), change = nextLead - lead;
+            const nextLead = leadAt(timeline, scenesBox, t, motion), change = nextLead - lead;
             ahead += change > 0 ? Math.max(0, change - travel) : -Math.min(-change, travel * 0.65);
             base = next; lead = nextLead;
             train[i] = base - 0.4 + ahead;
@@ -464,7 +466,6 @@
         const reading = readingEnvelope(timeline, t);
         const seed = timeline.seedHash;
         const handheld = motion * (1 - reading * 0.55);
-        const n = (frequency, offset) => noise(t * frequency, seed + offset);
         // Phrase-scale choreography, distinct from handheld vibration.
         // Zero velocity at the phrase edges avoids resetting motion on each word.
         const lineIndex = upperBound(timeline.lines, t, 'startTime') - 1;
@@ -503,16 +504,19 @@
         // The train keeps to the speed of the song whatever the camera does: it
         // is the camera that moves along the line to frame it. Drawing the train
         // ahead of the camera, or catching it up, never runs the train backwards.
-        const rel = leadAt(timeline, track.scenes, t, motion);
+        const rel = !motion ? -0.4
+            : beside ? passing(beside.progress)
+                : Math.max(mix(-0.4, move.rig.lead, move.lead),
+                    riding > 0 ? mix(-0.4, ROOF.lead, ride.lead) : -Infinity);
         const trainFront = track.trainAt ? track.trainAt(t) : distance - 0.4, along = trainFront - rel;
         const frame = track.at(along);
         if (riding > 0) move.height = mix(move.height, ROOF.height, ride.up);
         if (inside) move.height = mix(move.height, Math.max(move.height, SALOON.sill), inside.raised);
         if (beside) move.height = mix(move.height, TRACKSIDE.height, aside);
         const position = {
-            x: frame.position.x + frame.right.x * (-0.25 + n(0.8, 1) * 0.025 * handheld),
+            x: frame.position.x + frame.right.x * (-0.25 + noise(t * 0.8, seed + 1) * 0.025 * handheld),
             y: (motion ? move.height : 2.2) + Math.sin(t * Math.PI * 0.4) * 0.01 * handheld
-                + n(1.3, 2) * 0.018 * handheld + timeline.rhythmAt(t).impulse * 0.012 * handheld,
+                + noise(t * 1.3, seed + 2) * 0.018 * handheld + timeline.rhythmAt(t).impulse * 0.012 * handheld,
             z: frame.position.z + frame.right.z * -0.25
         };
         position.x += frame.right.x * lateralTravel + frame.forward.x * push;
@@ -529,15 +533,17 @@
         position.z += frame.right.z * swing;
         // A rig that looks back at the train turns as the train falls behind it,
         // keeping the cab in view as it goes by instead of spinning round in its path.
-        const lookBack = (() => {
-            if (!motion) return 0;
-            if (Math.abs(move.rig.yaw) <= 1.5) return move.out;
-            const across = Math.abs(move.rig.lateral) * move.out;
-            const behind = Math.max(0.01, -mix(-0.4, move.rig.lead, move.lead));
-            const settled = Math.PI - Math.atan2(Math.abs(move.rig.lateral), -move.rig.lead);
-            return Math.min(1, (Math.PI - Math.atan2(across, behind)) / settled) * ease(move.lead / 0.7);
-        })();
-        let yaw = frame.yaw + yawBias + n(0.55, 3) * 0.003 * handheld
+        let lookBack = 0;
+        if (motion) {
+            if (Math.abs(move.rig.yaw) <= 1.5) lookBack = move.out;
+            else {
+                const across = Math.abs(move.rig.lateral) * move.out;
+                const behind = Math.max(0.01, -mix(-0.4, move.rig.lead, move.lead));
+                const settled = Math.PI - Math.atan2(Math.abs(move.rig.lateral), -move.rig.lead);
+                lookBack = Math.min(1, (Math.PI - Math.atan2(across, behind)) / settled) * ease(move.lead / 0.7);
+            }
+        }
+        let yaw = frame.yaw + yawBias + noise(t * 0.55, seed + 3) * 0.003 * handheld
             + directionSign * arch * openness * 0.012 * strength + move.rig.yaw * lookBack;
         let pitch = mix(-0.025, -0.12, state.openness) + move.rig.pitch * (motion ? move.out : 0);
         const finale = state.act === 'Terminus' && motion && !timeline.isSinging(t)
@@ -548,8 +554,6 @@
         const encounterIndex = upperBound(encounters, t, 'start') - 1;
         const encounter = encounters[encounterIndex];
         const upcoming = encounters[encounterIndex + 1];
-        const blendAngle = (a, b, weight) => a
-            + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * weight;
         let fov = motion ? state.fov - arch * (1.2 + openness * 1.8) * strength * shot.fov + move.rig.fov * move.out + ROOF.fov * ride.over : 48;
         const halfFrame = Math.atan(Math.tan(fov * Math.PI / 360) * Math.max(0.35, options.aspect || 1.6)) * 0.84;
         // A screen is read from its own side of the frame, with the line ahead
@@ -644,8 +648,8 @@
         // The moon uses this same fixed celestial offset in the world renderer.
         yaw = blendAngle(yaw, Math.atan2(-210, 420), finale);
         pitch = mix(pitch, Math.atan2(300 - position.y, Math.hypot(210, 420)), finale);
-        pitch += n(0.7, 4) * 0.0025 * handheld * (1 - finale);
-        let roll = motion ? n(0.45, 5) * 0.002 * handheld + directionSign * arch * openness * 0.006 * strength : 0;
+        pitch += noise(t * 0.7, seed + 4) * 0.0025 * handheld * (1 - finale);
+        let roll = motion ? noise(t * 0.45, seed + 5) * 0.002 * handheld + directionSign * arch * openness * 0.006 * strength : 0;
         if (aside > 0) {
             // From the waterside the camera looks back in over the line, level
             // with the windows, and the train comes through the picture.

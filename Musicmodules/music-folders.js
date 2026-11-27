@@ -115,8 +115,11 @@
                 : true;
             if (!ok) return;
             const current = app.playlist?.[app.currentTrackIndex] || null;
-            const drop = new Set((app.playlist || []).filter((t) => t && t !== current && isLocal(t.path) && underDir(t.path, row.path)));
-            const keptPlaying = current && isLocal(current.path) && underDir(current.path, row.path);
+            const rowKey = key(row.path);
+            const rowPrefix = rowKey + '\\';
+            const inRow = (p) => { const f = key(p); return f === rowKey || f.startsWith(rowPrefix); };
+            const drop = new Set((app.playlist || []).filter((t) => t && t !== current && isLocal(t.path) && inRow(t.path)));
+            const keptPlaying = current && isLocal(current.path) && inRow(current.path);
             if (drop.size) {
                 app.playlist = app.playlist.filter((t) => !drop.has(t));
                 if (current) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current));
@@ -162,6 +165,7 @@
                 return;
             }
             const ul = el('ul', 'mfold-list');
+            const frag = doc.createDocumentFragment();
             for (const row of rows) {
                 const li = el('li', 'mfold-row' + (row.exists ? '' : ' missing'));
                 const text = el('div', 'mfold-text');
@@ -186,8 +190,9 @@
                 rm.addEventListener('click', () => removeFolder(row));
                 acts.appendChild(rm);
                 li.appendChild(acts);
-                ul.appendChild(li);
+                frag.appendChild(li);
             }
+            ul.appendChild(frag);
             body.appendChild(ul);
         };
 

@@ -33,10 +33,10 @@
 
     const update = () => {
         const next = compute();
-        apply();
-        if (next === reduced) return;
+        const changed = next !== reduced;
         reduced = next;
         apply();
+        if (!changed) return;
         for (const fn of listeners) { try { fn(reduced); } catch (e) { console.warn('[MusicMotion]', e); } }
         global.dispatchEvent(new CustomEvent('music-motion-change', { detail: { reduced, preference } }));
     };
@@ -53,7 +53,6 @@
             preference = next;
             try { localStorage.setItem(KEY, next); } catch (e) { /* 只是这次有效 */ }
             update();
-            apply();
         },
         onChange(fn) {
             listeners.add(fn);

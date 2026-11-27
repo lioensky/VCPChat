@@ -165,10 +165,30 @@
 
         entry.update = (next) => {
             const patch = normalize(next);
+            const prevKind = kind();
+            const prevHadProgress = prevKind === 'progress' && Number.isFinite(entry.opts.progress);
+            const structureChanged = 'kind' in patch || 'icon' in patch || 'action' in patch || 'closable' in patch;
             const timingChanged = 'duration' in patch || 'kind' in patch || 'action' in patch;
             entry.opts = { ...entry.opts, ...patch };
             if (timingChanged) { entry.remaining = 0; entry.countdown = null; }
-            if (entry.shown) { render(); entry.el.classList.add('mtst-in'); if (timingChanged) arm(); }
+            if (!entry.shown) return;
+            const nextHasProgress = kind() === 'progress' && Number.isFinite(entry.opts.progress);
+            if (!structureChanged && prevHadProgress === nextHasProgress && entry.el) {
+                if ('message' in patch) {
+                    const msgEl = entry.el.querySelector('.mtst-msg');
+                    if (msgEl) msgEl.textContent = entry.opts.message || '';
+                }
+                if (nextHasProgress && 'progress' in patch) {
+                    const barEl = entry.el.querySelector('.mtst-bar > span');
+                    if (barEl) barEl.style.transform = `scaleX(${Math.max(0, Math.min(1, entry.opts.progress))})`;
+                }
+                entry.el.classList.add('mtst-in');
+                if (timingChanged) arm();
+                return;
+            }
+            render();
+            entry.el.classList.add('mtst-in');
+            if (timingChanged) arm();
         };
         entry.close = close;
         entry.handle = {

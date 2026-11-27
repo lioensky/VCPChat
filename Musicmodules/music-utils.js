@@ -95,14 +95,22 @@ k:「始」10「末」,
 tag_boost:「始」0.95「末」
 <<<[END_TOOL_REQUEST]>>>`;
 
-            const res = await fetch(`${serverBaseUrl}v1/human/tool`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain;charset=UTF-8',
-                    'Authorization': `Bearer ${settings.vcpApiKey}`
-                },
-                body: toolRequest
-            });
+            const controller = typeof AbortController === 'function' ? new AbortController() : null;
+            const fetchTimer = controller ? setTimeout(() => controller.abort(), 20000) : null;
+            let res;
+            try {
+                res = await fetch(`${serverBaseUrl}v1/human/tool`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain;charset=UTF-8',
+                        'Authorization': `Bearer ${settings.vcpApiKey}`
+                    },
+                    body: toolRequest,
+                    ...(controller ? { signal: controller.signal } : {})
+                });
+            } finally {
+                if (fetchTimer) clearTimeout(fetchTimer);
+            }
 
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             
@@ -122,8 +130,8 @@ tag_boost:「始」0.95「末」
         } catch (err) {
             console.error('[Music] Semantic search error:', err);
             if (stillWanted()) {
-                const raw = err?.message || String(err);
-                const reason = /^还没有设置/.test(raw) ? raw
+                const raw = err?.name === 'AbortError' ? 'VCP 服务器响应超时' : (err?.message || String(err));
+                const reason = /^还没有设置|^VCP 服务器响应超时/.test(raw) ? raw
                     : /failed to fetch|networkerror|econnrefused/i.test(raw) ? '连不上 VCP 服务器'
                     : /status: (401|403)/.test(raw) ? 'VCP 服务器拒绝了请求，检查 API Key'
                     : (globalThis.MusicErrorText ? globalThis.MusicErrorText(raw, '原因不明') : raw);
@@ -224,21 +232,29 @@ tag_boost:「始」0.95「末」
 
         console.log('[Music] Parsed semantic results:', results);
 
-        // 与本地播放列表匹配
+        // 与本地播放列表匹配（预计算小写字段，避免每条结果/每行歌单重复扫全库转小写）
         const matchedTracks = [];
         const seenPaths = new Set();
+        const indexedPlaylist = (app.playlist || []).map((track) => ({
+            track,
+            title: (track.title || '').toLowerCase(),
+            artist: (track.artist || '').toLowerCase(),
+            path: (track.path || '').toLowerCase()
+        }));
 
         results.forEach(res => {
             // 1. 尝试通过文件名匹配 (处理歌单中的逐行扫描逻辑)
             const query = res.fileName.toLowerCase();
             const queryParts = query.split('-').map(p => p.trim()).filter(p => p.length > 1);
             
-            app.playlist.forEach(track => {
-                if (seenPaths.has(track.path)) return;
+            for (let i = 0; i < indexedPlaylist.length; i++) {
+                const item = indexedPlaylist[i];
+                const track = item.track;
+                if (seenPaths.has(track.path)) continue;
 
-                const title = (track.title || '').toLowerCase();
-                const artist = (track.artist || '').toLowerCase();
-                const trackPath = track.path.toLowerCase();
+                const title = item.title;
+                const artist = item.artist;
+                const trackPath = item.path;
 
                 let isMatch = false;
                 
@@ -261,7 +277,7 @@ tag_boost:「始」0.95「末」
                     matchedTracks.push(track);
                     seenPaths.add(track.path);
                 }
-            });
+            }
             
             // 2. 处理歌单文件内容 (逐行扫描)
             const lines = res.originalSection.split(/[\r\n]+/);
@@ -273,18 +289,18 @@ tag_boost:「始」0.95「末」
                 const isAudioFile = /\.(mp3|flac|wav|m4a|ogg|aac|dsf|dff|ape)$/i.test(trimmedLine);
                 if (isAudioFile) {
                     const songQuery = trimmedLine.replace(/\.[^.]+$/, '').toLowerCase();
-                    app.playlist.forEach(track => {
-                        if (seenPaths.has(track.path)) return;
-                        
-                        const title = (track.title || '').toLowerCase();
-                        const trackPath = track.path.toLowerCase();
+                    for (let i = 0; i < indexedPlaylist.length; i++) {
+                        const item = indexedPlaylist[i];
+                        const track = item.track;
+                        if (seenPaths.has(track.path)) continue;
 
+                        const title = item.title;
                         // 歌单行匹配要求更高，避免误伤
                         if (title === songQuery || (title && songQuery.includes(title) && title.length > 2)) {
                             matchedTracks.push(track);
                             seenPaths.add(track.path);
                         }
-                    });
+                    }
                 }
             });
         });
