@@ -134,9 +134,10 @@
                     gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
                 fragmentShader: `varying vec2 vUv;uniform float bins[24],light,closing;uniform vec3 accent;
                     float band(float index){
+                        float idx=clamp(index,0.0,23.0);
                         float value=0.0;
                         for(int i=0;i<24;i++){
-                            if(float(i)==clamp(index,0.0,23.0))value=bins[i];
+                            if(float(i)==idx){value=bins[i];break;}
                         }
                         return value;
                     }
@@ -280,10 +281,10 @@
                         gl_FragColor=vec4(accent,a);
                         #include <colorspace_fragment>
                         return;
-                    }float start=1e8,end=1e8;float selected=0.0;
+                    }float start=1e8,end=1e8;
                     float left=0.0,right=1.0;
-                    for(int i=0;i<64;i++){if(selected<0.5){if(vUv.x<=ranges[i]){
-                        start=starts[i];end=ends[i];right=ranges[i];selected=1.0;}else left=ranges[i];}}
+                    for(int i=0;i<64;i++){if(vUv.x<=ranges[i]){
+                        start=starts[i];end=ends[i];right=ranges[i];break;}left=ranges[i];}
                     float age=time-start;float singing=step(start,time)*(1.0-step(end,time));
                     float passed=step(end,time);float attack=smoothstep(0.0,0.08,age);
                     float peak=singing*attack*exp(-max(age-0.08,0.0)*8.0);

@@ -739,10 +739,19 @@
             for (const [k, node] of state.rendered) {
                 if (k < first || k > last) { recycleNode(node); state.rendered.delete(k); }
             }
-            // 吸附的首字母：当前可见第一行所属的分组（只有首字母分组才吸附）
-            let headK = -1;
-            for (const hk of state.heads) { if (state.offsets[hk] <= top + 1) headK = hk; else break; }
-            if (headK === -1 && state.heads.length) headK = state.heads[0];
+            // 吸附的首字母：二分查找当前可见第一行所属的分组，O(log H) 同时拿到当前组与下一组
+            const heads = state.heads;
+            let headIdx = -1;
+            if (heads.length) {
+                let lo = 0, hi = heads.length - 1;
+                while (lo <= hi) {
+                    const mid = (lo + hi) >> 1;
+                    if (state.offsets[heads[mid]] <= top + 1) { headIdx = mid; lo = mid + 1; }
+                    else hi = mid - 1;
+                }
+                if (headIdx < 0) headIdx = 0;
+            }
+            const headK = headIdx >= 0 ? heads[headIdx] : -1;
             const stuckRow = state.rows[headK];
             state.stuck = stuckRow && isLetter(stuckRow) ? headK : -1;
             const qTrim = state.query.trim();
@@ -782,7 +791,7 @@
                 r.sticky.style.visibility = '';
                 const html = letterHtml(stuckRow);
                 if (r.sticky.innerHTML !== html) r.sticky.innerHTML = html;
-                const nextHead = state.heads.find((hk) => hk > headK);
+                const nextHead = headIdx >= 0 && headIdx + 1 < heads.length ? heads[headIdx + 1] : undefined;
                 const y = Math.max(top, state.offsets[headK]);
                 const push = nextHead !== undefined ? Math.min(0, state.offsets[nextHead] - y - LETTER_PUSH) : 0;
                 r.sticky.style.transform = `translateY(${y + push}px)`;

@@ -6,15 +6,19 @@
         if (!root || !api?.onMusicCapsuleState) return;
         const title = root.querySelector('.music-capsule-title');
         const toggle = root.querySelector('[data-music-command="toggle"]');
+        const playIcon = toggle.querySelector('.music-capsule-play');
+        const pauseIcon = toggle.querySelector('.music-capsule-pause');
         const trigger = root.querySelector('.music-capsule-trigger');
         const details = root.querySelector('.music-capsule-details');
         const surface = root.querySelector('.music-capsule-surface');
+        const buttons = [...surface.querySelectorAll('button')];
         const measure = document.createElement('span');
         measure.className = 'music-capsule-title music-capsule-measure';
         measure.setAttribute('aria-hidden', 'true');
         surface.appendChild(measure);
         let state = { open: false, trackKey: '', playing: false };
         let timer;
+        let resizeRaf = 0;
         let received = false;
         let disposed = false;
         let hovering = false;
@@ -37,7 +41,6 @@
             const titleStyle = getComputedStyle(title);
             const detailsStyle = getComputedStyle(details);
             const surfaceStyle = getComputedStyle(surface);
-            const buttons = [...surface.querySelectorAll('button')];
             const buttonWidth = buttons.reduce((sum, button) =>
                 sum + button.getBoundingClientRect().width, 0);
             const width = Math.ceil(measure.getBoundingClientRect().width + buttonWidth
@@ -50,7 +53,11 @@
                 root.style.setProperty('--music-capsule-expanded-width', `${width}px`);
             }
         };
-        const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(updateWidth) : null;
+        const scheduleWidth = () => {
+            if (disposed || root.hidden || resizeRaf) return;
+            resizeRaf = requestAnimationFrame(() => { resizeRaf = 0; updateWidth(); });
+        };
+        const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleWidth) : null;
         resizeObserver?.observe(root);
         document.fonts?.addEventListener('loadingdone', updateWidth);
         document.fonts?.ready.then(() => { if (!disposed) updateWidth(); });
@@ -72,8 +79,8 @@
             title.title = nextTitle;
             if (state.open && needsMeasure) updateWidth();
             toggle.setAttribute('aria-label', state.playing ? '暂停' : '播放');
-            toggle.querySelector('.music-capsule-play').hidden = state.playing;
-            toggle.querySelector('.music-capsule-pause').hidden = !state.playing;
+            playIcon.hidden = state.playing;
+            pauseIcon.hidden = !state.playing;
             root.classList.toggle('is-playing', state.playing);
             if (!state.open) {
                 clearTimeout(timer);
@@ -141,6 +148,7 @@
         window.addEventListener('beforeunload', () => {
             disposed = true;
             clearTimeout(timer);
+            if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
             unsubscribe?.();
             resizeObserver?.disconnect();
             document.fonts?.removeEventListener('loadingdone', updateWidth);

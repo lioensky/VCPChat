@@ -4693,6 +4693,10 @@
         };
         const resume = mode.resume;
         mode.resume = () => { resume(); lastTime = null; cap.reset(); if (latest) update(latest, true); };
+        mode.scope.listen(global, 'music-motion-change', () => {
+            dirty = true;
+            if (latest && initialized) update(latest, true);
+        });
         // For the settings: how far below the chosen tier it is drawing (cheap, polled).
         mode.getDegrade = () => ({ steps: renderScale.steps, quality: drawn().quality });
         mode.beginSongHandover = () => {

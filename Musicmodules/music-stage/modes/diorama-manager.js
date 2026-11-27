@@ -445,6 +445,10 @@
         };
         const resume = mode.resume;
         mode.resume = () => { resume(); cap.reset(); if (latest) update(latest, true); };
+        mode.scope.listen(global, 'music-motion-change', () => {
+            dirty = true;
+            if (latest && initialized) update(latest, true);
+        });
         // The layers hold nothing to describe until shaders are warm and the first frame has run.
         // For the settings: how far below the chosen tier it is drawing (cheap, polled).
         mode.getDegrade = () => ({ steps: renderScale.steps, quality: drawn().quality });

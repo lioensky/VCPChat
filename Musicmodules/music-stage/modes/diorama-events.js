@@ -274,42 +274,52 @@
                 - 0.78 * smooth((age - 5.1) / 2.4),
             roll: 0.18 * Math.sin(Math.PI * leap) ** 2 };
     };
-    const whalePoint = (event, pose, x, y, z) => {
+    const whalePoint = (event, pose, x, y, z, out = null, trig = null) => {
         // A travelling dorsoventral wave grows toward the tail, not a rigid wag.
         y += smooth((z + 1) / 10) * Math.sin(pose.age * 2.1 - z * 0.32) * 0.8;
-        const cr = Math.cos(pose.roll), sr = Math.sin(pose.roll);
+        const cr = trig ? trig.cr : Math.cos(pose.roll), sr = trig ? trig.sr : Math.sin(pose.roll);
         const rx = x * cr - y * sr, ry = x * sr + y * cr;
-        const cp = Math.cos(pose.pitch), sp = Math.sin(pose.pitch);
+        const cp = trig ? trig.cp : Math.cos(pose.pitch), sp = trig ? trig.sp : Math.sin(pose.pitch);
         const py = ry * cp - z * sp, pz = ry * sp + z * cp;
-        const yaw = event.yaw - event.side * Math.PI / 2;
-        const cy = Math.cos(yaw), sy = Math.sin(yaw);
-        return { x: pose.x + rx * cy - pz * sy, y: pose.y + py,
-            z: pose.z + rx * sy + pz * cy };
+        let cy, sy;
+        if (trig) { cy = trig.cy; sy = trig.sy; }
+        else { const yaw = event.yaw - event.side * Math.PI / 2; cy = Math.cos(yaw); sy = Math.sin(yaw); }
+        const ox = pose.x + rx * cy - pz * sy;
+        const oy = pose.y + py;
+        const oz = pose.z + rx * sy + pz * cy;
+        if (out) { out.x = ox; out.y = oy; out.z = oz; return out; }
+        return { x: ox, y: oy, z: oz };
     };
     // Continuous tapered trunk, swept pectorals and two horizontal fluke lobes.
     // u runs along each patch; v wraps its thin elliptical cross-section.
-    const whaleSurface = (patch, u, v, age) => {
+    const whaleSurface = (patch, u, v, age, out = null) => {
         const angle = v * Math.PI * 2, c = Math.cos(angle), s = Math.sin(angle);
+        let x, y, z;
         if (patch === 0) {
-            const z = -8 + u * 17;
+            z = -8 + u * 17;
             const radius = Math.sqrt(Math.max(0, 1 - (2 * u - 1) ** 2))
                 * (2.8 - 2.2 * smooth((u - 0.3) / 0.7));
-            return { x: radius * c, y: radius * s * 0.88 + 0.18 * Math.sin(u * Math.PI), z };
+            x = radius * c;
+            y = radius * s * 0.88 + 0.18 * Math.sin(u * Math.PI);
+        } else {
+            const side = patch === 1 || patch === 3 ? -1 : 1;
+            const width = Math.sin(Math.PI * u);
+            if (patch <= 2) {
+                x = side * (0.15 + 4.8 * u);
+                y = 0.12 * width * s;
+                z = 8.3 + 1.5 * u - 0.65 * u * u + width * 1.15 * c;
+            } else if (patch <= 4) {
+                x = side * (1.7 + 4.8 * u);
+                y = -0.65 - u * (0.65 + Math.sin(age * 1.5 - 0.5) * 0.38) + width * 0.14 * s;
+                z = -2.5 + 3.3 * u + width * 0.65 * c;
+            } else {
+                x = width * 0.16 * s;
+                y = 1.25 + 1.45 * u;
+                z = 3.2 + 1.1 * u + width * 0.8 * c;
+            }
         }
-        const side = patch === 1 || patch === 3 ? -1 : 1;
-        const width = Math.sin(Math.PI * u);
-        if (patch <= 2) return {
-            x: side * (0.15 + 4.8 * u),
-            y: 0.12 * width * s,
-            z: 8.3 + 1.5 * u - 0.65 * u * u + width * 1.15 * c
-        };
-        if (patch <= 4) return {
-            x: side * (1.7 + 4.8 * u),
-            y: -0.65 - u * (0.65 + Math.sin(age * 1.5 - 0.5) * 0.38) + width * 0.14 * s,
-            z: -2.5 + 3.3 * u + width * 0.65 * c
-        };
-        return { x: width * 0.16 * s, y: 1.25 + 1.45 * u,
-            z: 3.2 + 1.1 * u + width * 0.8 * c };
+        if (out) { out.x = x; out.y = y; out.z = z; return out; }
+        return { x, y, z };
     };
     const whaleSpout = (event, age, seed) => {
         const birth = 2.55 + seed[3] * 0.48;
@@ -408,11 +418,21 @@
         const curvePt = new T.Vector3();
         const prevPt = new T.Vector3();
         const nextPt = new T.Vector3();
+        const knotPool = new Map();
+        const whaleLocalPt = { x: 0, y: 0, z: 0 };
+        const whaleWorldPt = { x: 0, y: 0, z: 0 };
+        const whaleTrig = { cr: 1, sr: 0, cp: 1, sp: 0, cy: 1, sy: 0 };
         const contour = (knots, transform, closed = false) => {
-            const pts = new Array(knots.length);
-            for (let i = 0; i < knots.length; i += 1) pts[i] = new T.Vector3(knots[i][0], knots[i][1], knots[i][2]);
+            const len = knots.length;
+            let pts = knotPool.get(len);
+            if (!pts) {
+                pts = new Array(len);
+                for (let i = 0; i < len; i += 1) pts[i] = new T.Vector3();
+                knotPool.set(len, pts);
+            }
+            for (let i = 0; i < len; i += 1) pts[i].set(knots[i][0], knots[i][1], knots[i][2]);
             const curve = new T.CatmullRomCurve3(pts, closed, 'centripetal');
-            const divisions = knots.length * 5;
+            const divisions = len * 5;
             curve.getPoint(0, curvePt);
             transform(curvePt, prevPt);
             for (let i = 1; i <= divisions; i += 1) {
@@ -685,11 +705,23 @@
                 const cy = Math.cos(yaw), sy = Math.sin(yaw);
                 const pitch = whale ? state.body.pitch : 0;
                 const cp = Math.cos(pitch), sp = Math.sin(pitch);
-                const bodyPoint = (x, y, z) => {
-                    if (whale) return whalePoint(active, state.body, x, y, z);
+                if (whale) {
+                    const wyaw = active.yaw - active.side * Math.PI / 2;
+                    whaleTrig.cr = Math.cos(state.body.roll);
+                    whaleTrig.sr = Math.sin(state.body.roll);
+                    whaleTrig.cp = cp;
+                    whaleTrig.sp = sp;
+                    whaleTrig.cy = Math.cos(wyaw);
+                    whaleTrig.sy = Math.sin(wyaw);
+                }
+                const bodyPoint = (x, y, z, out = null) => {
+                    if (whale) return whalePoint(active, state.body, x, y, z, out, whaleTrig);
                     const py = y * cp - z * sp, pz = y * sp + z * cp;
-                    return { x: state.body.x + x * cy - pz * sy, y: state.body.y + py,
-                        z: state.body.z + x * sy + pz * cy };
+                    const ox = state.body.x + x * cy - pz * sy;
+                    const oy = state.body.y + py;
+                    const oz = state.body.z + x * sy + pz * cy;
+                    if (out) { out.x = ox; out.y = oy; out.z = oz; return out; }
+                    return { x: ox, y: oy, z: oz };
                 };
                 whaleMesh.visible = whale && bodyVisible && quality !== 'energy-saving';
                 if (whaleMesh.visible) {
@@ -697,12 +729,12 @@
                     bodyMaterial.uniforms.opacity.value = state.fade * (palette.light ? 0.07 : 0.13);
                     for (let i = 0; i < whaleRest.length; i += 1) {
                         const wr = whaleRest[i];
-                        const local = whaleSurface(wr[0], wr[1], wr[2], state.age);
-                        const p = bodyPoint(local.x, local.y, local.z);
+                        whaleSurface(wr[0], wr[1], wr[2], state.age, whaleLocalPt);
+                        bodyPoint(whaleLocalPt.x, whaleLocalPt.y, whaleLocalPt.z, whaleWorldPt);
                         const o = i * 3;
-                        whaleVertices[o] = p.x;
-                        whaleVertices[o + 1] = p.y;
-                        whaleVertices[o + 2] = p.z;
+                        whaleVertices[o] = whaleWorldPt.x;
+                        whaleVertices[o + 1] = whaleWorldPt.y;
+                        whaleVertices[o + 2] = whaleWorldPt.z;
                     }
                     whaleGeometry.attributes.position.needsUpdate = true;
                     whaleGeometry.computeVertexNormals();
@@ -712,7 +744,7 @@
                     bodyMaterial.uniforms.opacity.value = state.fade * (whale ? 0.07 : 0.1)
                         * (palette.light ? 0.6 : 1);
                     bodyParts.forEach(part => {
-                        const p = bodyPoint(part[0], part[1], part[2]);
+                        const p = bodyPoint(part[0], part[1], part[2], whaleWorldPt);
                         dummy.position.set(p.x, p.y, p.z);
                         dummy.rotation.set(pitch + part[6], -yaw, 0, 'YXZ');
                         dummy.scale.set(part[3], part[4], part[5]);
@@ -721,6 +753,8 @@
                     });
                     volumes.instanceMatrix.needsUpdate = true;
                 }
+                const whaleContactTime = whale ? (state.age < 5 ? 2.55 : 6.85) : 0;
+                const whaleSplashCenter = whale ? whaleContact(active, whaleContactTime) : null;
                 for (let i = 0; i < (vectorAnimal ? 0 : count); i++) {
                     const s = samples[i];
                     let p, brightness = 0.5 + s[3] * 0.5;
@@ -733,22 +767,21 @@
                             brightness = p.brightness;
                         } else if (ratio >= 0.88) {
                             isSplash = true;
-                            const contact = state.age < 5 ? 2.55 : 6.85;
-                            const elapsed = state.age - contact;
+                            const elapsed = state.age - whaleContactTime;
                             const life = 1.1 + s[3] * 0.8;
                             const t = clamp(elapsed, 0, life);
-                            const center = whaleContact(active, contact);
-                            p = { x: center.x + s[0] * t * 7,
-                                y: 0.05 + Math.max(0, (5 + s[3] * 3) * t - 5 * t * t),
-                                z: center.z + s[2] * t * 7 };
+                            whaleWorldPt.x = whaleSplashCenter.x + s[0] * t * 7;
+                            whaleWorldPt.y = 0.05 + Math.max(0, (5 + s[3] * 3) * t - 5 * t * t);
+                            whaleWorldPt.z = whaleSplashCenter.z + s[2] * t * 7;
+                            p = whaleWorldPt;
                             brightness = elapsed >= 0 && elapsed < life
                                 ? (1 - smooth(t / life)) : 0;
                         } else {
                             const patch = ratio < 0.51 ? 0 : ratio < 0.59 ? 1
                                 : ratio < 0.67 ? 2 : ratio < 0.72 ? 3 : ratio < 0.77 ? 4 : 5;
-                            const local = whaleSurface(patch, s[3],
-                                Math.atan2(s[1], s[0]) / (Math.PI * 2), state.age);
-                            p = bodyPoint(local.x, local.y, local.z);
+                            whaleSurface(patch, s[3],
+                                Math.atan2(s[1], s[0]) / (Math.PI * 2), state.age, whaleLocalPt);
+                            p = bodyPoint(whaleLocalPt.x, whaleLocalPt.y, whaleLocalPt.z, whaleWorldPt);
                             brightness *= 0.85;
                         }
                     } else if (bodyParts) {
@@ -756,7 +789,7 @@
                         const a = part[6], ca = Math.cos(a), sa = Math.sin(a);
                         const y = s[1] * part[4], z = s[2] * part[5];
                         p = bodyPoint(part[0] + s[0] * part[3],
-                            part[1] + y * ca - z * sa, part[2] + y * sa + z * ca);
+                            part[1] + y * ca - z * sa, part[2] + y * sa + z * ca, whaleWorldPt);
                     } else if (active.kind === 'meteor') {
                         const tail = i / count;
                         const progress = state.progress - tail * 0.16;

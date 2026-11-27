@@ -301,6 +301,7 @@
      */
     const createStillGate = () => {
         let key = null, lines = null;
+        const reducedQuery = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         return {
             same(frame, extra = '') {
                 if (frame.isPlaying) { key = null; return false; }
@@ -310,7 +311,7 @@
                 for (let i = 0; i < spectrum.length; i += 1) sum += Number(spectrum[i]) || 0;
                 const next = `${frame.playbackTime}|${frame.track?.path || frame.track?.title || ''}|${frame.currentLineIndex}`
                     + `|${audio.power}|${audio.bass}|${audio.lowMid}|${audio.mid}|${audio.vocal}|${audio.treble}|${sum}`
-                    + `|${global.devicePixelRatio || 1}|${extra}`;
+                    + `|${global.devicePixelRatio || 1}|${Runtime.isReducedMotion(reducedQuery) ? 1 : 0}|${extra}`;
                 if (next === key && frame.lines === lines) return true;
                 key = next;
                 lines = frame.lines;
@@ -1032,6 +1033,7 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
             const w0 = Math.max(1, size[0] >> 1), h0 = Math.max(1, size[1] >> 1);
             if (B.size[0] !== w0 || B.size[1] !== h0) {
                 B.size = [w0, h0];
+                gl.activeTexture(gl.TEXTURE15);
                 for (let i = 0; i < BLOOM_LEVELS; i += 1) {
                     if (!B.levels[i]) { B.levels[i] = linearTexture(); B.fbos[i] = gl.createFramebuffer(); }
                     gl.bindTexture(gl.TEXTURE_2D, B.levels[i]);
@@ -1039,6 +1041,7 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
                     gl.bindFramebuffer(gl.FRAMEBUFFER, B.fbos[i]);
                     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, B.levels[i], 0);
                 }
+                gl.bindTexture(gl.TEXTURE_2D, null);
             }
             const dims = i => [Math.max(1, w0 >> i), Math.max(1, h0 >> i)];
             gl.bindVertexArray(vao);

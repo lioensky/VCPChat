@@ -719,6 +719,10 @@
         };
         const resume = mode.resume;
         mode.resume = () => { resume(); cap.reset(); if (latest) update(latest, true); };
+        mode.scope.listen(global, 'music-motion-change', () => {
+            dirty = true;
+            if (latest && initialized) update(latest, true);
+        });
         mode.getDebugSnapshot = () => ({
             initialized, fallbackMode, shot: shotId, framing: { ...frame2d.cur, top: frame2d.top, right: frame2d.right, bottom: frame2d.bottom, fov: camera?.fov },
             camera: camera?.position.toArray(),

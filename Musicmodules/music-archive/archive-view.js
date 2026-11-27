@@ -1925,9 +1925,19 @@
         // body 的 style 每次切歌都会变（底栏按封面取的色调），只有底栏高度变了才影响版面
         const dockSafe = () => document.body.style.getPropertyValue('--music-dock-safe-bottom');
         let lastDockSafe = dockSafe();
+        const layoutBodyKey = () => {
+            const cl = document.body.classList;
+            return (cl.contains('music-archive-on') ? 1 : 0)
+                | (cl.contains('music-stage-active') ? 2 : 0)
+                | (cl.contains('music-dock-on') ? 4 : 0)
+                | (cl.contains('music-dock-beside-lyrics') ? 8 : 0);
+        };
+        let lastLayoutKey = layoutBodyKey();
         const bodyObserver = new MutationObserver(() => {
             const cls = document.body.className;
-            const classChanged = cls !== lastBodyClass;
+            const nextLayoutKey = layoutBodyKey();
+            const layoutChanged = nextLayoutKey !== lastLayoutKey;
+            lastLayoutKey = nextLayoutKey;
             const safe = dockSafe();
             const safeChanged = safe !== lastDockSafe;
             lastDockSafe = safe;
@@ -1952,9 +1962,8 @@
                 updatePlaying(true);
                 goToPlaying();
             }
-            // 档案页没显示时不排版：经典视图下每次切歌都会走到这里，强制一次样式计算和布局。
-            // 切回档案页时 setMode 会重新 resize。
-            if (isShown() && (classChanged || safeChanged)) resize();
+            // 仅在影响档案版面的 body 类或底栏高度变化时重排；播放/暂停、调色等不再触发整页 resize 与同步布局
+            if (isShown() && (layoutChanged || safeChanged)) resize();
             kick();
         });
         bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });

@@ -134,9 +134,20 @@
         };
 
         let queued = 0;
+        let lastFiltered = null;
+        let deferredSort = false;
         const decorateSoon = () => {
             if (queued || !shown()) return;
-            queued = requestAnimationFrame(() => { queued = 0; decorate(); });
+            queued = requestAnimationFrame(() => {
+                queued = 0;
+                if (!shown()) return;
+                if (deferredSort) {
+                    deferredSort = false;
+                    app.renderPlaylist(lastFiltered || undefined);
+                    return;
+                }
+                decorate();
+            });
         };
         list.addEventListener('scroll', decorateSoon, { passive: true });
         global.addEventListener('resize', decorateSoon);
@@ -147,10 +158,15 @@
             watch.observe(list, { attributes: true, attributeFilter: ['style'] });
         }
 
-        let lastFiltered = null;
         global.MusicAppHooks.wrap(app, 'renderPlaylist', 'classic-list', (base) => (filtered) => {
             lastFiltered = filtered || null;
             const songs = filtered || app.playlist;
+            // 列表未显示（例如处于档案页）且用户选了非默认排序时，推迟 O(N log N) 排序直到切回经典列表
+            if (!shown() && (sort.key !== 'added' || sort.dir !== 1)) {
+                deferredSort = true;
+                return base(filtered);
+            }
+            deferredSort = false;
             const result = base(sorted(songs) || filtered);
             decorate();
             return result;

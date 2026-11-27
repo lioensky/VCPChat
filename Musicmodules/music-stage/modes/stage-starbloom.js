@@ -475,6 +475,7 @@
                 flightPoint(glyph, sampleTime, tail);
                 if (Math.abs(tail.x - px) + Math.abs(tail.y - py) < 0.5) { px = tail.x; py = tail.y; continue; }
                 const fade = 1 - (n - 1) / samples;
+                hadTrails = true;
                 trails.moveTo(px, py).lineTo(tail.x, tail.y)
                     .stroke({ color, width: Math.max(0.6, size * 0.12 * fade), alpha: 0.6 * fade * fadeIn, cap: 'round' });
                 if (n <= 3) {
@@ -620,6 +621,7 @@
         };
 
         const view = { flourish: false, trailSamples: 0, petals: false, waiting: 0.55, invert: true, impact: 0, ink: 0xf2f0e9 };
+        let hadTrails = true;
         return {
             update(frame, nextTuning, nextColor, nextSeed, nextWidth, nextHeight) {
                 tuning = nextTuning || {};
@@ -644,7 +646,7 @@
                 }
 
                 const time = frame.playbackTime || 0;
-                trails.clear();
+                if (hadTrails) { trails.clear(); hadTrails = false; }
                 flying = 0;
                 if (!lines.length) {
                     root.visible = false;
