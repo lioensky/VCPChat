@@ -51,3 +51,20 @@ test('an existing liked playlist from an earlier run is reused, not duplicated',
     app.toggleLike(playlist[1]);
     assert.equal(app.customPlaylists.filter((p) => p.id === LIKED_ID).length, 1);
 });
+
+test('O(1) liked cache stays accurate after external tracks mutations and array replacement', () => {
+    const { app, playlist } = setup();
+    app.toggleLike(playlist[0]);
+    assert.equal(app.isLiked(playlist[0]), true);
+    assert.equal(app.isLiked(playlist[1]), false);
+    const liked = app.likedPlaylist();
+    liked.tracks.push(playlist[1].path);
+    assert.equal(app.isLiked(playlist[1]), true, 'detects external push');
+    liked.tracks[0] = playlist[2].path;
+    assert.equal(app.isLiked(playlist[0]), false, 'detects in-place head swap');
+    assert.equal(app.isLiked(playlist[2]), true);
+    liked.tracks = [playlist[0].path];
+    assert.equal(app.isLiked(playlist[0]), true, 'detects array replacement');
+    assert.equal(app.isLiked(playlist[1]), false);
+    assert.equal(app.isLiked(playlist[2]), false);
+});

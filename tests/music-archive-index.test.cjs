@@ -164,3 +164,21 @@ test('分片排名次和一次排完结果一样；曲库多了几首时沿用�
     for (const mode of ['title', 'artist']) assert.deepEqual(order(next, mode), order(fresh, mode), mode);
     assert.equal(cache.size, 3002);
 });
+
+test('ASCII 快路径与单字拼音缓存保持结果一致并避免重复计算', () => {
+    let calls = 0;
+    const countingPinyin = (c) => { calls += 1; return PY[c] || ''; };
+    const repeated = Array.from({ length: 40 }, (_, i) => ({
+        path: '/p/' + i,
+        title: i % 2 ? '晴天 - Remix (2024)' : 'Blue_Bird! 0' + i,
+        artist: i % 2 ? '周杰伦' : 'Aimer'
+    }));
+    const idx = Index.createIndex(repeated, { pinyin: countingPinyin });
+    assert.equal(idx.query('qt').length, 20);
+    assert.equal(idx.query('bb').length, 20);
+    assert.equal(idx.query('zjl').length, 20);
+    assert.equal(Index.groupOf('Blue_Bird! 01', countingPinyin), 'B');
+    assert.equal(Index.groupOf('晴天 - Remix (2024)', countingPinyin), 'Q');
+    // 只有 5 个不重复汉字（晴天周杰伦），缓存应使 pinyin 调用次数远低于 20 * 5 = 100
+    assert.ok(calls <= 10, `expected <= 10 pinyin calls with cache, got ${calls}`);
+});

@@ -95,3 +95,21 @@ test('daily mix is stable within a day and leans on unplayed songs; never-played
     assert.equal(fresh.length, 10);
     assert.ok(fresh.every((t) => !played.has(t)));
 });
+
+test('pickSimilar deduplicates duplicate recordings deterministically and dailyMix handles empty stats cleanly', () => {
+    const { app } = setup();
+    app.musicStats = { top: () => [], lastPlayed: () => [], get: () => null, affinity: () => 0 };
+    globalThis.localStorage = { getItem: () => null };
+    const mix = app.dailyMix({ size: 12 });
+    assert.equal(mix.length, 12);
+    const dupLib = [
+        { path: '/1.flac', title: 'Same Song', artist: 'A', album: 'X' },
+        { path: '/2.flac', title: 'Same Song', artist: 'A', album: 'Y' },
+        { path: '/3.flac', title: 'Other', artist: 'B', album: 'Z' }
+    ];
+    let n = 0;
+    const rng = () => ((n += 0.17) % 1);
+    const out = pickSimilar(dupLib, [], { size: 5, random: rng });
+    assert.equal(out.length, 2, 'duplicate title+artist collapses to one recording');
+    assert.equal(new Set(out.map((t) => t.title)).size, 2);
+});

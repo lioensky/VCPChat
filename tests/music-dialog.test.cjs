@@ -64,6 +64,18 @@ test('Enter confirms unless the cancel button has focus; Tab stays between the t
     assert.equal(await pending, false);
 });
 
+test('Enter during IME composition does not confirm the dialog', async () => {
+    const { window, doc } = setup();
+    let settled = false;
+    const pending = window.MusicDialog.confirm({ title: '确认' }).then((res) => { settled = true; return res; });
+    key(window, 'Enter', { isComposing: true });
+    await new Promise((r) => setImmediate(r));
+    assert.equal(settled, false, 'IME composition Enter must be ignored');
+    assert.ok(doc.querySelector('.dialog-overlay.music-dialog').classList.contains('visible'));
+    key(window, 'Enter', { isComposing: false });
+    assert.equal(await pending, true);
+});
+
 test('no native confirm()/alert() is called directly in the music window', () => {
     const files = ['Musicmodules/music.js', 'Musicmodules/music-sidebar.js', 'Musicmodules/music-webdav.js'];
     for (const f of files) {
