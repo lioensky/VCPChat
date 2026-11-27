@@ -39,7 +39,13 @@ const libraryWatch = typeof createLibraryWatch !== 'function'
     : createLibraryWatch({
     // 用户自己在加文件夹时先等它扫完：两边的结果同时回到窗口会互相打乱「正在扫描」和排序
     scan: async (folderPath, signal) => {
-        while (activeUserScans > 0 && !signal.aborted) await new Promise((r) => setTimeout(r, 2000));
+        while (activeUserScans > 0 && !signal.aborted) {
+            await new Promise((resolve) => {
+                const onAbort = () => { clearTimeout(timer); resolve(); };
+                const timer = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve(); }, 2000);
+                signal.addEventListener('abort', onAbort, { once: true });
+            });
+        }
         return scanFolder({
         folderPath,
         coverCachePath: MUSIC_COVER_CACHE_DIR,
@@ -303,6 +309,7 @@ function createOrFocusMusicWindow() {
         musicWindow.webContents.on('will-navigate', (event, url) => {
             if (!/\/Musicmodules(?:-legacy)?\/music\.html(?:[?#]|$)/.test(String(url).replace(/\\/g, '/'))) event.preventDefault();
         });
+        musicWindow.webContents.setWindowOpenHandler?.(() => ({ action: 'deny' }));
 
         musicWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
             console.error(`[Music] Music window failed to load: ${errorDescription} (code: ${errorCode})`);
@@ -419,8 +426,30 @@ async function scanLibraryNow(event, { folderPath = null, filePaths } = {}) {
 }
 
 // --- Playlist file helpers ---
+// 曲库 JSON 动辄数 MB：按文件路径 + mtimeMs + size 做内存缓存，避免每次存盘/后台同步/切歌都重复读盘和 JSON.parse。
+let playlistCache = null;
 async function readPlaylistFile() {
     try {
+        if (typeof fs.stat === 'function') {
+            let stat;
+            try {
+                stat = await fs.stat(MUSIC_PLAYLIST_FILE);
+            } catch (err) {
+                if (err && err.code === 'ENOENT') {
+                    playlistCache = null;
+                    return [];
+                }
+                throw err;
+            }
+            if (playlistCache && playlistCache.file === MUSIC_PLAYLIST_FILE
+                && playlistCache.mtimeMs === stat.mtimeMs && playlistCache.size === stat.size) {
+                return playlistCache.tracks;
+            }
+            const playlist = await fs.readJson(MUSIC_PLAYLIST_FILE);
+            const tracks = Array.isArray(playlist) ? playlist : [];
+            playlistCache = { file: MUSIC_PLAYLIST_FILE, mtimeMs: stat.mtimeMs, size: stat.size, tracks };
+            return tracks;
+        }
         if (await fs.pathExists(MUSIC_PLAYLIST_FILE)) {
             const playlist = await fs.readJson(MUSIC_PLAYLIST_FILE);
             return Array.isArray(playlist) ? playlist : [];
@@ -450,12 +479,13 @@ function writeJsonAtomic(file, data, options = {}) {
     }
     const run = async (job) => {
         queue.running = true;
+        const temp = `${file}.${process.pid}.tmp`;
         try {
-            const temp = `${file}.${process.pid}.tmp`;
             await fs.writeFile(temp, JSON.stringify(job.data, null, options.spaces || 0));
             await fs.move(temp, file, { overwrite: true });
             job.waiters.forEach((w) => w.resolve());
         } catch (error) {
+            if (typeof fs.remove === 'function') await fs.remove(temp).catch(() => {});
             job.waiters.forEach((w) => w.reject(error));
         } finally {
             queue.running = false;
@@ -768,15 +798,24 @@ function initialize(options) {
         });
         ipcMain.on('music-capsule-publish', (event, state) => {
             if (!musicWindow || musicWindow.isDestroyed() || event.sender !== musicWindow.webContents) return;
-            musicCapsuleState = {
-                open: true,
-                title: typeof state?.title === 'string' ? state.title.slice(0, 512) : '',
-                trackKey: typeof state?.trackKey === 'string' ? state.trackKey.slice(0, 4096) : '',
-                playing: state?.playing === true
-            };
-            publishMusicCapsule();
-            musicThumbar.update(musicWindow, { playing: musicCapsuleState.playing });
-            if (!musicCapsuleState.playing) musicGrooveBus.publish({ playing: false });
+            const nextTitle = typeof state?.title === 'string' ? state.title.slice(0, 512) : '';
+            const nextKey = typeof state?.trackKey === 'string' ? state.trackKey.slice(0, 4096) : '';
+            const nextPlaying = state?.playing === true;
+            const unchanged = musicCapsuleState.open === true
+                && musicCapsuleState.title === nextTitle
+                && musicCapsuleState.trackKey === nextKey
+                && musicCapsuleState.playing === nextPlaying;
+            if (!unchanged) {
+                musicCapsuleState = {
+                    open: true,
+                    title: nextTitle,
+                    trackKey: nextKey,
+                    playing: nextPlaying
+                };
+                publishMusicCapsule();
+                musicThumbar.update(musicWindow, { playing: musicCapsuleState.playing });
+                if (!musicCapsuleState.playing) musicGrooveBus.publish({ playing: false });
+            }
             followTrackChange(state).catch(() => {});
         });
         ipcMain.on('music-capsule-command', (event, command) => {
@@ -1046,7 +1085,14 @@ function initialize(options) {
                 if (playlist.length === 0) await backupBeforeEmptying(MUSIC_PLAYLIST_FILE);
                 // 用户移出曲库的歌记下来，后台同步文件夹时不再加回来（空列表多半是读取失败，不算）
                 const previous = playlist.length ? await readPlaylistFile() : null;
+                playlistCache = null;
                 await writeJsonAtomic(MUSIC_PLAYLIST_FILE, playlist);
+                if (!jsonWriteQueues.has(MUSIC_PLAYLIST_FILE) && typeof fs.stat === 'function') {
+                    try {
+                        const stat = await fs.stat(MUSIC_PLAYLIST_FILE);
+                        playlistCache = { file: MUSIC_PLAYLIST_FILE, mtimeMs: stat.mtimeMs, size: stat.size, tracks: playlist.slice() };
+                    } catch (_) { playlistCache = null; }
+                }
                 if (previous) libraryWatch.noteLibrarySaved(previous, playlist);
                 return { success: true };
             } catch (error) {

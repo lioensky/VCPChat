@@ -169,19 +169,25 @@ async function scanFolder(options) {
     const known = new Map();
     if (knownTracks) for (const track of knownTracks) if (track && track.path) known.set(track.path, track);
     const isWin = process.platform === 'win32';
-    const under = (dir, file) => {
-        const base = dir.replace(/[\\/]+$/, '');
-        if (file.length <= base.length) return false;
-        const head = isWin ? file.slice(0, base.length).toLowerCase() : file.slice(0, base.length);
-        const target = isWin ? base.toLowerCase() : base;
-        return head === target && (file[base.length] === '\\' || file[base.length] === '/');
-    };
     const keptFromUnreadable = () => {
         if (!unreadable.length) return [];
+        const bases = unreadable.map((dir) => {
+            const trimmed = dir.replace(/[\\/]+$/, '');
+            return { len: trimmed.length, target: isWin ? trimmed.toLowerCase() : trimmed };
+        });
         const listed = new Set(files);
         const kept = [];
         for (const track of known.values()) {
-            if (!listed.has(track.path) && unreadable.some((dir) => under(dir, track.path))) kept.push(track);
+            const file = track.path;
+            if (listed.has(file)) continue;
+            const normFile = isWin ? file.toLowerCase() : file;
+            for (let i = 0; i < bases.length; i++) {
+                const b = bases[i];
+                if (file.length > b.len && (file[b.len] === '\\' || file[b.len] === '/') && normFile.startsWith(b.target)) {
+                    kept.push(track);
+                    break;
+                }
+            }
         }
         stats.kept += kept.length;
         return kept;

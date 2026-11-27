@@ -131,7 +131,7 @@ function installPinButton(_ctx, roleApi) {
     };
 
     // 纯单向事件流：统一由主进程广播驱动
-    roleApi.onWindowPinnedChanged(renderPinned);
+    const unsubPin = roleApi.onWindowPinnedChanged(renderPinned);
 
     const fetchInitialStateOnce = () => {
         if (initialFetched) return;
@@ -337,10 +337,16 @@ function installPinButton(_ctx, roleApi) {
     // 初始启动搜寻
     startRootObserver();
 
-    window.addEventListener('unload', () => {
+    let disposed = false;
+    const dispose = () => {
+        if (disposed) return;
+        disposed = true;
         cleanupNarrowObserver();
         cleanupRootObserver();
-    }, { once: true });
+        try { if (typeof unsubPin === 'function') unsubPin(); } catch { /* noop */ }
+    };
+    window.addEventListener('beforeunload', dispose, { once: true });
+    window.addEventListener('unload', dispose, { once: true });
 }
 
 module.exports = { installPinButton };

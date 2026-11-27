@@ -38,8 +38,16 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
             if (!dirty) return;
             dirty = false;
             const payload = JSON.stringify(prefs);
-            writeChain = writeChain.then(() => fs.promises.writeFile(stateFile, payload))
-                .catch((e) => console.error('[Music] 桌面歌词设置没存上:', e.message));
+            writeChain = writeChain.then(async () => {
+                const tmp = `${stateFile}.${process.pid}.tmp`;
+                try {
+                    await fs.promises.writeFile(tmp, payload);
+                    await fs.promises.rename(tmp, stateFile);
+                } catch (err) {
+                    await fs.promises.unlink(tmp).catch(() => {});
+                    throw err;
+                }
+            }).catch((e) => console.error('[Music] 桌面歌词设置没存上:', e.message));
         }, 300);
     };
     const flushSaveSync = () => {
@@ -114,6 +122,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
             if (last) tellBar('music-desktop-lyrics-state', last);
         });
         win.webContents.on('will-navigate', (event) => event.preventDefault());
+        win.webContents.setWindowOpenHandler?.(() => ({ action: 'deny' }));
         win.on('moved', rememberBounds);
         win.on('resized', rememberBounds);
         const self = win;

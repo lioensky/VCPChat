@@ -104,7 +104,7 @@
             renderExpansion();
         });
         root.addEventListener('keydown', event => {
-            if (event.key !== 'Escape') return;
+            if (event.key !== 'Escape' || event.isComposing) return;
             previewing = hovering = focused = false;
             root.querySelector(':focus')?.blur();
             clearTimeout(timer);

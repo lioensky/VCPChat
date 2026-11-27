@@ -594,9 +594,10 @@ function convertToLrcString(lyricData) {
     if (!lyricData || !Array.isArray(lyricData.lines)) return '';
 
     const formatTime = (seconds) => {
-        const m = Math.floor(seconds / 60);
-        const s = Math.floor(seconds % 60);
-        const ms = Math.floor((seconds % 1) * 100);
+        const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+        const m = Math.floor(safe / 60);
+        const s = Math.floor(safe % 60);
+        const ms = Math.floor((safe % 1) * 100);
         return `[${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}]`;
     };
 

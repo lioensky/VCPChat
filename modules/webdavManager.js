@@ -17,6 +17,18 @@ const getConfigPath = () => {
     return path.join(appPath, 'webdav_servers.json');
 };
 
+function nextCounterFor(list, savedNextId) {
+    let next = Math.max(1, Number(savedNextId) || 1);
+    for (const s of list || []) {
+        const m = /^webdav_(\d+)$/.exec(String(s?.id || ''));
+        if (m) {
+            const n = Number(m[1]) + 1;
+            if (n > next) next = n;
+        }
+    }
+    return next;
+}
+
 // 从配置文件加载服务器列表（同步优先避免刚启动时读写竞态；测试 mock 无同步接口时退回异步）
 function loadServersSync() {
     if (serversLoaded) return;
@@ -26,7 +38,7 @@ function loadServersSync() {
             if (fs.pathExistsSync(configPath)) {
                 const data = fs.readJsonSync(configPath);
                 servers = Array.isArray(data?.servers) ? data.servers : [];
-                serverIdCounter = data?.nextId || 1;
+                serverIdCounter = nextCounterFor(servers, data?.nextId);
             }
             serversLoaded = true;
             return;
@@ -46,7 +58,7 @@ async function loadServers() {
         if (await fs.pathExists(configPath)) {
             const data = await fs.readJson(configPath);
             if (!servers.length && Array.isArray(data?.servers)) servers = data.servers;
-            serverIdCounter = Math.max(serverIdCounter, data?.nextId || 1);
+            serverIdCounter = Math.max(serverIdCounter, nextCounterFor(servers, data?.nextId));
         }
         serversLoaded = true;
     } catch (err) {
@@ -63,18 +75,21 @@ function saveServers() {
     savePending = true;
     saveChain = saveChain.then(async () => {
         savePending = false;
+        let tmp = null;
         try {
             const configPath = getConfigPath();
             await fs.ensureDir(path.dirname(configPath));
             const payload = { servers: servers.slice(), nextId: serverIdCounter };
             if (typeof fs.writeFile === 'function' && typeof fs.move === 'function') {
-                const tmp = `${configPath}.${process.pid}.tmp`;
+                tmp = `${configPath}.${process.pid}.tmp`;
                 await fs.writeFile(tmp, JSON.stringify(payload, null, 2), 'utf8');
                 await fs.move(tmp, configPath, { overwrite: true });
+                tmp = null;
             } else {
                 await fs.writeJson(configPath, payload, { spaces: 2 });
             }
         } catch (err) {
+            if (tmp && typeof fs.remove === 'function') await fs.remove(tmp).catch(() => {});
             console.error('[WebDAV] Failed to save servers config:', err.message);
         }
     });
