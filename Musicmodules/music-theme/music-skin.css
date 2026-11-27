@@ -836,7 +836,7 @@ body.music-dock-on .music-player .controls {
     padding: 16px 32px 24px;
 }
 
-.main-content:has(.acoustic-drawer.is-open) #visualizer {
+.main-content.acoustic-drawer-open #visualizer {
     display: none;
 }
 
@@ -1352,7 +1352,7 @@ body.music-archive-on:not(.music-stage-active) #custom-title-bar {
     outline-offset: 2px;
 }
 
-.left-sidebar:has(#playlist[style*="none"]) .music-list-head {
+.music-list-head[hidden] {
     display: none;
 }
 

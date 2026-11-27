@@ -277,13 +277,18 @@
         return result;
     };
 
+    const EMPTY_WORD_STATE = Object.freeze({
+        words: EMPTY_WORDS,
+        activeWordIndex: -1,
+        wordProgress: 0,
+        wordStates: EMPTY_WORDS
+    });
+    let lastWordLine = null;
+    let lastWordTime = NaN;
+    let lastWordResult = EMPTY_WORD_STATE;
     const resolveWordState = (line, playbackTime) => {
-        if (!line) return {
-            words: [],
-            activeWordIndex: -1,
-            wordProgress: 0,
-            wordStates: []
-        };
+        if (!line) return EMPTY_WORD_STATE;
+        if (line === lastWordLine && playbackTime === lastWordTime) return lastWordResult;
 
         const words = line.resolvedWords || (line.words.length ? line.words : buildFallbackWords(line));
         let activeWordIndex = -1;
@@ -303,12 +308,15 @@
             return { ...word, progress, status };
         });
 
-        return {
+        lastWordLine = line;
+        lastWordTime = playbackTime;
+        lastWordResult = {
             words,
             activeWordIndex,
             wordProgress: activeProgress,
             wordStates
         };
+        return lastWordResult;
     };
 
     // Retained as a public utility for compatibility. The per-frame multi-band
@@ -436,6 +444,21 @@
         return cached;
     };
 
+    let lastNextLinesSrc = null;
+    let lastNextLinesIdx = -2;
+    let lastNextLinesVal = EMPTY_LINES;
+    const nextLinesOf = (lines, currentLineIndex) => {
+        if (!lines.length) return EMPTY_LINES;
+        if (lines === lastNextLinesSrc && currentLineIndex === lastNextLinesIdx) return lastNextLinesVal;
+        lastNextLinesSrc = lines;
+        lastNextLinesIdx = currentLineIndex;
+        const slice = currentLineIndex >= 0
+            ? lines.slice(currentLineIndex + 1, currentLineIndex + 4)
+            : lines.slice(0, 3);
+        lastNextLinesVal = slice.length ? Object.freeze(slice) : EMPTY_LINES;
+        return lastNextLinesVal;
+    };
+
     const createFrame = (app, now = performance.now()) => {
         const wallNow = Date.now();
         const lines = normalizeLines(app?.currentLyrics);
@@ -458,7 +481,7 @@
             currentLineIndex,
             activeLine,
             previousLine: currentLineIndex > 0 ? lines[currentLineIndex - 1] : null,
-            nextLines: currentLineIndex >= 0 ? lines.slice(currentLineIndex + 1, currentLineIndex + 4) : lines.slice(0, 3),
+            nextLines: nextLinesOf(lines, currentLineIndex),
             lineProgress,
             ...wordState,
             lines,

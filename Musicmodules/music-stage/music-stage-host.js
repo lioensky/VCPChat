@@ -448,6 +448,7 @@
             if (!state.modeInstance) return;
             state.modeInstance.destroy();
             state.modeInstance = null;
+            delete root.dataset.stageMode;
             state.stats.modeDestroys += 1;
         };
 
@@ -473,6 +474,7 @@
             root.classList.toggle('stage-opaque', scene3d || traits.opaque);
             // 雾笺、绘光的画面在浅色主题下也是夜色，左上角字标要换成浅色才看得见。
             root.classList.toggle('stage-night', traits.night);
+            root.dataset.stageMode = state.modeId;
             document.body.classList.toggle('music-stage-scene-3d', scene3d);
 
             elements.modeSwitcher.querySelectorAll('[data-stage-mode]').forEach((button) => {
@@ -962,7 +964,16 @@
                 root.classList.add('is-changing-cover');
                 state.backgroundTimer = setTimeout(() => {
                     if (state.destroyed) return;
-                    if (softNext && softCurrent) paintSoft(softCurrent, image, 46, 1.45);
+                    if (softNext && softCurrent) {
+                        if (image && softNext.host.classList.contains('is-soft') && softNext.canvas.width > 0 && softNext.canvas.height > 0) {
+                            softCurrent.canvas.width = softNext.canvas.width;
+                            softCurrent.canvas.height = softNext.canvas.height;
+                            softCurrent.context.drawImage(softNext.canvas, 0, 0);
+                            softCurrent.host.classList.add('is-soft');
+                        } else {
+                            paintSoft(softCurrent, image, 46, 1.45);
+                        }
+                    }
                     elements.backdropCurrent.classList.toggle('is-empty', !nextUrl);
                     elements.backdropCurrent.style.backgroundImage = cssImage;
                     root.classList.remove('is-changing-cover');

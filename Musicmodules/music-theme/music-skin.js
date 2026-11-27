@@ -180,8 +180,10 @@
         if (drawer && toggle) {
             let open = false;
             try { open = localStorage.getItem(DRAWER_KEY) === '1'; } catch (error) {}
+            const mainContent = drawer.closest('.main-content');
             const apply = () => {
                 drawer.classList.toggle('is-open', open);
+                mainContent?.classList.toggle('acoustic-drawer-open', open);
                 toggle.setAttribute('aria-expanded', String(open));
             };
             apply();

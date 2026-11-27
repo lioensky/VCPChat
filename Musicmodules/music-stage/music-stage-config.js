@@ -575,12 +575,18 @@
 
     const setModePatch = (modeId, patch) => {
         if (!MODE_IDS.has(modeId)) return clone(current);
-        const merged = { ...current.modes[modeId], ...(patch || {}) };
+        const prevMode = current.modes[modeId] || {};
+        const merged = { ...prevMode, ...(patch || {}) };
+        const nextMode = normalizeMode(merged, DEFAULTS.modes[modeId] || {});
+        const nextKeys = Object.keys(nextMode);
+        if (nextKeys.length === Object.keys(prevMode).length && nextKeys.every((key) => Object.is(prevMode[key], nextMode[key]))) {
+            return clone(current);
+        }
         current = {
             ...current,
             modes: {
                 ...current.modes,
-                [modeId]: normalizeMode(merged, DEFAULTS.modes[modeId] || {})
+                [modeId]: nextMode
             }
         };
         schedulePersist();

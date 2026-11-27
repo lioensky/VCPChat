@@ -232,11 +232,13 @@ body.music-fl-low .music-stage-id3 {
 }
 
 /* 镜台、隧图是全屏 3D 画面，镜台还有黑色遮幅：字标不再浮在画面上，档案卡收淡 */
-.music-stage:has(.music-stage-mode-diorama, .music-stage-mode-tunnel) .music-stage-wordmark {
+.music-stage[data-stage-mode="diorama"] .music-stage-wordmark,
+.music-stage[data-stage-mode="tunnel"] .music-stage-wordmark {
     visibility: hidden;
 }
 
-.music-stage:has(.music-stage-mode-diorama, .music-stage-mode-tunnel) .music-stage-id3 {
+.music-stage[data-stage-mode="diorama"] .music-stage-id3,
+.music-stage[data-stage-mode="tunnel"] .music-stage-id3 {
     opacity: .82;
 }
 

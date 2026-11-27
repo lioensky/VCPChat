@@ -405,7 +405,7 @@
             let vpRead = false, vpH = 600, vpTop = 0, anchor = null;
             const readViewportOnce = () => {
                 if (vpRead || !vpVisible) return;
-                vpRead = true; vpH = viewportHeight(); vpTop = readScrollTop(); recordScrollTop(vpTop); cachedVpOff = r.viewport.offsetTop || 0;
+                vpRead = true; vpH = viewportHeight(); vpTop = readScrollTop(); recordScrollTop(vpTop); viewportOffsetTop();
             };
             if (needAnchor) {
                 readViewportOnce();
@@ -1154,9 +1154,9 @@
         let typeTimer = 0;
         const applyQuery = (resetScroll) => {
             state.query = r.input.value;
+            const hasQ = Boolean(state.query.trim()), vpH = viewportHeight(), curTop = resetScroll && lastRenderTop === 0 ? 0 : readScrollTop(), top = resetScroll ? 0 : curTop;
             syncSq();
-            const hasQ = Boolean(state.query.trim()), vpH = viewportHeight(), top = resetScroll ? 0 : readScrollTop();
-            if (resetScroll && lastRenderTop !== 0 && r.viewport.scrollTop) r.viewport.scrollTop = 0;
+            if (resetScroll && curTop) r.viewport.scrollTop = 0;
             recordScrollTop(top);
             rebuild({ skipRender: hasQ, quiet: hasQ });
             if (hasQ && !edgeRow(false, vpH)) render({ top, height: vpH });

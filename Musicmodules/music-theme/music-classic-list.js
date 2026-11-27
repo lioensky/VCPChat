@@ -375,10 +375,17 @@
         };
         list.addEventListener('scroll', decorateSoon, { passive: true });
         global.addEventListener('resize', decorateSoon);
+        let head = null;
+        const syncHeadHidden = () => {
+            if (!head) return;
+            const hide = list.style.display === 'none';
+            if (head.hidden !== hide) head.hidden = hide;
+        };
         let watch = null;
         if (typeof MutationObserver === 'function') {
             // 仅在经典列表由隐藏切换为显示，或隐藏期间发生过重绘/推迟排序时补拆，避免无关 body class 变动触发无谓布局读取
             watch = new MutationObserver(() => {
+                syncHeadHidden();
                 const nowShown = shown();
                 if (nowShown && (!wasShown || needsSync || deferredSort)) decorateSoon();
                 wasShown = nowShown;
@@ -418,7 +425,7 @@
         });
 
         // 表头
-        const head = document.createElement('div');
+        head = document.createElement('div');
         head.className = 'music-list-head';
         head.setAttribute('role', 'toolbar');
         head.setAttribute('aria-label', '排序');
@@ -449,6 +456,7 @@
             }
         };
         syncHead();
+        syncHeadHidden();
         list.before(head);
 
         // 已经渲染过的列表补一次

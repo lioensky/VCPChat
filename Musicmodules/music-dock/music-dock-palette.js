@@ -710,14 +710,14 @@
             syncActive(false, true);
         };
 
-        const flushSlide = (scroll) => {
+        const flushSlide = (scroll, pre = null) => {
             if (!state.open) return;
-            const row = activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector(`[data-i="${state.active}"]`);
+            const row = pre?.row || (activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector(`[data-i="${state.active}"]`));
             if (!row) return;
             // 选中的那一行背后是一滴玻璃，上下键换行时流过去（drop 已在 render 阶段挂好，避免在读 offsetTop 前写入 DOM 触发同步回流）
             if (global.MusicFluid?.slide) {
-                const top = row.offsetTop;
-                const height = row.offsetHeight;
+                const top = pre ? pre.top : row.offsetTop;
+                const height = pre ? pre.height : row.offsetHeight;
                 const drop = ensureDrop();
                 if (drop && !drop.isConnected) list.appendChild(drop);
                 if (drop) global.MusicFluid.slide(drop, { top, height }, { key: 'md-cmd', axis: 'y', lead: 140, trail: 300 });
@@ -805,19 +805,24 @@
             place();
             root.hidden = false;
             host.classList.add('md-cmd-open');
-            document.body.classList.add('music-dock-cmd-open');
             input.value = initial;
-            // 先完成显隐与 body 类变更再聚焦输入框，合并为一次样式重算并避开写入 60 条结果行后再 focus
+            // 先在仅触及 #music-dock-root 时聚焦输入框，再挂 body 兼容类，避免 focus() 触发整页样式重算
             input.focus({ preventScroll: true });
+            document.body.classList.add('music-dock-cmd-open');
             build();
+            if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
             state.openRaf = requestAnimationFrame(() => {
                 state.openRaf = 0;
                 if (!state.open) return;
-                root.classList.add('md-open');
+                // 合并首帧的 slide 读取与 bud 几何读取，再统一写入 md-open / bud / slide，避免同帧二次回流
+                const row = activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector(`[data-i="${state.active}"]`);
+                const pre = row && global.MusicFluid?.slide ? { row, top: row.offsetTop, height: row.offsetHeight } : null;
                 // 搜索面板从播放条顶边长出来；复用 place() 已量好的播放条位置，避免写完 md-open 立刻重排
                 const cap = state.capRect || host.querySelector('.md-cap')?.getBoundingClientRect();
                 if (cap && cap.width) global.MusicFluid?.bud(box, { x: cap.left + cap.width / 2, y: cap.top + 6 });
+                root.classList.add('md-open');
+                if (pre) flushSlide(false, pre);
             });
         }
         function close(restoreFocus = true) {
