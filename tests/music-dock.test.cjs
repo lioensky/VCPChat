@@ -1242,3 +1242,91 @@ test('dock destroy unsubscribes scan IPC listeners, cancels pending warm idle ca
     assert.equal(scanDoneOff, 1, 'onMusicScanComplete disposer called on destroy');
     assert.equal(idleCancelled, idleScheduled, 'any scheduled warm idle callbacks are cancelled on destroy');
 });
+
+test('palette reuses stable pinyin wrapper, filters artist-only queries via index, and sets data-md-dist inline', () => {
+    const seenPinyinFns = new Set();
+    const indexKinds = [];
+    const { window, doc, app, dock } = setup((a, win) => {
+        win.pinyinPro = { pinyin: (c) => (c === '周' ? 'zhou' : '') };
+        win.MusicArchiveIndex = {
+            createIndex: (tracks, opts) => {
+                if (opts?.pinyin) seenPinyinFns.add(opts.pinyin);
+                return {
+                    size: tracks.length,
+                    query: (q, o) => {
+                        indexKinds.push(o?.kind || 'all');
+                        return tracks.map((_, i) => i).filter((i) => String(tracks[i].artist || '').includes(q) || String(tracks[i].title || '').includes(q));
+                    }
+                };
+            },
+            romanize: (name, py) => {
+                if (py) seenPinyinFns.add(py);
+                return { py: name.includes('周') ? 'zhou' : name.toLowerCase(), ini: name.includes('周') ? 'z' : name.slice(0, 1).toLowerCase() };
+            }
+        };
+        a.customPlaylists = [{ id: 'pl1', name: '周杰伦合集', tracks: [a.playlist[0].path] }];
+    });
+    try {
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        input.value = 'zhou';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        input.value = 'z';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(seenPinyinFns.size, 1, 'palette keeps a single stable pinyin wrapper identity for WeakMap caches');
+
+        indexKinds.length = 0;
+        input.value = '歌手:A';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.deepEqual(indexKinds, ['artist'], 'artist-only filter queries artist index directly without full-library scan');
+        const rows = doc.querySelectorAll('.md-cmd-row');
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].dataset.mdDist, '0');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
+
+test('queue drag clears row classes and inline transforms on window blur abort and keeps manual rows ordered', () => {
+    const { window, doc, app, dock } = setup();
+    try {
+        const extra = Array.from({ length: 40 }, (_, i) => ({ path: `C:/t${i}.flac`, title: `Track ${i}.flac`, artist: 'A' }));
+        app.playlist.push(...extra);
+        app.manualQueue = [extra[0], extra[1], extra[2]];
+        app.getUpNext = () => ({ manual: app.manualQueue.slice(), context: extra.slice(3) });
+        dock.openPanel('播放列表');
+        const scroller = doc.querySelector('.md-ql');
+        scroller.getBoundingClientRect = () => ({ top: 0, bottom: 300, left: 0, right: 300, width: 300, height: 300 });
+        Object.defineProperty(scroller, 'clientHeight', { value: 220, configurable: true });
+        // 滚到下面使手动队列离开当前视口，校验有序合并无重复
+        scroller.scrollTop = 900;
+        scroller.dispatchEvent(new window.Event('scroll'));
+        const renderedKeys = [...scroller.querySelectorAll('[data-k]')].map((n) => Number(n.dataset.k));
+        assert.ok(renderedKeys.length > 3);
+        for (let i = 1; i < renderedKeys.length; i++) {
+            assert.ok(renderedKeys[i] > renderedKeys[i - 1], 'merged manual + viewport rows remain strictly ascending without duplicates');
+        }
+
+        // 启动拖动后触发 window blur：md-qdrag 和所有内联 transform 都必须清空
+        scroller.scrollTop = 0;
+        scroller.dispatchEvent(new window.Event('scroll'));
+        const rows = [...scroller.querySelectorAll('.md-man')];
+        const firePtr = (type, y, target = doc) => {
+            const ev = new window.MouseEvent(type, { bubbles: true, clientY: y, button: 0 });
+            Object.defineProperty(ev, 'pointerId', { value: 7 });
+            target.dispatchEvent(ev);
+        };
+        firePtr('pointerdown', 100, rows[0]);
+        firePtr('pointermove', 160);
+        assert.ok(rows[0].classList.contains('md-qdrag'));
+        assert.ok(rows[0].style.transform.includes('translateY'));
+        window.dispatchEvent(new window.Event('blur'));
+        assert.ok(!scroller.classList.contains('md-qdragging'), 'blur removes md-qdragging');
+        assert.ok(!rows[0].classList.contains('md-qdrag'), 'blur removes md-qdrag from dragged row');
+        assert.ok(rows.every((r) => r.style.transform === ''), 'blur clears inline transform on all manual rows');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

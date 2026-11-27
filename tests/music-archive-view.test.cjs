@@ -1691,3 +1691,48 @@ test('archive wall stops idle rAF during CSS entry and detaches pooled cover src
     wall.destroy();
     w.close();
 });
+
+test('archive list skips viewport clientHeight read on initial empty rebuild and silent keepalive WAV stays compact', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    w.eval(read('Musicmodules/music-archive/archive-index.js'));
+    w.eval(read('Musicmodules/music-archive/archive-list.js'));
+    const idx = w.MusicArchiveIndex.createIndex([]);
+    const list = w.MusicArchiveList.create({
+        host: w.document.getElementById('host'),
+        app: { playlist: [], customPlaylists: [] },
+        Index: w.MusicArchiveIndex,
+        getIndex: () => idx,
+        getRecent: () => [],
+        columnOfGroup: () => null,
+        onPick() {}, onPlay() {},
+        fileNumber: (_, i) => i + 1,
+        isNarrow: () => false
+    });
+    const vp = list.el.querySelector('[data-l="viewport"]');
+    let clientHeightReads = 0;
+    Object.defineProperty(vp, 'clientHeight', { get() { clientHeightReads += 1; return 600; }, configurable: true });
+    list.rebuild();
+    assert.equal(clientHeightReads, 0, 'empty archive list rebuild/render avoids forced synchronous layout');
+    list.destroy();
+
+    // 验证 createSilentAudio 生成紧凑 8kHz 10s PCM WAV (~160KB) 并在重复调用时释放旧 URL
+    const blobs = [];
+    const revoked = [];
+    w.Blob = class CapturedBlob { constructor(parts, opts) { this.parts = parts; this.type = opts?.type || ''; } };
+    w.URL.createObjectURL = (b) => { const u = `blob:silent-${blobs.length}`; blobs.push({ u, b }); return u; };
+    w.URL.revokeObjectURL = (u) => revoked.push(u);
+    w.eval(read('Musicmodules/music-ui.js'));
+    const app = { api: {} };
+    w.setupUI(app);
+    const u1 = app.createSilentAudio();
+    const u2 = app.createSilentAudio();
+    assert.notEqual(u1, u2);
+    assert.deepEqual(revoked, [u1], 'second createSilentAudio revokes previous ObjectURL');
+    const wav = Buffer.from(blobs[0].b.parts[0]);
+    assert.equal(wav.subarray(0, 4).toString('ascii'), 'RIFF');
+    assert.equal(wav.subarray(8, 12).toString('ascii'), 'WAVE');
+    assert.equal(wav.readUInt32LE(24), 8000, 'sample rate is 8 kHz');
+    assert.equal(wav.length, 44 + 8000 * 10 * 2, '10-second 8 kHz 16-bit mono WAV is 160044 bytes');
+    w.close();
+});
