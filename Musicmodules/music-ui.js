@@ -18,13 +18,25 @@ function setupUI(app) {
         if (curr.style.backgroundImage === newBg) return;
 
         const token = ++app.backgroundTransitionToken;
-        if (app.backgroundTransitionTimer) clearTimeout(app.backgroundTransitionTimer);
+        if (app.backgroundTransitionTimer) {
+            clearTimeout(app.backgroundTransitionTimer);
+            app.backgroundTransitionTimer = null;
+        }
+        const instant = Boolean(window.MusicMotion?.reduced?.()
+            ?? window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches)
+            || (document.body.classList.contains('music-archive-on') && !document.body.classList.contains('music-stage-active'));
         app.playerBackground.classList.remove('switching');
+        if (instant) {
+            curr.style.backgroundImage = newBg;
+            next.style.backgroundImage = 'none';
+            return;
+        }
         next.style.backgroundImage = newBg;
         app.playerBackground.classList.add('switching');
 
         app.backgroundTransitionTimer = setTimeout(() => {
             if (token !== app.backgroundTransitionToken) return;
+            app.backgroundTransitionTimer = null;
             curr.style.transition = 'none'; next.style.transition = 'none';
             curr.style.backgroundImage = newBg; app.playerBackground.classList.remove('switching');
             requestAnimationFrame(() => { curr.style.transition = ''; next.style.transition = ''; });
@@ -292,12 +304,14 @@ function setupUI(app) {
         requestAnimationFrame(() => requestAnimationFrame(() => {
             const rgb = app.hexToRgb(getComputedStyle(document.body).getPropertyValue('--music-highlight'));
             if (rgb) app.visualizerColor = rgb;
-            app.updateVolumeSliderBackground(app.volumeSlider.value);
+            if (app.volumeSlider) app.updateVolumeSliderBackground(app.volumeSlider.value);
         }));
-        const curArt = app.albumArt.style.backgroundImage;
-        if (!curArt || curArt.includes('musicdark.jpeg') || curArt.includes('musiclight.jpeg')) {
-            const url = `url('../assets/${theme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
-            app.albumArt.style.backgroundImage = url; app.updateBlurredBackground('none');
+        if (app.albumArt) {
+            const curArt = app.albumArt.style.backgroundImage;
+            if (!curArt || curArt.includes('musicdark.jpeg') || curArt.includes('musiclight.jpeg')) {
+                const url = `url('../assets/${theme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
+                app.albumArt.style.backgroundImage = url; app.updateBlurredBackground('none');
+            }
         }
     };
 }

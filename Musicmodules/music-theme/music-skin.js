@@ -117,11 +117,17 @@
             setText('bitrate', bitrate(track));
             setText('specs', summary(track), '');
             if (changed) {
-                // 换曲时编号和曲名一起向上滚入；批量读写只触发一次回流。
-                const rollers = Array.from(document.querySelectorAll('.track-file-number, .music-stage-track-file'));
-                for (const el of rollers) el.classList.remove('is-rolling');
-                if (rollers.length) void rollers[0].offsetWidth;
-                for (const el of rollers) el.classList.add('is-rolling');
+                const reduceMotion = Boolean(window.MusicMotion?.reduced?.()
+                    ?? window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+                const archiveOnly = document.body.classList.contains('music-archive-on')
+                    && !document.body.classList.contains('music-stage-active');
+                if (!reduceMotion && !archiveOnly) {
+                    // 换曲时编号和曲名一起向上滚入；批量读写只触发一次回流。
+                    const rollers = Array.from(document.querySelectorAll('.track-file-number, .music-stage-track-file'));
+                    for (const el of rollers) el.classList.remove('is-rolling');
+                    if (rollers.length) void rollers[0].offsetWidth;
+                    for (const el of rollers) el.classList.add('is-rolling');
+                }
             }
         };
 
@@ -226,7 +232,9 @@
         if (settingsBody) {
             const scan = () => settingsBody.querySelectorAll('select:not([data-segmented])').forEach(enhanceSelect);
             // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换。
-            new MutationObserver(scan).observe(settingsBody, { childList: true, subtree: true });
+            new MutationObserver((records) => {
+                if (records.some((r) => r.addedNodes.length > 0)) scan();
+            }).observe(settingsBody, { childList: true, subtree: true });
             scan();
         }
 

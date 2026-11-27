@@ -125,11 +125,12 @@
     animation-play-state: paused;
 }
 @media (prefers-reduced-motion: reduce) {
-    .signal-slot.is-in, .signal-slot.is-out { animation: none; }
+    .signal-slot.is-in, .signal-slot.is-out, .signal-label > i { animation: none; }
     .signal-slot.is-out { opacity: 0; }
 }
 body.music-reduce-motion .signal-slot.is-in,
-body.music-reduce-motion .signal-slot.is-out { animation: none; }
+body.music-reduce-motion .signal-slot.is-out,
+body.music-reduce-motion .signal-label > i { animation: none; }
 body.music-reduce-motion .signal-slot.is-out { opacity: 0; }
 .signal-rule {
     position: relative;

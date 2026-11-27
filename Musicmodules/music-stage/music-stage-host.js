@@ -937,6 +937,13 @@
             const show = (image) => {
                 // The 3D stages may take the cover's colour into their sky.
                 app.stageCoverColour = image ? global.MusicStageModeUtils?.coverColour?.(image) ?? null : null;
+                if (reducedMotion()) {
+                    if (softNext && softCurrent) paintSoft(softCurrent, image, 46, 1.45);
+                    elements.backdropCurrent.classList.toggle('is-empty', !nextUrl);
+                    elements.backdropCurrent.style.backgroundImage = cssImage;
+                    root.classList.remove('is-changing-cover');
+                    return;
+                }
                 if (softNext && softCurrent) paintSoft(softNext, image, 46, 1.45);
                 // A layer with no picture is still a blurred layer to the compositor.
                 elements.backdropNext.classList.toggle('is-empty', !nextUrl);
@@ -1002,8 +1009,10 @@
             if (identity !== state.trackPath) {
                 state.trackPath = identity;
                 elements.title.classList.remove('is-changing');
-                void elements.title.offsetWidth;
-                elements.title.classList.add('is-changing');
+                if (!reducedMotion()) {
+                    void elements.title.offsetWidth;
+                    elements.title.classList.add('is-changing');
+                }
             }
 
             elements.title.textContent = title;
@@ -1201,10 +1210,10 @@
          */
         const audioWritten = new WeakMap();
         const audioSinks = [];
-        const collectAudioSinks = () => {
+        const collectAudioSinks = (opaque, edgeActive) => {
             audioSinks.length = 0;
-            root.querySelectorAll(':scope .music-stage-backdrop-layer').forEach(node => audioSinks.push(node));
-            if (elements.edgeSpectrum) audioSinks.push(elements.edgeSpectrum);
+            if (!opaque) root.querySelectorAll(':scope .music-stage-backdrop-layer').forEach(node => audioSinks.push(node));
+            if (edgeActive && elements.edgeSpectrum) audioSinks.push(elements.edgeSpectrum);
             if (elements.cover) audioSinks.push(elements.cover);
             for (const child of elements.modeRoot?.children || []) {
                 if (child.classList.contains('music-stage-mode-tunnel')) audioSinks.push(child);
@@ -1217,6 +1226,8 @@
         const audioSinkRefs = [];
         const audioSinkClasses = [];
         let audioSinkInitialized = false;
+        let audioSinkOpaque = false;
+        let audioSinkEdge = true;
         const writeAudioLevels = (audio) => {
             const power = audio.power.toFixed(4);
             const bass = audio.bass.toFixed(4);
@@ -1225,7 +1236,9 @@
             // Mode roots come and go with switches; the list follows them.
             const children = elements.modeRoot?.children;
             const len = children ? children.length : 0;
-            let changed = !audioSinkInitialized || len !== audioSinkRefs.length;
+            const opaque = root.classList.contains('stage-opaque');
+            const edgeActive = state.config.edgeSpectrum !== false && !reducedMotion();
+            let changed = !audioSinkInitialized || len !== audioSinkRefs.length || opaque !== audioSinkOpaque || edgeActive !== audioSinkEdge;
             if (!changed) {
                 for (let i = 0; i < len; i += 1) {
                     const child = children[i];
@@ -1237,13 +1250,15 @@
             }
             if (changed) {
                 audioSinkInitialized = true;
+                audioSinkOpaque = opaque;
+                audioSinkEdge = edgeActive;
                 audioSinkRefs.length = len;
                 audioSinkClasses.length = len;
                 for (let i = 0; i < len; i += 1) {
                     audioSinkRefs[i] = children[i];
                     audioSinkClasses[i] = children[i].className;
                 }
-                collectAudioSinks();
+                collectAudioSinks(opaque, edgeActive);
             }
             for (let i = 0; i < audioSinks.length; i += 1) {
                 const node = audioSinks[i];
@@ -1544,7 +1559,7 @@
                     return;
                 }
                 exit();
-            } else if (event.code === 'Space' && !event.target.closest('button, input, select')) {
+            } else if (event.code === 'Space' && !event.defaultPrevented && !event.isComposing && !event.target?.closest?.('button, input, select, textarea, [contenteditable]')) {
                 event.preventDefault();
                 app.toggleTransport();
             } else if (event.key === 'ArrowLeft' && event.altKey) {

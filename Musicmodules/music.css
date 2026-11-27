@@ -437,6 +437,7 @@ body.light-theme #lyrics-list li:hover {
 @media (prefers-reduced-motion: reduce) {
     #lyrics-list li .lyric-gap i { transition: none; }
 }
+body.music-reduce-motion #lyrics-list li .lyric-gap i { transition: none; }
 
 #lyrics-list .no-lyrics {
     font-size: 1.2em;
@@ -584,6 +585,7 @@ body.music-buffering .progress {
 @media (prefers-reduced-motion: reduce) {
     body.music-buffering .progress { animation: none; opacity: 0.6; }
 }
+body.music-reduce-motion.music-buffering .progress { animation: none; opacity: 0.6; }
 
 .time-display {
     display: flex;
@@ -1085,6 +1087,10 @@ input:checked+.slider:before {
     #eq-section > .block-content {
         transition: none;
     }
+}
+body.music-reduce-motion #eq-section,
+body.music-reduce-motion #eq-section > .block-content {
+    transition: none;
 }
 
 /* EQ bands 在手风琴内容中显示 */
@@ -3025,3 +3031,16 @@ body.light-theme .dialog-btn.cancel {
     color: var(--music-text-secondary);
 }
 .output-fallback-note[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner,
+    #semantic-search-btn.loading svg,
+    .help-tip-box {
+        animation: none;
+    }
+}
+body.music-reduce-motion .spinner,
+body.music-reduce-motion #semantic-search-btn.loading svg,
+body.music-reduce-motion .help-tip-box {
+    animation: none;
+}

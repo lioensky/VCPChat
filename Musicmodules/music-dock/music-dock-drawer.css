@@ -524,6 +524,7 @@ body.music-dock-cmd-open .md-fluid, body.music-dock-cmd-open .md-mist { pointer-
 #music-dock-root .md-cmd-row:hover { opacity: 1; filter: none; }
 body.music-reduce-motion .md-cmd-box { transform: none; filter: none; transition: opacity .12s; }
 body.music-reduce-motion .md-cmd-box::after { display: none; }
+body.music-reduce-motion #music-dock-root .md-cmd-row[data-md-dist="4"] { filter: none; }
 
 /* 停在凹口里时光收紧，只留一圈贴着环的亮，不在角上铺一团雾 */
 #music-dock-root.md-fl-on .md-hdl.md-open button { box-shadow: 0 0 8px 1px rgba(255, 255, 255, .5), inset 0 0 6px rgba(255, 255, 255, .6); }

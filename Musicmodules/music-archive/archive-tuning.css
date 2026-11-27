@@ -479,6 +479,20 @@ html.md-pointer-mode #music-dock-root .md-dockrow button[role="tab"]:focus-visib
 .archive-lyrics-index.hovering .hov { display: block; }
 .archive-lyrics-index.hovering .tip { display: flex; }
 body.music-reduce-motion .archive-lyrics-index .cur { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+    .archive-list-brand-title > span.in,
+    .archive-list-brand-title > span.out { animation: none; }
+    .archive-list-sort > button:active,
+    .archive-list-import-toggle:active,
+    .archive-list-search:active,
+    .archive-list-kinds > button:active { transform: none; }
+}
+body.music-reduce-motion .archive-list-brand-title > span.in,
+body.music-reduce-motion .archive-list-brand-title > span.out { animation: none; }
+body.music-reduce-motion .archive-list-sort > button:active,
+body.music-reduce-motion .archive-list-import-toggle:active,
+body.music-reduce-motion .archive-list-search:active,
+body.music-reduce-motion .archive-list-kinds > button:active { transform: none; }
 /* ===== 目录宽度手动调=====
    拖过才有 .user-w，宽度用 --list-w-user；没拖过完全是原来的默认宽度。上下叠放（tiny）时不生效、拖柄也藏起来。 */
 .archive-hud:not(.tiny) .archive-list.user-w.user-w { width: var(--list-w-user); max-width: 45%; }

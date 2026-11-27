@@ -431,10 +431,18 @@ body.light-theme .music-stage-mode-groupchat {
 
 .music-stage-mode-groupchat.is-suspended * { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
-    .gc-list, .gc-row, .gc-bubble, .gc-echo { transition: none !important; animation: none !important; }
+    .gc-list, .gc-row, .gc-bubble, .gc-echo, .gc-eye, .gc-mouth, .gc-dot, .gc-shimmer, .gc-bubble::after, .gc-text > span.is-new, .gc-chip, .gc-mini { transition: none !important; animation: none !important; }
 }
 body.music-reduce-motion .gc-list,
 body.music-reduce-motion .gc-row,
 body.music-reduce-motion .gc-bubble,
-body.music-reduce-motion .gc-echo { transition: none !important; animation: none !important; }
+body.music-reduce-motion .gc-echo,
+body.music-reduce-motion .gc-eye,
+body.music-reduce-motion .gc-mouth,
+body.music-reduce-motion .gc-dot,
+body.music-reduce-motion .gc-shimmer,
+body.music-reduce-motion .gc-bubble::after,
+body.music-reduce-motion .gc-text > span.is-new,
+body.music-reduce-motion .gc-chip,
+body.music-reduce-motion .gc-mini { transition: none !important; animation: none !important; }
 

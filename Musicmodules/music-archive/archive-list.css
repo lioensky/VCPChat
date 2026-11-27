@@ -124,6 +124,7 @@ body.light-theme .archive-list { --glow: .85; }
 .archive-cap-drop span.drop-over { color: var(--mf-ink, var(--ar-ink)); background: color-mix(in srgb, var(--mf-ink, #888) 12%, transparent); font-weight: 600; }
 @keyframes archive-cap-drop-in { from { opacity: 0; transform: scale(.98); } }
 @media (prefers-reduced-motion: reduce) { .archive-cap-drop { animation: none; } }
+body.music-reduce-motion .archive-cap-drop { animation: none; }
 .archive-drag-ghost { position: fixed; left: 0; top: 0; z-index: 901; max-width: 240px; padding: 5px 10px; font-family: var(--mt-font-archive, inherit); font-size: 12px; letter-spacing: .4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ar-ink); background: rgba(var(--ar-paper-rgb), .96); border: 1px solid var(--ar-ink); pointer-events: none; }
 
 /* 首字母：左侧外边距里的大号细体字，当前分组吸附在顶上 */

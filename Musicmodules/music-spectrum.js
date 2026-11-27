@@ -49,6 +49,17 @@
         }
     }
 
+    let hannCacheSize = 0;
+    let hannCache = null;
+    function getHannWindow(size) {
+        if (hannCacheSize === size && hannCache) return hannCache;
+        const win = new Float32Array(size);
+        const factor = (2 * Math.PI) / (size - 1);
+        for (let i = 0; i < size; i++) win[i] = 0.5 - 0.5 * Math.cos(factor * i);
+        if (size === FFT_SIZE) { hannCacheSize = size; hannCache = win; }
+        return win;
+    }
+
     /*
      * channels: Float32Array[]（各声道采样），返回 { columns: Float32Array[]（每列 FFT_SIZE/2 个 dB 值）, average: Float32Array }。
      * average 只算有声音的列（安静的片头片尾不拉低高频）。
@@ -56,8 +67,7 @@
     function spectrumColumns(channels, { columns = COLUMNS, size = FFT_SIZE } = {}) {
         const length = channels[0] ? channels[0].length : 0;
         const bins = size >> 1;
-        const window = new Float32Array(size);
-        for (let i = 0; i < size; i++) window[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (size - 1));
+        const window = getHannWindow(size);
         const count = Math.max(1, Math.min(columns, Math.floor(length / size)));
         const step = count > 1 ? (length - size) / (count - 1) : 0;
         const out = [];
@@ -65,16 +75,36 @@
         let loud = 0;
         const re = new Float32Array(size);
         const im = new Float32Array(size);
+        const chCount = channels.length;
+        const ch0 = channels[0];
+        const ch1 = channels[1];
+        const invCh = chCount > 0 ? 1 / chCount : 0;
         for (let c = 0; c < count; c++) {
             const start = Math.floor(c * step);
             let energy = 0;
-            for (let i = 0; i < size; i++) {
-                let v = 0;
-                for (const ch of channels) v += ch[start + i] || 0;
-                v /= channels.length;
-                energy += v * v;
-                re[i] = v * window[i];
-                im[i] = 0;
+            if (chCount === 1) {
+                for (let i = 0; i < size; i++) {
+                    const v = ch0[start + i] || 0;
+                    energy += v * v;
+                    re[i] = v * window[i];
+                    im[i] = 0;
+                }
+            } else if (chCount === 2) {
+                for (let i = 0; i < size; i++) {
+                    const v = ((ch0[start + i] || 0) + (ch1[start + i] || 0)) * 0.5;
+                    energy += v * v;
+                    re[i] = v * window[i];
+                    im[i] = 0;
+                }
+            } else {
+                for (let i = 0; i < size; i++) {
+                    let v = 0;
+                    for (let j = 0; j < chCount; j++) v += channels[j][start + i] || 0;
+                    v *= invCh;
+                    energy += v * v;
+                    re[i] = v * window[i];
+                    im[i] = 0;
+                }
             }
             fft(re, im);
             const col = new Float32Array(bins);
@@ -174,7 +204,6 @@
         const doc = global.document;
         let overlay = null;
         let previousFocus = null;
-        let busy = false;
         const el = (tag, cls, text) => {
             const n = doc.createElement(tag);
             if (cls) n.className = cls;
@@ -198,8 +227,9 @@
         const onKey = (e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
         };
-        const setStatus = (text) => {
-            const s = overlay && overlay.querySelector('.mspec-status');
+        const setStatus = (target, text) => {
+            if (overlay !== target) return;
+            const s = target && target.querySelector('.mspec-status');
             if (s) s.textContent = text;
         };
 
@@ -241,11 +271,11 @@
             ctx.putImageData(img, 0, 0);
         };
 
-        const analyse = async (track) => {
+        const analyse = async (track, cur) => {
             const res = await app.api?.readMusicAudioFile?.({ path: track.path });
-            if (!overlay) return;
-            if (!res || !res.ok) { setStatus(res && res.message ? res.message : '读不到这个文件'); return; }
-            setStatus('正在解码…');
+            if (overlay !== cur) return;
+            if (!res || !res.ok) { setStatus(cur, res && res.message ? res.message : '读不到这个文件'); return; }
+            setStatus(cur, '正在解码…');
             const bytes = res.data instanceof ArrayBuffer ? res.data : res.data.buffer.slice(res.data.byteOffset, res.data.byteOffset + res.data.byteLength);
             const wanted = Math.max(8000, Math.min(384000, Number(track.sampleRate) || 44100));
             let audio;
@@ -253,21 +283,22 @@
                 const Offline = global.OfflineAudioContext || global.webkitOfflineAudioContext;
                 audio = await new Offline(1, 1, wanted).decodeAudioData(bytes);
             } catch (e) {
-                if (overlay) setStatus('这个格式窗口里解不开（APE、DSD、部分 ALAC 不支持），换一首试试。');
+                setStatus(cur, '这个格式窗口里解不开（APE、DSD、部分 ALAC 不支持），换一首试试。');
                 return;
             }
-            if (!overlay) return;
-            setStatus('正在分析…');
+            if (overlay !== cur) return;
+            setStatus(cur, '正在分析…');
             await new Promise((r) => setTimeout(r, 30));
+            if (overlay !== cur) return;
             const channels = [];
             for (let c = 0; c < Math.min(2, audio.numberOfChannels); c++) channels.push(audio.getChannelData(c));
             const result = spectrumColumns(channels);
-            if (!overlay) return;
+            if (overlay !== cur) return;
             const sampleRate = audio.sampleRate;
             const cutoff = findCutoff(result.average, sampleRate);
             const lossless = track.lossless === true || LOSSLESS_EXT.test(String(track.path || ''));
             const v = verdict({ cutoff, sampleRate, lossless });
-            const body = overlay.querySelector('.mspec-body');
+            const body = cur.querySelector('.mspec-body');
             body.innerHTML = '';
             const verdictBox = el('p', 'mspec-verdict ' + v.level, v.text);
             body.appendChild(verdictBox);
@@ -304,13 +335,14 @@
         };
 
         app.openSpectrum = async (ref) => {
-            if (overlay || busy) return;
+            if (overlay) return;
             const track = ref && typeof ref === 'object' ? ref : app.playlist?.[typeof ref === 'number' ? ref : app.currentTrackIndex];
             const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };
             if (!track || !track.path) { toast('先放一首歌再看频谱'); return; }
             if (/^[a-z][a-z0-9+.-]{2,}:\/\//i.test(String(track.path))) { toast('网络上的歌没法看频谱'); return; }
             previousFocus = doc.activeElement;
-            overlay = el('div', 'dialog-overlay music-stats-dialog');
+            const cur = el('div', 'dialog-overlay music-stats-dialog');
+            overlay = cur;
             const dialog = el('div', 'dialog glass-panel mstats mspec');
             dialog.setAttribute('role', 'dialog');
             dialog.setAttribute('aria-modal', 'true');
@@ -329,14 +361,13 @@
             const body = el('div', 'mstats-body mspec-body');
             body.appendChild(el('p', 'mspec-status', '正在读取文件…'));
             dialog.appendChild(body);
-            overlay.appendChild(dialog);
-            overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
-            doc.body.appendChild(overlay);
+            cur.appendChild(dialog);
+            cur.addEventListener('mousedown', (e) => { if (e.target === cur) close(); });
+            doc.body.appendChild(cur);
             global.addEventListener('keydown', onKey, true);
-            requestAnimationFrame(() => overlay && overlay.classList.add('visible'));
+            global.requestAnimationFrame?.(() => { if (overlay === cur) cur.classList.add('visible'); });
             try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
-            busy = true;
-            try { await analyse(track); } catch (e) { setStatus('分析失败：' + (e && e.message || e)); } finally { busy = false; }
+            try { await analyse(track, cur); } catch (e) { setStatus(cur, '分析失败：' + (e && e.message || e)); }
         };
 
         // 右键菜单：看这首的频谱

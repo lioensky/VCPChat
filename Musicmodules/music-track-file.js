@@ -83,11 +83,13 @@
         // 歌曲信息对话框（样式借听歌统计那套 .mstats）
         let overlay = null;
         let previousFocus = null;
+        let copyTimer = 0;
         const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const close = () => {
             if (!overlay) return;
             const o = overlay;
             overlay = null;
+            if (copyTimer) { clearTimeout(copyTimer); copyTimer = 0; }
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
             setTimeout(() => o.remove(), 320);
@@ -103,7 +105,8 @@
             let stat;
             try { stat = app.musicStats?.get ? (app.musicStats.get(track) || null) : undefined; } catch (e) { stat = undefined; }
             previousFocus = doc.activeElement;
-            overlay = el('div', 'dialog-overlay music-stats-dialog');
+            const cur = el('div', 'dialog-overlay music-stats-dialog');
+            overlay = cur;
             const dialog = el('div', 'dialog glass-panel mstats minfo');
             dialog.setAttribute('role', 'dialog');
             dialog.setAttribute('aria-modal', 'true');
@@ -133,7 +136,6 @@
                 show.addEventListener('click', () => app.showTrackInFolder(track));
                 actions.appendChild(show);
             }
-            let copyTimer = 0;
             const copy = el('button', 'minfo-btn', '复制路径');
             copy.type = 'button';
             copy.addEventListener('click', () => {
@@ -150,11 +152,11 @@
             });
             actions.appendChild(copy);
             dialog.appendChild(actions);
-            overlay.appendChild(dialog);
-            overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
-            doc.body.appendChild(overlay);
+            cur.appendChild(dialog);
+            cur.addEventListener('mousedown', (e) => { if (e.target === cur) close(); });
+            doc.body.appendChild(cur);
             global.addEventListener('keydown', onKey, true);
-            global.requestAnimationFrame?.(() => overlay && overlay.classList.add('visible'));
+            global.requestAnimationFrame?.(() => { if (overlay === cur) cur.classList.add('visible'); });
             try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
             return close;
         };

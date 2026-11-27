@@ -37,6 +37,7 @@
     transition: background-color .15s ease, color .15s ease;
 }
 .mstats-range button:hover { color: var(--ms-ink); }
+.mstats-range button:focus-visible { outline: 2px solid var(--ms-ink); outline-offset: 2px; }
 .mstats-range button.active {
     background: var(--ms-ink);
     color: var(--mf-fill, #1c1b19);
@@ -54,6 +55,7 @@
     cursor: pointer;
 }
 .mstats-close:hover { background: var(--ms-hover); color: var(--ms-ink); }
+.mstats-close:focus-visible { outline: 2px solid var(--ms-ink); outline-offset: 2px; }
 
 .mstats-totals {
     display: grid;
@@ -140,6 +142,7 @@
     font-variant-numeric: tabular-nums;
 }
 .mstats-row:hover { background: var(--ms-hover); }
+.mstats-row:focus-visible { outline: 2px solid var(--ms-ink); outline-offset: 2px; }
 .mstats-art {
     grid-area: art;
     width: 32px;
@@ -284,10 +287,13 @@ body.music-reduce-motion .mstats-range button { transition: none; }
 .music-drop-hint-card b { font-size: 15px; font-weight: 600; }
 .music-drop-hint-card span { font-size: 12.5px; color: var(--mf-ink2, rgba(241, 240, 238, .58)); }
 @media (prefers-reduced-motion: reduce) {
-    .music-drop-hint, .music-drop-hint-card { transition: none; }
+    .music-drop-hint, .music-drop-hint-card, .mstats-range button, .minfo-btn, .mchan-toggle { transition: none; }
 }
 body.music-reduce-motion .music-drop-hint,
-body.music-reduce-motion .music-drop-hint-card { transition: none; }
+body.music-reduce-motion .music-drop-hint-card,
+body.music-reduce-motion .mstats-range button,
+body.music-reduce-motion .minfo-btn,
+body.music-reduce-motion .mchan-toggle { transition: none; }
 
 /* 曲库文件夹（music-folders.js）：一行一个文件夹，路径 + 歌数，右边打开 / 移出曲库 */
 .dialog-overlay.music-stats-dialog .dialog.glass-panel.mstats.mfold { width: min(640px, calc(100vw - 48px)); }

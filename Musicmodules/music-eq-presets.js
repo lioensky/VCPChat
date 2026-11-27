@@ -163,10 +163,12 @@
             input.addEventListener('input', refresh);
             refresh();
             let done = false;
+            let focusTimer = 0;
             const finish = (name) => {
                 if (done) return;
                 done = true;
                 asking = false;
+                if (focusTimer) { clearTimeout(focusTimer); focusTimer = 0; }
                 global.removeEventListener('keydown', onKey, true);
                 overlay.classList.remove('visible');
                 setTimeout(() => overlay.remove(), 320);
@@ -182,8 +184,8 @@
             overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(null); });
             doc.body.appendChild(overlay);
             global.addEventListener('keydown', onKey, true);
-            global.requestAnimationFrame?.(() => overlay.classList.add('visible'));
-            setTimeout(() => { try { input.focus(); input.select(); } catch (e) { /* 没关系 */ } }, 30);
+            global.requestAnimationFrame?.(() => { if (!done) overlay.classList.add('visible'); });
+            focusTimer = setTimeout(() => { focusTimer = 0; if (!done) { try { input.focus(); input.select(); } catch (e) { /* 没关系 */ } } }, 30);
         };
 
         // 操作项被选中时：在 change 到达下拉自己的处理之前拦下（捕获阶段，挂在 document 上），做完把下拉还原成实际状态

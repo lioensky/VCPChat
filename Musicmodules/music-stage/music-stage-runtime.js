@@ -474,7 +474,11 @@
         const bars = document.createElement('span');
         bars.className = 'stage-interlude-bars';
         bars.setAttribute('aria-hidden', 'true');
+        const barSpectrumRatios = new Float32Array(barCount);
         const barsList = Array.from({ length: barCount }, (_, index) => {
+            const ratio = index / barCount;
+            const mirrored = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
+            barSpectrumRatios[index] = 0.025 + Math.pow(mirrored, 1.65) * 0.92;
             const bar = document.createElement('i');
             bar.style.setProperty('--interlude-index', String(index));
             bar.style.setProperty('--interlude-angle', `${index * 360 / barCount}deg`);
@@ -488,6 +492,9 @@
         let destroyed = false;
         let lastLabel = '';
         let settledIdle = false;
+        let lastPlaying = null;
+        let lastPowerText = '';
+        let lastPhaseText = '';
         const reducedMotionQuery = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const update = (frame, state = {}) => {
             if (destroyed) return;
@@ -511,24 +518,35 @@
             const time = finiteNumber(frame?.playbackTime, 0) * motion;
             const playing = Boolean(frame?.isPlaying);
             const power = playing ? clamp(frame?.audio?.power) * Math.min(1, motion) : 0;
-            root.classList.toggle('is-playing', playing);
-            root.style.setProperty('--interlude-power', power.toFixed(4));
+            if (playing !== lastPlaying) {
+                lastPlaying = playing;
+                root.classList.toggle('is-playing', playing);
+            }
+            const powerText = power.toFixed(4);
+            if (powerText !== lastPowerText) {
+                lastPowerText = powerText;
+                root.style.setProperty('--interlude-power', powerText);
+            }
             // Same absolute phase on pause: no change of angular speed that jumps the ring.
-            root.style.setProperty('--interlude-phase', `${(time * 3) % 360}deg`);
+            const phaseText = `${(time * 3) % 360}deg`;
+            if (phaseText !== lastPhaseText) {
+                lastPhaseText = phaseText;
+                root.style.setProperty('--interlude-phase', phaseText);
+            }
             if (!playing && settledIdle) return;
             settledIdle = !playing;
 
+            const specLen = spectrum.length;
+            const radius = hasSpectrum ? Math.max(1, Math.floor(specLen / 128)) : 1;
+            const motionScale = Math.min(1, motion);
             barsList.forEach((bar, index) => {
-                const ratio = index / barCount;
                 let energy;
                 if (hasSpectrum) {
-                    const mirrored = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
-                    const spectrumRatio = 0.025 + Math.pow(mirrored, 1.65) * 0.92;
-                    const center = Math.min(spectrum.length - 1, Math.floor(spectrumRatio * spectrum.length));
-                    const radius = Math.max(1, Math.floor(spectrum.length / 128));
+                    const center = Math.min(specLen - 1, Math.floor(barSpectrumRatios[index] * specLen));
                     let total = 0;
                     let samples = 0;
-                    for (let sample = Math.max(0, center - radius); sample <= Math.min(spectrum.length - 1, center + radius); sample += 1) {
+                    const hi = Math.min(specLen - 1, center + radius);
+                    for (let sample = Math.max(0, center - radius); sample <= hi; sample += 1) {
                         total += clamp(spectrum[sample]);
                         samples += 1;
                     }
@@ -538,7 +556,7 @@
                         + Math.sin(time * 0.43 - index * 0.26) * 0.28;
                     energy = 0.16 + Math.max(0, wave) * 0.22;
                 }
-                const settled = playing ? energy * Math.min(1, motion) : 0;
+                const settled = playing ? energy * motionScale : 0;
                 const length = 0.28 + settled * 0.72;
                 // Translate from the centre first; scaling only changes the stroke length.
                 bar.style.transform = `rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(${length.toFixed(4)})`;

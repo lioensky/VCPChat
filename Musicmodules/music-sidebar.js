@@ -36,26 +36,35 @@ function setupSidebar(app) {
     };
 
     app.getAlbumGroups = () => {
-        const albums = {};
+        const albums = new Map();
         app.playlist.forEach(t => {
             const name = t.album || '未知专辑';
-            if (!albums[name]) albums[name] = { name, art: t.albumArt, tracks: [] };
-            albums[name].tracks.push(t);
+            let group = albums.get(name);
+            if (!group) {
+                group = { name, art: t.albumArt, tracks: [] };
+                albums.set(name, group);
+            }
+            group.tracks.push(t);
         });
         // 专辑里按碟号、曲号排，和「目录」一致
         const order = globalThis.MusicTrackOrder;
-        if (order) for (const g of Object.values(albums)) { const cmp = order.albumCompare(g.tracks, (a, b) => a - b); g.tracks = g.tracks.map((t, i) => i).sort(cmp).map((i) => g.tracks[i]); }
-        return Object.values(albums).sort((a,b) => b.tracks.length - a.tracks.length);
+        const list = Array.from(albums.values());
+        if (order) for (const g of list) { const cmp = order.albumCompare(g.tracks, (a, b) => a - b); g.tracks = g.tracks.map((t, i) => i).sort(cmp).map((i) => g.tracks[i]); }
+        return list.sort((a,b) => b.tracks.length - a.tracks.length);
     };
 
     app.getArtistGroups = () => {
-        const artists = {};
+        const artists = new Map();
         app.playlist.forEach(t => {
             const name = t.artist || '未知艺术家';
-            if (!artists[name]) artists[name] = { name, art: t.albumArt, tracks: [] };
-            artists[name].tracks.push(t);
+            let group = artists.get(name);
+            if (!group) {
+                group = { name, art: t.albumArt, tracks: [] };
+                artists.set(name, group);
+            }
+            group.tracks.push(t);
         });
-        return Object.values(artists).sort((a,b) => b.tracks.length - a.tracks.length);
+        return Array.from(artists.values()).sort((a,b) => b.tracks.length - a.tracks.length);
     };
 
     app.updateAllCount = () => {
