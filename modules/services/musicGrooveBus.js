@@ -10,7 +10,12 @@ function publish(payload, now = Date.now()) {
     if (playing && now - lastPublish < 40) return false;
     const data = payload.data;
     if (playing && (!Array.isArray(data) || !data.length || data.length > 2048)) return false;
-    if (playing && !data.every(v => Number.isFinite(v) && v >= 0 && v <= 1)) return false;
+    if (playing) {
+        for (let i = 0; i < data.length; i++) {
+            const v = data[i];
+            if (!Number.isFinite(v) || v < 0 || v > 1) return false;
+        }
+    }
     snapshot = {
         playing,
         trackKey: typeof payload.trackKey === 'string' ? payload.trackKey.slice(0, 4096) : '',
@@ -25,6 +30,7 @@ function publish(payload, now = Date.now()) {
     return true;
 }
 function subscribe(listener) {
+    if (typeof listener !== 'function') return () => {};
     listeners.add(listener);
     return () => listeners.delete(listener);
 }

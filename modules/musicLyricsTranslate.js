@@ -26,11 +26,25 @@ const keyOf = (lines) => crypto.createHash('sha1').update(lines.join('\n'), 'utf
 // 从模型回复里取出 JSON 数组（容忍前后多说的话或 ```json 包裹）
 function parseTranslations(text, expected) {
     const s = String(text || '');
+    const candidates = [];
+    const fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
+    let fm;
+    while ((fm = fenceRe.exec(s)) !== null) {
+        const block = fm[1];
+        const bs = block.indexOf('[');
+        const be = block.lastIndexOf(']');
+        if (bs >= 0 && be > bs) candidates.push(block.slice(bs, be + 1));
+    }
     const start = s.indexOf('[');
     const end = s.lastIndexOf(']');
-    if (start < 0 || end <= start) throw new Error('模型没有返回译文列表');
+    if (start >= 0 && end > start) candidates.push(s.slice(start, end + 1));
+    if (!candidates.length) throw new Error('模型没有返回译文列表');
     let arr;
-    try { arr = JSON.parse(s.slice(start, end + 1)); } catch (e) { throw new Error('模型返回的译文不是合法的 JSON'); }
+    let parsed = false;
+    for (const raw of candidates) {
+        try { arr = JSON.parse(raw); parsed = true; break; } catch (_) { /* 尝试下一候选 */ }
+    }
+    if (!parsed) throw new Error('模型返回的译文不是合法的 JSON');
     if (!Array.isArray(arr)) throw new Error('模型返回的译文不是列表');
     if (arr.length !== expected) throw new Error(`译文行数对不上（${arr.length}/${expected}）`);
     return arr.map((v) => (typeof v === 'string' ? v.trim() : ''));
@@ -63,7 +77,10 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
         const padLength = (arr) => (arr.length < lines.length ? arr.concat(new Array(lines.length - arr.length).fill('')) : arr);
         if (file) {
             const cached = await readCache(file);
-            if (cached && cached.length === clean.length) return { status: 'success', translations: padLength(cached), cached: true };
+            if (cached && cached.length === clean.length) {
+                failedUntil.delete(key);
+                return { status: 'success', translations: padLength(cached), cached: true };
+            }
         }
         const nowMs = now();
         if (!force && (failedUntil.get(key) || 0) > nowMs) return { status: 'error', message: '刚刚翻译失败过，稍后再试' };
@@ -107,6 +124,7 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
                 const data = await response.json();
                 const content = data?.choices?.[0]?.message?.content;
                 const translations = parseTranslations(Array.isArray(content) ? content.map((c) => c?.text || '').join('') : content, clean.length);
+                failedUntil.delete(key);
                 if (file) {
                     try { await fs.outputJson(file, { v: 1, model, at: now(), translations }); } catch (e) { /* 缓存写不进去不影响这次 */ }
                 }

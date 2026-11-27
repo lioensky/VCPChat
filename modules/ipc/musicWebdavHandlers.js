@@ -64,7 +64,7 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
             lastSentAt = now;
             lastSentCount = count;
             const musicWindow = getMusicWindow();
-            if (musicWindow && !musicWindow.isDestroyed()) {
+            if (musicWindow && !musicWindow.isDestroyed() && musicWindow.webContents && !musicWindow.webContents.isDestroyed?.()) {
                 musicWindow.webContents.send('webdav-scan-progress', { count });
             }
         };
@@ -100,7 +100,7 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
             }
         }
         
-        const rawName = String(config.url).split('/').pop().split('?')[0];
+        const rawName = String(config.url).split(/[?#]/)[0].split('/').pop();
         setCurrentSongInfo({
             title: config.trackMeta?.title || safeDecode(rawName),
             artist: config.trackMeta?.artist || '未知艺术家',

@@ -89,7 +89,19 @@ function buildM3u(name, tracks) {
     return out.join('\r\n') + '\r\n';
 }
 
+const WIN_RESERVED_RE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
+
 // 文件名里不能有的字符换掉，给保存对话框当默认名
-const safeFileName = (name) => (oneLine(name).replace(/[\\/:*?"<>|]+/g, '_').replace(/^\.+/, '').slice(0, 120) || '歌单');
+const safeFileName = (name) => {
+    let clean = oneLine(name)
+        .replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_')
+        .replace(/^\.+/, '')
+        .replace(/[. ]+$/, '')
+        .slice(0, 120)
+        .replace(/[. ]+$/, '');
+    if (!clean) return '歌单';
+    if (WIN_RESERVED_RE.test(clean)) clean = '_' + clean;
+    return clean;
+};
 
 module.exports = { decodeM3u, parseM3u, buildM3u, safeFileName };

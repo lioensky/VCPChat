@@ -159,6 +159,7 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
     });
 
     ipcMain.handle('music-get-ir-preset-path', async (event, presetName) => {
+        if (typeof presetName !== 'string' || !presetName) return null;
         try {
             const files = await fs.readdir(irPresetDir);
             const match = files.find(file => {

@@ -28,23 +28,36 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
     let last = null;          // 音乐窗口最近送来的状态，歌词条刚打开时先补一份
     let saveTimer = null;
     let dirty = false;
+    let pendingWrite = false;
+    let saveGen = 0;
     let writeChain = Promise.resolve();
 
     const save = () => {
         dirty = true;
+        const gen = ++saveGen;
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
             saveTimer = null;
-            if (!dirty) return;
+            if (!dirty || gen !== saveGen) return;
             dirty = false;
+            pendingWrite = true;
             const payload = JSON.stringify(prefs);
             writeChain = writeChain.then(async () => {
-                const tmp = `${stateFile}.${process.pid}.tmp`;
+                if (gen !== saveGen) return;
+                const tmp = `${stateFile}.${process.pid}.${gen}.tmp`;
                 try {
+                    await fs.promises.mkdir(path.dirname(stateFile), { recursive: true });
+                    if (gen !== saveGen) return;
                     await fs.promises.writeFile(tmp, payload);
+                    if (gen !== saveGen) {
+                        await fs.promises.unlink(tmp).catch(() => {});
+                        return;
+                    }
                     await fs.promises.rename(tmp, stateFile);
+                    if (gen === saveGen) pendingWrite = false;
                 } catch (err) {
                     await fs.promises.unlink(tmp).catch(() => {});
+                    if (gen === saveGen) pendingWrite = false;
                     throw err;
                 }
             }).catch((e) => console.error('[Music] 桌面歌词设置没存上:', e.message));
@@ -52,16 +65,30 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
     };
     const flushSaveSync = () => {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-        if (!dirty) return;
+        if (!dirty && !pendingWrite) return;
+        saveGen += 1;
         dirty = false;
-        try { fs.writeFileSync(stateFile, JSON.stringify(prefs)); } catch (e) { console.error('[Music] 桌面歌词设置没存上:', e.message); }
+        pendingWrite = false;
+        try {
+            fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+            fs.writeFileSync(stateFile, JSON.stringify(prefs));
+        } catch (e) { console.error('[Music] 桌面歌词设置没存上:', e.message); }
     };
     const musicWin = () => {
         const w = getMusicWindow();
         return w && !w.isDestroyed() ? w : null;
     };
-    const tellMusic = () => musicWin()?.webContents.send('music-desktop-lyrics-changed', { on: prefs.on, locked: prefs.locked, size: prefs.size });
-    const tellBar = (channel, payload) => { if (win && !win.isDestroyed()) win.webContents.send(channel, payload); };
+    const tellMusic = () => {
+        const m = musicWin();
+        if (m && m.webContents && !m.webContents.isDestroyed?.()) {
+            m.webContents.send('music-desktop-lyrics-changed', { on: prefs.on, locked: prefs.locked, size: prefs.size });
+        }
+    };
+    const tellBar = (channel, payload) => {
+        if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed?.()) {
+            win.webContents.send(channel, payload);
+        }
+    };
     const applyLock = () => {
         if (!win || win.isDestroyed()) return;
         win.setIgnoreMouseEvents(prefs.locked, { forward: true });
@@ -113,20 +140,21 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
                 backgroundThrottling: false
             }
         });
-        win.setAlwaysOnTop(true, 'screen-saver');
-        win.setMenu?.(null);
-        win.loadFile(path.join(projectRoot, 'Musicmodules', 'desktop-lyrics', 'desktop-lyrics.html'));
-        win.once('ready-to-show', () => { if (win && !win.isDestroyed()) { applyLock(); win.showInactive(); } });
-        win.webContents.on('did-finish-load', () => {
+        const self = win;
+        self.setAlwaysOnTop(true, 'screen-saver');
+        self.setMenu?.(null);
+        self.loadFile(path.join(projectRoot, 'Musicmodules', 'desktop-lyrics', 'desktop-lyrics.html'));
+        self.once('ready-to-show', () => { if (win === self && !self.isDestroyed()) { applyLock(); self.showInactive(); } });
+        self.webContents.on('did-finish-load', () => {
+            if (win !== self || self.isDestroyed()) return;
             tellBar('music-desktop-lyrics-prefs', { locked: prefs.locked, size: prefs.size });
             if (last) tellBar('music-desktop-lyrics-state', last);
         });
-        win.webContents.on('will-navigate', (event) => event.preventDefault());
-        win.webContents.setWindowOpenHandler?.(() => ({ action: 'deny' }));
-        win.on('moved', rememberBounds);
-        win.on('resized', rememberBounds);
-        const self = win;
-        win.on('closed', () => {
+        self.webContents.on('will-navigate', (event) => event.preventDefault());
+        self.webContents.setWindowOpenHandler?.(() => ({ action: 'deny' }));
+        self.on('moved', () => { if (win === self) rememberBounds(); });
+        self.on('resized', () => { if (win === self) rememberBounds(); });
+        self.on('closed', () => {
             if (win === self) win = null;
             // 用户在歌词条上点了关闭（或被系统关掉）：记成关；跟着音乐窗口一起关的不改开关
             if (!self.withMusic && prefs.on) { prefs.on = false; save(); tellMusic(); }
@@ -156,7 +184,11 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
     });
     ipcMain.on('music-desktop-lyrics-command', (event, command, value) => {
         if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
-        if (COMMANDS.has(command)) { musicWin()?.webContents.send('music-control', command); return; }
+        if (COMMANDS.has(command)) {
+            const m = musicWin();
+            if (m && m.webContents && !m.webContents.isDestroyed?.()) m.webContents.send('music-control', command);
+            return;
+        }
         if (command === 'close') { setOn(false); return; }
         if (command === 'open-music') { const m = musicWin(); if (m) { if (m.isMinimized()) m.restore(); m.show(); m.focus(); } return; }
         if (command === 'lock') { prefs.locked = value === true; save(); applyLock(); tellBar('music-desktop-lyrics-prefs', { locked: prefs.locked, size: prefs.size }); tellMusic(); return; }
