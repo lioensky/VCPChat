@@ -375,12 +375,11 @@ body.music-reduce-motion .archive-lyrics-back { animation: none !important; }
 .archive-list-search .archive-glyph-search { width: 14px; height: 14px; opacity: .7; }
 .archive-list-search input { width: 0; flex: 0 0 0; opacity: 0; }
 .archive-list-import { padding: 0; }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-toolbar,
-.archive-list:has(.archive-list-recentq:not([hidden])) .archive-list-toolbar { left: var(--gutter); border-bottom: 1px solid var(--ar-accent); }
-.archive-list:has(.archive-list-search input:not(:focus):not(:placeholder-shown)) .archive-list-toolbar { border-bottom-color: color-mix(in srgb, var(--ar-ink) 24%, transparent); }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-search { flex: 1 1 auto; gap: 9px; cursor: text; }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-search input { width: auto; flex: 1 1 auto; opacity: 1; }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-kinds { visibility: hidden; }
+.archive-list.al-sq .archive-list-toolbar { left: var(--gutter); border-bottom: 1px solid var(--ar-accent); }
+.archive-list.al-sq:not(.al-sq-f) .archive-list-toolbar { border-bottom-color: color-mix(in srgb, var(--ar-ink) 24%, transparent); }
+.archive-list.al-sq .archive-list-search { flex: 1 1 auto; gap: 9px; cursor: text; }
+.archive-list.al-sq .archive-list-search input { width: auto; flex: 1 1 auto; opacity: 1; }
+.archive-list.al-sq .archive-list-kinds { visibility: hidden; }
 .archive-list-search:hover .archive-glyph-search { opacity: 1; }
 /* 表头即排序 */
 .archive-list-cols > button { padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; color: inherit; text-align: inherit; cursor: pointer; transition: color .12s; }
@@ -411,8 +410,8 @@ body.music-reduce-motion .archive-lyrics-back { animation: none !important; }
 .archive-list-search .archive-glyph-search { opacity: 1; }
 .archive-list-import-toggle { font-size: 17px; line-height: 1; }
 /* 检索展开后：放大镜不再是按钮样子 */
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-search { display: flex; width: auto; height: 26px; place-items: initial; align-items: center; padding: 0 0 0 2px; border-radius: 0; background: transparent; transform: none; }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-sort { visibility: hidden; }
+.archive-list.al-sq .archive-list-search { display: flex; width: auto; height: 26px; place-items: initial; align-items: center; padding: 0 0 0 2px; border-radius: 0; background: transparent; transform: none; }
+.archive-list.al-sq .archive-list-sort { visibility: hidden; }
 /* 分类项悬停：字变实 + 下面浮一条 1px 细线，位置和选中的琥珀线一致 */
 .archive-list-kinds > button::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 1px; background: currentColor; opacity: 0; transform: scaleX(.4); transition: opacity .16s, transform .2s; pointer-events: none; }
 .archive-list-kinds > button:not(.on):hover::after { opacity: .45; transform: none; }
@@ -443,23 +442,21 @@ body.music-reduce-motion .archive-lyrics-back { animation: none !important; }
    不要共用套件那块圆角玻璃胶囊（和目录的扁平细线不搭）：展开后就是一行字 + 一条 1px 细线，
    细线只在检索框底下、不伸到「+」下面；平时淡（24%），悬停 40%，聚焦 70% 墨色；放大镜跟着变深，不再是亮白。 */
 .archive-list-search::after { content: none; }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-toolbar,
-.archive-list:has(.archive-list-recentq:not([hidden])) .archive-list-toolbar,
-.archive-list:has(.archive-list-search input:not(:focus):not(:placeholder-shown)) .archive-list-toolbar { border-bottom: 0; gap: 10px; }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-search {
+.archive-list.al-sq .archive-list-toolbar { border-bottom: 0; gap: 10px; }
+.archive-list.al-sq .archive-list-search {
     padding: 0 2px 0 0; gap: 8px; border-radius: 0;
     box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ar-ink) 24%, transparent);
     transition: box-shadow .16s ease;
 }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-search:hover { background: transparent; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ar-ink) 40%, transparent); }
+.archive-list.al-sq .archive-list-search:hover { background: transparent; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ar-ink) 40%, transparent); }
 .archive-list .archive-list-search:focus-within { box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ar-ink) 70%, transparent); }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-glyph-search { color: var(--ar-muted); opacity: .8; }
+.archive-list.al-sq .archive-glyph-search { color: var(--ar-muted); opacity: .8; }
 .archive-list .archive-list-search:focus-within .archive-glyph-search { color: var(--ar-ink); opacity: .75; }
-.archive-list:has(.archive-list-search :is(input:focus, input:not(:placeholder-shown))) .archive-list-search input { height: 26px; padding: 0 0 0 1px; font-size: 13.5px; }
+.archive-list.al-sq .archive-list-search input { height: 26px; padding: 0 0 0 1px; font-size: 13.5px; }
 .archive-list-search input::placeholder { color: var(--ar-muted); opacity: .55; }
 .archive-list .archive-list-search::after, .archive-list .archive-list-search:focus-within::after { content: none; display: none; }
-.archive-list:has(.archive-list-search input:focus) .archive-list-search { box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ar-ink) 70%, transparent); }
-.archive-list:has(.archive-list-search input:focus) .archive-list-search .archive-glyph-search { color: var(--ar-ink); opacity: .75; }
+.archive-list.al-sq-f .archive-list-search { box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ar-ink) 70%, transparent); }
+.archive-list.al-sq-f .archive-list-search .archive-glyph-search { color: var(--ar-ink); opacity: .75; }
 /* R29 键盘焦点：全局那条 2px 实线（1,3,0）压过了首页自己的样式，换回克制的细线；用鼠标时脚本挪过去的焦点不显示 */
 #music-archive-view button:focus-visible:not(#messageInput) { outline: 1px solid color-mix(in srgb, var(--ar-ink) 45%, transparent); outline-offset: 3px; }
 html.md-pointer-mode #music-archive-view button:focus-visible:not(#messageInput),

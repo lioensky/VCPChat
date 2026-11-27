@@ -599,7 +599,7 @@ body.music-archive-on:not(.music-stage-active) #music-dock-root .md-drbg::before
   mask-image: linear-gradient(to bottom, transparent, #000 76px);
 }
 /* 和歌词栏的纸色交叠，延长抽屉左侧的渐隐。 */
-body.music-archive-on:not(.music-stage-active):has(.archive-hud.beside-drawer.lyrics-open) #music-dock-root .md-drbg {
+body.music-archive-on.music-archive-drawer-lyrics:not(.music-stage-active) #music-dock-root .md-drbg {
   --md-dr-solid: 74%;
   --md-dr-tint: 76%;
 }

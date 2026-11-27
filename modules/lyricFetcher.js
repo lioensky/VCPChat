@@ -124,7 +124,7 @@ function getBestMatch(songs, artist) {
         if (longerLength === 0) {
             return 1.0;
         }
-        const matchDistance = Math.floor(longerLength / 2) - 1;
+        const matchDistance = Math.max(0, Math.floor(longerLength / 2) - 1);
         const shorterMatches = new Array(shorter.length).fill(false);
         const longerMatches = new Array(longerLength).fill(false);
         let matches = 0;

@@ -292,16 +292,18 @@
             if (!q) return;
             writeRecentQ([q, ...readRecentQ().filter((x) => x.toLowerCase() !== q.toLowerCase())]);
         };
+        let lSq = false, lSqF = false;
+        const syncSq = () => {
+            const f = document.activeElement === r.input, o = f || Boolean(r.input.value || (r.recentQ && !r.recentQ.hidden));
+            if (o !== lSq) el.classList.toggle('al-sq', lSq = o);
+            if (f !== lSqF) el.classList.toggle('al-sq-f', lSqF = f);
+        };
         const paintRecentQ = () => {
             const box = r.recentQ;
-            if (!box) return;
-            if (document.activeElement !== r.input || r.input.value.trim()) {
-                if (!box.hidden) box.hidden = true;
-                return;
-            }
-            const list = readRecentQ();
-            const show = list.length > 0;
-            if (box.hidden !== !show) box.hidden = !show;
+            const list = box && document.activeElement === r.input && !r.input.value.trim() ? readRecentQ() : null;
+            const show = Boolean(list && list.length);
+            if (box && box.hidden !== !show) box.hidden = !show;
+            syncSq();
             if (!show) return;
             box.innerHTML = '<header><span>最近检索</span><button type="button" data-rq-clear>清除</button></header>'
                 + list.map((q, n) => `<div class="rq" role="option" data-rq="${n}"><span>${esc(q)}</span><button type="button" data-rq-del="${n}" aria-label="删除这条" title="删除这条"><svg class="archive-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`).join('');
@@ -1152,6 +1154,7 @@
         let typeTimer = 0;
         const applyQuery = (resetScroll) => {
             state.query = r.input.value;
+            syncSq();
             const hasQ = Boolean(state.query.trim()), vpH = viewportHeight(), top = resetScroll ? 0 : readScrollTop();
             if (resetScroll && lastRenderTop !== 0 && r.viewport.scrollTop) r.viewport.scrollTop = 0;
             recordScrollTop(top);
@@ -1159,23 +1162,20 @@
             if (hasQ && !edgeRow(false, vpH)) render({ top, height: vpH });
         };
         r.input.addEventListener('input', () => {
+            paintRecentQ();
             clearTimeout(typeTimer);
-            typeTimer = setTimeout(() => applyQuery(true), 30); // 570 首时一次检索约 5–15ms，去抖只为合并连续按键，不再让人等
+            typeTimer = setTimeout(() => applyQuery(true), 30);
         });
         // 右边 ✕ 清空检索词（显隐靠 CSS :placeholder-shown）
         r.clear?.addEventListener('mousedown', (e) => e.preventDefault());
         r.clear?.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             if (!r.input.value) return;
             r.input.value = '';
-            flushQuery();
-            r.input.focus();
-            paintRecentQ();
+            flushQuery(); r.input.focus(); paintRecentQ();
         });
         r.input.addEventListener('focus', paintRecentQ);
-        r.input.addEventListener('input', paintRecentQ);
-        r.input.addEventListener('blur', () => { if (r.recentQ) r.recentQ.hidden = true; });
+        r.input.addEventListener('blur', () => { if (r.recentQ) r.recentQ.hidden = true; syncSq(); });
         // 在列表里按下不让检索框失焦（否则点不到）
         r.saveSmart.addEventListener('click', () => {
             const q = state.query.trim();
@@ -2050,7 +2050,7 @@
          */
         const goToGroup = (i, kind) => {
             if (!KINDS.some(([k]) => k === kind)) return false;
-            if (state.query) { clearTimeout(typeTimer); r.input.value = ''; state.query = ''; }
+            if (state.query) { clearTimeout(typeTimer); r.input.value = ''; state.query = ''; syncSq(); }
             if (kind !== state.kind) setKind(kind); else rebuild();
             const k = findRow(i, null);
             if (k < 0) return false;

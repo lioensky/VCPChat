@@ -585,7 +585,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // 从资源管理器拖进来的文件：拦下默认动作，不然 Chromium 会跳去打开那个文件，整个播放器被换掉。
         // 能拿到本地路径时（新 preload）把拖进来的歌和文件夹加进曲库；拿不到就只是拦下。
         // 窗口里自己的拖拽（行拖到底栏入队）不带 Files，不受影响。
-        const isFileDrag = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+        const isFileDrag = (event) => {
+            const types = event.dataTransfer?.types;
+            if (!types) return false;
+            if (typeof types.includes === 'function') return types.includes('Files');
+            if (typeof types.contains === 'function') return types.contains('Files');
+            for (let i = 0; i < types.length; i += 1) if (types[i] === 'Files') return true;
+            return false;
+        };
         const canImport = () => typeof app.api?.getPathForFile === 'function' && typeof app.api?.addMusicPaths === 'function';
         addManagedListener(document, 'dragover', (event) => {
             if (!isFileDrag(event)) return;
@@ -844,8 +851,10 @@ document.addEventListener('DOMContentLoaded', () => {
             app.saveSettings();
         };
 
-        app.handleProgressUpdate = async (e, shouldSeek = false) => {
-            const rect = app.progressContainer.getBoundingClientRect();
+        let dragRect = null;
+        let dragEndTimer = 0;
+        app.handleProgressUpdate = async (e, shouldSeek = false, knownRect = null) => {
+            const rect = knownRect || app.progressContainer.getBoundingClientRect();
             const offsetX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
             const width = rect.width;
 
@@ -859,22 +868,36 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        const onProgressMove = (e) => {
+            if (app.dragInProgress) app.handleProgressUpdate(e, false, dragRect);
+        };
+        const detachProgressDrag = () => {
+            window.removeEventListener('mousemove', onProgressMove);
+            window.removeEventListener('mouseup', onProgressUp);
+            dragRect = null;
+        };
+        const onProgressUp = (e) => {
+            const rect = dragRect;
+            detachProgressDrag();
+            if (app.dragInProgress) {
+                app.handleProgressUpdate(e, true, rect);
+                if (dragEndTimer) clearTimeout(dragEndTimer);
+                dragEndTimer = setTimeout(() => { dragEndTimer = 0; app.dragInProgress = false; }, 0);
+            }
+        };
+        listenerDisposers.push(() => {
+            detachProgressDrag();
+            if (dragEndTimer) { clearTimeout(dragEndTimer); dragEndTimer = 0; }
+        });
+
         app.progressContainer.onmousedown = (e) => {
             app.dragInProgress = true;
             app.stopStatePolling();
-            app.handleProgressUpdate(e);
+            dragRect = app.progressContainer.getBoundingClientRect();
+            window.addEventListener('mousemove', onProgressMove);
+            window.addEventListener('mouseup', onProgressUp);
+            app.handleProgressUpdate(e, false, dragRect);
         };
-
-        addManagedListener(window, 'mousemove', (e) => {
-            if (app.dragInProgress) app.handleProgressUpdate(e);
-        });
-
-        addManagedListener(window, 'mouseup', (e) => {
-            if (app.dragInProgress) {
-                app.handleProgressUpdate(e, true);
-                setTimeout(() => { app.dragInProgress = false; }, 0);
-            }
-        });
 
         app.progressBar.onclick = (e) => {
             if (!app.dragInProgress) app.handleProgressUpdate(e, true);
@@ -1028,10 +1051,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // 经典列表当前显示的顺序（可能按标题、歌手等排过序）。
         app.classicOrder = () => {
             // 档案页开着时经典列表还没重画，按它待画的那组歌算
-            if (app.classicPendingSongs) { const inLib = new Set(app.playlist); return app.classicPendingSongs.filter(t => inLib.has(t)); }
+            if (app.classicPendingSongs) {
+                if (app.classicPendingSongs === app.playlist) return app.playlist.slice();
+                const inLib = new Set(app.playlist);
+                return app.classicPendingSongs.filter(t => inLib.has(t));
+            }
             // 列表只建了看得见的那些行，顺序按它要显示的整组歌算
             const shown = app.classicShownSongs?.();
-            if (Array.isArray(shown)) { const inLib = new Set(app.playlist); return shown.filter(t => inLib.has(t)); }
+            if (Array.isArray(shown)) {
+                if (shown === app.playlist) return app.playlist.slice();
+                const inLib = new Set(app.playlist);
+                return shown.filter(t => inLib.has(t));
+            }
             return Array.from(app.playlistEl.children, li => app.playlist[Number(li.dataset.index)]).filter(Boolean);
         };
         app.playlistEl.addEventListener('click', (e) => {
@@ -1059,6 +1090,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.createPlaylistBtn.onclick = () => app.showPlaylistDialog((name) => {
             const id = Date.now().toString(); app.customPlaylists.push({ id, name, tracks: [] });
             app.saveCustomPlaylists(); app.renderSidebarContent('playlists');
+            try { app.archiveView?.refresh?.(); } catch (_) {}
         });
         app.dialogCancel.onclick = () => app.hidePlaylistDialog();
         app.dialogConfirm.onclick = () => {
@@ -1091,10 +1123,10 @@ document.addEventListener('DOMContentLoaded', () => {
         addManagedListener(document, 'click', (e) => { if (!app.contextMenu.contains(e.target)) app.contextMenu.classList.remove('visible'); });
         addManagedListener(document, 'keydown', (e) => {
             if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
-            if (document.querySelector('.dialog-overlay.music-dialog.visible')) return;
+            if (document.querySelector('.dialog-overlay.music-dialog.visible:not([data-closing])')) return;
             if (app.playlistDialog?.classList.contains('visible')) { app.hidePlaylistDialog(); e.preventDefault(); return; }
             if (app.playlistEditModal?.classList.contains('visible')) { closePlaylistEditModal(); e.preventDefault(); return; }
-            if (e.key === 'Escape' && !e.isComposing && app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
+            if (app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
         });
         // ── 右键菜单的作用范围 ──
         // 「从列表中移除」要按右键时所在的视图决定删哪里，而不是按上一次从哪里点播。
@@ -1242,11 +1274,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         } catch (err) { /* 没有提示层也不影响入队 */ }
                     }
                 } else if (action === 'create-playlist-add') {
-                    app.showPlaylistDialog((name) => {
-                        const id = Date.now().toString(), track = app.playlist[app.contextMenuTrackIndex];
-                        app.customPlaylists.push({ id, name, tracks: [track.path] });
-                        app.saveCustomPlaylists(); if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists');
-                    });
+                    const track = app.playlist[app.contextMenuTrackIndex];
+                    if (track?.path) {
+                        app.showPlaylistDialog((name) => {
+                            const id = Date.now().toString();
+                            app.customPlaylists.push({ id, name, tracks: [track.path] });
+                            app.saveCustomPlaylists();
+                            if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists');
+                            try { app.archiveView?.refresh?.(); } catch (_) {}
+                        });
+                    }
                 } else if (action === 'remove-from-list') {
                     app.removeTrackInScope(app.contextMenuTrackIndex);
                 }
@@ -1367,7 +1404,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Build a map of newly scanned tracks by path for quick lookup
             const scannedMap = new Map(newPlaylist.map(t => [t.path, t]));
-            const scannedPaths = new Set(scannedMap.keys());
 
             // 只有真的在这个文件夹里面的曲目才算「这次该扫到」：D:\Music 不能把 D:\Music2 里的歌也算进来。
             // 扫描本身失败（failed）时什么都不删，免得一次读取错误把整个文件夹从曲库里清掉。
@@ -1383,12 +1419,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const appended = new Map();
 
             for (const track of app.playlist) {
-                if (addedDuringScan?.has(track.path) && scannedPaths.has(track.path)) {
+                if (addedDuringScan?.has(track.path) && scannedMap.has(track.path)) {
                     appended.set(track.path, track);
                     addedDuringScan.delete(track.path);
                     continue;
                 }
-                if (scannedPaths.has(track.path)) {
+                if (scannedMap.has(track.path)) {
                     // 已有的曲目原地更新信息，保住对象本身：歌单视图、队列、播放历史都拿着它。
                     Object.assign(track, scannedMap.get(track.path));
                     updatedPlaylist.push(track);

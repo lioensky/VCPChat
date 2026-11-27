@@ -527,6 +527,7 @@ async function audioEngineApi(endpoint, method = 'POST', body = null) {
     const timeoutMs = audioEngineTimeoutMs(endpoint);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    timer.unref?.();
     try {
         if (!fetch) throw new Error('node-fetch module is not available yet.');
 

@@ -320,15 +320,16 @@ async function scanAudioFiles(config, progressCallback) {
             const entries = Array.isArray(result.entries) ? result.entries : [];
             for (const entry of entries) {
                 if (entry.isDir) {
-                    await scanDir(entry.href);
+                    if (entry.href) await scanDir(entry.href);
                 } else {
-                    const ext = path.extname(entry.name).toLowerCase();
-                    if (AUDIO_EXTENSIONS.has(ext)) {
+                    const entryName = String(entry?.name || '');
+                    const ext = path.extname(entryName).toLowerCase();
+                    if (entryName && AUDIO_EXTENSIONS.has(ext)) {
                         tracks.push({
-                            name: entry.name,
+                            name: entryName,
                             path: entry.url,
                             href: entry.href,
-                            title: entry.name.replace(/\.[^.]+$/, ''),
+                            title: entryName.replace(/\.[^.]+$/, ''),
                             artist: '',
                             album: '',
                             isRemote: true

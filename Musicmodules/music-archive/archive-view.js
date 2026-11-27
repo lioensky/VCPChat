@@ -935,12 +935,21 @@
         let grid = null;            // 分节网格（archive-grid.js）
         let table = null;           // 平放（封面墙倒下去的那一版）
         const flat = () => (state.layout === 'wall' ? wall : state.layout === 'table' ? table : state.layout === 'grid' ? grid : null);
+        let lastDrawerLyrics = false;
+        const syncDrawerLyrics = () => {
+            const on = Boolean(state.lyricsOn && lastInset > 0);
+            if (on !== lastDrawerLyrics) {
+                lastDrawerLyrics = on;
+                document.body.classList.toggle('music-archive-drawer-lyrics', on);
+            }
+        };
         const wantLyrics = (on) => {
             on = Boolean(on);
             if (on === Boolean(state.lyricsOn)) return;
             state.lyricsOn = on;
             refs.hud.classList.toggle('lyrics-open', on);
             refs.lyricsBtn?.setAttribute('aria-pressed', String(on));
+            syncDrawerLyrics();
             if (lastInset) resize();
             else {
                 syncLyrics();
@@ -1323,6 +1332,7 @@
             const hudH = h / sc;
             const lift = Math.round(safe / sc);
             refs.hud.classList.toggle('beside-drawer', inset > 0);
+            syncDrawerLyrics();
             refs.hud.style.width = hudW + 'px';
             refs.hud.style.height = hudH + 'px';
             refs.hud.style.transform = `scale(${sc})`;
@@ -2116,6 +2126,8 @@
             clearTimeout(placeTimer);
             savePlace();
             state.destroyed = true;
+            lastDrawerLyrics = false;
+            document.body.classList.remove('music-archive-drawer-lyrics');
             cancelClassicInit();
             clearInterval(clockTimer);
             if (syncListRaf) { cancelAnimationFrame(syncListRaf); syncListRaf = 0; }
