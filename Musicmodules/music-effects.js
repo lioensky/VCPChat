@@ -126,7 +126,9 @@ function setupEffects(app) {
         for (const band in app.eqBands) {
             const slider = document.getElementById(`eq-${band}`);
             const parsed = parseInt(slider ? slider.value : app.eqBands[band], 10);
-            newBands[band] = Number.isFinite(parsed) ? parsed : 0;
+            const value = Number.isFinite(parsed) ? parsed : 0;
+            newBands[band] = value;
+            app.eqBands[band] = value;
         }
         const enabled = app.eqSwitch.checked;
         const eqType = app.eqTypeSelect?.value;
@@ -216,11 +218,18 @@ function setupEffects(app) {
         if (!app.api?.musicUnloadIr) return;
         const seq = ++irLoadSeq;
         try {
-            await app.api.musicUnloadIr();
+            const result = await app.api.musicUnloadIr();
             if (seq !== irLoadSeq) return;
+            if (result?.status === 'error') {
+                app.updateIrStatus((window.MusicErrorText || ((m, f) => f))(result.message, '卸载失败'), 'error');
+                return;
+            }
             app.irLoadedPath = null; app.irEnabled = false; app.irSwitch.checked = false;
             app.updateIrStatus('未加载', 'idle');
-        } catch (e) {}
+        } catch (e) {
+            if (seq !== irLoadSeq) return;
+            app.updateIrStatus((window.MusicErrorText || ((m, f) => f))(e, '卸载失败'), 'error');
+        }
     };
 
     // --- Loudness ---

@@ -107,16 +107,17 @@ function setupWebDav(app) {
             return;
         }
         const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+        const currentPath = safeDecode(dirPath.replace(/\/$/, ''));
         const entries = result.entries.filter((entry) => {
-            const entryPath = safeDecode(entry.href.replace(/\/$/, ''));
-            const currentPath = dirPath.replace(/\/$/, '');
-            return !entryPath.endsWith(currentPath) || (entry.isDir && entry.href !== dirPath);
+            if (!entry.isDir) return true;
+            const entryPath = safeDecode(String(entry.href || '').replace(/\/$/, ''));
+            return currentPath ? entryPath !== currentPath : entryPath !== '';
         });
         if (entries.length === 0) {
             app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">此目录为空</div>';
             return;
         }
-        const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape']);
+        const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff', '.alac', '.dsf', '.dff']);
         app.webdavFileList.innerHTML = '';
         entries.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name));
         const fragment = document.createDocumentFragment();

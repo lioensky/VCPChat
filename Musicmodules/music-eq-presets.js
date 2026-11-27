@@ -127,6 +127,7 @@
 
         // 起名框：长相和「新建歌单」一样（.dialog-overlay > .dialog），Enter 存、Esc 取消
         let asking = false;
+        let closeActivePrompt = null;
         const promptSave = () => {
             if (!doc || asking) return;
             asking = true;
@@ -168,6 +169,7 @@
                 if (done) return;
                 done = true;
                 asking = false;
+                closeActivePrompt = null;
                 if (focusTimer) { clearTimeout(focusTimer); focusTimer = 0; }
                 global.removeEventListener('keydown', onKey, true);
                 overlay.classList.remove('visible');
@@ -175,6 +177,7 @@
                 if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === 'function') { try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
                 if (name) save(name);
             };
+            let finishActive = null;
             const onKey = (e) => {
                 if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(null); return; }
                 if (e.key === 'Enter' && !e.isComposing && doc.activeElement === input) { e.preventDefault(); e.stopPropagation(); if (!ok.disabled) finish(input.value); return; }
@@ -188,8 +191,12 @@
                             (e.shiftKey ? last : first).focus({ preventScroll: true });
                         }
                     }
+                    return;
                 }
+                if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && e.target !== input) e.stopPropagation();
             };
+            finishActive = finish;
+            closeActivePrompt = () => finishActive?.(null);
             overlay.querySelector('.dialog-btn.cancel').addEventListener('click', () => finish(null));
             ok.addEventListener('click', () => { if (!ok.disabled) finish(input.value); });
             overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(null); });
@@ -200,21 +207,27 @@
         };
 
         // 操作项被选中时：在 change 到达下拉自己的处理之前拦下（捕获阶段，挂在 document 上），做完把下拉还原成实际状态
+        const onPresetSelectChange = (e) => {
+            const sel = select();
+            if (!sel || e.target !== sel) return;
+            const v = sel.value;
+            if (v !== SAVE && v !== DEL) { syncDelete(); return; }
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            const target = delOpt?.dataset.name || '';
+            app.syncEqPresetSelect?.();
+            if (v === SAVE) promptSave();
+            else if (target) remove(target); // 删的是打开下拉前选中的那个自己的预设
+            syncDelete();
+        };
         if (doc) {
-            doc.addEventListener('change', (e) => {
-                const sel = select();
-                if (!sel || e.target !== sel) return;
-                const v = sel.value;
-                if (v !== SAVE && v !== DEL) { syncDelete(); return; }
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                const target = delOpt?.dataset.name || '';
-                app.syncEqPresetSelect?.();
-                if (v === SAVE) promptSave();
-                else if (target) remove(target); // 删的是打开下拉前选中的那个自己的预设
-                syncDelete();
-            }, true);
+            doc.addEventListener('change', onPresetSelectChange, true);
         }
+        global.addEventListener?.('beforeunload', () => {
+            if (doc) doc.removeEventListener('change', onPresetSelectChange, true);
+            closeActivePrompt?.();
+            closeActivePrompt = null;
+        }, { once: true });
 
         // 滑块变了、换了预设，「删除」项跟着更新
         const hooks = (global.MusicAppHooks || require('./music-app-hooks.js'));

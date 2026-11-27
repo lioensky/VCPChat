@@ -74,7 +74,9 @@
         });
 
         const set = (patch) => {
-            wanted = normalize({ ...wanted, ...patch });
+            const next = normalize({ ...wanted, ...patch });
+            if (same(next, wanted) && engine !== null && same(engine, wanted)) return Promise.resolve(null);
+            wanted = next;
             failures = 0;
             try { storage?.setItem(KEY, JSON.stringify(wanted)); } catch (e) { /* 只是偏好 */ }
             lastPush = Date.now();
@@ -194,6 +196,8 @@
             global.requestAnimationFrame?.(() => overlay && overlay.classList.add('visible'));
             try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
         };
+
+        global.addEventListener?.('beforeunload', close, { once: true });
 
         app.channels = {
             get supported() { return engine !== null; },

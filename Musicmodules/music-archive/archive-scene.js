@@ -994,9 +994,12 @@ vec3 archiveUntone(vec3 y) {
             g.strokeRect(1, 1, Wc - 2, Hc - 2);
             const fit = (text, maxW) => {
                 if (g.measureText(text).width <= maxW) return text;
-                let t = text;
-                while (t.length > 1 && g.measureText(t + '…').width > maxW) t = t.slice(0, -1);
-                return t + '…';
+                let lo = 1, hi = text.length - 1;
+                while (lo < hi) {
+                    const mid = (lo + hi + 1) >> 1;
+                    if (g.measureText(text.slice(0, mid) + '…').width > maxW) hi = mid - 1; else lo = mid;
+                }
+                return text.slice(0, lo) + '…';
             };
             g.fillStyle = ink;
             g.textBaseline = 'alphabetic';
@@ -1208,13 +1211,16 @@ vec3 archiveUntone(vec3 y) {
         };
         const unhold = () => { if (held) { held = null; heldActiveUntil = 0; invalidate(); } };
         const camAt = () => ({ lane: camLane.v, row: camRow.v });
+        const dragBase = new THREE.Vector3(), dragTmp = new THREE.Vector3();
         const dragAxes = () => {
-            const c = new THREE.Vector3((target.lane - camLane.v) * COLUMN_SPACING, BASE_Y + 1.85, (target.row - camRow.v) * ROW_SPACING - 2.17);
-            const px = (v) => { v.project(camera); return { x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H }; };
-            const o = px(c.clone());
-            const l = px(c.clone().add(new THREE.Vector3(COLUMN_SPACING, 0, 0)));
-            const r = px(c.clone().add(new THREE.Vector3(0, 0, ROW_SPACING)));
-            return { lane: { x: l.x - o.x, y: l.y - o.y }, row: { x: r.x - o.x, y: r.y - o.y } };
+            dragBase.set((target.lane - camLane.v) * COLUMN_SPACING, BASE_Y + 1.85, (target.row - camRow.v) * ROW_SPACING - 2.17);
+            dragTmp.copy(dragBase).project(camera);
+            const ox = (dragTmp.x + 1) / 2 * W, oy = (1 - dragTmp.y) / 2 * H;
+            dragTmp.set(dragBase.x + COLUMN_SPACING, dragBase.y, dragBase.z).project(camera);
+            const lx = (dragTmp.x + 1) / 2 * W, ly = (1 - dragTmp.y) / 2 * H;
+            dragTmp.set(dragBase.x, dragBase.y, dragBase.z + ROW_SPACING).project(camera);
+            const rx = (dragTmp.x + 1) / 2 * W, ry = (1 - dragTmp.y) / 2 * H;
+            return { lane: { x: lx - ox, y: ly - oy }, row: { x: rx - ox, y: ry - oy } };
         };
         /* 不带动画直接跳到某格（第一次打开、数据重建） */
         const jump = (lane, row) => {
@@ -1317,12 +1323,18 @@ vec3 archiveUntone(vec3 y) {
         /* 取出的卡在画面上的范围（画布像素），给 HUD 判断点没点在卡上 */
         const detailRect = () => {
             if (!detailOn) return null;
-            const pts = [[-CARD_W / 2, 0], [CARD_W / 2, 0], [-CARD_W / 2, CARD_H], [CARD_W / 2, CARD_H]].map(([x, y]) => {
-                projA.set(targetPos.x + x, targetPos.y + y, targetPos.z + CARD_D / 2).project(camera);
-                return [(projA.x + 1) / 2 * W, (1 - projA.y) / 2 * H];
-            });
-            const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-            return { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) };
+            const hw = CARD_W / 2, z = targetPos.z + CARD_D / 2;
+            let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+            for (let c = 0; c < 4; c++) {
+                projA.set(targetPos.x + (c & 1 ? hw : -hw), targetPos.y + (c & 2 ? CARD_H : 0), z).project(camera);
+                const x = (projA.x + 1) / 2 * W;
+                const y = (1 - projA.y) / 2 * H;
+                if (x < left) left = x;
+                if (x > right) right = x;
+                if (y < top) top = y;
+                if (y > bottom) bottom = y;
+            }
+            return { left, right, top, bottom };
         };
 
         /*
@@ -1330,6 +1342,7 @@ vec3 archiveUntone(vec3 y) {
          * 能卡住界面几百毫秒；这里编译期间不画，打开音乐页时其余界面照常响应，第一帧出来时已经编好。
          * 取出时才用到的封面材质、卡面标题也一起预先编译（临时挂一张 1×1 的白图、临时显示），之后第一次取出不再卡一下。
          */
+        let disposed = false;
         let shadersReady = typeof renderer.compileAsync !== 'function';
         if (!shadersReady) {
             const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
@@ -1343,8 +1356,9 @@ vec3 archiveUntone(vec3 y) {
             if (post.on) jobs.push(renderer.compileAsync(post.scene, post.camera));
             shown.forEach((o, i) => { o.visible = was[i]; });
             const done = () => {
-                if (borrowMap && artMat.map === white) { artMat.map = null; artMat.needsUpdate = true; }
                 white.dispose();
+                if (disposed) return;
+                if (borrowMap && artMat.map === white) { artMat.map = null; artMat.needsUpdate = true; }
                 shadersReady = true;
                 invalidate();
             };
@@ -1701,11 +1715,22 @@ vec3 archiveUntone(vec3 y) {
         };
 
         const dispose = () => {
+            if (disposed) return;
+            disposed = true;
             for (const layer of layers) { layer.geometry.dispose(); layer.dispose?.(); }
             for (const m of [cassetteMat, frameMat, artMat, captionMat, etchMat, stickerMat]) m.dispose();
             if (post.on) { post.rt.dispose(); post.mat.dispose(); post.scene.children[0].geometry.dispose(); host.classList.remove('archive-post-atmos'); }
             freeCoverTex(); fittingsGeo.dispose(); fittingsMat.dispose(); coverGeo.dispose(); frameGeo.dispose(); captionGeo.dispose(); captionMap.dispose(); etchGeo.dispose(); etchMap.dispose(); stickerGeo.dispose(); stickerMap.dispose();
-            for (const L of labels) { L.tex.dispose(); L.mat.dispose(); }
+            for (const L of labels) {
+                L.tex.dispose();
+                L.mat.dispose();
+                L.ctx = null;
+                if (L.canvas) { L.canvas.width = 0; L.canvas.height = 0; }
+            }
+            for (const c of [captionCanvas, etchCanvas, stickerCanvas, fallbackCoverCanvas]) {
+                if (c) { c.width = 0; c.height = 0; }
+            }
+            fallbackCoverCanvas = null;
             labelGeo.dispose();
             renderer.dispose();
             renderer.forceContextLoss?.();

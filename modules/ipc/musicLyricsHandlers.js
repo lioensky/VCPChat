@@ -33,7 +33,7 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
         return null;
     };
 
-    ipcMain.handle('music-get-lyrics', async (event, { artist, title, rawObject, path: trackPath }) => {
+    ipcMain.handle('music-get-lyrics', async (event, { artist, title, rawObject, path: trackPath } = {}) => {
         if (!title) return null;
 
         const sidecar = await readSidecarLyrics(trackPath);
@@ -69,7 +69,7 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
         return null;
     });
 
-    ipcMain.handle('music-fetch-lyrics', async (event, { artist, title, duration, durationMs, album, rawObject }) => {
+    ipcMain.handle('music-fetch-lyrics', async (event, { artist, title, duration, durationMs, album, rawObject } = {}) => {
         if (!title) return null;
         console.log(`[Music] IPC: Received request to fetch lyrics for "${title}" by "${artist}"`);
         try {

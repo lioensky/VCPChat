@@ -4,9 +4,8 @@
 
 const { decodeKrcLanguageTag } = require('./krcDecrypt');
 
-const LRC_LINE_TIME_REGEX = /^\[(\d{2}):(\d{2})[.:](\d{2,3})\]/;
-const GLOBAL_LRC_TIME_REGEX = /\[(\d{2}):(\d{2})[.:](\d{2,3})\]/g;
-const GLOBAL_ANGLE_TIME_REGEX = /<(\d{2}):(\d{2})[.:](\d{2,3})>/g;
+const GLOBAL_LRC_TIME_REGEX = /\[(\d{1,3}):(\d{2})[.:](\d{2,3})\]/g;
+const LRC_MULTI_TIME_LINE_REGEX = /^((?:\[(?:\d{1,3}):(?:\d{2})[.:](?:\d{2,3})\])+)(.*)$/;
 
 function isSourceMigrationArtifact(text) {
     return typeof text === 'string' && text.trim() === '//';
@@ -80,22 +79,25 @@ function buildTimedWords(text, startTime, endTime) {
 }
 
 /**
- * Parses simple timed text from LRC line
+ * Parses one or more leading [mm:ss.xx] timestamps from an LRC line (expanding chorus lines).
  */
-function parseSimpleTimedTextEntry(line) {
-    const match = line.match(/^((?:\[(?:\d{2}):(?:\d{2})[.:](?:\d{2,3})\])+)(.*)$/);
-    if (!match) return null;
-
-    const firstTag = match[1].match(LRC_LINE_TIME_REGEX);
-    if (!firstTag) return null;
+function parseSimpleTimedTextEntries(line) {
+    const match = line.match(LRC_MULTI_TIME_LINE_REGEX);
+    if (!match) return [];
 
     const text = match[2].trim();
-    if (!text) return null;
+    if (!text) return [];
 
-    return {
-        startTime: parseTimestamp(firstTag[1], firstTag[2], firstTag[3]),
-        text
-    };
+    const results = [];
+    GLOBAL_LRC_TIME_REGEX.lastIndex = 0;
+    let tagMatch;
+    while ((tagMatch = GLOBAL_LRC_TIME_REGEX.exec(match[1])) !== null) {
+        results.push({
+            startTime: parseTimestamp(tagMatch[1], tagMatch[2], tagMatch[3]),
+            text
+        });
+    }
+    return results;
 }
 
 /**
@@ -110,9 +112,9 @@ function parseTimedEntries(content) {
         const line = rawLine.trim();
         if (!line || line.startsWith('[ti:') || line.startsWith('[ar:') || line.startsWith('[al:')) continue;
 
-        const entry = parseSimpleTimedTextEntry(line);
-        if (entry && entry.text) {
-            entries.push(entry);
+        const parsed = parseSimpleTimedTextEntries(line);
+        for (let i = 0; i < parsed.length; i += 1) {
+            entries.push(parsed[i]);
         }
     }
     return entries.sort((a, b) => a.startTime - b.startTime);
@@ -551,8 +553,8 @@ function parseLRC(lrcString, translationString = '', romanizationString = '') {
     const romanizationEntries = parseTimedEntries(romanizationString);
 
     for (const rawLine of rawLines) {
-        const entry = parseSimpleTimedTextEntry(rawLine);
-        if (entry && entry.text) rawEntries.push(entry);
+        const parsed = parseSimpleTimedTextEntries(rawLine.trim());
+        for (let i = 0; i < parsed.length; i += 1) rawEntries.push(parsed[i]);
     }
 
     rawEntries.sort((a, b) => a.startTime - b.startTime);

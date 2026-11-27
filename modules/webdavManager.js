@@ -290,6 +290,16 @@ async function scanAudioFiles(config, progressCallback) {
     console.log('[WebDAV] scanAudioFiles starting with config:', { url: scanConfig.url, hasCredentials: !!(scanConfig.username && scanConfig.password) });
     
     let rootError = null;
+    let lastProgressAt = 0;
+    let lastReportedCount = 0;
+    const reportProgress = (force = false) => {
+        if (!progressCallback || tracks.length === lastReportedCount) return;
+        const now = Date.now();
+        if (!force && now - lastProgressAt < 80) return;
+        lastProgressAt = now;
+        lastReportedCount = tracks.length;
+        progressCallback(tracks.length);
+    };
     async function scanDir(dirPath, isRoot = false) {
         const dirKey = String(dirPath || '/').replace(/\/+$/, '') || '/';
         if (visitedDirs.has(dirKey)) return;
@@ -318,7 +328,7 @@ async function scanAudioFiles(config, progressCallback) {
                             album: '',
                             isRemote: true
                         });
-                        if (progressCallback) progressCallback(tracks.length);
+                        reportProgress(false);
                     }
                 }
             }
@@ -328,6 +338,7 @@ async function scanAudioFiles(config, progressCallback) {
     }
     
     await scanDir(scanConfig.path, true);
+    reportProgress(true);
     console.log('[WebDAV] scanAudioFiles complete, found', tracks.length, 'tracks');
     // 连起点都读不到（断网、密码错）就报错，不报「扫完了，0 首」。
     if (rootError) return { status: 'error', message: rootError, tracks: [] };

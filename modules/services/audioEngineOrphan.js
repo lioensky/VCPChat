@@ -55,6 +55,14 @@ function imageName(pid, { platform = process.platform, run = execFile } = {}) {
             });
             return;
         }
+        if (platform === 'darwin') {
+            run('ps', ['-p', String(pid), '-o', 'comm='], { timeout: 4000 }, (error, stdout) => {
+                if (error) return resolve(null);
+                const comm = String(stdout || '').trim();
+                resolve(comm ? comm.split('/').pop().toLowerCase() : null);
+            });
+            return;
+        }
         fs.readFile(`/proc/${pid}/comm`, 'utf8', (error, text) => resolve(error ? null : String(text).trim().toLowerCase()));
     });
 }

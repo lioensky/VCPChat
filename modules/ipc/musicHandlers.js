@@ -43,6 +43,7 @@ const libraryWatch = typeof createLibraryWatch !== 'function'
             await new Promise((resolve) => {
                 const onAbort = () => { clearTimeout(timer); resolve(); };
                 const timer = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve(); }, 2000);
+                timer.unref?.();
                 signal.addEventListener('abort', onAbort, { once: true });
             });
         }
@@ -324,7 +325,7 @@ function createOrFocusMusicWindow() {
         crashedWindow.webContents.on('render-process-gone', (_event, details) => {
             const reason = details?.reason || 'unknown';
             console.error(`[Music] Music window renderer gone: ${reason}`);
-            if (reason === 'clean-exit' || crashedWindow.isDestroyed()) return;
+            if (reason === 'clean-exit' || crashedWindow.isDestroyed() || electron.app?.isQuitting) return;
             audioEngineApi('/pause', 'POST').catch(() => {});
             musicCapsuleState = { ...musicCapsuleState, playing: false };
             publishMusicCapsule();
@@ -336,7 +337,10 @@ function createOrFocusMusicWindow() {
                 crashedWindow.close();
                 return;
             }
-            setTimeout(() => { if (!crashedWindow.isDestroyed()) crashedWindow.reload(); }, 250);
+            const reloadTimer = setTimeout(() => {
+                if (!crashedWindow.isDestroyed() && !electron.app?.isQuitting) crashedWindow.reload();
+            }, 250);
+            reloadTimer.unref?.();
         });
     });
 

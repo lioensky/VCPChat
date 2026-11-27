@@ -202,14 +202,22 @@
 
                 const lowPower = this.app?.currentStageQuality === 'energy-saving'
                     || Boolean(global.document?.body?.classList?.contains('music-fl-low'));
-                await pixiApp.init({
-                    backgroundAlpha: 0,
-                    preference: 'webgl',
-                    autoStart: false,
-                    antialias: !lowPower,
-                    resolution: lowPower ? 1 : Math.min(1.5, global.devicePixelRatio || 1),
-                    autoDensity: true
-                });
+                try {
+                    await pixiApp.init({
+                        backgroundAlpha: 0,
+                        preference: 'webgl',
+                        autoStart: false,
+                        antialias: !lowPower,
+                        resolution: lowPower ? 1 : Math.min(1.5, global.devicePixelRatio || 1),
+                        autoDensity: true
+                    });
+                } catch (err) {
+                    if (this.pixiApp === pixiApp) this.pixiApp = null;
+                    this.initPromise = null;
+                    try { pixiApp.destroy(true, { children: true }); } catch (_) {}
+                    console.warn('[AmbientPixi] Failed to initialize PIXI:', err);
+                    return;
+                }
 
                 if (this.destroyed || this.pixiApp !== pixiApp) {
                     try { pixiApp.destroy(true, { children: true }); } catch (_) {}
@@ -276,6 +284,7 @@
 
         update(dt = 0.016) {
             if (!this.initialized || this.destroyed || !this.pixiApp) return;
+            dt = Number.isFinite(dt) ? Math.min(0.1, Math.max(0, dt)) : 0.016;
 
             const app = this.app;
             const isPlaying = Boolean(app.isPlaying);
