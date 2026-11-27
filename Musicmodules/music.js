@@ -239,6 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     let disposeAudioEngineStatus = null;
+    let disposeElectronHandlers = null;
     app.destroy = () => {
         if (app.destroyed) return;
         app.destroyed = true;
@@ -247,6 +248,8 @@ document.addEventListener('DOMContentLoaded', () => {
         app.disposeCurrentLyricsQuery = null;
         disposeAudioEngineStatus?.();
         disposeAudioEngineStatus = null;
+        disposeElectronHandlers?.();
+        disposeElectronHandlers = null;
 
         app.stageHost?.destroy?.();
         app.destroyAmbientPixi?.();
@@ -258,6 +261,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (app.saveSettingsTimer) {
             clearTimeout(app.saveSettingsTimer);
             app.saveSettingsTimer = null;
+        }
+        if (app.searchInputTimer) {
+            clearTimeout(app.searchInputTimer);
+            app.searchInputTimer = null;
         }
         if (app.backgroundTransitionTimer) {
             clearTimeout(app.backgroundTransitionTimer);
@@ -431,7 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- Handlers & Listeners ---
         setupEventListeners();
-        setupElectronHandlers();
+        disposeElectronHandlers = setupElectronHandlers();
         window.setupMusicLikes?.(app); // 「喜欢」：右键菜单那一项要包在上面的菜单入口外面
         window.setupMusicGoto?.(app); // 右键「转到歌手 / 转到专辑」
         window.setupMusicSleep?.(app); // 定时关闭（入口在底栏抽屉）
@@ -918,21 +925,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 const presets = await app.api.listMusicIrPresets();
                 if (presets && presets.length > 0) {
                     const select = app.irPresetSelect;
+                    if (!select || select.options.length < 2) return;
                     // 保留第一个和最后一个选项
                     const customOption = select.options[select.options.length - 1];
                     const defaultOption = select.options[0];
-                    
-                    select.innerHTML = '';
-                    select.add(defaultOption);
-                    
+                    const frag = document.createDocumentFragment();
+                    frag.appendChild(defaultOption);
                     presets.forEach(p => {
                         const opt = document.createElement('option');
                         opt.value = p;
                         opt.textContent = p;
-                        select.add(opt);
+                        frag.appendChild(opt);
                     });
-                    
-                    select.add(customOption);
+                    frag.appendChild(customOption);
+                    select.innerHTML = '';
+                    select.appendChild(frag);
                 }
             } catch (err) {
                 console.error('[Music] Failed to update IR presets list:', err);
@@ -1256,6 +1263,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
         window.addEventListener('resize', () => {
+            if (document.body.classList.contains('music-archive-on') || !app.visualizerCanvas) return;
             const w = app.visualizerCanvas.clientWidth;
             const h = app.visualizerCanvas.clientHeight;
             if (w > 0 && h > 0 && (app.visualizerCanvas.width !== w || app.visualizerCanvas.height !== h)) {
@@ -1267,26 +1275,29 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const setupElectronHandlers = () => {
-        if (!app.api?.onMusicScanStart) return;
+        if (!app.api?.onMusicScanStart) return null;
+        const disposers = [];
+        const trackIpc = (unsub) => { if (typeof unsub === 'function') disposers.push(unsub); };
         // 同时在扫几个文件夹（连着拖进来、或扫描途中又加了一个）：先扫完的那个不能把「正在扫描」藏掉。
         let activeScans = 0;
-        app.api.onMusicScanStart(() => { activeScans += 1; app.loadingIndicator.style.display = 'flex'; app.scanProgressContainer.style.display = 'none'; });
-        app.api.onMusicScanProgress((data) => {
+        trackIpc(app.api.onMusicScanStart(() => { activeScans += 1; app.loadingIndicator.style.display = 'flex'; app.scanProgressContainer.style.display = 'none'; }));
+        trackIpc(app.api.onMusicScanProgress((data) => {
             app.scanProgressContainer.style.display = 'block';
             const percent = data.total > 0 ? Math.min(100, (data.current / data.total) * 100) : 0;
             app.scanProgressBar.style.width = `${percent}%`;
             app.scanProgressLabel.textContent = `正在扫描: ${data.current} / ${data.total}`;
-        });
+        }));
         // 扫描途中先把新读到的曲目接到列表末尾，不用等整个文件夹读完才看得到歌；
         // 列表最多每 400 毫秒重排一次。扫描结束时下面的 complete 再按磁盘顺序整理并保存。
         let scanBatchTimer = 0;
+        disposers.push(() => { if (scanBatchTimer) { clearTimeout(scanBatchTimer); scanBatchTimer = 0; } });
         let scanKnownPaths = null;
         let scanAddedPaths = null;
         const flushScanBatches = () => {
             scanBatchTimer = 0;
             app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView);
         };
-        app.api.onMusicScanBatch?.((data) => {
+        trackIpc(app.api.onMusicScanBatch?.((data) => {
             const incoming = data && Array.isArray(data.tracks) ? data.tracks : [];
             if (!scanKnownPaths) scanKnownPaths = new Set(app.playlist.map(t => t.path));
             const fresh = incoming.filter(t => t && t.path && !scanKnownPaths.has(t.path));
@@ -1296,8 +1307,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // 换一个新数组：各视图靠数组身份判断曲库变了没有。
             app.playlist = app.playlist.concat(fresh);
             if (!scanBatchTimer) scanBatchTimer = setTimeout(flushScanBatches, 400);
-        });
-        app.api.onMusicScanComplete((data) => {
+        }));
+        trackIpc(app.api.onMusicScanComplete((data) => {
             clearTimeout(scanBatchTimer); scanBatchTimer = 0; scanKnownPaths = null;
             // 途中先接上去的曲目按读完的先后排着，这里让它们回到磁盘顺序。
             const addedDuringScan = scanAddedPaths;
@@ -1362,21 +1373,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView);
             app.saveLibrary();
-        });
+        }));
         if (app.api?.onThemeUpdated) {
-            app.api.onThemeUpdated((theme) => app.applyTheme(theme));
+            trackIpc(app.api.onThemeUpdated((theme) => app.applyTheme(theme)));
         }
-        app.api.onMusicControl((command) => {
+        trackIpc(app.api.onMusicControl((command) => {
             console.log('[Music] Received music-control command:', command);
             if (command === 'play') app.playTrack();
             else if (command === 'pause') app.pauseTrack();
             else if (command === 'next') app.nextTrack();
             else if (command === 'previous') app.prevTrack();
-        });
+        }));
 
         // --- 处理从主进程发来的 "点歌" 命令 ---
         // 新协议传递 { track, stageMode }；共享消费函数仍兼容旧的纯 track 格式。
-        app.api.onMusicSetTrack((playbackRequest) => {
+        trackIpc(app.api.onMusicSetTrack((playbackRequest) => {
             const track = playbackRequest?.track || playbackRequest;
             console.log(
                 '[Music] Received music-set-track:',
@@ -1385,7 +1396,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 playbackRequest?.stageMode || 'regular'
             );
             void app.playRequestedTrack(playbackRequest);
-        });
+        }));
+        return () => {
+            while (disposers.length) {
+                const dispose = disposers.pop();
+                try { dispose(); } catch (_) {}
+            }
+        };
     };
 
     // 换歌时清掉上一首的进度样本，免得新歌第一次状态被当成「在往前走」。

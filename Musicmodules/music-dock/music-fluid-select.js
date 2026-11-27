@@ -294,10 +294,11 @@
         for (let i = 0; i < selects.length; i += 1) dress(selects[i]);
     };
     let pending = null;
+    let bodyObs = null;
     const flush = () => { const list = pending; pending = null; list.forEach(scan); };
     const start = () => {
         scan(doc.body);
-        const bodyObs = new MutationObserver((records) => {
+        bodyObs = new MutationObserver((records) => {
             for (const r of records) for (const n of r.addedNodes) {
                 if (n.nodeType !== 1) continue;
                 const tag = n.tagName;
@@ -308,18 +309,19 @@
             }
         });
         bodyObs.observe(doc.body, { childList: true, subtree: true });
-        global.addEventListener?.('beforeunload', () => {
-            close(false);
-            bodyObs.disconnect();
-            for (const obs of SELECT_OBSERVERS) obs.disconnect();
-            SELECT_OBSERVERS.clear();
-            doc.removeEventListener('keydown', onDocKeyDown, true);
-            doc.removeEventListener('pointerdown', onDocPointerDown, true);
-            doc.removeEventListener('click', onDocClick);
-            global.removeEventListener('resize', reflow);
-            doc.removeEventListener('scroll', onDocScroll, true);
-        }, { once: true });
     };
+    global.addEventListener?.('beforeunload', () => {
+        close(false);
+        bodyObs?.disconnect();
+        bodyObs = null;
+        for (const obs of SELECT_OBSERVERS) obs.disconnect();
+        SELECT_OBSERVERS.clear();
+        doc.removeEventListener('keydown', onDocKeyDown, true);
+        doc.removeEventListener('pointerdown', onDocPointerDown, true);
+        doc.removeEventListener('click', onDocClick);
+        global.removeEventListener('resize', reflow);
+        doc.removeEventListener('scroll', onDocScroll, true);
+    }, { once: true });
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true });
     else start();
 

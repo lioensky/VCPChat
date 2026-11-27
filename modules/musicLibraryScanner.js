@@ -285,35 +285,41 @@ async function scanFolder(options) {
                 if (done === total) finish();
             };
 
-            for (let i = 0; i < count; i++) {
-                const entry = { worker: new Worker(workerFile, { workerData: { coverCachePath } }), inFlight: new Map() };
-                workers.push(entry.worker);
-                alive++;
-                entry.worker.on('message', (result) => {
-                    const job = entry.inFlight.get(result.id);
-                    if (!job) return;
-                    entry.inFlight.delete(result.id);
-                    if (result.status !== 'success') console.error(result.error);
-                    settle(job, result.status === 'success' ? result.data : null);
-                    if (!settled) feed(entry);
-                });
-                const lost = (reason) => {
-                    if (entry.dead) return;
-                    entry.dead = true;
-                    alive--;
-                    if (settled) return;
-                    console.error(`[MusicScan] Scanner worker stopped: ${reason}`);
-                    // 这个 worker 手里的文件记为失败；还有别的 worker 就让它们接着做剩下的。
-                    for (const job of entry.inFlight.values()) settle(job, null);
-                    entry.inFlight.clear();
-                    if (!alive && !settled) {
-                        while (cursor < toParse.length) settle(toParse[cursor++], null);
-                        finish();
-                    }
-                };
-                entry.worker.on('error', (error) => lost(error.message));
-                entry.worker.on('exit', (code) => { if (code !== 0) lost(`exit code ${code}`); });
-                feed(entry);
+            try {
+                for (let i = 0; i < count; i++) {
+                    const entry = { worker: new Worker(workerFile, { workerData: { coverCachePath } }), inFlight: new Map() };
+                    workers.push(entry.worker);
+                    alive++;
+                    entry.worker.on('message', (result) => {
+                        const job = entry.inFlight.get(result.id);
+                        if (!job) return;
+                        entry.inFlight.delete(result.id);
+                        if (result.status !== 'success') console.error(result.error);
+                        settle(job, result.status === 'success' ? result.data : null);
+                        if (!settled) feed(entry);
+                    });
+                    const lost = (reason) => {
+                        if (entry.dead) return;
+                        entry.dead = true;
+                        alive--;
+                        if (settled) return;
+                        console.error(`[MusicScan] Scanner worker stopped: ${reason}`);
+                        // 这个 worker 手里的文件记为失败；还有别的 worker 就让它们接着做剩下的。
+                        for (const job of entry.inFlight.values()) settle(job, null);
+                        entry.inFlight.clear();
+                        if (!alive && !settled) {
+                            while (cursor < toParse.length) settle(toParse[cursor++], null);
+                            finish();
+                        }
+                    };
+                    entry.worker.on('error', (error) => lost(error.message));
+                    entry.worker.on('exit', (code) => { if (code !== 0) lost(`exit code ${code}`); });
+                    feed(entry);
+                }
+            } catch (err) {
+                console.error(`[MusicScan] Failed to spawn scanner worker: ${err.message}`);
+                while (cursor < toParse.length) settle(toParse[cursor++], null);
+                finish();
             }
         });
     }

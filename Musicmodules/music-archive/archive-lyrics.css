@@ -102,3 +102,13 @@ body.music-reduce-motion .archive-lyrics-track p.on::after { animation: none; }
 .archive-list.has-drop .archive-list-letter[data-md-dist="2"] > span { opacity: .6; }
 .archive-list.has-drop .archive-list-letter[data-md-dist="3"] > span { opacity: .45; filter: blur(.2px); }
 .archive-list.has-drop .archive-list-letter[data-md-dist="4"] > span { opacity: .35; filter: blur(.35px); }
+body.music-reduce-motion .archive-list.has-drop .archive-list-letter[data-md-dist="3"] > span,
+body.music-reduce-motion .archive-list.has-drop .archive-list-letter[data-md-dist="4"] > span,
+body.music-fl-low .archive-list.has-drop .archive-list-letter[data-md-dist="3"] > span,
+body.music-fl-low .archive-list.has-drop .archive-list-letter[data-md-dist="4"] > span { filter: none; }
+@media (prefers-reduced-motion: reduce) {
+    .archive-lyrics:not([hidden]), .archive-lyrics-track p.on::after { animation: none; }
+    .archive-lyrics-track, .archive-lyrics-track p.on.lp, .archive-lyrics-track p.on b.ww .w.singing, .archive-lyrics-index i { transition: none; }
+    .archive-list.has-drop .archive-list-letter[data-md-dist="3"] > span,
+    .archive-list.has-drop .archive-list-letter[data-md-dist="4"] > span { filter: none; }
+}

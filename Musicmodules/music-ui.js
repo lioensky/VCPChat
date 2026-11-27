@@ -155,10 +155,26 @@ function setupUI(app) {
         if (!pitch && p > 0 && view > 0) renderWindow(true);
     };
     let windowQueued = 0;
+    let windowQueuedIsRaf = false;
+    let themeRaf1 = 0;
+    let themeRaf2 = 0;
+    const cancelWindowQueue = () => {
+        if (!windowQueued) return;
+        if (windowQueuedIsRaf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(windowQueued);
+        else clearTimeout(windowQueued);
+        windowQueued = 0;
+        windowQueuedIsRaf = false;
+    };
     const renderWindowSoon = () => {
         if (windowQueued || classicHidden()) return;
-        const run = () => { windowQueued = 0; if (!classicHidden()) renderWindow(); };
-        windowQueued = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(run) : (setTimeout(run, 16) || 1);
+        const run = () => { windowQueued = 0; windowQueuedIsRaf = false; if (!classicHidden()) renderWindow(); };
+        if (typeof requestAnimationFrame === 'function') {
+            windowQueuedIsRaf = true;
+            windowQueued = requestAnimationFrame(run);
+        } else {
+            windowQueuedIsRaf = false;
+            windowQueued = setTimeout(run, 16) || 1;
+        }
     };
     // 档案页开着时经典列表整个藏着：这时不重建（删一首歌、重扫、换排序都会走到这里），
     // 记下要画什么，切回经典视图再画。
@@ -209,8 +225,11 @@ function setupUI(app) {
         window.addEventListener('beforeunload', () => {
             visibilityWatch?.disconnect();
             visibilityWatch = null;
-            if (windowQueued && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(windowQueued); windowQueued = 0; }
+            cancelWindowQueue();
+            if (themeRaf1 && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(themeRaf1); themeRaf1 = 0; }
+            if (themeRaf2 && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(themeRaf2); themeRaf2 = 0; }
             if (app.backgroundTransitionTimer) { clearTimeout(app.backgroundTransitionTimer); app.backgroundTransitionTimer = null; }
+            app.playlistEl?.removeEventListener('scroll', renderWindowSoon);
             window.removeEventListener('resize', renderWindowSoon);
         }, { once: true });
     }
@@ -319,11 +338,19 @@ function setupUI(app) {
         // CSS variables are immediately readable after changing the theme class.
         // Notify the stage even while paused; no playback restart is necessary.
         app.stageHost?.updateTheme?.();
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            const rgb = app.hexToRgb(getComputedStyle(document.body).getPropertyValue('--music-highlight'));
-            if (rgb) app.visualizerColor = rgb;
-            if (app.volumeSlider) app.updateVolumeSliderBackground(app.volumeSlider.value);
-        }));
+        if (themeRaf1 && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(themeRaf1); themeRaf1 = 0; }
+        if (themeRaf2 && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(themeRaf2); themeRaf2 = 0; }
+        if (typeof requestAnimationFrame === 'function') {
+            themeRaf1 = requestAnimationFrame(() => {
+                themeRaf1 = 0;
+                themeRaf2 = requestAnimationFrame(() => {
+                    themeRaf2 = 0;
+                    const rgb = app.hexToRgb(getComputedStyle(document.body).getPropertyValue('--music-highlight'));
+                    if (rgb) app.visualizerColor = rgb;
+                    if (app.volumeSlider) app.updateVolumeSliderBackground(app.volumeSlider.value);
+                });
+            });
+        }
         if (app.albumArt) {
             const curArt = app.albumArt.style.backgroundImage;
             if (!curArt || curArt.includes('musicdark.jpeg') || curArt.includes('musiclight.jpeg')) {
@@ -342,17 +369,31 @@ class WebNowPlayingAdapter {
         this.reconnectDelay = 5000;
         this.lastSentPayload = '';
         this.destroyed = false;
+        this.onVisible = null;
         this.connect();
     }
+    clearVisibleWait() {
+        if (this.onVisible && typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', this.onVisible);
+        }
+        this.onVisible = null;
+    }
     scheduleReconnect() {
-        if (this.destroyed || this.reconnectTimer) return;
+        if (this.destroyed || this.reconnectTimer || this.onVisible) return;
         const delay = this.reconnectDelay;
         // 未安装桌面插件时逐次退避（5s → 60s），减少后台频繁探测本机端口与控制台报错
         this.reconnectDelay = Math.min(60000, Math.round(this.reconnectDelay * 2));
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
+            if (this.destroyed) return;
             if (typeof document !== 'undefined' && document.hidden) {
-                this.scheduleReconnect();
+                // 窗口隐藏时不再每分钟空转定时器，等重新可见后再连
+                this.onVisible = () => {
+                    if (document.hidden || this.destroyed) return;
+                    this.clearVisibleWait();
+                    this.connect();
+                };
+                document.addEventListener('visibilitychange', this.onVisible);
                 return;
             }
             this.connect();
@@ -389,7 +430,7 @@ class WebNowPlayingAdapter {
             title: t ? this.app.stripAudioExtension(t.title) || '' : 'No Track Loaded', artist: t ? t.artist || '' : '',
             album: t ? t.album || '' : '', cover: t && t.albumArt ? this.app.fileUrl(t.albumArt) : '',
             duration: this.app.lastKnownDuration || 0, position: this.app.lastKnownCurrentTime || 0,
-            volume: Math.round(parseFloat(this.app.volumeSlider.value) * 100),
+            volume: Math.round(parseFloat(this.app.volumeSlider?.value ?? 1) * 100),
             repeat: this.app.playModes[this.app.currentPlayMode] === 'repeat-one' ? 1 : (this.app.playModes[this.app.currentPlayMode] === 'repeat' ? 2 : 0),
             shuffle: this.app.playModes[this.app.currentPlayMode] === 'shuffle' ? 1 : 0
         };
@@ -403,6 +444,7 @@ class WebNowPlayingAdapter {
     destroy() {
         if (this.destroyed) return;
         this.destroyed = true;
+        this.clearVisibleWait();
         if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;

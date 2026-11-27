@@ -82,16 +82,26 @@
                 else if (first.length < 3) first = rows.slice(0, TUNE_FIRST_COUNT);
                 const rest = rows.filter((row) => !first.includes(row));
                 const ordered = first.concat(rest);
-                if (ordered.some((row, i) => row !== rows[i])) ordered.forEach((row) => tuningNode.appendChild(row));
+                if (ordered.some((row, i) => row !== rows[i])) {
+                    const frag = document.createDocumentFragment();
+                    ordered.forEach((row) => frag.appendChild(row));
+                    tuningNode.appendChild(frag);
+                }
                 rest.forEach((row) => row.classList.add('md-tune-rest'));
                 first.forEach((row) => row.classList.remove('md-tune-rest'));
                 el.tuneSec.hidden = rows.length === 0;
                 el.tuneMore.hidden = rest.length === 0;
                 el.tuneSlot.classList.toggle('md-tune-all', state.tuneAll || rest.length === 0);
                 el.tuneMore.setAttribute('aria-expanded', String(state.tuneAll));
-                el.tuneMore.innerHTML = `<span>${state.tuneAll ? '只看常用项' : `全部 ${rows.length} 项`}</span>${icon(state.tuneAll ? 'chevron-up' : 'chevron-down', 14)}`;
-                el.tuneTitle.textContent = scene ? `${scene.label}设置` : '舞台设置';
-                el.tuneHint.textContent = scene?.description || '';
+                const moreKey = `${state.tuneAll ? 1 : 0}:${rows.length}`;
+                if (el.tuneMore.dataset.mdMoreKey !== moreKey) {
+                    el.tuneMore.dataset.mdMoreKey = moreKey;
+                    el.tuneMore.innerHTML = `<span>${state.tuneAll ? '只看常用项' : `全部 ${rows.length} 项`}</span>${icon(state.tuneAll ? 'chevron-up' : 'chevron-down', 14)}`;
+                }
+                const nextTitle = scene ? `${scene.label}设置` : '舞台设置';
+                if (el.tuneTitle.textContent !== nextTitle) el.tuneTitle.textContent = nextTitle;
+                const nextHint = scene?.description || '';
+                if (el.tuneHint.textContent !== nextHint) el.tuneHint.textContent = nextHint;
             } finally {
                 tuneBusy = false;
             }

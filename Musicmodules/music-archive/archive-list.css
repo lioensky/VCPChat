@@ -282,6 +282,10 @@ body.music-reduce-motion .archive-list-group.live-on::before { animation: none; 
 .archive-hud.narrow .archive-list-foot em { white-space: normal; text-align: right; line-height: 1.5; }
 body.music-reduce-motion .archive-list { transition: none; }
 body.music-reduce-motion .archive-list-row.on::after, body.music-reduce-motion .archive-list-row.playing .eq i { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+    .archive-list { transition: none; }
+    .archive-list-row.on::after, .archive-list-row.playing .eq i { animation: none; }
+}
 
 /* 从档案页用键盘打开的右键菜单：当前项高亮，→ 打开的「加入歌单」子菜单保持展开 */
 #track-context-menu .context-menu-item:focus, #track-context-menu .submenu-item:focus { outline: none; background: var(--hover-bg, rgba(128, 128, 128, .14)); }

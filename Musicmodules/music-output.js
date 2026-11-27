@@ -2,11 +2,13 @@
 // 设备、采样率、重采样控制
 
 function setupOutput(app) {
+    let populateSeq = 0;
     app.populateDeviceList = async (forceRefresh = false) => {
-        if (!app.api?.getMusicDevices) return;
+        if (!app.api?.getMusicDevices || !app.deviceSelect) return;
+        const seq = ++populateSeq;
         // 引擎没起来、列设备失败时，下拉框原来是空的（一个选项都没有，看着像坏了）：至少留一个「默认设备」
         const keepDefault = () => {
-            if (app.deviceSelect.options.length) return;
+            if (app.deviceSelect.options?.length) return;
             const opt = document.createElement('option');
             opt.value = 'default';
             opt.textContent = '默认设备';
@@ -15,12 +17,15 @@ function setupOutput(app) {
         };
         try {
             const result = await app.api.getMusicDevices({ refresh: forceRefresh });
+            if (seq !== populateSeq) return;
             if (result?.status === 'success' && result.devices) {
                 app.deviceSelect.innerHTML = '';
+                const useFrag = typeof document.createDocumentFragment === 'function';
+                const target = useFrag ? document.createDocumentFragment() : app.deviceSelect;
                 const defaultOption = document.createElement('option');
                 defaultOption.value = 'default';
                 defaultOption.textContent = '默认设备';
-                app.deviceSelect.appendChild(defaultOption);
+                target.appendChild(defaultOption);
 
                 const preferred = result.devices.preferred || [];
                 if (preferred.length > 0) {
@@ -32,7 +37,7 @@ function setupOutput(app) {
                         opt.textContent = d.name;
                         group.appendChild(opt);
                     });
-                    app.deviceSelect.appendChild(group);
+                    target.appendChild(group);
                 }
 
                 const other = result.devices.other || [];
@@ -45,14 +50,19 @@ function setupOutput(app) {
                         opt.textContent = d.name;
                         group.appendChild(opt);
                     });
-                    app.deviceSelect.appendChild(group);
+                    target.appendChild(group);
                 }
+                if (useFrag) app.deviceSelect.appendChild(target);
                 // 重建选项会把选中项清回第一个：放回引擎正在用的那个，不然打开窗口总显示「默认设备」。
                 const current = app.currentDeviceId === null || app.currentDeviceId === undefined ? 'default' : String(app.currentDeviceId);
                 const known = [...app.deviceSelect.querySelectorAll('option')].some((o) => String(o.value) === current);
                 app.deviceSelect.value = known ? current : 'default';
             } else keepDefault();
-        } catch (e) { console.error("Error populating device list:", e); keepDefault(); }
+        } catch (e) {
+            if (seq !== populateSeq) return;
+            console.error("Error populating device list:", e);
+            keepDefault();
+        }
     };
 
     // 引擎打开输出时退回了什么（新引擎在 /state 的 output_fallback 里报；旧引擎没有这个字段，什么都不显示）。
@@ -143,9 +153,14 @@ function setupOutput(app) {
         const prevRate = app.targetUpsamplingRate;
         app.targetUpsamplingRate = rate;
         try {
-            await app.api.configureMusicUpsampling({
+            const result = await app.api.configureMusicUpsampling({
                 target_samplerate: app.targetUpsamplingRate > 0 ? app.targetUpsamplingRate : null
             });
+            if (result?.status === 'error') {
+                app.targetUpsamplingRate = prevRate;
+                if (app.upsamplingSelect) app.upsamplingSelect.value = String(prevRate || 0);
+                return;
+            }
             app.saveSettings();
         } catch (e) {
             console.error("Error configuring upsampling:", e);
@@ -157,11 +172,12 @@ function setupOutput(app) {
     app.configureResampling = async () => {
         if (!app.api?.configureMusicResampling) return;
         try {
-            await app.api.configureMusicResampling({
+            const result = await app.api.configureMusicResampling({
                 quality: app.resampleQualitySelect.value,
                 use_cache: app.resampleCacheSwitch.checked,
                 preemptive_resample: app.preemptiveResampleSwitch.checked
             });
+            if (result?.status === 'error') return;
             app.saveSettings();
         } catch (e) {
             console.error("Error configuring resampling:", e);

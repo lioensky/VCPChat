@@ -415,7 +415,7 @@ body.music-lyrics-hide-translation #lyrics-list .lyric-translation { display: no
 #music-dock-root .md-fold-h.md-open svg { transform: rotate(180deg); }
 .md-adv-in[hidden] { display: none; }
 #music-dock-root .md-stage-in .music-stage-mode-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0 4px; margin: 0; }
-#music-dock-root .md-stage-in .music-stage-mode-option { min-height: 32px; border: 0; border-radius: 8px; box-shadow: none; background: transparent; color: var(--md-t3); font-size: 12.5px; box-shadow: inset 0 0 0 1px var(--md-line2); }
+#music-dock-root .md-stage-in .music-stage-mode-option { min-height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--md-t3); font-size: 12.5px; box-shadow: inset 0 0 0 1px var(--md-line2); }
 #music-dock-root .md-stage-in .music-stage-mode-option:has(input:checked) { background: var(--md-fill2); color: var(--md-t1); box-shadow: none; }
 #music-dock-root .md-stage-in .music-stage-mode-option:hover { color: var(--md-t1); }
 #music-dock-root .md-adv-acts .music-stage-settings-reset { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; box-shadow: inset 0 0 0 1px var(--md-line2); color: var(--md-t2); font-size: 12.5px; }
@@ -665,6 +665,12 @@ body.music-dock-cmd-open .md-hdl { opacity: 0; pointer-events: none; }
 body.music-reduce-motion .mtst,
 body.music-reduce-motion .mtst.mtst-out { transition-duration: 1ms; transform: none; }
 body.music-reduce-motion .mtst-progress .mtst-ic svg { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mtst, .mtst.mtst-out { transition-duration: 1ms; transform: none; }
+  .mtst-progress .mtst-ic svg { animation: none; }
+}
+body.music-fl-low .mtst,
+#music-dock-root.md-fl-low .md-pnl { -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 /* ───────── 快捷键表（?）───────── */
 .md-keys { position: fixed; inset: 0; z-index: var(--mt-z-popover, 70); display: grid; place-items: center; pointer-events: auto; }
