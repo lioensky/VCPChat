@@ -1990,3 +1990,103 @@ test('Batch 76: Starborn updateFrame defers resolveSegment and nextLines reads u
         dom.window.close();
     }
 });
+
+test('Batch 81: runtime caches frozen waiting/passed word templates & EMPTY_AUDIO_BANDS, stage-host fast-paths steady frame updates, and edge draws via hoisted drawSide', async () => {
+    const dom = createStageDom();
+    try {
+        installCanvasStub(dom.window);
+        for (const file of [
+            'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${file}`);
+        }
+
+        // 1. Runtime frozen word-state templates + shared EMPTY_AUDIO_BANDS
+        const Runtime = dom.window.MusicStageRuntime;
+        const line = Runtime.normalizeLines([{
+            time: 0,
+            endTime: 4,
+            text: 'abcd',
+            words: [
+                { text: 'a', startTime: 0, endTime: 1 },
+                { text: 'b', startTime: 1, endTime: 2 },
+                { text: 'c', startTime: 2, endTime: 3 },
+                { text: 'd', startTime: 3, endTime: 4 }
+            ]
+        }])[0];
+        const s1 = Runtime.resolveWordState(line, 0.5);
+        const s2 = Runtime.resolveWordState(line, 1.5);
+        const s3 = Runtime.resolveWordState(line, 2.5);
+        assert.equal(s1.wordStates[0].status, 'active');
+        assert.equal(s1.wordStates[2].status, 'waiting');
+        assert.equal(Object.isFrozen(s1.wordStates[2]), true, 'waiting word template is frozen');
+        assert.equal(s1.wordStates[2], s2.wordStates[2], 'unchanged waiting word reuses cached template across frames');
+        assert.equal(s1.wordStates[3], s2.wordStates[3], 'later waiting word reuses cached template');
+        assert.equal(s2.wordStates[0].status, 'passed');
+        assert.equal(Object.isFrozen(s2.wordStates[0]), true, 'passed word template is frozen');
+        assert.equal(s2.wordStates[0], s3.wordStates[0], 'passed word reuses cached template on later frames');
+        assert.equal(s1.wordStates[0].status, 'active', 'earlier active word snapshot remains unmutated');
+
+        const bands1 = Runtime.resolveAudioBands(null);
+        const bands2 = Runtime.resolveAudioBands(undefined);
+        assert.equal(bands1, bands2, 'empty audio resolves to shared EMPTY_AUDIO_BANDS');
+        assert.equal(Object.isFrozen(bands1), true, 'EMPTY_AUDIO_BANDS is frozen');
+
+        // 2. Stage-host fast-paths steady progress/transport/audio/2D handover updates
+        const root = dom.window.document.getElementById('music-stage');
+        root.querySelector('.music-stage-backdrop-current').classList.add('music-stage-backdrop-layer');
+        dom.window.localStorage.setItem('musicStageMode', 'luminous');
+        const { app } = createApp();
+        app.isPlaying = false;
+        app.lastKnownCurrentTime = 1.5;
+        app.lastKnownDuration = 180;
+        app.currentVisualizerData = new Array(64).fill(0.4);
+        dom.window.setupMusicStage(app);
+        app.stageHost.enter();
+        await wait(dom.window, 25);
+
+        const backdrop = root.querySelector('.music-stage-backdrop-current');
+        const progressFill = root.querySelector('.music-stage-progress-fill');
+        const volumeSlider = root.querySelector('.music-stage-volume-slider');
+
+        // First frame warms caches
+        app.stageHost.updateFrame(1000);
+
+        let backdropSetProps = 0;
+        const origBackdropSet = backdrop.style.setProperty.bind(backdrop.style);
+        backdrop.style.setProperty = (...args) => { backdropSetProps += 1; return origBackdropSet(...args); };
+
+        let volumeSetProps = 0;
+        const origVolSet = volumeSlider.style.setProperty.bind(volumeSlider.style);
+        volumeSlider.style.setProperty = (...args) => { volumeSetProps += 1; return origVolSet(...args); };
+
+        let progressWidthReadsOrWrites = 0;
+        const fillStyleProxy = progressFill.style;
+        const origSetProp = fillStyleProxy.setProperty.bind(fillStyleProxy);
+        fillStyleProxy.setProperty = (...args) => { progressWidthReadsOrWrites += 1; return origSetProp(...args); };
+
+        // Steady frames with unchanged playbackTime/duration/mode/volume/audio skip all redundant writes
+        app.stageHost.updateFrame(1050);
+        app.stageHost.updateFrame(1100);
+        assert.equal(backdropSetProps, 0, 'unchanged audio levels skip writeAudioLevels CSS variable formatting & writes');
+        assert.equal(volumeSetProps, 0, 'unchanged mode/volume skips updateTransportControls style writes');
+        assert.equal(progressWidthReadsOrWrites, 0, 'unchanged playbackTime/duration skips updateProgress');
+
+        // Changing audio level writes immediately again
+        app.currentVisualizerData = new Array(64).fill(0.8);
+        app.stageHost.updateFrame(1150);
+        assert.ok(backdropSetProps > 0, 'changed audio level updates backdrop CSS variables');
+
+        // Changing volume updates transport controls immediately
+        app.volumeSlider.value = '0.5';
+        app.stageHost.updateFrame(1200);
+        assert.ok(volumeSetProps > 0, 'changed volume updates stage volume slider');
+
+        app.stageHost.destroy();
+    } finally {
+        dom.window.close();
+    }
+});

@@ -2012,3 +2012,154 @@ test('Batch 77: openPanel focuses active tab before body.music-drawer-open/rende
         window.close();
     }
 });
+
+test('Batch 81: palette normalizes Windows paths & deduplicates hints/meta, queue drag skips unchanged sibling shifts, and dock deduplicates steady DOM writes', async () => {
+    const { window, doc, app, dock, calls } = setup((a) => {
+        const c = { path: 'C:/c.flac', title: 'Gamma.flac', artist: 'C', duration: 180 };
+        a.playlist.push(c);
+        a.manualQueue = [a.playlist[0], a.playlist[1], c];
+        a.getUpNext = () => ({ manual: a.manualQueue.slice(), context: [] });
+        a.queueMove = () => {};
+        a.queueAdd = (t) => { calls.push(['qadd', t.path]); return t; };
+        // Playlist stores backslash + lowercase Windows path that should match C:/a.flac via normalized fallback
+        a.customPlaylists = [{ id: 'win-pl', name: 'WinPath Mix', tracks: ['c:\\a.flac', 'C:\\B.FLAC'] }];
+    });
+    try {
+        // 1. Palette normalized Windows path fallback + deduplicated hints/foot writes
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        const hints = doc.querySelector('.md-cmd-hints');
+        const foot = doc.querySelector('.md-cmd-foot');
+
+        let hintsHtmlWrites = 0;
+        const innerDesc = Object.getOwnPropertyDescriptor(window.Element.prototype, 'innerHTML');
+        Object.defineProperty(hints, 'innerHTML', {
+            configurable: true,
+            get() { return innerDesc.get.call(this); },
+            set(v) { hintsHtmlWrites += 1; return innerDesc.set.call(this, v); }
+        });
+        let footHiddenWrites = 0;
+        const hiddenDesc = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, 'hidden');
+        Object.defineProperty(foot, 'hidden', {
+            configurable: true,
+            get() { return hiddenDesc.get.call(this); },
+            set(v) { footHiddenWrites += 1; return hiddenDesc.set.call(this, v); }
+        });
+
+        for (const q of ['a', 'al', 'alp']) {
+            input.value = q;
+            input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        }
+        assert.equal(hintsHtmlWrites, 0, 'normal typing skips redundant hints.innerHTML clears');
+
+        input.value = '--';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(hintsHtmlWrites, 1, 'entering -- renders flag hints once');
+        input.value = '--ar';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(hintsHtmlWrites, 2, 'narrowing --ar updates flag hints');
+        input.value = 'WinPath';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(hintsHtmlWrites, 3, 'leaving flag mode clears hints once');
+        input.value = 'WinPath Mix';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(hintsHtmlWrites, 3, 'subsequent non-flag typing does not clear hints again');
+
+        const plRow = [...doc.querySelectorAll('.md-cmd-row')].find((r) => r.querySelector('.md-cmd-title')?.textContent === 'WinPath Mix');
+        assert.ok(plRow, 'playlist with Windows backslash/case paths resolves track count and appears');
+        plRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true, ctrlKey: true }));
+        assert.deepEqual(calls.slice(-2), [['qadd', 'C:/a.flac'], ['qadd', 'C:/b.flac']], 'Windows path normalization resolves both playlist tracks');
+
+        // Active-row navigation across two queueable songs does not rewrite foot.hidden
+        input.value = '';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const beforeNavFootWrites = footHiddenWrites;
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        assert.equal(footHiddenWrites, beforeNavFootWrites, 'moving between queueable rows skips redundant foot.hidden write');
+        dock.closePalette();
+
+        // 2. Queue drag skips sibling loop while nextTo === lastTo between row thresholds
+        dock.openPanel('播放列表');
+        const scroller = doc.querySelector('.md-ql');
+        scroller.getBoundingClientRect = () => ({ top: 100, bottom: 500, left: 0, right: 300, width: 300, height: 400 });
+        const rows = [...doc.querySelectorAll('.md-man')];
+        assert.equal(rows.length, 3);
+        let siblingQiReads = 0;
+        const origDataset = rows[1].dataset;
+        Object.defineProperty(rows[1], 'dataset', {
+            configurable: true,
+            get() { siblingQiReads += 1; return origDataset; }
+        });
+        const firePtr = (type, y, target = doc) => {
+            const ev = new window.MouseEvent(type, { bubbles: true, clientY: y, button: 0 });
+            Object.defineProperty(ev, 'pointerId', { value: 7 });
+            target.dispatchEvent(ev);
+        };
+        firePtr('pointerdown', 200, rows[0]);
+        siblingQiReads = 0;
+        firePtr('pointermove', 208);
+        firePtr('pointermove', 214);
+        firePtr('pointermove', 218);
+        assert.equal(rows[0].style.transform, 'translateY(18px)', 'dragged row still follows pointer');
+        assert.equal(siblingQiReads, 0, 'sub-threshold drag moves do not re-read sibling dataset.qi');
+        assert.equal(rows[1].style.transform, '', 'sibling stays unshifted below threshold');
+        firePtr('pointermove', 252);
+        assert.equal(rows[1].style.transform, 'translateY(-48px)', 'crossing row threshold shifts sibling cleanly');
+        assert.equal(siblingQiReads, 0, 'threshold crossing uses precomputed manualIndices without DOM dataset reads');
+        firePtr('pointerup', 252);
+        dock.closePanel();
+
+        // 3. Dock steady sync skips redundant play/mode/cover/handle/volume DOM writes
+        const playBtn = doc.querySelector('[data-md="play"]');
+        const modeBtn = doc.querySelector('[data-md="mode"]');
+        const pCover = doc.querySelector('.md-hd-cv');
+        const handle = doc.querySelector('[data-md="handle"]');
+        const vrail = doc.querySelector('.md-vrail');
+        let playWrites = 0;
+        let modeWrites = 0;
+        let coverWrites = 0;
+        let handleAttrWrites = 0;
+        let vrailAttrWrites = 0;
+        const spyInner = (el, onWrite) => Object.defineProperty(el, 'innerHTML', {
+            configurable: true,
+            get() { return innerDesc.get.call(this); },
+            set(v) { onWrite(); return innerDesc.set.call(this, v); }
+        });
+        spyInner(playBtn, () => { playWrites += 1; });
+        spyInner(modeBtn, () => { modeWrites += 1; });
+        spyInner(pCover, () => { coverWrites += 1; });
+        const origHandleSet = handle.setAttribute.bind(handle);
+        handle.setAttribute = (...a) => { handleAttrWrites += 1; return origHandleSet(...a); };
+        const origVrailSet = vrail.setAttribute.bind(vrail);
+        vrail.setAttribute = (...a) => { vrailAttrWrites += 1; return origVrailSet(...a); };
+
+        // Steady observer/event triggers with unchanged state skip redundant DOM writes
+        app.trackTitle.textContent = 'Alpha.flac';
+        app.modeBtn.setAttribute('title', '列表循环');
+        app.volumeSlider.dispatchEvent(new window.Event('input'));
+        app.volumeSlider.dispatchEvent(new window.Event('input'));
+        doc.querySelector('.md-dock-in').dispatchEvent(new window.Event('pointerenter'));
+        doc.querySelector('.md-dock-in').dispatchEvent(new window.Event('pointerleave'));
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(playWrites, 0, 'steady observers skip play button innerHTML rewrite');
+        assert.equal(modeWrites, 0, 'unchanged mode title mutation skips mode button innerHTML rewrite');
+        assert.equal(coverWrites, 0, 'unchanged track mutation skips cover innerHTML rewrite');
+        assert.equal(handleAttrWrites, 0, 'steady hover/leave skips handle aria-describedby rewrite');
+        assert.equal(vrailAttrWrites, 0, 'unchanged volume input skips volume rail aria rewrite');
+
+        // Real state changes still update immediately
+        app.isPlaying = true;
+        doc.body.classList.add('music-playing');
+        app.currentPlayMode = 2;
+        app.modeBtn.setAttribute('title', '随机播放');
+        app.volumeSlider.value = '0.4';
+        app.volumeSlider.dispatchEvent(new window.Event('input'));
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(playWrites, 1, 'play state transition updates play button icon once');
+        assert.equal(modeWrites, 1, 'play mode transition updates mode button icon once');
+        assert.ok(vrailAttrWrites > 0, 'volume change updates volume rail aria attributes');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

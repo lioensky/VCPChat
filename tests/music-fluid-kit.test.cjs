@@ -538,7 +538,6 @@ test('Batch 72: music-fluid-select delegates option clicks, blocks ArrowLeft/Arr
     const doc = window.document;
     window.CSS = { escape: (s) => String(s) };
     try {
-        window.CSS = { escape: (s) => String(s) };
         window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
         if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
         const sel = doc.getElementById('eq-sel');
@@ -761,6 +760,53 @@ test('Batch 80: music-fluid-select skips .aw-world/.ag-content/#modal-song-list 
         assert.match(panelCss, /body\.music-fl-low \.md-cmd-box[\s\S]*?backdrop-filter:\s*none/);
         assert.match(panelCss, /body\.music-fl-low \.md-cmd-box[\s\S]*?background:\s*var\(--md-menu\)/);
         cleanups.forEach((fn) => fn());
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 81: MusicFluid.slide skips redundant style writes when already settled at the same goal on the same element', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        doc.body.classList.add('music-reduce-motion');
+        const makeMark = () => {
+            const writes = { left: 0, width: 0 };
+            const backing = { left: '', width: '', transition: '' };
+            return {
+                writes,
+                el: {
+                    isConnected: true,
+                    style: new Proxy(backing, {
+                        set(target, prop, value) {
+                            if (prop === 'left' || prop === 'width') writes[prop] += 1;
+                            target[prop] = value;
+                            return true;
+                        }
+                    })
+                }
+            };
+        };
+        const m1 = makeMark();
+        window.MusicFluid.slide(m1.el, { left: 24, width: 80 }, { key: 'tab-mark' });
+        assert.deepEqual(m1.writes, { left: 1, width: 1 }, 'first placement writes left and width once');
+
+        // Repeated calls with identical settled goal skip style writes completely
+        window.MusicFluid.slide(m1.el, { left: 24, width: 80 }, { key: 'tab-mark' });
+        window.MusicFluid.slide(m1.el, { left: 24.02, width: 80.01 }, { key: 'tab-mark' });
+        assert.deepEqual(m1.writes, { left: 1, width: 1 }, 'unchanged formatted goal skips redundant style writes');
+
+        // Replacing the element under the same key must still write even when coordinates match
+        const m2 = makeMark();
+        window.MusicFluid.slide(m2.el, { left: 24, width: 80 }, { key: 'tab-mark' });
+        assert.deepEqual(m2.writes, { left: 1, width: 1 }, 'new element under same key still receives initial placement');
+
+        // Sub-pixel change that formats differently still writes
+        window.MusicFluid.slide(m2.el, { left: 24.3, width: 80 }, { key: 'tab-mark' });
+        assert.deepEqual(m2.writes, { left: 2, width: 2 }, 'different formatted coordinate updates style');
         window.dispatchEvent(new window.Event('beforeunload'));
     } finally {
         dom.window.close();
