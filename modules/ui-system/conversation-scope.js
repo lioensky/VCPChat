@@ -10,8 +10,9 @@
 'use strict';
 
 import { projectRootMentions, parseToolFields } from './message-file-changes.js';
+import { replaceToolRequestBlocks } from '../renderer/toolRequestScanner.js';
+import { collectToolDataRanges } from '../renderer/toolResultRegions.js';
 
-const TOOL_REQUEST = /<<<\[TOOL_REQUEST\]>>>([\s\S]*?)<<<\[END_TOOL_REQUEST\]>>>/g;
 // ProjectForge 每次施工（含 Rollback）在结果里写「批次 `bN`」；时间线 / 历史列表只写 `bN`，不算这个话题的施工
 const BATCH_MENTION = /批次 `b(\d+)`/g;
 const REVERT_BATCHES_KEY = 'vcp-projectforge-topic-batches';
@@ -53,19 +54,32 @@ export function collectConversationScope(history) {
         if (!text) continue;
         // 同一条消息里请求和结果交错出现，按文本位置依次记，最后出现的才算最近
         const seen = projectRootMentions(text).map(({ id, index }) => ({ id, index }));
-        TOOL_REQUEST.lastIndex = 0;
-        for (const block of text.matchAll(TOOL_REQUEST)) {
-            const fields = parseToolFields(block[1]);
+        const dataRanges = collectToolDataRanges(text);
+        let outsideToolData = text;
+        if (dataRanges.length > 0) {
+            let buf = '';
+            let cursor = 0;
+            for (const r of dataRanges) {
+                if (r.start < cursor) continue;
+                buf += text.slice(cursor, r.start) + text.slice(r.start, r.end).replace(/[^\n]/g, ' ');
+                cursor = r.end;
+            }
+            buf += text.slice(cursor);
+            outsideToolData = buf;
+        }
+        replaceToolRequestBlocks(outsideToolData, (raw, body, start) => {
+            const fields = parseToolFields(body);
             const tool = fieldOf(fields, 'tool_name').replace(/["'「」]/gu, '').trim().toLowerCase();
             if (tool === 'projectforge') {
                 const id = fieldOf(fields, 'projectId', 'project', 'id');
-                if (id) seen.push({ id, index: block.index });
+                if (id) seen.push({ id, index: start });
             } else if (tool === 'powershellexecutor') {
                 for (const [key, value] of Object.entries(fields)) {
                     if (/^command\d*$/i.test(key) && value) commands.add(normalizeCommand(value));
                 }
             }
-        }
+            return raw;
+        }, { stopAtProtocolWalls: true });
         for (const { id } of seen.sort((a, b) => a.index - b.index)) mention(id);
         for (const match of text.matchAll(BATCH_MENTION)) batchIds.add(Number(match[1]));
     }

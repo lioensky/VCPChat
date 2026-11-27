@@ -1,25 +1,52 @@
-import { stripToolBatches } from './toolBatchRegions.js';
 import { findExplicitStablePrefix } from './streamStableBoundary.js';
-import { collectToolResultRanges } from './toolResultRegions.js';
+import { collectToolDataRanges } from './toolResultRegions.js';
 import { replaceToolRequestBlocks, findUnclosedToolRequest } from './toolRequestScanner.js';
+import {
+    createUniqueMaskPrefix,
+    findClosedFenceAndToolRanges,
+    findFenceRangesOutsideProtocolWalls,
+    applyMaskRanges,
+    unmaskProtectedRegions,
+    maskInlineBackticks,
+    unmaskInlineBackticks,
+    stripUnclosedToolRequestsSafe,
+} from '../shared/vcpResilienceMaskEsm.js';
 
 // 只处理已经提交的完整稳定区；未闭合的隐藏结构在终态也不能泄漏到语音。
 export function cleanSpeechSource(value) {
     // 整批回执（含摘要、记录 ID 和框外说明）都不是助手语音正文。
-    let text = stripToolBatches(String(value || ''));
-    const ranges = collectToolResultRanges(text);
+    // 先替换为占位注释以保留跨跳边界信号，后续由统一占位清理移除。
+    let text = String(value || '');
+    const resultPrefix = createUniqueMaskPrefix(text, 'VCP_TOOL_RESULT');
+    const protectedRanges = findClosedFenceAndToolRanges(text);
+    const ranges = collectToolDataRanges(text).filter(range => !protectedRanges.some(p => (
+        (p.start <= range.start && range.end <= p.end)
+        || (!range.closed && p.start <= range.start && range.start < p.end)
+    )));
     for (let i = ranges.length - 1; i >= 0; i--) {
-        text = text.slice(0, ranges[i].start) + '\n' + text.slice(ranges[i].end);
+        text = text.slice(0, ranges[i].start) + `\n<!--${resultPrefix}${i}-->\n` + text.slice(ranges[i].end);
     }
-    text = replaceToolRequestBlocks(text, () => '\n');
-    const unclosed = findUnclosedToolRequest(text);
-    if (unclosed != null) {
-        const start = typeof unclosed === 'number' ? unclosed : unclosed.startIndex ?? unclosed.start;
-        if (Number.isInteger(start)) text = text.slice(0, start);
-    }
-    return text
-        .replace(/<<<\[ROLE_DIVIDE_(SYSTEM|USER)\]>>>[\s\S]*?(?:<<<\[END_ROLE_DIVIDE_\1\]>>>|$)/gi, '\n')
-        .replace(/<<<\[(?:END_)?ROLE_DIVIDE_ASSISTANT\]>>>/gi, '\n')
+    text = replaceToolRequestBlocks(text, () => '\n', { stopAtProtocolWalls: true });
+    text = stripUnclosedToolRequestsSafe(text, findUnclosedToolRequest, {
+        extraWallPattern: `<!--${resultPrefix}\\d+-->`,
+    });
+    const roleFencePrefix = createUniqueMaskPrefix(text, 'VCP_SPEECH_FENCE');
+    const roleFenceMasks = [];
+    const roleFenceRanges = findFenceRangesOutsideProtocolWalls(text, {
+        extraWallPattern: `<!--${resultPrefix}\\d+-->`,
+    });
+    const fenceMasked = applyMaskRanges(text, roleFenceRanges, (chunk) => {
+        const token = `${roleFencePrefix}${roleFenceMasks.length}__`;
+        roleFenceMasks.push({ token, content: chunk });
+        return token;
+    });
+    const { text: inlineMasked, masks: inlineMasks } = maskInlineBackticks(fenceMasked, 'VCP_SPEECH_INLINE');
+    let cleaned = inlineMasked
+        .replace(/<<<\[ROLE_DIVIDE_(SYSTEM|USER)\]>>>[\s\S]*?(?:<<<\[END_ROLE_DIVIDE_\1\]>>>|(?![\s\S]))/gi, '\n')
+        .replace(/<<<\[(?:END_)?ROLE_DIVIDE_ASSISTANT\]>>>/gi, '\n');
+    cleaned = unmaskProtectedRegions(unmaskInlineBackticks(cleaned, inlineMasks), roleFenceMasks);
+    return cleaned
+        .replace(new RegExp(`<!--${resultPrefix}\\d+-->`, 'g'), '')
         .replace(/\[本轮工具调用摘要:\][\s\S]*?(?:\[本轮工具调用摘要结束\]|$)/g, '\n')
         .replace(/<<<\[DESKTOP_PUSH\]>>>[\s\S]*?(?:<<<\[DESKTOP_PUSH_END\]>>>|$)/g, '\n')
         .replace(/<<<DailyNoteStart>>>[\s\S]*?(?:<<<DailyNoteEnd>>>|$)/g, '\n')

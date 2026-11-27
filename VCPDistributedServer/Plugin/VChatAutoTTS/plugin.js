@@ -50,26 +50,147 @@
         return element?.dataset?.messageId || '';
     }
 
+    function createUniqueFallbackPrefix(text, label) {
+        let prefix;
+        do {
+            const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+            prefix = `__${label}_${nonce}_`;
+        } while (text.includes(prefix));
+        return prefix;
+    }
+
+    function shouldStripUnclosedToolFallback(text, startIndex, openMarkerLength) {
+        if (typeof text !== 'string' || startIndex < 0) return false;
+        const lineStart = text.lastIndexOf('\n', startIndex - 1) + 1;
+        if (/^[ \t]*$/.test(text.slice(lineStart, startIndex))) return true;
+        const afterOpen = text.slice(startIndex + openMarkerLength, startIndex + openMarkerLength + 160);
+        return /^[ \t]*\r?\n?[ \t]*(?:(?:tool_name|maid|maidname|valet|valetname|command|jev|archery)\s*[:：]|[^\s,:：「」{}<>()[\]]+\s*[:：]\s*(?:「始(?:escape)?」|\{始(?:escape)?\})|<tool_name>)/i.test(afterOpen);
+    }
+
+    function stripProtocolTextFallback(rawText, codeMasks = []) {
+        let text = String(rawText || '');
+        let idx = 0;
+        // 1. 剥离工具批次与嵌套工具结果块为占位符，保留跨跳边界
+        text = text.replace(/<<<\[VCP_TOOL_BATCH_START:([^\]\r\n]+)\]>>>[\s\S]*?(?:<<<\[VCP_TOOL_BATCH_END:\1\]>>>|$)/g,
+            () => `\n<!--VCP_TOOL_RESULT_${idx++}-->\n`);
+        let out = '';
+        let cursor = 0;
+        const resultRe = /\[\[VCP调用结果信息汇总:|VCP调用结果结束\]\]/g;
+        let depth = 0;
+        let resStart = 0;
+        let rm;
+        while ((rm = resultRe.exec(text)) !== null) {
+            if (rm[0].startsWith('[[')) {
+                if (depth++ === 0) resStart = rm.index;
+            } else if (depth > 0 && --depth === 0) {
+                out += text.slice(cursor, resStart) + `\n<!--VCP_TOOL_RESULT_${idx++}-->\n`;
+                cursor = resultRe.lastIndex;
+            }
+        }
+        if (depth > 0) {
+            out += text.slice(cursor, resStart) + `\n<!--VCP_TOOL_RESULT_${idx++}-->\n`;
+            cursor = text.length;
+        }
+        text = out + text.slice(cursor);
+
+        // 2. 按协议硬墙界定清理闭合与未闭合工具请求（含模糊尖括号与 ESCAPE）
+        const openRe = /<{2,4}\[TOOL_REQUEST(?:_ESCAPE)?\]>{2,4}/gi;
+        const endRe = /<{2,4}\[END_TOOL_REQUEST(?:_ESCAPE)?\]>{2,4}/gi;
+        const wallRe = /<<<\[(?:END_)?ROLE_DIVIDE_(?:SYSTEM|USER|ASSISTANT)\]>>>|<!--VCP_TOOL_RESULT_(?:DOM_)?\d+-->|<{2,4}\[TOOL_REQUEST(?:_ESCAPE)?\]>{2,4}/gi;
+        let cleaned = '';
+        let pos = 0;
+        while (pos < text.length) {
+            openRe.lastIndex = pos;
+            const om = openRe.exec(text);
+            if (!om) {
+                cleaned += text.slice(pos);
+                break;
+            }
+            cleaned += text.slice(pos, om.index);
+            const afterOpen = om.index + om[0].length;
+            endRe.lastIndex = afterOpen;
+            const em = endRe.exec(text);
+            wallRe.lastIndex = afterOpen;
+            const wm = wallRe.exec(text);
+            if (em && (!wm || em.index < wm.index)) {
+                cleaned += '\n';
+                pos = em.index + em[0].length;
+            } else if (!shouldStripUnclosedToolFallback(text, om.index, om[0].length)) {
+                cleaned += om[0];
+                pos = afterOpen;
+            } else if (wm) {
+                cleaned += '\n';
+                pos = wm.index;
+            } else {
+                pos = text.length;
+                break;
+            }
+        }
+        let result = cleaned
+            .replace(/<!--VCP_TOOL_RESULT_(?:DOM_)?\d+-->/g, '')
+            .replace(/\[本轮工具调用摘要:\][\s\S]*?\[本轮工具调用摘要结束\]/gi, '')
+            .replace(/<<<\[(?:END_)?ROLE_DIVIDE_(?:SYSTEM|ASSISTANT|USER)\]>>>/gi, '')
+            .replace(/@!?[\u4e00-\u9fa5A-Za-z0-9_]+/g, '');
+
+        for (let i = codeMasks.length - 1; i >= 0; i -= 1) {
+            const { token, text: codeText } = codeMasks[i];
+            if (result.includes(token)) {
+                result = result.split(token).join(codeText);
+            }
+        }
+        return result.replace(/\s+/g, ' ').trim();
+    }
+
     function extractText(element, includeCode) {
         const content = element.querySelector('.md-content');
         if (!content) return '';
 
+        if (typeof window.messageRenderer?.extractSpeakableTextFromContentElement === 'function') {
+            let target = content;
+            if (!includeCode) {
+                target = content.cloneNode(true);
+                target.querySelectorAll('pre, code, .copy-code-button').forEach((node) => node.remove());
+            }
+            return window.messageRenderer
+                .extractSpeakableTextFromContentElement(target)
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
         const clone = content.cloneNode(true);
+        let domIdx = 0;
+        const docRef = clone.ownerDocument || element.ownerDocument;
+        clone.querySelectorAll(
+            '.vcp-role-divider, .vcp-tool-result-bubble, [data-vcp-block-type="tool-result"], [data-vcp-block-type="tool-batch"], [data-vcp-block-type="role-divider"]'
+        ).forEach((node) => {
+            if (docRef?.createTextNode) {
+                node.replaceWith(docRef.createTextNode(`\n<!--VCP_TOOL_RESULT_DOM_${domIdx++}-->\n`));
+            } else {
+                node.remove();
+            }
+        });
         clone.querySelectorAll(
             '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .tool-bubble, .highlighted-tag, .highlighted-alert-tag, script, style, button, .copy-code-button'
         ).forEach((node) => node.remove());
 
-        if (!includeCode) clone.querySelectorAll('pre, code').forEach((node) => node.remove());
+        const codeMasks = [];
+        if (!includeCode) {
+            clone.querySelectorAll('pre, code').forEach((node) => node.remove());
+        } else {
+            const codePrefix = createUniqueFallbackPrefix(clone.textContent || '', 'VCP_TTS_CODE');
+            clone.querySelectorAll('pre, code').forEach((node) => {
+                if (node.parentElement?.closest('pre, code')) return;
+                const rawCodeText = node.innerText || node.textContent || '';
+                const token = `${codePrefix}${codeMasks.length}__`;
+                codeMasks.push({ token, text: rawCodeText });
+                if (docRef?.createTextNode) {
+                    const wrapped = node.tagName?.toLowerCase() === 'pre' ? `\n${token}\n` : token;
+                    node.replaceWith(docRef.createTextNode(wrapped));
+                }
+            });
+        }
 
-        return (clone.innerText || clone.textContent || '')
-            // 防御异常/历史 DOM 中尚未生成气泡的完整协议；不要求协议边界换行。
-            .replace(/<<<\[TOOL_REQUEST\]>>>[\s\S]*?<{2,4}\[END_TOOL_REQUEST\]>{2,4}/gi, '')
-            .replace(/\[\[VCP调用结果信息汇总:[\s\S]*?VCP调用结果结束\]\]/gi, '')
-            .replace(/\[本轮工具调用摘要:\][\s\S]*?\[本轮工具调用摘要结束\]/gi, '')
-            .replace(/<<<\[(?:END_)?ROLE_DIVIDE_(?:SYSTEM|ASSISTANT|USER)\]>>>/gi, '')
-            .replace(/@!?[\u4e00-\u9fa5A-Za-z0-9_]+/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
+        return stripProtocolTextFallback(clone.innerText || clone.textContent || '', codeMasks);
     }
 
     async function speak(element) {

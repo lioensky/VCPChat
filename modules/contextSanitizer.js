@@ -1,6 +1,8 @@
 // modules/contextSanitizer.js
 // 上下文HTML标签转MD净化器模块
 
+const resilienceMask = require('./shared/vcpResilienceMask');
+
 // 🔴 优化：将沉重的模块改为按需加载，防止阻塞主进程发送消息
 let JSDOM = null;
 let TurndownService = null;
@@ -198,17 +200,51 @@ class ContextSanitizer {
 
     /**
      * 清理元思考链（明文形式）
+     * 具备工具请求块、工具结果块与 Markdown 围栏代码块掩码保护，
+     * 确保工具参数与技术笔记中的 `<think>` 字面量 100% 保留，防止 OneRing snapshot.contentHash 撕裂。
      * @param {string} content - 原始内容
      * @returns {string} - 清理后的内容
      */
-    stripThoughtChains(content) {
-        if (typeof content !== 'string') return content;
+    _isLineLeadingBlank(text, index) {
+        return resilienceMask.isLineLeadingBlank(text, index);
+    }
 
-        // 只有起止标记分别独占一行时才视为思维链协议。
-        // 正文中的 `<think>…</think>` 示例、行内代码或标签说明必须原样保留。
-        const THOUGHT_CHAIN_REGEX = /^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*\r?\n[\s\S]*?^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
-        const CONVENTIONAL_THOUGHT_REGEX = /^[ \t]*<(?:think(?:ing)?|thought(?:s)?)>[ \t]*\r?\n[\s\S]*?^[ \t]*<\/(?:think(?:ing)?|thought(?:s)?)>[ \t]*(?:\r?\n|$)/gim;
-        return content.replace(THOUGHT_CHAIN_REGEX, '').replace(CONVENTIONAL_THOUGHT_REGEX, '');
+    _isLineTrailingBlank(text, afterIndex) {
+        return resilienceMask.isLineTrailingBlank(text, afterIndex);
+    }
+
+    _findNestedVcpInfoRanges(text) {
+        return resilienceMask.findNestedVcpInfoRanges(text);
+    }
+
+    _findClosedFenceAndToolRanges(text) {
+        return resilienceMask.findClosedFenceAndToolRanges(text);
+    }
+
+    _applyMaskRanges(text, ranges, pushMask) {
+        return resilienceMask.applyMaskRanges(text, ranges, pushMask);
+    }
+
+    _maskProtectedRegions(content, options = {}) {
+        return resilienceMask.maskProtectedRegions(content, options);
+    }
+
+    _unmaskProtectedRegions(text, masks) {
+        return resilienceMask.unmaskProtectedRegions(text, masks);
+    }
+
+    stripThoughtChains(content) {
+        return resilienceMask.stripThoughtChains(content);
+    }
+
+    /**
+     * 安全剥离辅助出站上下文中的 VCP 协议自愈纠偏回执、空错误信封、摘要报错项与常驻药丸
+     * 具备工具结果与代码围栏保护，绝不破坏 FileOperator 等正常工具结果正文。
+     * @param {string} content
+     * @returns {string}
+     */
+    stripProtocolResilienceNoise(content) {
+        return resilienceMask.stripProtocolResilienceNoise(content);
     }
 
     /**
@@ -218,66 +254,7 @@ class ContextSanitizer {
      * @returns {string} - 清理后的内容
      */
     stripHiddenToolResults(content) {
-        if (typeof content !== 'string' || !content.includes('[[VCP调用结果信息汇总:')) return content;
-
-        const startMarker = '[[VCP调用结果信息汇总:';
-        const endMarker = 'VCP调用结果结束]]';
-        let result = '';
-        let cursor = 0;
-
-        while (cursor < content.length) {
-            const start = content.indexOf(startMarker, cursor);
-            if (start === -1) {
-                result += content.slice(cursor);
-                break;
-            }
-
-            // 检查起始标记行是否带有隐藏标记，或首部包含注入状态隐藏
-            let depth = 1;
-            let scanCursor = start + startMarker.length;
-            let blockEnd = -1;
-
-            while (scanCursor <= content.length) {
-                const nextEnd = content.indexOf(endMarker, scanCursor);
-                if (nextEnd === -1) break;
-
-                const nextStart = content.indexOf(startMarker, scanCursor);
-                if (nextStart !== -1 && nextStart < nextEnd) {
-                    depth += 1;
-                    scanCursor = nextStart + startMarker.length;
-                    continue;
-                }
-
-                depth -= 1;
-                scanCursor = nextEnd + endMarker.length;
-                if (depth === 0) {
-                    blockEnd = scanCursor;
-                    break;
-                }
-            }
-
-            if (blockEnd === -1) {
-                // 未闭合，原样保留
-                result += content.slice(cursor, start + startMarker.length);
-                cursor = start + startMarker.length;
-                continue;
-            }
-
-            const rawBlock = content.slice(start, blockEnd);
-            const isHidden = /^\[\[VCP调用结果信息汇总:\s*(?:\[HIDDEN\]|<!--HIDDEN-->|\(HIDDEN\))/i.test(rawBlock)
-                || /^[ \t]*-[ \t]*(?:注入上下文|上下文注入|上下文状态|Context):\s*(?:隐藏|hidden|false|否)/im.test(rawBlock.slice(0, 300));
-
-            if (isHidden) {
-                // 隐藏块：将起始位置之前的内容追加，跳过此块
-                result += content.slice(cursor, start);
-                cursor = blockEnd;
-            } else {
-                result += content.slice(cursor, blockEnd);
-                cursor = blockEnd;
-            }
-        }
-
-        return result.replace(/\n{3,}/g, '\n\n');
+        return resilienceMask.stripHiddenToolResults(content);
     }
     /**
      * 生成缓存键
@@ -314,12 +291,20 @@ class ContextSanitizer {
      * @returns {boolean} - 是否包含需要原样保留的 VCP 特殊块
      */
     containsRawVcpBlocks(content) {
-        if (typeof content !== 'string') return false;
+        if (!content || typeof content !== 'string') return false;
 
         return (
             content.includes('<<<[VCP_TOOL_BATCH_START:') ||
-            (content.includes('<<<[TOOL_REQUEST]>>>') && content.includes('<<<[END_TOOL_REQUEST]>>>')) ||
-            (content.includes('<<<DailyNoteStart>>>') && content.includes('<<<DailyNoteEnd>>>'))
+            /<<<\[ROLE_DIVIDE_USER\]>>>[\s\S]*?<<<\[END_ROLE_DIVIDE_USER\]>>>/.test(content) ||
+            /\[\[VCP调用结果信息汇总:[\s\S]*?VCP调用结果结束\]\]/.test(content) ||
+            /\[\[VCP协议纠偏指导:\s*code=[A-Z0-9_]+[\s\S]*?(?:\[\[\/VCP协议纠偏指导\]\]|\]\])/i.test(content) ||
+            /<{1,4}\[(?:START_)?TOOL_REQUEST(?:_ESCAPE)?\]?>{1,4}[\s\S]*?<{1,4}\[END_TOOL_REQUEST(?:_ESCAPE)?\]?>{1,4}/i.test(content) ||
+            /<<<DailyNoteStart>>>[\s\S]*?<<<DailyNoteEnd>>>/.test(content) ||
+            /<tool_call[\s>][\s\S]*?<\/tool_call>/i.test(content) ||
+            /<function_call[\s>][\s\S]*?<\/function_call>/i.test(content) ||
+            /\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/.test(content) ||
+            /\[FUNCTION_CALL\][\s\S]*?\[\/FUNCTION_CALL\]/.test(content) ||
+            /[【\[［]\s*VCP(?:\s*工具调用)?\s*协议规范\s*[】\]］][\s\S]*?[【\[［]\s*(?:\/|／|\\)\s*VCP(?:\s*工具调用)?\s*协议规范\s*[】\]］]/i.test(content)
         );
     }
 
@@ -354,11 +339,11 @@ class ContextSanitizer {
         try {
             this._ensureService();
 
-            // JSDOM 会把用于讲解协议的字面量 <think>/<thinking> 标签当成未知 HTML 元素，
+            // JSDOM 会把用于讲解协议的字面量 <think>/<thinking>/<thought>/<thoughts>/<antthinking> 标签当成未知 HTML 元素，
             // Turndown 随后会吞掉标签本身。先保护所有标签字面量；真正需要清理的完整
             // 思维链块应由 stripThoughtChains() 按“独占行”规则处理。
             const thoughtTagLiterals = [];
-            const contentWithProtectedThoughtTags = content.replace(/<\/?think(?:ing)?>/gi, (tag) => {
+            const contentWithProtectedThoughtTags = content.replace(/<\/?(?:think(?:ing)?|thought(?:s)?|antthinking)\b[^>]*>/gi, (tag) => {
                 const placeholder = `VCPTHOUGHTTAGLITERAL${thoughtTagLiterals.length}TOKEN`;
                 thoughtTagLiterals.push(tag);
                 return placeholder;
@@ -466,6 +451,8 @@ class ContextSanitizer {
             if (msg.name) sanitizedMsg.name = msg.name;
             if (msg.tool_calls) sanitizedMsg.tool_calls = msg.tool_calls;
             if (msg.tool_call_id) sanitizedMsg.tool_call_id = msg.tool_call_id;
+            if (msg.__vcpchatTimestampMeta) sanitizedMsg.__vcpchatTimestampMeta = msg.__vcpchatTimestampMeta;
+            if (msg.role === 'user' && msg.__vcpContextCheckpoint === true) sanitizedMsg.__vcpContextCheckpoint = true;
 
             return sanitizedMsg;
         });
@@ -498,3 +485,6 @@ class ContextSanitizer {
 const contextSanitizer = new ContextSanitizer();
 
 module.exports = contextSanitizer;
+module.exports.contextSanitizer = contextSanitizer;
+module.exports.ContextSanitizer = ContextSanitizer;
+module.exports.default = contextSanitizer;

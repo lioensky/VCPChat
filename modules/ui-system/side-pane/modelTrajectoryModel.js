@@ -82,7 +82,7 @@ export function extractToolCalls(text) {
     const stripped = replaceToolRequestBlocks(source, (_match, content) => {
         toolCalls.push(toolCallFromRequest(content));
         return '';
-    });
+    }, { stopAtProtocolWalls: true });
     return { text: stripped.replace(/\n{3,}/g, '\n\n').trim(), toolCalls };
 }
 

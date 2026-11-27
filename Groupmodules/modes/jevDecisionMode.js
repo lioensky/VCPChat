@@ -1,5 +1,7 @@
 'use strict';
 
+const contextSanitizer = require('../../modules/contextSanitizer');
+
 const DEFAULT_NAVIGATOR_PROMPT = [
     '你是智能群聊的发言导航员。请根据当前群聊的最新内容、成员身份与成员各自的发言触发风格，判断谁最有必要继续发言。',
     '优先考虑：被直接询问或点名、具备相关知识、能够补充新信息、需要回应误解或冲突、能够自然承接当前话题的成员。',
@@ -73,6 +75,15 @@ function contentToText(content) {
     return '';
 }
 
+function sanitizeDecisionText(content) {
+    const raw = contentToText(content);
+    if (!raw) return '';
+    let cleaned = contextSanitizer.stripThoughtChains(raw);
+    cleaned = contextSanitizer.stripHiddenToolResults(cleaned);
+    cleaned = contextSanitizer.stripProtocolResilienceNoise(cleaned);
+    return cleaned.trim();
+}
+
 function buildMemberRuntime(activeMembers, history, settings, runtime = {}) {
     return activeMembers.map(member => {
         let messagesSinceLastSpeech = null;
@@ -116,7 +127,7 @@ function buildDecisionRequest(activeMembers, history, groupConfig, runtime = {})
         role: message.role || 'unknown',
         speakerName: message.name || (message.role === 'user' ? '用户' : 'AI'),
         agentId: message.agentId || null,
-        text: contentToText(message.content),
+        text: sanitizeDecisionText(message.content),
         timestamp: typeof message.timestamp === 'number' ? message.timestamp : null
     }));
 

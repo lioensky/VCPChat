@@ -82,6 +82,9 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
             'streamSpeech.js', 'streamStableBoundary.js', 'toolResultRegions.js', 'toolBatchRegions.js',
             'toolRequestScanner.js', 'markdownCodeDomainScanner.js',
         ].includes(segments[0])) return guard(path.join(paths.projectRoot, 'modules', 'renderer'), segments);
+        if (root === 'shared' && segments.length === 1 && [
+            'vcpResilienceMaskEsm.js', 'vcpResilienceMask.js',
+        ].includes(segments[0])) return guard(path.join(paths.projectRoot, 'modules', 'shared'), segments);
         // 助手自己没放头像时用应用的默认头像（和主窗口侧栏里显示的一样）
         if (root === 'default-avatar.png' && !segments.length) return defaultAvatarPath();
         if (root === 'builtin') {
@@ -116,6 +119,7 @@ function createPetAssets({ paths, stagedCorePath = () => null }) {
         if (!file) return null;
         const roots = [path.join(paths.projectRoot, 'DeskPetmodules'), path.join(paths.projectRoot, 'vendor'),
             path.join(paths.projectRoot, 'modules', 'emotion'), path.join(paths.projectRoot, 'modules', 'renderer'),
+            path.join(paths.projectRoot, 'modules', 'shared'),
             builtInDirectory(), builtInSpriteDirectory()];
         let base = roots.find(root => isInside(root, file));
         let anchor = paths.projectRoot;

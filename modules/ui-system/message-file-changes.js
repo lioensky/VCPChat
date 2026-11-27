@@ -244,7 +244,7 @@ export function classifyToolFileOperations(text) {
         if (tool === 'fileoperator') requests.fileoperator.push({start,end,fields, candidates:fileOperatorOperations(fields)});
         else if (tool === 'projectforge') requests.projectforge.push({start,end,fields, candidates:forgeOperationsOfRequest(fields)});
         return match;
-    });
+    }, { stopAtProtocolWalls: true });
     const results = toolResultsOf(source,['fileoperator','projectforge']);
     const consumed = new Set();
     const classified = Object.entries(requests).flatMap(([tool,calls]) => {

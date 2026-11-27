@@ -425,6 +425,7 @@ function createContentPipeline(deps = {}) {
             return replaceToolRequestBlocks(text, protectMatch, {
                 toolResultRanges: ctx.state.toolResultsProtected ? [] : toolRanges(text, ctx),
                 sourceIndex: ctx.parse.index(text),
+                stopAtProtocolWalls: true,
             });
         }
 

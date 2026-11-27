@@ -1,6 +1,6 @@
 import { collectToolBatchRanges } from './toolBatchRegions.js';
 import { collectToolResultRanges, collectCodeDomainsOutsideToolResults, findToolResultEnd, findToolResultRangeAt, indexOfOutsideToolResults } from './toolResultRegions.js';
-import { findToolRequestEnd } from './toolRequestScanner.js';
+import { findToolRequestEnd, scanToolRequestEnd, findNextToolRequestStart, isBacktickWrappedToolMarker } from './toolRequestScanner.js';
 
 const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
@@ -446,11 +446,82 @@ function findToolRequestBlockEnd(text, startIndex) {
     // 与完整渲染共享 ESCAPE 感知扫描器：工具参数中的「始ESCAPE」...「末ESCAPE」
     // 可能包含结束标记文本，不能用简单 indexOf 提前截断请求。
     if (typeof findToolRequestEnd === 'function') {
-        return findToolRequestEnd(text, contentStart);
+        return findToolRequestEnd(text, contentStart, { stopAtProtocolWalls: true });
     }
 
     const endIndex = text.indexOf(TOOL_REQUEST_END, contentStart);
     return endIndex === -1 ? -1 : endIndex + TOOL_REQUEST_END.length;
+}
+
+function isTrustedRoleDivideEndLineSafe(text, matchIndex) {
+    const prefix = text.slice(0, matchIndex);
+    if (!prefix.includes(TOOL_REQUEST_START)) {
+        return true;
+    }
+
+    const fenceOpenRe = /^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)/gm;
+    const findNextFence = (from) => {
+        let searchPos = from;
+        while (searchPos < prefix.length) {
+            fenceOpenRe.lastIndex = searchPos;
+            const fm = fenceOpenRe.exec(prefix);
+            if (!fm) return null;
+            const fenceChar = fm[1][0];
+            const info = fm[2] || '';
+            if (fenceChar === '`' && info.includes('`')) {
+                const nl = prefix.indexOf('\n', fm.index);
+                searchPos = nl === -1 ? prefix.length : nl + 1;
+                continue;
+            }
+            const markerOffset = fm.index + fm[0].search(/[`~]/);
+            return { index: markerOffset };
+        }
+        return null;
+    };
+
+    const findNextTool = (from) => {
+        let searchPos = from;
+        while (searchPos < prefix.length) {
+            const tm = findNextToolRequestStart(prefix, searchPos, false);
+            if (!tm) return null;
+            if (!isBacktickWrappedToolMarker(prefix, tm.index, tm.marker)) return tm;
+            searchPos = tm.index + tm.marker.length;
+        }
+        return null;
+    };
+
+    let pos = 0;
+    while (pos < prefix.length) {
+        const fence = findNextFence(pos);
+        const tool = findNextTool(pos);
+        if (!fence && !tool) return true;
+
+        if (fence && (!tool || fence.index <= tool.index)) {
+            const fenceEnd = findMatchingFenceEnd(prefix, fence.index);
+            if (fenceEnd === -1) return true;
+            pos = fenceEnd;
+            continue;
+        }
+
+        const contentStart = tool.index + tool.marker.length;
+        const scan = scanToolRequestEnd(prefix, contentStart, { stopAtProtocolWalls: true });
+        if (scan.status === 'complete') {
+            pos = scan.endIndex;
+            continue;
+        }
+        if (scan.status === 'incomplete-field' && /escape/i.test(scan.field?.startMarker || '')) {
+            const between = prefix.slice(scan.field.markerEnd);
+            const roleOpenIdx = between.lastIndexOf('<<<[ROLE_DIVIDE_USER]>>>');
+            if (roleOpenIdx === -1) return false;
+            const afterOpen = between.slice(roleOpenIdx + '<<<[ROLE_DIVIDE_USER]>>>'.length);
+            const hasReceipt = afterOpen.includes(TOOL_RESULT_START)
+                || afterOpen.includes('[[VCP协议纠偏指导:')
+                || afterOpen.includes('<<<[VCP_TOOL_BATCH_START:');
+            if (!hasReceipt) return false;
+        }
+        pos = contentStart;
+    }
+    return true;
 }
 
 function findRoleDividerSectionEnd(text, startIndex, toolResultRanges = null) {
@@ -491,6 +562,7 @@ export function findExplicitStablePrefix(text, startOffset = 0) {
     let trustedCutoff = 0;
     let trustedMatch;
     while ((trustedMatch = trustedEndLine.exec(text)) !== null) {
+        if (!isTrustedRoleDivideEndLineSafe(text, trustedMatch.index)) continue;
         trustedCutoff = trustedMatch.index + trustedMatch[0].length;
     }
     if (trustedCutoff > startOffset) {

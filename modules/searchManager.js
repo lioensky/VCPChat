@@ -234,7 +234,7 @@ const searchManager = {
         replaceToolRequestBlocks(content, (raw, _body, start, end) => {
             ranges.push({ start, end });
             return raw;
-        });
+        }, { stopAtProtocolWalls: true });
         const unclosed = findEarliestUnclosedToolBlock(content);
         if (unclosed) ranges.push({ start: unclosed.startIndex, end: content.length });
         ranges.push(...collectMarkdownCodeDomains(content));

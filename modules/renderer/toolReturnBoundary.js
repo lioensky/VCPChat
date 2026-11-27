@@ -15,7 +15,7 @@ export function findToolReturnBoundary(text) {
     replaceToolRequestBlocks(text, (match, _content, start, end) => {
         requests.push({ start, end });
         return match;
-    });
+    }, { stopAtProtocolWalls: true });
     const code = collectCodeDomainsOutsideToolResults(text, ranges);
     const receipts = ranges.filter(range => ![...code, ...requests].some(domain =>
         range.start >= domain.start && range.start < domain.end));

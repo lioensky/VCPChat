@@ -4,6 +4,8 @@
 // 这里只放判断、拼请求、清理回复和写话题这些不碰窗口的部分；什么时候问、交给哪个桌宠由 petHandlers 决定。
 
 const crypto = require('crypto');
+const contextSanitizer = require('../contextSanitizer');
+const resilienceMask = require('../shared/vcpResilienceMask');
 
 const IDLE_CHAT_MINUTES = Object.freeze([10, 30, 60]);
 const DEFAULT_IDLE_CHAT_MINUTES = 30;
@@ -55,11 +57,17 @@ function messageText(message) {
     return '';
 }
 
+function stripThoughtsForIdle(text) {
+    let cleaned = contextSanitizer.stripThoughtChains(String(text || ''));
+    cleaned = cleaned.replace(/^\s*<(?:think(?:ing)?|thought(?:s)?|antthinking)\b[^>]*>[\s\S]*?<\/(?:think(?:ing)?|thought(?:s)?|antthinking)\s*>/i, '');
+    return cleaned;
+}
+
 function trimForContext(text) {
-    const plain = String(text || '')
-        .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '')
-        .replace(/<!--[\s\S]*?-->/g, '')
-        .trim();
+    let plain = stripThoughtsForIdle(text);
+    plain = contextSanitizer.stripHiddenToolResults(plain);
+    plain = contextSanitizer.stripProtocolResilienceNoise(plain);
+    plain = plain.replace(/<!--[\s\S]*?-->/g, '').trim();
     return plain.length > HISTORY_CHARS ? `${plain.slice(0, HISTORY_CHARS)}…` : plain;
 }
 
@@ -94,13 +102,51 @@ function buildMessages({ config, agentName, history = [], promptAppend = '', use
 
 const EMO_RE = /<!--\s*emo\s*[:：]\s*([a-z]+)(?:\/[a-z]+)?(?:\s+([0-9.]+))?\s*-->/i;
 
+function stripToolRequestBlocksLinear(text) {
+    if (typeof text !== 'string' || !text) return '';
+    // 先屏蔽闭合围栏代码块与 CommonMark 多反引号行内代码，再剥离闭合与未闭合工具块，避免双反引号示例被误删
+    const fenceMasks = [];
+    const fencePrefix = resilienceMask.createUniqueMaskPrefix(text, 'VCP_IDLE_FENCE');
+    const fenceRanges = resilienceMask.findClosedFenceAndToolRanges(text).filter(r => r.kind === 'fence');
+    const maskedFence = resilienceMask.applyMaskRanges(text, fenceRanges, (chunk) => {
+        const token = `${fencePrefix}${fenceMasks.length}__`;
+        fenceMasks.push({ token, content: chunk });
+        return token;
+    });
+    const { text: maskedInput, masks: inlineMasks } = resilienceMask.maskInlineBackticks(maskedFence, 'VCP_IDLE_INLINE');
+
+    const toolRanges = resilienceMask.findClosedFenceAndToolRanges(maskedInput).filter(r => r.kind === 'tool');
+    let out = '';
+    let cursor = 0;
+    for (const r of toolRanges) {
+        if (r.start < cursor) continue;
+        out += maskedInput.slice(cursor, r.start);
+        cursor = r.end;
+    }
+    out += maskedInput.slice(cursor);
+
+    const unclosedOpenRe = /<{2,4}\[TOOL_REQUEST(?:_ESCAPE)?\]>{2,4}/gi;
+    let truncated = out;
+    let um;
+    while ((um = unclosedOpenRe.exec(out)) !== null) {
+        if (resilienceMask.shouldStripUnclosedToolRequest(out, um.index, um[0].length)) {
+            truncated = out.slice(0, um.index);
+            break;
+        }
+    }
+    return resilienceMask.unmaskProtectedRegions(
+        resilienceMask.unmaskInlineBackticks(truncated, inlineMasks),
+        fenceMasks
+    );
+}
+
 /** 回复整理成能说出口的一句；空的、太像在报错的返回 null。 */
 function cleanLine(raw) {
-    let text = String(raw || '').replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
+    let text = stripThoughtsForIdle(raw);
     const emo = EMO_RE.exec(text);
     // 工具调用块、控制标记、其余注释都不要
-    text = text
-        .replace(/<<<\[TOOL_REQUEST\]>>>[\s\S]*?<<<\[END_TOOL_REQUEST\]>>>/g, '')
+    text = contextSanitizer.stripProtocolResilienceNoise(text);
+    text = stripToolRequestBlocksLinear(text)
         .replace(/<!--[\s\S]*?-->/g, '')
         .replace(/\[\[[A-Za-z]+::[^\]\n]*\]\]/g, '')
         .replace(/^\s*["“「]|["”」]\s*$/g, '')

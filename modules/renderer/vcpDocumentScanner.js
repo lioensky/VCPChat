@@ -55,7 +55,11 @@ export function createVcpSourceIndex(source, { mode = 'final', onWork = () => {}
             onWork({ operation: 'request-end', reused: true, inputChars: 0 });
             return cache.get(key);
         }
-        const scan = scanToolRequestEnd(limit === source.length ? source : source.slice(0, limit), contentStart);
+        const scan = scanToolRequestEnd(
+            limit === source.length ? source : source.slice(0, limit),
+            contentStart,
+            { stopAtProtocolWalls: true }
+        );
         const result = Object.freeze({ ...scan,
             ...(scan.field ? { field: Object.freeze({ ...scan.field }) } : {}),
         });

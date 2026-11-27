@@ -54,8 +54,29 @@ test('the pet entry static module graph is fully served by its protocol', async 
     };
     await visit('vcp-deskpet://pet/app/deskpet.js');
     assert.ok(visited.has('vcp-deskpet://pet/renderer/toolBatchRegions.js'));
+    assert.ok(visited.has('vcp-deskpet://pet/shared/vcpResilienceMaskEsm.js'));
+    assert.ok(visited.has('vcp-deskpet://pet/shared/vcpResilienceMask.js'));
     assert.equal(await assets.resolveLocalFile('vcp-deskpet://pet/renderer/contentPipeline.js'), null,
         '不能为修复依赖而暴露整个 renderer 目录');
+    assert.equal(await assets.resolveLocalFile('vcp-deskpet://pet/shared/otherSecret.js'), null,
+        '不能为修复依赖而暴露整个 shared 目录');
+});
+
+test('vcpResilienceMaskEsm works natively in browser ESM without Node builtins', async () => {
+    const vm = require('node:vm');
+    const umdSource = fs.readFileSync(path.resolve('modules/shared/vcpResilienceMask.js'), 'utf8');
+    const esmSource = fs.readFileSync(path.resolve('modules/shared/vcpResilienceMaskEsm.js'), 'utf8');
+    assert.doesNotMatch(esmSource, /\b(?:createRequire|require\s*\(|node:)\b/,
+        '浏览器 ESM 桥接不得依赖 Node 内置模块');
+
+    const sandbox = { window: {} };
+    vm.runInNewContext(umdSource, sandbox);
+    assert.equal(typeof sandbox.window.VCPProtocolResilienceMask?.findFenceRangesOutsideProtocolWalls, 'function',
+        '纯浏览器全局环境下 UMD 必须挂载 VCPProtocolResilienceMask');
+
+    const esmMod = await import('../modules/shared/vcpResilienceMaskEsm.js');
+    assert.equal(typeof esmMod.findFenceRangesOutsideProtocolWalls, 'function');
+    assert.equal(typeof esmMod.stripUnclosedToolRequestsSafe, 'function');
 });
 
 

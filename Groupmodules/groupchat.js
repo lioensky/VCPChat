@@ -296,7 +296,7 @@ function buildVcpChatExtensionsFromMessages(messages, context = null, requestId 
 function stripInternalMessageMetadata(messages) {
     return messages.map(message => {
         if (!message || typeof message !== 'object') return message;
-        const { __vcpchatTimestampMeta, ...cleanMessage } = message;
+        const { __vcpchatTimestampMeta, __vcpContextCheckpoint, ...cleanMessage } = message;
         return cleanMessage;
     });
 }
@@ -1389,6 +1389,7 @@ ${canvasData.errors || 'No errors'}
             // 默认不注入元思考链，除非明确开启
             if (globalVcpSettings.enableThoughtChainInjection !== true) {
                 messagesForAI = messagesForAI.map(msg => {
+                    if (msg.__vcpContextCheckpoint === true) return msg;
                     if (typeof msg.content === 'string') {
                         return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
                     } else if (Array.isArray(msg.content)) {
@@ -1411,6 +1412,29 @@ ${canvasData.errors || 'No errors'}
         }
         // --- End of Thought Chain Stripping ---
 
+        // --- VCP Hidden Tool Results Stripping ---
+        try {
+            messagesForAI = messagesForAI.map(msg => {
+                if (msg.__vcpContextCheckpoint === true) return msg;
+                if (typeof msg.content === 'string') {
+                    return { ...msg, content: contextSanitizer.stripHiddenToolResults(msg.content) };
+                } else if (Array.isArray(msg.content)) {
+                    return {
+                        ...msg,
+                        content: msg.content.map(part => {
+                            if (part.type === 'text' && typeof part.text === 'string') {
+                                return { ...part, text: contextSanitizer.stripHiddenToolResults(part.text) };
+                            }
+                            return part;
+                        })
+                    };
+                }
+                return msg;
+            });
+        } catch (e) {
+            console.error('[GroupChat HiddenToolResult] Failed to strip hidden tool results:', e);
+        }
+
         // 添加净化器处理
         if (globalVcpSettings.enableContextSanitizer === true) {
             const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;
@@ -1426,7 +1450,11 @@ ${canvasData.errors || 'No errors'}
                 globalVcpSettings.enableThoughtChainInjection === true
             );
 
-            messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];
+            messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages.map((message, index) =>
+                nonSystemMessages[index]?.__vcpContextCheckpoint === true
+                    ? nonSystemMessages[index]
+                    : message
+            )];
 
             console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
         }
@@ -2167,6 +2195,7 @@ ${canvasData.errors || 'No errors'}
         // 默认不注入元思考链，除非明确开启
         if (globalVcpSettings.enableThoughtChainInjection !== true) {
             messagesForAI = messagesForAI.map(msg => {
+                if (msg.__vcpContextCheckpoint === true) return msg;
                 if (typeof msg.content === 'string') {
                     return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
                 } else if (Array.isArray(msg.content)) {
@@ -2189,6 +2218,29 @@ ${canvasData.errors || 'No errors'}
     }
     // --- End of Thought Chain Stripping ---
 
+    // --- VCP Hidden Tool Results Stripping ---
+    try {
+        messagesForAI = messagesForAI.map(msg => {
+            if (msg.__vcpContextCheckpoint === true) return msg;
+            if (typeof msg.content === 'string') {
+                return { ...msg, content: contextSanitizer.stripHiddenToolResults(msg.content) };
+            } else if (Array.isArray(msg.content)) {
+                return {
+                    ...msg,
+                    content: msg.content.map(part => {
+                        if (part.type === 'text' && typeof part.text === 'string') {
+                            return { ...part, text: contextSanitizer.stripHiddenToolResults(part.text) };
+                        }
+                        return part;
+                    })
+                };
+            }
+            return msg;
+        });
+    } catch (e) {
+        console.error('[GroupChat Invite HiddenToolResult] Failed to strip hidden tool results:', e);
+    }
+
     // 添加净化器处理
     if (globalVcpSettings.enableContextSanitizer === true) {
         const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;
@@ -2204,7 +2256,11 @@ ${canvasData.errors || 'No errors'}
             globalVcpSettings.enableThoughtChainInjection === true
         );
 
-        messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];
+        messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages.map((message, index) =>
+            nonSystemMessages[index]?.__vcpContextCheckpoint === true
+                ? nonSystemMessages[index]
+                : message
+        )];
 
         console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
     }

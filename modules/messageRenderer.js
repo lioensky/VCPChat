@@ -6,7 +6,7 @@ import { createRenderWorkerClient } from './renderer/renderWorkerClient.js';
 import { createRenderTemplateCompiler } from './renderer/renderTemplateCompiler.js';
 import { tokenizeVcpDocument } from './renderer/vcpDocumentScanner.js';
 import { sanitizeToolDataHtml } from './renderer/toolDataHtml.js';
-import { stripToolBatches, collectToolBatchRanges } from './renderer/toolBatchRegions.js';
+import { collectToolBatchRanges } from './renderer/toolBatchRegions.js';
 import { splitToolBatchDomains, transformToolBatchText, composeToolBatchHtml } from './renderer/toolBatchDomains.js';
 import { isContextCheckpoint } from './chat/contextCompactionState.js';
 import { createProjectForgeTopicSurface } from './renderer/projectForgeTopicSurface.js';
@@ -31,6 +31,7 @@ import { createSurfaceTaskOwner } from './renderer/surfaceTaskOwner.js';
 import {
     findEarliestUnclosedToolBlock,
     findToolRequestEnd,
+    findUnclosedToolRequest,
     replaceToolRequestBlocks,
     readToolRequestField
 } from './renderer/toolRequestScanner.js';
@@ -42,6 +43,10 @@ import {
     setToolResultHidden,
 } from './renderer/toolResultRegions.js';
 import { createToolPresentation } from './renderer/toolPresentation.js';
+import {
+    createUniqueMaskPrefix,
+    shouldStripUnclosedToolRequest,
+} from './shared/vcpResilienceMaskEsm.js';
 import {
     findMalformedToolFields,
     describeToolRequestMarkerProblem
@@ -772,6 +777,21 @@ function extractSpeakableTextFromContentElement(contentElement) {
     if (!contentElement) return '';
 
     const contentClone = contentElement.cloneNode(true);
+    const rawDomSeed = contentClone.textContent || '';
+    const domResultPrefix = createUniqueMaskPrefix(rawDomSeed, 'VCP_TOOL_RESULT_DOM');
+    const textResultPrefix = createUniqueMaskPrefix(rawDomSeed, 'VCP_TOOL_RESULT');
+
+    let domWallIdx = 0;
+    const docRef = contentClone.ownerDocument || contentElement.ownerDocument;
+    contentClone.querySelectorAll(
+        '.vcp-role-divider, .vcp-tool-result-bubble, [data-vcp-block-type="tool-result"], [data-vcp-block-type="tool-batch"], [data-vcp-block-type="role-divider"]'
+    ).forEach(el => {
+        if (docRef?.createTextNode) {
+            el.replaceWith(docRef.createTextNode(`\n<!--${domResultPrefix}${domWallIdx++}-->\n`));
+        } else {
+            el.remove();
+        }
+    });
 
     // data-vcp-block-type 是特殊协议渲染块的统一边界。保留显式类名作为
     // 旧历史 DOM / 第三方渲染结果的兼容兜底；@tag 是路由提示而非正文，
@@ -780,7 +800,31 @@ function extractSpeakableTextFromContentElement(contentElement) {
         '[data-vcp-block-type], .vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .maid-diary-update-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .vcp-desktop-push-placeholder, .highlighted-tag, .highlighted-alert-tag, style, script'
     ).forEach(el => el.remove());
 
-    let speakableText = stripToolBatches(contentClone.innerText || contentClone.textContent || '');
+    // 当调用方保留 <pre>/<code>（如 VChatAutoTTS includeCode: true）时，先隔离代码节点文本，
+    // 避免其中的 <<<[TOOL_REQUEST]>>> 字面量在 innerText 失去反引号后触发协议剥离或截断后续正文。
+    const codeMasks = [];
+    const codePrefix = createUniqueMaskPrefix(contentClone.textContent || '', 'VCP_TTS_CODE');
+    contentClone.querySelectorAll('pre, code').forEach(el => {
+        if (el.parentElement?.closest('pre, code')) return;
+        const rawCodeText = el.innerText || el.textContent || '';
+        const token = `${codePrefix}${codeMasks.length}__`;
+        codeMasks.push({ token, text: rawCodeText });
+        if (docRef?.createTextNode) {
+            const wrapped = el.tagName?.toLowerCase() === 'pre' ? `\n${token}\n` : token;
+            el.replaceWith(docRef.createTextNode(wrapped));
+        }
+    });
+
+    const rawSpeakableText = contentClone.innerText || contentClone.textContent || '';
+    let placeholderIndex = 0;
+    const speakableBatchRanges = collectToolBatchRanges(rawSpeakableText);
+    let speakableText = speakableBatchRanges.length > 0
+        ? replaceToolResultRanges(
+            rawSpeakableText,
+            speakableBatchRanges,
+            () => `\n<!--${textResultPrefix}${placeholderIndex++}-->\n`
+        )
+        : rawSpeakableText;
 
     // DOM 块删除是主路径；下面是协议文本残留的防御性兜底。
     // 工具结果优先级最高且嵌套感知，最先整体剥离；其内部的工具请求/推送标记随之移除。
@@ -802,10 +846,43 @@ function extractSpeakableTextFromContentElement(contentElement) {
     }
     if (receiptDepth > 0) speakableToolResultRanges.push({ start: receiptStart, end: speakableText.length });
     if (speakableToolResultRanges.length > 0) {
-        speakableText = replaceToolResultRanges(speakableText, speakableToolResultRanges, () => '');
+        speakableText = replaceToolResultRanges(
+            speakableText,
+            speakableToolResultRanges,
+            () => `<!--${textResultPrefix}${placeholderIndex++}-->`
+        );
     }
-    speakableText = replaceToolRequestBlocks(speakableText, () => '');
+    speakableText = replaceToolRequestBlocks(speakableText, () => '', {
+        stopAtProtocolWalls: true,
+        allowFuzzyStart: true,
+    });
+    let unclosedCursor = 0;
+    const wallRe = new RegExp(`<<<\\[(?:END_)?ROLE_DIVIDE_(?:SYSTEM|USER|ASSISTANT)\\]>>>|<!--${domResultPrefix}\\d+-->|<!--${textResultPrefix}\\d+-->|<{2,4}\\[TOOL_REQUEST(?:_ESCAPE)?\\]>{2,4}`, 'i');
+    while (unclosedCursor < speakableText.length) {
+        const tail = speakableText.slice(unclosedCursor);
+        const unclosed = findUnclosedToolRequest(tail, { allowFuzzyStart: true, stopAtProtocolWalls: true });
+        if (!unclosed) break;
+        const relStart = typeof unclosed === 'number' ? unclosed : (unclosed.startIndex ?? unclosed.start);
+        if (!Number.isInteger(relStart)) break;
+        const start = unclosedCursor + relStart;
+        const openMatch = /^<{2,4}\[TOOL_REQUEST(?:_ESCAPE)?\]>{2,4}/i.exec(speakableText.slice(start));
+        const markerLen = openMatch ? openMatch[0].length : '<<<[TOOL_REQUEST]>>>'.length;
+        if (!shouldStripUnclosedToolRequest(speakableText, start, markerLen)) {
+            unclosedCursor = start + markerLen;
+            continue;
+        }
+        const rest = speakableText.slice(start);
+        const wallMatch = wallRe.exec(rest.slice(markerLen));
+        if (wallMatch) {
+            speakableText = speakableText.slice(0, start) + '\n' + rest.slice(markerLen + wallMatch.index);
+            unclosedCursor = start + 1;
+        } else {
+            speakableText = speakableText.slice(0, start);
+            break;
+        }
+    }
     speakableText = speakableText
+        .replace(new RegExp(`<!--(?:${domResultPrefix}|${textResultPrefix})\\d+-->`, 'g'), '')
         .replace(TOOL_CALL_SUMMARY_REGEX, '')
         .replace(ROLE_DIVIDER_REGEX, '')
         .replace(DESKTOP_PUSH_REGEX, '');
@@ -815,14 +892,22 @@ function extractSpeakableTextFromContentElement(contentElement) {
     ROLE_DIVIDER_REGEX.lastIndex = 0;
     DESKTOP_PUSH_REGEX.lastIndex = 0;
 
-    return speakableText
+    speakableText = speakableText
         // 提取可能早于异步 @tag 高亮完成，因此还需清理纯文本形式。
         // 与前端高亮语法保持一致，支持 @name 和 @!name。
         .replace(/@!?[\u4e00-\u9fa5A-Za-z0-9_]+/g, '')
         .replace(/[ \t]+\n/g, '\n')
         .replace(/[ \t]{2,}/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+        .replace(/\n{3,}/g, '\n\n');
+
+    for (let i = codeMasks.length - 1; i >= 0; i -= 1) {
+        const { token, text } = codeMasks[i];
+        if (speakableText.includes(token)) {
+            speakableText = speakableText.split(token).join(text);
+        }
+    }
+
+    return speakableText.trim();
 }
 
 /**

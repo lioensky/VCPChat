@@ -644,7 +644,7 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, tool
                 `<template class="vcp-tool-details-template"><pre>${escapedFullContent}</pre></template>` +
                 `</div>\n\n`;
         }
-    });
+    }, { stopAtProtocolWalls: true });
 
     // Process Daily Notes
     processed = processed.replace(NOTE_REGEX, (match, rawContent) => {
@@ -799,7 +799,7 @@ function ensureHtmlFenced(text, options = {}) {
     replaceToolRequestBlocks(text, (match, content, startIndex, endIndex) => {
         protectedRanges.push({ start: startIndex, end: endIndex });
         return match;
-    });
+    }, { stopAtProtocolWalls: true });
 
     // 🟢 检查位置是否在保护区域内
     const isProtected = (index) => {

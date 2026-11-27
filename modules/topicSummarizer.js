@@ -27,11 +27,42 @@ async function summarizeTopicFromMessages(messages, agentName) {
     }
     // --------------------------------
 
+    const getResilienceMask = () => (
+        (typeof globalThis !== 'undefined' && globalThis.VCPProtocolResilienceMask)
+        || (typeof require === 'function' ? require('./shared/vcpResilienceMask.js') : null)
+    );
+
+    const resilienceMask = getResilienceMask();
+
+    const extractRawText = (content) => {
+        if (resilienceMask?.extractTextFromMultimodalContent) {
+            return resilienceMask.extractTextFromMultimodalContent(content);
+        }
+        if (typeof content === 'string') return content;
+        if (Array.isArray(content)) {
+            return content
+                .filter(part => part && (part.type === 'text' || part.type === 'output_text' || part.type === undefined) && typeof part.text === 'string')
+                .map(part => part.text)
+                .join('\n');
+        }
+        return typeof content?.text === 'string' ? content.text : '';
+    };
+
+    const sanitizeSummarySnippet = (input) => {
+        if (typeof input !== 'string' || !input) return '';
+        if (!resilienceMask) return input.trim();
+        let cleaned = resilienceMask.stripThoughtChains(input);
+        cleaned = resilienceMask.stripHiddenToolResults(cleaned);
+        cleaned = resilienceMask.stripProtocolResilienceNoise(cleaned);
+        return cleaned.replace(/\n{3,}/g, '\n\n').trim();
+    };
+
     // 提取最近的几条消息内容用于总结
     // 例如，提取最近4条消息
     const recentMessagesContent = messages.slice(-4).map(msg => {
-        // 确保从消息内容中提取文本，即使它是对象 { text: '...' }
-        const contentText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
+        // 确保从消息内容中提取文本，兼容 string / 多模态数组 / { text } 对象
+        const rawText = extractRawText(msg?.content);
+        const contentText = sanitizeSummarySnippet(rawText);
         return `${msg.role === 'user' ? (settings.userName || '用户') : agentName}: ${contentText}`;
     }).join('\n');
 
@@ -98,7 +129,7 @@ async function summarizeTopicFromMessages(messages, agentName) {
 
     // 如果AI总结失败，回退到临时逻辑或返回null
     console.warn('[TopicSummarizer] AI 总结失败，尝试临时逻辑。');
-    const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content;
+    const lastUserMessage = extractRawText(messages.filter(m => m.role === 'user').pop()?.content);
     if (lastUserMessage) {
         const tempTitle = `关于 "${lastUserMessage.substring(0, 15)}${lastUserMessage.length > 15 ? '...' : ''}" (备用)`;
         console.log('[TopicSummarizer] 临时生成的标题 (备用):', tempTitle);

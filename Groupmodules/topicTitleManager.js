@@ -3,6 +3,8 @@
 
 const { beginTrajectoryCall, sessionKeyFromContext, sourceFromContext } = require('../modules/modelTrajectory');
 const { vcpChatUrl } = require('../modules/utils/vcpServerRoutes');
+const contextSanitizer = require('../modules/contextSanitizer');
+const resilienceMask = require('../modules/shared/vcpResilienceMask');
 
 // 话题总结相关常量
 const MIN_MESSAGES_FOR_SUMMARY = 4;
@@ -24,9 +26,7 @@ function getEffectiveHistory(groupHistory) {
 
 function extractPlainMessageText(msg) {
     if (!msg) return '';
-    const raw = typeof msg.content === 'string'
-        ? msg.content
-        : (typeof msg.content?.text === 'string' ? msg.content.text : '');
+    const raw = resilienceMask.extractTextFromMultimodalContent(msg.content);
     const normalized = raw.replace(/\s+/g, ' ').trim();
     if (normalized) return normalized;
 
@@ -91,8 +91,11 @@ function buildSummaryContent(groupHistory, globalVcpSettings = {}) {
     const effectiveHistory = getEffectiveHistory(groupHistory);
     const recentMessagesContent = effectiveHistory.slice(-MIN_MESSAGES_FOR_SUMMARY).map(msg => {
         const speakerName = msg.name || (msg.role === 'user' ? (globalVcpSettings?.userName || '用户') : 'AI成员');
-        // 确保从消息内容中提取文本，即使它是对象 { text: '...' }
-        let contentText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
+        // 确保从消息内容中提取文本，兼容 string / 多模态数组 / { text } 对象
+        let contentText = resilienceMask.extractTextFromMultimodalContent(msg?.content);
+        contentText = contextSanitizer.stripThoughtChains(contentText);
+        contentText = contextSanitizer.stripHiddenToolResults(contentText);
+        contentText = contextSanitizer.stripProtocolResilienceNoise(contentText).trim();
         // 如果消息有附件且包含提取的文本，也将其包含在内
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {

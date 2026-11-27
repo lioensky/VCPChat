@@ -1,4 +1,5 @@
 import { replaceToolRequestBlocks, findUnclosedToolRequest, readToolRequestField } from './toolRequestScanner.js';
+import { shouldStripUnclosedToolRequest } from '../shared/vcpResilienceMaskEsm.js';
 
 const ATTRIBUTE = 'data-vcp-projectforge-topic';
 
@@ -13,10 +14,20 @@ export function containsProjectForgeRequest(text) {
     replaceToolRequestBlocks(text, (block, source) => {
         inspect(source);
         return block;
-    });
+    }, { stopAtProtocolWalls: true });
     if (!found) {
-        const partial = findUnclosedToolRequest(text);
-        if (partial) inspect(partial.content.slice('<<<[TOOL_REQUEST]>>>'.length));
+        let cursor = 0;
+        while (cursor < text.length) {
+            const partial = findUnclosedToolRequest(text.slice(cursor), { stopAtProtocolWalls: true });
+            if (!partial) break;
+            const start = cursor + partial.startIndex;
+            const markerLen = '<<<[TOOL_REQUEST]>>>'.length;
+            if (shouldStripUnclosedToolRequest(text, start, markerLen)) {
+                inspect(partial.content.slice(markerLen));
+                if (found) break;
+            }
+            cursor = start + markerLen;
+        }
     }
     return found;
 }
