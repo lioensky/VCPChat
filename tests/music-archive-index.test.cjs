@@ -182,3 +182,23 @@ test('ASCII 快路径与单字拼音缓存保持结果一致并避免重复计�
     // 只有 5 个不重复汉字（晴天周杰伦），缓存应使 pinyin 调用次数远低于 20 * 5 = 100
     assert.ok(calls <= 10, `expected <= 10 pinyin calls with cache, got ${calls}`);
 });
+
+test('CJK 快路径与重复歌手/专辑缓存保留全角、片假名与代理对的检索准确性', () => {
+    const tracks = [
+        { path: '/1', title: '晴天 🎵', artist: '周杰伦', album: '叶惠美' },
+        { path: '/2', title: '夜曲', artist: '周杰伦', album: '叶惠美' },
+        { path: '/3', title: 'ＦＵＬＬＷＩＤＴＨ カタカナ', artist: 'ＡＲＴＩＳＴ', album: 'ＡＬＢＵＭ' },
+        { path: '/4', title: 'ひらがな曲', artist: '周杰伦', album: '叶惠美' }
+    ];
+    const idx = Index.createIndex(tracks, { pinyin });
+    assert.deepEqual(idx.query('qt'), [0]);
+    assert.deepEqual(idx.query('zjl').sort(), [0, 1, 3]);
+    assert.deepEqual(idx.query('fullwidth'), [2]);
+    assert.deepEqual(idx.query('かたかな'), [2]);
+    assert.deepEqual(idx.query('artist'), [2]);
+    assert.deepEqual(idx.query('album'), [2]);
+    assert.deepEqual(idx.query('ひらがな'), [3]);
+    assert.equal(idx.entry(0).artistGroup, 'Z');
+    assert.equal(idx.entry(1).artistGroup, 'Z');
+    assert.equal(idx.entry(0).album, idx.entry(1).album);
+});

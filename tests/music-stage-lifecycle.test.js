@@ -1261,3 +1261,43 @@ test('edge spectrum releases strip VRAM on reduced-motion toggle and resolveAcce
     assert.equal(edgeCanvas.height, 1);
     dom.window.close();
 });
+
+test('stageHost.updateTheme skips refreshTheme while stage is closed and runs it on enter; stage config validates per-mode keys cleanly', () => {
+    const dom = createStageDom();
+    const { app } = createApp();
+    for (const file of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+        'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+        'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+        'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js']) {
+        runScript(dom, `Musicmodules/music-stage/${file}`);
+    }
+    // Table-driven config validation checks
+    const cfg = dom.window.MusicStageConfig;
+    const updated = cfg.update({
+        modes: {
+            tempera: { phraseLength: 99, trackMinSegment: 1, glow: 5 },
+            luminous: { wordSpacing: -2, glow: 1.5 },
+            kowloon: { cameraMode: 'diorama', fog: 2.5 },
+            fume: { cameraMode: 'stepped' }
+        }
+    });
+    assert.equal(updated.modes.tempera.phraseLength, 24);
+    assert.equal(updated.modes.tempera.trackMinSegment, 2);
+    assert.equal(updated.modes.tempera.glow, 2);
+    assert.equal(updated.modes.luminous.wordSpacing, 0);
+    assert.equal(updated.modes.luminous.glow, 1.5);
+    assert.equal(updated.modes.luminous.phraseLength, undefined, 'modes without phraseLength default do not gain extraneous keys');
+    assert.equal(updated.modes.kowloon.cameraMode, 'diorama');
+    assert.equal(updated.modes.kowloon.fog, 1.5);
+    assert.equal(updated.modes.fume.cameraMode, 'stepped');
+
+    // Closed stage skips refreshTheme during updateTheme, then computes stagePalette on enter
+    dom.window.setupMusicStage(app);
+    delete app.stagePalette;
+    app.stageHost.updateTheme();
+    assert.equal(app.stagePalette, undefined, 'closed stage skips refreshTheme probe/canvas readback');
+    app.stageHost.enter();
+    assert.ok(app.stagePalette && typeof app.stagePalette.accent === 'string', 'entering stage computes fresh stagePalette immediately');
+    app.stageHost.destroy();
+    dom.window.close();
+});
