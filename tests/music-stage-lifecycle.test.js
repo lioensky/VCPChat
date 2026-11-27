@@ -944,3 +944,134 @@ test('sonnet and tempera respond immediately to music-motion-change while paused
         dom.window.close();
     }
 });
+
+test('edge spectrum paces by quality tier, caps energy-saving DPR to 1, and clears once when disabled', () => {
+    const dom = createStageDom();
+    const strokes = [];
+    const clears = [];
+    dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+        if (type !== '2d') return null;
+        return new Proxy({
+            setTransform() {},
+            clearRect() { clears.push(this); },
+            stroke() { strokes.push(this); }
+        }, {
+            get(target, prop) { return prop in target ? target[prop] : () => {}; }
+        });
+    };
+    for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+        runScript(dom, `Musicmodules/music-stage/${dep}`);
+    }
+    const root = dom.window.document.getElementById('music-stage');
+    Object.defineProperty(root, 'clientWidth', { value: 1200 });
+    Object.defineProperty(root, 'clientHeight', { value: 700 });
+    const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+    const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+    const state = { config: { quality: 'energy-saving', edgeSpectrum: true } };
+    const edge = dom.window.MusicStageEdge.create({
+        app: {},
+        root,
+        elements: { edgeSpectrum, edgeCanvas },
+        state,
+        scope: { add() {} },
+        clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+    });
+    const mkFrame = (now) => ({
+        now,
+        isPlaying: true,
+        viewport: { dpr: 2 },
+        audio: { power: 0.6, spectrum: new Array(64).fill(0.5) }
+    });
+    const runSecond = (quality, base) => {
+        state.config.quality = quality;
+        let drawn = 0;
+        for (let i = 0; i < 60; i += 1) {
+            const before = strokes.length;
+            edge.draw(mkFrame(base + i * (1000 / 60)));
+            if (strokes.length > before) drawn += 1;
+        }
+        return drawn;
+    };
+    const savingDraws = runSecond('energy-saving', 1000);
+    assert.equal(edgeCanvas.width, 1200, 'energy-saving caps edge strip DPR to 1');
+    const standardDraws = runSecond('standard', 3000);
+    assert.equal(edgeCanvas.width, 1800, 'standard allows edge strip DPR up to 1.5');
+    const ultimateDraws = runSecond('ultimate', 5000);
+    assert.ok(ultimateDraws > standardDraws && standardDraws > savingDraws, `edge tiers ordered (${ultimateDraws} > ${standardDraws} > ${savingDraws})`);
+
+    clears.length = 0;
+    state.config.edgeSpectrum = false;
+    edge.draw(mkFrame(7000));
+    edge.draw(mkFrame(7100));
+    assert.equal(clears.length, 4, 'disabling edgeSpectrum clears the 4 strips once');
+    edge.release();
+    dom.window.close();
+});
+
+test('stage-lyric-performance caches font assignments in measure() and reacts to paused card box shift', () => {
+    const dom = createStageDom();
+    let fontSets = 0;
+    let curFont = '';
+    const roCallbacks = [];
+    dom.window.ResizeObserver = class {
+        constructor(cb) { this.cb = cb; roCallbacks.push(cb); }
+        observe() {}
+        disconnect() {}
+    };
+    dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+        if (type !== '2d') return null;
+        return new Proxy({
+            get font() { return curFont; },
+            set font(v) { fontSets += 1; curFont = v; },
+            measureText: (t) => ({ width: Math.max(8, String(t || '').length * 16) })
+        }, {
+            get(target, prop) { return prop in target ? target[prop] : () => {}; },
+            set(target, prop, value) { target[prop] = value; return true; }
+        });
+    };
+    for (const dep of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js', 'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js', 'modes/luminous-manager.js']) {
+        runScript(dom, `Musicmodules/music-stage/${dep}`);
+    }
+    const { app } = createApp();
+    const lines = dom.window.MusicStageRuntime.normalizeLines(app.currentLyrics);
+    const stageRoot = dom.window.document.getElementById('music-stage');
+    const host = dom.window.document.createElement('div');
+    Object.defineProperty(host, 'clientWidth', { value: 960 });
+    Object.defineProperty(host, 'clientHeight', { value: 540 });
+    stageRoot.appendChild(host);
+    let cardRight = 40;
+    const card = dom.window.document.createElement('div');
+    card.className = 'music-stage-id3';
+    card.getBoundingClientRect = () => ({ left: 0, top: 0, right: cardRight, bottom: 540, width: cardRight, height: 540 });
+    stageRoot.appendChild(card);
+    const mode = dom.window.MusicStageLuminousManager.create(host, { app });
+    const viewport = host.querySelector('.lyric-performance-viewport');
+    Object.defineProperty(viewport, 'clientWidth', { value: 960 });
+    Object.defineProperty(viewport, 'clientHeight', { value: 540 });
+    viewport.getBoundingClientRect = () => ({ left: 0, top: 0, right: 960, bottom: 540, width: 960, height: 540 });
+    roCallbacks.forEach((cb) => cb());
+    const pausedFrame = {
+        isPlaying: false,
+        playbackTime: 1.2,
+        duration: 180,
+        lines,
+        currentLineIndex: 0,
+        activeLine: lines[0],
+        nextLines: lines.slice(1),
+        lineProgress: 0.25,
+        wordStates: [],
+        track: app.playlist[0],
+        audio: { power: 0.3, bass: 0.2, lowMid: 0.2, mid: 0.2, vocal: 0.3, treble: 0.1 }
+    };
+    mode.updateFrame(pausedFrame);
+    const sceneEl = viewport.firstElementChild;
+    assert.ok(sceneEl, 'luminous mounted lyric scene');
+    assert.ok(fontSets > 0 && fontSets <= 3, `measure() cached repeated fonts (${fontSets} sets)`);
+    const firstTransform = sceneEl.style.transform;
+    cardRight = 640;
+    roCallbacks.forEach((cb) => cb());
+    mode.updateFrame(pausedFrame);
+    assert.notEqual(sceneEl.style.transform, firstTransform, 'paused frame re-evaluates dodgeCard when card box shifts');
+    mode.destroy();
+    dom.window.close();
+});

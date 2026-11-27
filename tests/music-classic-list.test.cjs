@@ -111,3 +111,15 @@ test('档案页激活时推迟排序，切回经典视图后再应用当前排�
     assert.equal(t.list.children[0].dataset.index, '1', 'deferred sort runs once classic view becomes visible');
     t.close();
 });
+
+test('经典列表已显示时无关的 body class 变动不触发补拆 rAF', async () => {
+    const t = setup();
+    let rafCalls = 0;
+    const origRaf = t.window.requestAnimationFrame;
+    t.window.requestAnimationFrame = (fn) => { rafCalls += 1; return origRaf(fn); };
+    t.doc.body.classList.add('music-playing');
+    t.doc.body.classList.toggle('music-dock-open');
+    await t.flush();
+    assert.equal(rafCalls, 0, 'unrelated body classes should not trigger layout-measuring decorateSoon rAF');
+    t.close();
+});

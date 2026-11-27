@@ -44,6 +44,11 @@ test('locate 优先在指定列里找', () => {
     assert.deepEqual(M.locate(cols, 0, 1), { lane: 1, row: 1 });
     assert.deepEqual(M.locate(cols, 3, 1), { lane: 0, row: 3 });
     assert.equal(M.locate(cols, -1, 0), null);
+    let scans = 0;
+    const origIndexOf = cols[0].items.indexOf;
+    cols[0].items.indexOf = function (...args) { scans += 1; return origIndexOf.apply(this, args); };
+    assert.deepEqual(M.locate(cols, 2, 0), { lane: 0, row: 2 });
+    assert.equal(scans, 0, 'all column uses O(1) direct index fast path');
 });
 
 test('检索标题（去掉扩展名）、歌手、专辑', () => {

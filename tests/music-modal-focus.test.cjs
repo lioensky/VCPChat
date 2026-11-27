@@ -73,3 +73,113 @@ test('closing the playlist editor re-renders the list, and focus still lands on 
     assert.equal(doc.activeElement, view.querySelectorAll('.edit-btn')[1], 'focus returns to the rebuilt button for the same playlist');
     dom.window.close();
 });
+
+test('music-skin settingsBody observer ignores text-node updates and only rescans on element additions', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="music-stage"></div>
+        <div id="music-stage-settings-card"><div class="music-stage-settings-body"><span id="val">1.0</span></div></div>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    const body = doc.querySelector('.music-stage-settings-body');
+    let selectQueries = 0;
+    const origQsa = body.querySelectorAll.bind(body);
+    body.querySelectorAll = (sel) => {
+        if (String(sel).includes('select')) selectQueries += 1;
+        return origQsa(sel);
+    };
+    window.eval(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'));
+    window.eval(fs.readFileSync('Musicmodules/music-theme/music-skin.js', 'utf8'));
+    window.setupMusicSkin({ playlist: [], loadTrack() {}, updateMediaMetadata() {}, updateTrackInfo() {} });
+    await tick(window);
+    const initialQueries = selectQueries;
+    doc.getElementById('val').textContent = '1.5';
+    doc.getElementById('val').textContent = '2.0';
+    await tick(window);
+    assert.equal(selectQueries, initialQueries, 'textContent updates during slider drags do not rescan selects');
+    const wrap = doc.createElement('div');
+    wrap.innerHTML = '<select><option value="a">A</option><option value="b">B</option></select>';
+    body.appendChild(wrap);
+    await tick(window);
+    assert.ok(selectQueries > initialQueries, 'element addition triggers select enhancement scan');
+    dom.window.close();
+});
+
+test('track-info and eq-preset modals trap Tab/Shift+Tab inside the dialog', async () => {
+    const dom = new JSDOM('<!doctype html><body><button id="outside">out</button><select id="eq-preset-select"></select></body>', {
+        runScripts: 'outside-only',
+        url: 'http://localhost/'
+    });
+    const { window } = dom;
+    const doc = window.document;
+    const app = {
+        playlist: [{ path: 'C:\\Music\\a.flac', title: 'Alpha.flac', artist: 'A', album: 'B', duration: 120 }],
+        currentTrackIndex: 0,
+        eqBands: { 32: 0 },
+        eqPresets: { balance: { 32: 0 } },
+        eqPresetSelect: doc.getElementById('eq-preset-select'),
+        populateEqPresets() {},
+        applyEqPreset() {},
+        syncEqPresetSelect() {},
+        api: { showMusicInFolder: async () => ({ ok: true }) }
+    };
+    window.eval(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'));
+    window.eval(fs.readFileSync('Musicmodules/music-track-file.js', 'utf8'));
+    window.eval(fs.readFileSync('Musicmodules/music-eq-presets.js', 'utf8'));
+    window.MusicTrackFile.setupMusicTrackFile(app);
+    window.MusicEqPresets.setupMusicEqPresets(app);
+
+    app.openTrackInfo(0);
+    const infoButtons = [...doc.querySelectorAll('.minfo button')];
+    assert.ok(infoButtons.length >= 2);
+    infoButtons[infoButtons.length - 1].focus();
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, infoButtons[0], 'Tab wraps from last to first in track info modal');
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, infoButtons[infoButtons.length - 1], 'Shift+Tab wraps from first to last in track info modal');
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+
+    app.eqUserPresets.promptSave();
+    const eqFocusables = [...doc.querySelectorAll('.music-eq-name input, .music-eq-name button:not([disabled])')];
+    assert.ok(eqFocusables.length >= 2);
+    eqFocusables[eqFocusables.length - 1].focus();
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, eqFocusables[0], 'Tab wraps inside EQ preset save dialog');
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, eqFocusables[eqFocusables.length - 1], 'Shift+Tab wraps inside EQ preset save dialog');
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    dom.window.close();
+});
+
+test('removing a folder clears duplicate occurrences of its tracks from manualQueue', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const tKeep = { path: 'D:\\Keep\\k.flac', title: 'Keep' };
+    const tDrop = { path: 'D:\\Drop\\a.flac', title: 'Drop' };
+    const app = {
+        playlist: [tKeep, tDrop],
+        currentTrackIndex: 0,
+        manualQueue: [tDrop, tKeep, tDrop, tDrop],
+        queueRemove(idx) { this.manualQueue.splice(idx, 1); },
+        saveLibrary: async () => {},
+        renderPlaylist() {},
+        api: {
+            musicLibraryFolders: async (arg) => arg.op === 'list'
+                ? { ok: true, folders: [{ path: 'D:\\Drop', exists: true }] }
+                : { ok: true }
+        }
+    };
+    window.MusicDialog = { confirm: async () => true };
+    window.eval(fs.readFileSync('Musicmodules/music-folders.js', 'utf8'));
+    window.MusicFolders.setupMusicFolders(app);
+    app.openLibraryFolders();
+    await tick(window);
+    const removeBtn = window.document.querySelector('.mfold-remove');
+    assert.ok(removeBtn, 'folder remove button rendered');
+    removeBtn.click();
+    await tick(window);
+    await tick(window);
+    assert.deepEqual(app.manualQueue, [tKeep], 'all duplicate copies of removed folder tracks cleared from manualQueue');
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    dom.window.close();
+});
