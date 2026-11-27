@@ -8,13 +8,20 @@
     'use strict';
 
     const NON_ASCII = /[^\x20-\x7e]/;
-    const toHiragana = (s) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    // ASCII 可见字符、常用汉字（U+4E00–U+9FFF）和基础平假名（U+3041–U+3096）均为 NFKC 不变量且无片假名，
+    // 命中快路径可跳过昂贵的 ICU NFKC 归一化与片假名正则替换。
+    const NEEDS_NFKC = /[^\x20-\x7e\u4e00-\u9fff\u3041-\u3096]/;
+    const KATAKANA = /[ァ-ヶ]/;
+    const toHiragana = (s) => (KATAKANA.test(s) ? s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)) : s);
     const norm = (s) => {
         const raw = String(s || '');
         if (!raw) return '';
-        if (!NON_ASCII.test(raw)) return raw.toLowerCase().trim();
+        if (!NEEDS_NFKC.test(raw)) return raw.toLowerCase().trim();
         return toHiragana(raw.normalize('NFKC').toLowerCase()).trim();
     };
+    const isHanCode = (code) => (code >= 0x4e00 && code <= 0x9fff)
+        || (code >= 0x3400 && code <= 0x4dbf)
+        || (code >= 0xf900 && code <= 0xfaff);
     const stripExt = (t) => {
         const raw = String(t || '');
         if (!raw || raw.lastIndexOf('.') === -1) return raw;
@@ -84,25 +91,31 @@
         let py = '';
         let ini = '';
         let wordStart = true;
-        for (const c of s) {
-            const code = c.charCodeAt(0);
+        for (let i = 0; i < s.length; i++) {
+            const code = s.charCodeAt(i);
             if (code < 0x80) {
                 if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57)) {
-                    py += c;
-                    if (wordStart) ini += c;
+                    const ch = s[i];
+                    py += ch;
+                    if (wordStart) ini += ch;
                     wordStart = false;
                 } else {
                     wordStart = true;
                 }
-            } else if (HAN.test(c)) {
+            } else if (isHanCode(code)) {
+                const c = s[i];
                 const p = pinyin ? cachedPinyin(pinyin, c) : '';
                 if (p) { py += p; ini += p[0]; } else { py += c; ini += c; }
                 wordStart = true;
-            } else if (KANA_ROW_OF.has(c) || (code >= 0x3040 && code <= 0x309f) || code === 0x30fc) {
-                py += c; ini += c; wordStart = true;
             } else {
-                if (!SKIP_NON_ASCII.test(c)) { py += c; ini += c; }
-                wordStart = true;
+                const c = (code >= 0xd800 && code <= 0xdbff && i + 1 < s.length) ? s.slice(i, i + 2) : s[i];
+                if (c.length === 2) i += 1;
+                if (KANA_ROW_OF.has(c) || (code >= 0x3040 && code <= 0x309f) || code === 0x30fc) {
+                    py += c; ini += c; wordStart = true;
+                } else {
+                    if (!SKIP_NON_ASCII.test(c)) { py += c; ini += c; }
+                    wordStart = true;
+                }
             }
         }
         return { py, ini };
@@ -136,23 +149,51 @@
 
     const FIELDS = [['title', 3], ['artist', 2], ['album', 1]];
 
-    /* 一首歌的检索条目：三个字段的原文、全拼、首字母，加上分组和排序键 */
-    const entryOf = (t, pinyin) => {
-        const e = {};
-        for (let fi = 0; fi < FIELDS.length; fi += 1) {
-            const f = FIELDS[fi][0];
-            const raw = f === 'title' ? stripExt(t && t.title) : (t && t[f]) || '';
+    const FIELD_CACHE_BY_PY = new WeakMap();
+    const FIELD_CACHE_NO_PY = new Map();
+    const EMPTY_FIELD = Object.freeze({ n: '', py: '', ini: '', grp: '#' });
+    const cachedMetaField = (raw, pinyin, needGroup) => {
+        if (!raw) return EMPTY_FIELD;
+        let map = FIELD_CACHE_NO_PY;
+        if (typeof pinyin === 'function') {
+            map = FIELD_CACHE_BY_PY.get(pinyin);
+            if (!map) { map = new Map(); FIELD_CACHE_BY_PY.set(pinyin, map); }
+        }
+        let hit = map.get(raw);
+        if (!hit) {
             const n = norm(raw);
             const r = romanizeNormalized(n, pinyin);
-            e[f] = n;
-            e[f + 'Py'] = r.py;
-            e[f + 'Ini'] = r.ini;
+            hit = { n, py: r.py, ini: r.ini, grp: needGroup ? (n ? groupFromNorm(n, pinyin) : '#') : null };
+            if (map.size >= 4096) map.clear();
+            map.set(raw, hit);
+        } else if (needGroup && hit.grp === null) {
+            hit.grp = hit.n ? groupFromNorm(hit.n, pinyin) : '#';
         }
-        e.group = groupFromNorm(e.title, pinyin);
-        e.sort = e.titlePy || e.title;
-        e.artistGroup = e.artist ? groupFromNorm(e.artist, pinyin) : '#';
-        e.artistSort = e.artistPy || e.artist;
-        return e;
+        return hit;
+    };
+
+    /* 一首歌的检索条目：三个字段的原文、全拼、首字母，加上分组和排序键 */
+    const entryOf = (t, pinyin) => {
+        const titleRaw = stripExt(t && t.title);
+        const titleN = norm(titleRaw);
+        const titleR = romanizeNormalized(titleN, pinyin);
+        const artistF = cachedMetaField((t && t.artist) || '', pinyin, true);
+        const albumF = cachedMetaField((t && t.album) || '', pinyin, false);
+        return {
+            title: titleN,
+            titlePy: titleR.py,
+            titleIni: titleR.ini,
+            artist: artistF.n,
+            artistPy: artistF.py,
+            artistIni: artistF.ini,
+            album: albumF.n,
+            albumPy: albumF.py,
+            albumIni: albumF.ini,
+            group: groupFromNorm(titleN, pinyin),
+            sort: titleR.py || titleN,
+            artistGroup: artistF.grp,
+            artistSort: artistF.py || artistF.n
+        };
     };
     /*
      * 条目缓存（可选）：按路径记住算好的条目，标题、歌手、专辑和拼音表都没变就直接用。

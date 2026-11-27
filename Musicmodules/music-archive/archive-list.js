@@ -249,9 +249,24 @@
             if (h > 0) cachedVpH = h;
             return h || 600;
         };
-        const paintSlim = () => {
-            cachedVpH = 0;
-            el.classList.toggle('slim', el.offsetWidth > 0 && el.offsetWidth < 340);
+        const paintSlim = (entries) => {
+            let elW = -1;
+            if (Array.isArray(entries)) {
+                for (let i = 0; i < entries.length; i++) {
+                    const entry = entries[i];
+                    if (entry.target === r.viewport) {
+                        const h = entry.contentRect ? entry.contentRect.height : 0;
+                        cachedVpH = h > 0 ? h : 0;
+                    } else if (entry.target === el) {
+                        const box = entry.borderBoxSize && entry.borderBoxSize[0];
+                        elW = box ? box.inlineSize : (entry.contentRect ? entry.contentRect.width : -1);
+                    }
+                }
+            } else {
+                cachedVpH = 0;
+            }
+            if (elW < 0) elW = el.offsetWidth;
+            el.classList.toggle('slim', elW > 0 && elW < 340);
         };
         let slimResizeObserver = null;
         if (typeof global.ResizeObserver === 'function') {
@@ -767,8 +782,7 @@
             // 先集中读 scrollTop 和 clientHeight（或复用 rebuild 预读值），再统一写 at-top / at-bottom 类，避免读→写→读触发强制同步重排
             const hasKnown = Boolean(known && typeof known === 'object' && typeof known.top === 'number' && known.height > 0);
             const top = hasKnown ? known.top : r.viewport.scrollTop;
-            const rawH = hasKnown ? known.height : r.viewport.clientHeight;
-            if (!hasKnown && rawH > 0) cachedVpH = rawH;
+            const rawH = hasKnown ? known.height : viewportHeight();
             const h = rawH || 600;
             const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
             // 滚在最上面/最下面时去掉对应一侧的边缘渐隐
@@ -941,7 +955,7 @@
         const syncDrop = (headK, top, stickyY) => {
             if (INLINE_HEADS || typeof global.createMusicFluidMarker !== 'function') return;
             // 一下跳出一屏以外（换排序、键盘跳到很远的一首）：小滴不拖着长颈飞过去，直接落在新位置
-            const far = Boolean(drop && lastScroll && Math.abs(top - lastScroll.top) > (r.viewport.clientHeight || 600));
+            const far = Boolean(drop && lastScroll && Math.abs(top - lastScroll.top) > viewportHeight());
             if (!drop) {
                 drop = global.createMusicFluidMarker(r.viewport, { axis: 'y', thickness: 5, align: 'start', inset: 2 });
                 if (drop) el.classList.add('has-drop');
@@ -989,17 +1003,26 @@
             return first;
         };
 
-        const scrollToRow = (k, { center = false } = {}) => {
-            if (k < 0) return;
+        const scrollToRow = (k, { center = false, top: knownTop, height: knownHeight } = {}) => {
+            if (k < 0) return knownTop ?? 0;
             const vp = r.viewport;
             const y = state.offsets[k];
-            const h = vp.clientHeight || 600;
+            const h = knownHeight > 0 ? knownHeight : viewportHeight();
+            let top = typeof knownTop === 'number' ? knownTop : vp.scrollTop;
             const pad2 = LABEL_H;
-            if (center) vp.scrollTop = Math.max(0, y - h / 2 + ROW_H / 2);
-            else if (y < vp.scrollTop + pad2) vp.scrollTop = Math.max(0, y - pad2);
-            // 底部留出渐隐那一段（26px），键盘往下走时选中行不会落在半透明的边上
-            else if (y + ROW_H > vp.scrollTop + h - EDGE_FADE) vp.scrollTop = y + ROW_H - h + EDGE_FADE;
+            if (center) {
+                top = Math.max(0, y - h / 2 + ROW_H / 2);
+                vp.scrollTop = top;
+            } else if (y < top + pad2) {
+                top = Math.max(0, y - pad2);
+                vp.scrollTop = top;
+            } else if (y + ROW_H > top + h - EDGE_FADE) {
+                // 底部留出渐隐那一段（26px），键盘往下走时选中行不会落在半透明的边上
+                top = y + ROW_H - h + EDGE_FADE;
+                vp.scrollTop = top;
+            }
             schedule();
+            return top;
         };
 
         /* 阵列那边换了选中：列表跟着高亮并滚到那一行 */
@@ -1027,13 +1050,19 @@
             const k = findRow(i, ctx);
             const moved = k !== state.selectedRow;
             state.selectedRow = k;
-            if (!quiet && (moved || center) && k >= 0) scrollToRow(k, { center: center || !inView(k) });
-            render(); // 当场画，避免阵列和目录高亮差一帧
+            const h = viewportHeight();
+            let top = r.viewport.scrollTop;
+            if (!quiet && (moved || center) && k >= 0) {
+                const y = state.offsets[k];
+                const outOfView = y < top || y + ROW_H > top + h - EDGE_FADE;
+                top = scrollToRow(k, { center: center || outOfView, top, height: h });
+            }
+            render({ top, height: h }); // 当场画，避免阵列和目录高亮差一帧，同时复用刚才读过的 top/height
         };
         const inView = (k) => {
             const vp = r.viewport;
             const y = state.offsets[k];
-            return y >= vp.scrollTop && y + ROW_H <= vp.scrollTop + (vp.clientHeight || 600) - EDGE_FADE;
+            return y >= vp.scrollTop && y + ROW_H <= vp.scrollTop + viewportHeight() - EDGE_FADE;
         };
 
         /* 列表里换选中（键盘/单击）：告诉阵列 */

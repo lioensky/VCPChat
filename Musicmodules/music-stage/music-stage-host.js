@@ -1362,6 +1362,12 @@
 
         const updateTheme = () => {
             if (state.destroyed) return;
+            // 舞台未打开且无挂载实例时跳过主题探测（enter() 打开前必定再调一次 updateTheme()），
+            // 避免启动阶段和后台切主题时触发 11 次同步样式重算与离屏 canvas 读回。
+            if (!state.active && !state.modeInstance) {
+                state.trackSignature = '';
+                return;
+            }
             // Custom palettes are already scoped to the stage root. Global mode
             // reads the page's computed wallpaper and color variables.
             if (state.config.themeMode !== 'custom') {

@@ -285,162 +285,178 @@
         }
     });
 
-    const normalizeMode = (mode, fallback) => {
-        const source = mode && typeof mode === 'object' ? mode : {};
-        return {
-            ...fallback,
-            ...source,
-            guidePulse: bool(source.guidePulse, fallback.guidePulse),
-            backgroundDetail: clamp(source.backgroundDetail, 0, 1, fallback.backgroundDetail),
-            backgroundMotion: clamp(source.backgroundMotion, 0, 2, fallback.backgroundMotion),
-            vectorDecor: bool(source.vectorDecor, fallback.vectorDecor),
-            decorOpacity: clamp(source.decorOpacity, 0, 1, fallback.decorOpacity),
-            decorMotion: clamp(source.decorMotion, 0, 2, fallback.decorMotion),
-            layoutStyle: enumValue(source.layoutStyle, ['calm', 'normal', 'chaotic'], fallback.layoutStyle),
-            chorusRipple: bool(source.chorusRipple, fallback.chorusRipple),
-            heroEmphasis: bool(source.heroEmphasis, fallback.heroEmphasis),
-            showTranslation: bool(source.showTranslation, fallback.showTranslation),
-            showUpcoming: bool(source.showUpcoming, fallback.showUpcoming),
-            performanceIntensity: clamp(source.performanceIntensity, 0, 2, fallback.performanceIntensity),
-            beatImpact: clamp(source.beatImpact, 0, 2, fallback.beatImpact),
-            opticalImpact: clamp(source.opticalImpact, 0, 1, fallback.opticalImpact),
-            accentEffects: bool(source.accentEffects, fallback.accentEffects),
-            accentMotion: clamp(source.accentMotion, 0, 2, fallback.accentMotion),
-            cameraIntensity: clamp(source.cameraIntensity, 0, 2, fallback.cameraIntensity),
-            typographyMotion: clamp(source.typographyMotion, 0, 2, fallback.typographyMotion),
-            glyphMotion: clamp(source.glyphMotion, 0, 2, fallback.glyphMotion),
-            cameraBreath: clamp(source.cameraBreath, 0, 2, fallback.cameraBreath),
-            cameraTracking: clamp(source.cameraTracking, 0, 1, fallback.cameraTracking),
-            cameraSoftness: clamp(source.cameraSoftness, 0, 1, fallback.cameraSoftness),
-            cameraRoll: clamp(source.cameraRoll, 0, 1, fallback.cameraRoll),
-            lyricLayout: enumValue(source.lyricLayout, ['lines', 'phrases', 'staircase', 'editorial-track', 'starbloom'], fallback.lyricLayout),
-            phraseLength: Math.round(clamp(source.phraseLength, 6, 24, fallback.phraseLength) || 12),
-            phraseEmphasis: clamp(source.phraseEmphasis, 0, 1, fallback.phraseEmphasis),
-            trackVerticalChance: clamp(source.trackVerticalChance, 0.1, 0.9, fallback.trackVerticalChance),
-            trackJunction: clamp(source.trackJunction, 0, 1, fallback.trackJunction),
-            trackLookAhead: clamp(source.trackLookAhead, 0, 1, fallback.trackLookAhead),
-            trackMinSegment: Math.round(clamp(source.trackMinSegment, 2, 8, fallback.trackMinSegment) || 3),
-            sceneTransitions: bool(source.sceneTransitions, fallback.sceneTransitions),
-            shotFlow: enumValue(source.shotFlow, ['auto', 'editorial-column', 'type-impact', 'fragment-collage', 'tracking-ribbon', 'mask-reveal', 'poster-blocks', 'quiet-tableau'], fallback.shotFlow),
-            glyphStyle: enumValue(source.glyphStyle, ['rise', 'scatter', 'impact'], fallback.glyphStyle),
-            waitingOpacity: clamp(source.waitingOpacity, 0, 1, fallback.waitingOpacity),
-            releaseDuration: clamp(source.releaseDuration, 0, 1.5, fallback.releaseDuration),
-            postProcess: bool(source.postProcess, fallback.postProcess),
-            lensDistortion: clamp(source.lensDistortion, 0, 2, fallback.lensDistortion),
-            lensDispersion: clamp(source.lensDispersion, 0, 1, fallback.lensDispersion),
-            rgbShift: clamp(source.rgbShift, 0, 1, fallback.rgbShift),
-            grain: clamp(source.grain, 0, 1, fallback.grain),
-            contrast: clamp(source.contrast, 0, 1, fallback.contrast),
-            halftone: clamp(source.halftone, 0, 1, fallback.halftone),
-            vignette: clamp(source.vignette, 0, 1, fallback.vignette),
-            colorMode: enumValue(source.colorMode, ['duo', 'mono', 'gradient'], fallback.colorMode),
-            showBlocks: bool(source.showBlocks, fallback.showBlocks),
-            showDecor: bool(source.showDecor, fallback.showDecor),
-            showBackground: bool(source.showBackground, fallback.showBackground),
-            textInversion: bool(source.textInversion, fallback.textInversion),
-            aurora: bool(source.aurora, fallback.aurora),
-            journeyEvents: bool(source.journeyEvents, fallback.journeyEvents),
-            fireworks: bool(source.fireworks, fallback.fireworks),
-            cameraCuts: bool(source.cameraCuts, fallback.cameraCuts),
-            letterbox: bool(source.letterbox, fallback.letterbox),
-            lyricCarrier: enumValue(source.lyricCarrier, ['auto', 'sign', 'constellation'], fallback.lyricCarrier),
-            narrativeStations: bool(source.narrativeStations, fallback.narrativeStations),
-            stationIntensity: clamp(source.stationIntensity, 0, 2, fallback.stationIntensity),
-            waterReflection: bool(source.waterReflection, fallback.waterReflection),
-            waterStrength: clamp(source.waterStrength, 0, 2, fallback.waterStrength),
-            motionAmount: clamp(source.motionAmount, 0, 2, fallback.motionAmount),
-            audioReactivity: clamp(source.audioReactivity, 0, 2, fallback.audioReactivity),
-            lyricHop: fallback.lyricHop === undefined ? source.lyricHop : clamp(source.lyricHop, 0, 2, fallback.lyricHop),
-            lyricFont: fallback.lyricFont === undefined ? source.lyricFont : enumValue(source.lyricFont, ['sans', 'serif', 'kai'], fallback.lyricFont),
-            coverTint: fallback.coverTint === undefined ? source.coverTint : clamp(source.coverTint, 0, 1, fallback.coverTint),
-            showParticles: bool(source.showParticles, fallback.showParticles),
-            geometryMode: enumValue(source.geometryMode, ['clouds', 'corridor'], fallback.geometryMode),
-            cabinFrame: bool(source.cabinFrame, fallback.cabinFrame),
-            rain: enumValue(source.rain, ['off', 'light', 'heavy', 'snow'], fallback.rain),
-            fog: fallback.fog === undefined ? source.fog : clamp(source.fog, 0.5, 1.5, fallback.fog),
-            lightning: fallback.lightning === undefined ? source.lightning : bool(source.lightning, fallback.lightning),
-            reflections: fallback.reflections === undefined ? source.reflections : bool(source.reflections, fallback.reflections),
-            cameraMode: fallback.cameraMode === undefined
-                ? source.cameraMode
-                : ['sandbox', 'auto', 'diorama'].includes(fallback.cameraMode)
-                    ? enumValue(source.cameraMode, ['sandbox', 'auto', 'diorama'], fallback.cameraMode)
-                    : enumValue(source.cameraMode, ['stepped', 'smooth'], fallback.cameraMode),
-            figures: fallback.figures === undefined ? source.figures : bool(source.figures, fallback.figures),
-            collisions: fallback.collisions === undefined ? source.collisions : bool(source.collisions, fallback.collisions),
-            inkFlip: fallback.inkFlip === undefined ? source.inkFlip : bool(source.inkFlip, fallback.inkFlip),
-            negativeShots: fallback.negativeShots === undefined ? source.negativeShots : bool(source.negativeShots, fallback.negativeShots),
-            inkScene: fallback.inkScene === undefined ? source.inkScene : enumValue(source.inkScene, ['auto', 'notebook', 'rail', 'sea', 'night', 'city', 'flora', 'letters', 'weather', 'score'], fallback.inkScene),
-            drops: fallback.drops === undefined ? source.drops : bool(source.drops, fallback.drops),
-            drips: fallback.drips === undefined ? source.drips : bool(source.drips, fallback.drips),
-            keywords: fallback.keywords === undefined ? source.keywords : bool(source.keywords, fallback.keywords),
-            collage: fallback.collage === undefined ? source.collage : bool(source.collage, fallback.collage),
-            view: fallback.view === undefined ? source.view : enumValue(source.view, ['street', 'aquarium', 'alternate'], fallback.view),
-            fireflies: fallback.fireflies === undefined ? source.fireflies : clamp(source.fireflies, 0, 2, fallback.fireflies),
-            spotlights: fallback.spotlights === undefined ? source.spotlights : clamp(source.spotlights, 0, 2, fallback.spotlights),
-            nebula: fallback.nebula === undefined ? source.nebula : clamp(source.nebula, 0, 2, fallback.nebula),
-            bloom: fallback.bloom === undefined ? source.bloom : clamp(source.bloom, 0, 2, fallback.bloom),
-            flare: fallback.flare === undefined ? source.flare : clamp(source.flare, 0, 2, fallback.flare),
-            bokeh: fallback.bokeh === undefined ? source.bokeh : clamp(source.bokeh, 0, 2, fallback.bokeh),
-            cloud: fallback.cloud === undefined ? source.cloud : clamp(source.cloud, 0, 1, fallback.cloud),
-            smoke: fallback.smoke === undefined ? source.smoke : clamp(source.smoke, 0, 2, fallback.smoke),
-            dust: fallback.dust === undefined ? source.dust : clamp(source.dust, 0, 2, fallback.dust),
-            density: fallback.density === undefined ? source.density : clamp(source.density, 0.4, 1.6, fallback.density),
-            trails: fallback.trails === undefined ? source.trails : clamp(source.trails, 0, 1.6, fallback.trails),
-            reflection: fallback.reflection === undefined ? source.reflection : bool(source.reflection, fallback.reflection),
-            perspective: fallback.perspective === undefined ? source.perspective : bool(source.perspective, fallback.perspective),
-            parallax: fallback.parallax === undefined ? source.parallax : clamp(source.parallax, 0, 2, fallback.parallax),
-            wireframe: fallback.wireframe === undefined ? source.wireframe : bool(source.wireframe, fallback.wireframe),
-            secondHand: fallback.secondHand === undefined ? source.secondHand : bool(source.secondHand, fallback.secondHand),
-            tilt: fallback.tilt === undefined ? source.tilt : clamp(source.tilt, 0.15, 0.6, fallback.tilt),
-            roll: fallback.roll === undefined ? source.roll : clamp(source.roll, -30, 30, fallback.roll),
-            flecks: fallback.flecks === undefined ? source.flecks : clamp(source.flecks, 0, 2, fallback.flecks),
-            lamp: fallback.lamp === undefined ? source.lamp : clamp(source.lamp, 0, 1.5, fallback.lamp),
-            frame: fallback.frame === undefined ? source.frame : bool(source.frame, fallback.frame),
-            timeOfDay: fallback.timeOfDay === undefined ? source.timeOfDay : bool(source.timeOfDay, fallback.timeOfDay),
-            voiceNotes: fallback.voiceNotes === undefined ? source.voiceNotes : bool(source.voiceNotes, fallback.voiceNotes),
-            echoes: fallback.echoes === undefined ? source.echoes : bool(source.echoes, fallback.echoes),
-            reactions: fallback.reactions === undefined ? source.reactions : bool(source.reactions, fallback.reactions),
-            panel: fallback.panel === undefined ? source.panel : enumValue(source.panel, ['lyrics', 'history', 'off'], fallback.panel),
-            showSpectrum: fallback.showSpectrum === undefined ? source.showSpectrum : bool(source.showSpectrum, fallback.showSpectrum),
-            pulseRate: fallback.pulseRate === undefined ? source.pulseRate : clamp(source.pulseRate, 0, 2, fallback.pulseRate),
-            axisLine: fallback.axisLine === undefined ? source.axisLine : bool(source.axisLine, fallback.axisLine),
-            wordRotation: bool(source.wordRotation, fallback.wordRotation),
-            breathing: clamp(source.breathing, 0, 2, fallback.breathing),
-            wordSpacing: clamp(source.wordSpacing, 0, 2, fallback.wordSpacing),
-            glow: clamp(source.glow, 0, 2, fallback.glow),
-            guideLines: bool(source.guideLines, fallback.guideLines),
-            semanticLayout: bool(source.semanticLayout, fallback.semanticLayout),
-            staggerMin: clamp(source.staggerMin, 0, 180, fallback.staggerMin),
-            staggerMax: clamp(source.staggerMax, 0, 180, fallback.staggerMax),
-            power: clamp(source.power, 0, 2, fallback.power),
-            motion: clamp(source.motion, 0, 2, fallback.motion),
-            fontScale: clamp(source.fontScale, 0.65, 1.5, fallback.fontScale),
-            widthRatio: clamp(source.widthRatio, 0.5, 0.95, fallback.widthRatio),
-            geometricBackground: bool(source.geometricBackground, fallback.geometricBackground),
-            backgroundOpacity: clamp(source.backgroundOpacity, 0, 1, fallback.backgroundOpacity),
-            cameraSpeed: clamp(source.cameraSpeed, 0.55, 1.85, fallback.cameraSpeed),
-            heroScale: clamp(source.heroScale, 0.82, 1.32, fallback.heroScale),
-            articleSpacing: clamp(source.articleSpacing, 0.65, 1.6, fallback.articleSpacing),
-            textHoldRatio: clamp(source.textHoldRatio, 0, 1, fallback.textHoldRatio),
-            hidePrintSymbols: bool(source.hidePrintSymbols, fallback.hidePrintSymbols),
-            transitionLock: clamp(source.transitionLock, 0.5, 12, fallback.transitionLock),
-            avoidRepeat: bool(source.avoidRepeat, fallback.avoidRepeat),
-            pauseDuration: clamp(source.pauseDuration, 0, 3, fallback.pauseDuration),
-            objectDensity: clamp(source.objectDensity, 0.25, 2, fallback.objectDensity),
-            starfield: bool(source.starfield, fallback.starfield),
-            showPlanets: bool(source.showPlanets, fallback.showPlanets),
-            showRings: bool(source.showRings, fallback.showRings),
-            showShips: bool(source.showShips, fallback.showShips),
-            showStations: bool(source.showStations, fallback.showStations),
-            dissolveAmount: clamp(source.dissolveAmount, 0, 1, fallback.dissolveAmount),
-            cameraShake: clamp(source.cameraShake, 0, 2, fallback.cameraShake)
-        };
-    };
+    const rng = (min, max) => (v, fb) => clamp(v, min, max, fb);
+    const enm = (values) => (v, fb) => enumValue(v, values, fb);
+    const opt = (fn) => (v, fb) => (fb === undefined ? v : fn(v, fb));
+    const CAMERA_3D_MODES = ['sandbox', 'auto', 'diorama'];
+    const CAMERA_2D_MODES = ['stepped', 'smooth'];
+    const MODE_VALIDATORS = Object.freeze({
+        guidePulse: bool,
+        backgroundDetail: rng(0, 1),
+        backgroundMotion: rng(0, 2),
+        vectorDecor: bool,
+        decorOpacity: rng(0, 1),
+        decorMotion: rng(0, 2),
+        layoutStyle: enm(['calm', 'normal', 'chaotic']),
+        chorusRipple: bool,
+        heroEmphasis: bool,
+        showTranslation: bool,
+        showUpcoming: bool,
+        performanceIntensity: rng(0, 2),
+        beatImpact: rng(0, 2),
+        opticalImpact: rng(0, 1),
+        accentEffects: bool,
+        accentMotion: rng(0, 2),
+        cameraIntensity: rng(0, 2),
+        typographyMotion: rng(0, 2),
+        glyphMotion: rng(0, 2),
+        cameraBreath: rng(0, 2),
+        cameraTracking: rng(0, 1),
+        cameraSoftness: rng(0, 1),
+        cameraRoll: rng(0, 1),
+        lyricLayout: enm(['lines', 'phrases', 'staircase', 'editorial-track', 'starbloom']),
+        phraseLength: (v, fb) => Math.round(clamp(v, 6, 24, fb) || 12),
+        phraseEmphasis: rng(0, 1),
+        trackVerticalChance: rng(0.1, 0.9),
+        trackJunction: rng(0, 1),
+        trackLookAhead: rng(0, 1),
+        trackMinSegment: (v, fb) => Math.round(clamp(v, 2, 8, fb) || 3),
+        sceneTransitions: bool,
+        shotFlow: enm(['auto', 'editorial-column', 'type-impact', 'fragment-collage', 'tracking-ribbon', 'mask-reveal', 'poster-blocks', 'quiet-tableau']),
+        glyphStyle: enm(['rise', 'scatter', 'impact']),
+        waitingOpacity: rng(0, 1),
+        releaseDuration: rng(0, 1.5),
+        postProcess: bool,
+        lensDistortion: rng(0, 2),
+        lensDispersion: rng(0, 1),
+        rgbShift: rng(0, 1),
+        grain: rng(0, 1),
+        contrast: rng(0, 1),
+        halftone: rng(0, 1),
+        vignette: rng(0, 1),
+        colorMode: enm(['duo', 'mono', 'gradient']),
+        showBlocks: bool,
+        showDecor: bool,
+        showBackground: bool,
+        textInversion: bool,
+        aurora: bool,
+        journeyEvents: bool,
+        fireworks: bool,
+        cameraCuts: bool,
+        letterbox: bool,
+        lyricCarrier: enm(['auto', 'sign', 'constellation']),
+        narrativeStations: bool,
+        stationIntensity: rng(0, 2),
+        waterReflection: bool,
+        waterStrength: rng(0, 2),
+        motionAmount: rng(0, 2),
+        audioReactivity: rng(0, 2),
+        lyricHop: opt(rng(0, 2)),
+        lyricFont: opt(enm(['sans', 'serif', 'kai'])),
+        coverTint: opt(rng(0, 1)),
+        showParticles: bool,
+        geometryMode: enm(['clouds', 'corridor']),
+        cabinFrame: bool,
+        rain: enm(['off', 'light', 'heavy', 'snow']),
+        fog: opt(rng(0.5, 1.5)),
+        lightning: opt(bool),
+        reflections: opt(bool),
+        cameraMode: (v, fb) => (fb === undefined
+            ? v
+            : (CAMERA_3D_MODES.includes(fb)
+                ? enumValue(v, CAMERA_3D_MODES, fb)
+                : enumValue(v, CAMERA_2D_MODES, fb))),
+        figures: opt(bool),
+        collisions: opt(bool),
+        inkFlip: opt(bool),
+        negativeShots: opt(bool),
+        inkScene: opt(enm(['auto', 'notebook', 'rail', 'sea', 'night', 'city', 'flora', 'letters', 'weather', 'score'])),
+        drops: opt(bool),
+        drips: opt(bool),
+        keywords: opt(bool),
+        collage: opt(bool),
+        view: opt(enm(['street', 'aquarium', 'alternate'])),
+        fireflies: opt(rng(0, 2)),
+        spotlights: opt(rng(0, 2)),
+        nebula: opt(rng(0, 2)),
+        bloom: opt(rng(0, 2)),
+        flare: opt(rng(0, 2)),
+        bokeh: opt(rng(0, 2)),
+        cloud: opt(rng(0, 1)),
+        smoke: opt(rng(0, 2)),
+        dust: opt(rng(0, 2)),
+        density: opt(rng(0.4, 1.6)),
+        trails: opt(rng(0, 1.6)),
+        reflection: opt(bool),
+        perspective: opt(bool),
+        parallax: opt(rng(0, 2)),
+        wireframe: opt(bool),
+        secondHand: opt(bool),
+        tilt: opt(rng(0.15, 0.6)),
+        roll: opt(rng(-30, 30)),
+        flecks: opt(rng(0, 2)),
+        lamp: opt(rng(0, 1.5)),
+        frame: opt(bool),
+        timeOfDay: opt(bool),
+        voiceNotes: opt(bool),
+        echoes: opt(bool),
+        reactions: opt(bool),
+        panel: opt(enm(['lyrics', 'history', 'off'])),
+        showSpectrum: opt(bool),
+        pulseRate: opt(rng(0, 2)),
+        axisLine: opt(bool),
+        wordRotation: bool,
+        breathing: rng(0, 2),
+        wordSpacing: rng(0, 2),
+        glow: rng(0, 2),
+        guideLines: bool,
+        semanticLayout: bool,
+        staggerMin: rng(0, 180),
+        staggerMax: rng(0, 180),
+        power: rng(0, 2),
+        motion: rng(0, 2),
+        fontScale: rng(0.65, 1.5),
+        widthRatio: rng(0.5, 0.95),
+        geometricBackground: bool,
+        backgroundOpacity: rng(0, 1),
+        cameraSpeed: rng(0.55, 1.85),
+        heroScale: rng(0.82, 1.32),
+        articleSpacing: rng(0.65, 1.6),
+        textHoldRatio: rng(0, 1),
+        hidePrintSymbols: bool,
+        transitionLock: rng(0.5, 12),
+        avoidRepeat: bool,
+        pauseDuration: rng(0, 3),
+        objectDensity: rng(0.25, 2),
+        starfield: bool,
+        showPlanets: bool,
+        showRings: bool,
+        showShips: bool,
+        showStations: bool,
+        dissolveAmount: rng(0, 1),
+        cameraShake: rng(0, 2)
+    });
 
-    const stripUndefined = (obj) => {
+    const normalizeMode = (mode, fallback) => {
+        const source = mode && typeof mode === 'object' ? mode : null;
         const out = {};
-        for (const key in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, key) && obj[key] !== undefined) out[key] = obj[key];
+        const hasOwn = Object.prototype.hasOwnProperty;
+        for (const key in fallback) {
+            if (!hasOwn.call(fallback, key)) continue;
+            const fb = fallback[key];
+            const sv = source && hasOwn.call(source, key) ? source[key] : undefined;
+            const validator = hasOwn.call(MODE_VALIDATORS, key) ? MODE_VALIDATORS[key] : null;
+            const val = validator ? validator(sv, fb) : (sv !== undefined ? sv : fb);
+            if (val !== undefined) out[key] = val;
+        }
+        if (source) {
+            for (const key in source) {
+                if (!hasOwn.call(source, key) || hasOwn.call(fallback, key)) continue;
+                const sv = source[key];
+                const validator = hasOwn.call(MODE_VALIDATORS, key) ? MODE_VALIDATORS[key] : null;
+                const val = validator ? validator(sv, undefined) : sv;
+                if (val !== undefined) out[key] = val;
+            }
         }
         return out;
     };
@@ -451,13 +467,14 @@
         const requestedModes = Array.isArray(source.enabledModes)
             ? source.enabledModes.concat(Object.keys(ADDED_IN).filter((id) => savedVersion < ADDED_IN[id]))
             : DEFAULTS.enabledModes;
-        const enabledModes = MODE_META
-            .map((entry) => entry.id)
-            .filter((id) => requestedModes.includes(id));
+        const requestedSet = new Set(requestedModes);
+        const enabledModes = [];
         const modes = {};
-        MODE_META.forEach((entry) => {
-            modes[entry.id] = stripUndefined(normalizeMode(source.modes?.[entry.id], DEFAULTS.modes[entry.id] || {}));
-        });
+        for (let i = 0; i < MODE_META.length; i += 1) {
+            const id = MODE_META[i].id;
+            if (requestedSet.has(id)) enabledModes.push(id);
+            modes[id] = normalizeMode(source.modes?.[id], DEFAULTS.modes[id] || {});
+        }
         if (!enabledModes.length) enabledModes.push('luminous');
 
         return {
