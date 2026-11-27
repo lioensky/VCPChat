@@ -700,10 +700,15 @@ function setupPlayer(app) {
     // 引擎的预载槽已经按旧队列填过了，就按新队列重填一次。
     // 播放模式、曲库或歌单变了也要重填：引擎是自己无缝切进预载的那首的，界面来不及拦。
     // 新队列里没有该预载的（比如只剩一首）就把旧的预载撤掉，免得接着放一首已经移除的歌。
+    let refreshPreloadTimer = null;
     const refreshPreload = () => {
+        if (refreshPreloadTimer) { clearTimeout(refreshPreloadTimer); refreshPreloadTimer = null; }
         const current = app.playlist[app.currentTrackIndex];
         if (!current || app.preloadIssuedFor !== current.path) return;
-        if (app.isPreloadingNext) { setTimeout(refreshPreload, 600); return; }
+        if (app.isPreloadingNext) {
+            refreshPreloadTimer = setTimeout(() => { refreshPreloadTimer = null; refreshPreload(); }, 600);
+            return;
+        }
         // 引擎的预载槽一旦解码好就不再接受新的 queue_next，所以先撤掉旧的再重填。
         app.preloadIssuedFor = null;
         Promise.resolve(app.api?.cancelMusicPreload?.())
@@ -978,9 +983,16 @@ function setupPlayer(app) {
     const SESSION_KEY = 'musicSession';
     const SESSION_TIME_KEY = 'musicSessionTime';
     const sessionTime = () => Math.max(0, Math.round((Number(app.lastKnownCurrentTime) || 0) * 10) / 10);
-    app.saveSessionTime = () => {
+    let lastSavedTimeTrack = '';
+    let lastSavedTimeSec = -1;
+    app.saveSessionTime = (force = false) => {
         const track = app.playlist?.[app.currentTrackIndex];
-        if (track) writeStore(SESSION_TIME_KEY, { track: track.path, time: sessionTime(), at: Date.now() });
+        if (!track) return;
+        const time = sessionTime();
+        if (!force && track.path === lastSavedTimeTrack && time === lastSavedTimeSec) return;
+        lastSavedTimeTrack = track.path;
+        lastSavedTimeSec = time;
+        writeStore(SESSION_TIME_KEY, { track: track.path, time, at: Date.now() });
     };
     let lastSessionStructure = '';
     const sessionStructureKey = () => {
@@ -1017,7 +1029,7 @@ function setupPlayer(app) {
         };
         try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (error) { /* 存不下就算了 */ }
         lastSessionStructure = sessionStructureKey();
-        app.saveSessionTime();
+        app.saveSessionTime(true);
     };
     app.readSession = () => {
         try {
@@ -1106,6 +1118,7 @@ function setupPlayer(app) {
             if (sessionTimer) { clearTimeout(sessionTimer); sessionTimer = null; }
             app.cancelFailureSkip?.();
             if (preloadClearTimer) { clearTimeout(preloadClearTimer); preloadClearTimer = null; }
+            if (refreshPreloadTimer) { clearTimeout(refreshPreloadTimer); refreshPreloadTimer = null; }
             document.removeEventListener?.('music-queue-change', scheduleSessionSave);
             document.removeEventListener?.('visibilitychange', onVisSave);
             globalThis.removeEventListener?.('pagehide', onPageHideSave);
@@ -1406,6 +1419,7 @@ function setupPlayer(app) {
         app.engineTrackPath = track.path;
         app.lastKnownCurrentTime = 0;
         app.lastStateUpdateTime = Date.now();
+        app.resetEngineProgress?.();
         if (track.duration > 0) {
             app.lastKnownDuration = track.duration;
             app.durationEl.textContent = app.formatTime(track.duration);

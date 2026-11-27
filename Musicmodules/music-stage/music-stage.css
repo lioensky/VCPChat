@@ -51,6 +51,13 @@ body.music-stage-active #custom-title-bar {
     -webkit-backdrop-filter: blur(2px) saturate(105%);
 }
 
+body.music-stage-active.music-stage-scene-3d #custom-title-bar,
+body.music-fl-low.music-stage-active #custom-title-bar,
+body.music-fl-low .music-stage-chrome {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
 body.music-stage-active #custom-title-bar .title {
     opacity: 0;
     pointer-events: none;
@@ -318,7 +325,7 @@ body.music-stage-active .music-stage {
     inset: 40px 0 0;
     z-index: 1;
     opacity: 1;
-    filter: blur(0);
+    filter: none;
     transition: opacity 0.17s ease, filter 0.17s ease, transform 0.24s var(--stage-ease);
 }
 

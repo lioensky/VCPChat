@@ -36,6 +36,7 @@
 .music-stage .music-stage-edge-corners i {
     border-color: var(--ms-line);
     box-shadow: none;
+    filter: none;
 }
 
 /* ---------- 顶部：字标 + 常显的模式页签 ---------- */

@@ -67,9 +67,12 @@ function setupSidebar(app) {
         return Array.from(artists.values()).sort((a,b) => b.tracks.length - a.tracks.length);
     };
 
+    let allCountEl = null;
     app.updateAllCount = () => {
-        const el = document.getElementById('all-count');
-        if (el) el.textContent = app.playlist.length;
+        const el = (allCountEl && allCountEl.isConnected) ? allCountEl : (allCountEl = document.getElementById('all-count'));
+        if (!el) return;
+        const next = String(app.playlist.length);
+        if (el.textContent !== next) el.textContent = next;
     };
 
     app.renderSidebarContent = (view) => {
@@ -210,6 +213,10 @@ function setupSidebar(app) {
         if (!track || pl.tracks.includes(track.path)) return;
         pl.tracks.push(track.path); app.saveCustomPlaylists();
         if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists');
+        try { app.archiveView?.refresh?.(); } catch (err) { /* 档案页未激活 */ }
+        if (String(pl.id) === 'liked') {
+            try { document.dispatchEvent(new CustomEvent('music-like-change', { detail: { tracks: [track], liked: true } })); } catch (err) { /* 旧内核 */ }
+        }
     };
 
     app.openPlaylistEditModal = (id) => {
@@ -259,24 +266,33 @@ function setupSidebar(app) {
         if (!pl || !t) return;
         const items = app.modalSongList.children;
         const paint = (j, selected) => { const el = items[j]; if (el) el.classList.toggle('in-playlist', selected); };
+        const changedTracks = [];
+        let changedLiked = true;
         if (e.shiftKey && app.lastModalClickIndex !== -1 && rows[app.lastModalClickIndex]) {
             const [s, eIdx] = [Math.min(app.lastModalClickIndex, i), Math.max(app.lastModalClickIndex, i)];
             const inList = new Set(pl.tracks);
             const targetState = !inList.has(t.path);
+            changedLiked = targetState;
             for (let j = s; j <= eIdx; j++) {
                 const path = rows[j].path;
-                if (targetState && !inList.has(path)) { pl.tracks.push(path); inList.add(path); }
-                else if (!targetState && inList.has(path)) { inList.delete(path); }
+                if (targetState && !inList.has(path)) { pl.tracks.push(path); inList.add(path); changedTracks.push(rows[j]); }
+                else if (!targetState && inList.has(path)) { inList.delete(path); changedTracks.push(rows[j]); }
             }
             if (!targetState) { const keep = pl.tracks.filter((p) => inList.has(p)); pl.tracks.length = 0; pl.tracks.push(...keep); }
             for (let j = s; j <= eIdx; j++) paint(j, inList.has(rows[j].path));
         } else {
             const idx = pl.tracks.indexOf(t.path);
             const added = idx === -1;
+            changedLiked = added;
             if (added) pl.tracks.push(t.path); else pl.tracks.splice(idx, 1);
+            changedTracks.push(t);
             paint(i, added);
         }
         app.saveCustomPlaylists();
+        try { app.archiveView?.refresh?.(); } catch (err) { /* 档案页未激活 */ }
+        if (String(pl.id) === 'liked' && changedTracks.length) {
+            try { document.dispatchEvent(new CustomEvent('music-like-change', { detail: { tracks: changedTracks, liked: changedLiked } })); } catch (err) { /* 旧内核 */ }
+        }
         app.lastModalClickIndex = i; app.modalCount.textContent = `${pl.tracks.length} 首已添加`;
     }
 }

@@ -79,7 +79,7 @@
         if (!menu) return;
         arrange(menu);
         tidyDividers(menu);
-        const childObserver = new MutationObserver(() => arrange(menu));
+        const childObserver = new MutationObserver(() => { arrange(menu); childObserver.takeRecords(); });
         childObserver.observe(menu, { childList: true });
         let wasVisible = menu.classList.contains('visible');
         const classObserver = new MutationObserver(() => {
