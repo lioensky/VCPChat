@@ -84,9 +84,12 @@
         let overlay = null;
         let previousFocus = null;
         let copyTimer = 0;
+        let openRaf = 0;
+        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const close = () => {
             if (!overlay) return;
+            if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay;
             overlay = null;
             if (copyTimer) { clearTimeout(copyTimer); copyTimer = 0; }
@@ -111,8 +114,10 @@
                 }
                 return;
             }
+            if (NAV_KEYS.has(e.key)) { e.stopPropagation(); return; }
             if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
+        global.addEventListener?.('beforeunload', close, { once: true });
         app.openTrackInfo = (ref) => {
             if (!doc || overlay) return;
             const track = ref && typeof ref === 'object' ? ref : app.playlist?.[typeof ref === 'number' ? ref : app.currentTrackIndex];
@@ -171,7 +176,7 @@
             cur.addEventListener('mousedown', (e) => { if (e.target === cur) close(); });
             doc.body.appendChild(cur);
             global.addEventListener('keydown', onKey, true);
-            global.requestAnimationFrame?.(() => { if (overlay === cur) cur.classList.add('visible'); });
+            openRaf = global.requestAnimationFrame?.(() => { openRaf = 0; if (overlay === cur) cur.classList.add('visible'); }) || 0;
             try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
             return close;
         };

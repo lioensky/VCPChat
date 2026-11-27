@@ -59,12 +59,15 @@
         const doc = global.document;
         let overlay = null;
         let previousFocus = null;
+        let openRaf = 0;
+        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
         const toast = (message, action) => { try { global.MusicToast?.show?.({ message, action, duration: action ? 10000 : undefined }); } catch (e) { /* 没有提示层 */ } };
 
         const close = () => {
             if (!overlay) return;
+            if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay; overlay = null;
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
@@ -87,8 +90,10 @@
                 }
                 return;
             }
+            if (NAV_KEYS.has(e.key)) { e.stopPropagation(); return; }
             if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
+        global.addEventListener?.('beforeunload', close, { once: true });
 
         const refreshViews = () => {
             if (Array.isArray(app.currentFilteredTracks) && app.playlistViewSource) app.renderPlaylist?.(app.currentFilteredTracks);
@@ -256,7 +261,13 @@
             doc.body.appendChild(overlay);
             global.addEventListener('keydown', onKey, true);
             render();
-            requestAnimationFrame(() => { if (!overlay) return; overlay.classList.add('visible'); (go.hidden ? cancel : go).focus({ preventScroll: true }); });
+            const opening = overlay;
+            openRaf = global.requestAnimationFrame?.(() => {
+                openRaf = 0;
+                if (overlay !== opening) return;
+                opening.classList.add('visible');
+                (go.hidden ? cancel : go).focus({ preventScroll: true });
+            }) || 0;
         };
         app.findDuplicateTracks = () => findDuplicates(app.playlist || []);
     }

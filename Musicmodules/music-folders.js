@@ -89,6 +89,8 @@
 
         let overlay = null;
         let previousFocus = null;
+        let openRaf = 0;
+        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         // 开着的时候曲库变了（加文件夹、重扫、后台同步在扫）就跟着刷新歌数，不用关掉再开
         let watchTimer = 0;
         let seen = null;
@@ -96,6 +98,7 @@
         const libraryMark = () => { const l = app.playlist || []; return `${l.length}:${l[0]?.path || ''}:${l[l.length - 1]?.path || ''}`; };
         const close = () => {
             if (!overlay) return;
+            if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay;
             overlay = null;
             renderSeq += 1;
@@ -109,6 +112,7 @@
             if (back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
         global.addEventListener?.('beforeunload', () => {
+            if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             clearInterval(watchTimer);
             watchTimer = 0;
             global.removeEventListener('keydown', onKey, true);
@@ -129,6 +133,7 @@
                 }
                 return;
             }
+            if (NAV_KEYS.has(e.key)) { e.stopPropagation(); return; }
             if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
 
@@ -271,7 +276,8 @@
             overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
             doc.body.appendChild(overlay);
             global.addEventListener('keydown', onKey, true);
-            global.requestAnimationFrame?.(() => overlay && overlay.classList.add('visible'));
+            const opening = overlay;
+            openRaf = global.requestAnimationFrame?.(() => { openRaf = 0; if (overlay === opening) opening.classList.add('visible'); }) || 0;
             try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
             seen = libraryMark();
             watchTimer = setInterval(() => { if (doc.hidden) return; const m = libraryMark(); if (m !== seen) { seen = m; render(); } }, 1500);

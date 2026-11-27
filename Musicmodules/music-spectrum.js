@@ -204,6 +204,8 @@
         const doc = global.document;
         let overlay = null;
         let previousFocus = null;
+        let openRaf = 0;
+        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const el = (tag, cls, text) => {
             const n = doc.createElement(tag);
             if (cls) n.className = cls;
@@ -213,6 +215,7 @@
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
         const close = () => {
             if (!overlay) return;
+            if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
@@ -242,8 +245,10 @@
                 }
                 return;
             }
+            if (NAV_KEYS.has(e.key)) { e.stopPropagation(); return; }
             if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
+        global.addEventListener?.('beforeunload', close, { once: true });
         const setStatus = (target, text) => {
             if (overlay !== target) return;
             const s = target && target.querySelector('.mspec-status');
@@ -382,7 +387,7 @@
             cur.addEventListener('mousedown', (e) => { if (e.target === cur) close(); });
             doc.body.appendChild(cur);
             global.addEventListener('keydown', onKey, true);
-            global.requestAnimationFrame?.(() => { if (overlay === cur) cur.classList.add('visible'); });
+            openRaf = global.requestAnimationFrame?.(() => { openRaf = 0; if (overlay === cur) cur.classList.add('visible'); }) || 0;
             try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
             try { await analyse(track, cur); } catch (e) { setStatus(cur, '分析失败：' + (e && e.message || e)); }
         };

@@ -115,7 +115,9 @@
         const doc = global.document;
         let overlay = null;
         let previousFocus = null;
+        let openRaf = 0;
         let range = 30;
+        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         try { const v = Number(global.localStorage?.getItem(RANGE_KEY)); if (RANGES.some(([d]) => d === v)) range = v; } catch (e) { /* 默认 30 天 */ }
 
         const el = (tag, cls, text) => {
@@ -128,6 +130,7 @@
 
         const close = () => {
             if (!overlay) return;
+            if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
@@ -153,8 +156,10 @@
                 }
                 return;
             }
+            if (NAV_KEYS.has(e.key)) { e.stopPropagation(); return; }
             if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
+        global.addEventListener?.('beforeunload', close, { once: true });
 
         /*
          * 排行里每行带一张小封面：曲目自带的封面（扫描时存下的内嵌封面）优先，没有就试同目录的 cover.jpg / folder.jpg；
@@ -336,11 +341,13 @@
             doc.body.appendChild(overlay);
             global.addEventListener('keydown', onKey, true);
             render();
-            requestAnimationFrame(() => {
-                if (!overlay) return;
-                overlay.classList.add('visible');
-                overlay.querySelector('.mstats-range button.active')?.focus({ preventScroll: true });
-            });
+            const opening = overlay;
+            openRaf = global.requestAnimationFrame?.(() => {
+                openRaf = 0;
+                if (overlay !== opening) return;
+                opening.classList.add('visible');
+                opening.querySelector('.mstats-range button.active')?.focus({ preventScroll: true });
+            }) || 0;
         };
         app.closeStatsView = close;
     }
