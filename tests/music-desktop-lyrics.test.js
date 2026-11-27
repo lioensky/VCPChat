@@ -483,3 +483,37 @@ test('Batch 59: snapshot invalidates filtered cache when lines are appended in-p
     const second = snapshot(app, 7);
     assert.strictEqual(second.line.text, '第二句', 'filteredLines cache must rebuild when all.length grows on same array');
 });
+
+test('Batch 62: desktop-lyrics bar deduplicates hover IPC commands while locked', () => {
+    const { JSDOM } = require('jsdom');
+    const html = fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.html'), 'utf8');
+    const dom = new JSDOM(html, { runScripts: 'outside-only' });
+    const { window } = dom;
+    const doc = window.document;
+    const sent = [];
+    let onPrefs = null;
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    window.utilityAPI = {
+        sendDesktopLyricsCommand: (cmd, val) => sent.push([cmd, val]),
+        onDesktopLyricsState: () => () => {},
+        onDesktopLyricsPrefs: (cb) => { onPrefs = cb; return () => {}; }
+    };
+    window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.js'), 'utf8'));
+    onPrefs({ locked: true, size: 34 });
+
+    // Leaving the document while never having hovered #lock sends 0 redundant hover:false IPCs
+    doc.dispatchEvent(new window.MouseEvent('mouseleave'));
+    assert.deepStrictEqual(sent, []);
+
+    const lockBtn = doc.getElementById('lock');
+    lockBtn.dispatchEvent(new window.MouseEvent('mouseenter'));
+    lockBtn.dispatchEvent(new window.MouseEvent('mouseenter'));
+    assert.deepStrictEqual(sent, [['hover', true]], 'entering #lock sends hover:true once');
+
+    lockBtn.dispatchEvent(new window.MouseEvent('mouseleave'));
+    doc.dispatchEvent(new window.MouseEvent('mouseleave'));
+    assert.deepStrictEqual(sent, [['hover', true], ['hover', false]], 'leaving #lock then document sends hover:false once');
+    window.dispatchEvent(new window.Event('beforeunload'));
+    window.close();
+});

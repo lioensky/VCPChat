@@ -1562,3 +1562,49 @@ test('Batch 61: palette pools row DOM nodes, dock gates stage config fluid sync,
         window.close();
     }
 });
+
+test('Batch 62: dock fluid skips redundant layout writes when geometry is unchanged and guards setGlow target/invalid hex', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="host"><div class="md-dock"><div id="bar"></div><div id="ring"></div></div></div></body>', { runScripts: 'outside-only' });
+    const { window } = dom;
+    window.eval(read('Musicmodules/music-dock/music-dock-fluid.js'));
+    let now = 1000;
+    let rafCalls = 0;
+    let cancelCalls = 0;
+    const frames = [];
+    window.performance.now = () => now;
+    window.requestAnimationFrame = (cb) => { rafCalls += 1; frames.push(cb); return rafCalls; };
+    window.cancelAnimationFrame = () => { cancelCalls += 1; frames.length = 0; };
+    const bar = window.document.getElementById('bar');
+    bar.getBoundingClientRect = () => ({ left: 200, right: 800, top: 600, bottom: 664, width: 600, height: 64 });
+    const fluid = window.createMusicDockFluid({ host: window.document.getElementById('host'), bar, ring: window.document.getElementById('ring') });
+    try {
+        assert.equal(fluid.layout(), true);
+        const holePath = fluid.svg.querySelector('clipPath path');
+        let holeAttrWrites = 0;
+        let svgAttrWrites = 0;
+        const origHoleSet = holePath.setAttribute.bind(holePath);
+        holePath.setAttribute = (...a) => { holeAttrWrites += 1; return origHoleSet(...a); };
+        const origSvgSet = fluid.svg.setAttribute.bind(fluid.svg);
+        fluid.svg.setAttribute = (...a) => { svgAttrWrites += 1; return origSvgSet(...a); };
+
+        // Unchanged geometry skips rewriting SVG viewBox/filters/holePath
+        assert.equal(fluid.layout(), true);
+        assert.equal(holeAttrWrites, 0, 'unchanged layout skips resetting holePath');
+        assert.equal(svgAttrWrites, 0, 'unchanged layout skips rewriting svg dimensions');
+
+        // Invalid first-call hex does not throw
+        assert.doesNotThrow(() => fluid.setGlow(['not-a-color', null, '']));
+        fluid.setGlow(['#112233', '#223344', '#334455']);
+        const rafBefore = rafCalls;
+        const cancelBefore = cancelCalls;
+        fluid.setGlow(['#445566', '#556677', '#667788']);
+        assert.equal(rafCalls, rafBefore + 1, 'new glow colors start smooth transition');
+        // Calling setGlow with identical target mid-flight must not cancel & restart the animation
+        fluid.setGlow(['#445566', '#556677', '#667788']);
+        assert.equal(rafCalls, rafBefore + 1, 'same in-flight glow target does not schedule extra rAF');
+        assert.equal(cancelCalls, cancelBefore, 'same in-flight glow target does not cancel active animation');
+    } finally {
+        fluid.destroy();
+        window.close();
+    }
+});

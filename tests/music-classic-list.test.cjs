@@ -340,3 +340,78 @@ test('Batch 60: classic-list pre-ranked artist sort preserves Collator numeric t
     assert.deepEqual(secondDescOrder, firstDescOrder, 'reversed added order remains consistent on cached render');
     t.close();
 });
+
+test('Batch 62: music-ui + classic-list pool and update decorated <li> nodes in-place across scroll jumps', async () => {
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    const list = doc.getElementById('playlist');
+    const frames = [];
+    window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+    window.cancelAnimationFrame = () => {};
+    Object.defineProperty(list, 'clientHeight', { get: () => 360 });
+    Object.defineProperty(window.HTMLElement.prototype, 'offsetTop', {
+        get() { return this.parentNode === list ? Array.prototype.indexOf.call(list.children, this) * ROW : 0; }
+    });
+    const playlist = Array.from({ length: 300 }, (_, i) => ({
+        path: `/m/${i}.flac`,
+        title: `Song ${i}.flac`,
+        artist: `Artist ${i}`,
+        duration: 120 + i
+    }));
+    const liked = new Set(['/m/180.flac']);
+    const app = {
+        playlist,
+        playlistEl: list,
+        currentTrackIndex: 180,
+        stripAudioExtension: (s) => String(s || '').replace(/\.flac$/i, ''),
+        updateAllCount() {},
+        isLiked: (tr) => Boolean(tr && liked.has(tr.path))
+    };
+    window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-app-hooks.js'), 'utf8'));
+    window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-ui.js'), 'utf8'));
+    window.eval(source);
+    window.setupUI(app);
+    window.setupMusicClassicList(app);
+    app.renderPlaylist();
+
+    const initialLis = new Set([...list.children]);
+    const initialTitles = new Set([...list.children].map((li) => li.querySelector('.cl-title')));
+    assert.ok(initialLis.size > 0, 'initial virtual window rendered');
+
+    // Jump straight to track 180 (disjoint window) — existing <li> and child spans should be reused in-place
+    let liCreates = 0;
+    const origCreate = doc.createElement.bind(doc);
+    doc.createElement = (tag, ...rest) => {
+        if (String(tag).toLowerCase() === 'li') liCreates += 1;
+        return origCreate(tag, ...rest);
+    };
+    list.scrollTop = 180 * ROW;
+    list.dispatchEvent(new window.Event('scroll'));
+    while (frames.length) frames.splice(0).forEach((fn) => fn(0));
+
+    const jumpedLis = [...list.children];
+    const reusedCount = jumpedLis.filter((li) => initialLis.has(li)).length;
+    const reusedTitleSpans = jumpedLis.filter((li) => initialTitles.has(li.querySelector('.cl-title'))).length;
+    assert.ok(reusedCount >= Math.min(initialLis.size, jumpedLis.length), `expected pooled <li> reuse, got ${reusedCount}/${jumpedLis.length}`);
+    assert.equal(reusedTitleSpans, reusedCount, 'reused <li> elements update child .cl-title spans in-place without rebuilding children');
+    assert.ok(liCreates <= Math.max(0, jumpedLis.length - initialLis.size), `pool reduces new <li> allocations (got ${liCreates})`);
+
+    const row180 = jumpedLis.find((li) => li.dataset.index === '180');
+    assert.ok(row180, 'target row 180 rendered in jumped window');
+    assert.equal(row180.querySelector('.cl-title').textContent, 'Song 180');
+    assert.equal(row180.querySelector('.cl-artist').textContent, 'Artist 180');
+    assert.equal(row180.classList.contains('active'), true);
+    assert.equal(row180.classList.contains('is-liked'), true);
+
+    // Second disjoint jump (to track 80) is 100% satisfied from existing nodes with 0 new <li> allocations
+    liCreates = 0;
+    list.scrollTop = 80 * ROW;
+    list.dispatchEvent(new window.Event('scroll'));
+    while (frames.length) frames.splice(0).forEach((fn) => fn(0));
+    assert.equal(liCreates, 0, 'subsequent disjoint scroll jump allocates zero new <li> nodes');
+    const row80 = [...list.children].find((li) => li.dataset.index === '80');
+    assert.ok(row80 && row80.querySelector('.cl-title').textContent === 'Song 80');
+    window.dispatchEvent(new window.Event('beforeunload'));
+    window.close();
+});

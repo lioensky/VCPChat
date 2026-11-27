@@ -271,3 +271,33 @@ test('降低动态且无 Element.animate 时，过场降级为定时器正常收
     assert.deepEqual(t.leftovers(), CLEAN);
     t.close();
 });
+
+test('Batch 62: music-intro skips redundant per-frame root/wipe attribute writes when values are unchanged', async () => {
+    const t = setup();
+    t.intro.replay();
+    const root = t.doc.querySelector('.music-intro');
+    assert.ok(root);
+    let waitingToggleCalls = 0;
+    const origToggleAttr = root.toggleAttribute.bind(root);
+    root.toggleAttribute = (name, force) => {
+        if (name === 'data-waiting') waitingToggleCalls += 1;
+        return origToggleAttr(name, force);
+    };
+    const wipe = root.querySelector('.mi-wipe');
+    let wipeOpWrites = 0;
+    const origWipeStyle = wipe.style;
+    const origSet = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(origWipeStyle), 'opacity')?.set;
+    if (origSet) {
+        Object.defineProperty(origWipeStyle, 'opacity', {
+            configurable: true,
+            get() { return this.getPropertyValue('opacity'); },
+            set(v) { wipeOpWrites += 1; return origSet.call(this, v); }
+        });
+    }
+    await t.advance(600);
+    assert.equal(waitingToggleCalls, 1, 'data-waiting toggled only once while waiting stays false');
+    if (origSet) assert.equal(wipeOpWrites, 1, 'mi-wipe opacity written once while wipe stays 0');
+    t.intro.skip();
+    await t.advance(50);
+    t.close();
+});

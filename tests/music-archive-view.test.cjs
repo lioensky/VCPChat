@@ -1768,3 +1768,27 @@ test('Batch 60: dragging archive index ruler reads getBoundingClientRect once pe
     ev('pointerup', 340);
     f.close();
 });
+
+test('Batch 62: archive-list search highlights matched title, keeps unmatched meta plain, and updates brand title span in-place', () => {
+    const f = fixture({ n: 20 });
+    f.view.setListOpen(true);
+    const input = f.view.list.input;
+    const brand = f.view.list.el.querySelector('[data-l="brandTitle"]');
+    input.value = 'Song 1';
+    input.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    const firstSpan = brand.lastElementChild;
+    assert.ok(firstSpan && firstSpan.textContent.includes('Song 1'));
+
+    input.value = 'Song 12';
+    input.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    assert.equal(brand.lastElementChild, firstSpan, 'consecutive typing updates brand title span in-place');
+    assert.equal(firstSpan.textContent, '「Song 12」');
+
+    const row = f.view.list.el.querySelector('.archive-list-row');
+    assert.ok(row, 'matched row rendered');
+    assert.ok(row.querySelector('.tx b mark'), 'matching title gets <mark> highlight');
+    assert.equal(row.querySelector('.tx em mark'), null, 'non-matching meta stays plain text without <mark>');
+    f.close();
+});
