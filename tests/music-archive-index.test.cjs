@@ -294,3 +294,74 @@ test('Batch 61: bucketed 1-4 term query preserves exact score & order with limit
     const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'Musicmodules/music-archive/archive.css'), 'utf8');
     assert.match(css, /body\.music-archive-on\s+\.music-player-container[\s\S]*?content-visibility:\s*hidden/);
 });
+
+test('Batch 65: monomorphic scorer parity, incremental narrowing cache, and MusicTrackOrder fast paths', () => {
+    const TrackOrder = require('../Musicmodules/music-track-order.js');
+    // 1. Score precedence: ini.startsWith (40*w) beats py.includes (30*w), title prefix beats artist/album, multi-term incremental narrowing matches fresh index
+    const pyMap = {
+        晴: 'qíng', 天: 'tiān', 海: 'hǎi', 风: 'fēng', 周: 'zhōu', 杰: 'jié', 伦: 'lún',
+        夜: 'yè', 曲: 'qǔ', 爱: 'ài', 情: 'qíng', 歌: 'gē', 青: 'qīng', 春: 'chūn'
+    };
+    const pyFn = (c) => pyMap[c] || '';
+    const tracks = [
+        { path: '/0', title: '爱情歌', artist: 'Artist 10', album: 'Album A' },   // py='aiqingge', ini='aqg' -> 'qg' matches py.includes (30*3=90) vs ini.includes (22*3=66)
+        { path: '/1', title: '晴天', artist: 'Artist 1', album: 'Album B' },      // py='qingtian', ini='qt'
+        { path: '/2', title: '青春歌', artist: 'Artist 12', album: 'Album C' },   // py='qingchunge', ini='qcg'
+        { path: '/3', title: '海风', artist: '周杰伦', album: '晴天集' },
+        { path: '/4', title: 'Blue Sky', artist: 'Artist 1', album: 'Live 2024' },
+        { path: '/5', title: 'Blue Rain', artist: 'Artist 2', album: 'Studio' },
+        { path: '/6', title: 'Artist 1 Theme', artist: 'Composer', album: 'OST' }
+    ];
+    const idx = Index.createIndex(tracks, { pinyin: pyFn });
+    const fresh = () => Index.createIndex(tracks, { pinyin: pyFn });
+
+    // 'qt' hits title ini.startsWith (40*3=120) on track 1 ahead of album ini.startsWith (40*1=40) on track 3
+    assert.deepEqual(idx.query('qt'), [1, 3]);
+    // Sequential incremental typing + backspacing + kind switch + empty narrowing must match fresh index 100%
+    const seq = [
+        ['a', 'all'],
+        ['ar', 'all'],
+        ['artist', 'all'],
+        ['artist 1', 'all'],
+        ['artist 12', 'all'],
+        ['artist 1', 'all'],
+        ['artist', 'artist'],
+        ['artist 1', 'artist'],
+        ['artist 1', 'album'],
+        ['zzz', 'all'],
+        ['zzzz', 'all'],
+        ['b', 'all'],
+        ['bl', 'all'],
+        ['blue s', 'all']
+    ];
+    for (const [q, kind] of seq) {
+        assert.deepEqual(idx.query(q, { kind }), fresh().query(q, { kind }), `query("${q}", ${kind}) matches fresh index`);
+    }
+    // limit on narrowed query still caches full match list for further narrowing
+    const idxLim = Index.createIndex(tracks, { pinyin: pyFn });
+    assert.deepEqual(idxLim.query('artist', { limit: 2 }), fresh().query('artist', { limit: 2 }));
+    assert.deepEqual(idxLim.query('artist 12'), fresh().query('artist 12'), 'narrowing after limited query does not lose matches beyond prior limit');
+
+    // 2. MusicTrackOrder: shared frozen EMPTY_ORDER, fast-skip non-numbered names, URL-encoded/prefix names, CD parent disc, >64 sparse cache
+    const emptyA = TrackOrder.numberOf({ path: '/music/Artist/Album/Blue Sky.flac' });
+    const emptyB = TrackOrder.numberOf({ path: '/music/Artist/Album/Zeta Song.mp3' });
+    assert.equal(emptyA, emptyB, 'unnumbered tracks share frozen EMPTY_ORDER singleton');
+    assert.equal(Object.isFrozen(emptyA), true);
+    assert.deepEqual(emptyA, { disc: 0, no: 0 });
+    assert.deepEqual(TrackOrder.numberOf({ path: '/alb/CD2/Track%2007.flac' }), { disc: 2, no: 7 });
+    assert.deepEqual(TrackOrder.numberOf({ path: '/alb/Disc 3/曲目 05.wav' }), { disc: 3, no: 5 });
+    assert.deepEqual(TrackOrder.numberOf({ path: '/alb/トラック 11.flac' }), { disc: 0, no: 11 });
+    assert.deepEqual(TrackOrder.numberOf({ path: '/alb/2024 Live.flac' }), { disc: 0, no: 0 }, '4-digit year is not a track number');
+    assert.deepEqual(TrackOrder.numberOf({ path: '/alb/2-04 Finale.flac' }), { disc: 2, no: 4 });
+
+    // >64 tracks uses sparse Map in albumCompare and sorts disc/track numbers accurately
+    const big = Array.from({ length: 80 }, (_, i) => ({
+        path: i < 40 ? `/m/CD1/${String(40 - i).padStart(2, '0')} Song.flac` : `/m/Album/NoNum ${i}.flac`,
+        title: `T${i}`
+    }));
+    const cmp = TrackOrder.albumCompare(big, (a, b) => a - b);
+    const ordered = big.map((_, i) => i).sort(cmp);
+    assert.equal(ordered[0], 39, '01 Song comes first');
+    assert.equal(ordered[39], 0, '40 Song comes 40th');
+    assert.deepEqual(ordered.slice(40), Array.from({ length: 40 }, (_, i) => 40 + i), 'unnumbered tracks stay after numbered in fallback order');
+});

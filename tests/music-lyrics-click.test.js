@@ -158,3 +158,70 @@ test('Batch 60: lyric clicks use single delegated listener, ignore non-collapsed
     assert.deepEqual(seeks, [12], 'delegated click listener detaches on beforeunload');
     window.close();
 });
+
+test('Batch 65: animateLyrics caches viewport via ResizeObserver, reads geometry before DOM writes, and disconnects on beforeunload', () => {
+    const dom = new JSDOM('<ul id="l"></ul><div id="c"></div>');
+    const { window } = dom;
+    let roCallback = null;
+    let roDisconnected = false;
+    class FakeResizeObserver {
+        constructor(cb) { roCallback = cb; }
+        observe() {}
+        disconnect() { roDisconnected = true; }
+    }
+    const context = vm.createContext({
+        console: { log() {}, warn() {}, error() {} },
+        setTimeout, clearTimeout,
+        ResizeObserver: FakeResizeObserver,
+        window, document: window.document
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-lyrics.js'), 'utf8'), context);
+    const container = window.document.getElementById('c');
+    let vpReads = 0;
+    Object.defineProperty(container, 'clientWidth', { get() { vpReads += 1; return 480; }, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { get() { vpReads += 1; return 320; }, configurable: true });
+    const app = {
+        lyricSpeedFactor: 1, lyricOffset: 0, currentLyrics: [],
+        lyricsList: window.document.getElementById('l'),
+        lyricsContainer: container,
+        isPlaying: true, isTrackLoading: false, lastKnownDuration: 60,
+        lastKnownCurrentTime: 9, lastStateUpdateTime: Date.now(),
+        api: { seekMusic: () => {} },
+        seekTo: () => {}, playTrack: () => {}, formatTime: (t) => String(t)
+    };
+    context.setupLyrics(app);
+    app.currentLyrics = app.parseLrc('[00:08.00]第一句\n[00:12.00]第二句');
+    app.renderLyrics();
+    const items = [...app.lyricsList.querySelectorAll('li')];
+
+    // Record exact read vs write order when active line changes: offsetTop must be read BEFORE active class is added
+    const trace = [];
+    Object.defineProperty(items[0], 'offsetTop', { get() { trace.push('read:offsetTop'); return 100; }, configurable: true });
+    Object.defineProperty(items[0], 'clientHeight', { get() { trace.push('read:clientHeight'); return 32; }, configurable: true });
+    const origAdd = items[0].classList.add.bind(items[0].classList);
+    items[0].classList.add = (...cls) => { if (cls.includes('active')) trace.push('write:active'); return origAdd(...cls); };
+
+    // ResizeObserver provides viewport dimensions -> 0 clientWidth/clientHeight reads
+    roCallback([{ contentRect: { width: 520, height: 340 } }]);
+    app.animateLyrics();
+    assert.equal(vpReads, 0, 'ResizeObserver cache eliminates clientWidth/clientHeight reads');
+    assert.equal(trace[0], 'read:offsetTop', 'geometry read happens before .active DOM write');
+    assert.ok(trace.indexOf('read:clientHeight') < trace.indexOf('write:active'), 'clientHeight read precedes .active mutation');
+
+    // Steady-state frames make 0 viewport reads
+    app.animateLyrics();
+    app.animateLyrics();
+    assert.equal(vpReads, 0);
+
+    // ResizeObserver invalidates cache when contentRect reports 0 -> falls back once to clientWidth/Height
+    roCallback([{ contentRect: { width: 0, height: 0 } }]);
+    app.animateLyrics();
+    assert.equal(vpReads, 2, 'single fallback read when observer reports zero rect');
+    app.animateLyrics();
+    assert.equal(vpReads, 2, 'cached again after single fallback read');
+
+    // beforeunload disconnects ResizeObserver
+    window.dispatchEvent(new window.Event('beforeunload'));
+    assert.equal(roDisconnected, true, 'ResizeObserver disconnects on beforeunload');
+    window.close();
+});

@@ -471,3 +471,46 @@ test('Batch 64: classic-list multi-key sortCache reverses ties/empties in O(N) a
     assert.doesNotThrow(() => t.window.dispatchEvent(new t.window.Event('beforeunload')));
     t.close();
 });
+
+test('Batch 65: music-ui renderWindow calibrates pitch in-place with single clientHeight read and guards hidden scroll', () => {
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    const list = doc.getElementById('playlist');
+    let clientHeightReads = 0;
+    let replaceChildrenCalls = 0;
+    Object.defineProperty(list, 'clientHeight', { get() { clientHeightReads += 1; return 360; }, configurable: true });
+    Object.defineProperty(window.HTMLElement.prototype, 'offsetTop', {
+        get() { return this.parentNode === list ? Array.prototype.indexOf.call(list.children, this) * ROW : 0; },
+        configurable: true
+    });
+    const origReplace = list.replaceChildren.bind(list);
+    list.replaceChildren = (...args) => { replaceChildrenCalls += 1; return origReplace(...args); };
+
+    const playlist = Array.from({ length: 200 }, (_, i) => ({ path: `/m/${i}.flac`, title: `Song ${i}.flac`, artist: `A${i}` }));
+    const app = {
+        playlist,
+        playlistEl: list,
+        currentTrackIndex: 10,
+        stripAudioExtension: (s) => String(s || '').replace(/\.flac$/i, ''),
+        updateAllCount() {}
+    };
+    window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-app-hooks.js'), 'utf8'));
+    window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-ui.js'), 'utf8'));
+    window.setupUI(app);
+    app.renderPlaylist();
+
+    // 360px / 36px = 10 visible + 40 buffer = 50 rows trimmed in-place from 80 fallback rows -> only 1 clientHeight read & 1 replaceChildren
+    assert.equal(clientHeightReads, 1, 'initial renderWindow + pitch calibration reads clientHeight only once');
+    assert.equal(replaceChildrenCalls, 1, 'prefix trim avoids recursive renderWindow rebuild');
+    assert.equal(list.children.length, 50, 'trimmed in-place to visible + buffer rows');
+    assert.equal(list.lastElementChild.style.marginBottom, `${(200 - 50) * ROW}px`);
+
+    // When archive covers classic view, scrollCurrentTrackToSidebarTop returns false without touching layout
+    doc.body.classList.add('music-archive-on');
+    clientHeightReads = 0;
+    assert.equal(app.scrollCurrentTrackToSidebarTop(), false);
+    assert.equal(clientHeightReads, 0, 'hidden classic view skips clientHeight reads in scrollCurrentTrackToSidebarTop');
+    window.dispatchEvent(new window.Event('beforeunload'));
+    window.close();
+});

@@ -360,3 +360,56 @@ test('Batch 59: musicLibraryWatch.forgetFolder closes active fs.watch handle for
     watcher.stop();
     assert.deepEqual(closedDirs, ['/fake-music/a', '/fake-music/b'], 'stop() closes remaining /b handle');
 });
+
+test('Batch 65: partial worker spawn failure settles already-spawned workers inFlight jobs without hanging', async () => {
+    const Module = require('node:module');
+    const workerThreads = require('node:worker_threads');
+    const lib = library(Array.from({ length: 12 }, (_, i) => `t${String(i).padStart(2, '0')}.mp3`));
+    const files = await collectAudioFiles(lib.music);
+    const known = files.map((filePath, i) => ({ path: filePath, title: `kept-${i}`, size: -1, mtimeMs: 0 }));
+
+    let spawnCount = 0;
+    const terminated = [];
+    const FakeWorker = class extends require('node:events').EventEmitter {
+        constructor() {
+            super();
+            spawnCount += 1;
+            if (spawnCount === 2) throw new Error('EMFILE: synthetic spawn failure');
+        }
+        postMessage() {}
+        terminate() { terminated.push(spawnCount); return Promise.resolve(0); }
+    };
+
+    const scannerPath = require.resolve('../modules/musicLibraryScanner');
+    const savedCache = require.cache[scannerPath];
+    const origLoad = Module._load;
+    delete require.cache[scannerPath];
+    Module._load = function (request, parent, isMain) {
+        if (request === 'worker_threads' && parent && parent.filename === scannerPath) {
+            return { ...workerThreads, Worker: FakeWorker };
+        }
+        return origLoad.apply(this, arguments);
+    };
+    let isolatedScanner;
+    try {
+        isolatedScanner = require(scannerPath);
+    } finally {
+        Module._load = origLoad;
+        if (savedCache) require.cache[scannerPath] = savedCache;
+        else delete require.cache[scannerPath];
+    }
+
+    const result = await isolatedScanner.scanFolder({
+        folderPath: lib.music,
+        coverCachePath: lib.cache,
+        workerFile: lib.workerFile,
+        workerCount: 2,
+        knownTracks: known,
+        tuning: { perWorkerInFlight: 3 }
+    });
+    assert.equal(spawnCount, 2, 'attempted to spawn 2 workers before failing');
+    assert.equal(terminated.length, 1, 'already-spawned worker terminated cleanly');
+    assert.equal(result.stats.failed, 12, 'all 12 jobs including worker #1 inFlight jobs settled as failed');
+    assert.equal(result.stats.kept, 12, 'known tracks preserved for both inFlight and unqueued jobs');
+    assert.equal(result.tracks.length, 12, 'no inFlight tracks dropped during partial spawn failure');
+});

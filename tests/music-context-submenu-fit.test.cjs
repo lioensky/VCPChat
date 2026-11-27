@@ -47,3 +47,42 @@ test('the stylesheet ellipsizes playlist names in the submenu', () => {
     const css = fs.readFileSync('Musicmodules/music.css', 'utf8');
     assert.match(css, /\.context-submenu \.submenu-item\s*\{[^}]*text-overflow:\s*ellipsis/);
 });
+
+test('Batch 65: playlist submenu caches unchanged DOM nodes and delegates clicks preserving id types', () => {
+    const { dom, app, sub } = setup({ width: 1280, menu: { left: 300, right: 512, top: 100, bottom: 540 } });
+    const added = [];
+    app.contextMenuTrackIndex = 2;
+    app.addSelectedTracksToPlaylist = (id) => added.push({ id, type: typeof id, idx: app.contextMenuTrackIndex });
+    app.customPlaylists = [
+        { id: 42, name: '数字ID歌单', tracks: [] },
+        { id: 'str-7', name: '字符串ID歌单', tracks: [] }
+    ];
+
+    app.updatePlaylistSubmenu();
+    const firstNodes = [...sub.querySelectorAll('.submenu-item')];
+    assert.equal(firstNodes.length, 2);
+
+    // Repeating updatePlaylistSubmenu with identical id+name reuses the exact DOM nodes
+    app.updatePlaylistSubmenu();
+    const secondNodes = [...sub.querySelectorAll('.submenu-item')];
+    assert.equal(secondNodes[0], firstNodes[0], 'unchanged playlists reuse submenu DOM nodes');
+    assert.equal(secondNodes[1], firstNodes[1]);
+
+    // Delegated click preserves both numeric and string pl.id
+    secondNodes[0].click();
+    secondNodes[1].click();
+    assert.deepEqual(added, [
+        { id: 42, type: 'number', idx: 2 },
+        { id: 'str-7', type: 'string', idx: 2 }
+    ]);
+
+    // Renaming a playlist invalidates the signature and rebuilds textContent + title
+    app.customPlaylists[0].name = '改名后的歌单';
+    app.updatePlaylistSubmenu();
+    const thirdNodes = [...sub.querySelectorAll('.submenu-item')];
+    assert.notEqual(thirdNodes[0], firstNodes[0], 'renamed playlist rebuilds submenu items');
+    assert.equal(thirdNodes[0].textContent, '改名后的歌单');
+    assert.equal(thirdNodes[0].title, '改名后的歌单');
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.close();
+});

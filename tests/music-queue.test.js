@@ -548,3 +548,33 @@ test('Batch 60: byPathMap memoizes across repeated resolutions and invalidates w
     const up = app.getUpNext();
     assert.equal(up.manual.includes(added), false, 'removed track excluded from manual up-next');
 });
+
+test('Batch 65: syncTrackIndexByPath resolves via O(1) byPathIndexMap, keeps first duplicate, and falls back to filename', () => {
+    const { app, playlist } = setup({ count: 60 });
+    // Add duplicate path at the end to verify first-index preference
+    playlist.push({ path: 'C:/m/15.flac', title: 't15-dup' });
+    app.renderPlaylist = () => {};
+    app.trackTitle = {}; app.trackArtist = {}; app.trackBitrate = {}; app.albumArt = { style: {} };
+    app.progress = { style: {} }; app.currentTimeEl = {}; app.durationEl = {}; app.formatTime = s => String(s);
+    app.stripAudioExtension = (t) => t; app.updateBlurredBackground = () => {}; app.fetchAndDisplayLyrics = () => {};
+    app.updateMediaSessionMetadata = () => {}; app.rememberPlayed = () => {}; app.publishCapsuleState = () => {};
+
+    let normCalls = 0;
+    app.normalizePathForCompare = (p) => { normCalls += 1; return String(p || '').toLowerCase(); };
+
+    // First call builds byPathIndexMap once across playlist
+    app.syncTrackIndexByPath('c:/m/15.flac');
+    assert.equal(app.currentTrackIndex, 15, 'resolves first matching index when duplicate paths exist');
+    const callsAfterWarm = normCalls;
+
+    // Subsequent exact path matches are O(1) — only normalizing the query path, never scanning all 61 tracks
+    app.syncTrackIndexByPath('c:/m/42.flac');
+    assert.equal(app.currentTrackIndex, 42);
+    app.syncTrackIndexByPath('c:/m/59.flac');
+    assert.equal(app.currentTrackIndex, 59);
+    assert.ok(normCalls - callsAfterWarm <= 6, `O(1) byPathIndexMap avoids O(N) playlist scans (extra normCalls=${normCalls - callsAfterWarm})`);
+
+    // Filename fallback still works when directory prefix differs
+    app.syncTrackIndexByPath('D:/moved/dir/7.flac');
+    assert.equal(app.currentTrackIndex, 7, 'filename fallback locates moved track');
+});
