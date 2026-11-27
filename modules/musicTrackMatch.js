@@ -5,10 +5,12 @@
 // 现在给每首打分，取最高分；同分取曲库里靠前的。没有 electron 依赖，测试直接用。
 
 const AUDIO_EXT = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff|wv)$/i;
+const ASCII_ONLY = /^[\x00-\x7f]*$/;
 
 function norm(value) {
-    return String(value ?? '')
-        .normalize('NFKC')
+    const raw = String(value ?? '');
+    if (!raw) return '';
+    return (ASCII_ONLY.test(raw) ? raw : raw.normalize('NFKC'))
         .toLowerCase()
         .replace(AUDIO_EXT, '')
         .replace(/[\s_]+/g, ' ')
@@ -21,6 +23,28 @@ function stripNoise(normalized) {
     return normalized.replace(NOISE_RE, '');
 }
 
+const trackNormCache = new WeakMap();
+function getTrackNorm(track) {
+    const rawTitle = track.title || '';
+    const rawPath = track.path || '';
+    const rawArtist = track.artist || '';
+    const rawAlbum = track.album || '';
+    const hit = trackNormCache.get(track);
+    if (hit && hit.rawTitle === rawTitle && hit.rawPath === rawPath && hit.rawArtist === rawArtist && hit.rawAlbum === rawAlbum) {
+        return hit;
+    }
+    const title = norm(rawTitle || (rawPath ? String(rawPath).split(/[\\/]/).pop() : ''));
+    const entry = {
+        rawTitle, rawPath, rawArtist, rawAlbum,
+        title,
+        titleS: title ? stripNoise(title) : '',
+        artist: null,
+        album: null
+    };
+    trackNormCache.set(track, entry);
+    return entry;
+}
+
 // 「歌名 - 歌手」「歌名 by 歌手」「歌手 的 歌名」这类写法拆成两半。
 function splitQuery(q) {
     const parts = q.split(/\s+-\s+|\s+—\s+|\s+by\s+|\s*\/\s*|\s*的\s*/i).map((s) => s.trim()).filter(Boolean);
@@ -28,11 +52,10 @@ function splitQuery(q) {
 }
 
 function scoreTrack(track, q, qs, pair, minScore = 0) {
-    const title = norm(track.title || (track.path ? String(track.path).split(/[\\/]/).pop() : ''));
-    const titleS = title ? stripNoise(title) : '';
+    const entry = getTrackNorm(track);
+    const { title, titleS } = entry;
     if (title && (title === q || (qs && titleS === qs))) return 100;
-    let artist = null;
-    const getArtist = () => (artist === null ? (artist = norm(track.artist)) : artist);
+    const getArtist = () => (entry.artist === null ? (entry.artist = norm(entry.rawArtist)) : entry.artist);
     if (pair && minScore < 95) {
         const aName = getArtist();
         if (title || aName) {
@@ -51,7 +74,7 @@ function scoreTrack(track, q, qs, pair, minScore = 0) {
         if (minScore < 30 && aName && aName.includes(q)) return 30;
     }
     if (minScore < 20) {
-        const album = norm(track.album);
+        const album = entry.album === null ? (entry.album = norm(entry.rawAlbum)) : entry.album;
         if (album && album.includes(q)) return 20;
     }
     return 0;

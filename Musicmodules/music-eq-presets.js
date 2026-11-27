@@ -14,6 +14,7 @@
     const PREFIX = 'u:';
     const SAVE = '__eq-save';
     const DEL = '__eq-delete';
+    const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
     const cleanName = (s) => String(s || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 24);
     const bandsEqual = (a, b) => {
@@ -34,10 +35,18 @@
         } catch (e) { presets = []; }
         const persist = () => { try { storage?.setItem(KEY, JSON.stringify(presets)); } catch (e) { /* 存不下就算了 */ } };
 
+        const sliderCache = Object.create(null);
+        const getSlider = (band) => {
+            let slider = sliderCache[band];
+            if (slider && slider.isConnected !== false) return slider;
+            slider = doc?.getElementById?.(`eq-${band}`) || null;
+            if (slider) sliderCache[band] = slider;
+            return slider;
+        };
         const currentBands = () => {
             const out = {};
             for (const band of Object.keys(app.eqBands || {})) {
-                const slider = doc?.getElementById?.(`eq-${band}`);
+                const slider = getSlider(band);
                 const v = Number(slider ? slider.value : app.eqBands[band]);
                 out[band] = Number.isFinite(v) ? v : 0;
             }
@@ -179,8 +188,6 @@
                 if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === 'function') { try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
                 if (name) save(name);
             };
-            const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
-            let finishActive = null;
             const onKey = (e) => {
                 if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(null); return; }
                 if (e.key === 'Enter' && !e.isComposing && doc.activeElement === input) { e.preventDefault(); e.stopPropagation(); if (!ok.disabled) finish(input.value); return; }
@@ -199,8 +206,7 @@
                 if (NAV_KEYS.has(e.key) && e.target !== input) { e.stopPropagation(); return; }
                 if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && e.target !== input) e.stopPropagation();
             };
-            finishActive = finish;
-            closeActivePrompt = () => finishActive?.(null);
+            closeActivePrompt = () => finish(null);
             overlay.querySelector('.dialog-btn.cancel').addEventListener('click', () => finish(null));
             ok.addEventListener('click', () => { if (!ok.disabled) finish(input.value); });
             overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(null); });

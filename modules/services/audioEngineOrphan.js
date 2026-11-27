@@ -21,10 +21,15 @@ function readRecord(file) {
 }
 
 function writeRecord(file, record) {
+    let tmp = null;
     try {
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, JSON.stringify(record));
+        tmp = `${file}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(record));
+        fs.renameSync(tmp, file);
+        tmp = null;
     } catch (error) {
+        if (tmp) { try { fs.unlinkSync(tmp); } catch (_) {} }
         console.warn(`[AudioEngine] Could not record engine pid: ${error.message}`);
     }
 }

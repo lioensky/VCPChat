@@ -59,8 +59,16 @@
             if (saveTimer !== null) return;
             saveTimer = global.setTimeout(flushSave, 400);
         };
+        const sliderCache = Object.create(null);
+        const getSlider = (band) => {
+            let slider = sliderCache[band];
+            if (slider && slider.isConnected !== false) return slider;
+            slider = doc?.getElementById?.(`eq-${band}`) || null;
+            if (slider) sliderCache[band] = slider;
+            return slider;
+        };
         const sliderValue = (band) => {
-            const slider = doc?.getElementById?.(`eq-${band}`);
+            const slider = getSlider(band);
             const v = slider ? Number(slider.value) : Number(app.eqBands?.[band]);
             return Number.isFinite(v) ? v : 0;
         };
@@ -82,7 +90,7 @@
             applying = true;
             try {
                 for (const [band, gain] of Object.entries(profile.bands || {})) {
-                    const slider = doc?.getElementById?.(`eq-${band}`);
+                    const slider = getSlider(band);
                     if (slider) slider.value = String(gain);
                     if (app.eqBands && band in app.eqBands) app.eqBands[band] = gain;
                 }

@@ -34,7 +34,8 @@
     };
 
     const norm = (s) => String(s || '').trim().toLowerCase();
-    const artistsOf = (t) => norm(t && t.artist).split(/\s*(?:\/|,|，|、|&|;|feat\.?|ft\.)\s*/).filter(Boolean);
+    const ARTIST_SPLIT = /\s*(?:\/|,|，|、|&|;|feat\.?|ft\.)\s*/;
+    const artistsOf = (t) => norm(t && t.artist).split(ARTIST_SPLIT).filter(Boolean);
 
     // 同一首歌的不同文件（flac 和 mp3、专辑版和合辑里的同一首、本机和 WebDAV 各一份）：歌名去掉扩展名 + 完整歌手相同就算一首。
     // 没有歌手的不合并：没标签时歌名常是「01」之类的文件名，会把不相干的歌并到一起。
@@ -146,17 +147,24 @@
             if (key && best.get(key) !== t) continue;
             let s = 0;
             const normArtist = normArtists[i];
-            if (hasSeedArtists && normArtist) {
+            let firstArtist = '';
+            if (normArtist) {
+                const parts = normArtist.split(ARTIST_SPLIT);
                 let artistHit = 0;
-                for (const a of normArtist.split(/\s*(?:\/|,|，|、|&|;|feat\.?|ft\.)\s*/)) {
-                    if (a) artistHit = Math.max(artistHit, seedArtists.get(a) || 0);
+                for (let p = 0; p < parts.length; p += 1) {
+                    const a = parts[p];
+                    if (!a) continue;
+                    if (!firstArtist) firstArtist = a;
+                    if (hasSeedArtists) {
+                        const hit = seedArtists.get(a) || 0;
+                        if (hit > artistHit) artistHit = hit;
+                    }
                 }
-                s += 3 * artistHit;
+                if (hasSeedArtists) s += 3 * artistHit;
             }
-            if (hasSeedAlbums) {
-                const normAlbum = norm(t.album);
-                if (normAlbum && seedAlbums.has(normAlbum + '\n' + normArtist)) s += 1.5;
-            }
+            const normAlbum = norm(t.album);
+            const albumKey = normAlbum ? normAlbum + '\n' + normArtist : '';
+            if (hasSeedAlbums && albumKey && seedAlbums.has(albumKey)) s += 1.5;
             if (hasSeedGenres) {
                 const g = norm(t.genre);
                 if (g && seedGenres.has(g)) s += 1;
@@ -167,7 +175,7 @@
             s += 1.2 * random();
             if (!instrumentalOk && isInstrumentalLower(normTitles[i])) s *= 0.25;
             s *= damp(t); // 每日推荐：前几批刚推过的往后放
-            scored.push([s, t]);
+            scored.push([s, t, firstArtist, albumKey]);
         }
         scored.sort((a, b) => b[0] - a[0]);
         const out = [];
@@ -178,12 +186,14 @@
         let prevArtist1 = '';
         let prevArtist2 = '';
         const pass = (strict) => {
-            for (const [, t] of scored) {
+            for (let i = 0; i < scored.length; i += 1) {
                 if (out.length >= size) return;
+                const entry = scored[i];
+                const t = entry[1];
                 if (picked.has(t)) continue;
-                const a = artistsOf(t)[0] || '';
-                const al = norm(t.album) + '\n' + norm(t.artist);
-                if (strict && ((perArtist.get(a) || 0) >= artistCap || (norm(t.album) && (perAlbum.get(al) || 0) >= 3))) continue;
+                const a = entry[2];
+                const al = entry[3];
+                if (strict && ((perArtist.get(a) || 0) >= artistCap || (al && (perAlbum.get(al) || 0) >= 3))) continue;
                 // 同一歌手不连着放两首以上
                 if (strict && out.length >= 2 && a && prevArtist1 === a && prevArtist2 === a) continue;
                 out.push(t);
@@ -191,7 +201,7 @@
                 prevArtist2 = prevArtist1;
                 prevArtist1 = a;
                 perArtist.set(a, (perArtist.get(a) || 0) + 1);
-                perAlbum.set(al, (perAlbum.get(al) || 0) + 1);
+                if (al) perAlbum.set(al, (perAlbum.get(al) || 0) + 1);
             }
         };
         // 「不连着三首」会让一遍扫下来留空位，空位在后面几遍里补上，直到补不动
@@ -222,8 +232,14 @@
             // 最近放过的 30 首（档案页记的最近播放）先不放
             let paths = [];
             try { paths = JSON.parse(global.localStorage?.getItem('musicArchiveRecent') || '[]'); } catch (e) { paths = []; }
-            const want = new Set(paths.slice(0, 30).map((p) => norm(String(p).replace(/\\/g, '/'))));
-            for (const t of app.playlist || []) if (want.has(norm(String(t.path).replace(/\\/g, '/')))) set.add(t);
+            const want = new Set(paths.slice(0, 30).map((p) => norm(String(p).replace(/\\/g, '/'))).filter(Boolean));
+            if (want.size) {
+                const lib = app.playlist || [];
+                for (let i = 0; i < lib.length; i += 1) {
+                    const t = lib[i];
+                    if (t && t.path && want.has(norm(String(t.path).replace(/\\/g, '/')))) set.add(t);
+                }
+            }
             return set;
         };
         // 这次运行里已经放失败过的歌（文件不见了、格式不支持）不往电台里放
@@ -469,8 +485,14 @@
         const sw = doc?.getElementById?.('autoplay-switch');
         if (sw) {
             sw.checked = enabled;
-            sw.addEventListener('change', () => { app.autoplay.enabled = sw.checked; });
-            doc.addEventListener('music-autoplay-change', (e) => { sw.checked = Boolean(e.detail?.enabled); });
+            const onSwitchChange = () => { app.autoplay.enabled = sw.checked; };
+            const onAutoplayChange = (e) => { sw.checked = Boolean(e.detail?.enabled); };
+            sw.addEventListener('change', onSwitchChange);
+            doc.addEventListener('music-autoplay-change', onAutoplayChange);
+            global.addEventListener?.('beforeunload', () => {
+                sw.removeEventListener('change', onSwitchChange);
+                doc.removeEventListener('music-autoplay-change', onAutoplayChange);
+            }, { once: true });
         }
 
         // ---- 右键菜单：从这首开电台 ----

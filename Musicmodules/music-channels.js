@@ -9,6 +9,7 @@
     'use strict';
 
     const KEY = 'musicChannels';
+    const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const normalize = (v) => {
         const b = Number(v && v.balance);
         return {
@@ -89,16 +90,20 @@
         let refs = null;
         const syncDialog = () => {
             if (!overlay || !refs) return;
-            refs.slider.value = String(Math.round(wanted.balance * 100));
-            refs.value.textContent = wanted.balance === 0 ? '居中' : wanted.balance < 0 ? `偏左 ${Math.round(-wanted.balance * 100)}%` : `偏右 ${Math.round(wanted.balance * 100)}%`;
-            refs.swap.setAttribute('aria-pressed', String(wanted.swap));
-            refs.mono.setAttribute('aria-pressed', String(wanted.mono));
+            const sliderVal = String(Math.round(wanted.balance * 100));
+            if (refs.slider.value !== sliderVal) refs.slider.value = sliderVal;
+            const valText = wanted.balance === 0 ? '居中' : wanted.balance < 0 ? `偏左 ${Math.round(-wanted.balance * 100)}%` : `偏右 ${Math.round(wanted.balance * 100)}%`;
+            if (refs.value.textContent !== valText) refs.value.textContent = valText;
+            const swapStr = String(wanted.swap);
+            if (refs.swap.getAttribute('aria-pressed') !== swapStr) refs.swap.setAttribute('aria-pressed', swapStr);
+            const monoStr = String(wanted.mono);
+            if (refs.mono.getAttribute('aria-pressed') !== monoStr) refs.mono.setAttribute('aria-pressed', monoStr);
             refs.reset.disabled = isDefault(wanted);
-            refs.summary.textContent = describe(wanted);
+            const desc = describe(wanted);
+            if (refs.summary.textContent !== desc) refs.summary.textContent = desc;
         };
         let previousFocus = null;
         let openRaf = 0;
-        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const close = () => {
             if (!overlay) return;
             if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }

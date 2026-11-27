@@ -69,33 +69,40 @@ async function findAvailablePort({
 // 旧版引擎在绑定端口之前就打印就绪信号，端口上也可能是别的程序，所以不能只看能否连上。
 function checkEngineResponds(port, { host = AUDIO_ENGINE_HOST, timeoutMs = 1000 } = {}) {
     return new Promise((resolve) => {
+        let settled = false;
+        const done = (ok) => {
+            if (settled) return;
+            settled = true;
+            resolve(ok);
+        };
         const request = http.get({ host, port, path: '/state', timeout: timeoutMs }, (response) => {
+            if (response.statusCode !== 200) {
+                response.resume();
+                done(false);
+                return;
+            }
             let body = '';
             response.setEncoding('utf8');
             response.on('data', (chunk) => {
                 if (body.length + chunk.length > 65536) {
                     request.destroy();
-                    resolve(false);
+                    done(false);
                     return;
                 }
                 body += chunk;
             });
             response.on('end', () => {
-                if (response.statusCode !== 200) {
-                    resolve(false);
-                    return;
-                }
                 try {
                     const parsed = JSON.parse(body);
-                    resolve(Boolean(parsed && typeof parsed.status === 'string'));
+                    done(Boolean(parsed && typeof parsed.status === 'string'));
                 } catch (_) {
-                    resolve(false);
+                    done(false);
                 }
             });
-            response.on('error', () => resolve(false));
+            response.on('error', () => done(false));
         });
         request.on('timeout', () => request.destroy(new Error('timeout')));
-        request.on('error', () => resolve(false));
+        request.on('error', () => done(false));
     });
 }
 

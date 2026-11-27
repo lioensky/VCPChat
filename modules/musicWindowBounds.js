@@ -5,6 +5,7 @@
 // 这时不能照原样放回去，要么挪回某块屏里，要么干脆用默认位置。
 
 const fs = require('fs');
+const path = require('path');
 
 const MIN_VISIBLE = 120; // 窗口至少要有这么宽、这么高的一块落在某块屏的工作区里，否则当作找不到
 
@@ -54,14 +55,20 @@ function readSavedBounds(file) {
 }
 
 function writeSavedBounds(file, win) {
+    let tmp = null;
     try {
         if (!win || win.isDestroyed()) return;
         // getNormalBounds 在最小化、最大化、全屏时给的都是还原后的大小
         const b = typeof win.getNormalBounds === 'function' ? win.getNormalBounds() : win.getBounds();
         if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y) || !(b.width > 0) || !(b.height > 0)) return;
         const data = { x: b.x, y: b.y, width: b.width, height: b.height, maximized: Boolean(win.isMaximized?.()) };
-        fs.writeFileSync(file, JSON.stringify(data));
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        tmp = `${file}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(data));
+        fs.renameSync(tmp, file);
+        tmp = null;
     } catch (error) {
+        if (tmp) { try { fs.unlinkSync(tmp); } catch (_) {} }
         console.error('[Music] Failed to save window bounds:', error.message);
     }
 }
