@@ -2213,3 +2213,127 @@ test('Batch 83: edge spectrum prefix-sum matches sliding average with zero-spect
         dom.window.close();
     }
 });
+
+test('Batch 87: refreshTheme batches probes & parses rgb() without canvas, stage-host avoids title offsetWidth reflow & playMode SVG thrash on volume drag', () => {
+    const dom = createStageDom();
+    try {
+        let rafId = 1;
+        const rafs = new Map();
+        const cancelled = [];
+        dom.window.requestAnimationFrame = (cb) => { const id = rafId++; rafs.set(id, cb); return id; };
+        dom.window.cancelAnimationFrame = (id) => { cancelled.push(id); rafs.delete(id); };
+        const flush = () => {
+            const entries = [...rafs.entries()];
+            rafs.clear();
+            for (const [, cb] of entries) cb(dom.window.performance.now());
+        };
+        for (const file of [
+            'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${file}`);
+        }
+        const doc = dom.window.document;
+        const root = doc.getElementById('music-stage');
+
+        // 1. refreshTheme attaches all 11 probes before any getComputedStyle read and fast-paths rgb() with 0 canvas creations
+        let canvasCreates = 0;
+        const origCreate = doc.createElement.bind(doc);
+        doc.createElement = (tag, ...rest) => {
+            if (String(tag).toLowerCase() === 'canvas') canvasCreates += 1;
+            return origCreate(tag, ...rest);
+        };
+        const ops = [];
+        const origAppend = root.appendChild.bind(root);
+        root.appendChild = (node) => { ops.push(`append:${node.childNodes?.length || 0}`); return origAppend(node); };
+        const origGcs = dom.window.getComputedStyle.bind(dom.window);
+        dom.window.getComputedStyle = (el) => {
+            if (el.tagName === 'SPAN' && el.style.color) {
+                ops.push('gcs');
+                return { color: el.style.color.includes('--highlight-text') ? 'rgb(10, 20, 30)' : 'rgba(40, 50, 60, 1)' };
+            }
+            return origGcs(el);
+        };
+        const probeApp = { currentTheme: 'dark' };
+        const pal = dom.window.MusicStageModeUtils.refreshTheme(probeApp, root);
+        doc.createElement = origCreate;
+        root.appendChild = origAppend;
+        dom.window.getComputedStyle = origGcs;
+
+        assert.equal(canvasCreates, 0, 'opaque rgb()/rgba(...,1) computed colors skip canvas allocation entirely');
+        assert.equal(ops[0], 'append:11', 'all 11 probe spans are appended together before any getComputedStyle read');
+        assert.equal(ops.filter((o) => o === 'gcs').length, 11);
+        assert.equal(pal.accent, '#0a141e');
+        assert.deepEqual({ ...pal.accentRgb }, { r: 10, g: 20, b: 30 });
+        assert.equal(pal.background, '#28323c');
+
+        // 2. stageHost updateTrack uses cancellable rAF (0 offsetWidth reflows) & volume drag skips playMode.innerHTML rewrite
+        const { app } = createApp();
+        app.api.setMusicVolume = () => {};
+        dom.window.setupMusicStage(app);
+        app.stageHost.enter();
+        flush();
+
+        const titleEl = doc.querySelector('.music-stage-track-title');
+        assert.equal(titleEl.classList.contains('is-changing'), true, 'enter sets initial is-changing class');
+        let titleReflows = 0;
+        Object.defineProperty(titleEl, 'offsetWidth', { configurable: true, get() { titleReflows += 1; return 120; } });
+        app.stageHost.updateTrack({ path: '/t1.flac', title: 'Track 1', artist: 'A' });
+        assert.equal(titleReflows, 0, 'consecutive track change avoids synchronous title.offsetWidth reflow');
+        assert.equal(titleEl.classList.contains('is-changing'), false, 'consecutive track change clears class until next frame');
+        flush();
+        assert.equal(titleEl.classList.contains('is-changing'), true, 'next animation frame re-applies is-changing');
+
+        // Cancelling on exit drops pending title rAF
+        app.stageHost.updateTrack({ path: '/t2.flac', title: 'Track 2', artist: 'B' });
+        const pendingBeforeExit = [...rafs.keys()];
+        app.stageHost.exit();
+        assert.ok(pendingBeforeExit.some((id) => cancelled.includes(id)), 'exiting stage cancels pending title animation rAF');
+
+        // Re-enter to verify volume drag does not rewrite playMode.innerHTML
+        app.stageHost.destroy();
+        const dom2 = createStageDom();
+        try {
+            for (const file of [
+                'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+                'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+                'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+                'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js'
+            ]) {
+                runScript(dom2, `Musicmodules/music-stage/${file}`);
+            }
+            const { app: app2 } = createApp();
+            app2.api.setMusicVolume = () => {};
+            dom2.window.setupMusicStage(app2);
+            const playModeBtn = dom2.window.document.querySelector('[data-stage-action="play-mode"]');
+            const volSlider = dom2.window.document.querySelector('.music-stage-volume-slider');
+            let modeHtmlWrites = 0;
+            const htmlDesc = Object.getOwnPropertyDescriptor(dom2.window.Element.prototype, 'innerHTML');
+            Object.defineProperty(playModeBtn, 'innerHTML', {
+                configurable: true,
+                get() { return htmlDesc.get.call(this); },
+                set(v) { modeHtmlWrites += 1; return htmlDesc.set.call(this, v); }
+            });
+            for (const v of ['0.8', '0.6', '0.4', '0.2']) {
+                volSlider.value = v;
+                volSlider.dispatchEvent(new dom2.window.Event('input', { bubbles: true }));
+            }
+            assert.equal(modeHtmlWrites, 0, 'volume slider drag does not rewrite playMode SVG innerHTML');
+
+            // Cached band plan handles repeated calls and NaN entries safely
+            const R = dom2.window.MusicStageRuntime;
+            const noisy = [NaN, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
+            const b1 = R.resolveAudioBands(noisy);
+            const b2 = R.resolveAudioBands(noisy);
+            assert.equal(b1.bass, b2.bass);
+            assert.ok(Number.isFinite(b1.power) && b1.power > 0);
+            app2.stageHost.destroy();
+        } finally {
+            dom2.window.close();
+        }
+    } finally {
+        dom.window.close();
+    }
+});

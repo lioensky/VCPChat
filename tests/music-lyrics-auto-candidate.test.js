@@ -239,3 +239,36 @@ test('Batch 74: lyricFetcher getBestMatch scores 1-character artist names accura
     ], 'A');
     assert.equal(picked?.id, 2, 'exact 1-char artist match outscores non-matching 1-char candidate');
 });
+
+test('Batch 87: musicLyricsTranslate caches ensureDir per cache directory across saves', async () => {
+    const os = require('node:os');
+    const fsExtra = require('fs-extra');
+    const { createLyricsTranslator } = require('../modules/musicLyricsTranslate');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ltrans-b87-'));
+    const cacheDir = path.join(tmpDir, 'translations');
+    const origEnsureDir = fsExtra.ensureDir;
+    let ensureCalls = 0;
+    fsExtra.ensureDir = async (dir, ...args) => {
+        if (String(dir).startsWith(tmpDir)) ensureCalls += 1;
+        return origEnsureDir.call(fsExtra, dir, ...args);
+    };
+    try {
+        const translator = createLyricsTranslator({
+            getSettings: async () => ({ vcpServerUrl: 'http://127.0.0.1:6005/v1/chatvcp/completions', topicSummaryModel: 'm' }),
+            getCacheDir: () => cacheDir,
+            fetchImpl: async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({ choices: [{ message: { content: '["译文"]' } }] })
+            })
+        });
+        const r1 = await translator.translate({ lines: ['Song 1 line'], title: 'S1', artist: 'A1' });
+        const r2 = await translator.translate({ lines: ['Song 2 line'], title: 'S2', artist: 'A2' });
+        assert.equal(r1.status, 'success');
+        assert.equal(r2.status, 'success');
+        assert.equal(ensureCalls, 1, 'ensureDir runs once per cache directory across multiple translation saves');
+    } finally {
+        fsExtra.ensureDir = origEnsureDir;
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
