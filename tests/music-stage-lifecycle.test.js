@@ -1174,3 +1174,23 @@ test('edge spectrum skips allocating canvases during reduced motion or silence a
     assert.equal(edgeCanvas.height, 1);
     dom.window.close();
 });
+
+test('energy-saving mode disables backdrop-filter across dock drawer, stage switcher, intro transit, and stage settings', () => {
+    const drawerCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-dock/music-dock-drawer.css'), 'utf8');
+    assert.match(drawerCss, /#music-dock-root\.md-fl-low \.md-cmd-box/);
+    assert.match(drawerCss, /#music-dock-root\.md-fl-low \.md-keys-scrim/);
+    assert.match(drawerCss, /#music-dock-root\.md-fl-low \.md-hdl button/);
+
+    const skinCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-stage-skin.css'), 'utf8');
+    assert.match(skinCss, /body\.music-fl-low\s+\.music-stage-mode-switcher[\s\S]*?backdrop-filter:\s*none/);
+
+    const introCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-intro/music-intro.css'), 'utf8');
+    assert.match(introCss, /body\.music-fl-low\s+\.music-intro\.is-transit\[data-intro="enter"\]:not\(\[data-still\]\)::before\s*\{[^}]*backdrop-filter:\s*none/);
+
+    const settingsCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-settings.css'), 'utf8');
+    assert.match(settingsCss, /body\.music-fl-low\s+\.music-stage-settings-card[\s\S]*?backdrop-filter:\s*none/);
+
+    const hostSrc = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-host.js'), 'utf8');
+    assert.match(hostSrc, /event\.key === 'Escape' && !event\.defaultPrevented && !event\.isComposing/);
+    assert.match(hostSrc, /global\.cancelIdleCallback\?\.\(prepareIdleId\)/);
+});

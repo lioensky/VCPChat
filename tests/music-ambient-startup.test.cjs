@@ -149,9 +149,9 @@ test('ambient pixi recovers cleanly after a transient init rejection and clamps 
     assert.equal(attempts, 1);
     assert.equal(app.ambientPixiController.initialized, false);
     assert.equal(app.ambientPixiController.initPromise, null, 'failed init resets initPromise for retry');
-    await app.ambientPixiController.init();
+    await app.createAmbientPixi();
     assert.equal(attempts, 2);
-    assert.equal(app.ambientPixiController.initialized, true, 'retry succeeds after transient init failure');
+    assert.equal(app.ambientPixiController.initialized, true, 'createAmbientPixi retries uninitialized controller and succeeds');
     const beforePhase = app.ambientPixiController.rippleRings[0].phase;
     app.updateAmbientPixi(99);
     const delta = app.ambientPixiController.rippleRings[0].phase - beforePhase;

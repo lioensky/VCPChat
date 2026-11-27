@@ -168,7 +168,7 @@ test('a watched menu melts back to the item that was clicked when it closes, and
     assert.equal(doc.querySelector('svg.mf-goo'), null);
 });
 
-test('MusicFluidSelect clamps tall menu height before placement, forwards label clicks, and skips disabled hover focus', () => {
+test('MusicFluidSelect clamps tall menu height before placement, forwards label clicks, and skips disabled hover focus', async () => {
     const dom = new JSDOM(`<!doctype html><body><label for="tall-sel">预设</label><select id="tall-sel"><option value="a">第一项</option><option value="b" disabled>不可选</option><option value="c">第三项</option></select></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
     const { window } = dom;
     const doc = window.document;
@@ -176,6 +176,7 @@ test('MusicFluidSelect clamps tall menu height before placement, forwards label 
     Object.defineProperty(window, 'innerHeight', { value: 700, configurable: true });
     window.CSS = { escape: (s) => String(s) };
     window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
     const select = doc.getElementById('tall-sel');
     window.MusicFluidSelect.dress(select);
     const trigger = doc.querySelector('.mfs-trigger');
@@ -200,8 +201,24 @@ test('MusicFluidSelect clamps tall menu height before placement, forwards label 
         assert.equal(doc.activeElement, firstItem, 'hovering a disabled option does not steal focus');
         doc.querySelector('label[for="tall-sel"]').click();
         assert.equal(doc.querySelector('.mfs-menu'), null, 'clicking associated label again closes open menu');
+
+        // Hidden / empty optgroup headers are omitted; beforeunload closes open menu and cleans up listeners
+        const grpSel = doc.createElement('select');
+        grpSel.innerHTML = '<optgroup label="隐藏组" hidden><option value="h">H</option></optgroup><optgroup label="仅占位"><option value="c" hidden disabled>自定义</option></optgroup><optgroup label="可用组"><option value="x" selected>可用</option></optgroup>';
+        doc.body.appendChild(grpSel);
+        window.MusicFluidSelect.dress(grpSel);
+        const grpTrigger = grpSel.nextElementSibling;
+        grpTrigger.getBoundingClientRect = () => ({ left: 100, top: 200, right: 260, bottom: 232, width: 160, height: 32 });
+        grpTrigger.click();
+        const grpMenu = doc.querySelector('.mfs-menu');
+        assert.ok(grpMenu, 'grouped fluid select opens');
+        const headers = [...grpMenu.querySelectorAll('.mfs-group')].map((el) => el.textContent);
+        assert.deepEqual(headers, ['可用组'], 'hidden or placeholder-only optgroups do not render orphan group headers');
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.equal(doc.querySelector('.mfs-menu'), null, 'beforeunload closes open fluid-select menu');
     } finally {
         if (origOffsetH) Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', origOffsetH);
+        dom.window.close();
     }
 });
 

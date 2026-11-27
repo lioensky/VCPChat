@@ -149,3 +149,52 @@ test('socket onclose and destroyVisualizer skip redundant idle publishMusicGroov
     active.app.destroyVisualizer();
     assert.equal(activePublished.length, 1, 'second destroy stays silent');
 });
+
+test('visualizer passes numeric timestamp on frame 0, ignores unrelated body classes while paused, and guards zero/short inputs', async () => {
+    const { window, app, stageFrames, run, count } = setup();
+    const tickerArgs = [];
+    window.PIXI.Ticker.system.update = (ts) => { tickerArgs.push(ts); };
+    app.isStageActive = true;
+    app.stageHost.active = true;
+    app.startVisualizerAnimation();
+    assert.equal(typeof stageFrames[0], 'number', 'frame 0 passes numeric timestamp to stageHost.updateFrame');
+    assert.equal(typeof tickerArgs[0], 'number', 'frame 0 passes numeric timestamp to PIXI system ticker');
+
+    // Leave stage & let paused loop settle
+    app.isStageActive = false;
+    app.stageHost.active = false;
+    run(4000);
+    assert.equal(app.animationFrameId, null);
+
+    // Unrelated body class mutation must not wake paused visualizer
+    window.document.body.classList.add('unrelated-modal-open');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(app.animationFrameId, null, 'unrelated body class does not wake paused visualizer');
+    assert.equal(count(500), 0);
+
+    // Theme class mutation DOES wake paused visualizer
+    window.document.body.classList.add('light-theme');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(app.animationFrameId !== null, 'light-theme class wakes paused visualizer');
+
+    // drawVisualizer and drawVocalVisualizer guard short/zero inputs cleanly
+    let bezierCalls = 0;
+    app.visualizerCtx.bezierCurveTo = (...args) => {
+        bezierCalls += 1;
+        for (const v of args) assert.ok(Number.isFinite(v), 'bezier coord must be finite');
+    };
+    app.drawVisualizer([0.5]);
+    assert.equal(bezierCalls, 0, 'single-bin spectrum skips bezier curve division by zero');
+    app.drawVisualizer([0.2, 0.5, 0.8, 0.3]);
+    assert.equal(bezierCalls, 3, 'normal spectrum draws N-1 bezier segments with finite coordinates');
+
+    // destroyVisualizer clears _gaplessSwitchTimer and tolerates missing visualizerCanvas
+    let cleared = false;
+    app._gaplessSwitchTimer = window.setTimeout(() => { cleared = true; }, 50);
+    app.visualizerCanvas = null;
+    app.destroyVisualizer();
+    assert.equal(app._gaplessSwitchTimer, null);
+    await new Promise((r) => setTimeout(r, 70));
+    assert.equal(cleared, false, 'destroyVisualizer cancels pending _gaplessSwitchTimer');
+    window.close();
+});
