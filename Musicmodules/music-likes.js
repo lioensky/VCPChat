@@ -42,13 +42,20 @@
         app.toggleLike = (input, { like, quiet = false } = {}) => {
             const tracks = (Array.isArray(input) ? input : [input]).filter((t) => t && t.path);
             if (!tracks.length) return null;
-            const target = typeof like === 'boolean' ? like : !tracks.every((t) => app.isLiked(t));
             const pl = ensure();
+            const existing = new Set(pl.tracks);
+            const target = typeof like === 'boolean' ? like : !tracks.every((t) => existing.has(t.path));
             const changed = [];
-            for (const t of tracks) {
-                const at = pl.tracks.indexOf(t.path);
-                if (target && at === -1) { pl.tracks.unshift(t.path); changed.push(t); } // 最近喜欢的在最前
-                else if (!target && at !== -1) { pl.tracks.splice(at, 1); changed.push(t); }
+            if (target) {
+                for (const t of tracks) {
+                    if (!existing.has(t.path)) { existing.add(t.path); pl.tracks.unshift(t.path); changed.push(t); } // 最近喜欢的在最前
+                }
+            } else {
+                const toRemove = new Set();
+                for (const t of tracks) {
+                    if (existing.has(t.path) && !toRemove.has(t.path)) { toRemove.add(t.path); changed.push(t); }
+                }
+                if (toRemove.size) pl.tracks = pl.tracks.filter((p) => !toRemove.has(p));
             }
             if (!changed.length) return target;
             announce(changed, target);

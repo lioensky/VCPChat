@@ -436,21 +436,24 @@
             scheduleCache.clear();
         };
 
+        const wantedPool = new Set();
         const syncPool = time => {
             const base = lastStartBefore(lines, time + 2);
-            const wanted = new Set();
-            for (let index = Math.max(0, base - 4); index <= Math.min(lines.length - 1, base + 1); index += 1) {
+            wantedPool.clear();
+            const lo = Math.max(0, base - 4);
+            const hi = Math.min(lines.length - 1, base + 1);
+            for (let index = lo; index <= hi; index += 1) {
                 const schedule = scheduleAt(index);
-                if (time >= schedule.visibleFrom - 0.05 && time <= schedule.visibleTo) wanted.add(index);
+                if (time >= schedule.visibleFrom - 0.05 && time <= schedule.visibleTo) wantedPool.add(index);
             }
             let changed = false;
             pool.forEach((entry, index) => {
-                if (wanted.has(index)) return;
+                if (wantedPool.has(index)) return;
                 releaseEntry(entry);
                 pool.delete(index);
                 changed = true;
             });
-            wanted.forEach(index => {
+            wantedPool.forEach(index => {
                 if (pool.has(index)) return;
                 pool.set(index, makeEntry(scheduleAt(index)));
                 changed = true;
@@ -572,9 +575,12 @@
             }
 
             // Petals chase the meteor on lagged copies of the same path, then scatter on landing.
-            node.petals.forEach((instance, i) => {
-                const p = glyph.petals[i];
-                if (!view.petals) { instance.visible = false; return; }
+            const petals = node.petals;
+            const pSpecs = glyph.petals;
+            for (let i = 0; i < petals.length; i += 1) {
+                const instance = petals[i];
+                if (!view.petals) { instance.visible = false; continue; }
+                const p = pSpecs[i];
                 if (time < glyph.arrive) {
                     flightPoint(glyph, time - p.lag, lagged);
                     const age = time - glyph.depart;
@@ -607,12 +613,13 @@
                     }
                 } else {
                     instance.visible = false;
-                    return;
+                    continue;
                 }
                 instance.tint = color;
-            });
+            }
         };
 
+        const view = { flourish: false, trailSamples: 0, petals: false, waiting: 0.55, invert: true, impact: 0, ink: 0xf2f0e9 };
         return {
             update(frame, nextTuning, nextColor, nextSeed, nextWidth, nextHeight) {
                 tuning = nextTuning || {};
@@ -629,8 +636,7 @@
                         reset();
                     }
                 }
-                const nextSignature = [nextSeed, width, height, tuning.fontScale, tuning.phraseLength,
-                    tuning.palette?.background, tuning.palette?.ink].join(':');
+                const nextSignature = `${nextSeed}:${width}:${height}:${tuning.fontScale}:${tuning.phraseLength}:${tuning.palette?.background}:${tuning.palette?.ink}`;
                 if (nextSignature !== signature) {
                     signature = nextSignature;
                     seed = String(nextSeed);
@@ -638,28 +644,30 @@
                 }
 
                 const time = frame.playbackTime || 0;
-                const center = { x: width / 2, y: height / 2, scale: 1, rotation: 0, glyphs: glyphNodes };
                 trails.clear();
                 flying = 0;
-                if (!lines.length) { root.visible = false; return center; }
+                if (!lines.length) {
+                    root.visible = false;
+                    return { x: width / 2, y: height / 2, scale: 1, rotation: 0, glyphs: glyphNodes };
+                }
                 root.visible = true;
 
                 syncPool(time);
                 const motion = motionScale(tuning);
                 const flourish = motion > 0;
                 const saving = tuning.quality === 'energy-saving';
-                const view = {
-                    flourish,
-                    trailSamples: !flourish ? 0 : saving ? 4 : 9,
-                    petals: flourish && !saving && tuning.showDecor !== false && tuning.accentEffects !== false,
-                    waiting: 0.42 + amount(tuning.waitingOpacity, 0.25, 1) * 0.5,
-                    invert: tuning.textInversion !== false,
-                    impact: clamp(tuning.performance?.impact || 0),
-                    ink: hexNumber(tuning.palette?.ink, 0xf2f0e9)
-                };
+                view.flourish = flourish;
+                view.trailSamples = !flourish ? 0 : saving ? 4 : 9;
+                view.petals = flourish && !saving && tuning.showDecor !== false && tuning.accentEffects !== false;
+                view.waiting = 0.42 + amount(tuning.waitingOpacity, 0.25, 1) * 0.5;
+                view.invert = tuning.textInversion !== false;
+                view.impact = clamp(tuning.performance?.impact || 0);
+                view.ink = hexNumber(tuning.palette?.ink, 0xf2f0e9);
                 pool.forEach(entry => {
                     const { schedule, nodes } = entry;
-                    schedule.glyphs.forEach((glyph, k) => renderGlyph(glyph, nodes[k], schedule.size, time, view));
+                    const gs = schedule.glyphs;
+                    const sz = schedule.size;
+                    for (let k = 0; k < gs.length; k += 1) renderGlyph(gs[k], nodes[k], sz, time, view);
                 });
 
                 // Gentle camera drift toward the constellation being sung.

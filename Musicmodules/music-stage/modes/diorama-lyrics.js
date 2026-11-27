@@ -682,6 +682,9 @@
             sign.group.visible = false;
             return { sign, map, materials: [line, subtitle] };
         })();
+        const wanted = new Set();
+        const desiredSigns = new Set();
+        const owners = new Map();
         return {
             // Hidden while the stage hands over to the next song (the old song's
             // words would otherwise go on over the new song's music).
@@ -717,8 +720,8 @@
                 });
                 const phrases = timeline.phrases;
                 const center = Math.max(0, D.upperBound(phrases, time, 'start') - 1);
-                const wanted = new Set();
-                const desiredSigns = new Set();
+                wanted.clear();
+                desiredSigns.clear();
                 for (const encounter of track.encounters || []) {
                     // A screen must survive for all its pages, even when the train
                     // has moved beyond the usual distance-based recycling window.
@@ -809,13 +812,18 @@
                     ghost.glow.value = node.mat.uniforms.glow.value;
                     if (node.encounter) {
                         const sign = signs.get(node.encounter.id);
-                        const activation = node.phrase.glyphs.reduce((level, glyph) => {
+                        let activation = 0;
+                        const pGlyphs = node.phrase.glyphs;
+                        for (let gi = 0; gi < pGlyphs.length; gi += 1) {
+                            const glyph = pGlyphs[gi];
                             const age = time - glyph.startTime;
-                            if (age < 0) return level;
-                            const singing = time < glyph.endTime;
-                            return Math.max(level, singing ? 0.55 + Math.exp(-age * 8) * 0.45
-                                : 0.4 * (1 - D.smooth((time - glyph.endTime) / 0.7)));
-                        }, 0) * enter * (1 - ending);
+                            if (age < 0) continue;
+                            const val = time < glyph.endTime
+                                ? 0.55 + Math.exp(-age * 8) * 0.45
+                                : 0.4 * (1 - D.smooth((time - glyph.endTime) / 0.7));
+                            if (val > activation) activation = val;
+                        }
+                        activation *= enter * (1 - ending);
                         sign.performance.uniforms.light.value = Math.max(sign.performance.uniforms.light.value, activation);
                         sign.performance.uniforms.bins.value = audio.spectrum || sign.performance.uniforms.bins.value;
                         if (time >= node.phrase.end && time < node.phrase.end + exitDuration)
@@ -837,7 +845,7 @@
                 // A malformed/overlapping vocal timeline can still produce two
                 // pages at one address. Latest started page owns that address.
                 // Hide the whole page, including translation and romanization.
-                const owners = new Map();
+                owners.clear();
                 live.forEach(node => {
                     if (!node.encounter || !node.group.visible) return;
                     const previous = owners.get(node.encounter.id);

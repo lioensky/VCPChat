@@ -5529,7 +5529,10 @@
                 rawPart(glowParts, address + 1.9, L(-1.8), 2.75, 0.14, 0.18, 0.14);
                 if (haloCount < haloPositions.length / 3) {
                     const f = track.at(address + 1.9);
-                    haloPositions.set([f.position.x + f.right.x * L(-1.8), 2.75, f.position.z + f.right.z * L(-1.8)], haloCount * 3);
+                    const ho = haloCount * 3;
+                    haloPositions[ho] = f.position.x + f.right.x * L(-1.8);
+                    haloPositions[ho + 1] = 2.75;
+                    haloPositions[ho + 2] = f.position.z + f.right.z * L(-1.8);
                     haloCount++;
                 }
             };
@@ -5554,7 +5557,10 @@
                         rawPart(LOOK.lantern, at, out, waterLevel + 0.22, 0.28, 0.32, 0.28);
                         if (haloCount < haloPositions.length / 3) {
                             const f = track.at(at);
-                            haloPositions.set([f.position.x + f.right.x * out, waterLevel + 0.24, f.position.z + f.right.z * out], haloCount * 3);
+                            const ho = haloCount * 3;
+                            haloPositions[ho] = f.position.x + f.right.x * out;
+                            haloPositions[ho + 1] = waterLevel + 0.24;
+                            haloPositions[ho + 2] = f.position.z + f.right.z * out;
                             haloCount++;
                         }
                     }
@@ -5578,7 +5584,10 @@
                     // Every other bulb throws a halo, so the row reads from far off.
                     if (i % 2 === 0 && haloCount < haloPositions.length / 3) {
                         const f = track.at(along);
-                        haloPositions.set([f.position.x + f.right.x * lateral, 3.2, f.position.z + f.right.z * lateral], haloCount * 3);
+                        const ho = haloCount * 3;
+                        haloPositions[ho] = f.position.x + f.right.x * lateral;
+                        haloPositions[ho + 1] = 3.2;
+                        haloPositions[ho + 2] = f.position.z + f.right.z * lateral;
                         haloCount++;
                     }
                 }
@@ -5603,7 +5612,8 @@
             haloGeometry.setDrawRange(0, haloCount);
             {
                 const eyeX = pose.position.x, eyeZ = pose.position.z;
-                spillList.sort((a, b) => Math.hypot(a[0] - eyeX, a[2] - eyeZ) - Math.hypot(b[0] - eyeX, b[2] - eyeZ));
+                spillList.sort((a, b) => ((a[0] - eyeX) * (a[0] - eyeX) + (a[2] - eyeZ) * (a[2] - eyeZ))
+                    - ((b[0] - eyeX) * (b[0] - eyeX) + (b[2] - eyeZ) * (b[2] - eyeZ)));
                 spills.value.forEach((slot, i) => {
                     const lamp = spillList[i];
                     if (lamp && !saving) slot.set(lamp[0], lamp[1], lamp[2], lamp[3]); else slot.set(0, -100, 0, 0);
@@ -5615,13 +5625,19 @@
             sceneryPools.forEach(mesh => { mesh.instanceMatrix.needsUpdate = true; });
             dressRect.needsUpdate = dressLook.needsUpdate = dressCut.needsUpdate = true;
         };
+        const reflDir = new T.Vector3();
+        const reflUp = new T.Vector3(0, 1, 0);
+        const reflPlane = new T.Plane();
+        const reflClip = new T.Vector4();
+        const reflQ = new T.Vector4();
+        const reflSize = new T.Vector2();
         const renderReflection = (renderer, camera) => {
             prepareEnvironment(renderer);
             if (dead || !reflectionEnabled) return;
             camera.updateMatrixWorld();
             mirror.position.copy(camera.position);
             mirror.position.y = 2 * waterLevel - mirror.position.y;
-            const direction = camera.getWorldDirection(new T.Vector3());
+            const direction = camera.getWorldDirection(reflDir);
             direction.y *= -1;
             mirror.up.set(0, 1, 0).transformDirection(camera.matrixWorld);
             mirror.up.y *= -1;
@@ -5632,18 +5648,18 @@
             mirror.updateMatrixWorld();
             textureMatrix.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
                 .multiply(mirror.projectionMatrix).multiply(mirror.matrixWorldInverse);
-            const plane = new T.Plane(new T.Vector3(0, 1, 0), -waterLevel).applyMatrix4(mirror.matrixWorldInverse);
-            const clip = new T.Vector4(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
+            reflPlane.set(reflUp, -waterLevel).applyMatrix4(mirror.matrixWorldInverse);
+            reflClip.set(reflPlane.normal.x, reflPlane.normal.y, reflPlane.normal.z, reflPlane.constant);
             const e = mirror.projectionMatrix.elements;
-            const q = new T.Vector4((Math.sign(clip.x) + e[8]) / e[0],
-                (Math.sign(clip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
-            const dot = clip.dot(q);
+            reflQ.set((Math.sign(reflClip.x) + e[8]) / e[0],
+                (Math.sign(reflClip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
+            const dot = reflClip.dot(reflQ);
             if (Math.abs(dot) < 0.00001) return;
-            clip.multiplyScalar(2 / dot);
-            e[2] = clip.x; e[6] = clip.y; e[10] = clip.z + 1 - 0.001; e[14] = clip.w;
+            reflClip.multiplyScalar(2 / dot);
+            e[2] = reflClip.x; e[6] = reflClip.y; e[10] = reflClip.z + 1 - 0.001; e[14] = reflClip.w;
             mirror.projectionMatrixInverse.copy(mirror.projectionMatrix).invert();
             mirror.layers.enable(2);
-            const size = renderer.getSize(new T.Vector2());
+            const size = renderer.getSize(reflSize);
             // Half the picture's own resolution, within a ceiling per tier.
             const buffer = size.x * renderer.getPixelRatio();
             // The ripples blur the mirror image anyway; below the top tier it

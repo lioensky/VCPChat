@@ -420,14 +420,13 @@
         const applyFraming = (pose, dt) => {
             measureInsets(performance.now());
             const safeW = Math.max(1, width - frame2d.right - frame2d.left), safeH = Math.max(1, height - frame2d.top - frame2d.bottom);
-            const target = {
-                x: (frame2d.right - frame2d.left) / 2, y: (frame2d.bottom - frame2d.top) / 2,
-                // 安全区比设计画幅窄多少，就把视角放宽多少（上限 1.9 倍）；被上下浮层吃掉的高度补一半。
-                widen: Math.min(1.9, Math.max(1, DESIGN_ASPECT / (safeW / height)) * (1 + (1 - safeH / height) * 0.5))
-            };
+            const targetX = (frame2d.right - frame2d.left) / 2;
+            const targetY = (frame2d.bottom - frame2d.top) / 2;
+            // 安全区比设计画幅窄多少，就把视角放宽多少（上限 1.9 倍）；被上下浮层吃掉的高度补一半。
+            const targetWiden = Math.min(1.9, Math.max(1, DESIGN_ASPECT / (safeW / height)) * (1 + (1 - safeH / height) * 0.5));
             const k = dt > 0 ? Math.min(1, dt * 4) : 1;
             const cur = frame2d.cur;
-            cur.x += (target.x - cur.x) * k; cur.y += (target.y - cur.y) * k; cur.widen += (target.widen - cur.widen) * k;
+            cur.x += (targetX - cur.x) * k; cur.y += (targetY - cur.y) * k; cur.widen += (targetWiden - cur.widen) * k;
             const fov = Math.min(100, 2 * Math.atan(Math.tan(pose.fov * Math.PI / 360) * cur.widen) * 180 / Math.PI);
             const ox = Math.round(cur.x), oy = Math.round(cur.y);
             const view = camera.view;
@@ -490,12 +489,24 @@
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
         };
-        const modules = () => [alley, city, signs].filter(Boolean);
+        const moduleList = [];
+        const syncModules = () => {
+            moduleList.length = 0;
+            if (alley) moduleList.push(alley);
+            if (city) moduleList.push(city);
+            if (signs) moduleList.push(signs);
+        };
+        const modules = () => moduleList;
+        const lightGroups = [];
+        const sandboxViewer = { position: { x: 0, y: 0, z: 0 } };
         const disposeGraphics = () => {
-            modules().forEach(m => { try { m.dispose(); } catch (error) { console.warn('[MusicStage:Kowloon] dispose', error); } });
+            for (let i = 0; i < moduleList.length; i += 1) {
+                try { moduleList[i].dispose(); } catch (error) { console.warn('[MusicStage:Kowloon] dispose', error); }
+            }
             optics?.destroy();
             try { sandbox?.dispose(); } catch (error) { console.warn('[MusicStage:Kowloon] dispose', error); }
             city = signs = alley = optics = sandbox = null;
+            moduleList.length = 0;
             renderer?.dispose();
             renderer?.forceContextLoss();
             renderer?.domElement.remove();
@@ -563,13 +574,28 @@
             const boxed = Boolean(pose.ortho && sandbox);
             state.sandbox = boxed ? sandbox.box : null;
             state.focus = boxed ? pose.look : null;
-            if (boxed !== wasBoxed) { wasBoxed = boxed; modules().forEach(m => m.setSandbox?.(boxed ? sandbox.box : null)); }
+            if (boxed !== wasBoxed) {
+                wasBoxed = boxed;
+                for (let i = 0; i < moduleList.length; i += 1) moduleList[i].setSandbox?.(boxed ? sandbox.box : null);
+            }
             // 渲染顺序：巷道先（它要画积水反射），再楼体、招牌。
-            modules().forEach(m => m.update(state));
+            for (let i = 0; i < moduleList.length; i += 1) moduleList[i].update(state);
             sandbox?.update(boxed, camera, state);
             // 沙盒里相机在两百多米外，灯按离焦点的远近挑；雾也只算盒子里这一段。
-            const viewer = boxed ? { position: { x: pose.look[0], y: pose.look[1] + 4, z: pose.look[2] + 14 } } : camera;
-            global.MusicStageKowloonShared.gatherLights(shared, modules().map(m => m.lights?.()).concat([signs ? [] : placeholderLights]), viewer);
+            let viewer = camera;
+            if (boxed) {
+                sandboxViewer.position.x = pose.look[0];
+                sandboxViewer.position.y = pose.look[1] + 4;
+                sandboxViewer.position.z = pose.look[2] + 14;
+                viewer = sandboxViewer;
+            }
+            lightGroups.length = 0;
+            for (let i = 0; i < moduleList.length; i += 1) {
+                const ml = moduleList[i].lights?.();
+                if (ml) lightGroups.push(ml);
+            }
+            if (!signs && placeholderLights.length) lightGroups.push(placeholderLights);
+            global.MusicStageKowloonShared.gatherLights(shared, lightGroups, viewer);
             const fogDensity = scene.fog?.density;
             if (boxed && scene.fog) scene.fog.density = fogDensity * SANDBOX_FOG;
             // 从上往下看，屋顶占了大半画面：给一层偏冷的天光，天台上的东西才看得清。
@@ -633,6 +659,7 @@
                 city = global.MusicStageKowloonCity.create(T, ctx);
                 ctx.city = city; ctx.alley = alley;
                 if (global.MusicStageKowloonSigns?.create) signs = global.MusicStageKowloonSigns.create(T, ctx);
+                syncModules();
                 if (!alley) {
                     // 巷道模块还没并进来：先铺一块湿地面，好看楼体落地。
                     shared.uWet.value = 0.7;

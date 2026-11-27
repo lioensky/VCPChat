@@ -360,7 +360,11 @@
             fog: fallback.fog === undefined ? source.fog : clamp(source.fog, 0.5, 1.5, fallback.fog),
             lightning: fallback.lightning === undefined ? source.lightning : bool(source.lightning, fallback.lightning),
             reflections: fallback.reflections === undefined ? source.reflections : bool(source.reflections, fallback.reflections),
-            cameraMode: fallback.cameraMode === undefined ? source.cameraMode : enumValue(source.cameraMode, ['sandbox', 'auto', 'diorama'], fallback.cameraMode),
+            cameraMode: fallback.cameraMode === undefined
+                ? source.cameraMode
+                : ['sandbox', 'auto', 'diorama'].includes(fallback.cameraMode)
+                    ? enumValue(source.cameraMode, ['sandbox', 'auto', 'diorama'], fallback.cameraMode)
+                    : enumValue(source.cameraMode, ['stepped', 'smooth'], fallback.cameraMode),
             figures: fallback.figures === undefined ? source.figures : bool(source.figures, fallback.figures),
             collisions: fallback.collisions === undefined ? source.collisions : bool(source.collisions, fallback.collisions),
             inkFlip: fallback.inkFlip === undefined ? source.inkFlip : bool(source.inkFlip, fallback.inkFlip),
@@ -415,7 +419,6 @@
             geometricBackground: bool(source.geometricBackground, fallback.geometricBackground),
             backgroundOpacity: clamp(source.backgroundOpacity, 0, 1, fallback.backgroundOpacity),
             cameraSpeed: clamp(source.cameraSpeed, 0.55, 1.85, fallback.cameraSpeed),
-            cameraMode: enumValue(source.cameraMode, ['stepped', 'smooth'], fallback.cameraMode),
             heroScale: clamp(source.heroScale, 0.82, 1.32, fallback.heroScale),
             articleSpacing: clamp(source.articleSpacing, 0.65, 1.6, fallback.articleSpacing),
             textHoldRatio: clamp(source.textHoldRatio, 0, 1, fallback.textHoldRatio),
@@ -430,13 +433,7 @@
             showShips: bool(source.showShips, fallback.showShips),
             showStations: bool(source.showStations, fallback.showStations),
             dissolveAmount: clamp(source.dissolveAmount, 0, 1, fallback.dissolveAmount),
-            audioReactivity: clamp(source.audioReactivity, 0, 2, fallback.audioReactivity),
-            cameraSpeed: clamp(source.cameraSpeed, 0.55, 1.85, fallback.cameraSpeed),
-            motionAmount: clamp(source.motionAmount, 0, 2, fallback.motionAmount),
-            cameraBreath: clamp(source.cameraBreath, 0, 2, fallback.cameraBreath),
-            cameraShake: clamp(source.cameraShake, 0, 2, fallback.cameraShake),
-            fontScale: clamp(source.fontScale, 0.65, 1.5, fallback.fontScale),
-            glow: clamp(source.glow, 0, 2, fallback.glow)
+            cameraShake: clamp(source.cameraShake, 0, 2, fallback.cameraShake)
         };
     };
 

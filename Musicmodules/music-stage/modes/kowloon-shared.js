@@ -29,28 +29,47 @@
     });
 
     // 把各模块 lights() 的结果按与相机的距离挑最近、最亮的写进 uniform。
+    const gatherPool = [];
+    const gatherActive = [];
+    const sortByScoreDesc = (a, b) => b.score - a.score;
     const gatherLights = (uniforms, groups, camera) => {
-        const all = [];
+        gatherActive.length = 0;
+        let count = 0;
         const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
-        groups.forEach(list => (list || []).forEach(light => {
-            if (!light || !light.position) return;
-            const [x, y, z] = light.position;
-            const d = Math.hypot(x - cx, y - cy, z - cz);
-            const strength = (light.intensity ?? 1) * (light.radius ?? 8);
-            all.push({ light, score: strength / (1 + d * 0.05) });
-        }));
-        all.sort((a, b) => b.score - a.score);
-        const n = Math.min(MAX_LIGHTS, all.length);
+        for (let gi = 0; gi < groups.length; gi += 1) {
+            const list = groups[gi];
+            if (!list) continue;
+            for (let li = 0; li < list.length; li += 1) {
+                const light = list[li];
+                if (!light || !light.position) continue;
+                const p = light.position;
+                const dx = p[0] - cx, dy = p[1] - cy, dz = p[2] - cz;
+                const d = Math.hypot(dx, dy, dz);
+                const strength = (light.intensity ?? 1) * (light.radius ?? 8);
+                let slot = gatherPool[count];
+                if (!slot) { slot = { light: null, score: 0 }; gatherPool[count] = slot; }
+                slot.light = light;
+                slot.score = strength / (1 + d * 0.05);
+                gatherActive.push(slot);
+                count += 1;
+            }
+        }
+        gatherActive.sort(sortByScoreDesc);
+        const n = Math.min(MAX_LIGHTS, gatherActive.length);
+        const posArr = uniforms.uLightPos.value;
+        const colArr = uniforms.uLightCol.value;
+        const radArr = uniforms.uLightRad.value;
+        const haloArr = uniforms.uLightHalo?.value;
         for (let i = 0; i < MAX_LIGHTS; i += 1) {
-            const pos = uniforms.uLightPos.value[i];
-            const col = uniforms.uLightCol.value[i];
-            if (i >= n) { pos.set(0, -999, 0); col.set(0, 0, 0); uniforms.uLightRad.value[i] = 1; continue; }
-            const { light } = all[i];
-            if (uniforms.uLightHalo) uniforms.uLightHalo.value[i] = light.halo === false ? 0 : 1;
+            const pos = posArr[i];
+            const col = colArr[i];
+            if (i >= n) { pos.set(0, -999, 0); col.set(0, 0, 0); radArr[i] = 1; continue; }
+            const light = gatherActive[i].light;
+            if (haloArr) haloArr[i] = light.halo === false ? 0 : 1;
             const k = (light.intensity ?? 1) * (light.flickerValue ?? 1);
             pos.set(light.position[0], light.position[1], light.position[2]);
             col.set(light.color[0] * k, light.color[1] * k, light.color[2] * k);
-            uniforms.uLightRad.value[i] = light.radius ?? 8;
+            radArr[i] = light.radius ?? 8;
         }
         uniforms.uLightCount.value = n;
         return n;
@@ -93,9 +112,11 @@
             for (int i = 0; i < KW_MAX_LIGHTS; i++) {
                 if (i >= uLightCount) break;
                 vec3 d = uLightPos[i] - p;
-                float dist = length(d);
                 float r = uLightRad[i];
-                float fall = max(0.0, 1.0 - dist / r);
+                float d2 = dot(d, d);
+                if (d2 >= r * r) continue;
+                float dist = sqrt(d2);
+                float fall = 1.0 - dist / r;
                 fall *= fall;
                 float lam = max(0.0, dot(n, d / max(dist, 1e-3))) * 0.8 + 0.2;
                 col += albedo * uLightCol[i] * fall * lam;

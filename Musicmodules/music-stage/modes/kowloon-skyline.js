@@ -460,9 +460,15 @@
         const TRAIN = { period: 38, speed: 24 };
         const trainLights = [];
 
-        const tmp = { p: new T.Vector3(), q: new T.Quaternion(), s: new T.Vector3(1, 1, 1), m: new T.Matrix4(),
-            fwd: new T.Vector3(), up: new T.Vector3(0, 1, 0), dir: new T.Vector3(), e: new T.Euler() };
-        const beamLights = [];
+        const tmp = { p: new T.Vector3(), q: new T.Quaternion(), q2: new T.Quaternion(), qb: new T.Quaternion(),
+            s: new T.Vector3(1, 1, 1), bs: new T.Vector3(), m: new T.Matrix4(),
+            fwd: new T.Vector3(), side: new T.Vector3(), hit: new T.Vector3(),
+            up: new T.Vector3(0, 1, 0), down: new T.Vector3(0, -1, 0),
+            unitX: new T.Vector3(1, 0, 0), unitZ: new T.Vector3(0, 0, 1),
+            dir: new T.Vector3(), e: new T.Euler() };
+        const beamLightPool = Array.from({ length: beamCount }, () => ({ position: [0, 0, 0], color: [0.75, 0.9, 1.0], intensity: 1.6, radius: 40, halo: false }));
+        const trainLightPool = Array.from({ length: CARS }, () => ({ position: [0, 0, 0], color: [0.8, 0.92, 1.0], intensity: 1.1, radius: 16, halo: false }));
+        const skyLights = [];
         let flash = 0;
 
         const update = (state) => {
@@ -472,42 +478,48 @@
             if (shared.uGlow) hazeColor.value.copy(shared.uGlow.value).multiplyScalar(0.8);
             flash = ctx.alley?.flash?.() || 0;
             towerMat.uniforms.uFlash.value = flash;
-            beamLights.length = 0;
+            skyLights.length = 0;
             let b = 0;
-            craft.forEach((c, i) => {
+            for (let i = 0; i < craft.length; i += 1) {
+                const c = craft[i];
                 const a = t * c.speed + c.phase;
                 const x = c.cx + Math.cos(a) * c.ax, z = c.cz + Math.sin(a) * c.az;
                 const y = c.y + Math.sin(a * 2.0 + i) * 8;
                 const vx = -Math.sin(a) * c.ax * c.speed, vz = Math.cos(a) * c.az * c.speed;
                 tmp.p.set(x, y, z);
                 tmp.fwd.set(vx, 0, vz).normalize();
-                tmp.q.setFromUnitVectors(new T.Vector3(0, 0, 1), tmp.fwd);
+                tmp.q.setFromUnitVectors(tmp.unitZ, tmp.fwd);
                 // 转弯时侧倾。
                 tmp.e.set(0, 0, -Math.sign(c.speed) * 0.25);
-                tmp.q.multiply(new T.Quaternion().setFromEuler(tmp.e));
+                tmp.q.multiply(tmp.q2.setFromEuler(tmp.e));
                 tmp.m.compose(tmp.p, tmp.q, tmp.s);
                 bodies.setMatrixAt(i, tmp.m);
-                const side = new T.Vector3(1, 0, 0).applyQuaternion(tmp.q);
-                navPos.set([x - side.x * 4.6, y, z - side.z * 4.6, x + side.x * 4.6, y, z + side.z * 4.6,
-                    x, y - 1.2 - (Math.floor(t * 1.4 + i) % 2) * 400, z], i * 9);
+                tmp.side.copy(tmp.unitX).applyQuaternion(tmp.q);
+                const no = i * 9;
+                navPos[no] = x - tmp.side.x * 4.6; navPos[no + 1] = y; navPos[no + 2] = z - tmp.side.z * 4.6;
+                navPos[no + 3] = x + tmp.side.x * 4.6; navPos[no + 4] = y; navPos[no + 5] = z + tmp.side.z * 4.6;
+                navPos[no + 6] = x; navPos[no + 7] = y - 1.2 - (Math.floor(t * 1.4 + i) % 2) * 400; navPos[no + 8] = z;
                 if (c.beam) {
                     // 光柱往前下方，左右慢慢扫。
                     const sweep = Math.sin(t * 0.35 + i * 2.1) * 0.5;
-                    tmp.dir.copy(tmp.fwd).applyAxisAngle(tmp.up, sweep).multiplyScalar(0.55).add(new T.Vector3(0, -1, 0)).normalize();
+                    tmp.dir.copy(tmp.fwd).applyAxisAngle(tmp.up, sweep).multiplyScalar(0.55).add(tmp.down).normalize();
                     const len = Math.min(220, (y - 4) / Math.max(0.2, -tmp.dir.y));
-                    const qb = new T.Quaternion().setFromUnitVectors(new T.Vector3(0, -1, 0), tmp.dir);
-                    tmp.m.compose(tmp.p, qb, new T.Vector3(1 + len * 0.012, len, 1 + len * 0.012));
+                    tmp.qb.setFromUnitVectors(tmp.down, tmp.dir);
+                    const rad = 1 + len * 0.012;
+                    tmp.bs.set(rad, len, rad);
+                    tmp.m.compose(tmp.p, tmp.qb, tmp.bs);
                     beams.setMatrixAt(b, tmp.m);
-                    b += 1;
                     // 光柱落点：只有落在城寨附近才算一盏灯。
-                    const hit = tmp.p.clone().addScaledVector(tmp.dir, len * 0.8);
-                    if (Math.abs(hit.x) < 140 && Math.abs(hit.z) < 110) {
-                        beamLights.push({ position: [hit.x, Math.max(hit.y, 20), hit.z], color: [0.75, 0.9, 1.0], intensity: 1.6, radius: 40, halo: false });
+                    tmp.hit.copy(tmp.p).addScaledVector(tmp.dir, len * 0.8);
+                    if (Math.abs(tmp.hit.x) < 140 && Math.abs(tmp.hit.z) < 110) {
+                        const bl = beamLightPool[b];
+                        bl.position[0] = tmp.hit.x; bl.position[1] = Math.max(tmp.hit.y, 20); bl.position[2] = tmp.hit.z;
+                        skyLights.push(bl);
                     }
+                    b += 1;
                 }
-            });
+            }
             // 列车：每个周期开过一趟，单双数趟方向相反。
-            trainLights.length = 0;
             const pass = Math.floor(t / TRAIN.period), tt = t - pass * TRAIN.period;
             const dir = pass % 2 ? -1 : 1;
             const head = (dir > 0 ? RAIL.x0 : RAIL.x1) + dir * tt * TRAIN.speed;
@@ -516,7 +528,11 @@
                 tmp.m.makeTranslation(x, RAIL.y + 1.75, RAIL.z);
                 cars.setMatrixAt(i, tmp.m);
                 // 车窗的光洒在对面楼和街上。
-                if (i % 2 === 0 && Math.abs(x) < 130) trainLights.push({ position: [x, RAIL.y + 1.6, RAIL.z - 2.2], color: [0.8, 0.92, 1.0], intensity: 1.1, radius: 16, halo: false });
+                if (i % 2 === 0 && Math.abs(x) < 130) {
+                    const tl = trainLightPool[i];
+                    tl.position[0] = x; tl.position[1] = RAIL.y + 1.6; tl.position[2] = RAIL.z - 2.2;
+                    skyLights.push(tl);
+                }
             }
             cars.instanceMatrix.needsUpdate = true;
             bodies.instanceMatrix.needsUpdate = true;
@@ -527,7 +543,7 @@
         return {
             group,
             update,
-            lights: () => beamLights.concat(trainLights),
+            lights: () => skyLights,
             rail: RAIL,
             stats: () => ({ megaTowers: TOWERS.length, stacks: STACKS.length, craft: CRAFT, trainCars: CARS }),
             towers: TOWERS,

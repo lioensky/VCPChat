@@ -78,15 +78,15 @@
             }
             fft(re, im);
             const col = new Float32Array(bins);
+            const isLoud = energy / size > 1e-5; // 大约 -50 dBFS 以上才算有声音
+            const invN2 = 1 / (size * size);
+            if (isLoud) loud++;
             for (let k = 0; k < bins; k++) {
-                const p = (re[k] * re[k] + im[k] * im[k]) / (size * size);
+                const p = (re[k] * re[k] + im[k] * im[k]) * invN2;
                 col[k] = 10 * Math.log10(p + 1e-20);
+                if (isLoud) power[k] += p + 1e-20;
             }
             out.push(col);
-            if (energy / size > 1e-5) { // 大约 -50 dBFS 以上才算有声音
-                loud++;
-                for (let k = 0; k < bins; k++) power[k] += Math.pow(10, col[k] / 10);
-            }
         }
         const average = new Float32Array(bins);
         for (let k = 0; k < bins; k++) average[k] = loud ? 10 * Math.log10(power[k] / loud + 1e-20) : -200;
@@ -160,10 +160,20 @@
         return STOPS[STOPS.length - 1][1];
     }
 
+    const COLOR_LUT = (() => {
+        const lut = new Uint8Array(256 * 3);
+        for (let i = 0; i < 256; i++) {
+            const [r, g, b] = colorOf(i / 255);
+            lut[i * 3] = r; lut[i * 3 + 1] = g; lut[i * 3 + 2] = b;
+        }
+        return lut;
+    })();
+
     function setupMusicSpectrum(app) {
         if (!app || app.openSpectrum) return;
         const doc = global.document;
         let overlay = null;
+        let previousFocus = null;
         let busy = false;
         const el = (tag, cls, text) => {
             const n = doc.createElement(tag);
@@ -179,6 +189,11 @@
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
             setTimeout(() => o.remove(), 320);
+            const back = previousFocus;
+            previousFocus = null;
+            if (back && back.isConnected && typeof back.focus === 'function') {
+                try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
+            }
         };
         const onKey = (e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
@@ -201,6 +216,8 @@
             let top = -200;
             for (const col of columns) for (let k = 4; k < bins; k++) if (col[k] > top) top = col[k];
             const floor = top - 100;
+            const invRange = 255 / (top - floor);
+            const data = img.data;
             for (let x = 0; x < w; x++) {
                 const col = columns[x];
                 for (let y = 0; y < ROWS; y++) {
@@ -210,9 +227,9 @@
                     const k1 = Math.max(k0 + 1, Math.floor(f1 / nyquist * bins));
                     let m = -200;
                     for (let k = k0; k < k1 && k < bins; k++) if (col[k] > m) m = col[k];
-                    const [r, g, b] = colorOf((m - floor) / (top - floor));
+                    const idx = Math.max(0, Math.min(255, Math.round((m - floor) * invRange))) * 3;
                     const o = (y * w + x) * 4;
-                    img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
+                    data[o] = COLOR_LUT[idx]; data[o + 1] = COLOR_LUT[idx + 1]; data[o + 2] = COLOR_LUT[idx + 2]; data[o + 3] = 255;
                 }
             }
             ctx.putImageData(img, 0, 0);
@@ -285,6 +302,7 @@
             const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };
             if (!track || !track.path) { toast('先放一首歌再看频谱'); return; }
             if (/^[a-z][a-z0-9+.-]{2,}:\/\//i.test(String(track.path))) { toast('网络上的歌没法看频谱'); return; }
+            previousFocus = doc.activeElement;
             overlay = el('div', 'dialog-overlay music-stats-dialog');
             const dialog = el('div', 'dialog glass-panel mstats mspec');
             dialog.setAttribute('role', 'dialog');
@@ -309,6 +327,7 @@
             doc.body.appendChild(overlay);
             global.addEventListener('keydown', onKey, true);
             requestAnimationFrame(() => overlay && overlay.classList.add('visible'));
+            try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
             busy = true;
             try { await analyse(track); } catch (e) { setStatus('分析失败：' + (e && e.message || e)); } finally { busy = false; }
         };

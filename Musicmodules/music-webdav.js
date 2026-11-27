@@ -92,8 +92,9 @@ function setupWebDav(app) {
             app.webdavFileList.firstElementChild.appendChild(retry);
             return;
         }
+        const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
         const entries = result.entries.filter((entry) => {
-            const entryPath = decodeURIComponent(entry.href.replace(/\/$/, ''));
+            const entryPath = safeDecode(entry.href.replace(/\/$/, ''));
             const currentPath = dirPath.replace(/\/$/, '');
             return !entryPath.endsWith(currentPath) || (entry.isDir && entry.href !== dirPath);
         });
@@ -104,6 +105,7 @@ function setupWebDav(app) {
         const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape']);
         app.webdavFileList.innerHTML = '';
         entries.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name));
+        const fragment = document.createDocumentFragment();
         entries.forEach((entry) => {
             const ext = entry.name.includes('.') ? '.' + entry.name.split('.').pop().toLowerCase() : '';
             const isAudio = !entry.isDir && AUDIO_EXTS.has(ext);
@@ -123,8 +125,9 @@ function setupWebDav(app) {
             } else if (isAudio) {
                 div.addEventListener('dblclick', () => app.playWebDavTrack(entry));
             }
-            app.webdavFileList.appendChild(div);
+            fragment.appendChild(div);
         });
+        app.webdavFileList.appendChild(fragment);
     };
 
     app.renderWebDavBreadcrumb = (dirPath) => {
@@ -144,7 +147,9 @@ function setupWebDav(app) {
             app.webdavBreadcrumb.appendChild(sep);
             const span = document.createElement('span');
             span.className = 'webdav-crumb';
-            span.textContent = decodeURIComponent(part);
+            let decodedPart = part;
+            try { decodedPart = decodeURIComponent(part); } catch { /* raw */ }
+            span.textContent = decodedPart;
             const snapPath = cumPath;
             span.addEventListener('click', () => app.browseWebDav(snapPath));
             app.webdavBreadcrumb.appendChild(span);

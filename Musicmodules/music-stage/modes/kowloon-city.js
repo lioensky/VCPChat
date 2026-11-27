@@ -861,6 +861,10 @@
         // 给巷道线程滴水用：空调机的位置。
         const acPositions = acs.map(a => a.p);
 
+        const planeAhead = new T.Vector3();
+        const planeLightObj = { position: [0, 0, 0], color: [1, 0.95, 0.85], intensity: 2.2, radius: 55 };
+        const cityLights = [];
+
         return {
             group,
             acPositions,
@@ -882,8 +886,11 @@
                     const blink = Math.floor((state.time || 0) * 1.3) % 2;
                     blinkMat.size = 3.2 + blink * 1.6;
                     // 起落架灯打在屋顶上的光。
-                    const ahead = new T.Vector3(0, -2.5, 16).applyQuaternion(plane.quaternion).add(plane.position);
-                    planeState.light = { position: [ahead.x, ahead.y - 12, ahead.z], color: [1, 0.95, 0.85], intensity: 2.2, radius: 55 };
+                    planeAhead.set(0, -2.5, 16).applyQuaternion(plane.quaternion).add(plane.position);
+                    planeLightObj.position[0] = planeAhead.x;
+                    planeLightObj.position[1] = planeAhead.y - 12;
+                    planeLightObj.position[2] = planeAhead.z;
+                    planeState.light = planeLightObj;
                 }
             },
             setPalette() {},
@@ -891,7 +898,16 @@
                 shellUniforms.uDetail.value = tier?.name === 'energy-saving' ? 0.6 : 1;
             },
             setOptions() {},
-            lights() { return [...(planeState.light ? [planeState.light] : []), ...(skyline ? skyline.lights() : []), ...roofBulbs]; },
+            lights() {
+                cityLights.length = 0;
+                if (planeState.light) cityLights.push(planeState.light);
+                if (skyline) {
+                    const sl = skyline.lights();
+                    for (let i = 0; i < sl.length; i += 1) cityLights.push(sl[i]);
+                }
+                for (let i = 0; i < roofBulbs.length; i += 1) cityLights.push(roofBulbs[i]);
+                return cityLights;
+            },
             stats() {
                 return {
                     cityMeshes: meshes.length,

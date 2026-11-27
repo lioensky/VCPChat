@@ -10,7 +10,8 @@
     const restoredQueue = (before, now, library) => {
         const alive = new Set(library || []);
         const out = (before || []).filter((t) => alive.has(t));
-        for (const t of now || []) if (!out.includes(t)) out.push(t);
+        const seen = new Set(out);
+        for (const t of now || []) if (!seen.has(t)) { seen.add(t); out.push(t); }
         return out;
     };
 

@@ -719,7 +719,7 @@
         // Esc 由舞台宿主自行处理，在它前面拦截以保留过渡动画。
         const onEscape = (event) => {
             if (event.key !== 'Escape' || event.defaultPrevented || !adoptHost() || !app.stageHost.active) return;
-            if (document.querySelector('.music-stage-settings.is-open')) return; // 先关设置，交给宿主
+            if (document.querySelector('.music-stage-settings.is-open, .music-stage-mode-switcher.is-open')) return; // 先关设置或模式菜单，交给宿主
             event.preventDefault();
             event.stopPropagation();
             requestExit();

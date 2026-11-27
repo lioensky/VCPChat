@@ -1816,9 +1816,12 @@
             // A sung line stays up a little after it ends; longer gaps show the title card.
             let lyric = state.lyric || null;
             const pt = Number(state.playbackTime ?? t) || 0;
-            if (lyric?.line) held = { ...lyric, words: (lyric.words || []).map(w => ({ ...w })) };
+            if (lyric?.line) { held = lyric; held._completed = false; }
             else if (held && Number.isFinite(held.end) && pt >= held.start && pt - held.end < 2.6) {
-                lyric = { ...held, words: held.words.map(w => ({ ...w, progress: 1 })), progress: 1, next: state.lyric?.next || held.next };
+                if (!held._completed) {
+                    held = { ...held, words: (held.words || []).map(w => ({ ...w, progress: 1 })), progress: 1, _completed: true };
+                }
+                lyric = state.lyric?.next && state.lyric.next !== held.next ? { ...held, next: state.lyric.next } : held;
             } else held = null;
             chorusGlow += ((lyric?.isChorus || lyric?.line?.isChorus ? 1 : 0) - chorusGlow) * Math.min(1, realDt * 2);
             
@@ -1913,37 +1916,80 @@
             if (glyphs < 0) u.progress.value = 0;
         };
 
-        const lights = () => {
-            const out = [];
-            const big = screenList.filter(s => s.role !== 3);
-            big.forEach(s => {
-                const c = screenMat.uniforms.sung.value;
-                const i = screenMat.uniforms.level.value;
-                // Well out in front and a little low, so it lights the street and the
-                // block opposite rather than throwing a hot spot back onto the glass.
-                out.push({ position: add(add(s.centre, s.normal, 5.5), UP, -Math.min(3, s.height * 0.3)), color: [Math.min(1, c.r * 0.6 + 0.2), Math.min(1, c.g * 0.6 + 0.2), Math.min(1, c.b * 0.6 + 0.3)],
-                    intensity: i * Math.min(2.8, Math.sqrt(s.width * s.height) * 0.21), radius: Math.max(s.width, s.height) * 1.4, flicker: 1, flickerValue: 1,
-                    // A wash from the board, not a lamp: nothing to draw a haze halo around.
-                    halo: false });
-            });
-            // The nearer banners wash the walls round them in their cold light.
-            // Kept low and short so the walls keep their own colour; cyan and magenta take turns.
-            holoAds.concat(sbAds).forEach((a, i) => {
-                if (sandboxBox ? a.sbHidden : a.sandboxOnly) return;
-                const c = i % 2 ? [1, 0.3, 0.8] : [0.25, 0.85, 1];
-                out.push({ position: add(a.centre, UP, -a.height * 0.25), color: c, intensity: holoAdMat.uniforms.level.value * (a.roof ? 0.9 : 0.6),
-                    radius: Math.min(14, a.height * 0.45), flicker: 1, flickerValue: 1, halo: false });
-            });
-            const ranked = lightSources.map(l => ({ l, v: l.base * (levels[l.spec.index] || 0) })).sort((a, b) => b.v - a.v);
-            for (const { l } of ranked) {
-                if (out.length >= 32) break;
-                if (sandboxBox && sbHiddenSigns.has(l.spec.index)) continue;
-                const k = levels[l.spec.index] || 0;
-                // Enough to colour the wall round a sign, not the whole face of the block.
-                out.push({ position: l.position, color: l.color, intensity: k * Math.min(4, Math.sqrt(l.spec.width * l.spec.height)) * (l.spec.style === 'box' ? 0.4 : 0.6),
-                    radius: Math.min(10, Math.max(l.spec.width, l.spec.height) * 1.2 + 1.5), flicker: k / Math.max(0.01, night), flickerValue: 1 });
+        const bigScreens = screenList.filter(s => s.role !== 3).map(s => ({
+            position: add(add(s.centre, s.normal, 5.5), UP, -Math.min(3, s.height * 0.3)),
+            color: [0, 0, 0],
+            intensityScale: Math.min(2.8, Math.sqrt(s.width * s.height) * 0.21),
+            intensity: 0,
+            radius: Math.max(s.width, s.height) * 1.4,
+            flicker: 1,
+            flickerValue: 1,
+            halo: false
+        }));
+        const allAds = holoAds.concat(sbAds).map((a, i) => ({
+            ad: a,
+            light: {
+                position: add(a.centre, UP, -a.height * 0.25),
+                color: i % 2 ? [1, 0.3, 0.8] : [0.25, 0.85, 1],
+                intensityScale: a.roof ? 0.9 : 0.6,
+                intensity: 0,
+                radius: Math.min(14, a.height * 0.45),
+                flicker: 1,
+                flickerValue: 1,
+                halo: false
             }
-            return out;
+        }));
+        const rankedPool = lightSources.map(l => ({
+            l,
+            v: 0,
+            light: {
+                position: l.position,
+                color: l.color,
+                intensityScale: Math.min(4, Math.sqrt(l.spec.width * l.spec.height)) * (l.spec.style === 'box' ? 0.4 : 0.6),
+                intensity: 0,
+                radius: Math.min(10, Math.max(l.spec.width, l.spec.height) * 1.2 + 1.5),
+                flicker: 1,
+                flickerValue: 1
+            }
+        }));
+        const sortRankedDesc = (a, b) => b.v - a.v;
+        const lightsOut = [];
+        const lights = () => {
+            lightsOut.length = 0;
+            const c = screenMat.uniforms.sung.value;
+            const screenLv = screenMat.uniforms.level.value;
+            const sr = Math.min(1, c.r * 0.6 + 0.2);
+            const sg = Math.min(1, c.g * 0.6 + 0.2);
+            const sb = Math.min(1, c.b * 0.6 + 0.3);
+            for (let i = 0; i < bigScreens.length; i += 1) {
+                const entry = bigScreens[i];
+                entry.color[0] = sr; entry.color[1] = sg; entry.color[2] = sb;
+                entry.intensity = screenLv * entry.intensityScale;
+                lightsOut.push(entry);
+            }
+            const adLv = holoAdMat.uniforms.level.value;
+            for (let i = 0; i < allAds.length; i += 1) {
+                const item = allAds[i];
+                if (sandboxBox ? item.ad.sbHidden : item.ad.sandboxOnly) continue;
+                item.light.intensity = adLv * item.light.intensityScale;
+                lightsOut.push(item.light);
+            }
+            for (let i = 0; i < rankedPool.length; i += 1) {
+                const item = rankedPool[i];
+                item.v = item.l.base * (levels[item.l.spec.index] || 0);
+            }
+            rankedPool.sort(sortRankedDesc);
+            const invNight = 1 / Math.max(0.01, night);
+            for (let i = 0; i < rankedPool.length && lightsOut.length < 32; i += 1) {
+                const item = rankedPool[i];
+                const idx = item.l.spec.index;
+                if (sandboxBox && sbHiddenSigns.has(idx)) continue;
+                const k = levels[idx] || 0;
+                item.light.intensity = k * item.light.intensityScale;
+                item.light.flicker = k * invNight;
+                lightsOut.push(item.light);
+            }
+            return lightsOut;
         };
 
         const setTier = next => {

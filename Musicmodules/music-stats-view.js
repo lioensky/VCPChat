@@ -114,6 +114,7 @@
         if (!app || app.openStatsView) return;
         const doc = global.document;
         let overlay = null;
+        let previousFocus = null;
         let range = 30;
         try { const v = Number(global.localStorage?.getItem(RANGE_KEY)); if (RANGES.some(([d]) => d === v)) range = v; } catch (e) { /* 默认 30 天 */ }
 
@@ -132,6 +133,11 @@
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
             setTimeout(() => o.remove(), 320);
+            const back = previousFocus;
+            previousFocus = null;
+            if (back && back.isConnected && typeof back.focus === 'function') {
+                try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
+            }
         };
         const onKey = (e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
@@ -279,6 +285,7 @@
 
         app.openStatsView = () => {
             if (overlay) return;
+            previousFocus = doc.activeElement;
             overlay = el('div', 'dialog-overlay music-stats-dialog');
             const dialog = el('div', 'dialog glass-panel mstats');
             dialog.setAttribute('role', 'dialog');

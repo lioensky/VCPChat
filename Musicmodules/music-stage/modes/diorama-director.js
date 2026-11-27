@@ -222,21 +222,43 @@
             const t = clamp(time, 0, duration);
             const index = Math.max(0, upperBound(acts, t, 'start') - 1);
             const act = acts[index];
-            const previous = acts[Math.max(0, index - 1)];
+            const prevP = acts[Math.max(0, index - 1)].params;
+            const curP = act.params;
             const blend = index ? smooth((t - act.start) / Math.min(3, (act.end - act.start) * 0.45)) : 1;
-            const params = {};
-            for (const key of Object.keys(act.params)) params[key] = mix(previous.params[key], act.params[key], blend);
-            if (act.kind === 'Departure') params.speed *= smooth(t / Math.max(1, act.end));
-            return { ...params, act: act.kind, actIndex: index, visit: act.visit, blend, dream: dreamAt(t), dusk: duskAt(t) };
+            let speed = mix(prevP.speed, curP.speed, blend);
+            if (act.kind === 'Departure') speed *= smooth(t / Math.max(1, act.end));
+            return {
+                speed,
+                height: mix(prevP.height, curP.height, blend),
+                fov: mix(prevP.fov, curP.fov, blend),
+                openness: mix(prevP.openness, curP.openness, blend),
+                warmth: mix(prevP.warmth, curP.warmth, blend),
+                density: mix(prevP.density, curP.density, blend),
+                act: act.kind, actIndex: index, visit: act.visit, blend, dream: dreamAt(t), dusk: duskAt(t)
+            };
+        };
+        const speedAt = time => {
+            const t = clamp(time, 0, duration);
+            const index = Math.max(0, upperBound(acts, t, 'start') - 1);
+            const act = acts[index];
+            const prevP = acts[Math.max(0, index - 1)].params;
+            const curP = act.params;
+            const blend = index ? smooth((t - act.start) / Math.min(3, (act.end - act.start) * 0.45)) : 1;
+            let speed = mix(prevP.speed, curP.speed, blend);
+            if (act.kind === 'Departure') speed *= smooth(t / Math.max(1, act.end));
+            return speed;
         };
         // Fixed offline quadrature: sample order, refresh rate and seeks cannot
         // change distance. Long recordings retain a bounded integration table.
         const step = Math.max(1 / 30, duration / 120000);
         const count = Math.ceil(duration / step);
         const distances = new Float64Array(count + 1);
+        let prevSpeed = speedAt(0);
         for (let i = 1; i <= count; i++) {
             const a = (i - 1) * step, b = Math.min(duration, i * step);
-            distances[i] = distances[i - 1] + (sample(a).speed + sample(b).speed) * (b - a) * 0.5;
+            const nextSpeed = speedAt(b);
+            distances[i] = distances[i - 1] + (prevSpeed + nextSpeed) * (b - a) * 0.5;
+            prevSpeed = nextSpeed;
         }
         const distanceAt = (time, speed = 1) => {
             const t = clamp(time, 0, duration);
@@ -268,8 +290,12 @@
         };
         const cuts = [];
         const candidates = [];
-        const safe = t => !protectedIntervals.some(interval =>
-            interval.start < t + 0.18 && interval.end > t - 0.18);
+        const safe = t => {
+            const idx = upperBound(protectedIntervals, t + 0.18, 'start') - 1;
+            if (idx < 0) return true;
+            const iv = protectedIntervals[idx];
+            return !(iv.start < t + 0.18 && iv.end > t - 0.18);
+        };
         acts.forEach((act, index) => {
             if (!index) return;
             const earlier = act.start - 0.35;

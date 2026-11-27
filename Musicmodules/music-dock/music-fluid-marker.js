@@ -51,12 +51,17 @@
         container.appendChild(svg);
 
         const s = { hs: 0, he: 0, ts: 0, te: 0, tgS: 0, tgE: 0, placed: false, vel: 0, frame: 0, last: 0 };
-        const reduced = () => doc.body?.classList.contains('music-reduce-motion')
-            || win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        const reducedMq = win.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
+        const reduced = () => Boolean(doc.body?.classList.contains('music-reduce-motion') || reducedMq?.matches);
 
         // 只量容器的横截面（clientWidth/Height），不量整块内容，也不触发 getBoundingClientRect 的整页布局
-        const cross = () => {
-            const size = axis === 'x' ? container.clientHeight : container.clientWidth;
+        let cachedCs = 0;
+        let cachedExtent = 0;
+        const measureContainer = () => {
+            cachedCs = Math.max(1, axis === 'x' ? container.clientHeight : container.clientWidth);
+            cachedExtent = axis === 'x' ? container.scrollWidth : container.scrollHeight;
+        };
+        const cross = (size) => {
             if (align === 'start') return inset + thickness / 2;
             if (align === 'center') return size / 2;
             return size - inset - thickness / 2;
@@ -73,12 +78,12 @@
         // 目录有一万首时内容有几十万像素高，整张 SVG 会变成一张同样高的合成层，每次重画都很贵。
         const PAD = Math.ceil(thickness * 3 + 8);
         let lastBox = '';
-        const draw = () => {
-            // 先读后写：读完尺寸再改属性，一帧里只排一次布局
-            const c = cross();
-            const cs = Math.max(1, axis === 'x' ? container.clientHeight : container.clientWidth);
+        const draw = (remeasure = false) => {
+            if (remeasure || !cachedCs) measureContainer();
+            const cs = cachedCs;
+            const c = cross(cs);
             // 末端不超出原有内容，免得在会滚动的容器（目录、页签）里多出一截滚动距离
-            const extent = axis === 'x' ? container.scrollWidth : container.scrollHeight;
+            const extent = cachedExtent;
             origin = Math.max(0, Math.floor(Math.min(s.hs, s.ts) - PAD));
             const len = Math.max(1, Math.min(extent - origin, Math.ceil(Math.max(s.he, s.te) + PAD - origin)));
             const box = `${origin}|${len}|${cs}`;
@@ -135,6 +140,7 @@
             moveTo(target, opts) {
                 const sp = span(target);
                 if (!sp) { svg.style.opacity = '0'; return; }
+                measureContainer();
                 svg.style.opacity = '';
                 s.tgS = sp[0]; s.tgE = sp[1];
                 if (!s.placed || reduced() || opts?.instant) {
@@ -149,9 +155,12 @@
             setDistances(items, active) {
                 const list = Array.from(items || []);
                 const ai = typeof active === 'number' ? active : list.indexOf(active);
-                list.forEach((el, i) => { el.dataset.mdDist = String(ai < 0 ? 4 : Math.min(4, Math.abs(i - ai))); });
+                for (let i = 0; i < list.length; i += 1) {
+                    const next = String(ai < 0 ? 4 : Math.min(4, Math.abs(i - ai)));
+                    if (list[i].dataset.mdDist !== next) list[i].dataset.mdDist = next;
+                }
             },
-            relayout() { draw(); },
+            relayout() { draw(true); },
             destroy() {
                 if (s.frame) win.cancelAnimationFrame(s.frame);
                 svg.remove();

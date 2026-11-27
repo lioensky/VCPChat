@@ -1865,6 +1865,12 @@
         const shelterOrder = bridges.map(b => ({ b, d: 0 }));
 
         let mirrorLive = false;
+        const mirrorDir = new T.Vector3();
+        const mirrorUp = new T.Vector3(0, 1, 0);
+        const mirrorPlane = new T.Plane();
+        const mirrorClip = new T.Vector4();
+        const mirrorQ = new T.Vector4();
+        const mirrorSize = new T.Vector2();
         const renderMirror = camera => {
             const renderer = ctx.renderer;
             mirrorLive = Boolean(renderer && reflectionOn && camera && camera.position.y < 28);
@@ -1874,7 +1880,7 @@
             camera.updateMatrixWorld();
             mirror.position.copy(camera.position);
             mirror.position.y = -mirror.position.y;
-            const direction = camera.getWorldDirection(new T.Vector3());
+            const direction = camera.getWorldDirection(mirrorDir);
             direction.y *= -1;
             mirror.up.set(0, 1, 0).transformDirection(camera.matrixWorld);
             mirror.up.y *= -1;
@@ -1886,20 +1892,20 @@
             textureMatrix.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
                 .multiply(mirror.projectionMatrix).multiply(mirror.matrixWorldInverse);
             // Clip what is under the floor with an oblique near plane.
-            const plane = new T.Plane(new T.Vector3(0, 1, 0), 0).applyMatrix4(mirror.matrixWorldInverse);
-            const clip = new T.Vector4(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
+            mirrorPlane.set(mirrorUp, 0).applyMatrix4(mirror.matrixWorldInverse);
+            mirrorClip.set(mirrorPlane.normal.x, mirrorPlane.normal.y, mirrorPlane.normal.z, mirrorPlane.constant);
             const e = mirror.projectionMatrix.elements;
-            const qv = new T.Vector4((Math.sign(clip.x) + e[8]) / e[0], (Math.sign(clip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
-            const dot = clip.dot(qv);
+            mirrorQ.set((Math.sign(mirrorClip.x) + e[8]) / e[0], (Math.sign(mirrorClip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
+            const dot = mirrorClip.dot(mirrorQ);
             if (Math.abs(dot) < 1e-5) return;
-            clip.multiplyScalar(2 / dot);
-            e[2] = clip.x; e[6] = clip.y; e[10] = clip.z + 1 - 0.001; e[14] = clip.w;
+            mirrorClip.multiplyScalar(2 / dot);
+            e[2] = mirrorClip.x; e[6] = mirrorClip.y; e[10] = mirrorClip.z + 1 - 0.001; e[14] = mirrorClip.w;
             mirror.projectionMatrixInverse.copy(mirror.projectionMatrix).invert();
             // Whatever else the viewer's camera sees (other modules' layers), less the floor and the rain.
             mirror.layers.mask = camera.layers.mask;
             mirror.layers.disable(LAYER_VIEW_ONLY);
             mirror.layers.disable(LAYER_FLOOR);
-            const size = renderer.getSize(new T.Vector2());
+            const size = renderer.getSize(mirrorSize);
             const buffer = size.x * renderer.getPixelRatio();
             const width = Math.max(64, Math.round(Math.min(buffer * (tierName === 'ultimate' ? 0.5 : 0.4), tierName === 'ultimate' ? 1280 : 640)));
             const height = Math.max(1, Math.round(width * size.y / Math.max(1, size.x)));
@@ -2109,14 +2115,25 @@
             };
         };
 
+        const lampLights = lamps.map(l => ({
+            position: l.position, color: l.color, intensity: l.intensity,
+            radius: l.radius, flicker: l.flicker, flickerValue: 1
+        }));
         const api = {
             update,
             setPalette(p) { palette = p || {}; applyAtmosphere(); },
             setTier,
             setOptions(o) { options = { ...options, ...(o || {}) }; setTier(tierName); },
             // The alley's own lamps, for anything else that wants their light.
-            lights: () => lamps.map(l => ({ position: l.position, color: l.color, intensity: l.intensity * dayDim,
-                radius: l.radius, flicker: l.flicker, flickerValue: flickerOf(l, lastTime) })),
+            lights: () => {
+                for (let i = 0; i < lamps.length; i += 1) {
+                    const l = lamps[i];
+                    const dst = lampLights[i];
+                    dst.intensity = l.intensity * dayDim;
+                    dst.flickerValue = flickerOf(l, lastTime);
+                }
+                return lampLights;
+            },
             cameraRigs: () => rigs.map(r => ({ id: r.id, points: r.points.map(p => p.slice()), look: r.look.map(p => p.slice()), fov: r.fov,
                 phase: r.phase, duration: r.duration })),
             layers: { viewOnly: LAYER_VIEW_ONLY, floor: LAYER_FLOOR },
