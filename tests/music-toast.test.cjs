@@ -288,3 +288,27 @@ test('Batch 67: toast.clear() removes active and exiting toasts immediately and 
         window.close();
     }
 });
+
+test('Batch 72: MusicToast deduplicates unchanged clamped progress bar transform writes', () => {
+    const { window, doc, toast } = setup();
+    try {
+        toast.show({ id: 'dl', kind: 'progress', message: '下载 50%', progress: 0.5 });
+        const bar = doc.querySelector('[data-key="dl"] .mtst-bar > span');
+        assert.ok(bar);
+        let transformWrites = 0;
+        let currentTransform = bar.style.transform;
+        Object.defineProperty(bar.style, 'transform', {
+            configurable: true,
+            get() { return currentTransform; },
+            set(v) { transformWrites += 1; currentTransform = v; }
+        });
+        toast.show({ id: 'dl', kind: 'progress', message: '下载 50%', progress: 0.5 });
+        toast.show({ id: 'dl', kind: 'progress', message: '下载 50%', progress: 0.50001 });
+        assert.equal(transformWrites, 0, 'unchanged progress skips redundant bar transform writes');
+        toast.show({ id: 'dl', kind: 'progress', message: '下载 75%', progress: 0.75 });
+        assert.equal(transformWrites, 1, 'meaningful progress change updates bar transform once');
+        assert.equal(currentTransform, 'scaleX(0.75)');
+    } finally {
+        window.close();
+    }
+});

@@ -525,3 +525,52 @@ test('Batch 67: watchTrails measures before DOM append, watchHud skips drawer-in
     assert.equal(hudReads, 2, 'beforeunload detaches watchHud pointerdown listener');
     dom.window.close();
 });
+
+test('Batch 72: music-fluid-select delegates option clicks, blocks ArrowLeft/ArrowRight leak while open, and skips hidden-disabled selected focus', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <select id="eq-sel" aria-label="预设">
+            <option value="custom" disabled hidden>自定义</option>
+            <option value="pop">流行</option>
+            <option value="rock">摇滚</option>
+        </select>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+        const sel = doc.getElementById('eq-sel');
+        const trigger = sel.nextElementSibling;
+        assert.ok(trigger && trigger.classList.contains('mfs-trigger'));
+
+        // Hidden-disabled option selected -> opening focuses the first connected enabled option ('流行')
+        sel.selectedIndex = 0;
+        const leaked = [];
+        doc.addEventListener('keydown', (e) => leaked.push(e.key));
+        trigger.click();
+        const menu = doc.querySelector('.mfs-menu');
+        assert.ok(menu);
+        assert.ok(doc.activeElement && doc.activeElement.classList.contains('mfs-item') && doc.activeElement.isConnected);
+        assert.equal(doc.activeElement.querySelector('svg.mfs-check') !== null, true, 'cloned check SVG mounted');
+
+        // ArrowLeft and ArrowRight must be consumed while menu is open instead of leaking to page shortcuts
+        for (const k of ['ArrowLeft', 'ArrowRight']) {
+            const ev = new window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+            doc.activeElement.dispatchEvent(ev);
+            assert.equal(ev.defaultPrevented, true, `${k} prevented while fluid-select menu is open`);
+        }
+        assert.deepEqual(leaked, [], 'ArrowLeft/ArrowRight do not leak to document bubble listeners');
+
+        // Delegated click on rock option updates select and closes menu
+        let changed = 0;
+        sel.addEventListener('change', () => { changed += 1; });
+        const rockItem = [...menu.querySelectorAll('.mfs-item')].find((i) => i.textContent.includes('摇滚'));
+        assert.ok(rockItem);
+        rockItem.querySelector('span').click();
+        assert.equal(sel.value, 'rock', 'delegated click on child span selects option');
+        assert.equal(changed, 1);
+        assert.equal(doc.querySelector('.mfs-menu'), null, 'selecting option closes menu');
+    } finally {
+        dom.window.close();
+    }
+});

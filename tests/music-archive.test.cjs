@@ -334,3 +334,70 @@ test('Batch 69: archive-list placeKindMark reads layout before creating .archive
         w.close();
     }
 });
+
+test('Batch 72: archive-list search skips duplicate onResults/rAF/scrollTop reads and archive-tuning drops body :has()', async () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        let rafCount = 0;
+        w.requestAnimationFrame = (fn) => { rafCount += 1; return rafCount; };
+        w.cancelAnimationFrame = () => {};
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-index.js', 'utf8'));
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-list.js', 'utf8'));
+        const host = w.document.getElementById('host');
+        const tracks = Array.from({ length: 40 }, (_, i) => ({
+            path: `/m/${i}.flac`,
+            title: i % 4 === 0 ? `Live Song ${i}.flac` : `Track ${i}.flac`,
+            artist: `Artist ${i % 5}`,
+            album: `Album ${i % 3}`,
+            duration: 200
+        }));
+        const index = w.MusicArchiveIndex.createIndex(tracks);
+        let onResultsCalls = 0;
+        let onPickCalls = 0;
+        const list = w.MusicArchiveList.create({
+            host, app: { playlist: tracks, customPlaylists: [] }, Index: w.MusicArchiveIndex,
+            getIndex: () => index, getRecent: () => [],
+            onResults: () => { onResultsCalls += 1; },
+            onPick: () => { onPickCalls += 1; },
+            onPlay() {}
+        });
+        const vp = list.el.querySelector('[data-l="viewport"]');
+        let scrollReads = 0;
+        let scrollTopVal = 0;
+        Object.defineProperty(vp, 'clientHeight', { get: () => 400, configurable: true });
+        Object.defineProperty(vp, 'scrollTop', {
+            get: () => { scrollReads += 1; return scrollTopVal; },
+            set: (v) => { scrollTopVal = Number(v) || 0; },
+            configurable: true
+        });
+        list.rebuild();
+
+        // Typing a matching query at top skips scrollTop read, avoids duplicate onResults, and queues 0 redundant rAF in pickRow
+        onResultsCalls = 0;
+        onPickCalls = 0;
+        scrollReads = 0;
+        rafCount = 0;
+        list.typeInto('Live');
+        await new Promise((r) => w.setTimeout(r, 50));
+        assert.equal(onPickCalls, 1, 'matching search calls onPick once for first hit');
+        assert.equal(onResultsCalls, 0, 'matching search skips duplicate onResults when edgeRow/onPick handles selection');
+        assert.equal(scrollReads, 0, 'search starting from lastRenderTop=0 skips forced scrollTop layout read');
+        assert.equal(rafCount, 0, 'pickRow renders synchronously without queueing duplicate scrollToRow rAF');
+
+        // Unmatched query still fires onResults with count 0
+        list.typeInto('NoSuchSongXYZ');
+        await new Promise((r) => w.setTimeout(r, 50));
+        assert.equal(onResultsCalls, 1, 'empty search result still notifies onResults');
+
+        // archive-tuning.css replaces body:has(#music-dock-root.md-fl-low) with body.music-fl-low
+        const tuningCss = fs.readFileSync('Musicmodules/music-archive/archive-tuning.css', 'utf8');
+        assert.equal(tuningCss.includes(':has(#music-dock-root.md-fl-low)'), false, 'no global body:has(#music-dock-root.md-fl-low) invalidation rule');
+        assert.match(tuningCss, /body\.music-dock-beside-lyrics\.music-fl-low/);
+        list.destroy();
+    } finally {
+        w.close();
+    }
+});

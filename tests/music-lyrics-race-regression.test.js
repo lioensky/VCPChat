@@ -145,3 +145,46 @@ test('a failing saved-lyrics read ends the loading message', async () => {
     assert.match(app.lyricsList.innerHTML, /歌词读取失败/);
     assert.equal(app.lyricsLoadingToken, null);
 });
+
+test('Batch 72: resetLyrics & beforeunload cancel 500ms lyric settle timer immediately and dispose query listener', async () => {
+    const activeTimers = new Map();
+    let nextId = 1;
+    let disposed = 0;
+    const winListeners = new Map();
+    const ctx = vm.createContext({
+        console,
+        setTimeout: (fn, ms) => { const id = nextId++; activeTimers.set(id, { fn, ms }); return id; },
+        clearTimeout: (id) => { activeTimers.delete(id); },
+        window: { addEventListener: (t, fn) => winListeners.set(t, fn), removeEventListener: () => {} }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-lyrics.js'), 'utf8'), ctx);
+    let searched = 0;
+    const app = {
+        lyricsRequestToken: 0,
+        lyricsList: { innerHTML: '', style: {} },
+        currentLyrics: [],
+        playlist: [],
+        api: {
+            onMusicCurrentLyricsRequest: () => () => { disposed += 1; },
+            getMusicLyrics: async () => null,
+            searchMusicLyricsCandidates: async () => { searched += 1; return { success: true, candidates: [] }; },
+            applyMusicLyricsCandidate: async () => ({ success: false })
+        }
+    };
+    ctx.setupLyrics(app);
+
+    const pending = app.fetchAndDisplayLyrics('A', 'Track 1');
+    await new Promise((r) => setImmediate(r));
+    assert.equal(activeTimers.size, 1, '500ms settle timer armed while waiting before network search');
+
+    // Skipping immediately calls resetLyrics -> cancels settle timer and resolves pending fetch right away without network call
+    app.resetLyrics();
+    await pending;
+    assert.equal(activeTimers.size, 0, 'resetLyrics cancels pending 500ms settle timer immediately');
+    assert.equal(searched, 0, 'cancelled settle never triggers network search');
+
+    // beforeunload disposes onMusicCurrentLyricsRequest listener
+    winListeners.get('beforeunload')?.();
+    assert.equal(disposed, 1, 'beforeunload disposes current-lyrics IPC listener');
+    assert.equal(app.disposeCurrentLyricsQuery, null);
+});

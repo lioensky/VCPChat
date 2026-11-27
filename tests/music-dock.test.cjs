@@ -1895,3 +1895,27 @@ test('Batch 71: queue drawer pools rows in-place, skips closed scroll, batches p
         window.close();
     }
 });
+
+test('Batch 72: palette scopes .md-cmd-open onto #music-dock-root and CSS isolates .md-cmd without body.music-dock-cmd-open rules', () => {
+    const { window, doc, dock } = setup();
+    try {
+        const root = doc.getElementById('music-dock-root');
+        dock.openPalette();
+        assert.equal(root.classList.contains('md-cmd-open'), true, '#music-dock-root receives .md-cmd-open');
+        assert.equal(doc.body.classList.contains('music-dock-cmd-open'), true, 'body keeps compatibility class');
+        dock.closePalette();
+        assert.equal(root.classList.contains('md-cmd-open'), false, '#music-dock-root clears .md-cmd-open on close');
+        assert.equal(doc.body.classList.contains('music-dock-cmd-open'), false);
+
+        const panelCss = read('Musicmodules/music-dock/music-dock-panel.css');
+        const drawerCss = read('Musicmodules/music-dock/music-dock-drawer.css');
+        assert.match(panelCss, /\.md-cmd\s*\{[^}]*contain:\s*layout style/, '.md-cmd applies layout/style containment');
+        assert.equal(panelCss.includes('body.music-dock-cmd-open'), false, 'panel CSS no longer matches body.music-dock-cmd-open');
+        assert.equal(drawerCss.includes('body.music-dock-cmd-open'), false, 'drawer CSS no longer matches body.music-dock-cmd-open');
+        assert.match(panelCss, /#music-dock-root\.md-cmd-open \.md-hdl/);
+        assert.match(drawerCss, /#music-dock-root\.md-cmd-open \.md-dock/);
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
