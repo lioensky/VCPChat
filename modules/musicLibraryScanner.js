@@ -75,10 +75,18 @@ const exists = (file) => fsp.access(file).then(() => true, () => false);
 // 文件里没嵌封面的歌，用同目录的封面图（很多整轨 / 抓轨专辑只放一张 cover.jpg 或 folder.jpg）。
 // 名字按常见程度排：cover > folder > front > albumart*，jpg/png/webp 都行，大小写不管。
 const FOLDER_COVER_RANK = [/^cover\.(jpe?g|png|webp)$/i, /^folder\.(jpe?g|png|webp)$/i, /^front\.(jpe?g|png|webp)$/i, /^albumart.*\.(jpe?g|png)$/i];
+const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
+const DISC_DIR_RE = /^(?:cd|disc|disk|碟)\s*[-_]?\s*\d{1,2}\b/i;
 function pickFolderCover(names) {
-    for (const re of FOLDER_COVER_RANK) {
-        const hit = (names || []).filter((n) => re.test(n)).sort()[0];
-        if (hit) return hit;
+    if (!names || !names.length) return null;
+    for (let r = 0; r < FOLDER_COVER_RANK.length; r += 1) {
+        const re = FOLDER_COVER_RANK[r];
+        let best = null;
+        for (let i = 0; i < names.length; i += 1) {
+            const n = names[i];
+            if (re.test(n) && (best === null || n < best)) best = n;
+        }
+        if (best !== null) return best;
     }
     return null;
 }
@@ -87,7 +95,7 @@ async function fillFolderCovers(tracks, readdir = (dir) => fsp.readdir(dir)) {
     const uniqueDirs = [];
     const seenDirs = new Set();
     for (const t of tracks) {
-        if (!t || t.albumArt || typeof t.path !== 'string' || /^[a-z][a-z0-9+.-]+:\/\//i.test(t.path)) continue;
+        if (!t || t.albumArt || typeof t.path !== 'string' || URL_SCHEME_RE.test(t.path)) continue;
         const dir = path.dirname(t.path);
         candidates.push({ track: t, dir });
         if (!seenDirs.has(dir)) {
@@ -110,7 +118,7 @@ async function fillFolderCovers(tracks, readdir = (dir) => fsp.readdir(dir)) {
         let hit = pickFolderCover(names);
         let home = dir;
         // 多碟专辑常把封面放在上一层（专辑/cover.jpg，歌在 专辑/CD1/ 里）
-        if (!hit && /^(?:cd|disc|disk|碟)\s*[-_]?\s*\d{1,2}\b/i.test(path.basename(dir))) {
+        if (!hit && DISC_DIR_RE.test(path.basename(dir))) {
             const up = path.dirname(dir);
             const upNames = await readDirCached(up);
             hit = pickFolderCover(upNames);
@@ -325,13 +333,14 @@ async function scanFolder(options) {
     }
 
     flushBatch();
+    const foundTracks = slots.filter(Boolean);
     if (!signal?.aborted) {
-        try { stats.folderCovers = await fillFolderCovers(slots.filter(Boolean)); } catch (_) { /* 只是补封面 */ }
+        try { stats.folderCovers = await fillFolderCovers(foundTracks); } catch (_) { /* 只是补封面 */ }
     }
     stats.aborted = Boolean(signal?.aborted);
     reportProgress(true);
     stats.elapsedMs = Date.now() - startedAt;
-    return { tracks: slots.filter(Boolean).concat(keptFromUnreadable()), folderPath, stats };
+    return { tracks: foundTracks.concat(keptFromUnreadable()), folderPath, stats };
 }
 
 module.exports = { scanFolder, collectAudioFiles, SUPPORTED_FORMATS, pickFolderCover, fillFolderCovers };

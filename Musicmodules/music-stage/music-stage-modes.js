@@ -185,17 +185,19 @@
                 );
             }
             const duration = global.MusicStageRuntime.isReducedMotion(reduced) ? 0.001 : 0.52;
+            const lowPower = mode.config?.quality === 'energy-saving';
             children.forEach(child => {
                 const retired = child.retireAt !== null;
                 const elapsed = frame.playbackTime - (retired ? child.retireAt : child.born);
                 if (retired && elapsed >= duration) { release(child); return; }
                 const progress = Math.max(0, Math.min(1, elapsed / duration));
-                const nextOp = String(retired ? 1 - progress : progress);
+                const rawOp = retired ? 1 - progress : progress;
+                const nextOp = rawOp <= 0 ? '0' : rawOp >= 1 ? '1' : rawOp.toFixed(3);
                 if (child._op !== nextOp) { child._op = nextOp; child.layer.style.opacity = nextOp; }
                 // A settled layer needs no filter: blur(0) is drawn the same,
                 // but still costs a whole-stage offscreen pass every frame.
-                const blur = (retired ? progress : 1 - progress) * 12;
-                const nextFilter = blur > 0 ? `blur(${blur}px)` : 'none';
+                const blur = lowPower ? 0 : (retired ? progress : 1 - progress) * 12;
+                const nextFilter = blur > 0.05 ? `blur(${blur.toFixed(1)}px)` : 'none';
                 if (child._filter !== nextFilter) { child._filter = nextFilter; child.layer.style.filter = nextFilter; }
                 child.mode.updateFrame(frame);
             });

@@ -176,7 +176,7 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
 
     // --- IR File Selection Dialog ---
     ipcMain.handle('select-ir-file', async () => {
-        const result = await dialog.showOpenDialog(getDialogWindow(), {
+        const dialogOptions = {
             title: '选择脉冲响应文件 (IR)',
             filters: [
                 { name: '音频文件', extensions: ['wav', 'flac', 'mp3', 'ogg', 'm4a', 'ape'] },
@@ -185,8 +185,12 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
                 { name: '所有文件', extensions: ['*'] }
             ],
             properties: ['openFile']
-        });
-        if (result.canceled || result.filePaths.length === 0) return null;
+        };
+        const parentWin = typeof getDialogWindow === 'function' ? getDialogWindow() : null;
+        const result = parentWin && !parentWin.isDestroyed?.()
+            ? await dialog.showOpenDialog(parentWin, dialogOptions)
+            : await dialog.showOpenDialog(dialogOptions);
+        if (!result || result.canceled || !result.filePaths?.length) return null;
         return result.filePaths[0];
     });
 }

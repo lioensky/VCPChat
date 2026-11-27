@@ -504,8 +504,11 @@
             modes
         };
     };
+    const MODE_IDS = new Set(MODE_META.map((entry) => entry.id));
     let current = null;
     const listeners = new Set();
+    let persistTimer = null;
+    let persistDirty = false;
 
     const notify = () => {
         const snapshot = clone(current);
@@ -518,7 +521,9 @@
         });
     };
 
-    const persist = () => {
+    const persistNow = () => {
+        if (persistTimer !== null) { global.clearTimeout?.(persistTimer); persistTimer = null; }
+        persistDirty = false;
         try {
             global.localStorage?.setItem(STORAGE_KEY, JSON.stringify(current));
         } catch (error) {
@@ -526,7 +531,23 @@
         }
     };
 
+    const schedulePersist = () => {
+        persistDirty = true;
+        if (typeof global.setTimeout !== 'function') { persistNow(); return; }
+        if (persistTimer !== null) return;
+        persistTimer = global.setTimeout(() => {
+            persistTimer = null;
+            if (persistDirty) persistNow();
+        }, 250);
+    };
+
+    const flushPersist = () => {
+        if (persistDirty) persistNow();
+    };
+
     const load = () => {
+        if (persistTimer !== null) { global.clearTimeout?.(persistTimer); persistTimer = null; }
+        persistDirty = false;
         try {
             const saved = global.localStorage?.getItem(STORAGE_KEY);
             current = normalize(saved ? JSON.parse(saved) : DEFAULTS);
@@ -546,25 +567,28 @@
                 ...(source?.modes || {})
             }
         });
-        persist();
+        persistNow();
         notify();
         return clone(current);
     };
 
     const setModePatch = (modeId, patch) => {
-        if (!MODE_META.some((entry) => entry.id === modeId)) return clone(current);
-        return update({
+        if (!MODE_IDS.has(modeId)) return clone(current);
+        const merged = { ...current.modes[modeId], ...(patch || {}) };
+        current = {
+            ...current,
             modes: {
-                [modeId]: {
-                    ...current.modes[modeId],
-                    ...(patch || {})
-                }
+                ...current.modes,
+                [modeId]: normalizeMode(merged, DEFAULTS.modes[modeId] || {})
             }
-        });
+        };
+        schedulePersist();
+        notify();
+        return clone(current);
     };
 
     const toggleMode = (modeId, enabled) => {
-        if (!MODE_META.some((entry) => entry.id === modeId)) return clone(current);
+        if (!MODE_IDS.has(modeId)) return clone(current);
         const enabledModes = current.enabledModes.filter((id) => id !== modeId);
         if (enabled && !enabledModes.includes(modeId)) enabledModes.push(modeId);
         return update({ enabledModes });
@@ -572,12 +596,14 @@
 
     const reset = () => {
         current = normalize(DEFAULTS);
-        persist();
+        persistNow();
         notify();
         return clone(current);
     };
 
     load();
+    global.addEventListener?.('beforeunload', flushPersist, { once: true });
+    global.addEventListener?.('pagehide', flushPersist, { once: true });
 
     global.MusicStageConfig = Object.freeze({
         STORAGE_KEY,
@@ -590,6 +616,7 @@
         setModePatch,
         toggleMode,
         reset,
+        flush: flushPersist,
         subscribe(listener) {
             if (typeof listener !== 'function') return () => {};
             listeners.add(listener);

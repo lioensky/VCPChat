@@ -29,30 +29,32 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
     });
 
     // 前端传递: { serverId?, url, username?, password?, path }
-    ipcMain.handle('webdav-list-directory', async (event, config = {}) => {
+    ipcMain.handle('webdav-list-directory', async (event, config) => {
+        const req = config && typeof config === 'object' ? { ...config } : {};
         // 如果提供了 serverId，从后端获取完整凭据
-        if (config?.serverId) {
-            const serverCreds = webdavManager.getServerCredentials(config.serverId);
+        if (req.serverId) {
+            const serverCreds = webdavManager.getServerCredentials(req.serverId);
             if (serverCreds) {
-                config.url = serverCreds.url;
-                config.username = serverCreds.username;
-                config.password = serverCreds.password;
+                req.url = serverCreds.url;
+                req.username = serverCreds.username;
+                req.password = serverCreds.password;
             }
         }
-        return await webdavManager.listDirectory(config);
+        return await webdavManager.listDirectory(req);
     });
 
     // 前端传递: { serverId?, url, username?, password?, path? }
-    ipcMain.handle('webdav-scan-audio', async (event, config = {}) => {
-        console.log('[Music] webdav-scan-audio called with config:', { serverId: config?.serverId, url: config?.url });
+    ipcMain.handle('webdav-scan-audio', async (event, config) => {
+        const req = config && typeof config === 'object' ? { ...config } : {};
+        console.log('[Music] webdav-scan-audio called with config:', { serverId: req.serverId, url: req.url });
         // 如果提供了 serverId，从后端获取完整凭据
-        if (config?.serverId) {
-            const serverCreds = webdavManager.getServerCredentials(config.serverId);
+        if (req.serverId) {
+            const serverCreds = webdavManager.getServerCredentials(req.serverId);
             console.log('[Music] serverCreds found:', !!serverCreds, 'hasPassword:', !!(serverCreds?.password));
             if (serverCreds) {
-                config.url = serverCreds.url;
-                config.username = serverCreds.username;
-                config.password = serverCreds.password;
+                req.url = serverCreds.url;
+                req.username = serverCreds.username;
+                req.password = serverCreds.password;
             }
         }
         let lastSentAt = 0;
@@ -68,7 +70,7 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
                 musicWindow.webContents.send('webdav-scan-progress', { count });
             }
         };
-        const results = await webdavManager.scanAudioFiles(config, (count) => {
+        const results = await webdavManager.scanAudioFiles(req, (count) => {
             sendProgress(count, false);
         });
         if (results?.tracks?.length) sendProgress(results.tracks.length, true);
@@ -88,25 +90,24 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
 
     // Load a WebDAV file: 前端传递 { url, serverId?, username?, password?, trackMeta? }
     // 如果提供 serverId，则从后端获取完整凭据（包含密码）
-    ipcMain.handle('webdav-load-track', async (event, config = {}) => {
-        if (!config?.url) return { status: 'error', message: 'No URL provided' };
-        
+    ipcMain.handle('webdav-load-track', async (event, config) => {
+        if (!config || typeof config !== 'object' || !config.url) return { status: 'error', message: 'No URL provided' };
+        const req = { ...config };
         // 如果提供了 serverId，从后端获取完整凭据
-        if (config.serverId && !config.password) {
-            const serverCreds = webdavManager.getServerCredentials(config.serverId);
+        if (req.serverId && !req.password) {
+            const serverCreds = webdavManager.getServerCredentials(req.serverId);
             if (serverCreds) {
-                config.username = serverCreds.username;
-                config.password = serverCreds.password;
+                req.username = serverCreds.username;
+                req.password = serverCreds.password;
             }
         }
-        
-        const rawName = String(config.url).split(/[?#]/)[0].split('/').pop();
+        const rawName = String(req.url).split(/[?#]/)[0].split('/').pop() || '';
         setCurrentSongInfo({
-            title: config.trackMeta?.title || safeDecode(rawName),
-            artist: config.trackMeta?.artist || '未知艺术家',
-            album: config.trackMeta?.album || '未知专辑',
+            title: req.trackMeta?.title || safeDecode(rawName),
+            artist: req.trackMeta?.artist || '未知艺术家',
+            album: req.trackMeta?.album || '未知专辑',
         });
-        return await webdavManager.configureAndLoad(config);
+        return await webdavManager.configureAndLoad(req);
     });
 }
 

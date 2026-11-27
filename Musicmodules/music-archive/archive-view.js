@@ -1158,6 +1158,8 @@
         const setMode = (mode, { persist = true } = {}) => {
             state.mode = mode === 'classic' ? 'classic' : 'archive';
             const on = state.mode === 'archive';
+            // 读主题变量只依赖 light-theme，提前到改 hidden / body 类之前，避免随后建场景立刻 getComputedStyle 触发全页样式重算
+            const initialTheme = on && (!state.scene || sceneQuality !== quality()) ? readTheme() : null;
             root.hidden = !on;
             document.body.classList.toggle('music-archive-on', on);
             document.body.classList.toggle('music-archive-off', !on);
@@ -1165,8 +1167,8 @@
             if (persist) { try { localStorage.setItem(VIEW_KEY, state.mode); } catch (e) { /* 只是记住上次的视图 */ } schedulePlace(); }
             if (on) {
                 app.destroyAmbientPixi?.();
-                ensureScene();
-                resize();
+                const sceneResized = ensureScene(initialTheme);
+                if (!sceneResized) resize();
                 if (dataChanged()) rebuildSoon();
                 updatePlaying(true);
                 kick();
@@ -1224,19 +1226,19 @@
         };
 
         let sceneQuality = null;
-        const ensureScene = () => {
-            if (state.scene && sceneQuality === quality()) return;
+        const ensureScene = (prefetchedTheme = null) => {
+            if (state.scene && sceneQuality === quality()) return false;
             const prev = state.scene;
             const keepTarget = prev ? prev.target : { lane: state.lane, row: state.row };
             if (prev) prev.dispose();
             // 先读主题变量，再切 hud 类并插入 canvas，避免写完 DOM 后立即 getComputedStyle 触发全页样式重算
-            const initialTheme = readTheme();
+            const initialTheme = prefetchedTheme || readTheme();
             try {
                 state.scene = (options.sceneLib || SceneLib).create({ host: root, quality: quality(), reducedMotion });
             } catch (e) {
                 console.warn('[MusicArchive] 3D 场景创建失败，只显示文字：', e);
                 state.scene = null;
-                return;
+                return false;
             }
             sceneQuality = quality();
             refs.hud.classList.toggle('low-power', sceneQuality === 'energy-saving');
@@ -1263,6 +1265,7 @@
             resize();
             state.scene.jump(keepTarget.lane, keepTarget.row);
             updatePlaying(true);
+            return true;
         };
 
         const TINY_W = 760, DRAWER_TINY_W = 840, NARROW_W = 1300, MID_W = 1720;

@@ -7,11 +7,16 @@ const fs = require('fs-extra');
 const { decodeLyricText } = require('../lyrics/decodeLyricText');
 const { parseTTML } = require('../lyrics/parserCore');
 
+const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]{2,}:\/\//i;
+const LRC_TIMESTAMP_RE = /\[\d{1,3}:\d{2}/;
+const SANITIZE_RE = /[\\/:"*?<>|]/g;
+const sanitizeFilePart = (str) => String(str || '').replace(SANITIZE_RE, '_').trim();
+
 function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
     // 和歌放在一起的歌词（同目录同名的 .ttml / .lrc，很多人整理曲库时就这么放）：比歌词目录里自动下载的优先
     const readSidecarLyrics = async (trackPath) => {
         const p = typeof trackPath === 'string' ? trackPath : '';
-        if (!p || /^[a-z][a-z0-9+.-]{2,}:\/\//i.test(p) || !path.isAbsolute(p)) return null;
+        if (!p || URL_SCHEME_RE.test(p) || !path.isAbsolute(p)) return null;
         const base = p.slice(0, p.length - path.extname(p).length);
         if (!base || base === p) return null;
         for (const ext of ['.ttml', '.lrc']) {
@@ -25,7 +30,7 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
                     if (parsed && parsed.lines.length) return { ...parsed, source: 'sidecar' };
                     continue;
                 }
-                if (/\[\d{1,3}:\d{2}/.test(text)) return text;
+                if (LRC_TIMESTAMP_RE.test(text)) return text;
             } catch (err) {
                 if (err && err.code !== 'ENOENT') console.warn(`[Music] Error reading lyrics next to the track ${file}:`, err.message);
             }
@@ -39,9 +44,9 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
         const sidecar = await readSidecarLyrics(trackPath);
         if (sidecar) return sidecar;
 
-        const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
-        const sanitizedTitle = sanitize(title);
-        const sanitizedArtist = artist ? sanitize(artist) : '';
+        const sanitizedTitle = sanitizeFilePart(title);
+        if (!sanitizedTitle) return null;
+        const sanitizedArtist = artist ? sanitizeFilePart(artist) : '';
         const baseName = sanitizedArtist ? `${sanitizedArtist} - ${sanitizedTitle}` : sanitizedTitle;
         const lyricDir = getLyricDir();
 

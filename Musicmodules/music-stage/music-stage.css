@@ -53,9 +53,29 @@ body.music-stage-active #custom-title-bar {
 
 body.music-stage-active.music-stage-scene-3d #custom-title-bar,
 body.music-fl-low.music-stage-active #custom-title-bar,
-body.music-fl-low .music-stage-chrome {
+body.music-fl-low .music-stage-chrome,
+body.music-fl-low .music-stage-mode-switcher {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+}
+
+body.music-fl-low .music-stage-backdrop-noise {
+    display: none;
+}
+
+body.music-fl-low .music-stage-edge-spectrum-canvas,
+body.music-fl-low .music-stage-edge-flow,
+body.music-fl-low .music-stage-edge-corners i,
+body.music-fl-low .music-stage-progress-glow,
+body.music-fl-low .music-stage-mode-root.is-switching,
+body.music-fl-low .music-stage-mode-root > .music-stage-mode.is-soft-settling,
+body.music-fl-low .music-stage-mode-root > .music-stage-mode.is-song-leaving,
+body.music-fl-low .music-stage-mode-root > .music-stage-mode.is-soft-leaving {
+    filter: none;
+}
+
+body.music-fl-low .music-stage-track-title.is-changing {
+    animation: none;
 }
 
 body.music-stage-active #custom-title-bar .title {

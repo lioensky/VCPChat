@@ -66,13 +66,18 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
     const flushSaveSync = () => {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
         if (!dirty && !pendingWrite) return;
-        saveGen += 1;
+        const gen = ++saveGen;
         dirty = false;
         pendingWrite = false;
+        const tmp = `${stateFile}.${process.pid}.${gen}.sync.tmp`;
         try {
             fs.mkdirSync(path.dirname(stateFile), { recursive: true });
-            fs.writeFileSync(stateFile, JSON.stringify(prefs));
-        } catch (e) { console.error('[Music] 桌面歌词设置没存上:', e.message); }
+            fs.writeFileSync(tmp, JSON.stringify(prefs));
+            fs.renameSync(tmp, stateFile);
+        } catch (e) {
+            try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
+            console.error('[Music] 桌面歌词设置没存上:', e.message);
+        }
     };
     const musicWin = () => {
         const w = getMusicWindow();
@@ -109,6 +114,9 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
     const rememberBounds = () => {
         if (!win || win.isDestroyed()) return;
         const b = win.getBounds();
+        if (!b || !(b.width > 0) || !(b.height > 0)) return;
+        const prev = prefs.bounds;
+        if (prev && prev.x === b.x && prev.y === b.y && prev.width === b.width && prev.height === b.height) return;
         prefs.bounds = { x: b.x, y: b.y, width: b.width, height: b.height };
         save();
     };
@@ -191,13 +199,20 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
         }
         if (command === 'close') { setOn(false); return; }
         if (command === 'open-music') { const m = musicWin(); if (m) { if (m.isMinimized()) m.restore(); m.show(); m.focus(); } return; }
-        if (command === 'lock') { prefs.locked = value === true; save(); applyLock(); tellBar('music-desktop-lyrics-prefs', { locked: prefs.locked, size: prefs.size }); tellMusic(); return; }
+        if (command === 'lock') {
+            const nextLocked = value === true;
+            if (prefs.locked === nextLocked) return;
+            prefs.locked = nextLocked;
+            save(); applyLock(); tellBar('music-desktop-lyrics-prefs', { locked: prefs.locked, size: prefs.size }); tellMusic(); return;
+        }
         // 锁定时悬停在锁形按钮上：临时接收点击，移开再穿透
         if (command === 'hover') { if (prefs.locked) win.setIgnoreMouseEvents(value !== true, { forward: true }); return; }
         if (command === 'size') {
             const n = Math.round(Number(value));
             if (!Number.isFinite(n)) return;
-            prefs.size = Math.max(SIZE_MIN, Math.min(SIZE_MAX, n));
+            const nextSize = Math.max(SIZE_MIN, Math.min(SIZE_MAX, n));
+            if (prefs.size === nextSize) return;
+            prefs.size = nextSize;
             save();
             tellBar('music-desktop-lyrics-prefs', { locked: prefs.locked, size: prefs.size });
         }

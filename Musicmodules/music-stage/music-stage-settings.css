@@ -919,6 +919,15 @@ body.music-fl-low .music-stage-settings-footer {
 
 body.music-fl-low .music-stage-settings-card {
     background: var(--stage-control-bg);
+    animation: none;
+}
+
+body.music-fl-low .music-stage-settings-card::before {
+    display: none;
+}
+
+body.music-fl-low .music-stage-settings-toggle-pulse {
+    animation: none;
 }
 
 body.music-fl-low .music-stage-settings-header,
