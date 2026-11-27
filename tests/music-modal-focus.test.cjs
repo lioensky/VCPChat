@@ -183,3 +183,38 @@ test('removing a folder clears duplicate occurrences of its tracks from manualQu
     window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     dom.window.close();
 });
+
+test('music-skin skips forced reflow during stage mode and window-visibility unsubscribes on beforeunload', async () => {
+    const dom = new JSDOM(`<!doctype html><body class="music-stage-active">
+        <div class="track-file-number"></div>
+        <div id="track-title">Song A</div>
+        <div id="track-bitrate">320 kbps</div>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    let reflowReads = 0;
+    const roller = doc.querySelector('.track-file-number');
+    Object.defineProperty(roller, 'offsetWidth', { get() { reflowReads += 1; return 100; } });
+    const app = {
+        playlist: [
+            { path: 'C:\\a.flac', title: 'Song A', album: 'Alb' },
+            { path: 'C:\\b.flac', title: 'Song B', album: 'Alb' }
+        ],
+        currentTrackIndex: 0,
+        trackTitle: doc.getElementById('track-title'),
+        trackBitrate: doc.getElementById('track-bitrate')
+    };
+    let unsubCalled = 0;
+    window.utilityAPI = { onMusicWindowVisibility: () => () => { unsubCalled += 1; } };
+    window.eval(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'));
+    window.eval(fs.readFileSync('Musicmodules/music-theme/music-skin.js', 'utf8'));
+    window.eval(fs.readFileSync('Musicmodules/music-window-visibility.js', 'utf8'));
+    window.setupMusicSkin(app);
+    app.currentTrackIndex = 1;
+    app.trackTitle.textContent = 'Song B';
+    await tick(window);
+    assert.equal(reflowReads, 0, 'stage mode skips hidden .track-file-number forced reflow');
+    window.dispatchEvent(new window.Event('beforeunload'));
+    assert.equal(unsubCalled, 1, 'window-visibility unsubscribes on beforeunload');
+    dom.window.close();
+});

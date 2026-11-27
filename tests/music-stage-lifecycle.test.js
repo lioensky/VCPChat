@@ -1035,14 +1035,15 @@ test('stage-lyric-performance caches font assignments in measure() and reacts to
     const { app } = createApp();
     const lines = dom.window.MusicStageRuntime.normalizeLines(app.currentLyrics);
     const stageRoot = dom.window.document.getElementById('music-stage');
+    stageRoot.classList.add('music-stage');
     const host = dom.window.document.createElement('div');
     Object.defineProperty(host, 'clientWidth', { value: 960 });
     Object.defineProperty(host, 'clientHeight', { value: 540 });
     stageRoot.appendChild(host);
-    let cardRight = 40;
+    let cardRight = 100;
     const card = dom.window.document.createElement('div');
     card.className = 'music-stage-id3';
-    card.getBoundingClientRect = () => ({ left: 0, top: 0, right: cardRight, bottom: 540, width: cardRight, height: 540 });
+    card.getBoundingClientRect = () => ({ left: 20, top: 20, right: cardRight, bottom: 320, width: cardRight - 20, height: 300 });
     stageRoot.appendChild(card);
     const mode = dom.window.MusicStageLuminousManager.create(host, { app });
     const viewport = host.querySelector('.lyric-performance-viewport');
@@ -1064,14 +1065,65 @@ test('stage-lyric-performance caches font assignments in measure() and reacts to
         audio: { power: 0.3, bass: 0.2, lowMid: 0.2, mid: 0.2, vocal: 0.3, treble: 0.1 }
     };
     mode.updateFrame(pausedFrame);
-    const sceneEl = viewport.firstElementChild;
-    assert.ok(sceneEl, 'luminous mounted lyric scene');
+    const fieldEl = viewport.firstElementChild?.firstElementChild;
+    assert.ok(fieldEl, 'luminous mounted lyric scene field');
     assert.ok(fontSets > 0 && fontSets <= 3, `measure() cached repeated fonts (${fontSets} sets)`);
-    const firstTransform = sceneEl.style.transform;
-    cardRight = 640;
+    const firstTransform = fieldEl.style.transform;
+    cardRight = 560;
     roCallbacks.forEach((cb) => cb());
     mode.updateFrame(pausedFrame);
-    assert.notEqual(sceneEl.style.transform, firstTransform, 'paused frame re-evaluates dodgeCard when card box shifts');
+    assert.notEqual(fieldEl.style.transform, firstTransform, 'paused frame re-evaluates dodgeCard when card box shifts');
     mode.destroy();
+    dom.window.close();
+});
+
+test('music-stage-skin avoids full-window edge-spectrum offscreen pass and trims energy-saving blur', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-stage-skin.css'), 'utf8');
+    const edgeBlock = css.match(/\.music-stage\s+\.music-stage-edge-spectrum\s*\{([^}]*)\}/);
+    assert.ok(edgeBlock, 'edge-spectrum container rule exists');
+    assert.match(edgeBlock[1], /filter:\s*none;/, 'no full-window grayscale filter on container');
+    assert.match(edgeBlock[1], /opacity:\s*1;/, 'no full-window group opacity on container');
+    assert.match(css, /\.music-stage\s+\.music-stage-edge-spectrum-canvas\s*\{[^}]*filter:\s*grayscale\(1\)/, 'grayscale applied to narrow strip canvases');
+    assert.match(css, /body\.music-fl-low\s+\.music-stage-id3\s*\{[^}]*backdrop-filter:\s*none/, 'energy-saving disables backdrop-filter on stage track card');
+
+    const dom = createStageDom();
+    const blurs = [];
+    dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+        if (type !== '2d') return null;
+        let sb = 0;
+        return new Proxy({
+            get shadowBlur() { return sb; },
+            set shadowBlur(v) { sb = v; },
+            stroke() { blurs.push(sb); }
+        }, {
+            get(target, prop) { return prop in target ? target[prop] : () => {}; },
+            set(target, prop, value) { target[prop] = value; return true; }
+        });
+    };
+    for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+        runScript(dom, `Musicmodules/music-stage/${dep}`);
+    }
+    const root = dom.window.document.getElementById('music-stage');
+    Object.defineProperty(root, 'clientWidth', { value: 960 });
+    Object.defineProperty(root, 'clientHeight', { value: 540 });
+    const state = { config: { quality: 'energy-saving', edgeSpectrum: true } };
+    const edge = dom.window.MusicStageEdge.create({
+        app: {},
+        root,
+        elements: {
+            edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'),
+            edgeCanvas: root.querySelector('.music-stage-edge-spectrum-canvas')
+        },
+        state,
+        scope: { add() {} },
+        clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+    });
+    edge.draw({ now: 1000, isPlaying: true, viewport: { dpr: 2 }, audio: { power: 0.6, spectrum: new Array(64).fill(0.5) } });
+    assert.ok(blurs.length === 8 && Math.max(...blurs) === 8 && blurs.includes(0), 'energy-saving halves outer blur and skips secondary blur');
+    blurs.length = 0;
+    state.config.quality = 'standard';
+    edge.draw({ now: 2000, isPlaying: true, viewport: { dpr: 2 }, audio: { power: 0.6, spectrum: new Array(64).fill(0.5) } });
+    assert.ok(blurs.length === 8 && Math.max(...blurs) === 18 && blurs.includes(3.5), 'standard keeps full 18/3.5 shadowBlur');
+    edge.release();
     dom.window.close();
 });
