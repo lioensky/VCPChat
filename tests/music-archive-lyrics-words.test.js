@@ -152,3 +152,14 @@ test('archive lyrics respects app.lyricsTranslation toggle and recalculates row 
     assert.equal(ly.el.querySelector('p[data-k="0"] em')?.textContent, '你好世界', 're-enabling restores em translations');
     ly.destroy();
 });
+
+test('archive lyrics skips 200ms timer for untimed plain lyrics while playing', () => {
+    const { app, ly } = setup({ playing: true });
+    assert.equal(ly.debug().ticking, true, 'timed lyrics run interval while playing');
+    app.currentLyrics = [];
+    app.currentLyricsPlainLines = ['第一行纯文本', '第二行纯文本'];
+    ly.sync();
+    assert.equal(ly.debug().shown, true, 'plain lyrics stay visible');
+    assert.equal(ly.debug().ticking, false, 'untimed plain lyrics do not spin 200ms tick interval');
+    ly.destroy();
+});

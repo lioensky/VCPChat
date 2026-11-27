@@ -1641,3 +1641,53 @@ test('archive wall createThumbs ignores in-flight completions and skips callback
     assert.equal(images.length, 1, 'destroyed thumb cache does not enqueue new loads');
     w.close();
 });
+
+test('archive wall stops idle rAF during CSS entry and detaches pooled cover srcs on hide', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    const rafQueue = [];
+    let nextRaf = 1;
+    w.requestAnimationFrame = (cb) => { const id = nextRaf++; rafQueue.push({ id, cb }); return id; };
+    w.cancelAnimationFrame = (id) => {
+        const idx = rafQueue.findIndex((r) => r.id === id);
+        if (idx !== -1) rafQueue.splice(idx, 1);
+    };
+    w.Image = class FakeImage {
+        set src(v) {
+            this._src = v;
+            this.naturalWidth = 100;
+            this.naturalHeight = 100;
+            this.onload?.();
+        }
+    };
+    w.eval(read('Musicmodules/music-archive/archive-wall.js'));
+    const tracks = Array.from({ length: 16 }, (_, i) => ({ path: `/m/${i}.flac`, title: `Song ${i}`, artist: 'A', album: 'B', cover: `file:///c${i}.jpg` }));
+    const wall = w.MusicArchiveWall.create({
+        host: w.document.getElementById('host'),
+        items: () => ({ key: 'all', ids: tracks.map((_, i) => i), name: '全部' }),
+        track: (i) => tracks[i],
+        cover: (t) => t.cover,
+        selected: () => 0,
+        playing: () => ({ index: -1, active: false }),
+        meta: (t, i) => ({ title: t.title, artist: t.artist, album: t.album, code: String(i + 1).padStart(3, '0'), duration: '3:00' }),
+        pick() {}, play() {}, menu() {},
+        reducedMotion: () => false
+    });
+    wall.setRoom({ left: 0, top: 0, width: 900, height: 600 });
+    wall.show(true);
+    // 排完初始帧后静止在墙面上：CSS aw-entering 自行播放，tick 不应继续空转 rAF
+    let steps = 0;
+    while (rafQueue.length && steps < 5) {
+        const job = rafQueue.shift();
+        job.cb(100 + steps * 16);
+        steps += 1;
+    }
+    assert.equal(rafQueue.length, 0, 'stationary wall schedules zero extra rAF frames during CSS entry window');
+    assert.ok(wall.el.querySelectorAll('.aw-tile img[src]').length > 0, 'visible tiles loaded cover srcs');
+
+    wall.show(false);
+    // 隐藏后回收池中不应残留已解码的 img src
+    assert.equal(wall.el.querySelectorAll('.aw-tile').length, 0);
+    wall.destroy();
+    w.close();
+});
