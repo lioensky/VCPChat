@@ -376,12 +376,13 @@
                 fluid = null;
                 el.hdl.style.transform = '';
             }
+            // 先读主题色再切 md-fl-* / md-light 类，避免写类后立刻 getComputedStyle 触发全页样式重算，
+            // 并把全部样式变更合并到 fluid.layout() 之前的一次排版里。
+            syncGlow();
             host.classList.toggle('md-fl-on', Boolean(fluid));
             host.classList.toggle('md-fl-low', !fluid);
             document.body.classList.toggle('music-fl-low', !fluid);
             host.classList.toggle('md-q-ultimate', global.MusicStageConfig?.get?.()?.quality === 'ultimate');
-            // 先写 md-light 与主题色变量，再做 fluid.layout()，把样式重算与布局测量合并为一次
-            syncGlow();
             if (fluid) {
                 fluid.layout();
                 lastRange = '';
@@ -1092,16 +1093,24 @@
             )).join('')}</div>`
         );
         const placeMarks = (root) => {
-            for (const seg of root.querySelectorAll('.md-seg')) {
+            const segs = root.querySelectorAll('.md-seg');
+            if (!segs.length) return;
+            // 先集中量全部 .md-seg 的几何位置，再统一写样式/触发滑块，避免读→写→读交替造成多次强制同步重排
+            const jobs = [];
+            for (const seg of segs) {
                 const on = seg.querySelector('button.md-on');
                 const mark = seg.querySelector('.md-mk');
                 if (!on || !mark) continue;
                 // 底部页签的标记是字下面一道短线，只跟字一样宽
                 const label = seg.closest('.md-dockrow') ? on.querySelector('span') : null;
-                const to = label && label.offsetWidth
-                    ? { left: on.offsetLeft + label.offsetLeft + label.offsetWidth * 0.2, width: label.offsetWidth * 0.6 }
+                const lw = label ? label.offsetWidth : 0;
+                const to = lw
+                    ? { left: on.offsetLeft + label.offsetLeft + lw * 0.2, width: lw * 0.6 }
                     : { left: on.offsetLeft, width: on.offsetWidth };
-                const key = `md-seg:${seg.dataset.act || seg.dataset.md || ''}`;
+                jobs.push({ mark, to, key: `md-seg:${seg.dataset.act || seg.dataset.md || ''}` });
+            }
+            for (let i = 0; i < jobs.length; i += 1) {
+                const { mark, to, key } = jobs[i];
                 if (global.MusicFluid?.slide && key !== 'md-seg:') global.MusicFluid.slide(mark, to, { key });
                 else { mark.style.left = `${to.left}px`; mark.style.width = `${to.width}px`; }
             }
@@ -2110,20 +2119,23 @@
             };
             app.scanOutcomeToast = scanOutcomeToast;
             if (bridge?.onMusicScanProgress) {
-                bridge.onMusicScanStart?.(() => {
+                const offStart = bridge.onMusicScanStart?.(() => {
                     if (!state.destroyed) toast.show({ id: 'scan', kind: 'progress', message: '正在扫描音乐文件夹…', delay: 300 });
                 });
-                bridge.onMusicScanProgress((data) => {
+                const offProg = bridge.onMusicScanProgress((data) => {
                     if (state.destroyed) return;
                     const total = Number(data?.total) || 0;
                     const current = Number(data?.current) || 0;
                     toast.show({ id: 'scan', kind: 'progress', message: total ? `正在扫描 ${current} / ${total}` : '正在扫描音乐文件夹…', progress: total ? current / total : undefined });
                 });
-                bridge.onMusicScanComplete?.((data) => {
+                const offDone = bridge.onMusicScanComplete?.((data) => {
                     if (state.destroyed) return;
                     toast.dismiss('scan');
                     toast.show(scanOutcomeToast(data));
                 });
+                for (const off of [offStart, offProg, offDone]) {
+                    if (typeof off === 'function') cleanups.push(off);
+                }
             }
         }
 
@@ -2137,11 +2149,12 @@
         state.expanded = shouldExpand();
         el.cap.classList.toggle('md-ex', state.expanded);
         syncFluid();
-        if (global.MusicStageConfig?.subscribe) cleanups.push(global.MusicStageConfig.subscribe(() => { syncFluid(); syncGlow(); }));
+        if (global.MusicStageConfig?.subscribe) cleanups.push(global.MusicStageConfig.subscribe(() => syncFluid()));
         // 字体和布局稳定后再量一次（流体层要对齐按钮的真实位置）。
         requestAnimationFrame(() => { if (!state.destroyed) animateCapsule(); });
         // 预热抽屉：窗口空下来以后，在藏着的抽屉里把当前页签画一遍。第一次打开时样式规则和排版都已经算过一回，
         // 不会比以后每次都慢一大截。真打开时照常重画，这里画的东西不会被直接拿来用。
+        const warmIdleIds = new Set();
         const warmTimer = setTimeout(() => {
             const run = () => { if (!state.panelOpen && !state.destroyed) renderBody(); };
             // 停着的音效卡从来没排过版（content-visibility:hidden 从一开始就跳过了它），第一次切到声音页要把
@@ -2152,10 +2165,19 @@
                 void el.fxScroll.firstElementChild?.getBoundingClientRect();
                 el.fxScroll.classList.remove('md-fx-warm');
             };
-            const idle = (fn) => (typeof global.requestIdleCallback === 'function' ? global.requestIdleCallback(fn, { timeout: 4000 }) : fn());
+            const idle = (fn) => {
+                if (typeof global.requestIdleCallback !== 'function') { fn(); return; }
+                let id = 0;
+                id = global.requestIdleCallback(() => { warmIdleIds.delete(id); fn(); }, { timeout: 4000 });
+                warmIdleIds.add(id);
+            };
             idle(() => { run(); idle(warmFx); });
         }, 2500);
-        cleanups.push(() => clearTimeout(warmTimer));
+        cleanups.push(() => {
+            clearTimeout(warmTimer);
+            for (const id of warmIdleIds) global.cancelIdleCallback?.(id);
+            warmIdleIds.clear();
+        });
         kickProgress();
         lastPlaying = app.isPlaying === true;
         lastStage = stageActive();
@@ -2195,6 +2217,7 @@
                 document.body.classList.remove('music-dock-on');
                 delete app.openMusicControls;
                 document.body.style.removeProperty('--music-dock-safe-bottom');
+                global.removeEventListener('beforeunload', api.destroy);
                 host.innerHTML = '';
             }
         };

@@ -260,11 +260,14 @@
         const computeColumns = (index) => {
             const base = Model.buildColumns(tracks(), app.customPlaylists, { indexByPath: pathIndex() });
             let letters0 = null;
-            // 「全部曲目」用全局顺序（和目录一致），不用扫描顺序
+            // 「全部曲目」用全局顺序（和目录一致），不用扫描顺序；
+            // 曲目数达到分列阈值时直接交由 groupColumns 一次分组排序，避免先 sortedIndices 全量排一遍再丢弃 base[0]
             const spec = sortSpecFor(index);
-            if (spec) base[0].items = IndexLib.sortedIndices(index, base[0].items, spec);
             const n = tracks().length;
-            if (n < LETTER_SPLIT_MIN || !spec) return { columns: base, letterOf: null };
+            if (n < LETTER_SPLIT_MIN || !spec) {
+                if (spec) base[0].items = IndexLib.sortedIndices(index, base[0].items, spec);
+                return { columns: base, letterOf: null };
+            }
             const letters = IndexLib.groupColumns(index, base[0].items, { minSize: LETTER_MIN_SIZE, spec });
             letters0 = new Map();
             for (const c of letters) for (const g of c.groups) letters0.set(g, c.id);

@@ -110,7 +110,7 @@
 
         // ── 状态 ──
         // 每个量都有「当前」和「目标」，循环里按指数逼近；没有在动的量时循环停下。
-        const geo = { x: 0, y: 0, w: 0, h: 0, left: 0, bottom: 0, layerW: 0, playX: 0, volX: 0, ringX: 0 };
+        const geo = { x: 0, y: 0, w: 0, h: 0, left: 0, bottom: 0, layerW: 0, playX: 0, volX: 0, ringX: 0, vh: 0 };
         const s = {
             progress: 0,
             // 进度在播放条宽度里走的区间（0～1）：起点由 music-dock.js 量成曲名左缘，终点在音量键前。
@@ -186,6 +186,7 @@
             const rect = { left: raw.left - sx, right: raw.right - sx, top: raw.top, bottom: raw.bottom, width: raw.width, height: raw.height };
             const vh = win.innerHeight || doc.documentElement.clientHeight || 0;
             if (!(rect.width > 0 && rect.height > 0)) return false;
+            geo.vh = vh;
             geo.layerW = Math.round(rect.width + PAD_X * 2);
             geo.left = Math.round(rect.left - PAD_X);
             // 层的底边比播放条再低一点（最多 24px），光晕和雾在播放条下沿不被裁掉。
@@ -364,7 +365,7 @@
             setHole(rx, ry, near ? HOLE_R * sh * touch * (0.45 + 0.55 * sz) : 0);
             setAttr(ringSolid, 'cx', rx); setAttr(ringSolid, 'cy', ry); setAttr(ringSolid, 'r', near ? Math.max(0, 95 * sh) : 0); // 弹簧回弹会短暂小于 0，负半径是无效属性
             if (ring) {
-                const vh = win.innerHeight || 0;
+                const vh = geo.vh || win.innerHeight || 0;
                 const layerTop = vh - geo.bottom - LAYER_H;
                 const left = geo.left + rx - RING_R;
                 const top = layerTop + ry - RING_R;
@@ -554,6 +555,7 @@
                 if (frame) win.cancelAnimationFrame(frame);
                 if (glow.frame) win.cancelAnimationFrame(glow.frame);
                 frame = 0;
+                glow.frame = 0;
                 svg.remove();
                 mist.remove();
                 host.style.removeProperty('--md-vgrow');

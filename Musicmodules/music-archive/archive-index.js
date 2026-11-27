@@ -146,6 +146,7 @@
     // 组内排序：数字按数值比（Song 2 在 Song 10 前面）
     const COLLATE = typeof Intl !== 'undefined' ? new Intl.Collator('en', { numeric: true, sensitivity: 'base' }).compare
         : (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+    const LOCALE_CMP = typeof Intl !== 'undefined' ? new Intl.Collator().compare : (a, b) => a.localeCompare(b);
 
     const FIELDS = [['title', 3], ['artist', 2], ['album', 1]];
 
@@ -512,10 +513,12 @@
     const groupColumns = (index, indices, { minSize = 1, spec = null } = {}) => {
         const sp = spec || sortSpec(index);
         const groups = new Map();
-        for (const i of indices) {
+        for (let k = 0; k < indices.length; k += 1) {
+            const i = indices[k];
             const g = sp.group(i);
-            if (!groups.has(g)) groups.set(g, []);
-            groups.get(g).push(i);
+            let bucket = groups.get(g);
+            if (!bucket) { bucket = []; groups.set(g, bucket); }
+            bucket.push(i);
         }
         const ordered = [...groups.entries()].sort((a, b) => sp.rank(a[0]) - sp.rank(b[0]));
         const runs = [];
@@ -601,16 +604,18 @@
             const field = kind;
             const pool = q ? index.query(q, { kind: field }) : list.map((_, i) => i);
             const groups = new Map();
-            for (const i of pool) {
+            for (let k = 0; k < pool.length; k += 1) {
+                const i = pool[k];
                 const name = String(list[i] && list[i][field] || '').trim() || (field === 'artist' ? '未知歌手' : '未知专辑');
-                if (!groups.has(name)) groups.set(name, []);
-                groups.get(name).push(i);
+                let bucket = groups.get(name);
+                if (!bucket) { bucket = []; groups.set(name, bucket); }
+                bucket.push(i);
             }
             const ordered = q
                 ? [...groups.entries()]
                 : [...groups.entries()]
                     .map(([name, items]) => ({ name, items, key: romanize(name, null).py }))
-                    .sort((a, b) => a.key.localeCompare(b.key))
+                    .sort((a, b) => LOCALE_CMP(a.key, b.key))
                     .map(({ name, items }) => [name, items]);
             ordered.forEach(([name, items]) => {
                     const ctx = field === 'album' ? 'album:' + name : null;
@@ -629,18 +634,21 @@
             return { rows, count };
         }
         const groups = new Map();
-        list.forEach((_, i) => {
+        for (let i = 0; i < list.length; i += 1) {
             const g = sp.group(i);
-            if (!groups.has(g)) groups.set(g, []);
-            groups.get(g).push(i);
-        });
+            let bucket = groups.get(g);
+            if (!bucket) { bucket = []; groups.set(g, bucket); }
+            bucket.push(i);
+        }
         // 标题、歌手排序：组标题是首字母（放在左侧外边距）；时长、添加时间：组标题是小标题行
         const letterHeads = sp.mode === 'title' || sp.mode === 'artist';
         [...groups.entries()]
             .sort((a, b) => sp.rank(a[0]) - sp.rank(b[0]))
             .forEach(([g, items]) => {
                 head(sp.name(g), (letterHeads ? 'letter:' : 'sort:') + g, items.length);
-                items.sort(sp.cmp).forEach((i) => push(i, allCtx(i)));
+                const bucketCtx = columnOfGroup ? columnOfGroup(g) : 'all';
+                items.sort(sp.cmp);
+                for (let k = 0; k < items.length; k += 1) push(items[k], bucketCtx);
             });
         return { rows, count };
     };

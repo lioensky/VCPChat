@@ -12,6 +12,8 @@
 
     const stripExtension = (title) => String(title || '').replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '');
 
+    const LOCALE_CMP = typeof Intl !== 'undefined' ? new Intl.Collator().compare : (a, b) => a.localeCompare(b);
+
     const asciiRef = (name, fallback) => {
         const ascii = String(name || '').normalize('NFKD').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
         return ascii.length >= 2 ? ascii.slice(0, 28) : fallback;
@@ -63,15 +65,17 @@
 
         if (maxAlbums > 0) {
             const albums = new Map();
-            list.forEach((track, index) => {
+            for (let index = 0; index < list.length; index += 1) {
+                const track = list[index];
                 const name = track && track.album ? String(track.album).trim() : '';
-                if (!name) return;
-                if (!albums.has(name)) albums.set(name, []);
-                albums.get(name).push(index);
-            });
+                if (!name) continue;
+                let bucket = albums.get(name);
+                if (!bucket) { bucket = []; albums.set(name, bucket); }
+                bucket.push(index);
+            }
             [...albums.entries()]
                 .filter(([, items]) => items.length >= 2)
-                .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+                .sort((a, b) => b[1].length - a[1].length || LOCALE_CMP(a[0], b[0]))
                 .slice(0, maxAlbums)
                 .forEach(([name, items], order) => {
                     if (global.MusicTrackOrder) items.sort(global.MusicTrackOrder.albumCompare(list, (a, b) => a - b)); // 碟号、曲号
