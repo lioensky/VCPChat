@@ -460,14 +460,17 @@
             camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
         };
 
-        let dirty = true, lastWall = 0;
+        let dirty = true, lastWall = 0, canvasSmoothing = true, placeholderGround = null, lastDrawnQuality = null;
         const orbit = createOrbit();
         const cap = U.createFrameCap();
         const onset = R.createAudioOnset();
         const audio = { energy: 0, bass: 0, vocal: 0, impact: 0 };
         const palette = () => services?.app?.stagePalette || {};
-        const options = () => ({ ...(mode.config.modes?.kowloon || {}), reducedMotion: global.MusicStageRuntime.isReducedMotion(reduced), quality: mode.config.quality });
         const renderScale = U.createRenderScale();
+        const drawn = () => renderScale.config(mode.config);
+        const wantsCanvasSmoothing = () => !(global.MusicStageDioramaOptics?.active(mode.config, mode.config.modes?.kowloon || {}) ?? false);
+        const options = () => ({ ...(mode.config.modes?.kowloon || {}), reducedMotion: global.MusicStageRuntime.isReducedMotion(reduced), quality: drawn().quality });
+        const lensObj = { postProcess: undefined, cabin: 0, threshold: 0.95, glow: 1.1, grain: 0.06, vignette: 0.28 };
         const showCaption = () => !signs;
 
         const renderFallback = frame => {
@@ -484,7 +487,7 @@
             width = Math.max(1, mode.root.clientWidth || global.innerWidth || 1);
             height = Math.max(1, mode.root.clientHeight || global.innerHeight || 1);
             if (!renderer) return;
-            renderer.setPixelRatio(renderScale.ratio(mode.config.quality, width, height));
+            renderer.setPixelRatio(renderScale.ratio(drawn().quality, width, height));
             renderer.setSize(width, height, false);
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
@@ -505,6 +508,11 @@
             }
             optics?.destroy();
             try { sandbox?.dispose(); } catch (error) { console.warn('[MusicStage:Kowloon] dispose', error); }
+            if (placeholderGround) {
+                placeholderGround.geometry?.dispose();
+                placeholderGround.material?.dispose();
+                placeholderGround = null;
+            }
             city = signs = alley = optics = sandbox = null;
             moduleList.length = 0;
             renderer?.dispose();
@@ -512,6 +520,7 @@
             renderer?.domElement.remove();
             renderer = camera = scene = null;
             initialized = false;
+            lastDrawnQuality = null;
             dirty = true;
         };
 
@@ -537,8 +546,9 @@
                 if (!fallbackMode) void initialize();
                 return;
             }
+            const activeConfig = drawn();
             const still = !frame.isPlaying && lastTime !== null && R.finiteNumber(frame.playbackTime) === lastTime;
-            if (!force && !dirty && (still || !cap.take(performance.now(), mode.config.quality))) return;
+            if (!force && !dirty && (still || !cap.take(performance.now(), activeConfig.quality))) return;
             dirty = false;
             const time = R.finiteNumber(frame.playbackTime);
             const dt = lastTime === null ? 0 : Math.max(0, Math.min(0.25, time - lastTime));
@@ -605,11 +615,24 @@
 
             if (showCaption()) { fallback.hidden = false; renderFallback(frame); }
             else fallback.hidden = true;
-            if (frame.isPlaying && renderScale.tick(performance.now(), cap.aim(mode.config.quality))) resize();
+            if (frame.isPlaying && renderScale.tick(performance.now(), cap.aim(activeConfig.quality))) {
+                resize();
+                const nextQ = drawn().quality;
+                if (nextQ !== lastDrawnQuality) {
+                    lastDrawnQuality = nextQ;
+                    const nextTier = { name: nextQ || 'standard', ...U.tier(nextQ) };
+                    for (let i = 0; i < moduleList.length; i += 1) moduleList[i].setTier?.(nextTier);
+                }
+            }
             renderer.info.reset();
             const tuned = mode.config.modes?.kowloon || {};
-            const lens = { ...tuned, threshold: tuned.threshold ?? 0.95, glow: tuned.glow ?? 1.1, grain: tuned.grain ?? 0.06, vignette: tuned.vignette ?? 0.28 };
-            if (optics) optics.render(renderer, scene, camera, settings.reducedMotion ? 0 : time, mode.config, lens);
+            lensObj.postProcess = tuned.postProcess;
+            lensObj.cabin = tuned.cabin || 0;
+            lensObj.threshold = tuned.threshold ?? 0.95;
+            lensObj.glow = tuned.glow ?? 1.1;
+            lensObj.grain = tuned.grain ?? 0.06;
+            lensObj.vignette = tuned.vignette ?? 0.28;
+            if (optics) optics.render(renderer, scene, camera, settings.reducedMotion ? 0 : time, drawn(), lensObj);
             else renderer.render(scene, camera);
             if (boxed && scene.fog) scene.fog.density = fogDensity;
             if (boxed) { shared.uSky.value.copy(skyKeep); shared.uGlowStrength.value = glowKeep; }
@@ -630,8 +653,8 @@
                 camera = new T.PerspectiveCamera(32, 1, 0.3, 2400);
                 // 第 3 层：只给主相机、不进倒影的东西（屋顶杂物、雨丝等）。
                 camera.layers.enable(3);
-                const lensOn = global.MusicStageDioramaOptics?.active(mode.config, mode.config.modes?.kowloon || {}) ?? false;
-                renderer = new T.WebGLRenderer({ antialias: !lensOn, alpha: false, powerPreference: 'high-performance' });
+                canvasSmoothing = wantsCanvasSmoothing();
+                renderer = new T.WebGLRenderer({ antialias: canvasSmoothing, alpha: false, powerPreference: 'high-performance' });
                 renderer.debug.checkShaderErrors = false;
                 renderer.outputColorSpace = T.SRGBColorSpace;
                 renderer.toneMapping = T.ACESFilmicToneMapping;
@@ -652,7 +675,9 @@
                 layout = global.MusicStageKowloonLayout.build('kowloon');
                 shared = global.MusicStageKowloonShared.createLightUniforms(T);
                 skyKeep = new T.Color(); skyLift = new T.Color(0.035, 0.05, 0.075);
-                const tier = { name: mode.config.quality || 'standard', ...U.tier(mode.config.quality) };
+                const initQuality = drawn().quality;
+                lastDrawnQuality = initQuality;
+                const tier = { name: initQuality || 'standard', ...U.tier(initQuality) };
                 const ctx = { scene, renderer, camera, layout, palette: palette(), tier, options: options(), lightUniforms: shared, rand: s => global.MusicStageKowloonLayout.rng(s) };
                 // 巷道先建：它定雾、天空和湿度。
                 if (global.MusicStageKowloonAlley?.create) alley = global.MusicStageKowloonAlley.create(T, ctx);
@@ -663,10 +688,10 @@
                 if (!alley) {
                     // 巷道模块还没并进来：先铺一块湿地面，好看楼体落地。
                     shared.uWet.value = 0.7;
-                    const ground = new T.Mesh(new T.PlaneGeometry(1200, 1200), new T.MeshBasicMaterial({ color: 0x07090c }));
-                    ground.rotation.x = -Math.PI / 2;
-                    ground.name = 'kowloon-placeholder-ground';
-                    scene.add(ground);
+                    placeholderGround = new T.Mesh(new T.PlaneGeometry(1200, 1200), new T.MeshBasicMaterial({ color: 0x07090c }));
+                    placeholderGround.rotation.x = -Math.PI / 2;
+                    placeholderGround.name = 'kowloon-placeholder-ground';
+                    scene.add(placeholderGround);
                 }
                 // 招牌模块还没并进来时，用一组占位霓虹光看楼体受光。
                 placeholderLights = signs ? [] : layout.slots(sl => sl.use === 'sign' && sl.floor <= 4)
@@ -685,7 +710,11 @@
                 modules().forEach(m => m.setTier?.(tier));
                 optics = global.MusicStageDioramaOptics?.create(T);
                 resize();
-                await U.precompile(T, renderer, scene, camera, { canvas: !lensOn, offscreen: true });
+                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true, report: false });
+                if (mode.destroyed || !renderer) return;
+                if (!canvasSmoothing) await optics?.precompile?.(renderer);
+                if (mode.destroyed || !renderer) return;
+                await U.settlePrograms(renderer, () => !mode.destroyed && !!renderer);
                 if (mode.destroyed || !renderer) return;
                 initialized = true;
                 dirty = true;
@@ -705,9 +734,18 @@
         mode.resize = () => { resize(); if (latest && initialized) update(latest, true); };
         const baseConfig = mode.updateConfig;
         mode.updateConfig = config => {
+            if (config?.quality !== mode.config.quality) renderScale.reset();
             baseConfig(config);
+            if (initialized && canvasSmoothing !== wantsCanvasSmoothing()) {
+                disposeGraphics();
+                initializing = null;
+                void initialize();
+                return;
+            }
             if (initialized) {
-                const tier = { name: mode.config.quality || 'standard', ...U.tier(mode.config.quality) };
+                const q = drawn().quality;
+                lastDrawnQuality = q;
+                const tier = { name: q || 'standard', ...U.tier(q) };
                 modules().forEach(m => { m.setTier?.(tier); m.setOptions?.(options()); });
             }
             resize();
@@ -723,9 +761,12 @@
             dirty = true;
             if (latest && initialized) update(latest, true);
         });
+        mode.getDegrade = () => ({ steps: renderScale.steps, quality: drawn().quality });
         mode.getDebugSnapshot = () => ({
             initialized, fallbackMode, shot: shotId, framing: { ...frame2d.cur, top: frame2d.top, right: frame2d.right, bottom: frame2d.bottom, fov: camera?.fov },
             camera: camera?.position.toArray(),
+            pixelRatio: renderer?.getPixelRatio(), renderScale: renderScale.factor,
+            degradeSteps: renderScale.steps, drawnQuality: drawn().quality, canvasSmoothing,
             drawCalls: renderer?.info.render.calls, triangles: renderer?.info.render.triangles,
             geometries: renderer?.info.memory.geometries, textures: renderer?.info.memory.textures,
             programs: renderer?.info.programs?.length,

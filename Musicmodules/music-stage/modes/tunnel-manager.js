@@ -32,14 +32,27 @@
     // the sky. The sun is drawn further into the frame than the light strictly
     // allows, so bodies keep a lit face while it stays in the picture.
     const unit = (v) => { const length = Math.hypot(...v); return v.map((n) => n / length); };
+    const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
     const KEY_LIGHT = unit([-0.78, 0.44, 0.26]);
     const SUN_AT = unit([-0.5, 0.26, -0.83]);
+    const SUN_ACROSS = unit(cross3([0, 1, 0], SUN_AT));
+    const SUN_UP = cross3(SUN_AT, SUN_ACROSS);
     // What a body is made as: the surface kinds a planet can be given.
     const WORLD = { gas: 0, moon: 1, ice: 2, volcanic: 3, home: 4, desert: 5, iceGiant: 6, asteroid: 7 };
     // The galaxy's plane, tilted across the upper part of the view, and its bright middle.
     const GALAXY_POLE = unit([0.18, 0.93, 0.33]);
     const GALAXY_CORE = unit([0.75, 0.21, -1]);
     const COMET_AT = unit([0.52, -0.2, -0.83]);
+    const COMET_SUN_DOT = COMET_AT[0] * SUN_AT[0] + COMET_AT[1] * SUN_AT[1] + COMET_AT[2] * SUN_AT[2];
+    const COMET_AWAY = unit([
+        COMET_AT[0] * COMET_SUN_DOT - SUN_AT[0],
+        COMET_AT[1] * COMET_SUN_DOT - SUN_AT[1],
+        COMET_AT[2] * COMET_SUN_DOT - SUN_AT[2]
+    ]);
+    const COMET_SIDE = cross3(COMET_AT, COMET_AWAY);
+    const SUN_RAY_AXES = [0, 1, 2].map((i) => { const t = 0.35 + i * 1.0472; return [Math.cos(t), Math.sin(t)]; });
+    const COMET_JET_AIMS = [0, 1, 2].map((i) => { const t = 2.55 + i * 0.48; return [Math.cos(t), Math.sin(t)]; });
+    const glslVec2 = (v) => `vec2(${v.map((n) => n.toFixed(6)).join(', ')})`;
     const glslVec3 = (v) => `vec3(${v.map((n) => n.toFixed(4)).join(', ')})`;
     // Surface maps sit beside the modes, wherever the page that hosts them lives.
     const ASSETS = (() => {
@@ -762,9 +775,12 @@
                         float core = exp(-r2 * 8.5);
                         float halo = exp(-r2 * 2.2) * 0.34 * vTwinkle;
                         // 十字星芒微刺 (Subtle Airy Cross)
-                        float cross = exp(-abs(p.x) * 18.0) * exp(-abs(p.y) * 4.5)
-                                    + exp(-abs(p.y) * 18.0) * exp(-abs(p.x) * 4.5);
-                        float airy = vLayer > 0.5 ? cross * 0.16 * (1.0 - r2) : 0.0;
+                        float airy = 0.0;
+                        if (vLayer > 0.5) {
+                            float cross = exp(-abs(p.x) * 18.0) * exp(-abs(p.y) * 4.5)
+                                        + exp(-abs(p.y) * 18.0) * exp(-abs(p.x) * 4.5);
+                            airy = cross * 0.16 * (1.0 - r2);
+                        }
                         // Stars have temperatures: a few cool orange ones, many
                         // warm and white, some hot and blue. The halo keeps the
                         // tint; the core burns towards white.
@@ -938,52 +954,61 @@
                     // Leaving home the sun shrinks towards a bright star and its glow draws in.
                     float far = uJourney * uJourney;
                     float reach = mix(1.0, 0.32, far);
-                    float angle = acos(clamp(dot(d, ${glslVec3(SUN_AT)}), -1.0, 1.0)) / reach;
+                    vec3 sunward = ${glslVec3(SUN_AT)};
+                    float sunDot = dot(d, sunward);
+                    float angle = acos(clamp(sunDot, -1.0, 1.0)) / reach;
                     float disc = smoothstep(0.024, 0.008, angle);
                     float corona = (exp(-angle * 24.0) * 0.8 + exp(-angle * 6.5) * 0.14 + exp(-angle * 2.2) * 0.03)
                         * mix(1.0, 0.55, far);
                     // Six thin rays, as a lens draws a point of light.
-                    vec3 sunward = ${glslVec3(SUN_AT)};
-                    vec3 across = normalize(cross(vec3(0.0, 1.0, 0.0), sunward)), up = cross(sunward, across);
-                    vec2 offset = vec2(dot(d, across), dot(d, up));
-                    float rays = 0.0;
-                    for (int i = 0; i < 3; i++) {
-                        float turn = 0.35 + float(i) * 1.0472;
-                        vec2 axis = vec2(cos(turn), sin(turn));
-                        rays += exp(-abs(dot(offset, vec2(-axis.y, axis.x))) * 420.0) * exp(-abs(dot(offset, axis)) * 15.0);
+                    if (sunDot > 0.8) {
+                        vec2 offset = vec2(dot(d, ${glslVec3(SUN_ACROSS)}), dot(d, ${glslVec3(SUN_UP)}));
+                        vec2 r0 = ${glslVec2(SUN_RAY_AXES[0])};
+                        vec2 r1 = ${glslVec2(SUN_RAY_AXES[1])};
+                        vec2 r2 = ${glslVec2(SUN_RAY_AXES[2])};
+                        float rays = exp(-abs(dot(offset, vec2(-r0.y, r0.x))) * 420.0) * exp(-abs(dot(offset, r0)) * 15.0)
+                            + exp(-abs(dot(offset, vec2(-r1.y, r1.x))) * 420.0) * exp(-abs(dot(offset, r1)) * 15.0)
+                            + exp(-abs(dot(offset, vec2(-r2.y, r2.x))) * 420.0) * exp(-abs(dot(offset, r2)) * 15.0);
+                        corona += rays * 0.17;
                     }
-                    corona += rays * 0.17 * step(0.0, dot(d, sunward));
 
                     // A comet low on the far side: a small bright coma, a broad dust
                     // tail curving away from the sun and a thin straight one of gas.
                     vec3 comet = ${glslVec3(COMET_AT)};
-                    vec3 away = normalize(comet * dot(comet, sunward) - sunward), side = cross(comet, away);
-                    vec3 from = d - comet;
-                    float along = dot(from, away), off = dot(from, side), gone = max(along, 0.0);
-                    // Passing close, it grows: the coma swells, both tails stretch
-                    // across the sky, the dust tail shows striations, and jets of
-                    // gas fan out sunward from the nucleus.
-                    float grow = 1.0 + 3.0 * uComet;
-                    float coma = exp(-length(from) * 190.0 / grow) * 0.9 + exp(-length(from) * 46.0 / grow) * 0.1 * (1.0 + uComet);
-                    float bend = off - gone * gone * 0.55 / grow;
-                    float striae = 1.0 - 0.35 * uComet * smoothstep(0.3, 0.8, bandNoise(bend * 900.0 / grow + gone * 40.0));
-                    float dustTail = exp(-bend * bend / ((0.00006 + gone * 0.008) * grow)) * exp(-gone * 6.5 / grow)
-                        * step(0.0, along) * 0.2 * (1.0 + 0.8 * uComet) * striae;
-                    float gasTail = exp(-off * off / ((0.00001 + gone * 0.0005) * grow)) * exp(-gone * 4.2 / grow)
-                        * step(0.0, along) * 0.16 * (1.0 + uComet);
-                    float jets = 0.0;
-                    if (uComet > 0.001) {
-                        for (int i = 0; i < 3; i++) {
-                            float turn = 2.55 + float(i) * 0.48;
-                            vec2 aim = vec2(cos(turn), sin(turn));
-                            vec2 at = vec2(along, off);
-                            float reachOut = dot(at, aim), across = dot(at, vec2(-aim.y, aim.x));
-                            jets += exp(-across * across / (0.0000003 + reachOut * reachOut * 0.015)) * step(0.0, reachOut)
-                                * exp(-reachOut * 110.0 / grow);
+                    float cometDot = dot(d, comet);
+                    float coma = 0.0, dustTail = 0.0, gasTail = 0.0, jets = 0.0;
+                    float cometSide = step(0.0, cometDot);
+                    if (cometDot > 0.0) {
+                        vec3 from = d - comet;
+                        float along = dot(from, ${glslVec3(COMET_AWAY)}), off = dot(from, ${glslVec3(COMET_SIDE)});
+                        // Passing close, it grows: the coma swells, both tails stretch
+                        // across the sky, the dust tail shows striations, and jets of
+                        // gas fan out sunward from the nucleus.
+                        float grow = 1.0 + 3.0 * uComet;
+                        float fromLen = length(from);
+                        coma = exp(-fromLen * 190.0 / grow) * 0.9 + exp(-fromLen * 46.0 / grow) * 0.1 * (1.0 + uComet);
+                        if (along > 0.0) {
+                            float bend = off - along * along * 0.55 / grow;
+                            float striae = 1.0 - 0.35 * uComet * smoothstep(0.3, 0.8, bandNoise(bend * 900.0 / grow + along * 40.0));
+                            dustTail = exp(-bend * bend / ((0.00006 + along * 0.008) * grow)) * exp(-along * 6.5 / grow)
+                                * 0.2 * (1.0 + 0.8 * uComet) * striae;
+                            gasTail = exp(-off * off / ((0.00001 + along * 0.0005) * grow)) * exp(-along * 4.2 / grow)
+                                * 0.16 * (1.0 + uComet);
                         }
-                        jets *= uComet * 0.35;
+                        if (uComet > 0.001) {
+                            vec2 at = vec2(along, off);
+                            vec2 j0 = ${glslVec2(COMET_JET_AIMS[0])};
+                            vec2 j1 = ${glslVec2(COMET_JET_AIMS[1])};
+                            vec2 j2 = ${glslVec2(COMET_JET_AIMS[2])};
+                            float ro0 = dot(at, j0), ac0 = dot(at, vec2(-j0.y, j0.x));
+                            float ro1 = dot(at, j1), ac1 = dot(at, vec2(-j1.y, j1.x));
+                            float ro2 = dot(at, j2), ac2 = dot(at, vec2(-j2.y, j2.x));
+                            jets = (exp(-ac0 * ac0 / (0.0000003 + ro0 * ro0 * 0.015)) * step(0.0, ro0) * exp(-ro0 * 110.0 / grow)
+                                + exp(-ac1 * ac1 / (0.0000003 + ro1 * ro1 * 0.015)) * step(0.0, ro1) * exp(-ro1 * 110.0 / grow)
+                                + exp(-ac2 * ac2 / (0.0000003 + ro2 * ro2 * 0.015)) * step(0.0, ro2) * exp(-ro2 * 110.0 / grow))
+                                * uComet * 0.35;
+                        }
                     }
-                    float cometSide = step(0.0, dot(d, comet));
 
                     // Out at the end of the voyage the nearer clouds of gas fall back
                     // a little; the galaxy shows through them in its stars.
@@ -4336,10 +4361,12 @@
                 clearFadingGlyph();
                 clearGlyphStage();
                 scene.remove(root);
-                [fieldGeo, skyGeo, filamentGeo, streakGeo, lyricGeo, rippleGeo, glyphWarmup.geometry, ...frameArcGeos].forEach((g) => g?.dispose?.());
-                [fieldMat, skyMat, skyBakeMat, filamentMat, streakMat, lyricParticleMat, glyphMaterial, fadingGlyphMaterial,
+                [fieldGeo, skyGeo, filamentGeo, streakGeo, lyricGeo, rippleGeo, glyphWarmup.geometry, glyphScrim.geometry, ...frameArcGeos].forEach((g) => g?.dispose?.());
+                [fieldMat, skyMat, skyBakeMat, filamentMat, streakMat, lyricParticleMat, glyphMaterial, fadingGlyphMaterial, glyphScrim.material,
                     ...frameArcMats].forEach((m) => m?.dispose?.());
                 skyMasks.dispose();
+                glyphCanvas.width = glyphCanvas.height = 0;
+                measureCanvas.width = measureCanvas.height = 0;
                 entityNodes.forEach((node) => {
                     node.geo?.dispose?.();
                     node.mat?.dispose?.();

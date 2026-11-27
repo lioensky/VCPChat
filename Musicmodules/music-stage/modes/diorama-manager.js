@@ -117,6 +117,9 @@
         const REBUILD_KEYS = ['cameraSpeed', 'motionAmount', 'animationIntensity', 'reducedMotion',
             'cameraCuts', 'aspect', 'lyricCarrier', 'showTranslation', 'fireworks',
             'narrativeStations', 'stationIntensity', 'lyricFont'];
+        let specBinLen = -1;
+        const specBinFrom = new Int32Array(24);
+        const specBinTo = new Int32Array(24);
         const update = (frame, force = false) => {
             if (mode.destroyed || mode.suspended) return;
             latest = frame;
@@ -216,11 +219,19 @@
                 audio.vocal = seek ? target : audio.vocal
                     + (target - audio.vocal) * (1 - Math.exp(-dt * (target > audio.vocal ? 16 : 5)));
                 const spectrum = frame.audio?.spectrum || [];
-                for (let i = 0; i < audio.spectrum.length; i++) {
-                    const count = audio.spectrum.length;
-                    const from = Math.floor((Math.pow(1 + spectrum.length, i / count) - 1));
-                    const to = Math.min(spectrum.length, Math.max(from + 1,
-                        Math.ceil(Math.pow(1 + spectrum.length, (i + 1) / count) - 1)));
+                const count = audio.spectrum.length;
+                if (spectrum.length !== specBinLen) {
+                    specBinLen = spectrum.length;
+                    for (let i = 0; i < count; i++) {
+                        const from = Math.floor(Math.pow(1 + specBinLen, i / count) - 1);
+                        specBinFrom[i] = from;
+                        specBinTo[i] = Math.min(specBinLen, Math.max(from + 1,
+                            Math.ceil(Math.pow(1 + specBinLen, (i + 1) / count) - 1)));
+                    }
+                }
+                for (let i = 0; i < count; i++) {
+                    const from = specBinFrom[i];
+                    const to = specBinTo[i];
                     let peak = 0, sum = 0;
                     for (let bin = from; bin < to; bin++) {
                         const amplitude = R.clamp(spectrum[bin] || 0);

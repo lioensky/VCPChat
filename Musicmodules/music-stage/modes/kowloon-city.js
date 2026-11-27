@@ -294,45 +294,6 @@
                     float h = kwHash(vec2(col_ + seed * 811.0, fl + seed * 173.0));
                     float h2 = kwHash(vec2(fl * 3.1 + seed * 59.0, col_ * 1.7 + 4.0));
 
-                    // 底色、污渍、雨痕。
-                    vec3 alb = wallTone(seed + floor(fl / 40.0));
-                    if (kind > 4.5 && kind < 5.5) alb = vec3(0.25, 0.25, 0.26);
-                    if (kind > 6.5) alb = vec3(0.10, 0.11, 0.13);
-                    // 大块水渍：从楼顶和每层楼板往下挂的深色长条，宽窄不一。
-                    float grime = kwFbm(vec2(u * 0.6, v * 0.12) + seed * 30.0);
-                    float stainCol = kwNoise(vec2(u * 0.9 + seed * 17.0, 3.0));
-                    float stain = smoothstep(0.45, 0.85, stainCol) * (0.4 + 0.6 * kwFbm(vec2(u * 1.7, v * 0.05) + seed * 3.0));
-                    float streak = kwNoise(vec2(u * 2.3 + seed * 9.0, v * 0.04)) * smoothstep(0.0, 1.0, 1.0 - cell.y);
-                    // 批荡上的补丁：一块块颜色略不同的新补的灰。
-                    vec2 patchCell = floor(vec2(u / 1.7, v / 1.3));
-                    float patchy = step(0.8, kwHash(patchCell + seed * 41.0));
-                    alb *= 0.55 + 0.6 * grime;
-                    alb *= 1.0 - (0.45 * stain + 0.3 * streak) * uDetail;
-                    alb = mix(alb, alb * vec3(1.18, 1.14, 1.08), patchy * 0.6 * uDetail);
-                    // 墙面细裂纹和颗粒：近处看不是一块平板。
-                    float grain = kwNoise(vec2(u, v) * 9.0 + seed);
-                    alb *= 0.9 + 0.2 * grain * uDetail;
-                    // 瓷砖：细格子，个别掉了露出灰底。
-                    if (fract(seed * 7.13) > 0.55 && fract(seed * 7.13) < 0.82 && kind < 1.5) {
-                        vec2 tc = vec2(u, v) * 6.0;
-                        vec2 tile = fract(tc);
-                        vec2 tfw = fwidth(tc) * 1.2;
-                        float grout = max(1.0 - smoothstep(0.0, 0.08 + tfw.x, tile.x), 1.0 - smoothstep(0.0, 0.08 + tfw.y, tile.y));
-                        float lost = step(0.93, kwHash(floor(tc) + seed));
-                        alb *= 1.0 - grout * 0.25 * uDetail * (1.0 - min(1.0, length(tfw) * 2.0));
-                        alb = mix(alb, vec3(0.2, 0.2, 0.19), lost * 0.7 * uDetail);
-                    }
-                    // 楼板线：一道凸出的混凝土檐，顶面亮、底下一道阴影。
-                    float slabTop = 1.0 - smoothstep(0.0, 0.035, cell.y);
-                    float slabShadow = smoothstep(0.92, 1.0, cell.y);
-                    alb *= 1.0 + slabTop * 0.22 - slabShadow * 0.35;
-                    // 空调滴水留下的锈痕。
-                    float rust = step(0.86, kwHash(vec2(col_ * 5.0 + seed, floor(v / uFloor / 2.0)))) * smoothstep(0.55, 0.0, cell.y) * step(abs(cell.x - 0.5), 0.12);
-                    alb = mix(alb, vec3(0.30, 0.17, 0.09), rust * 0.6 * uDetail);
-                    alb *= 1.0 - wet * 0.35;
-                    // 墙脚一米多是溅水和人手蹭出来的深色。
-                    alb *= mix(0.55, 1.0, smoothstep(0.2, 1.6, v + kwNoise(vec2(u * 1.3, 0.0)) * 0.6));
-
                     // 窗。山墙（高出邻楼的部分）大多是实墙，只有零星小窗。
                     float hasWindow = 1.0;
                     if (kind > 2.5 && kind < 3.5) hasWindow = step(0.82, h2);
@@ -354,10 +315,54 @@
                     else if (reno < 0.22) hasWindow = 0.0;
                     if (kind > 2.5 && kind < 3.5) { wMin = vec2(0.32, 0.45); wMax = vec2(0.68, 0.75); }
                     vec2 fw = fwidth(cell) * 1.5;
+                    vec2 uvFw = fwidth(vec2(u, v));
                     vec2 inA = smoothstep(wMin - fw, wMin + fw, cell) * (1.0 - smoothstep(wMax - fw, wMax + fw, cell));
                     float inWin = inA.x * inA.y * hasWindow;
                     vec3 irr = kwLight(vWorld, n, vec3(1.0), 0.9);
-                    vec3 col = alb * irr;
+                    vec3 col = vec3(0.0);
+
+                    if (inWin < 0.9999) {
+                        // 底色、污渍、雨痕。
+                        vec3 alb = wallTone(seed + floor(fl / 40.0));
+                        if (kind > 4.5 && kind < 5.5) alb = vec3(0.25, 0.25, 0.26);
+                        if (kind > 6.5) alb = vec3(0.10, 0.11, 0.13);
+                        // 大块水渍：从楼顶和每层楼板往下挂的深色长条，宽窄不一。
+                        float grime = kwFbm(vec2(u * 0.6, v * 0.12) + seed * 30.0);
+                        float stainCol = kwNoise(vec2(u * 0.9 + seed * 17.0, 3.0));
+                        float stain = smoothstep(0.45, 0.85, stainCol) * (0.4 + 0.6 * kwFbm(vec2(u * 1.7, v * 0.05) + seed * 3.0));
+                        float streak = kwNoise(vec2(u * 2.3 + seed * 9.0, v * 0.04)) * smoothstep(0.0, 1.0, 1.0 - cell.y);
+                        // 批荡上的补丁：一块块颜色略不同的新补的灰。
+                        vec2 patchCell = floor(vec2(u / 1.7, v / 1.3));
+                        float patchy = step(0.8, kwHash(patchCell + seed * 41.0));
+                        alb *= 0.55 + 0.6 * grime;
+                        alb *= 1.0 - (0.45 * stain + 0.3 * streak) * uDetail;
+                        alb = mix(alb, alb * vec3(1.18, 1.14, 1.08), patchy * 0.6 * uDetail);
+                        // 墙面细裂纹和颗粒：近处看不是一块平板。
+                        float grain = kwNoise(vec2(u, v) * 9.0 + seed);
+                        alb *= 0.9 + 0.2 * grain * uDetail;
+                        // 瓷砖：细格子，个别掉了露出灰底。
+                        float tileK = fract(seed * 7.13);
+                        if (tileK > 0.55 && tileK < 0.82 && kind < 1.5) {
+                            vec2 tc = vec2(u, v) * 6.0;
+                            vec2 tile = fract(tc);
+                            vec2 tfw = uvFw * 7.2;
+                            float grout = max(1.0 - smoothstep(0.0, 0.08 + tfw.x, tile.x), 1.0 - smoothstep(0.0, 0.08 + tfw.y, tile.y));
+                            float lost = step(0.93, kwHash(floor(tc) + seed));
+                            alb *= 1.0 - grout * 0.25 * uDetail * (1.0 - min(1.0, length(tfw) * 2.0));
+                            alb = mix(alb, vec3(0.2, 0.2, 0.19), lost * 0.7 * uDetail);
+                        }
+                        // 楼板线：一道凸出的混凝土檐，顶面亮、底下一道阴影。
+                        float slabTop = 1.0 - smoothstep(0.0, 0.035, cell.y);
+                        float slabShadow = smoothstep(0.92, 1.0, cell.y);
+                        alb *= 1.0 + slabTop * 0.22 - slabShadow * 0.35;
+                        // 空调滴水留下的锈痕。
+                        float rust = step(0.86, kwHash(vec2(col_ * 5.0 + seed, floor(v / uFloor / 2.0)))) * smoothstep(0.55, 0.0, cell.y) * step(abs(cell.x - 0.5), 0.12);
+                        alb = mix(alb, vec3(0.30, 0.17, 0.09), rust * 0.6 * uDetail);
+                        alb *= 1.0 - wet * 0.35;
+                        // 墙脚一米多是溅水和人手蹭出来的深色。
+                        alb *= mix(0.55, 1.0, smoothstep(0.2, 1.6, v + kwNoise(vec2(u * 1.3, 0.0)) * 0.6));
+                        col = alb * irr;
+                    }
 
                     if (inWin > 0.001) {
                         vec2 wc = (cell - wMin) / (wMax - wMin);
@@ -482,8 +487,6 @@
                         float vSeed = floor(vSeedRaw * 997.0 + 0.5) / 997.0;
                         vec3 alb = vColor;
                         vec3 emit = vec3(0.0);
-                        float grime = kwFbm(vLocal.xy * 3.0 + vSeed * 50.0);
-                        alb *= 0.6 + 0.6 * grime;
                         if (uPattern < 0.5) {
                             // 铁窗笼：单位盒子，前面和两侧是竖栏加两道横档，顶是铁皮，底是实板。
                             vec3 p = vLocal + 0.5;
@@ -495,49 +498,57 @@
                                 float edge = step(along, 0.04) + step(0.96, along);
                                 float solid = clamp(bars + rails + edge + step(p.y, 0.12), 0.0, 1.0);
                                 if (solid < 0.5) discard;
+                                float grime = kwFbm(vLocal.xy * 3.0 + vSeed * 50.0);
+                                alb *= 0.6 + 0.6 * grime;
                                 alb = mix(alb, vec3(0.32, 0.18, 0.1), grime * 0.5);
-                            } else if (n.y > 0.5) {
-                                alb *= 0.75 + 0.25 * step(0.5, fract(p.x * 14.0));
-                            }
-                        } else if (uPattern < 1.5) {
-                            // 空调外机：正面一个圆形风扇格栅，侧面散热片。
-                            vec3 p = vLocal + 0.5;
-                            if (n.z > 0.5) {
-                                vec2 q = vec2((p.x - 0.62) * 1.45, p.y - 0.5);
-                                float r = length(q);
-                                float grill = step(r, 0.36) * (0.55 + 0.45 * step(0.5, fract(r * 22.0)));
-                                alb *= 1.0 - grill * 0.6;
-                                float vent = step(p.x, 0.25) * step(0.5, fract(p.y * 14.0));
-                                alb *= 1.0 - vent * 0.3;
-                            }
-                            alb = mix(alb, vec3(0.28, 0.2, 0.12), smoothstep(0.55, 0.9, grime) * 0.5);
-                        } else if (uPattern < 2.5) {
-                            // 屋顶加建：波纹铁皮墙，偶尔一扇小窗亮着。
-                            vec3 p = vLocal + 0.5;
-                            float along = abs(n.x) > 0.5 ? p.z : p.x;
-                            if (abs(n.y) < 0.5) {
-                                alb *= 0.8 + 0.25 * sin(along * 60.0);
-                                // 每一面自己决定开不开窗、窗在哪、亮不亮，免得一排排像人脸。
-                                float faceId = dot(floor(n + 0.5), vec3(1.0, 0.0, 3.0)) + vSeed * 17.0;
-                                float hf = fract(sin(faceId * 12.9898) * 43758.5453);
-                                float hg = fract(sin(faceId * 78.233) * 12543.123);
-                                float cx = 0.2 + 0.6 * hf, wwid = 0.08 + 0.12 * hg;
-                                float win = step(0.35, hg) * step(abs(along - cx), wwid) * step(abs(p.y - 0.58), 0.12 + 0.06 * hf);
-                                float door = step(hg, 0.2) * step(abs(along - (1.0 - cx)), 0.11) * step(p.y, 0.8);
-                                float lit = step(0.5, fract(hf * 7.0 + vSeed * 3.0));
-                                vec3 lampTone = hf > 0.7 ? vec3(0.7, 0.9, 1.0) : vec3(1.0, 0.62, 0.3);
-                                emit = lampTone * win * lit * (0.6 + 0.6 * hg);
-                                alb *= 1.0 - win * 0.8 - door * 0.6;
                             } else {
-                                alb *= 0.7 + 0.3 * sin(p.x * 40.0);
+                                float grime = kwFbm(vLocal.xy * 3.0 + vSeed * 50.0);
+                                alb *= 0.6 + 0.6 * grime;
+                                if (n.y > 0.5) alb *= 0.75 + 0.25 * step(0.5, fract(p.x * 14.0));
                             }
-                            alb = mix(alb, vec3(0.35, 0.18, 0.08), smoothstep(0.6, 0.85, grime) * 0.6);
-                        } else if (uPattern < 3.5) {
-                            // 水箱、管子、天线：金属，按色。
-                            alb *= 0.9;
                         } else {
-                            // 雨棚：塑料或铁皮，底面被下面店铺灯照。
-                            alb *= 0.8 + 0.2 * step(0.5, fract(vLocal.x * 6.0));
+                            float grime = kwFbm(vLocal.xy * 3.0 + vSeed * 50.0);
+                            alb *= 0.6 + 0.6 * grime;
+                            if (uPattern < 1.5) {
+                                // 空调外机：正面一个圆形风扇格栅，侧面散热片。
+                                vec3 p = vLocal + 0.5;
+                                if (n.z > 0.5) {
+                                    vec2 q = vec2((p.x - 0.62) * 1.45, p.y - 0.5);
+                                    float r = length(q);
+                                    float grill = step(r, 0.36) * (0.55 + 0.45 * step(0.5, fract(r * 22.0)));
+                                    alb *= 1.0 - grill * 0.6;
+                                    float vent = step(p.x, 0.25) * step(0.5, fract(p.y * 14.0));
+                                    alb *= 1.0 - vent * 0.3;
+                                }
+                                alb = mix(alb, vec3(0.28, 0.2, 0.12), smoothstep(0.55, 0.9, grime) * 0.5);
+                            } else if (uPattern < 2.5) {
+                                // 屋顶加建：波纹铁皮墙，偶尔一扇小窗亮着。
+                                vec3 p = vLocal + 0.5;
+                                float along = abs(n.x) > 0.5 ? p.z : p.x;
+                                if (abs(n.y) < 0.5) {
+                                    alb *= 0.8 + 0.25 * sin(along * 60.0);
+                                    // 每一面自己决定开不开窗、窗在哪、亮不亮，免得一排排像人脸。
+                                    float faceId = dot(floor(n + 0.5), vec3(1.0, 0.0, 3.0)) + vSeed * 17.0;
+                                    float hf = fract(sin(faceId * 12.9898) * 43758.5453);
+                                    float hg = fract(sin(faceId * 78.233) * 12543.123);
+                                    float cx = 0.2 + 0.6 * hf, wwid = 0.08 + 0.12 * hg;
+                                    float win = step(0.35, hg) * step(abs(along - cx), wwid) * step(abs(p.y - 0.58), 0.12 + 0.06 * hf);
+                                    float door = step(hg, 0.2) * step(abs(along - (1.0 - cx)), 0.11) * step(p.y, 0.8);
+                                    float lit = step(0.5, fract(hf * 7.0 + vSeed * 3.0));
+                                    vec3 lampTone = hf > 0.7 ? vec3(0.7, 0.9, 1.0) : vec3(1.0, 0.62, 0.3);
+                                    emit = lampTone * win * lit * (0.6 + 0.6 * hg);
+                                    alb *= 1.0 - win * 0.8 - door * 0.6;
+                                } else {
+                                    alb *= 0.7 + 0.3 * sin(p.x * 40.0);
+                                }
+                                alb = mix(alb, vec3(0.35, 0.18, 0.08), smoothstep(0.6, 0.85, grime) * 0.6);
+                            } else if (uPattern < 3.5) {
+                                // 水箱、管子、天线：金属，按色。
+                                alb *= 0.9;
+                            } else {
+                                // 雨棚：塑料或铁皮，底面被下面店铺灯照。
+                                alb *= 0.8 + 0.2 * step(0.5, fract(vLocal.x * 6.0));
+                            }
                         }
                         alb *= 1.0 - uWet * 0.25;
                         vec3 col = kwLight(vWorld, n, alb, 0.6) + emit;

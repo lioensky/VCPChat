@@ -3409,48 +3409,55 @@
                     }
                     // Rain cloud: the colour drains out of the sky and it closes in, darker overhead.
                     c=mix(c,vec3(dot(c,vec3(0.3,0.55,0.15)))*mix(1.0,0.72,clamp(h*1.4,0.0,1.0)),overcast*0.7);
-                    float across=dot(d,normalize(vec3(0.35,0.8,0.48)))-0.18;
+                    float across=dot(d,vec3(0.351249,0.802855,0.481713))-0.18;
                     float band=exp(-across*across*90.0);
-                    float cloud=noise(d*12.0)*0.6+noise(d*33.0)*0.3+noise(d*91.0)*0.1;
-                    c+=cold*band*pow(cloud,3.0)*(0.12+open*0.22);
                     // Moonlight scattering: a tight corona plus a wide, faint veil.
                     float md=max(dot(d,moonDir),0.0);
                     float corona=pow(md,220.0)*0.55+pow(md,48.0)*0.16+pow(md,7.0)*0.05;
+                    float cloud=0.0;
+                    if(band>0.001||corona*moonGlow>0.001){
+                        cloud=noise(d*12.0)*0.6+noise(d*33.0)*0.3+noise(d*91.0)*0.1;
+                    }
+                    if(band>0.001)c+=cold*band*pow(cloud,3.0)*(0.12+open*0.22);
                     c+=moonTint*corona*moonGlow*(0.85+cloud*0.3)*(1.0+accent*0.4);
                     // Residual light pooled at the horizon (distant towns, last dusk).
-                    float rim=exp(-abs(d.y)*16.0)*(0.6+0.4*noise(vec3(d.xz*4.0,1.0)));
-                    c+=glowTint*rim*horizonGlow*(0.1+open*0.08);
+                    if(horizonGlow>0.001&&abs(d.y)<0.5){
+                        float rim=exp(-abs(d.y)*16.0)*(0.6+0.4*noise(vec3(d.xz*4.0,1.0)));
+                        c+=glowTint*rim*horizonGlow*(0.1+open*0.08);
+                    }
                     // Angular curtains share the same coordinates as their visibility mask.
                     // Fixed celestial heading, calibrated once to the opening shot, not a HUD.
                     if (auroraActive > 0.001 && d.y > 0.02) {
                         float angle = atan(d.x, -d.z) - auroraHeading;
                         float u = atan(sin(angle), cos(angle));
-                        float elevation = asin(clamp(d.y, -1.0, 1.0));
                         float sector = smoothstep(-0.85, -0.48, u)
                                      * (1.0 - smoothstep(0.16, 0.48, u));
-                        float drift = auroraTime * 0.065;
-                        vec3 emission = vec3(0.0);
-                        for (int layer = 0; layer < 3; layer++) {
-                            float k = float(layer);
-                            float fold = sin(u * 8.0 + drift + k * 1.7)
-                                       + 0.35 * sin(u * 19.0 - drift * 0.7 + k);
-                            float base = 0.13 + k * 0.045 + fold * 0.025;
-                            float altitude = elevation - base;
-                            float height = 0.17 + 0.045 * sin(u * 6.0 + k + drift * 0.4);
-                            float v = max(0.0, altitude) / height;
-                            float filament = noise(vec3(u * 95.0 + fold * 1.4,
-                                drift * 0.4 + k * 5.0, v * 0.18));
-                            float fine = pow(0.5 + 0.5 * sin(u * 310.0 + fold * 6.0
-                                + drift * 1.2 + v * 0.7), 6.0);
-                            float veil = smoothstep(-0.012, 0.015, altitude)
-                                * exp(-v * 2.7) * (0.22 + filament * 0.65 + fine * 0.28);
-                            float hem = exp(-pow(altitude / 0.012, 2.0)) * 0.22;
-                            vec3 spectral = mix(auroraGreen, auroraViolet,
-                                smoothstep(0.25, 1.1, v));
-                            emission += spectral * (veil + hem) / (1.0 + k * 0.65);
+                        if (sector > 0.001) {
+                            float elevation = asin(clamp(d.y, -1.0, 1.0));
+                            float drift = auroraTime * 0.065;
+                            vec3 emission = vec3(0.0);
+                            for (int layer = 0; layer < 3; layer++) {
+                                float k = float(layer);
+                                float fold = sin(u * 8.0 + drift + k * 1.7)
+                                           + 0.35 * sin(u * 19.0 - drift * 0.7 + k);
+                                float base = 0.13 + k * 0.045 + fold * 0.025;
+                                float altitude = elevation - base;
+                                float height = 0.17 + 0.045 * sin(u * 6.0 + k + drift * 0.4);
+                                float v = max(0.0, altitude) / height;
+                                float filament = noise(vec3(u * 95.0 + fold * 1.4,
+                                    drift * 0.4 + k * 5.0, v * 0.18));
+                                float fine = pow(0.5 + 0.5 * sin(u * 310.0 + fold * 6.0
+                                    + drift * 1.2 + v * 0.7), 6.0);
+                                float veil = smoothstep(-0.012, 0.015, altitude)
+                                    * exp(-v * 2.7) * (0.22 + filament * 0.65 + fine * 0.28);
+                                float hem = exp(-pow(altitude / 0.012, 2.0)) * 0.22;
+                                vec3 spectral = mix(auroraGreen, auroraViolet,
+                                    smoothstep(0.25, 1.1, v));
+                                emission += spectral * (veil + hem) / (1.0 + k * 0.65);
+                            }
+                            c += emission * sector * auroraActive
+                                * (0.75 + auroraRhythm * 0.2 + accent * 0.55);
                         }
-                        c += emission * sector * auroraActive
-                            * (0.75 + auroraRhythm * 0.2 + accent * 0.55);
                     }
                     // Nothing that is not a number may leave the sky: through the lens and
                     // the environment map it would black out or flare everything near it.
@@ -3718,8 +3725,10 @@
                     // Rain breaks the mirror up: rings near by, a fine roughness further off.
                     if(rain>0.0){
                         float nearRings=1.0-smoothstep(10.0,34.0,dist);
-                        vec2 r=rings(world.xz*1.6,time,0.0)+rings(world.xz*2.3+17.0,time*1.13,5.0)*0.7;
-                        g+=r*0.09*rain*nearRings;
+                        if(nearRings>0.001){
+                            vec2 r=rings(world.xz*1.6,time,0.0)+rings(world.xz*2.3+17.0,time*1.13,5.0)*0.7;
+                            g+=r*0.09*rain*nearRings;
+                        }
                         g+=(vec2(n21(world.xz*7.0+time*3.0),n21(world.zx*6.0-time*2.7))-0.5)*0.05*rain*(1.0-nearRings*0.5);
                     }
                     // A hit in the music drops a ring on the water that spreads and dies away.
@@ -3750,14 +3759,17 @@
                     // Out where the rings are too small to see, rain-pocked water
                     // smears what it mirrors into soft vertical streaks.
                     if(rain>0.0){
-                        float smear=0.006*rain*smoothstep(10.0,40.0,dist);
-                        float broken=0.6+0.8*n21(vec2(world.x*1.3,time*4.0));
-                        vec2 step=vec2(0.0,smear*broken);
-                        vec3 s=texture2D(reflection,clamp(uv-step*1.5,0.001,0.999)).rgb
-                            +texture2D(reflection,clamp(uv-step*0.5,0.001,0.999)).rgb
-                            +texture2D(reflection,clamp(uv+step*0.5,0.001,0.999)).rgb
-                            +texture2D(reflection,clamp(uv+step*1.5,0.001,0.999)).rgb;
-                        r=mix(r,s*0.25,smoothstep(10.0,40.0,dist));
+                        float farRain=smoothstep(10.0,40.0,dist);
+                        if(farRain>0.001){
+                            float smear=0.006*rain*farRain;
+                            float broken=0.6+0.8*n21(vec2(world.x*1.3,time*4.0));
+                            vec2 step=vec2(0.0,smear*broken);
+                            vec3 s=texture2D(reflection,clamp(uv-step*1.5,0.001,0.999)).rgb
+                                +texture2D(reflection,clamp(uv-step*0.5,0.001,0.999)).rgb
+                                +texture2D(reflection,clamp(uv+step*0.5,0.001,0.999)).rgb
+                                +texture2D(reflection,clamp(uv+step*1.5,0.001,0.999)).rgb;
+                            r=mix(r,s*0.25,farRain);
+                        }
                     }
                     // Schlick Fresnel for water (F0 ~ 0.02), lifted so the mirror reads at night.
                     float cosT=clamp(dot(n,v),0.0,1.0);
@@ -3766,12 +3778,16 @@
                     vec3 c=mix(tint,r,clamp(f*strength*valid,0.0,0.94));
                     // Broken moon path: tight specular lobe sparked by a flickering facet grid.
                     vec3 refl=reflect(-v,n);
-                    float lobe=pow(max(dot(refl,moonDir),0.0),260.0);
-                    float wide=pow(max(dot(refl,moonDir),0.0),28.0)*0.08;
+                    float md=max(dot(refl,moonDir),0.0);
+                    float lobe=md>0.9?pow(md,260.0):0.0;
+                    float wide=pow(md,28.0)*0.08;
                     // Glints come and go as smooth patches, never as squares, and
                     // thin out right under the camera where each would fill the view.
-                    float spark=smoothstep(0.55,0.9,n21(world.xz*vec2(9.0,4.6)+vec2(time*0.8,-time*0.5))
-                        *n21(world.xz*vec2(2.1,1.1)-vec2(time*0.22))*2.0);
+                    float spark=0.0;
+                    if(lobe>0.0005&&glitter*strength>0.001){
+                        spark=smoothstep(0.55,0.9,n21(world.xz*vec2(9.0,4.6)+vec2(time*0.8,-time*0.5))
+                            *n21(world.xz*vec2(2.1,1.1)-vec2(time*0.22))*2.0);
+                    }
                     c+=moonTint*(lobe*(0.14+spark*1.0)*mix(0.1,1.0,smoothstep(8.0,40.0,dist))+wide)*glitter*strength;
                     // Vertical lamp streaks along the camera-lamp bearing.
                     for(int i=0;i<4;i++){
@@ -3787,8 +3803,10 @@
                         c+=lampTint*band*shimmer*lampPower[i]*0.55*strength;
                     }
                     // Broken water along the hull catches what light there is.
-                    float lace=smoothstep(0.35,0.75,n21(world.xz*vec2(5.0,6.3)+vec2(time*1.3,-time*0.9)));
-                    c=mix(c,c*1.35+fogTint*0.12+moonTint*0.03,churn*lace*0.4*strength);
+                    if(churn>0.001){
+                        float lace=smoothstep(0.35,0.75,n21(world.xz*vec2(5.0,6.3)+vec2(time*1.3,-time*0.9)));
+                        c=mix(c,c*1.35+fogTint*0.12+moonTint*0.03,churn*lace*0.4*strength);
+                    }
                     // Far off, countless splashes add up to a dull grey sheen over the mirror.
                     c=mix(c,fogTint*0.85+tint*0.25,rain*0.16*smoothstep(6.0,60.0,dist));
                     // Match scene FogExp2 so the far plane melts into the horizon.

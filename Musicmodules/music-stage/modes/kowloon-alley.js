@@ -1970,8 +1970,10 @@
                 lu.uGlow.value.set(light ? '#d0a080' : '#ffa040');
             }
             shared.glowTint.value.set(light ? '#000000' : '#ffa040').multiplyScalar(light ? 0 : 0.18);
+            lastFlash = -1;
         };
         let dayDim = 1;
+        let lastFlash = -1;
         applyAtmosphere();
 
         const updateRain = (state, camera, real = camera) => {
@@ -2045,6 +2047,8 @@
             const allowed = opt.lightning !== false && !opt.reducedMotion;
             const value = allowed ? strikeAt(since) * (palette.light ? 0.35 : 1) : 0;
             shared.flash.value = value;
+            if (value === 0 && lastFlash === 0) return;
+            lastFlash = value;
             if (value > 0) {
                 // Each strike lights a different part of the deck.
                 const h = hash(`strike:${start.toFixed(2)}`);

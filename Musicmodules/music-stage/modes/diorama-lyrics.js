@@ -206,7 +206,7 @@
             return t;
         };
         // A line of words written on the sky or on a board; the warm-up builds one too.
-        const skyLine = ({ map, constellation, style, ranges, starts, ends }) => new T.ShaderMaterial({
+        const skyLine = ({ map, constellation, style }) => new T.ShaderMaterial({
             transparent: true, depthWrite: false, side: T.DoubleSide, forceSinglePass: true,
             // A line written on the sky is never hidden by what the train passes.
             depthTest: !constellation,
@@ -223,17 +223,19 @@
                 rest: { value: palette.light ? 0.82 : 0.48 },
                 accent: { value: new T.Color(palette.accent || '#f2a900') },
                 ink: { value: new T.Color(palette.ink || '#f2f0e9') },
-                cold: { value: new T.Color(palette.secondary || '#76bfae') },
-                ranges: { value: ranges }, starts: { value: starts }, ends: { value: ends }
+                cold: { value: new T.Color(palette.secondary || '#76bfae') }
             },
             vertexShader: `
                 attribute vec3 glyphTiming;
                 attribute float glyphCenter;
+                attribute vec2 glyphSpan;
                 uniform float time,motion,constellation,entrance,departure,style,waterEcho,hop,hopStart,ghost;
                 varying vec2 vUv;
+                varying vec2 vGlyphSpan;
+                varying vec2 vGlyphTime;
                 varying float vGhost;
                 void main(){
-                    vUv=uv;vGhost=0.0;
+                    vUv=uv;vGlyphSpan=glyphSpan;vGlyphTime=glyphTiming.xy;vGhost=0.0;
                     float age=max(0.0,time-glyphTiming.x);
                     float duration=max(0.04,glyphTiming.y-glyphTiming.x);
                     float singing=step(glyphTiming.x,time)*(1.0-step(glyphTiming.y,time));
@@ -270,9 +272,11 @@
                 }`,
             fragmentShader: `uniform sampler2D map;uniform float time,fade,glow,vocal;
                 uniform float constellation,entrance,departure,style,waterEcho,rest;
-                uniform vec3 accent,ink,cold;uniform float ranges[64],starts[64],ends[64];
+                uniform vec3 accent,ink,cold;
                 uniform float ghost;
                 varying vec2 vUv;
+                varying vec2 vGlyphSpan;
+                varying vec2 vGlyphTime;
                 varying float vGhost;
                 void main(){
                     if(ghost>0.5){
@@ -281,10 +285,9 @@
                         gl_FragColor=vec4(accent,a);
                         #include <colorspace_fragment>
                         return;
-                    }float start=1e8,end=1e8;
-                    float left=0.0,right=1.0;
-                    for(int i=0;i<64;i++){if(vUv.x<=ranges[i]){
-                        start=starts[i];end=ends[i];right=ranges[i];break;}left=ranges[i];}
+                    }
+                    float start=vGlyphTime.x,end=vGlyphTime.y;
+                    float left=vGlyphSpan.x,right=vGlyphSpan.y;
                     float age=time-start;float singing=step(start,time)*(1.0-step(end,time));
                     float passed=step(end,time);float attack=smoothstep(0.0,0.08,age);
                     float peak=singing*attack*exp(-max(age-0.08,0.0)*8.0);
@@ -297,7 +300,8 @@
                     color=mix(color,mix(accent,cold,0.55),passed*smoothstep(0.0,0.6,time-end));
                     float wave=sin(vUv.x*9.0+time*0.7)*0.012;
                     vec2 sampleUv=vUv+vec2(0.0,wave*constellation*(1.0-entrance));
-                    float alpha=texture2D(map,sampleUv).a;
+                    float rawAlpha=texture2D(map,sampleUv).a;
+                    float alpha=rawAlpha;
                     // The same glyph supplies both the incoming water-light
                     // and the settled text. No second particle coordinate system.
                     float waterReveal=smoothstep(0.0,0.18,entrance-vUv.y*0.12);
@@ -306,7 +310,7 @@
                     if(style>2.5 && departure>0.0){
                         float speck=step(0.965,fract(sin(dot(floor(vUv*vec2(900.0,180.0)),
                             vec2(12.9898,78.233)))*43758.5453));
-                        alpha=max(alpha,texture2D(map,sampleUv).a*speck*departure*0.5);
+                        alpha=max(alpha,rawAlpha*speck*departure*0.5);
                     }
                     if(waterEcho>0.5){
                         sampleUv=vUv+vec2(sin(vUv.y*27.0+time*0.6)*0.004,
@@ -381,19 +385,16 @@
             ctx.translate(32, 0);
             ctx.scale(fit, 1);
             let x = 0;
-            const ranges = [], starts = [], ends = [];
+            const ranges = [];
             phrase.glyphs.forEach((g, index) => {
                 ctx.fillText(g.text, x, 108);
                 ranges.push((32 + (x + advances[index]) * fit) / canvas.width);
-                starts.push(g.startTime);
-                ends.push(g.endTime);
                 x += advances[index];
             });
             ctx.restore();
-            while (ranges.length < 64) { ranges.push(2); starts.push(1e8); ends.push(1e8); }
             const map = texture(canvas);
             textures.push(map);
-            const mat = skyLine({ map, constellation, style, ranges, starts, ends });
+            const mat = skyLine({ map, constellation, style });
             materials.push(mat);
             const halfHeight = distance * Math.tan(reference.fov * Math.PI / 360);
             const glyphHeight = halfHeight * 0.19;
@@ -404,17 +405,19 @@
             width *= scale;
             // One atlas, one draw, independent glyph quads. Timing stays with
             // the actual glyph rather than a second detached effects emitter.
-            const vertices = [], uvs = [], timings = [], centers = [], indices = [];
+            const vertices = [], uvs = [], timings = [], centers = [], spans = [], indices = [];
             phrase.glyphs.forEach((glyph, index) => {
                 const left = index ? ranges[index - 1] : 0;
                 const right = index === phrase.glyphs.length - 1 ? 1 : ranges[index];
+                const spanRight = ranges[index];
                 const first = vertices.length / 3;
                 for (const [u, v] of [[left, 0], [right, 0], [right, 1], [left, 1]]) {
                     vertices.push(u - 0.5, v - 0.5, 0);
                     uvs.push(u, v);
                     timings.push(glyph.startTime, glyph.endTime,
                         index / Math.max(1, phrase.glyphs.length - 1));
-                    centers.push((left + ranges[index]) * 0.5 - 0.5);
+                    centers.push((left + spanRight) * 0.5 - 0.5);
+                    spans.push(left, spanRight);
                 }
                 indices.push(first, first + 1, first + 2, first, first + 2, first + 3);
             });
@@ -423,6 +426,7 @@
             glyphGeometry.setAttribute('uv', new T.Float32BufferAttribute(uvs, 2));
             glyphGeometry.setAttribute('glyphTiming', new T.Float32BufferAttribute(timings, 3));
             glyphGeometry.setAttribute('glyphCenter', new T.Float32BufferAttribute(centers, 1));
+            glyphGeometry.setAttribute('glyphSpan', new T.Float32BufferAttribute(spans, 2));
             glyphGeometry.setIndex(indices);
             const text = new T.Mesh(glyphGeometry, mat);
             text.frustumCulled = false;
@@ -676,8 +680,7 @@
             blank.width = blank.height = 4;
             const map = texture(blank);
             const sign = buildSign({ position: { x: 0, y: -400, z: 0 }, yaw: 0, width: 4, height: 2 }, 0);
-            const none = new Array(64).fill(2), never = new Array(64).fill(1e8);
-            const line = skyLine({ map, constellation: false, style: 0, ranges: none, starts: never, ends: never });
+            const line = skyLine({ map, constellation: false, style: 0 });
             const subtitle = subtitleMaterial(map, false);
             sign.group.add(new T.Mesh(plane, line), new T.Mesh(plane, subtitle));
             sign.group.visible = false;

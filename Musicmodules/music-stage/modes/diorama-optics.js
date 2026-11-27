@@ -95,23 +95,27 @@
             void main(){
                 vec3 color=smoothed(uvScreen);
                 color=mix(vec3(0.0),color,vec3(greaterThanEqual(color,vec3(0.0))));
-                color+=texture2D(glowMap,uvScreen).rgb*bloom;
+                if(bloom>0.0)color+=texture2D(glowMap,uvScreen).rgb*bloom;
                 vec2 p=uvScreen*2.0-1.0;
                 color*=1.0-(vignette+cabin*0.3)*smoothstep(0.2,1.7,dot(p,p))*0.6;
                 // In the saloon: colour settles towards warm white, and what the
                 // ceiling strips do not reach falls into real shadow.
-                float cl=dot(color,vec3(0.2126,0.7152,0.0722));
-                vec3 settled=mix(vec3(cl),color,0.82)*vec3(1.0,0.98,0.92);
-                settled*=0.5+0.5*smoothstep(0.0,0.5,cl);
-                color=mix(color,settled,cabin);
+                if(cabin>0.001){
+                    float cl=dot(color,vec3(0.2126,0.7152,0.0722));
+                    vec3 settled=mix(vec3(cl),color,0.82)*vec3(1.0,0.98,0.92);
+                    settled*=0.5+0.5*smoothstep(0.0,0.5,cl);
+                    color=mix(color,settled,cabin);
+                }
                 // Grade, as film stock does: shadows a little cool, lights a little
                 // warm, a touch more colour, and a black that is lifted and tinted
                 // rather than empty.
-                float l=dot(color,vec3(0.2126,0.7152,0.0722));
-                float lit=smoothstep(0.015,0.7,l);
-                vec3 graded=color*mix(vec3(0.93,0.99,1.07),vec3(1.06,1.0,0.92),lit);
-                graded=max(mix(vec3(l),graded,1.14),0.0)+vec3(0.0012,0.002,0.0035)*(1.0-lit);
-                color=mix(color,graded,grade);
+                if(grade>0.001){
+                    float l=dot(color,vec3(0.2126,0.7152,0.0722));
+                    float lit=smoothstep(0.015,0.7,l);
+                    vec3 graded=color*mix(vec3(0.93,0.99,1.07),vec3(1.06,1.0,0.92),lit);
+                    graded=max(mix(vec3(l),graded,1.14),0.0)+vec3(0.0012,0.002,0.0035)*(1.0-lit);
+                    color=mix(color,graded,grade);
+                }
                 gl_FragColor=vec4(color,1.0);
                 #include <tonemapping_fragment>
                 #include <colorspace_fragment>
@@ -168,7 +172,8 @@
                 // In the saloon the ceiling strips bloom over the cream panels round them.
                 const cabin = Math.min(1, Math.max(0, tuning.cabin || 0));
                 material.uniforms.cabin.value = cabin;
-                material.uniforms.bloom.value = (tuning.glow ?? 1) * 0.6 * (1 + cabin * 0.9);
+                const bloomAmount = (tuning.glow ?? 1) * 0.6 * (1 + cabin * 0.9);
+                material.uniforms.bloom.value = bloomAmount;
                 const threshold = tuning.threshold ?? 0.82;
                 // By day the walls are near the paper's white, so only the strips themselves may bloom.
                 const inside = Math.min(threshold, threshold > 1 ? 1.12 : 0.62);
@@ -181,15 +186,17 @@
                     renderer.setRenderTarget(target);
                     renderer.clear();
                     renderer.render(world, worldCamera);
-                    draw(renderer, prefilter, target, chain[0], target);
-                    for (let i = 1; i < LEVELS; i += 1) draw(renderer, down, chain[i - 1], chain[i], chain[i - 1]);
-                    // The wide levels carry more: a lamp has a small hot core and a broad veil.
-                    renderer.autoClear = false;
-                    for (let i = LEVELS - 1; i > 0; i -= 1) {
-                        up.uniforms.weight.value = 1.15;
-                        draw(renderer, up, chain[i], chain[i - 1], chain[i]);
+                    if (bloomAmount > 0.0001) {
+                        draw(renderer, prefilter, target, chain[0], target);
+                        for (let i = 1; i < LEVELS; i += 1) draw(renderer, down, chain[i - 1], chain[i], chain[i - 1]);
+                        // The wide levels carry more: a lamp has a small hot core and a broad veil.
+                        renderer.autoClear = false;
+                        for (let i = LEVELS - 1; i > 0; i -= 1) {
+                            up.uniforms.weight.value = 1.15;
+                            draw(renderer, up, chain[i], chain[i - 1], chain[i]);
+                        }
+                        renderer.autoClear = autoClear;
                     }
-                    renderer.autoClear = autoClear;
                     quad.material = material;
                     renderer.setRenderTarget(previous);
                     renderer.render(scene, camera);
