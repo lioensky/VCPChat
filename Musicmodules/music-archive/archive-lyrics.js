@@ -18,6 +18,7 @@
     const TICK_MS = 200;
     const FOLLOW_AFTER = 3000;   // 手动滚过歌词后，停手这么久再回到跟随
     const NONE_AFTER = 2500;     // 换歌后这么久还没有歌词，才说「没有歌词」
+    const AUDIO_EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i;
 
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const textOf = (line) => String((line && (line.text || line.original || line.fullText)) || '').trim();
@@ -82,17 +83,7 @@
             state.lines = src.filter((l) => l && textOf(l));
             state.lineWords = state.lines.map((l) => wordsOf(l));
             state.offsets = [];
-            let y = 0;
-            const showTr = app.lyricsTranslation !== false;
-            r.track.innerHTML = state.lines.map((l, k) => {
-                state.offsets.push(y);
-                const tr = showTr ? String(l.translation || '').trim() : '';
-                y += tr ? LINE_H_TR : LINE_H;
-                const words = state.lineWords[k];
-                const body = words ? words.map((w) => `<span class="w">${esc(w.text)}</span>`).join('') : esc(textOf(l));
-                return `<p data-k="${k}"${tr ? ' class="tr"' : ''}><b${words ? ' class="ww"' : ''}>${body}</b>${tr ? `<em>${esc(tr)}</em>` : ''}</p>`;
-            }).join('');
-            // 纯文本歌词（没有时间轴）：照 RhinE 静静摆出来，不高亮、不跟随，滚轮从第一行往下翻
+            // 纯文本歌词（没有时间轴）：先判再写，避免先清空再二次覆盖 r.track.innerHTML
             const plain = !state.lines.length && Array.isArray(app.currentLyricsPlainLines) && app.currentLyricsPlainLines.length
                 ? app.currentLyricsPlainLines : null;
             state.plain = plain;
@@ -106,6 +97,17 @@
                 state.manualTimer = 0;
                 state.manual = 0;
                 state.shift = 0;
+            } else {
+                let y = 0;
+                const showTr = app.lyricsTranslation !== false;
+                r.track.innerHTML = state.lines.map((l, k) => {
+                    state.offsets.push(y);
+                    const tr = showTr ? String(l.translation || '').trim() : '';
+                    y += tr ? LINE_H_TR : LINE_H;
+                    const words = state.lineWords[k];
+                    const body = words ? words.map((w) => `<span class="w">${esc(w.text)}</span>`).join('') : esc(textOf(l));
+                    return `<p data-k="${k}"${tr ? ' class="tr"' : ''}><b${words ? ' class="ww"' : ''}>${body}</b>${tr ? `<em>${esc(tr)}</em>` : ''}</p>`;
+                }).join('');
             }
             buildIndex();
             if (state.lines.length || plain) fitSoon();
@@ -120,7 +122,7 @@
             state.words = null;
             const t = current();
             state.path = t ? t.path : null;
-            r.title.textContent = t ? String(t.title || '').replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '') : '';
+            r.title.textContent = t ? String(t.title || '').replace(AUDIO_EXT_RE, '') : '';
             paintChip();
         };
         /* 标题旁的小标签（借鉴 RhinE 歌词页的状态标签）：这份歌词是逐字、逐句还是纯文本，带不带译文；点它换一份 */
@@ -429,7 +431,7 @@
                 const node = k >= 0 ? r.track.children[k] : null;
                 // 先在修改类名和索引变量前读完目标行几何位置（.on 不改变行高），避免读写交替触发同步重排
                 updateShift(k, node);
-                const prev = activeLineEl || r.track.querySelector('p.on');
+                const prev = activeLineEl || (state.index >= 0 ? r.track.querySelector('p.on') : null);
                 prev?.classList.remove('on');
                 if (state.words) {
                     const spans = state.words.children;

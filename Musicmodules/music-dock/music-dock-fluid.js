@@ -13,6 +13,11 @@
     const RING_R = 20;      // 小环半径（外径 40）
     const HOLE_R = 34;      // 小环在播放条上挖出的凹口
     const VOL_RISE = 112;   // 音量水滴升起的高度
+    const HEX_RE = /^#?([0-9a-f]{6})$/i;
+    const hex2 = (v) => {
+        const n = Math.round(Math.max(0, Math.min(255, v)));
+        return n < 16 ? `0${n.toString(16)}` : n.toString(16);
+    };
 
     function createMusicDockFluid(options) {
         const { host, bar, ring, reduced = () => false, onRingMove = null } = options || {};
@@ -51,6 +56,7 @@
         const in0 = make('stop', { offset: '0' }, inner);
         const in1 = make('stop', { offset: '.45' }, inner);
         const in2 = make('stop', { offset: '.9' }, inner);
+        const glowStops = [in0, in1, in2];
 
         // 小环在播放条上挖出的凹口：用裁剪路径（整层的矩形减去一个圆，evenodd），不用遮罩。
         // 这块形状被三道模糊各引用一次；遮罩要逐次按亮度栅格化，每帧提交时贵得多，裁剪只是几何运算，样子一样（凹口本来就是硬边的圆）。
@@ -160,12 +166,12 @@
             return true;
         };
         const parseHex = (hex) => {
-            const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+            const m = HEX_RE.exec(String(hex || '').trim());
             if (!m) return null;
             const n = parseInt(m[1], 16);
             return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
         };
-        const toHex = (rgb) => `#${rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
+        const toHex = (rgb) => `#${hex2(rgb[0])}${hex2(rgb[1])}${hex2(rgb[2])}`;
         const setAttr = (node, name, value) => {
             const text = typeof value === 'number' ? value.toFixed(2) : String(value);
             let map = attrCache.get(node);
@@ -183,6 +189,8 @@
         // 这里量位置时扣掉当前的平移量，层自己的 left 记的是没平移时的位置。
         const dockEl = bar.closest('.md-dock');
         let vrailEl = null;
+        let playBtnEl = null;
+        let volBtnEl = null;
         const getVrail = () => {
             if (vrailEl && vrailEl.isConnected) return vrailEl;
             vrailEl = host.querySelector('.md-vrail');
@@ -225,10 +233,10 @@
             const bottom = Math.max(0, Math.round(vh - rect.bottom) - below);
             const x = PAD_X;
             const y = LAYER_H - rect.height - below;
-            const playBtn = bar.querySelector('[data-md="play"]');
-            const volBtn = host.querySelector('[data-md="vol"]');
-            const pr = playBtn?.getBoundingClientRect();
-            const vr = volBtn?.getBoundingClientRect();
+            if (!playBtnEl || !playBtnEl.isConnected) playBtnEl = bar.querySelector('[data-md="play"]');
+            if (!volBtnEl || !volBtnEl.isConnected) volBtnEl = host.querySelector('[data-md="vol"]');
+            const pr = playBtnEl?.getBoundingClientRect();
+            const vr = volBtnEl?.getBoundingClientRect();
             const playX = pr && pr.width ? pr.left - sx + pr.width / 2 - left : x + rect.height / 2;
             const volX = vr && vr.width ? vr.left - sx + vr.width / 2 - left : x + rect.width - rect.height / 2;
             const padVar = parseFloat(mistPadRaw !== null ? mistPadRaw : host.style.getPropertyValue('--md-mist-pad'));
@@ -560,11 +568,13 @@
             },
             // 换主题、换舞台时颜色在 0.6 秒里慢慢过去；降低动态时直接换。
             setGlow(colors) {
-                const target = [0, 1, 2].map((i) => parseHex(colors?.[i]) || glow.cur[i]);
-                if (!target[0] || !target[1] || !target[2]) return;
+                const c0 = parseHex(colors?.[0]) || glow.cur[0];
+                const c1 = parseHex(colors?.[1]) || glow.cur[1];
+                const c2 = parseHex(colors?.[2]) || glow.cur[2];
+                if (!c0 || !c1 || !c2) return;
+                const target = [c0, c1, c2];
                 if (glow.frame && sameRgbs(glow.target, target)) return;
                 if (glow.frame) { win.cancelAnimationFrame(glow.frame); glow.frame = 0; glow.target = null; }
-                const glowStops = [in0, in1, in2];
                 const paint = (rgbs) => {
                     glow.cur = rgbs;
                     for (let i = 0; i < 3; i += 1) setAttr(glowStops[i], 'stop-color', toHex(rgbs[i]));
@@ -636,6 +646,8 @@
                 mist.remove();
                 vrailEl?.style?.removeProperty('--md-vgrow');
                 vrailEl = null;
+                playBtnEl = null;
+                volBtnEl = null;
                 host.style.removeProperty('--md-vgrow');
             }
         };

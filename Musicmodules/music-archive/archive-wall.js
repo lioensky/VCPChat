@@ -534,6 +534,7 @@
          * 换一组之前，旧的那面墙先整体抬起、缩小、淡出（同样从左上往右下一波），
          * 拿一层快照盖在上面跑，底下立刻换成新的一组接着落下来。
          */
+        const TRANSLATE_RE = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/;
         let ghostEl = null;
         let ghostTimer = 0;
         const clearGhost = () => {
@@ -549,7 +550,7 @@
             ghost.querySelectorAll('.aw-panel').forEach((p) => p.remove());
             const W = st.room.width || 1, H = st.room.height || 1;
             for (const t of ghost.children) {
-                const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(t.style.transform || '');
+                const m = TRANSLATE_RE.exec(t.style.transform || '');
                 const u = m ? Math.max(0, Math.min(1, ((+m[1] - st.cam.x) / W + (+m[2] - st.cam.y) / H) / 2)) : 0;
                 t.classList.remove('aw-entering', 'aw-reveal');
                 t.classList.add('aw-leaving');
@@ -561,7 +562,7 @@
         };
 
         // ---------- 选中、展开 ----------
-        const posOf = (i) => (i >= 0 && st.idIndex.has(i) ? st.idIndex.get(i) : -1);
+        const posOf = (i) => (i >= 0 ? (st.idIndex.get(i) ?? -1) : -1);
         const syncSelection = ({ center = false, instant = false } = {}) => {
             const sel = opts.selected();
             if (sel === st.selIndex && st.focus) return;
@@ -768,12 +769,12 @@
             }
             if (at === lyricAt) return;
             const prev = lyricRoll.children[lyricAt];
-            if (prev) prev.classList.remove('is-now');
-            lyricAt = at;
             const cur = lyricRoll.children[Math.max(0, at)];
-            if (cur && at >= 0) cur.classList.add('is-now');
             const before = cur && cur.previousElementSibling;
             const y = cur ? Math.max(0, cur.offsetTop - (before ? before.offsetHeight : 0)) : 0;
+            if (prev) prev.classList.remove('is-now');
+            lyricAt = at;
+            if (cur && at >= 0) cur.classList.add('is-now');
             lyricRoll.style.transform = 'translateY(' + (-y) + 'px)';
         };
         let lastSeekKey = '';
@@ -1096,6 +1097,7 @@
         const schedule = () => { if (st.on && !st.raf) st.raf = requestAnimationFrame(tick); };
 
         // ---------- 输入 ----------
+        let pingRaf = 0;
         const tileOf = (target) => {
             const t = target && target.closest ? target.closest('.aw-tile') : null;
             if (!t || !t.dataset.id) return null;
@@ -1161,9 +1163,9 @@
                         focusInstance(inst, { center: true });
                     }
                     if (!reduced()) {
+                        if (pingRaf) cancelAnimationFrame(pingRaf);
                         locateBtn.classList.remove('is-ping');
-                        void locateBtn.offsetWidth;
-                        locateBtn.classList.add('is-ping');
+                        pingRaf = requestAnimationFrame(() => { pingRaf = 0; if (st.on && !locateBtn.hidden) locateBtn.classList.add('is-ping'); });
                     }
                     return;
                 }
@@ -1248,6 +1250,13 @@
         const onGlobalKey = () => { if (st.on) wake(); };
         global.addEventListener('keydown', onGlobalKey, true);
 
+        const stopTimers = () => {
+            clearInterval(dimTimer); clearInterval(seekTimer); clearTimeout(seekPaintTimer); clearTimeout(movingOff); clearTimeout(st.reflowTimer);
+            dimTimer = seekTimer = seekPaintTimer = movingOff = st.reflowTimer = 0;
+            clearGhost();
+            cancelAnimationFrame(st.raf); cancelAnimationFrame(pingRaf);
+            st.raf = pingRaf = 0;
+        };
         // ---------- 对外 ----------
         const api = {
             el,
@@ -1265,22 +1274,14 @@
                     st.dirty = true;
                     schedule();
                 } else {
-                    clearInterval(dimTimer);
-                    dimTimer = 0;
-                    clearInterval(seekTimer);
-                    seekTimer = 0;
-                    if (seekPaintTimer) { clearTimeout(seekPaintTimer); seekPaintTimer = 0; }
-                    if (movingOff) { clearTimeout(movingOff); movingOff = 0; }
-                    if (st.reflowTimer) { clearTimeout(st.reflowTimer); st.reflowTimer = 0; world.classList.remove('aw-reflow'); }
-                    clearGhost();
+                    stopTimers();
+                    world.classList.remove('aw-reflow');
                     st.drag = null;
                     seekDrag = null;
                     panelStateKey = '';
                     isDim = false;
                     el.classList.remove('aw-dim', 'aw-moving', 'is-grabbing');
                     seekEl.classList.remove('is-drag');
-                    cancelAnimationFrame(st.raf);
-                    st.raf = 0;
                     setExpanded(null, { animate: false });
                     if (panel.parentNode) panel.remove();
                     for (const node of st.nodes.values()) recycle(node);
@@ -1336,13 +1337,7 @@
                 seekDrag = null;
                 panelStateKey = '';
                 global.removeEventListener('keydown', onGlobalKey, true);
-                cancelAnimationFrame(st.raf);
-                clearTimeout(st.reflowTimer);
-                clearTimeout(movingOff);
-                clearTimeout(seekPaintTimer);
-                clearGhost();
-                clearInterval(seekTimer);
-                clearInterval(dimTimer);
+                stopTimers();
                 st.nodes.clear();
                 st.pool.length = 0;
                 thumbs.destroy();

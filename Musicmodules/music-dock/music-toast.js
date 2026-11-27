@@ -77,6 +77,7 @@
             timer: null,
             delayTimer: null,
             inRaf: 0,
+            evapRaf: 0,
             countdown: null,
             tick: null,
             hovered: false
@@ -142,19 +143,29 @@
             entry.startedAt = Date.now();
             entry.timer = setTimeout(close, entry.remaining);
             // 停留时间就是从实心慢慢蒸发成雾的过程（样式在 music-dock-drawer.css 的 .mtst-evap）。
-            // 仅在重播已有蒸发动画时触发回流，新建提示条首次挂载直接加类即可。
+            // 重播已有蒸发动画时跨帧再加类，避免同步读 offsetWidth 触发强制回流。
             const hadEvap = entry.el.classList.contains('mtst-evap');
+            if (entry.evapRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(entry.evapRaf); entry.evapRaf = 0; }
             entry.el.style.setProperty('--mtst-ms', `${entry.remaining}ms`);
             if (hadEvap) {
                 entry.el.classList.remove('mtst-evap');
-                void entry.el.offsetWidth;
+                if (typeof requestAnimationFrame === 'function') {
+                    entry.evapRaf = requestAnimationFrame(() => {
+                        entry.evapRaf = 0;
+                        if (!entry.closed && entry.shown && !entry.hovered) entry.el?.classList.add('mtst-evap');
+                    });
+                } else {
+                    entry.el.classList.add('mtst-evap');
+                }
+            } else {
+                entry.el.classList.add('mtst-evap');
             }
-            entry.el.classList.add('mtst-evap');
         };
 
         const pause = () => {
             if (entry.timer) entry.remaining = Math.max(400, entry.remaining - (Date.now() - entry.startedAt));
             clearTimers();
+            if (entry.evapRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(entry.evapRaf); entry.evapRaf = 0; }
             // 悬停时重新凝固，离开后用剩下的时间再蒸发一次。
             entry.el?.classList.remove('mtst-evap');
         };
@@ -162,8 +173,16 @@
         const mount = () => {
             if (entry.closed || entry.shown) return;
             const host = ensureLayer();
-            const live = [...toasts.values()].filter((t) => t.shown && !t.closed);
-            while (live.length >= MAX_VISIBLE) live.shift().close();
+            let liveCount = 0;
+            for (const t of toasts.values()) { if (t.shown && !t.closed) liveCount += 1; }
+            if (liveCount >= MAX_VISIBLE) {
+                for (const t of toasts.values()) {
+                    if (!t.shown || t.closed) continue;
+                    t.close();
+                    liveCount -= 1;
+                    if (liveCount < MAX_VISIBLE) break;
+                }
+            }
             entry.el = document.createElement('div');
             entry.el.dataset.key = key;
             render();
@@ -189,6 +208,7 @@
             clearTimeout(entry.delayTimer);
             entry.delayTimer = null;
             if (entry.inRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(entry.inRaf); entry.inRaf = 0; }
+            if (entry.evapRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(entry.evapRaf); entry.evapRaf = 0; }
             if (toasts.get(key) === entry) toasts.delete(key);
             const el = entry.el;
             if (!el) return;

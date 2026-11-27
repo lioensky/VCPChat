@@ -45,6 +45,8 @@ function setupVisualizer(app) {
         ];
     }
 
+    const VOCAL_START_BIN = Math.floor(300 / 21.5);
+    const VOCAL_END_BIN = Math.floor(3400 / 21.5);
     let vocalFadeWidth = 0;
     let vocalFade = null;
     let vocalSizeDirty = true;
@@ -111,14 +113,12 @@ function setupVisualizer(app) {
         ctx.clearRect(0, 0, w, h);
 
         // 提取人声范围能量 (约 300Hz - 3400Hz)
-        const startBin = Math.floor(300 / 21.5);
-        const endBin = Math.floor(3400 / 21.5);
         let vocalEnergy = 0;
-        const actualEnd = Math.min(endBin, data.length);
-        for (let i = startBin; i < actualEnd; i++) {
+        const actualEnd = Math.min(VOCAL_END_BIN, data.length);
+        for (let i = VOCAL_START_BIN; i < actualEnd; i++) {
             vocalEnergy += data[i];
         }
-        vocalEnergy = (vocalEnergy / (actualEnd - startBin)) || 0;
+        vocalEnergy = (vocalEnergy / (actualEnd - VOCAL_START_BIN)) || 0;
 
         // 缓动处理人声能量
         if (app.smoothedVocalEnergy === undefined) app.smoothedVocalEnergy = 0;
@@ -406,27 +406,28 @@ function setupVisualizer(app) {
         const sliceWidth = w / (bufferLength - 1);
         const scaleY = h * 1.2;
         const t6 = 0.5 / 6;
+        const dxStep = sliceWidth * t6;
+        const dxSpan = dxStep * 2;
         const lastIdx = bufferLength - 1;
+
+        let y0 = h - (data[0] || 0) * scaleY;
+        let y1 = y0;
+        let y2 = h - (data[1] || 0) * scaleY;
+        ctx.lineTo(0, y1);
 
         for (let i = 0; i < lastIdx; i++) {
             const x1 = i * sliceWidth;
-            const y1 = h - (data[i] || 0) * scaleY;
             const x2 = (i + 1) * sliceWidth;
-            const y2 = h - (data[i + 1] || 0) * scaleY;
-            const prevX = i > 0 ? (i - 1) * sliceWidth : x1;
-            const prevY = i > 0 ? h - (data[i - 1] || 0) * scaleY : y1;
-            const nextX = i < lastIdx - 1 ? (i + 2) * sliceWidth : x2;
-            const nextY = i < lastIdx - 1 ? h - (data[i + 2] || 0) * scaleY : y2;
+            const y3 = i < lastIdx - 1 ? h - (data[i + 2] || 0) * scaleY : y2;
+            const cp1x = x1 + (i > 0 ? dxSpan : dxStep);
+            const cp1y = y1 + (y2 - y0) * t6;
+            const cp2x = x2 - (i < lastIdx - 1 ? dxSpan : dxStep);
+            const cp2y = y2 - (y3 - y1) * t6;
 
-            const cp1x = x1 + (x2 - prevX) * t6;
-            const cp1y = y1 + (y2 - prevY) * t6;
-            const cp2x = x2 - (nextX - x1) * t6;
-            const cp2y = y2 - (nextY - y1) * t6;
-
-            if (i === 0) {
-                ctx.lineTo(x1, y1);
-            }
             ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
+            y0 = y1;
+            y1 = y2;
+            y2 = y3;
         }
 
         ctx.lineTo(w, h);

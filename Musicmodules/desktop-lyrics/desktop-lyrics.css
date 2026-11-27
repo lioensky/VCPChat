@@ -66,7 +66,7 @@ body.hover:not(.locked) .dl-tools { opacity: 1; pointer-events: auto; }
 .dl-tools button[data-cmd="toggle"] svg path { fill: currentColor; }
 .dl-tools button b { font-size: 13px; line-height: 1; }
 .dl-tools button small { font-size: 12px; line-height: 1; }
-.dl-tools button:has(b) { display: inline-flex; gap: 1px; align-items: center; justify-content: center; }
+.dl-tools .dl-size-btn { display: inline-flex; gap: 1px; align-items: center; justify-content: center; }
 .dl-sep { width: 1px; height: 16px; margin: 0 5px; background: rgba(255, 255, 255, 0.22); }
 #play .i-pause { display: none; }
 body.playing #play .i-pause { display: block; }

@@ -142,6 +142,12 @@
             this.smoothBass = 0;
             this.smoothMid = 0;
             this.smoothHigh = 0;
+            // 复用绘制样式描述对象，避免每帧（含气泡爆发时）分配上百个临时短生命周期对象
+            this._glowFill = { color: 0, alpha: 0 };
+            this._ringStroke = { color: 0, alpha: 0, width: 1 };
+            this._bubbleStroke = { color: 0, alpha: 0, width: 1.2 };
+            this._bubbleFill = { color: 0, alpha: 0 };
+            this._bubbleHlFill = { color: 0xffffff, alpha: 0 };
 
             // 4 层循环错峰向外扩散的涟漪环
             this.rippleRings = [
@@ -356,7 +362,9 @@
             this.glowLayer.clear();
             const glowR = baseR * (1.05 + currentBass * 0.35);
             const glowAlpha = clamp(0.06 + currentBass * 0.18, 0.04, 0.28);
-            this.glowLayer.circle(cx, cy, glowR).fill({ color: primaryColor, alpha: glowAlpha });
+            this._glowFill.color = primaryColor;
+            this._glowFill.alpha = glowAlpha;
+            this.glowLayer.circle(cx, cy, glowR).fill(this._glowFill);
 
             // 6. 核心：绘制一圈圈一边旋转一边扩散的声纹涟漪波 (Expanding Ripple Rings)
             this.waveLayer.clear();
@@ -417,7 +425,10 @@
                         this.waveLayer.quadraticCurveTo(x0, y0, (x0 + xs[i + 1]) * 0.5, (y0 + ys[i + 1]) * 0.5);
                     }
                     this.waveLayer.lineTo(xs[segments], ys[segments]);
-                    this.waveLayer.stroke({ color: ringColor, alpha: ringAlpha, width: strokeWidth });
+                    this._ringStroke.color = ringColor;
+                    this._ringStroke.alpha = ringAlpha;
+                    this._ringStroke.width = strokeWidth;
+                    this.waveLayer.stroke(this._ringStroke);
                 }
             }
 
@@ -436,14 +447,19 @@
                     }
                     this.hadBubbles = true;
 
+                    this._bubbleStroke.color = b.color;
+                    this._bubbleStroke.alpha = b.alpha * 0.75;
+                    this._bubbleFill.color = b.color;
+                    this._bubbleFill.alpha = b.alpha * 0.12;
                     this.bubbleLayer.circle(b.x, b.y, b.radius)
-                        .stroke({ color: b.color, alpha: b.alpha * 0.75, width: 1.2 })
-                        .fill({ color: b.color, alpha: b.alpha * 0.12 });
+                        .stroke(this._bubbleStroke)
+                        .fill(this._bubbleFill);
 
                     const hlOffset = b.radius * 0.35;
                     const hlRadius = Math.max(0.6, b.radius * 0.25);
+                    this._bubbleHlFill.alpha = b.alpha * 0.85;
                     this.bubbleLayer.circle(b.x - hlOffset, b.y - hlOffset, hlRadius)
-                        .fill({ color: 0xffffff, alpha: b.alpha * 0.85 });
+                        .fill(this._bubbleHlFill);
                 }
             }
 
@@ -506,6 +522,8 @@
 
         const isContainerHidden = () => {
             if (app.isArchiveActive || container.hidden) return true;
+            const inline = container.style;
+            if (inline && (inline.display === 'none' || inline.visibility === 'hidden')) return true;
             if (typeof global.getComputedStyle === 'function') {
                 try {
                     const cs = global.getComputedStyle(container);

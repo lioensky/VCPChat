@@ -4,6 +4,10 @@
 function setupEffects(app) {
     // 缓存十段 EQ 滑块引用，拖动滑块时免去每帧 20 次 getElementById 查询
     const eqSliderCache = new Map();
+    let eqContentEl = null;
+    let eqBandSrc = null;
+    let eqBandKeys = null;
+    let eqBandVals = null;
     const getEqSlider = (band) => {
         const cached = eqSliderCache.get(band);
         if (cached && cached.isConnected !== false) return cached;
@@ -41,21 +45,25 @@ function setupEffects(app) {
     // 重开窗口时不管滑块是什么，下拉都停在第一项「平衡」。
     app.syncEqPresetSelect = () => {
         if (!app.eqPresetSelect || !app.eqPresets) return;
-        const current = {};
-        const bands = Object.keys(app.eqBands || {});
-        for (let i = 0; i < bands.length; i += 1) {
-            const band = bands[i];
+        const eqBands = app.eqBands || {};
+        if (eqBandSrc !== eqBands || !eqBandKeys) {
+            eqBandSrc = eqBands;
+            eqBandKeys = Object.keys(eqBands);
+            eqBandVals = new Float64Array(eqBandKeys.length);
+        }
+        const n = eqBandKeys.length;
+        for (let i = 0; i < n; i += 1) {
+            const band = eqBandKeys[i];
             const slider = getEqSlider(band);
-            current[band] = Number(slider ? slider.value : app.eqBands[band]) || 0;
+            eqBandVals[i] = Number(slider ? slider.value : eqBands[band]) || 0;
         }
         let match = '';
         for (const name in app.eqPresets) {
             if (!Object.prototype.hasOwnProperty.call(app.eqPresets, name)) continue;
             const preset = app.eqPresets[name];
             let ok = true;
-            for (let i = 0; i < bands.length; i += 1) {
-                const band = bands[i];
-                if ((Number(preset[band]) || 0) !== current[band]) { ok = false; break; }
+            for (let i = 0; i < n; i += 1) {
+                if ((Number(preset[eqBandKeys[i]]) || 0) !== eqBandVals[i]) { ok = false; break; }
             }
             if (ok) { match = name; break; }
         }
@@ -65,11 +73,17 @@ function setupEffects(app) {
 
     app.updateEqSectionState = () => {
         const isExpanded = app.eqSwitch.checked;
-        const content = app.eqSection.querySelector('.block-content');
+        const content = (eqContentEl && eqContentEl.isConnected && app.eqSection.contains(eqContentEl))
+            ? eqContentEl
+            : (eqContentEl = app.eqSection.querySelector('.block-content'));
 
         app.eqSection.classList.toggle('eq-collapsed', !isExpanded);
-        app.eqSwitch.setAttribute('aria-expanded', String(isExpanded));
-        if (content) content.setAttribute('aria-hidden', String(!isExpanded));
+        const expStr = String(isExpanded);
+        if (app.eqSwitch.getAttribute('aria-expanded') !== expStr) app.eqSwitch.setAttribute('aria-expanded', expStr);
+        if (content) {
+            const hidStr = String(!isExpanded);
+            if (content.getAttribute('aria-hidden') !== hidStr) content.setAttribute('aria-hidden', hidStr);
+        }
     };
 
     app.applyEqPreset = (presetName) => {
@@ -86,6 +100,8 @@ function setupEffects(app) {
     app.createEqBands = () => {
         app.eqBandsContainer.innerHTML = '';
         eqSliderCache.clear();
+        eqBandSrc = null;
+        eqBandKeys = null;
         const useFrag = typeof document.createDocumentFragment === 'function';
         const target = useFrag ? document.createDocumentFragment() : app.eqBandsContainer;
         for (const band in app.eqBands) {

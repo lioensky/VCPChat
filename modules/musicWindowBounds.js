@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 const MIN_VISIBLE = 120; // 窗口至少要有这么宽、这么高的一块落在某块屏的工作区里，否则当作找不到
+let tmpSeq = 0;
 
 const num = (v) => (Number.isFinite(v) ? Math.round(v) : null);
 
@@ -63,7 +64,7 @@ function writeSavedBounds(file, win) {
         if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y) || !(b.width > 0) || !(b.height > 0)) return;
         const data = { x: b.x, y: b.y, width: b.width, height: b.height, maximized: Boolean(win.isMaximized?.()) };
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        tmp = `${file}.${process.pid}.tmp`;
+        tmp = `${file}.${process.pid}.${++tmpSeq}.tmp`;
         fs.writeFileSync(tmp, JSON.stringify(data));
         fs.renameSync(tmp, file);
         tmp = null;

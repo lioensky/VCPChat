@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+let tmpSeq = 0;
 
 function readRecord(file) {
     try {
@@ -24,7 +25,7 @@ function writeRecord(file, record) {
     let tmp = null;
     try {
         fs.mkdirSync(path.dirname(file), { recursive: true });
-        tmp = `${file}.${process.pid}.tmp`;
+        tmp = `${file}.${process.pid}.${++tmpSeq}.tmp`;
         fs.writeFileSync(tmp, JSON.stringify(record));
         fs.renameSync(tmp, file);
         tmp = null;
