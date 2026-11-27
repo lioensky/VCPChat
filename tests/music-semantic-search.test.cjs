@@ -87,3 +87,18 @@ test('clearing the search box in semantic mode goes back to the whole library', 
     assert.equal(app.currentFilteredTracks, null);
     assert.deepEqual(rendered, [null]);
 });
+
+test('Batch 70: stripAudioExtension handles .aif/.aiff and semantic playlist lines recognize extended audio formats', () => {
+    const { app, rendered } = setup();
+    assert.equal(app.stripAudioExtension('Prelude.aif'), 'Prelude');
+    assert.equal(app.stripAudioExtension('Prelude.AIFF'), 'Prelude');
+    assert.equal(app.stripAudioExtension('Track.opus'), 'Track');
+    app.playlist = [
+        { path: 'C:/m/1.opus', title: 'Midnight Echo', artist: 'A' },
+        { path: 'C:/m/2.aif', title: 'Dawn Breeze', artist: 'B' },
+        { path: 'C:/m/3.wv', title: 'Rainy Window', artist: 'C' }
+    ];
+    const output = '--- (来源: MusicDiary, 相关性: 80%)\n[路径: file:///MusicDiary/playlist.txt]\nMidnight Echo.opus\nDawn Breeze.aif\nRainy Window.wv\n';
+    app.processSemanticSearchResults(output);
+    assert.deepEqual(Array.from(rendered.at(-1), (t) => t.title), ['Midnight Echo', 'Dawn Breeze', 'Rainy Window']);
+});

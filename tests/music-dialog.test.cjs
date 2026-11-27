@@ -161,3 +161,16 @@ test('Batch 57: stacked MusicDialog confirms route Escape only to the topmost di
     key(window, 'Enter');
     assert.equal(await p1, true, 'subsequent Enter confirms the now-topmost underlying dialog');
 });
+
+test('Batch 70: dismissed MusicDialog sets data-closing=1 and beforeunload clears its pending exit removal timer', async () => {
+    const { window, doc } = setup();
+    const pending = window.MusicDialog.confirm({ title: '退出清理' });
+    const overlay = doc.querySelector('.dialog-overlay.music-dialog');
+    assert.equal(overlay.dataset.closing, undefined);
+    overlay.querySelector('.dialog-btn.cancel').click();
+    assert.equal(await pending, false);
+    assert.equal(overlay.dataset.closing, '1', 'fading MusicDialog marks data-closing=1 immediately');
+    assert.equal(overlay.isConnected, true, 'overlay stays connected briefly for exit animation');
+    window.dispatchEvent(new window.Event('beforeunload'));
+    assert.equal(overlay.isConnected, false, 'beforeunload removes fading overlay immediately');
+});

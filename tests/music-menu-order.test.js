@@ -61,3 +61,39 @@ test('a menu opened with the mouse gets the keyboard handler (without highlighti
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(calls.length, 1);
 });
+
+test('Batch 70: childObserver ignores non-menu helper nodes and tidyDividers skips unchanged style.display writes', async () => {
+    const w = setup(['play', 'add-to-queue', 'goto-artist', 'remove-from-list']);
+    const menu = w.document.getElementById('track-context-menu');
+    w.MusicMenuOrder.tidyDividers(menu);
+
+    // 1. Adding/removing non-menu nodes (e.g. .mf-trail) should not trigger childList rearrangement
+    let insertBeforeCalls = 0;
+    const origInsertBefore = menu.insertBefore.bind(menu);
+    menu.insertBefore = (...args) => { insertBeforeCalls += 1; return origInsertBefore(...args); };
+    const helper = w.document.createElement('i');
+    helper.className = 'mf-trail';
+    menu.appendChild(helper);
+    helper.remove();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(insertBeforeCalls, 0, 'helper node mutations do not trigger arrange');
+
+    // 2. tidyDividers writes display only when a divider visibility actually changes
+    const dividers = [...menu.querySelectorAll('.context-menu-divider')];
+    assert.ok(dividers.length >= 2);
+    let displayWrites = 0;
+    for (const d of dividers) {
+        let cur = d.style.display;
+        Object.defineProperty(d.style, 'display', {
+            configurable: true,
+            get() { return cur; },
+            set(v) { displayWrites += 1; cur = v; }
+        });
+    }
+    w.MusicMenuOrder.tidyDividers(menu);
+    assert.equal(displayWrites, 0, 'steady-state tidyDividers performs zero redundant style.display writes');
+
+    menu.querySelector('[data-action="goto-artist"]').style.display = 'none';
+    w.MusicMenuOrder.tidyDividers(menu);
+    assert.equal(displayWrites, 1, 'hiding middle group writes display only for the collapsed divider');
+});

@@ -114,3 +114,39 @@ test('Batch 60: modal song list uses stable O(N) partition, single-track albums 
     assert.match(musicCss, /\.left-sidebar\.sidebar-is-scrolling\s*\.sidebar-playlist\s+li/);
     dom.window.close();
 });
+
+test('Batch 70: showContextMenu cancels stale rAF on rapid reopen or beforeunload and skips bud when hidden', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="ctx" class="context-menu"><div class="context-submenu"></div></div></body>', { runScripts: 'outside-only' });
+    const { window } = dom;
+    const doc = window.document;
+    const queued = [];
+    const cancelled = [];
+    let rid = 0;
+    window.requestAnimationFrame = (cb) => { const id = ++rid; queued.push({ id, cb }); return id; };
+    window.cancelAnimationFrame = (id) => { cancelled.push(id); };
+    let budCalls = 0;
+    window.MusicFluid = { bud: () => { budCalls += 1; } };
+    window.eval(fs.readFileSync('Musicmodules/music-sidebar.js', 'utf8'));
+    const menu = doc.getElementById('ctx');
+    const app = {
+        contextMenu: menu,
+        playlistSubmenu: null,
+        customPlaylists: []
+    };
+    window.setupSidebar(app);
+
+    app.showContextMenu(10, 20);
+    app.showContextMenu(30, 40);
+    assert.deepEqual(cancelled, [1], 'second showContextMenu cancels first pending rAF');
+
+    // Hide menu before second rAF fires -> bud must not run on closed menu
+    menu.classList.remove('visible');
+    queued[1].cb();
+    assert.equal(budCalls, 0, 'rAF skips MusicFluid.bud when context menu is no longer visible');
+
+    // Open again and fire beforeunload -> pending rAF cancelled
+    app.showContextMenu(50, 60);
+    window.dispatchEvent(new window.Event('beforeunload'));
+    assert.ok(cancelled.includes(3), 'beforeunload cancels pending showContextMenu rAF');
+    dom.window.close();
+});

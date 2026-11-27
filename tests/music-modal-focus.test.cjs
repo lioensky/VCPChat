@@ -347,8 +347,8 @@ test('eq-preset dialog blocks single-key shortcuts on buttons and cleans up on b
         app.channels.open();
         assert.ok(doc.querySelector('.mchan'), 'channels dialog opened');
         window.dispatchEvent(new window.Event('beforeunload'));
-        assert.equal(doc.querySelector('.music-eq-name')?.closest('.dialog-overlay')?.classList.contains('visible'), false, 'EQ preset dialog closed on beforeunload');
-        assert.equal(doc.querySelector('.mchan')?.closest('.dialog-overlay')?.classList.contains('visible'), false, 'channels dialog closed on beforeunload');
+        assert.equal(doc.querySelector('.music-eq-name'), null, 'EQ preset dialog removed immediately on beforeunload');
+        assert.equal(doc.querySelector('.mchan'), null, 'channels dialog removed immediately on beforeunload');
     } finally {
         dom.window.close();
     }
@@ -734,5 +734,82 @@ test('Batch 66: modal-focus skips overlay DOM queries on non-Tab/non-Nav keys, d
             global.MutationObserver = prevMO;
             pinDom.window.close();
         }
+    }
+});
+
+test('Batch 70: close button click restores focus with animation, rapid reopen flushes exiting overlay, and closing confirm dialog does not block Escape', async () => {
+    const dom = new JSDOM('<!doctype html><body><button id="opener">open</button><select id="eq-preset-select"></select></body>', {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true,
+        url: 'http://localhost/'
+    });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        const opener = doc.getElementById('opener');
+        const t1 = { path: 'D:\\Music\\a.flac', title: 'Alpha.flac', artist: 'A', duration: 180 };
+        const t2 = { path: 'D:\\Music\\a.mp3', title: 'Alpha.mp3', artist: 'A', duration: 180 };
+        const app = {
+            playlist: [t1, t2],
+            currentTrackIndex: 0,
+            eqBands: { 32: 0 },
+            eqPresets: { flat: { 32: 0 } },
+            eqPresetSelect: doc.getElementById('eq-preset-select'),
+            populateEqPresets() {}, applyEqPreset() {}, syncEqPresetSelect() {}, updateUIWithState() {},
+            musicStats: { summary: () => ({ seconds: 0, plays: 0, activeDays: 0, hours: new Array(24).fill(0), tracks: [], daily: {} }), get: () => null },
+            api: {
+                musicLibraryFolders: async () => ({ ok: true, folders: [] }),
+                showMusicInFolder: async () => ({ ok: true }),
+                readMusicAudioFile: () => new Promise(() => {}),
+                setMusicChannels: async (p) => ({ status: 'success', channels: p })
+            }
+        };
+        for (const f of ['music-app-hooks.js', 'music-radio.js', 'music-stats-view.js', 'music-dupes.js', 'music-folders.js', 'music-track-file.js', 'music-spectrum.js', 'music-channels.js', 'music-eq-presets.js']) {
+            window.eval(fs.readFileSync(`Musicmodules/${f}`, 'utf8'));
+        }
+        window.MusicStatsView.setupMusicStatsView(app);
+        window.MusicDupes.setupMusicDupes(app);
+        window.MusicFolders.setupMusicFolders(app);
+        window.MusicTrackFile.setupMusicTrackFile(app);
+        window.MusicSpectrum.setupMusicSpectrum(app);
+        window.MusicChannels.setupMusicChannels(app);
+        window.MusicEqPresets.setupMusicEqPresets(app);
+
+        const cases = [
+            ['dupes', () => app.openDupesView(), '.mdupes .mstats-close', '.mdupes'],
+            ['stats', () => app.openStatsView(), '.mstats:not(.mdupes):not(.mfold):not(.minfo):not(.mspec):not(.mchan) .mstats-close', '.mstats:not(.mdupes):not(.mfold):not(.minfo):not(.mspec):not(.mchan)'],
+            ['track-file', () => app.openTrackInfo(0), '.minfo:not(.mfold):not(.mchan) .mstats-close', '.minfo:not(.mfold):not(.mchan)'],
+            ['spectrum', () => { app.openSpectrum(0); }, '.mspec .mstats-close', '.mspec'],
+            ['channels', () => app.channels.open(), '.mchan .mstats-close', '.mchan'],
+            ['folders', () => app.openLibraryFolders(), '.mfold .mstats-close', '.mfold']
+        ];
+
+        for (const [name, openFn, closeSel, dialogSel] of cases) {
+            opener.focus();
+            openFn();
+            const firstOverlay = doc.querySelector(dialogSel).closest('.dialog-overlay');
+            doc.querySelector(closeSel).click();
+            assert.equal(doc.activeElement, opener, `${name}: clicking close button restores focus (MouseEvent not treated as immediate)`);
+            assert.equal(firstOverlay.isConnected, true, `${name}: clicking close button preserves exit animation before 320ms removal`);
+            openFn();
+            assert.equal(firstOverlay.isConnected, false, `${name}: rapid reopen flushes exiting overlay immediately`);
+            assert.equal(doc.querySelectorAll(dialogSel).length, 1, `${name}: no duplicate dialog nodes on rapid reopen`);
+            doc.querySelector(closeSel).click();
+        }
+
+        // Dismissed EQ preset dialog marks data-closing="1" so underlying dialogs still handle Escape immediately
+        app.channels.open();
+        app.eqUserPresets.promptSave();
+        doc.querySelector('.music-eq-name .cancel').click();
+        const fadingEq = doc.querySelector('.music-eq-name');
+        assert.ok(fadingEq && fadingEq.dataset.closing === '1', 'fading EQ preset dialog carries data-closing=1');
+        window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        assert.equal(doc.querySelector('.mchan')?.closest('.dialog-overlay')?.classList.contains('visible'), false, 'channels dialog handles Escape immediately while confirm overlay fades out');
+
+        // beforeunload flushes all pending exit timers and removes fading overlays immediately
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.equal(doc.querySelectorAll('.dialog-overlay').length, 0, 'beforeunload removes all fading overlays immediately');
+    } finally {
+        dom.window.close();
     }
 });
