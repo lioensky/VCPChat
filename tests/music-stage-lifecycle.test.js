@@ -1615,3 +1615,112 @@ test('Batch 60: stage slider input skips theme/mode-button rebuilds, debounces a
         dom2.window.close();
     }
 });
+
+test('Batch 64: stage runtime monotonic line lookup & audio bands, host progress drag rect cache, sendLatest volume, slider flush, and canvas release', () => {
+    const dom = createStageDom();
+    try {
+        const store = new Map();
+        let storageWrites = 0;
+        Object.defineProperty(dom.window, 'localStorage', {
+            configurable: true,
+            value: {
+                getItem: (k) => (store.has(k) ? store.get(k) : null),
+                setItem: (k, v) => { if (k === 'musicStageConfig') storageWrites += 1; store.set(k, String(v)); }
+            }
+        });
+        for (const file of [
+            'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${file}`);
+        }
+
+        // 1. findActiveLineIndex monotonic fast path + seek backward/forward parity
+        const R = dom.window.MusicStageRuntime;
+        const lines = Array.from({ length: 10 }, (_, i) => ({ startTime: i * 5 + 2, text: `L${i}` }));
+        assert.equal(R.findActiveLineIndex(lines, 1.0, -1), -1);
+        assert.equal(R.findActiveLineIndex(lines, 2.5, -1), 0);
+        assert.equal(R.findActiveLineIndex(lines, 4.9, 0), 0, 'same-line fast path');
+        assert.equal(R.findActiveLineIndex(lines, 7.1, 0), 1, 'next-line fast path');
+        assert.equal(R.findActiveLineIndex(lines, 49.0, 8), 9, 'last-line fast path');
+        assert.equal(R.findActiveLineIndex(lines, 55.0, 9), 9, 'past-end stays on last line');
+        assert.equal(R.findActiveLineIndex(lines, 13.0, 9), 2, 'backward seek falls back to binary search');
+        assert.equal(R.findActiveLineIndex(lines, 0.5, 5), -1, 'seek before first line returns -1');
+
+        // 2. resolveAudioBands tight slice loops (verify exact parity with averageRange slices)
+        const spec = new Float32Array(100);
+        for (let i = 0; i < 100; i += 1) spec[i] = i < 10 ? 1 : (i < 24 ? 0.5 : (i < 57 ? 0.25 : 0.1));
+        const bands = R.resolveAudioBands(spec);
+        assert.ok(Math.abs(bands.bass - 1) < 1e-6, `bass=${bands.bass}`);
+        assert.ok(Math.abs(bands.lowMid - 0.5) < 1e-6, `lowMid=${bands.lowMid}`);
+        assert.ok(Math.abs(bands.mid - 0.25) < 1e-6, `mid=${bands.mid}`);
+        assert.ok(Math.abs(bands.treble - 0.1) < 1e-6, `treble=${bands.treble}`);
+        assert.ok(bands.power > 0.3 && bands.power < 0.7);
+
+        // 3. Stage host: progress drag caches rect, setVolume uses sendLatest, mode slider change flushes Config, destroy zeroes soft canvases
+        const { app } = createApp();
+        const sendLatestKeys = [];
+        const volumeCalls = [];
+        app.api.setMusicVolume = (v) => volumeCalls.push(v);
+        app.sendLatest = (key, fn) => { sendLatestKeys.push(key); return fn(); };
+        const doc = dom.window.document;
+        const settingsWrap = doc.createElement('div');
+        settingsWrap.className = 'music-stage-settings';
+        settingsWrap.innerHTML = `<button class="music-stage-settings-toggle" type="button"></button>
+            <div class="music-stage-settings-card" hidden>
+                <button class="music-stage-settings-close" type="button"></button>
+                <p class="music-stage-current-mode-hint"></p>
+                <div class="music-stage-mode-options"></div>
+                <div class="music-stage-tuning-controls"></div>
+                <div class="music-stage-common-controls"></div>
+                <button class="music-stage-settings-reset" type="button"></button>
+                <span class="music-stage-settings-status"></span>
+            </div>`;
+        doc.getElementById('music-stage').appendChild(settingsWrap);
+        dom.window.setupMusicStage(app);
+        app.stageHost.enter();
+
+        const track = doc.querySelector('.music-stage-progress-track');
+        let rectReads = 0;
+        track.getBoundingClientRect = () => { rectReads += 1; return { left: 0, right: 200, top: 0, bottom: 10, width: 200, height: 10 }; };
+        track.setPointerCapture = () => {};
+        const ptr = (type, x) => {
+            const e = new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, button: 0 });
+            Object.defineProperty(e, 'pointerId', { value: 3 });
+            track.dispatchEvent(e);
+        };
+        ptr('pointerdown', 40);
+        assert.equal(rectReads, 1, 'progress pointerdown reads bounding rect once');
+        ptr('pointermove', 80);
+        ptr('pointermove', 120);
+        ptr('pointerup', 140);
+        assert.equal(rectReads, 1, 'progress drag pointermove/pointerup reuse cached bounding rect');
+
+        const volSlider = doc.querySelector('.music-stage-volume-slider');
+        volSlider.value = '0.42';
+        volSlider.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        assert.deepEqual(sendLatestKeys, ['volume'], 'stage volume routes through app.sendLatest');
+        assert.equal(volumeCalls.length, 1);
+
+        doc.querySelector('.music-stage-settings-toggle').click();
+        const tuningRange = doc.querySelector('[data-stage-config-type="range"]');
+        storageWrites = 0;
+        tuningRange.value = String(Number(tuningRange.max));
+        tuningRange.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        assert.equal(storageWrites, 0, 'mode range slider input debounces localStorage');
+        tuningRange.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+        assert.equal(storageWrites, 1, 'mode range slider change immediately flushes localStorage');
+
+        const softCanvases = [...doc.querySelectorAll('.music-stage-backdrop-soft')];
+        for (const c of softCanvases) { c.width = 64; c.height = 64; }
+        app.stageHost.destroy();
+        for (const c of softCanvases) {
+            assert.equal(c.width, 0, 'destroy releases soft backdrop canvas width');
+            assert.equal(c.height, 0, 'destroy releases soft backdrop canvas height');
+        }
+    } finally {
+        dom.window.close();
+    }
+});

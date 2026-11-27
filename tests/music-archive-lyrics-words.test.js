@@ -205,3 +205,65 @@ test('Batch 52: archive lyrics caches track offsetHeight across wheel events, ca
     assert.equal(lpWrites, 1, 'changed --lp percentage updates once');
     ly.destroy();
 });
+
+test('Batch 64: archive lyrics reads row geometry before active-class writes, clears words without querySelectorAll, and dedupes index hover', () => {
+    const { window, app, ly, at } = setup({ playing: true });
+    // Expand lyrics to >=4 lines so the index ruler is built
+    app.currentLyrics = [
+        { time: 1, text: 'hello world', words: [{ text: 'hello ', startTime: 1, endTime: 2 }, { text: 'world', startTime: 2, endTime: 3 }] },
+        { time: 4, text: 'second line' },
+        { time: 8, text: 'third line' },
+        { time: 12, text: 'fourth line' }
+    ];
+    ly.sync();
+    const track = ly.el.querySelector('.archive-lyrics-track');
+    const vp = ly.el.querySelector('.archive-lyrics-viewport');
+    Object.defineProperty(vp, 'clientHeight', { get: () => 200, configurable: true });
+    Object.defineProperty(track, 'offsetHeight', { get: () => 400, configurable: true });
+
+    // Start on word-by-word line 0
+    at(1.5);
+    const line0 = track.children[0];
+    const line1 = track.children[1];
+    assert.ok(line0.classList.contains('on'));
+    assert.ok(line0.querySelector('.w.singing'));
+
+    // Instrument line1.offsetTop read vs line0/line1 classList mutations, and line0.querySelectorAll
+    const ops = [];
+    Object.defineProperty(line1, 'offsetTop', { get: () => { ops.push('read:offsetTop'); return 60; }, configurable: true });
+    Object.defineProperty(line1, 'offsetHeight', { get: () => { ops.push('read:offsetHeight'); return 32; }, configurable: true });
+    const origAdd = line1.classList.add.bind(line1.classList);
+    line1.classList.add = (...a) => { if (a.includes('on')) ops.push('write:add-on'); return origAdd(...a); };
+    const origRem = line0.classList.remove.bind(line0.classList);
+    line0.classList.remove = (...a) => { if (a.includes('on')) ops.push('write:rem-on'); return origRem(...a); };
+    let prevQsaCalls = 0;
+    const origQsa = line0.querySelectorAll.bind(line0);
+    line0.querySelectorAll = (...a) => { prevQsaCalls += 1; return origQsa(...a); };
+
+    at(4.5);
+    const firstWrite = ops.findIndex((o) => o.startsWith('write:'));
+    const lastRead = ops.reduce((acc, o, i) => (o.startsWith('read:') ? i : acc), -1);
+    assert.ok(firstWrite > 0 && lastRead < firstWrite, `updateShift reads precede active-class writes (${ops.join(',')})`);
+    assert.equal(prevQsaCalls, 0, 'leaving a word line clears spans via state.words.children without querySelectorAll');
+    assert.equal(line0.querySelectorAll('.w.sung, .w.singing').length, 0);
+
+    // Index ruler pointermove deduplicates repeated moves on the same lyric line index
+    const indexEl = ly.el.querySelector('.archive-lyrics-index');
+    indexEl.getBoundingClientRect = () => ({ top: 0, bottom: 100, left: 0, right: 20, width: 20, height: 100 });
+    let hvWrites = 0;
+    const origSetProp = indexEl.style.setProperty.bind(indexEl.style);
+    indexEl.style.setProperty = (prop, val) => {
+        if (prop === '--hv') hvWrites += 1;
+        return origSetProp(prop, val);
+    };
+    indexEl.dispatchEvent(new window.MouseEvent('pointerenter', { bubbles: true, clientY: 35 }));
+    indexEl.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientY: 35 }));
+    indexEl.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientY: 36 }));
+    assert.equal(hvWrites, 1, 'repeated pointermove on same lyric index writes --hv once');
+    indexEl.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientY: 95 }));
+    assert.equal(hvWrites, 2, 'moving to a different lyric index updates --hv');
+    indexEl.dispatchEvent(new window.MouseEvent('pointerleave', { bubbles: true }));
+    indexEl.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientY: 95 }));
+    assert.equal(hvWrites, 3, 'pointerleave resets lastHoverK so re-entry paints again');
+    ly.destroy();
+});

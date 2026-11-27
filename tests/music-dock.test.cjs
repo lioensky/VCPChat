@@ -1608,3 +1608,50 @@ test('Batch 62: dock fluid skips redundant layout writes when geometry is unchan
         window.close();
     }
 });
+
+test('Batch 64: opening queue drawer renders window before setting scrollTop after focus (single layout)', () => {
+    const { window, doc, app, dock } = setup();
+    try {
+        const extra = Array.from({ length: 50 }, (_, i) => ({ path: `C:/t${i}.flac`, title: `Track ${i}.flac`, artist: 'A' }));
+        app.playlist.push(...extra);
+        app.getHistory = () => extra.slice(0, 6);
+        app.manualQueue = [extra[6], extra[7]];
+        app.getUpNext = () => ({ manual: app.manualQueue.slice(), context: extra.slice(8) });
+
+        const ops = [];
+        const origFocus = window.HTMLElement.prototype.focus;
+        window.HTMLElement.prototype.focus = function (...args) {
+            ops.push('focus');
+            return origFocus.apply(this, args);
+        };
+        const scrollerProto = window.HTMLDivElement.prototype;
+        const origScrollDesc = Object.getOwnPropertyDescriptor(scrollerProto, 'scrollTop')
+            || Object.getOwnPropertyDescriptor(window.Element.prototype, 'scrollTop');
+        Object.defineProperty(window.Element.prototype, 'scrollTop', {
+            configurable: true,
+            get() { return origScrollDesc ? origScrollDesc.get.call(this) : (this._st || 0); },
+            set(v) {
+                if (this.classList?.contains('md-ql')) {
+                    const rowCount = this.querySelectorAll('[data-k]').length;
+                    ops.push(`scrollTop:${v}:rows=${rowCount}`);
+                }
+                if (origScrollDesc) origScrollDesc.set.call(this, v); else this._st = v;
+            }
+        });
+        try {
+            dock.openPanel('播放列表');
+        } finally {
+            window.HTMLElement.prototype.focus = origFocus;
+            if (origScrollDesc) Object.defineProperty(window.Element.prototype, 'scrollTop', origScrollDesc);
+        }
+        const scrollOps = ops.filter((o) => o.startsWith('scrollTop:'));
+        assert.equal(scrollOps.length, 1, `queue open sets scrollTop once (got ${ops.join(', ')})`);
+        const scrollIdx = ops.indexOf(scrollOps[0]);
+        const focusIdx = ops.indexOf('focus');
+        assert.ok(focusIdx >= 0 && scrollIdx > focusIdx, `scrollTop runs after focus (${ops.join(', ')})`);
+        assert.ok(!scrollOps[0].endsWith('rows=0'), `queue rows are rendered before scrollTop assignment (${scrollOps[0]})`);
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

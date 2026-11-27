@@ -259,9 +259,15 @@ test('Batch 57: classic-list caches sorted output for >32 tracks and music-skin 
     t.app.renderPlaylist();
     t.app.renderPlaylist();
     assert.equal(stripCalls, callsAfterSort, 'repeated renderPlaylist reuses cached sorted list without re-sorting');
-    // Clicking the sort header again flips direction and invalidates cache
+    // Clicking the sort header again flips direction via O(N) rank-reversal without re-calling stripAudioExtension
+    const firstAsc = t.list.children[0].dataset.index;
     t.doc.querySelector('.music-list-sort.is-title').click();
-    assert.ok(stripCalls > callsAfterSort, 'sort header toggle invalidates sortedCache and re-sorts');
+    assert.equal(stripCalls, callsAfterSort, 'sort header toggle reverses cached asc order without re-extracting title keys');
+    assert.notEqual(t.list.children[0].dataset.index, firstAsc, 'toggled title sort visibly reverses displayed order');
+    // Replacing playlist invalidates sortCache and re-extracts keys
+    t.app.playlist = t.app.playlist.slice().concat({ path: '/extra.flac', title: 'Zzz Extra.flac', artist: 'Extra', duration: 200 });
+    t.app.renderPlaylist();
+    assert.ok(stripCalls > callsAfterSort, 'mutating playlist invalidates sortCache and re-sorts');
     t.close();
 
     // Verify music-skin segmented control tracks programmatic select.value / selectedIndex updates
@@ -414,4 +420,54 @@ test('Batch 62: music-ui + classic-list pool and update decorated <li> nodes in-
     assert.ok(row80 && row80.querySelector('.cl-title').textContent === 'Song 80');
     window.dispatchEvent(new window.Event('beforeunload'));
     window.close();
+});
+
+test('Batch 64: classic-list multi-key sortCache reverses ties/empties in O(N) and cleans up on beforeunload without throwing', () => {
+    const t = setup({ count: 0 });
+    const artists = ['Artist 10', 'Artist 2', 'Artist 01', 'Artist 1', '', 'Beta', 'Alpha'];
+    const tracks = Array.from({ length: 42 }, (_, i) => ({
+        path: `/m/${i}.flac`,
+        title: i % 7 === 0 ? '' : `Song ${String(i % 10).padStart(2, '0')}.flac`,
+        artist: artists[i % artists.length],
+        duration: i % 5 === 0 ? 0 : 120 + (i % 6) * 15
+    }));
+    t.app.playlist.push(...tracks);
+    let stripCalls = 0;
+    t.app.stripAudioExtension = (s) => { if (s) stripCalls += 1; return String(s || '').replace(/\.flac$/i, ''); };
+    t.app.renderPlaylist();
+
+    // 1. Sort by title asc -> title desc: 0 extra stripAudioExtension calls, empties remain at bottom, ties preserve original order
+    const titleBtn = t.doc.querySelector('.music-list-sort.is-title');
+    titleBtn.click();
+    const callsAfterTitle = stripCalls;
+    assert.ok(callsAfterTitle >= 36);
+    const titleAsc = [...t.list.children].map((li) => tracks[Number(li.dataset.index)]);
+    assert.ok(titleAsc.slice(-6).every((tr) => tr.title === ''), 'empty titles at bottom in asc');
+
+    titleBtn.click();
+    assert.equal(stripCalls, callsAfterTitle, 'title asc -> desc uses O(N) reverseByRanks with zero stripAudioExtension calls');
+    const titleDesc = [...t.list.children].map((li) => tracks[Number(li.dataset.index)]);
+    assert.ok(titleDesc.slice(-6).every((tr) => tr.title === ''), 'empty titles stay at bottom in desc');
+    assert.equal(titleDesc[0].title, 'Song 09.flac');
+    // Verify ties for 'Song 09.flac' preserve ascending original index even in desc mode
+    const tie09 = titleDesc.filter((tr) => tr.title === 'Song 09.flac').map((tr) => tracks.indexOf(tr));
+    for (let i = 1; i < tie09.length; i += 1) assert.ok(tie09[i] > tie09[i - 1], 'tied titles preserve original order in desc');
+
+    // 2. Switch to artist asc -> artist desc -> back to title asc: returning to cached title asc makes 0 extra strip calls
+    const artistBtn = t.doc.querySelector('.music-list-sort.is-artist');
+    artistBtn.click();
+    artistBtn.click();
+    const artistDesc = [...t.list.children].map((li) => tracks[Number(li.dataset.index)]);
+    assert.equal(artistDesc[0].artist, 'Beta');
+    assert.ok(artistDesc.slice(-6).every((tr) => tr.artist === ''), 'empty artists stay at bottom in desc');
+    const tieArtDesc = artistDesc.filter((tr) => tr.artist === 'Artist 01' || tr.artist === 'Artist 1').map((tr) => tracks.indexOf(tr));
+    for (let i = 1; i < tieArtDesc.length; i += 1) assert.ok(tieArtDesc[i] > tieArtDesc[i - 1], 'Collator numeric ties preserve original order in desc');
+
+    titleBtn.click(); // returns to title asc from sortCache.byKey
+    assert.equal(stripCalls, callsAfterTitle, 'switching back to cached title column reuses sortCache.byKey without re-sorting');
+    assert.deepEqual([...t.list.children].map((li) => Number(li.dataset.index)), titleAsc.map((tr) => tracks.indexOf(tr)));
+
+    // 3. beforeunload cleans up without throwing ReferenceError
+    assert.doesNotThrow(() => t.window.dispatchEvent(new t.window.Event('beforeunload')));
+    t.close();
 });

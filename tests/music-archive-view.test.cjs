@@ -1792,3 +1792,86 @@ test('Batch 62: archive-list search highlights matched title, keeps unmatched me
     assert.equal(row.querySelector('.tx em mark'), null, 'non-matching meta stays plain text without <mark>');
     f.close();
 });
+
+test('Batch 64: showClassic defers ambient/visualizer init to cancellable rAF, and wall/grid cover callbacks update in-place', () => {
+    // 1. showClassic defers originalCreateAmbient to next rAF and cancels if returning to archive before firing
+    let ambientCalls = 0;
+    const pendingRafs = [];
+    let rafSeq = 1;
+    const f = fixture({
+        setup: (w, app) => {
+            app.createAmbientPixi = () => { ambientCalls += 1; };
+            w.requestAnimationFrame = (cb) => { const id = rafSeq++; pendingRafs.push({ id, cb }); return id; };
+            w.cancelAnimationFrame = (id) => {
+                const idx = pendingRafs.findIndex((r) => r.id === id);
+                if (idx !== -1) pendingRafs.splice(idx, 1);
+            };
+        }
+    });
+    const flushRafs = () => { while (pendingRafs.length) { const batch = pendingRafs.splice(0); batch.forEach((r) => r.cb(16)); } };
+    flushRafs();
+    ambientCalls = 0;
+    f.view.showClassic();
+    assert.equal(ambientCalls, 0, 'showClassic does not synchronously invoke createAmbientPixi (avoids forced reflow)');
+    // Returning to archive before rAF cancels the deferred ambient init
+    f.view.show();
+    flushRafs();
+    assert.equal(ambientCalls, 0, 'returning to archive cancels pending classicInitRaf');
+    // Entering classic and letting rAF run invokes createAmbientPixi once
+    f.view.showClassic();
+    assert.equal(ambientCalls, 0);
+    flushRafs();
+    assert.equal(ambientCalls, 1, 'deferred classicInitRaf invokes createAmbientPixi on next frame');
+    f.close();
+
+    // 2. archive-wall & archive-grid cover-ready callbacks update only matching mounted tiles + grid binds passive wheel
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    w.HTMLElement.prototype.scrollTo = function (opts) { if (opts && typeof opts.top === 'number') this.scrollTop = opts.top; };
+    const rafs = [];
+    let rid = 1;
+    w.requestAnimationFrame = (cb) => { const id = rid++; rafs.push({ id, cb }); return id; };
+    w.cancelAnimationFrame = (id) => { const i = rafs.findIndex((r) => r.id === id); if (i !== -1) rafs.splice(i, 1); };
+    const imgs = [];
+    w.Image = class DeferredImg {
+        constructor() { imgs.push(this); }
+        set src(v) { this._src = v; }
+        get src() { return this._src; }
+    };
+    const origAdd = w.HTMLElement.prototype.addEventListener;
+    const wheelOpts = [];
+    w.HTMLElement.prototype.addEventListener = function (type, fn, opts) {
+        if (type === 'wheel' && this.classList?.contains('archive-grid')) wheelOpts.push(opts);
+        return origAdd.call(this, type, fn, opts);
+    };
+    w.eval(read('Musicmodules/music-archive/archive-wall.js'));
+    w.eval(read('Musicmodules/music-archive/archive-grid.js'));
+    const tracks = Array.from({ length: 8 }, (_, i) => ({ path: `/m/${i}.flac`, title: `Song ${i}`, artist: 'A', album: 'B', cover: `file:///c${i}.jpg` }));
+    const grid = w.MusicArchiveGrid.create({
+        host: w.document.getElementById('host'),
+        sections: () => ({ key: 'all', list: [{ id: 's0', name: 'A', sub: '', ids: tracks.map((_, i) => i) }] }),
+        track: (i) => tracks[i],
+        cover: (t) => t.cover,
+        selected: () => 0,
+        playing: () => ({ index: -1, active: false }),
+        meta: (t, i) => ({ title: t.title, artist: t.artist, album: t.album, code: String(i + 1).padStart(3, '0') }),
+        pick() {}, play() {}, menu() {},
+        reducedMotion: () => true
+    });
+    assert.ok(wheelOpts.some((o) => o && o.passive === true), 'archive-grid binds wheel stopPropagation listener as passive');
+    grid.setRoom({ left: 0, top: 0, width: 800, height: 600 });
+    grid.show(true);
+    while (rafs.length) rafs.splice(0).forEach((r) => r.cb(16));
+    const firstTile = grid.el.querySelector('.ag-cell');
+    assert.ok(firstTile, 'grid mounted initial cards');
+    assert.ok(imgs.length > 0, 'deferred cover thumbnail queued');
+    // Complete first cover image -> applyCovers updates mounted img in-place without rebuilding tile DOM
+    imgs[0].naturalWidth = 100;
+    imgs[0].naturalHeight = 100;
+    imgs[0].onload();
+    while (rafs.length) rafs.splice(0).forEach((r) => r.cb(32));
+    assert.equal(grid.el.querySelector('.ag-cell'), firstTile, 'cover-ready applyCovers preserves mounted card element');
+    assert.ok(firstTile.querySelector('img').getAttribute('src'), 'cover-ready applyCovers populates tile img src');
+    grid.destroy();
+    w.close();
+});
