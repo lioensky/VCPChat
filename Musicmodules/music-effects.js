@@ -188,13 +188,15 @@ function setupEffects(app) {
     };
 
     // --- IR Convolver ---
+    let irStatusTextEl = null;
     app.updateIrStatus = (text, state = 'idle') => {
         if (!app.irStatus) return;
-        const statusText = app.irStatus.querySelector('.ir-status-text');
-        if (statusText) statusText.textContent = text;
-        app.irStatus.className = 'ir-status';
-        if (state === 'loaded') app.irStatus.classList.add('loaded');
-        else if (state === 'error') app.irStatus.classList.add('error');
+        const statusText = (irStatusTextEl && irStatusTextEl.isConnected && app.irStatus.contains(irStatusTextEl))
+            ? irStatusTextEl
+            : (irStatusTextEl = app.irStatus.querySelector('.ir-status-text'));
+        if (statusText && statusText.textContent !== text) statusText.textContent = text;
+        const nextClass = state === 'loaded' ? 'ir-status loaded' : (state === 'error' ? 'ir-status error' : 'ir-status');
+        if (app.irStatus.className !== nextClass) app.irStatus.className = nextClass;
     };
 
     let irLoadSeq = 0;
@@ -277,10 +279,14 @@ function setupEffects(app) {
         app.saveSettings();
     };
 
-    app.updateLoudnessLufsDisplay = () => { app.loudnessLufsValue.textContent = `${app.loudnessLufsSlider.value} LUFS`; };
+    app.updateLoudnessLufsDisplay = () => {
+        const next = `${app.loudnessLufsSlider.value} LUFS`;
+        if (app.loudnessLufsValue.textContent !== next) app.loudnessLufsValue.textContent = next;
+    };
     app.updateLoudnessPreampDisplay = () => {
         const val = parseFloat(app.loudnessPreampSlider.value);
-        app.loudnessPreampValue.textContent = (val >= 0 ? '+' : '') + val + ' dB';
+        const next = (val >= 0 ? '+' : '') + val + ' dB';
+        if (app.loudnessPreampValue.textContent !== next) app.loudnessPreampValue.textContent = next;
     };
 
     // --- Saturation ---
@@ -295,8 +301,14 @@ function setupEffects(app) {
         app.saveSettings();
     };
 
-    app.updateSaturationDriveDisplay = () => { app.saturationDriveValue.textContent = app.saturationDriveSlider.value + '%'; };
-    app.updateSaturationMixDisplay = () => { app.saturationMixValue.textContent = app.saturationMixSlider.value + '%'; };
+    app.updateSaturationDriveDisplay = () => {
+        const next = app.saturationDriveSlider.value + '%';
+        if (app.saturationDriveValue.textContent !== next) app.saturationDriveValue.textContent = next;
+    };
+    app.updateSaturationMixDisplay = () => {
+        const next = app.saturationMixSlider.value + '%';
+        if (app.saturationMixValue.textContent !== next) app.saturationMixValue.textContent = next;
+    };
 
     // --- Crossfeed ---
     app.updateCrossfeedSettings = async () => {
@@ -308,7 +320,10 @@ function setupEffects(app) {
         app.saveSettings();
     };
 
-    app.updateCrossfeedMixDisplay = () => { app.crossfeedMixValue.textContent = app.crossfeedMixSlider.value + '%'; };
+    app.updateCrossfeedMixDisplay = () => {
+        const next = app.crossfeedMixSlider.value + '%';
+        if (app.crossfeedMixValue.textContent !== next) app.crossfeedMixValue.textContent = next;
+    };
 
     // --- Dynamic Loudness ---
     app.updateDynamicLoudnessSettings = async () => {
@@ -323,7 +338,10 @@ function setupEffects(app) {
     // --- 切歌交叉淡入：引擎在曲尾和预载好的下一首做等功率交叉，时长随设置一起保存 ---
     app.crossfadeSelect?.addEventListener('change', () => app.saveSettings());
 
-    app.updateDynamicLoudnessStrengthDisplay = () => { app.dynamicLoudnessStrengthValue.textContent = app.dynamicLoudnessStrengthSlider.value + '%'; };
+    app.updateDynamicLoudnessStrengthDisplay = () => {
+        const next = app.dynamicLoudnessStrengthSlider.value + '%';
+        if (app.dynamicLoudnessStrengthValue.textContent !== next) app.dynamicLoudnessStrengthValue.textContent = next;
+    };
 
     // --- Noise Shaper ---
     app.updateNoiseShaperSettings = async () => {
@@ -340,11 +358,15 @@ function setupEffects(app) {
     };
 
     // 「抖动处理」就是噪声整形的总开关：关掉时下面的位深和曲线不起作用，跟着变灰。
+    let noiseShaperSectionEl = null;
     app.syncDitherSection = () => {
         const on = !!app.ditherSwitch?.checked;
-        document.getElementById('noise-shaper-section')?.classList.toggle('is-inactive', !on);
-        if (app.outputBitsSelect) app.outputBitsSelect.disabled = !on;
-        if (app.noiseShaperCurveSelect) app.noiseShaperCurveSelect.disabled = !on;
+        const sec = (noiseShaperSectionEl && noiseShaperSectionEl.isConnected)
+            ? noiseShaperSectionEl
+            : (noiseShaperSectionEl = document.getElementById('noise-shaper-section'));
+        sec?.classList.toggle('is-inactive', !on);
+        if (app.outputBitsSelect && app.outputBitsSelect.disabled !== !on) app.outputBitsSelect.disabled = !on;
+        if (app.noiseShaperCurveSelect && app.noiseShaperCurveSelect.disabled !== !on) app.noiseShaperCurveSelect.disabled = !on;
     };
 
     app.updateOptimizations = async () => {

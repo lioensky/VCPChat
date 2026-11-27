@@ -128,21 +128,23 @@
         };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
 
-        const close = () => {
+        const close = (immediate = false) => {
             if (!overlay) return;
             if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
-            setTimeout(() => o.remove(), 320);
+            if (immediate) o.remove();
+            else setTimeout(() => o.remove(), 320);
             const back = previousFocus;
             previousFocus = null;
-            if (back && back.isConnected && typeof back.focus === 'function') {
+            if (!immediate && back && back.isConnected && typeof back.focus === 'function') {
                 try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
             }
         };
         const onKey = (e) => {
+            if (doc.querySelector('.dialog-overlay.music-dialog')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
                 const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
@@ -159,7 +161,7 @@
             if (NAV_KEYS.has(e.key)) { e.stopPropagation(); return; }
             if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
-        global.addEventListener?.('beforeunload', close, { once: true });
+        global.addEventListener?.('beforeunload', () => close(true), { once: true });
 
         /*
          * 排行里每行带一张小封面：曲目自带的封面（扫描时存下的内嵌封面）优先，没有就试同目录的 cover.jpg / folder.jpg；

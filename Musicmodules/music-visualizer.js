@@ -49,10 +49,11 @@ function setupVisualizer(app) {
     let vocalFade = null;
     let vocalSizeDirty = true;
     let vocalResizeObserver = null;
-    let vocalStrokeKey = '';
+    let vocalR = -1, vocalG = -1, vocalB = -1;
     let vocalStrokeStyles = null;
-    let particleStrokeKey = '';
+    let particleR = -1, particleG = -1, particleB = -1;
     let particleStrokeStyle = '';
+    let lastCoverScaleStr = '';
 
     const markVocalSizeDirty = () => { vocalSizeDirty = true; };
     if (app.vocalCanvas && typeof ResizeObserver === 'function') {
@@ -121,9 +122,8 @@ function setupVisualizer(app) {
         const centerY = h * 0.5;
         const time = Date.now();
         const { r, g, b } = app.visualizerColor;
-        const colorKey = `${r},${g},${b}`;
-        if (vocalStrokeKey !== colorKey) {
-            vocalStrokeKey = colorKey;
+        if (vocalR !== r || vocalG !== g || vocalB !== b || !vocalStrokeStyles) {
+            vocalR = r; vocalG = g; vocalB = b;
             vocalStrokeStyles = app.vocalWaves.map((wave) => `rgba(${r}, ${g}, ${b}, ${wave.alpha})`);
         }
         const energyBoost = app.smoothedVocalEnergy * 35;
@@ -504,12 +504,20 @@ function setupVisualizer(app) {
                 app.coverPulseEnergy += (shapedEnergy - app.coverPulseEnergy) * app.COVER_PULSE_SMOOTHING;
 
                 app.bassScale = 1 + Math.min(app.coverPulseEnergy, 1) * app.COVER_PULSE_INTENSITY;
-                app.albumArtWrapper.style.transform = `scale(${app.bassScale})`;
+                const scaleStr = `scale(${app.bassScale.toFixed(4)})`;
+                if (scaleStr !== lastCoverScaleStr) {
+                    lastCoverScaleStr = scaleStr;
+                    app.albumArtWrapper.style.transform = scaleStr;
+                }
             } else if (app.albumArtWrapper && app.bassScale !== 1.0) {
                 app.coverPulseEnergy = 0;
                 app.bassScale += (1.0 - app.bassScale) * 0.18;
                 if (Math.abs(app.bassScale - 1.0) < 0.001) app.bassScale = 1.0;
-                app.albumArtWrapper.style.transform = `scale(${app.bassScale})`;
+                const scaleStr = app.bassScale === 1.0 ? 'scale(1)' : `scale(${app.bassScale.toFixed(4)})`;
+                if (scaleStr !== lastCoverScaleStr) {
+                    lastCoverScaleStr = scaleStr;
+                    app.albumArtWrapper.style.transform = scaleStr;
+                }
             }
 
             if (app.targetVisualizerData.length === 0) {
@@ -608,9 +616,8 @@ function setupVisualizer(app) {
                 vctx.quadraticCurveTo(secondLast.x, secondLast.y, last.x, last.y);
 
                 const { r, g, b } = app.visualizerColor;
-                const pColorKey = `${r},${g},${b}`;
-                if (particleStrokeKey !== pColorKey) {
-                    particleStrokeKey = pColorKey;
+                if (particleR !== r || particleG !== g || particleB !== b) {
+                    particleR = r; particleG = g; particleB = b;
                     particleStrokeStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
                 }
                 vctx.strokeStyle = particleStrokeStyle;

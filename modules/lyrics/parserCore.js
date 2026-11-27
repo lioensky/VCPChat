@@ -6,6 +6,19 @@ const { decodeKrcLanguageTag } = require('./krcDecrypt');
 
 const GLOBAL_LRC_TIME_REGEX = /\[(\d{1,3}):(\d{2})[.:](\d{2,3})\]/g;
 const LRC_MULTI_TIME_LINE_REGEX = /^((?:\[(?:\d{1,3}):(?:\d{2})[.:](?:\d{2,3})\])+)(.*)$/;
+const CJK_CHAR_REGEX = /[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/;
+const CJK_PUNCT_REGEX = /[，。！？、：；"'）\s]/;
+const MS_TIMED_LINE_REGEX = /^\[(\d+),(\d+)\](.*)/;
+const YRC_WORD_REGEX = /\((\d+),(\d+),(\d+)\)([^\(]*)/g;
+const QRC_TAG_REGEX = /\((\d+),(\d+)(?:,\d+)?\)/g;
+const KRC_WORD_REGEX = /<(\d+),(\d+)(?:,\d+)?>([^<]*)/g;
+const XML_ENTITY_REGEX = /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi;
+const TTML_TIME_UNIT_REGEX = /^(-?\d+(?:\.\d+)?)(h|m|s|ms)$/i;
+const TTML_TIME_PART_REGEX = /^\d+(?:\.\d+)?$/;
+const TTML_TEXT_REGEX = /<text\b([^>]*)>([\s\S]*?)<\/text>/gi;
+const TTML_HEAD_REGEX = /<head\b[\s\S]*?<\/head>/i;
+const TTML_P_REGEX = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
+const TTML_TOKEN_REGEX = /<(\/?)([\w:-]+)\b([^>]*?)(\/?)>|([^<]+)/g;
 
 function isSourceMigrationArtifact(text) {
     return typeof text === 'string' && text.trim() === '//';
@@ -36,9 +49,9 @@ function buildTimedWords(text, startTime, endTime) {
     let totalWeight = 0;
 
     rawTokens.forEach((token, tokenIndex) => {
-        if (/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/.test(token)) {
+        if (CJK_CHAR_REGEX.test(token)) {
             token.split('').forEach(char => {
-                const isPunctuation = /[，。！？、：；"'）\s]/.test(char);
+                const isPunctuation = CJK_PUNCT_REGEX.test(char);
                 const weight = isPunctuation ? 0 : 1;
                 tokens.push({ text: char, weight });
                 totalWeight += weight;
@@ -168,13 +181,14 @@ function matchTranslations(startTimes, entries) {
  * Format: [start_ms, duration_ms](word_start_ms, word_duration_ms, 0)word_text...
  */
 function parseYRC(yrcString, translationString = '', romanizationString = '') {
+    if (typeof yrcString !== 'string' || !yrcString) return createLyricData([], true);
     const lines = [];
     const rawLines = yrcString.replace(/^\uFEFF/, '').split(/\r?\n/);
     const translationEntries = parseTimedEntries(translationString);
     const romanizationEntries = parseTimedEntries(romanizationString);
 
     for (const rawLine of rawLines) {
-        const lineMatch = rawLine.match(/^\[(\d+),(\d+)\](.*)/);
+        const lineMatch = rawLine.match(MS_TIMED_LINE_REGEX);
         if (!lineMatch) continue;
 
         const lineStartTimeMs = parseInt(lineMatch[1], 10);
@@ -186,10 +200,10 @@ function parseYRC(yrcString, translationString = '', romanizationString = '') {
         const words = [];
         let fullText = '';
 
-        const wordRegex = /\((\d+),(\d+),(\d+)\)([^\(]*)/g;
+        YRC_WORD_REGEX.lastIndex = 0;
         let wordMatch;
 
-        while ((wordMatch = wordRegex.exec(rest)) !== null) {
+        while ((wordMatch = YRC_WORD_REGEX.exec(rest)) !== null) {
             const wordStartMs = parseInt(wordMatch[1], 10);
             const wordDurationMs = parseInt(wordMatch[2], 10);
             const text = wordMatch[4];
@@ -213,13 +227,15 @@ function parseYRC(yrcString, translationString = '', romanizationString = '') {
     }
 
     lines.sort((a, b) => a.startTime - b.startTime);
-    const translations = matchTranslations(lines.map(l => l.startTime), translationEntries);
-    const romanizations = matchTranslations(lines.map(l => l.startTime), romanizationEntries);
-
-    lines.forEach((line, idx) => {
-        if (translations[idx]) line.translation = translations[idx];
-        if (romanizations[idx]) line.romanization = romanizations[idx];
-    });
+    if (translationEntries.length > 0 || romanizationEntries.length > 0) {
+        const startTimes = lines.map(l => l.startTime);
+        const translations = translationEntries.length > 0 ? matchTranslations(startTimes, translationEntries) : null;
+        const romanizations = romanizationEntries.length > 0 ? matchTranslations(startTimes, romanizationEntries) : null;
+        lines.forEach((line, idx) => {
+            if (translations && translations[idx]) line.translation = translations[idx];
+            if (romanizations && romanizations[idx]) line.romanization = romanizations[idx];
+        });
+    }
 
     return createLyricData(lines, true);
 }
@@ -229,13 +245,14 @@ function parseYRC(yrcString, translationString = '', romanizationString = '') {
  * Format: [start_ms, duration_ms](word_start_ms, word_duration_ms)word_text... or with tags
  */
 function parseQRC(qrcString, translationString = '', romanizationString = '') {
+    if (typeof qrcString !== 'string' || !qrcString) return createLyricData([], true);
     const lines = [];
     const rawLines = qrcString.replace(/^\uFEFF/, '').split(/\r?\n/);
     const translationEntries = parseTimedEntries(translationString);
     const romanizationEntries = parseTimedEntries(romanizationString);
 
     for (const rawLine of rawLines) {
-        const lineMatch = rawLine.match(/^\[(\d+),(\d+)\](.*)/);
+        const lineMatch = rawLine.match(MS_TIMED_LINE_REGEX);
         if (!lineMatch) continue;
 
         const lineStartTimeMs = parseInt(lineMatch[1], 10);
@@ -246,11 +263,11 @@ function parseQRC(qrcString, translationString = '', romanizationString = '') {
 
         const words = [];
         let fullText = '';
-        const tagRegex = /\((\d+),(\d+)(?:,\d+)?\)/g;
+        QRC_TAG_REGEX.lastIndex = 0;
         const tags = [];
         let tagMatch;
 
-        while ((tagMatch = tagRegex.exec(rest)) !== null) {
+        while ((tagMatch = QRC_TAG_REGEX.exec(rest)) !== null) {
             tags.push({
                 startMs: parseInt(tagMatch[1], 10),
                 durationMs: parseInt(tagMatch[2], 10),
@@ -297,13 +314,15 @@ function parseQRC(qrcString, translationString = '', romanizationString = '') {
     }
 
     lines.sort((a, b) => a.startTime - b.startTime);
-    const translations = matchTranslations(lines.map(l => l.startTime), translationEntries);
-    const romanizations = matchTranslations(lines.map(l => l.startTime), romanizationEntries);
-
-    lines.forEach((line, idx) => {
-        if (translations[idx]) line.translation = translations[idx];
-        if (romanizations[idx]) line.romanization = romanizations[idx];
-    });
+    if (translationEntries.length > 0 || romanizationEntries.length > 0) {
+        const startTimes = lines.map(l => l.startTime);
+        const translations = translationEntries.length > 0 ? matchTranslations(startTimes, translationEntries) : null;
+        const romanizations = romanizationEntries.length > 0 ? matchTranslations(startTimes, romanizationEntries) : null;
+        lines.forEach((line, idx) => {
+            if (translations && translations[idx]) line.translation = translations[idx];
+            if (romanizations && romanizations[idx]) line.romanization = romanizations[idx];
+        });
+    }
 
     return createLyricData(lines, true);
 }
@@ -313,6 +332,7 @@ function parseQRC(qrcString, translationString = '', romanizationString = '') {
  * Format: [start_ms, duration_ms]<offset_ms, duration_ms, 0>word_text...
  */
 function parseKRC(krcString, translationString = '', romanizationString = '') {
+    if (typeof krcString !== 'string' || !krcString) return createLyricData([], true);
     const lines = [];
     const { translations: embeddedTranslations, romanizations: embeddedRomanizations } = decodeKrcLanguageTag(krcString);
     const translationEntries = parseTimedEntries(translationString);
@@ -320,7 +340,7 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
     const rawLines = krcString.replace(/^\uFEFF/, '').split(/\r?\n/);
 
     for (const rawLine of rawLines) {
-        const lineMatch = rawLine.match(/^\[(\d+),(\d+)\](.*)/);
+        const lineMatch = rawLine.match(MS_TIMED_LINE_REGEX);
         if (!lineMatch) continue;
 
         const lineStartTimeMs = parseInt(lineMatch[1], 10);
@@ -331,10 +351,10 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
 
         const words = [];
         let fullText = '';
-        const wordRegex = /<(\d+),(\d+)(?:,\d+)?>([^<]*)/g;
+        KRC_WORD_REGEX.lastIndex = 0;
         let wordMatch;
 
-        while ((wordMatch = wordRegex.exec(rest)) !== null) {
+        while ((wordMatch = KRC_WORD_REGEX.exec(rest)) !== null) {
             const wordOffsetMs = parseInt(wordMatch[1], 10);
             const wordDurationMs = parseInt(wordMatch[2], 10);
             const text = wordMatch[3];
@@ -393,7 +413,9 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
  */
 const TTML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 function decodeXmlText(text) {
-    return String(text || '').replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, name) => {
+    const s = String(text || '');
+    if (s.indexOf('&') === -1) return s;
+    return s.replace(XML_ENTITY_REGEX, (all, name) => {
         if (name[0] === '#') {
             const code = name[1].toLowerCase() === 'x' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
             return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : all;
@@ -405,14 +427,14 @@ function decodeXmlText(text) {
 function parseTtmlTime(str) {
     const text = String(str || '').trim();
     if (!text) return NaN;
-    let m = /^(-?\d+(?:\.\d+)?)(h|m|s|ms)$/i.exec(text);
+    const m = TTML_TIME_UNIT_REGEX.exec(text);
     if (m) {
         const v = parseFloat(m[1]);
         const unit = m[2].toLowerCase();
         return unit === 'h' ? v * 3600 : unit === 'm' ? v * 60 : unit === 'ms' ? v / 1000 : v;
     }
     const parts = text.split(':');
-    if (parts.some(part => !/^\d+(?:\.\d+)?$/.test(part))) return NaN;
+    if (parts.some(part => !TTML_TIME_PART_REGEX.test(part))) return NaN;
     return parts.reduce((sum, part) => sum * 60 + parseFloat(part), 0);
 }
 const TTML_ATTR_RE_CACHE = new Map();
@@ -426,17 +448,23 @@ function ttmlAttr(attrs, name) {
     const m = re.exec(attrs);
     return m ? decodeXmlText(m[2] !== undefined ? m[2] : m[3]) : '';
 }
+const TTML_BLOCK_RE_CACHE = new Map();
 function ttmlHeadTexts(ttmlString, tag) {
     // <translation xml:lang="zh-Hans"><text for="L1">…</text></translation>；有几种语言时中文优先
     const blocks = [];
-    const blockRe = new RegExp('<' + tag + '\\b([^>]*)>([\\s\\S]*?)</' + tag + '>', 'gi');
+    let blockRe = TTML_BLOCK_RE_CACHE.get(tag);
+    if (!blockRe) {
+        blockRe = new RegExp('<' + tag + '\\b([^>]*)>([\\s\\S]*?)</' + tag + '>', 'gi');
+        TTML_BLOCK_RE_CACHE.set(tag, blockRe);
+    }
+    blockRe.lastIndex = 0;
     let m;
     while ((m = blockRe.exec(ttmlString)) !== null) blocks.push({ lang: ttmlAttr(m[1], 'lang'), body: m[2] });
     if (!blocks.length) return new Map();
     const pick = blocks.find(b => /^zh/i.test(b.lang)) || blocks[0];
     const out = new Map();
-    const textRe = /<text\b([^>]*)>([\s\S]*?)<\/text>/gi;
-    while ((m = textRe.exec(pick.body)) !== null) {
+    TTML_TEXT_REGEX.lastIndex = 0;
+    while ((m = TTML_TEXT_REGEX.exec(pick.body)) !== null) {
         const key = ttmlAttr(m[1], 'for');
         const value = decodeXmlText(m[2].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
         if (key && value) out.set(key, value);
@@ -449,12 +477,11 @@ function parseTTML(ttmlString) {
     const lines = [];
     const headTranslations = ttmlHeadTexts(source, 'translation');
     const headRomanizations = ttmlHeadTexts(source, 'transliteration');
-    const body = source.replace(/<head\b[\s\S]*?<\/head>/i, '');
-    const pRegex = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
-    const tokenRe = /<(\/?)([\w:-]+)\b([^>]*?)(\/?)>|([^<]+)/g;
+    const body = source.replace(TTML_HEAD_REGEX, '');
+    TTML_P_REGEX.lastIndex = 0;
 
     let pMatch;
-    while ((pMatch = pRegex.exec(body)) !== null) {
+    while ((pMatch = TTML_P_REGEX.exec(body)) !== null) {
         const lineStart = parseTtmlTime(ttmlAttr(pMatch[1], 'begin'));
         const lineEndRaw = parseTtmlTime(ttmlAttr(pMatch[1], 'end'));
         if (!Number.isFinite(lineStart)) continue;
@@ -467,8 +494,8 @@ function parseTTML(ttmlString) {
         let plain = '';
         const stack = []; // 每层 span：{ role, word }
         let tm;
-        tokenRe.lastIndex = 0;
-        while ((tm = tokenRe.exec(pMatch[2])) !== null) {
+        TTML_TOKEN_REGEX.lastIndex = 0;
+        while ((tm = TTML_TOKEN_REGEX.exec(pMatch[2])) !== null) {
             if (tm[5] !== undefined) {
                 const text = decodeXmlText(tm[5]);
                 let isTrans = false, isRoman = false, isBg = false, wordFrame = null;
@@ -547,6 +574,7 @@ function parseTTML(ttmlString) {
  * Parses standard LRC lyrics with optional translation string
  */
 function parseLRC(lrcString, translationString = '', romanizationString = '') {
+    if (typeof lrcString !== 'string' || !lrcString) return createLyricData([], false);
     const rawLines = lrcString.replace(/^\uFEFF/, '').split(/\r?\n/);
     const rawEntries = [];
     const translationEntries = parseTimedEntries(translationString);
@@ -578,13 +606,15 @@ function parseLRC(lrcString, translationString = '', romanizationString = '') {
         });
     }
 
-    const translations = matchTranslations(lines.map(l => l.startTime), translationEntries);
-    const romanizations = matchTranslations(lines.map(l => l.startTime), romanizationEntries);
-
-    lines.forEach((line, idx) => {
-        if (translations[idx]) line.translation = translations[idx];
-        if (romanizations[idx]) line.romanization = romanizations[idx];
-    });
+    if (translationEntries.length > 0 || romanizationEntries.length > 0) {
+        const startTimes = lines.map(l => l.startTime);
+        const translations = translationEntries.length > 0 ? matchTranslations(startTimes, translationEntries) : null;
+        const romanizations = romanizationEntries.length > 0 ? matchTranslations(startTimes, romanizationEntries) : null;
+        lines.forEach((line, idx) => {
+            if (translations && translations[idx]) line.translation = translations[idx];
+            if (romanizations && romanizations[idx]) line.romanization = romanizations[idx];
+        });
+    }
 
     return createLyricData(lines, false);
 }

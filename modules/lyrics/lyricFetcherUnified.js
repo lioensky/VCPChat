@@ -24,6 +24,34 @@ const LYRIC_QUALITY_BONUS = Object.freeze({
     romanization: 0.5
 });
 const manualCandidateCache = new Map();
+const ILLEGAL_FILE_CHARS_RE = /[\\/:"*?<>|]/g;
+let atomicTmpSeq = 0;
+
+function sanitizeFilePart(str) {
+    return String(str ?? '').replace(ILLEGAL_FILE_CHARS_RE, '_').trim();
+}
+
+function buildLyricBaseName(artist, title) {
+    const safeTitle = sanitizeFilePart(title);
+    if (!safeTitle) return null;
+    const safeArtist = sanitizeFilePart(artist);
+    return safeArtist ? `${safeArtist} - ${safeTitle}` : safeTitle;
+}
+
+async function writeFileAtomic(filePath, content) {
+    if (typeof fs.move !== 'function') {
+        await fs.writeFile(filePath, content, 'utf8');
+        return;
+    }
+    const tmp = `${filePath}.${process.pid}.${++atomicTmpSeq}.tmp`;
+    try {
+        await fs.writeFile(tmp, content, 'utf8');
+        await fs.move(tmp, filePath, { overwrite: true });
+    } catch (err) {
+        if (typeof fs.remove === 'function') await fs.remove(tmp).catch(() => {});
+        throw err;
+    }
+}
 
 const SOURCE_LABELS = {
     netease: '网易云音乐',
@@ -513,15 +541,17 @@ async function saveSelectedLyrics({ candidateKey, artist, title, lyricDir }) {
         return { success: false, message: '歌词候选已过期，请重新搜索' };
     }
 
-    const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
-    const baseName = artist ? `${sanitize(artist)} - ${sanitize(title)}` : sanitize(title);
+    const baseName = buildLyricBaseName(artist, title);
+    if (!baseName) {
+        return { success: false, message: '曲目标题无效，无法保存歌词' };
+    }
     const jsonPath = path.join(lyricDir, `${baseName}.json`);
     const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
 
     await fs.ensureDir(lyricDir);
     await Promise.all([
-        fs.writeJson(jsonPath, cached.lyrics, { spaces: 2 }),
-        fs.writeFile(lrcPath, convertToLrcString(cached.lyrics), 'utf8')
+        writeFileAtomic(jsonPath, JSON.stringify(cached.lyrics, null, 2)),
+        writeFileAtomic(lrcPath, convertToLrcString(cached.lyrics))
     ]);
     manualCandidateCache.delete(candidateKey);
 
@@ -581,7 +611,7 @@ function rankAuditedLyrics(entries) {
         .sort((a, b) =>
             b.matchScore - a.matchScore
             || Number(b.features?.isWordByWord) - Number(a.features?.isWordByWord)
-            || (a.durationDifference || 0) - (b.durationDifference || 0)
+            || (a.durationDifference === b.durationDifference ? 0 : (a.durationDifference || 0) - (b.durationDifference || 0))
             || b.auditScore - a.auditScore
             || Number(b.result?.source === 'amll') - Number(a.result?.source === 'amll')
         );
@@ -635,20 +665,21 @@ async function fetchAndSaveLyricsUnified({ artist, title, durationMs, album, lyr
     }
 
     try {
-        await fs.ensureDir(lyricDir);
-        const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
-        const baseName = artist ? `${sanitize(artist)} - ${sanitize(title)}` : sanitize(title);
+        const baseName = buildLyricBaseName(artist, title);
+        if (baseName && lyricDir) {
+            await fs.ensureDir(lyricDir);
 
-        // Save structured JSON format and traditional LRC in parallel
-        const jsonPath = path.join(lyricDir, `${baseName}.json`);
-        const lrcString = convertToLrcString(result.lyrics);
-        const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
-        await Promise.all([
-            fs.writeJson(jsonPath, result.lyrics, { spaces: 2 }),
-            fs.writeFile(lrcPath, lrcString, 'utf8')
-        ]);
+            // Save structured JSON format and traditional LRC atomically in parallel
+            const jsonPath = path.join(lyricDir, `${baseName}.json`);
+            const lrcString = convertToLrcString(result.lyrics);
+            const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
+            await Promise.all([
+                writeFileAtomic(jsonPath, JSON.stringify(result.lyrics, null, 2)),
+                writeFileAtomic(lrcPath, lrcString)
+            ]);
 
-        console.log(`[LyricFetcher] Saved lyrics cache to ${lrcPath} and ${jsonPath}`);
+            console.log(`[LyricFetcher] Saved lyrics cache to ${lrcPath} and ${jsonPath}`);
+        }
     } catch (err) {
         console.error('[LyricFetcher] Failed to save lyric cache:', err.message);
     }

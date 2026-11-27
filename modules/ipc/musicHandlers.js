@@ -1035,15 +1035,19 @@ function initialize(options) {
             return audioEngineApi('/volume', 'POST', { volume });
         });
 
+        const getLiveDialogWindow = () => (
+            musicWindow && !musicWindow.isDestroyed() ? musicWindow
+                : (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
+        );
         // 引擎设置（设备、EQ、DSP、预载、IR……）的 IPC 在 musicEngineHandlers.js
         if (typeof registerMusicEngineHandlers === 'function') {
-            registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavManager, getDialogWindow: () => musicWindow || mainWindow });
+            registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavManager, getDialogWindow: getLiveDialogWindow });
         }
 
         ipcMain.handle('music-add-folder', async (event) => {
-            const result = await dialog.showOpenDialog(musicWindow || mainWindow, {
-                properties: ['openDirectory']
-            });
+            const dlgWin = getLiveDialogWindow();
+            const opts = { properties: ['openDirectory'] };
+            const result = dlgWin ? await dialog.showOpenDialog(dlgWin, opts) : await dialog.showOpenDialog(opts);
 
             if (result.canceled || result.filePaths.length === 0) {
                 return;

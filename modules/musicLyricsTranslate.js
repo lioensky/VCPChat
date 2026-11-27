@@ -23,13 +23,16 @@ const SYSTEM_PROMPT = [
 
 const keyOf = (lines) => crypto.createHash('sha1').update(lines.join('\n'), 'utf8').digest('hex');
 
+const FENCE_RE = /```(?:json)?\s*([\s\S]*?)```/gi;
+let cacheTmpSeq = 0;
+
 // 从模型回复里取出 JSON 数组（容忍前后多说的话或 ```json 包裹）
 function parseTranslations(text, expected) {
     const s = String(text || '');
     const candidates = [];
-    const fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
+    FENCE_RE.lastIndex = 0;
     let fm;
-    while ((fm = fenceRe.exec(s)) !== null) {
+    while ((fm = FENCE_RE.exec(s)) !== null) {
         const block = fm[1];
         const bs = block.indexOf('[');
         const be = block.lastIndexOf(']');
@@ -51,10 +54,26 @@ function parseTranslations(text, expected) {
 }
 
 function completionsUrl(serverUrl) {
-    const url = new URL(String(serverUrl || ''));
+    const url = new URL(String(serverUrl || '').trim());
     if (!['http:', 'https:'].includes(url.protocol)) throw new Error('VCP 服务器地址必须是 http 或 https');
     url.pathname = url.pathname.replace(/\/chatvcp\/completions\/?$/, '/chat/completions');
     return url.href;
+}
+
+async function writeCacheAtomic(file, payload) {
+    if (typeof fs.ensureDir === 'function' && typeof fs.writeFile === 'function' && typeof fs.move === 'function') {
+        await fs.ensureDir(path.dirname(file));
+        const tmp = `${file}.${process.pid}.${++cacheTmpSeq}.tmp`;
+        try {
+            await fs.writeFile(tmp, JSON.stringify(payload), 'utf8');
+            await fs.move(tmp, file, { overwrite: true });
+        } catch (err) {
+            if (typeof fs.remove === 'function') await fs.remove(tmp).catch(() => {});
+            throw err;
+        }
+        return;
+    }
+    await fs.outputJson(file, payload);
 }
 
 function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
@@ -126,7 +145,7 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
                 const translations = parseTranslations(Array.isArray(content) ? content.map((c) => c?.text || '').join('') : content, clean.length);
                 failedUntil.delete(key);
                 if (file) {
-                    try { await fs.outputJson(file, { v: 1, model, at: now(), translations }); } catch (e) { /* 缓存写不进去不影响这次 */ }
+                    try { await writeCacheAtomic(file, { v: 1, model, at: now(), translations }); } catch (e) { /* 缓存写不进去不影响这次 */ }
                 }
                 return { status: 'success', translations: padLength(translations), model };
             } catch (error) {

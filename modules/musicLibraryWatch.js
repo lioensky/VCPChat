@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 
 const AUDIO_EXT = /\.(mp3|wav|ogg|flac|m4a)$/i;
+const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
 const MAX_WATCHED = 32;
 const DEBOUNCE_MS = 5000;
 const START_DELAY_MS = 4000;
@@ -39,7 +40,7 @@ function inferredDirs(tracks) {
     const count = new Map();
     for (const t of tracks || []) {
         const p = t && t.path;
-        if (typeof p !== 'string' || /^[a-z][a-z0-9+.-]+:\/\//i.test(p) || t.isRemote) continue;
+        if (typeof p !== 'string' || URL_SCHEME_RE.test(p) || t.isRemote) continue;
         const d = path.dirname(p);
         const k = norm(d);
         const had = count.get(k);
@@ -180,7 +181,11 @@ function createLibraryWatch({
                         clearTimer(timers.get(root));
                         timers.set(root, setTimer(() => { timers.delete(root); if (gen === generation) enqueue(root); }, DEBOUNCE_MS));
                     });
-                    w.on?.('error', () => { try { w.close(); } catch (e) { /* 已关 */ } });
+                    w.on?.('error', () => {
+                        const idx = watchers.indexOf(w);
+                        if (idx !== -1) watchers.splice(idx, 1);
+                        try { w.close(); } catch (e) { /* 已关 */ }
+                    });
                     watchers.push(w);
                 } catch (e) { log.warn?.('[MusicWatch] watch failed:', root, e?.message || e); }
             }
@@ -204,7 +209,7 @@ function createLibraryWatch({
     const noteLibrarySaved = (prev, next) => {
         excludeChain = excludeChain.then(async () => {
             const nextPaths = new Set((next || []).map((t) => t && t.path).filter(Boolean));
-            const removed = (prev || []).map((t) => t && t.path).filter((p) => typeof p === 'string' && !nextPaths.has(p) && !/^[a-z][a-z0-9+.-]+:\/\//i.test(p));
+            const removed = (prev || []).map((t) => t && t.path).filter((p) => typeof p === 'string' && !nextPaths.has(p) && !URL_SCHEME_RE.test(p));
             const list = (await readExcluded().catch(() => [])) || [];
             const set = new Set(list.filter((p) => !nextPaths.has(p)));
             let changed = set.size !== list.length;
@@ -234,6 +239,12 @@ function createLibraryWatch({
         if (kept.length !== list.length) await writeFolders(kept);
         rememberedNow = rememberedNow.filter((d) => !isUnder(d, dir));
         queue = queue.filter((d) => !isUnder(d, dir));
+        for (const [rootKey, timerId] of timers) {
+            if (rootKey !== 'start' && isUnder(rootKey, dir)) {
+                clearTimer(timerId);
+                timers.delete(rootKey);
+            }
+        }
         return kept.length !== list.length;
     };
     return {

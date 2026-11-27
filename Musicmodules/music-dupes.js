@@ -65,18 +65,20 @@
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
         const toast = (message, action) => { try { global.MusicToast?.show?.({ message, action, duration: action ? 10000 : undefined }); } catch (e) { /* 没有提示层 */ } };
 
-        const close = () => {
+        const close = (immediate = false) => {
             if (!overlay) return;
             if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay; overlay = null;
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
-            setTimeout(() => o.remove(), 320);
+            if (immediate) o.remove();
+            else setTimeout(() => o.remove(), 320);
             const back = previousFocus;
             previousFocus = null;
-            if (back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
+            if (!immediate && back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
         const onKey = (e) => {
+            if (doc.querySelector('.dialog-overlay.music-dialog')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
                 const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
@@ -93,7 +95,7 @@
             if (NAV_KEYS.has(e.key)) { e.stopPropagation(); return; }
             if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
-        global.addEventListener?.('beforeunload', close, { once: true });
+        global.addEventListener?.('beforeunload', () => close(true), { once: true });
 
         const refreshViews = () => {
             if (Array.isArray(app.currentFilteredTracks) && app.playlistViewSource) app.renderPlaylist?.(app.currentFilteredTracks);
@@ -199,6 +201,7 @@
             action.textContent = `移除多余的 ${extra} 个文件`;
             body.appendChild(el('p', 'mdupes-lead', `${groups.length} 首歌各有不止一个文件。每组留下标着「留下」的那份（本机文件、无损、规格高的优先），其余从曲库移除；磁盘上的文件不会删，歌单会改指向留下的那份。`));
             const ul = el('ul', 'mdupes-list');
+            const frag = doc.createDocumentFragment();
             const MAX = 200;
             groups.slice(0, MAX).forEach((g) => {
                 const li = el('li', 'mdupes-group');
@@ -215,8 +218,9 @@
                     row.appendChild(where);
                     li.appendChild(row);
                 });
-                ul.appendChild(li);
+                frag.appendChild(li);
             });
+            ul.appendChild(frag);
             body.appendChild(ul);
             if (groups.length > MAX) body.appendChild(el('p', 'mstats-note', `还有 ${groups.length - MAX} 组没列出来，移除时一起处理。`));
         };
