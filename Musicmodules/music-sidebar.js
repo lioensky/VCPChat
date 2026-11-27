@@ -125,6 +125,10 @@ function setupSidebar(app) {
                         if (!ok) return;
                         app.customPlaylists = app.customPlaylists.filter(p => p.id !== pl.id);
                         app.saveCustomPlaylists(); app.renderSidebarContent('playlists');
+                        try { app.archiveView?.refresh?.(); } catch (err) { /* 档案页未激活 */ }
+                        if (String(pl.id) === 'liked') {
+                            try { document.dispatchEvent(new CustomEvent('music-like-change', { detail: { tracks: [], liked: false } })); } catch (err) { /* 旧内核 */ }
+                        }
                     });
                 });
                 div.addEventListener('click', () => {

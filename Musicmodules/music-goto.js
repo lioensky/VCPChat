@@ -76,10 +76,13 @@
             const text = copyText(app, track);
             if (!text) return;
             const done = () => { try { global.MusicToast?.show?.({ message: `已复制「${text}」` }); } catch (err) { /* 没有提示层 */ } };
+            const fail = () => { try { global.MusicToast?.show?.({ kind: 'error', message: '复制歌名失败，剪贴板不可用' }); } catch (err) { /* 没有提示层 */ } };
             try {
-                const p = global.navigator?.clipboard?.writeText?.(text);
-                if (p && typeof p.then === 'function') p.then(done, () => {}); else done();
-            } catch (err) { /* 剪贴板不可用 */ }
+                const write = global.navigator?.clipboard?.writeText;
+                if (typeof write !== 'function') { fail(); return; }
+                const p = write.call(global.navigator.clipboard, text);
+                if (p && typeof p.then === 'function') p.then(done, fail); else done();
+            } catch (err) { fail(); }
         });
 
         const paint = () => {

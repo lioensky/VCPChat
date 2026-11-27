@@ -38,6 +38,7 @@
         let enabled = true;
         try { enabled = storage?.getItem(KEY) !== '0'; } catch (e) { /* 默认开 */ }
         let unavailable = false; // 没配模型：这次运行不再问
+        let inFlight = null;     // { token, lines, manual }：防止自动与连点并发发出重复翻译请求
 
         const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };
         const currentTrack = () => (Array.isArray(app.playlist) ? app.playlist[app.currentTrackIndex] : null);
@@ -52,6 +53,12 @@
                 return;
             }
             const token = app.lyricsRequestToken;
+            if (inFlight && inFlight.token === token && inFlight.lines === lines && (!manual || inFlight.manual)) {
+                if (manual) toast('正在翻译歌词…');
+                return;
+            }
+            const flight = { token, lines, manual };
+            inFlight = flight;
             const track = currentTrack();
             const texts = lines.map(textOf);
             if (manual) toast('正在翻译歌词…');
@@ -65,6 +72,8 @@
                 });
             } catch (e) {
                 result = { status: 'error', message: e?.message || String(e) };
+            } finally {
+                if (inFlight === flight) inFlight = null;
             }
             // 切歌了、换了一份歌词、调了偏移：不往新的里填旧译文
             if (app.lyricsRequestToken !== token || app.currentLyrics !== lines) return;

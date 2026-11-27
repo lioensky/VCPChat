@@ -15,7 +15,11 @@
         if (!NON_ASCII.test(raw)) return raw.toLowerCase().trim();
         return toHiragana(raw.normalize('NFKC').toLowerCase()).trim();
     };
-    const stripExt = (t) => String(t || '').replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '');
+    const stripExt = (t) => {
+        const raw = String(t || '');
+        if (!raw || raw.lastIndexOf('.') === -1) return raw;
+        return raw.replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '');
+    };
     const HAN = /[㐀-䶿一-鿿豈-﫿]/;
     const LATIN = /[a-z]/;
     const DIGIT = /[0-9]/;
@@ -58,6 +62,25 @@
      * ini = 首字母串（汉字取拼音首字母，拉丁词取词首，假名和数字原样）。
      */
     const romanizeNormalized = (s, pinyin) => {
+        if (!s) return { py: '', ini: '' };
+        // 纯 ASCII 字符串走索引快路径，避免 for..of Unicode 迭代器分配
+        if (!NON_ASCII.test(s)) {
+            let py = '';
+            let ini = '';
+            let wordStart = true;
+            for (let i = 0; i < s.length; i++) {
+                const code = s.charCodeAt(i);
+                if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57)) {
+                    const ch = s[i];
+                    py += ch;
+                    if (wordStart) ini += ch;
+                    wordStart = false;
+                } else {
+                    wordStart = true;
+                }
+            }
+            return { py, ini };
+        }
         let py = '';
         let ini = '';
         let wordStart = true;
@@ -87,6 +110,10 @@
     const romanize = (text, pinyin) => romanizeNormalized(norm(text), pinyin);
 
     const groupFromNorm = (normText, pinyin) => {
+        if (!normText) return '#';
+        const c0 = normText.charCodeAt(0);
+        if (c0 >= 97 && c0 <= 122) return String.fromCharCode(c0 - 32);
+        if (c0 >= 48 && c0 <= 57) return '0-9';
         const s = normText.replace(LEADING_JUNK, '');
         const c = s ? s[0] : '';
         if (!c) return '#';

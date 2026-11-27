@@ -40,13 +40,24 @@
         let device = null;
         let applying = false;
 
-        const save = () => {
+        let saveTimer = null;
+        let saveDirty = false;
+        const flushSave = () => {
+            if (saveTimer !== null) { global.clearTimeout?.(saveTimer); saveTimer = null; }
+            if (!saveDirty) return;
+            saveDirty = false;
             const names = Object.keys(profiles);
             if (names.length > MAX_DEVICES) {
                 names.sort((a, b) => (profiles[a].at || 0) - (profiles[b].at || 0));
                 for (const n of names.slice(0, names.length - MAX_DEVICES)) delete profiles[n];
             }
             try { storage?.setItem(KEY, JSON.stringify({ v: 1, d: profiles })); } catch (e) { /* 存不下就算了 */ }
+        };
+        const save = (immediate = false) => {
+            saveDirty = true;
+            if (immediate || typeof global.setTimeout !== 'function') { flushSave(); return; }
+            if (saveTimer !== null) return;
+            saveTimer = global.setTimeout(flushSave, 400);
         };
         const sliderValue = (band) => {
             const slider = doc?.getElementById?.(`eq-${band}`);
@@ -58,10 +69,12 @@
             for (const band of Object.keys(app.eqBands || {})) bands[band] = sliderValue(band);
             return snapshotOf(bands, app.eqSwitch ? app.eqSwitch.checked : app.eqEnabled);
         };
-        const remember = () => {
+        const remember = (immediate = false) => {
             if (!enabled || !device || applying) return;
-            profiles[device] = { ...current(), at: Date.now() };
-            save();
+            const next = current();
+            if (profiles[device] && sameProfile(profiles[device], next)) return;
+            profiles[device] = { ...next, at: Date.now() };
+            save(immediate);
         };
         const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };
 
@@ -92,10 +105,13 @@
             device = name;
             if (!enabled) return;
             const saved = profiles[name];
-            if (!saved) { remember(); return; } // 第一次见到这台设备：先记下现在的设置
+            if (!saved) { remember(true); return; } // 第一次见到这台设备：先记下现在的设置
             if (!previous) return; // 刚打开窗口：界面上已经是保存过的设置，不去动它
             if (sameProfile(saved, current())) return;
-            Promise.resolve(apply(saved)).then(() => remember());
+            Promise.resolve(apply(saved)).then(() => {
+                if (profiles[name]) { profiles[name].at = Date.now(); save(true); }
+                else remember(true);
+            }).catch(() => {});
             toast(`换到「${name}」，用这台设备上次的 EQ`);
         };
 
@@ -109,15 +125,18 @@
             return result;
         });
 
+        global.addEventListener?.('beforeunload', flushSave, { once: true });
+
         app.deviceSound = {
             get enabled() { return enabled; },
             set enabled(v) {
                 enabled = Boolean(v);
                 try { storage?.setItem(SWITCH_KEY, enabled ? '1' : '0'); } catch (e) { /* 只是偏好 */ }
-                if (enabled) remember();
+                if (enabled) remember(true);
             },
             get device() { return device; },
-            profiles: () => JSON.parse(JSON.stringify(profiles))
+            profiles: () => JSON.parse(JSON.stringify(profiles)),
+            flush: flushSave
         };
     }
 
