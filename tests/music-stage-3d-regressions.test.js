@@ -370,3 +370,87 @@ test('the handover veil reads the 3D picture back at most four times a second wh
     assert.equal(reads, 6);
     veil.destroy();
 });
+
+test('diorama-optics skips all 7 bloom passes when glow is 0 and runs full pyramid when glow > 0', () => {
+    const dom = createDom();
+    const win = loadStage(dom, 'Musicmodules/music-stage/modes/diorama-optics.js');
+    const createdTargets = [];
+    const createdMaterials = [];
+    class Vector2 { constructor(x = 0, y = 0) { this.x = x; this.y = y; } set(x, y) { this.x = x; this.y = y; return this; } }
+    class WebGLRenderTarget {
+        constructor(w, h, opts = {}) { this.width = w; this.height = h; this.samples = opts.samples || 0; this.texture = {}; this.disposed = 0; createdTargets.push(this); }
+        setSize(w, h) { this.width = w; this.height = h; }
+        dispose() { this.disposed += 1; }
+    }
+    class ShaderMaterial {
+        constructor(opts) { Object.assign(this, opts); this.disposed = 0; createdMaterials.push(this); }
+        dispose() { this.disposed += 1; }
+    }
+    const T = {
+        HalfFloatType: 1, LinearFilter: 2, AdditiveBlending: 3, Vector2, WebGLRenderTarget, ShaderMaterial,
+        Scene: class { add() {} },
+        OrthographicCamera: class {},
+        PlaneGeometry: class { dispose() {} },
+        Mesh: class { constructor(g, m) { this.geometry = g; this.material = m; } }
+    };
+    const optics = win.MusicStageDioramaOptics.create(T);
+    let renderCalls = 0;
+    let currentTarget = null;
+    const renderer = {
+        autoClear: true,
+        getDrawingBufferSize: (v) => v.set(640, 360),
+        getRenderTarget: () => currentTarget,
+        setRenderTarget: (t) => { currentTarget = t; },
+        clear() {},
+        render() { renderCalls += 1; }
+    };
+    optics.render(renderer, {}, {}, 1.0, { quality: 'standard' }, { glow: 0 });
+    assert.equal(renderCalls, 2, 'glow=0 renders only world target + final composite (skips 7 bloom passes)');
+
+    renderCalls = 0;
+    optics.render(renderer, {}, {}, 1.0, { quality: 'standard' }, { glow: 1 });
+    assert.equal(renderCalls, 9, 'glow>0 runs world + prefilter + 3 down + 3 up + final composite');
+
+    const composite = createdMaterials.find((m) => m.uniforms?.glowMap);
+    assert.match(composite.fragmentShader, /if\(bloom>0\.0\)/);
+    assert.match(composite.fragmentShader, /if\(cabin>0\.001\)/);
+
+    optics.destroy();
+    assert.ok(createdTargets.every((t) => t.disposed >= 1), 'all render targets disposed');
+    assert.ok(createdMaterials.every((m) => m.disposed >= 1), 'all shader materials disposed');
+    dom.window.close();
+});
+
+test('kowloon manager exposes getDegrade, debug scale fields and precompiles optics', () => {
+    const dom = createDom();
+    const win = loadStage(dom, 'Musicmodules/music-stage/modes/kowloon-manager.js');
+    const host = dom.window.document.createElement('div');
+    dom.window.document.body.appendChild(host);
+    const mode = win.MusicStageKowloonManager.create(host, { app: { stagePalette: {} } });
+    assert.equal(typeof mode.getDegrade, 'function');
+    assert.deepEqual({ ...mode.getDegrade() }, { steps: 0, quality: 'standard' });
+
+    mode.updateConfig({ quality: 'energy-saving' });
+    assert.deepEqual({ ...mode.getDegrade() }, { steps: 0, quality: 'energy-saving' });
+
+    const snap = mode.getDebugSnapshot();
+    assert.equal(snap.degradeSteps, 0);
+    assert.equal(snap.drawnQuality, 'energy-saving');
+    assert.equal(typeof snap.canvasSmoothing, 'boolean');
+
+    const src = read('Musicmodules/music-stage/modes/kowloon-manager.js');
+    assert.match(src, /optics\?\.precompile\?\.\(renderer\)/);
+    assert.match(src, /U\.settlePrograms\(/);
+    mode.destroy();
+    dom.window.close();
+});
+
+test('diorama-lyrics uses per-vertex glyphSpan without 64-step fragment loop and tunnel disposes glyphScrim', () => {
+    const lyricsSrc = read('Musicmodules/music-stage/modes/diorama-lyrics.js');
+    assert.match(lyricsSrc, /attribute vec2 glyphSpan;/);
+    assert.doesNotMatch(lyricsSrc, /for\(int i=0;i<64;i\+\+\)/);
+
+    const tunnelSrc = read('Musicmodules/music-stage/modes/tunnel-manager.js');
+    assert.match(tunnelSrc, /glyphScrim\.geometry/);
+    assert.match(tunnelSrc, /glyphScrim\.material/);
+});
