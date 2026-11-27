@@ -20,6 +20,9 @@ function setupWebDav(app) {
     app.webdavReason = webdavReason;
     const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff', '.aif', '.alac', '.dsf', '.dff']);
     const AUDIO_EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|opus|wv|ape|wma|aiff?|alac|dsf|dff)$/i;
+    const ORIGIN_RE = /^https?:\/\/[^/]+/;
+    const REMOVE_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
     let browseReqId = 0;
     const boundLists = new WeakSet();
     let currentEntries = [];
@@ -99,7 +102,7 @@ function setupWebDav(app) {
                 if (!app.activeWebDavServer) return;
                 const href = String(entry.href || '').replace(/\/$/, '');
                 const base = String(app.activeWebDavServer.url || '').replace(/\/$/, '');
-                const originMatch = base.match(/^https?:\/\/[^/]+/);
+                const originMatch = ORIGIN_RE.exec(base);
                 const origin = originMatch ? originMatch[0] : base;
                 let newPath = href.replace(origin, '');
                 if (!newPath.startsWith('/')) newPath = '/' + newPath;
@@ -144,20 +147,20 @@ function setupWebDav(app) {
 
     app.renderWebDavServerList = () => {
         bindServerList();
-        app.webdavServerList.innerHTML = '';
-        if (app.webdavServers.length === 0) {
+        const servers = app.webdavServers;
+        if (!servers.length) {
             app.webdavServerList.innerHTML = '<div class="no-lyrics" style="padding:12px;font-size:12px;">暂无服务器</div>';
             return;
         }
-        const frag = document.createDocumentFragment();
-        app.webdavServers.forEach((server) => {
-            const div = document.createElement('div');
-            div.className = 'webdav-server-item' + (app.activeWebDavServer && app.activeWebDavServer.id === server.id ? ' active' : '');
-            div.dataset.serverId = String(server.id);
-            div.innerHTML = `<span class="webdav-server-name">${esc(server.name)}</span><button class="webdav-server-remove" data-id="${esc(server.id)}" title="删除这个服务器" aria-label="删除这个服务器"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
-            frag.appendChild(div);
-        });
-        app.webdavServerList.appendChild(frag);
+        const activeId = app.activeWebDavServer ? app.activeWebDavServer.id : null;
+        const parts = new Array(servers.length);
+        for (let i = 0; i < servers.length; i += 1) {
+            const server = servers[i];
+            const idEsc = esc(server.id);
+            const activeCls = activeId === server.id ? ' active' : '';
+            parts[i] = `<div class="webdav-server-item${activeCls}" data-server-id="${idEsc}"><span class="webdav-server-name">${esc(server.name)}</span><button class="webdav-server-remove" data-id="${idEsc}" title="删除这个服务器" aria-label="删除这个服务器">${REMOVE_ICON_SVG}</button></div>`;
+        }
+        app.webdavServerList.innerHTML = parts.join('');
     };
 
     app.browseWebDav = async (dirPath) => {
@@ -192,7 +195,6 @@ function setupWebDav(app) {
             app.webdavFileList.firstElementChild.appendChild(retry);
             return;
         }
-        const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
         const currentPath = safeDecode(dirPath.replace(/\/$/, ''));
         const rawEntries = Array.isArray(result.entries) ? result.entries : [];
         const entries = rawEntries.filter((entry) => {
@@ -204,23 +206,20 @@ function setupWebDav(app) {
             app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">此目录为空</div>';
             return;
         }
-        app.webdavFileList.innerHTML = '';
         entries.sort((a, b) => (b.isDir - a.isDir) || String(a.name || '').localeCompare(String(b.name || '')));
         currentEntries = entries;
-        const fragment = document.createDocumentFragment();
+        const parts = new Array(entries.length);
         for (let i = 0; i < entries.length; i += 1) {
             const entry = entries[i];
             const name = String(entry.name || '');
             const dot = name.lastIndexOf('.');
             const ext = dot >= 0 ? name.slice(dot).toLowerCase() : '';
             const isAudio = !entry.isDir && AUDIO_EXTS.has(ext);
-            const div = document.createElement('div');
-            div.className = 'webdav-file-item' + (entry.isDir ? ' is-dir' : '') + (isAudio ? ' is-audio' : '');
-            div.dataset.entryIdx = String(i);
-            div.innerHTML = `<span class="webdav-file-icon">${entry.isDir ? '📁' : (isAudio ? '🎵' : '📄')}</span><span class="webdav-file-name">${esc(name)}</span>`;
-            fragment.appendChild(div);
+            const cls = 'webdav-file-item' + (entry.isDir ? ' is-dir' : '') + (isAudio ? ' is-audio' : '');
+            const icon = entry.isDir ? '📁' : (isAudio ? '🎵' : '📄');
+            parts[i] = `<div class="${cls}" data-entry-idx="${i}"><span class="webdav-file-icon">${icon}</span><span class="webdav-file-name">${esc(name)}</span></div>`;
         }
-        app.webdavFileList.appendChild(fragment);
+        app.webdavFileList.innerHTML = parts.join('');
     };
 
     app.renderWebDavBreadcrumb = (dirPath) => {
@@ -277,15 +276,26 @@ function setupWebDav(app) {
 
     app.setupWebDavHandlers = () => {
         if (!app.api) return;
+        const dialogInputs = { name: null, url: null, user: null, pass: null };
+        const getDialogInput = (key, id) => {
+            const cached = dialogInputs[key];
+            if (cached && cached.isConnected) return cached;
+            const node = document.getElementById(id);
+            dialogInputs[key] = node;
+            return node;
+        };
         app.addWebDavBtn?.addEventListener('click', app.openWebDavModal);
         app.webdavModalClose?.addEventListener('click', app.closeWebDavModal);
         app.webdavModal?.addEventListener('click', (e) => { if (e.target === app.webdavModal) app.closeWebDavModal(); });
         app.webdavAddServerBtn?.addEventListener('click', () => {
-            const nameInput = document.getElementById('webdav-server-name');
+            const nameInput = getDialogInput('name', 'webdav-server-name');
             if (nameInput) nameInput.value = '';
-            document.getElementById('webdav-server-url').value = '';
-            document.getElementById('webdav-server-username').value = '';
-            document.getElementById('webdav-server-password').value = '';
+            const urlInput = getDialogInput('url', 'webdav-server-url');
+            if (urlInput) urlInput.value = '';
+            const userInput = getDialogInput('user', 'webdav-server-username');
+            if (userInput) userInput.value = '';
+            const passInput = getDialogInput('pass', 'webdav-server-password');
+            if (passInput) passInput.value = '';
             app.webdavDialogStatus.style.color = '';
             app.webdavDialogStatus.textContent = '';
             app.webdavServerDialog.classList.add('active');
@@ -300,9 +310,9 @@ function setupWebDav(app) {
         app.webdavServerDialog?.addEventListener('click', (e) => { if (e.target === app.webdavServerDialog) closeServerDialog(); });
         app.webdavDialogTest?.addEventListener('click', async () => {
             if (app.webdavDialogTest.disabled) return;
-            const url = document.getElementById('webdav-server-url').value.trim();
-            const username = document.getElementById('webdav-server-username').value.trim();
-            const password = document.getElementById('webdav-server-password').value;
+            const url = getDialogInput('url', 'webdav-server-url').value.trim();
+            const username = getDialogInput('user', 'webdav-server-username').value.trim();
+            const password = getDialogInput('pass', 'webdav-server-password').value;
             if (!url) { app.webdavDialogStatus.style.color = '#e55'; app.webdavDialogStatus.textContent = '请输入 URL'; return; }
             const reqId = ++testReqId;
             app.webdavDialogTest.disabled = true;
@@ -323,10 +333,10 @@ function setupWebDav(app) {
         });
         app.webdavDialogConfirm?.addEventListener('click', async () => {
             if (app.webdavDialogConfirm.disabled) return;
-            const name = document.getElementById('webdav-server-name').value.trim();
-            const url = document.getElementById('webdav-server-url').value.trim();
-            const username = document.getElementById('webdav-server-username').value.trim();
-            const password = document.getElementById('webdav-server-password').value;
+            const name = getDialogInput('name', 'webdav-server-name').value.trim();
+            const url = getDialogInput('url', 'webdav-server-url').value.trim();
+            const username = getDialogInput('user', 'webdav-server-username').value.trim();
+            const password = getDialogInput('pass', 'webdav-server-password').value;
             if (!name || !url) { app.webdavDialogStatus.style.color = '#e55'; app.webdavDialogStatus.textContent = '名称和 URL 不能为空'; return; }
             app.webdavDialogConfirm.disabled = true;
             let server;

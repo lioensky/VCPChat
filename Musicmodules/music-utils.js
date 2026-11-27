@@ -4,10 +4,16 @@
 function setupUtils(app) {
     const api = app.api || window.utilityAPI || window.electronAPI;
 
+    const AUDIO_EXT_RE = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i;
+    const HEX_RE = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i;
+    const PATH_MATCH_RE = /\[路径: (.*?)\]/;
+    const LINE_SPLIT_RE = /[\r\n]+/;
+    const EXT_TRIM_RE = /\.[^.]+$/;
+
     // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
     app.stripAudioExtension = (title) => {
         if (!title || typeof title !== 'string' || title.indexOf('.') === -1) return title;
-        return title.replace(/\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i, '');
+        return title.replace(AUDIO_EXT_RE, '');
     };
 
     // 列表搜索框和歌单编辑框共用的匹配：全角半角、大小写、合字统一（NFKC），标题去掉扩展名，
@@ -84,7 +90,7 @@ function setupUtils(app) {
 
     app.hexToRgb = (hex) => {
         if (!hex) return null;
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+        const result = HEX_RE.exec(hex.trim());
         return result ? {
             r: parseInt(result[1], 16),
             g: parseInt(result[2], 16),
@@ -232,7 +238,7 @@ tag_boost:「始」0.95「末」
             if (!section.trim()) return;
             
             // 提取路径
-            const pathMatch = section.match(/\[路径: (.*?)\]/);
+            const pathMatch = PATH_MATCH_RE.exec(section);
             if (pathMatch) {
                 let path = pathMatch[1];
                 // 处理 file:/// 协议
@@ -300,15 +306,14 @@ tag_boost:「始」0.95「末」
             }
             
             // 2. 处理歌单文件内容 (逐行扫描)
-            const lines = res.originalSection.split(/[\r\n]+/);
-            lines.forEach(line => {
-                const trimmedLine = line.trim();
+            const lines = res.originalSection.split(LINE_SPLIT_RE);
+            for (let li = 0; li < lines.length; li += 1) {
+                const trimmedLine = lines[li].trim();
                 // 过滤掉元数据行
-                if (!trimmedLine || trimmedLine.startsWith('[') || trimmedLine.startsWith('---')) return;
+                if (!trimmedLine || trimmedLine.startsWith('[') || trimmedLine.startsWith('---')) continue;
 
-                const isAudioFile = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i.test(trimmedLine);
-                if (isAudioFile) {
-                    const songQuery = trimmedLine.replace(/\.[^.]+$/, '').toLowerCase();
+                if (AUDIO_EXT_RE.test(trimmedLine)) {
+                    const songQuery = trimmedLine.replace(EXT_TRIM_RE, '').toLowerCase();
                     for (let i = 0; i < indexedPlaylist.length; i++) {
                         const item = indexedPlaylist[i];
                         const track = item.track;
@@ -322,7 +327,7 @@ tag_boost:「始」0.95「末」
                         }
                     }
                 }
-            });
+            }
         });
 
         console.log('[Music] Matched tracks count:', matchedTracks.length);

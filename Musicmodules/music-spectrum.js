@@ -14,36 +14,57 @@
     const ROWS = 220;
     const LOSSLESS_EXT = /\.(flac|wav|aiff?|alac|ape|wv)$/i;
 
-    // 原地 radix-2 FFT（re、im 长度为 2 的幂）
-    function fft(re, im) {
-        const n = re.length;
+    const LOG10_SCALE = 10 / Math.LN10;
+    const fftPlans = new Map();
+    function getFftPlan(n) {
+        let plan = fftPlans.get(n);
+        if (plan) return plan;
+        const bitRev = new Uint16Array(n);
         for (let i = 1, j = 0; i < n; i++) {
             let bit = n >> 1;
             for (; j & bit; bit >>= 1) j ^= bit;
             j ^= bit;
+            bitRev[i] = j;
+        }
+        // 按级展开旋转因子（总长度 n - 1），消除每步复乘累积误差并跳过反复三角函数计算
+        const cosTab = new Float32Array(n);
+        const sinTab = new Float32Array(n);
+        for (let half = 1; half < n; half <<= 1) {
+            const ang = -Math.PI / half;
+            for (let k = 0; k < half; k++) {
+                cosTab[half + k] = Math.cos(ang * k);
+                sinTab[half + k] = Math.sin(ang * k);
+            }
+        }
+        plan = { bitRev, cosTab, sinTab };
+        if (fftPlans.size < 8) fftPlans.set(n, plan);
+        return plan;
+    }
+
+    // 原地 radix-2 FFT（re、im 长度为 2 的幂）
+    function fft(re, im) {
+        const n = re.length;
+        if (n <= 1) return;
+        const { bitRev, cosTab, sinTab } = getFftPlan(n);
+        for (let i = 1; i < n; i++) {
+            const j = bitRev[i];
             if (i < j) {
                 let t = re[i]; re[i] = re[j]; re[j] = t;
                 t = im[i]; im[i] = im[j]; im[j] = t;
             }
         }
         for (let len = 2; len <= n; len <<= 1) {
-            const ang = -2 * Math.PI / len;
-            const wr = Math.cos(ang);
-            const wi = Math.sin(ang);
             const half = len >> 1;
             for (let i = 0; i < n; i += len) {
-                let cr = 1;
-                let ci = 0;
                 for (let k = 0; k < half; k++) {
                     const a = i + k;
                     const b = a + half;
+                    const cr = cosTab[half + k];
+                    const ci = sinTab[half + k];
                     const xr = re[b] * cr - im[b] * ci;
                     const xi = re[b] * ci + im[b] * cr;
                     re[b] = re[a] - xr; im[b] = im[a] - xi;
                     re[a] += xr; im[a] += xi;
-                    const nr = cr * wr - ci * wi;
-                    ci = cr * wi + ci * wr;
-                    cr = nr;
                 }
             }
         }
@@ -113,13 +134,13 @@
             if (isLoud) loud++;
             for (let k = 0; k < bins; k++) {
                 const p = (re[k] * re[k] + im[k] * im[k]) * invN2;
-                col[k] = 10 * Math.log10(p + 1e-20);
+                col[k] = LOG10_SCALE * Math.log(p + 1e-20);
                 if (isLoud) power[k] += p + 1e-20;
             }
             out.push(col);
         }
         const average = new Float32Array(bins);
-        for (let k = 0; k < bins; k++) average[k] = loud ? 10 * Math.log10(power[k] / loud + 1e-20) : -200;
+        for (let k = 0; k < bins; k++) average[k] = loud ? LOG10_SCALE * Math.log(power[k] / loud + 1e-20) : -200;
         return { columns: out, average, loud };
     }
 
@@ -133,10 +154,12 @@
         const binOf = (f) => Math.round(f * 2 * bins / sampleRate);
         const span = Math.max(3, binOf(250));
         const gap = Math.max(1, binOf(60));
+        const prefix = new Float64Array(bins + 1);
+        for (let k = 0; k < bins; k++) prefix[k + 1] = prefix[k] + average[k];
         const mean = (a, b) => {
-            let s = 0; let n = 0;
-            for (let k = Math.max(0, a); k < Math.min(bins, b); k++) { s += average[k]; n++; }
-            return n ? s / n : -200;
+            const lo = a > 0 ? a : 0;
+            const hi = b < bins ? b : bins;
+            return hi > lo ? (prefix[hi] - prefix[lo]) / (hi - lo) : -200;
         };
         const ref = mean(binOf(1000), binOf(6000));
         let best = 0;
@@ -235,6 +258,7 @@
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
+            o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) disposeOverlay(o);
             else {

@@ -18,19 +18,28 @@ const DEBOUNCE_MS = 5000;
 const START_DELAY_MS = 4000;
 
 const norm = (p) => path.resolve(String(p)).replace(/[\\/]+$/, '').toLowerCase();
-const isUnder = (child, parent) => {
-    const c = norm(child), p = norm(parent);
-    return c === p || c.startsWith(p + path.sep.toLowerCase()) || c.startsWith(p + '/') || c.startsWith(p + '\\');
-};
+const SEP_LOWER = path.sep.toLowerCase();
+const isUnderNorm = (c, p) => c === p || c.startsWith(p + SEP_LOWER) || c.startsWith(p + '/') || c.startsWith(p + '\\');
+const isUnder = (child, parent) => isUnderNorm(norm(child), norm(parent));
 
 // 一组文件夹去掉被别的文件夹包含的，保持原顺序
 function collapseRoots(dirs) {
     const out = [];
-    for (const d of dirs) {
+    const norms = [];
+    for (let k = 0; k < dirs.length; k += 1) {
+        const d = dirs[k];
         if (!d) continue;
-        if (out.some((r) => isUnder(d, r))) continue;
-        for (let i = out.length - 1; i >= 0; i--) if (isUnder(out[i], d)) out.splice(i, 1);
+        const dn = norm(d);
+        let covered = false;
+        for (let i = 0; i < norms.length; i += 1) {
+            if (isUnderNorm(dn, norms[i])) { covered = true; break; }
+        }
+        if (covered) continue;
+        for (let i = norms.length - 1; i >= 0; i -= 1) {
+            if (isUnderNorm(norms[i], dn)) { out.splice(i, 1); norms.splice(i, 1); }
+        }
         out.push(d);
+        norms.push(dn);
     }
     return out;
 }
@@ -100,7 +109,8 @@ function createLibraryWatch({
         if (!dir) return;
         try {
             const list = (await readFolders()) || [];
-            if (list.some((d) => norm(d) === norm(dir))) return;
+            const target = norm(dir);
+            if (list.some((d) => norm(d) === target)) return;
             await writeFolders(collapseRoots([...list, dir]));
         } catch (e) { log.warn?.('[MusicWatch] remember folder failed:', e?.message || e); }
     };
@@ -128,7 +138,8 @@ function createLibraryWatch({
                 try { result = await scan(root, abort.signal); } catch (e) { log.warn?.('[MusicWatch] scan failed:', root, e?.message || e); continue; }
                 if (gen !== generation || !result || result.stats?.aborted) continue;
                 let tracks = result.tracks || [];
-                const full = rememberedNow.some((r) => norm(r) === norm(root));
+                const rootNorm = norm(root);
+                const full = rememberedNow.some((r) => norm(r) === rootNorm);
                 if (!full) {
                     const byPath = new Map(known.map((t) => [t && t.path, t]));
                     tracks = tracks.filter((t) => {
@@ -156,7 +167,8 @@ function createLibraryWatch({
     };
 
     const enqueue = (root) => {
-        if (!queue.some((r) => norm(r) === norm(root))) queue.push(root);
+        const rootNorm = norm(root);
+        if (!queue.some((r) => norm(r) === rootNorm)) queue.push(root);
         runQueue(generation).catch(() => {});
     };
 
@@ -212,12 +224,29 @@ function createLibraryWatch({
     let excludeChain = Promise.resolve();
     const noteLibrarySaved = (prev, next) => {
         excludeChain = excludeChain.then(async () => {
-            const nextPaths = new Set((next || []).map((t) => t && t.path).filter(Boolean));
-            const removed = (prev || []).map((t) => t && t.path).filter((p) => typeof p === 'string' && !nextPaths.has(p) && !URL_SCHEME_RE.test(p));
+            const nextPaths = new Set();
+            if (Array.isArray(next)) {
+                for (let i = 0; i < next.length; i += 1) {
+                    const p = next[i] && next[i].path;
+                    if (p) nextPaths.add(p);
+                }
+            }
             const list = (await readExcluded().catch(() => [])) || [];
-            const set = new Set(list.filter((p) => !nextPaths.has(p)));
+            const set = new Set();
+            for (let i = 0; i < list.length; i += 1) {
+                const p = list[i];
+                if (!nextPaths.has(p)) set.add(p);
+            }
             let changed = set.size !== list.length;
-            const toCheck = removed.slice(0, 5000).filter((p) => !set.has(p));
+            const toCheck = [];
+            if (Array.isArray(prev)) {
+                for (let i = 0; i < prev.length && toCheck.length < 5000; i += 1) {
+                    const p = prev[i] && prev[i].path;
+                    if (typeof p === 'string' && !nextPaths.has(p) && !URL_SCHEME_RE.test(p) && !set.has(p)) {
+                        toCheck.push(p);
+                    }
+                }
+            }
             for (let at = 0; at < toCheck.length; at += 32) {
                 const slice = toCheck.slice(at, at + 32);
                 const results = await Promise.all(slice.map((p) => fileExists(p)));
@@ -232,7 +261,8 @@ function createLibraryWatch({
 
     const rememberAndSync = async (dir) => {
         await rememberFolder(dir);
-        if (!rememberedNow.some((r) => norm(r) === norm(dir))) rememberedNow = collapseRoots([...rememberedNow, dir]);
+        const dirNorm = norm(dir);
+        if (!rememberedNow.some((r) => norm(r) === dirNorm)) rememberedNow = collapseRoots([...rememberedNow, dir]);
     };
     // 曲库文件夹管理用：加过的文件夹；「移出」时从记录里拿掉（连同它下面的子文件夹），之后不再同步它
     const folders = async () => collapseRoots((await readFolders().catch(() => [])) || []);

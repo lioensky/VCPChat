@@ -30,6 +30,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
     let dirty = false;
     let pendingWrite = false;
     let saveGen = 0;
+    let dirEnsured = false;
     let writeChain = Promise.resolve();
 
     const save = () => {
@@ -46,7 +47,10 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
                 if (gen !== saveGen) return;
                 const tmp = `${stateFile}.${process.pid}.${gen}.tmp`;
                 try {
-                    await fs.promises.mkdir(path.dirname(stateFile), { recursive: true });
+                    if (!dirEnsured) {
+                        await fs.promises.mkdir(path.dirname(stateFile), { recursive: true });
+                        dirEnsured = true;
+                    }
                     if (gen !== saveGen) return;
                     await fs.promises.writeFile(tmp, payload);
                     if (gen !== saveGen) {
@@ -196,11 +200,13 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
 
     ipcMain.handle('music-desktop-lyrics-get', () => ({ on: prefs.on, locked: prefs.locked, size: prefs.size }));
     ipcMain.handle('music-desktop-lyrics-toggle', (event, on) => {
-        if (!musicWin() || event.sender !== musicWin().webContents) throw new Error('只有音乐窗口能开关桌面歌词。');
+        const m = musicWin();
+        if (!m || event.sender !== m.webContents) throw new Error('只有音乐窗口能开关桌面歌词。');
         return setOn(on === undefined || on === null ? !prefs.on : on === true);
     });
     ipcMain.on('music-desktop-lyrics-publish', (event, payload) => {
-        if (!musicWin() || event.sender !== musicWin().webContents || !payload || typeof payload !== 'object') return;
+        const m = musicWin();
+        if (!m || event.sender !== m.webContents || !payload || typeof payload !== 'object') return;
         last = payload;
         tellBar('music-desktop-lyrics-state', payload);
     });

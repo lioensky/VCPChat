@@ -343,20 +343,26 @@
             let lastTgt = null;
             let lastSkipped = false;
             for (const r of records) {
-                if (!r.addedNodes.length) continue;
-                const tgt = r.target;
-                if (tgt && tgt.nodeType === 1) {
-                    if (tgt !== lastTgt) {
-                        lastTgt = tgt;
-                        lastSkipped = Boolean(tgt.closest?.(SKIP_SUBTREE_SEL));
-                    }
-                    if (lastSkipped) continue;
-                }
-                for (const n of r.addedNodes) {
+                const added = r.addedNodes;
+                if (!added.length) continue;
+                let checkedTgt = false;
+                for (let i = 0; i < added.length; i += 1) {
+                    const n = added[i];
                     if (n.nodeType !== 1) continue;
                     const tag = n.tagName;
                     if (tag !== 'SELECT' && (!n.firstElementChild || LEAF_TAGS.has(tag))) continue;
                     if (n.classList?.contains('mfs-trigger') || n.classList?.contains('mfs-menu')) continue;
+                    if (!checkedTgt) {
+                        checkedTgt = true;
+                        const tgt = r.target;
+                        if (tgt && tgt.nodeType === 1) {
+                            if (tgt !== lastTgt) {
+                                lastTgt = tgt;
+                                lastSkipped = Boolean(tgt.closest?.(SKIP_SUBTREE_SEL));
+                            }
+                            if (lastSkipped) break;
+                        }
+                    }
                     if (!pending) { pending = new Set(); queueMicrotask(flush); }
                     pending.add(n);
                 }

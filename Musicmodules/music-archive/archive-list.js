@@ -759,7 +759,13 @@
             const aria = on || pick ? 'true' : 'false';
             if (node._pAria !== aria) { node._pAria = aria; node.setAttribute('aria-selected', aria); }
         };
-        const paintRendered = () => { if (!isListHidden()) for (const [k, n] of state.rendered) paintRow(n, state.rows[k], k); };
+        const paintRendered = () => {
+            if (isListHidden()) return;
+            const fl = dirtyLike && typeof app.isLiked === 'function';
+            const l = fl ? tracks() : null;
+            if (fl) dirtyLike = false;
+            for (const [k, n] of state.rendered) { if (fl) syncLiked(n, state.rows[k], l); paintRow(n, state.rows[k], k); }
+        };
 
         const render = (known) => {
             state.raf = 0;

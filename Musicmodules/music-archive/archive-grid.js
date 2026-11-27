@@ -160,6 +160,12 @@
         const keepHeadsSet = new Set();
         let stickySec = -1;
         let locateAway = false;
+        let rollRaf = 0;
+        let pingRaf = 0;
+        const cancelAnimRafs = () => {
+            if (rollRaf) { cancelAnimationFrame(rollRaf); rollRaf = 0; }
+            if (pingRaf) { cancelAnimationFrame(pingRaf); pingRaf = 0; }
+        };
         const applyNodeCover = (n, t, dpr) => {
             const src = opts.cover(t);
             n.rawSrc = src || '';
@@ -304,9 +310,16 @@
                     if (!reduced() && prev >= 0) {
                         const nextCls = r.s > prev ? 'ag-roll-up' : 'ag-roll-down';
                         const same = sticky.classList.contains(nextCls);
+                        if (rollRaf) { cancelAnimationFrame(rollRaf); rollRaf = 0; }
                         sticky.classList.remove('ag-roll-up', 'ag-roll-down');
-                        if (same) void sticky.offsetWidth;
-                        sticky.classList.add(nextCls);
+                        if (same) {
+                            rollRaf = requestAnimationFrame(() => {
+                                rollRaf = 0;
+                                if (st.on && !sticky.hidden) sticky.classList.add(nextCls);
+                            });
+                        } else {
+                            sticky.classList.add(nextCls);
+                        }
                     }
                 }
             } else if (!sticky.hidden) sticky.hidden = true;
@@ -396,9 +409,12 @@
             const p = opts.playing();
             if (p.index >= 0 && st.where.has(p.index)) { opts.pick(p.index); reveal(p.index, { center: true }); }
             if (!reduced()) {
+                if (pingRaf) { cancelAnimationFrame(pingRaf); pingRaf = 0; }
                 locateBtn.classList.remove('is-ping');
-                void locateBtn.offsetWidth;
-                locateBtn.classList.add('is-ping');
+                pingRaf = requestAnimationFrame(() => {
+                    pingRaf = 0;
+                    if (st.on && !locateBtn.hidden) locateBtn.classList.add('is-ping');
+                });
             }
         });
         el.addEventListener('click', (e) => {
@@ -432,6 +448,7 @@
                 if (on) { st.shownAt = performance.now(); syncData(true); schedule(); }
                 else {
                     cancelAnimationFrame(st.raf); st.raf = 0;
+                    cancelAnimRafs();
                     stickySec = -1;
                     delete sticky.dataset.s;
                     sticky.hidden = true;
@@ -474,6 +491,7 @@
             destroy() {
                 st.on = false;
                 cancelAnimationFrame(st.raf);
+                cancelAnimRafs();
                 st.nodes.clear();
                 st.heads.clear();
                 st.pool.length = 0;

@@ -7,22 +7,53 @@
 const path = require('path');
 
 const UTF8_FATAL = new TextDecoder('utf-8', { fatal: true });
+let gb18030Decoder = null;
+const getGb18030Decoder = () => {
+    if (gb18030Decoder === null) {
+        try { gb18030Decoder = new TextDecoder('gb18030'); } catch (_) { gb18030Decoder = false; }
+    }
+    return gb18030Decoder;
+};
+let iconvCache = undefined;
+const getIconv = () => {
+    if (iconvCache === undefined) {
+        try { iconvCache = require('iconv-lite'); } catch (_) { iconvCache = null; }
+    }
+    return iconvCache;
+};
+const M3U8_EXT_RE = /\.m3u8$/i;
+const FILE_URL_PARSE_RE = /^file:\/\/([^/]*)(\/.*)?$/i;
+const LINE_SPLIT_RE = /\r\n|\r|\n/;
+const EXTINF_RE = /^#EXTINF:\s*(-?[\d.]+)?[^,]*,(.*)$/i;
+const PLAYLIST_RE = /^#PLAYLIST:/i;
+const FILE_URL_RE = /^file:\/\//i;
+const SCHEME_URL_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
+const ONE_LINE_RE = /[\r\n]+/g;
+
 const looksUtf8 = (buf) => {
     try { UTF8_FATAL.decode(buf); return true; } catch (e) { return false; }
 };
 
 function decodeM3u(buf, fileName = '') {
     if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf || '');
-    if (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return buf.slice(3).toString('utf8');
-    if (buf[0] === 0xFF && buf[1] === 0xFE) return buf.slice(2).toString('utf16le');
-    if (buf[0] === 0xFE && buf[1] === 0xFF) { const le = Buffer.from(buf.slice(2, buf.length - (buf.length % 2))); return le.swap16().toString('utf16le'); }
-    if (/\.m3u8$/i.test(fileName) || looksUtf8(buf)) return buf.toString('utf8');
-    try { return require('iconv-lite').decode(buf, 'gbk'); } catch (e) { return buf.toString('latin1'); }
+    if (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return buf.subarray(3).toString('utf8');
+    if (buf[0] === 0xFF && buf[1] === 0xFE) return buf.subarray(2).toString('utf16le');
+    if (buf[0] === 0xFE && buf[1] === 0xFF) { const le = Buffer.from(buf.subarray(2, buf.length - (buf.length % 2))); return le.swap16().toString('utf16le'); }
+    if (M3U8_EXT_RE.test(fileName) || looksUtf8(buf)) return buf.toString('utf8');
+    const gb = getGb18030Decoder();
+    if (gb) {
+        try { return gb.decode(buf); } catch (_) { /* fall through */ }
+    }
+    const iconv = getIconv();
+    if (iconv) {
+        try { return iconv.decode(buf, 'gbk'); } catch (_) { /* fall through */ }
+    }
+    return buf.toString('latin1');
 }
 
 // file:///C:/a%20b.flac → C:\a b.flac；file://server/share/x → \\server\share\x（UNC）
 function fileUrlToPath(url, platform) {
-    const m = /^file:\/\/([^/]*)(\/.*)?$/i.exec(url);
+    const m = FILE_URL_PARSE_RE.exec(url);
     if (!m) return '';
     let rest;
     try { rest = decodeURIComponent(m[2] || ''); } catch (e) { return ''; }
@@ -39,25 +70,26 @@ function parseM3u(text, { baseDir = '', platform = process.platform } = {}) {
     let name = '';
     let skipped = 0;
     let pending = null;
-    for (const raw of String(text || '').split(/\r\n|\r|\n/)) {
-        const line = raw.trim();
+    const lines = String(text || '').split(LINE_SPLIT_RE);
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i].trim();
         if (!line) continue;
-        if (line.startsWith('#')) {
-            const info = /^#EXTINF:\s*(-?[\d.]+)?[^,]*,(.*)$/i.exec(line);
+        if (line.charCodeAt(0) === 35) { // '#'
+            const info = EXTINF_RE.exec(line);
             if (info) {
                 const d = Number(info[1]);
                 pending = { duration: Number.isFinite(d) && d > 0 ? d : 0, title: info[2].trim() };
-            } else if (/^#PLAYLIST:/i.test(line)) {
+            } else if (PLAYLIST_RE.test(line)) {
                 name = line.slice(10).trim();
             }
             continue;
         }
         let file = line;
-        if (/^file:\/\//i.test(file)) {
+        if (FILE_URL_RE.test(file)) {
             const local = fileUrlToPath(file, platform);
             if (!local) { skipped++; pending = null; continue; }
             file = local;
-        } else if (/^[a-z][a-z0-9+.-]+:\/\//i.test(file)) {
+        } else if (SCHEME_URL_RE.test(file)) {
             skipped++; pending = null; continue;
         }
         if (platform === 'win32') file = file.replace(/\//g, '\\');
@@ -73,7 +105,7 @@ function parseM3u(text, { baseDir = '', platform = process.platform } = {}) {
     return { name, entries, skipped };
 }
 
-const oneLine = (s) => String(s || '').replace(/[\r\n]+/g, ' ').trim();
+const oneLine = (s) => String(s || '').replace(ONE_LINE_RE, ' ').trim();
 
 // tracks: [{ path, title, artist, duration }]（duration 秒，可缺）
 function buildM3u(name, tracks) {

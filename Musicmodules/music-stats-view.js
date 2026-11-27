@@ -150,6 +150,7 @@
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
+            o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) o.remove();
             else {
@@ -281,7 +282,11 @@
             if ((range === 0 || range >= 365) && s.daily && Object.keys(s.daily).length) {
                 const weeks = calendarWeeks(s.daily);
                 const cal = el('section', 'mstats-cal');
-                const listened = weeks.flat().filter((c) => c.seconds >= 60).length;
+                let listened = 0;
+                for (let wi = 0; wi < weeks.length; wi += 1) {
+                    const col = weeks[wi];
+                    for (let di = 0; di < col.length; di += 1) if (col[di].seconds >= 60) listened += 1;
+                }
                 const streak = longestStreak(s.daily);
                 cal.appendChild(el('h4', '', `最近一年有 ${listened} 天在听歌${streak > 1 ? `，最长连着听了 ${streak} 天` : ''}`));
                 const months = el('div', 'mstats-cal-months');
