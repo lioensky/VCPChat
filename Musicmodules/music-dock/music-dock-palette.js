@@ -476,7 +476,37 @@
                 const strip = app.stripAudioExtension;
                 order = order.filter((i) => lower(strip ? strip(tracks[i]?.title) : tracks[i]?.title).includes(want));
             }
-            return order.slice(0, limit).map((i) => (tracks[i] ? { track: tracks[i], index: i } : null)).filter(Boolean);
+            const out = [];
+            const take = Math.min(limit, order.length);
+            for (let k = 0; k < take; k += 1) {
+                const idx = order[k];
+                const track = tracks[idx];
+                if (track) out.push({ track, index: idx });
+            }
+            return out;
+        };
+
+        let cachedQueueList = null;
+        let cachedQueueLen = -1;
+        let cachedQueueFirst = null;
+        let cachedQueueLast = null;
+        let cachedQueueSet = null;
+        const getFilteredQueueSet = () => {
+            const list = app.currentFilteredTracks;
+            if (!list || list === app.playlist) return null;
+            const len = list.length;
+            const first = len ? list[0] : null;
+            const last = len ? list[len - 1] : null;
+            if (cachedQueueSet && cachedQueueList === list && cachedQueueLen === len
+                && cachedQueueFirst === first && cachedQueueLast === last) {
+                return cachedQueueSet;
+            }
+            cachedQueueList = list;
+            cachedQueueLen = len;
+            cachedQueueFirst = first;
+            cachedQueueLast = last;
+            cachedQueueSet = new Set(list);
+            return cachedQueueSet;
         };
 
         const recentItems = ({ songsAndPlaylistsOnly = false } = {}) => {
@@ -545,12 +575,15 @@
                 }
                 if (hasSongFilter(q)) {
                     const found = findSongs(q, MAX_SONGS);
-                    const queue = app.currentFilteredTracks && app.currentFilteredTracks !== app.playlist ? new Set(app.currentFilteredTracks) : null;
+                    const queue = getFilteredQueueSet();
                     // 当前列表里的排前面，其余按得分。
                     const inQueue = queue ? found.filter((hit) => queue.has(hit.track)).slice(0, 20) : [];
-                    const picked = new Set(inQueue.map((hit) => hit.track));
-                    inQueue.forEach((hit) => songs.push(songItem(hit.track, '队列', hit.index)));
-                    found.forEach((hit) => { if (!picked.has(hit.track)) songs.push(songItem(hit.track, '曲库', hit.index)); });
+                    const picked = inQueue.length ? new Set(inQueue.map((hit) => hit.track)) : null;
+                    for (let i = 0; i < inQueue.length; i += 1) songs.push(songItem(inQueue[i].track, '队列', inQueue[i].index));
+                    for (let i = 0; i < found.length; i += 1) {
+                        const hit = found[i];
+                        if (!picked || !picked.has(hit.track)) songs.push(songItem(hit.track, '曲库', hit.index));
+                    }
                 }
                 // 默认歌曲贴着输入框；输入像是在找操作（命令名开头命中、又没有歌名开头命中）时命令排前。
                 const songPrefix = Boolean(qTextLower) && songs.some((it) => lower(it.title).startsWith(qTextLower));
@@ -620,21 +653,23 @@
             btn.append(ri, rt, runEl);
             return {
                 btn, ri, rt, l1, titleEl, chipEl, grpEl, descEl, runText,
-                iconName: '', hasChip: false, hasDesc: false, lastTitle: null, lastHint: null, lastGrp: null, lastDesc: null, lastRun: null
+                iconName: '', hasChip: false, hasDesc: false,
+                lastCls: '', lastId: '', lastSel: '', lastIdx: '', lastDist: '',
+                lastTitle: null, lastHint: null, lastGrp: null, lastDesc: null, lastRun: null
             };
         };
         const hydrateRowSlot = (slot, item, i) => {
             const active = i === state.active;
             const cls = `md-cmd-row${active ? ' md-act' : ''}${item.current ? ' md-cur' : ''}`;
-            if (slot.btn.className !== cls) slot.btn.className = cls;
+            if (slot.lastCls !== cls) { slot.lastCls = cls; slot.btn.className = cls; }
             const id = `md-cmd-opt-${i}`;
-            if (slot.btn.id !== id) slot.btn.id = id;
+            if (slot.lastId !== id) { slot.lastId = id; slot.btn.id = id; }
             const selStr = active ? 'true' : 'false';
-            if (slot.btn.getAttribute('aria-selected') !== selStr) slot.btn.setAttribute('aria-selected', selStr);
+            if (slot.lastSel !== selStr) { slot.lastSel = selStr; slot.btn.setAttribute('aria-selected', selStr); }
             const idxStr = String(i);
-            if (slot.btn.dataset.i !== idxStr) slot.btn.dataset.i = idxStr;
+            if (slot.lastIdx !== idxStr) { slot.lastIdx = idxStr; slot.btn.dataset.i = idxStr; }
             const distStr = String(Math.min(4, i));
-            if (slot.btn.dataset.mdDist !== distStr) slot.btn.dataset.mdDist = distStr;
+            if (slot.lastDist !== distStr) { slot.lastDist = distStr; slot.btn.dataset.mdDist = distStr; }
             const iconName = item.icon || 'command';
             if (slot.iconName !== iconName) {
                 slot.iconName = iconName;
@@ -964,6 +999,7 @@
                 document.removeEventListener('keydown', onGlobalKey, true);
                 global.removeEventListener('resize', onResize);
                 cachedPathList = cachedPathFirst = cachedPathLast = cachedByPath = null;
+                cachedQueueList = cachedQueueFirst = cachedQueueLast = cachedQueueSet = null;
                 activeRowEl = null;
                 dropEl = null;
                 rowPool.length = 0;

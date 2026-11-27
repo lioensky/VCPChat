@@ -38,6 +38,7 @@
         if (edgeFlow && !edgeFlow.querySelector('.music-stage-edge-flow-light')) {
             const light = document.createElement('div');
             light.className = 'music-stage-edge-flow-light';
+            light.setAttribute('aria-hidden', 'true');
             edgeFlow.prepend(light);
         }
         const prefersReducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -164,6 +165,21 @@
             }
         };
 
+        let specPrefix = new Float64Array(0);
+        const buildSpectrumPrefix = (spectrum) => {
+            const len = spectrum?.length || 0;
+            if (len === 0) return 0;
+            if (specPrefix.length < len + 1) specPrefix = new Float64Array(len + 1);
+            let sum = 0;
+            specPrefix[0] = 0;
+            for (let i = 0; i < len; i += 1) {
+                const v = +spectrum[i];
+                if (v > 0) sum += v;
+                specPrefix[i + 1] = sum;
+            }
+            return sum;
+        };
+
         const getEdgeLookup = (side, count, offset, specLen, inset, width, height, amplitude) => {
             const strip = edgeStrips[side];
             let entry = strip?.lookup;
@@ -174,9 +190,12 @@
             }
             const fixed = new Float32Array(count);
             const scaledFades = new Float32Array(count);
-            const centers = new Int32Array(count);
+            const loArr = new Int32Array(count);
+            const hiArr = new Int32Array(count);
+            const invSpan = new Float32Array(count);
             const denom = Math.max(1, count - 1);
             const maxIdx = Math.max(0, specLen - 1);
+            const radius = Math.max(1, Math.floor(specLen / 180));
             const span = (side === 'top' || side === 'bottom' ? width : height) - inset * 2;
             const reverse = side === 'bottom' || side === 'left';
             const edgeLen = side === 'bottom' ? width : height;
@@ -185,12 +204,16 @@
                 fixed[index] = reverse ? edgeLen - inset - ratio * span : inset + ratio * span;
                 scaledFades[index] = Math.pow(Math.sin(ratio * Math.PI), 0.42) * amplitude;
                 const wrappedRatio = (clamp(ratio) * 0.86 + offset) % 1;
-                centers[index] = Math.floor(Math.pow(wrappedRatio, 1.55) * maxIdx);
+                const center = Math.floor(Math.pow(wrappedRatio, 1.55) * maxIdx);
+                const lo = center > radius ? center - radius : 0;
+                const hi = center + radius < maxIdx ? center + radius : maxIdx;
+                loArr[index] = lo;
+                hiArr[index] = hi;
+                invSpan[index] = 1 / Math.max(1, hi - lo + 1);
             }
             entry = {
                 count, offset, specLen, width, height, inset, amplitude,
-                fixed, scaledFades, centers,
-                radius: Math.max(1, Math.floor(specLen / 180))
+                fixed, scaledFades, loArr, hiArr, invSpan
             };
             if (strip) strip.lookup = entry;
             return entry;
@@ -202,6 +225,25 @@
                 edgeCanvasState[side] = new Float32Array(coordinateCount);
             }
             return edgeCanvasState[side];
+        };
+
+        const fillFlatEndpoints = (points, side, inset, width, height) => {
+            const last = points.length - 2;
+            const isTop = side === 'top';
+            const isBottom = side === 'bottom';
+            const isLeft = side === 'left';
+            const baseAxis = isTop || isLeft ? inset : (isBottom ? height - inset : width - inset);
+            if (isTop || isBottom) {
+                points[0] = isBottom ? width - inset : inset;
+                points[1] = baseAxis;
+                points[last] = isBottom ? inset : width - inset;
+                points[last + 1] = baseAxis;
+            } else {
+                points[0] = baseAxis;
+                points[1] = isLeft ? height - inset : inset;
+                points[last] = baseAxis;
+                points[last + 1] = isLeft ? inset : height - inset;
+            }
         };
 
         const fillEdgePoints = (
@@ -218,8 +260,7 @@
             const count = points.length >> 1;
             const specLen = spectrum?.length || 0;
             const lookup = getEdgeLookup(side, count, offset, specLen, inset, width, height, amplitude);
-            const { fixed, scaledFades, centers, radius } = lookup;
-            const maxIdx = specLen - 1;
+            const { fixed, scaledFades, loArr, hiArr, invSpan } = lookup;
             const isTop = side === 'top';
             const isBottom = side === 'bottom';
             const isLeft = side === 'left';
@@ -230,15 +271,7 @@
             for (let index = 0; index < count; index += 1) {
                 let disp = 0;
                 if (specLen > 0) {
-                    const center = centers[index];
-                    const lo = center > radius ? center - radius : 0;
-                    const hi = center + radius < maxIdx ? center + radius : maxIdx;
-                    let total = 0;
-                    for (let bi = lo; bi <= hi; bi += 1) {
-                        const v = +spectrum[bi];
-                        if (v > 0) total += v;
-                    }
-                    const value = total / (hi - lo + 1);
+                    const value = (specPrefix[hiArr[index] + 1] - specPrefix[loArr[index]]) * invSpan[index];
                     if (value > 0.025) {
                         const lutIdx = value >= 1 ? POW_LUT_SIZE : (value * POW_LUT_SIZE) | 0;
                         const sample = POW_LUT[lutIdx];
@@ -305,6 +338,7 @@
             edgeCanvasState.lastFlatKey = '';
             edgeCanvasState.lastColorKey = '';
             edgeCanvasState.blank = true;
+            specPrefix = new Float64Array(0);
             for (let i = 0; i < EDGE_SIDES.length; i += 1) {
                 const strip = edgeStrips[EDGE_SIDES[i]];
                 if (!strip) continue;
@@ -409,21 +443,38 @@
             }
             const spectrum = frame.audio.spectrum;
             const idleScale = frame.isPlaying ? 1 : 0.12;
+            const alpha = 0.28 + (Number(frame.audio.power) || 0) * 0.62;
+            const alphaKey = alpha.toFixed(3);
+            const lightGlow = quality === 'energy-saving';
+            const flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
+            const spectrumSum = buildSpectrumPrefix(spectrum);
+
+            if (spectrumSum <= 0 && !edgeCanvasState.blank && flatBase === edgeCanvasState.lastFlatKey) {
+                edgeCanvasState.drawnAt = now;
+                return;
+            }
 
             const top = ensureEdgeBuffer('top', horizontalCount);
             const right = ensureEdgeBuffer('right', verticalCount);
             const bottom = ensureEdgeBuffer('bottom', horizontalCount);
             const left = ensureEdgeBuffer('left', verticalCount);
-            const mTop = fillEdgePoints(top, 'top', spectrum, 0, inset, width, height, horizontalAmplitude, idleScale);
-            const mRight = fillEdgePoints(right, 'right', spectrum, 0.11, inset, width, height, verticalAmplitude, idleScale);
-            const mBottom = fillEdgePoints(bottom, 'bottom', spectrum, 0.21, inset, width, height, horizontalAmplitude, idleScale);
-            const mLeft = fillEdgePoints(left, 'left', spectrum, 0.34, inset, width, height, verticalAmplitude, idleScale);
+            let mTop = false;
+            let mRight = false;
+            let mBottom = false;
+            let mLeft = false;
+            if (spectrumSum > 0) {
+                mTop = fillEdgePoints(top, 'top', spectrum, 0, inset, width, height, horizontalAmplitude, idleScale);
+                mRight = fillEdgePoints(right, 'right', spectrum, 0.11, inset, width, height, verticalAmplitude, idleScale);
+                mBottom = fillEdgePoints(bottom, 'bottom', spectrum, 0.21, inset, width, height, horizontalAmplitude, idleScale);
+                mLeft = fillEdgePoints(left, 'left', spectrum, 0.34, inset, width, height, verticalAmplitude, idleScale);
+            } else {
+                fillFlatEndpoints(top, 'top', inset, width, height);
+                fillFlatEndpoints(right, 'right', inset, width, height);
+                fillFlatEndpoints(bottom, 'bottom', inset, width, height);
+                fillFlatEndpoints(left, 'left', inset, width, height);
+            }
 
-            const alpha = 0.28 + (Number(frame.audio.power) || 0) * 0.62;
-            const alphaKey = alpha.toFixed(3);
-            const lightGlow = quality === 'energy-saving';
             const hasMotion = mTop || mRight || mBottom || mLeft;
-            const flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
             const flatKey = hasMotion ? '' : flatBase;
             edgeCanvasState.drawnAt = now;
             if (!hasMotion && !edgeCanvasState.blank && flatKey === edgeCanvasState.lastFlatKey) {

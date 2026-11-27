@@ -35,9 +35,60 @@ function setupSidebar(app) {
         return checkedSave('曲库', () => app.api.saveMusicPlaylist(app.playlist));
     };
 
+    const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
+    let cachedNormList = null;
+    let cachedNormLen = -1;
+    let cachedNormFirst = null;
+    let cachedNormLast = null;
+    let cachedNormMap = null;
+    const getNormTrackMap = () => {
+        const list = Array.isArray(app.playlist) ? app.playlist : [];
+        const len = list.length;
+        const first = len ? list[0] : null;
+        const last = len ? list[len - 1] : null;
+        if (cachedNormMap && cachedNormList === app.playlist && cachedNormLen === len
+            && cachedNormFirst === first && cachedNormLast === last) {
+            return cachedNormMap;
+        }
+        const byPath = new Map();
+        for (let i = 0; i < len; i += 1) {
+            const t = list[i];
+            const key = normPath(t && t.path);
+            if (key && !byPath.has(key)) byPath.set(key, t);
+        }
+        cachedNormList = app.playlist;
+        cachedNormLen = len;
+        cachedNormFirst = first;
+        cachedNormLast = last;
+        cachedNormMap = byPath;
+        return byPath;
+    };
+
+    let albumCache = null;
+    let artistCache = null;
+    const playlistSig = (list) => {
+        const len = list.length;
+        const f = len ? list[0] : null;
+        const l = len ? list[len - 1] : null;
+        return {
+            list, len, f, l,
+            fMeta: f ? `${f.album || ''}\x1f${f.artist || ''}\x1f${f.albumArt || ''}` : '',
+            lMeta: l ? `${l.album || ''}\x1f${l.artist || ''}\x1f${l.albumArt || ''}` : ''
+        };
+    };
+    const sameSig = (a, b) => a && a.list === b.list && a.len === b.len && a.f === b.f && a.l === b.l
+        && a.fMeta === b.fMeta && a.lMeta === b.lMeta;
+
     app.getAlbumGroups = () => {
+        const tracks = Array.isArray(app.playlist) ? app.playlist : [];
+        const order = globalThis.MusicTrackOrder || null;
+        const sig = playlistSig(tracks);
+        if (albumCache && sameSig(albumCache.sig, sig) && albumCache.order === order) {
+            return albumCache.groups.slice();
+        }
         const albums = new Map();
-        app.playlist.forEach(t => {
+        for (let i = 0; i < tracks.length; i += 1) {
+            const t = tracks[i];
             const name = t.album || '未知专辑';
             let group = albums.get(name);
             if (!group) {
@@ -45,23 +96,37 @@ function setupSidebar(app) {
                 albums.set(name, group);
             }
             group.tracks.push(t);
-        });
+        }
         // 专辑里按碟号、曲号排，和「目录」一致（单首专辑跳过比较器构造）
-        const order = globalThis.MusicTrackOrder;
         const list = Array.from(albums.values());
         if (order) {
-            for (const g of list) {
-                if (g.tracks.length <= 1) continue;
+            for (let gIdx = 0; gIdx < list.length; gIdx += 1) {
+                const g = list[gIdx];
+                const n = g.tracks.length;
+                if (n <= 1) continue;
                 const cmp = order.albumCompare(g.tracks, (a, b) => a - b);
-                g.tracks = g.tracks.map((_, i) => i).sort(cmp).map((i) => g.tracks[i]);
+                const idx = new Array(n);
+                for (let k = 0; k < n; k += 1) idx[k] = k;
+                idx.sort(cmp);
+                const sorted = new Array(n);
+                for (let k = 0; k < n; k += 1) sorted[k] = g.tracks[idx[k]];
+                g.tracks = sorted;
             }
         }
-        return list.sort((a,b) => b.tracks.length - a.tracks.length);
+        list.sort((a, b) => b.tracks.length - a.tracks.length);
+        albumCache = { sig, order, groups: list };
+        return list.slice();
     };
 
     app.getArtistGroups = () => {
+        const tracks = Array.isArray(app.playlist) ? app.playlist : [];
+        const sig = playlistSig(tracks);
+        if (artistCache && sameSig(artistCache.sig, sig)) {
+            return artistCache.groups.slice();
+        }
         const artists = new Map();
-        app.playlist.forEach(t => {
+        for (let i = 0; i < tracks.length; i += 1) {
+            const t = tracks[i];
             const name = t.artist || '未知艺术家';
             let group = artists.get(name);
             if (!group) {
@@ -69,8 +134,10 @@ function setupSidebar(app) {
                 artists.set(name, group);
             }
             group.tracks.push(t);
-        });
-        return Array.from(artists.values()).sort((a,b) => b.tracks.length - a.tracks.length);
+        }
+        const list = Array.from(artists.values()).sort((a, b) => b.tracks.length - a.tracks.length);
+        artistCache = { sig, groups: list };
+        return list.slice();
     };
 
     let allCountEl = null;
@@ -81,53 +148,49 @@ function setupSidebar(app) {
         if (el.textContent !== next) el.textContent = next;
     };
 
-    app.renderSidebarContent = (view) => {
-        app.currentSidebarView = view;
-        app.sidebarFooter.style.display = view === 'playlists' ? 'block' : 'none';
-        const categoryView = document.getElementById('sidebar-category-view');
+    const PLAYLIST_COVER_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h11M4 11h11M4 16h7"/><path d="M16 17.5V9l4-1v7.5"/><circle cx="14.2" cy="17.5" r="1.8"/><circle cx="18.2" cy="15.5" r="1.8"/></svg>';
+    const EDIT_BTN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>';
+    const DEL_BTN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    const categoryViewsWired = new WeakSet();
+    let renderedCategoryKind = '';
+    let renderedGroups = [];
+    let renderedPlaylists = [];
 
-        if (view === 'all') {
-            app.filteredPlaylistSource = null; app.currentFilteredTracks = null;
-            app.playlistEl.style.display = 'block'; categoryView.style.display = 'none';
-            app.renderPlaylist(); app.updateAllCount();
-        } else if (view === 'albums' || view === 'artists') {
-            app.playlistEl.style.display = 'none'; categoryView.style.display = 'block';
-            const groups = view === 'albums' ? app.getAlbumGroups() : app.getArtistGroups();
-            categoryView.innerHTML = '';
-            const frag = document.createDocumentFragment();
-            groups.forEach(g => {
-                const div = document.createElement('div');
-                div.className = 'category-item';
-                div.innerHTML = `
-                    <div class="cover ${view==='artists'?'artist-avatar':''}"></div>
-                    <div class="info"><div class="name">${esc(g.name)}</div><div class="count">${g.tracks.length} 首</div></div>`;
-                if (g.art) {
-                    const artUrl = app.fileUrl ? app.fileUrl(g.art) : `file://${encodeURI(g.art.replace(/\\/g, '/'))}`;
-                    div.querySelector('.cover').style.backgroundImage = `url("${artUrl}")`;
+    const activateAllTab = () => {
+        const tabs = document.querySelectorAll('.sidebar-tab');
+        for (let i = 0; i < tabs.length; i += 1) {
+            tabs[i].classList.toggle('active', tabs[i].dataset.view === 'all');
+        }
+    };
+
+    const wireCategoryView = (categoryView) => {
+        if (!categoryView || categoryViewsWired.has(categoryView)) return;
+        categoryViewsWired.add(categoryView);
+        categoryView.addEventListener('click', (e) => {
+            const item = e.target?.closest?.('.category-item');
+            if (!item || !categoryView.contains(item)) return;
+            const idx = Number(item.dataset.catIdx);
+            if (!Number.isInteger(idx) || idx < 0) return;
+            if (renderedCategoryKind === 'albums' || renderedCategoryKind === 'artists') {
+                const g = renderedGroups[idx];
+                if (!g) return;
+                app.filteredPlaylistSource = { type: renderedCategoryKind === 'albums' ? 'album' : 'artist', name: g.name };
+                app.currentFilteredTracks = g.tracks;
+                app.playlistEl.style.display = 'block';
+                categoryView.style.display = 'none';
+                app.renderPlaylist(g.tracks);
+                activateAllTab();
+                return;
+            }
+            if (renderedCategoryKind === 'playlists') {
+                const pl = renderedPlaylists[idx];
+                if (!pl) return;
+                if (e.target.closest?.('.edit-btn')) {
+                    e.stopPropagation();
+                    app.openPlaylistEditModal(pl.id);
+                    return;
                 }
-                div.addEventListener('click', () => {
-                    app.filteredPlaylistSource = { type: view==='albums'?'album':'artist', name: g.name };
-                    app.currentFilteredTracks = g.tracks;
-                    app.playlistEl.style.display = 'block'; categoryView.style.display = 'none';
-                    app.renderPlaylist(g.tracks);
-                    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
-                    document.querySelector('.sidebar-tab[data-view="all"]').classList.add('active');
-                });
-                frag.appendChild(div);
-            });
-            categoryView.appendChild(frag);
-        } else if (view === 'playlists') {
-            app.playlistEl.style.display = 'none'; categoryView.style.display = 'block';
-            categoryView.innerHTML = '';
-            const frag = document.createDocumentFragment();
-            app.customPlaylists.forEach(pl => {
-                const div = document.createElement('div'); div.className = 'category-item';
-                div.innerHTML = `
-                    <div class="cover playlist-cover" style="display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h11M4 11h11M4 16h7"/><path d="M16 17.5V9l4-1v7.5"/><circle cx="14.2" cy="17.5" r="1.8"/><circle cx="18.2" cy="15.5" r="1.8"/></svg></div>
-                    <div class="info"><div class="name">${esc(pl.name)}</div><div class="count">${pl.tracks.length} 首</div></div>
-                    <button class="edit-btn" title="编辑歌单" aria-label="编辑歌单"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button><button class="delete-btn" title="删除歌单" aria-label="删除歌单"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
-                div.querySelector('.edit-btn').addEventListener('click', (e) => { e.stopPropagation(); app.openPlaylistEditModal(pl.id); });
-                div.querySelector('.delete-btn').addEventListener('click', (e) => {
+                if (e.target.closest?.('.delete-btn')) {
                     e.stopPropagation();
                     const ask = { title: `删除歌单「${pl.name}」？`, message: '只删除这个歌单，里面的歌还在曲库里。', confirmText: '删除', danger: true };
                     Promise.resolve(window.MusicDialog ? window.MusicDialog.confirm(ask) : confirm(ask.title)).then((ok) => {
@@ -139,24 +202,74 @@ function setupSidebar(app) {
                             try { document.dispatchEvent(new CustomEvent('music-like-change', { detail: { tracks: [], liked: false } })); } catch (err) { /* 旧内核 */ }
                         }
                     });
-                });
-                div.addEventListener('click', () => {
-                    app.filteredPlaylistSource = { type: 'playlist', name: pl.name, id: pl.id };
-                    const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
-                    const byPath = new Map();
-                    for (const t of app.playlist) {
-                        const key = normPath(t && t.path);
-                        if (key && !byPath.has(key)) byPath.set(key, t);
-                    }
-                    app.currentFilteredTracks = pl.tracks.map(p => byPath.get(normPath(p))).filter(Boolean);
-                    app.playlistEl.style.display = 'block'; categoryView.style.display = 'none';
-                    app.renderPlaylist(app.currentFilteredTracks);
-                    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
-                    document.querySelector('.sidebar-tab[data-view="all"]').classList.add('active');
-                });
-                frag.appendChild(div);
-            });
-            categoryView.appendChild(frag);
+                    return;
+                }
+                app.filteredPlaylistSource = { type: 'playlist', name: pl.name, id: pl.id };
+                const byPath = getNormTrackMap();
+                const matched = [];
+                for (let i = 0; i < pl.tracks.length; i += 1) {
+                    const hit = byPath.get(normPath(pl.tracks[i]));
+                    if (hit) matched.push(hit);
+                }
+                app.currentFilteredTracks = matched;
+                app.playlistEl.style.display = 'block';
+                categoryView.style.display = 'none';
+                app.renderPlaylist(app.currentFilteredTracks);
+                activateAllTab();
+            }
+        });
+    };
+
+    app.renderSidebarContent = (view) => {
+        app.currentSidebarView = view;
+        app.sidebarFooter.style.display = view === 'playlists' ? 'block' : 'none';
+        const categoryView = document.getElementById('sidebar-category-view');
+        wireCategoryView(categoryView);
+
+        if (view === 'all') {
+            renderedCategoryKind = '';
+            renderedGroups = [];
+            renderedPlaylists = [];
+            app.filteredPlaylistSource = null; app.currentFilteredTracks = null;
+            app.playlistEl.style.display = 'block'; categoryView.style.display = 'none';
+            app.renderPlaylist(); app.updateAllCount();
+        } else if (view === 'albums' || view === 'artists') {
+            app.playlistEl.style.display = 'none'; categoryView.style.display = 'block';
+            const groups = view === 'albums' ? app.getAlbumGroups() : app.getArtistGroups();
+            renderedCategoryKind = view;
+            renderedGroups = groups;
+            renderedPlaylists = [];
+            const avatarCls = view === 'artists' ? ' artist-avatar' : '';
+            const parts = new Array(groups.length);
+            for (let i = 0; i < groups.length; i += 1) {
+                const g = groups[i];
+                let styleAttr = '';
+                if (g.art) {
+                    const artUrl = app.fileUrl ? app.fileUrl(g.art) : `file://${encodeURI(g.art.replace(/\\/g, '/'))}`;
+                    const safeUrl = String(artUrl).replace(/["\\)]/g, (ch) => encodeURIComponent(ch));
+                    styleAttr = ` style="background-image:url(&quot;${esc(safeUrl)}&quot;)"`;
+                }
+                parts[i] = `<div class="category-item" data-cat-idx="${i}">`
+                    + `<div class="cover${avatarCls}"${styleAttr}></div>`
+                    + `<div class="info"><div class="name">${esc(g.name)}</div><div class="count">${g.tracks.length} 首</div></div></div>`;
+            }
+            categoryView.innerHTML = parts.join('');
+        } else if (view === 'playlists') {
+            app.playlistEl.style.display = 'none'; categoryView.style.display = 'block';
+            const pls = Array.isArray(app.customPlaylists) ? app.customPlaylists : [];
+            renderedCategoryKind = 'playlists';
+            renderedGroups = [];
+            renderedPlaylists = pls.slice();
+            const parts = new Array(pls.length);
+            for (let i = 0; i < pls.length; i += 1) {
+                const pl = pls[i];
+                parts[i] = `<div class="category-item" data-cat-idx="${i}">`
+                    + `<div class="cover playlist-cover" style="display:flex;align-items:center;justify-content:center;">${PLAYLIST_COVER_SVG}</div>`
+                    + `<div class="info"><div class="name">${esc(pl.name)}</div><div class="count">${pl.tracks.length} 首</div></div>`
+                    + `<button class="edit-btn" title="编辑歌单" aria-label="编辑歌单">${EDIT_BTN_SVG}</button>`
+                    + `<button class="delete-btn" title="删除歌单" aria-label="删除歌单">${DEL_BTN_SVG}</button></div>`;
+            }
+            categoryView.innerHTML = parts.join('');
         }
     };
 
@@ -271,6 +384,7 @@ function setupSidebar(app) {
         app.renderModalSongList(); app.playlistEditModal.classList.add('visible');
     };
 
+    const MODAL_CHECK_HTML = '<div class="music-modal-song-checkbox"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/></svg></div>';
     app.renderModalSongList = () => {
         const pl = app.customPlaylists.find(p => p.id === app.editingPlaylistId); if (!pl) return;
         const q = String(app.modalSearchQuery || '').trim();
@@ -288,11 +402,21 @@ function setupSidebar(app) {
         // 一次拼好整张列表再写进去，点击交给列表本身（以前每行各建三层元素、各挂一个监听，5000 首打开、每敲一个字都要重建半秒多）
         app.modalRows = sortedFiltered;
         app.lastModalClickIndex = -1; // 行号换了一套：Shift 连选从下一次单击重新算起
-        app.modalSongList.innerHTML = sortedFiltered.length === 0 ? '<div class="music-modal-empty">没有匹配的歌曲</div>'
-            : sortedFiltered.map((t, i) => `<div class="music-modal-song-item${i < inPlCount ? ' in-playlist' : ''}" data-index="${i}">`
-                + `<div class="music-modal-song-checkbox"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/></svg></div>`
-                + `<div class="music-modal-song-info"><div class="music-modal-song-title">${esc(app.stripAudioExtension(t.title) || '未知标题')}</div><div class="music-modal-song-artist">${esc(t.artist || '未知艺术家')}</div></div></div>`).join('');
-        app.modalCount.textContent = `${pl.tracks.length} 首已添加`;
+        const totalRows = sortedFiltered.length;
+        if (totalRows === 0) {
+            app.modalSongList.innerHTML = '<div class="music-modal-empty">没有匹配的歌曲</div>';
+        } else {
+            const parts = new Array(totalRows);
+            for (let i = 0; i < totalRows; i += 1) {
+                const t = sortedFiltered[i];
+                parts[i] = `<div class="music-modal-song-item${i < inPlCount ? ' in-playlist' : ''}" data-index="${i}">`
+                    + MODAL_CHECK_HTML
+                    + `<div class="music-modal-song-info"><div class="music-modal-song-title">${esc(app.stripAudioExtension(t.title) || '未知标题')}</div><div class="music-modal-song-artist">${esc(t.artist || '未知艺术家')}</div></div></div>`;
+            }
+            app.modalSongList.innerHTML = parts.join('');
+        }
+        const countText = `${pl.tracks.length} 首已添加`;
+        if (app.modalCount.textContent !== countText) app.modalCount.textContent = countText;
         if (!modalListsWired.has(app.modalSongList)) {
             modalListsWired.add(app.modalSongList);
             app.modalSongList.addEventListener('click', onModalSongClick);

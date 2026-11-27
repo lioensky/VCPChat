@@ -102,6 +102,14 @@
 
         let lastPath = null;
         let lastHasTrack = null;
+        let lastRenderSig = null;
+        let rollRaf = 0;
+        const cancelRoll = () => {
+            if (rollRaf && typeof cancelAnimationFrame === 'function') {
+                cancelAnimationFrame(rollRaf);
+                rollRaf = 0;
+            }
+        };
         const renderTrack = () => {
             const track = currentTrack();
             const path = track?.path || null;
@@ -111,17 +119,23 @@
                 document.body.classList.toggle('music-has-track', hasTrack);
             }
             if (!hasTrack) {
+                if (lastRenderSig === '') return;
+                lastRenderSig = '';
+                cancelRoll();
                 setText('file-number', '', '');
                 setText('album', '曲目档案', '曲目档案');
                 for (const name of ['format', 'sample-rate', 'bit-depth', 'bitrate', 'specs']) setText(name, '');
                 lastPath = null;
                 return;
             }
+            const total = Array.isArray(app.playlist) ? app.playlist.length : 0;
+            const nth = Number(app.currentTrackIndex) + 1;
+            const sig = `${path || ''}\x1f${nth}/${total}\x1f${track.album || ''}\x1f${track.codec || ''}\x1f${track.sampleRate || ''}\x1f${track.bitsPerSample || ''}\x1f${track.bitrate || ''}\x1f${track.lossless === false ? 0 : 1}`;
+            if (sig === lastRenderSig) return;
+            lastRenderSig = sig;
             const changed = path !== lastPath;
             lastPath = path;
             // 标题上方一行写这首在列表里排第几（原来是按路径算的假档案号，用户看不出意思）
-            const total = Array.isArray(app.playlist) ? app.playlist.length : 0;
-            const nth = Number(app.currentTrackIndex) + 1;
             setText('file-number', total > 0 && nth > 0 ? `第 ${nth} / ${total} 首` : '', '');
             setText('album', track.album || '未分类', '未分类');
             setText('format', format(track));
@@ -134,12 +148,25 @@
                     ?? window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
                 const hiddenClassic = document.body.classList.contains('music-archive-on')
                     || document.body.classList.contains('music-stage-active');
+                cancelRoll();
                 if (!reduceMotion && !hiddenClassic) {
-                    // 换曲时编号向上滚入；批量读写只触发一次回流（档案页与舞台期间经典列表隐藏，不触发无谓回流）。
+                    // 换曲时编号向上滚入；跨帧重挂类避免同步读取 offsetWidth 触发整页强制回流。
                     const rollers = getRollers();
-                    for (const el of rollers) el.classList.remove('is-rolling');
-                    if (rollers.length) void rollers[0].offsetWidth;
-                    for (const el of rollers) el.classList.add('is-rolling');
+                    if (rollers.length) {
+                        for (let i = 0; i < rollers.length; i += 1) rollers[i].classList.remove('is-rolling');
+                        if (typeof requestAnimationFrame === 'function') {
+                            rollRaf = requestAnimationFrame(() => {
+                                rollRaf = 0;
+                                if (document.body.classList.contains('music-archive-on')
+                                    || document.body.classList.contains('music-stage-active')) return;
+                                for (let i = 0; i < rollers.length; i += 1) {
+                                    if (rollers[i].isConnected) rollers[i].classList.add('is-rolling');
+                                }
+                            });
+                        } else {
+                            for (let i = 0; i < rollers.length; i += 1) rollers[i].classList.add('is-rolling');
+                        }
+                    }
                 }
             }
         };
@@ -166,12 +193,11 @@
             skinObservers.push(bitrateObs);
             markSpec();
         }
-        if (skinObservers.length) {
-            window.addEventListener('beforeunload', () => {
-                for (const obs of skinObservers) obs.disconnect();
-                skinObservers.length = 0;
-            }, { once: true });
-        }
+        window.addEventListener('beforeunload', () => {
+            cancelRoll();
+            for (const obs of skinObservers) obs.disconnect();
+            skinObservers.length = 0;
+        }, { once: true });
 
         // 声学处理抽屉：默认收起，记住上次的开合。
         const drawer = document.getElementById('acoustic-drawer');
@@ -319,14 +345,19 @@
                 try { settingsBody.querySelectorAll('select:not([data-segmented])').forEach(enhanceSelect); }
                 finally { scanning = false; }
             };
-            // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换；忽略纯文本节点变动及自身插入分段控件产生的回调
+            // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换；仅在新增节点本身或其子树含未替换 <select> 时才扫描
             const settingsObs = new MutationObserver((records) => {
                 if (scanning) return;
                 for (let i = 0; i < records.length; i += 1) {
                     const added = records[i].addedNodes;
                     for (let j = 0; j < added.length; j += 1) {
                         const node = added[j];
-                        if (node.nodeType === 1 && !node.classList?.contains('music-skin-segmented')) { scan(); return; }
+                        if (node.nodeType !== 1 || node.classList?.contains('music-skin-segmented')) continue;
+                        if ((node.tagName === 'SELECT' && !node.dataset?.segmented)
+                            || node.querySelector?.('select:not([data-segmented])')) {
+                            scan();
+                            return;
+                        }
                     }
                 }
             });

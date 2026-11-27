@@ -302,10 +302,77 @@
 
         const words = line.resolvedWords || (line.words.length ? line.words : buildFallbackWords(line));
         const len = words.length;
+        if (!len) {
+            lastWordLine = line;
+            lastWordTime = playbackTime;
+            lastWordResult = EMPTY_WORD_STATE;
+            return EMPTY_WORD_STATE;
+        }
         let tpl = wordTemplatesCache.get(words);
         if (!tpl || tpl.waiting.length !== len) {
-            tpl = { waiting: new Array(len), passed: new Array(len) };
+            let minStart = Infinity;
+            let maxEnd = -Infinity;
+            for (let i = 0; i < len; i += 1) {
+                const w = words[i];
+                if (w.startTime < minStart) minStart = w.startTime;
+                if (w.endTime > maxEnd) maxEnd = w.endTime;
+            }
+            tpl = {
+                waiting: new Array(len),
+                passed: new Array(len),
+                minStart,
+                maxEnd,
+                allWaitingResult: null,
+                allPassedResult: null
+            };
             wordTemplatesCache.set(words, tpl);
+        }
+        // Fast paths when playback is strictly before all words or past all words: zero per-frame allocations.
+        if (playbackTime < tpl.minStart) {
+            if (!tpl.allWaitingResult) {
+                const states = new Array(len);
+                for (let i = 0; i < len; i += 1) {
+                    let entry = tpl.waiting[i];
+                    if (!entry) {
+                        entry = Object.freeze({ ...words[i], progress: 0, status: 'waiting' });
+                        tpl.waiting[i] = entry;
+                    }
+                    states[i] = entry;
+                }
+                tpl.allWaitingResult = Object.freeze({
+                    words,
+                    activeWordIndex: -1,
+                    wordProgress: 0,
+                    wordStates: Object.freeze(states)
+                });
+            }
+            lastWordLine = line;
+            lastWordTime = playbackTime;
+            lastWordResult = tpl.allWaitingResult;
+            return tpl.allWaitingResult;
+        }
+        if (playbackTime >= tpl.maxEnd) {
+            if (!tpl.allPassedResult) {
+                const states = new Array(len);
+                for (let i = 0; i < len; i += 1) {
+                    let entry = tpl.passed[i];
+                    if (!entry) {
+                        entry = Object.freeze({ ...words[i], progress: 1, status: 'passed' });
+                        tpl.passed[i] = entry;
+                    }
+                    states[i] = entry;
+                }
+                tpl.allPassedResult = Object.freeze({
+                    words,
+                    activeWordIndex: -1,
+                    wordProgress: 0,
+                    wordStates: Object.freeze(states)
+                });
+            }
+            lastWordLine = line;
+            lastWordTime = playbackTime;
+            lastWordResult = tpl.allPassedResult;
+            return tpl.allPassedResult;
         }
         let activeWordIndex = -1;
         let activeProgress = 0;
@@ -528,6 +595,12 @@
         };
     };
 
+    const INTERLUDE_POW_SIZE = 1024;
+    const INTERLUDE_POW_LUT = new Float32Array(INTERLUDE_POW_SIZE + 1);
+    for (let i = 0; i <= INTERLUDE_POW_SIZE; i += 1) {
+        INTERLUDE_POW_LUT[i] = Math.pow(i / INTERLUDE_POW_SIZE, 0.72);
+    }
+
     const createInterludeVisualizer = (options = {}) => {
         const barCount = Math.max(20, Math.min(64, Math.round(finiteNumber(options.barCount, 36))));
         const root = document.createElement('div');
@@ -564,6 +637,28 @@
         let lastPhaseText = '';
         const lastBarScale = new Array(barCount).fill('');
         const lastBarOpacity = new Array(barCount).fill('');
+        let cachedSpecLen = -1;
+        let barLo = null;
+        let barHi = null;
+        let barInvSpan = null;
+        let interludePrefix = new Float64Array(0);
+        const ensureBarRanges = (specLen) => {
+            if (cachedSpecLen === specLen && barLo) return;
+            cachedSpecLen = specLen;
+            barLo = new Int32Array(barCount);
+            barHi = new Int32Array(barCount);
+            barInvSpan = new Float32Array(barCount);
+            const radius = Math.max(1, Math.floor(specLen / 128));
+            const maxIdx = specLen - 1;
+            for (let i = 0; i < barCount; i += 1) {
+                const center = Math.min(maxIdx, Math.floor(barSpectrumRatios[i] * specLen));
+                const lo = Math.max(0, center - radius);
+                const hi = Math.min(maxIdx, center + radius);
+                barLo[i] = lo;
+                barHi[i] = hi;
+                barInvSpan[i] = 1 / Math.max(1, hi - lo + 1);
+            }
+        };
         const reducedMotionQuery = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const update = (frame, state = {}) => {
             if (destroyed) return;
@@ -606,27 +701,38 @@
             settledIdle = !playing;
 
             const specLen = spectrum.length;
-            const radius = hasSpectrum ? Math.max(1, Math.floor(specLen / 128)) : 1;
             const motionScale = Math.min(1, motion);
+            let specSum = 0;
+            if (playing && hasSpectrum && motionScale > 0) {
+                ensureBarRanges(specLen);
+                if (interludePrefix.length < specLen + 1) interludePrefix = new Float64Array(specLen + 1);
+                interludePrefix[0] = 0;
+                for (let s = 0; s < specLen; s += 1) {
+                    const v = +spectrum[s];
+                    specSum += v > 0 ? (v > 1 ? 1 : v) : 0;
+                    interludePrefix[s + 1] = specSum;
+                }
+            }
             for (let index = 0; index < barsList.length; index += 1) {
                 const bar = barsList[index];
-                let energy;
-                if (hasSpectrum) {
-                    const center = Math.min(specLen - 1, Math.floor(barSpectrumRatios[index] * specLen));
-                    let total = 0;
-                    let samples = 0;
-                    const hi = Math.min(specLen - 1, center + radius);
-                    for (let sample = Math.max(0, center - radius); sample <= hi; sample += 1) {
-                        total += clamp(spectrum[sample]);
-                        samples += 1;
+                let settled = 0;
+                if (playing && motionScale > 0) {
+                    let energy;
+                    if (hasSpectrum) {
+                        if (specSum <= 0) {
+                            energy = 0;
+                        } else {
+                            const avg = (interludePrefix[barHi[index] + 1] - interludePrefix[barLo[index]]) * barInvSpan[index];
+                            const idx = avg >= 1 ? INTERLUDE_POW_SIZE : avg <= 0 ? 0 : (avg * INTERLUDE_POW_SIZE + 0.5) | 0;
+                            energy = INTERLUDE_POW_LUT[idx];
+                        }
+                    } else {
+                        const wave = Math.sin(time * 0.85 + index * 0.52) * 0.5
+                            + Math.sin(time * 0.43 - index * 0.26) * 0.28;
+                        energy = 0.16 + Math.max(0, wave) * 0.22;
                     }
-                    energy = clamp(Math.pow(total / Math.max(1, samples), 0.72));
-                } else {
-                    const wave = Math.sin(time * 0.85 + index * 0.52) * 0.5
-                        + Math.sin(time * 0.43 - index * 0.26) * 0.28;
-                    energy = 0.16 + Math.max(0, wave) * 0.22;
+                    settled = energy * motionScale;
                 }
-                const settled = playing ? energy * motionScale : 0;
                 const lengthStr = (0.28 + settled * 0.72).toFixed(3);
                 if (lengthStr !== lastBarScale[index]) {
                     lastBarScale[index] = lengthStr;

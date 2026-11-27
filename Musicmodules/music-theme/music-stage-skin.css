@@ -1051,3 +1051,7 @@ body.music-reduce-motion .music-stage-mode-picker-toggle,
 body.music-reduce-motion.music-stage-active #custom-title-bar .music-stage-home {
     transition: none;
 }
+
+body.music-reduce-motion .music-stage-mode-menu {
+    animation: none;
+}
