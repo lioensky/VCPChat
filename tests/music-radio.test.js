@@ -177,3 +177,54 @@ test('dailyMix avoids redundant localStorage writes when the same day batch is a
     assert.deepEqual(second.map((t) => t.path), first.map((t) => t.path));
     assert.equal(setCalls, 1, 'recomputing identical same-day batch skips redundant localStorage write');
 });
+
+test('pickSimilar preserves multi-artist diversity caps and setupMusicRadio cleans up autoplay listeners on beforeunload', () => {
+    const multiLib = [];
+    for (let i = 0; i < 8; i++) {
+        multiLib.push({ path: `/m/x/${i}.flac`, title: `X${i}`, artist: 'Alpha feat. Guest', album: `Alb-${i % 2}` });
+        multiLib.push({ path: `/m/y/${i}.flac`, title: `Y${i}`, artist: 'Beta / Guest', album: `AlbB-${i % 2}` });
+    }
+    const out = pickSimilar(multiLib, [multiLib[0]], { size: 12, exclude: new Set([multiLib[0]]), random: () => 0.4 });
+    assert.equal(out.length, 12);
+    for (let i = 2; i < out.length; i++) {
+        const a0 = out[i].artist.split(/\s*(?:\/|feat\.?)\s*/)[0];
+        const a1 = out[i - 1].artist.split(/\s*(?:\/|feat\.?)\s*/)[0];
+        const a2 = out[i - 2].artist.split(/\s*(?:\/|feat\.?)\s*/)[0];
+        assert.ok(!(a0 === a1 && a1 === a2), 'precomputed firstArtist enforces no three-in-a-row');
+    }
+
+    const docListeners = new Map();
+    const winListeners = new Map();
+    const swListeners = new Map();
+    const sw = {
+        checked: false,
+        addEventListener: (t, fn) => swListeners.set(t, fn),
+        removeEventListener: (t, fn) => { if (swListeners.get(t) === fn) swListeners.delete(t); }
+    };
+    const origDoc = globalThis.document;
+    const origAdd = globalThis.addEventListener;
+    globalThis.document = {
+        getElementById: (id) => (id === 'autoplay-switch' ? sw : null),
+        addEventListener: (t, fn) => docListeners.set(t, fn),
+        removeEventListener: (t, fn) => { if (docListeners.get(t) === fn) docListeners.delete(t); },
+        dispatchEvent: (ev) => { const fn = docListeners.get(ev.type); if (fn) fn(ev); }
+    };
+    globalThis.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
+    globalThis.addEventListener = (t, fn) => winListeners.set(t, fn);
+    try {
+        const store = new Map();
+        const app = { playlist: lib, loadTrack: async () => {}, syncTrackIndexByPath() {} };
+        setupMusicRadio(app, { storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) } });
+        assert.equal(sw.checked, true);
+        assert.ok(swListeners.has('change'));
+        assert.ok(docListeners.has('music-autoplay-change'));
+        app.autoplay.enabled = false;
+        assert.equal(sw.checked, false);
+        winListeners.get('beforeunload')?.();
+        assert.equal(swListeners.size, 0, 'beforeunload removes autoplay switch change listener');
+        assert.equal(docListeners.size, 0, 'beforeunload removes music-autoplay-change listener');
+    } finally {
+        globalThis.document = origDoc;
+        globalThis.addEventListener = origAdd;
+    }
+});

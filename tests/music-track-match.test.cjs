@@ -50,3 +50,19 @@ test('lazy scoring preserves tie-breaking when higher-scored track precedes arti
     assert.equal(findTrack(tracks.slice(0, 2), 'Moon')?.path, 'D:\\M\\1.mp3');
     assert.equal(findTrack([{ path: '', title: '', artist: 'Solo Artist' }], 'Solo Artist')?.artist, 'Solo Artist');
 });
+
+test('per-track normalization cache refreshes when track metadata is mutated in place', () => {
+    const track = { path: 'D:\\M\\old.flac', title: 'Old Song.flac', artist: 'Alpha', album: 'First' };
+    const list = [track];
+    assert.equal(findTrack(list, 'Old Song'), track);
+    assert.equal(findTrack(list, 'alpha'), track);
+    assert.equal(findTrack(list, 'first'), track);
+
+    track.title = 'Ｎｅｗ　Ｔｒａｃｋ.flac';
+    track.artist = 'Beta';
+    track.album = 'Second';
+    assert.equal(findTrack(list, 'Old Song'), null);
+    assert.equal(findTrack(list, 'new track'), track);
+    assert.equal(findTrack(list, 'beta'), track);
+    assert.equal(findTrack(list, 'second'), track);
+});

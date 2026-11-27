@@ -265,3 +265,22 @@ test('waitForEngineResponding 抛错时不会挂起启动重试，超大非引�
     assert.equal(endpoint.getPort(), port);
     child.kill();
 });
+
+test('checkEngineResponds drains non-200 responses promptly and returns false without hanging', async () => {
+    const bad = http.createServer((_req, res) => {
+        res.writeHead(503, { 'Content-Type': 'text/plain' });
+        res.end('service unavailable');
+    });
+    await new Promise((resolve, reject) => {
+        bad.once('error', reject);
+        bad.listen({ port: 0, host: '127.0.0.1' }, resolve);
+    });
+    try {
+        const start = Date.now();
+        const ok = await endpoint.checkEngineResponds(bad.address().port, { timeoutMs: 2500 });
+        assert.equal(ok, false);
+        assert.ok(Date.now() - start < 1000, 'non-200 response settles immediately');
+    } finally {
+        await close(bad);
+    }
+});

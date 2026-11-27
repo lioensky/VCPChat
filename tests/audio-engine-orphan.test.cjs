@@ -73,3 +73,12 @@ test('macOS image name is read from ps comm output', async () => {
     const err = (cmd, args, opts, cb) => cb(new Error('ps failed'));
     assert.equal(await orphan.imageName(4242, { platform: 'darwin', run: err }), null);
 });
+
+test('writeRecord creates nested directories and writes atomically without stray tmp files', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-pid-atomic-'));
+    const nestedDir = path.join(base, 'a', 'b');
+    const file = path.join(nestedDir, 'audio-engine.pid.json');
+    orphan.writeRecord(file, { pid: 1234, ownerPid: 5678, port: 43789 });
+    assert.equal(orphan.readRecord(file)?.pid, 1234);
+    assert.deepEqual(fs.readdirSync(nestedDir), ['audio-engine.pid.json'], 'atomic rename leaves no stray tmp files');
+});

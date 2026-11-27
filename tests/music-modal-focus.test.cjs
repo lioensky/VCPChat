@@ -564,3 +564,72 @@ test('music-modal-focus isolates navigation and single-key shortcuts inside open
         dom.window.close();
     }
 });
+
+test('music-eq-presets caches EQ sliders and music-channels deduplicates unchanged DOM writes in syncDialog', async () => {
+    const dom = new JSDOM('<!doctype html><body><select id="eq-preset-select"></select><input id="eq-32" value="0"><input id="eq-1k" value="0"></body>', {
+        runScripts: 'outside-only',
+        url: 'http://localhost/'
+    });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        let eqLookups = 0;
+        const origGetById = doc.getElementById.bind(doc);
+        doc.getElementById = (id) => {
+            if (String(id).startsWith('eq-') && id !== 'eq-preset-select') eqLookups += 1;
+            return origGetById(id);
+        };
+        const app = {
+            eqBands: { 32: 0, '1k': 0 },
+            eqPresets: { balance: { 32: 0, '1k': 0 } },
+            eqPresetSelect: origGetById('eq-preset-select'),
+            populateEqPresets() {},
+            applyEqPreset() {},
+            syncEqPresetSelect() {},
+            updateUIWithState() {},
+            api: { setMusicChannels: async (p) => ({ status: 'success', channels: p }) }
+        };
+        window.eval(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-eq-presets.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-channels.js', 'utf8'));
+        window.MusicEqPresets.setupMusicEqPresets(app);
+        window.MusicChannels.setupMusicChannels(app);
+
+        assert.equal(app.eqUserPresets.isCustom(), false);
+        const firstLookups = eqLookups;
+        assert.equal(firstLookups, 2, 'initial currentBands queries each band slider once');
+        origGetById('eq-32').value = '3';
+        assert.equal(app.eqUserPresets.isCustom(), true);
+        app.eqUserPresets.save('Warm');
+        assert.equal(eqLookups, firstLookups, 'cached sliders avoid repeated getElementById calls');
+
+        origGetById('eq-32').remove();
+        const repl = doc.createElement('input');
+        repl.id = 'eq-32';
+        repl.value = '-2';
+        doc.body.appendChild(repl);
+        app.eqUserPresets.save('Cool');
+        assert.equal(eqLookups, firstLookups + 1, 'detached slider re-queries DOM');
+        assert.equal(app.eqUserPresets.list().find((p) => p.name === 'Cool').bands['32'], -2);
+
+        app.channels.open();
+        const toggles = [...doc.querySelectorAll('.mchan-toggle')];
+        assert.equal(toggles.length, 2);
+        let ariaWrites = 0;
+        for (const btn of toggles) {
+            const origSet = btn.setAttribute.bind(btn);
+            btn.setAttribute = (name, val) => {
+                if (name === 'aria-pressed') ariaWrites += 1;
+                return origSet(name, val);
+            };
+        }
+        await app.channels.set({ balance: 0.25 });
+        await app.channels.set({ balance: -0.5 });
+        assert.equal(ariaWrites, 0, 'balance-only drags skip redundant aria-pressed writes on toggle buttons');
+        await app.channels.set({ mono: true });
+        assert.equal(ariaWrites, 1, 'toggling mono writes only the changed button aria-pressed');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

@@ -134,3 +134,18 @@ test('writeSavedBounds ignores degenerate dimensions and musicThumbar retries wh
     lastButtons[2].click();
     assert.deepEqual(sent, ['play'], 'click ignores destroyed webContents');
 });
+
+test('writeSavedBounds creates missing parent directories and writes atomically without stray tmp files', () => {
+    const { writeSavedBounds, readSavedBounds } = require('../modules/musicWindowBounds');
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bounds-atomic-'));
+    const nestedDir = path.join(base, 'nested', 'state');
+    const file = path.join(nestedDir, 'bounds.json');
+    writeSavedBounds(file, {
+        isDestroyed: () => false,
+        isMaximized: () => true,
+        getNormalBounds: () => ({ x: 40, y: 60, width: 1280, height: 820 })
+    });
+    assert.deepEqual(readSavedBounds(file), { x: 40, y: 60, width: 1280, height: 820, maximized: true });
+    const entries = fs.readdirSync(nestedDir);
+    assert.deepEqual(entries, ['bounds.json'], 'atomic rename leaves no temporary files behind');
+});

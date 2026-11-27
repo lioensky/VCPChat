@@ -125,6 +125,56 @@ test('music-device-sound debounces rapid EQ slider saves and flushes on demand/b
     assert.equal(writes, 2, 'unchanged profile skips redundant write');
 });
 
+test('music-device-sound caches connected EQ sliders and refreshes when detached', () => {
+    const dom = new JSDOM('<!doctype html><body><input id="eq-60Hz" value="0"><input id="eq-1kHz" value="0"></body>', {
+        runScripts: 'outside-only',
+        url: 'http://localhost/'
+    });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        let lookups = 0;
+        const origGetById = doc.getElementById.bind(doc);
+        doc.getElementById = (id) => { lookups += 1; return origGetById(id); };
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-app-hooks.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-device-sound.js'), 'utf8'));
+        const store = new Map();
+        const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+        const app = {
+            eqBands: { '60Hz': 0, '1kHz': 0 },
+            eqEnabled: true,
+            updateUIWithState() {},
+            sendEqSettings() { return Promise.resolve({ status: 'success' }); }
+        };
+        window.MusicDeviceSound.setupMusicDeviceSound(app, { storage });
+        app.updateUIWithState({ output_device: 'Headphones' });
+        const afterFirst = lookups;
+        assert.equal(afterFirst, 2, 'initial lookup queries each band slider once');
+
+        const s60 = origGetById('eq-60Hz');
+        s60.value = '4';
+        app.sendEqSettings();
+        s60.value = '6';
+        app.sendEqSettings();
+        assert.equal(lookups, afterFirst, 'subsequent slider drags hit sliderCache without getElementById');
+        app.deviceSound.flush();
+        assert.equal(app.deviceSound.profiles().Headphones.bands['60Hz'], 6);
+
+        // 替换 DOM 节点后自动失效重建缓存
+        s60.remove();
+        const fresh = doc.createElement('input');
+        fresh.id = 'eq-60Hz';
+        fresh.value = '-3';
+        doc.body.appendChild(fresh);
+        app.sendEqSettings();
+        assert.equal(lookups, afterFirst + 1, 'detached slider refreshes cache');
+        app.deviceSound.flush();
+        assert.equal(app.deviceSound.profiles().Headphones.bands['60Hz'], -3);
+    } finally {
+        dom.window.close();
+    }
+});
+
 test('music-lyrics-ai deduplicates concurrent translation requests for the same lyric snapshot', async () => {
     const { setupMusicLyricsAi } = require(path.join(__dirname, '../Musicmodules/music-lyrics-ai.js'));
     let calls = 0;
