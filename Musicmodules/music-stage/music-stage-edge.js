@@ -30,7 +30,7 @@
             }
             edgeStrips[side] = { canvas, context, x: 0, y: 0, width: 0, height: 0, lookup: null };
         });
-        const edgeContext = edgeStrips.left ? edgeStrips.top.context : null;
+        const edgeContext = EDGE_SIDES.every((side) => edgeStrips[side]?.context) ? edgeStrips.top.context : null;
         // The orbiting light of the edge ring: its gradient is drawn once and
         // turned by the compositor, instead of the ring being restyled and its
         // masked gradient painted again at every step of the orbit.
@@ -53,8 +53,12 @@
             verticalCount: 40,
             drawnAt: 0,
             pausedAt: 0,
-            lastColorKey: '',
+            lastR: -1,
+            lastG: -1,
+            lastB: -1,
+            lastRgb: '',
             lastQuality: '',
+            lastTrack: null,
             blank: false,
             top: new Float32Array(0),
             right: new Float32Array(0),
@@ -68,8 +72,8 @@
             const horizontalAmplitude = clamp(height * 0.052, 18, 48);
             const verticalAmplitude = clamp(width * 0.038, 15, 42);
             return { inset, horizontalAmplitude, verticalAmplitude,
-                horizontalBand: Math.ceil(inset + horizontalAmplitude + 24),
-                verticalBand: Math.ceil(inset + verticalAmplitude + 24) };
+                horizontalBand: Math.max(1, Math.min(height, Math.ceil(inset + horizontalAmplitude + 24))),
+                verticalBand: Math.max(1, Math.min(width, Math.ceil(inset + verticalAmplitude + 24))) };
         };
 
         // Reading the stage's size every frame forces a layout every frame;
@@ -145,7 +149,7 @@
         const getEdgeLookup = (side, count, offset, specLen, inset, width, height, amplitude) => {
             const strip = edgeStrips[side];
             let entry = strip?.lookup;
-            if (entry && entry.count === count && entry.specLen === specLen
+            if (entry && entry.count === count && entry.offset === offset && entry.specLen === specLen
                 && entry.width === width && entry.height === height
                 && entry.inset === inset && entry.amplitude === amplitude) {
                 return entry;
@@ -166,7 +170,7 @@
                 centers[index] = Math.floor(Math.pow(wrappedRatio, 1.55) * maxIdx);
             }
             entry = {
-                count, specLen, width, height, inset, amplitude,
+                count, offset, specLen, width, height, inset, amplitude,
                 fixed, scaledFades, centers,
                 radius: Math.max(1, Math.floor(specLen / 180))
             };
@@ -273,7 +277,12 @@
             edgeCanvasState.height = 0;
             edgeCanvasState.drawnAt = 0;
             edgeCanvasState.pausedAt = 0;
-            edgeCanvasState.lastColorKey = '';
+            edgeCanvasState.lastR = -1;
+            edgeCanvasState.lastG = -1;
+            edgeCanvasState.lastB = -1;
+            edgeCanvasState.lastRgb = '';
+            edgeCanvasState.lastQuality = '';
+            edgeCanvasState.lastTrack = null;
             edgeCanvasState.blank = true;
             for (let i = 0; i < EDGE_SIDES.length; i += 1) {
                 const strip = edgeStrips[EDGE_SIDES[i]];
@@ -305,28 +314,46 @@
                 edgeCanvasState.blank = true;
                 return;
             }
+            const now = Number.isFinite(frame.now) ? frame.now : performance.now();
+            const quality = state.config.quality || 'standard';
+            const qualityChanged = quality !== edgeCanvasState.lastQuality;
+            const track = frame.track || null;
+            const trackChanged = track !== edgeCanvasState.lastTrack;
+            const needsResize = edgeCanvasState.width === 0 || !rootSize || qualityChanged;
+            // Gate throttled playing frames before touching canvas sizing or accent resolution.
+            if (frame.isPlaying) {
+                edgeCanvasState.pausedAt = 0;
+                const aim = 1000 / (EDGE_FPS[quality] || 30);
+                if (now < edgeCanvasState.drawnAt) edgeCanvasState.drawnAt = 0;
+                if (!needsResize && !trackChanged && edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
+            }
+            const color = global.MusicStageModeUtils.resolveAccent(app);
+            const colorChanged = color.r !== edgeCanvasState.lastR
+                || color.g !== edgeCanvasState.lastG
+                || color.b !== edgeCanvasState.lastB;
+            if (!frame.isPlaying && !needsResize && !trackChanged && !colorChanged && !edgeCanvasState.blank) {
+                edgeCanvasState.pausedAt ||= now;
+                if (now - edgeCanvasState.pausedAt > 1500) return;
+                if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;
+            }
             if (!resizeEdgeCanvas(frame)) return;
             const { width, height, inset, horizontalAmplitude, verticalAmplitude, horizontalCount, verticalCount } = edgeCanvasState;
-            const color = global.MusicStageModeUtils.resolveAccent(app);
-            const rgb = `${color.r}, ${color.g}, ${color.b}`;
-            const quality = state.config.quality || 'standard';
+            edgeCanvasState.lastTrack = track;
             // If track/theme accent or quality tier changed while paused, wake the settled paused border once to match.
-            if (rgb !== edgeCanvasState.lastColorKey || quality !== edgeCanvasState.lastQuality) {
-                edgeCanvasState.lastColorKey = rgb;
+            if (colorChanged || qualityChanged) {
+                edgeCanvasState.lastR = color.r;
+                edgeCanvasState.lastG = color.g;
+                edgeCanvasState.lastB = color.b;
+                edgeCanvasState.lastRgb = `${color.r}, ${color.g}, ${color.b}`;
                 edgeCanvasState.lastQuality = quality;
                 edgeCanvasState.pausedAt = 0;
                 edgeCanvasState.drawnAt = 0;
             }
+            const rgb = edgeCanvasState.lastRgb;
             // A paused stage holds a faint, still line: let it settle for a
             // moment after the pause, then leave the canvases alone.
             // While playing, pace 4-canvas glow rasterization to match the quality tier.
-            const now = Number.isFinite(frame.now) ? frame.now : performance.now();
-            if (frame.isPlaying) {
-                edgeCanvasState.pausedAt = 0;
-                const aim = 1000 / (EDGE_FPS[state.config.quality || 'standard'] || 30);
-                if (now < edgeCanvasState.drawnAt) edgeCanvasState.drawnAt = 0;
-                if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
-            } else {
+            if (!frame.isPlaying) {
                 edgeCanvasState.pausedAt ||= now;
                 if (now - edgeCanvasState.pausedAt > 1500 && !edgeCanvasState.blank) return;
                 if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;

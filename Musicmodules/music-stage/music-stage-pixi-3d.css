@@ -360,11 +360,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .music-stage-mode-diorama .diorama-vector-decor {
+    .music-stage-mode-diorama .diorama-vector-decor,
+    .music-stage-mode-diorama .diorama-hud-circle-dashed {
         animation: none;
     }
 }
-body.music-reduce-motion .music-stage-mode-diorama .diorama-vector-decor {
+body.music-reduce-motion .music-stage-mode-diorama .diorama-vector-decor,
+body.music-reduce-motion .music-stage-mode-diorama .diorama-hud-circle-dashed {
     animation: none;
 }
 .diorama-fallback {
@@ -765,4 +767,23 @@ body.music-fl-low .music-stage.is-playing .music-stage-edge-flow-light {
 
 .music-stage-mode-tunnel > .stage-handover-veil {
     z-index: 1;
+}
+
+body.music-fl-low .tempera-shot,
+body.music-fl-low .music-stage.stage-theme-light .music-stage-settings-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.music-fl-low .tempera-word,
+body.music-fl-low .sonnet-word,
+body.music-fl-low .sonnet-shadow,
+body.music-fl-low .diorama-vector-decor {
+    filter: none;
+}
+
+body.music-fl-low .tempera-shot.is-entering,
+body.music-fl-low .sonnet-scene.is-entering,
+body.music-fl-low .music-stage-mode-diorama .diorama-hud-circle-dashed {
+    animation: none;
 }

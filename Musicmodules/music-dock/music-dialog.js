@@ -13,6 +13,7 @@
 
     let seq = 0;
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
+    const activeStack = [];
 
     const confirm = (options = {}) => new Promise((resolve) => {
         const {
@@ -43,26 +44,33 @@
         cancelBtn.textContent = cancelText;
         confirmBtn.textContent = confirmText;
         document.body.appendChild(overlay);
+        activeStack.push(overlay);
 
         let done = false;
         let openRaf = 0;
-        const onUnload = () => finish(false);
-        const finish = (value) => {
+        let closeTimer = null;
+        const onUnload = () => finish(false, true);
+        const finish = (value, immediate = false) => {
             if (done) return;
             done = true;
+            const idx = activeStack.indexOf(overlay);
+            if (idx !== -1) activeStack.splice(idx, 1);
             if (openRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(openRaf); openRaf = 0; }
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
             global.removeEventListener('keydown', onKey, true);
             global.removeEventListener?.('beforeunload', onUnload);
             overlay.classList.remove('visible');
-            // 留给合上的动画（流体套件或 .2s 淡出）
-            setTimeout(() => overlay.remove(), 320);
-            if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+            // 留给合上的动画（流体套件或 .2s 淡出）；窗口卸载时直接移除，避免悬挂定时器。
+            if (immediate) overlay.remove();
+            else closeTimer = setTimeout(() => { closeTimer = null; overlay.remove(); }, 320);
+            if (!immediate && previousFocus instanceof HTMLElement && previousFocus.isConnected) {
                 try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 焦点还不回去就算了 */ }
             }
             resolve(value);
         };
-        // 捕获阶段拦住：Esc 只关这个框，方向键与单字母快捷键也不穿透到背后的档案阵列/舞台。
+        // 捕获阶段拦住：仅最顶层确认框接管 Esc / Enter / Tab 与导航快捷键，避免叠开时同时关闭。
         const onKey = (e) => {
+            if (activeStack[activeStack.length - 1] !== overlay) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(false); }
             else if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(document.activeElement !== cancelBtn); }
             else if (e.key === 'Tab') {
@@ -85,12 +93,14 @@
         overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(false); });
 
         // 先落到页面里再加 visible，过渡和流体动作才会播。
-        openRaf = requestAnimationFrame(() => {
+        const reveal = () => {
             openRaf = 0;
             if (done) return;
             overlay.classList.add('visible');
             confirmBtn.focus({ preventScroll: true });
-        });
+        };
+        if (typeof requestAnimationFrame === 'function') openRaf = requestAnimationFrame(reveal);
+        else reveal();
     });
 
     global.MusicDialog = { confirm };

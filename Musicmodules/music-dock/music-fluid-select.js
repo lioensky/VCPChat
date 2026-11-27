@@ -30,12 +30,15 @@
     // 原下拉框被藏起来（行内 display:none、hidden、被禁用）时按钮跟着一样
     const mirror = (select, trigger) => {
         const hidden = select.hidden || select.style.display === 'none';
-        trigger.hidden = hidden;
-        trigger.disabled = select.disabled;
-        trigger.title = select.title || '';
+        if (trigger.hidden !== hidden) trigger.hidden = hidden;
+        const disabled = Boolean(select.disabled);
+        if (trigger.disabled !== disabled) trigger.disabled = disabled;
+        const title = select.title || '';
+        if (trigger.title !== title) trigger.title = title;
         // 原来写在行内的宽度（比如 60px 的紧凑档）只当最小宽度用，字放得下就行
         const w = select.style.width;
-        trigger.style.minWidth = w && w !== 'auto' ? w : '';
+        const minW = w && w !== 'auto' ? w : '';
+        if (trigger.style.minWidth !== minW) trigger.style.minWidth = minW;
     };
 
     function dress(select) {
@@ -59,7 +62,10 @@
             const now = labelOf(select);
             if (text.textContent !== now) text.textContent = now;
             mirror(select, trigger);
-            if (label) trigger.setAttribute('aria-label', `${label}：${now}`);
+            if (label) {
+                const nextAria = `${label}：${now}`;
+                if (trigger.getAttribute('aria-label') !== nextAria) trigger.setAttribute('aria-label', nextAria);
+            }
             if (openState?.select === select) paintSelected();
         };
 
@@ -281,8 +287,10 @@
     doc.addEventListener('scroll', onDocScroll, true);
 
     // 页面里已有的和以后插进来的下拉框都换掉（舞台切模式会重建一批）。
-    // 跳过叶节点和不可能包含 <select> 的标签，避免列表滚动、搜索敲字、歌词渲染时整棵子树跑 querySelectorAll。
+    // 跳过叶节点和不可能包含 <select> 的高频变动容器（曲目虚拟列表、歌词行、队列、搜索结果、封面墙），
+    // 避免列表滚动、搜索敲字、歌词渲染时逐条节点入队再跑 getElementsByTagName('select')。
     const LEAF_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'PATH', 'I', 'BR', 'HR', 'INPUT', 'BUTTON', 'OPTION', 'OPTGROUP', 'A', 'AUDIO', 'VIDEO', 'STYLE', 'SCRIPT', 'LINK']);
+    const SKIP_SUBTREE_SEL = '.archive-list-spacer, #playlist, .md-ql-sizer, .md-cmd-list, .archive-lyrics-track, #lyrics-list, .ag-canvas, .aw-stage, .music-stage-edge-spectrum, .mfs-menu';
     const scan = (root) => {
         if (root.nodeType !== 1 || !root.isConnected) return;
         const tag = root.tagName;
@@ -299,13 +307,18 @@
     const start = () => {
         scan(doc.body);
         bodyObs = new MutationObserver((records) => {
-            for (const r of records) for (const n of r.addedNodes) {
-                if (n.nodeType !== 1) continue;
-                const tag = n.tagName;
-                if (tag !== 'SELECT' && (!n.firstElementChild || LEAF_TAGS.has(tag))) continue;
-                if (n.classList?.contains('mfs-trigger') || n.classList?.contains('mfs-menu')) continue;
-                if (!pending) { pending = new Set(); queueMicrotask(flush); }
-                pending.add(n);
+            for (const r of records) {
+                if (!r.addedNodes.length) continue;
+                const tgt = r.target;
+                if (tgt && tgt.nodeType === 1 && tgt.closest?.(SKIP_SUBTREE_SEL)) continue;
+                for (const n of r.addedNodes) {
+                    if (n.nodeType !== 1) continue;
+                    const tag = n.tagName;
+                    if (tag !== 'SELECT' && (!n.firstElementChild || LEAF_TAGS.has(tag))) continue;
+                    if (n.classList?.contains('mfs-trigger') || n.classList?.contains('mfs-menu')) continue;
+                    if (!pending) { pending = new Set(); queueMicrotask(flush); }
+                    pending.add(n);
+                }
             }
         });
         bodyObs.observe(doc.body, { childList: true, subtree: true });

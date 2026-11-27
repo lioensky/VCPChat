@@ -67,13 +67,26 @@
             return map;
         };
 
+        let sortedCache = null;
         const sorted = (songs) => {
             if (sort.key === 'added') {
                 // 添加时间就是进曲库的先后：正序原样返回，倒序反过来。
                 return sort.dir === 1 ? null : songs.slice().reverse();
             }
+            const len = songs.length;
+            const first = len ? songs[0] : null;
+            const mid = len ? songs[len >> 1] : null;
+            const last = len ? songs[len - 1] : null;
+            const pl = app.playlist;
+            const plLen = Array.isArray(pl) ? pl.length : -1;
+            if (len > 32 && sortedCache && sortedCache.songs === songs && sortedCache.len === len
+                && sortedCache.first === first && sortedCache.mid === mid && sortedCache.last === last
+                && sortedCache.key === sort.key && sortedCache.dir === sort.dir
+                && sortedCache.pl === pl && sortedCache.plLen === plLen) {
+                return sortedCache.result;
+            }
             const get = value[sort.key];
-            const isFull = songs === app.playlist;
+            const isFull = songs === pl;
             const order = isFull ? null : getOrderMap();
             // 预先提取一次排序键，避免 O(N log N) 次重复正则去扩展名与属性访问
             const decorated = songs.map((t, i) => {
@@ -86,7 +99,11 @@
                 const c = typeof a.v === 'number' ? a.v - b.v : collator.compare(a.v, b.v);
                 return c ? c * sort.dir : a.ord - b.ord;
             });
-            return decorated.map((item) => item.t);
+            const result = decorated.map((item) => item.t);
+            if (len > 32) {
+                sortedCache = { songs, len, first, mid, last, key: sort.key, dir: sort.dir, pl, plLen, result };
+            }
+            return result;
         };
 
         const paintLike = (li, track) => {
@@ -229,6 +246,7 @@
             watch?.disconnect();
             watch = null;
             orderCacheList = orderCacheFirst = orderCacheLast = orderCacheMap = null;
+            sortedCache = null;
         }, { once: true });
 
         global.MusicAppHooks.wrap(app, 'renderPlaylist', 'classic-list', (base) => (filtered) => {
@@ -264,6 +282,7 @@
             button.innerHTML = `<span>${col.label}</span><i aria-hidden="true"></i>`;
             button.addEventListener('click', () => {
                 sort = sort.key === col.key ? { key: col.key, dir: -sort.dir } : { key: col.key, dir: 1 };
+                sortedCache = null;
                 try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch (e) { /* 只是记住排序 */ }
                 syncHead();
                 app.renderPlaylist(lastFiltered || undefined);

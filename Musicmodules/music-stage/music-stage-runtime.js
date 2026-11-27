@@ -533,13 +533,13 @@
                 lastPlaying = playing;
                 root.classList.toggle('is-playing', playing);
             }
-            const powerText = power.toFixed(4);
+            const powerText = power.toFixed(3);
             if (powerText !== lastPowerText) {
                 lastPowerText = powerText;
                 root.style.setProperty('--interlude-power', powerText);
             }
             // Same absolute phase on pause: no change of angular speed that jumps the ring.
-            const phaseText = `${(time * 3) % 360}deg`;
+            const phaseText = `${((time * 3) % 360).toFixed(2)}deg`;
             if (phaseText !== lastPhaseText) {
                 lastPhaseText = phaseText;
                 root.style.setProperty('--interlude-phase', phaseText);
@@ -569,13 +569,13 @@
                     energy = 0.16 + Math.max(0, wave) * 0.22;
                 }
                 const settled = playing ? energy * motionScale : 0;
-                const lengthStr = (0.28 + settled * 0.72).toFixed(4);
+                const lengthStr = (0.28 + settled * 0.72).toFixed(3);
                 if (lengthStr !== lastBarScale[index]) {
                     lastBarScale[index] = lengthStr;
                     // Translate from the centre first; scaling only changes the stroke length.
                     bar.style.transform = `rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(${lengthStr})`;
                 }
-                const opStr = (0.3 + settled * 0.5).toFixed(4);
+                const opStr = (0.3 + settled * 0.5).toFixed(3);
                 if (opStr !== lastBarOpacity[index]) {
                     lastBarOpacity[index] = opStr;
                     bar.style.opacity = opStr;

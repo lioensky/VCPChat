@@ -752,6 +752,27 @@ body.music-fl-low .fume-paper {
     -webkit-backdrop-filter: none;
 }
 
+body.music-fl-low .luminous-aura,
+body.music-fl-low .luminous-word,
+body.music-fl-low .luminous-context,
+body.music-fl-low .partita-word,
+body.music-fl-low .cadenza-line,
+body.music-fl-low .fume-word,
+body.music-fl-low .starborn-performance-layer.is-entering,
+body.music-fl-low .starborn-performance-layer.is-leaving,
+body.music-fl-low .starborn-transition-burst::before {
+    filter: none;
+}
+
+body.music-fl-low .luminous-line.is-entering,
+body.music-fl-low .partita-block,
+body.music-fl-low .cadenza-line,
+body.music-fl-low .fume-paper.is-entering,
+body.music-fl-low .starborn-director-cue,
+body.music-fl-low .starborn-director-cue.is-switching {
+    animation: none;
+}
+
 body.music-reduce-motion .starborn-director-cue {
     animation: none;
 }

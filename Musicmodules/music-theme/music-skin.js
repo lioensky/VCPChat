@@ -234,10 +234,15 @@
         if (label) group.setAttribute('aria-label', label);
         const sync = () => {
             const buttons = group.children;
+            const current = select.value;
             for (let i = 0; i < buttons.length; i += 1) {
                 const button = buttons[i];
-                button.setAttribute('aria-pressed', String(button.dataset.value === select.value));
-                if (options[i]) button.disabled = options[i].disabled;
+                const pressed = String(button.dataset.value === current);
+                if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
+                if (options[i]) {
+                    const nextDisabled = Boolean(options[i].disabled);
+                    if (button.disabled !== nextDisabled) button.disabled = nextDisabled;
+                }
             }
         };
         for (const option of options) {
@@ -257,6 +262,19 @@
             });
             group.appendChild(button);
         }
+        // 程序里直接给 value / selectedIndex 赋值（如恢复默认设置）不会发 change，拦截下来同步分段高亮。
+        if (typeof HTMLSelectElement !== 'undefined' && HTMLSelectElement.prototype) {
+            for (const key of ['value', 'selectedIndex']) {
+                const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, key);
+                if (!proto?.set) continue;
+                Object.defineProperty(select, key, {
+                    configurable: true,
+                    get() { return proto.get.call(this); },
+                    set(v) { proto.set.call(this, v); sync(); }
+                });
+            }
+        }
+        select.addEventListener('input', sync);
         select.addEventListener('change', sync);
         select.after(group);
         sync();
