@@ -97,3 +97,17 @@ test('排序后重建的行同样只拆视口附近', async () => {
     assert.ok(t.list.children[0].querySelector('.cl-title'));
     t.close();
 });
+
+test('档案页激活时推迟排序，切回经典视图后再应用当前排序', async () => {
+    const t = setup({ count: 5 });
+    ['Zebra', 'Alpha', 'Delta', 'Charlie', 'Bravo'].forEach((name, idx) => { t.app.playlist[idx].title = name; });
+    t.doc.querySelector('.music-list-sort.is-title').click();
+    assert.equal(t.list.children[0].dataset.index, '1', 'visible classic list sorts immediately');
+    t.doc.body.classList.add('music-archive-on');
+    t.app.renderPlaylist();
+    assert.equal(t.list.children[0].dataset.index, '0', 'hidden classic list skips sort work while archive is active');
+    t.doc.body.classList.remove('music-archive-on');
+    await t.flush();
+    assert.equal(t.list.children[0].dataset.index, '1', 'deferred sort runs once classic view becomes visible');
+    t.close();
+});

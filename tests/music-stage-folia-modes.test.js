@@ -261,3 +261,30 @@ test('impression: sections turn at long breaks and chorus entries, and never clo
     assert.equal(I.PHASES.length, 4);
     assert.equal(I.fileUrl('C:\\a b\\c#.jpg'), 'file:///C:/a%20b/c%23.jpg');
 });
+
+test('createStillGate invalidates cached frame when MusicMotion.reduced() flips while paused', () => {
+    const U = window.MusicStageModeUtils;
+    let isReduced = false;
+    const prevMotion = window.MusicMotion;
+    window.MusicMotion = { reduced: () => isReduced };
+    try {
+        const gate = U.createStillGate({ matches: false });
+        const frame = {
+            isPlaying: false,
+            trackKey: 'k',
+            theme: 'dark',
+            currentLineIndex: 0,
+            playbackTime: 10.0,
+            lyricCount: 2,
+            activeLine: { fullText: 'hello' }
+        };
+        assert.equal(gate.same(frame, 800, 600, 's'), false);
+        assert.equal(gate.same(frame, 800, 600, 's'), true);
+        isReduced = true;
+        assert.equal(gate.same(frame, 800, 600, 's'), false, 'reduced motion toggle must force a redraw while paused');
+        assert.equal(gate.same(frame, 800, 600, 's'), true);
+    } finally {
+        if (prevMotion === undefined) delete window.MusicMotion;
+        else window.MusicMotion = prevMotion;
+    }
+});

@@ -40,3 +40,19 @@ test('clicking a line while playing only seeks', () => {
     items[0].click();
     assert.deepEqual(calls, ['seek:8']);
 });
+
+test('animateLyrics updates currentLyricIndex without touching classic DOM when archive or stage hides it', () => {
+    const { app, items } = setup({ playing: true });
+    app.lastKnownCurrentTime = 13;
+    app.lastStateUpdateTime = 0;
+    const body = items[0].ownerDocument.body;
+    body.classList.add('music-archive-on');
+    app.animateLyrics();
+    assert.equal(app.currentLyricIndex, 1);
+    assert.equal(items[1].classList.contains('active'), false, 'no DOM write while archive covers classic lyrics');
+    body.classList.remove('music-archive-on');
+    app.currentLyricIndex = -1;
+    app.animateLyrics();
+    assert.equal(app.currentLyricIndex, 1);
+    assert.equal(items[1].classList.contains('active'), true, 'updates classic DOM once visible');
+});
