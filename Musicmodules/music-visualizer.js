@@ -391,8 +391,6 @@ function setupVisualizer(app) {
         const gradient = app._visualizerGradient;
 
         ctx.fillStyle = gradient;
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 2;
 
         ctx.beginPath();
         ctx.moveTo(0, h);

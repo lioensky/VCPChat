@@ -1678,9 +1678,16 @@
             if (!state.panelOpen) {
                 // 先在任何 DOM 写入前量好档案页左右边界，避免写完 md-open 再读 hud.getBoundingClientRect 触发强制重排
                 const preEdges = archiveEdges(global.innerWidth || 0);
+                // 焦点进抽屉（落在当前页签上）；记住是从哪里打开的，关的时候还回去。
+                const from = document.activeElement;
+                panelReturn = from && from !== document.body && !el.pnl.contains(from) ? from : el.handle;
                 state.panelOpen = true;
                 el.pnl.classList.add('md-open');
                 el.pnl.setAttribute('aria-hidden', 'false');
+                // 先更新页签并把焦点移进抽屉，再改 body/archive-hud 与填充队列节点：
+                // 这样 focus() 只需解析空抽屉页签区，不会在 body.music-drawer-open 和整批队列行变脏后触发全页同步布局。
+                renderTabs(false);
+                el.tabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true, focusVisible: lastKeyboard });
                 el.hdl.classList.add('md-open');
                 el.handle.setAttribute('aria-expanded', 'true');
                 el.handle.setAttribute('aria-label', '关闭面板');
@@ -1689,20 +1696,13 @@
                 host.classList.add('md-panel-open');
                 fluid?.setRingDocked(false);
                 syncShift(preEdges);
-                // 焦点进抽屉（落在当前页签上）；记住是从哪里打开的，关的时候还回去。
-                const from = document.activeElement;
-                panelReturn = from && from !== document.body && !el.pnl.contains(from) ? from : el.handle;
-                // 页签下划线要读排版，挪到下一帧和抽屉滑入的第一帧一起算：
-                // 同一下点击里和下面的焦点各读一次，会把刚插进来的行算两遍样式和排版。
-                renderTabs(false);
                 if (!(state.tab === '播放列表' && prebuiltFresh())) renderBody(true);
                 queuePage.dropPrebuilt();
                 syncSolid();
-                el.tabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true, focusVisible: lastKeyboard });
                 if (pendingQueueScroll) {
                     const { scroller, top } = pendingQueueScroll;
                     pendingQueueScroll = null;
-                    if (scroller.isConnected) scroller.scrollTop = top;
+                    if (scroller.isConnected && top > 0) scroller.scrollTop = top;
                 }
                 if (openMarksRaf) cancelAnimationFrame(openMarksRaf);
                 openMarksRaf = requestAnimationFrame(() => {

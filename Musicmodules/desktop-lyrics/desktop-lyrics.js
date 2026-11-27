@@ -127,7 +127,7 @@
 
     // 一行太长就把字缩小到放得下（不低于设定字号的 60%）
     const fit = () => {
-        cur.style.fontSize = '';
+        if (cur.style.fontSize) cur.style.fontSize = '';
         const room = cur.clientWidth;
         const need = cur.scrollWidth;
         if (room > 0 && need > room) cur.style.fontSize = Math.max(size * 0.6, (size * room) / need).toFixed(1) + 'px';
@@ -173,10 +173,18 @@
         hoverUnlock = next;
         send('hover', next);
     };
-    const enter = () => { if (!body.classList.contains('hover')) body.classList.add('hover'); };
+    let hovering = false;
+    const enter = () => {
+        if (hovering) return;
+        hovering = true;
+        body.classList.add('hover');
+    };
     document.addEventListener('mouseenter', enter);
     document.addEventListener('mousemove', enter, { passive: true });
-    document.addEventListener('mouseleave', () => { if (body.classList.contains('hover')) body.classList.remove('hover'); setHoverUnlock(false); });
+    document.addEventListener('mouseleave', () => {
+        if (hovering) { hovering = false; body.classList.remove('hover'); }
+        setHoverUnlock(false);
+    });
     lockBtn?.addEventListener('mouseenter', () => setHoverUnlock(true));
     lockBtn?.addEventListener('mouseleave', () => setHoverUnlock(false));
     document.addEventListener('wheel', (e) => { if (!locked && e.ctrlKey) send('size', size + (e.deltaY < 0 ? 2 : -2)); }, { passive: true });

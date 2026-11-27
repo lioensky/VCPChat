@@ -4,6 +4,7 @@
 function setupUI(app) {
     let bgCurr = null;
     let bgNext = null;
+    let bgResetRaf = 0;
     app.initBackgroundLayers = () => {
         if (!app.playerBackground) return;
         app.playerBackground.innerHTML = '<div class="bg-layer current"></div><div class="bg-layer next"></div>';
@@ -31,6 +32,12 @@ function setupUI(app) {
             clearTimeout(app.backgroundTransitionTimer);
             app.backgroundTransitionTimer = null;
         }
+        if (bgResetRaf && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(bgResetRaf);
+            bgResetRaf = 0;
+            curr.style.transition = '';
+            next.style.transition = '';
+        }
         const instant = Boolean(window.MusicMotion?.reduced?.()
             ?? window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches)
             || (document.body.classList.contains('music-archive-on') && !document.body.classList.contains('music-stage-active'));
@@ -48,7 +55,11 @@ function setupUI(app) {
             app.backgroundTransitionTimer = null;
             curr.style.transition = 'none'; next.style.transition = 'none';
             curr.style.backgroundImage = newBg; app.playerBackground.classList.remove('switching');
-            requestAnimationFrame(() => { curr.style.transition = ''; next.style.transition = ''; });
+            bgResetRaf = requestAnimationFrame(() => {
+                bgResetRaf = 0;
+                if (token !== app.backgroundTransitionToken) return;
+                curr.style.transition = ''; next.style.transition = '';
+            });
         }, 800);
     };
 
@@ -100,6 +111,7 @@ function setupUI(app) {
     let windowStart = 0;
     let windowEnd = 0;
     let rowPitch = 0;                  // 相邻两行的距离（行高 + 行间距）
+    let cachedListHeight = 0;          // ResizeObserver 缓存的经典列表视口高度，避免排序/筛选时读取 clientHeight 强制重排
     app.classicShownSongs = () => shownSongs;
 
     const measurePitch = (list) => {
@@ -136,7 +148,7 @@ function setupUI(app) {
         if (!list) return;
         const total = shownSongs.length;
         const pitch = rowPitch;
-        const view = knownView !== undefined ? knownView : list.clientHeight;
+        const view = knownView !== undefined ? knownView : (cachedListHeight > 0 ? cachedListHeight : list.clientHeight);
         const scrollTop = knownScrollTop !== undefined ? knownScrollTop : list.scrollTop;
         let from = 0;
         let to = Math.min(total, FALLBACK_ROWS);
@@ -286,9 +298,22 @@ function setupUI(app) {
         app.classicPendingSongs = null;
         renderNow(filtered);
     };
+    let listResizeObserver = null;
+    const onListWindowResize = () => {
+        cachedListHeight = 0;
+        renderWindowSoon();
+    };
     if (app.playlistEl) {
         app.playlistEl.addEventListener('scroll', renderWindowSoon, { passive: true });
-        if (typeof window !== 'undefined') window.addEventListener('resize', renderWindowSoon);
+        if (typeof ResizeObserver === 'function') {
+            listResizeObserver = new ResizeObserver((entries) => {
+                const rect = entries?.[entries.length - 1]?.contentRect;
+                cachedListHeight = rect && rect.height > 0 ? rect.height : 0;
+                renderWindowSoon();
+            });
+            listResizeObserver.observe(app.playlistEl);
+        }
+        if (typeof window !== 'undefined') window.addEventListener('resize', onListWindowResize);
     }
     let visibilityWatch = null;
     if (typeof MutationObserver === 'function') {
@@ -320,12 +345,16 @@ function setupUI(app) {
         window.addEventListener('beforeunload', () => {
             visibilityWatch?.disconnect();
             visibilityWatch = null;
+            listResizeObserver?.disconnect();
+            listResizeObserver = null;
+            cachedListHeight = 0;
             cancelWindowQueue();
+            if (bgResetRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(bgResetRaf); bgResetRaf = 0; }
             if (themeRaf1 && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(themeRaf1); themeRaf1 = 0; }
             if (themeRaf2 && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(themeRaf2); themeRaf2 = 0; }
             if (app.backgroundTransitionTimer) { clearTimeout(app.backgroundTransitionTimer); app.backgroundTransitionTimer = null; }
             app.playlistEl?.removeEventListener('scroll', renderWindowSoon);
-            window.removeEventListener('resize', renderWindowSoon);
+            window.removeEventListener('resize', onListWindowResize);
             rowPool.length = 0;
         }, { once: true });
     }
@@ -340,7 +369,11 @@ function setupUI(app) {
     const renderNow = (filtered) => {
         const songs = filtered || app.playlist;
         const empty = emptyText(songs);
-        if (empty) app.playlistEl.dataset.emptyText = empty; else delete app.playlistEl.dataset.emptyText;
+        if (empty) {
+            if (app.playlistEl.dataset.emptyText !== empty) app.playlistEl.dataset.emptyText = empty;
+        } else if ('emptyText' in app.playlistEl.dataset) {
+            delete app.playlistEl.dataset.emptyText;
+        }
         const pl = app.playlist || [];
         const plLen = pl.length;
         const plFirst = plLen ? pl[0] : null;

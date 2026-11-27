@@ -1155,8 +1155,8 @@
         const applyQuery = (resetScroll) => {
             state.query = r.input.value;
             const hasQ = Boolean(state.query.trim()), vpH = viewportHeight(), curTop = resetScroll && lastRenderTop === 0 ? 0 : readScrollTop(), top = resetScroll ? 0 : curTop;
-            syncSq();
             if (resetScroll && curTop) r.viewport.scrollTop = 0;
+            syncSq();
             recordScrollTop(top);
             rebuild({ skipRender: hasQ, quiet: hasQ });
             if (hasQ && !edgeRow(false, vpH)) render({ top, height: vpH });
@@ -2132,7 +2132,7 @@
             destroy: disposeList,
             /* 在档案页直接打字：聚焦检索框并带入这个字（替换掉原来的检索词） */
             typeInto: (text) => {
-                r.input.focus();
+                if (document.activeElement !== r.input) r.input.focus({ preventScroll: true });
                 r.input.value = text;
                 r.input.setSelectionRange(text.length, text.length);
                 r.input.dispatchEvent(new Event('input', { bubbles: true }));

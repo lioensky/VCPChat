@@ -156,20 +156,38 @@
             const isFull = songs === pl;
             const order = isFull ? null : getOrderMap();
             const isNum = sort.key === 'duration';
-            // 预先提取一次排序键，避免 O(N log N) 次重复正则去扩展名与属性访问
-            const decorated = songs.map((t, i) => {
+            // 预先拆出空项并扁平提取排序键与下标数组，避免为每首歌分配包装对象与在 O(N log N) 比较里重复判空
+            const nonEmptyTracks = [];
+            const nonEmptyVals = [];
+            const nonEmptyOrds = isFull ? null : [];
+            const empty = [];
+            for (let i = 0; i < len; i += 1) {
+                const t = songs[i];
                 const v = get(t);
-                return { t, v, empty: v === '' || v === 0, ord: isFull ? i : (order.get(t) ?? 0), rank: 0 };
-            });
+                if (v === '' || v === 0) {
+                    empty.push(t);
+                } else {
+                    nonEmptyTracks.push(t);
+                    nonEmptyVals.push(v);
+                    if (!isFull) nonEmptyOrds.push(order.get(t) ?? 0);
+                }
+            }
+            const neLen = nonEmptyTracks.length;
+            const neIdx = new Array(neLen);
+            for (let i = 0; i < neLen; i += 1) neIdx[i] = i;
             // 始终先按正序排并按需懒算并列秩，同源下再点表头切倒序直接 O(N) 翻转并列段
             let usedRank = false;
-            if (!isNum && len > 32) {
+            let itemRanks = null;
+            if (!isNum && neLen > 32) {
+                // 先抽样前 64 项：若高基数列（如几乎全不重名的标题）重复率极低，直接跳过整表 Set 探测
                 const uniq = new Set();
-                const uniqLimit = (len - 1) >> 1;
-                let tooMany = false;
-                for (let i = 0; i < len; i += 1) {
-                    if (!decorated[i].empty) {
-                        uniq.add(decorated[i].v);
+                const sampleEnd = Math.min(neLen, 64);
+                for (let i = 0; i < sampleEnd; i += 1) uniq.add(nonEmptyVals[i]);
+                let tooMany = neLen > 64 && uniq.size > 48;
+                if (!tooMany) {
+                    const uniqLimit = (neLen - 1) >> 1;
+                    for (let i = sampleEnd; i < neLen; i += 1) {
+                        uniq.add(nonEmptyVals[i]);
                         if (uniq.size > uniqLimit) { tooMany = true; break; }
                     }
                 }
@@ -183,34 +201,37 @@
                         if (collator.compare(keys[i - 1], keys[i]) !== 0) r = i;
                         rankMap.set(keys[i], r);
                     }
-                    for (let i = 0; i < len; i += 1) {
-                        const d = decorated[i];
-                        if (!d.empty) d.rank = rankMap.get(d.v);
-                    }
+                    itemRanks = new Int32Array(neLen);
+                    for (let i = 0; i < neLen; i += 1) itemRanks[i] = rankMap.get(nonEmptyVals[i]);
                     usedRank = true;
                 }
             }
-            decorated.sort((a, b) => {
-                // 没有这一项的（没写歌手、时长未知）总是排在最后
-                if (a.empty !== b.empty) return a.empty ? 1 : -1;
-                const c = usedRank ? a.rank - b.rank : (isNum ? a.v - b.v : collator.compare(a.v, b.v));
-                return c || (a.ord - b.ord);
-            });
-            const nonEmpty = [];
-            const empty = [];
-            const vals = usedRank ? null : [];
-            const rankKeys = usedRank ? [] : null;
-            const asc = new Array(len);
-            for (let i = 0; i < len; i += 1) {
-                const d = decorated[i];
-                asc[i] = d.t;
-                if (d.empty) empty.push(d.t);
-                else {
-                    nonEmpty.push(d.t);
-                    if (usedRank) rankKeys.push(d.rank);
-                    else vals.push(d.v);
-                }
+            if (usedRank) {
+                neIdx.sort(isFull
+                    ? (a, b) => (itemRanks[a] - itemRanks[b]) || (a - b)
+                    : (a, b) => (itemRanks[a] - itemRanks[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
+            } else if (isNum) {
+                neIdx.sort(isFull
+                    ? (a, b) => (nonEmptyVals[a] - nonEmptyVals[b]) || (a - b)
+                    : (a, b) => (nonEmptyVals[a] - nonEmptyVals[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
+            } else {
+                neIdx.sort(isFull
+                    ? (a, b) => collator.compare(nonEmptyVals[a], nonEmptyVals[b]) || (a - b)
+                    : (a, b) => collator.compare(nonEmptyVals[a], nonEmptyVals[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
             }
+            const nonEmpty = new Array(neLen);
+            const vals = usedRank ? null : new Array(neLen);
+            const rankKeys = usedRank ? new Int32Array(neLen) : null;
+            const asc = new Array(len);
+            for (let i = 0; i < neLen; i += 1) {
+                const idx = neIdx[i];
+                const t = nonEmptyTracks[idx];
+                nonEmpty[i] = t;
+                asc[i] = t;
+                if (usedRank) rankKeys[i] = itemRanks[idx];
+                else vals[i] = nonEmptyVals[idx];
+            }
+            for (let i = 0; i < empty.length; i += 1) asc[neLen + i] = empty[i];
             const entry = { asc, desc: null, nonEmpty, empty, vals, rankKeys, usedRank, isNum, ranks: null };
             if (len > 32) {
                 sortCache.byKey.set(sort.key, entry);
@@ -440,8 +461,8 @@
             button.addEventListener('click', () => {
                 sort = sort.key === col.key ? { key: col.key, dir: -sort.dir } : { key: col.key, dir: 1 };
                 try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch (e) { /* 只是记住排序 */ }
-                syncHead();
                 app.renderPlaylist(lastFiltered || undefined);
+                syncHead();
             });
             head.appendChild(button);
             return { button, arrow: button.querySelector('i') };

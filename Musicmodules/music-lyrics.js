@@ -566,8 +566,8 @@ function setupLyrics(app) {
             if (typeof line.time === 'number' && app.api?.seekMusic) {
                 if (app.seekTo) app.seekTo(line.time); else app.api.seekMusic(line.time);
                 if (app.lastKnownDuration > 0) {
-                    app.progress.style.width = `${(line.time / app.lastKnownDuration) * 100}%`;
-                    app.currentTimeEl.textContent = app.formatTime(line.time);
+                    if (app.progress) app.progress.style.width = `${(line.time / app.lastKnownDuration) * 100}%`;
+                    if (app.currentTimeEl) app.currentTimeEl.textContent = app.formatTime(line.time);
                 }
                 app.lastKnownCurrentTime = line.time;
                 app.lastStateUpdateTime = Date.now();
@@ -604,7 +604,8 @@ function setupLyrics(app) {
     app.animateLyrics = (seek = false) => {
         if (app.currentLyrics.length === 0 || (!app.isPlaying && !seek) || app.isTrackLoading) return;
 
-        const elapsedTime = app.isPlaying ? (Date.now() - app.lastStateUpdateTime) / 1000 : 0;
+        const now = Date.now();
+        const elapsedTime = app.isPlaying ? (now - app.lastStateUpdateTime) / 1000 : 0;
         const estimatedTime = app.lastKnownCurrentTime + elapsedTime;
 
         let newLyricIndex = app.lyricIndexAt(estimatedTime);
@@ -630,7 +631,6 @@ function setupLyrics(app) {
 
         const allLi = app.lyricsList.children;
         const totalLines = allLi.length;
-        const now = Date.now();
         // 先读取容器与目标行几何尺寸（容器尺寸由 ResizeObserver 缓存），避免在修改逐字样式/类名之后读取 offsetTop/clientHeight 触发强制同步布局
         if ((!lyricsVpW || !lyricsVpH) && app.lyricsContainer) {
             const cw = app.lyricsContainer.clientWidth;

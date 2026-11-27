@@ -524,13 +524,16 @@
             record(layer);
             const layerObs = new global.MutationObserver(() => {
                 const motion = enabled() && typeof global.Element?.prototype?.animate === 'function';
+                const shifts = [];
                 for (const el of layer.children) {
                     const before = tops.get(el);
                     const now = el.getBoundingClientRect().top;
-                    if (motion && before != null && Math.abs(before - now) > 1) {
-                        el.animate([{ translate: `0 ${before - now}px` }, { translate: '0 0' }], { duration: 460, easing: 'cubic-bezier(.34, 1.36, .5, 1)', composite: 'add' });
-                    }
+                    if (motion && before != null && Math.abs(before - now) > 1) shifts.push([el, before - now]);
                     tops.set(el, now);
+                }
+                for (let i = 0; i < shifts.length; i += 1) {
+                    const [el, dy] = shifts[i];
+                    el.animate([{ translate: `0 ${dy}px` }, { translate: '0 0' }], { duration: 460, easing: 'cubic-bezier(.34, 1.36, .5, 1)', composite: 'add' });
                 }
             });
             layerObs.observe(layer, { childList: true });
