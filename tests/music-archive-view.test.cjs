@@ -1567,7 +1567,7 @@ test('archive list render batches viewport reads before edge-class writes and de
 
     assert.ok(roInstances.length > 0, 'ResizeObserver created');
     f.view.destroy();
-    assert.ok(roInstances.some((ro) => ro.disconnected), 'kind ResizeObserver disconnected on destroy');
+    assert.ok(roInstances.every((ro) => ro.disconnected), 'all ResizeObservers disconnected on destroy');
     // 已销毁后派发全局目录事件不应报错或重新渲染
     ops.length = 0;
     f.w.document.dispatchEvent(new f.w.Event('music-like-change'));

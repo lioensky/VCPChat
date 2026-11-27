@@ -1090,3 +1090,72 @@ test('queue prebuild cancels pending requestIdleCallback on destroy', () => {
     assert.ok(cancelledIdle.includes(idleId), 'destroy cancels queued requestIdleCallback');
     window.close();
 });
+
+test('palette guards stale open rAF, ignores IME Escape, low-power drawer CSS drops backdrop-filter, and fluid shiftX skips idle getComputedStyle', () => {
+    const rafs = [];
+    const { window, doc, dock } = setup((_app, win) => {
+        win.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+        win.cancelAnimationFrame = (id) => { rafs[id - 1] = null; };
+    });
+    try {
+        const palette = doc.querySelector('.md-cmd');
+        const input = palette.querySelector('.md-cmd-in');
+
+        // 打开后在首帧 rAF 前立即关闭，后续 rAF 不应把 md-open 加回已关闭的面板
+        dock.openPalette('alpha');
+        assert.equal(palette.hidden, false);
+        dock.closePalette();
+        rafs.splice(0).forEach((fn) => fn && fn());
+        assert.ok(!palette.classList.contains('md-open'), 'stale open rAF must not re-open closed palette');
+
+        // 输入法组字中按 Escape 不应清空输入或关闭面板
+        dock.openPalette('beta');
+        const imeEsc = new window.KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, cancelable: true });
+        input.dispatchEvent(imeEsc);
+        assert.equal(input.value, 'beta', 'IME Escape keeps search query intact');
+        assert.equal(palette.hidden, false, 'IME Escape keeps palette open');
+
+        // 流体层在 --md-shift 未设置时跳过 getComputedStyle(dockEl)，抽屉平移时才查询
+        const dockEl = doc.querySelector('.md-dock');
+        const host = doc.getElementById('music-dock-root');
+        let dockStyleReads = 0;
+        const origGetCS = window.getComputedStyle.bind(window);
+        window.getComputedStyle = (node, ...rest) => {
+            if (node === dockEl) dockStyleReads += 1;
+            return origGetCS(node, ...rest);
+        };
+        const bar = doc.querySelector('.md-cap');
+        const hdl = doc.querySelector('.md-hdl');
+        const fl = window.createMusicDockFluid({ host, bar, ring: hdl });
+        fl.layout();
+        assert.equal(dockStyleReads, 0, 'idle shiftX skips getComputedStyle when --md-shift is unset');
+        host.style.setProperty('--md-shift', '-120px');
+        fl.layout();
+        assert.ok(dockStyleReads > 0, 'active --md-shift queries computed translate');
+        fl.destroy();
+
+        const drawerCss = read('Musicmodules/music-dock/music-dock-drawer.css');
+        assert.match(drawerCss, /#music-dock-root\.md-fl-low \.md-cmd-scrim/);
+        assert.match(drawerCss, /#music-dock-root\.md-fl-low \.md-hdl-tip/);
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
+
+test('MusicStageConfig strips undefined keys and returns independent clones on get()', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    dom.window.eval(read('Musicmodules/music-stage/music-stage-config.js'));
+    const cfg1 = dom.window.MusicStageConfig.get();
+    const cfg2 = dom.window.MusicStageConfig.get();
+    assert.notEqual(cfg1, cfg2);
+    assert.notEqual(cfg1.modes.luminous, cfg2.modes.luminous);
+    for (const [modeId, modeCfg] of Object.entries(cfg1.modes)) {
+        for (const [k, v] of Object.entries(modeCfg)) {
+            assert.notEqual(v, undefined, `${modeId}.${k} should not contain undefined`);
+        }
+    }
+    cfg1.modes.luminous.glow = 99;
+    assert.notEqual(dom.window.MusicStageConfig.get().modes.luminous.glow, 99);
+    dom.window.close();
+});

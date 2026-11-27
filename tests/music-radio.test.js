@@ -112,4 +112,14 @@ test('pickSimilar deduplicates duplicate recordings deterministically and dailyM
     const out = pickSimilar(dupLib, [], { size: 5, random: rng });
     assert.equal(out.length, 2, 'duplicate title+artist collapses to one recording');
     assert.equal(new Set(out.map((t) => t.title)).size, 2);
+
+    // 同录音多版本冲突时懒算 versionRank 仍优先选本地无损高规格版本
+    const rankLib = [
+        { path: 'https://dav.example/s.flac', title: 'Track.flac', artist: 'A', isRemote: true, lossless: true },
+        { path: '/local/s.mp3', title: 'Track.mp3', artist: 'A', bitrate: 320000 },
+        { path: '/local/s.flac', title: 'Track.flac', artist: 'A', lossless: true, bitsPerSample: 24, sampleRate: 96000 }
+    ];
+    const ranked = pickSimilar(rankLib, [], { size: 5, random: () => 0.5 });
+    assert.equal(ranked.length, 1);
+    assert.equal(ranked[0].path, '/local/s.flac', 'local high-res lossless beats mp3 and remote');
 });
