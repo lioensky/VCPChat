@@ -157,6 +157,48 @@ test('music-lyrics-ai deduplicates concurrent translation requests for the same 
     assert.equal(app.currentLyrics[1].translation, '漫步雨中');
 });
 
+test('music-lyrics-ai promotes in-flight auto translation when translateNow is clicked instead of firing a second IPC', async () => {
+    const { setupMusicLyricsAi } = require(path.join(__dirname, '../Musicmodules/music-lyrics-ai.js'));
+    let calls = 0;
+    let resolveReq;
+    const toasts = [];
+    const origToast = globalThis.MusicToast;
+    globalThis.MusicToast = { show: (o) => toasts.push(o) };
+    try {
+        const lines = [
+            { time: 1, original: 'Morning coffee steam' },
+            { time: 4, original: 'Quiet winter street' }
+        ];
+        const app = {
+            playlist: [{ path: '/b.flac', title: 'Steam.flac', artist: 'B' }],
+            currentTrackIndex: 0,
+            currentLyrics: lines,
+            lyricsRequestToken: 3,
+            fetchAndDisplayLyrics: async () => {},
+            renderLyrics() {},
+            api: {
+                translateMusicLyrics: () => {
+                    calls += 1;
+                    return new Promise((r) => { resolveReq = r; });
+                }
+            }
+        };
+        setupMusicLyricsAi(app, { storage: { getItem: () => '1', setItem() {} } });
+        // 自动翻译先启动
+        const autoP = app.fetchAndDisplayLyrics();
+        await Promise.resolve();
+        // 自动翻译进行中，用户手动点击翻译：复用同一请求并升级为手动提示
+        const manualP = app.lyricsAi.translateNow();
+        assert.equal(calls, 1, 'manual click during in-flight auto translation sends no duplicate IPC');
+        resolveReq({ status: 'success', translations: ['晨间咖啡热气', '安静冬日街巷'] });
+        await Promise.all([autoP, manualP]);
+        assert.equal(app.currentLyrics[0].translation, '晨间咖啡热气');
+        assert.ok(toasts.some((t) => t.message === '歌词翻译好了'), 'promoted in-flight request still emits manual completion toast');
+    } finally {
+        globalThis.MusicToast = origToast;
+    }
+});
+
 test('long lyrics (>240 lines) pad translations to full length and apply first 240 translated lines instead of discarding', async () => {
     const { createLyricsTranslator } = require(path.join(__dirname, '../modules/musicLyricsTranslate.js'));
     const { setupMusicLyricsAi } = require(path.join(__dirname, '../Musicmodules/music-lyrics-ai.js'));

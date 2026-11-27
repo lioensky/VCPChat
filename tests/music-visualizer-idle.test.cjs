@@ -198,3 +198,39 @@ test('visualizer passes numeric timestamp on frame 0, ignores unrelated body cla
     assert.equal(cleared, false, 'destroyVisualizer cancels pending _gaplessSwitchTimer');
     window.close();
 });
+
+test('drawVocalVisualizer caches layout size across 60fps frames and re-measures only on resize/class/visibility dirtying', () => {
+    const dom = new JSDOM('<!doctype html><body><canvas id="vocal-visualizer"></canvas></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    try {
+        const { window } = dom;
+        let widthReads = 0;
+        let curW = 320, curH = 60;
+        const canvas = window.document.getElementById('vocal-visualizer');
+        const noop = () => {};
+        canvas.getContext = () => ({ clearRect: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop });
+        Object.defineProperty(canvas, 'clientWidth', { configurable: true, get: () => { widthReads += 1; return curW; } });
+        Object.defineProperty(canvas, 'clientHeight', { configurable: true, get: () => curH });
+        window.eval(`${source}\nwindow.setupVisualizer = setupVisualizer;`);
+        const app = {
+            particles: [], PARTICLE_COUNT: 4, easingFactor: 0.2,
+            visualizerCanvas: { width: 320, height: 60 },
+            visualizerCtx: { clearRect: noop }, visualizerColor: { r: 10, g: 20, b: 30 },
+            targetVisualizerData: [], currentVisualizerData: new Array(128).fill(0.25),
+            isPlaying: false, isTrackLoading: false, bassScale: 1.0
+        };
+        window.setupVisualizer(app);
+        for (let i = 0; i < 10; i++) app.drawVocalVisualizer();
+        assert.equal(widthReads, 1, 'steady-state 60fps vocal frames read clientWidth only once');
+        assert.equal(canvas.width, 320);
+
+        curW = 480;
+        window.dispatchEvent(new window.Event('resize'));
+        app.drawVocalVisualizer();
+        app.drawVocalVisualizer();
+        assert.equal(widthReads, 2, 'resize marks vocal canvas dirty for exactly one re-measure');
+        assert.equal(canvas.width, 480);
+        app.destroyVisualizer();
+    } finally {
+        dom.window.close();
+    }
+});

@@ -379,3 +379,56 @@ test('musicDesktopLyrics ignores sends when webContents is destroyed', async () 
     assert.strictEqual(bar.sent.length, prevBar);
     assert.strictEqual(h.musicSent.length, prevMusic);
 });
+
+test('music-desktop-lyrics resyncs switch and shows error toast when toggle IPC rejects, and tracks next line changes in key', async () => {
+    const vm = require('vm');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="desktop-lyrics-item" hidden><input id="desktop-lyrics-switch" type="checkbox"></div></body>');
+    const { window } = dom;
+    const toasts = [];
+    const published = [];
+    try {
+        window.MusicToast = { show: (o) => toasts.push(o) };
+        window.setInterval = () => 1;
+        window.clearInterval = () => {};
+        const ctx = vm.createContext({
+            window, document: window.document, CustomEvent: window.CustomEvent,
+            MutationObserver: window.MutationObserver, Date, console
+        });
+        ctx.window = window;
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-desktop-lyrics.js'), 'utf8'), ctx);
+        let failToggle = true;
+        const app = {
+            playlist: [{ path: 'a.flac', title: 'Intro', artist: 'A' }],
+            currentTrackIndex: 0,
+            isPlaying: false,
+            lastKnownCurrentTime: 0.5,
+            lastStateUpdateTime: 0,
+            currentLyrics: [{ time: 10, text: 'First version' }],
+            api: {
+                toggleDesktopLyrics: async (v) => { if (failToggle) throw new Error('ipc failed'); return v; },
+                publishDesktopLyrics: (snap) => published.push(snap),
+                getDesktopLyrics: async () => ({ on: false }),
+                onDesktopLyricsChanged: () => () => {}
+            }
+        };
+        window.setupMusicDesktopLyrics(app);
+        await Promise.resolve();
+        const sw = window.document.getElementById('desktop-lyrics-switch');
+        sw.checked = true;
+        await app.desktopLyrics.toggle(true);
+        assert.strictEqual(sw.checked, false, 'failed toggle restores checkbox state');
+        assert.strictEqual(toasts.at(-1).kind, 'error', 'failed toggle reports error toast');
+
+        failToggle = false;
+        await app.desktopLyrics.toggle(true);
+        assert.strictEqual(published.at(-1).next.text, 'First version');
+        // 前奏期间换了一份歌词（line 仍是 null，只有 next.text 变化）应立即推送
+        app.currentLyrics = [{ time: 10, text: 'Updated candidate' }];
+        window.document.dispatchEvent(new window.CustomEvent('music-lyrics-change'));
+        assert.strictEqual(published.at(-1).next.text, 'Updated candidate', 'intro next-line change triggers publish');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        window.close();
+    }
+});
