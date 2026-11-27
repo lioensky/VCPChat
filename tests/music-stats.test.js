@@ -395,3 +395,131 @@ test('Batch 73: stats skips redundant queue-change ticks for same track, MusicMo
         dom.window.close();
     }
 });
+
+test('Batch 76: dupes normalizes playlist paths on remap/undo, folders batches queue removal, stats-view skips active-range re-render, and track-file resets copy failure', async () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><button id="opener">open</button></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.requestAnimationFrame = (fn) => { fn(0); return 0; };
+        const toasts = [];
+        window.MusicToast = { show: (o) => toasts.push(o) };
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-radio.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-dupes.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-folders.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-stats-view.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-track-file.js'), 'utf8'));
+
+        // 1. music-dupes: Windows slash/case normalization in customPlaylists remap & restore on undo
+        const plSaved = [];
+        const dupesApp = {
+            playlist: [
+                { path: 'C:\\Music\\Keep.flac', title: 'Same', artist: 'Art', duration: 200, bitrate: 1000, size: 1000 },
+                { path: 'C:\\Music\\Drop.mp3', title: 'Same', artist: 'Art', duration: 200, bitrate: 128, size: 200 }
+            ],
+            currentTrackIndex: -1,
+            customPlaylists: [
+                { id: 'p1', name: 'Mix', tracks: ['c:/music/drop.mp3', 'C:\\Music\\Other.flac'] },
+                { id: 'p2', name: 'Untouched', tracks: ['C:\\Music\\Other.flac'] }
+            ],
+            saveCustomPlaylists: () => plSaved.push(dupesApp.customPlaylists.map((p) => p.tracks.slice())),
+            saveLibrary: () => {},
+            renderPlaylist: () => {}
+        };
+        const p2Ref = dupesApp.customPlaylists[1].tracks;
+        window.MusicDupes.open(dupesApp);
+        doc.querySelector('.mdupes-remove').click();
+        assert.deepEqual([...dupesApp.customPlaylists[0].tracks], ['C:\\Music\\Keep.flac', 'C:\\Music\\Other.flac'], 'Windows slash/case playlist path remapped to kept track');
+        assert.equal(dupesApp.customPlaylists[1].tracks, p2Ref, 'unmodified playlist tracks array untouched');
+        assert.equal(toasts.length, 1);
+        toasts[0].action.run();
+        assert.deepEqual([...dupesApp.customPlaylists[0].tracks], ['c:/music/drop.mp3', 'C:\\Music\\Other.flac'], 'undo restores original playlist tracks');
+
+        // 2. music-folders: removeFolder batches manualQueue removals via app.queueBatch and guards re-entrancy
+        let batchCalls = 0;
+        const removedQueue = [];
+        let resolveForget = null;
+        let forgetCalls = 0;
+        const t1 = { path: 'C:\\Music\\A\\1.flac', title: '1' };
+        const t2 = { path: 'C:\\Music\\A\\2.flac', title: '2' };
+        const t3 = { path: 'C:\\Music\\B\\3.flac', title: '3' };
+        const foldersApp = {
+            playlist: [t1, t2, t3],
+            currentTrackIndex: 2,
+            manualQueue: [t1, t3, t2],
+            queueBatch: (fn) => { batchCalls += 1; fn(); },
+            queueRemove: (i) => { removedQueue.push(i); foldersApp.manualQueue.splice(i, 1); },
+            saveLibrary: () => {},
+            renderPlaylist: () => {},
+            api: {
+                musicLibraryFolders: async ({ op }) => {
+                    if (op === 'list') return { ok: true, folders: [{ path: 'C:\\Music\\A', exists: true }, { path: 'C:\\Music\\B', exists: true }] };
+                    if (op === 'forget') { forgetCalls += 1; await new Promise((r) => { resolveForget = r; }); return { ok: true }; }
+                    return { ok: true };
+                }
+            }
+        };
+        window.MusicDialog = { confirm: async () => true };
+        window.MusicFolders.setupMusicFolders(foldersApp);
+        foldersApp.openLibraryFolders();
+        await new Promise((r) => setTimeout(r, 10));
+        const rmBtn = doc.querySelector('.mfold-remove');
+        assert.ok(rmBtn);
+        rmBtn.click();
+        rmBtn.click(); // concurrent second click ignored while removing
+        await new Promise((r) => setTimeout(r, 10));
+        assert.equal(forgetCalls, 1, 're-entrancy guard blocks overlapping removeFolder clicks');
+        resolveForget();
+        await new Promise((r) => setTimeout(r, 10));
+        assert.equal(batchCalls, 1, 'manualQueue removals wrapped in a single app.queueBatch');
+        assert.deepEqual(removedQueue, [2, 0], 'reverse-order removal deletes indices 2 then 0 safely');
+        assert.deepEqual([...foldersApp.manualQueue], [t3]);
+        window.dispatchEvent(new window.Event('beforeunload'));
+
+        // 3. music-stats-view: clicking already-active range tab skips redundant summary/render
+        let summaryCalls = 0;
+        const statsApp = {
+            playlist: [{ path: 'C:\\Music\\A.flac', title: 'A', artist: 'X' }],
+            musicStats: {
+                summary: () => {
+                    summaryCalls += 1;
+                    return { plays: 1, seconds: 60, activeDays: 1, hours: new Array(24).fill(0), tracks: [], daily: {} };
+                }
+            }
+        };
+        window.MusicStatsView.open(statsApp);
+        const afterOpen = summaryCalls;
+        const activeTab = doc.querySelector('.mstats-range button.active');
+        assert.ok(activeTab);
+        activeTab.click();
+        assert.equal(summaryCalls, afterOpen, 'clicking already-active range tab skips redundant render');
+        window.dispatchEvent(new window.Event('beforeunload'));
+
+        // 4. music-track-file: failed copy resets button label from 复制失败 back to 复制路径
+        const origTimer = window.setTimeout;
+        const timers = [];
+        window.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+        Object.defineProperty(window.navigator, 'clipboard', {
+            configurable: true,
+            value: { writeText: async () => { throw new Error('denied'); } }
+        });
+        const tfApp = { api: { showMusicInFolder: async () => ({ ok: true }) } };
+        window.MusicTrackFile.setupMusicTrackFile(tfApp);
+        tfApp.openTrackInfo({ path: 'C:\\Music\\A.flac', title: 'A', artist: 'X' });
+        const copyBtn = [...doc.querySelectorAll('.minfo-actions .minfo-btn')].find((b) => b.textContent === '复制路径');
+        assert.ok(copyBtn);
+        copyBtn.click();
+        await new Promise((r) => origTimer(r, 10));
+        assert.equal(copyBtn.textContent, '复制失败');
+        const resetTimer = timers.find((t) => t.ms === 1600);
+        assert.ok(resetTimer, 'failed copy schedules 1600ms label reset timer');
+        resetTimer.fn();
+        assert.equal(copyBtn.textContent, '复制路径');
+        window.setTimeout = origTimer;
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

@@ -615,3 +615,31 @@ test('Batch 73: desktop-lyrics wordsOf WeakMap cache reuses packed words across 
         delete global.MusicArchiveLyrics;
     }
 });
+
+test('Batch 76: musicDesktopLyrics setOn skips redundant disk save when state and window already match', async () => {
+    const h = harness();
+    // Already off and closed -> toggling false must NOT schedule or write stateFile
+    const resOff = await h.handles.get('music-desktop-lyrics-toggle')(fromMusic(h), false);
+    assert.strictEqual(resOff, false);
+    h.dl.musicClosed();
+    assert.strictEqual(fs.existsSync(h.stateFile), false, 'redundant setOn(false) skips disk persistence');
+
+    // Open once -> writes stateFile; toggling true again while already open must skip extra save
+    await h.handles.get('music-desktop-lyrics-toggle')(fromMusic(h), true);
+    h.dl.musicClosed();
+    assert.strictEqual(fs.existsSync(h.stateFile), true);
+    h.dl.musicReady();
+    let writes = 0;
+    const origWrite = fs.promises.writeFile;
+    const origWriteSync = fs.writeFileSync;
+    fs.promises.writeFile = async (...args) => { writes += 1; return origWrite.apply(fs.promises, args); };
+    fs.writeFileSync = (...args) => { writes += 1; return origWriteSync.apply(fs, args); };
+    try {
+        await h.handles.get('music-desktop-lyrics-toggle')(fromMusic(h), true);
+        h.dl.musicClosed();
+        assert.strictEqual(writes, 0, 'redundant setOn(true) while already open skips disk save');
+    } finally {
+        fs.promises.writeFile = origWrite;
+        fs.writeFileSync = origWriteSync;
+    }
+});

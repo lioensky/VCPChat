@@ -536,6 +536,7 @@ test('Batch 72: music-fluid-select delegates option clicks, blocks ArrowLeft/Arr
     </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
     const { window } = dom;
     const doc = window.document;
+    window.CSS = { escape: (s) => String(s) };
     try {
         window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
         if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
@@ -570,6 +571,69 @@ test('Batch 72: music-fluid-select delegates option clicks, blocks ArrowLeft/Arr
         assert.equal(sel.value, 'rock', 'delegated click on child span selects option');
         assert.equal(changed, 1);
         assert.equal(doc.querySelector('.mfs-menu'), null, 'selecting option closes menu');
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 76: music-fluid-select prunes detached select observers and registers passive capture scroll listener', async () => {
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.CSS = { escape: (s) => String(s) };
+    try {
+        const scrollOpts = [];
+        const origAdd = doc.addEventListener.bind(doc);
+        doc.addEventListener = (type, fn, opts) => {
+            if (type === 'scroll') scrollOpts.push(opts);
+            return origAdd(type, fn, opts);
+        };
+        const OrigMO = window.MutationObserver;
+        const observedTargets = new Map();
+        let selectDisconnects = 0;
+        window.MutationObserver = class TrackingMO extends OrigMO {
+            observe(target, opts) {
+                observedTargets.set(this, target);
+                return super.observe(target, opts);
+            }
+            disconnect() {
+                if (observedTargets.get(this)?.tagName === 'SELECT') selectDisconnects += 1;
+                return super.disconnect();
+            }
+        };
+
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        assert.ok(
+            scrollOpts.some((o) => o && o.capture === true && o.passive === true),
+            'music-fluid-select binds document scroll listener with { capture: true, passive: true }'
+        );
+
+        const host = doc.getElementById('host');
+        const created = [];
+        for (let i = 0; i < 16; i += 1) {
+            const s = doc.createElement('select');
+            s.innerHTML = `<option value="a">A${i}</option><option value="b">B${i}</option>`;
+            host.appendChild(s);
+            created.push(s);
+        }
+        for (const s of created) window.MusicFluidSelect.dress(s);
+        // Detach all 16 dressed selects
+        for (const s of created) {
+            s.nextElementSibling?.remove();
+            s.remove();
+        }
+        // Dressing one fresh select triggers pruning of all 16 detached observers
+        const fresh = doc.createElement('select');
+        fresh.innerHTML = '<option value="x">X</option>';
+        host.appendChild(fresh);
+        window.MusicFluidSelect.dress(fresh);
+        assert.equal(selectDisconnects, 16, 'prunes and disconnects all 16 detached select observers');
+
+        // beforeunload disconnects the remaining active observer
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.equal(selectDisconnects, 17, 'beforeunload disconnects remaining active select observer');
     } finally {
         dom.window.close();
     }

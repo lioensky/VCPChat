@@ -2032,3 +2032,38 @@ test('Batch 74: archive-list toggles .al-sq/.al-sq-f without :has() CSS and arch
     assert.match(drawerCss, /body\.music-archive-on\.music-archive-drawer-lyrics/);
     f.close();
 });
+
+test('Batch 76: archive-view onKeyDown skips modalOpen DOM query on input typing and modifier shortcuts', () => {
+    const f = fixture({ n: 12 });
+    f.view.setListOpen(true);
+    let modalQueries = 0;
+    const origQS = f.w.document.querySelector.bind(f.w.document);
+    f.w.document.querySelector = (sel) => {
+        if (typeof sel === 'string' && sel.includes('.dialog-overlay')) modalQueries += 1;
+        return origQS(sel);
+    };
+    try {
+        // Typing inside the search input should short-circuit before calling modalOpen()
+        const input = f.view.list.input;
+        input.focus();
+        for (const key of ['a', 'b', 'Backspace', 'Enter']) {
+            input.dispatchEvent(new f.w.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        }
+        assert.equal(modalQueries, 0, 'keys inside input skip modalOpen() querySelector');
+
+        // Unhandled modifier shortcuts on document also skip modalOpen()
+        f.w.document.body.focus();
+        f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+        f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true }));
+        f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'a', altKey: true, bubbles: true, cancelable: true }));
+        assert.equal(modalQueries, 0, 'modifier shortcuts skip modalOpen() querySelector');
+
+        // Actual archive shortcut ('/') checks modalOpen() and focuses the search box
+        f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true }));
+        assert.equal(modalQueries, 1, 'archive shortcut checks modalOpen() once');
+        assert.equal(f.w.document.activeElement, input, '/ focuses archive search input');
+    } finally {
+        f.w.document.querySelector = origQS;
+        f.close();
+    }
+});

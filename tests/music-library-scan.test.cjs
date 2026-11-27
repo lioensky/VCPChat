@@ -413,3 +413,41 @@ test('Batch 65: partial worker spawn failure settles already-spawned workers inF
     assert.equal(result.stats.kept, 12, 'known tracks preserved for both inFlight and unqueued jobs');
     assert.equal(result.tracks.length, 12, 'no inFlight tracks dropped during partial spawn failure');
 });
+
+test('Batch 76: musicLibraryWatch recognizes modern/hi-res audio extensions aligned with scanner', async () => {
+    const { createLibraryWatch } = require('../modules/musicLibraryWatch');
+    let nextId = 1;
+    const timers = new Map();
+    let watchCb = null;
+    const watcher = createLibraryWatch({
+        scan: async () => ({ tracks: [], stats: {} }),
+        readKnown: async () => [],
+        readFolders: async () => ['/fake-music'],
+        writeFolders: async () => {},
+        send: () => {},
+        exists: async () => true,
+        watch: (_dir, cb) => { watchCb = cb; return { on() {}, close() {} }; },
+        setTimer: (fn) => { const id = nextId++; timers.set(id, fn); return id; },
+        clearTimer: (id) => { timers.delete(id); },
+        log: { log() {}, warn() {} }
+    });
+    watcher.start();
+    const startFn = [...timers.values()][0];
+    timers.clear();
+    await startFn();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(typeof watchCb, 'function');
+
+    // Non-audio files stay ignored
+    watchCb('rename', 'cover.jpg');
+    watchCb('rename', 'notes.txt');
+    assert.equal(timers.size, 0, 'non-audio files do not schedule rescan');
+
+    // Modern & hi-res extensions (opus, aac, alac, aif, aiff, dsf, dff, wv) trigger debounce rescan
+    for (const name of ['track.opus', 'song.aac', 'master.alac', 'studio.aif', 'studio.aiff', 'sacd.dsf', 'sacd.dff', 'pack.wv']) {
+        timers.clear();
+        watchCb('rename', name);
+        assert.equal(timers.size, 1, `watcher reacts to ${name}`);
+    }
+    watcher.stop();
+});

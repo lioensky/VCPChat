@@ -1926,3 +1926,67 @@ test('Batch 75: stageHost mirrors data-stage-mode without :has() CSS, runtime ca
         dom.window.close();
     }
 });
+
+test('Batch 76: Starborn updateFrame defers resolveSegment and nextLines reads until initial mount or cut', () => {
+    const dom = createStageDom();
+    try {
+        for (const file of [
+            'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'music-stage-advanced-modes.js', 'music-stage-modes.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${file}`);
+        }
+        const host = dom.window.document.createElement('div');
+        dom.window.document.body.appendChild(host);
+        const starbornEntry = dom.window.MusicStageModes.get('starborn');
+        assert.ok(starbornEntry, 'starborn mode registered');
+        const cfg = dom.window.MusicStageConfig.get();
+        const mode = starbornEntry.create(host, {
+            config: cfg,
+            app: { stagePalette: { accentRgb: { r: 200, g: 120, b: 80 } } }
+        });
+        let nextLinesReads = 0;
+        const lines = [
+            { startTime: 1, endTime: 5, fullText: 'First line', text: 'First line' },
+            { startTime: 6, endTime: 10, fullText: 'Second line', text: 'Second line' }
+        ];
+        const mkFrame = (t, lineIdx) => {
+            const f = {
+                track: { path: 'a.flac', title: 'A' },
+                lines,
+                activeLine: lines[lineIdx],
+                activeLineIndex: lineIdx,
+                playbackTime: t,
+                isPlaying: true,
+                audio: { bass: 0.2, power: 0.3, onset: false, beat: false, spectrum: [] },
+                viewport: { width: 800, height: 600, dpr: 1 }
+            };
+            Object.defineProperty(f, 'nextLines', {
+                get() {
+                    if ((new Error().stack || '').includes('resolveSegment')) nextLinesReads += 1;
+                    return lines.slice(lineIdx + 1);
+                }
+            });
+            return f;
+        };
+        // Initial mount reads nextLines via resolveSegment
+        mode.updateFrame(mkFrame(1.05, 0));
+        const readsAfterMount = nextLinesReads;
+        assert.ok(readsAfterMount >= 1, 'initial mount resolves segment');
+        // Steady frames within same line should NOT call resolveSegment or read nextLines
+        mode.updateFrame(mkFrame(1.2, 0));
+        mode.updateFrame(mkFrame(1.4, 0));
+        mode.updateFrame(mkFrame(1.6, 0));
+        assert.equal(nextLinesReads, readsAfterMount, 'steady frames skip resolveSegment and nextLines allocation');
+        // Advance smoothly past transition lock without tripping jumpedForward (>0.5s), then cut at fresh line boundary
+        for (let t = 2.0; t <= 5.8; t += 0.4) mode.updateFrame(mkFrame(t, 0));
+        assert.equal(nextLinesReads, readsAfterMount, 'continuous playback within same line still skips resolveSegment');
+        mode.updateFrame(mkFrame(6.05, 1));
+        assert.ok(nextLinesReads > readsAfterMount, 'fresh line boundary cut invokes resolveSegment');
+        mode.destroy();
+    } finally {
+        dom.window.close();
+    }
+});
