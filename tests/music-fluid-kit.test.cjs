@@ -638,3 +638,38 @@ test('Batch 76: music-fluid-select prunes detached select observers and register
         dom.window.close();
     }
 });
+
+test('Batch 77: watchToasts batches all getBoundingClientRect reads before calling animate', async () => {
+    const dom = new JSDOM('<!doctype html><body><div class="mtst-layer"><div id="t1">A</div><div id="t2">B</div></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        const layer = doc.querySelector('.mtst-layer');
+        const t1 = doc.getElementById('t1');
+        const t2 = doc.getElementById('t2');
+        const events = [];
+        let shift = 0;
+        const bindToast = (el, baseTop, tag) => {
+            el.getBoundingClientRect = () => { events.push(`read:${tag}`); return { top: baseTop + shift, left: 0, width: 200, height: 40 }; };
+            el.animate = () => { events.push(`anim:${tag}`); return { cancel() {} }; };
+        };
+        bindToast(t1, 100, 't1');
+        bindToast(t2, 150, 't2');
+        window.Element.prototype.animate = () => ({ cancel() {} });
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        events.length = 0;
+        shift = -48;
+        const t3 = doc.createElement('div');
+        bindToast(t3, 200, 't3');
+        layer.appendChild(t3);
+        await new Promise((r) => setTimeout(r, 0));
+        const lastRead = Math.max(events.lastIndexOf('read:t1'), events.lastIndexOf('read:t2'), events.lastIndexOf('read:t3'));
+        const firstAnim = Math.min(events.indexOf('anim:t1'), events.indexOf('anim:t2'));
+        assert.ok(lastRead >= 0 && firstAnim > lastRead, `all rect reads precede WAAPI animate writes (${JSON.stringify(events)})`);
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

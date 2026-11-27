@@ -761,3 +761,104 @@ test('Batch 75: music-skin drops container :has() rules via .acoustic-drawer-ope
     assert.equal(head.hidden, false, 'restoring #playlist restores .music-list-head');
     t.close();
 });
+
+test('Batch 77: music-ui caches playlist viewport height via ResizeObserver, header click renders before syncHead, and flat sort preserves order/ties/empties', () => {
+    let roCb = null;
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul><div id="all-count"></div></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    const doc = w.document;
+    w.ResizeObserver = class {
+        constructor(cb) { roCb = cb; }
+        observe() {}
+        disconnect() {}
+    };
+    w.requestAnimationFrame = (fn) => { fn(0); return 1; };
+    w.cancelAnimationFrame = () => {};
+    const list = doc.getElementById('playlist');
+    let clientHeightReads = 0;
+    Object.defineProperty(list, 'clientHeight', {
+        configurable: true,
+        get() { clientHeightReads += 1; return 400; }
+    });
+    const tracks = [];
+    // 80 tracks (>64 sample threshold): unique titles (high-cardinality), repeating artists (low-cardinality), plus empties & ties
+    for (let i = 0; i < 76; i += 1) {
+        tracks.push({
+            path: `/m/${i}.flac`,
+            title: `Song ${String(76 - i).padStart(2, '0')}.flac`,
+            artist: `Artist ${i % 5}`,
+            duration: 120 + (i % 7) * 10
+        });
+    }
+    tracks.push({ path: '/m/tie1.flac', title: 'Song 10.flac', artist: 'Artist 0', duration: 120 });
+    tracks.push({ path: '/m/tie2.flac', title: '', artist: '', duration: 0 });
+    tracks.push({ path: '/m/empty1.flac', title: 'Alpha.flac', artist: '', duration: 0 });
+    tracks.push({ path: '/m/empty2.flac', title: 'Zulu.flac', artist: 'Artist 1', duration: 999 });
+
+    const app = {
+        playlist: tracks,
+        playlistEl: list,
+        currentTrackIndex: 0,
+        stripAudioExtension: (s) => String(s || '').replace(/\.flac$/i, ''),
+        updateAllCount() {}
+    };
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-app-hooks.js'), 'utf8'));
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-ui.js'), 'utf8'));
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-classic-list.js'), 'utf8'));
+    w.setupUI(app);
+    w.setupMusicClassicList(app);
+
+    // 1. ResizeObserver caches list height -> subsequent renders perform 0 clientHeight reads
+    roCb([{ contentRect: { width: 320, height: 420 } }]);
+    app.renderPlaylist();
+    const readsAfterRO = clientHeightReads;
+    const titleBtn = doc.querySelector('.music-list-sort.is-title');
+    const artistBtn = doc.querySelector('.music-list-sort.is-artist');
+    const durBtn = doc.querySelector('.music-list-sort.is-duration');
+
+    // 2. Sort button click invokes app.renderPlaylist BEFORE mutating .is-on in syncHead
+    const order = [];
+    const origRender = app.renderPlaylist;
+    app.renderPlaylist = (...args) => { order.push('render'); return origRender(...args); };
+    const origToggle = titleBtn.classList.toggle.bind(titleBtn.classList);
+    titleBtn.classList.toggle = (cls, force) => { if (cls === 'is-on') order.push('syncHead'); return origToggle(cls, force); };
+
+    titleBtn.click(); // title asc (high-cardinality >64 skips wasted full Set)
+    assert.deepEqual(order.slice(0, 2), ['render', 'syncHead'], 'header click runs renderPlaylist before syncHead DOM write');
+    assert.equal(clientHeightReads, readsAfterRO, 'ResizeObserver cached height avoids clientHeight reads on sort');
+    const ascTitles = app.classicShownSongs();
+    assert.equal(ascTitles[0].title, 'Alpha.flac');
+    assert.equal(ascTitles[ascTitles.length - 1].title, '', 'empty title stays at end in asc');
+
+    titleBtn.click(); // title desc
+    const descTitles = app.classicShownSongs();
+    assert.equal(descTitles[0].title, 'Zulu.flac');
+    assert.equal(descTitles[descTitles.length - 1].title, '', 'empty title stays at end in desc');
+    // Tied "Song 10.flac" tracks preserve original order even in desc
+    const tie1Idx = descTitles.findIndex((x) => x.path === '/m/66.flac');
+    const tie2Idx = descTitles.findIndex((x) => x.path === '/m/tie1.flac');
+    assert.ok(tie1Idx >= 0 && tie2Idx === tie1Idx + 1, 'tied titles preserve original relative order in desc');
+
+    // 3. Low-cardinality artist sort uses rank path & keeps empty artist last in asc and desc
+    artistBtn.click();
+    const ascArtists = app.classicShownSongs();
+    assert.equal(ascArtists[0].artist, 'Artist 0');
+    assert.equal(ascArtists[ascArtists.length - 1].artist, '');
+    artistBtn.click();
+    const descArtists = app.classicShownSongs();
+    assert.equal(descArtists[0].artist, 'Artist 4');
+    assert.equal(descArtists[descArtists.length - 1].artist, '');
+
+    // 4. Numeric duration sort keeps 0-duration tracks last in asc and desc
+    durBtn.click();
+    const ascDur = app.classicShownSongs();
+    assert.equal(ascDur[0].duration, 120);
+    assert.equal(ascDur[ascDur.length - 1].duration, 0);
+    durBtn.click();
+    const descDur = app.classicShownSongs();
+    assert.equal(descDur[0].duration, 999);
+    assert.equal(descDur[descDur.length - 1].duration, 0);
+
+    w.dispatchEvent(new w.Event('beforeunload'));
+    w.close();
+});

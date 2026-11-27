@@ -1959,3 +1959,56 @@ test('Batch 75: palette focuses input before body.music-dock-cmd-open and coales
         window.close();
     }
 });
+
+test('Batch 77: openPanel focuses active tab before body.music-drawer-open/renderBody and skips zero scrollTop write', () => {
+    const { window, doc, app, dock } = setup((a) => {
+        for (let i = 0; i < 20; i += 1) {
+            a.playlist.push({ path: `C:/q${i}.flac`, title: `Queue ${i}`, artist: `Art ${i}`, duration: 180 });
+        }
+        a.getUpNext = () => ({ manual: [], context: a.playlist.slice(1) });
+        a.getHistory = () => [];
+    });
+    try {
+        const tabs = doc.querySelector('[role="tablist"]');
+        const body = doc.querySelector('.md-body');
+        assert.ok(tabs && body);
+        let focusCount = 0;
+        let drawerOpenAtFocus = null;
+        let queueRenderedAtFocus = null;
+        const origFocus = window.HTMLElement.prototype.focus;
+        window.HTMLElement.prototype.focus = function (...args) {
+            if (tabs.contains(this)) {
+                focusCount += 1;
+                drawerOpenAtFocus = doc.body.classList.contains('music-drawer-open');
+                queueRenderedAtFocus = Boolean(body.querySelector('.md-ql'));
+            }
+            return origFocus.apply(this, args);
+        };
+        let zeroScrollWrites = 0;
+        const origScrollDesc = Object.getOwnPropertyDescriptor(window.Element.prototype, 'scrollTop');
+        Object.defineProperty(window.Element.prototype, 'scrollTop', {
+            configurable: true,
+            get() { return origScrollDesc.get.call(this); },
+            set(v) {
+                if (this.classList?.contains('md-ql') && Number(v) === 0) zeroScrollWrites += 1;
+                return origScrollDesc.set.call(this, v);
+            }
+        });
+        try {
+            dock.openPanel('播放列表');
+            assert.equal(focusCount, 1, 'openPanel focuses active tab once');
+            assert.equal(drawerOpenAtFocus, false, 'tab focus runs before body.music-drawer-open is set');
+            assert.equal(queueRenderedAtFocus, false, 'tab focus runs before renderBody builds queue DOM');
+            assert.equal(doc.body.classList.contains('music-drawer-open'), true, 'drawer open class applied after tab focus');
+            assert.ok(body.querySelector('.md-ql'), 'queue list rendered after tab focus');
+            assert.equal(zeroScrollWrites, 0, 'queue opening at top=0 skips redundant scroller.scrollTop=0 write');
+            dock.closePanel();
+        } finally {
+            window.HTMLElement.prototype.focus = origFocus;
+            Object.defineProperty(window.Element.prototype, 'scrollTop', origScrollDesc);
+        }
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

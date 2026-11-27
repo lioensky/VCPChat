@@ -461,3 +461,78 @@ test('Batch 75: archive-list applyQuery reads scrollTop before toggling .al-sq a
         w.close();
     }
 });
+
+test('Batch 77: archive-list applyQuery resets scrollTop before .al-sq and typeInto skips redundant focus with preventScroll', async () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        w.requestAnimationFrame = (fn) => { fn(0); return 1; };
+        w.cancelAnimationFrame = () => {};
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-index.js', 'utf8'));
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-list.js', 'utf8'));
+        const host = w.document.getElementById('host');
+        const tracks = Array.from({ length: 60 }, (_, i) => ({
+            path: `/m/${i}.flac`,
+            title: i % 3 === 0 ? `Live ${i}.flac` : `Track ${i}.flac`,
+            artist: `Artist ${i % 4}`,
+            album: `Album ${i % 2}`,
+            duration: 180
+        }));
+        const index = w.MusicArchiveIndex.createIndex(tracks);
+        const list = w.MusicArchiveList.create({
+            host, app: { playlist: tracks, customPlaylists: [] }, Index: w.MusicArchiveIndex,
+            getIndex: () => index, getRecent: () => [],
+            onResults() {}, onPick() {}, onPlay() {}
+        });
+        const vp = list.el.querySelector('[data-l="viewport"]');
+        let scrollTopVal = 300;
+        const events = [];
+        Object.defineProperty(vp, 'clientHeight', { get: () => 400, configurable: true });
+        Object.defineProperty(vp, 'scrollTop', {
+            get: () => scrollTopVal,
+            set: (v) => { events.push('write-scroll'); scrollTopVal = Number(v) || 0; },
+            configurable: true
+        });
+        list.rebuild();
+        scrollTopVal = 300;
+        await Promise.resolve();
+
+        const origToggle = list.el.classList.toggle.bind(list.el.classList);
+        list.el.classList.toggle = (cls, force) => {
+            if (cls === 'al-sq') events.push('toggle-al-sq');
+            return origToggle(cls, force);
+        };
+        const focusCalls = [];
+        const origFocus = list.input.focus.bind(list.input);
+        list.input.focus = (opts) => { focusCalls.push(opts || null); return origFocus(opts); };
+
+        // 1. typeInto focuses once with { preventScroll: true } and skips focus while already focused
+        list.typeInto('l');
+        list.typeInto('li');
+        list.typeInto('liv');
+        assert.equal(focusCalls.length, 1, 'consecutive typeInto calls only focus input once');
+        assert.equal(focusCalls[0]?.preventScroll, true, 'typeInto focuses with preventScroll: true');
+
+        // 2. applyQuery(true) writes scrollTop=0 BEFORE syncSq() toggles .al-sq
+        await new Promise((r) => setTimeout(r, 45));
+        list.input.blur();
+        list.input.dispatchEvent(new w.FocusEvent('blur'));
+        list.input.value = 'Live';
+        list.input.dispatchEvent(new w.Event('input', { bubbles: true }));
+        // Clear value before the 30ms debounce fires so applyQuery(true) itself must flip .al-sq
+        list.input.value = '';
+        scrollTopVal = 300;
+        vp.dispatchEvent(new w.Event('scroll'));
+        await Promise.resolve();
+        events.length = 0;
+        await new Promise((r) => setTimeout(r, 50));
+        const writeIdx = events.indexOf('write-scroll');
+        const toggleIdx = events.indexOf('toggle-al-sq');
+        assert.ok(writeIdx >= 0 && toggleIdx > writeIdx, `expected write-scroll before toggle-al-sq, got ${JSON.stringify(events)}`);
+        list.destroy();
+    } finally {
+        w.close();
+    }
+});
