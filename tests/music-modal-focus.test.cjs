@@ -412,3 +412,56 @@ test('music-sidebar syncs archiveView and music-like-change when adding/toggling
         dom.window.close();
     }
 });
+
+test('EQ preset & channels dialogs trap navigation keys and cancel stale open rAF on quick close', () => {
+    const dom = new JSDOM('<!doctype html><body><select id="eq-preset-select"></select></body>', {
+        runScripts: 'outside-only',
+        url: 'http://localhost/'
+    });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        let rafSeq = 0;
+        const cancelled = [];
+        window.requestAnimationFrame = () => ++rafSeq;
+        window.cancelAnimationFrame = (id) => cancelled.push(id);
+        let navLeaked = 0;
+        doc.addEventListener('keydown', (e) => {
+            if (e.key.startsWith('Arrow') || e.key === 'PageDown' || e.key === 'Home') navLeaked += 1;
+        });
+        const app = {
+            eqBands: { 32: 0 },
+            eqPresets: { flat: { 32: 0 } },
+            eqPresetSelect: doc.getElementById('eq-preset-select'),
+            populateEqPresets() {}, applyEqPreset() {}, syncEqPresetSelect() {}, updateUIWithState() {},
+            api: { setMusicChannels: async (p) => ({ status: 'success', channels: p }) }
+        };
+        window.eval(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-eq-presets.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-channels.js', 'utf8'));
+        window.MusicEqPresets.setupMusicEqPresets(app);
+        window.MusicChannels.setupMusicChannels(app);
+
+        app.eqUserPresets.promptSave();
+        const eqRaf = rafSeq;
+        const eqCancel = doc.querySelector('.music-eq-name .cancel');
+        eqCancel.focus();
+        eqCancel.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        eqCancel.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true }));
+        assert.equal(navLeaked, 0, 'EQ preset dialog blocks navigation keys on buttons');
+        eqCancel.click();
+        assert.ok(cancelled.includes(eqRaf), 'closing EQ preset dialog cancels pending open rAF');
+
+        app.channels.open();
+        const chRaf = rafSeq;
+        const slider = doc.querySelector('.mchan-slider');
+        slider.focus();
+        slider.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+        slider.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+        assert.equal(navLeaked, 0, 'channels dialog stops navigation keys from leaking to archive/stage');
+        doc.querySelector('.mchan .mstats-close').click();
+        assert.ok(cancelled.includes(chRaf), 'closing channels dialog cancels pending open rAF');
+    } finally {
+        dom.window.close();
+    }
+});
