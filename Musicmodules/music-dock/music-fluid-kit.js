@@ -80,6 +80,7 @@
         el.classList.add('mf-budding');
         // 起点那一滴贴着触发点；整块从起点附近一个小圆角块长到目标大小
         const start = { x: from.x - 14, y: from.y - 14, w: 28, h: 28 };
+        const lagX = Math.abs(rect.left + rect.width / 2 - from.x) < Math.abs(rect.top + rect.height / 2 - from.y);
         let frame = 0;
         let revealed = false;
         return new Promise((resolve) => {
@@ -94,10 +95,10 @@
             };
             running.set(el, done);
             const step = () => {
+                if (!el.isConnected) { done(); return; }
                 const t = Math.min(1, (clock() - t0) / duration);
                 // 横竖不同步：沿离起点远的方向先流过去，另一个方向稍晚才铺开，像倒出来的液体
                 const e = ease(t);
-                const lagX = Math.abs(rect.left + rect.width / 2 - from.x) < Math.abs(rect.top + rect.height / 2 - from.y);
                 const eLag = ease(Math.max(0, (t - 0.1) / 0.9));
                 const ex = lagX ? eLag : e, ey = lagX ? e : eLag;
                 const x = lerp(start.x, rect.left, ex), y = lerp(start.y, rect.top, ey);
@@ -182,21 +183,23 @@
     // 位置是相对父元素的 left/width（像素）。第一次放、降低动态时直接落位。
     // 标记所在的那一排每次都会重画（新的元素）时，传同一个 key，就能接着上一次的位置流过去。
     const slides = new Map();
+    const elSlides = new WeakMap();
     // axis: 'x'（默认，用 left/width）或 'y'（用 top/height，比如歌词里当前那一行背后的那滴）
     function slide(el, to, { lead = 220, trail = 380, key = null, axis = 'x' } = {}) {
         if (!el || !to) return;
         const [P, S] = axis === 'y' ? ['top', 'height'] : ['left', 'width'];
         const goal = { pos: Number(to[P]), size: Number(to[S]) };
         if (!Number.isFinite(goal.pos) || !Number.isFinite(goal.size)) return;
+        const store = key ? slides : elSlides;
         const id = key || el;
-        const prev = slides.get(id);
+        const prev = store.get(id);
         if (prev?.frame) global.cancelAnimationFrame(prev.frame);
         const place = (pos, size) => { el.style[P] = `${pos.toFixed(1)}px`; el.style[S] = `${Math.max(0, size).toFixed(1)}px`; };
         const from = prev?.at;
         const motion = Boolean(global.document?.body) && !global.document.body.classList.contains('music-reduce-motion') && typeof global.requestAnimationFrame === 'function';
         if (!from || !motion || (Math.abs(from.pos - goal.pos) < 0.5 && Math.abs(from.size - goal.size) < 0.5)) {
             place(goal.pos, goal.size);
-            slides.set(id, { at: { ...goal }, frame: 0 });
+            store.set(id, { at: { ...goal }, frame: 0 });
             return;
         }
         el.style.transition = 'none';
@@ -207,8 +210,9 @@
         const t0 = clock();
         const out = (t) => 1 - Math.pow(1 - t, 3);
         const state = { at: { pos: s0, size: from.size }, frame: 0 };
-        slides.set(id, state);
+        store.set(id, state);
         const step = () => {
+            if (!el.isConnected) { state.frame = 0; return; }
             const ms = clock() - t0;
             const a = out(Math.min(1, ms / lead));
             const b = out(Math.min(1, ms / trail));
@@ -342,14 +346,29 @@
         { row: '#music-dock-root .md-quick-g', item: '#music-dock-root .md-quick-g > .md-slot', key: 'md-quick', pad: 0 },
         { row: '#music-dock-root .md-slots', item: '#music-dock-root .md-slots > .md-slot', key: 'md-slots', pad: 0 },
         // 子菜单嵌在「加入歌单」那一项里面，要排在主菜单前面先认
-        { row: '.context-submenu', item: '.context-submenu .submenu-item', key: 'ctx-sub', axis: 'y', pad: 0 },
-        { row: '.context-menu', item: '.context-menu > .context-menu-item', key: 'ctx-menu', axis: 'y', pad: 0 },
-        { row: '.archive-batch-menu', item: '.archive-batch-menu > button', key: 'ar-batch', axis: 'y', pad: 0 },
-        { row: '.archive-list-sort-menu', item: '.archive-list-sort-menu > button', key: 'ar-sort', axis: 'y', pad: 0 },
+        { row: '.context-submenu', item: '.context-submenu .submenu-item', key: 'ctx-sub', axis: 'y', pad: 0, menu: true },
+        { row: '.context-menu', item: '.context-menu > .context-menu-item', key: 'ctx-menu', axis: 'y', pad: 0, menu: true },
+        { row: '.archive-batch-menu', item: '.archive-batch-menu > button', key: 'ar-batch', axis: 'y', pad: 0, menu: true },
+        { row: '.archive-list-sort-menu', item: '.archive-list-sort-menu > button', key: 'ar-sort', axis: 'y', pad: 0, menu: true },
     ];
     const ALL_TRAIL_ROWS = TRAILS.map((t) => t.row).join(', ');
     const watchTrails = () => {
         const doc = global.document;
+        // 仅追踪当前点亮的液体节点，避免每次点击/移出都全 DOM querySelectorAll 或做祖先选择器匹配
+        const activeTrails = new Set();
+        const activeMenuTrails = new Set();
+        const setTrailOn = (drop, on, isMenu) => {
+            if (!drop) return;
+            if (on) {
+                drop.classList.add('mf-on');
+                activeTrails.add(drop);
+                if (isMenu) activeMenuTrails.add(drop);
+            } else {
+                drop.classList.remove('mf-on');
+                activeTrails.delete(drop);
+                activeMenuTrails.delete(drop);
+            }
+        };
         const dropOf = (row) => {
             let drop = row.querySelector(':scope > .mf-trail');
             if (!drop) {
@@ -388,7 +407,7 @@
                 } else {
                     slide(drop, to, { key: t.key, axis: t.axis || 'x', lead: 160, trail: 320 });
                 }
-                drop.classList.add('mf-on');
+                setTrailOn(drop, true, Boolean(t.menu));
                 return;
             }
         };
@@ -404,6 +423,7 @@
             if (visible) follow(target);
         }, true);
         doc.addEventListener('focusout', (event) => {
+            if (!activeTrails.size) return;
             const target = event.target;
             if (!(target instanceof global.Element) || !target.closest(ALL_TRAIL_ROWS)) return;
             for (const t of TRAILS) {
@@ -412,19 +432,22 @@
                 const next = event.relatedTarget;
                 if (next instanceof global.Node && row.contains(next)) return;
                 if (row.matches(':hover')) return;
-                row.querySelector(':scope > .mf-trail')?.classList.remove('mf-on');
+                setTrailOn(row.querySelector(':scope > .mf-trail'), false, false);
                 return;
             }
         }, true);
         // 菜单每次重新打开（右键、点排序按钮……）：上次留下的那一汪先收掉，免得一打开就停在旧的位置
-        const MENUS = ':is(.context-menu, .context-submenu, .archive-batch-menu, .archive-list-sort-menu) > .mf-trail.mf-on';
         const clearMenus = (keep) => {
-            for (const drop of doc.querySelectorAll(MENUS)) if (!keep || !drop.parentElement.contains(keep)) drop.classList.remove('mf-on');
+            if (!activeMenuTrails.size) return;
+            for (const drop of [...activeMenuTrails]) {
+                if (!drop.isConnected || !keep || !drop.parentElement?.contains(keep)) setTrailOn(drop, false, true);
+            }
         };
         doc.addEventListener('contextmenu', () => clearMenus(null), true);
         doc.addEventListener('pointerdown', (event) => clearMenus(event.target instanceof global.Node ? event.target : null), true);
         // 在按钮之间的空隙里不算离开；指针出了整排才淡掉
         doc.addEventListener('pointerout', (event) => {
+            if (!activeTrails.size) return;
             const target = event.target;
             if (!(target instanceof global.Element) || !target.closest(ALL_TRAIL_ROWS)) return;
             for (const t of TRAILS) {
@@ -433,7 +456,7 @@
                 const next = event.relatedTarget;
                 const keep = t.solo ? target.closest(t.item) : row;
                 if (keep && next instanceof global.Node && keep.contains(next)) return;
-                row.querySelector(':scope > .mf-trail')?.classList.remove('mf-on');
+                setTrailOn(row.querySelector(':scope > .mf-trail'), false, false);
                 return;
             }
         }, true);
@@ -464,9 +487,14 @@
                 }
             }).observe(layer, { childList: true });
         };
-        const scan = () => { for (const layer of doc.querySelectorAll('body > .mtst-layer')) attach(layer); };
-        scan();
-        new global.MutationObserver(scan).observe(doc.body, { childList: true });
+        for (const layer of doc.querySelectorAll('body > .mtst-layer')) attach(layer);
+        new global.MutationObserver((records) => {
+            for (const r of records) {
+                for (const node of r.addedNodes) {
+                    if (node.classList?.contains('mtst-layer')) attach(node);
+                }
+            }
+        }).observe(doc.body, { childList: true });
     };
 
     /* 首页目录开合（.archive-hud.list-open）：布局由档案页一次切到终态，这里用 FLIP 把这一下变成连续的移动——

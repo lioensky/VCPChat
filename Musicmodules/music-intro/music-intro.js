@@ -165,9 +165,13 @@
         drawStroke(mp.ring, at(0, 0.55));
         mp.outer.forEach((path, i) => drawStroke(path, at(0.4 + i * 0.07, 0.75 + i * 0.07)));
         mp.inner.forEach((path, i) => drawStroke(path, at(0.8 + i * 0.04, 1.1 + i * 0.04)));
-        mp.core.setAttribute('opacity', t >= t0 + 1.1 * k ? '1' : '0');
+        const coreOp = t >= t0 + 1.1 * k ? '1' : '0';
+        if (mp.core._op !== coreOp) { mp.core._op = coreOp; mp.core.setAttribute('opacity', coreOp); }
     };
-    const drawStroke = (node, p) => node.setAttribute('stroke-dasharray', `${p.toFixed(4)} ${(1 - p + 0.0001).toFixed(4)}`);
+    const drawStroke = (node, p) => {
+        const v = `${p.toFixed(4)} ${(1 - p + 0.0001).toFixed(4)}`;
+        if (node._sd !== v) { node._sd = v; node.setAttribute('stroke-dasharray', v); }
+    };
 
     // ---------- 扫描环（开场与短版共用） ----------
     // local 是扫描段内的秒数；speed 把同一条轨迹压快（短版 1.5 倍）。
@@ -208,10 +212,11 @@
         // 字距从很散收拢到正常
         const tracking = keys([[0, 26], [0.2, 12], [0.4, 5], [0.6, 1.6], [0.8, 0]], t);
         n.scanText.setAttribute('letter-spacing', tracking.toFixed(2));
-        n.scanText.textContent = `${label} ${Math.max(0, Math.round(count))} 首`;
+        const scanLabel = `${label} ${Math.max(0, Math.round(count))} 首`;
+        if (n.scanText.textContent !== scanLabel) n.scanText.textContent = scanLabel;
         const textOut = 1 - smooth(progress(t, 1.02, 1.18));
         n.scanText.style.opacity = String(keys([[0, 0], [0.16, 1]], t) * textOut);
-        n.scanSub.textContent = sub;
+        if (n.scanSub.textContent !== sub) n.scanSub.textContent = sub;
         n.scanSub.style.opacity = String(progress(t, 0.5, 0.7) * textOut);
     };
 
@@ -221,38 +226,57 @@
 
     const renderFull = (n, t, ctx) => {
         const f = frameOf(t);
-        // 访问请求
-        n.access.style.opacity = t < 0.35 || t >= 2.1 ? '0' : f === frameOf(2.0) ? '0.25' : '1';
-        n.accessText.textContent = typed('打开音乐曲库', t, 0.4, 1.0);
-        n.accessCursor.setAttribute('x', String(392 + textWidth(n.accessText) + 4));
-        n.accessCursor.style.opacity = Math.floor(t * 2.5) % 2 ? '0' : '1';
+        // 访问请求（仅在可见区间内更新文本与光标，且文本变化时才调用 getComputedTextLength 避免每帧强制 SVG 布局）
+        const accessOn = t >= 0.35 && t < 2.1;
+        n.access.style.opacity = !accessOn ? '0' : f === frameOf(2.0) ? '0.25' : '1';
+        if (accessOn) {
+            const accessStr = typed('打开音乐曲库', t, 0.4, 1.0);
+            if (n._lastAccessText !== accessStr) {
+                n._lastAccessText = accessStr;
+                n.accessText.textContent = accessStr;
+                n.accessCursor.setAttribute('x', String(392 + textWidth(n.accessText) + 4));
+            }
+            const curOp = Math.floor(t * 2.5) % 2 ? '0' : '1';
+            if (n._lastAccessCurOp !== curOp) { n._lastAccessCurOp = curOp; n.accessCursor.style.opacity = curOp; }
+        }
 
         // 记号描线、音轨竖条升起、文字
-        n.mark.style.opacity = t >= 2.2 && t < FULL.scan ? '1' : '0';
-        // 先画圆周（无穷远），再一条一条画出七条测地线，然后内圈、外圈编织带和中心点
-        drawMark(n.markParts, t, 2.2);
-        n.markWord.textContent = typed('VCP · MUSIC', t, 3.0, 3.45);
-        n.brand.forEach((line, i) => {
-            const p = easeOut(progress(t, 3.3 + i * 0.08, 3.85 + i * 0.08));
-            line.setAttribute('opacity', String(clamp01(p * 3)));
-            line.setAttribute('transform', `translate(${(1 - p) * 60} 0)`);
-        });
-        n.mark.setAttribute('transform', `translate(${keys([[2.2, 70], [3.4, 70], [3.9, 0]], t)} 0)`);
+        const markOn = t >= 2.2 && t < FULL.scan;
+        n.mark.style.opacity = markOn ? '1' : '0';
+        if (markOn) {
+            // 先画圆周（无穷远），再一条一条画出七条测地线，然后内圈、外圈编织带和中心点
+            drawMark(n.markParts, t, 2.2);
+            const word = typed('VCP · MUSIC', t, 3.0, 3.45);
+            if (n._lastMarkWord !== word) { n._lastMarkWord = word; n.markWord.textContent = word; }
+            n.brand.forEach((line, i) => {
+                const p = easeOut(progress(t, 3.3 + i * 0.08, 3.85 + i * 0.08));
+                line.setAttribute('opacity', String(clamp01(p * 3)));
+                line.setAttribute('transform', `translate(${(1 - p) * 60} 0)`);
+            });
+            n.mark.setAttribute('transform', `translate(${keys([[2.2, 70], [3.4, 70], [3.9, 0]], t)} 0)`);
+        }
 
         // 身份核验
-        n.auth.style.opacity = t >= 3.6 && t < 6.2 ? '1' : '0';
-        let auth = '';
-        if (t < 4.75) {
-            auth = typed('你好', t, 3.6, 3.8);
-            if (t >= 4.12 && ctx.name) auth += '，' + typed(ctx.name, t, 4.15, 4.5);
-        } else if (t < 5.35) auth = typed('读取曲库', t, 4.8, 5.05);
-        else {
-            auth = typed('排列档案', t, 5.4, 5.62);
-            if (t >= 5.78) auth += '.'.repeat(Math.min(3, 1 + Math.floor((t - 5.78) / 0.12)));
+        const authOn = t >= 3.6 && t < 6.2;
+        n.auth.style.opacity = authOn ? '1' : '0';
+        if (authOn) {
+            let auth = '';
+            if (t < 4.75) {
+                auth = typed('你好', t, 3.6, 3.8);
+                if (t >= 4.12 && ctx.name) auth += '，' + typed(ctx.name, t, 4.15, 4.5);
+            } else if (t < 5.35) auth = typed('读取曲库', t, 4.8, 5.05);
+            else {
+                auth = typed('排列档案', t, 5.4, 5.62);
+                if (t >= 5.78) auth += '.'.repeat(Math.min(3, 1 + Math.floor((t - 5.78) / 0.12)));
+            }
+            if (n._lastAuthText !== auth) {
+                n._lastAuthText = auth;
+                n.authText.textContent = auth;
+                n.authCursor.setAttribute('x', String(410 + textWidth(n.authText) + 4));
+            }
+            const curOp = Math.floor(t * 2.5) % 2 ? '0' : '1';
+            if (n._lastAuthCurOp !== curOp) { n._lastAuthCurOp = curOp; n.authCursor.style.opacity = curOp; }
         }
-        n.authText.textContent = auth;
-        n.authCursor.setAttribute('x', String(410 + textWidth(n.authText) + 4));
-        n.authCursor.style.opacity = Math.floor(t * 2.5) % 2 ? '0' : '1';
 
         // 扫描环：曲库计数跟着环收拢一起数上来
         const scanOn = t >= FULL.scan && t < FULL.welcome;
@@ -278,7 +302,8 @@
             n.welcomeRule.setAttribute('width', String(256 * easeOut(progress(t, 8.3, 8.7))));
             const subOn = t >= 8.55 && !(f === frameOf(8.63) || f === frameOf(8.71));
             n.welcomeSub.style.opacity = subOn ? '1' : '0';
-            n.welcomeSub.textContent = `曲库 ${Math.max(0, Math.round(ctx.count()))} 首`;
+            const welcomeCount = `曲库 ${Math.max(0, Math.round(ctx.count()))} 首`;
+            if (n.welcomeSub.textContent !== welcomeCount) n.welcomeSub.textContent = welcomeCount;
             n.welcomeMark.style.opacity = t >= 8.4 ? '1' : '0';
             const exit = smooth(progress(t, FULL.exit, FULL.exit + 0.36));
             n.welcomeInner.setAttribute('transform', `translate(${CX} ${CY}) scale(${1 - 0.46 * exit}) translate(${-CX} ${-CY})`);
@@ -726,10 +751,13 @@
         };
         // 冒泡阶段挂在 document 上：底栏面板、搜索框先各自处理 Esc 并拦住，轮到这里才是「退出舞台」；宿主绑在 window 上，排在后面。
         document.addEventListener('keydown', onEscape);
+        let waitTimer = null;
         if (adoptAllowed && !adoptHost()) {
             // 舞台宿主一般先于这里初始化；万一还没有，等它出现
             let tries = 0;
-            const wait = setInterval(() => { if (adoptHost() || ++tries > 50) clearInterval(wait); }, 200);
+            waitTimer = setInterval(() => {
+                if (adoptHost() || ++tries > 50) { clearInterval(waitTimer); waitTimer = null; }
+            }, 200);
         }
 
         // 兜底：没走上面入口、舞台自己变了（比如宿主内部直接退出），MutationObserver 在首帧绘制之前回调，按住舞台再盖。
@@ -767,6 +795,13 @@
         };
         watchModeRoot();
         if (!modeObserver) document.addEventListener('DOMContentLoaded', watchModeRoot, { once: true });
+        global.addEventListener?.('beforeunload', () => {
+            if (waitTimer) { clearInterval(waitTimer); waitTimer = null; }
+            document.removeEventListener('keydown', onEscape);
+            bodyObserver.disconnect();
+            modeObserver?.disconnect();
+            modeObserver = null;
+        }, { once: true });
 
         const api = {
             /** 重新放一遍完整开场（设置里「播放完整开场」调用这个）。 */

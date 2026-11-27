@@ -162,15 +162,26 @@
         // 真点「播放列表」时抽屉只需要滑出来。画好以后歌、列表或队列变了就作废，照常重画。
         let prebuilt = null;
         let prebuildTimer = 0;
+        let prebuildIdleId = 0;
+        const cancelPrebuild = () => {
+            clearTimeout(prebuildTimer);
+            prebuildTimer = 0;
+            if (prebuildIdleId && typeof global.cancelIdleCallback === 'function') {
+                global.cancelIdleCallback(prebuildIdleId);
+            }
+            prebuildIdleId = 0;
+        };
         const queueSig = () => [currentTrack()?.path, app.currentFilteredTracks, app.currentFilteredTracks?.length,
             app.filteredPlaylistSource, app.playbackSourceName?.(), app.radio?.list, app.isPlaying === true, document.body.classList.contains('light-theme')];
         const prebuiltFresh = () => Boolean(prebuilt) && performance.now() - prebuilt.at < 8000
             && queueSig().every((value, index) => value === prebuilt.sig[index]);
         const schedulePrebuild = () => {
-            clearTimeout(prebuildTimer);
+            cancelPrebuild();
             // 等「更多」那组按钮展开的动画走完再画，别把卡顿挪到展开动画里。
             prebuildTimer = setTimeout(() => {
+                prebuildTimer = 0;
                 const run = () => {
+                    prebuildIdleId = 0;
                     if (state.panelOpen || state.destroyed || !el.quick.classList.contains('md-show') || prebuiltFresh()) return;
                     const was = state.tab;
                     state.tab = '播放列表';
@@ -178,11 +189,11 @@
                     state.tab = was;
                     prebuilt = { sig: queueSig(), at: performance.now() };
                 };
-                if (typeof global.requestIdleCallback === 'function') global.requestIdleCallback(run, { timeout: 200 });
+                if (typeof global.requestIdleCallback === 'function') prebuildIdleId = global.requestIdleCallback(run, { timeout: 200 });
                 else run();
             }, 320);
         };
-        cleanups.push(() => clearTimeout(prebuildTimer));
+        cleanups.push(cancelPrebuild);
         listen(document, 'music-queue-change', () => { prebuilt = null; });
 
         function rerenderQueue() {
@@ -239,7 +250,10 @@
                     let shift = 0;
                     if (d.from < d.to && i > d.from && i <= d.to) shift = -QUEUE_ROW_H;
                     if (d.from > d.to && i < d.from && i >= d.to) shift = QUEUE_ROW_H;
-                    node.style.transform = shift ? `translateY(${shift}px)` : '';
+                    if (node._qShift !== shift) {
+                        node._qShift = shift;
+                        node.style.transform = shift ? `translateY(${shift}px)` : '';
+                    }
                 }
             };
             const detachDrag = () => {

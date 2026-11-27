@@ -222,8 +222,41 @@
             };
         };
 
+        // 曲目路径映射缓存：避免每次打开面板或每次按键都重建整份 O(N) 曲库 Map
+        let cachedPathList = null;
+        let cachedPathLen = -1;
+        let cachedPathFirst = null;
+        let cachedPathLast = null;
+        let cachedByPath = null;
+        let cachedBySongId = null;
+        const getTrackMaps = () => {
+            const tracks = app.playlist || [];
+            const len = tracks.length;
+            const first = len ? tracks[0] : null;
+            const last = len ? tracks[len - 1] : null;
+            if (cachedByPath && cachedPathList === app.playlist && cachedPathLen === len
+                && cachedPathFirst === first && cachedPathLast === last) {
+                return { byPath: cachedByPath, bySongId: cachedBySongId };
+            }
+            const byPath = new Map();
+            const bySongId = new Map();
+            for (let i = 0; i < len; i++) {
+                const t = tracks[i];
+                if (!t) continue;
+                byPath.set(t.path, t);
+                bySongId.set(`song:${t.path}`, { track: t, index: i });
+            }
+            cachedPathList = app.playlist;
+            cachedPathLen = len;
+            cachedPathFirst = first;
+            cachedPathLast = last;
+            cachedByPath = byPath;
+            cachedBySongId = bySongId;
+            return { byPath, bySongId };
+        };
+
         const playlistTracks = (pl, byPath) => {
-            const map = byPath || new Map((app.playlist || []).map((t) => [t.path, t]));
+            const map = byPath || getTrackMaps().byPath;
             return (pl.tracks || []).map((p) => map.get(p)).filter(Boolean);
         };
         const playlistItem = (pl, group = '歌单', byPath) => {
@@ -329,13 +362,7 @@
 
         const recentItems = () => {
             const all = commands();
-            const byPath = new Map();
-            const bySongId = new Map();
-            (app.playlist || []).forEach((t, i) => {
-                if (!t) return;
-                byPath.set(t.path, t);
-                bySongId.set(`song:${t.path}`, { track: t, index: i });
-            });
+            const { byPath, bySongId } = getTrackMaps();
             return readRecent().map((id) => {
                 if (id.startsWith('song:')) { const hit = bySongId.get(id); return hit ? { ...songItem(hit.track, '最近', hit.index), section: '最近' } : null; }
                 if (id.startsWith('playlist:')) {
@@ -375,7 +402,7 @@
                         .sort((a, b) => b.s - a.s)
                         .slice(0, 6);
                     if (matchedPlaylists.length) {
-                        const byPath = new Map((app.playlist || []).map((t) => [t.path, t]));
+                        const { byPath } = getTrackMaps();
                         matchedPlaylists.forEach((x) => playlists.push(playlistItem(x.pl, '歌单', byPath)));
                     }
                 }
@@ -600,6 +627,9 @@
                 if (resizeRaf) { global.cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
                 document.removeEventListener('keydown', onGlobalKey, true);
                 global.removeEventListener('resize', onResize);
+                cachedPathList = cachedPathFirst = cachedPathLast = cachedByPath = cachedBySongId = null;
+                searchIndex = indexedList = null;
+                pinyinCache.clear();
                 root.remove();
             }
         };

@@ -36,6 +36,9 @@
         let cameraY = 0, cameraX = 0, cameraScale = 1;
         let paperWidth = 1, paperHeight = 1;
         let shapes = [];
+        let bgDirty = true;
+        // 同一行播放期间起止镜头焦点与飞跃时长是常量，缓存起来避免每帧多跑 2 次全字形 readingFocus
+        const cameraEdgeCache = { key: '', from: null, entry: null, distance: 0, duration: 0.05 };
         const still = U.createStillGate();
         const tuning = () => mode.config.modes?.fume || {};
         const intensity = () => global.MusicStageRuntime.isReducedMotion(reduced) ? 0 : value(mode.config.animationIntensity, 1);
@@ -59,6 +62,8 @@
             if (w !== width || h !== height) dirty = true;
             if (w === width && h === height && dpr === pixelRatio) return;
             width = w; height = h; pixelRatio = dpr;
+            bgDirty = true;
+            cameraEdgeCache.key = '';
             canvas.width = Math.round(w * dpr);
             canvas.height = Math.round(h * dpr);
             canvas.style.width = `${w}px`;
@@ -69,6 +74,7 @@
         const compile = () => {
             mounted.forEach(entry => entry.element.remove());
             mounted.clear();
+            cameraEdgeCache.key = '';
             const t = tuning();
             const heroScale = value(t.heroScale, 1, 0.82, 1.32);
             const spacing = value(t.articleSpacing, 1, 0.65, 1.6);
@@ -129,6 +135,8 @@
             element.style.width = `${block.width}px`;
             text.style.fontSize = `${block.fontSize}px`;
             element.append(number, text);
+            let glyphStartAt = Infinity;
+            let glyphDoneAt = -Infinity;
             const glyphs = buildGlyphTimeline(block.line).map(timing => {
                 const span = createElement('span', 'fume-print-glyph', timing.text);
                 const glyph = {
@@ -139,6 +147,9 @@
                     wordIndex: timing.wordIndex,
                     syllableIndex: timing.syllableIndex
                 };
+                if (timing.startTime < glyphStartAt) glyphStartAt = timing.startTime;
+                const finishAt = Math.max(timing.endTime, timing.startTime + 0.04);
+                if (finishAt > glyphDoneAt) glyphDoneAt = finishAt;
                 text.appendChild(span);
                 return glyph;
             });
@@ -146,7 +157,7 @@
             element.style.top = `${block.y}px`;
             if (measuring) element.style.visibility = 'hidden';
             world.appendChild(element);
-            const entry = { element, text, number, glyphs };
+            const entry = { element, text, number, glyphs, glyphStartAt, glyphDoneAt, _glyphPhase: '' };
             if (!measuring) mounted.set(block.index, entry);
             return entry;
         };
@@ -253,15 +264,25 @@
             const stepped = tuning().cameraMode === 'stepped';
             const target = readingFocus(block, time, stepped);
             if (intensity() === 0) return target;
-            const previous = blocks[Math.max(0, index - 1)];
             const speed = value(tuning().cameraSpeed, 1, 0.55, 1.85);
-            const from = index === 0 ? overview() : readingFocus(previous, block.line.startTime, stepped);
-            const entry = readingFocus(block, block.line.startTime, stepped);
-            const distance = Math.hypot(entry.x - from.x, entry.y - from.y);
-            const duration = Math.min(
-                Math.max(0.05, (block.line.endTime - block.line.startTime) * 0.42),
-                clamp(0.65 + distance / Math.max(width, height) * 0.35, 0.65, 1.8) / speed
-            );
+            const box = card.box;
+            const edgeKey = `${index}|${width}x${height}|${stepped ? 1 : 0}|${speed}|${box ? `${box.right},${box.bottom}` : ''}`;
+            if (cameraEdgeCache.key !== edgeKey) {
+                const previous = blocks[Math.max(0, index - 1)];
+                const from = index === 0 ? overview() : readingFocus(previous, block.line.startTime, stepped);
+                const entry = readingFocus(block, block.line.startTime, stepped);
+                const distance = Math.hypot(entry.x - from.x, entry.y - from.y);
+                const duration = Math.min(
+                    Math.max(0.05, (block.line.endTime - block.line.startTime) * 0.42),
+                    clamp(0.65 + distance / Math.max(width, height) * 0.35, 0.65, 1.8) / speed
+                );
+                cameraEdgeCache.key = edgeKey;
+                cameraEdgeCache.from = from;
+                cameraEdgeCache.entry = entry;
+                cameraEdgeCache.distance = distance;
+                cameraEdgeCache.duration = duration;
+            }
+            const { from, distance, duration } = cameraEdgeCache;
             const p = ease((time - block.line.startTime) / duration);
             const pose = interpolate(from, target, p);
             // A smooth zoom-out bridge reveals the page while crossing distant columns.
@@ -292,9 +313,13 @@
 
         const drawBackground = frame => {
             if (!context) return;
-            context.clearRect(0, 0, width, height);
             const t = tuning();
-            if (t.geometricBackground === false || value(t.backgroundOpacity, 0.5, 0, 1) === 0) return;
+            if (t.geometricBackground === false || value(t.backgroundOpacity, 0.5, 0, 1) === 0) {
+                if (bgDirty) { context.clearRect(0, 0, width, height); bgDirty = false; }
+                return;
+            }
+            context.clearRect(0, 0, width, height);
+            bgDirty = true;
             const strength = intensity();
             const detail = value(t.backgroundDetail, 0.6, 0, 1);
             const breeze = value(t.backgroundMotion, 1) * strength;
@@ -408,6 +433,13 @@
                     if (entry._cur !== current) { entry._cur = current; entry.element.classList.toggle('is-current', current); }
                     // Keep measured geometry stable when hiding the decorative header.
                     if (entry._vis !== numVis) { entry._vis = numVis; entry.number.style.visibility = numVis; }
+                    // 已完全印完或尚未开始印的块直接按阶段跳过整段逐字循环，倒播/跳播回区间内时自动恢复逐字刷新
+                    const phase = !entry.glyphs.length ? 'empty'
+                        : time >= entry.glyphDoneAt ? 'done'
+                        : time < entry.glyphStartAt ? (current ? 'current-pre' : 'future')
+                        : 'live';
+                    if (phase !== 'live' && entry._glyphPhase === phase) return;
+                    entry._glyphPhase = phase;
                     entry.glyphs.forEach(glyph => {
                         const progress = clamp((time - glyph.start) / Math.max(0.04, glyph.end - glyph.start));
                         const printed = time >= glyph.start;
@@ -463,6 +495,7 @@
         });
         mode.scope.add(() => {
             mounted.clear(); blocks = []; shapes = []; lines = null; latestFrame = null;
+            cameraEdgeCache.key = ''; cameraEdgeCache.from = cameraEdgeCache.entry = null;
             canvas.width = canvas.height = 1;
         });
         resize();

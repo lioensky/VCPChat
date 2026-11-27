@@ -19,6 +19,10 @@
     const TYPING_LEAD = 0.9;         // 开唱前多久显示「正在输入」
     const VOICE_GAP = 4.5;           // 两句之间空这么久就发一条语音
     const BARS = 28;                 // 语音波形的格数
+    const BAR_WEIGHTS = Float32Array.from({ length: BARS }, (_, i) => {
+        const mirror = Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
+        return Math.pow(1 - mirror, 1.6) * 0.6;
+    });
 
     // 群成员：名字和头像颜色（色相）。「我」在右边。
     const MEMBERS = Object.freeze([
@@ -136,7 +140,11 @@
         zzz: `<text x="35" y="12" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">z</text><text x="40" y="7" font-size="5" font-weight="700" fill="currentColor" font-family="sans-serif">z</text>`,
         sweat: `<path d="M37.4 17.6 Q39.6 21.6 38.2 23.4 Q36.2 24.2 35.8 22.2 Q36 20.2 37.4 17.6 Z" fill="#9ad8ff" stroke="${LINE}" stroke-width="0.5"/>`
     };
+    const faceCache = new Map();
     const face = (name, { eyes = 'open', mouth = 'sing', prop = null, bg = true } = {}) => {
+        const key = `${name}|${eyes}|${mouth}|${prop || ''}|${bg ? 1 : 0}`;
+        const hit = faceCache.get(key);
+        if (hit !== undefined) return hit;
         const L = LOOKS[name] || LOOKS['阿澈'];
         const hair = HAIR[L.hair];
         const c = L.hairCol;
@@ -153,8 +161,10 @@
         const ahoge = L.ahoge ? `<path d="M24.4 8.8 Q25 4 29.6 3.8 Q26.6 5.4 26.2 9 Z" fill="${c}" stroke="${LINE}" stroke-width="0.6" stroke-linejoin="round"/>` : '';
         const glasses = L.glasses ? `<g fill="none" stroke="${LINE}" stroke-width="0.8"><rect x="15" y="25.2" width="7.6" height="6.4" rx="2.2"/><rect x="25.4" y="25.2" width="7.6" height="6.4" rx="2.2"/><path d="M22.6 27.4 L25.4 27.4"/></g>` : '';
         const phones = L.phones ? `<path d="M9.8 26 C9.4 10.4 38.6 10.4 38.2 26" stroke="${LINE}" stroke-width="2.4" fill="none"/><path d="M9.8 26 C9.4 10.4 38.6 10.4 38.2 26" stroke="#3a3a44" stroke-width="1.4" fill="none"/><rect x="7" y="22.8" width="5" height="8.4" rx="2.4" fill="#3a3a44" stroke="${LINE}" stroke-width="${SW}"/><rect x="36" y="22.8" width="5" height="8.4" rx="2.4" fill="#3a3a44" stroke="${LINE}" stroke-width="${SW}"/>` : '';
-        return `<svg class="gcf" viewBox="0 0 48 48" aria-hidden="true">${bg ? `<circle cx="24" cy="24" r="24" fill="${bgFill}"/>` : ''}`
+        const svg = `<svg class="gcf" viewBox="0 0 48 48" aria-hidden="true">${bg ? `<circle cx="24" cy="24" r="24" fill="${bgFill}"/>` : ''}`
             + `${hair.back(c)}${body}${head}${EYES[eyes](L)}${MOUTH[mouth]}${front}${shine}${ahoge}${hair.extra ? hair.extra(c) : ''}${glasses}${phones}${prop ? PROPS[prop] : ''}</svg>`;
+        faceCache.set(key, svg);
+        return svg;
     };
            // 间奏长过这么久，语音之后再来一个表情
 
@@ -536,13 +546,13 @@
             row.wasLive = true;
             const spec = frame.audio?.spectrum || [];
             const n = spec.length;
-            row.bars.forEach((b, i) => {
-                const mirror = Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
-                const v = n ? clamp(Number(spec[Math.floor(Math.pow(1 - mirror, 1.6) * n * 0.6)]) || 0, 0, 1) : 0;
+            for (let i = 0; i < row.bars.length; i += 1) {
+                const b = row.bars[i];
+                const v = n ? clamp(Number(spec[Math.floor(BAR_WEIGHTS[i] * n)]) || 0, 0, 1) : 0;
                 const h = clamp(0.14 + v * 1.1 * s.audioReactivity, 0.12, 1);
                 const tr = `scaleY(${h.toFixed(3)})`;
                 if (b._tr !== tr) { b._tr = tr; b.style.transform = tr; }
-            });
+            }
         };
 
         const updateHeader = (frame, typing, s) => {
@@ -585,14 +595,15 @@
                     const m = messages[shownUpTo];
                     // 刚建好对话、第一条还没到（index = -1）时 shownUpTo 会走到 -1：没有这条消息，跳过
                     if (!m) continue;
-                    const prevActive = rows.filter(r => r.glyphs && !r.done);
-                    prevActive.forEach((r) => {
+                    for (let i = 0; i < rows.length; i += 1) {
+                        const r = rows[i];
+                        if (!r.glyphs || r.done) continue;
                         r.text.textContent = r.message.line.fullText;
                         r.shown = r.glyphs.length;
                         r.el.classList.remove('is-active');
                         r.el.classList.add('is-past');
                         finish(r, s, true);
-                    });
+                    }
                     if (typingFor === m) { typingRow?.el.remove(); typingRow = null; typingFor = null; }
                     const row = makeRow(m, false, s);
                     pushRow(row, !s.reducedMotion && s.live);
@@ -619,9 +630,16 @@
             if (onset && frame.isPlaying && !s.reducedMotion) {
                 const active = rows.find(r => r.glyphs && !r.done);
                 if (active) {
-                    active.bubble.classList.remove('is-thump');
-                    void active.bubble.offsetWidth;
-                    active.bubble.classList.add('is-thump');
+                    if (typeof active.bubble.animate === 'function') {
+                        active.bubble.animate(
+                            [{ transform: 'scale(1)' }, { transform: 'scale(1.025)', offset: 0.4 }, { transform: 'scale(1)' }],
+                            { duration: 220, easing: 'ease-out' }
+                        );
+                    } else {
+                        active.bubble.classList.remove('is-thump');
+                        void active.bubble.offsetWidth;
+                        active.bubble.classList.add('is-thump');
+                    }
                 }
             }
             const chorusNow = rows.some(r => r.message.chorus && !r.done);
@@ -651,6 +669,15 @@
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); lastDraw = -Infinity; if (latest) mode.updateFrame(latest); };
         mode.updateTheme = () => {};
         mode.scope.listen(global, 'music-motion-change', refresh);
+        mode.scope.add(() => {
+            rows = [];
+            messages = [];
+            threadFor = null;
+            typingRow = null;
+            typingFor = null;
+            voiceRow = null;
+            latest = null;
+        });
         mode.getDebugSnapshot = () => ({ initialized: true, messages: messages.length, rows: stats.rows, rebuilds: stats.rebuilds });
         return mode;
     };

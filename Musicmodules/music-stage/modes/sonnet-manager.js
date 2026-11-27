@@ -107,7 +107,12 @@
             renderedKey = '';
             still.invalidate();
         };
+        mode.scope.listen(global, 'music-motion-change', () => {
+            still.invalidate();
+            if (latestFrame) mode.updateFrame(latestFrame);
+        });
         mode.scope.add(() => {
+            latestFrame = null;
             director?.destroy();
         });
 
