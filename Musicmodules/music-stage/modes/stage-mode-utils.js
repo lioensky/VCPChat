@@ -108,8 +108,12 @@
         return app.stagePalette;
     };
 
+    const DEFAULT_ACCENT = Object.freeze({ r: 121, g: 216, b: 255 });
     const resolveAccent = (app) => {
-        const color = app?.stagePalette?.accentRgb || app?.visualizerColor || { r: 121, g: 216, b: 255 };
+        const pal = app?.stagePalette?.accentRgb;
+        if (pal && Number.isFinite(pal.r) && Number.isFinite(pal.g) && Number.isFinite(pal.b)) return pal;
+        const color = app?.visualizerColor;
+        if (!color) return DEFAULT_ACCENT;
         return {
             r: clamp(Number.isFinite(color.r) ? color.r : 121, 0, 255),
             g: clamp(Number.isFinite(color.g) ? color.g : 216, 0, 255),

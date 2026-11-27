@@ -492,7 +492,8 @@ body.music-reduce-motion .aw-table .aw-tile.is-open .aw-in { animation: none; }
 body.music-reduce-motion .archive-wall.aw-table::after,
 body.music-fl-low .archive-wall.aw-table::after { display: none; }
 body.music-fl-low #music-archive-view .aw-panel-acts button,
-body.music-fl-low #music-archive-view .aw-locate { -webkit-backdrop-filter: none; backdrop-filter: none; }
+body.music-fl-low #music-archive-view .aw-locate,
+body.music-fl-low #music-archive-view .aw-panel-acts button { -webkit-backdrop-filter: none; backdrop-filter: none; }
 body.music-fl-low #music-archive-view .aw-panel-acts button:not(.aw-primary) { background: rgba(18, 22, 28, .62); }
 body.music-fl-low #music-archive-view .aw-locate { background: rgba(var(--ar-paper-rgb), .94); }
 

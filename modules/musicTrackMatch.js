@@ -27,25 +27,33 @@ function splitQuery(q) {
     return parts.length === 2 ? parts : null;
 }
 
-function scoreTrack(track, q, qs, pair) {
+function scoreTrack(track, q, qs, pair, minScore = 0) {
     const title = norm(track.title || (track.path ? String(track.path).split(/[\\/]/).pop() : ''));
-    const artist = norm(track.artist);
-    const album = norm(track.album);
-    const titleS = stripNoise(title);
-    if (!title && !artist) return 0;
-    if (title === q || (qs && titleS === qs)) return 100;
-    if (pair) {
-        const [a, b] = pair;
-        const has = (field, part) => field && (field === part || field.includes(part));
-        if ((has(title, a) && has(artist, b)) || (has(title, b) && has(artist, a))) {
-            return (title === a || title === b) ? 95 : 90;
+    const titleS = title ? stripNoise(title) : '';
+    if (title && (title === q || (qs && titleS === qs))) return 100;
+    let artist = null;
+    const getArtist = () => (artist === null ? (artist = norm(track.artist)) : artist);
+    if (pair && minScore < 95) {
+        const aName = getArtist();
+        if (title || aName) {
+            const [a, b] = pair;
+            const has = (field, part) => field && (field === part || field.includes(part));
+            if ((has(title, a) && has(aName, b)) || (has(title, b) && has(aName, a))) {
+                return (title === a || title === b) ? 95 : 90;
+            }
         }
     }
-    if (title.startsWith(q)) return 80;
-    if (title.includes(q) || (qs && titleS.includes(qs))) return 60;
-    if (artist && artist === q) return 40;
-    if (artist && artist.includes(q)) return 30;
-    if (album && album.includes(q)) return 20;
+    if (minScore < 80 && title && title.startsWith(q)) return 80;
+    if (minScore < 60 && title && (title.includes(q) || (qs && titleS.includes(qs)))) return 60;
+    if (minScore < 40) {
+        const aName = getArtist();
+        if (aName && aName === q) return 40;
+        if (minScore < 30 && aName && aName.includes(q)) return 30;
+    }
+    if (minScore < 20) {
+        const album = norm(track.album);
+        if (album && album.includes(q)) return 20;
+    }
     return 0;
 }
 
@@ -59,7 +67,7 @@ function findTrack(playlist, target) {
     let bestScore = 0;
     for (const track of playlist) {
         if (!track || typeof track !== 'object') continue;
-        const score = scoreTrack(track, q, qs, pair);
+        const score = scoreTrack(track, q, qs, pair, bestScore);
         if (score > bestScore) { best = track; bestScore = score; }
         if (score === 100) break;
     }

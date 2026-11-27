@@ -36,6 +36,11 @@
             width: 0,
             height: 0,
             dpr: 1,
+            inset: 10,
+            horizontalAmplitude: 24,
+            verticalAmplitude: 20,
+            horizontalCount: 64,
+            verticalCount: 40,
             drawnAt: 0,
             pausedAt: 0,
             blank: false,
@@ -80,7 +85,8 @@
                 || edgeCanvasState.height !== height
                 || edgeCanvasState.dpr !== dpr
             ) {
-                const { horizontalBand, verticalBand } = edgeMetrics(width, height);
+                const metrics = edgeMetrics(width, height);
+                const { horizontalBand, verticalBand } = metrics;
                 const boxes = {
                     top: [0, 0, width, horizontalBand],
                     bottom: [0, height - horizontalBand, width, horizontalBand],
@@ -102,6 +108,11 @@
                 edgeCanvasState.width = width;
                 edgeCanvasState.height = height;
                 edgeCanvasState.dpr = dpr;
+                edgeCanvasState.inset = metrics.inset;
+                edgeCanvasState.horizontalAmplitude = metrics.horizontalAmplitude;
+                edgeCanvasState.verticalAmplitude = metrics.verticalAmplitude;
+                edgeCanvasState.horizontalCount = clamp(Math.round(width / 15), 44, 104);
+                edgeCanvasState.verticalCount = clamp(Math.round(height / 15), 28, 72);
                 edgeCanvasState.drawnAt = 0;
                 edgeCanvasState.pausedAt = 0;
                 edgeCanvasState.blank = false;
@@ -172,7 +183,10 @@
                     const lo = center > radius ? center - radius : 0;
                     const hi = center + radius < maxIdx ? center + radius : maxIdx;
                     let total = 0;
-                    for (let bi = lo; bi <= hi; bi += 1) total += Number(spectrum[bi]) || 0;
+                    for (let bi = lo; bi <= hi; bi += 1) {
+                        const v = +spectrum[bi];
+                        if (v > 0) total += v;
+                    }
                     const value = total / (hi - lo + 1);
                     const sample = value > 0.025 ? clamp(Math.pow(value - 0.025, 0.78)) : 0;
                     energy = sample * lookup.fades[index] * idleScale;
@@ -196,7 +210,6 @@
 
         const strokeEdgePair = (edgeContext, points, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow) => {
             if (!edgeContext || points.length < 4) return;
-            edgeContext.save();
             edgeContext.beginPath();
             edgeContext.moveTo(points[0], points[1]);
             for (let index = 2; index < points.length - 2; index += 2) {
@@ -221,7 +234,6 @@
             edgeContext.shadowColor = lightGlow ? 'transparent' : mainShadow;
             edgeContext.shadowBlur = lightGlow ? 0 : 3.5;
             edgeContext.stroke();
-            edgeContext.restore();
         };
 
         const release = () => {
@@ -249,13 +261,19 @@
                 return;
             }
             if (!edgeContext) return;
-            if (global.MusicStageRuntime.isReducedMotion(prefersReducedMotion) || !frame.audio.spectrum?.length) {
-                if (!edgeCanvasState.blank && edgeCanvasState.width > 0) clearEdgeStrips();
+            const reducedMotion = global.MusicStageRuntime.isReducedMotion(prefersReducedMotion);
+            if (reducedMotion || !frame.audio.spectrum?.length) {
+                if (!edgeCanvasState.blank && edgeCanvasState.width > 0) {
+                    clearEdgeStrips();
+                    if (reducedMotion) release();
+                } else if (reducedMotion && edgeCanvasState.width > 0) {
+                    release();
+                }
                 edgeCanvasState.blank = true;
                 return;
             }
             if (!resizeEdgeCanvas(frame)) return;
-            const { width, height } = edgeCanvasState;
+            const { width, height, inset, horizontalAmplitude, verticalAmplitude, horizontalCount, verticalCount } = edgeCanvasState;
             // A paused stage holds a faint, still line: let it settle for a
             // moment after the pause, then leave the canvases alone.
             // While playing, pace 4-canvas shadowBlur rasterization to match the quality tier.
@@ -276,9 +294,6 @@
 
             const spectrum = frame.audio.spectrum;
             const color = global.MusicStageModeUtils.resolveAccent(app);
-            const { inset, horizontalAmplitude, verticalAmplitude } = edgeMetrics(width, height);
-            const horizontalCount = clamp(Math.round(width / 15), 44, 104);
-            const verticalCount = clamp(Math.round(height / 15), 28, 72);
             const idleScale = frame.isPlaying ? 1 : 0.12;
 
             const top = ensureEdgeBuffer('top', horizontalCount);
@@ -293,10 +308,10 @@
             const alpha = 0.28 + frame.audio.power * 0.62;
             const glowAlpha = alpha * 0.5;
             const rgb = `${color.r}, ${color.g}, ${color.b}`;
-            const glowStroke = `rgba(${rgb}, ${glowAlpha})`;
-            const glowShadow = `rgba(${rgb}, ${Math.min(0.9, glowAlpha * 1.45)})`;
-            const mainStroke = `rgba(${rgb}, ${alpha})`;
-            const mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45)})`;
+            const glowStroke = `rgba(${rgb}, ${glowAlpha.toFixed(3)})`;
+            const glowShadow = `rgba(${rgb}, ${Math.min(0.9, glowAlpha * 1.45).toFixed(3)})`;
+            const mainStroke = `rgba(${rgb}, ${alpha.toFixed(3)})`;
+            const mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45).toFixed(3)})`;
             const lightGlow = state.config.quality === 'energy-saving';
             strokeEdgePair(edgeStrips.top.context, top, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
             strokeEdgePair(edgeStrips.right.context, right, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);

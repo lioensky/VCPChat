@@ -72,7 +72,7 @@
 
 .luminous-word.is-active {
     opacity: 1;
-    filter: blur(0);
+    filter: none;
     transform: translate3d(var(--word-x), calc(var(--word-y) - 5px), 35px)
         rotate(calc(var(--stage-word-rotation, var(--word-rotate)) * var(--stage-luminous-rotation, 1)))
         scale(var(--word-scale));
@@ -83,7 +83,7 @@
 
 .luminous-word.is-passed {
     opacity: 0.82;
-    filter: blur(0);
+    filter: none;
     transform: translate3d(var(--word-x), var(--word-y), 0) rotate(calc(var(--word-rotate) * -0.6)) scale(0.98);
     text-shadow: 0 0 14px color-mix(in srgb, var(--stage-accent) 22%, transparent);
 }
@@ -222,14 +222,14 @@
     color: color-mix(in srgb, var(--stage-accent) 72%, var(--stage-ink));
     opacity: 0.82;
     transform: translateX(0);
-    filter: blur(0);
+    filter: none;
 }
 
 .partita-word.is-active {
     color: var(--stage-ink);
     opacity: 1;
     transform: translateX(8px) scale(1.08);
-    filter: blur(0);
+    filter: none;
     text-shadow: 0 0 28px color-mix(in srgb, var(--stage-accent) 55%, transparent);
 }
 
@@ -497,14 +497,14 @@
 .fume-word.is-passed {
     color: color-mix(in srgb, var(--stage-accent) 67%, var(--stage-ink));
     opacity: 0.84;
-    filter: blur(0);
+    filter: none;
     transform: translateY(0);
 }
 
 .fume-word.is-active {
     color: var(--stage-ink);
     opacity: 1;
-    filter: blur(0);
+    filter: none;
     transform: translateY(-7px) scale(1.055);
     text-shadow:
         0 0 calc(14px + var(--stage-vocal, 0) * 26px) color-mix(in srgb, var(--stage-accent) 64%, transparent),
@@ -546,7 +546,7 @@
     inset: 0;
     overflow: hidden;
     opacity: 1;
-    filter: blur(0) brightness(1);
+    filter: none;
     transform: scale(1);
     transition:
         opacity 0.52s ease,
@@ -744,6 +744,20 @@
         text-shadow:
             0 0 10px color-mix(in srgb, var(--stage-accent) 72%, transparent),
             0 0 24px color-mix(in srgb, var(--stage-accent) 32%, transparent);
+    }
+}
+
+body.music-fl-low .fume-paper {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.music-reduce-motion .starborn-director-cue {
+    animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .starborn-director-cue {
+        animation: none;
     }
 }
 

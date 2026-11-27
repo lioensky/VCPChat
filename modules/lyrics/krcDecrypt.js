@@ -59,6 +59,7 @@ function krcDecrypt(content) {
  * which carries translations and romanization.
  */
 function decodeKrcLanguageTag(krcString) {
+  if (typeof krcString !== 'string' || !krcString) return { translations: [], romanizations: [] };
   const match = krcString.match(/\[language:([^\]]*)\]/);
   if (!match) return { translations: [], romanizations: [] };
 
@@ -69,9 +70,10 @@ function decodeKrcLanguageTag(krcString) {
     }
     const decoded = Buffer.from(cleanB64, 'base64').toString('utf8');
     const obj = JSON.parse(decoded);
+    const content = Array.isArray(obj?.content) ? obj.content : [];
 
     const readEmbeddedTrack = (type) => {
-      const track = obj.content?.find(item => item.type === type);
+      const track = content.find(item => item && item.type === type);
       if (!track || !Array.isArray(track.lyricContent)) return [];
       return track.lyricContent.map(lines => {
         if (Array.isArray(lines)) {

@@ -10,6 +10,15 @@ const SCORE_WEIGHTS = {
 
 const AUTO_MATCH_COMPONENT_MISS_SCORE_CAP = 74;
 
+const PUNCT_SYMBOL_RE = /[\p{P}\p{S}]/gu;
+const MULTI_SPACE_RE = /\s+/g;
+const AUDIO_EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|ape|opus|wma|alac|aiff?)$/i;
+const FEAT_PARENS_RE = /[\(\[（【]\s*(feat|featuring|ft)\.?\s+[^\)\]）】]+[\)\]）】]/gi;
+const FEAT_TAIL_RE = /\b(feat|featuring|ft)\.?\s+.+$/i;
+const PARENS_CONTENT_RE = /[\(\[（【]([^\)\]）】]+)[\)\]）】]/g;
+const VERSION_MARKER_RE = /(instrumental|inst|off\s*vocal|karaoke|remix|mix|version|ver\.?|cover|live|edit|arrange|伴奏|カラオケ|インスト|リミックス|remaster|remastered)/i;
+const ARTIST_SPLIT_RE = /[,&、\/]|feat\.?|ft\.?|featuring|与/i;
+
 /**
  * Normalizes text for comparison by removing punctuation and converting to lowercase.
  */
@@ -17,8 +26,8 @@ function normalizeLyricMatchText(value) {
     if (!value) return '';
     return String(value)
         .toLowerCase()
-        .replace(/[\p{P}\p{S}]/gu, '')
-        .replace(/\s+/g, ' ')
+        .replace(PUNCT_SYMBOL_RE, '')
+        .replace(MULTI_SPACE_RE, ' ')
         .trim();
 }
 
@@ -28,14 +37,13 @@ function normalizeLyricMatchText(value) {
  */
 function normalizeTitleForMatch(value) {
     if (!value) return '';
-    const versionMarkerPattern = /(instrumental|inst|off\s*vocal|karaoke|remix|mix|version|ver\.?|cover|live|edit|arrange|伴奏|カラオケ|インスト|リミックス|remaster|remastered)/i;
     return normalizeLyricMatchText(
         String(value)
-            .replace(/\.(mp3|flac|wav|ogg|m4a|aac|ape|opus|wma|alac|aiff?)$/i, '')
-            .replace(/[\(\[（【]\s*(feat|featuring|ft)\.?\s+[^\)\]）】]+[\)\]）】]/gi, '')
-            .replace(/\b(feat|featuring|ft)\.?\s+.+$/i, '')
-            .replace(/[\(\[（【]([^\)\]）】]+)[\)\]）】]/g, (match, content) => {
-                return versionMarkerPattern.test(content) ? match : '';
+            .replace(AUDIO_EXT_RE, '')
+            .replace(FEAT_PARENS_RE, '')
+            .replace(FEAT_TAIL_RE, '')
+            .replace(PARENS_CONTENT_RE, (match, content) => {
+                return VERSION_MARKER_RE.test(content) ? match : '';
             })
     );
 }
@@ -86,7 +94,7 @@ function calculateDurationScore(targetDurationMs, searchDurationMs) {
 function splitArtists(artistText) {
     if (!artistText) return [];
     return String(artistText)
-        .split(/[,&、\/]|feat\.?|ft\.?|featuring|与/i)
+        .split(ARTIST_SPLIT_RE)
         .map(a => normalizeLyricMatchText(a))
         .filter(a => a.length > 0);
 }
@@ -125,12 +133,14 @@ function calculateArtistSimilarity(target, search) {
  * candidate: { title, artist, durationMs, album }
  */
 function calculateMatchScore(target, candidate) {
-    const targetTitle = target.title || '';
-    const searchTitle = candidate.title || '';
-    const targetArtist = target.artist || '';
-    const searchArtist = candidate.artist || '';
-    const targetAlbum = target.album || '';
-    const searchAlbum = candidate.album || '';
+    const t = target || {};
+    const c = candidate || {};
+    const targetTitle = t.title || '';
+    const searchTitle = c.title || '';
+    const targetArtist = t.artist || '';
+    const searchArtist = c.artist || '';
+    const targetAlbum = t.album || '';
+    const searchAlbum = c.album || '';
 
     const titleSimilarity = stringSimilarity(targetTitle, searchTitle, normalizeTitleForMatch);
     const titleScore = titleSimilarity * SCORE_WEIGHTS.title;
@@ -149,7 +159,7 @@ function calculateMatchScore(target, candidate) {
         ? (hasTargetAlbum ? 0 : SCORE_WEIGHTS.album)
         : albumSimilarity * SCORE_WEIGHTS.album;
 
-    const duration = calculateDurationScore(target.durationMs, candidate.durationMs);
+    const duration = calculateDurationScore(t.durationMs, c.durationMs);
     const identityScore = titleScore + artistScore + albumScore;
     const titleMatched = titleSimilarity >= 0.65;
     const artistMatched = !targetArtist.trim() || artistSimilarity >= 0.5;

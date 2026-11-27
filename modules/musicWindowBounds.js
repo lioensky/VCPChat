@@ -58,6 +58,7 @@ function writeSavedBounds(file, win) {
         if (!win || win.isDestroyed()) return;
         // getNormalBounds 在最小化、最大化、全屏时给的都是还原后的大小
         const b = typeof win.getNormalBounds === 'function' ? win.getNormalBounds() : win.getBounds();
+        if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y) || !(b.width > 0) || !(b.height > 0)) return;
         const data = { x: b.x, y: b.y, width: b.width, height: b.height, maximized: Boolean(win.isMaximized?.()) };
         fs.writeFileSync(file, JSON.stringify(data));
     } catch (error) {

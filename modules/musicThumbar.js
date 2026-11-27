@@ -18,7 +18,9 @@ function createMusicThumbar({ nativeImage, platform = process.platform, iconDir 
 
     const buttons = (win, playing) => {
         const send = (command) => () => {
-            if (win && !win.isDestroyed()) win.webContents.send('music-control', command);
+            if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed?.()) {
+                win.webContents.send('music-control', command);
+            }
         };
         return [
             { tooltip: '上一首', icon: icon('previous'), click: send('previous') },
@@ -35,7 +37,8 @@ function createMusicThumbar({ nativeImage, platform = process.platform, iconDir 
         const key = `${win.id}:${playing ? 1 : 0}`;
         if (!force && key === lastKey) return false;
         try {
-            win.setThumbarButtons(buttons(win, playing));
+            const ok = win.setThumbarButtons(buttons(win, playing));
+            if (ok === false) return false;
             lastKey = key;
             return true;
         } catch (error) {

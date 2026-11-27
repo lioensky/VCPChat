@@ -3044,3 +3044,11 @@ body.music-reduce-motion #semantic-search-btn.loading svg,
 body.music-reduce-motion .help-tip-box {
     animation: none;
 }
+body.music-fl-low .help-tip-box,
+body.music-fl-low .audio-engine-notice,
+body.music-fl-low .context-menu,
+body.music-fl-low .context-submenu,
+body.music-fl-low .music-modal {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}

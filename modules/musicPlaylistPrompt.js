@@ -4,12 +4,13 @@
 
 const fs = require('fs-extra');
 
-const AUDIO_EXT = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff|opus|wv)$/i;
+const AUDIO_EXT = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i;
 const DEFAULT_LIMIT = 1500;
 let cache = null; // { file, mtimeMs, size, limit, text }
 
 function formatPlaylistPrompt(tracks, limit = DEFAULT_LIMIT) {
     if (!Array.isArray(tracks)) return '';
+    const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_LIMIT;
     const seen = new Set();
     const titles = [];
     for (const track of tracks) {
@@ -19,7 +20,7 @@ function formatPlaylistPrompt(tracks, limit = DEFAULT_LIMIT) {
         titles.push(title);
     }
     if (!titles.length) return '';
-    const shown = titles.slice(0, limit);
+    const shown = titles.slice(0, cap);
     const more = titles.length > shown.length
         ? `\n（曲库共 ${titles.length} 首，这里只列出前 ${shown.length} 首；不在列表里的歌也可以直接按歌名点）`
         : '';
@@ -28,14 +29,18 @@ function formatPlaylistPrompt(tracks, limit = DEFAULT_LIMIT) {
 
 async function playlistPrompt(file, { limit = DEFAULT_LIMIT } = {}) {
     let stat;
-    try { stat = await fs.stat(file); } catch (_) { return ''; }
-    if (cache && cache.file === file && cache.mtimeMs === stat.mtimeMs && cache.size === stat.size && cache.limit === limit) {
+    try { stat = await fs.stat(file); } catch (_) {
+        if (cache && cache.file === file) cache = null;
+        return '';
+    }
+    const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_LIMIT;
+    if (cache && cache.file === file && cache.mtimeMs === stat.mtimeMs && cache.size === stat.size && cache.limit === cap) {
         return cache.text;
     }
     let tracks = [];
     try { tracks = await fs.readJson(file); } catch (_) { return cache?.file === file ? cache.text : ''; }
-    const text = formatPlaylistPrompt(tracks, limit);
-    cache = { file, mtimeMs: stat.mtimeMs, size: stat.size, limit, text };
+    const text = formatPlaylistPrompt(tracks, cap);
+    cache = { file, mtimeMs: stat.mtimeMs, size: stat.size, limit: cap, text };
     return text;
 }
 
