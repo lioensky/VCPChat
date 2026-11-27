@@ -51,3 +51,64 @@ test('webdav handlers fill credentials, report scan progress to the music window
     assert.equal(loaded.config.username, 'u');
     assert.deepEqual(info, { title: 'x.flac', artist: '未知艺术家', album: '未知专辑' });
 });
+
+test('Batch 48 main-process edge guards: IR non-string, WebDAV query slash & destroyed webContents, M3U safeFileName, translate fenced JSON & cooldown reset', async () => {
+    const { h, ipcMain } = fakeIpc();
+    const sent = [];
+    let info = null;
+    const win = { isDestroyed: () => false, webContents: { isDestroyed: () => true, send: (...a) => sent.push(a) } };
+    registerMusicEngineHandlers({
+        ipcMain,
+        dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+        audioEngineApi: async () => ({ status: 'success' }),
+        webdavManager: {},
+        getDialogWindow: () => null,
+        irPresetDir: os.tmpdir()
+    });
+    assert.equal(await h.get('music-get-ir-preset-path')({}, null), null);
+    assert.equal(await h.get('music-get-ir-preset-path')({}, 123), null);
+
+    registerMusicWebdavHandlers({
+        ipcMain,
+        webdavManager: {
+            scanAudioFiles: async (config, progress) => { progress(5); return { status: 'success', tracks: [{ path: 'a' }] }; },
+            configureAndLoad: async () => ({ status: 'success' })
+        },
+        getMusicWindow: () => win,
+        setCurrentSongInfo: (v) => { info = v; }
+    });
+    await h.get('webdav-scan-audio')({}, { url: 'https://nas/dav' });
+    assert.equal(sent.length, 0, 'destroyed webContents receives no scan progress');
+    await h.get('webdav-load-track')({}, { url: 'https://nas/dav/%E6%AD%8C.flac?next=/a/b#frag/c' });
+    assert.equal(info.title, '歌.flac', 'URL filename strips query and hash before splitting slashes');
+
+    const { safeFileName } = require('../modules/ipc/musicM3u');
+    assert.equal(safeFileName('CON'), '_CON');
+    assert.equal(safeFileName('lpt1.txt'), '_lpt1.txt');
+    assert.equal(safeFileName('歌单...  '), '歌单');
+    assert.equal(safeFileName('...'), '歌单');
+
+    const { parseTranslations, createLyricsTranslator } = require('../modules/musicLyricsTranslate');
+    assert.deepEqual(
+        parseTranslations('说明 [1]: 译文如下\n```json\n["第一句", "第二句"]\n```', 2),
+        ['第一句', '第二句'],
+        'parseTranslations prefers fenced JSON array when prose precedes it with brackets'
+    );
+
+    let callCount = 0;
+    const translator = createLyricsTranslator({
+        getSettings: async () => ({ vcpServerUrl: 'http://127.0.0.1:6005/v1/chatvcp/completions', topicSummaryModel: 'test-model' }),
+        getCacheDir: () => null,
+        fetchImpl: async () => {
+            callCount++;
+            if (callCount === 1) return { ok: false, status: 500 };
+            return { ok: true, json: async () => ({ choices: [{ message: { content: '["你好"]' } }] }) };
+        }
+    });
+    const first = await translator.translate({ lines: ['Hello'] });
+    assert.equal(first.status, 'error');
+    const forced = await translator.translate({ lines: ['Hello'], force: true });
+    assert.equal(forced.status, 'success');
+    const afterForced = await translator.translate({ lines: ['Hello'] });
+    assert.equal(afterForced.status, 'success', 'successful forced translation clears stale failure cooldown');
+});

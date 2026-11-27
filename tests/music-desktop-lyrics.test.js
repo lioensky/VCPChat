@@ -334,3 +334,48 @@ test('lyricsTranslation 关闭时桌面歌词快照隐藏译文，切换事件�
         window.close();
     }
 });
+
+test('flushSaveSync cancels in-flight async save so older prefs cannot clobber newer synced state', async () => {
+    const h = harness();
+    await h.handles.get('music-desktop-lyrics-toggle')(fromMusic(h), true);
+    const bar = h.windows[0];
+    const cmd = (c, v) => h.ons.get('music-desktop-lyrics-command')({ sender: bar.webContents }, c, v);
+    const origWriteFile = fs.promises.writeFile;
+    let releaseSlowWrite = null;
+    let slowWriteStarted = null;
+    const slowStartedP = new Promise((resolve) => { slowWriteStarted = resolve; });
+    fs.promises.writeFile = async (file, data, ...rest) => {
+        if (String(file).startsWith(h.stateFile)) {
+            slowWriteStarted();
+            await new Promise((resolve) => { releaseSlowWrite = resolve; });
+        }
+        return origWriteFile.call(fs.promises, file, data, ...rest);
+    };
+    try {
+        cmd('size', 28);
+        await slowStartedP;
+        // 旧的异步写盘正在进行中，这时改字号并立即关窗口同步落盘
+        cmd('size', 52);
+        h.dl.musicClosed();
+        assert.strictEqual(JSON.parse(fs.readFileSync(h.stateFile, 'utf8')).size, 52);
+        releaseSlowWrite();
+        await new Promise((r) => setTimeout(r, 50));
+        assert.strictEqual(JSON.parse(fs.readFileSync(h.stateFile, 'utf8')).size, 52, 'stale async write must not overwrite newer sync flush');
+    } finally {
+        fs.promises.writeFile = origWriteFile;
+    }
+});
+
+test('musicDesktopLyrics ignores sends when webContents is destroyed', async () => {
+    const h = harness();
+    await h.handles.get('music-desktop-lyrics-toggle')(fromMusic(h), true);
+    const bar = h.windows[0];
+    bar.webContents.isDestroyed = () => true;
+    h.music.webContents.isDestroyed = () => true;
+    const prevBar = bar.sent.length;
+    const prevMusic = h.musicSent.length;
+    h.ons.get('music-desktop-lyrics-publish')(fromMusic(h), { line: { text: 'ignored' } });
+    h.ons.get('music-desktop-lyrics-command')({ sender: bar.webContents }, 'next');
+    assert.strictEqual(bar.sent.length, prevBar);
+    assert.strictEqual(h.musicSent.length, prevMusic);
+});

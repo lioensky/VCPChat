@@ -119,6 +119,10 @@ test('bus validates bounds, throttles playing frames, delivers stop immediately 
     off();
     bus.publish({ playing: false }, 1012);
     assert.equal(received.length, 2);
+    const noopOff = bus.subscribe(null);
+    assert.equal(typeof noopOff, 'function');
+    assert.equal(bus.publish({ playing: true, data: [0.4] }, 2000), true);
+    noopOff();
     assert.equal(prefs.normalizeSettings({}).musicDance, true);
     assert.equal(prefs.normalizeSettings({ musicDance: false }).musicDance, false);
 });
