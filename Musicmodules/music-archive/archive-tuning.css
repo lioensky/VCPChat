@@ -22,8 +22,8 @@ body.music-dock-beside-lyrics .archive-hud.beside-drawer.lyrics-open .archive-ly
     --lyrics-bottom-fade: 16px;
 }
 body.music-dock-beside-lyrics .archive-hud.beside-drawer.lyrics-open .archive-footer { bottom: calc(12px - var(--archive-dock-lift, 0px)); }
-body.music-dock-beside-lyrics:has(#music-dock-root.md-fl-low) .archive-hud.lyrics-open:not(.beside-drawer) .archive-lyrics { --lyrics-end: max(59px, calc(var(--archive-dock-lift, 0px) * .75)); }
-body.music-dock-beside-lyrics:has(#music-dock-root.md-fl-low) .archive-hud.lyrics-open:not(.beside-drawer) .archive-footer { right: max(59px, calc(var(--archive-dock-lift, 0px) * .75)); }
+body.music-dock-beside-lyrics.music-fl-low .archive-hud.lyrics-open:not(.beside-drawer) .archive-lyrics { --lyrics-end: max(59px, calc(var(--archive-dock-lift, 0px) * .75)); }
+body.music-dock-beside-lyrics.music-fl-low .archive-hud.lyrics-open:not(.beside-drawer) .archive-footer { right: max(59px, calc(var(--archive-dock-lift, 0px) * .75)); }
 /* 页脚只剩状态灯和「曲库 N 首」（队列来源挪到底栏面板，经典视图挪进右上角视图菜单）；曲库数照旧不显示 */
 .archive-footer > span:nth-child(2) { display: none; }
 .archive-queue[hidden] + span { margin-left: 0; }

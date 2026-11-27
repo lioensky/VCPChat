@@ -376,12 +376,17 @@ function setupUI(app) {
             }
         }
         shownSongs = songs.slice();
-        positionOf = new Map();
         const nextTitles = new Array(shownSongs.length);
-        for (let i = 0; i < shownSongs.length; i += 1) {
-            const t = shownSongs[i];
-            if (!positionOf.has(t)) positionOf.set(t, i);
-            nextTitles[i] = t?.title;
+        if (songs === app.playlist) {
+            positionOf = libraryIndexOf;
+            for (let i = 0; i < shownSongs.length; i += 1) nextTitles[i] = shownSongs[i]?.title;
+        } else {
+            positionOf = new Map();
+            for (let i = 0; i < shownSongs.length; i += 1) {
+                const t = shownSongs[i];
+                if (!positionOf.has(t)) positionOf.set(t, i);
+                nextTitles[i] = t?.title;
+            }
         }
         renderedBase = app.playlist;
         renderedBaseLength = plLen;

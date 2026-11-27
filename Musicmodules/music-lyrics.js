@@ -46,6 +46,19 @@ function setupLyrics(app) {
     const lyricSearchMisses = new Map();
     const LYRIC_MISS_TTL_MS = 10 * 60 * 1000;
     const LYRIC_SEARCH_SETTLE_MS = 500;
+    let settleTimer = null;
+    let settleResolve = null;
+    const cancelSettleTimer = () => {
+        if (settleTimer) {
+            clearTimeout(settleTimer);
+            settleTimer = null;
+        }
+        if (settleResolve) {
+            const done = settleResolve;
+            settleResolve = null;
+            done();
+        }
+    };
 
     // 找词期间记下这次请求；被新请求或手选歌词取代后自然不算在找。
     app.fetchAndDisplayLyrics = async (...args) => {
@@ -124,8 +137,16 @@ function setupLyrics(app) {
             // 自动下载与手动搜索严格复用同一条候选搜索、解析和写盘链路。
             // 这避免单体 fetchMusicLyrics 接口与手动候选接口出现 provider 行为差异。
             app.lyricsList.innerHTML = '<li class="no-lyrics">正在找歌词…</li>';
-            // 连续切歌时路过的歌不联网：停留片刻仍是这首才开始搜索。
-            await new Promise(resolve => setTimeout(resolve, LYRIC_SEARCH_SETTLE_MS));
+            // 连续切歌时路过的歌不联网：停留片刻仍是这首才开始搜索；切歌或卸载时立刻清掉等待计时器。
+            cancelSettleTimer();
+            await new Promise(resolve => {
+                settleResolve = resolve;
+                settleTimer = setTimeout(() => {
+                    settleTimer = null;
+                    settleResolve = null;
+                    resolve();
+                }, LYRIC_SEARCH_SETTLE_MS);
+            });
             if (requestToken !== app.lyricsRequestToken) return;
             try {
                 let fetched = null;
@@ -442,8 +463,15 @@ function setupLyrics(app) {
         return { index: at + 1, start, end: next.time, progress: Math.min(1, Math.max(0, (t - start) / (next.time - start))) };
     };
 
+    let lyricGapTpl = null;
     app.renderLyrics = () => {
         app.lyricsList.innerHTML = '';
+        if (!lyricGapTpl) {
+            lyricGapTpl = document.createElement('span');
+            lyricGapTpl.className = 'lyric-gap';
+            lyricGapTpl.setAttribute('aria-hidden', 'true');
+            lyricGapTpl.innerHTML = '<i></i><i></i><i></i>';
+        }
         const fragment = document.createDocumentFragment();
         app.currentLyrics.forEach((line, index) => {
             const li = document.createElement('li');
@@ -486,12 +514,8 @@ function setupLyrics(app) {
                 li.appendChild(translationSpan);
             }
 
-            // 间奏等待点：放在间奏之后那一句的上方，间奏期间依次亮起
-            const gap = document.createElement('span');
-            gap.className = 'lyric-gap';
-            gap.setAttribute('aria-hidden', 'true');
-            gap.innerHTML = '<i></i><i></i><i></i>';
-            li.insertBefore(gap, li.firstChild);
+            // 间奏等待点：放在间奏之后那一句的上方，间奏期间依次亮起（克隆模板避免每句重复跑 HTML 解析器）
+            li.insertBefore(lyricGapTpl.cloneNode(true), li.firstChild);
 
             if (typeof line.time === 'number' && app.formatTime) li.title = `从 ${app.formatTime(line.time)} 这句开始播放`;
 
@@ -828,6 +852,7 @@ function setupLyrics(app) {
     };
 
     app.resetLyrics = () => {
+        cancelSettleTimer();
         cancelSeekAnim();
         app.lyricsRequestToken = (app.lyricsRequestToken || 0) + 1;
         app.currentLyricsData = null;
@@ -846,7 +871,12 @@ function setupLyrics(app) {
 
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('beforeunload', () => {
+            cancelSettleTimer();
             cancelSeekAnim();
+            if (typeof app.disposeCurrentLyricsQuery === 'function') {
+                try { app.disposeCurrentLyricsQuery(); } catch (_) { /* 窗口卸载中 */ }
+                app.disposeCurrentLyricsQuery = null;
+            }
             if (app.lyricUserScrollTimer) { clearTimeout(app.lyricUserScrollTimer); app.lyricUserScrollTimer = null; }
             if (lyricScrollHandler && app.lyricsContainer) {
                 app.lyricsContainer.removeEventListener('wheel', lyricScrollHandler);

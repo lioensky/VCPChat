@@ -485,10 +485,10 @@ body.music-reduce-motion .music-stage-mode-switcher .music-stage-mode-button { f
 
 /* ───────── 搜索框从播放条鼓出来，关掉时并回去 ─────────
  * 播放条留在原处（不再隐藏），遮罩只盖播放条以上；框从播放条上沿的中间鼓出一滴、拉一截细颈再展开。 */
-body.music-dock-cmd-open .md-dock,
-body.music-dock-cmd-open .md-fluid,
-body.music-dock-cmd-open .md-mist { opacity: 1; pointer-events: auto; }
-body.music-dock-cmd-open .md-fluid, body.music-dock-cmd-open .md-mist { pointer-events: none; }
+#music-dock-root.md-cmd-open .md-dock,
+#music-dock-root.md-cmd-open .md-fluid,
+#music-dock-root.md-cmd-open .md-mist { opacity: 1; pointer-events: auto; }
+#music-dock-root.md-cmd-open .md-fluid, #music-dock-root.md-cmd-open .md-mist { pointer-events: none; }
 .md-cmd-scrim { bottom: calc(var(--md-cmd-bottom, 110px) - 14px); -webkit-mask-image: linear-gradient(to top, transparent 0, #000 60px); mask-image: linear-gradient(to top, transparent 0, #000 60px); }
 .md-cmd-box {
   clip-path: none;

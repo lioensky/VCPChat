@@ -15,6 +15,15 @@
 
     const CHEVRON = '<svg class="mfs-chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const CHECK = '<svg class="mfs-check" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><path d="M3.2 8.6l3.1 3 6.5-7.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    let checkTpl = null;
+    const cloneCheck = () => {
+        if (!checkTpl) {
+            const box = doc.createElement('span');
+            box.innerHTML = CHECK;
+            checkTpl = box.firstElementChild;
+        }
+        return checkTpl ? checkTpl.cloneNode(true) : null;
+    };
 
     const skip = (select) => select.multiple
         || select.size > 1
@@ -162,22 +171,30 @@
             const item = doc.createElement('div');
             item.className = 'mfs-item';
             item.setAttribute('role', 'option');
+            item.dataset.mfsIdx = String(index);
             item.tabIndex = -1;
             if (option.disabled) item.setAttribute('aria-disabled', 'true');
             const span = doc.createElement('span');
             span.textContent = option.textContent.trim();
             item.append(span);
-            item.insertAdjacentHTML('beforeend', CHECK);
-            item.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                choose(index);
-            });
-            item.addEventListener('pointermove', () => { if (!option.disabled && doc.activeElement !== item) item.focus({ preventScroll: true }); });
+            const chk = cloneCheck();
+            if (chk) item.append(chk);
             items.push(item);
             // 只用来显示当前状态的项（隐藏且不能选，比如 EQ 的「自定义」）：不是当前值时不进菜单
             if (skipRender) return;
             frag.append(item);
+        });
+        menu.addEventListener('click', (event) => {
+            const item = event.target?.closest?.('.mfs-item');
+            if (!item || !menu.contains(item)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            choose(Number(item.dataset.mfsIdx));
+        });
+        menu.addEventListener('pointermove', (event) => {
+            const item = event.target?.closest?.('.mfs-item');
+            if (!item || !menu.contains(item) || item.getAttribute('aria-disabled') === 'true') return;
+            if (doc.activeElement !== item) item.focus({ preventScroll: true });
         });
         menu.append(frag);
         doc.body.append(menu);
@@ -187,7 +204,9 @@
         openState = { select, menu, trigger, items };
         paintSelected();
         place(menu, trigger);
-        const current = items[select.selectedIndex] || items.find((i) => i.getAttribute('aria-disabled') !== 'true');
+        const selItem = items[select.selectedIndex];
+        const current = (selItem && selItem.isConnected ? selItem : null)
+            || items.find((i) => i.isConnected && i.getAttribute('aria-disabled') !== 'true');
         if (current) {
             menu.scrollTop = Math.max(0, current.offsetTop - menu.clientHeight / 2 + current.offsetHeight / 2);
             current.focus({ preventScroll: true });
@@ -225,12 +244,13 @@
     const onDocKeyDown = (event) => {
         if (!openState) return;
         const { items, menu } = openState;
-        const live = items.filter((i) => i.getAttribute('aria-disabled') !== 'true');
+        const live = items.filter((i) => i.isConnected && i.getAttribute('aria-disabled') !== 'true');
         const at = live.indexOf(doc.activeElement);
         const go = (i) => { const t = live[Math.max(0, Math.min(live.length - 1, i))]; t?.focus({ preventScroll: true }); t?.scrollIntoView({ block: 'nearest' }); };
         switch (event.key) {
             case 'ArrowDown': go(at + 1); break;
             case 'ArrowUp': go(at < 0 ? live.length - 1 : at - 1); break;
+            case 'ArrowLeft': case 'ArrowRight': break;
             case 'Home': go(0); break;
             case 'End': go(live.length - 1); break;
             case 'PageDown': go(at + 8); break;

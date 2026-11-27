@@ -448,7 +448,7 @@ body.music-reduce-motion #music-dock-root *::before,
 body.music-reduce-motion #music-dock-root *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
 
 /* ───────── 命令面板（Ctrl+K） ───────── */
-.md-cmd { position: fixed; inset: 0; z-index: var(--mt-z-popover, 70); pointer-events: auto; }
+.md-cmd { position: fixed; inset: 0; z-index: var(--mt-z-popover, 70); pointer-events: auto; contain: layout style; }
 .md-cmd[hidden] { display: none; }
 .md-cmd-scrim {
   position: absolute;
@@ -574,10 +574,10 @@ body.music-reduce-motion #music-dock-root *::after { transition-duration: 0s !im
 /* 输入框外面整块就是焦点提示，全局的键盘焦点框在这里不要再画一圈。 */
 #music-dock-root .md-cmd .md-cmd-in:focus-visible { outline: none; box-shadow: none; }
 .md-cmd-kbd { flex-shrink: 0; border-radius: 6px; padding: 2px 6px; font: 10px/14px ui-monospace, Consolas, monospace; background: var(--md-fill); color: var(--md-t3); }
-body.music-dock-cmd-open .md-dock,
-body.music-dock-cmd-open .md-fluid,
-body.music-dock-cmd-open .md-mist,
-body.music-dock-cmd-open .md-hdl { opacity: 0; pointer-events: none; }
+#music-dock-root.md-cmd-open .md-dock,
+#music-dock-root.md-cmd-open .md-fluid,
+#music-dock-root.md-cmd-open .md-mist,
+#music-dock-root.md-cmd-open .md-hdl { opacity: 0; pointer-events: none; }
 
 /* ───────── 提示层（music-toast.js）───────── */
 /* 挂在 body 上、独立于底栏，比底栏层高一级，弹窗（1000 起）仍然盖在它上面。 */

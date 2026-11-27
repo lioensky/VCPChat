@@ -98,8 +98,10 @@
             const action = entry.opts.action;
             if (action?.countdown && entry.countdown == null) entry.countdown = Math.max(1, Math.round(action.countdown));
             const count = action?.countdown && entry.countdown != null ? ` ${entry.countdown}` : '';
-            const progress = k === 'progress' && Number.isFinite(entry.opts.progress)
-                ? `<span class="mtst-bar"><span style="transform:scaleX(${Math.max(0, Math.min(1, entry.opts.progress))})"></span></span>` : '';
+            const clampedProgress = k === 'progress' && Number.isFinite(entry.opts.progress)
+                ? Math.max(0, Math.min(1, entry.opts.progress)) : null;
+            const progress = clampedProgress !== null
+                ? `<span class="mtst-bar"><span style="transform:scaleX(${clampedProgress})"></span></span>` : '';
             el.innerHTML = `<span class="mtst-ic">${icon(entry.opts.icon || ICON_FOR[k], 16)}</span>`
                 + `<span class="mtst-msg"></span>`
                 + (action ? `<button class="mtst-act" type="button"></button>` : '')
@@ -108,6 +110,7 @@
             entry.msgEl = el.querySelector('.mtst-msg');
             entry.actEl = action ? el.querySelector('.mtst-act') : null;
             entry.barEl = progress ? el.querySelector('.mtst-bar > span') : null;
+            entry.lastProgress = clampedProgress;
             if (entry.msgEl) entry.msgEl.textContent = entry.opts.message || '';
             if (entry.actEl) entry.actEl.textContent = `${action.label || '好'}${count}`;
         };
@@ -222,9 +225,13 @@
                     if (entry.msgEl.textContent !== nextText) entry.msgEl.textContent = nextText;
                 }
                 if (nextHasProgress && 'progress' in patch && entry.barEl) {
-                    entry.barEl.style.transform = `scaleX(${Math.max(0, Math.min(1, entry.opts.progress))})`;
+                    const nextProgress = Math.max(0, Math.min(1, entry.opts.progress));
+                    if (entry.lastProgress === null || Math.abs(nextProgress - entry.lastProgress) >= 1e-4) {
+                        entry.lastProgress = nextProgress;
+                        entry.barEl.style.transform = `scaleX(${nextProgress})`;
+                    }
                 }
-                entry.el.classList.add('mtst-in');
+                if (!entry.el.classList.contains('mtst-in')) entry.el.classList.add('mtst-in');
                 if (timingChanged) arm();
                 return;
             }

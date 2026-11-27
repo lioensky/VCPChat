@@ -395,7 +395,7 @@
                 { label: '还没听过', key: 'recent:new', items: app.neverPlayed ? idxOf(app.neverPlayed()) : [] }
             ];
         };
-        const rebuild = ({ steady = false, skipRender = false } = {}) => {
+        const rebuild = ({ steady = false, skipRender = false, quiet = false } = {}) => {
             const index = opts.getIndex();
             if (!index) return;
             const vpVisible = el.isConnected && !el.hidden;
@@ -460,7 +460,7 @@
             const q0 = state.query.trim();
             const hss = !(q0 && out.count && app.createSmartPlaylist) || multi.size > 1;
             if (r.saveSmart.hidden !== hss) r.saveSmart.hidden = hss;
-            if (q0 !== state.lastReported || out.count !== state.lastCount) { state.lastReported = q0; state.lastCount = out.count; opts.onResults?.(q0, out.count, out.rows.find((row) => row.type === 'track') || null); }
+            if (q0 !== state.lastReported || out.count !== state.lastCount) { state.lastReported = q0; state.lastCount = out.count; if (!quiet || !out.count) opts.onResults?.(q0, out.count, out.rows.find((row) => row.type === 'track') || null); }
             if (!out.count) {
                 const q = state.query.trim();
                 const [line, hint] = q ? ['没有找到「' + q + '」', 'Esc 清除检索']
@@ -627,16 +627,16 @@
 
         // 分组总时长（专辑、歌手、歌单的头上那样「12 首 · 48 分钟」）；有的歌还没量出时长就写「约」
         const groupLength = (k) => {
+            const list = tracks();
             let sum = 0, known = 0, n = 0;
-            for (let j = k + 1; j < state.rows.length && state.rows[j].type === 'track'; j++) {
+            for (let j = k + 1, rj; (rj = state.rows[j]) && rj.type === 'track'; j++) {
                 n++;
-                const d = durationOf(tracks()[state.rows[j].i], state.rows[j].i);
+                const t = list[rj.i], d = t && t.duration > 0 ? +t.duration : durationOf(t, rj.i);
                 if (d > 0) { sum += d; known++; }
             }
             if (!known || known < n / 2) return '';
             const min = Math.max(1, Math.round(sum / 60));
-            const text = min < 60 ? min + ' 分钟' : Math.floor(min / 60) + ' 小时' + (min % 60 ? ' ' + (min % 60) + ' 分' : '');
-            return (known < n ? '约 ' : '') + text;
+            return (known < n ? '约 ' : '') + (min < 60 ? min + ' 分钟' : Math.floor(min / 60) + ' 小时' + (min % 60 ? ' ' + (min % 60) + ' 分' : ''));
         };
         const rowHtml = (row, k) => {
             if (isLetter(row)) return letterHtml(row);
@@ -848,6 +848,7 @@
             }
             syncDrop(headK, top, stickyY);
             const sel = state.selectedRow;
+            lastRenderTop = top;
             setFoot(sel >= 0 ? state.ord[sel] || 0 : 0, state.count);
         };
         // 标题换字：旧字往上滚走、新字从下面滚上来（降低动态时直接换）
@@ -1001,22 +1002,16 @@
             return first;
         };
 
-        const scrollToRow = (k, { center = false, top: knownTop, height: knownHeight } = {}) => {
+        const scrollToRow = (k, { center = false, top: knownTop, height: knownHeight, sync = false } = {}) => {
             if (k < 0) return knownTop ?? 0;
-            const vp = r.viewport;
-            const y = state.offsets[k];
-            const h = knownHeight > 0 ? knownHeight : viewportHeight();
+            const vp = r.viewport, y = state.offsets[k], h = knownHeight > 0 ? knownHeight : viewportHeight();
             const curTop = typeof knownTop === 'number' ? knownTop : readScrollTop();
             let top = curTop;
-            const pad2 = LABEL_H;
             if (center) top = Math.max(0, y - h / 2 + ROW_H / 2);
-            else if (y < top + pad2) top = Math.max(0, y - pad2);
+            else if (y < top + LABEL_H) top = Math.max(0, y - LABEL_H);
             else if (y + ROW_H > top + h - EDGE_FADE) top = y + ROW_H - h + EDGE_FADE;
-            if (top !== curTop) {
-                vp.scrollTop = top;
-                recordScrollTop(top);
-            }
-            schedule();
+            if (top !== curTop) { vp.scrollTop = top; recordScrollTop(top); }
+            if (!sync) schedule();
             return top;
         };
 
@@ -1069,14 +1064,12 @@
         };
 
         /* 列表里换选中（键盘/单击）：告诉阵列 */
-        const pickRow = (k) => {
+        const pickRow = (k, knownH) => {
             const row = state.rows[k];
             if (!row || row.type !== 'track') return;
-            state.selectedRow = k;
-            state.selected = row.i;
-            state.preferCtx = row.ctx;
-            const h = viewportHeight();
-            const top = scrollToRow(k, { height: h });
+            state.selectedRow = k; state.selected = row.i; state.preferCtx = row.ctx;
+            const h = knownH > 0 ? knownH : viewportHeight();
+            const top = scrollToRow(k, { height: h, sync: true });
             opts.onPick(row.i, columnCtx(row.ctx));
             render({ top, height: h });
         };
@@ -1091,9 +1084,9 @@
             }
             if (next !== k) pickRow(next);
         };
-        const edgeRow = (end) => {
+        const edgeRow = (end, knownH) => {
             for (let j = end ? state.rows.length - 1 : 0; j >= 0 && j < state.rows.length; j += end ? -1 : 1) {
-                if (state.rows[j].type === 'track') { pickRow(j); return true; }
+                if (state.rows[j].type === 'track') { pickRow(j, knownH); return true; }
             }
             return false;
         };
@@ -1159,11 +1152,11 @@
         let typeTimer = 0;
         const applyQuery = (resetScroll) => {
             state.query = r.input.value;
-            const hasQ = Boolean(state.query.trim());
-            const top = readScrollTop();
-            if (resetScroll && top) { r.viewport.scrollTop = 0; recordScrollTop(0); } else recordScrollTop(top);
-            rebuild({ skipRender: hasQ });
-            if (hasQ && !edgeRow(false)) render({ top: readScrollTop(), height: viewportHeight() });
+            const hasQ = Boolean(state.query.trim()), vpH = viewportHeight(), top = resetScroll ? 0 : readScrollTop();
+            if (resetScroll && lastRenderTop !== 0 && r.viewport.scrollTop) r.viewport.scrollTop = 0;
+            recordScrollTop(top);
+            rebuild({ skipRender: hasQ, quiet: hasQ });
+            if (hasQ && !edgeRow(false, vpH)) render({ top, height: vpH });
         };
         r.input.addEventListener('input', () => {
             clearTimeout(typeTimer);
@@ -1292,7 +1285,7 @@
         r.input.addEventListener('keydown', onKey);
         r.viewport.addEventListener('keydown', onKey);
 
-        r.viewport.addEventListener('scroll', schedule, { passive: true });
+        r.viewport.addEventListener('scroll', () => { lastRenderTop = -1; schedule(); }, { passive: true });
         // 悬停时按需生成完整曲名/听歌记录提示，避免虚拟滚动每帧对全部可见行执行正则与日期格式化
         r.viewport.addEventListener('pointerover', (e) => {
             const node = e.target && e.target.closest ? e.target.closest('.archive-list-row') : null;

@@ -804,6 +804,7 @@
             if (state.closeTimer) { clearTimeout(state.closeTimer); state.closeTimer = null; }
             place();
             root.hidden = false;
+            host.classList.add('md-cmd-open');
             document.body.classList.add('music-dock-cmd-open');
             input.value = initial;
             // 先完成显隐与 body 类变更再聚焦输入框，合并为一次样式重算并避开写入 60 条结果行后再 focus
@@ -833,6 +834,7 @@
             if (back) back.focus?.({ preventScroll: true });
             else if (root.contains(document.activeElement)) document.activeElement.blur();
             root.classList.remove('md-open');
+            host.classList.remove('md-cmd-open');
             document.body.classList.remove('music-dock-cmd-open');
             state.closeTimer = setTimeout(() => { state.closeTimer = null; if (!state.open) root.hidden = true; }, 200);
             if (back && document.activeElement !== back) back.focus?.({ preventScroll: true });
