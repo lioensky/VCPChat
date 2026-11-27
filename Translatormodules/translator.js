@@ -356,7 +356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         systemPrompt += ` 仅返回翻译结果，不要包含任何解释或额外信息。`;
 
-        const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: sourceText }];
+        const messages = [{ role: 'system', content: `[[VCPToolUse=Forbidden]]\n${systemPrompt}` }, { role: 'user', content: sourceText }];
         const modelConfig = getSelectedModelConfig();
 
         performDirectTranslation(messages, modelConfig);
