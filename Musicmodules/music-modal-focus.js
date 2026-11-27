@@ -15,6 +15,7 @@
     if (!document) return;
 
     const OVERLAY = '.music-modal-overlay, .dialog-overlay';
+    const OPEN_OVERLAY = '.music-modal-overlay.visible, .music-modal-overlay.active, .dialog-overlay.visible, .dialog-overlay.active';
     const FOCUSABLE = 'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
     const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
     const openers = new WeakMap();
@@ -25,8 +26,8 @@
     const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const focusables = (o) => [...o.querySelectorAll(FOCUSABLE)].filter((el) => !el.closest('[inert]') && shown(el));
     const topOverlay = () => {
-        const open = [...document.querySelectorAll(OVERLAY)].filter(isOpen);
-        return open[open.length - 1] || null;
+        const open = document.querySelectorAll(OPEN_OVERLAY);
+        return open.length ? open[open.length - 1] : null;
     };
 
     const focusInside = (o) => {
@@ -102,9 +103,12 @@
         }
         const onDocCaptureKey = (e) => {
             if (e.defaultPrevented) return;
+            const isTab = e.key === 'Tab';
+            // 绝大多数打字与快捷键既不是 Tab 也不是导航键，跳过全文档弹窗查询
+            if (!isTab && (e.ctrlKey || e.metaKey || e.altKey || !NAV_KEYS.has(e.key))) return;
             const o = topOverlay();
             if (!o) return;
-            if (e.key === 'Tab') {
+            if (isTab) {
                 const list = focusables(o);
                 if (!list.length) { e.preventDefault(); return; }
                 const at = list.indexOf(document.activeElement);
@@ -114,7 +118,7 @@
                 if (next) { e.preventDefault(); next.focus({ preventScroll: true }); }
                 return;
             }
-            if (!o.contains(e.target) && !e.ctrlKey && !e.metaKey && !e.altKey && NAV_KEYS.has(e.key)) {
+            if (!o.contains(e.target)) {
                 e.stopPropagation();
             }
         };

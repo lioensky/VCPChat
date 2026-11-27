@@ -148,14 +148,6 @@
         : (a, b) => (a < b ? -1 : a > b ? 1 : 0);
     const LOCALE_CMP = typeof Intl !== 'undefined' ? new Intl.Collator().compare : (a, b) => a.localeCompare(b);
 
-    const FIELDS = [
-        ['title', 'titlePy', 'titleIni', 3],
-        ['artist', 'artistPy', 'artistIni', 2],
-        ['album', 'albumPy', 'albumIni', 1]
-    ];
-    const ARTIST_FIELDS = [FIELDS[1]];
-    const ALBUM_FIELDS = [FIELDS[2]];
-
     const FIELD_CACHE_BY_PY = new WeakMap();
     const FIELD_CACHE_NO_PY = new Map();
     const EMPTY_FIELD = Object.freeze({ n: '', py: '', ini: '', grp: '#' });

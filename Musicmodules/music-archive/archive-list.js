@@ -77,11 +77,8 @@
 
 
     /*
-     * 右键菜单的键盘操作。菜单本身是播放器的 #track-context-menu（几行 div），这里在档案页打开它之后接管按键：
-     * ↑ ↓ Home End 移动，Enter / 空格执行，→ 打开「加入歌单」子菜单、← 收回，Esc / Tab 关闭并把焦点还回去。
-     * 菜单关掉（visible 类没了）就自动撤掉这些处理。
-     * 鼠标右键打开的菜单也会接上（music-menu-order.js 里统一接，focus: false），不然方向键会落到后面的目录上。
-     * playlist: true 时直接展开「加入歌单」子菜单（顶栏「＋ 加入歌单」按钮用，和 Spotify 的「添加到歌单」一样直接给歌单列表）。
+     * 右键菜单键盘操作：↑↓/Home/End 移动，Enter/Space 执行，→/← 开关子菜单，Esc/Tab 关闭并还焦点。
+     * 菜单关闭后自动撤掉监听；playlist: true 时直接展开「加入歌单」子菜单。
      */
     const menuKeyboard = (app, { restore = null, playlist = false, focus = true } = {}) => {
         const menu = app.contextMenu || document.getElementById('track-context-menu');
@@ -173,9 +170,8 @@
         el.querySelectorAll('[data-l]').forEach((n) => { r[n.dataset.l] = n; });
 
         /*
-         * 手动调宽度（低分辨率窗口里目录占比太大）。
-         * 右边缘外侧一条看不见的拖柄：悬停出一道细线，拖动改宽，松手记住；双击恢复默认（不存宽度时完全是原来的 CSS 宽度）。
-         * 宽度最小 290、最大 560 且不超过整页的 45%。改宽时发一次 resize，让卡片阵列、封面墙、歌词按新宽度让位。
+         * 手动调宽度（低分辨率窗口里目录占比太大）：右边缘拖柄改宽，松手记住，双击恢复默认。
+         * 范围 290..560 且不超过整页 45%，改宽时发 resize 让卡片阵列/封面墙/歌词让位。
          */
         const WIDTH_KEY = 'musicArchiveListWidth';
         const W_MIN = 290, W_MAX = 560;
@@ -299,9 +295,13 @@
         const paintRecentQ = () => {
             const box = r.recentQ;
             if (!box) return;
+            if (document.activeElement !== r.input || r.input.value.trim()) {
+                if (!box.hidden) box.hidden = true;
+                return;
+            }
             const list = readRecentQ();
-            const show = document.activeElement === r.input && !r.input.value.trim() && list.length > 0;
-            box.hidden = !show;
+            const show = list.length > 0;
+            if (box.hidden !== !show) box.hidden = !show;
             if (!show) return;
             box.innerHTML = '<header><span>最近检索</span><button type="button" data-rq-clear>清除</button></header>'
                 + list.map((q, n) => `<div class="rq" role="option" data-rq="${n}"><span>${esc(q)}</span><button type="button" data-rq-del="${n}" aria-label="删除这条" title="删除这条"><svg class="archive-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`).join('');
@@ -337,7 +337,7 @@
          * steady：曲库只是变多了（扫描途中一批批进来）。这时不把目录拉回选中行，
          * 而是让眼前最上面那首歌留在原来的位置，上面多出来的歌不把正在看的内容顶走。
          */
-        // 选中的筛选下面那一道液态的线：换筛选时像一滴流过去（共用套件里的 slide），只量文字本身，不含前面的分隔号
+        // 选中的筛选下方液态线：换筛选时滑过去，只量文字本身。
         const placeKindMark = () => {
             const box = el.querySelector('[data-l="kinds"]');
             const on = box?.querySelector('[data-kind].on');
@@ -371,7 +371,7 @@
             kindResizeObserver = new global.ResizeObserver(() => scheduleKindMark());
             kindResizeObserver.observe(r.kinds);
         }
-        // 「为你」：最近播放后面接每日推荐、最常听、很久没听、还没听过（听歌记录 music-stats.js + 挑歌 music-radio.js）
+        // 「为你」：最近播放、每日推荐、最常听、很久没听、还没听过
         const statsSections = () => {
             const stats = app.musicStats;
             const list = tracks();
@@ -481,8 +481,15 @@
             const dk = q0 ? 'search' : state.kind;
             if (dk !== lDk) { lDk = dk; el.dataset.kind = dk; }
             paintSort();
-            for (const node of state.rendered.values()) recycleNode(node);
             state.rendered.clear();
+            const keepStale = out.count > 0 && vpVisible;
+            if (keepStale) staleRows.length = 0; else flushStale();
+            for (let ch = r.spacer.firstElementChild; ch;) {
+                const next = ch.nextElementSibling;
+                if (keepStale && ch._r) staleRows.push(ch);
+                else recycleNode(ch);
+                ch = next;
+            }
             if (multi.size) {
                 // 重排后还在的才留着
                 const alive = new Set(state.rows.filter((row) => row.type === 'track').map(keyOf));
@@ -553,6 +560,7 @@
         };
         const EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i;
         const rowPool = [];
+        const staleRows = [];
         const ROW_POOL_MAX = 64;
         let rowProto = null;
         const recycleNode = (node) => {
@@ -564,6 +572,7 @@
                 rowPool.push(node);
             }
         };
+        const flushStale = () => { while (staleRows.length) recycleNode(staleRows.pop()); };
         const acquireTrackNode = () => {
             if (rowPool.length) return rowPool.pop();
             if (!rowProto) {
@@ -583,31 +592,35 @@
                 b: ch[3].firstChild,
                 em: ch[3].lastChild,
                 lk: ch[4].firstChild,
-                tm: ch[4].lastChild
+                tm: ch[4].lastChild,
+                noText: '', titleText: null, titleQ: '', metaText: null, metaQ: '', liked: false, timeText: ''
             };
             return node;
         };
-        const fillTrackNode = (node, row, k, words) => {
+        const fillTrackNode = (node, row, k, words, qKey) => {
             const t = tracks()[row.i] || {};
             const meta = t.artist && t.album ? t.artist + ' · ' + t.album : (t.artist || t.album || '未知歌手');
-            const rawTitle = String(t.title || '');
-            const title = (EXT_RE.test(rawTitle) ? rawTitle.replace(EXT_RE, '') : rawTitle) || '未知标题';
+            const raw = String(t.title || '');
+            const title = (EXT_RE.test(raw) ? raw.replace(EXT_RE, '') : raw) || '未知标题';
             const time = durationOf(t, row.i);
-            const liked = typeof app.isLiked === 'function' && app.isLiked(t);
+            const liked = Boolean(typeof app.isLiked === 'function' && app.isLiked(t));
             const p = node._r;
-            p.no.textContent = pad(state.ord?.[k] || 0, state.ordWidth || 2);
-            if (words && words.length) {
-                const bh = markHit(title, words, true);
+            const no = pad(state.ord?.[k] || 0, state.ordWidth || 2);
+            if (p.noText !== no) { p.noText = no; p.no.textContent = no; }
+            const qk = words && words.length ? qKey : '';
+            if (p.titleText !== title || p.titleQ !== qk) {
+                p.titleText = title; p.titleQ = qk;
+                const bh = qk ? markHit(title, words, true) : null;
                 if (bh !== null) p.b.innerHTML = bh; else p.b.textContent = title;
-                const eh = markHit(meta, words, true);
-                if (eh !== null) p.em.innerHTML = eh; else p.em.textContent = meta;
-            } else {
-                p.b.textContent = title;
-                p.em.textContent = meta;
             }
-            p.lk.hidden = !liked;
-            p.tm.textContent = time > 0 ? fmtTime(time) : '';
-            p.tm.hidden = !(time > 0);
+            if (p.metaText !== meta || p.metaQ !== qk) {
+                p.metaText = meta; p.metaQ = qk;
+                const eh = qk ? markHit(meta, words, true) : null;
+                if (eh !== null) p.em.innerHTML = eh; else p.em.textContent = meta;
+            }
+            if (p.liked !== liked) { p.liked = liked; p.lk.hidden = !liked; }
+            const tm = time > 0 ? fmtTime(time) : '';
+            if (p.timeText !== tm) { p.timeText = tm; p.tm.textContent = tm; p.tm.hidden = !tm; }
         };
         /* 分组标题上「播放这一组」：歌手、专辑、歌单、检索结果都有；首字母分隔和「全部」没有 */
         const groupPlayable = (row) => row && row.type === 'head' && !isLetter(row) && state.kind !== 'all';
@@ -626,35 +639,20 @@
             return (known < n ? '约 ' : '') + text;
         };
         const rowHtml = (row, k) => {
-            if (row.type === 'head') {
-                if (isLetter(row)) return letterHtml(row);
-                const pl = playlistOfHead(row);
-                if (pl && manage.confirm === String(pl.id)) {
-                    return `<span>删除「${esc(pl.name)}」？</span><button type="button" data-pl="delete-yes">删除</button><button type="button" data-pl="delete-no">取消</button>`;
-                }
-                const gp = groupPlayable(row) ? `<button type="button" class="gplay" data-gplay title="播放这一组（${row.n} 首）" aria-label="播放这一组"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.6v8.8L10.2 6z"/></svg>播放</button>` : '';
-                const len = groupLength(k);
-                // 组长导轨：长度按首数取对数，三首和三千首的组都看得出差别
-                const rail = row.n > 0 ? Math.log1p(row.n) / Math.log1p(Math.max(row.n, tracks().length || 1)) : 0;
-                return `<span>${esc(row.label)}</span><i title="${row.n} 首${len ? ' · ' + len : ''}">${row.n} 首${len ? `<small> · ${len}</small>` : ''}</i><b class="rail" aria-hidden="true" style="--rail:${rail.toFixed(3)}"></b>${gp}`
-                    + (pl ? '<span class="acts"><button type="button" data-pl="rename" title="重命名歌单" aria-label="重命名歌单"><svg class="archive-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4"/></svg></button><button type="button" data-pl="delete" title="删除歌单" aria-label="删除歌单"><svg class="archive-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>' : '');
+            if (isLetter(row)) return letterHtml(row);
+            const pl = playlistOfHead(row);
+            if (pl && manage.confirm === String(pl.id)) {
+                return `<span>删除「${esc(pl.name)}」？</span><button type="button" data-pl="delete-yes">删除</button><button type="button" data-pl="delete-no">取消</button>`;
             }
-            const t = tracks()[row.i] || {};
-            const meta = [t.artist, t.album].filter(Boolean).join(' · ') || '未知歌手';
-            const title = String(t.title || '').replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '') || '未知标题';
-            const time = durationOf(t, row.i);
-            const liked = typeof app.isLiked === 'function' && app.isLiked(t);
-            return `<span class="no" aria-hidden="true">${pad(state.ord?.[k] || 0, state.ordWidth || 2)}</span>`
-                + '<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>'
-                + '<button type="button" class="go" data-go tabindex="-1" aria-label="播放"><svg viewBox="0 0 12 12" aria-hidden="true"><path class="go-play" d="M3 1.6v8.8L10.2 6z"/><path class="go-pause" d="M2.6 1.8h2.4v8.4H2.6zM7 1.8h2.4v8.4H7z"/></svg></button>'
-                + `<span class="tx"><b>${markHit(title)}</b><em>${markHit(meta)}</em></span>`
-                + `<span class="rt">${liked ? '<s class="lk" title="喜欢" aria-label="喜欢">♥</s>' : ''}${time > 0 ? `<i>${fmtTime(time)}</i>` : ''}</span>`;
+            const gp = groupPlayable(row) ? `<button type="button" class="gplay" data-gplay title="播放这一组（${row.n} 首）" aria-label="播放这一组"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.6v8.8L10.2 6z"/></svg>播放</button>` : '';
+            const len = groupLength(k);
+            // 组长导轨：长度按首数取对数，三首和三千首的组都看得出差别
+            const rail = row.n > 0 ? Math.log1p(row.n) / Math.log1p(Math.max(row.n, tracks().length || 1)) : 0;
+            return `<span>${esc(row.label)}</span><i title="${row.n} 首${len ? ' · ' + len : ''}">${row.n} 首${len ? `<small> · ${len}</small>` : ''}</i><b class="rail" aria-hidden="true" style="--rail:${rail.toFixed(3)}"></b>${gp}`
+                + (pl ? '<span class="acts"><button type="button" data-pl="rename" title="重命名歌单" aria-label="重命名歌单"><svg class="archive-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4"/></svg></button><button type="button" data-pl="delete" title="删除歌单" aria-label="删除歌单"><svg class="archive-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></span>' : '');
         };
 
-        /*
-         * 多选：Ctrl（⌘）点一行加进或拿出，Shift 点选一段，Ctrl+A 全选，Esc 取消；普通单击回到单选。
-         * 选中多首时右键（或菜单键）打开批量菜单：下一首播放、加入队列、加入歌单、移除。拖动其中一行就是拖这几首。
-         */
+        /* 多选：Ctrl 增减、Shift 连选、Ctrl+A 全选、Esc 取消；多选右键开批量菜单，拖动带走整批。 */
         const multi = new Set();
         let multiAnchor = -1;
         const keyOf = (row) => row.i + '|' + (row.ctx || '');
@@ -756,13 +754,14 @@
             state.raf = 0;
             if (!el.isConnected || el.hidden) return;
             if (!state.rows.length) {
+                flushStale();
                 r.viewport.classList.toggle('at-top', true);
                 r.viewport.classList.toggle('at-bottom', true);
                 r.thumb.hidden = true;
                 r.sticky.textContent = '';
                 return;
             }
-            // 先集中读 scrollTop 和 clientHeight（或复用 rebuild 预读值），再统一写 at-top / at-bottom 类，避免读→写→读触发强制同步重排
+            // 先集中读 scrollTop 和 clientHeight，再写类名，避免强制回流
             const hasKnown = Boolean(known && typeof known === 'object' && typeof known.top === 'number' && known.height > 0);
             const top = hasKnown ? known.top : readScrollTop();
             const rawH = hasKnown ? known.height : viewportHeight();
@@ -793,19 +792,27 @@
             const stuckRow = state.rows[headK];
             state.stuck = stuckRow && isLetter(stuckRow) ? headK : -1;
             const qTrim = state.query.trim();
-            const qWords = qTrim ? qTrim.toLowerCase().split(/\s+/).filter(Boolean) : null;
+            const qLow = qTrim.toLowerCase();
+            const qWords = qTrim ? qLow.split(/\s+/).filter(Boolean) : null;
             let frag = null;
+            let staleIdx = 0;
             for (let k = first; k <= last; k++) {
                 const row = state.rows[k];
                 let node = state.rendered.get(k);
                 if (!node) {
                     if (row.type === 'track') {
-                        node = acquireTrackNode();
+                        const inPlace = staleIdx < staleRows.length;
+                        node = inPlace ? staleRows[staleIdx++] : acquireTrackNode();
+                        if (inPlace && node.title && node.dataset.tipBad !== '1') node.removeAttribute('title');
                         node.dataset.k = k;
-                        // 下面紧跟分组标题的那一行不画底线，免得和标题的结构线叠成两道
-                        if (state.rows[k + 1]?.type === 'head') node.classList.add('before-head');
-                        node.style.transform = `translateY(${state.offsets[k]}px)`;
-                        fillTrackNode(node, row, k, qWords);
+                        node.classList.toggle('before-head', state.rows[k + 1]?.type === 'head');
+                        const offY = state.offsets[k];
+                        if (node._y !== offY) { node._y = offY; node.style.transform = `translateY(${offY}px)`; }
+                        fillTrackNode(node, row, k, qWords, qLow);
+                        if (!inPlace) {
+                            if (!frag) frag = document.createDocumentFragment();
+                            frag.appendChild(node);
+                        }
                     } else {
                         node = document.createElement('div');
                         node.className = isLetter(row) ? 'archive-list-letter' : 'archive-list-group';
@@ -813,13 +820,17 @@
                         if (playlistOfHead(row)) node.classList.add('is-playlist');
                         node.style.transform = `translateY(${state.offsets[k]}px)`;
                         node.innerHTML = rowHtml(row, k);
+                        if (!frag) frag = document.createDocumentFragment();
+                        frag.appendChild(node);
                     }
-                    if (!frag) frag = document.createDocumentFragment();
-                    frag.appendChild(node);
                     state.rendered.set(k, node);
                 }
                 paintRow(node, row, k);
             }
+            if (staleIdx < staleRows.length) {
+                for (let j = staleIdx; j < staleRows.length; j++) recycleNode(staleRows[j]);
+            }
+            staleRows.length = 0;
             if (frag) r.spacer.appendChild(frag);
             // 吸附字母停在顶上，下一组的字母顶上来时把它推上去
             let stickyY = null;
@@ -1158,7 +1169,7 @@
             clearTimeout(typeTimer);
             typeTimer = setTimeout(() => applyQuery(true), 30); // 570 首时一次检索约 5–15ms，去抖只为合并连续按键，不再让人等
         });
-        // 有检索词时右边出现 ✕：点一下清空，焦点留在输入框里接着打字（显示 / 隐藏只靠 CSS 的 :placeholder-shown）
+        // 右边 ✕ 清空检索词（显隐靠 CSS :placeholder-shown）
         r.clear?.addEventListener('mousedown', (e) => e.preventDefault());
         r.clear?.addEventListener('click', (e) => {
             e.preventDefault();
@@ -1265,8 +1276,7 @@
                     break;
                 }
                 case 'Tab': {
-                    // 检索框里有字时 Tab 换分类（在别的分类里看同一个检索词）；到了最后一类（Shift+Tab 到了第一类）
-                    // 就不再绕回去，焦点照常离开检索框，键盘用户不会被困住。框里没字时 Tab 就是普通的下一个控件
+                    // 检索框有字时 Tab 换分类；到头则放行焦点离开，无字时照常 Tab
                     if (!inInput || !r.input.value) return;
                     const at = KINDS.findIndex(([k]) => k === state.kind);
                     const next = at + (e.shiftKey ? -1 : 1);
@@ -1969,7 +1979,7 @@
             opts.onSort?.(mode); // 阵列和目录一起按新顺序重建
         };
         r.sortBtn.addEventListener('click', (e) => { e.stopPropagation(); sortOpen() ? closeSort() : openSort(); });
-        // 表头即排序：点「编号」按添加时间，「曲目」在标题和歌手之间切换，「时长」按时长（排序菜单还在，只是不占一层）
+        // 表头即排序：编号→添加时间，曲目→标题/歌手切换，时长→时长
         r.cols.addEventListener('click', (e) => {
             const b = e.target.closest('[data-col]');
             if (!b) return;
@@ -2075,7 +2085,16 @@
             if (state.kind !== 'recent' || statsTimer) return;
             statsTimer = setTimeout(() => { statsTimer = null; if (state.kind === 'recent') rebuild({ steady: true }); }, 800);
         };
-        const onLikeChange = () => { for (const node of state.rendered.values()) recycleNode(node); state.rendered.clear(); render(); };
+        const onLikeChange = () => {
+            if (typeof app.isLiked !== 'function') return;
+            const list = tracks();
+            for (const [k, node] of state.rendered) {
+                const row = state.rows[k];
+                if (!row || row.type !== 'track' || !node._r) continue;
+                const liked = Boolean(app.isLiked(list[row.i]));
+                if (node._r.liked !== liked) { node._r.liked = liked; node._r.lk.hidden = !liked; }
+            }
+        };
         document.addEventListener('music-track-health', onTrackHealth);
         document.addEventListener('music-stats-change', onStatsChange);
         document.addEventListener('music-like-change', onLikeChange);
@@ -2087,6 +2106,8 @@
             if (kindMarkRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(kindMarkRaf); kindMarkRaf = 0; }
             if (statsTimer) { clearTimeout(statsTimer); statsTimer = null; }
             if (state.raf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(state.raf); state.raf = 0; }
+            staleRows.length = 0;
+            rowPool.length = 0;
             kindResizeObserver?.disconnect(); kindResizeObserver = null;
             slimResizeObserver?.disconnect(); slimResizeObserver = null;
             document.removeEventListener('music-track-health', onTrackHealth);

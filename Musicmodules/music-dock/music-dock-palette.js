@@ -614,6 +614,17 @@
         let emptyEl = null;
         let lastEmptyMode = '';
         let activeRowEl = null;
+        let dropEl = null;
+        const ensureDrop = () => {
+            if (dropEl) return dropEl;
+            const existing = list.querySelector(':scope > .md-cmd-drop');
+            if (existing) { dropEl = existing; return dropEl; }
+            if (!global.MusicFluid?.slide) return null;
+            dropEl = document.createElement('i');
+            dropEl.className = 'md-cmd-drop';
+            dropEl.setAttribute('aria-hidden', 'true');
+            return dropEl;
+        };
         const render = () => {
             activeRowEl = null;
             if (!state.items.length) {
@@ -633,15 +644,16 @@
                 foot.hidden = true;
                 return;
             }
-            const existingDrop = list.querySelector(':scope > .md-cmd-drop');
+            const drop = ensureDrop();
             // 列表是倒着排的（column-reverse），所以每组的标题写在这组最后一项后面，显示出来就在上方。
-            const frag = document.createDocumentFragment();
+            // 就地对齐列表子节点，保留已在 DOM 中的行按钮避免每次按键全量拆装触发 800+ 节点样式重算。
+            const desired = [];
             let secUsed = 0;
             for (let i = 0; i < state.items.length; i += 1) {
                 const item = state.items[i];
                 let slot = rowPool[i];
                 if (!slot) { slot = createRowSlot(); rowPool[i] = slot; }
-                frag.appendChild(hydrateRowSlot(slot, item, i));
+                desired.push(hydrateRowSlot(slot, item, i));
                 const next = state.items[i + 1];
                 if (item.section && (!next || next.section !== item.section)) {
                     let sec = secPool[secUsed];
@@ -654,11 +666,24 @@
                     secUsed += 1;
                     const secText = String(item.section);
                     if (sec.textContent !== secText) sec.textContent = secText;
-                    frag.appendChild(sec);
+                    desired.push(sec);
                 }
             }
-            if (existingDrop) frag.appendChild(existingDrop);
-            list.replaceChildren(frag);
+            if (drop) desired.push(drop);
+            let cursor = list.firstChild;
+            for (let i = 0; i < desired.length; i += 1) {
+                const node = desired[i];
+                if (cursor === node) {
+                    cursor = cursor.nextSibling;
+                } else {
+                    list.insertBefore(node, cursor);
+                }
+            }
+            while (cursor) {
+                const next = cursor.nextSibling;
+                cursor.remove();
+                cursor = next;
+            }
             syncActive(false, true);
         };
 
@@ -666,11 +691,13 @@
             if (!state.open) return;
             const row = activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector(`[data-i="${state.active}"]`);
             if (!row) return;
-            // 选中的那一行背后是一滴玻璃，上下键换行时流过去（延后到动画帧读取 offsetTop/offsetHeight，避免每次按键刚写完 innerHTML 就触发全页强制布局）
+            // 选中的那一行背后是一滴玻璃，上下键换行时流过去（drop 已在 render 阶段挂好，避免在读 offsetTop 前写入 DOM 触发同步回流）
             if (global.MusicFluid?.slide) {
-                let drop = list.querySelector(':scope > .md-cmd-drop');
-                if (!drop) { drop = document.createElement('i'); drop.className = 'md-cmd-drop'; drop.setAttribute('aria-hidden', 'true'); list.appendChild(drop); }
-                global.MusicFluid.slide(drop, { top: row.offsetTop, height: row.offsetHeight }, { key: 'md-cmd', axis: 'y', lead: 140, trail: 300 });
+                const top = row.offsetTop;
+                const height = row.offsetHeight;
+                const drop = ensureDrop();
+                if (drop && !drop.isConnected) list.appendChild(drop);
+                if (drop) global.MusicFluid.slide(drop, { top, height }, { key: 'md-cmd', axis: 'y', lead: 140, trail: 300 });
             }
             if (scroll) row.scrollIntoView?.({ block: 'nearest' });
         };
@@ -862,6 +889,7 @@
                 global.removeEventListener('resize', onResize);
                 cachedPathList = cachedPathFirst = cachedPathLast = cachedByPath = null;
                 activeRowEl = null;
+                dropEl = null;
                 rowPool.length = 0;
                 secPool.length = 0;
                 emptyEl = null;

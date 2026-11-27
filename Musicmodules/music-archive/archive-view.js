@@ -628,7 +628,9 @@
             state.scene.setCover(key, entry?.ok ? (entry.small || entry.img) : null, { title, artist, format, bitrate });
         };
         const setCardExpanded = (on) => {
-            cardExpanded = on;
+            const next = Boolean(on);
+            if (cardExpanded === next && (!state.scene || state.scene.detail === (Boolean(selectedTrack()) && next && !wheelBrowsing))) return;
+            cardExpanded = next;
             syncCard();
         };
 
@@ -1336,14 +1338,32 @@
             refs.hud.style.setProperty('--archive-dock-lift', lift + 'px');
             state.scene?.resize(full, h);
             syncLyrics();
-            syncSceneLayout({ sc, hudW, hudH, lift });
+            scheduleSceneLayout({ sc, hudW, hudH, lift });
             kick();
+        };
+        let sceneLayoutRaf = 0;
+        let sceneLayoutMetrics = null;
+        const scheduleSceneLayout = (metrics = null) => {
+            if (metrics) sceneLayoutMetrics = metrics;
+            if (sceneLayoutRaf || !isShown()) return;
+            if (typeof requestAnimationFrame !== 'function') {
+                const m = sceneLayoutMetrics; sceneLayoutMetrics = null;
+                syncSceneLayout(m);
+                return;
+            }
+            sceneLayoutRaf = requestAnimationFrame(() => {
+                sceneLayoutRaf = 0;
+                const m = sceneLayoutMetrics;
+                sceneLayoutMetrics = null;
+                if (!state.destroyed) syncSceneLayout(m);
+            });
         };
         // 用目录、歌词和设置抽屉之间的可用空间给抽出的卡片构图。
         const syncSceneLayout = (metrics) => {
+            if (!isShown()) return;
             syncWallRoom();
             const scene = state.scene;
-            if (!scene || !isShown()) return;
+            if (!scene) return;
             const sc = metrics ? metrics.sc : hudScale(root.clientHeight || global.innerHeight);
             const openList = listOpen();
             const stacked = refs.hud.classList.contains('tiny') && openList && refs.hud.classList.contains('has-track');
@@ -2100,6 +2120,7 @@
             clearInterval(clockTimer);
             if (syncListRaf) { cancelAnimationFrame(syncListRaf); syncListRaf = 0; }
             if (pickRaf) { cancelAnimationFrame(pickRaf); pickRaf = 0; }
+            if (sceneLayoutRaf) { cancelAnimationFrame(sceneLayoutRaf); sceneLayoutRaf = 0; sceneLayoutMetrics = null; }
             drawerObserver?.disconnect();
             cancelAnimationFrame(drawerFrame);
             clearTimeout(scan.timer);
@@ -2198,7 +2219,7 @@
         const LyricsLib = global.MusicArchiveLyrics;
         lyrics = LyricsLib ? LyricsLib.create({
             host: refs.hud, app, reducedMotion,
-            onChange: syncSceneLayout
+            onChange: () => scheduleSceneLayout()
         }) : null;
         loadPinyin();
 

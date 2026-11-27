@@ -60,6 +60,9 @@
         let overlay = null;
         let previousFocus = null;
         let openRaf = 0;
+        let cachedGroups = null;
+        let cachedPlaylist = null;
+        let cachedPlaylistLen = -1;
         const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
@@ -69,6 +72,7 @@
             if (!overlay) return;
             if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay; overlay = null;
+            cachedGroups = null; cachedPlaylist = null; cachedPlaylistLen = -1;
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
             if (immediate) o.remove();
@@ -188,7 +192,11 @@
         const render = () => {
             const body = overlay.querySelector('.mdupes-body');
             body.innerHTML = '';
-            const groups = findDuplicates(app.playlist || []);
+            const list = app.playlist || [];
+            const groups = findDuplicates(list);
+            cachedGroups = groups;
+            cachedPlaylist = list;
+            cachedPlaylistLen = list.length;
             const extra = groups.reduce((n, g) => n + g.extra.length, 0);
             const action = overlay.querySelector('.mdupes-remove');
             if (!groups.length) {
@@ -251,7 +259,10 @@
             const go = el('button', 'dialog-btn confirm mdupes-remove', '移除多余的文件');
             go.type = 'button';
             go.addEventListener('click', () => {
-                const groups = findDuplicates(app.playlist || []);
+                const list = app.playlist || [];
+                const groups = (cachedGroups && cachedPlaylist === list && cachedPlaylistLen === list.length)
+                    ? cachedGroups
+                    : findDuplicates(list);
                 const removed = removeExtras(groups);
                 close();
                 if (!removed) { toast('没有可以移除的文件（正在放的那份先留着）'); return; }

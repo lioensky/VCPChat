@@ -222,6 +222,30 @@
         };
         document.addEventListener('music-like-change', onLikeChange);
 
+        // 预构四列模板碎片：批量建行时 cloneNode(true) 并预填未喜欢态，省去每行四次 createElement 与三次 setAttribute
+        let colProto = null;
+        const getColProto = () => {
+            if (colProto) return colProto;
+            const frag = document.createDocumentFragment();
+            const title = document.createElement('span');
+            title.className = 'cl-title';
+            const artist = document.createElement('span');
+            artist.className = 'cl-artist';
+            const like = document.createElement('button');
+            like.type = 'button';
+            like.className = 'cl-like';
+            like.tabIndex = -1;
+            like.textContent = '♥';
+            like.setAttribute('aria-pressed', 'false');
+            like.setAttribute('aria-label', '喜欢');
+            like.title = '喜欢';
+            const duration = document.createElement('span');
+            duration.className = 'cl-duration';
+            frag.append(title, artist, like, duration);
+            colProto = frag;
+            return colProto;
+        };
+
         // 每行拆成标题 / 歌手 / 时长三格。原渲染只在列表内容变化时重建 <li>，已拆过的行在虚拟列表复用时就地更新字段避免重复建节点。
         const decorateRow = (li, update = false, preTitle) => {
             const track = app.playlist[Number(li.dataset.index)];
@@ -241,27 +265,21 @@
                 return;
             }
             const titleText = preTitle !== undefined ? preTitle : (li.textContent || '');
-            const title = document.createElement('span');
-            title.className = 'cl-title';
+            const artistText = track?.artist || '';
+            const frag = getColProto().cloneNode(true);
+            const title = frag.childNodes[0];
+            const artist = frag.childNodes[1];
+            const like = frag.childNodes[2];
+            const duration = frag.childNodes[3];
             title.textContent = titleText;
-            const artist = document.createElement('span');
-            artist.className = 'cl-artist';
-            artist.textContent = track?.artist || '';
-            const duration = document.createElement('span');
-            duration.className = 'cl-duration';
+            artist.textContent = artistText;
             duration.textContent = formatDuration(track?.duration);
-            // 喜欢：一格小心形（和主流播放器的列表一样，喜欢过的常亮，其他的悬停才出现）
-            const like = document.createElement('button');
-            like.type = 'button';
-            like.className = 'cl-like';
-            like.tabIndex = -1;
-            like.textContent = '♥';
+            like._likeState = 'false';
             li._likeBtn = like;
             li._cl = { title, artist, like, duration };
-            li.replaceChildren(title, artist, like, duration);
+            li.replaceChildren(frag);
             paintLike(li, track);
             const mainTitle = titleText || titleOf(track);
-            const artistText = track?.artist || '';
             li.title = mainTitle && artistText ? `${mainTitle} — ${artistText}` : (mainTitle || artistText);
             li.dataset.cols = '1';
         };

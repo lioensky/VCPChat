@@ -186,6 +186,8 @@ function installPinButton(_ctx, roleApi) {
     let mountedPinBtn = null;
     let mountedContainer = null;
     let mountScheduled = false;
+    let mountRafId = 0;
+    let disposed = false;
 
     const cleanupNarrowObserver = () => {
         if (narrowObserver) {
@@ -202,10 +204,12 @@ function installPinButton(_ctx, roleApi) {
     };
 
     const scheduleMount = () => {
-        if (mountScheduled) return;
+        if (disposed || mountScheduled) return;
         mountScheduled = true;
-        requestAnimationFrame(() => {
+        mountRafId = requestAnimationFrame(() => {
+            mountRafId = 0;
             mountScheduled = false;
+            if (disposed) return;
             tryMount();
         });
     };
@@ -337,10 +341,14 @@ function installPinButton(_ctx, roleApi) {
     // 初始启动搜寻
     startRootObserver();
 
-    let disposed = false;
     const dispose = () => {
         if (disposed) return;
         disposed = true;
+        if (mountRafId && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(mountRafId);
+            mountRafId = 0;
+        }
+        mountScheduled = false;
         cleanupNarrowObserver();
         cleanupRootObserver();
         try { if (typeof unsubPin === 'function') unsubPin(); } catch { /* noop */ }
