@@ -142,6 +142,7 @@
             sizeChanged = true;
         }
         locked = p.locked === true;
+        if (!locked) hoverUnlock = false;
         if (locked !== lastLocked) {
             lastLocked = locked;
             body.classList.toggle('locked', locked);
@@ -165,12 +166,19 @@
         else send(cmd);
     });
     // 悬停：锁定时鼠标事件是穿透转发来的，只用来露出锁形按钮；移到锁上才临时接收点击
+    let hoverUnlock = false;
+    const setHoverUnlock = (on) => {
+        const next = Boolean(on && locked);
+        if (next === hoverUnlock) return;
+        hoverUnlock = next;
+        send('hover', next);
+    };
     const enter = () => { if (!body.classList.contains('hover')) body.classList.add('hover'); };
     document.addEventListener('mouseenter', enter);
     document.addEventListener('mousemove', enter, { passive: true });
-    document.addEventListener('mouseleave', () => { if (body.classList.contains('hover')) body.classList.remove('hover'); if (locked) send('hover', false); });
-    lockBtn?.addEventListener('mouseenter', () => { if (locked) send('hover', true); });
-    lockBtn?.addEventListener('mouseleave', () => { if (locked) send('hover', false); });
+    document.addEventListener('mouseleave', () => { if (body.classList.contains('hover')) body.classList.remove('hover'); setHoverUnlock(false); });
+    lockBtn?.addEventListener('mouseenter', () => setHoverUnlock(true));
+    lockBtn?.addEventListener('mouseleave', () => setHoverUnlock(false));
     document.addEventListener('wheel', (e) => { if (!locked && e.ctrlKey) send('size', size + (e.deltaY < 0 ? 2 : -2)); }, { passive: true });
     document.addEventListener('visibilitychange', paint);
     let fitRaf = 0;

@@ -528,9 +528,14 @@
          * 检索时把命中的字标出来（字面命中才标；拼音首字母这类命中不标，免得标错位置）。
          * 检索词按空格拆开，每段各自标；大小写不分。
          */
-        const markHit = (text, words) => {
-            if (!words || !words.length) return esc(text);
+        const markHit = (text, words, rawNull = false) => {
+            if (!words || !words.length) return rawNull ? null : esc(text);
             const low = String(text).toLowerCase();
+            let any = false;
+            for (let wi = 0; wi < words.length; wi++) {
+                if (low.indexOf(words[wi]) !== -1) { any = true; break; }
+            }
+            if (!any) return rawNull ? null : esc(text);
             const hit = new Uint8Array(low.length);
             for (let wi = 0; wi < words.length; wi++) {
                 const w = words[wi];
@@ -592,8 +597,10 @@
             const p = node._r;
             p.no.textContent = pad(state.ord?.[k] || 0, state.ordWidth || 2);
             if (words && words.length) {
-                p.b.innerHTML = markHit(title, words);
-                p.em.innerHTML = markHit(meta, words);
+                const bh = markHit(title, words, true);
+                if (bh !== null) p.b.innerHTML = bh; else p.b.textContent = title;
+                const eh = markHit(meta, words, true);
+                if (eh !== null) p.em.innerHTML = eh; else p.em.textContent = meta;
             } else {
                 p.b.textContent = title;
                 p.em.textContent = meta;
@@ -843,6 +850,11 @@
             const reduce = typing || !cur || !cur.textContent || document.body.classList.contains('music-reduce-motion')
                 || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
             box.querySelectorAll('.out').forEach((n) => n.remove());
+            if (reduce && cur && !cur.classList.contains('out') && box.children.length === 1) {
+                cur.textContent = text;
+                cur.classList.toggle('q', text.startsWith('「'));
+                return;
+            }
             const next = document.createElement('span');
             next.textContent = text;
             if (text.startsWith('「')) next.classList.add('q'); // 全角括号左半边是空白，靠 CSS 往左挂出去，字和下面对齐

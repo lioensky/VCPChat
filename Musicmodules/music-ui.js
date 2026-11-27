@@ -112,16 +112,25 @@ function setupUI(app) {
         }
         return rowPitch;
     };
-    const makeRow = (t) => {
-        const li = document.createElement('li');
-        li.textContent = app.stripAudioExtension(t.title) || '未知标题';
+    const ROW_POOL_MAX = 160;
+    const rowPool = [];
+    const hydrateRow = (li, t) => {
+        const titleText = app.stripAudioExtension(t.title) || '未知标题';
         const index = libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1;
-        li.dataset.index = index;
-        if (index === app.currentTrackIndex) li.classList.add('active');
-        app.decorateClassicRow?.(li);
+        const indexStr = String(index);
+        if (li.dataset.index !== indexStr) li.dataset.index = indexStr;
+        const isActive = index === app.currentTrackIndex;
+        if (li.classList.contains('active') !== isActive) li.classList.toggle('active', isActive);
+        li._track = t;
+        if (li._cl && typeof app.decorateClassicRow === 'function') {
+            app.decorateClassicRow(li, true, titleText);
+        } else {
+            if (li.textContent !== titleText) li.textContent = titleText;
+            app.decorateClassicRow?.(li, false, titleText);
+        }
         return li;
     };
-    // 按当前滚动位置算出要建的那一段，和已建的不一样才重建（留下的行原样复用）。
+    // 按当前滚动位置算出要建的那一段，和已建的不一样才重建（留下的行原样复用，离开视口的行进池就地更新避免反复创建节点）。
     const renderWindow = (force = false) => {
         const list = app.playlistEl;
         if (!list) return;
@@ -137,25 +146,43 @@ function setupUI(app) {
         }
         if (!force && from === windowStart && to === windowEnd && list.children.length === to - from) return;
         const keep = new Map();
+        const unused = [];
         for (const li of list.children) {
             const t = li._track;
-            if (t && li.dataset.index === String(libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1)) keep.set(t, li);
+            const idx = t && libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1;
+            if (t && !keep.has(t) && li.dataset.index === String(idx)) keep.set(t, li);
+            else unused.push(li);
         }
-        const rows = [];
+        const count = to - from;
+        const rows = new Array(count);
         for (let i = from; i < to; i += 1) {
             const t = shownSongs[i];
-            let li = keep.get(t);
+            const li = keep.get(t);
             if (li) {
-                li.style.marginTop = '';
-                li.style.marginBottom = '';
-            } else {
-                li = makeRow(t);
-                li._track = t;
+                keep.delete(t);
+                if (li.style.marginTop) li.style.marginTop = '';
+                if (li.style.marginBottom) li.style.marginBottom = '';
+                rows[i - from] = li;
+            }
+        }
+        for (const li of keep.values()) unused.push(li);
+        for (let i = from; i < to; i += 1) {
+            let li = rows[i - from];
+            if (!li) {
+                li = unused.length ? unused.pop() : (rowPool.length ? rowPool.pop() : document.createElement('li'));
+                if (li.style.marginTop) li.style.marginTop = '';
+                if (li.style.marginBottom) li.style.marginBottom = '';
+                hydrateRow(li, shownSongs[i]);
+                rows[i - from] = li;
             }
             // 行号写在行上（CSS 计数器在只建一段时会从 1 数起，而且 content-visibility 的样式隔离也会把它截断）
             const n = String(i + 1).padStart(2, '0');
             if (li.dataset.n !== n) { li.dataset.n = n; li.classList.toggle('n-long', n.length > 4); }
-            rows.push(li);
+        }
+        while (unused.length && rowPool.length < ROW_POOL_MAX) {
+            const stale = unused.pop();
+            stale._track = null;
+            rowPool.push(stale);
         }
         list.replaceChildren(...rows);
         windowStart = from;
@@ -247,6 +274,7 @@ function setupUI(app) {
             if (app.backgroundTransitionTimer) { clearTimeout(app.backgroundTransitionTimer); app.backgroundTransitionTimer = null; }
             app.playlistEl?.removeEventListener('scroll', renderWindowSoon);
             window.removeEventListener('resize', renderWindowSoon);
+            rowPool.length = 0;
         }, { once: true });
     }
     // 列表空着时那句话（样式表里 #playlist:empty::after 显示它）：

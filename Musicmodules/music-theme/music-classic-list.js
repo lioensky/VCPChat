@@ -182,11 +182,25 @@
         };
         document.addEventListener('music-like-change', onLikeChange);
 
-        // 每行拆成标题 / 歌手 / 时长三格。原渲染只在列表内容变化时重建 <li>，已拆过的行跳过。
-        const decorateRow = (li) => {
-            if (li.dataset.cols === '1') return;
+        // 每行拆成标题 / 歌手 / 时长三格。原渲染只在列表内容变化时重建 <li>，已拆过的行在虚拟列表复用时就地更新字段避免重复建节点。
+        const decorateRow = (li, update = false, preTitle) => {
             const track = app.playlist[Number(li.dataset.index)];
-            const titleText = li.textContent || '';
+            if (li.dataset.cols === '1') {
+                if (!update || !li._cl) return;
+                const titleText = preTitle !== undefined ? preTitle : (titleOf(track) || '未知标题');
+                const artistText = track?.artist || '';
+                const durText = formatDuration(track?.duration);
+                const c = li._cl;
+                if (c.title.textContent !== titleText) c.title.textContent = titleText;
+                if (c.artist.textContent !== artistText) c.artist.textContent = artistText;
+                if (c.duration.textContent !== durText) c.duration.textContent = durText;
+                paintLike(li, track);
+                const mainTitle = titleText || titleOf(track);
+                const tip = mainTitle && artistText ? `${mainTitle} — ${artistText}` : (mainTitle || artistText);
+                if (li.title !== tip) li.title = tip;
+                return;
+            }
+            const titleText = preTitle !== undefined ? preTitle : (li.textContent || '');
             const title = document.createElement('span');
             title.className = 'cl-title';
             title.textContent = titleText;
@@ -203,6 +217,7 @@
             like.tabIndex = -1;
             like.textContent = '♥';
             li._likeBtn = like;
+            li._cl = { title, artist, like, duration };
             li.replaceChildren(title, artist, like, duration);
             paintLike(li, track);
             const mainTitle = titleText || titleOf(track);

@@ -205,9 +205,12 @@
         // 两帧频闪：圆环突然放大变淡，像信号没对上。
         const f = frameOf(t);
         const glitch = f === 19 || f === 20 || f === 22;
-        n.scanRings.setAttribute('transform', glitch ? `translate(${CX} ${CY}) scale(1.9) translate(${-CX} ${-CY})` : '');
+        if (n._scanGlitch !== glitch) {
+            n._scanGlitch = glitch;
+            n.scanRings.setAttribute('transform', glitch ? `translate(${CX} ${CY}) scale(1.9) translate(${-CX} ${-CY})` : '');
+            n.scanRings.style.filter = glitch ? 'blur(1.4px)' : '';
+        }
         n.scanRings.style.opacity = glitch ? '0.32' : String(keys([[0, 0], [0.04, 0.2], [0.12, 0.65], [0.2, 1]], t));
-        n.scanRings.style.filter = glitch ? 'blur(1.4px)' : '';
 
         // 字距从很散收拢到正常
         const tracking = keys([[0, 26], [0.2, 12], [0.4, 5], [0.6, 1.6], [0.8, 0]], t);
@@ -224,11 +227,14 @@
     const FULL = { scan: 6.2, welcome: 8.0, exit: 9.0, end: 9.75 };
     const SHORT = { end: 2.5 };
 
+    const setStyleOp = (node, val) => {
+        if (node._styleOp !== val) { node._styleOp = val; node.style.opacity = val; }
+    };
     const renderFull = (n, t, ctx) => {
         const f = frameOf(t);
         // 访问请求（仅在可见区间内更新文本与光标，且文本变化时才调用 getComputedTextLength 避免每帧强制 SVG 布局）
         const accessOn = t >= 0.35 && t < 2.1;
-        n.access.style.opacity = !accessOn ? '0' : f === frameOf(2.0) ? '0.25' : '1';
+        setStyleOp(n.access, !accessOn ? '0' : f === frameOf(2.0) ? '0.25' : '1');
         if (accessOn) {
             const accessStr = typed('打开音乐曲库', t, 0.4, 1.0);
             if (n._lastAccessText !== accessStr) {
@@ -242,7 +248,7 @@
 
         // 记号描线、音轨竖条升起、文字
         const markOn = t >= 2.2 && t < FULL.scan;
-        n.mark.style.opacity = markOn ? '1' : '0';
+        setStyleOp(n.mark, markOn ? '1' : '0');
         if (markOn) {
             // 先画圆周（无穷远），再一条一条画出七条测地线，然后内圈、外圈编织带和中心点
             drawMark(n.markParts, t, 2.2);
@@ -258,7 +264,7 @@
 
         // 身份核验
         const authOn = t >= 3.6 && t < 6.2;
-        n.auth.style.opacity = authOn ? '1' : '0';
+        setStyleOp(n.auth, authOn ? '1' : '0');
         if (authOn) {
             let auth = '';
             if (t < 4.75) {
@@ -280,7 +286,7 @@
 
         // 扫描环：曲库计数跟着环收拢一起数上来
         const scanOn = t >= FULL.scan && t < FULL.welcome;
-        n.scan.style.opacity = scanOn ? String(f >= frameOf(7.75) ? keys([[7.75, 1], [7.9, 0.1]], t) : 1) : '0';
+        setStyleOp(n.scan, scanOn ? String(f >= frameOf(7.75) ? keys([[7.75, 1], [7.9, 0.1]], t) : 1) : '0');
         if (scanOn) {
             const local = t - FULL.scan;
             renderScan(n, local, {
@@ -291,7 +297,7 @@
 
         // 欢迎面板：开头几帧面板和字一起闪，像信号接通
         const welcomeOn = t >= FULL.welcome && t < FULL.end;
-        n.welcome.style.opacity = welcomeOn ? '1' : '0';
+        if (!welcomeOn) setStyleOp(n.welcome, '0');
         if (welcomeOn) {
             const k = f - frameOf(FULL.welcome);
             const panel = k >= 0 && k < 7 ? [1, 0, 0.28, 0, 1, 1, 1][k] : 1;
@@ -307,12 +313,13 @@
             n.welcomeMark.style.opacity = t >= 8.4 ? '1' : '0';
             const exit = smooth(progress(t, FULL.exit, FULL.exit + 0.36));
             n.welcomeInner.setAttribute('transform', `translate(${CX} ${CY}) scale(${1 - 0.46 * exit}) translate(${-CX} ${-CY})`);
-            n.welcome.style.opacity = String(1 - Math.pow(exit, 3));
-            n.welcome.style.filter = exit > 0 ? `blur(${(8 * exit).toFixed(2)}px)` : '';
+            setStyleOp(n.welcome, String(1 - Math.pow(exit, 3)));
+            const welcomeBlur = exit > 0 ? `blur(${(8 * exit).toFixed(2)}px)` : '';
+            if (n._welcomeBlur !== welcomeBlur) { n._welcomeBlur = welcomeBlur; n.welcome.style.filter = welcomeBlur; }
         }
         // 白场，然后从左往右揭开露出主界面（没揭到的部分始终不透明）
         const white = smooth(progress(t, FULL.exit - 0.05, FULL.exit + 0.35));
-        n.flash.style.opacity = String(white * ctx.flashPeak);
+        setStyleOp(n.flash, String(white * ctx.flashPeak));
         ctx.wipe = smooth(progress(t, FULL.exit + 0.35, FULL.end));
         return 1;
     };
@@ -409,9 +416,14 @@
     // 揭开：裁掉左边已经扫过的部分，扫描头停在切口上；0 和 1 都不画扫描头
     const applyWipe = (root, n, wipe = 0) => {
         const on = wipe > 0 && wipe < 1;
-        root.style.clipPath = wipe > 0 ? `inset(0 0 0 ${(wipe * 100).toFixed(3)}%)` : '';
-        n.wipe.style.opacity = on ? '1' : '0';
-        if (on) n.wipe.style.left = `${(wipe * 100).toFixed(3)}%`;
+        const clip = wipe > 0 ? `inset(0 0 0 ${(wipe * 100).toFixed(3)}%)` : '';
+        if (n._wipeClip !== clip) { n._wipeClip = clip; root.style.clipPath = clip; }
+        const op = on ? '1' : '0';
+        if (n._wipeOp !== op) { n._wipeOp = op; n.wipe.style.opacity = op; }
+        if (on) {
+            const left = `${(wipe * 100).toFixed(3)}%`;
+            if (n._wipeLeft !== left) { n._wipeLeft = left; n.wipe.style.left = left; }
+        }
     };
 
     const renderStill = (n, t, ctx) => {
@@ -465,6 +477,8 @@
             if (!current) return;
             const run = current;
             current = null;
+            clearTimeout(run.actionTimer);
+            run.actionTimer = null;
             run.flush?.();
             releaseStage();
             cancelAnimationFrame(run.raf);
@@ -530,7 +544,7 @@
             // 闸门：时间走到 gate.at 时，gate.ready() 不成立就停在这一刻（圆环照转），成立了再往下走。
             const gate = extra.gate;
             // 时间一帧最多走 0.1 秒：加载把主线程卡住时，回来接着放，不会一下跳到结尾、让新画面直接蹦出来。
-            let clock = 0, last = t0, waitStart = 0, readyFrames = 0;
+            let clock = 0, last = t0, waitStart = 0, readyFrames = 0, lastWaiting = null, lastRootOp = '';
             const tick = (now) => {
                 if (current !== run) return;
                 const step = Math.min(Math.max(0, now - last) / 1000 * timeScale, 0.1);
@@ -563,11 +577,17 @@
                         t = gate.at;
                     }
                 }
-                root.toggleAttribute('data-waiting', Boolean(ctx.waiting));
-                const opacity = render(nodes, t, ctx);
-                root.style.opacity = String(opacity);
+                const waiting = Boolean(ctx.waiting);
+                if (waiting !== lastWaiting) { lastWaiting = waiting; root.toggleAttribute('data-waiting', waiting); }
+                const opacity = String(render(nodes, t, ctx));
+                if (opacity !== lastRootOp) { lastRootOp = opacity; root.style.opacity = opacity; }
                 applyWipe(root, nodes, ctx.wipe);
-                if (fixed == null && t >= length) { current = null; run.flush(); releaseStage(); run.detach(); document.body.classList.remove('music-intro-playing'); root.remove(); run.done?.(); return; }
+                if (fixed == null && t >= length) {
+                    current = null;
+                    clearTimeout(run.actionTimer);
+                    run.actionTimer = null;
+                    run.flush(); releaseStage(); run.detach(); document.body.classList.remove('music-intro-playing'); root.remove(); run.done?.(); return;
+                }
                 run.raf = requestAnimationFrame(tick);
             };
             run.raf = requestAnimationFrame(tick);

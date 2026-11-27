@@ -151,7 +151,14 @@
         let last = 0;
 
         const GLOW_MS = 600;
-        const glow = { cur: [null, null, null], frame: 0 };
+        const glow = { cur: [null, null, null], target: null, frame: 0 };
+        const sameRgbs = (a, b) => {
+            if (!a || !b) return false;
+            for (let i = 0; i < 3; i += 1) {
+                if (!a[i] || !b[i] || a[i][0] !== b[i][0] || a[i][1] !== b[i][1] || a[i][2] !== b[i][2]) return false;
+            }
+            return true;
+        };
         const parseHex = (hex) => {
             const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
             if (!m) return null;
@@ -197,37 +204,48 @@
             shiftAt = now;
             return cachedShift;
         };
+        let lastLayoutSig = '';
         const layout = () => {
             const sx = shiftX(true);
             const raw = bar.getBoundingClientRect();
             const rect = { left: raw.left - sx, right: raw.right - sx, top: raw.top, bottom: raw.bottom, width: raw.width, height: raw.height };
             const vh = win.innerHeight || doc.documentElement.clientHeight || 0;
             if (!(rect.width > 0 && rect.height > 0)) return false;
-            geo.vh = vh;
-            geo.layerW = Math.round(rect.width + PAD_X * 2);
-            geo.left = Math.round(rect.left - PAD_X);
+            const layerW = Math.round(rect.width + PAD_X * 2);
+            const left = Math.round(rect.left - PAD_X);
             // 层的底边比播放条再低一点（最多 24px），光晕和雾在播放条下沿不被裁掉。
             const below = Math.min(24, Math.max(0, Math.round(vh - rect.bottom)));
-            geo.bottom = Math.max(0, Math.round(vh - rect.bottom) - below);
-            geo.w = rect.width;
-            geo.h = rect.height;
-            geo.x = PAD_X;
-            geo.y = LAYER_H - geo.h - below;
+            const bottom = Math.max(0, Math.round(vh - rect.bottom) - below);
+            const x = PAD_X;
+            const y = LAYER_H - rect.height - below;
             const playBtn = bar.querySelector('[data-md="play"]');
             const volBtn = host.querySelector('[data-md="vol"]');
             const pr = playBtn?.getBoundingClientRect();
             const vr = volBtn?.getBoundingClientRect();
-            geo.playX = pr && pr.width ? pr.left - sx + pr.width / 2 - geo.left : geo.x + geo.h / 2;
-            geo.volX = vr && vr.width ? vr.left - sx + vr.width / 2 - geo.left : geo.x + geo.w - geo.h / 2;
+            const playX = pr && pr.width ? pr.left - sx + pr.width / 2 - left : x + rect.height / 2;
+            const volX = vr && vr.width ? vr.left - sx + vr.width / 2 - left : x + rect.width - rect.height / 2;
+            const padVar = parseFloat(host.style.getPropertyValue('--md-mist-pad'));
+            const pad = Number.isFinite(padVar) ? Math.max(0, Math.min(180, padVar)) : 180;
+            const sig = `${layerW}|${left}|${bottom}|${rect.width.toFixed(1)}|${rect.height.toFixed(1)}|${playX.toFixed(1)}|${volX.toFixed(1)}|${pad.toFixed(1)}|${vh}`;
+            if (s.ring.placed && sig === lastLayoutSig) return true;
+            lastLayoutSig = sig;
+            geo.vh = vh;
+            geo.layerW = layerW;
+            geo.left = left;
+            geo.bottom = bottom;
+            geo.w = rect.width;
+            geo.h = rect.height;
+            geo.x = x;
+            geo.y = y;
+            geo.playX = playX;
+            geo.volX = volX;
             geo.ringX = geo.x + geo.w * 0.63;
-            svg.setAttribute('width', geo.layerW);
-            svg.setAttribute('height', LAYER_H);
-            svg.setAttribute('viewBox', `0 0 ${geo.layerW} ${LAYER_H}`);
+            setAttr(svg, 'width', geo.layerW);
+            setAttr(svg, 'height', LAYER_H);
+            setAttr(svg, 'viewBox', `0 0 ${geo.layerW} ${LAYER_H}`);
             svg.style.left = `${geo.left}px`;
             svg.style.bottom = `${geo.bottom}px`;
             // 雾床平时左右各伸出 180px；播放条挪到目录旁边时 music-dock.js 会把它收窄（--md-mist-pad），不糊到目录上
-            const padVar = parseFloat(host.style.getPropertyValue('--md-mist-pad'));
-            const pad = Number.isFinite(padVar) ? Math.max(0, Math.min(180, padVar)) : 180;
             mist.style.left = `${Math.round(rect.left - pad)}px`;
             mist.style.width = `${Math.round(rect.width + pad * 2)}px`;
             mist.style.bottom = `${Math.max(0, geo.bottom - 16)}px`;
@@ -535,22 +553,19 @@
             // 换主题、换舞台时颜色在 0.6 秒里慢慢过去；降低动态时直接换。
             setGlow(colors) {
                 const target = [0, 1, 2].map((i) => parseHex(colors?.[i]) || glow.cur[i]);
-                if (glow.frame) { win.cancelAnimationFrame(glow.frame); glow.frame = 0; }
+                if (!target[0] || !target[1] || !target[2]) return;
+                if (glow.frame && sameRgbs(glow.target, target)) return;
+                if (glow.frame) { win.cancelAnimationFrame(glow.frame); glow.frame = 0; glow.target = null; }
                 const glowStops = [in0, in1, in2];
                 const paint = (rgbs) => {
                     glow.cur = rgbs;
                     for (let i = 0; i < 3; i += 1) setAttr(glowStops[i], 'stop-color', toHex(rgbs[i]));
                 };
-                glow.paintTarget = () => paint(target);
+                glow.paintTarget = () => { glow.target = null; paint(target); };
                 const hadCur = Boolean(glow.cur[0] && glow.cur[1] && glow.cur[2]);
-                if (hadCur && target[0] && target[1] && target[2]) {
-                    let same = true;
-                    for (let i = 0; i < 3 && same; i += 1) {
-                        if (glow.cur[i][0] !== target[i][0] || glow.cur[i][1] !== target[i][1] || glow.cur[i][2] !== target[i][2]) same = false;
-                    }
-                    if (same) return;
-                }
-                if (reduced() || s.hidden || s.suspended || !hadCur) { paint(target); return; }
+                if (hadCur && sameRgbs(glow.cur, target)) return;
+                if (reduced() || s.hidden || s.suspended || !hadCur) { glow.target = null; paint(target); return; }
+                glow.target = target;
                 const from = [glow.cur[0].slice(), glow.cur[1].slice(), glow.cur[2].slice()];
                 const curBuf = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
                 const start = win.performance?.now?.() ?? Date.now();
@@ -564,6 +579,7 @@
                         o[2] = f[2] + (tg[2] - f[2]) * k;
                     }
                     if (t >= 1) {
+                        glow.target = null;
                         paint(target);
                         glow.frame = 0;
                     } else {
