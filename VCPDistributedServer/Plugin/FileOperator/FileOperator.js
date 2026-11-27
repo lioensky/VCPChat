@@ -317,49 +317,17 @@ function detectEncoding(buffer) {
   return { encoding: 'utf-8', bom: false, confidence: 'fallback' };
 }
 
-// Normalize user-provided paths before file operations.
-// This mirrors the server-side operator behavior and makes ApplyDiff more robust
-// for relative paths, accidental whitespace, and virtual-root style paths.
+// Normalize user-provided paths (including local file:// URLs) via shared fileKit.paths,
+// keeping relative roots, virtual root "/xxx", and KeyedLockQueue lock keys strictly consistent.
 function resolveAndNormalizePath(inputPath) {
-  if (!inputPath || typeof inputPath !== 'string') {
-    return inputPath;
-  }
-
-  const originalPath = inputPath.trim();
-
-  // Absolute paths should be preserved, only resolved/canonicalized.
-  if (path.isAbsolute(originalPath)) {
-    return path.resolve(originalPath);
-  }
-
-  // Sanitize each component of the path to remove accidental leading/trailing spaces.
-  const parts = originalPath.split(/[/\\]+/);
-  const trimmedParts = parts.map(part => part.trim());
-  const sanitizedPath = path.join(...trimmedParts);
-
-  // BASE_PATH: configurable project root for bare relative paths.
-  // Falls back to two levels up from this plugin's directory.
-  const BASE_PATH = getConfigValue('BASE_PATH')
+  const basePath = getConfigValue('BASE_PATH')
     ? path.resolve(getConfigValue('BASE_PATH'))
     : path.resolve(__dirname, '..', '..');
-
-  // Virtual root: map "/xxx" to FileOperator/xxx on platforms where it is not absolute.
-  if (originalPath.startsWith('/')) {
-    const relativePath = originalPath.slice(1);
-    return path.resolve(__dirname, relativePath);
-  }
-
-  const normalized = path.normalize(sanitizedPath);
-  const startsWithDot = normalized.startsWith(`.${path.sep}`);
-  const startsWithDotDot = normalized.startsWith(`..${path.sep}`);
-
-  if (!startsWithDot && !startsWithDotDot) {
-    // Treat plain relative paths like "foo/bar" as BASE_PATH relative.
-    return path.resolve(BASE_PATH, normalized);
-  }
-
-  // Treat explicit relative paths like "./foo" or "../foo" as FileOperator-relative.
-  return path.resolve(__dirname, normalized);
+  return fileKit.paths.resolveAndNormalizePath(inputPath, {
+    basePath,
+    relativeRoot: __dirname,
+    virtualRoot: __dirname,
+  });
 }
 
 function getParameterValue(parameters, ...candidateNames) {
