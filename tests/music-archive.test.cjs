@@ -146,4 +146,8 @@ test('画质档位：静止后三档都降到 12 帧，像素比最高 1.5', () 
         assert.equal(tier.idleFps, 12);
         assert.ok(tier.maxDpr <= 1.5);
     }
+    const src = require('node:fs').readFileSync('Musicmodules/music-archive/archive-scene.js', 'utf8');
+    assert.match(src, /if\s*\(disposed\)\s*return;/, 'archive-scene guards dispose and async compile completion');
+    assert.match(src, /for\s*\(const c of \[captionCanvas, etchCanvas, stickerCanvas, fallbackCoverCanvas\]\)/, 'dispose zeroes all offscreen canvases');
+    assert.match(src, /L\.canvas\.width\s*=\s*0;\s*L\.canvas\.height\s*=\s*0;/, 'dispose zeroes label canvases');
 });

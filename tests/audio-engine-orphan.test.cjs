@@ -60,3 +60,16 @@ test('Windows image name is read from tasklist CSV', async () => {
     const none = (cmd, args, opts, cb) => cb(null, 'INFO: No tasks are running which match the specified criteria.\r\n');
     assert.equal(await orphan.imageName(4242, { platform: 'win32', run: none }), null);
 });
+
+test('macOS image name is read from ps comm output', async () => {
+    const run = (cmd, args, opts, cb) => {
+        assert.equal(cmd, 'ps');
+        assert.deepEqual(args, ['-p', '4242', '-o', 'comm=']);
+        cb(null, '/Applications/VCPChat.app/Contents/Resources/Audio_Server\n');
+    };
+    assert.equal(await orphan.imageName(4242, { platform: 'darwin', run }), 'audio_server');
+    const empty = (cmd, args, opts, cb) => cb(null, '   \n');
+    assert.equal(await orphan.imageName(4242, { platform: 'darwin', run: empty }), null);
+    const err = (cmd, args, opts, cb) => cb(new Error('ps failed'));
+    assert.equal(await orphan.imageName(4242, { platform: 'darwin', run: err }), null);
+});

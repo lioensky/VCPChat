@@ -26,7 +26,7 @@ function eqFixture({ from = 'FIR', to = 'IIR', enabled = true } = {}) {
         saveSettings() { calls.push('save'); },
     };
     const slider = { value: '3' };
-    const context = { app, document: { getElementById: () => slider } };
+    const context = { app, window: {}, document: { getElementById: () => slider } };
     vm.runInNewContext(fs.readFileSync('Musicmodules/music-effects.js', 'utf8') + '\nsetupEffects(app);', context);
     return { app, engine, calls, slider };
 }
@@ -163,4 +163,31 @@ test('the preset list shows the preset the sliders match, or 自定义 once a ba
     assert.equal(select.value, 'custom');
     app.applyEqPreset('balance');
     assert.equal(select.value, 'balance');
+});
+
+test('sendEqSettings syncs app.eqBands in memory and unloadIr reports error status on failure', async () => {
+    const { app, slider } = eqFixture({ from: 'IIR', to: 'IIR', enabled: true });
+    slider.value = '-4';
+    await app.sendEqSettings();
+    assert.equal(app.eqBands[31], -4, 'sendEqSettings updates app.eqBands[band] in memory');
+
+    const statuses = [];
+    app.irLoadedPath = 'C:\\ir\\hall.wav';
+    app.irEnabled = true;
+    app.irSwitch = { checked: true };
+    app.updateIrStatus = (msg, kind) => statuses.push([msg, kind]);
+    app.api.musicUnloadIr = async () => ({ status: 'error', message: 'busy' });
+    await app.unloadIr();
+    assert.equal(statuses.at(-1)[1], 'error', 'status error from musicUnloadIr surfaces error status');
+    assert.equal(app.irLoadedPath, 'C:\\ir\\hall.wav', 'failed unload preserves loaded path');
+
+    app.api.musicUnloadIr = async () => { throw new Error('engine down'); };
+    await app.unloadIr();
+    assert.equal(statuses.at(-1)[1], 'error', 'rejected musicUnloadIr surfaces error status');
+
+    app.api.musicUnloadIr = async () => ({ status: 'success' });
+    await app.unloadIr();
+    assert.deepEqual(statuses.at(-1), ['未加载', 'idle']);
+    assert.equal(app.irLoadedPath, null);
+    assert.equal(app.irSwitch.checked, false);
 });

@@ -102,3 +102,58 @@ test('ambient pixi caps resolution in energy-saving mode and cleans up on before
     assert.equal(made[0].destroyed, true, 'beforeunload destroys Pixi controller');
     assert.equal(removedResize, 1, 'beforeunload removes window resize listener');
 });
+
+test('ambient pixi recovers cleanly after a transient init rejection and clamps large update dt spikes', async () => {
+    let attempts = 0;
+    const made = [];
+    class Application {
+        constructor() { made.push(this); this.destroyed = false; }
+        async init() {
+            attempts += 1;
+            if (attempts === 1) throw new Error('transient webgl context failure');
+            this.canvas = { style: {} };
+            this.stage = { addChild() {} };
+            this.renderer = { resize() {} };
+        }
+        stop() {}
+        render() {}
+        destroy() { this.destroyed = true; }
+    }
+    const container = { innerHTML: '', appendChild() {}, clientWidth: 800, clientHeight: 600 };
+    const win = {
+        PIXI: {
+            Application,
+            Graphics: class {
+                clear() { return this; }
+                circle() { return this; }
+                fill() { return this; }
+                moveTo() { return this; }
+                lineTo() { return this; }
+                quadraticCurveTo() { return this; }
+                stroke() { return this; }
+            }
+        },
+        devicePixelRatio: 1,
+        addEventListener() {},
+        removeEventListener() {}
+    };
+    const context = vm.createContext({
+        window: win, queueMicrotask, setTimeout, clearTimeout,
+        console: { log() {}, warn() {}, error() {} },
+        document: { getElementById: (id) => (id === 'ambient-wave-container' ? container : null), body: { classList: { contains: () => false } } }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), context);
+    const app = {};
+    win.setupAmbientPixi(app);
+    await settle();
+    assert.equal(attempts, 1);
+    assert.equal(app.ambientPixiController.initialized, false);
+    assert.equal(app.ambientPixiController.initPromise, null, 'failed init resets initPromise for retry');
+    await app.ambientPixiController.init();
+    assert.equal(attempts, 2);
+    assert.equal(app.ambientPixiController.initialized, true, 'retry succeeds after transient init failure');
+    const beforePhase = app.ambientPixiController.rippleRings[0].phase;
+    app.updateAmbientPixi(99);
+    const delta = app.ambientPixiController.rippleRings[0].phase - beforePhase;
+    assert.ok(delta > 0 && delta < 0.02, `expected clamped dt <= 0.1 (phase delta ~0.01), got ${delta}`);
+});

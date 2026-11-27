@@ -138,3 +138,25 @@ test('reconciles serverIdCounter above existing server IDs when saved nextId is 
     const added = module.exports.addServer({ name: 'New', url: 'https://nas2/dav' });
     assert.equal(added.id, 'webdav_6', 'new server ID advances past existing webdav_5 despite stale nextId=1');
 });
+
+test('scanAudioFiles throttles rapid progress callbacks and always reports the final track count', async () => {
+    const entries = Array.from({ length: 50 }, (_, i) => ({
+        display_name: `song-${i}.flac`,
+        href: `/music/song-${i}.flac`,
+        url: `https://nas.example/dav/music/song-${i}.flac`,
+        is_dir: false
+    }));
+    const engine = async (url) => (url.includes('/browse')
+        ? reply({ status: 'success', path: '/music', entries })
+        : reply({ status: 'success' }));
+    const { api } = load({ engine });
+    const progress = [];
+    const res = await api.scanAudioFiles(
+        { url: 'https://nas.example/dav', username: 'u', password: 'p', path: '/music' },
+        (count) => progress.push(count)
+    );
+    assert.equal(res.status, 'success');
+    assert.equal(res.tracks.length, 50);
+    assert.ok(progress.length >= 1 && progress.length <= 5, `expected throttled progress updates, got ${progress.length}`);
+    assert.equal(progress[progress.length - 1], 50, 'final progress callback reports total scanned count');
+});

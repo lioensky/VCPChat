@@ -100,3 +100,36 @@ test('convertToLrcString clamps negative and NaN timestamps safely to [00:00.00]
     });
     assert.equal(out, '[00:00.00]负时间\n[00:00.00]无效时间\n[01:05.50]正常时间\n[01:05.50]Normal');
 });
+
+test('parseLRC expands multi-timestamp chorus lines, parses 1-digit minutes, and aligns multi-timestamp translations', () => {
+    const { parseLRC } = require('../modules/lyrics/parserCore');
+    const lrc = [
+        '[0:05.50]开场',
+        '[00:10.00][01:20.50]反复副歌',
+        '[00:30.00]主歌'
+    ].join('\n');
+    const trans = '[00:10.00][01:20.50]Repeated Chorus\n[0:05.50]Opening';
+    const parsed = parseLRC(lrc, trans);
+    assert.deepEqual(
+        parsed.lines.map((l) => [l.startTime, l.fullText, l.translation]),
+        [
+            [5.5, '开场', 'Opening'],
+            [10, '反复副歌', 'Repeated Chorus'],
+            [30, '主歌', undefined],
+            [80.5, '反复副歌', 'Repeated Chorus']
+        ]
+    );
+});
+
+test('music-get-lyrics and music-fetch-lyrics handle missing payload safely without throwing', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-lrc-empty-'));
+    const handlers = new Map();
+    const { registerMusicLyricsHandlers } = require('../modules/ipc/musicLyricsHandlers');
+    registerMusicLyricsHandlers({
+        ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
+        lyricFetcher: { fetchAndSaveLyrics: async () => 'should-not-run' },
+        getLyricDir: () => dir
+    });
+    assert.equal(await handlers.get('music-get-lyrics')({}, undefined), null);
+    assert.equal(await handlers.get('music-fetch-lyrics')({}, undefined), null);
+});

@@ -299,3 +299,57 @@ test('archive-wall.css uses compositor-only aw-breathe, no duplicate height and 
     assert.match(css, /body\.music-fl-low\s+\.archive-wall\.aw-table::after\s*\{\s*display:\s*none;/);
     assert.match(css, /body\.music-fl-low\s+#music-archive-view\s+\.aw-panel-acts\s+button[\s\S]*?backdrop-filter:\s*none;/);
 });
+
+test('eq-preset dialog blocks single-key shortcuts on buttons and cleans up on beforeunload; channels deduplicate no-op sets', async () => {
+    const dom = new JSDOM('<!doctype html><body><select id="eq-preset-select"></select></body>', {
+        runScripts: 'outside-only',
+        url: 'http://localhost/'
+    });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        let leakedKeys = 0;
+        doc.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'm') leakedKeys += 1; });
+        let channelCalls = 0;
+        const app = {
+            eqBands: { 32: 0 },
+            eqPresets: { balance: { 32: 0 } },
+            eqPresetSelect: doc.getElementById('eq-preset-select'),
+            populateEqPresets() {},
+            applyEqPreset() {},
+            syncEqPresetSelect() {},
+            updateUIWithState() {},
+            api: {
+                setMusicChannels: async (payload) => {
+                    channelCalls += 1;
+                    return { status: 'success', channels: payload };
+                }
+            }
+        };
+        window.eval(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-eq-presets.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-channels.js', 'utf8'));
+        window.MusicEqPresets.setupMusicEqPresets(app);
+        window.MusicChannels.setupMusicChannels(app);
+
+        app.eqUserPresets.promptSave();
+        const saveBtn = doc.querySelector('.music-eq-name button');
+        assert.ok(saveBtn, 'EQ preset dialog button exists');
+        saveBtn.focus();
+        saveBtn.dispatchEvent(new window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+        saveBtn.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'm', bubbles: true, cancelable: true }));
+        assert.equal(leakedKeys, 0, 'single-key shortcuts on dialog buttons do not leak to document');
+
+        await app.channels.set({ swap: true });
+        await app.channels.set({ swap: true });
+        assert.equal(channelCalls, 1, 'identical channel state after engine sync does not resend IPC');
+
+        app.channels.open();
+        assert.ok(doc.querySelector('.mchan'), 'channels dialog opened');
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.equal(doc.querySelector('.music-eq-name')?.closest('.dialog-overlay')?.classList.contains('visible'), false, 'EQ preset dialog closed on beforeunload');
+        assert.equal(doc.querySelector('.mchan')?.closest('.dialog-overlay')?.classList.contains('visible'), false, 'channels dialog closed on beforeunload');
+    } finally {
+        dom.window.close();
+    }
+});

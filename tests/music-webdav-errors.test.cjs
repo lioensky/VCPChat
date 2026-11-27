@@ -251,3 +251,28 @@ test('WebDAV browse drops stale server replies, test prevents double click, back
     assert.equal(toasts.at(-1)?.kind, 'success');
     dom.window.close();
 });
+
+test('browseWebDav("/") keeps root audio files (including .wma) while skipping the root self entry', async () => {
+    const { dom, app, doc } = load();
+    try {
+        app.api = {
+            listWebdavDirectory: async () => ({
+                status: 'success',
+                entries: [
+                    { name: '', href: '/', isDir: true },
+                    { name: 'Albums', href: '/Albums/', isDir: true },
+                    { name: 'song.flac', href: '/song.flac', isDir: false },
+                    { name: 'track.wma', href: '/track.wma', isDir: false },
+                    { name: 'readme.txt', href: '/readme.txt', isDir: false }
+                ]
+            })
+        };
+        await app.browseWebDav('/');
+        const names = [...doc.querySelectorAll('#files .webdav-file-name')].map((n) => n.textContent);
+        const audioNames = [...doc.querySelectorAll('#files .webdav-file-item.is-audio .webdav-file-name')].map((n) => n.textContent);
+        assert.deepEqual(names, ['Albums', 'readme.txt', 'song.flac', 'track.wma']);
+        assert.deepEqual(audioNames, ['song.flac', 'track.wma']);
+    } finally {
+        dom.window.close();
+    }
+});
