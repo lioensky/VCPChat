@@ -62,7 +62,8 @@
 
     const sync = (o) => {
         const open = isOpen(o);
-        o.inert = !open;
+        const wantInert = !open;
+        if (o.inert !== wantInert) o.inert = wantInert;
         if (open && !openers.has(o)) {
             const from = document.activeElement;
             openers.set(o, from && from !== document.body && !o.contains(from) ? remember(from) : null);

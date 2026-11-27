@@ -84,7 +84,7 @@
                 o.textContent = p.name;
                 return o;
             }));
-            group.hidden = !presets.length;
+            if (group.hidden !== !presets.length) group.hidden = !presets.length;
             syncDelete();
         };
         // 「删除」只在选中的是自己的预设时出现
@@ -93,10 +93,12 @@
             if (!delOpt || !sel) return;
             const v = String(sel.value || '');
             const mine = v.startsWith(PREFIX);
-            delOpt.textContent = mine ? `删除「${v.slice(PREFIX.length)}」` : '删除';
-            delOpt.dataset.name = mine ? v.slice(PREFIX.length) : '';
-            delOpt.hidden = !mine;
-            delOpt.disabled = !mine;
+            const name = mine ? v.slice(PREFIX.length) : '';
+            const label = mine ? `删除「${name}」` : '删除';
+            if (delOpt.textContent !== label) delOpt.textContent = label;
+            if (delOpt.dataset.name !== name) delOpt.dataset.name = name;
+            if (delOpt.hidden !== !mine) delOpt.hidden = !mine;
+            if (delOpt.disabled !== !mine) delOpt.disabled = !mine;
         };
 
         const save = (rawName) => {
@@ -276,7 +278,10 @@
         app.eqUserPresets = {
             list: () => presets.map((p) => ({ name: p.name, bands: { ...p.bands } })),
             save, remove, promptSave,
-            isCustom: () => !Object.values(app.eqPresets).some((b) => bandsEqual(b, currentBands()))
+            isCustom: () => {
+                const cur = currentBands();
+                return !Object.values(app.eqPresets).some((b) => bandsEqual(b, cur));
+            }
         };
     }
 

@@ -91,8 +91,10 @@
             for (const { kind, label, item } of nodes) {
                 const name = fieldOf(track, kind);
                 const show = ready && Boolean(name);
-                item.style.display = show ? '' : 'none';
-                item.title = show ? `${label}「${name}」` : '';
+                const nextDisplay = show ? '' : 'none';
+                const nextTitle = show ? `${label}「${name}」` : '';
+                if (item.style.display !== nextDisplay) item.style.display = nextDisplay;
+                if (item.title !== nextTitle) item.title = nextTitle;
             }
         };
         (global.MusicAppHooks || require('./music-app-hooks.js')).before(app, 'showContextMenu', 'goto', () => paint());

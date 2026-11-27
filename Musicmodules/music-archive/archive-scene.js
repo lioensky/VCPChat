@@ -1148,6 +1148,8 @@ vec3 archiveUntone(vec3 y) {
         const cardCoords = new Float32Array(POOL * 3);
         const rowWaves = new Float32Array(ROWS_BEFORE + ROWS_AFTER);
         const rowHalfWaves = new Float32Array(ROWS_BEFORE + ROWS_AFTER + 1);
+        let lastWaveBaseRow = NaN;
+        let lastWaveShoulder = NaN;
         const dummy = new THREE.Object3D();
         const view = new THREE.Vector3(-Math.sin(YAW) * Math.cos(ELEV), Math.sin(ELEV), Math.cos(YAW) * Math.cos(ELEV));
         const aim = new THREE.Vector3(AIM[0], AIM[1], AIM[2]);
@@ -1249,6 +1251,7 @@ vec3 archiveUntone(vec3 y) {
         /* 把卡片放进 HUD 留出的矩形，以宽高较紧的一边决定取景。 */
         let detailRoom = null;
         let targetRoom = null;
+        let roomSettled = true;
         const placeCamera = (reduced) => {
             const k = detailK;
             const aspect = W / H;
@@ -1281,8 +1284,11 @@ vec3 archiveUntone(vec3 y) {
                 const par = 0.12 * (aspect < 1 ? 1 - k : 1);
                 camera.position.x += pointer.x * par; camera.position.y -= pointer.y * par;
             }
-            camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(viewSpan / (2 * distance)));
-            camera.updateProjectionMatrix();
+            const nextFov = THREE.MathUtils.radToDeg(2 * Math.atan(viewSpan / (2 * distance)));
+            if (Math.abs(nextFov - camera.fov) > 1e-6) {
+                camera.fov = nextFov;
+                camera.updateProjectionMatrix();
+            }
             camera.lookAt(camAim);
             camera.updateMatrixWorld();
             scene.fog.near = distance + lerp(fogBase.near, -1, k);
@@ -1302,9 +1308,18 @@ vec3 archiveUntone(vec3 y) {
             captionMat.opacity = appear;
         };
         const setDetailRoom = (bounds) => {
-            if (targetRoom && Object.keys(bounds).every((edge) => Math.abs(bounds[edge] - targetRoom[edge]) < 0.5)) return;
+            if (targetRoom
+                && Math.abs(bounds.left - targetRoom.left) < 0.5
+                && Math.abs(bounds.right - targetRoom.right) < 0.5
+                && Math.abs(bounds.top - targetRoom.top) < 0.5
+                && Math.abs(bounds.bottom - targetRoom.bottom) < 0.5) return;
             targetRoom = bounds;
-            detailRoom ??= { ...bounds };
+            if (!detailRoom) {
+                detailRoom = { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom };
+                roomSettled = true;
+            } else {
+                roomSettled = false;
+            }
             invalidate();
         };
         const setDetail = (on) => {
@@ -1367,6 +1382,18 @@ vec3 archiveUntone(vec3 y) {
             Promise.all(jobs).then(done, done);
         }
         let lastStep = performance.now();
+        const evalExtraWave = (rVal, lane, T, hasIdle, hasPulses) => {
+            let e = hasIdle ? idleWave(rVal, lane, T) * idleGain : 0;
+            if (hasPulses) {
+                let rip = 0;
+                for (let pk = 0; pk < pulses.length; pk++) {
+                    const p = pulses[pk];
+                    rip += selectionWave(Math.hypot(rVal - p.row, (lane - p.lane) * 2.2), T - p.t);
+                }
+                e += Math.max(-0.6, Math.min(0.6, rip)) * pulseGain;
+            }
+            return e;
+        };
         /* 推进一帧。返回这帧是否还在动（给外面决定要不要降帧/停画）。 */
         const step = (now) => {
             if (!shadersReady) { lastStep = now; return { moving: true, idle: false, animated: true }; }
@@ -1375,16 +1402,19 @@ vec3 archiveUntone(vec3 y) {
             const T = now / 1000;
             const reduced = reducedMotion();
             let roomMoving = false;
-            if (targetRoom) {
+            if (targetRoom && !roomSettled) {
                 const mix = reduced ? 1 : 1 - Math.exp(-dt * 10);
-                for (const edge of Object.keys(targetRoom)) {
-                    const to = targetRoom[edge];
-                    if (Math.abs(detailRoom[edge] - to) < 0.5) detailRoom[edge] = to;
-                    else {
-                        detailRoom[edge] = lerp(detailRoom[edge], to, mix);
-                        roomMoving = !reduced;
-                    }
-                }
+                let allDone = true;
+                if (Math.abs(detailRoom.left - targetRoom.left) < 0.5) detailRoom.left = targetRoom.left;
+                else { detailRoom.left = lerp(detailRoom.left, targetRoom.left, mix); allDone = false; }
+                if (Math.abs(detailRoom.right - targetRoom.right) < 0.5) detailRoom.right = targetRoom.right;
+                else { detailRoom.right = lerp(detailRoom.right, targetRoom.right, mix); allDone = false; }
+                if (Math.abs(detailRoom.top - targetRoom.top) < 0.5) detailRoom.top = targetRoom.top;
+                else { detailRoom.top = lerp(detailRoom.top, targetRoom.top, mix); allDone = false; }
+                if (Math.abs(detailRoom.bottom - targetRoom.bottom) < 0.5) detailRoom.bottom = targetRoom.bottom;
+                else { detailRoom.bottom = lerp(detailRoom.bottom, targetRoom.bottom, mix); allDone = false; }
+                if (allDone || reduced) roomSettled = true;
+                else roomMoving = true;
             }
             const rate = reduced ? 9 : 3.7;
             if (held) {
@@ -1456,16 +1486,21 @@ vec3 archiveUntone(vec3 y) {
             const hasReturning = returning.size > 0;
             const playingActive = isPlaying && playing && !reduced && bounceGain > 0;
             const rowSpan = ROWS_BEFORE + ROWS_AFTER;
-            for (let rIdx = 0; rIdx < rowSpan; rIdx++) {
-                const ri = ROWS_AFTER - 1 - rIdx;
-                rowWaves[rIdx] = settlingWave(baseRow + ri - shoulder.v);
-                rowHalfWaves[rIdx] = settlingWave(baseRow + ri + 0.5 - shoulder.v);
+            if (baseRow !== lastWaveBaseRow || shoulder.v !== lastWaveShoulder) {
+                lastWaveBaseRow = baseRow;
+                lastWaveShoulder = shoulder.v;
+                for (let rIdx = 0; rIdx < rowSpan; rIdx++) {
+                    const ri = ROWS_AFTER - 1 - rIdx;
+                    rowWaves[rIdx] = settlingWave(baseRow + ri - shoulder.v);
+                    rowHalfWaves[rIdx] = settlingWave(baseRow + ri + 0.5 - shoulder.v);
+                }
+                rowHalfWaves[rowSpan] = settlingWave(baseRow - ROWS_BEFORE - 0.5 - shoulder.v);
             }
-            rowHalfWaves[rowSpan] = settlingWave(baseRow - ROWS_BEFORE - 0.5 - shoulder.v);
             const imArr = cards.instanceMatrix && cards.instanceMatrix.array;
             const fitArr = fittings.matrix && fittings.matrix.elements;
             const entryZ = -2.17 - 28 * (1 - reveal);
             const tiltScale = 0.024 * (1 - detailK);
+            const hasExtra = hasIdle || hasPulses;
             let i = 0, targetIdx = -1;
             for (let li = -LANES_HALF; li <= LANES_HALF; li++) {
                 const lane = baseLane + li;
@@ -1474,25 +1509,13 @@ vec3 archiveUntone(vec3 y) {
                 const dl = lane - target.lane;
                 const inLabelLane = Boolean(labelFor && dl >= -LABEL_LANES && dl <= LABEL_LANES);
                 const isPlayingLane = playingActive && lane === playing.lane;
-                const extraAt = (rVal) => {
-                    let e = hasIdle ? idleWave(rVal, lane, T) * idleGain : 0;
-                    if (hasPulses) {
-                        let rip = 0;
-                        for (let pk = 0; pk < pulses.length; pk++) {
-                            const p = pulses[pk];
-                            rip += selectionWave(Math.hypot(rVal - p.row, (lane - p.lane) * 2.2), T - p.t);
-                        }
-                        e += Math.max(-0.6, Math.min(0.6, rip)) * pulseGain;
-                    }
-                    return e;
-                };
-                let upper = rowHalfWaves[0] * colStr + ((hasIdle || hasPulses) ? extraAt(baseRow + ROWS_AFTER - 0.5) : 0);
+                let upper = rowHalfWaves[0] * colStr + (hasExtra ? evalExtraWave(baseRow + ROWS_AFTER - 0.5, lane, T, hasIdle, hasPulses) : 0);
                 for (let rIdx = 0; rIdx < rowSpan; rIdx++) {   // 近处的行先画：深度测试挡掉后面被遮住的像素，复杂的卡盒着色只算看得见的
                     const ri = ROWS_AFTER - 1 - rIdx;
                     const row = baseRow + ri;
-                    let f = rowWaves[rIdx] * colStr + ((hasIdle || hasPulses) ? extraAt(row) : 0);
+                    let f = rowWaves[rIdx] * colStr + (hasExtra ? evalExtraWave(row, lane, T, hasIdle, hasPulses) : 0);
                     // 卡顺着起伏的坡度前后微倾（slope × 0.024 × (1 − 取出进度)）
-                    const lower = rowHalfWaves[rIdx + 1] * colStr + ((hasIdle || hasPulses) ? extraAt(row - 0.5) : 0);
+                    const lower = rowHalfWaves[rIdx + 1] * colStr + (hasExtra ? evalExtraWave(row - 0.5, lane, T, hasIdle, hasPulses) : 0);
                     const tilt = (upper - lower) * tiltScale;
                     upper = lower;
                     if (isPlayingLane) {
@@ -1607,8 +1630,6 @@ vec3 archiveUntone(vec3 y) {
             glowUniforms.uQuality.value = fitQ;
             etchMat.opacity = fitQ;
             stickerMat.opacity = fitQ;
-            // 取出端详时面板透得少一些：卡面上压着封面，内衬的光斑透出来会显脏
-            glowUniforms.uSeeThrough.value = 0.38;
             if (post.on) {
                 post.mat.uniforms.uShade.value = detailK;
                 /*

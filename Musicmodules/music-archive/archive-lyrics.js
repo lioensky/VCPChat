@@ -303,10 +303,20 @@
             }, NONE_AFTER);
         };
         // 桌面歌词开关（music-desktop-lyrics.js 提供；没有就不显示）
+        let lastDeskHidden = true;
+        let lastDeskPressed = 'false';
         const syncDesk = () => {
             const d = app.desktopLyrics;
-            r.desk.hidden = !(d && d.available);
-            r.desk.setAttribute('aria-pressed', String(Boolean(d && d.on)));
+            const hide = !(d && d.available);
+            const pressed = String(Boolean(d && d.on));
+            if (hide !== lastDeskHidden) {
+                lastDeskHidden = hide;
+                r.desk.hidden = hide;
+            }
+            if (pressed !== lastDeskPressed) {
+                lastDeskPressed = pressed;
+                r.desk.setAttribute('aria-pressed', pressed);
+            }
         };
         r.desk.addEventListener('click', () => { app.desktopLyrics?.toggle?.(); });
         document.addEventListener('music-desktop-lyrics-change', syncDesk);
@@ -388,12 +398,22 @@
             if (h > 0) trackH = h;
             return h;
         };
+        let lastTrackTransition = null;
+        let lastTrackTransform = '';
         const place = (animate = true) => {
             // 歌曲末尾保留一点渐隐空间，让前面的歌词填满余下的可视区域。
             const max = Math.max(0, trackHeight() - viewportH() + 16);
             const y = Math.max(0, Math.min(max, state.shift + state.manual));
-            r.track.style.transition = !animate || reducedMotion() ? 'none' : '';
-            r.track.style.transform = `translateY(${-y}px)`;
+            const tr = !animate || reducedMotion() ? 'none' : '';
+            const tf = `translateY(${-y}px)`;
+            if (tr !== lastTrackTransition) {
+                lastTrackTransition = tr;
+                r.track.style.transition = tr;
+            }
+            if (tf !== lastTrackTransform) {
+                lastTrackTransform = tf;
+                r.track.style.transform = tf;
+            }
         };
         const updateShift = (idx = state.index, row = r.track.children[idx]) => {
             const y = state.offsets[idx] || 0;

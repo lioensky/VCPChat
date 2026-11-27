@@ -18,6 +18,7 @@
     const TILT = 56;               // 「平放」：桌面往后倒的角度
     const TILT_EYE = 0.62;         // 视野中心落在屏幕高度的哪里（偏下，前景大、远处多看一些）
     const MIN_SIDE = 2;
+    const TILE_CLS = ['aw-l', 'aw-m', 'aw-s', 'is-focus', 'is-open', 'is-playing', 'is-current'];
 
     // ---------- 块的切法 ----------
     const rng = (seed) => () => {
@@ -449,15 +450,12 @@
         const pitchFor = (h) => (tilt ? Math.max(40, Math.min(96, Math.round(h * 0.72 / BH))) : Math.max(38, Math.min(104, Math.round(h * 0.8 / BH))));
         const maxTiles = tilt ? 640 : MAX_TILES;
         const setRoom = (room) => {
-            const r = { left: Math.round(room.left), top: Math.round(room.top), width: Math.max(0, Math.round(room.width)), height: Math.max(0, Math.round(room.height)) };
-            const same = ['left', 'top', 'width', 'height'].every((k) => r[k] === st.room[k]);
-            if (same) return;
+            const r = { left: Math.round(room.left), top: Math.round(room.top), width: Math.max(0, Math.round(room.width)), height: Math.max(0, Math.round(room.height)) }, o = st.room;
+            if (r.left === o.left && r.top === o.top && r.width === o.width && r.height === o.height) return;
             const oldCenter = viewCenter();
             st.room = r;
-            el.style.left = r.left + 'px';
-            el.style.top = r.top + 'px';
-            el.style.width = r.width + 'px';
-            el.style.height = r.height + 'px';
+            const s = el.style;
+            s.left = r.left + 'px'; s.top = r.top + 'px'; s.width = r.width + 'px'; s.height = r.height + 'px';
             const pitch = pitchFor(r.height);
             if (!st.g || st.g.pitch !== pitch) {
                 const focusItem = st.focus ? st.focus.item : -1;
@@ -680,13 +678,14 @@
             const t = document.createElement('div');
             t.className = 'aw-tile';
             t.setAttribute('role', 'gridcell');
+            t.setAttribute('aria-selected', 'false');
             t.innerHTML = '<div class="aw-in"><div class="aw-art"><img alt="" draggable="false" decoding="async"><span class="aw-blank"></span></div><i class="aw-shade"></i><span class="aw-no"></span><div class="aw-cap"><b></b><span></span></div>'
                 + '<button type="button" class="aw-q" data-wall="quick" tabindex="-1" aria-label="播放"></button><button type="button" class="aw-qm" data-wall="quickmenu" tabindex="-1" aria-label="更多操作"></button></div>';
             const inner = t.firstChild;
             return {
                 el: t, inner, img: inner.querySelector('img'), blank: inner.querySelector('.aw-blank'),
                 no: inner.querySelector('.aw-no'), title: inner.querySelector('.aw-cap b'), sub: inner.querySelector('.aw-cap span'),
-                item: -2, x: NaN, y: NaN, w: NaN, h: NaN, src: null, cls: '', code: '', badge: null
+                item: -2, x: NaN, y: NaN, w: NaN, h: NaN, src: null, clsMask: 0, code: '', badge: null
             };
         };
         const panel = document.createElement('div');
@@ -928,10 +927,11 @@
             return val;
         };
         const keepSet = new Set();
+        let locHide = true, locAway = false, hasOpen = false, camTf = '';
         const layoutTiles = () => {
             st.dirty = false;
             if (!st.g || !st.ids.length || !st.room.width) {
-                locateBtn.hidden = true;
+                if (!locHide) locateBtn.hidden = locHide = true;
                 for (const node of st.nodes.values()) recycle(node);
                 st.nodes.clear();
                 return;
@@ -997,24 +997,23 @@
                             }
                         }
                         if (r.x !== node.x || r.y !== node.y) { node.el.style.transform = `translate(${r.x}px,${r.y}px)`; node.x = r.x; node.y = r.y; }
-                        if (r.w !== node.w || r.h !== node.h) { node.el.style.width = r.w + 'px'; node.el.style.height = r.h + 'px'; node.w = r.w; node.h = r.h;
+                        if (r.w !== node.w || r.h !== node.h) { const ns = node.el.style; ns.width = r.w + 'px'; ns.height = r.h + 'px'; node.w = r.w; node.h = r.h;
                             // 悬停放大：每条边往外长同样的距离（缝宽的六成），大小卡看起来抬得一样多
-                            node.el.style.setProperty('--hx', (1 + 1.2 * st.gap / r.w).toFixed(4));
-                            node.el.style.setProperty('--hy', (1 + 1.2 * st.gap / r.h).toFixed(4));
-                            node.el.style.setProperty('--tw', Math.round(r.w) + 'px'); }
+                            ns.setProperty('--hx', (1 + 1.2 * st.gap / r.w).toFixed(4));
+                            ns.setProperty('--hy', (1 + 1.2 * st.gap / r.h).toFixed(4));
+                            ns.setProperty('--tw', Math.round(r.w) + 'px'); }
                         fillContent(node, inst.item, Math.max(r.w, r.h) * dpr);
-                        const size = r.cols >= 4 ? 'aw-l' : r.cols >= 3 ? 'aw-m' : 'aw-s';
-                        const cls = size + (inst.id === sel ? ' is-focus' : '') + (inst.id === exp ? ' is-open' : '') + (inst.item === playPos ? (play.active ? ' is-playing' : ' is-current') : '');
-                        if (cls !== node.cls) {
-                            node.el.classList.remove('aw-l', 'aw-m', 'aw-s', 'is-focus', 'is-open', 'is-playing', 'is-current');
-                            node.el.classList.add(...cls.split(' '));
-                            node.cls = cls;
-                            node.el.setAttribute('aria-selected', inst.id === sel ? 'true' : 'false');
+                        const isSel = inst.id === sel, isExp = inst.id === exp, isPlay = inst.item === playPos;
+                        const mask = (r.cols >= 4 ? 1 : r.cols >= 3 ? 2 : 4) | (isSel ? 8 : 0) | (isExp ? 16 : 0) | (isPlay ? (play.active ? 32 : 64) : 0);
+                        const diff = mask ^ node.clsMask;
+                        if (diff) {
+                            for (let b = 0; b < 7; b++) if (diff & (1 << b)) node.el.classList.toggle(TILE_CLS[b], !!(mask & (1 << b)));
+                            if (diff & 8) node.el.setAttribute('aria-selected', String(isSel));
+                            node.clsMask = mask;
                         }
-                        const isPlay = inst.item === playPos;
                         const badge = isPlay ? (play.active ? '正在播放' : '暂停') + (node.code ? ' · ' + node.code : '') : node.code;
                         if (badge !== node.badge) { node.badge = badge; node.no.textContent = badge; }
-                        if (inst.id === exp) {
+                        if (isExp) {
                             if (panel.parentNode !== node.inner) node.inner.appendChild(panel);
                             fillPanel(st.ids[inst.item]);
                         }
@@ -1026,26 +1025,24 @@
                 if (!keep.has(id)) { st.nodes.delete(id); recycle(node); }
             }
             if (!exp && panel.parentNode) { panel.remove(); paintSeek(); }
-            // 定位键：正在播放的那首离这里最近的一份在不在视野里
-            if (playPos < 0) locateBtn.hidden = true;
+            if (playPos < 0) { if (!locHide) locateBtn.hidden = locHide = true; }
             else {
-                locateBtn.hidden = false;
-                const pi = nearestOf(g, playPos, viewCenter(), st.gap);
-                const pr = rectOf(pi);
-                const inView = pr.x + pr.w > st.cam.x && pr.x < st.cam.x + st.room.width && pr.y + pr.h > st.cam.y && pr.y < st.cam.y + st.room.height;
-                locateBtn.classList.toggle('is-away', !inView);
+                if (locHide) locateBtn.hidden = locHide = false;
+                const pr = rectOf(nearestOf(g, playPos, viewCenter(), st.gap));
+                const away = !(pr.x + pr.w > st.cam.x && pr.x < st.cam.x + st.room.width && pr.y + pr.h > st.cam.y && pr.y < st.cam.y + st.room.height);
+                if (away !== locAway) locateBtn.classList.toggle('is-away', locAway = away);
             }
-            world.classList.toggle('aw-has-open', Boolean(exp));
+            const open = Boolean(exp);
+            if (open !== hasOpen) world.classList.toggle('aw-has-open', hasOpen = open);
             st.laidAt = { x: st.cam.x, y: st.cam.y };
             st.revealOk = !reduced();
         };
 
         const applyCamera = () => {
-            if (tilt) {
-                // 视野中心（cam + 半个视口）放到屏幕 (50%, TILT_EYE) 处，整块桌面绕那里往后倒
-                const cx = st.cam.x + st.room.width / 2, cy = st.cam.y + st.room.height / 2;
-                world.style.transform = `translate3d(${st.room.width / 2}px,${Math.round(st.room.height * TILT_EYE)}px,0) rotateX(${TILT}deg) translate3d(${-Math.round(cx * 2) / 2}px,${-Math.round(cy * 2) / 2}px,0)`;
-            } else world.style.transform = `translate3d(${-Math.round(st.cam.x * 2) / 2}px,${-Math.round(st.cam.y * 2) / 2}px,0)`;
+            const cx = st.cam.x + st.room.width / 2, cy = st.cam.y + st.room.height / 2;
+            const tf = tilt ? `translate3d(${st.room.width / 2}px,${Math.round(st.room.height * TILT_EYE)}px,0) rotateX(${TILT}deg) translate3d(${-Math.round(cx * 2) / 2}px,${-Math.round(cy * 2) / 2}px,0)`
+                : `translate3d(${-Math.round(st.cam.x * 2) / 2}px,${-Math.round(st.cam.y * 2) / 2}px,0)`;
+            if (tf !== camTf) world.style.transform = camTf = tf;
             const g = st.g;
             if (!st.laidAt || !g || Math.abs(st.cam.x - st.laidAt.x) > g.pitch * 1.5 || Math.abs(st.cam.y - st.laidAt.y) > g.pitch * 1.5) st.dirty = true;
         };
@@ -1239,18 +1236,15 @@
          * 鼠标一动、滚轮、按键就亮回来。
          */
         const DIM_AFTER = 30000;
-        let dimTimer = 0;
-        const wake = () => {
-            st.touchedAt = performance.now();
-            if (el.classList.contains('aw-dim')) el.classList.remove('aw-dim');
-        };
+        let dimTimer = 0, isDim = false;
+        const wake = () => { st.touchedAt = performance.now(); if (isDim) { isDim = false; el.classList.remove('aw-dim'); } };
         const checkDim = () => {
             if (document.hidden) return;
             const p = opts.playing();
             const want = st.on && p.active && p.index >= 0 && !st.expanded && !reduced() && performance.now() - (st.touchedAt || 0) > DIM_AFTER && st.idIndex.has(p.index);
-            el.classList.toggle('aw-dim', want);
+            if (want !== isDim) el.classList.toggle('aw-dim', isDim = want);
         };
-        el.addEventListener('pointermove', () => { if (el.classList.contains('aw-dim') || performance.now() - (st.touchedAt || 0) > 1000) wake(); }, { passive: true });
+        el.addEventListener('pointermove', () => { if (isDim || performance.now() - (st.touchedAt || 0) > 1000) wake(); }, { passive: true });
         const onGlobalKey = () => { if (st.on) wake(); };
         global.addEventListener('keydown', onGlobalKey, true);
 
@@ -1282,6 +1276,7 @@
                     st.drag = null;
                     seekDrag = null;
                     panelStateKey = '';
+                    isDim = false;
                     el.classList.remove('aw-dim', 'aw-moving', 'is-grabbing');
                     seekEl.classList.remove('is-drag');
                     cancelAnimationFrame(st.raf);
