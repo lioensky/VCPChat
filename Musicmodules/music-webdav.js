@@ -75,22 +75,26 @@ function setupWebDav(app) {
         });
     };
 
+    let browseReqId = 0;
     app.browseWebDav = async (dirPath) => {
-        if (!app.activeWebDavServer || !app.api?.listWebdavDirectory) return;
+        const targetServer = app.activeWebDavServer;
+        if (!targetServer || !app.api?.listWebdavDirectory) return;
+        const reqId = ++browseReqId;
         app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">加载中…</div>';
         app.webdavCurrentPath = dirPath;
         app.renderWebDavBreadcrumb(dirPath);
         let result;
         try {
             result = await app.api.listWebdavDirectory({
-                serverId: app.activeWebDavServer.id,
-                url: app.activeWebDavServer.url,
+                serverId: targetServer.id,
+                url: targetServer.url,
                 path: dirPath,
             });
         } catch (error) {
             result = { status: 'error', message: error };
         }
-        if (app.webdavCurrentPath !== dirPath) return; // 这期间已经点进别的文件夹
+        // 这期间已经切换了服务器或点进了别的文件夹，丢弃过时结果
+        if (reqId !== browseReqId || app.activeWebDavServer?.id !== targetServer.id || app.webdavCurrentPath !== dirPath) return;
         if (!result || result.status !== 'success') {
             app.webdavFileList.innerHTML = `<div class="no-lyrics" style="padding:20px;">打不开这个文件夹：${esc(webdavReason(result?.message, '服务器没有响应'))}</div>`;
             // 网络恢复后不用关掉弹窗重进，点一下再试
@@ -198,11 +202,16 @@ function setupWebDav(app) {
             app.webdavServerDialog.classList.add('active');
         });
         app.webdavDialogCancel?.addEventListener('click', () => app.webdavServerDialog.classList.remove('active'));
+        app.webdavServerDialog?.addEventListener('click', (e) => { if (e.target === app.webdavServerDialog) app.webdavServerDialog.classList.remove('active'); });
+        let testReqId = 0;
         app.webdavDialogTest?.addEventListener('click', async () => {
+            if (app.webdavDialogTest.disabled) return;
             const url = document.getElementById('webdav-server-url').value.trim();
             const username = document.getElementById('webdav-server-username').value.trim();
             const password = document.getElementById('webdav-server-password').value;
             if (!url) { app.webdavDialogStatus.textContent = '请输入 URL'; return; }
+            const reqId = ++testReqId;
+            app.webdavDialogTest.disabled = true;
             app.webdavDialogStatus.style.color = '';
             app.webdavDialogStatus.textContent = '测试中…';
             let result;
@@ -210,7 +219,10 @@ function setupWebDav(app) {
                 result = await app.api.testWebdavConnection({ url, username, password });
             } catch (error) {
                 result = { status: 'error', message: error };
+            } finally {
+                app.webdavDialogTest.disabled = false;
             }
+            if (reqId !== testReqId) return;
             const ok = result?.status === 'success';
             app.webdavDialogStatus.style.color = ok ? 'var(--music-highlight)' : '#e55';
             app.webdavDialogStatus.textContent = ok ? (result.message || '连接成功') : `连接失败：${webdavReason(result?.message, '服务器没有响应', '服务器上没有这个地址，检查 URL')}`;
@@ -286,10 +298,20 @@ function setupWebDav(app) {
             const newTracks = app.webdavScannedTracks
                 .filter((rt) => rt && rt.path && !known.has(rt.path) && known.add(rt.path))
                 .map((t) => ({ ...t, serverId: app.activeWebDavServer.id, isRemote: true }));
-            app.playlist.push(...newTracks);
-            app.currentFilteredTracks = null;
-            app.renderPlaylist(null);
-            app.saveLibrary();
+            if (newTracks.length > 0) {
+                app.playlist.push(...newTracks);
+                app.currentFilteredTracks = null;
+                app.renderPlaylist(null);
+                app.saveLibrary();
+                try { app.archiveView?.refresh?.(); } catch (e) { /* 档案页没开 */ }
+                try { document.dispatchEvent(new CustomEvent('music-queue-change')); } catch (e) { /* 旧内核 */ }
+            }
+            try {
+                window.MusicToast?.show?.({
+                    kind: newTracks.length ? 'success' : 'info',
+                    message: newTracks.length ? `已导入 ${newTracks.length} 首远程曲目` : '扫描到的曲目都已经在曲库里了'
+                });
+            } catch (e) { /* 没有提示层 */ }
             app.closeWebDavModal();
         });
     };

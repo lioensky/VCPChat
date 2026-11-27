@@ -77,9 +77,10 @@
             state.lineWords = state.lines.map((l) => wordsOf(l));
             state.offsets = [];
             let y = 0;
+            const showTr = app.lyricsTranslation !== false;
             r.track.innerHTML = state.lines.map((l, k) => {
                 state.offsets.push(y);
-                const tr = String(l.translation || '').trim();
+                const tr = showTr ? String(l.translation || '').trim() : '';
                 y += tr ? LINE_H_TR : LINE_H;
                 const words = state.lineWords[k];
                 const body = words ? words.map((w) => `<span class="w">${esc(w.text)}</span>`).join('') : esc(textOf(l));

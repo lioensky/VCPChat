@@ -86,7 +86,10 @@ process.stdin.on('end', () => {
             if (typeof requestedStageMode !== 'string') {
                 throw new Error("The optional 'stageMode' parameter must be a string.");
             }
-            stageMode = stageModeAliases[requestedStageMode.trim().toLowerCase()];
+            const normalizedMode = requestedStageMode.trim().toLowerCase();
+            stageMode = Object.prototype.hasOwnProperty.call(stageModeAliases, normalizedMode)
+                ? stageModeAliases[normalizedMode]
+                : undefined;
             if (!stageMode) {
                 throw new Error(
                     `Unknown stage mode '${requestedStageMode}'. Supported modes: luminous, partita, cadenza, tempera, sonnet, diorama, fume, tunnel, kowloon, inkdraft, fogpane, lumiere, hanabi, clockwork, orbit, signal, groupchat, impression, starborn.`

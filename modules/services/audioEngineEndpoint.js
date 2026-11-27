@@ -73,7 +73,12 @@ function checkEngineResponds(port, { host = AUDIO_ENGINE_HOST, timeoutMs = 1000 
             let body = '';
             response.setEncoding('utf8');
             response.on('data', (chunk) => {
-                if (body.length < 65536) body += chunk;
+                if (body.length + chunk.length > 65536) {
+                    request.destroy();
+                    resolve(false);
+                    return;
+                }
+                body += chunk;
             });
             response.on('end', () => {
                 if (response.statusCode !== 200) {
@@ -100,7 +105,9 @@ async function waitForEngineResponding(port, { host = AUDIO_ENGINE_HOST, timeout
         const remaining = deadline - Date.now();
         if (remaining <= 0) return false;
         if (await check(port, { host, timeoutMs: Math.min(1000, remaining) })) return !isAborted();
-        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        const waitMs = Math.min(intervalMs, Math.max(0, deadline - Date.now()));
+        if (waitMs <= 0) return false;
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
     return false;
 }

@@ -224,21 +224,38 @@
             edgeContext.restore();
         };
 
+        const release = () => {
+            edgeCanvasState.width = 0;
+            edgeCanvasState.height = 0;
+            edgeCanvasState.drawnAt = 0;
+            edgeCanvasState.pausedAt = 0;
+            edgeCanvasState.blank = true;
+            edgeLookupCache.clear();
+            EDGE_SIDES.forEach((side) => {
+                const strip = edgeStrips[side];
+                if (!strip) return;
+                strip.canvas.width = 1;
+                strip.canvas.height = 1;
+            });
+        };
+
         const drawEdgeSpectrum = (frame) => {
             if (state.config.edgeSpectrum === false) {
                 if (edgeContext && !edgeCanvasState.blank) {
                     clearEdgeStrips();
-                    edgeCanvasState.blank = true;
+                    if (edgeCanvasState.width > 0) release();
+                    else edgeCanvasState.blank = true;
                 }
                 return;
             }
-            if (!resizeEdgeCanvas(frame) || !edgeContext) return;
-            const { width, height } = edgeCanvasState;
+            if (!edgeContext) return;
             if (global.MusicStageRuntime.isReducedMotion(prefersReducedMotion) || !frame.audio.spectrum?.length) {
-                if (!edgeCanvasState.blank) clearEdgeStrips();
+                if (!edgeCanvasState.blank && edgeCanvasState.width > 0) clearEdgeStrips();
                 edgeCanvasState.blank = true;
                 return;
             }
+            if (!resizeEdgeCanvas(frame)) return;
+            const { width, height } = edgeCanvasState;
             // A paused stage holds a faint, still line: let it settle for a
             // moment after the pause, then leave the canvases alone.
             // While playing, pace 4-canvas shadowBlur rasterization to match the quality tier.
@@ -290,18 +307,7 @@
         return {
             draw: drawEdgeSpectrum,
             invalidate: () => { rootSize = null; edgeCanvasState.width = 0; edgeCanvasState.height = 0; },
-            release: () => {
-                edgeCanvasState.width = 0;
-                edgeCanvasState.height = 0;
-                edgeCanvasState.blank = false;
-                edgeLookupCache.clear();
-                EDGE_SIDES.forEach((side) => {
-                    const strip = edgeStrips[side];
-                    if (!strip) return;
-                    strip.canvas.width = 1;
-                    strip.canvas.height = 1;
-                });
-            }
+            release
         };
     }
 

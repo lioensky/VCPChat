@@ -26,7 +26,7 @@
         const words = check ? check(line) : null;
         return words ? words.map((w) => ({ text: w.text, s: Number(w.startTime), e: Number(w.endTime) })) : null;
     };
-    const pack = (line) => (line ? { text: textOf(line), tr: String(line.translation || '').trim(), time: Number(line.time) || 0 } : null);
+    const pack = (line, showTr = true) => (line ? { text: textOf(line), tr: showTr ? String(line.translation || '').trim() : '', time: Number(line.time) || 0 } : null);
     const position = (app) => {
         const base = Number(app.lastKnownCurrentTime) || 0;
         if (!app.isPlaying || !app.lastStateUpdateTime) return base;
@@ -54,7 +54,8 @@
         // 这一行已经唱完、下一行还早（间奏）：不再亮着上一句
         const end = line && line.words && line.words.length ? Number(line.words[line.words.length - 1].endTime) : null;
         const resting = Boolean(line && nextLine && Number.isFinite(end) && t > end + 2 && (Number(nextLine.time) || 0) - t > 4);
-        const cur = line && !resting ? { ...pack(line), words: wordsOf(line) } : null;
+        const showTr = app.lyricsTranslation !== false;
+        const cur = line && !resting ? { ...pack(line, showTr), words: wordsOf(line) } : null;
         return {
             path: track ? track.path : null,
             title: track ? String(track.title || '') : '',
@@ -65,7 +66,7 @@
             hasLyrics: lines.length > 0,
             index: resting ? -1 : k,
             line: cur,
-            next: pack(nextLine)
+            next: pack(nextLine, showTr)
         };
     }
 
@@ -143,19 +144,22 @@
         const doc = global.document;
         const item = doc?.getElementById?.('desktop-lyrics-item');
         const sw = doc?.getElementById?.('desktop-lyrics-switch');
+        let onDeskSwitchSync = null;
         if (item && sw && app.desktopLyrics.available) {
             item.hidden = false;
             sw.addEventListener('change', () => app.desktopLyrics.toggle(sw.checked));
-            doc.addEventListener('music-desktop-lyrics-change', () => { sw.checked = state.on; });
+            onDeskSwitchSync = () => { sw.checked = state.on; };
+            doc.addEventListener('music-desktop-lyrics-change', onDeskSwitchSync);
         }
         const unsubChanged = api?.onDesktopLyricsChanged?.(apply);
         try { api?.getDesktopLyrics?.().then(apply).catch(() => {}); } catch (e) { /* 同上 */ }
-        // 换歌、播放状态、翻译/偏移变了马上检查一次（内容没变就不送）
-        const updateEvents = ['music-queue-change', 'music-lyrics-change', 'music-lyrics-translated', 'music-lyrics-offset'];
+        // 换歌、播放状态、翻译/偏移/译文开关变了马上检查一次（内容没变就不送）
+        const updateEvents = ['music-queue-change', 'music-lyrics-change', 'music-lyrics-translated', 'music-lyrics-offset', 'music-lyrics-translation'];
         updateEvents.forEach((name) => global.document?.addEventListener?.(name, onUpdate));
         global.addEventListener?.('beforeunload', () => {
             if (state.timer !== null) { global.clearInterval(state.timer); state.timer = null; }
             stopBodyObserver();
+            if (onDeskSwitchSync) doc?.removeEventListener?.('music-desktop-lyrics-change', onDeskSwitchSync);
             updateEvents.forEach((name) => global.document?.removeEventListener?.(name, onUpdate));
             try { if (typeof unsubChanged === 'function') unsubChanged(); } catch (e) { /* 同上 */ }
         }, { once: true });

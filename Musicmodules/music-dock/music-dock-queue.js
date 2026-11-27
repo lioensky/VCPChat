@@ -212,10 +212,20 @@
             const scroller = event.currentTarget;
             const from = Number(rowEl.dataset.qi);
             const manualEls = [...scroller.querySelectorAll('.md-man')];
-            state.queueDrag = { from, to: from, startY: event.clientY, startScroll: scroller.scrollTop, y: event.clientY, lastDy: NaN, active: false, rowEl, manualEls, scroller, raf: 0, moved: false };
+            state.queueDrag = { from, to: from, startY: event.clientY, startScroll: scroller.scrollTop, y: event.clientY, lastDy: NaN, active: false, rowEl, manualEls, scroller, raf: 0, moved: false, pointerId: event.pointerId ?? null, rect: null };
+            const inScrollEdge = (d) => d.rect && (d.y < d.rect.top + 32 || d.y > d.rect.bottom - 32);
+            const stepAutoScroll = () => {
+                const d = state.queueDrag;
+                if (!d || !d.active || !inScrollEdge(d)) { if (d) d.raf = 0; return; }
+                const prevScroll = scroller.scrollTop;
+                if (d.y < d.rect.top + 32) scroller.scrollTop -= 6;
+                else if (d.y > d.rect.bottom - 32) scroller.scrollTop += 6;
+                if (scroller.scrollTop !== prevScroll) layoutDrag();
+                d.raf = requestAnimationFrame(stepAutoScroll);
+            };
             const move = (e) => {
                 const d = state.queueDrag;
-                if (!d) return;
+                if (!d || (d.pointerId != null && e.pointerId != null && e.pointerId !== d.pointerId)) return;
                 d.y = e.clientY;
                 if (!d.active && Math.abs(e.clientY - d.startY) < 4) return;
                 if (!d.active) {
@@ -223,15 +233,13 @@
                     d.moved = true;
                     rowEl.classList.add('md-qdrag');
                     scroller.classList.add('md-qdragging');
-                    const rect = scroller.getBoundingClientRect();
-                    const loop = () => {
-                        const prevScroll = scroller.scrollTop;
-                        if (d.y < rect.top + 32) scroller.scrollTop -= 6;
-                        else if (d.y > rect.bottom - 32) scroller.scrollTop += 6;
-                        if (scroller.scrollTop !== prevScroll) layoutDrag();
-                        d.raf = requestAnimationFrame(loop);
-                    };
-                    d.raf = requestAnimationFrame(loop);
+                    d.rect = scroller.getBoundingClientRect();
+                }
+                if (inScrollEdge(d)) {
+                    if (!d.raf) d.raf = requestAnimationFrame(stepAutoScroll);
+                } else if (d.raf) {
+                    cancelAnimationFrame(d.raf);
+                    d.raf = 0;
                 }
                 layoutDrag();
             };
@@ -262,11 +270,12 @@
                 document.removeEventListener('pointercancel', up, true);
                 abortActiveDrag = null;
             };
-            const up = () => {
-                detachDrag();
+            const up = (e) => {
                 const d = state.queueDrag;
-                if (!d) return;
-                cancelAnimationFrame(d.raf);
+                if (!d) { detachDrag(); return; }
+                if (d.pointerId != null && e?.pointerId != null && e.pointerId !== d.pointerId) return;
+                detachDrag();
+                if (d.raf) cancelAnimationFrame(d.raf);
                 const { active, from: f, to } = d;
                 state.queueDrag = active ? { active: false, suppressClick: true } : null;
                 scroller.classList.remove('md-qdragging');

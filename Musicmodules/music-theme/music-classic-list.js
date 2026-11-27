@@ -85,9 +85,18 @@
             if (track) app.toggleLike(track);
         }, true);
         list.addEventListener('dblclick', (e) => { if (e.target.closest?.('.cl-like')) { e.stopPropagation(); e.preventDefault(); } }, true);
-        document.addEventListener('music-like-change', () => {
-            for (const li of list.children) if (li.dataset.cols === '1') paintLike(li, app.playlist[Number(li.dataset.index)]);
-        });
+        const onLikeChange = (event) => {
+            const changed = Array.isArray(event?.detail?.tracks) && event.detail.tracks.length
+                ? new Set(event.detail.tracks.map((t) => t && t.path).filter(Boolean))
+                : null;
+            for (const li of list.children) {
+                if (li.dataset.cols !== '1') continue;
+                const track = app.playlist[Number(li.dataset.index)];
+                if (changed && (!track || !changed.has(track.path))) continue;
+                paintLike(li, track);
+            }
+        };
+        document.addEventListener('music-like-change', onLikeChange);
 
         // 每行拆成标题 / 歌手 / 时长三格。原渲染只在列表内容变化时重建 <li>，已拆过的行跳过。
         const decorateRow = (li) => {
@@ -172,7 +181,9 @@
         }
         global.addEventListener?.('beforeunload', () => {
             if (queued) { cancelAnimationFrame(queued); queued = 0; }
+            list.removeEventListener('scroll', decorateSoon);
             global.removeEventListener('resize', decorateSoon);
+            document.removeEventListener('music-like-change', onLikeChange);
             watch?.disconnect();
             watch = null;
         }, { once: true });

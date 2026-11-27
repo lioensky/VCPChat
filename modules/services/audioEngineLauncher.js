@@ -48,9 +48,13 @@ function runAttempt({ child, port, endpoint, readyTimeoutMs, verifyTimeoutMs, on
                 .then((listening) => {
                     if (listening) finish({ ok: true });
                     else finish({ ok: false, exited, reason: exited ? '报告就绪后立即退出' : `端口 ${port} 上没有引擎应答` });
+                })
+                .catch((error) => {
+                    finish({ ok: false, exited, reason: error?.message || String(error) });
                 });
         };
         const timer = setTimeout(() => finish({ ok: false, exited: false, reason: `${Math.round(readyTimeoutMs / 1000)} 秒内没有就绪` }), readyTimeoutMs);
+        timer.unref?.();
         child.stdout?.on('data', handleStdout);
         child.once('close', handleClose);
         child.once('error', handleError);

@@ -92,19 +92,27 @@
         // 开着的时候曲库变了（加文件夹、重扫、后台同步在扫）就跟着刷新歌数，不用关掉再开
         let watchTimer = 0;
         let seen = null;
+        let renderSeq = 0;
         const libraryMark = () => { const l = app.playlist || []; return `${l.length}:${l[0]?.path || ''}:${l[l.length - 1]?.path || ''}`; };
         const close = () => {
             if (!overlay) return;
             const o = overlay;
             overlay = null;
+            renderSeq += 1;
             global.removeEventListener('keydown', onKey, true);
             clearInterval(watchTimer);
+            watchTimer = 0;
             o.classList.remove('visible');
             setTimeout(() => o.remove(), 320);
             const back = previousFocus;
             previousFocus = null;
             if (back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
+        global.addEventListener?.('beforeunload', () => {
+            clearInterval(watchTimer);
+            watchTimer = 0;
+            global.removeEventListener('keydown', onKey, true);
+        }, { once: true });
         // MusicDialog 的确认框开着时 Esc 和焦点归它
         const onKey = (e) => {
             if (doc.querySelector('.dialog-overlay.music-dialog')) return;
@@ -180,9 +188,10 @@
 
         const render = async () => {
             if (!overlay) return;
+            const seq = ++renderSeq;
             const body = overlay.querySelector('.mfold-body');
             const res = await call({ op: 'list' }).catch(() => null);
-            if (!overlay) return;
+            if (!overlay || seq !== renderSeq) return;
             const rows = folderRows(res && res.ok ? res.folders : [], app.playlist);
             body.innerHTML = '';
             if (!rows.length) {

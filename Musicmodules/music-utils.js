@@ -6,13 +6,17 @@ function setupUtils(app) {
 
     // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
     app.stripAudioExtension = (title) => {
-        if (!title) return title;
+        if (!title || typeof title !== 'string' || title.indexOf('.') === -1) return title;
         return title.replace(/\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff|opus|wv)$/i, '');
     };
 
     // 列表搜索框和歌单编辑框共用的匹配：全角半角、大小写、合字统一（NFKC），标题去掉扩展名，
     // 歌手和专辑也算；空格分开的几个词都要命中（顺序不限）。
-    const searchKey = (text) => String(text || '').normalize('NFKC').toLowerCase();
+    const ASCII_ONLY = /^[\x00-\x7f]*$/;
+    const searchKey = (text) => {
+        const s = String(text || '');
+        return ASCII_ONLY.test(s) ? s.toLowerCase() : s.normalize('NFKC').toLowerCase();
+    };
     app.searchTracks = (tracks, query) => {
         const words = searchKey(query).split(/\s+/).filter(Boolean);
         const list = Array.isArray(tracks) ? tracks : [];
@@ -32,6 +36,7 @@ function setupUtils(app) {
             if (result && result.success === false && result.message) window.MusicToast?.show?.({ message: result.message });
         } catch (error) {
             console.error('[Music] Share failed:', error);
+            window.MusicToast?.show?.({ kind: 'error', message: window.MusicErrorText ? window.MusicErrorText(error, '分享失败') : '分享失败' });
         }
     };
 

@@ -183,7 +183,8 @@
                 if (document.getElementById('loudness-switch')?.checked) parts.push('响度归一化');
                 if (document.getElementById('saturation-switch')?.checked) parts.push('饱和');
                 if (document.getElementById('crossfeed-switch')?.checked) parts.push('交叉馈送');
-                summaryEl.textContent = parts.length ? parts.join(' · ') : '直通';
+                const nextSummary = parts.length ? parts.join(' · ') : '直通';
+                if (summaryEl.textContent !== nextSummary) summaryEl.textContent = nextSummary;
             };
             drawer.addEventListener('change', describe);
             // 设置从引擎读回后由 music.js 调一次，程序赋值不会触发 change。
@@ -207,6 +208,7 @@
         select.dataset.segmented = '1';
         select.classList.add('music-skin-segmented-source');
         select.tabIndex = -1;
+        select.setAttribute('aria-hidden', 'true');
         const group = document.createElement('div');
         group.className = 'music-skin-segmented';
         group.setAttribute('role', 'group');
