@@ -598,30 +598,31 @@ async function getCurrentLyrics() {
 }
 
 // --- Music Control Handler (Legacy, for distributed server) ---
+const supportedStageModes = new Set([
+    'luminous',
+    'partita',
+    'cadenza',
+    'tempera',
+    'sonnet',
+    'diorama',
+    'fume',
+    'tunnel',
+    'kowloon',
+    'inkdraft',
+    'fogpane',
+    'lumiere',
+    'hanabi',
+    'clockwork',
+    'orbit',
+    'signal',
+    'groupchat',
+    'impression',
+    'starborn'
+]);
+
 // 这个函数统一通过前端 renderer 来控制播放，避免竞态问题
 async function handleMusicControl(args) {
     const { command, target, stageMode } = args;
-    const supportedStageModes = new Set([
-        'luminous',
-        'partita',
-        'cadenza',
-        'tempera',
-        'sonnet',
-        'diorama',
-        'fume',
-        'tunnel',
-        'kowloon',
-        'inkdraft',
-        'fogpane',
-        'lumiere',
-        'hanabi',
-        'clockwork',
-        'orbit',
-        'signal',
-        'groupchat',
-        'impression',
-        'starborn'
-    ]);
     const normalizedStageMode = typeof stageMode === 'string' && stageMode.trim()
         ? stageMode.trim().toLowerCase()
         : null;
@@ -737,7 +738,9 @@ function initialize(options) {
 
     settingsManager = options.settingsManager;
     const applyInjectionSetting = settings => {
-        musicInfoInjectionEnabled = settings?.musicInfoInjectionEnabled !== false;
+        const next = settings?.musicInfoInjectionEnabled !== false;
+        if (next === musicInfoInjectionEnabled) return;
+        musicInfoInjectionEnabled = next;
         publishMusicCapsule();
     };
     settingsManager?.on('settings-updated', applyInjectionSetting);

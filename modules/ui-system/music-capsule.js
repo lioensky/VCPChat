@@ -71,16 +71,20 @@
             }
         };
         const scheduleWidth = () => {
-            chromeMetricsDirty = true;
             if (disposed || root.hidden || resizeRaf) return;
             resizeRaf = requestAnimationFrame(() => { resizeRaf = 0; updateWidth(); });
         };
+        const onWindowResize = () => {
+            chromeMetricsDirty = true;
+            scheduleWidth();
+        };
         const onFontsDone = () => { chromeMetricsDirty = true; updateWidth(); };
-        // 监听外层容器而非胶囊自身：避免展开/收起宽度过渡动画每一帧都触发 ResizeObserver 强制同步布局
+        // 监听外层容器而非胶囊自身：避免展开/收起宽度过渡动画每一帧都触发 ResizeObserver 强制同步布局；
+        // 侧栏自身缩放不改变胶囊按钮/边框静态度量，仅窗口缩放或字体加载完成后重新探测 chromeWidth。
         const resizeTarget = root.parentElement || document.documentElement;
         const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleWidth) : null;
         if (resizeTarget) resizeObserver?.observe(resizeTarget);
-        window.addEventListener('resize', scheduleWidth);
+        window.addEventListener('resize', onWindowResize);
         document.fonts?.addEventListener('loadingdone', onFontsDone);
         document.fonts?.ready.then(() => { if (!disposed) onFontsDone(); });
         let lastExpanded = null;
@@ -186,7 +190,7 @@
             if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
             unsubscribe?.();
             resizeObserver?.disconnect();
-            window.removeEventListener('resize', scheduleWidth);
+            window.removeEventListener('resize', onWindowResize);
             document.fonts?.removeEventListener('loadingdone', onFontsDone);
             measure.remove();
         }, { once: true });

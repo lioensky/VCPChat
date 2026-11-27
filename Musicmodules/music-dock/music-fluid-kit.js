@@ -232,6 +232,18 @@
         if (stop) stop();
     }
 
+    const cleanups = [];
+    const addCleanup = (fn) => { if (typeof fn === 'function') cleanups.push(fn); };
+    const dispose = () => {
+        while (cleanups.length) {
+            try { cleanups.pop()(); } catch (_) { /* 卸载清理容错 */ }
+        }
+        for (const state of slides.values()) {
+            if (state?.frame) global.cancelAnimationFrame(state.frame);
+        }
+        slides.clear();
+    };
+
     // ───────── 弹窗：从最后一次按下的地方长出来 ─────────
     // 各处弹窗（歌词获取、WebDAV、歌单对话框……）打开时都是给遮罩层加 visible / active 类。
     // 这里统一看着这些遮罩层，打开时把里面的面板从最后一次按下指针的那一点长出来，各处代码不用改。
@@ -241,7 +253,8 @@
     const watchDialogs = () => {
         const doc = global.document;
         if (!doc?.body || typeof global.MutationObserver !== 'function') return;
-        doc.addEventListener('pointerdown', (event) => { lastPress = { x: event.clientX, y: event.clientY, at: Date.now() }; }, true);
+        const onPointerDown = (event) => { lastPress = { x: event.clientX, y: event.clientY, at: Date.now() }; };
+        doc.addEventListener('pointerdown', onPointerDown, true);
         const isOpen = (node) => node.classList.contains('visible') || node.classList.contains('active');
         const seen = new WeakMap();
         const opened = new WeakMap();
@@ -274,6 +287,10 @@
             seen.set(node, isOpen(node));
             observer.observe(node, { attributes: true, attributeFilter: ['class'] });
         }
+        addCleanup(() => {
+            doc.removeEventListener('pointerdown', onPointerDown, true);
+            observer.disconnect();
+        });
     };
     // ───────── 菜单：合上时缩回一滴，流回刚点的那一项 ─────────
     // 菜单打开时由各处自己调 bud；这里只看着它什么时候合上。打开后等长完再记下样子（关得太快就不画）。
@@ -320,14 +337,16 @@
         const node = doc.getElementById('audio-engine-notice');
         if (!node || typeof global.MutationObserver !== 'function') return;
         let shown = !node.hidden;
-        new global.MutationObserver(() => {
+        const obs = new global.MutationObserver(() => {
             const now = !node.hidden;
             if (now === shown) return;
             shown = now;
             if (!now) { cancel(node); return; }
             const r = node.getBoundingClientRect();
             bud(node, { x: r.left + r.width / 2, y: 0 }, { duration: 520 });
-        }).observe(node, { attributes: true, attributeFilter: ['hidden'] });
+        });
+        obs.observe(node, { attributes: true, attributeFilter: ['hidden'] });
+        addCleanup(() => obs.disconnect());
     };
 
     // ───────── 一排文字按钮：手指底下的那一汪跟着流过去 ─────────
@@ -357,6 +376,7 @@
         // 仅追踪当前点亮的液体节点，避免每次点击/移出都全 DOM querySelectorAll 或做祖先选择器匹配
         const activeTrails = new Set();
         const activeMenuTrails = new Set();
+        const activeBtnByDrop = new WeakMap();
         const setTrailOn = (drop, on, isMenu) => {
             if (!drop) return;
             if (on) {
@@ -367,6 +387,7 @@
                 drop.classList.remove('mf-on');
                 activeTrails.delete(drop);
                 activeMenuTrails.delete(drop);
+                activeBtnByDrop.delete(drop);
             }
         };
         const dropOf = (row) => {
@@ -397,6 +418,9 @@
                 if (!row || btn.disabled) continue;
                 const drop = dropOf(row);
                 const fresh = !drop.classList.contains('mf-on');
+                // 指针在同一个按钮的内部子元素间移动时跳过重复布局测量与补间
+                if (!fresh && activeBtnByDrop.get(drop) === btn) return;
+                activeBtnByDrop.set(drop, btn);
                 if (fresh) slides.delete(t.key);
                 const to = placeIn(row, btn, t);
                 // 两列的列表（axis: 'xy'）横竖各流各的，斜着过去时像一滴被拉长再收拢
@@ -411,18 +435,20 @@
                 return;
             }
         };
-        doc.addEventListener('pointerover', (event) => {
+        const onPointerOver = (event) => {
             if (event.target instanceof global.Element) follow(event.target);
-        }, true);
+        };
+        doc.addEventListener('pointerover', onPointerOver, true);
         // 用键盘（Tab、方向键）在一排里移动时，那一汪也跟着焦点流过去；鼠标点出来的焦点不算
-        doc.addEventListener('focusin', (event) => {
+        const onFocusIn = (event) => {
             const target = event.target;
             if (!(target instanceof global.Element)) return;
             let visible = false;
             try { visible = target.matches(':focus-visible'); } catch (_) { /* 老内核 */ }
             if (visible) follow(target);
-        }, true);
-        doc.addEventListener('focusout', (event) => {
+        };
+        doc.addEventListener('focusin', onFocusIn, true);
+        const onFocusOut = (event) => {
             if (!activeTrails.size) return;
             const target = event.target;
             if (!(target instanceof global.Element) || !target.closest(ALL_TRAIL_ROWS)) return;
@@ -435,7 +461,8 @@
                 setTrailOn(row.querySelector(':scope > .mf-trail'), false, false);
                 return;
             }
-        }, true);
+        };
+        doc.addEventListener('focusout', onFocusOut, true);
         // 菜单每次重新打开（右键、点排序按钮……）：上次留下的那一汪先收掉，免得一打开就停在旧的位置
         const clearMenus = (keep) => {
             if (!activeMenuTrails.size) return;
@@ -443,10 +470,12 @@
                 if (!drop.isConnected || !keep || !drop.parentElement?.contains(keep)) setTrailOn(drop, false, true);
             }
         };
-        doc.addEventListener('contextmenu', () => clearMenus(null), true);
-        doc.addEventListener('pointerdown', (event) => clearMenus(event.target instanceof global.Node ? event.target : null), true);
+        const onContextMenu = () => clearMenus(null);
+        const onTrailPointerDown = (event) => clearMenus(event.target instanceof global.Node ? event.target : null);
+        doc.addEventListener('contextmenu', onContextMenu, true);
+        doc.addEventListener('pointerdown', onTrailPointerDown, true);
         // 在按钮之间的空隙里不算离开；指针出了整排才淡掉
-        doc.addEventListener('pointerout', (event) => {
+        const onPointerOut = (event) => {
             if (!activeTrails.size) return;
             const target = event.target;
             if (!(target instanceof global.Element) || !target.closest(ALL_TRAIL_ROWS)) return;
@@ -459,7 +488,18 @@
                 setTrailOn(row.querySelector(':scope > .mf-trail'), false, false);
                 return;
             }
-        }, true);
+        };
+        doc.addEventListener('pointerout', onPointerOut, true);
+        addCleanup(() => {
+            doc.removeEventListener('pointerover', onPointerOver, true);
+            doc.removeEventListener('focusin', onFocusIn, true);
+            doc.removeEventListener('focusout', onFocusOut, true);
+            doc.removeEventListener('contextmenu', onContextMenu, true);
+            doc.removeEventListener('pointerdown', onTrailPointerDown, true);
+            doc.removeEventListener('pointerout', onPointerOut, true);
+            activeTrails.clear();
+            activeMenuTrails.clear();
+        });
     };
 
     // ───────── 提示条叠在一起时：来一条、走一条，其余的像液体一样被推开、再落回去 ─────────
@@ -475,7 +515,7 @@
             if (watched.has(layer)) return;
             watched.add(layer);
             record(layer);
-            new global.MutationObserver(() => {
+            const layerObs = new global.MutationObserver(() => {
                 const motion = enabled() && typeof global.Element?.prototype?.animate === 'function';
                 for (const el of layer.children) {
                     const before = tops.get(el);
@@ -485,16 +525,20 @@
                     }
                     tops.set(el, now);
                 }
-            }).observe(layer, { childList: true });
+            });
+            layerObs.observe(layer, { childList: true });
+            addCleanup(() => layerObs.disconnect());
         };
         for (const layer of doc.querySelectorAll('body > .mtst-layer')) attach(layer);
-        new global.MutationObserver((records) => {
+        const bodyObs = new global.MutationObserver((records) => {
             for (const r of records) {
                 for (const node of r.addedNodes) {
                     if (node.classList?.contains('mtst-layer')) attach(node);
                 }
             }
-        }).observe(doc.body, { childList: true });
+        });
+        bodyObs.observe(doc.body, { childList: true });
+        addCleanup(() => bodyObs.disconnect());
     };
 
     /* 首页目录开合（.archive-hud.list-open）：布局由档案页一次切到终态，这里用 FLIP 把这一下变成连续的移动——
@@ -596,7 +640,10 @@
         attach();
     };
 
-    const start = () => { watchDialogs(); watchMenus(); watchNotices(); watchTrails(); watchToasts(); watchHud(); };
+    const start = () => {
+        watchDialogs(); watchMenus(); watchNotices(); watchTrails(); watchToasts(); watchHud();
+        global.addEventListener?.('beforeunload', dispose, { once: true });
+    };
     if (global.document?.readyState === 'loading') global.document.addEventListener('DOMContentLoaded', start, { once: true });
     else start();
 

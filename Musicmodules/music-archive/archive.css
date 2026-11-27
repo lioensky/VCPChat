@@ -31,7 +31,10 @@
 
 /* 档案页打开时，旧的曲库和控件不显示也不参与排版 */
 body.music-archive-on .music-player-container,
-body.music-archive-on #player-background { visibility: hidden; }
+body.music-archive-on #player-background {
+    visibility: hidden;
+    content-visibility: hidden;
+}
 /* 进入播放页（歌词舞台）时档案页淡出，渲染也停掉 */
 body.music-stage-active #music-archive-view { opacity: 0; pointer-events: none; }
 /* 过场期间（music-stage-entering）舞台还在淡入，档案页留在下面，选中卡的上浮看得见 */

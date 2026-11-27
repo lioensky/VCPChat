@@ -566,44 +566,48 @@
             syncExpanded();
         };
 
-        const seekFromPointer = (trk, clientX) => {
-            const rect = trk.getBoundingClientRect();
+        const seekFromPointer = (trk, clientX, rect = null) => {
+            const box = rect || trk.getBoundingClientRect();
             const d = duration();
-            if (!(d > 0) || rect.width <= 0) return null;
+            if (!(d > 0) || box.width <= 0) return null;
             // 按 renderProgress 同一个区间反算（起点是曲名左缘，终点在音量键前）。
             const [a, b] = progressRange();
-            const fraction = Math.min(1, Math.max(0, ((clientX - rect.left) / rect.width - a) / (b - a)));
+            const fraction = Math.min(1, Math.max(0, ((clientX - box.left) / box.width - a) / (b - a)));
             return fraction * d;
         };
         for (const trk of el.tracks) {
             // 进度条是独立的一条细轨（贴在播放条下沿，从歌名左缘到右边按钮前）：
             // 按下就跳到那里、按住拖动跟手，松手才真正跳；悬停时轨道变粗，指针上方显示那一点的时间。
             // 它不和面板开关共用任何东西，面板开着也照样能拖。
-            const paintTip = (clientX) => {
-                const time = seekFromPointer(trk, clientX);
-                if (time === null || !el.seekTip) { trk.classList.remove('md-tipon'); return; }
-                const rect = trk.getBoundingClientRect();
+            const paintTip = (clientX, preRect = null) => {
+                // 单次读取 trk.getBoundingClientRect() 并返回计算出的时间，避免悬停/拖动每帧 2-3 次同步重排
+                const rect = preRect || trk.getBoundingClientRect();
+                const time = seekFromPointer(trk, clientX, rect);
+                if (time === null || !el.seekTip) { trk.classList.remove('md-tipon'); return null; }
                 el.seekTip.textContent = formatClock(time);
                 el.seekTip.style.left = `${Math.round(clientX - rect.left)}px`;
                 trk.classList.add('md-tipon');
+                return time;
             };
             listen(trk, 'pointerdown', (event) => {
                 if (event.button !== 0) return;
-                const time = seekFromPointer(trk, event.clientX);
+                const rect = trk.getBoundingClientRect();
+                const time = seekFromPointer(trk, event.clientX, rect);
                 if (time === null) return;
                 event.preventDefault();
                 event.stopPropagation();
                 trk.setPointerCapture?.(event.pointerId);
                 state.dragging = { time, trk, pointerId: event.pointerId };
                 trk.classList.add('md-held');
-                paintTip(event.clientX);
+                paintTip(event.clientX, rect);
                 syncExpanded();
                 renderProgress();
             });
             listen(trk, 'pointermove', (event) => {
-                if (event.pointerType !== 'touch' || state.dragging) paintTip(event.clientX);
+                let time = null;
+                if (event.pointerType !== 'touch' || state.dragging) time = paintTip(event.clientX);
                 if (!state.dragging || state.dragging.trk !== trk) return;
-                const time = seekFromPointer(trk, event.clientX);
+                if (time === null) time = seekFromPointer(trk, event.clientX);
                 if (time === null) return;
                 state.dragging.time = time;
                 renderProgress();
@@ -1430,9 +1434,10 @@
             event.preventDefault();
             slider.setPointerCapture?.(event.pointerId);
             slider.classList.add('md-held');
+            let cachedRect = slider.getBoundingClientRect();
             const apply = (clientX) => {
-                const rect = slider.getBoundingClientRect();
-                setVolume((clientX - rect.left - 8) / Math.max(1, rect.width - 16));
+                if (!cachedRect || cachedRect.width <= 0) cachedRect = slider.getBoundingClientRect();
+                setVolume((clientX - cachedRect.left - 8) / Math.max(1, cachedRect.width - 16));
             };
             apply(event.clientX);
             const move = (ev) => apply(ev.clientX);
@@ -1966,10 +1971,16 @@
         listen(document, 'music-queue-change', rerenderQueue);
         listen(document, 'music-queue-source-change', () => { queuePage.dropPrebuilt(); if (state.panelOpen && state.tab === '播放列表') renderBody(); });
         listen(global, 'music-motion-change', () => { if (state.panelOpen && state.tab === '控制') renderBody(); });
+        let queueClassRaf = 0;
+        cleanups.push(() => { if (queueClassRaf) { cancelAnimationFrame(queueClassRaf); queueClassRaf = 0; } });
         observe(app.playlistEl, { subtree: true, attributes: true, attributeFilter: ['class'] }, () => {
-            if (!state.panelOpen || state.tab !== '播放列表') return;
-            const scroller = el.body.querySelector('.md-ql');
-            if (scroller) renderQueueWindow(scroller, true);
+            if (!state.panelOpen || state.tab !== '播放列表' || queueClassRaf) return;
+            queueClassRaf = requestAnimationFrame(() => {
+                queueClassRaf = 0;
+                if (state.destroyed || !state.panelOpen || state.tab !== '播放列表') return;
+                const scroller = el.body.querySelector('.md-ql');
+                if (scroller) renderQueueWindow(scroller, true);
+            });
         });
         // 省电：窗口看不见时流体层整个停下，失焦时不跑动画帧（状态变化直接落位）。
         const syncPower = () => {
@@ -2194,7 +2205,16 @@
         state.expanded = shouldExpand();
         el.cap.classList.toggle('md-ex', state.expanded);
         syncFluid();
-        if (global.MusicStageConfig?.subscribe) cleanups.push(global.MusicStageConfig.subscribe(() => syncFluid()));
+        const stageFluidKey = (cfg) => (cfg ? `${cfg.quality}|${cfg.themeMode}|${cfg.themeFile}|${cfg.themeVariant}` : '');
+        let lastStageFluidKey = stageFluidKey(global.MusicStageConfig?.get?.());
+        if (global.MusicStageConfig?.subscribe) {
+            cleanups.push(global.MusicStageConfig.subscribe((next) => {
+                const key = stageFluidKey(next || global.MusicStageConfig?.get?.());
+                if (key === lastStageFluidKey) return;
+                lastStageFluidKey = key;
+                syncFluid();
+            }));
+        }
         // 字体和布局稳定后再量一次（流体层要对齐按钮的真实位置）。
         requestAnimationFrame(() => { if (!state.destroyed) animateCapsule(); });
         // 预热抽屉：窗口空下来以后，在藏着的抽屉里把当前页签画一遍。第一次打开时样式规则和排版都已经算过一回，

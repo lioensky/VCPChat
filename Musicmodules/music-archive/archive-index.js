@@ -285,6 +285,51 @@
             const fields = kind === 'artist' ? ARTIST_FIELDS : kind === 'album' ? ALBUM_FIELDS : FIELDS;
             if (!rawTerms.length) return only ? pool.slice(0, limit) : [];
             const terms = rawTerms.map((term) => ({ term, ascii: /^[a-z0-9]+$/.test(term) }));
+            const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : entries.length;
+            if (cap === 0) return [];
+            // 1–4 词查询时得分必落在 1..1200 的离散整数桶内，按分桶 O(N) 收集天然保序且可提前截断，免去对象分配与排序
+            if (terms.length <= 4) {
+                const buckets = new Array(terms.length * 300 + 1);
+                let maxScore = 0;
+                let totalHits = 0;
+                const bucketItem = (i) => {
+                    const e = entries[i];
+                    if (!e) return;
+                    let total = 0;
+                    for (let t = 0; t < terms.length; t++) {
+                        const { term, ascii } = terms[t];
+                        let best = 0;
+                        for (let fi = 0; fi < fields.length; fi++) {
+                            const fl = fields[fi];
+                            const s = termScore(e, fl[0], fl[1], fl[2], fl[3], term, ascii);
+                            if (s > best) best = s;
+                        }
+                        if (!best) return;
+                        total += best;
+                    }
+                    let b = buckets[total];
+                    if (!b) buckets[total] = [i];
+                    else b.push(i);
+                    if (total > maxScore) maxScore = total;
+                    totalHits += 1;
+                };
+                if (pool) {
+                    for (let order = 0; order < pool.length; order++) bucketItem(pool[order]);
+                } else {
+                    for (let i = 0; i < entries.length; i++) bucketItem(i);
+                }
+                if (!totalHits) return [];
+                const want = Math.min(totalHits, cap);
+                const out = new Array(want);
+                let pos = 0;
+                for (let s = maxScore; s > 0 && pos < want; s -= 1) {
+                    const b = buckets[s];
+                    if (!b) continue;
+                    const take = Math.min(b.length, want - pos);
+                    for (let k = 0; k < take; k += 1) out[pos++] = b[k];
+                }
+                return out;
+            }
             const hits = [];
             const scoreItem = (i, order) => {
                 const e = entries[i];
@@ -309,7 +354,7 @@
                 for (let i = 0; i < entries.length; i++) scoreItem(i, i);
             }
             hits.sort((a, b) => b.total - a.total || a.order - b.order);
-            const capped = hits.length > limit ? hits.slice(0, limit) : hits;
+            const capped = hits.length > cap ? hits.slice(0, cap) : hits;
             const out = new Array(capped.length);
             for (let k = 0; k < capped.length; k++) out[k] = capped[k].i;
             return out;

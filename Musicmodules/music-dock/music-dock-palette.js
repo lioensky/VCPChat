@@ -215,13 +215,24 @@
         };
 
         const iconCache = new Map();
+        const iconTplCache = new Map();
         const iconHtml = (name, size) => {
             const k = `${name}:${size}`;
             let s = iconCache.get(k);
             if (s === undefined) { s = icon(name, size); iconCache.set(k, s); }
             return s;
         };
-        const enterIcon = iconHtml('corner-down-left', 13);
+        const cloneIconInto = (target, name, size) => {
+            const k = `${name}:${size}`;
+            let tpl = iconTplCache.get(k);
+            if (!tpl) {
+                tpl = document.createElement('span');
+                tpl.innerHTML = iconHtml(name, size);
+                iconTplCache.set(k, tpl);
+            }
+            target.textContent = '';
+            for (let n = tpl.firstChild; n; n = n.nextSibling) target.appendChild(n.cloneNode(true));
+        };
 
         const songItem = (track, group, knownIndex) => {
             const index = Number.isInteger(knownIndex) ? knownIndex : app.playlist.indexOf(track);
@@ -403,10 +414,12 @@
             if (q.text) {
                 order = index.query(q.text, { limit: Math.max(limit * 4, 400) });
             } else if (q.artist) {
-                order = index.query(q.artist, { kind: 'artist' });
+                const singleFilter = !q.album && !q.title;
+                order = index.query(q.artist, singleFilter ? { kind: 'artist', limit: Math.max(limit * 4, 400) } : { kind: 'artist' });
                 skipArtist = true;
             } else if (q.album) {
-                order = index.query(q.album, { kind: 'album' });
+                const singleFilter = !q.artist && !q.title;
+                order = index.query(q.album, singleFilter ? { kind: 'album', limit: Math.max(limit * 4, 400) } : { kind: 'album' });
                 skipAlbum = true;
             } else {
                 order = tracks.map((_, i) => i);
@@ -523,38 +536,131 @@
             void q;
         };
 
+        // 复用结果行与分组标题 DOM 节点，避免每次按键经 innerHTML 拆建 60 行上千个 DOM 与 SVG 节点
+        const rowPool = [];
+        const secPool = [];
+        const createRowSlot = () => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.setAttribute('role', 'option');
+            const ri = document.createElement('span');
+            ri.className = 'md-cmd-ri';
+            const rt = document.createElement('span');
+            rt.className = 'md-cmd-rt';
+            const l1 = document.createElement('span');
+            l1.className = 'md-cmd-l1';
+            const titleEl = document.createElement('span');
+            titleEl.className = 'md-cmd-title';
+            const chipEl = document.createElement('kbd');
+            chipEl.className = 'md-cmd-chip';
+            const grpEl = document.createElement('span');
+            grpEl.className = 'md-cmd-grp';
+            const descEl = document.createElement('span');
+            descEl.className = 'md-cmd-desc';
+            const runEl = document.createElement('span');
+            runEl.className = 'md-cmd-run';
+            cloneIconInto(runEl, 'corner-down-left', 13);
+            const runText = document.createTextNode('');
+            runEl.appendChild(runText);
+            l1.append(titleEl, grpEl);
+            rt.appendChild(l1);
+            btn.append(ri, rt, runEl);
+            return {
+                btn, ri, rt, l1, titleEl, chipEl, grpEl, descEl, runText,
+                iconName: '', hasChip: false, hasDesc: false, lastTitle: null, lastHint: null, lastGrp: null, lastDesc: null, lastRun: null
+            };
+        };
+        const hydrateRowSlot = (slot, item, i) => {
+            const active = i === state.active;
+            const cls = `md-cmd-row${active ? ' md-act' : ''}${item.current ? ' md-cur' : ''}`;
+            if (slot.btn.className !== cls) slot.btn.className = cls;
+            const id = `md-cmd-opt-${i}`;
+            if (slot.btn.id !== id) slot.btn.id = id;
+            const selStr = active ? 'true' : 'false';
+            if (slot.btn.getAttribute('aria-selected') !== selStr) slot.btn.setAttribute('aria-selected', selStr);
+            const idxStr = String(i);
+            if (slot.btn.dataset.i !== idxStr) slot.btn.dataset.i = idxStr;
+            const distStr = String(Math.min(4, i));
+            if (slot.btn.dataset.mdDist !== distStr) slot.btn.dataset.mdDist = distStr;
+            const iconName = item.icon || 'command';
+            if (slot.iconName !== iconName) {
+                slot.iconName = iconName;
+                cloneIconInto(slot.ri, iconName, 16);
+            }
+            const nextTitle = String(item.title ?? '');
+            if (slot.lastTitle !== nextTitle) { slot.lastTitle = nextTitle; slot.titleEl.textContent = nextTitle; }
+            if (item.hint) {
+                const nextHint = String(item.hint);
+                if (slot.lastHint !== nextHint) { slot.lastHint = nextHint; slot.chipEl.textContent = nextHint; }
+                if (!slot.hasChip) { slot.l1.insertBefore(slot.chipEl, slot.grpEl); slot.hasChip = true; }
+            } else if (slot.hasChip) {
+                slot.chipEl.remove();
+                slot.hasChip = false;
+            }
+            const nextGrp = String(item.group ?? '');
+            if (slot.lastGrp !== nextGrp) { slot.lastGrp = nextGrp; slot.grpEl.textContent = nextGrp; }
+            if (item.desc) {
+                const nextDesc = String(item.desc);
+                if (slot.lastDesc !== nextDesc) { slot.lastDesc = nextDesc; slot.descEl.textContent = nextDesc; }
+                if (!slot.hasDesc) { slot.rt.appendChild(slot.descEl); slot.hasDesc = true; }
+            } else if (slot.hasDesc) {
+                slot.descEl.remove();
+                slot.hasDesc = false;
+            }
+            const nextRun = item.queueable ? '播放' : '运行';
+            if (slot.lastRun !== nextRun) { slot.lastRun = nextRun; slot.runText.nodeValue = nextRun; }
+            return slot.btn;
+        };
+        let emptyEl = null;
+        let lastEmptyMode = '';
         let activeRowEl = null;
         const render = () => {
             activeRowEl = null;
             if (!state.items.length) {
-                list.innerHTML = input.value.trim()
-                    ? `<div class="md-cmd-empty"><span>没有找到匹配的歌、歌单或操作</span></div>`
-                    : `<div class="md-cmd-empty"><span>输入歌名、歌手或专辑</span><span class="md-cmd-tip">只找某个歌手或专辑：写「歌手:周杰伦」「专辑:叶惠美」</span><span class="md-cmd-tip">也可以直接输入「暂停」「音量 50」这样的指令</span></div>`;
+                const mode = input.value.trim() ? 'nomatch' : 'idle';
+                if (!emptyEl) {
+                    emptyEl = document.createElement('div');
+                    emptyEl.className = 'md-cmd-empty';
+                }
+                if (lastEmptyMode !== mode) {
+                    lastEmptyMode = mode;
+                    emptyEl.innerHTML = mode === 'nomatch'
+                        ? '<span>没有找到匹配的歌、歌单或操作</span>'
+                        : '<span>输入歌名、歌手或专辑</span><span class="md-cmd-tip">只找某个歌手或专辑：写「歌手:周杰伦」「专辑:叶惠美」</span><span class="md-cmd-tip">也可以直接输入「暂停」「音量 50」这样的指令</span>';
+                }
+                if (list.childNodes.length !== 1 || list.firstChild !== emptyEl) list.replaceChildren(emptyEl);
                 input.removeAttribute('aria-activedescendant');
                 foot.hidden = true;
                 return;
             }
+            const existingDrop = list.querySelector(':scope > .md-cmd-drop');
             // 列表是倒着排的（column-reverse），所以每组的标题写在这组最后一项后面，显示出来就在上方。
-            const parts = [];
+            const frag = document.createDocumentFragment();
+            let secUsed = 0;
             for (let i = 0; i < state.items.length; i += 1) {
                 const item = state.items[i];
-                parts.push(rowHtml(item, i));
+                let slot = rowPool[i];
+                if (!slot) { slot = createRowSlot(); rowPool[i] = slot; }
+                frag.appendChild(hydrateRowSlot(slot, item, i));
                 const next = state.items[i + 1];
-                if (item.section && (!next || next.section !== item.section)) parts.push(`<div class="md-cmd-sec" role="presentation">${escapeHtml(item.section)}</div>`);
+                if (item.section && (!next || next.section !== item.section)) {
+                    let sec = secPool[secUsed];
+                    if (!sec) {
+                        sec = document.createElement('div');
+                        sec.className = 'md-cmd-sec';
+                        sec.setAttribute('role', 'presentation');
+                        secPool[secUsed] = sec;
+                    }
+                    secUsed += 1;
+                    const secText = String(item.section);
+                    if (sec.textContent !== secText) sec.textContent = secText;
+                    frag.appendChild(sec);
+                }
             }
-            list.innerHTML = parts.join('');
+            if (existingDrop) frag.appendChild(existingDrop);
+            list.replaceChildren(frag);
             syncActive(false, true);
         };
-
-        const rowHtml = (item, i) => (
-                `<button type="button" class="md-cmd-row${i === state.active ? ' md-act' : ''}${item.current ? ' md-cur' : ''}" role="option" id="md-cmd-opt-${i}" aria-selected="${i === state.active}" data-i="${i}" data-md-dist="${Math.min(4, i)}">`
-                + `<span class="md-cmd-ri">${iconHtml(item.icon || 'command', 16)}</span>`
-                + `<span class="md-cmd-rt"><span class="md-cmd-l1"><span class="md-cmd-title">${escapeHtml(item.title)}</span>`
-                + (item.hint ? `<kbd class="md-cmd-chip">${escapeHtml(item.hint)}</kbd>` : '')
-                + `<span class="md-cmd-grp">${escapeHtml(item.group)}</span></span>`
-                + (item.desc ? `<span class="md-cmd-desc">${escapeHtml(item.desc)}</span>` : '')
-                + `</span><span class="md-cmd-run">${enterIcon}${item.queueable ? '播放' : '运行'}</span></button>`
-        );
 
         const flushSlide = (scroll) => {
             if (!state.open) return;
@@ -644,10 +750,10 @@
             if (state.closeTimer) { clearTimeout(state.closeTimer); state.closeTimer = null; }
             place();
             root.hidden = false;
-            input.value = initial;
-            // 在切换 body 类和写入 60 条结果行之前先聚焦输入框，避免 focus() 触发整页样式与新列表的同步强制重算
-            input.focus({ preventScroll: true });
             document.body.classList.add('music-dock-cmd-open');
+            input.value = initial;
+            // 先完成显隐与 body 类变更再聚焦输入框，合并为一次样式重算并避开写入 60 条结果行后再 focus
+            input.focus({ preventScroll: true });
             build();
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
             state.openRaf = requestAnimationFrame(() => {
@@ -756,7 +862,11 @@
                 global.removeEventListener('resize', onResize);
                 cachedPathList = cachedPathFirst = cachedPathLast = cachedByPath = null;
                 activeRowEl = null;
+                rowPool.length = 0;
+                secPool.length = 0;
+                emptyEl = null;
                 iconCache.clear();
+                iconTplCache.clear();
                 searchIndex = indexedList = null;
                 cachedPinyinLib = cachedPinyinFn = null;
                 pinyinCache.clear();
