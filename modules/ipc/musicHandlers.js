@@ -25,6 +25,13 @@ const { registerMusicWebdavHandlers } = require('./musicWebdavHandlers');
 const { registerMusicLyricsHandlers } = require('./musicLyricsHandlers');
 const { randomUUID } = require('crypto');
 let fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : null;
+const MUSIC_PAGE_URL_RE = /\/Musicmodules(?:-legacy)?\/music\.html(?:[?#]|$)/;
+const ENGINE_SLOW_ENDPOINT_RE = /scan|loudness|load_ir|devices|configure/;
+const AUDIO_READ_EXT_RE = /\.(flac|mp3|wav|m4a|aac|ogg|opus|wv|aiff?|alac|ape|dsf|dff|wma)$/i;
+const M3U_LEGACY_EXT_RE = /\.m3u$/i;
+const M3U_ANY_EXT_RE = /\.m3u8?$/i;
+const HTTP_URL_RE = /^https?:\/\//i;
+let jsonTmpSeq = 0;
 
 let musicWindow = null;
 const sendToWindow = (win, channel, payload) => {
@@ -313,7 +320,7 @@ function createOrFocusMusicWindow() {
         // 从资源管理器把歌曲或图片拖进窗口时，Chromium 默认会跳转去打开那个文件，整个播放器被换掉、
         // 播放状态全丢。音乐窗口只该停在自己的页面上（含旧版界面）。
         musicWindow.webContents.on('will-navigate', (event, url) => {
-            if (!/\/Musicmodules(?:-legacy)?\/music\.html(?:[?#]|$)/.test(String(url).replace(/\\/g, '/'))) event.preventDefault();
+            if (!MUSIC_PAGE_URL_RE.test(String(url).replace(/\\/g, '/'))) event.preventDefault();
         });
         musicWindow.webContents.setWindowOpenHandler?.(() => ({ action: 'deny' }));
 
@@ -488,7 +495,7 @@ function writeJsonAtomic(file, data, options = {}) {
     }
     const run = async (job) => {
         queue.running = true;
-        const temp = `${file}.${process.pid}.tmp`;
+        const temp = `${file}.${process.pid}.${++jsonTmpSeq}.tmp`;
         try {
             await fs.writeFile(temp, JSON.stringify(job.data, null, options.spaces || 0));
             await fs.move(temp, file, { overwrite: true });
@@ -517,7 +524,7 @@ function writeJsonAtomic(file, data, options = {}) {
 // 状态查询是高频轮询，给短超时；分析类接口本身耗时长，单独放宽。
 function audioEngineTimeoutMs(endpoint) {
     if (endpoint === '/state') return 3000;
-    if (/scan|loudness|load_ir|devices|configure/.test(endpoint)) return 60000;
+    if (ENGINE_SLOW_ENDPOINT_RE.test(endpoint)) return 60000;
     return 8000;
 }
 
@@ -842,7 +849,7 @@ function initialize(options) {
                 return { ok: false, message: '只有音乐窗口可以读' };
             }
             const file = payload && typeof payload.path === 'string' ? payload.path : '';
-            if (!file || !path.isAbsolute(file) || !/\.(flac|mp3|wav|m4a|aac|ogg|opus|wv|aiff?|alac|ape|dsf|dff|wma)$/i.test(file)) {
+            if (!file || !path.isAbsolute(file) || !AUDIO_READ_EXT_RE.test(file)) {
                 return { ok: false, message: '只能分析本机的音频文件' };
             }
             try {
@@ -919,7 +926,7 @@ function initialize(options) {
             try {
                 const text = m3u.buildM3u(name, tracks);
                 // .m3u 给老播放器用：带 BOM 让它们认出是 UTF-8
-                await fs.writeFile(result.filePath, /\.m3u$/i.test(result.filePath) ? '\uFEFF' + text : text, 'utf8');
+                await fs.writeFile(result.filePath, M3U_LEGACY_EXT_RE.test(result.filePath) ? '\uFEFF' + text : text, 'utf8');
                 return { ok: true, file: result.filePath, count: tracks.length };
             } catch (err) {
                 return { ok: false, message: '写不进去：' + (err && err.message || err) };
@@ -937,7 +944,7 @@ function initialize(options) {
                 if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
                 file = result.filePaths[0];
             }
-            if (!path.isAbsolute(file) || !/\.m3u8?$/i.test(file)) return { ok: false, message: '只认 .m3u / .m3u8 歌单' };
+            if (!path.isAbsolute(file) || !M3U_ANY_EXT_RE.test(file)) return { ok: false, message: '只认 .m3u / .m3u8 歌单' };
             try {
                 const stat = await fs.stat(file);
                 if (!stat.isFile() || stat.size > 20 * 1024 * 1024) return { ok: false, message: '这个文件不像歌单' };
@@ -953,7 +960,7 @@ function initialize(options) {
                         entries[at + k] = { ...entry, exists: Boolean(s && s.isFile()) };
                     }));
                 }
-                return { ok: true, file, name: parsed.name || path.basename(file).replace(/\.m3u8?$/i, ''), entries, skipped: parsed.skipped };
+                return { ok: true, file, name: parsed.name || path.basename(file).replace(M3U_ANY_EXT_RE, ''), entries, skipped: parsed.skipped };
             } catch (err) {
                 return { ok: false, message: err && err.code === 'ENOENT' ? '文件不在了' : '读取失败：' + (err && err.message || err) };
             }
@@ -1171,7 +1178,7 @@ function initialize(options) {
         ipcMain.handle('music-share-track', async (event, filePath) => {
             // 聊天附件只收本地文件：远程（WebDAV）曲目和已经不在磁盘上的文件在这里就说清楚，
             // 不然要到聊天窗口里才弹一个看不懂的「附加失败」。
-            if (typeof filePath !== 'string' || /^https?:\/\//i.test(filePath)) {
+            if (typeof filePath !== 'string' || HTTP_URL_RE.test(filePath)) {
                 return { success: false, message: '远程曲目不能作为附件分享' };
             }
             if (!(await fs.pathExists(filePath))) {

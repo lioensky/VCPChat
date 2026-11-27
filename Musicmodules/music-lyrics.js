@@ -271,20 +271,30 @@ function setupLyrics(app) {
             }));
     };
 
+    const BOM_RE = /^\uFEFF/;
+    const LINE_SPLIT_RE = /\r?\n/;
+    const OFFSET_TAG_RE = /^\[offset:\s*([+-]?\d+)\s*\]/im;
+    const META_TAG_RE = /^\[[a-zA-Z]+:/;
+    const KANA_RE = /[\u3040-\u30ff\u31f0-\u31ff]/;
+    const HANGUL_RE = /[\uac00-\ud7af\u1100-\u11ff]/;
+    const HAN_RE = /[\u3400-\u9fff\uf900-\ufaff]/;
+    const LATIN_RE = /[a-z]/i;
+    const BRACKET_STRIP_RE = /\[[^\]]*\]/g;
+
     /**
      * 增强型传统 LRC 解析器：完美兼容单语、同时间戳双语、微小时差双语以及前后分段式双语歌词
      */
     app.parseLrc = (lrcContent) => {
         if (!lrcContent || typeof lrcContent !== 'string') return [];
 
-        const lines = lrcContent.replace(/^\uFEFF/, '').split(/\r?\n/);
+        const lines = lrcContent.replace(BOM_RE, '').split(LINE_SPLIT_RE);
         const timeRegex = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
         const rawEntries = [];
         // 只有时间戳、没有字的行是「这一句到这里结束」（间奏开始），记下来用来算每句的结束时间。
         const breaks = [];
         // 文件自带的 [offset:+500]（毫秒，正数表示歌词提前出现），按 LRC 的约定从每个时间戳里减掉。
         let fileOffset = 0;
-        const offsetTag = /^\[offset:\s*([+-]?\d+)\s*\]/im.exec(lrcContent);
+        const offsetTag = OFFSET_TAG_RE.exec(lrcContent);
         if (offsetTag) fileOffset = Math.max(-600, Math.min(600, Number(offsetTag[1]) / 1000)) || 0;
         const stamp = (match) => {
             const minutes = parseInt(match[1], 10);
@@ -298,7 +308,7 @@ function setupLyrics(app) {
             const trimmedLine = line.trim();
             if (!trimmedLine) continue;
             // 忽略头部元数据（如 [ti:...], [ar:...], [offset:...] 等）
-            if (/^\[[a-zA-Z]+:/.test(trimmedLine)) continue;
+            if (META_TAG_RE.test(trimmedLine)) continue;
 
             const text = trimmedLine.replace(timeRegex, '').trim();
             let match;
@@ -334,10 +344,10 @@ function setupLyrics(app) {
         const resultLines = [];
         const scriptOf = (text) => {
             const t = String(text);
-            if (/[\u3040-\u30ff\u31f0-\u31ff]/.test(t)) return 'kana';
-            if (/[\uac00-\ud7af\u1100-\u11ff]/.test(t)) return 'hangul';
-            if (/[\u3400-\u9fff\uf900-\ufaff]/.test(t)) return 'han';
-            if (/[a-z]/i.test(t)) return 'latin';
+            if (KANA_RE.test(t)) return 'kana';
+            if (HANGUL_RE.test(t)) return 'hangul';
+            if (HAN_RE.test(t)) return 'han';
+            if (LATIN_RE.test(t)) return 'latin';
             return 'other';
         };
         const isTranslationOf = (a, b) => {
@@ -516,6 +526,7 @@ function setupLyrics(app) {
                 originalSpan.textContent = line.original;
             }
             li.appendChild(originalSpan);
+            if (originalSpan.classList.contains('is-wbyw')) li._wbywBox = originalSpan;
 
             // 3. 翻译行
             if (line.translation) {
@@ -696,7 +707,8 @@ function setupLyrics(app) {
                     }
                     li._lyricWordState = 'active';
                     if (hasWords) {
-                        layout.wordSpans = Array.from(li.querySelectorAll('.lyric-word'), span => ({
+                        const wordEls = li._wbywBox ? li._wbywBox.children : li.querySelectorAll('.lyric-word');
+                        layout.wordSpans = Array.from(wordEls, span => ({
                             span,
                             start: parseFloat(span.dataset.start),
                             end: parseFloat(span.dataset.end),
@@ -718,18 +730,24 @@ function setupLyrics(app) {
                 if (i < app.currentLyricIndex) {
                     if (li._lyricWordState !== 'finished') {
                         li._lyricWordState = 'finished';
-                        li.querySelectorAll('.lyric-word:not(.finished)').forEach(w => {
+                        const wordEls = li._wbywBox ? li._wbywBox.children : li.querySelectorAll('.lyric-word:not(.finished)');
+                        for (let wi = 0; wi < wordEls.length; wi += 1) {
+                            const w = wordEls[wi];
+                            if (w.classList.contains('finished')) continue;
                             w.style.setProperty('--word-progress', '100%');
                             w.classList.remove('singing');
                             w.classList.add('finished');
-                        });
+                        }
                     }
                 } else if (li._lyricWordState && li._lyricWordState !== 'pending') {
                     li._lyricWordState = 'pending';
-                    li.querySelectorAll('.lyric-word.singing, .lyric-word.finished').forEach(w => {
+                    const wordEls = li._wbywBox ? li._wbywBox.children : li.querySelectorAll('.lyric-word.singing, .lyric-word.finished');
+                    for (let wi = 0; wi < wordEls.length; wi += 1) {
+                        const w = wordEls[wi];
+                        if (!w.classList.contains('singing') && !w.classList.contains('finished')) continue;
                         w.style.setProperty('--word-progress', '0%');
                         w.classList.remove('singing', 'finished');
-                    });
+                    }
                 }
             }
         }
@@ -859,7 +877,7 @@ function setupLyrics(app) {
 
     // 歌词文件里有字、但一句带时间的都没有（纯文本歌词）：记下有几行，首页歌词栏据此说明「没有时间轴」而不是「没有歌词」
     const plainLyricLines = (raw) => (typeof raw === 'string'
-        ? raw.split(/\r?\n/).map((s) => s.replace(/\[[^\]]*\]/g, '').trim()).filter(Boolean).slice(0, 400) : []);
+        ? raw.split(LINE_SPLIT_RE).map((s) => s.replace(BRACKET_STRIP_RE, '').trim()).filter(Boolean).slice(0, 400) : []);
     // 纯文本行也留着（app.currentLyricsPlainLines），首页歌词栏照 RhinE 把它们静静摆出来、能用滚轮翻
     const plainLyricCount = (raw) => {
         app.currentLyricsPlainLines = plainLyricLines(raw);
@@ -881,7 +899,9 @@ function setupLyrics(app) {
         app.lyricUserScrolling = false;
         if (app.lyricUserScrollTimer) { clearTimeout(app.lyricUserScrollTimer); app.lyricUserScrollTimer = null; }
         app.lyricsList.innerHTML = '<li class="no-lyrics">正在加载歌词…</li>';
-        app.lyricsList.style.transform = 'translate3d(0, 0px, 0)';
+        if (app.lyricsList.style.transform !== 'translate3d(0, 0px, 0)') {
+            app.lyricsList.style.transform = 'translate3d(0, 0px, 0)';
+        }
     };
 
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {

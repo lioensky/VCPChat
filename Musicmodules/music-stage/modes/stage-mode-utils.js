@@ -62,6 +62,31 @@
 
     // Resolve CSS colors once per theme change, never in the animation loop.
     // The browser handles variables, named colors, hsl and color-mix for us.
+    const RGB_OPAQUE_RE = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*1(?:\.0+)?\s*)?\)$/i;
+    const THEME_NAMES = Object.freeze(['background', 'surface', 'ink', 'muted', 'accent', 'secondary', 'tertiary',
+        'deep', 'material', 'border', 'emission']);
+    const THEME_VARS = Object.freeze(['--primary-bg', '--secondary-bg', '--primary-text', '--secondary-text',
+        '--highlight-text', '--success-color', '--quoted-text',
+        '--tertiary-bg', '--accent-bg', '--border-color', '--button-bg']);
+    const LIGHT_DEFAULTS = Object.freeze(['#f2efe7', '#fcfaf4', '#1b211f', '#626a66', '#b94832', '#21675c', '#21675c',
+        '#f2efe7', '#e7e1d5', '#d2cbc0', '#b94832']);
+    const DARK_DEFAULTS = Object.freeze(['#171a1d', '#20252a', '#f2f0e9', '#a7afb1', '#f2a900', '#76bfae', '#76bfae',
+        '#171a1d', '#2a3035', '#3b4449', '#f2a900']);
+    const hexByte = (v) => {
+        const n = Math.max(0, Math.min(255, v | 0));
+        return n < 16 ? `0${n.toString(16)}` : n.toString(16);
+    };
+    const themeCanvasContexts = new WeakMap();
+    const getThemeCanvasCtx = (doc) => {
+        if (!doc) return null;
+        if (themeCanvasContexts.has(doc)) return themeCanvasContexts.get(doc);
+        const canvas = doc.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext?.('2d', { willReadFrequently: true }) || null;
+        themeCanvasContexts.set(doc, ctx);
+        return ctx;
+    };
     const refreshTheme = (app, root = document.body) => {
         // Custom stage palettes carry their own light/dark state. In global
         // mode, retain the application's authoritative theme state.
@@ -69,38 +94,47 @@
         const custom = stage?.classList.contains('stage-theme-custom');
         const light = custom ? stage.classList.contains('stage-theme-light')
             : app?.currentTheme === 'light' || document.body.classList.contains('light-theme');
-        const defaults = light
-            ? ['#f2efe7', '#fcfaf4', '#1b211f', '#626a66', '#b94832', '#21675c', '#21675c']
-            : ['#171a1d', '#20252a', '#f2f0e9', '#a7afb1', '#f2a900', '#76bfae', '#76bfae'];
-        defaults.push(...(light
-            ? ['#f2efe7', '#e7e1d5', '#d2cbc0', '#b94832']
-            : ['#171a1d', '#2a3035', '#3b4449', '#f2a900']));
-        const names = ['background', 'surface', 'ink', 'muted', 'accent', 'secondary', 'tertiary',
-            'deep', 'material', 'border', 'emission'];
-        const variables = ['--primary-bg', '--secondary-bg', '--primary-text', '--secondary-text',
-            '--highlight-text', '--success-color', '--quoted-text',
-            '--tertiary-bg', '--accent-bg', '--border-color', '--button-bg'];
-        const probe = document.createElement('span');
-        probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
-        root.appendChild(probe);
-        const context = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        const defaults = light ? LIGHT_DEFAULTS : DARK_DEFAULTS;
+        // 一次性挂入 11 个探针再集中读取 getComputedStyle，把 11 次交替读写触发的同步样式重算合并成 1 次。
+        const doc = root?.ownerDocument || document;
+        const wrap = doc.createElement('span');
+        wrap.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+        const probes = new Array(THEME_NAMES.length);
+        for (let i = 0; i < THEME_NAMES.length; i += 1) {
+            const p = doc.createElement('span');
+            p.style.color = `var(${THEME_VARS[i]}, ${defaults[i]})`;
+            wrap.appendChild(p);
+            probes[i] = p;
+        }
+        root.appendChild(wrap);
         const palette = { light };
+        let context = undefined;
         try {
-            names.forEach((name, index) => {
-                probe.style.color = `var(${variables[index]}, ${defaults[index]})`;
-                let hex = defaults[index];
+            const computed = new Array(THEME_NAMES.length);
+            for (let i = 0; i < THEME_NAMES.length; i += 1) {
+                computed[i] = global.getComputedStyle(probes[i]).color;
+            }
+            for (let i = 0; i < THEME_NAMES.length; i += 1) {
+                const raw = computed[i];
+                const m = typeof raw === 'string' ? RGB_OPAQUE_RE.exec(raw) : null;
+                if (m) {
+                    palette[THEME_NAMES[i]] = `#${hexByte(+m[1])}${hexByte(+m[2])}${hexByte(+m[3])}`;
+                    continue;
+                }
+                if (context === undefined) context = getThemeCanvasCtx(doc);
+                let hex = defaults[i];
                 if (context?.getImageData) {
                     context.clearRect(0, 0, 1, 1);
-                    context.fillStyle = defaults[index];
-                    context.fillStyle = global.getComputedStyle(probe).color;
+                    context.fillStyle = defaults[i];
+                    context.fillStyle = raw;
                     context.fillRect(0, 0, 1, 1);
                     const data = context.getImageData(0, 0, 1, 1).data;
-                    hex = '#' + Array.from(data).slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join('');
+                    hex = `#${hexByte(data[0])}${hexByte(data[1])}${hexByte(data[2])}`;
                 }
-                palette[name] = hex;
-            });
+                palette[THEME_NAMES[i]] = hex;
+            }
         } finally {
-            probe.remove();
+            wrap.remove();
         }
         const n = parseInt(palette.accent.slice(1), 16);
         palette.accentRgb = Object.freeze({ r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 });

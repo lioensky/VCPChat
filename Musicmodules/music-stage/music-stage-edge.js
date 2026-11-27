@@ -294,20 +294,23 @@
         };
 
         const strokeEdgePair = (ctx2d, points, hasMotion, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow) => {
-            if (!ctx2d || points.length < 4) return;
+            const len = points.length;
+            if (!ctx2d || len < 4) return;
+            const last = len - 2;
             ctx2d.beginPath();
             ctx2d.moveTo(points[0], points[1]);
-            if (hasMotion) {
-                for (let index = 2; index < points.length - 2; index += 2) {
-                    ctx2d.quadraticCurveTo(
-                        points[index],
-                        points[index + 1],
-                        (points[index] + points[index + 2]) * 0.5,
-                        (points[index + 1] + points[index + 3]) * 0.5
-                    );
+            if (hasMotion && last > 2) {
+                let px = points[2];
+                let py = points[3];
+                for (let index = 2; index < last; index += 2) {
+                    const nx = points[index + 2];
+                    const ny = points[index + 3];
+                    ctx2d.quadraticCurveTo(px, py, (px + nx) * 0.5, (py + ny) * 0.5);
+                    px = nx;
+                    py = ny;
                 }
             }
-            ctx2d.lineTo(points[points.length - 2], points[points.length - 1]);
+            ctx2d.lineTo(points[last], points[last + 1]);
             // The wide soft pass stands in for the glow filters the canvas used to have.
             ctx2d.lineWidth = 2.8;
             ctx2d.strokeStyle = glowStroke;
@@ -446,10 +449,11 @@
             const alpha = 0.28 + (Number(frame.audio.power) || 0) * 0.62;
             const alphaKey = alpha.toFixed(3);
             const lightGlow = quality === 'energy-saving';
-            const flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
             const spectrumSum = buildSpectrumPrefix(spectrum);
+            let flatBase = '';
+            const getFlatBase = () => flatBase || (flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`);
 
-            if (spectrumSum <= 0 && !edgeCanvasState.blank && flatBase === edgeCanvasState.lastFlatKey) {
+            if (spectrumSum <= 0 && !edgeCanvasState.blank && getFlatBase() === edgeCanvasState.lastFlatKey) {
                 edgeCanvasState.drawnAt = now;
                 return;
             }
@@ -475,7 +479,7 @@
             }
 
             const hasMotion = mTop || mRight || mBottom || mLeft;
-            const flatKey = hasMotion ? '' : flatBase;
+            const flatKey = hasMotion ? '' : getFlatBase();
             edgeCanvasState.drawnAt = now;
             if (!hasMotion && !edgeCanvasState.blank && flatKey === edgeCanvasState.lastFlatKey) {
                 return;
@@ -493,10 +497,11 @@
                 edgeCanvasState.mainStroke = `rgba(${rgb}, ${alphaKey})`;
                 edgeCanvasState.mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45).toFixed(3)})`;
             }
-            drawSide(edgeStrips.top, top, mTop, wasBlank, flatBase, lightGlow);
-            drawSide(edgeStrips.right, right, mRight, wasBlank, flatBase, lightGlow);
-            drawSide(edgeStrips.bottom, bottom, mBottom, wasBlank, flatBase, lightGlow);
-            drawSide(edgeStrips.left, left, mLeft, wasBlank, flatBase, lightGlow);
+            const fb = (!mTop || !mRight || !mBottom || !mLeft) ? getFlatBase() : '';
+            drawSide(edgeStrips.top, top, mTop, wasBlank, fb, lightGlow);
+            drawSide(edgeStrips.right, right, mRight, wasBlank, fb, lightGlow);
+            drawSide(edgeStrips.bottom, bottom, mBottom, wasBlank, fb, lightGlow);
+            drawSide(edgeStrips.left, left, mLeft, wasBlank, fb, lightGlow);
         };
 
         return {

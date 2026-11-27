@@ -997,6 +997,11 @@
             });
         };
 
+        let titleAnimRaf = 0;
+        const cancelTitleAnim = () => {
+            if (titleAnimRaf) { global.cancelAnimationFrame?.(titleAnimRaf); titleAnimRaf = 0; }
+        };
+        scope.add(cancelTitleAnim);
         let lastTrackObj = undefined;
         let lastTrackPath = null;
         let lastTrackTitle = null;
@@ -1035,10 +1040,18 @@
 
             if (identity !== state.trackPath) {
                 state.trackPath = identity;
+                cancelTitleAnim();
+                const hadChanging = elements.title.classList.contains('is-changing');
                 elements.title.classList.remove('is-changing');
                 if (!reducedMotion()) {
-                    void elements.title.offsetWidth;
-                    elements.title.classList.add('is-changing');
+                    if (hadChanging && typeof global.requestAnimationFrame === 'function') {
+                        titleAnimRaf = global.requestAnimationFrame(() => {
+                            titleAnimRaf = 0;
+                            if (!state.destroyed && state.active) elements.title.classList.add('is-changing');
+                        });
+                    } else {
+                        elements.title.classList.add('is-changing');
+                    }
                 }
             }
 
@@ -1106,28 +1119,38 @@
             return { mode, label: '列表循环', icon: icons.repeat };
         };
 
+        let lastRenderedPlayMode = '';
+        let lastRenderedVolKey = '';
         const updateTransportControls = () => {
             const volume = clamp(Number(app.volumeSlider?.value) || 0);
             const mode = app.playModes[app.currentPlayMode] || 'repeat';
             if (state.lastTransportSignature && mode === state.lastTransportMode && volume === state.lastTransportVol) return;
             const presentation = getPlayModePresentation();
-            const signature = `${presentation.mode}:${volume.toFixed(3)}`;
+            const volKey = volume.toFixed(3);
+            const signature = `${presentation.mode}:${volKey}`;
             state.lastTransportMode = mode;
             state.lastTransportVol = volume;
             if (signature === state.lastTransportSignature) return;
             state.lastTransportSignature = signature;
 
-            elements.playMode.innerHTML = presentation.icon;
-            elements.playMode.title = presentation.label;
-            elements.playMode.setAttribute('aria-label', presentation.label);
-            elements.playMode.dataset.playMode = presentation.mode;
-            elements.playMode.classList.toggle('is-active', presentation.mode !== 'repeat');
+            if (presentation.mode !== lastRenderedPlayMode) {
+                lastRenderedPlayMode = presentation.mode;
+                elements.playMode.innerHTML = presentation.icon;
+                elements.playMode.title = presentation.label;
+                elements.playMode.setAttribute('aria-label', presentation.label);
+                elements.playMode.dataset.playMode = presentation.mode;
+                elements.playMode.classList.toggle('is-active', presentation.mode !== 'repeat');
+            }
 
-            elements.volumeSlider.value = String(volume);
-            elements.volumeSlider.style.setProperty('--stage-volume', `${(volume * 100).toFixed(1)}%`);
-            elements.volumeButton.classList.toggle('is-muted', volume <= 0.001);
-            elements.volumeButton.title = volume <= 0.001 ? '恢复音量' : '静音';
-            elements.volumeButton.setAttribute('aria-label', volume <= 0.001 ? '恢复音量' : '静音');
+            if (volKey !== lastRenderedVolKey) {
+                lastRenderedVolKey = volKey;
+                const muted = volume <= 0.001;
+                elements.volumeSlider.value = String(volume);
+                elements.volumeSlider.style.setProperty('--stage-volume', `${(volume * 100).toFixed(1)}%`);
+                elements.volumeButton.classList.toggle('is-muted', muted);
+                elements.volumeButton.title = muted ? '恢复音量' : '静音';
+                elements.volumeButton.setAttribute('aria-label', muted ? '恢复音量' : '静音');
+            }
             if (volume > 0.001) state.lastNonZeroVolume = volume;
         };
 
@@ -1503,6 +1526,7 @@
             setModePickerOpen(false, { focus: 'none' });
             state.active = false;
             app.isStageActive = false;
+            cancelTitleAnim();
             root.classList.remove('is-visible');
             document.body.classList.remove('music-stage-active', 'music-stage-scene-3d');
             const generation = ++state.generation;

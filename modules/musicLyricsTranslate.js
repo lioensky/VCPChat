@@ -24,6 +24,8 @@ const SYSTEM_PROMPT = [
 const keyOf = (lines) => crypto.createHash('sha1').update(lines.join('\n'), 'utf8').digest('hex');
 
 const FENCE_RE = /```(?:json)?\s*([\s\S]*?)```/gi;
+const CHATVCP_RE = /\/chatvcp\/completions\/?$/;
+const ensuredCacheDirs = new Set();
 let cacheTmpSeq = 0;
 
 // 从模型回复里取出 JSON 数组（容忍前后多说的话或 ```json 包裹）
@@ -56,18 +58,23 @@ function parseTranslations(text, expected) {
 function completionsUrl(serverUrl) {
     const url = new URL(String(serverUrl || '').trim());
     if (!['http:', 'https:'].includes(url.protocol)) throw new Error('VCP 服务器地址必须是 http 或 https');
-    url.pathname = url.pathname.replace(/\/chatvcp\/completions\/?$/, '/chat/completions');
+    url.pathname = url.pathname.replace(CHATVCP_RE, '/chat/completions');
     return url.href;
 }
 
 async function writeCacheAtomic(file, payload) {
     if (typeof fs.ensureDir === 'function' && typeof fs.writeFile === 'function' && typeof fs.move === 'function') {
-        await fs.ensureDir(path.dirname(file));
+        const dir = path.dirname(file);
+        if (!ensuredCacheDirs.has(dir)) {
+            await fs.ensureDir(dir);
+            ensuredCacheDirs.add(dir);
+        }
         const tmp = `${file}.${process.pid}.${++cacheTmpSeq}.tmp`;
         try {
             await fs.writeFile(tmp, JSON.stringify(payload), 'utf8');
             await fs.move(tmp, file, { overwrite: true });
         } catch (err) {
+            if (err && err.code === 'ENOENT') ensuredCacheDirs.delete(dir);
             if (typeof fs.remove === 'function') await fs.remove(tmp).catch(() => {});
             throw err;
         }

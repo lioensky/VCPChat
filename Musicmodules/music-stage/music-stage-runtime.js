@@ -143,7 +143,8 @@
     // Lyric files carry marker lines and placeholder translations ("//",
     // "●●●", dashes) that time a break but are not text. A string counts as
     // text only if it holds a letter or a digit, in any script.
-    const readableText = (text) => /[\p{L}\p{N}]/u.test(String(text ?? ''));
+    const READABLE_TEXT_RE = /[\p{L}\p{N}]/u;
+    const readableText = (text) => READABLE_TEXT_RE.test(String(text ?? ''));
 
     const resolveSupplementalText = (line) => {
         const keep = text => { const value = String(text ?? '').trim(); return readableText(value) ? value : ''; };
@@ -424,15 +425,10 @@
         return clamp(total / Math.max(1, end - start));
     };
 
-    const resolveAudioBands = (spectrum) => {
-        const values = spectrum || EMPTY_WORDS;
-        const length = values.length;
-        if (!length) {
-            return values === EMPTY_WORDS
-                ? EMPTY_AUDIO_BANDS
-                : { power: 0, bass: 0, lowMid: 0, mid: 0, vocal: 0, treble: 0, spectrum: values };
-        }
-
+    let bandPlanLen = -1;
+    let bandPlan = null;
+    const getBandPlan = (length) => {
+        if (bandPlanLen === length && bandPlan) return bandPlan;
         const r0a = Math.max(0, Math.floor(length * 0.01));
         const r0b = Math.min(length, Math.max(1, Math.ceil(length * 0.10)));
         const r1a = Math.max(0, Math.floor(length * 0.10));
@@ -443,20 +439,40 @@
         const r3b = Math.min(length, Math.max(r3a + 1, Math.ceil(length * 0.58)));
         const r4a = Math.max(0, Math.floor(length * 0.58));
         const r4b = Math.min(length, Math.max(r4a + 1, Math.ceil(length * 0.98)));
+        bandPlanLen = length;
+        bandPlan = {
+            r0a, r0b, inv0: 1 / Math.max(1, r0b - r0a),
+            r1a, r1b, inv1: 1 / Math.max(1, r1b - r1a),
+            r2a, r2b, inv2: 1 / Math.max(1, r2b - r2a),
+            r3a, r3b, inv3: 1 / Math.max(1, r3b - r3a),
+            r4a, r4b, inv4: 1 / Math.max(1, r4b - r4a)
+        };
+        return bandPlan;
+    };
 
+    const resolveAudioBands = (spectrum) => {
+        const values = spectrum || EMPTY_WORDS;
+        const length = values.length;
+        if (!length) {
+            return values === EMPTY_WORDS
+                ? EMPTY_AUDIO_BANDS
+                : { power: 0, bass: 0, lowMid: 0, mid: 0, vocal: 0, treble: 0, spectrum: values };
+        }
+
+        const p = getBandPlan(length);
         let t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
-        // Five tight branchless loops over the exact band slices; avoids 5 range checks per bin.
-        for (let i = r0a; i < r0b; i += 1) t0 += Number(values[i]) || 0;
-        for (let i = r1a; i < r1b; i += 1) t1 += Number(values[i]) || 0;
-        for (let i = r2a; i < r2b; i += 1) t2 += Number(values[i]) || 0;
-        for (let i = r3a; i < r3b; i += 1) t3 += Number(values[i]) || 0;
-        for (let i = r4a; i < r4b; i += 1) t4 += Number(values[i]) || 0;
+        // Five tight branchless loops over cached band slices; avoids per-frame range math and range checks per bin.
+        for (let i = p.r0a; i < p.r0b; i += 1) { const v = +values[i]; if (v === v) t0 += v; }
+        for (let i = p.r1a; i < p.r1b; i += 1) { const v = +values[i]; if (v === v) t1 += v; }
+        for (let i = p.r2a; i < p.r2b; i += 1) { const v = +values[i]; if (v === v) t2 += v; }
+        for (let i = p.r3a; i < p.r3b; i += 1) { const v = +values[i]; if (v === v) t3 += v; }
+        for (let i = p.r4a; i < p.r4b; i += 1) { const v = +values[i]; if (v === v) t4 += v; }
 
-        const bass = clamp(t0 / Math.max(1, r0b - r0a));
-        const lowMid = clamp(t1 / Math.max(1, r1b - r1a));
-        const mid = clamp(t2 / Math.max(1, r2b - r2a));
-        const vocal = clamp(t3 / Math.max(1, r3b - r3a));
-        const treble = clamp(t4 / Math.max(1, r4b - r4a));
+        const bass = clamp(t0 * p.inv0);
+        const lowMid = clamp(t1 * p.inv1);
+        const mid = clamp(t2 * p.inv2);
+        const vocal = clamp(t3 * p.inv3);
+        const treble = clamp(t4 * p.inv4);
         const power = clamp(bass * 0.25 + lowMid * 0.2 + mid * 0.2 + vocal * 0.25 + treble * 0.1);
         return { power, bass, lowMid, mid, vocal, treble, spectrum: values };
     };
