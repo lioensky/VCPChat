@@ -227,14 +227,22 @@
     };
 
     const setupStageSkin = () => {
+        const observers = [];
         // 设置各项所在的正文节点会被底栏整块搬进控制面板，所以盯的是这个节点本身，不是它原来的外壳。
         const settingsBody = document.querySelector('#music-stage-settings-card .music-stage-settings-body, .music-stage-settings-body');
         if (settingsBody) {
             const scan = () => settingsBody.querySelectorAll('select:not([data-segmented])').forEach(enhanceSelect);
-            // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换。
-            new MutationObserver((records) => {
-                if (records.some((r) => r.addedNodes.length > 0)) scan();
-            }).observe(settingsBody, { childList: true, subtree: true });
+            // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换；忽略纯文本节点变动（如拖滑块刷新数值）
+            const settingsObs = new MutationObserver((records) => {
+                for (let i = 0; i < records.length; i += 1) {
+                    const added = records[i].addedNodes;
+                    for (let j = 0; j < added.length; j += 1) {
+                        if (added[j].nodeType === 1) { scan(); return; }
+                    }
+                }
+            });
+            settingsObs.observe(settingsBody, { childList: true, subtree: true });
+            observers.push(settingsObs);
             scan();
         }
 
@@ -246,8 +254,16 @@
                 document.body.classList.toggle('music-stage-light', stage.classList.contains('stage-theme-light'));
                 document.body.classList.toggle('music-stage-dark', stage.classList.contains('stage-theme-dark'));
             };
-            new MutationObserver(mirror).observe(stage, { attributes: true, attributeFilter: ['class'] });
+            const stageObs = new MutationObserver(mirror);
+            stageObs.observe(stage, { attributes: true, attributeFilter: ['class'] });
+            observers.push(stageObs);
             mirror();
+        }
+        if (observers.length) {
+            window.addEventListener('beforeunload', () => {
+                for (const obs of observers) obs.disconnect();
+                observers.length = 0;
+            }, { once: true });
         }
     };
 })();

@@ -301,10 +301,15 @@
             scenes = [];
             currentLine = null;
         };
+        let lastMeasureFont = '';
         const getTuning = () => ({ ...options.defaults, ...mode.config.modes?.[id] });
         const measure = (text, size, family, weight = 700) => {
             if (!context) return text.length * size * 0.6;
-            context.font = `${weight} ${size}px ${family}`;
+            const font = `${weight} ${size}px ${family}`;
+            if (lastMeasureFont !== font) {
+                lastMeasureFont = font;
+                context.font = font;
+            }
             return context.measureText(text).width;
         };
         const getLayout = (line, env) => {
@@ -346,7 +351,9 @@
             const nextTrack = frame.track?.path || frame.track?.title || '';
             const changedSource = source !== frame.lines || trackKey !== nextTrack;
             const accent = U.resolveAccent(services.app);
-            const pausedKey = `${frame.playbackTime}:${width}:${height}:${configEpoch}:${fontEpoch}:${Boolean(pretext)}:${loadError}:${accent?.r}:${accent?.g}:${accent?.b}`;
+            const box = card.box;
+            const boxKey = box ? `${box.left},${box.top},${box.right},${box.bottom}` : '';
+            const pausedKey = `${frame.playbackTime}:${width}:${height}:${configEpoch}:${fontEpoch}:${Boolean(pretext)}:${loadError}:${accent?.r}:${accent?.g}:${accent?.b}:${boxKey}`;
             if (!force && !changedSource && !frame.isPlaying && pausedKey === lastPausedKey) return;
             if (!force && !changedSource && frame.isPlaying && mode.config.quality === 'energy-saving'
                 && frame.now - lastRenderNow < 1000 / 30) return;

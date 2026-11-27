@@ -31,11 +31,13 @@
             edgeFlow.prepend(light);
         }
         const prefersReducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
+        const EDGE_FPS = Object.freeze({ 'energy-saving': 24, standard: 30, ultimate: 60 });
         const edgeCanvasState = {
             width: 0,
             height: 0,
             dpr: 1,
             drawnAt: 0,
+            pausedAt: 0,
             blank: false,
             top: new Float32Array(0),
             right: new Float32Array(0),
@@ -70,8 +72,9 @@
             const size = stageSize();
             const width = Math.max(1, size.width);
             const height = Math.max(1, size.height);
-            // A glowing line gains nothing from more than this.
-            const dpr = Math.min(1.5, frame.viewport?.dpr || global.devicePixelRatio || 1);
+            // A glowing line gains nothing from more than this; energy-saving caps at 1x to trim shadowBlur fill cost.
+            const dprCap = state.config.quality === 'energy-saving' ? 1 : 1.5;
+            const dpr = Math.min(dprCap, frame.viewport?.dpr || global.devicePixelRatio || 1);
             if (
                 edgeCanvasState.width !== width
                 || edgeCanvasState.height !== height
@@ -222,7 +225,13 @@
         };
 
         const drawEdgeSpectrum = (frame) => {
-            if (state.config.edgeSpectrum === false) return;
+            if (state.config.edgeSpectrum === false) {
+                if (edgeContext && !edgeCanvasState.blank) {
+                    clearEdgeStrips();
+                    edgeCanvasState.blank = true;
+                }
+                return;
+            }
             if (!resizeEdgeCanvas(frame) || !edgeContext) return;
             const { width, height } = edgeCanvasState;
             if (global.MusicStageRuntime.isReducedMotion(prefersReducedMotion) || !frame.audio.spectrum?.length) {
@@ -232,12 +241,17 @@
             }
             // A paused stage holds a faint, still line: let it settle for a
             // moment after the pause, then leave the canvases alone.
-            const now = performance.now();
-            if (frame.isPlaying) edgeCanvasState.pausedAt = 0;
-            else {
+            // While playing, pace 4-canvas shadowBlur rasterization to match the quality tier.
+            const now = Number.isFinite(frame.now) ? frame.now : performance.now();
+            if (frame.isPlaying) {
+                edgeCanvasState.pausedAt = 0;
+                const aim = 1000 / (EDGE_FPS[state.config.quality || 'standard'] || 30);
+                if (now < edgeCanvasState.drawnAt) edgeCanvasState.drawnAt = 0;
+                if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
+            } else {
                 edgeCanvasState.pausedAt ||= now;
                 if (now - edgeCanvasState.pausedAt > 1500 && !edgeCanvasState.blank) return;
-                if (now - edgeCanvasState.drawnAt < 250) return;
+                if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;
             }
             edgeCanvasState.drawnAt = now;
             edgeCanvasState.blank = false;

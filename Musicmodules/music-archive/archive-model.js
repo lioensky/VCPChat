@@ -125,7 +125,9 @@
         const order = [wrap(preferLane, columns.length)];
         for (let i = 0; i < columns.length; i++) if (i !== order[0]) order.push(i);
         for (const lane of order) {
-            const row = columns[lane].items.indexOf(index);
+            const col = columns[lane];
+            if (col.kind === 'all' && col.items[index] === index) return { lane, row: index };
+            const row = col.items.indexOf(index);
             if (row !== -1) return { lane, row };
         }
         return null;

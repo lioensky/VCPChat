@@ -176,8 +176,19 @@
                 if (name) save(name);
             };
             const onKey = (e) => {
-                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); }
-                else if (e.key === 'Enter' && !e.isComposing && doc.activeElement === input) { e.preventDefault(); e.stopPropagation(); if (!ok.disabled) finish(input.value); }
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); return; }
+                if (e.key === 'Enter' && !e.isComposing && doc.activeElement === input) { e.preventDefault(); e.stopPropagation(); if (!ok.disabled) finish(input.value); return; }
+                if (e.key === 'Tab') {
+                    const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), input:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                    if (focusables.length) {
+                        const first = focusables[0], last = focusables[focusables.length - 1];
+                        const active = doc.activeElement;
+                        if (e.shiftKey ? (active === first || !overlay.contains(active)) : (active === last || !overlay.contains(active))) {
+                            e.preventDefault();
+                            (e.shiftKey ? last : first).focus({ preventScroll: true });
+                        }
+                    }
+                }
             };
             overlay.querySelector('.dialog-btn.cancel').addEventListener('click', () => finish(null));
             ok.addEventListener('click', () => { if (!ok.disabled) finish(input.value); });

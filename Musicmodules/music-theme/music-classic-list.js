@@ -49,15 +49,20 @@
                 return sort.dir === 1 ? null : songs.slice().reverse();
             }
             const get = value[sort.key];
-            const order = new Map(app.playlist.map((t, i) => [t, i]));
-            return songs.slice().sort((a, b) => {
-                const va = get(a), vb = get(b);
-                // 没有这一项的（没写歌手、时长未知）总是排在最后
-                const ea = va === '' || va === 0, eb = vb === '' || vb === 0;
-                if (ea !== eb) return ea ? 1 : -1;
-                const c = typeof va === 'number' ? va - vb : collator.compare(va, vb);
-                return c ? c * sort.dir : (order.get(a) ?? 0) - (order.get(b) ?? 0);
+            const isFull = songs === app.playlist;
+            const order = isFull ? null : new Map(app.playlist.map((t, i) => [t, i]));
+            // 预先提取一次排序键，避免 O(N log N) 次重复正则去扩展名与属性访问
+            const decorated = songs.map((t, i) => {
+                const v = get(t);
+                return { t, v, empty: v === '' || v === 0, ord: isFull ? i : (order.get(t) ?? 0) };
             });
+            decorated.sort((a, b) => {
+                // 没有这一项的（没写歌手、时长未知）总是排在最后
+                if (a.empty !== b.empty) return a.empty ? 1 : -1;
+                const c = typeof a.v === 'number' ? a.v - b.v : collator.compare(a.v, b.v);
+                return c ? c * sort.dir : a.ord - b.ord;
+            });
+            return decorated.map((item) => item.t);
         };
 
         const paintLike = (li, track) => {
@@ -136,11 +141,14 @@
         let queued = 0;
         let lastFiltered = null;
         let deferredSort = false;
+        let wasShown = shown();
+        let needsSync = !wasShown;
         const decorateSoon = () => {
             if (queued || !shown()) return;
             queued = requestAnimationFrame(() => {
                 queued = 0;
                 if (!shown()) return;
+                needsSync = false;
                 if (deferredSort) {
                     deferredSort = false;
                     app.renderPlaylist(lastFiltered || undefined);
@@ -151,21 +159,36 @@
         };
         list.addEventListener('scroll', decorateSoon, { passive: true });
         global.addEventListener('resize', decorateSoon);
+        let watch = null;
         if (typeof MutationObserver === 'function') {
-            // 切回经典视图、切回曲目分页时补上
-            const watch = new MutationObserver(decorateSoon);
+            // 仅在经典列表由隐藏切换为显示，或隐藏期间发生过重绘/推迟排序时补拆，避免无关 body class 变动触发无谓布局读取
+            watch = new MutationObserver(() => {
+                const nowShown = shown();
+                if (nowShown && (!wasShown || needsSync || deferredSort)) decorateSoon();
+                wasShown = nowShown;
+            });
             watch.observe(document.body, { attributes: true, attributeFilter: ['class'] });
             watch.observe(list, { attributes: true, attributeFilter: ['style'] });
         }
+        global.addEventListener?.('beforeunload', () => {
+            if (queued) { cancelAnimationFrame(queued); queued = 0; }
+            global.removeEventListener('resize', decorateSoon);
+            watch?.disconnect();
+            watch = null;
+        }, { once: true });
 
         global.MusicAppHooks.wrap(app, 'renderPlaylist', 'classic-list', (base) => (filtered) => {
             lastFiltered = filtered || null;
             const songs = filtered || app.playlist;
-            // 列表未显示（例如处于档案页）且用户选了非默认排序时，推迟 O(N log N) 排序直到切回经典列表
-            if (!shown() && (sort.key !== 'added' || sort.dir !== 1)) {
-                deferredSort = true;
+            // 列表未显示（例如处于档案页或切到其他分页）时跳过分列，非默认排序一并推迟到切回经典列表
+            if (!shown()) {
+                wasShown = false;
+                needsSync = true;
+                if (sort.key !== 'added' || sort.dir !== 1) deferredSort = true;
                 return base(filtered);
             }
+            wasShown = true;
+            needsSync = false;
             deferredSort = false;
             const result = base(sorted(songs) || filtered);
             decorate();

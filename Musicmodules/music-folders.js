@@ -139,7 +139,14 @@
                 if (current) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current));
                 if (Array.isArray(app.currentFilteredTracks)) app.currentFilteredTracks = app.currentFilteredTracks.filter((t) => !drop.has(t));
                 if (Array.isArray(app.manualQueue) && app.manualQueue.length) {
-                    for (const t of drop) { const at = app.manualQueue.indexOf(t); if (at !== -1) app.queueRemove?.(at); }
+                    for (const t of drop) {
+                        let at;
+                        while ((at = app.manualQueue.indexOf(t)) !== -1) {
+                            const prevLen = app.manualQueue.length;
+                            app.queueRemove?.(at);
+                            if (app.manualQueue.length >= prevLen) break;
+                        }
+                    }
                 }
                 try { await app.saveLibrary?.(); } catch (e) { /* 存盘失败另有提示 */ }
                 refreshViews();
