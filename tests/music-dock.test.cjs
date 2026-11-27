@@ -1715,3 +1715,20 @@ test('Batch 66: palette patches list children in-place without removing reused r
         window.close();
     }
 });
+
+test('Batch 67: queue drawer reads precomputed rows.upcoming count without filtering the full queue array', () => {
+    const { window, doc, app, dock } = setup((a) => {
+        for (let i = 0; i < 40; i += 1) {
+            a.playlist.push({ path: `C:/q${i}.flac`, title: `Queue Track ${i}`, artist: 'Art' });
+        }
+        a.getUpNext = () => ({ manual: [a.playlist[1], a.playlist[2]], context: a.playlist.slice(3, 18) });
+    });
+    try {
+        dock.openPanel('播放列表');
+        const countEl = doc.querySelector('.md-qh > span');
+        assert.equal(countEl?.textContent, '17', 'header displays manual (2) + context (15) upcoming count');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

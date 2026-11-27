@@ -46,3 +46,23 @@ test('smart playlists refresh when play counts change', async () => {
         assert.equal(app.refreshSmartPlaylists(), false);
     } finally { globalThis.setTimeout = realSet; delete plays['/d']; }
 });
+
+test('Batch 67: fast-path parse handles single-word plain text, single-word rules, case-insensitive aliases and full-width comparisons', () => {
+    const plain = Smart.parse('  Live  ');
+    assert.deepEqual(plain, { preds: [], text: 'Live' });
+    assert.equal(Smart.hasRules('Live'), false);
+
+    const liked = Smart.parse('LIKED');
+    assert.equal(liked.text, '');
+    assert.deepEqual(liked.preds.map((p) => p.word), ['喜欢']);
+    assert.equal(Smart.hasRules('LIKED'), true);
+
+    const cmpSingle = Smart.parse('次数＞=10');
+    assert.equal(cmpSingle.text, '');
+    assert.deepEqual(cmpSingle.preds.map((p) => p.word), ['次数>=10']);
+    assert.deepEqual(Smart.evaluate(lib, 'PLAYS>=12', ctx).map((t) => t.path), ['/a']);
+
+    const mixed = Smart.parse('UNPLAYED  <4.5min   周杰伦  FORGOTTEN');
+    assert.equal(mixed.text, '周杰伦');
+    assert.deepEqual(mixed.preds.map((p) => p.word), ['没听过', '<4.5分钟', '很久没听']);
+});

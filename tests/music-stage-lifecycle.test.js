@@ -1724,3 +1724,79 @@ test('Batch 64: stage runtime monotonic line lookup & audio bands, host progress
         dom.window.close();
     }
 });
+
+test('Batch 67: edge spectrum uses ResizeObserver contentRect without layout reads, skips duplicate static flat-line glow strokes, and pauses flow light when inactive', () => {
+    const dom = createStageDom();
+    try {
+        let roCb = null;
+        dom.window.ResizeObserver = class {
+            constructor(cb) { roCb = cb; }
+            observe() {}
+            disconnect() {}
+        };
+        runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
+        const root = dom.window.document.getElementById('music-stage');
+        const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        let clientReads = 0;
+        Object.defineProperty(root, 'clientWidth', { configurable: true, get: () => { clientReads += 1; return 800; } });
+        Object.defineProperty(root, 'clientHeight', { configurable: true, get: () => { clientReads += 1; return 500; } });
+        let accent = Object.freeze({ r: 40, g: 120, b: 220 });
+        dom.window.MusicStageModeUtils = { resolveAccent: () => accent };
+        let strokes = 0;
+        let clears = 0;
+        dom.window.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, {
+            get(t, p) {
+                if (p === 'stroke') return () => { strokes += 1; };
+                if (p === 'clearRect') return () => { clears += 1; };
+                return p in t ? t[p] : () => {};
+            },
+            set(t, p, v) { t[p] = v; return true; }
+        });
+        const scope = new dom.window.MusicStageRuntime.DisposableScope();
+        const app = { stagePalette: { accentRgb: accent } };
+        const edge = dom.window.MusicStageEdge.create({
+            app, root, elements: { edgeSpectrum, edgeCanvas },
+            state: { config: { edgeSpectrum: true, quality: 'standard' } },
+            scope, clamp: dom.window.MusicStageRuntime.clamp
+        });
+
+        // Feed ResizeObserver contentRect directly -> 0 clientWidth/clientHeight reads
+        roCb([{ contentRect: { width: 1000, height: 600 } }]);
+        const silent = new Float32Array(32);
+        edge.draw({ now: 1000, isPlaying: true, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(clientReads, 0, 'ResizeObserver contentRect avoids clientWidth/Height reflow');
+        assert.equal(strokes, 8, 'initial flat frame draws 4 edges x 2 glow passes');
+        assert.equal(clears, 4);
+
+        // Subsequent identical silent frames while playing skip clearRect & stroke entirely
+        edge.draw({ now: 1060, isPlaying: true, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        edge.draw({ now: 1120, isPlaying: true, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(strokes, 8, 'identical static flat frames skip redundant glow strokes');
+        assert.equal(clears, 4, 'identical static flat frames skip redundant clearRect');
+
+        // Resize via ResizeObserver updates canvas dimensions without reading clientWidth/Height and redraws once
+        roCb([{ contentRect: { width: 1200, height: 700 } }]);
+        edge.draw({ now: 1140, isPlaying: true, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(clientReads, 0, 'subsequent resize uses contentRect without DOM reflow');
+        assert.equal(strokes, 16, 'resize invalidates lastFlatKey and redraws flat border');
+
+        // Active motion draws normally, then returning to silence draws flat once and settles again
+        const active = new Float32Array(32).fill(0.6);
+        edge.draw({ now: 1200, isPlaying: true, audio: { spectrum: active, power: 0.5 }, viewport: { dpr: 1 } });
+        assert.equal(strokes, 24, 'active spectrum frame strokes normally');
+        edge.draw({ now: 1260, isPlaying: true, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(strokes, 32, 'returning to silence draws clean flat line once');
+        edge.draw({ now: 1320, isPlaying: true, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(strokes, 32, 'subsequent flat frame settles again');
+
+        // CSS rule pauses orbiting conic light whenever stage is not active
+        const stageCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-pixi-3d.css'), 'utf8');
+        assert.match(stageCss, /\.music-stage:not\(\.is-active\)\s+\.music-stage-edge-flow-light\s*\{[^}]*animation-play-state:\s*paused/);
+
+        scope.destroy();
+    } finally {
+        dom.window.close();
+    }
+});

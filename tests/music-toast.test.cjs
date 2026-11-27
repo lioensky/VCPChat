@@ -259,3 +259,32 @@ test('Batch 53: toast caches DOM refs on progress updates, fluid marker caches S
         window.close();
     }
 });
+
+test('Batch 67: toast.clear() removes active and exiting toasts immediately and cancels pending exit timers', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    let nextId = 1;
+    const activeTimers = new Set();
+    window.setTimeout = (fn) => { const id = nextId++; activeTimers.add(id); return id; };
+    window.clearTimeout = (id) => { activeTimers.delete(id); };
+    window.setInterval = () => nextId++;
+    window.clearInterval = () => {};
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    try {
+        window.eval(read('Musicmodules/music-dock/music-dock-icons.js'));
+        window.eval(read('Musicmodules/music-dock/music-toast.js'));
+        const t1 = window.MusicToast.show({ id: 'a', message: '一' });
+        window.MusicToast.show({ id: 'b', message: '二' });
+        t1.close(); // enters 320ms exit animation
+        assert.ok(doc.querySelector('[data-key="a"].mtst-out'), 'closing toast enters mtst-out transition');
+        assert.ok(activeTimers.size >= 1, 'exit timer is pending before clear()');
+
+        window.MusicToast.clear();
+        assert.equal(doc.querySelectorAll('.mtst').length, 0, 'clear() removes both active and exiting toasts immediately');
+        assert.equal(activeTimers.size, 0, 'clear() cancels all pending exit and lifetime timers');
+    } finally {
+        window.close();
+    }
+});

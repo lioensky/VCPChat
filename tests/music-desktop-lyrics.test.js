@@ -517,3 +517,72 @@ test('Batch 62: desktop-lyrics bar deduplicates hover IPC commands while locked'
     window.dispatchEvent(new window.Event('beforeunload'));
     window.close();
 });
+
+test('Batch 67: paused desktop-lyrics poll skips snapshot/wordsOf allocations and ignores unrelated body class mutations', async () => {
+    const vm = require('vm');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body></body>');
+    const { window } = dom;
+    let tickFn = null;
+    let moCb = null;
+    let wordsCalls = 0;
+    try {
+        window.setInterval = (fn) => { tickFn = fn; return 1; };
+        window.clearInterval = () => { tickFn = null; };
+        window.MutationObserver = class {
+            constructor(cb) { moCb = cb; }
+            observe() {}
+            disconnect() {}
+        };
+        window.MusicArchiveLyrics = {
+            wordsOf: (line) => { wordsCalls += 1; return line.words || null; }
+        };
+        const ctx = vm.createContext({
+            window, document: window.document, CustomEvent: window.CustomEvent,
+            MutationObserver: window.MutationObserver, Date, console
+        });
+        ctx.window = window;
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-desktop-lyrics.js'), 'utf8'), ctx);
+        const published = [];
+        const app = {
+            playlist: [{ path: 'a.flac', title: '晴天', artist: '周杰伦' }],
+            currentTrackIndex: 0,
+            isPlaying: false,
+            lastKnownCurrentTime: 3,
+            lastStateUpdateTime: 0,
+            currentLyrics: [{ time: 2, text: '故事的小黄花', translation: '', words: [word('故事的', 2, 3), word('小黄花', 3, 4)] }],
+            api: {
+                toggleDesktopLyrics: async (v) => v,
+                publishDesktopLyrics: (snap) => published.push(snap),
+                getDesktopLyrics: async () => ({ on: true }),
+                onDesktopLyricsChanged: () => () => {}
+            }
+        };
+        window.setupMusicDesktopLyrics(app);
+        await Promise.resolve();
+        await Promise.resolve();
+        assert.strictEqual(published.length, 1);
+        const initialWordsCalls = wordsCalls;
+
+        // 暂停且无任何变更时，连续轮询不应再调用 wordsOf 或构造快照
+        tickFn();
+        tickFn();
+        tickFn();
+        assert.strictEqual(wordsCalls, initialWordsCalls, 'paused unchanged poll skips snapshot and wordsOf allocations');
+
+        // 无关的 body 类名变动（如开关抽屉）不触发 snapshot
+        window.document.body.classList.add('music-drawer-open');
+        moCb?.();
+        assert.strictEqual(wordsCalls, initialWordsCalls, 'unrelated body class mutation skips snapshot');
+
+        // 真正切到播放态时 bodyObserver 立即触发同步
+        app.isPlaying = true;
+        window.document.body.classList.add('music-playing');
+        moCb?.();
+        assert.strictEqual(published.length, 2, 'music-playing class transition triggers publish');
+        assert.strictEqual(published[1].playing, true);
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        window.close();
+    }
+});

@@ -457,3 +457,71 @@ test('Batch 61: watchTrails skips duplicate layout reads on child hover within s
     assert.equal(doc.querySelector('svg.mf-goo'), null, 'beforeunload disconnects dialog MutationObserver');
     dom.window.close();
 });
+
+test('Batch 67: watchTrails measures before DOM append, watchHud skips drawer-internal/hidden-archive clicks & cleans up on beforeunload, and fluid-select memoizes skipped targets', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="archive-nav"><button id="b1" type="button">一</button></div>
+        <div id="music-archive-view"><div class="archive-hud"><div class="archive-nav"></div></div></div>
+        <div class="md-pnl"><div class="md-sld"></div><button data-md="close" type="button">关闭</button></div>
+        <div class="context-menu"></div>
+        <div class="mtst-layer"></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+    // 1. watchTrails: placeIn reads geometry BEFORE .mf-trail is appended on first hover
+    const navRow = doc.querySelector('body > .archive-nav');
+    const b1 = doc.getElementById('b1');
+    const order = [];
+    const origAppend = navRow.append.bind(navRow);
+    navRow.append = (...args) => { order.push('append'); return origAppend(...args); };
+    navRow.getBoundingClientRect = () => { order.push('rect'); return { left: 0, top: 0, width: 200, height: 40, right: 200, bottom: 40 }; };
+    b1.getBoundingClientRect = () => ({ left: 0, top: 0, width: 80, height: 40, right: 80, bottom: 40 });
+    b1.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.deepEqual(order, ['rect', 'append'], 'watchTrails measures geometry before inserting .mf-trail');
+
+    // 2. watchHud: skips measure when archive is hidden or clicking non-trigger inside open .md-pnl; cleans up on beforeunload
+    let hudReads = 0;
+    const hudNav = doc.querySelector('#music-archive-view .archive-nav');
+    hudNav.getBoundingClientRect = () => { hudReads += 1; return { left: 0, top: 0, width: 100, height: 30, right: 100, bottom: 30 }; };
+    const sld = doc.querySelector('.md-sld');
+    const closeBtn = doc.querySelector('[data-md="close"]');
+
+    doc.body.classList.add('music-drawer-open');
+    // Archive hidden (classic view): 0 reads even on closeBtn
+    closeBtn.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 0, 'watchHud skips pointerdown measurement when archive is hidden');
+
+    // Archive active + drawer open: clicking slider inside .md-pnl skips measure, closeBtn & outside click measure
+    doc.body.classList.add('music-archive-on');
+    sld.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 0, 'clicking non-trigger slider inside open .md-pnl skips HUD measure');
+    closeBtn.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 1, 'clicking [data-md="close"] inside .md-pnl still captures HUD geometry');
+    doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 2, 'clicking outside .md-pnl while drawer is open captures HUD geometry');
+
+    // 3. music-fluid-select: memoizes tgt.closest across multiple addedNodes in one .mtst-layer mutation batch
+    const toastLayer = doc.querySelector('.mtst-layer');
+    let closestCalls = 0;
+    const origClosest = toastLayer.closest.bind(toastLayer);
+    toastLayer.closest = (...args) => { closestCalls += 1; return origClosest(...args); };
+    for (let i = 0; i < 6; i += 1) {
+        const d = doc.createElement('div');
+        d.innerHTML = '<span>msg</span>';
+        toastLayer.appendChild(d);
+    }
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(closestCalls, 1, 'fluid-select memoizes skipped container target across batched records');
+
+    // 4. beforeunload detaches watchHud listeners
+    window.dispatchEvent(new window.Event('beforeunload'));
+    closeBtn.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 2, 'beforeunload detaches watchHud pointerdown listener');
+    dom.window.close();
+});
