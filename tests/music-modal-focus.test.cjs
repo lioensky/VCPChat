@@ -366,3 +366,49 @@ test('dock panel and archive list/lyrics CSS enforce low-power blur cutoffs and 
     assert.match(lyricsCss, /body\.music-fl-low \.archive-list\.has-drop \.archive-list-letter\[data-md-dist="4"\] > span\s*\{\s*filter:\s*none;/);
     assert.match(lyricsCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.archive-lyrics-track/);
 });
+
+test('music-sidebar syncs archiveView and music-like-change when adding/toggling liked playlist tracks', () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <span id="all-count">0</span>
+        <div id="playlist-edit-modal"><input id="modal-search-input" /><span id="modal-playlist-title"></span><div id="modal-song-list"></div><span id="modal-count"></span></div>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        const likeEvents = [];
+        let archiveRefreshes = 0;
+        doc.addEventListener('music-like-change', (e) => likeEvents.push(e.detail));
+        const t1 = { path: 'D:\\Music\\a.flac', title: 'Alpha.flac', artist: 'A' };
+        const t2 = { path: 'D:\\Music\\b.flac', title: 'Beta.flac', artist: 'B' };
+        const app = {
+            playlist: [t1, t2],
+            customPlaylists: [{ id: 'liked', name: '喜欢的歌曲', tracks: [] }],
+            contextMenuTrackIndex: 0,
+            currentSidebarView: 'all',
+            stripAudioExtension: (s) => s.replace(/\.[^.]+$/, ''),
+            saveCustomPlaylists() {},
+            archiveView: { refresh() { archiveRefreshes += 1; } },
+            playlistEditModal: doc.getElementById('playlist-edit-modal'),
+            modalSearchInput: doc.getElementById('modal-search-input'),
+            modalPlaylistTitle: doc.getElementById('modal-playlist-title'),
+            modalSongList: doc.getElementById('modal-song-list'),
+            modalCount: doc.getElementById('modal-count')
+        };
+        window.eval(fs.readFileSync('Musicmodules/music-sidebar.js', 'utf8'));
+        window.setupSidebar(app);
+
+        app.addSelectedTracksToPlaylist('liked');
+        assert.equal(archiveRefreshes, 1, 'addSelectedTracksToPlaylist refreshes archiveView');
+        assert.equal(likeEvents.length, 1, 'adding to liked playlist dispatches music-like-change');
+        assert.equal(likeEvents[0].liked, true);
+
+        app.openPlaylistEditModal('liked');
+        const rows = doc.querySelectorAll('.music-modal-song-item');
+        rows[0].click(); // remove t1 from liked
+        assert.equal(archiveRefreshes, 2, 'playlist edit modal toggle refreshes archiveView');
+        assert.equal(likeEvents.length, 2, 'toggling liked track in edit modal dispatches music-like-change');
+        assert.equal(likeEvents[1].liked, false);
+    } finally {
+        dom.window.close();
+    }
+});

@@ -876,3 +876,68 @@ test('loading intent does not advance the clock or send pause; readiness uses th
     assert.deepEqual(app.calls, []);
     assert.equal(app.lastKnownCurrentTime, 0);
 });
+
+test('refreshPreload deduplicates retries while preloading, saveSessionTime skips unchanged writes, and gapless switch resets engine progress', async t => {
+    let cancelCount = 0;
+    let queueNextCount = 0;
+    const app = setup({
+        cancelMusicPreload: async () => { cancelCount += 1; return { status: 'success' }; },
+        queueNextMusicTrack: async () => { queueNextCount += 1; return { status: 'success' }; }
+    });
+    app.playModes = ['repeat'];
+    app.currentPlayMode = 0;
+    t.after(() => app.stopStatePolling());
+
+    // 1. saveSessionTime skips unchanged (track, time) writes unless forced
+    const storeWrites = [];
+    app.vmContext.localStorage = {
+        getItem: () => null,
+        setItem: (k, v) => storeWrites.push([k, JSON.parse(v)])
+    };
+    app.lastKnownCurrentTime = 12.34;
+    app.saveSessionTime();
+    app.saveSessionTime();
+    assert.equal(storeWrites.length, 1, 'identical (track, time) should not rewrite localStorage');
+    assert.equal(storeWrites[0][1].time, 12.3);
+    app.saveSessionTime(true);
+    assert.equal(storeWrites.length, 2, 'force=true always persists session time');
+    app.lastKnownCurrentTime = 13.0;
+    app.saveSessionTime();
+    assert.equal(storeWrites.length, 3, 'changed time persists normally');
+
+    // 2. adoptSwitchedTrack (via syncTrackIndexByPath) calls resetEngineProgress
+    let resetCalls = 0;
+    app.resetEngineProgress = () => { resetCalls += 1; };
+    app.publishCapsuleState = () => {};
+    app.syncTrackIndexByPath('C:/music/b.flac');
+    assert.equal(resetCalls, 1, 'gapless track adoption resets cached engine progress');
+    assert.equal(app.currentTrackIndex, 1);
+
+    // 3. refreshPreload deduplicates overlapping retry timers while isPreloadingNext is true
+    const pendingTimers = new Map();
+    let nextTimerId = 1;
+    let clearedCount = 0;
+    app.vmContext.setTimeout = (fn) => {
+        const id = nextTimerId++;
+        pendingTimers.set(id, fn);
+        return id;
+    };
+    app.vmContext.clearTimeout = (id) => {
+        if (pendingTimers.delete(id)) clearedCount += 1;
+    };
+    app.preloadIssuedFor = app.playlist[1].path;
+    app.isPreloadingNext = true;
+    app.refreshPreload();
+    app.refreshPreload();
+    app.refreshPreload();
+    assert.equal(pendingTimers.size, 1, 'rapid refreshPreload calls keep only a single retry timer');
+    assert.equal(clearedCount, 2, 'prior retry timers are cancelled before scheduling replacement');
+
+    app.isPreloadingNext = false;
+    const [retryFn] = [...pendingTimers.values()];
+    pendingTimers.clear();
+    retryFn();
+    await tick(10);
+    assert.equal(cancelCount, 1);
+    assert.equal(queueNextCount, 1);
+});

@@ -162,30 +162,53 @@ test('configureOutput keeps applied device/exclusive state if post-success popul
 });
 
 test('populateDeviceList discards stale overlapping replies and upsampling/resampling handle status error', async () => {
-    const { app } = setup();
     const resolvers = [];
-    const appended = [];
-    app.deviceSelect = {
-        value: 'default', disabled: false, options: [],
-        set innerHTML(v) { appended.length = 0; },
-        appendChild(node) { appended.push(node); },
-        querySelectorAll: () => []
+    const options = [];
+    const select = {
+        value: 'default', disabled: false, options,
+        set innerHTML(v) { options.length = 0; },
+        appendChild(node) {
+            if (node.tag === 'optgroup') node.children.forEach((c) => options.push(c));
+            else options.push(node);
+        },
+        querySelectorAll: () => options
     };
-    app.api.getMusicDevices = () => new Promise((resolve) => resolvers.push(resolve));
+    const context = vm.createContext({
+        console, setTimeout, clearTimeout,
+        document: {
+            getElementById: () => null,
+            createElement: (tag) => {
+                const el = { tag, children: [], value: '', textContent: '' };
+                el.appendChild = (c) => el.children.push(c);
+                return el;
+            }
+        }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-output.js'), 'utf8'), context);
+    let saved = 0;
+    const app = {
+        deviceSelect: select,
+        wasapiSwitch: { checked: false },
+        currentDeviceId: null,
+        saveSettings: () => { saved += 1; },
+        api: {
+            getMusicDevices: () => new Promise((resolve) => resolvers.push(resolve)),
+            configureMusicUpsampling: async () => ({ status: 'error', message: 'unsupported' }),
+            configureMusicResampling: async () => ({ status: 'error' })
+        }
+    };
+    context.setupOutput(app);
     const p1 = app.populateDeviceList(false);
     const p2 = app.populateDeviceList(true);
     resolvers[1]({ status: 'success', devices: { preferred: [{ id: 2, name: 'New DAC' }], other: [] } });
     await p2;
-    const countAfterNew = appended.length;
+    assert.deepEqual(options.map((o) => o.textContent), ['默认设备', 'New DAC']);
     resolvers[0]({ status: 'success', devices: { preferred: [{ id: 1, name: 'Stale DAC' }], other: [] } });
     await p1;
-    assert.equal(appended.length, countAfterNew, 'stale earlier getMusicDevices reply does not overwrite newer device list');
+    assert.deepEqual(options.map((o) => o.textContent), ['默认设备', 'New DAC'], 'stale earlier getMusicDevices reply does not overwrite newer device list');
 
-    let saved = 0;
-    app.saveSettings = () => { saved += 1; };
     app.targetUpsamplingRate = 48000;
     app.upsamplingSelect = { value: '192000' };
-    app.api.configureMusicUpsampling = async () => ({ status: 'error', message: 'unsupported' });
     await app.configureUpsampling();
     assert.equal(app.targetUpsamplingRate, 48000, 'status error rolls back targetUpsamplingRate');
     assert.equal(app.upsamplingSelect.value, '48000', 'status error rolls back upsamplingSelect');
@@ -194,7 +217,6 @@ test('populateDeviceList discards stale overlapping replies and upsampling/resam
     app.resampleQualitySelect = { value: 'hq' };
     app.resampleCacheSwitch = { checked: true };
     app.preemptiveResampleSwitch = { checked: false };
-    app.api.configureMusicResampling = async () => ({ status: 'error' });
     await app.configureResampling();
     assert.equal(saved, 0, 'status error does not save resampling settings');
 });

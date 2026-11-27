@@ -1193,4 +1193,14 @@ test('energy-saving mode disables backdrop-filter across dock drawer, stage swit
     const hostSrc = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-host.js'), 'utf8');
     assert.match(hostSrc, /event\.key === 'Escape' && !event\.defaultPrevented && !event\.isComposing/);
     assert.match(hostSrc, /global\.cancelIdleCallback\?\.\(prepareIdleId\)/);
+
+    const stageCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage.css'), 'utf8');
+    const modeRootBlock = stageCss.match(/\.music-stage-mode-root\s*\{([^}]*)\}/);
+    assert.ok(modeRootBlock && /filter:\s*none;/.test(modeRootBlock[1]), 'idle .music-stage-mode-root uses filter: none (no permanent blur(0) offscreen pass)');
+    assert.match(stageCss, /body\.music-stage-active\.music-stage-scene-3d #custom-title-bar[\s\S]*?backdrop-filter:\s*none/);
+
+    const pixi3dCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-pixi-3d.css'), 'utf8');
+    assert.match(pixi3dCss, /body\.music-fl-low \.music-stage\.is-playing \.music-stage-edge-flow-light\s*\{\s*animation-timing-function:\s*steps\(135\);/);
+    assert.match(pixi3dCss, /\.music-stage-backdrop-layer\.is-empty\s*\{[^}]*will-change:\s*auto;/);
+    assert.match(skinCss, /\.music-stage \.music-stage-edge-corners i\s*\{[^}]*filter:\s*none;/);
 });
