@@ -83,7 +83,12 @@
 
     // 把 summary 里按次数排的歌合成歌手、专辑榜（纯函数，测试用）
     function rank(summary, library) {
-        const byPath = new Map((library || []).map((t, i) => [normPath(t && t.path), i]));
+        const lib = library || [];
+        const byPath = new Map();
+        for (let i = 0; i < lib.length; i += 1) {
+            const p = lib[i]?.path;
+            if (p) byPath.set(normPath(p), i);
+        }
         const songs = [];
         const artists = new Map();
         const albums = new Map();
@@ -339,6 +344,7 @@
                 b.type = 'button';
                 b.dataset.days = String(d);
                 b.addEventListener('click', () => {
+                    if (range === d) return;
                     range = d;
                     try { global.localStorage?.setItem(RANGE_KEY, String(d)); } catch (e) { /* 只是偏好 */ }
                     render();

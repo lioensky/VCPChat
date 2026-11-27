@@ -131,8 +131,9 @@
         mode.updateFrame = frame => {
             if (mode.destroyed || mode.suspended) return;
             latest = frame;
-            const segment = resolveSegment(frame);
+            const line = frame.activeLine;
             const nextTrack = frame.track?.path || frame.track?.title || '';
+            const nextSegKey = `${nextTrack || 'unknown-track'}:${getLineKey(line)}`;
             const trackChanged = track !== nextTrack;
             const sourceChanged = source !== frame.lines;
             const previousTime = lastTime;
@@ -155,13 +156,12 @@
                 Array.from(children).forEach(child => { if (child !== current) release(child); });
                 if (current) current.born = frame.playbackTime - 0.52;
                 if (backward) lastTransition = frame.playbackTime;
-                segmentKey = segment.key;
+                segmentKey = nextSegKey;
                 observedLine = null;
                 protectedUntil = -Infinity;
             }
-            const line = frame.activeLine;
-            const lineChanged = segment.key !== segmentKey;
-            segmentKey = segment.key;
+            const lineChanged = nextSegKey !== segmentKey;
+            segmentKey = nextSegKey;
             const lock = mode.config.modes?.starborn?.transitionLock ?? 4;
             // Cold start may mount mid-line. All subsequent automatic cuts must
             // occur at a fresh line boundary, never when a deferred lock expires.
@@ -173,6 +173,7 @@
                 && frame.playbackTime - lastTransition >= lock
                 && line.startTime >= protectedUntil - 0.001;
             if (!current || canCut) {
+                const segment = resolveSegment(frame);
                 mount(chooseMode(frame, segment, current?.id, recent, mode.config), frame);
             }
             if (line && observedLine !== line) {

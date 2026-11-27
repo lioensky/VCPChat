@@ -1126,7 +1126,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (document.querySelector('.dialog-overlay.music-dialog.visible:not([data-closing])')) return;
             if (app.playlistDialog?.classList.contains('visible')) { app.hidePlaylistDialog(); e.preventDefault(); return; }
             if (app.playlistEditModal?.classList.contains('visible')) { closePlaylistEditModal(); e.preventDefault(); return; }
-            if (app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
+            if (e.key === 'Escape' && !e.isComposing && app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
         });
         // ── 右键菜单的作用范围 ──
         // 「从列表中移除」要按右键时所在的视图决定删哪里，而不是按上一次从哪里点播。

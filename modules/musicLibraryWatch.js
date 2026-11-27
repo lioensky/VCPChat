@@ -11,7 +11,7 @@
 const path = require('path');
 const fs = require('fs');
 
-const AUDIO_EXT = /\.(mp3|wav|ogg|flac|m4a)$/i;
+const AUDIO_EXT = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff|wv)$/i;
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
 const MAX_WATCHED = 32;
 const DEBOUNCE_MS = 5000;
@@ -179,7 +179,9 @@ function createLibraryWatch({
                         // 文件夹本身的变化（拷进来一整张专辑）也算；别的文件（封面、歌词）不管
                         if (f && path.extname(f) && !AUDIO_EXT.test(f)) return;
                         clearTimer(timers.get(root));
-                        timers.set(root, setTimer(() => { timers.delete(root); if (gen === generation) enqueue(root); }, DEBOUNCE_MS));
+                        const dt = setTimer(() => { timers.delete(root); if (gen === generation) enqueue(root); }, DEBOUNCE_MS);
+                        dt?.unref?.();
+                        timers.set(root, dt);
                     });
                     const entry = { root, w };
                     w.on?.('error', () => {
@@ -191,6 +193,7 @@ function createLibraryWatch({
                 } catch (e) { log.warn?.('[MusicWatch] watch failed:', root, e?.message || e); }
             }
         }, START_DELAY_MS);
+        t?.unref?.();
         timers.set('start', t);
     };
 

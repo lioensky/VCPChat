@@ -176,16 +176,17 @@
             const copy = el('button', 'minfo-btn', '复制路径');
             copy.type = 'button';
             copy.addEventListener('click', () => {
+                const showCopyStatus = (text) => {
+                    if (!copy.isConnected) return;
+                    copy.textContent = text;
+                    clearTimeout(copyTimer);
+                    copyTimer = setTimeout(() => { copyTimer = 0; if (copy.isConnected) copy.textContent = '复制路径'; }, 1600);
+                };
                 const writeText = global.navigator?.clipboard?.writeText;
-                if (typeof writeText !== 'function') { copy.textContent = '复制失败'; return; }
+                if (typeof writeText !== 'function') { showCopyStatus('复制失败'); return; }
                 Promise.resolve(writeText.call(global.navigator.clipboard, String(track.path || '')))
-                    .then(() => {
-                        if (!copy.isConnected) return;
-                        copy.textContent = '已复制';
-                        clearTimeout(copyTimer);
-                        copyTimer = setTimeout(() => { copyTimer = 0; if (copy.isConnected) copy.textContent = '复制路径'; }, 1600);
-                    })
-                    .catch(() => { if (copy.isConnected) copy.textContent = '复制失败'; });
+                    .then(() => showCopyStatus('已复制'))
+                    .catch(() => showCopyStatus('复制失败'));
             });
             actions.appendChild(copy);
             dialog.appendChild(actions);

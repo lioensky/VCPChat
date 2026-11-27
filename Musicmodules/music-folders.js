@@ -148,57 +148,63 @@
         };
 
         // 把这个文件夹下的歌从曲库拿掉（正在放的那首留着），然后让主进程忘掉这个文件夹
+        let removing = false;
         const removeFolder = async (row) => {
-            const ok = global.MusicDialog?.confirm
-                ? await global.MusicDialog.confirm({ title: '把这个文件夹移出曲库？', message: `「${row.path}」里的 ${row.count} 首会从曲库里拿掉${row.remembered ? '，之后也不再自动同步' : ''}。磁盘上的文件不会删除。`, confirmText: '移出曲库', danger: true })
-                : true;
-            if (!ok) return;
-            const current = app.playlist?.[app.currentTrackIndex] || null;
-            const rowKey = key(row.path);
-            const rowPrefix = rowKey + '\\';
-            const inRow = (p) => { const f = key(p); return f === rowKey || f.startsWith(rowPrefix); };
-            const drop = new Set((app.playlist || []).filter((t) => t && t !== current && isLocal(t.path) && inRow(t.path)));
-            const keptPlaying = current && isLocal(current.path) && inRow(current.path);
-            if (drop.size) {
-                app.playlist = app.playlist.filter((t) => !drop.has(t));
-                if (current) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current));
-                if (Array.isArray(app.currentFilteredTracks)) app.currentFilteredTracks = app.currentFilteredTracks.filter((t) => !drop.has(t));
-                if (Array.isArray(app.manualQueue) && app.manualQueue.length) {
-                    for (const t of drop) {
-                        let at;
-                        while ((at = app.manualQueue.indexOf(t)) !== -1) {
-                            const prevLen = app.manualQueue.length;
-                            app.queueRemove?.(at);
-                            if (app.manualQueue.length >= prevLen) break;
-                        }
+            if (removing) return;
+            removing = true;
+            try {
+                const ok = global.MusicDialog?.confirm
+                    ? await global.MusicDialog.confirm({ title: '把这个文件夹移出曲库？', message: `「${row.path}」里的 ${row.count} 首会从曲库里拿掉${row.remembered ? '，之后也不再自动同步' : ''}。磁盘上的文件不会删除。`, confirmText: '移出曲库', danger: true })
+                    : true;
+                if (!ok) return;
+                const current = app.playlist?.[app.currentTrackIndex] || null;
+                const rowKey = key(row.path);
+                const rowPrefix = rowKey + '\\';
+                const inRow = (p) => { const f = key(p); return f === rowKey || f.startsWith(rowPrefix); };
+                const drop = new Set((app.playlist || []).filter((t) => t && t !== current && isLocal(t.path) && inRow(t.path)));
+                const keptPlaying = current && isLocal(current.path) && inRow(current.path);
+                if (drop.size) {
+                    app.playlist = app.playlist.filter((t) => !drop.has(t));
+                    if (current) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current));
+                    if (Array.isArray(app.currentFilteredTracks)) app.currentFilteredTracks = app.currentFilteredTracks.filter((t) => !drop.has(t));
+                    if (Array.isArray(app.manualQueue) && app.manualQueue.length) {
+                        const pruneQueue = () => {
+                            for (let i = app.manualQueue.length - 1; i >= 0; i -= 1) {
+                                if (drop.has(app.manualQueue[i])) app.queueRemove?.(i);
+                            }
+                        };
+                        if (typeof app.queueBatch === 'function') app.queueBatch(pruneQueue);
+                        else pruneQueue();
                     }
+                    try { await app.saveLibrary?.(); } catch (e) { /* 存盘失败另有提示 */ }
+                    refreshViews();
                 }
-                try { await app.saveLibrary?.(); } catch (e) { /* 存盘失败另有提示 */ }
-                refreshViews();
+                // 只有「自动同步」的文件夹才需要让主进程忘掉；「其他位置」本来就不在同步列表里
+                if (row.remembered) {
+                    const res = await call({ op: 'forget', path: row.path }).catch((e) => ({ ok: false, message: String(e && e.message || e) }));
+                    if (!res || !res.ok) toast(`文件夹没能从同步列表里去掉：${res?.message || ''}`, { kind: 'error' });
+                }
+                const gone = [...drop];
+                toast(`已把「${row.path}」移出曲库：${drop.size} 首${keptPlaying ? '（正在放的那首留着）' : ''}`, {
+                    kind: 'success',
+                    duration: 7000,
+                    // 撤销：把拿掉的歌原样放回曲库（播放统计、歌单都还对得上），自动同步的文件夹再加回同步列表
+                    action: { label: '撤销', run: async () => {
+                        const have = new Set((app.playlist || []).map((t) => key(t && t.path)));
+                        const back = gone.filter((t) => !have.has(key(t.path)));
+                        if (back.length) {
+                            app.playlist = (app.playlist || []).concat(back);
+                            try { await app.saveLibrary?.(); } catch (e) { /* 存盘失败另有提示 */ }
+                            refreshViews();
+                        }
+                        if (row.remembered && typeof app.api?.addMusicPaths === 'function') { try { app.api.addMusicPaths([row.path])?.catch?.(() => {}); } catch (e) { /* 下次扫描会补上 */ } }
+                        render();
+                    } }
+                });
+                render();
+            } finally {
+                removing = false;
             }
-            // 只有「自动同步」的文件夹才需要让主进程忘掉；「其他位置」本来就不在同步列表里
-            if (row.remembered) {
-                const res = await call({ op: 'forget', path: row.path }).catch((e) => ({ ok: false, message: String(e && e.message || e) }));
-                if (!res || !res.ok) toast(`文件夹没能从同步列表里去掉：${res?.message || ''}`, { kind: 'error' });
-            }
-            const gone = [...drop];
-            toast(`已把「${row.path}」移出曲库：${drop.size} 首${keptPlaying ? '（正在放的那首留着）' : ''}`, {
-                kind: 'success',
-                duration: 7000,
-                // 撤销：把拿掉的歌原样放回曲库（播放统计、歌单都还对得上），自动同步的文件夹再加回同步列表
-                action: { label: '撤销', run: async () => {
-                    const have = new Set((app.playlist || []).map((t) => key(t && t.path)));
-                    const back = gone.filter((t) => !have.has(key(t.path)));
-                    if (back.length) {
-                        app.playlist = (app.playlist || []).concat(back);
-                        try { await app.saveLibrary?.(); } catch (e) { /* 存盘失败另有提示 */ }
-                        refreshViews();
-                    }
-                    if (row.remembered && typeof app.api?.addMusicPaths === 'function') { try { app.api.addMusicPaths([row.path])?.catch?.(() => {}); } catch (e) { /* 下次扫描会补上 */ } }
-                    render();
-                } }
-            });
-            render();
         };
 
         const render = async () => {

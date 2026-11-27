@@ -9,9 +9,18 @@
     if (!doc) return;
 
     const DRESSED = new WeakMap(); // select -> { trigger, sync }
-    const SELECT_OBSERVERS = new Set();
+    const SELECT_OBSERVERS = new Map(); // select -> MutationObserver
     let openState = null;          // { select, menu, trigger, items, restore }
     let uid = 0;
+
+    const pruneDetachedObservers = () => {
+        for (const [sel, obs] of SELECT_OBSERVERS) {
+            if (!sel.isConnected) {
+                obs.disconnect();
+                SELECT_OBSERVERS.delete(sel);
+            }
+        }
+    };
 
     const CHEVRON = '<svg class="mfs-chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const CHECK = '<svg class="mfs-check" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><path d="M3.2 8.6l3.1 3 6.5-7.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -92,7 +101,8 @@
         select.addEventListener('input', sync);
         const obs = new MutationObserver(sync);
         obs.observe(select, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'hidden', 'disabled', 'title'] });
-        SELECT_OBSERVERS.add(obs);
+        if (SELECT_OBSERVERS.size >= 16) pruneDetachedObservers();
+        SELECT_OBSERVERS.set(select, obs);
 
         trigger.addEventListener('click', (event) => {
             event.preventDefault();
@@ -304,7 +314,7 @@
     doc.addEventListener('pointerdown', onDocPointerDown, true);
     doc.addEventListener('click', onDocClick);
     global.addEventListener('resize', reflow);
-    doc.addEventListener('scroll', onDocScroll, true);
+    doc.addEventListener('scroll', onDocScroll, { capture: true, passive: true });
 
     // 页面里已有的和以后插进来的下拉框都换掉（舞台切模式会重建一批）。
     // 跳过叶节点和不可能包含 <select> 的高频变动容器（曲目虚拟列表、歌词行、队列、搜索结果、封面墙），
@@ -355,7 +365,7 @@
         close(false);
         bodyObs?.disconnect();
         bodyObs = null;
-        for (const obs of SELECT_OBSERVERS) obs.disconnect();
+        for (const obs of SELECT_OBSERVERS.values()) obs.disconnect();
         SELECT_OBSERVERS.clear();
         doc.removeEventListener('keydown', onDocKeyDown, true);
         doc.removeEventListener('pointerdown', onDocPointerDown, true);

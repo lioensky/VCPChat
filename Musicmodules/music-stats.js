@@ -206,7 +206,9 @@
             // 播放状态切换时 body 上的 music-playing 会变；切歌时也会经过这里
             let was = global.document.body.classList.contains('music-playing');
             bodyObserver = new global.MutationObserver(() => {
-                const is = global.document.body.classList.contains('music-playing');
+                const body = global.document?.body;
+                if (!body) return;
+                const is = body.classList.contains('music-playing');
                 if (is !== was) { was = is; sync(); }
             });
             bodyObserver.observe(global.document.body, { attributes: true, attributeFilter: ['class'] });

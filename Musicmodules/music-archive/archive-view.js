@@ -1813,11 +1813,11 @@
             if (momentum && isShown()) stopMomentum();
             if (pick.on && isShown()) { pickStop(); if (e.key === 'Escape') { e.preventDefault(); return; } }
             if (!isShown() || app.isStageActive || document.body.classList.contains('music-stage-active') || e.defaultPrevented) return;
-            // Ctrl+L 定位当前播放（输入框里也能用）
-            if (!modalOpen() && (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); locatePlaying(); return; }
+            // Ctrl+L 定位当前播放（输入框里也能用）；先判按键再查 modalOpen，避免每次打字跑全文档弹窗查询
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'l' || e.key === 'L') && !modalOpen()) { e.preventDefault(); locatePlaying(); return; }
             const tag = e.target && e.target.tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
-            if (modalOpen() || e.altKey || e.ctrlKey || e.metaKey) return;
+            if (e.altKey || e.ctrlKey || e.metaKey || modalOpen()) return;
             if (keysOpen() && (e.key === 'Escape' || e.key === '?')) { e.preventDefault(); toggleKeys(false); return; }
             if (e.key === '?') { e.preventDefault(); toggleKeys(true); return; }
             stopInertia();

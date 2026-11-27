@@ -173,7 +173,13 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
     const close = () => { if (win && !win.isDestroyed()) win.close(); };
 
     const setOn = (on) => {
-        prefs.on = Boolean(on);
+        const nextOn = Boolean(on);
+        const already = prefs.on === nextOn && (nextOn ? Boolean(win && !win.isDestroyed()) : !(win && !win.isDestroyed()));
+        if (already) {
+            tellMusic();
+            return prefs.on;
+        }
+        prefs.on = nextOn;
         save();
         if (prefs.on) open(); else close();
         tellMusic();
