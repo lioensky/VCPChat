@@ -32,4 +32,9 @@ test('5000 tracks: bounded size; the file is read again only after it changes', 
     fs.writeFileSync(file, JSON.stringify([{ title: '新歌' }]));
     assert.equal(await playlistPrompt(file), '[播放列表——\n新歌\n]');
     assert.equal(await playlistPrompt(path.join(dir, 'missing.json')), '');
+
+    // .aif 扩展名与非法 limit 均被规范处理；删除后重读不返回旧缓存
+    assert.equal(formatPlaylistPrompt([{ title: 'A.aif' }, { title: 'B.aiff' }], 0), '[播放列表——\nA\nB\n]');
+    fs.unlinkSync(file);
+    assert.equal(await playlistPrompt(file), '');
 });

@@ -85,3 +85,52 @@ test('the music window saves its bounds on close and opens there next time', asy
     assert.equal(second.maximized, true, 'reopens maximized');
     second.emit('closed');
 });
+
+test('writeSavedBounds ignores degenerate dimensions and musicThumbar retries when setThumbarButtons returns false', () => {
+    const { writeSavedBounds, readSavedBounds } = require('../modules/musicWindowBounds');
+    const { createMusicThumbar } = require('../modules/musicThumbar');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-bounds-guard-'));
+    const file = path.join(dir, 'bounds.json');
+
+    writeSavedBounds(file, {
+        isDestroyed: () => false,
+        isMaximized: () => false,
+        getNormalBounds: () => ({ x: 100, y: 120, width: 1200, height: 800 })
+    });
+    // 最小化/异常 0 宽高不能覆盖之前保存的有效坐标
+    writeSavedBounds(file, {
+        isDestroyed: () => false,
+        isMaximized: () => false,
+        getNormalBounds: () => ({ x: -32000, y: -32000, width: 0, height: 0 })
+    });
+    assert.deepEqual(readSavedBounds(file), { x: 100, y: 120, width: 1200, height: 800, maximized: false });
+
+    let calls = 0;
+    let shouldSucceed = false;
+    const sent = [];
+    const thumbar = createMusicThumbar({
+        nativeImage: { createFromPath: (p) => p },
+        platform: 'win32'
+    });
+    let lastButtons = null;
+    const fakeWin = {
+        id: 7,
+        isDestroyed: () => false,
+        webContents: { isDestroyed: () => false, send: (_ch, cmd) => sent.push(cmd) },
+        setThumbarButtons: (btns) => {
+            calls += 1;
+            lastButtons = btns;
+            return shouldSucceed;
+        }
+    };
+    assert.equal(thumbar.update(fakeWin, { playing: false }), false, 'returns false when taskbar button not ready');
+    shouldSucceed = true;
+    assert.equal(thumbar.update(fakeWin, { playing: false }), true, 'retries same state instead of caching failed call');
+    assert.equal(thumbar.update(fakeWin, { playing: false }), false, 'dedupes after success');
+    assert.equal(calls, 2);
+    lastButtons[1].click();
+    assert.deepEqual(sent, ['play']);
+    fakeWin.webContents.isDestroyed = () => true;
+    lastButtons[2].click();
+    assert.deepEqual(sent, ['play'], 'click ignores destroyed webContents');
+});

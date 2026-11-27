@@ -173,3 +173,13 @@ test('a 90-point lyric visible to manual search is also eligible for automatic a
     assert.equal(automaticEntry.matchScore, manualSummary.matchScore);
     assert.equal(automaticEntry.features.isWordByWord, manualSummary.isWordByWord);
 });
+
+test('decodeKrcLanguageTag and calculateMatchScore handle null/empty inputs safely', () => {
+    const { decodeKrcLanguageTag } = require('../modules/lyrics/krcDecrypt');
+    assert.deepEqual(decodeKrcLanguageTag(null), { translations: [], romanizations: [] });
+    assert.deepEqual(decodeKrcLanguageTag(''), { translations: [], romanizations: [] });
+    assert.deepEqual(decodeKrcLanguageTag('[language:e30=]'), { translations: [], romanizations: [] });
+    const score = calculateMatchScore(null, null);
+    assert.equal(typeof score.score, 'number');
+    assert.equal(score.titleMatched, false);
+});

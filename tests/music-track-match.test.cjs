@@ -39,3 +39,14 @@ test('artist and album are fallbacks; nothing found is null', () => {
     assert.equal(findTrack(lib, { not: 'a string' }), null);
     assert.equal(findTrack(null, 'x'), null);
 });
+
+test('lazy scoring preserves tie-breaking when higher-scored track precedes artist/album matches', () => {
+    const tracks = [
+        { path: 'D:\\M\\1.mp3', title: 'Moonlight Sonata', artist: 'Beethoven', album: 'Moon' },
+        { path: 'D:\\M\\2.mp3', title: 'Star', artist: 'Moon', album: 'X' },
+        { path: 'D:\\M\\3.mp3', title: 'Moon', artist: 'Other', album: 'Y' }
+    ];
+    assert.equal(findTrack(tracks, 'Moon')?.path, 'D:\\M\\3.mp3');
+    assert.equal(findTrack(tracks.slice(0, 2), 'Moon')?.path, 'D:\\M\\1.mp3');
+    assert.equal(findTrack([{ path: '', title: '', artist: 'Solo Artist' }], 'Solo Artist')?.artist, 'Solo Artist');
+});

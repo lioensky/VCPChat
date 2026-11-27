@@ -1203,4 +1203,61 @@ test('energy-saving mode disables backdrop-filter across dock drawer, stage swit
     assert.match(pixi3dCss, /body\.music-fl-low \.music-stage\.is-playing \.music-stage-edge-flow-light\s*\{\s*animation-timing-function:\s*steps\(135\);/);
     assert.match(pixi3dCss, /\.music-stage-backdrop-layer\.is-empty\s*\{[^}]*will-change:\s*auto;/);
     assert.match(skinCss, /\.music-stage \.music-stage-edge-corners i\s*\{[^}]*filter:\s*none;/);
+
+    const coreModesCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-core-modes.css'), 'utf8');
+    assert.doesNotMatch(coreModesCss, /\.starborn-performance-layer\s*\{[^}]*filter:\s*blur\(0\)/);
+    assert.match(coreModesCss, /\.starborn-performance-layer\s*\{[^}]*filter:\s*none;/);
+    assert.match(coreModesCss, /body\.music-fl-low \.fume-paper\s*\{[^}]*backdrop-filter:\s*none;/);
+    assert.match(coreModesCss, /body\.music-reduce-motion \.starborn-director-cue\s*\{[^}]*animation:\s*none;/);
+
+    const musicCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music.css'), 'utf8');
+    assert.match(musicCss, /body\.music-fl-low \.help-tip-box,[\s\S]*?body\.music-fl-low \.audio-engine-notice,[\s\S]*?backdrop-filter:\s*none;/);
+
+    const wallCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-archive/archive-wall.css'), 'utf8');
+    assert.match(wallCss, /body\.music-fl-low #music-archive-view \.aw-panel-acts button\s*\{[^}]*backdrop-filter:\s*none;/);
+});
+
+test('edge spectrum releases strip VRAM on reduced-motion toggle and resolveAccent reuses frozen palette object', () => {
+    const dom = createStageDom();
+    let saveCalls = 0;
+    dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+        if (type !== '2d') return null;
+        return new Proxy({
+            save: () => { saveCalls += 1; },
+            restore: () => { saveCalls += 1; }
+        }, {
+            get(target, prop) { return prop in target ? target[prop] : () => {}; },
+            set(target, prop, value) { target[prop] = value; return true; }
+        });
+    };
+    let reduceOn = false;
+    dom.window.MusicMotion = { reduced: () => reduceOn };
+    for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+        runScript(dom, `Musicmodules/music-stage/${dep}`);
+    }
+    const accentRgb = Object.freeze({ r: 10, g: 20, b: 30 });
+    const app = { stagePalette: { accentRgb } };
+    assert.equal(dom.window.MusicStageModeUtils.resolveAccent(app), accentRgb, 'resolveAccent reuses frozen palette RGB without allocating');
+
+    const root = dom.window.document.getElementById('music-stage');
+    Object.defineProperty(root, 'clientWidth', { value: 1000 });
+    Object.defineProperty(root, 'clientHeight', { value: 600 });
+    const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+    const edge = dom.window.MusicStageEdge.create({
+        app,
+        root,
+        elements: { edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'), edgeCanvas },
+        state: { config: { quality: 'standard', edgeSpectrum: true } },
+        scope: { add() {} },
+        clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+    });
+    edge.draw({ now: 1000, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.5, spectrum: new Float32Array(64).fill(0.5) } });
+    assert.equal(edgeCanvas.width, 1000);
+    assert.equal(saveCalls, 0, 'strokeEdgePair draws without per-frame save/restore stack churn');
+
+    reduceOn = true;
+    edge.draw({ now: 1100, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.5, spectrum: new Float32Array(64).fill(0.5) } });
+    assert.equal(edgeCanvas.width, 1, 'toggling reduced motion shrinks allocated edge strips back to 1x1');
+    assert.equal(edgeCanvas.height, 1);
+    dom.window.close();
 });
