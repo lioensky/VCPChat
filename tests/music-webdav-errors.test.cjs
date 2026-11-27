@@ -73,3 +73,22 @@ test('a WebDAV request that fails inside Node ("fetch failed") is about the serv
     assert.equal(app.webdavReason("Error invoking remote method 'webdav-list-directory': TypeError: fetch failed", 'x'), '连不上服务器，检查网络或 WebDAV 地址');
     dom.window.close();
 });
+
+test('malformed percent-encoding in WebDAV paths and filenames renders without throwing URIError', async () => {
+    const { dom, app, doc } = load();
+    app.api = {
+        listWebdavDirectory: async () => ({
+            status: 'success',
+            entries: [
+                { name: '100% Pure', href: '/100% Pure/', isDir: true },
+                { name: 'song%ZZ.flac', href: '/100% Pure/song%ZZ.flac', isDir: false }
+            ]
+        })
+    };
+    await app.browseWebDav('/100% Pure/bad%2G');
+    const crumbs = [...doc.querySelectorAll('#crumb .webdav-crumb')].map((el) => el.textContent);
+    assert.deepEqual(crumbs, ['NAS', '100% Pure', 'bad%2G']);
+    const items = [...doc.querySelectorAll('#files .webdav-file-name')].map((el) => el.textContent);
+    assert.deepEqual(items, ['100% Pure', 'song%ZZ.flac']);
+    dom.window.close();
+});

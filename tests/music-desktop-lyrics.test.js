@@ -152,3 +152,18 @@ test('音乐窗口关了歌词条跟着关但开关不变；自己点关闭才�
     h.dl.musicReady();
     assert.strictEqual(h.windows.length, 2);
 });
+
+test('调字号或锁定后立刻关窗口，防抖未到也会同步落盘', async () => {
+    const h = harness();
+    await h.handles.get('music-desktop-lyrics-toggle')(fromMusic(h), true);
+    const bar = h.windows[0];
+    const cmd = (c, v) => h.ons.get('music-desktop-lyrics-command')({ sender: bar.webContents }, c, v);
+    cmd('size', 48);
+    cmd('lock', true);
+    // 不等待 300ms 防抖，立刻关闭音乐窗口
+    h.dl.musicClosed();
+    const saved = JSON.parse(fs.readFileSync(h.stateFile, 'utf8'));
+    assert.strictEqual(saved.on, true);
+    assert.strictEqual(saved.size, 48);
+    assert.strictEqual(saved.locked, true);
+});

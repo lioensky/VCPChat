@@ -41,3 +41,50 @@ test('local .lrc files in GBK, UTF-8 with BOM and UTF-16 are decoded', async () 
     assert.equal(await get({}, { artist: '甲', title: 'u16' }), LRC);
     assert.equal(await get({}, { artist: '甲', title: 'plain' }), LRC);
 });
+
+test('parserCore aligns translations with binary search, tie-breaks to first entry and respects 1.2s tolerance', () => {
+    const { parseLRC, parseYRC, parseKRC, parseTTML } = require('../modules/lyrics/parserCore');
+    const { stringSimilarity } = require('../modules/lyrics/matchScore');
+
+    const trans = [
+        '[00:01.00]第一条重复',
+        '[00:01.00]第二条重复',
+        '[00:04.00]左侧等距',
+        '[00:06.00]右侧等距',
+        '[00:10.00]刚好在容差内',
+        '[00:20.00]超出容差'
+    ].join('\n');
+
+    const lrc = [
+        '[00:01.00]第一句',
+        '[00:05.00]中间句',
+        '[00:11.19]容差内句',
+        '[00:21.25]容差外句'
+    ].join('\n');
+
+    const parsed = parseLRC(lrc, trans);
+    assert.equal(parsed.lines[0].translation, '第一条重复');
+    assert.equal(parsed.lines[1].translation, '左侧等距');
+    assert.equal(parsed.lines[2].translation, '刚好在容差内');
+    assert.equal(parsed.lines[3].translation, undefined);
+
+    const yrc = '[1000,2000](1000,1000,0)你(2000,1000,0)好\n[5000,2000](5000,2000,0)世界';
+    const yrcParsed = parseYRC(yrc, trans);
+    assert.equal(yrcParsed.lines[0].translation, '第一条重复');
+    assert.equal(yrcParsed.lines[1].translation, '左侧等距');
+
+    const krc = '[1000,2000]<0,1000,0>你<1000,1000,0>好\n[5000,2000]<0,2000,0>世界';
+    const krcParsed = parseKRC(krc, trans);
+    assert.equal(krcParsed.lines[0].translation, '第一条重复');
+    assert.equal(krcParsed.lines[1].translation, '左侧等距');
+
+    const ttml = '<tt><body><div><p begin="00:01.000" end="00:04.000"><span begin="00:01.000" end="00:02.000">Hello</span> <span begin="00:02.000" end="00:03.000">world</span><span ttm:role="x-bg"><span begin="00:03.000" end="00:04.000">oh</span></span><span ttm:role="x-translation">你好世界</span></p></div></body></tt>';
+    const ttmlParsed = parseTTML(ttml);
+    assert.equal(ttmlParsed.lines.length, 1);
+    assert.equal(ttmlParsed.lines[0].fullText, 'Hello world (oh)');
+    assert.equal(ttmlParsed.lines[0].translation, '你好世界');
+
+    assert.equal(stringSimilarity('abc', 'abc'), 1);
+    assert.equal(stringSimilarity('abc', 'abx'), 2 / 4);
+    assert.equal(stringSimilarity('ab', 'abcd'), 0.5);
+});

@@ -168,6 +168,24 @@ test('Esc 退出舞台也走过场', async () => {
     t.close();
 });
 
+test('舞台模式下拉展开时按 Esc 让给菜单，不直接退出舞台', async () => {
+    const t = setup({ startInStage: true });
+    const picker = t.doc.createElement('nav');
+    picker.className = 'music-stage-mode-switcher is-open';
+    t.doc.body.appendChild(picker);
+    t.doc.body.dispatchEvent(new t.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(t.doc.querySelector('.music-intro[data-intro="exit"]'), null);
+    await t.advance(500);
+    assert.equal(t.host.active, true);
+    picker.classList.remove('is-open');
+    t.doc.body.dispatchEvent(new t.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.ok(t.doc.querySelector('.music-intro[data-intro="exit"]'));
+    await t.advance(3000);
+    assert.equal(t.host.active, false);
+    assert.deepEqual(t.leftovers(), CLEAN);
+    t.close();
+});
+
 test('降低动态：盖一层不动的纸色底，进出照常完成', async () => {
     const t = setup({ reduced: true });
     t.host.enter();

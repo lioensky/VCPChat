@@ -50,10 +50,16 @@ test('toasts stack up to three, update in place by id and expire', () => {
     const { clock, toast, visible, doc } = setup();
     toast.show('一');
     toast.show({ id: 'scan', kind: 'progress', message: '正在扫描 1 / 10', progress: 0.1 });
+    const msgNode = doc.querySelector('[data-key="scan"] .mtst-msg');
+    const barFill = doc.querySelector('[data-key="scan"] .mtst-bar span');
+    const iconSvg = doc.querySelector('[data-key="scan"] .mtst-ic svg');
     toast.show({ id: 'scan', message: '正在扫描 5 / 10', progress: 0.5 });
     assert.equal(visible().length, 2);
-    assert.equal(doc.querySelector('[data-key="scan"] .mtst-msg').textContent, '正在扫描 5 / 10');
-    assert.match(doc.querySelector('[data-key="scan"] .mtst-bar span').getAttribute('style'), /scaleX\(0\.5\)/);
+    assert.equal(doc.querySelector('[data-key="scan"] .mtst-msg'), msgNode, 'progress-only update reuses message node without innerHTML rebuild');
+    assert.equal(doc.querySelector('[data-key="scan"] .mtst-bar span'), barFill, 'progress-only update reuses bar fill node');
+    assert.equal(doc.querySelector('[data-key="scan"] .mtst-ic svg'), iconSvg, 'progress-only update keeps spinner SVG intact');
+    assert.equal(msgNode.textContent, '正在扫描 5 / 10');
+    assert.match(barFill.getAttribute('style'), /scaleX\(0\.5\)/);
     toast.show('二');
     toast.show('三');
     assert.equal(visible().length, 3, 'oldest is pushed out');

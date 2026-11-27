@@ -538,3 +538,35 @@ test('lyric stages draw at most 60 frames a second unless the ultimate tier is c
     assert.ok(standard >= 58 && standard <= 62, `standard tier drew ${standard} of 120`);
     assert.equal(await frames('ultimate'), 120);
 });
+
+test('MusicStageConfig preserves distinct cameraMode enums for kowloon and fume without cross-overwriting', () => {
+    const dom = createStageDom();
+    runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
+    const cfg = dom.window.MusicStageConfig;
+
+    assert.equal(cfg.update({ modes: { kowloon: { cameraMode: 'sandbox' } } }).modes.kowloon.cameraMode, 'sandbox');
+    assert.equal(cfg.update({ modes: { kowloon: { cameraMode: 'diorama' } } }).modes.kowloon.cameraMode, 'diorama');
+    assert.equal(cfg.update({ modes: { kowloon: { cameraMode: 'auto' } } }).modes.kowloon.cameraMode, 'auto');
+    assert.equal(cfg.update({ modes: { kowloon: { cameraMode: 'stepped' } } }).modes.kowloon.cameraMode, 'sandbox');
+
+    assert.equal(cfg.update({ modes: { fume: { cameraMode: 'smooth' } } }).modes.fume.cameraMode, 'smooth');
+    assert.equal(cfg.update({ modes: { fume: { cameraMode: 'stepped' } } }).modes.fume.cameraMode, 'stepped');
+    assert.equal(cfg.update({ modes: { fume: { cameraMode: 'sandbox' } } }).modes.fume.cameraMode, 'smooth');
+    dom.window.close();
+});
+
+test('MusicStageRuntime.isReducedMotion honors MusicMotion override ahead of matchMedia', () => {
+    const dom = createStageDom();
+    runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+    const rt = dom.window.MusicStageRuntime;
+
+    assert.equal(rt.isReducedMotion({ matches: true }), true);
+    assert.equal(rt.isReducedMotion({ matches: false }), false);
+
+    dom.window.MusicMotion = { reduced: () => true };
+    assert.equal(rt.isReducedMotion({ matches: false }), true);
+
+    dom.window.MusicMotion = { reduced: () => false };
+    assert.equal(rt.isReducedMotion({ matches: true }), false);
+    dom.window.close();
+});
