@@ -255,7 +255,8 @@ async function listDirectory(config) {
         
         if (result.status === 'success') {
             // 规范化返回格式
-            const entries = (result.entries || []).map(e => ({
+            const rawEntries = Array.isArray(result.entries) ? result.entries : [];
+            const entries = rawEntries.map(e => ({
                 name: e.display_name,
                 href: e.href,
                 url: e.url,
@@ -275,8 +276,8 @@ async function listDirectory(config) {
     }
 }
 
-// 音频文件扩展名
-const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff']);
+// 音频文件扩展名（与渲染端 music-webdav.js 及主进程音频白名单保持一致）
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff', '.aif', '.alac', '.dsf', '.dff']);
 
 // 递归扫描音频文件
 async function scanAudioFiles(config, progressCallback) {
@@ -316,7 +317,8 @@ async function scanAudioFiles(config, progressCallback) {
                 return;
             }
             
-            for (const entry of result.entries) {
+            const entries = Array.isArray(result.entries) ? result.entries : [];
+            for (const entry of entries) {
                 if (entry.isDir) {
                     await scanDir(entry.href);
                 } else {

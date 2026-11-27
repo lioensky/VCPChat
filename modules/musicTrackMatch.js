@@ -47,7 +47,7 @@ function getTrackNorm(track) {
 
 // 「歌名 - 歌手」「歌名 by 歌手」「歌手 的 歌名」这类写法拆成两半。
 function splitQuery(q) {
-    const parts = q.split(/\s+-\s+|\s+—\s+|\s+by\s+|\s*\/\s*|\s*的\s*/i).map((s) => s.trim()).filter(Boolean);
+    const parts = q.split(/\s+[-–—]\s+|\s+by\s+|\s*\/\s*|\s*的\s*/i).map((s) => s.trim()).filter(Boolean);
     return parts.length === 2 ? parts : null;
 }
 

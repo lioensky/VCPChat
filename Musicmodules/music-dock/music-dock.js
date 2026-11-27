@@ -148,6 +148,7 @@
         const $ = (sel) => host.querySelector(sel);
         const $$ = (sel) => Array.from(host.querySelectorAll(sel));
         const el = {
+            dock: $('.md-dock'),
             dockIn: $('.md-dock-in'),
             quick: $('.md-quick'),
             quickGroup: $('.md-quick-g'),
@@ -378,6 +379,17 @@
         const lowQuality = () => global.MusicStageConfig?.get?.()?.quality === 'energy-saving';
         let fluid = null;
         let lastRange = ''; // 上次推给流体层的进度区间
+        let lastShiftStr = '';
+        let lastMistPad = '';
+        const applyShiftProp = (v) => {
+            const targets = [el.dock, el.hdl, fluid?.svg, fluid?.mist];
+            for (let i = 0; i < targets.length; i += 1) {
+                const node = targets[i];
+                if (!node) continue;
+                if (v && v !== '0px') node.style.setProperty('--md-shift', v);
+                else node.style.removeProperty('--md-shift');
+            }
+        };
         const syncFluid = () => {
             const want = typeof global.createMusicDockFluid === 'function' && !lowQuality();
             if (want && !fluid) {
@@ -387,6 +399,11 @@
                     ring: el.hdl,
                     reduced: () => Boolean(global.MusicMotion ? global.MusicMotion.reduced() : reducedMotion.matches)
                 });
+                if (lastMistPad) fluid?.setMistPad?.(lastMistPad);
+                if (lastShiftStr && lastShiftStr !== '0px') {
+                    fluid?.svg?.style?.setProperty('--md-shift', lastShiftStr);
+                    fluid?.mist?.style?.setProperty('--md-shift', lastShiftStr);
+                }
             } else if (!want && fluid) {
                 fluid.destroy();
                 fluid = null;
@@ -1580,11 +1597,12 @@
             }
             const resized = barW < natural - 0.5;
             const squeezed = resized && barW < 520;               // 太短才收掉「下一首」
-            const was = host.style.getPropertyValue('--md-bar-w');
+            const barTarget = el.dock || host;
+            const was = barTarget.style.getPropertyValue('--md-bar-w');
             const now = resized ? `${Math.round(barW)}px` : '';
             host.classList.toggle('md-squeeze', squeezed);
             if (was !== now) {
-                if (resized) host.style.setProperty('--md-bar-w', now); else host.style.removeProperty('--md-bar-w');
+                if (resized) barTarget.style.setProperty('--md-bar-w', now); else barTarget.style.removeProperty('--md-bar-w');
                 cachedRange = null;
                 followWidth();
             }
@@ -1593,17 +1611,22 @@
             document.body.classList.toggle('music-dock-beside-lyrics', lyricsGap >= lyricsClearance - 0.5);
             const mistRoom = betweenPanes ? Math.min(left - listRight, lyricsGap) : left - edge;
             const mistPad = betweenPanes || edge ? `${Math.round(Math.max(0, mistRoom))}px` : '';
-            const mistChanged = host.style.getPropertyValue('--md-mist-pad') !== mistPad;
+            const mistChanged = lastMistPad !== mistPad;
             if (mistChanged) {
-                if (mistPad) host.style.setProperty('--md-mist-pad', mistPad); else host.style.removeProperty('--md-mist-pad');
+                lastMistPad = mistPad;
+                fluid?.setMistPad?.(mistPad);
             }
             // 首页按抽屉占掉的宽度重排（archive-view 的 resize 读 roomRight），区块让开，不被抽屉盖住
             roomRight = open ? DRAWER_W : 0;
             document.body.classList.toggle('music-drawer-open', open);
             const shift = vw > 0 && barW ? left - (vw / 2 - barW / 2) : 0;
-            host.style.setProperty('--md-shift', `${Math.round(shift)}px`);
-            host.classList.toggle('md-shifted', shift < 0);
-            // 等 --md-bar-w / --md-mist-pad / --md-shift 全部写完后在下一帧重排流体层，避免写完立刻 getComputedStyle 同步回流
+            // 直接把 --md-shift 写到实际平移的 4 个元素上（而非 #music-dock-root），避免继承链触发抽屉/音效/命令面板 365+ 节点样式重算
+            const shiftStr = `${Math.round(shift)}px`;
+            if (shiftStr !== lastShiftStr) {
+                lastShiftStr = shiftStr;
+                applyShiftProp(shiftStr);
+            }
+            // 等 --md-bar-w / mistPad / --md-shift 全部写完后在下一帧重排流体层，避免写完立刻 getComputedStyle 同步回流
             if (mistChanged) scheduleFluidLayout();
             // 提示层挂在 body 上：跟着播放条的中心走，宽度不伸进抽屉。
             const cx = vw / 2 + shift;

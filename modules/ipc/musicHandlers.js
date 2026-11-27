@@ -27,6 +27,13 @@ const { randomUUID } = require('crypto');
 let fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : null;
 
 let musicWindow = null;
+const sendToWindow = (win, channel, payload) => {
+    if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed?.()) {
+        win.webContents.send(channel, payload);
+        return true;
+    }
+    return false;
+};
 // 任务栏缩略图上的上一首/播放暂停/下一首（只在 Windows 上）
 // （主进程单测会把这几个辅助模块换成空对象，下面三个都留了什么都不做的退路）
 const musicThumbar = typeof createMusicThumbar === 'function'
@@ -67,7 +74,7 @@ const libraryWatch = typeof createLibraryWatch !== 'function'
         try { const list = await fs.readJson(file); return Array.isArray(list) ? list.filter((d) => typeof d === 'string') : []; } catch (e) { return []; }
     },
     writeExcluded: async (list) => { if (MUSIC_PLAYLIST_FILE) await writeJsonAtomic(path.join(path.dirname(MUSIC_PLAYLIST_FILE), 'music_excluded.json'), list); },
-    send: (channel, payload) => { if (musicWindow && !musicWindow.isDestroyed()) musicWindow.webContents.send(channel, payload); }
+    send: (channel, payload) => { sendToWindow(musicWindow, channel, payload); }
 });
 // 外语歌词没有翻译时，用 VCP 上的模型翻成中文（缓存在歌词目录 translations/）
 const lyricsTranslator = typeof createLyricsTranslator !== 'function'
@@ -94,9 +101,7 @@ async function musicPageFile() {
 }
 const getMusicCapsuleSnapshot = () => ({ ...musicCapsuleState, musicInfoInjectionEnabled });
 function publishMusicCapsule() {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('music-capsule-state', getMusicCapsuleSnapshot());
-    }
+    sendToWindow(mainWindow, 'music-capsule-state', getMusicCapsuleSnapshot());
 }
 let currentSongInfo = null; // 保持这个变量，用于可能的UI状态同步
 let mainWindow = null; // To be initialized
@@ -236,7 +241,7 @@ function createOrFocusMusicWindow() {
         const reportVisibility = () => {
             if (!musicWindow || musicWindow.isDestroyed()) return;
             const hidden = musicWindow.isMinimized() || !musicWindow.isVisible();
-            musicWindow.webContents.send('music-window-visibility', { hidden });
+            sendToWindow(musicWindow, 'music-window-visibility', { hidden });
         };
         for (const eventName of ['minimize', 'restore', 'hide', 'show']) musicWindow.on(eventName, reportVisibility);
         // 窗口藏起来再显示时 Windows 会丢掉缩略图按钮，重新设一遍
@@ -548,9 +553,7 @@ async function audioEngineApi(endpoint, method = 'POST', body = null) {
             error = new Error(`音频引擎 ${Math.round(timeoutMs / 1000)} 秒内没有响应（${endpoint}）`);
         }
         console.error(`[Music] Error calling Audio Engine API endpoint '${endpoint}':`, error.message);
-        if (musicWindow && !musicWindow.isDestroyed()) {
-            musicWindow.webContents.send('audio-engine-error', { message: error.message });
-        }
+        sendToWindow(musicWindow, 'audio-engine-error', { message: error.message });
         return { status: 'error', message: error.message };
     } finally {
         clearTimeout(timer);
@@ -563,7 +566,7 @@ async function audioEngineApi(endpoint, method = 'POST', body = null) {
 async function getCurrentLyrics() {
     const win = musicWindow;
     let snapshot = null;
-    if (win && !win.isDestroyed()) {
+    if (win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed?.()) {
         snapshot = await new Promise((resolve, reject) => {
             const requestId = randomUUID();
             const cleanup = () => {
@@ -658,9 +661,8 @@ async function handleMusicControl(args) {
 
                 // 窗口开着且已就绪：直接交给它。窗口还在创建（页面脚本可能还没跑，消息会丢）
                 // 或者没开：放进 pending，等窗口就绪；它若在这之前已经取过 pending，就绪后再直接发。
-                if (!musicWindowPromise && musicWindow && !musicWindow.isDestroyed()) {
+                if (!musicWindowPromise && sendToWindow(musicWindow, 'music-set-track', playbackRequest)) {
                     console.log('[MusicControl] Window exists, sending music-set-track to renderer.');
-                    musicWindow.webContents.send('music-set-track', playbackRequest);
                     if (!musicWindow.isVisible()) {
                         musicWindow.show();
                     }
@@ -671,9 +673,8 @@ async function handleMusicControl(args) {
                 pendingPlaybackForNewWindow = playbackRequest;
                 try {
                     await createOrFocusMusicWindow();
-                    if (pendingPlaybackForNewWindow === playbackRequest && musicWindow && !musicWindow.isDestroyed()) {
+                    if (pendingPlaybackForNewWindow === playbackRequest && sendToWindow(musicWindow, 'music-set-track', playbackRequest)) {
                         pendingPlaybackForNewWindow = null;
-                        musicWindow.webContents.send('music-set-track', playbackRequest);
                     }
                     return { status: 'success', message: `Playing: ${track.title}` };
                 } catch (createErr) {
@@ -683,34 +684,29 @@ async function handleMusicControl(args) {
                 }
             } else {
                 // 无目标，简单恢复播放
-                if (musicWindow && !musicWindow.isDestroyed()) {
-                    musicWindow.webContents.send('music-control', 'play');
+                if (sendToWindow(musicWindow, 'music-control', 'play')) {
                     return { status: 'success', message: 'Resumed playback.' };
                 }
                 return audioEngineApi('/play', 'POST');
             }
         case 'pause':
-            if (musicWindow && !musicWindow.isDestroyed()) {
-                musicWindow.webContents.send('music-control', 'pause');
+            if (sendToWindow(musicWindow, 'music-control', 'pause')) {
                 return { status: 'success', message: 'Paused.' };
             }
             return audioEngineApi('/pause', 'POST');
         case 'stop':
             // 窗口开着时绕过它直接停引擎，界面会一直以为还在放；交给窗口暂停。
-            if (musicWindow && !musicWindow.isDestroyed()) {
-                musicWindow.webContents.send('music-control', 'pause');
+            if (sendToWindow(musicWindow, 'music-control', 'pause')) {
                 return { status: 'success', message: 'Stopped.' };
             }
             return audioEngineApi('/stop', 'POST');
         case 'next':
-            if (musicWindow && !musicWindow.isDestroyed()) {
-                musicWindow.webContents.send('music-control', 'next');
+            if (sendToWindow(musicWindow, 'music-control', 'next')) {
                 return { status: 'success', message: 'Next track.' };
             }
             return { status: 'error', message: 'Music window not available.' };
         case 'previous':
-            if (musicWindow && !musicWindow.isDestroyed()) {
-                musicWindow.webContents.send('music-control', 'previous');
+            if (sendToWindow(musicWindow, 'music-control', 'previous')) {
                 return { status: 'success', message: 'Previous track.' };
             }
             return { status: 'error', message: 'Music window not available.' };
@@ -828,7 +824,7 @@ function initialize(options) {
         ipcMain.on('music-capsule-command', (event, command) => {
             if (!mainWindow || event.sender !== mainWindow.webContents) return;
             if (!['previous', 'next', 'play', 'pause'].includes(command)) return;
-            if (musicWindow && !musicWindow.isDestroyed()) musicWindow.webContents.send('music-control', command);
+            sendToWindow(musicWindow, 'music-control', command);
         });
 
         ipcMain.handle('music-get-audio-engine-endpoint', () => audioEngineEndpoint.getEndpoint());
@@ -963,9 +959,7 @@ function initialize(options) {
         });
 
         audioEngineEndpoint.onStatus((endpoint) => {
-            if (musicWindow && !musicWindow.isDestroyed()) {
-                musicWindow.webContents.send('audio-engine-status', endpoint);
-            }
+            sendToWindow(musicWindow, 'audio-engine-status', endpoint);
         });
 
         ipcMain.handle('music-get-pending-track', () => {
@@ -1157,18 +1151,16 @@ function initialize(options) {
                 }
 
                 // 2. 基础播控命令（next/previous/play/pause）：窗口存在则直通转发
-                if (musicWindow && !musicWindow.isDestroyed()) {
+                if (sendToWindow(musicWindow, 'music-control', command)) {
                     console.log(`[Music] Forwarding remote command to music window: ${command}`);
-                    musicWindow.webContents.send('music-control', command);
                 } else {
                     // 窗口不存在时自动唤醒并延迟派发
                     console.log(`[Music] Music window offline for command '${command}', auto-spawning window...`);
                     await createOrFocusMusicWindow();
-                    setTimeout(() => {
-                        if (musicWindow && !musicWindow.isDestroyed()) {
-                            musicWindow.webContents.send('music-control', command);
-                        }
+                    const delayTimer = setTimeout(() => {
+                        sendToWindow(musicWindow, 'music-control', command);
                     }, 600);
+                    delayTimer.unref?.();
                 }
             } catch (err) {
                 console.error('[Music] Error in music-remote-command handler:', err);
@@ -1184,9 +1176,8 @@ function initialize(options) {
             if (!(await fs.pathExists(filePath))) {
                 return { success: false, message: '这首歌的文件已经不在原来的位置了' };
             }
-            if (mainWindow && !mainWindow.isDestroyed()) {
+            if (sendToWindow(mainWindow, 'add-file-to-input', filePath)) {
                 console.log(`[Music] Forwarding shared file to renderer: ${filePath}`);
-                mainWindow.webContents.send('add-file-to-input', filePath);
                 if (mainWindow.isMinimized()) mainWindow.restore();
                 mainWindow.focus();
                 return { success: true };

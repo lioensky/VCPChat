@@ -182,6 +182,26 @@
             ];
         };
 
+        let cachedCmdSig = '';
+        let cachedCmdList = null;
+        const getCommands = () => {
+            const sig = `${app.isPlaying === true ? 1 : 0}|${app.isStageActive === true ? 1 : 0}|${app.currentPlayMode ?? ''}`
+                + `|${document.body.classList.contains('light-theme') ? 1 : 0}|${Math.round(readVolume() * 100)}`
+                + `|${app.currentTrackIndex ?? -1}|${app.autoplay?.enabled === true ? 1 : 0}`
+                + `|${app.lyricsAi?.enabled === true ? 1 : 0}|${app.deviceSound?.enabled === true ? 1 : 0}`
+                + `|${app.deviceSound?.device || ''}|${app.desktopLyrics?.on === true ? 1 : 0}`;
+            if (cachedCmdList && cachedCmdSig === sig) return cachedCmdList;
+            cachedCmdSig = sig;
+            const list = commands();
+            for (let i = 0; i < list.length; i += 1) {
+                const c = list[i];
+                c._tl = lower(c.title);
+                c._hay = lower(`${c.title} ${c.words || ''} ${c.group}`);
+            }
+            cachedCmdList = list;
+            return list;
+        };
+
         // 「音量 40」「vol 40」这种直接给数字的。
         const volumeCommand = (text) => {
             const m = /^(?:音量|vol(?:ume)?|yinliang)\s*(\d{1,3})\s*%?$/i.exec(String(text || '').trim());
@@ -192,8 +212,8 @@
 
         const matchCommand = (cmd, words) => {
             if (!words.length) return 0;
-            const titleLower = lower(cmd.title);
-            const hay = lower(`${cmd.title} ${cmd.words || ''} ${cmd.group}`);
+            const titleLower = cmd._tl !== undefined ? cmd._tl : lower(cmd.title);
+            const hay = cmd._hay !== undefined ? cmd._hay : lower(`${cmd.title} ${cmd.words || ''} ${cmd.group}`);
             let score = 0;
             for (let i = 0; i < words.length; i++) {
                 const word = words[i];
@@ -462,7 +482,7 @@
                     continue;
                 }
                 if (songsAndPlaylistsOnly) continue;
-                if (!all) all = commands();
+                if (!all) all = getCommands();
                 const cmd = all.find((c) => c.id === id);
                 if (cmd) out.push({ ...cmd, group: '最近', section: '最近' });
             }
@@ -487,7 +507,7 @@
                 let commandPrefix = false;
                 if (onlyText) {
                     const textWords = qTextLower.split(/\s+/).filter(Boolean);
-                    commands()
+                    getCommands()
                         .map((c) => ({ c, s: matchCommand(c, textWords) }))
                         .filter((x) => x.s > 0)
                         .sort((a, b) => b.s - a.s)
@@ -748,6 +768,8 @@
             remember(item);
             if (item.keepOpen) {
                 item.run();
+                cachedCmdList = null;
+                cachedCmdSig = '';
                 const keep = state.active;
                 build();
                 state.active = Math.min(keep, state.items.length - 1);
@@ -770,6 +792,8 @@
             if (rect && rect.width) root.style.setProperty('--md-cmd-origin-x', `${Math.round(rect.left + rect.width / 2)}px`);
         };
         function open(initial = '') {
+            cachedCmdList = null;
+            cachedCmdSig = '';
             if (state.open) { input.focus({ preventScroll: true }); input.select(); return; }
             closeOthers?.();
             state.open = true;
@@ -793,6 +817,8 @@
             });
         }
         function close(restoreFocus = true) {
+            cachedCmdList = null;
+            cachedCmdSig = '';
             if (!state.open) return;
             state.open = false;
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }

@@ -182,13 +182,20 @@
         // 右侧抽屉打开时播放条整体往左让位（CSS 的 translate 属性，流体层同步平移）。
         // 这里量位置时扣掉当前的平移量，层自己的 left 记的是没平移时的位置。
         const dockEl = bar.closest('.md-dock');
+        let vrailEl = null;
+        const getVrail = () => {
+            if (vrailEl && vrailEl.isConnected) return vrailEl;
+            vrailEl = host.querySelector('.md-vrail');
+            return vrailEl;
+        };
+        let mistPadRaw = null;
         let cachedShift = 0;
         let shiftAt = -1e9;
         let shiftActive = false;
         const shiftX = (fresh = false) => {
             const now = (win.performance || Date).now();
             if (!fresh && now - shiftAt < 120) return cachedShift;
-            const rawVar = host.style.getPropertyValue('--md-shift').trim();
+            const rawVar = (dockEl?.style?.getPropertyValue('--md-shift') || host.style.getPropertyValue('--md-shift')).trim();
             const hasVar = Boolean(rawVar) && rawVar !== '0' && rawVar !== '0px';
             const inlineT = dockEl?.style?.translate?.trim();
             const hasInline = Boolean(inlineT) && inlineT !== 'none' && inlineT !== '0' && inlineT !== '0px';
@@ -224,7 +231,7 @@
             const vr = volBtn?.getBoundingClientRect();
             const playX = pr && pr.width ? pr.left - sx + pr.width / 2 - left : x + rect.height / 2;
             const volX = vr && vr.width ? vr.left - sx + vr.width / 2 - left : x + rect.width - rect.height / 2;
-            const padVar = parseFloat(host.style.getPropertyValue('--md-mist-pad'));
+            const padVar = parseFloat(mistPadRaw !== null ? mistPadRaw : host.style.getPropertyValue('--md-mist-pad'));
             const pad = Number.isFinite(padVar) ? Math.max(0, Math.min(180, padVar)) : 180;
             const sig = `${layerW}|${left}|${bottom}|${rect.width.toFixed(1)}|${rect.height.toFixed(1)}|${playX.toFixed(1)}|${volX.toFixed(1)}|${pad.toFixed(1)}|${vh}`;
             if (s.ring.placed && sig === lastLayoutSig) return true;
@@ -370,10 +377,10 @@
             setAttr(volB, 'x', geo.volX - 24); setAttr(volB, 'width', 48); setAttr(volB, 'rx', 24);
             setAttr(volB, 'y', vy); setAttr(volB, 'height', s.vol.v > 0.01 || volBase === geo.y ? Math.max(0, geo.y + geo.h - 6 - vy) : 0);
             setAttr(volSolid, 'opacity', s.vol.v);
-            // 水滴里的白色音量条跟着水滴长：水滴升到七成以后才开始出现，收起时它先消失。
+            // 水滴里的白色音量条跟着水滴长：直接写到 .md-vrail 上，避免写到 #music-dock-root 引发全子树 365+ 节点样式重算。
             const grow = Math.max(0, Math.min(1, (s.vol.v - 0.7) / 0.28));
             const growText = (grow * grow * (3 - 2 * grow)).toFixed(3);
-            if (growText !== lastGrow) { lastGrow = growText; host.style.setProperty('--md-vgrow', growText); }
+            if (growText !== lastGrow) { lastGrow = growText; (getVrail() || host).style.setProperty('--md-vgrow', growText); }
             if (s.split.p < 1) {
                 const e = s.split.p;
                 setAttr(splitC, 'cx', geo.x + geo.w - geo.h / 2 + e * 170); setAttr(splitC, 'cy', geo.y + geo.h / 2); setAttr(splitC, 'r', Math.max(0, (geo.h / 2 - 4) * (1 - e)));
@@ -478,6 +485,7 @@
             svg,
             mist,
             layout,
+            setMistPad(pad) { mistPadRaw = pad == null || pad === '' ? null : String(pad); },
             setProgress(p) {
                 const next = Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : 0;
                 // 进度边界没走满一个像素就不动：不改遮罩、不重画滤镜。
@@ -626,6 +634,8 @@
                 glow.frame = 0;
                 svg.remove();
                 mist.remove();
+                vrailEl?.style?.removeProperty('--md-vgrow');
+                vrailEl = null;
                 host.style.removeProperty('--md-vgrow');
             }
         };

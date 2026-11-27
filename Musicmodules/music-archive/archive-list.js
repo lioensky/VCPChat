@@ -337,18 +337,11 @@
          * steady：曲库只是变多了（扫描途中一批批进来）。这时不把目录拉回选中行，
          * 而是让眼前最上面那首歌留在原来的位置，上面多出来的歌不把正在看的内容顶走。
          */
-        // 选中的筛选下方液态线：换筛选时滑过去，只量文字本身。
+        // 选中的筛选下方液态线：换筛选时滑过去，只量文字本身（先读几何再建标记，避免首帧写后读重排）。
         const placeKindMark = () => {
             const box = el.querySelector('[data-l="kinds"]');
             const on = box?.querySelector('[data-kind].on');
             if (!box || !on || !on.firstChild || !global.MusicFluid?.slide) return;
-            let mark = box.querySelector('.archive-kind-mark');
-            if (!mark) {
-                mark = document.createElement('i');
-                mark.className = 'archive-kind-mark';
-                mark.setAttribute('aria-hidden', 'true');
-                box.appendChild(mark);
-            }
             const range = document.createRange();
             range.selectNodeContents(on);
             const t = range.getBoundingClientRect();
@@ -356,6 +349,13 @@
             if (!t.width || !b.width) return;
             // 档案页整体可能被缩放过：量出来的是屏幕上的尺寸，换回这一层自己的像素
             const k = box.offsetWidth / b.width || 1;
+            let mark = box.querySelector('.archive-kind-mark');
+            if (!mark) {
+                mark = document.createElement('i');
+                mark.className = 'archive-kind-mark';
+                mark.setAttribute('aria-hidden', 'true');
+                box.appendChild(mark);
+            }
             global.MusicFluid.slide(mark, { left: (t.left - b.left) * k, width: t.width * k }, { key: 'archive-kinds' });
         };
         let kindMarkRaf = 0;
