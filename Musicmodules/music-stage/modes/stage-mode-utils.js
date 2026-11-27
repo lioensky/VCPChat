@@ -620,7 +620,10 @@
             try { if (fonts.check(font, text)) continue; } catch (_) { continue; }
             ready = false;
             const key = `${font}|${text}`;
-            if (!fontLoads.has(key)) fontLoads.set(key, fonts.load(font, text).catch(() => []));
+            if (!fontLoads.has(key)) {
+                if (fontLoads.size >= 64) fontLoads.delete(fontLoads.keys().next().value);
+                fontLoads.set(key, fonts.load(font, text).catch(() => []));
+            }
             pending.push(fontLoads.get(key));
         }
         if (!ready && typeof onLoaded === 'function') Promise.all(pending).then(() => onLoaded());
@@ -887,14 +890,27 @@ void main() {
             const shader = gl.createShader(type);
             gl.shaderSource(shader, source);
             gl.compileShader(shader);
-            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(`[${label}] shader: ${gl.getShaderInfoLog(shader)}`);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                const log = gl.getShaderInfoLog(shader);
+                gl.deleteShader(shader);
+                throw new Error(`[${label}] shader: ${log}`);
+            }
             return shader;
         };
         const program = gl.createProgram();
-        gl.attachShader(program, compile(gl.VERTEX_SHADER, vert));
-        gl.attachShader(program, compile(gl.FRAGMENT_SHADER, frag));
+        const vs = compile(gl.VERTEX_SHADER, vert);
+        let fs;
+        try { fs = compile(gl.FRAGMENT_SHADER, frag); } catch (err) { gl.deleteShader(vs); gl.deleteProgram(program); throw err; }
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
         gl.linkProgram(program);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[${label}] link: ${gl.getProgramInfoLog(program)}`);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            const log = gl.getProgramInfoLog(program);
+            gl.deleteProgram(program);
+            throw new Error(`[${label}] link: ${log}`);
+        }
         const uniforms = {};
         const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
         for (let i = 0; i < count; i += 1) {
@@ -974,7 +990,7 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
     outColor = vec4(col * smoothstep(uKnee.x, uKnee.x + uKnee.y, lum), 1.0);
 }` : `    // 金字塔逐级相加，五级叠起来约是原亮度的五倍
     if (uBloom > 0.0) col += texture(uBloomTex, uv).rgb * (uBloom / ${BLOOM_LEVELS}.0);
-    col += (hash12(floor(gl_FragCoord.xy / 1.5) + uGrainStep * 11.0) - 0.5) * 0.025 * uGrain;
+    if (uGrain > 0.0) col += (hash12(floor(gl_FragCoord.xy / 1.5) + uGrainStep * 11.0) - 0.5) * 0.025 * uGrain;
     outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`}`;
         const { program, uniforms } = compileProgram(gl, SPLIT_VERT, frag(false), `${label}:sharp`);
@@ -1073,12 +1089,14 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
             begin(w, h) {
                 if (w !== size[0] || h !== size[1]) {
                     size = [w, h];
+                    gl.activeTexture(gl.TEXTURE15);
                     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
                     layers.forEach((t, i) => {
                         gl.bindTexture(gl.TEXTURE_2D, t);
                         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
                         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, t, 0);
                     });
+                    gl.bindTexture(gl.TEXTURE_2D, null);
                 }
                 gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
                 gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
@@ -1122,8 +1140,11 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
             bind(w, h) {
                 if (w !== size[0] || h !== size[1]) {
                     size = [w, h];
+                    // 用保留单元 15 号改尺寸并立即解绑，避免覆盖调用方已绑定的采样单元造成 FBO 反馈环
+                    gl.activeTexture(gl.TEXTURE15);
                     gl.bindTexture(gl.TEXTURE_2D, tex);
                     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                    gl.bindTexture(gl.TEXTURE_2D, null);
                     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
                     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
                 }
@@ -1172,7 +1193,7 @@ void main() {
     vec2 uv = gl_FragCoord.xy / uRes;
     vec3 col = texture(uScene, uv).rgb;
     if (uBloom > 0.0) col += texture(uGlow, uv).rgb * (uBloom / ${BLOOM_LEVELS}.0);
-    col += (hash12(floor(gl_FragCoord.xy / 1.5) + uGrainStep * 11.0) - 0.5) * 0.025 * uGrain;
+    if (uGrain > 0.0) col += (hash12(floor(gl_FragCoord.xy / 1.5) + uGrainStep * 11.0) - 0.5) * 0.025 * uGrain;
     outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
         const seed = compileProgram(gl, SPLIT_VERT, seedFrag, `${label}:glow-seed`);
@@ -1201,6 +1222,7 @@ void main() {
                 const w0 = Math.max(1, sw >> start), h0 = Math.max(1, sh >> start);
                 if (base[0] !== w0 || base[1] !== h0) {
                     base = [w0, h0];
+                    gl.activeTexture(gl.TEXTURE15);
                     for (let i = 0; i < BLOOM_LEVELS; i += 1) {
                         if (!levels[i]) {
                             levels[i] = gl.createTexture(); fbos[i] = gl.createFramebuffer();
@@ -1215,6 +1237,7 @@ void main() {
                         gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[i]);
                         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, levels[i], 0);
                     }
+                    gl.bindTexture(gl.TEXTURE_2D, null);
                 }
                 const dims = i => [Math.max(1, w0 >> i), Math.max(1, h0 >> i)];
                 gl.bindVertexArray(vao);
@@ -1317,6 +1340,7 @@ flat out vec4 vCtr;
 flat out vec4 vLook;
 flat out vec4 vBlock;
 void main() {
+    if (aLook.x <= 0.001) { gl_Position = vec4(2.0, 2.0, 0.0, 1.0); return; }
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
     vec2 t = mix(aBox.xy, aBox.zw, corner);
     vec2 rel = (t - aCtr.xy) * uTextSize;
@@ -1346,49 +1370,57 @@ flat in vec4 vCtr;
 flat in vec4 vLook;
 flat in vec4 vBlock;
 out vec4 outColor;
+const vec2 RIM_DIR[8] = vec2[8](
+    vec2(1.0, 0.0), vec2(0.707107, 0.707107), vec2(0.0, 1.0), vec2(-0.707107, 0.707107),
+    vec2(-1.0, 0.0), vec2(-0.707107, -0.707107), vec2(0.0, -1.0), vec2(0.707107, -0.707107)
+);
 // 只取自己这个字的笔画（字框按编号写在 G 通道），邻字伸进外框的笔画不跟着动
-float cov(vec2 uv) {
+float cov(vec2 uv, vec2 dtx, vec2 dty) {
     // 整句虚着的时候模糊会溢出字框，按字框裁会露出方边：这时不裁（邻字的虚影本来也看不清）
     if (uLod > 1.0) return textureLod(uText, uv, uLod).r;
     ivec2 p = clamp(ivec2(uv * uTextSize), ivec2(0), ivec2(uTextSize) - 1);
     if (int(texelFetch(uText, p, 0).g * 255.0 + 0.5) != int(vCtr.z + 0.5)) return 0.0;
-    return uLod >= 0.0 ? textureLod(uText, uv, uLod).r : texture(uText, uv).r;
+    return uLod >= 0.0 ? textureLod(uText, uv, uLod).r : textureGrad(uText, uv, dtx, dty).r;
 }
 void main() {
-    float r = cov(vTex);
-    vec2 px = vCtr.w / uTextSize;
+    vec2 dtx = dFdx(vTex), dty = dFdy(vTex);
+    float r = cov(vTex, dtx, dty);
     vec4 o = vec4(0.0);
-    if (vLook.z > 0.5 && vLook.z < 1.5) {
-        // 深色硬边：字外一圈深色描边，右下一层半透明的硬投影，像剪下来贴上去
-        float rim = r;
-        for (int i = 0; i < 8; i++) {
-            float a = float(i) * 0.7854;
-            rim = max(rim, cov(vTex + vec2(cos(a), sin(a)) * px * 0.075));
+    // 实心笔画内部 (r >= 0.999) 会完全盖住底层描边/投影/荧光笔，跳过 11 次邻域采样
+    if (r < 0.999) {
+        vec2 px = vCtr.w / uTextSize;
+        if (vLook.z > 0.5 && vLook.z < 1.5) {
+            // 深色硬边：字外一圈深色描边，右下一层半透明的硬投影，像剪下来贴上去
+            float rim = r;
+            vec2 rimStep = px * 0.075;
+            for (int i = 0; i < 8; i++) {
+                rim = max(rim, cov(vTex + RIM_DIR[i] * rimStep, dtx, dty));
+            }
+            vec2 so = vec2(0.045, 0.06) * px;
+            float sh = max(cov(vTex - so, dtx, dty), max(cov(vTex - so + vec2(0.06, 0.0) * px, dtx, dty), cov(vTex - so - vec2(0.0, 0.06) * px, dtx, dty)));
+            o = vec4(0.0, 0.0, 0.0, sh * 0.5);
+            vec4 rc = vec4(vec3(0.071, 0.055, 0.118) * 0.92, 0.92) * rim;
+            o = rc + o * (1.0 - rc.a);
+        } else if (vLook.z > 1.5) {
+            // 浅纸：右下错开一点的白色压痕
+            float hl = cov(vTex - vec2(0.03, 0.04) * px, dtx, dty) * 0.5;
+            o = vec4(vec3(hl), hl);
         }
-        vec2 so = vec2(0.045, 0.06) * px;
-        float sh = max(cov(vTex - so), max(cov(vTex - so + vec2(0.06, 0.0) * px), cov(vTex - so - vec2(0.0, 0.06) * px)));
-        o = vec4(0.0, 0.0, 0.0, sh * 0.5);
-        vec4 rc = vec4(vec3(0.071, 0.055, 0.118) * 0.92, 0.92) * rim;
-        o = rc + o * (1.0 - rc.a);
-    } else if (vLook.z > 1.5) {
-        // 浅纸：右下错开一点的白色压痕
-        float hl = cov(vTex - vec2(0.03, 0.04) * px) * 0.5;
-        o = vec4(vec3(hl), hl);
-    }
-    if (vBlock.x > 0.5 && vBlock.y > 0.0) {
-        // 荧光笔：字的下半截一道色带，按唱的进度从左往右擦出来；相邻的字接成一条
-        vec2 d = (vTex - vCtr.xy) * uTextSize;
-        float ca = cos(vBlock.z), sa = sin(vBlock.z);
-        d = vec2(ca * d.x + sa * d.y, -sa * d.x + ca * d.y) / vCtr.w;
-        float hw = vBlock.w / vCtr.w;
-        float along = (d.x + hw) / (2.0 * hw);
-        float aa = 1.5 / vCtr.w;
-        float band = smoothstep(-0.12 - aa, -0.12, d.y) * (1.0 - smoothstep(0.34, 0.34 + aa, d.y))
-            * step(-hw - 0.03, d.x) * step(d.x, hw + 0.03) * (1.0 - smoothstep(vBlock.y - 0.02, vBlock.y, along));
-        // 笔触的边不是一刀切：上下沿按位置起伏一点
-        band *= 0.85 + 0.15 * sin(d.x * 9.0 + vCtr.z);
-        vec4 bc = vec4(uBlockCol.rgb, 1.0) * uBlockCol.a * band;
-        o = o + bc * (1.0 - o.a);
+        if (vBlock.x > 0.5 && vBlock.y > 0.0) {
+            // 荧光笔：字的下半截一道色带，按唱的进度从左往右擦出来；相邻的字接成一条
+            vec2 d = (vTex - vCtr.xy) * uTextSize;
+            float ca = cos(vBlock.z), sa = sin(vBlock.z);
+            d = vec2(ca * d.x + sa * d.y, -sa * d.x + ca * d.y) / vCtr.w;
+            float hw = vBlock.w / vCtr.w;
+            float along = (d.x + hw) / (2.0 * hw);
+            float aa = 1.5 / vCtr.w;
+            float band = smoothstep(-0.12 - aa, -0.12, d.y) * (1.0 - smoothstep(0.34, 0.34 + aa, d.y))
+                * step(-hw - 0.03, d.x) * step(d.x, hw + 0.03) * (1.0 - smoothstep(vBlock.y - 0.02, vBlock.y, along));
+            // 笔触的边不是一刀切：上下沿按位置起伏一点
+            band *= 0.85 + 0.15 * sin(d.x * 9.0 + vCtr.z);
+            vec4 bc = vec4(uBlockCol.rgb, 1.0) * uBlockCol.a * band;
+            o = o + bc * (1.0 - o.a);
+        }
     }
     vec3 fill = mix(texture(uTextLayer, vHome).rgb, uFill.rgb, uFill.a) + vec3(1.0, 0.97, 0.92) * vLook.y;
     o = vec4(fill * r, r) + o * (1.0 - r);
@@ -1397,6 +1429,7 @@ void main() {
         const { program, uniforms } = compileProgram(gl, vert, frag, `${label}:glyphs`);
         const vao = gl.createVertexArray();
         const buffer = gl.createBuffer();
+        let capacity = 0;
         gl.bindVertexArray(vao);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         for (let i = 0; i < GLYPH_FLOATS / 4; i += 1) {
@@ -1413,7 +1446,12 @@ void main() {
                 gl.useProgram(program);
                 gl.bindVertexArray(vao);
                 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-                gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, count * GLYPH_FLOATS), gl.DYNAMIC_DRAW);
+                const view = data.subarray(0, count * GLYPH_FLOATS);
+                if (view.byteLength > capacity) {
+                    capacity = Math.max(view.byteLength, 64 * GLYPH_FLOATS * 4);
+                    gl.bufferData(gl.ARRAY_BUFFER, capacity, gl.DYNAMIC_DRAW);
+                }
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, view);
                 bind(uniforms);
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);

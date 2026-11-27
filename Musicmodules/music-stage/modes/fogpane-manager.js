@@ -176,9 +176,10 @@
             const style = credit ? 'rows' : cjk && n <= 14 && random() < 0.25 ? 'vertical' : random() < 0.7 ? 'mixed' : 'rows';
             const perRow = style === 'mixed' ? (cjk ? 4.2 : 11) : cjk ? 9 : 20;
             const rows = Math.min(3, Math.max(1, Math.round(n / perRow)));
-            // 词的边界：中文也只在词与词之间换行
+            // 词的边界：中文也只在词与词之间换行（复用同一份 wordPlan，避免后面 mixed 模式重算）
+            const words = Utils.wordPlan(glyphs, `fogpane:${seedKey}:${index}`);
             const wordEnd = new Set();
-            Utils.wordPlan(glyphs, `fogpane:${seedKey}:${index}`).forEach(w => wordEnd.add(w.to - 1));
+            words.forEach(w => wordEnd.add(w.to - 1));
             // 字号：一行占窗宽六成上下，手写的字不会太整齐
             let base = clamp((W * (0.46 + random() * 0.14)) / Math.ceil(n / rows) / (cjk ? 1 : 0.55), Math.max(26, H * 0.065), H * 0.14) * fontScale;
             // 按行切开（拉丁字母在空格处换行）
@@ -216,7 +217,6 @@
             const sizes = style === 'mixed' ? rowsOf.map(r => r.map(() => 1)) : null;
             if (sizes) {
                 // 按词分主次：重点词写得大，「的」「着」这些写得小
-                const words = Utils.wordPlan(glyphs, `fogpane:${seedKey}:${index}`);
                 const scaleAt = new Map();
                 words.forEach(w => glyphs.slice(w.from, w.to).forEach(g => scaleAt.set(g, w.scale)));
                 rowsOf.forEach((r, ri) => r.forEach((g, gi) => { sizes[ri][gi] = scaleAt.get(g) ?? 1; }));
@@ -570,6 +570,10 @@ uniform float uGrainStep;
 out vec4 outColor;
 ${COMMON}
 
+const vec2 WET_DIR[8] = vec2[8](
+    vec2(0.924909, 0.380188), vec2(0.385175, 0.922844), vec2(-0.379812, 0.925064), vec2(-0.922690, 0.385543),
+    vec2(-0.925218, -0.379435), vec2(-0.385911, -0.922536), vec2(0.379058, -0.925372), vec2(0.922382, -0.386279)
+);
 // 指痕外沿积的水：手指把雾推到笔画两边，聚成一圈水。这个像素自己没被擦开、
 // 但旁边一小圈里有已经写到的笔画，就算在水线上（返回 0..1，越靠近笔画越满）。
 float wetEdge(sampler2D atlas, sampler2D data, vec4 info, vec2 uv) {
@@ -581,12 +585,10 @@ float wetEdge(sampler2D atlas, sampler2D data, vec4 info, vec2 uv) {
     vec4 tw = texelFetch(data, ivec2(id, 0), 0);
     float prog = clamp((uTime - tw.x) / max(tw.y, 0.05), 0.0, 1.0) * 1.12;
     if (prog <= 0.0) return 0.0;
-    vec2 px = 1.0 / uAtlasSize;
-    float rad = 0.0042 * uAtlasSize.y;
+    vec2 stepUv = (0.0042 * uAtlasSize.y) / uAtlasSize;
     float wet = 0.0;
     for (int i = 0; i < 8; i++) {
-        float a = float(i) * 0.7854 + 0.39;
-        vec4 t = texture(atlas, au + vec2(cos(a), sin(a)) * rad * px);
+        vec4 t = texture(atlas, au + WET_DIR[i] * stepUv);
         if (t.r < 0.3) continue;
         float sp = t.b > 0.0 ? t.b : 1.0;
         wet = max(wet, smoothstep(sp - 0.03, sp, prog) * smoothstep(0.3, 0.8, t.r));
@@ -742,7 +744,7 @@ void main() {
         }
         col += uBeamCol * beam * uBeam.z * mix(0.34, 0.14, wipe);
     }
-    col += (hash12(floor(gl_FragCoord.xy / 1.5) + uGrainStep * 13.0) - 0.5) * 0.03 * uGrain;
+    if (uGrain > 0.0) col += (hash12(floor(gl_FragCoord.xy / 1.5) + uGrainStep * 13.0) - 0.5) * 0.03 * uGrain;
     // 窗框四周暗一点
     vec2 v = uv - 0.5;
     col *= 1.0 - dot(v, v) * 0.55;
@@ -844,9 +846,13 @@ void main() {
     };
     const link = (gl, frag) => {
         const program = gl.createProgram();
-        gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERT));
-        gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, frag));
+        const vs = compile(gl, gl.VERTEX_SHADER, VERT);
+        const fs = compile(gl, gl.FRAGMENT_SHADER, frag);
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
         gl.linkProgram(program);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[fogpane] link: ${gl.getProgramInfoLog(program)}`);
         const uniforms = {};
         const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);

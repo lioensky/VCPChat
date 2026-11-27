@@ -387,7 +387,7 @@ void main() {
 
     vec2 v = uv - 0.5;
     col *= 1.0 - dot(v, v) * mix(0.5, 0.18, uLight);
-    col += (hash12(floor(frag / 1.5) + uGrainStep * 11.0) - 0.5) * 0.03 * uGrain;
+    if (uGrain > 0.0) col += (hash12(floor(frag / 1.5) + uGrainStep * 11.0) - 0.5) * 0.03 * uGrain;
     outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
@@ -405,9 +405,13 @@ void main() {
             return shader;
         };
         const program = gl.createProgram();
-        gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
-        gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG));
+        const vs = compile(gl.VERTEX_SHADER, VERT);
+        const fs = compile(gl.FRAGMENT_SHADER, FRAG);
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
         gl.linkProgram(program);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[signal] link: ${gl.getProgramInfoLog(program)}`);
         const uniforms = {};
         const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);

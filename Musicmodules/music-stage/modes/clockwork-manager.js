@@ -287,11 +287,13 @@ void main() {
             vec2 c = hubC + off + vec2(0.62 + fi * 0.31 + sin(fi * 3.1) * 0.08, sin(fi * 2.3) * 0.36);
             if (i == 4) c = hubC + off + vec2(-0.05, 0.0);
             float R = i == 4 ? 0.46 : 0.07 + fract(fi * 0.618) * 0.09;
+            vec2 dc = p - c;
+            float r = length(dc);
+            if (r > R * 1.2 + 0.02) continue;
             float teeth = i == 4 ? 96.0 : floor(R * 220.0);
             float ang = uGear * (i == 4 ? -0.75 : (mod(fi, 2.0) < 1.0 ? 1.0 : -1.0) * 72.0 / teeth * 0.3);
-            vec3 gw = gear(p - c, R, teeth, i == 4 ? 7.0 : 3.0 + mod(fi, 3.0), ang, aa * 1.2);
+            vec3 gw = gear(dc, R, teeth, i == 4 ? 7.0 : 3.0 + mod(fi, 3.0), ang, aa * 1.2);
             wl = max(wl, gw.x * (1.0 - gw.x) * 4.0);
-            float r = length(p - c);
             wl = max(wl, (1.0 - smoothstep(0.0, aa * 1.2, abs(r - R * 0.55))) * 0.6);
         }
         // 作图线：过主轴的几条放射线和同心圆
@@ -314,22 +316,26 @@ void main() {
     {
         vec2 q = p - hubC;
         float r = length(q);
-        float a = atan(q.y, q.x);
         float ringIn = 0.355, ringOut = 0.385;
-        float inRing = smoothstep(ringIn - aa, ringIn, r) * (1.0 - smoothstep(ringOut, ringOut + aa, r));
-        float tick = abs(fract(a * 60.0 / (2.0 * PI) + 0.5) - 0.5) * 2.0 * PI * r / 60.0;
-        float major = step(abs(fract(a * 12.0 / (2.0 * PI) + 0.5) - 0.5), 0.02);
-        float tw = mix(0.0012, 0.0024, major);
-        float len = mix(0.37, 0.358, major);
-        float mark = (1.0 - smoothstep(tw, tw + aa, tick)) * smoothstep(len - aa, len, r) * inRing;
-        float line = (1.0 - smoothstep(0.0012, 0.0012 + aa, abs(r - ringOut + 0.002)));
-        float here = 1.0 - smoothstep(0.03, 0.05, abs(a));
-        vec3 ink = mix(uInk, uAccent, here);
-        col = mix(col, ink, (mark + line * 0.8) * min(1.0, 0.55 + uBeat * 0.45));
+        if (r >= ringIn - aa && r <= ringOut + aa + 0.002) {
+            float a = atan(q.y, q.x);
+            float inRing = smoothstep(ringIn - aa, ringIn, r) * (1.0 - smoothstep(ringOut, ringOut + aa, r));
+            float tick = abs(fract(a * 60.0 / (2.0 * PI) + 0.5) - 0.5) * 2.0 * PI * r / 60.0;
+            float major = step(abs(fract(a * 12.0 / (2.0 * PI) + 0.5) - 0.5), 0.02);
+            float tw = mix(0.0012, 0.0024, major);
+            float len = mix(0.37, 0.358, major);
+            float mark = (1.0 - smoothstep(tw, tw + aa, tick)) * smoothstep(len - aa, len, r) * inRing;
+            float line = (1.0 - smoothstep(0.0012, 0.0012 + aa, abs(r - ringOut + 0.002)));
+            float here = 1.0 - smoothstep(0.03, 0.05, abs(a));
+            vec3 ink = mix(uInk, uAccent, here);
+            col = mix(col, ink, (mark + line * 0.8) * min(1.0, 0.55 + uBeat * 0.45));
+        }
         // 鼓点：刻度一圈亮起来，再从轴心推出一道冲击波
-        float wave = 0.39 + (1.0 - uBeat) * 0.55;
-        float shock = exp(-pow((r - wave) / 0.006, 2.0)) * uBeat * uBeat;
-        col += mix(uInk, uAccent, 0.4) * shock * 0.35;
+        if (uBeat > 0.001) {
+            float wave = 0.39 + (1.0 - uBeat) * 0.55;
+            float shock = exp(-pow((r - wave) / 0.006, 2.0)) * uBeat * uBeat;
+            col += mix(uInk, uAccent, 0.4) * shock * 0.35;
+        }
     }
 
     // 落影
@@ -431,22 +437,24 @@ void main() {
     // 中间一道棱（一侧亮一侧暗），底下压一道淡的落影
     if (uSecondHand > 0.5) {
         vec2 q = p + L1 + lift * 0.012 - hubC;   // 秒针装在宝石上面，跟着最高那层错开
-        vec2 dir = vec2(cos(uSecond), sin(uSecond));
-        vec2 shadowQ = q - vec2(0.006, -0.009);
-        for (int pass = 0; pass < 2; pass++) {
-            vec2 hq = pass == 0 ? shadowQ : q;
-            float along = dot(hq, dir);
-            float signed = dir.x * hq.y - dir.y * hq.x;
-            float wHalf = mix(0.0034, 0.0009, clamp(along / 0.36, 0.0, 1.0));
-            float hand = (1.0 - smoothstep(wHalf, wHalf + aa, abs(signed))) * step(-0.05, along) * step(along, 0.36);
-            float tail = 1.0 - smoothstep(0.0075 - aa, 0.0075, length(hq + dir * 0.05));
-            float m = max(hand, tail);
-            if (pass == 0) { col *= 1.0 - m * mix(0.4, 0.2, uLight); continue; }
-            if (m <= 0.0) break;
-            float ridge = clamp(signed / max(wHalf, 1e-4), -1.0, 1.0);
-            vec3 nh = normalize(vec3(-dir.y * ridge * 0.7, dir.x * ridge * 0.7, 1.0));
-            vec3 hc = shadePolished(uAccent, nh, sp) * 1.25 + uAccent * 0.12;
-            col = mix(col, hc, m);
+        if (dot(q, q) < 0.18) {
+            vec2 dir = vec2(cos(uSecond), sin(uSecond));
+            vec2 shadowQ = q - vec2(0.006, -0.009);
+            for (int pass = 0; pass < 2; pass++) {
+                vec2 hq = pass == 0 ? shadowQ : q;
+                float along = dot(hq, dir);
+                float signed = dir.x * hq.y - dir.y * hq.x;
+                float wHalf = mix(0.0034, 0.0009, clamp(along / 0.36, 0.0, 1.0));
+                float hand = (1.0 - smoothstep(wHalf, wHalf + aa, abs(signed))) * step(-0.05, along) * step(along, 0.36);
+                float tail = 1.0 - smoothstep(0.0075 - aa, 0.0075, length(hq + dir * 0.05));
+                float m = max(hand, tail);
+                if (pass == 0) { col *= 1.0 - m * mix(0.4, 0.2, uLight); continue; }
+                if (m <= 0.0) break;
+                float ridge = clamp(signed / max(wHalf, 1e-4), -1.0, 1.0);
+                vec3 nh = normalize(vec3(-dir.y * ridge * 0.7, dir.x * ridge * 0.7, 1.0));
+                vec3 hc = shadePolished(uAccent, nh, sp) * 1.25 + uAccent * 0.12;
+                col = mix(col, hc, m);
+            }
         }
     }
 
@@ -498,7 +506,7 @@ void main() {
 
     vec2 v = uv - vec2(0.35, 0.5);
     col *= 1.0 - dot(v, v) * mix(0.55, 0.25, uLight);
-    col += (hash12(floor(gl_FragCoord.xy / 1.5) + uGrainStep * 11.0) - 0.5) * 0.03 * uGrain;
+    if (uGrain > 0.0) col += (hash12(floor(gl_FragCoord.xy / 1.5) + uGrainStep * 11.0) - 0.5) * 0.03 * uGrain;
     outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
@@ -542,9 +550,13 @@ void main() {
         };
         const link = (frag) => {
             const program = gl.createProgram();
-            gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
-            gl.attachShader(program, compile(gl.FRAGMENT_SHADER, frag));
+            const vs = compile(gl.VERTEX_SHADER, VERT);
+            const fs = compile(gl.FRAGMENT_SHADER, frag);
+            gl.attachShader(program, vs);
+            gl.attachShader(program, fs);
             gl.linkProgram(program);
+            gl.deleteShader(vs);
+            gl.deleteShader(fs);
             if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[clockwork] link: ${gl.getProgramInfoLog(program)}`);
             const uniforms = {};
             const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);

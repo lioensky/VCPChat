@@ -347,7 +347,7 @@ out vec2 vLocal;
 void main() {
     int g = gl_VertexID / 6;
     int k = gl_VertexID - g * 6;
-    if (g >= uCount) { gl_Position = vec4(2.0, 2.0, 0.0, 1.0); vTex = vec2(0.0); vInfo = vec3(0.0); vBlur = 0.0; vLocal = vec2(0.0); return; }
+    if (g >= uCount || uB[g].y <= 0.001) { gl_Position = vec4(2.0, 2.0, 0.0, 1.0); vTex = vec2(0.0); vInfo = vec3(0.0); vBlur = 0.0; vLocal = vec2(0.0); return; }
     vec2 corner = vec2(k == 1 || k == 2 || k == 4 ? 1.0 : 0.0, k == 2 || k == 4 || k == 5 ? 1.0 : 0.0);
     vec4 a = uA[g];
     vec4 b = uB[g];
@@ -385,13 +385,17 @@ void main() {
     float sung = vInfo.z;
     // 景深：轨道后半圈的字虚一点
     float m = textureLod(uAtlas, vTex, vBlur * 1.8).r * (1.0 + vBlur * 0.25);
-    // 光晕取字图的模糊层，到四边形边上淡到 0，免得切出方块
-    float fall = smoothstep(0.5, 0.32, max(abs(vLocal.x), abs(vLocal.y)));
-    float halo = textureLod(uAtlas, vTex, 3.0).r * fall * uHalo;
+    // 光晕取字图的模糊层，到四边形边上淡到 0，免得切出方块；未在唱的字不采样模糊层
+    float halo = 0.0;
+    float wide = 0.0;
+    if (singing > 0.001) {
+        float fall = smoothstep(0.5, 0.32, max(abs(vLocal.x), abs(vLocal.y)));
+        halo = textureLod(uAtlas, vTex, 3.0).r * fall * uHalo;
+        // 副歌：外面再套一圈更大的光晕，字心发白（像相机闪光）
+        if (uChorusLine > 0.01) wide = textureLod(uAtlas, vTex, 4.3).r * uChorusLine * fall * uHalo;
+    }
     vec3 col = mix(uInk, uAccent, singing);
     float body = m * mix(uWaiting, 1.0, max(sung, singing));
-    // 副歌：外面再套一圈更大的光晕，字心发白（像相机闪光）
-    float wide = uChorusLine > 0.01 ? textureLod(uAtlas, vTex, 4.3).r * uChorusLine * fall * uHalo : 0.0;
     float a = clamp(body + halo * singing * (0.6 + flash) + wide * singing * 0.55, 0.0, 1.0) * alpha;
     vec3 c = mix(col, uAccent, (1.0 - step(0.02, m)) * singing);
     c = mix(c, uInk, clamp(m * singing * (0.4 * uChorusLine + flash * 0.6), 0.0, 0.75));
@@ -413,9 +417,13 @@ void main() {
         };
         const link = (vs, fs) => {
             const program = gl.createProgram();
-            gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
-            gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
+            const v = compile(gl.VERTEX_SHADER, vs);
+            const f = compile(gl.FRAGMENT_SHADER, fs);
+            gl.attachShader(program, v);
+            gl.attachShader(program, f);
             gl.linkProgram(program);
+            gl.deleteShader(v);
+            gl.deleteShader(f);
             if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[orbit] link: ${gl.getProgramInfoLog(program)}`);
             const uniforms = {};
             const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);

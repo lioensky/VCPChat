@@ -211,6 +211,7 @@ vec3 lightAt(vec2 p, float aspect, out float total) {
         if (along <= 0.0) continue;
         float perp = d.x * v.y - d.y * v.x;
         float ang = abs(atan(perp, along));
+        if (ang >= b.w * 1.35) continue;
         // 锥边软一些（舞台灯打在烟里不是硬边），中心不爆白
         float cone = smoothstep(b.w * 1.35, 0.0, ang);
         cone *= cone;
@@ -246,17 +247,6 @@ vec3 lightAt(vec2 p, float aspect, out float total) {
         total *= 0.55 + caustic * 1.4;
     }
     return col;
-}
-
-float glyphReveal(int gid) {
-    if (gid <= 0) return 0.0;
-    vec2 se = texelFetch(uGlyph, ivec2(gid, 0), 0).xy;
-    return smoothstep(se.x - 0.12, se.x + 0.12, uTime);
-}
-float glyphSinging(int gid) {
-    if (gid <= 0) return 0.0;
-    vec2 se = texelFetch(uGlyph, ivec2(gid, 0), 0).xy;
-    return smoothstep(se.x - 0.1, se.x + 0.05, uTime) * (1.0 - smoothstep(se.y, se.y + 0.5, uTime));
 }
 
 void main() {
@@ -323,9 +313,14 @@ void main() {
     {
         float halo = textureLod(uText, t1, 3.5 + uFocus + uLodBias).r;
         int gid = int(texelFetch(uText, clamp(ivec2(t1 * uTextSize), ivec2(0), ivec2(uTextSize) - 1), 0).g * 255.0 + 0.5);
-        float reveal = glyphReveal(gid);
-        // 虚着的时候字框里没有清楚的笔画，按字框上色会糊成一块金色方块：对焦完成前不上唱到的颜色
-        float singing = glyphSinging(gid) * (1.0 - uFocus) * (1.0 - uFocus);
+        float reveal = 0.0;
+        float singing = 0.0;
+        if (gid > 0) {
+            vec2 se = texelFetch(uGlyph, ivec2(gid, 0), 0).xy;
+            reveal = smoothstep(se.x - 0.12, se.x + 0.12, uTime);
+            // 虚着的时候字框里没有清楚的笔画，按字框上色会糊成一块金色方块：对焦完成前不上唱到的颜色
+            singing = smoothstep(se.x - 0.1, se.x + 0.05, uTime) * (1.0 - smoothstep(se.y, se.y + 0.5, uTime)) * (1.0 - uFocus) * (1.0 - uFocus);
+        }
         float body = uWaiting * (1.0 - reveal) + reveal * (0.8 + lit * 0.5);
         vec3 ink = mix(uInk, mix(uInk, light / max(total, 0.001), 0.3), clamp(lit, 0.0, 1.0));
         // 字压在光上要读得清：字周围的光和烟压暗一圈（光越亮压得越多），字本身比光亮
@@ -392,6 +387,7 @@ void main() {
             float speed = 0.25 + h2 * 0.35;
             vec2 head = vec2(h1 * aspect, 1.15 - fract(uLocal * speed + h2) * 1.4);
             vec2 d = p - head;
+            if (abs(d.x) > 0.035 || d.y < -0.035 || d.y > 0.2) continue;
             float along = d.y;
             float tail = smoothstep(0.18, 0.0, along) * step(0.0, along) * exp(-abs(d.x) * 900.0);
             float core = exp(-dot(d, d) * 9000.0);
@@ -448,9 +444,13 @@ vec2 home(vec2 t) {
             return shader;
         };
         const program = gl.createProgram();
-        gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
-        gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG));
+        const vs = compile(gl.VERTEX_SHADER, VERT);
+        const fs = compile(gl.FRAGMENT_SHADER, FRAG);
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
         gl.linkProgram(program);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[lumiere] link: ${gl.getProgramInfoLog(program)}`);
         const uniforms = {};
         const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);

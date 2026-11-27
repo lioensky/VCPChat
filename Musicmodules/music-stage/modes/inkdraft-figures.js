@@ -132,35 +132,45 @@
             }
             if (!tone) order = Math.min(255, order + 1);
         };
-        // Both canvases trace the same path; the ids canvas at its own scale.
+        // Both canvases trace the same path in one pass without intermediate tuple allocations.
         const path = (points, closed = false) => {
             if (points.length < 2) return;
+            const traceIds = Boolean(ids && !tone);
             ink.beginPath();
-            points.forEach(([x, y], index) => {
-                const [px, py] = map(x, y);
+            if (traceIds) ids.beginPath();
+            for (let index = 0; index < points.length; index += 1) {
+                const pt = points[index];
+                const x = pt[0], y = pt[1];
+                const px = x0 + (x * cos - y * sin) * radius;
+                const py = y0 + (x * sin + y * cos) * radius;
                 grow(px, py);
-                if (index) ink.lineTo(px, py); else ink.moveTo(px, py);
-            });
-            if (closed) ink.closePath();
-            if (ids && !tone) {
-                ids.beginPath();
-                points.forEach(([x, y], index) => {
-                    const [px, py] = map(x, y);
-                    if (index) ids.lineTo(px * idScale, py * idScale); else ids.moveTo(px * idScale, py * idScale);
-                });
-                if (closed) ids.closePath();
+                if (index) {
+                    ink.lineTo(px, py);
+                    if (traceIds) ids.lineTo(px * idScale, py * idScale);
+                } else {
+                    ink.moveTo(px, py);
+                    if (traceIds) ids.moveTo(px * idScale, py * idScale);
+                }
+            }
+            if (closed) {
+                ink.closePath();
+                if (traceIds) ids.closePath();
             }
         };
         const segments = (pairs) => {
+            const traceIds = Boolean(ids && !tone);
             ink.beginPath();
-            if (ids && !tone) ids.beginPath();
-            pairs.forEach(([a, b]) => {
-                const [ax, ay] = map(a[0], a[1]);
-                const [bx, by] = map(b[0], b[1]);
+            if (traceIds) ids.beginPath();
+            for (let i = 0; i < pairs.length; i += 1) {
+                const a = pairs[i][0], b = pairs[i][1];
+                const ax = x0 + (a[0] * cos - a[1] * sin) * radius;
+                const ay = y0 + (a[0] * sin + a[1] * cos) * radius;
+                const bx = x0 + (b[0] * cos - b[1] * sin) * radius;
+                const by = y0 + (b[0] * sin + b[1] * cos) * radius;
                 grow(ax, ay); grow(bx, by);
                 ink.moveTo(ax, ay); ink.lineTo(bx, by);
-                if (ids && !tone) { ids.moveTo(ax * idScale, ay * idScale); ids.lineTo(bx * idScale, by * idScale); }
-            });
+                if (traceIds) { ids.moveTo(ax * idScale, ay * idScale); ids.lineTo(bx * idScale, by * idScale); }
+            }
         };
 
         const pen = {

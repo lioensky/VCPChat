@@ -540,17 +540,21 @@ void main() {
 
     // 鼓点：天上随手炸开一朵小花（一圈小星，往外散、往下坠、变暗）
     if (uPop.z >= 0.0 && uPop.z < 1.1) {
-        float age = uPop.z;
-        vec3 pc = 0.5 + 0.5 * cos(6.2832 * (uPop.w + vec3(0.0, 0.33, 0.67)));
-        for (int i = 0; i < 20; i++) {
-            float a = float(i) / 20.0 * 6.2832 + uPop.w * 3.0;
+        vec2 popC = vec2(uPop.x * aspect, uPop.y);
+        vec2 d0 = p - popC;
+        if (dot(d0, d0) < 0.06) {
+            float age = uPop.z;
+            vec3 pc = 0.5 + 0.5 * cos(6.2832 * (uPop.w + vec3(0.0, 0.33, 0.67)));
             float rr = 0.09 * (1.0 - exp(-age * 4.0));
-            vec2 c = vec2(uPop.x * aspect, uPop.y) + vec2(cos(a), sin(a)) * rr - vec2(0.0, age * age * 0.04);
-            vec2 d = p - c;
-            extra += pc * exp(-dot(d, d) * 30000.0) * (1.0 - age / 1.1) * 1.4;
+            vec2 baseC = popC - vec2(0.0, age * age * 0.04);
+            float starGain = (1.0 - age / 1.1) * 1.4;
+            for (int i = 0; i < 20; i++) {
+                float a = float(i) * 0.314159 + uPop.w * 3.0;
+                vec2 d = p - (baseC + vec2(cos(a), sin(a)) * rr);
+                extra += pc * exp(-dot(d, d) * 30000.0) * starGain;
+            }
+            extra += pc * exp(-dot(d0, d0) * 300.0) * exp(-age * 8.0) * 0.4;
         }
-        vec2 d0 = p - vec2(uPop.x * aspect, uPop.y);
-        extra += pc * exp(-dot(d0, d0) * 300.0) * exp(-age * 8.0) * 0.4;
     }
     if (uFuseAt >= 0.0) {
         vec2 a = vec2(uFuse.x, 1.0 - uFuse.y), b = vec2(uFuse.z, 1.0 - uFuse.w);
@@ -580,6 +584,7 @@ void main() {
         if (i >= uSparkCount) break;
         vec4 s = uSpark[i];
         vec2 d = (uv - s.xy) * vec2(aspect, 1.0) / s.z;
+        if (min(abs(d.x), abs(d.y)) > 0.12 && dot(d, d) > 0.3) continue;
         float core = exp(-dot(d, d) * 60.0);
         float cross = exp(-abs(d.x) * 70.0) * exp(-abs(d.y) * 4.0) + exp(-abs(d.y) * 70.0) * exp(-abs(d.x) * 4.0);
         extra += mix(uInk, uAccent, 0.5) * (core * 1.3 + cross * 0.5) * s.w;
@@ -798,9 +803,13 @@ vec2 home(vec2 t) {
         };
         const link = (vs, fs) => {
             const program = gl.createProgram();
-            gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
-            gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
+            const v = compile(gl.VERTEX_SHADER, vs);
+            const f = compile(gl.FRAGMENT_SHADER, fs);
+            gl.attachShader(program, v);
+            gl.attachShader(program, f);
             gl.linkProgram(program);
+            gl.deleteShader(v);
+            gl.deleteShader(f);
             if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[hanabi] link: ${gl.getProgramInfoLog(program)}`);
             const uniforms = {};
             const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);

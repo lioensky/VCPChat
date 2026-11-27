@@ -429,9 +429,13 @@ void main() {
     };
     const link = (gl, frag) => {
         const program = gl.createProgram();
-        gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERT));
-        gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, frag));
+        const vs = compile(gl, gl.VERTEX_SHADER, VERT);
+        const fs = compile(gl, gl.FRAGMENT_SHADER, frag);
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
         gl.linkProgram(program);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[impression] link: ${gl.getProgramInfoLog(program)}`);
         const uniforms = {};
         const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
