@@ -284,3 +284,53 @@ test('Batch 55: archive-list setKind suppresses duplicate reveal render and sear
         w.close();
     }
 });
+
+test('Batch 69: archive-list placeKindMark reads layout before creating .archive-kind-mark and skips zero-width boxes', () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        const slides = [];
+        const pendingRafs = [];
+        const flushRafs = () => { while (pendingRafs.length) pendingRafs.shift()(0); };
+        w.MusicFluid = { slide: (el, pos) => slides.push({ el, pos }) };
+        w.requestAnimationFrame = (fn) => { pendingRafs.push(fn); return pendingRafs.length; };
+        w.cancelAnimationFrame = () => {};
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-index.js', 'utf8'));
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-list.js', 'utf8'));
+        const host = w.document.getElementById('host');
+        const tracks = [{ path: '/m/0.flac', title: 'Song 0', artist: 'A', album: 'B', duration: 120 }];
+        const index = w.MusicArchiveIndex.createIndex(tracks);
+        const list = w.MusicArchiveList.create({
+            host, app: { playlist: tracks, customPlaylists: [] }, Index: w.MusicArchiveIndex,
+            getIndex: () => index, getRecent: () => [], onPick() {}, onPlay() {}
+        });
+        const kindsBox = list.el.querySelector('[data-l="kinds"]');
+        // Zero-width hidden box: must NOT create/append .archive-kind-mark
+        w.Range.prototype.getBoundingClientRect = () => ({ left: 0, width: 0 });
+        list.rebuild();
+        flushRafs();
+        assert.equal(kindsBox.querySelector('.archive-kind-mark'), null, 'zero-width kinds box does not append .archive-kind-mark');
+
+        // Non-zero geometry: getBoundingClientRect must occur BEFORE appendChild creates .archive-kind-mark
+        const order = [];
+        const origAppend = kindsBox.appendChild.bind(kindsBox);
+        kindsBox.appendChild = (child) => {
+            if (child?.classList?.contains('archive-kind-mark')) order.push('append-mark');
+            return origAppend(child);
+        };
+        kindsBox.getBoundingClientRect = () => { order.push('read-box'); return { left: 10, width: 200 }; };
+        Object.defineProperty(kindsBox, 'offsetWidth', { get: () => 200, configurable: true });
+        w.Range.prototype.getBoundingClientRect = function () { order.push('read-range'); return { left: 20, width: 40 }; };
+
+        list.setKind('artist');
+        flushRafs();
+        assert.ok(kindsBox.querySelector('.archive-kind-mark'), '.archive-kind-mark created when geometry is valid');
+        assert.deepEqual(order.slice(0, 3), ['read-range', 'read-box', 'append-mark'], 'reads geometry before mutating DOM');
+        assert.equal(slides.length > 0, true);
+        list.destroy();
+    } finally {
+        w.close();
+    }
+});

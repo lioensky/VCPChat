@@ -1763,3 +1763,61 @@ test('Batch 68: openPanel skips body placeMarks on queue tab and closePanel canc
         window.close();
     }
 });
+
+test('Batch 69: dock scopes --md-shift/--md-bar-w/--md-vgrow off #music-dock-root and palette caches commands across keystrokes', () => {
+    const { window, doc, app, dock } = setup((_app, w) => {
+        Object.defineProperty(w, 'innerWidth', { value: 1200, configurable: true });
+        Object.defineProperty(w, 'innerHeight', { value: 800, configurable: true });
+    });
+    try {
+        const root = doc.getElementById('music-dock-root');
+        const dockEl = root.querySelector('.md-dock');
+        const hdl = root.querySelector('.md-hdl');
+        const vrail = root.querySelector('.md-vrail');
+        const svg = root.querySelector('.md-fluid');
+        const mist = root.querySelector('.md-mist');
+
+        // Open drawer so syncShift computes a negative shift
+        dock.openPanel('控制');
+        assert.equal(root.style.getPropertyValue('--md-shift'), '', '--md-shift is NOT written onto #music-dock-root');
+        assert.equal(root.style.getPropertyValue('--md-bar-w'), '', '--md-bar-w is NOT written onto #music-dock-root');
+        assert.equal(root.style.getPropertyValue('--md-mist-pad'), '', '--md-mist-pad is NOT written onto #music-dock-root');
+        assert.notEqual(dockEl.style.getPropertyValue('--md-shift'), '', '--md-shift is written directly onto .md-dock');
+        assert.equal(hdl.style.getPropertyValue('--md-shift'), dockEl.style.getPropertyValue('--md-shift'));
+        if (svg) assert.equal(svg.style.getPropertyValue('--md-shift'), dockEl.style.getPropertyValue('--md-shift'));
+        if (mist) assert.equal(mist.style.getPropertyValue('--md-shift'), dockEl.style.getPropertyValue('--md-shift'));
+
+        // Close drawer clears --md-shift from target elements without touching #music-dock-root
+        dock.closePanel();
+        assert.equal(dockEl.style.getPropertyValue('--md-shift'), '', 'closing drawer removes --md-shift from .md-dock');
+        assert.equal(root.style.getPropertyValue('--md-shift'), '');
+
+        // Volume grow variable writes onto .md-vrail rather than #music-dock-root
+        if (svg) {
+            const cap = root.querySelector('.md-cap');
+            cap.getBoundingClientRect = () => ({ left: 280, right: 920, top: 710, bottom: 774, width: 640, height: 64 });
+            window.dispatchEvent(new window.Event('resize'));
+            assert.equal(root.style.getPropertyValue('--md-vgrow'), '', '--md-vgrow is NOT written onto #music-dock-root');
+            assert.notEqual(vrail.style.getPropertyValue('--md-vgrow'), '', '--md-vgrow is written directly onto .md-vrail');
+        }
+
+        // Palette caches command list across consecutive text keystrokes when state is unchanged
+        let m3uCalls = 0;
+        app.m3u = { commands: () => { m3uCalls += 1; return []; } };
+        dock.openPalette();
+        const input = root.querySelector('.md-cmd-in');
+        for (const text of ['a', 'ar', 'art']) {
+            input.value = text;
+            input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        }
+        assert.equal(m3uCalls, 1, 'commands() built once across consecutive keystrokes under unchanged state');
+        app.isPlaying = !app.isPlaying;
+        input.value = 'arti';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(m3uCalls, 2, 'commands() invalidates immediately when player state changes');
+        dock.closePalette();
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

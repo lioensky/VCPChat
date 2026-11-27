@@ -235,3 +235,33 @@ test('Batch 56: WebDAV/Engine/Lyrics IPC handlers avoid mutating caller configs 
     assert.equal(await handles.get('music-get-lyrics')({}, { title: '   ' }), null, 'blank title returns null safely');
     assert.equal(await handles.get('music-get-lyrics')({}, { title: 12345 }), null, 'non-string title does not throw');
 });
+
+test('Batch 69: webdavManager scans .alac/.aif/.dsf/.dff audio extensions and guards non-array entries', async () => {
+    let call = 0;
+    const engine = async (url) => {
+        if (url.includes('/webdav/configure')) return reply({ status: 'success' });
+        call += 1;
+        if (call === 1) {
+            return reply({
+                status: 'success',
+                path: '/hi-res',
+                entries: [
+                    { display_name: 'a.alac', href: '/hi-res/a.alac', url: 'https://nas/dav/hi-res/a.alac', is_dir: false },
+                    { display_name: 'b.aif', href: '/hi-res/b.aif', url: 'https://nas/dav/hi-res/b.aif', is_dir: false },
+                    { display_name: 'c.dsf', href: '/hi-res/c.dsf', url: 'https://nas/dav/hi-res/c.dsf', is_dir: false },
+                    { display_name: 'd.dff', href: '/hi-res/d.dff', url: 'https://nas/dav/hi-res/d.dff', is_dir: false },
+                    { display_name: 'readme.txt', href: '/hi-res/readme.txt', url: 'https://nas/dav/hi-res/readme.txt', is_dir: false }
+                ]
+            });
+        }
+        return reply({ status: 'success', path: '/broken', entries: 'not-an-array' });
+    };
+    const { api } = load({ engine });
+    const res = await api.scanAudioFiles({ url: 'https://nas/dav', username: 'u', password: 'p', path: '/hi-res' });
+    assert.equal(res.status, 'success');
+    assert.deepEqual(Array.from(res.tracks, (t) => t.name), ['a.alac', 'b.aif', 'c.dsf', 'd.dff']);
+
+    const bad = await api.listDirectory({ url: 'https://nas/dav', username: 'u', password: 'p', path: '/broken' });
+    assert.equal(bad.status, 'success');
+    assert.deepEqual(Array.from(bad.entries), [], 'non-array entries response normalized to empty array');
+});

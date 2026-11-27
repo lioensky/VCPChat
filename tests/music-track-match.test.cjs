@@ -66,3 +66,8 @@ test('per-track normalization cache refreshes when track metadata is mutated in 
     assert.equal(findTrack(list, 'beta'), track);
     assert.equal(findTrack(list, 'second'), track);
 });
+
+test('Batch 69: splitQuery handles en-dash separator consistently with hyphen and em-dash', () => {
+    assert.equal(pick('晴天 – 翻唱者'), 'D:\\M\\qt2.flac');
+    assert.equal(pick('晴天 — 翻唱者'), 'D:\\M\\qt2.flac');
+});

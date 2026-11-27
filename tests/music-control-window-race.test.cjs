@@ -25,6 +25,7 @@ function harness() {
             if (name === 'electron') return { ipcMain };
             if (name === 'fs-extra') return { pathExists: async () => true, readJson: async () => playlist };
             if (name === '../musicTrackMatch') return require(path.join(root, 'modules/musicTrackMatch'));
+            if (name === '../lyrics/lyricsMarkdown') return { formatCurrentLyrics: () => '当前未加载歌曲，没有歌词。' };
             if (['path', 'crypto', 'worker_threads'].includes(name)) return require(name);
             return {};
         }
@@ -104,4 +105,40 @@ test('music-library-folders rescan runs without requiring a folder path', async 
     const res = await handlers.get('music-library-folders')({ sender: win.webContents }, { op: 'rescan' });
     assert.equal(res.ok, true);
     assert.equal(rescans, 1);
+});
+
+test('Batch 69: handleMusicControl safely skips windows with destroyed webContents instead of throwing', async () => {
+    const ipcMain = new EventEmitter();
+    let sendCalls = 0;
+    const win = Object.assign(new EventEmitter(), {
+        isDestroyed: () => false,
+        webContents: {
+            isDestroyed: () => true,
+            send: () => { sendCalls += 1; throw new Error('Object has been destroyed'); }
+        }
+    });
+    const context = {
+        module: { exports: {} }, console: { log() {}, error() {}, warn() {} }, setTimeout, clearTimeout,
+        __dirname: path.join(root, 'modules/ipc'),
+        require(name) {
+            if (name === 'electron') return { ipcMain };
+            if (name === 'fs-extra') return { pathExists: async () => false, readJson: async () => [] };
+            if (name === '../musicTrackMatch') return require(path.join(root, 'modules/musicTrackMatch'));
+            if (name === '../lyrics/lyricsMarkdown') return { formatCurrentLyrics: () => '当前未加载歌曲，没有歌词。' };
+            if (['path', 'crypto', 'worker_threads'].includes(name)) return require(name);
+            return {};
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(source, context);
+    context.testWindow = win;
+    vm.runInContext('musicWindow = testWindow;', context);
+
+    const nextRes = await context.module.exports.handleMusicControl({ command: 'next' });
+    assert.equal(nextRes.status, 'error');
+    assert.equal(sendCalls, 0, 'never calls send() when webContents.isDestroyed() is true');
+
+    const lyricsRes = await context.module.exports.handleMusicControl({ command: 'getCurrentLyrics' });
+    assert.equal(lyricsRes.status, 'success');
+    assert.equal(sendCalls, 0, 'getCurrentLyrics skips destroyed webContents cleanly');
 });
