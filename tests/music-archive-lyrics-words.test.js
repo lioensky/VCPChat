@@ -163,3 +163,45 @@ test('archive lyrics skips 200ms timer for untimed plain lyrics while playing', 
     assert.equal(ly.debug().ticking, false, 'untimed plain lyrics do not spin 200ms tick interval');
     ly.destroy();
 });
+
+test('Batch 52: archive lyrics caches track offsetHeight across wheel events, caches b.ww, and dedupes --lp writes', () => {
+    const { window, ly, at } = setup({ playing: true });
+    const track = ly.el.querySelector('.archive-lyrics-track');
+    const vp = ly.el.querySelector('.archive-lyrics-viewport');
+    let heightReads = 0;
+    Object.defineProperty(track, 'offsetHeight', { get: () => { heightReads += 1; return 400; }, configurable: true });
+    Object.defineProperty(vp, 'clientHeight', { get: () => 120, configurable: true });
+
+    at(1.2);
+    const readsAfterInitial = heightReads;
+    for (let i = 0; i < 6; i += 1) {
+        vp.dispatchEvent(new window.WheelEvent('wheel', { deltaY: 40, bubbles: true, cancelable: true }));
+    }
+    assert.equal(heightReads, readsAfterInitial, 'wheel ticks reuse cached trackHeight without forced offsetHeight reflow');
+
+    // Same-line word ticks reuse cached b.ww without querying DOM again
+    let qsCalls = 0;
+    const line0 = track.children[0];
+    const origQs = line0.querySelector.bind(line0);
+    line0.querySelector = (...args) => { qsCalls += 1; return origQs(...args); };
+    at(1.4);
+    at(1.6);
+    at(1.8);
+    assert.equal(qsCalls, 0, 'subsequent ticks on active word line reuse cached b.ww element');
+
+    // Non-word line deduplicates identical --lp writes
+    at(4.5);
+    const line1 = track.children[1];
+    let lpWrites = 0;
+    const origSetProp = line1.style.setProperty.bind(line1.style);
+    line1.style.setProperty = (prop, val) => {
+        if (prop === '--lp') lpWrites += 1;
+        return origSetProp(prop, val);
+    };
+    at(4.5);
+    at(4.5);
+    assert.equal(lpWrites, 0, 'unchanged --lp percentage skips redundant style writes');
+    at(5.2);
+    assert.equal(lpWrites, 1, 'changed --lp percentage updates once');
+    ly.destroy();
+});

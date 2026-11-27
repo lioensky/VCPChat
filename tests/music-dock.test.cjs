@@ -1330,3 +1330,67 @@ test('queue drag clears row classes and inline transforms on window blur abort a
         window.close();
     }
 });
+
+test('Batch 52: stage settings dedupes body2 rebuilds and fluid layer caches SVG attributes, fitFilters, and glow rAF', () => {
+    const { window, doc, app, dock } = setup();
+    try {
+        // 1. music-dock-stage-settings: repeated openPanel('控制') with unchanged theme/motion preserves body2 DOM nodes
+        dock.openPanel('控制');
+        const themeBtnBefore = doc.querySelector('.md-ext [data-act="theme"] button');
+        assert.ok(themeBtnBefore, 'theme segmented button rendered in body2');
+        dock.openPanel('控制');
+        const themeBtnAfter = doc.querySelector('.md-ext [data-act="theme"] button');
+        assert.equal(themeBtnAfter, themeBtnBefore, 'unchanged theme/motion reuses existing body2 DOM without dropping focus');
+        doc.body.classList.add('light-theme');
+        dock.openPanel('控制');
+        const themeBtnAfterSwitch = doc.querySelector('.md-ext [data-act="theme"] button');
+        assert.notEqual(themeBtnAfterSwitch, themeBtnBefore, 'theme change rebuilds body2 segmented buttons');
+
+        // 2. music-dock-fluid: setAttr WeakMap cache avoids getAttribute calls and setEnabled(false) cancels glow rAF
+        const host = doc.createElement('div');
+        const bar = doc.createElement('div');
+        bar.getBoundingClientRect = () => ({ left: 100, right: 500, top: 600, bottom: 664, width: 400, height: 64 });
+        host.appendChild(bar);
+        doc.body.appendChild(host);
+        let rafSeq = 0;
+        const cancelled = [];
+        const origRaf = window.requestAnimationFrame;
+        const origCancel = window.cancelAnimationFrame;
+        window.requestAnimationFrame = () => ++rafSeq;
+        window.cancelAnimationFrame = (id) => cancelled.push(id);
+        let getAttrCalls = 0;
+        const origGetAttr = window.SVGElement.prototype.getAttribute;
+        window.SVGElement.prototype.getAttribute = function (...args) {
+            getAttrCalls += 1;
+            return origGetAttr.apply(this, args);
+        };
+        const fluid = window.createMusicDockFluid({ host, bar });
+        try {
+            fluid.layout();
+            getAttrCalls = 0;
+            fluid.setProgress(0.25);
+            fluid.setProgress(0.5);
+            assert.equal(getAttrCalls, 0, 'cached SVG setAttr performs zero DOM getAttribute lookups on progress updates');
+
+            // Initial setGlow paints synchronously, identical second setGlow starts no rAF, different setGlow starts rAF
+            fluid.setGlow(['#112233', '#445566', '#778899']);
+            const beforeSame = rafSeq;
+            fluid.setGlow(['#112233', '#445566', '#778899']);
+            assert.equal(rafSeq, beforeSame, 'identical glow colors do not start a redundant 600ms rAF');
+            fluid.setGlow(['#223344', '#556677', '#8899aa']);
+            assert.equal(rafSeq, beforeSame + 1, 'changed glow colors start transition rAF');
+            const glowRafId = rafSeq;
+            fluid.setEnabled(false);
+            assert.ok(cancelled.includes(glowRafId), 'setEnabled(false) cancels active glow rAF');
+        } finally {
+            fluid.destroy();
+            host.remove();
+            window.SVGElement.prototype.getAttribute = origGetAttr;
+            window.requestAnimationFrame = origRaf;
+            window.cancelAnimationFrame = origCancel;
+        }
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

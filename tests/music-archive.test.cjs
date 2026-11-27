@@ -151,3 +151,75 @@ test('画质档位：静止后三档都降到 12 帧，像素比最高 1.5', () 
     assert.match(src, /for\s*\(const c of \[captionCanvas, etchCanvas, stickerCanvas, fallbackCoverCanvas\]\)/, 'dispose zeroes all offscreen canvases');
     assert.match(src, /L\.canvas\.width\s*=\s*0;\s*L\.canvas\.height\s*=\s*0;/, 'dispose zeroes label canvases');
 });
+
+test('Batch 52: archive-grid resets sticky header on dataset switch and archive-wall clears drag state on hide', () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const w = dom.window;
+    w.Element.prototype.scrollTo = function (opts) { if (opts && typeof opts.top === 'number') this.scrollTop = opts.top; };
+    w.eval(fs.readFileSync('Musicmodules/music-archive/archive-wall.js', 'utf8'));
+    w.eval(fs.readFileSync('Musicmodules/music-archive/archive-grid.js', 'utf8'));
+    const host = w.document.getElementById('host');
+    const tracks = Array.from({ length: 12 }, (_, i) => ({ path: `/m/${i}.flac`, title: `S${i}`, artist: i < 6 ? 'Alpha' : 'Beta', album: 'Alb' }));
+
+    let dataset = 0;
+    const datasets = [
+        { key: 'd0', list: [{ id: 'a', name: 'Old Section A', ids: [0, 1, 2, 3, 4, 5] }, { id: 'b', name: 'Old Section B', ids: [6, 7, 8, 9, 10, 11] }] },
+        { key: 'd1', list: [{ id: 'x', name: 'New Section X', ids: [0, 1, 2, 3, 4, 5] }, { id: 'y', name: 'New Section Y', ids: [6, 7, 8, 9, 10, 11] }] }
+    ];
+    let rafCb = null;
+    w.requestAnimationFrame = (fn) => { rafCb = fn; return 1; };
+    w.cancelAnimationFrame = () => { rafCb = null; };
+    const grid = w.MusicArchiveGrid.create({
+        host,
+        sections: () => datasets[dataset],
+        track: (i) => tracks[i],
+        cover: () => '',
+        selected: () => 0,
+        playing: () => ({ index: -1, active: false }),
+        meta: (t, i) => ({ title: t.title, artist: t.artist, album: t.album, code: String(i + 1).padStart(3, '0') }),
+        pick() {}, play() {}, menu() {}
+    });
+    grid.setRoom({ left: 0, top: 0, width: 800, height: 400 });
+    grid.show(true);
+    const scroller = grid.el.querySelector('.ag-scroll');
+    scroller.scrollTop = 120;
+    if (rafCb) rafCb();
+    const sticky = grid.el.querySelector('.ag-sticky');
+    assert.equal(sticky.hidden, false);
+    assert.equal(sticky.children[0].textContent, 'Old Section A');
+
+    // Switch dataset while still scrolled into section 0: sticky header must update to New Section X
+    dataset = 1;
+    grid.sync();
+    scroller.scrollTop = 120;
+    if (rafCb) rafCb();
+    assert.equal(sticky.children[0].textContent, 'New Section X', 'syncData resets stickySec so section 0 sticky header never stays stale');
+    grid.destroy();
+
+    // archive-wall clears active drag state on show(false)
+    const wall = w.MusicArchiveWall.create({
+        host,
+        items: () => ({ key: 'w', name: 'All', ids: [0, 1, 2, 3] }),
+        track: (i) => tracks[i],
+        cover: () => '',
+        selected: () => 0,
+        playing: () => ({ index: -1, active: false }),
+        meta: (t, i) => ({ title: t.title, artist: t.artist, album: t.album, code: String(i + 1) }),
+        pick() {}, play() {}, menu() {}
+    });
+    wall.setRoom({ left: 0, top: 0, width: 800, height: 600 });
+    wall.show(true);
+    const pd = new w.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 100 });
+    Object.defineProperty(pd, 'pointerId', { value: 1 });
+    wall.el.dispatchEvent(pd);
+    const pm = new w.MouseEvent('pointermove', { bubbles: true, clientX: 140, clientY: 140 });
+    Object.defineProperty(pm, 'pointerId', { value: 1 });
+    wall.el.dispatchEvent(pm);
+    assert.ok(wall.el.classList.contains('is-grabbing'));
+    wall.show(false);
+    assert.ok(!wall.el.classList.contains('is-grabbing'), 'hiding wall clears stuck is-grabbing drag state');
+    wall.destroy();
+    w.close();
+});
