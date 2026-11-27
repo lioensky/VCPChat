@@ -695,3 +695,84 @@ test('Batch 79: archive-wall uses bitmask class sync and dedupes locateBtn, aw-h
         w.close();
     }
 });
+
+test('Batch 85: archive-grid restarts sticky roll and locate ping via cancellable rAF without offsetWidth reflow', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        let rafId = 1;
+        const rafs = new Map();
+        const cancelled = [];
+        w.requestAnimationFrame = (cb) => { const id = rafId++; rafs.set(id, cb); return id; };
+        w.cancelAnimationFrame = (id) => { cancelled.push(id); rafs.delete(id); };
+        w.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-archive/archive-grid.js'), 'utf8'));
+        const tracks = Array.from({ length: 48 }, (_, i) => ({ path: `/g${i}.flac`, title: `G ${i}`, artist: 'A', duration: 180 }));
+        const sections = [
+            { id: 's0', name: 'A', sub: '', ids: tracks.slice(0, 16).map((_, i) => i) },
+            { id: 's1', name: 'B', sub: '', ids: tracks.slice(16, 32).map((_, i) => i + 16) },
+            { id: 's2', name: 'C', sub: '', ids: tracks.slice(32, 48).map((_, i) => i + 32) }
+        ];
+        const grid = w.MusicArchiveGrid.create({
+            host: w.document.getElementById('host'),
+            sections: () => ({ key: 'abc', list: sections }),
+            track: (i) => tracks[i],
+            meta: (t, i) => ({ title: t.title, artist: t.artist, code: String(i + 1).padStart(2, '0') }),
+            cover: () => '',
+            selected: () => 0,
+            playing: () => ({ index: 0, active: true }),
+            pick() {},
+            play() {},
+            menu() {},
+            reducedMotion: () => false
+        });
+        const flush = () => {
+            const entries = [...rafs.entries()];
+            rafs.clear();
+            for (const [, cb] of entries) cb(w.performance.now());
+        };
+        const sticky = grid.el.querySelector('.ag-sticky');
+        const locate = grid.el.querySelector('.ag-locate');
+        const scroller = grid.el.querySelector('.ag-scroll');
+        scroller.scrollTo = (arg) => {
+            if (arg && typeof arg === 'object' && Number.isFinite(arg.top)) scroller.scrollTop = arg.top;
+        };
+        let reflowReads = 0;
+        for (const el of [sticky, locate]) {
+            Object.defineProperty(el, 'offsetWidth', { configurable: true, get() { reflowReads += 1; return 100; } });
+        }
+        grid.setRoom({ left: 0, top: 0, width: 800, height: 400 });
+        grid.show(true);
+        flush();
+
+        // Scroll across section A -> B -> C to trigger consecutive ag-roll-up transitions
+        scroller.scrollTop = 200;
+        scroller.dispatchEvent(new w.Event('scroll'));
+        flush();
+        scroller.scrollTop = 1000;
+        scroller.dispatchEvent(new w.Event('scroll'));
+        flush();
+        assert.equal(sticky.classList.contains('ag-roll-up'), true, 'first forward section transition applies ag-roll-up');
+
+        scroller.scrollTop = 2000;
+        scroller.dispatchEvent(new w.Event('scroll'));
+        flush();
+        assert.equal(reflowReads, 0, 'consecutive sticky section roll skips synchronous offsetWidth forced reflow');
+        assert.equal(sticky.classList.contains('ag-roll-up'), false, 'same-direction roll removes class first and schedules rAF');
+        flush();
+        assert.equal(sticky.classList.contains('ag-roll-up'), true, 'cross-frame rAF re-adds ag-roll-up cleanly');
+
+        // Clicking locate button uses cancellable rAF instead of offsetWidth reflow
+        locate.click();
+        assert.equal(reflowReads, 0, 'locate button ping skips synchronous offsetWidth forced reflow');
+        assert.equal(rafs.size > 0, true, 'locate button queues ping rAF');
+        const pendingIds = [...rafs.keys()];
+        grid.show(false);
+        assert.ok(pendingIds.some((id) => cancelled.includes(id)), 'hiding grid cancels pending ping/roll rAFs');
+        grid.destroy();
+    } finally {
+        w.close();
+    }
+});

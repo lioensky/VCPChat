@@ -523,3 +523,79 @@ test('Batch 76: dupes normalizes playlist paths on remap/undo, folders batches q
         dom.window.close();
     }
 });
+
+test('Batch 85: spectrum cached FFT & prefix-sum findCutoff match exact math, spectrum/stats mark data-closing=1, and M3U decodes GB18030/UTF16/BOM', () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    // 1. Spectrum cached FFT plan, prefix-sum findCutoff, and data-closing=1 on close
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        window.requestAnimationFrame = (fn) => { fn(0); return 0; };
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-spectrum.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-stats-view.js'), 'utf8'));
+
+        // Verify radix-2 FFT accuracy against pure sine bin (k = 16 in N = 256)
+        const N = 256;
+        const re = new Float32Array(N);
+        const im = new Float32Array(N);
+        for (let i = 0; i < N; i += 1) re[i] = Math.cos((2 * Math.PI * 16 * i) / N);
+        window.MusicSpectrum.fft(re, im);
+        assert.ok(Math.abs(re[16] - N / 2) < 1e-3, `FFT bin 16 real peak expected ~128, got ${re[16]}`);
+        assert.ok(Math.abs(im[16]) < 1e-3, `FFT bin 16 imag expected ~0, got ${im[16]}`);
+        assert.ok(Math.abs(re[0]) < 1e-3, `FFT DC expected ~0, got ${re[0]}`);
+
+        // Verify prefix-sum findCutoff locates sharp 16 kHz brickwall drop
+        const sr = 44100;
+        const bins = 2048;
+        const avg = new Float32Array(bins);
+        const cutBin = Math.round((16000 * 2 * bins) / sr);
+        for (let k = 0; k < bins; k += 1) avg[k] = k < cutBin ? -20 : -95;
+        const detected = window.MusicSpectrum.findCutoff(avg, sr);
+        assert.ok(Math.abs(detected - 16000) < 350, `expected cutoff ~16000 Hz, got ${detected}`);
+
+        // Verify spectrum and stats-view overlays mark data-closing="1" on close
+        const app = {
+            playlist: [{ path: 'C:\\Music\\A.flac', title: 'A', artist: 'X' }],
+            currentTrackIndex: 0,
+            api: { readMusicAudioFile: () => new Promise(() => {}) },
+            musicStats: { summary: () => ({ plays: 1, seconds: 600, activeDays: 1, hours: new Array(24).fill(0), tracks: [], daily: { '2026-11-27': 600 } }) }
+        };
+        window.MusicSpectrum.setupMusicSpectrum(app);
+        window.MusicStatsView.setupMusicStatsView(app);
+        app.openSpectrum(0);
+        const specOv = doc.querySelector('.mspec').closest('.dialog-overlay');
+        specOv.querySelector('.mstats-close').click();
+        assert.equal(specOv.dataset.closing, '1', 'music-spectrum marks data-closing=1 on close');
+
+        app.openStatsView();
+        const statsOv = doc.querySelector('.music-stats-dialog');
+        statsOv.querySelector('.mstats-close').click();
+        assert.equal(statsOv.dataset.closing, '1', 'music-stats-view marks data-closing=1 on close');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+
+    // 2. M3U decodeM3u (BOM / UTF-16LE / UTF-16BE / GBK) & parseM3u hoisted regexes
+    const m3u = require('../modules/ipc/musicM3u');
+    const bomUtf8 = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from('#EXTM3U\n#PLAYLIST:夜航\n#EXTINF:210,A - B\na.flac\n', 'utf8')]);
+    assert.ok(m3u.decodeM3u(bomUtf8, 'x.m3u').startsWith('#EXTM3U'));
+    const u16le = Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from('#EXTM3U\nabc.mp3', 'utf16le')]);
+    assert.equal(m3u.decodeM3u(u16le, 'x.m3u'), '#EXTM3U\nabc.mp3');
+    const u16beBody = Buffer.from('#EXTM3U\nabc.mp3', 'utf16le');
+    u16beBody.swap16();
+    const u16be = Buffer.concat([Buffer.from([0xFE, 0xFF]), u16beBody]);
+    assert.equal(m3u.decodeM3u(u16be, 'x.m3u'), '#EXTM3U\nabc.mp3');
+    // GBK bytes for "中文" = 0xD6 0xD0 0xCE 0xC4
+    const gbkBuf = Buffer.from([0x23, 0x50, 0x4C, 0x41, 0x59, 0x4C, 0x49, 0x53, 0x54, 0x3A, 0xD6, 0xD0, 0xCE, 0xC4]);
+    assert.equal(m3u.decodeM3u(gbkBuf, 'legacy.m3u'), '#PLAYLIST:中文');
+    const parsed = m3u.parseM3u('#EXTM3U\r\n#PLAYLIST:夜航\r\n#EXTINF:125,歌手 - 曲名\r\nsub/1.flac\r\nhttps://example.com/a.mp3\r\n', {
+        baseDir: 'D:\\Music',
+        platform: 'win32'
+    });
+    assert.equal(parsed.name, '夜航');
+    assert.equal(parsed.skipped, 1);
+    assert.deepEqual(parsed.entries, [{ path: 'D:\\Music\\sub\\1.flac', title: '歌手 - 曲名', duration: 125 }]);
+});

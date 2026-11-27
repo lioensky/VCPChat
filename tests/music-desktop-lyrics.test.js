@@ -732,3 +732,68 @@ test('Batch 80: desktop-lyrics renderer skips per-frame cancelAnimationFrame & r
         window.close();
     }
 });
+
+test('Batch 85: musicDesktopLyrics calls getMusicWindow once per publish and caches mkdir across saves', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dl-b85-'));
+    let getMusicCalls = 0;
+    const handles = new Map();
+    const ons = new Map();
+    const musicWin = {
+        destroyed: false,
+        isDestroyed() { return this.destroyed; },
+        webContents: { send() {}, isDestroyed() { return false; } }
+    };
+    const origMkdir = fs.promises.mkdir;
+    let mkdirCalls = 0;
+    fs.promises.mkdir = async (dir, ...args) => {
+        if (String(dir).startsWith(tmpDir)) mkdirCalls += 1;
+        return origMkdir.call(fs.promises, dir, ...args);
+    };
+    try {
+        const barWins = [];
+        class MiniWin {
+            constructor() {
+                this.handlers = new Map();
+                this.bounds = { x: 100, y: 100, width: 600, height: 140 };
+                this.webContents = { on() {}, send() {}, setWindowOpenHandler() {}, isDestroyed() { return false; } };
+                barWins.push(this);
+            }
+            isDestroyed() { return false; }
+            setAlwaysOnTop() {}
+            setMenu() {}
+            loadFile() {}
+            once() {}
+            on(e, fn) { this.handlers.set(e, fn); }
+            setIgnoreMouseEvents() {}
+            showInactive() {}
+            getBounds() { return this.bounds; }
+            close() { this.handlers.get('closed')?.(); }
+        }
+        const dl = createDesktopLyrics({
+            ipcMain: { handle: (c, fn) => handles.set(c, fn), on: (c, fn) => ons.set(c, fn) },
+            getMusicWindow: () => { getMusicCalls += 1; return musicWin; },
+            stateFile: path.join(tmpDir, 'nested', 'state.json'),
+            projectRoot: path.join(__dirname, '..'),
+            electronApi: { BrowserWindow: MiniWin, screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1280, height: 720 } }), getAllDisplays: () => [] } }
+        });
+
+        await handles.get('music-desktop-lyrics-toggle')({ sender: musicWin.webContents }, true);
+        getMusicCalls = 0;
+        ons.get('music-desktop-lyrics-publish')({ sender: musicWin.webContents }, { index: 1 });
+        assert.strictEqual(getMusicCalls, 1, 'publish handler invokes getMusicWindow only once');
+
+        await new Promise((r) => setTimeout(r, 380));
+        const afterFirstSave = mkdirCalls;
+        assert.strictEqual(afterFirstSave, 1, 'initial async save creates directory once');
+
+        const bar = barWins[0];
+        bar.bounds = { x: 140, y: 120, width: 620, height: 140 };
+        bar.handlers.get('moved')?.();
+        await new Promise((r) => setTimeout(r, 380));
+        assert.strictEqual(mkdirCalls, afterFirstSave, 'subsequent debounced saves skip redundant mkdir');
+        dl.musicClosed();
+    } finally {
+        fs.promises.mkdir = origMkdir;
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});

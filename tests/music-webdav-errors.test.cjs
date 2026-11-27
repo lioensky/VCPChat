@@ -644,3 +644,73 @@ test('Batch 78: WebDAV Escape skips DOM query when inactive and Add Server focus
     dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
     dom.window.close();
 });
+
+test('Batch 85: WebDAV batch-renders server/file lists with escaping and caches dialog input lookups', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="modal"><div id="servers"></div><div id="files"></div><div id="crumb"></div>
+            <button id="add">添加</button>
+        </div>
+        <div id="dialog">
+            <input id="webdav-server-name" />
+            <input id="webdav-server-url" />
+            <input id="webdav-server-username" />
+            <input id="webdav-server-password" />
+            <p id="status"></p>
+            <button id="test">测试</button>
+        </div>
+    </body>`, { runScripts: 'outside-only' });
+    const doc = dom.window.document;
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    let testCalls = 0;
+    const app = {
+        playlist: [],
+        renderPlaylist() {},
+        updateAllCount() {},
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavServerList: doc.getElementById('servers'),
+        webdavFileList: doc.getElementById('files'),
+        webdavBreadcrumb: doc.getElementById('crumb'),
+        webdavAddServerBtn: doc.getElementById('add'),
+        webdavDialogStatus: doc.getElementById('status'),
+        webdavDialogTest: doc.getElementById('test'),
+        webdavServers: [{ id: 's"1', name: '<NAS & Co>', url: 'https://nas.test/dav' }],
+        api: {
+            testWebdavConnection: async () => { testCalls += 1; return { status: 'success', message: 'ok' }; },
+            listWebdavDirectory: async () => ({
+                status: 'success',
+                entries: [
+                    { name: '<b>song.flac</b>', href: '/song.flac', url: 'https://nas.test/dav/song.flac', isDir: false },
+                    { name: 'Dir <1>', href: '/Dir1', isDir: true }
+                ]
+            })
+        }
+    };
+    dom.window.setupWebDav(app);
+    app.setupWebDavHandlers();
+    app.activeWebDavServer = app.webdavServers[0];
+    app.renderWebDavServerList();
+    assert.equal(doc.querySelector('#servers .webdav-server-name').textContent, '<NAS & Co>', 'server name escaped safely in batch HTML');
+    assert.equal(doc.querySelector('#servers .webdav-server-item').classList.contains('active'), true);
+
+    await app.browseWebDav('/');
+    const names = [...doc.querySelectorAll('#files .webdav-file-name')].map((n) => n.textContent);
+    assert.deepEqual(names, ['Dir <1>', '<b>song.flac</b>'], 'batch-rendered file list sorts dirs first and escapes HTML safely');
+
+    let idLookups = 0;
+    const origGetById = doc.getElementById.bind(doc);
+    doc.getElementById = (id) => { if (String(id).startsWith('webdav-server-')) idLookups += 1; return origGetById(id); };
+    app.webdavAddServerBtn.click();
+    const afterFirst = idLookups;
+    assert.equal(afterFirst, 4, 'first open queries the 4 server dialog inputs once');
+    origGetById('webdav-server-url').value = 'https://nas.test/dav';
+    app.webdavDialogTest.click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(testCalls, 1);
+    assert.equal(idLookups, afterFirst, 'subsequent test click reuses cached dialog inputs');
+
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.close();
+});

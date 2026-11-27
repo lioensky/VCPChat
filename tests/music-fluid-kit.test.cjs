@@ -812,3 +812,49 @@ test('Batch 81: MusicFluid.slide skips redundant style writes when already settl
         dom.window.close();
     }
 });
+
+test('Batch 85: music-fluid-select bodyObs prefilters leaf-node mutations before calling tgt.closest()', async () => {
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"><li id="row0"></li><li id="row1"></li></ul><div id="host"></div></body>', {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        const row0 = doc.getElementById('row0');
+        const row1 = doc.getElementById('row1');
+        let closestCalls = 0;
+        for (const li of [row0, row1]) {
+            const origClosest = li.closest.bind(li);
+            li.closest = (...args) => { closestCalls += 1; return origClosest(...args); };
+        }
+        // Simulates classic-list decorateRow replacing <li> children with flat leaf spans/buttons
+        const frag0 = doc.createDocumentFragment();
+        for (const cls of ['cl-title', 'cl-artist', 'cl-duration']) {
+            const sp = doc.createElement('span');
+            sp.className = cls;
+            sp.textContent = 'x';
+            frag0.appendChild(sp);
+        }
+        const btn = doc.createElement('button');
+        btn.className = 'cl-like';
+        frag0.appendChild(btn);
+        row0.replaceChildren(frag0);
+        row1.appendChild(doc.createElement('span'));
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(closestCalls, 0, 'leaf-only row mutations bypass tgt.closest() completely');
+
+        // Dynamic select inside a nested wrapper still gets dressed
+        const box = doc.createElement('div');
+        const sel = doc.createElement('select');
+        sel.innerHTML = '<option value="1">A</option><option value="2">B</option>';
+        box.appendChild(sel);
+        doc.getElementById('host').appendChild(box);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(sel.classList.contains('mfs-native'), true, 'dynamic select still dressed after leaf prefilter');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

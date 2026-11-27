@@ -463,3 +463,34 @@ test('Batch 80: musicLibraryWatch.changedSince skips remote URL tracks without m
     ];
     assert.equal(changedSince(known, [localTrack], cwdRoot), false, 'remote URLs are ignored by changedSince even when root is process.cwd()');
 });
+
+test('Batch 85: musicLibraryWatch collapseRoots and single-pass noteLibrarySaved exclude removed locals while skipping remotes', async () => {
+    const { createLibraryWatch, collapseRoots } = require('../modules/musicLibraryWatch');
+    const collapsed = collapseRoots(['/music/a/sub', '/music/a', '/music/b', '/music/b/deep']);
+    assert.deepEqual(collapsed, ['/music/a', '/music/b'], 'collapseRoots deduplicates child directories regardless of order');
+
+    let savedExcluded = null;
+    const watcher = createLibraryWatch({
+        scan: async () => ({ tracks: [], stats: {} }),
+        readKnown: async () => [],
+        readFolders: async () => [],
+        writeFolders: async () => {},
+        readExcluded: async () => ['/music/readded.flac', '/music/still-out.flac'],
+        writeExcluded: async (list) => { savedExcluded = list; },
+        fileExists: async (p) => p !== '/music/deleted-from-disk.flac',
+        send: () => {},
+        log: { log() {}, warn() {} }
+    });
+    const prev = [
+        { path: '/music/kept.flac' },
+        { path: '/music/removed-local.flac' },
+        { path: '/music/deleted-from-disk.flac' },
+        { path: 'https://nas.example/dav/removed-remote.flac', isRemote: true }
+    ];
+    const next = [
+        { path: '/music/kept.flac' },
+        { path: '/music/readded.flac' }
+    ];
+    await watcher.noteLibrarySaved(prev, next);
+    assert.deepEqual(savedExcluded, ['/music/still-out.flac', '/music/removed-local.flac'], 'single-pass noteLibrarySaved drops re-added tracks, excludes existing removed locals, and skips deleted/remote paths');
+});
