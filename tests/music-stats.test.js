@@ -314,3 +314,84 @@ test('Batch 58: stats/track-file/dupes dialogs yield Escape when a MusicDialog c
         dom.window.close();
     }
 });
+
+test('Batch 73: stats skips redundant queue-change ticks for same track, MusicMotion ignores no-op set, and M3U throttles dragover/dragenter', () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    // 1. music-stats onQueueChange short-circuits pure queue edits on unchanged playing track
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const prevDoc = globalThis.document;
+    const prevCE = globalThis.CustomEvent;
+    const prevMO = globalThis.MutationObserver;
+    try {
+        const { window } = dom;
+        globalThis.document = window.document;
+        globalThis.CustomEvent = window.CustomEvent;
+        globalThis.MutationObserver = window.MutationObserver;
+        let posCalls = 0;
+        const app = {
+            playlist: [{ path: 'C:\\Music\\A.flac', duration: 200 }, { path: 'C:\\Music\\B.flac', duration: 200 }],
+            currentTrackIndex: 0,
+            isPlaying: false,
+            isTrackLoading: false,
+            lastKnownDuration: 200,
+            playedSeconds: () => { posCalls += 1; return 20; }
+        };
+        const store = new Map();
+        const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+        setupMusicStats(app, { storage, setTimer: () => 1, clearTimer() {}, observe: true });
+        const afterInit = posCalls;
+        for (let i = 0; i < 10; i += 1) {
+            window.document.dispatchEvent(new window.CustomEvent('music-queue-change'));
+        }
+        assert.equal(posCalls, afterInit, 'pure queue edits with unchanged track/play-state skip redundant tick()');
+        app.currentTrackIndex = 1;
+        window.document.dispatchEvent(new window.CustomEvent('music-queue-change'));
+        assert.ok(posCalls > afterInit, 'switching track triggers tick() immediately on music-queue-change');
+
+        // 2. MusicMotion.set skips redundant storage write when preference is unchanged
+        let motionWrites = 0;
+        const origSet = window.Storage.prototype.setItem;
+        window.Storage.prototype.setItem = function (k, v) {
+            if (k === 'musicReducedMotion') motionWrites += 1;
+            return origSet.call(this, k, v);
+        };
+        window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-motion.js'), 'utf8'));
+        window.MusicMotion.set('system');
+        assert.equal(motionWrites, 0, 'setting unchanged preference skips localStorage write');
+        window.MusicMotion.set('on');
+        window.MusicMotion.set('on');
+        assert.equal(motionWrites, 1, 'setting new preference writes once and ignores duplicate');
+
+        // 3. MusicM3u onDragEnter triggers showHint rAF only on depth 0->1 and onDragOver throttles timer resets
+        let rafCalls = 0;
+        let timeoutCalls = 0;
+        window.requestAnimationFrame = () => { rafCalls += 1; return rafCalls; };
+        window.cancelAnimationFrame = () => {};
+        const origSetTimeout = window.setTimeout.bind(window);
+        window.setTimeout = (fn, ms) => { timeoutCalls += 1; return origSetTimeout(fn, ms); };
+        window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-m3u.js'), 'utf8'));
+        const m3uApp = {
+            api: { importMusicM3u: async () => ({ ok: false, canceled: true }), exportMusicM3u: async () => ({ ok: false, canceled: true }), getPathForFile: () => '' }
+        };
+        window.MusicM3u.setupMusicM3u(m3uApp);
+        const mkDrag = (type) => {
+            const ev = new window.Event(type, { bubbles: true });
+            ev.dataTransfer = { types: ['Files'] };
+            return ev;
+        };
+        window.document.dispatchEvent(mkDrag('dragenter'));
+        window.document.dispatchEvent(mkDrag('dragenter'));
+        window.document.dispatchEvent(mkDrag('dragenter'));
+        assert.equal(rafCalls, 1, 'nested dragenter only schedules showHint rAF on initial 0->1 entry');
+        const beforeOver = timeoutCalls;
+        for (let i = 0; i < 5; i += 1) window.document.dispatchEvent(mkDrag('dragover'));
+        assert.equal(timeoutCalls - beforeOver, 1, 'rapid dragover events throttle idle-hide timer re-arm');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        globalThis.document = prevDoc;
+        globalThis.CustomEvent = prevCE;
+        globalThis.MutationObserver = prevMO;
+        dom.window.close();
+    }
+});

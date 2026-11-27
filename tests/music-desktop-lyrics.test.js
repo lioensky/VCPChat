@@ -586,3 +586,32 @@ test('Batch 67: paused desktop-lyrics poll skips snapshot/wordsOf allocations an
         window.close();
     }
 });
+
+test('Batch 73: desktop-lyrics wordsOf WeakMap cache reuses packed words across polls and invalidates on mutation', () => {
+    let calls = 0;
+    global.MusicArchiveLyrics = {
+        wordsOf: (line) => { calls += 1; return line.words || null; }
+    };
+    try {
+        const line0 = { time: 2, text: 'ab', words: [word('a', 2, 3), word('b', 3, 4)] };
+        const app = {
+            playlist: [{ path: 'a.flac', title: 'T', artist: 'A' }],
+            currentTrackIndex: 0,
+            isPlaying: true,
+            currentLyrics: [line0]
+        };
+        const s1 = snapshot(app, 2.2);
+        const s2 = snapshot(app, 2.5);
+        const s3 = snapshot(app, 2.8);
+        assert.strictEqual(calls, 1, 'repeated snapshots on same lyric line hit WeakMap cache');
+        assert.strictEqual(s1.line.words, s2.line.words);
+        assert.strictEqual(s2.line.words, s3.line.words);
+
+        line0.words.push(word('c', 4, 5));
+        const s4 = snapshot(app, 4.1);
+        assert.strictEqual(calls, 2, 'mutated line.words length invalidates cache');
+        assert.strictEqual(s4.line.words.length, 3);
+    } finally {
+        delete global.MusicArchiveLyrics;
+    }
+});

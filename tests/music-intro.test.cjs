@@ -301,3 +301,23 @@ test('Batch 62: music-intro skips redundant per-frame root/wipe attribute writes
     await t.advance(50);
     t.close();
 });
+
+test('Batch 73: music-intro guards settled mark transform and scan letter-spacing writes', async () => {
+    const t = setup();
+    t.intro.replay();
+    const root = t.doc.querySelector('.music-intro');
+    const mark = root.querySelectorAll('svg > g')[1];
+    let markWrites = 0;
+    const origSetAttr = mark.setAttribute.bind(mark);
+    mark.setAttribute = (name, val) => {
+        if (name === 'transform') markWrites += 1;
+        return origSetAttr(name, val);
+    };
+    await t.advance(4100);
+    const afterSettle = markWrites;
+    await t.advance(1000);
+    assert.equal(markWrites, afterSettle, 'settled mark group skips redundant transform attribute writes');
+    t.intro.skip();
+    await t.advance(50);
+    t.close();
+});

@@ -509,3 +509,93 @@ test('Batch 68: WebDAV uses music note icon, resets import label on server switc
     dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
     dom.window.close();
 });
+
+test('Batch 73: WebDAV delegates list/crumb/file clicks, recognizes .aif, keeps dots in titles, submits on Enter, and ignores closing music-dialog on Escape', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="modal" class="active"><div id="servers"></div><div id="files"></div><div id="crumb"></div>
+            <button id="scan">扫描</button><button id="import" disabled>导入</button>
+        </div>
+        <div id="dialog" class="active">
+            <input id="webdav-server-name" value="NAS 3" />
+            <input id="webdav-server-url" value="http://nas3" />
+            <input id="webdav-server-username" value="" />
+            <input id="webdav-server-password" value="" />
+            <p id="status"></p>
+            <button id="confirm">确定</button>
+        </div>
+        <div class="dialog-overlay music-dialog visible" data-closing="1"></div>
+    </body>`, { runScripts: 'outside-only' });
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    const doc = dom.window.document;
+    const browsed = [];
+    const loaded = [];
+    let addCalls = 0;
+    const s1 = { id: 's1', name: 'NAS 1', url: 'http://nas1' };
+    const app = {
+        playlist: [],
+        renderPlaylist() {},
+        updateAllCount() {},
+        loadTrack: async (idx, play) => { loaded.push({ track: app.playlist[idx], play }); },
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavServerList: doc.getElementById('servers'),
+        webdavFileList: doc.getElementById('files'),
+        webdavBreadcrumb: doc.getElementById('crumb'),
+        webdavDialogStatus: doc.getElementById('status'),
+        webdavDialogConfirm: doc.getElementById('confirm'),
+        webdavScanBtn: doc.getElementById('scan'),
+        webdavImportBtn: doc.getElementById('import'),
+        webdavServers: [s1],
+        activeWebDavServer: s1,
+        webdavScannedTracks: [],
+        api: {
+            addWebdavServer: async (cfg) => { addCalls += 1; return { id: 's3', ...cfg }; },
+            loadWebdavTrack: async () => ({ status: 'success' }),
+            listWebdavDirectory: async ({ path: p }) => {
+                browsed.push(p);
+                return {
+                    status: 'success',
+                    entries: [
+                        { name: 'Sub', href: '/Sub/', isDir: true },
+                        { name: 'Mr. Brightside.aif', href: '/Mr. Brightside.aif', url: 'http://nas1/Mr.%20Brightside.aif', isDir: false }
+                    ]
+                };
+            }
+        }
+    };
+    dom.window.setupWebDav(app);
+    app.webdavServers = [s1];
+    app.activeWebDavServer = s1;
+    app.setupWebDavHandlers();
+
+    const nameIn = doc.getElementById('webdav-server-name');
+    nameIn.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+    assert.equal(addCalls, 0, 'IME composing Enter does not submit');
+    nameIn.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(addCalls, 1, 'Enter submits server dialog');
+    assert.equal(app.webdavServerDialog.classList.contains('active'), false);
+
+    await app.browseWebDav('/Music');
+    const aifRow = doc.querySelector('#files .webdav-file-item.is-audio');
+    assert.ok(aifRow, '.aif file marked as audio');
+    aifRow.dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(loaded[0]?.track?.title, 'Mr. Brightside', 'only known audio extension is stripped');
+
+    doc.querySelector('#files .webdav-file-item.is-dir').dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(browsed.at(-1), '/Sub', 'delegated dir dblclick navigates');
+
+    doc.querySelector('#crumb .webdav-crumb').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(browsed.at(-1), '/', 'delegated breadcrumb click navigates to root');
+
+    doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(app.webdavModal.classList.contains('active'), false, 'closing music-dialog does not block WebDAV Escape');
+
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.close();
+});

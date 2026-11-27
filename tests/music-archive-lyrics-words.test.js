@@ -267,3 +267,47 @@ test('Batch 64: archive lyrics reads row geometry before active-class writes, cl
     assert.equal(hvWrites, 3, 'pointerleave resets lastHoverK so re-entry paints again');
     ly.destroy();
 });
+
+test('Batch 73: archive lyrics defers fitLines layout reads while hidden and runs once shown', () => {
+    const dom = new JSDOM('<div id="h"></div>', { pretendToBeVisual: true });
+    const { window } = dom;
+    const rafs = [];
+    const context = vm.createContext({
+        ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+        window, document: window.document, console,
+        setInterval: () => 1, clearInterval() {},
+        setTimeout: () => 1, clearTimeout() {},
+        requestAnimationFrame: (fn) => { rafs.push(fn); return rafs.length; },
+        cancelAnimationFrame() {},
+        Date
+    });
+    context.globalThis = context;
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-archive/archive-lyrics.js'), 'utf8'), context);
+    const app = {
+        playlist: [{ path: '/a.flac', title: 'A' }],
+        currentTrackIndex: 0,
+        isPlaying: false,
+        lastKnownCurrentTime: 0,
+        lastStateUpdateTime: 0,
+        currentLyrics: [{ time: 1, text: 'a very long line that needs measuring' }]
+    };
+    const ly = window.MusicArchiveLyrics.create({ host: window.document.getElementById('h'), app });
+    ly.setAllowed(false);
+    const b = ly.el.querySelector('.archive-lyrics-track p b');
+    let widthReads = 0;
+    Object.defineProperty(b, 'clientWidth', { get: () => { widthReads += 1; return 100; }, configurable: true });
+    Object.defineProperty(b, 'scrollWidth', { get: () => { widthReads += 1; return 200; }, configurable: true });
+
+    // Running queued rAF while hidden skips forced clientWidth/scrollWidth reads
+    while (rafs.length) rafs.shift()();
+    assert.equal(widthReads, 0, 'fitLines skips DOM width reads while lyrics pane is hidden');
+    assert.equal(b.style.getPropertyValue('--fit'), '');
+
+    // Showing the pane schedules deferred fitLines and applies --fit
+    ly.setAllowed(true);
+    while (rafs.length) rafs.shift()();
+    assert.ok(widthReads >= 2, 'fitLines measures once pane becomes visible');
+    assert.notEqual(b.style.getPropertyValue('--fit'), '', 'long line receives --fit scale');
+    ly.destroy();
+    window.close();
+});
