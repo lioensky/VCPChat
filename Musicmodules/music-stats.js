@@ -46,6 +46,7 @@
             const raw = JSON.parse(storage?.getItem(KEY) || 'null');
             if (raw && raw.v === 1 && raw.t && typeof raw.t === 'object') table = raw.t;
         } catch (e) { table = {}; }
+        let tableCount = Object.keys(table).length;
         // 接着听：上次没听完的那一首（路径、位置、时间），和次数表分开存
         const RESUME_KEY = 'musicPlayResume';
         let resume = null;
@@ -111,7 +112,7 @@
         const entry = (path) => {
             const k = normPath(path);
             if (!k) return null;
-            if (!table[k]) table[k] = [0, 0, 0, 0, String(path)];
+            if (!table[k]) { table[k] = [0, 0, 0, 0, String(path)]; tableCount++; }
             return table[k];
         };
         const bump = (path, kind) => {
@@ -198,25 +199,30 @@
         }
 
         // ---- 查询 ----
-        const all = () => Object.values(table).filter((e) => e[0] > 0);
+        const all = () => (tableCount ? Object.values(table).filter((e) => e[0] > 0) : []);
         const api = {
             get(input) {
+                if (!tableCount) return null;
                 const e = table[normPath(input && typeof input === 'object' ? input.path : input)];
                 return e ? { plays: e[0], last: e[1], skips: e[2], first: e[3] } : null;
             },
             top(n = 30, { minPlays = 2 } = {}) {
+                if (!tableCount) return [];
                 return all().filter((e) => e[0] >= minPlays).sort((a, b) => b[0] - a[0] || b[1] - a[1]).slice(0, n).map((e) => e[4]);
             },
             lastPlayed(n = 30) {
+                if (!tableCount) return [];
                 return all().sort((a, b) => b[1] - a[1]).slice(0, n).map((e) => e[4]);
             },
             forgotten({ minPlays = 3, days = 30, limit = 30 } = {}) {
+                if (!tableCount) return [];
                 const before = now() - days * DAY;
                 return all().filter((e) => e[0] >= minPlays && e[1] && e[1] < before)
                     .sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, limit).map((e) => e[4]);
             },
             // 一首歌的「常听程度」0..1，自动续播挑歌时用来加权（跳过多的往后放）
             affinity(input) {
+                if (!tableCount) return 0;
                 const s = api.get(input);
                 if (!s) return 0;
                 const score = Math.log2(1 + s.plays) - 0.6 * Math.log2(1 + s.skips);

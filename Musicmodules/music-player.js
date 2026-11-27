@@ -1086,9 +1086,10 @@ function setupPlayer(app) {
     app.scheduleSessionSave = scheduleSessionSave;
     // 播放中每秒记一次进度（小键），每 5 秒仅在队列/曲目结构变化时才重写整份大 JSON，
     // 避免大曲库/随机模式下每 5 秒同步序列化数百 KB 到 localStorage 造成微卡顿。
+    let sessionTick = null;
     if (typeof setInterval === 'function') {
         let ticks = 0;
-        const sessionTick = setInterval(() => {
+        sessionTick = setInterval(() => {
             if (!app.isPlaying) return;
             ticks += 1;
             if (ticks % 5 === 0 && sessionStructureKey() !== lastSessionStructure) app.saveSession();
@@ -1097,10 +1098,22 @@ function setupPlayer(app) {
         sessionTick?.unref?.();
     }
     try {
+        const onVisSave = () => { if (document.hidden) app.saveSession(); };
+        const onPageHideSave = () => app.saveSession();
+        const onBeforeUnloadPlayer = () => {
+            app.saveSession();
+            if (sessionTick) { clearInterval(sessionTick); sessionTick = null; }
+            if (sessionTimer) { clearTimeout(sessionTimer); sessionTimer = null; }
+            app.cancelFailureSkip?.();
+            if (preloadClearTimer) { clearTimeout(preloadClearTimer); preloadClearTimer = null; }
+            document.removeEventListener?.('music-queue-change', scheduleSessionSave);
+            document.removeEventListener?.('visibilitychange', onVisSave);
+            globalThis.removeEventListener?.('pagehide', onPageHideSave);
+        };
         document.addEventListener?.('music-queue-change', scheduleSessionSave);
-        document.addEventListener?.('visibilitychange', () => { if (document.hidden) app.saveSession(); });
-        globalThis.addEventListener?.('pagehide', () => app.saveSession());
-        globalThis.addEventListener?.('beforeunload', () => app.saveSession());
+        document.addEventListener?.('visibilitychange', onVisSave);
+        globalThis.addEventListener?.('pagehide', onPageHideSave);
+        globalThis.addEventListener?.('beforeunload', onBeforeUnloadPlayer, { once: true });
     } catch (error) { /* 测试环境里没有这些事件 */ }
 
     // 随机顺序只在这里生成：预载和「下一首」用同一份，列表换了就重洗。

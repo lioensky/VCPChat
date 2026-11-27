@@ -242,11 +242,22 @@
             relayout();
         };
         // 目录被拖窄时，分类那一行收紧间距、去掉斜线，免得和右端的排序/搜索/添加图标挤在一起。
-        const paintSlim = () => el.classList.toggle('slim', el.offsetWidth > 0 && el.offsetWidth < 340);
+        let cachedVpH = 0;
+        const viewportHeight = () => {
+            if (cachedVpH > 0) return cachedVpH;
+            const h = r.viewport.clientHeight;
+            if (h > 0) cachedVpH = h;
+            return h || 600;
+        };
+        const paintSlim = () => {
+            cachedVpH = 0;
+            el.classList.toggle('slim', el.offsetWidth > 0 && el.offsetWidth < 340);
+        };
         let slimResizeObserver = null;
         if (typeof global.ResizeObserver === 'function') {
             slimResizeObserver = new global.ResizeObserver(paintSlim);
             slimResizeObserver.observe(el);
+            if (r.viewport) slimResizeObserver.observe(r.viewport);
         }
         try {
             const saved = Number(localStorage.getItem(WIDTH_KEY));
@@ -404,16 +415,23 @@
         const rebuild = ({ steady = false } = {}) => {
             const index = opts.getIndex();
             if (!index) return;
+            // 在写入任何目录 DOM 之前读取视口几何，避免末尾 inView()/render() 在刚写完 DOM 后触发强制同步布局
+            const vpVisible = el.isConnected && !el.hidden;
+            const vpH = vpVisible ? viewportHeight() : 600;
+            let vpTop = vpVisible ? r.viewport.scrollTop : 0;
             let anchor = null;
-            if (steady && state.rows.length && state.selectedRow >= 0 && inView(state.selectedRow) && state.rows[state.selectedRow]) {
-                // 选中的那行就在眼前：让它留在原处（启动时曲库一批批进来，目录不该漂到别的字母去）
-                const row = state.rows[state.selectedRow];
-                anchor = { i: row.i, ctx: row.ctx, dy: state.offsets[state.selectedRow] - r.viewport.scrollTop };
-            } else if (steady && state.rows.length) {
-                const top = r.viewport.scrollTop;
+            if (steady && state.rows.length && state.selectedRow >= 0 && state.rows[state.selectedRow]) {
+                const sy = state.offsets[state.selectedRow];
+                if (sy >= vpTop && sy + ROW_H <= vpTop + vpH - EDGE_FADE) {
+                    // 选中的那行就在眼前：让它留在原处（启动时曲库一批批进来，目录不该漂到别的字母去）
+                    const row = state.rows[state.selectedRow];
+                    anchor = { i: row.i, ctx: row.ctx, dy: sy - vpTop };
+                }
+            }
+            if (!anchor && steady && state.rows.length) {
                 for (let k = 0; k < state.rows.length; k++) {
-                    if (state.offsets[k] < top || state.rows[k].type !== 'track') continue;
-                    anchor = { i: state.rows[k].i, ctx: state.rows[k].ctx, dy: state.offsets[k] - top };
+                    if (state.offsets[k] < vpTop || state.rows[k].type !== 'track') continue;
+                    anchor = { i: state.rows[k].i, ctx: state.rows[k].ctx, dy: state.offsets[k] - vpTop };
                     break;
                 }
             }
@@ -488,12 +506,25 @@
                 el.classList.toggle('has-multi', multi.size > 1);
             }
             state.selectedRow = findRow(state.selected, state.preferCtx);
-            // 重排后（比如拼音表加载好、分组变了）选中行可能跑到视野外，拉回来
+            // 重排后（比如拼音表加载好、分组变了）选中行可能跑到视野外，拉回来（沿用写 DOM 前量好的高度，避免强制重排）
+            const maxScroll = Math.max(0, y - vpH);
+            if (vpTop > maxScroll) vpTop = maxScroll;
             if (steady) {
                 const k = anchor ? findRow(anchor.i, anchor.ctx) : -1;
-                if (k >= 0) r.viewport.scrollTop = Math.max(0, state.offsets[k] - anchor.dy);
-            } else if (state.selectedRow >= 0 && !inView(state.selectedRow)) scrollToRow(state.selectedRow, { center: true });
-            render();
+                if (k >= 0) {
+                    const nextTop = Math.min(maxScroll, Math.max(0, state.offsets[k] - anchor.dy));
+                    r.viewport.scrollTop = nextTop;
+                    vpTop = nextTop;
+                }
+            } else if (state.selectedRow >= 0) {
+                const sy = state.offsets[state.selectedRow];
+                if (sy < vpTop || sy + ROW_H > vpTop + vpH - EDGE_FADE) {
+                    const nextTop = Math.min(maxScroll, Math.max(0, sy - vpH / 2 + ROW_H / 2));
+                    r.viewport.scrollTop = nextTop;
+                    vpTop = nextTop;
+                }
+            }
+            render(vpVisible ? { top: vpTop, height: vpH } : undefined);
         };
 
         /* 二分找 y 所在的行 */
@@ -730,12 +761,15 @@
             }
         };
 
-        const render = () => {
+        const render = (known) => {
             state.raf = 0;
             if (!el.isConnected || el.hidden) return;
-            // 先集中读 scrollTop 和 clientHeight，再统一写 at-top / at-bottom 类，避免读→写→读触发强制同步重排
-            const top = r.viewport.scrollTop;
-            const h = r.viewport.clientHeight || 600;
+            // 先集中读 scrollTop 和 clientHeight（或复用 rebuild 预读值），再统一写 at-top / at-bottom 类，避免读→写→读触发强制同步重排
+            const hasKnown = Boolean(known && typeof known === 'object' && typeof known.top === 'number' && known.height > 0);
+            const top = hasKnown ? known.top : r.viewport.scrollTop;
+            const rawH = hasKnown ? known.height : r.viewport.clientHeight;
+            if (!hasKnown && rawH > 0) cachedVpH = rawH;
+            const h = rawH || 600;
             const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
             // 滚在最上面/最下面时去掉对应一侧的边缘渐隐
             r.viewport.classList.toggle('at-top', top <= 1);

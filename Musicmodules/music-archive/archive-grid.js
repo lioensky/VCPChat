@@ -161,8 +161,12 @@
                     keepHeads.add(row.s);
                     let h = st.heads.get(row.s);
                     if (!h) { h = headNode(row.s); st.heads.set(row.s, h); if (!frag) frag = document.createDocumentFragment(); frag.appendChild(h); }
-                    h.style.transform = `translate3d(${st.left}px,${row.y}px,0)`;
-                    h.style.width = (st.cols * st.cell + (st.cols - 1) * GAP_X) + 'px';
+                    const hw = st.cols * st.cell + (st.cols - 1) * GAP_X;
+                    if (h._x !== st.left || h._y !== row.y) {
+                        h._x = st.left; h._y = row.y;
+                        h.style.transform = `translate3d(${st.left}px,${row.y}px,0)`;
+                    }
+                    if (h._w !== hw) { h._w = hw; h.style.width = hw + 'px'; }
                     continue;
                 }
                 const sec = st.secs[row.s];

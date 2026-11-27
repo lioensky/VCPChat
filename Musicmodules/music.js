@@ -238,12 +238,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
 
+    let disposeAudioEngineStatus = null;
     app.destroy = () => {
         if (app.destroyed) return;
         app.destroyed = true;
         app.lyricsRequestToken++;
         app.disposeCurrentLyricsQuery?.();
         app.disposeCurrentLyricsQuery = null;
+        disposeAudioEngineStatus?.();
+        disposeAudioEngineStatus = null;
 
         app.stageHost?.destroy?.();
         app.destroyAmbientPixi?.();
@@ -405,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('[Music] Failed to read audio engine endpoint:', error);
         }
     };
-    app.api?.onAudioEngineStatus?.(applyAudioEngineEndpoint);
+    disposeAudioEngineStatus = app.api?.onAudioEngineStatus?.(applyAudioEngineEndpoint) || null;
 
     // --- Initialization ---
     const init = async () => {
@@ -465,9 +468,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Initial values
         app.initBackgroundLayers();
-        app.visualizerCanvas.width = app.visualizerCanvas.clientWidth;
-        app.visualizerCanvas.height = app.visualizerCanvas.clientHeight;
-        app.recreateParticles();
+        // 档案页盖住经典视图时跳过对隐藏画布的同步布局测量，切回经典视图时由 archive-view 重置尺寸
+        if (!app.isArchiveActive && app.visualizerCanvas) {
+            app.visualizerCanvas.width = app.visualizerCanvas.clientWidth;
+            app.visualizerCanvas.height = app.visualizerCanvas.clientHeight;
+            app.recreateParticles();
+        }
         if (endpointPromise) applyAudioEngineEndpoint(await endpointPromise);
         app.connectWebSocket();
         if (!app.animationFrameId) app.startVisualizerAnimation();

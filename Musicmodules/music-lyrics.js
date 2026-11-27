@@ -526,19 +526,21 @@ function setupLyrics(app) {
     };
 
     // 监听用户在歌词容器的手动滚动，暂停自动视口吸附
+    let lyricScrollHandler = null;
     if (!app._lyricScrollListenersAttached && app.lyricsContainer) {
         app._lyricScrollListenersAttached = true;
-        const handleUserScroll = () => {
+        lyricScrollHandler = () => {
             app.lyricUserScrolling = true;
             if (app.lyricUserScrollTimer) clearTimeout(app.lyricUserScrollTimer);
             // 用户停止滑动 3.5 秒后恢复自动居中跟随
             app.lyricUserScrollTimer = setTimeout(() => {
+                app.lyricUserScrollTimer = null;
                 app.lyricUserScrolling = false;
             }, 3500);
         };
 
-        app.lyricsContainer.addEventListener('wheel', handleUserScroll, { passive: true });
-        app.lyricsContainer.addEventListener('touchstart', handleUserScroll, { passive: true });
+        app.lyricsContainer.addEventListener('wheel', lyricScrollHandler, { passive: true });
+        app.lyricsContainer.addEventListener('touchstart', lyricScrollHandler, { passive: true });
     }
 
     // seek 为真时是跳播之后（拖进度条、系统媒体浮层、点歌词行）：暂停中也要重新定位，往回跳一点也照跳。
@@ -794,8 +796,21 @@ function setupLyrics(app) {
         app.currentScrollY = 0;
         app.targetScrollY = 0;
         app.lyricUserScrolling = false;
-        if (app.lyricUserScrollTimer) clearTimeout(app.lyricUserScrollTimer);
+        if (app.lyricUserScrollTimer) { clearTimeout(app.lyricUserScrollTimer); app.lyricUserScrollTimer = null; }
         app.lyricsList.innerHTML = '<li class="no-lyrics">正在加载歌词…</li>';
         app.lyricsList.style.transform = 'translate3d(0, 0px, 0)';
     };
+
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('beforeunload', () => {
+            cancelSeekAnim();
+            if (app.lyricUserScrollTimer) { clearTimeout(app.lyricUserScrollTimer); app.lyricUserScrollTimer = null; }
+            if (lyricScrollHandler && app.lyricsContainer) {
+                app.lyricsContainer.removeEventListener('wheel', lyricScrollHandler);
+                app.lyricsContainer.removeEventListener('touchstart', lyricScrollHandler);
+                lyricScrollHandler = null;
+                app._lyricScrollListenersAttached = false;
+            }
+        }, { once: true });
+    }
 }

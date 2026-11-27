@@ -214,6 +214,7 @@
         const cache = new Map();       // key → { url, state }
         const queue = [];
         let busy = 0;
+        let destroyed = false;
         const LIMIT = 360;
         const bucket = (px) => (px <= 200 ? 192 : px <= 420 ? 384 : 768);
         const evict = () => {
@@ -224,6 +225,7 @@
             }
         };
         const pump = () => {
+            if (destroyed) return;
             while (busy < 4 && queue.length) {
                 const job = queue.pop();      // 后进先出：刚出现在视野里的先解
                 const entry = cache.get(job.key);
@@ -234,22 +236,32 @@
                 img.decoding = 'async';
                 const done = (url) => {
                     busy--;
+                    if (destroyed) {
+                        if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+                        return;
+                    }
                     entry.state = url ? 'ok' : 'fail';
                     entry.url = url || '';
                     onReady(job.src);   // 失败也回调一次：让还在等封面的格子停掉加载微光
                     pump();
                 };
                 img.onload = () => {
+                    if (destroyed) { done(''); return; }
                     const w = img.naturalWidth, h = img.naturalHeight;
                     const k = Math.min(1, job.size / Math.max(1, Math.min(w, h)));
                     if (k >= 0.9 || typeof global.createImageBitmap !== 'function') { done(job.src); return; }
                     const cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
                     global.createImageBitmap(img, { resizeWidth: cw, resizeHeight: ch, resizeQuality: 'high' }).then((bmp) => {
+                        if (destroyed) { bmp.close?.(); done(''); return; }
                         const c = document.createElement('canvas');
                         c.width = cw; c.height = ch;
                         c.getContext('2d').drawImage(bmp, 0, 0);
                         bmp.close?.();
-                        c.toBlob((blob) => done(blob ? URL.createObjectURL(blob) : job.src), 'image/jpeg', 0.86);
+                        c.toBlob((blob) => {
+                            c.width = 0; c.height = 0;
+                            if (destroyed) { done(''); return; }
+                            done(blob ? URL.createObjectURL(blob) : job.src);
+                        }, 'image/jpeg', 0.86);
                     }).catch(() => done(job.src));
                 };
                 img.onerror = () => done('');
@@ -259,7 +271,7 @@
         return {
             /* 有了就给地址；没有就排队，好了回调 onReady(src) */
             get(src, px) {
-                if (!src) return '';
+                if (!src || destroyed) return '';
                 const size = bucket(px);
                 // 已经有更大一档的就直接用
                 for (const s of [size, 384, 768]) {
@@ -289,7 +301,7 @@
             },
             failed(src) { return [192, 384, 768].some((s) => cache.get(src + '|' + s)?.state === 'fail'); },
             clearQueue() { queue.length = 0; for (const v of cache.values()) if (v.state === 'queued') v.state = 'idle'; for (const [k, v] of cache) if (v.state === 'idle') cache.delete(k); },
-            destroy() { for (const v of cache.values()) if (v.url && v.url.startsWith('blob:')) URL.revokeObjectURL(v.url); cache.clear(); queue.length = 0; },
+            destroy() { destroyed = true; for (const v of cache.values()) if (v.url && v.url.startsWith('blob:')) URL.revokeObjectURL(v.url); cache.clear(); queue.length = 0; },
             get size() { return cache.size; }
         };
     };
@@ -750,13 +762,15 @@
             paintSeek();
         });
         seekEl.addEventListener('pointermove', (e) => { if (seekDrag && seekDrag.id === e.pointerId) { seekDrag.t = seekAt(e.clientX); paintSeek(); } });
+        let seekPaintTimer = 0;
         const seekEnd = (e) => {
             if (!seekDrag || seekDrag.id !== e.pointerId) return;
             const t = seekDrag.t;
             seekDrag = null;
             seekEl.classList.remove('is-drag');
             if (e.type === 'pointerup' && opts.seek) opts.seek(t);
-            setTimeout(paintSeek, 60);
+            clearTimeout(seekPaintTimer);
+            seekPaintTimer = setTimeout(() => { seekPaintTimer = 0; if (st.on) paintSeek(); }, 60);
         };
         seekEl.addEventListener('pointerup', seekEnd);
         seekEl.addEventListener('pointercancel', seekEnd);
@@ -1182,6 +1196,7 @@
                     clearInterval(dimTimer);
                     clearInterval(seekTimer);
                     seekTimer = 0;
+                    if (seekPaintTimer) { clearTimeout(seekPaintTimer); seekPaintTimer = 0; }
                     if (movingOff) { clearTimeout(movingOff); movingOff = 0; }
                     el.classList.remove('aw-dim', 'aw-moving');
                     cancelAnimationFrame(st.raf);
@@ -1238,6 +1253,7 @@
                 cancelAnimationFrame(st.raf);
                 clearTimeout(st.reflowTimer);
                 clearTimeout(movingOff);
+                clearTimeout(seekPaintTimer);
                 clearInterval(seekTimer);
                 clearInterval(dimTimer);
                 thumbs.destroy();

@@ -1174,7 +1174,11 @@
                 table?.show(false);
                 grid?.show(false);
                 if (!app.isStageActive) originalCreateAmbient?.();
-                app.visualizerCanvas && (app.visualizerCanvas.width = app.visualizerCanvas.clientWidth);
+                if (app.visualizerCanvas) {
+                    app.visualizerCanvas.width = app.visualizerCanvas.clientWidth;
+                    app.visualizerCanvas.height = app.visualizerCanvas.clientHeight;
+                    app.recreateParticles?.();
+                }
             }
             syncLyrics();
         };
@@ -1833,19 +1837,87 @@
          * 颗粒质感（借鉴 RhinE 的 grain）：一块无缝噪点小图平铺在场景上、HUD 下面，按设备像素 1:1。
          * 深色时是白色噪点（只把黑底提亮），浅色时是黑色噪点（只把纸面压暗），平均只差两三级灰，
          * 让大面积的纸色和黑底不那么像塑料。图只生成一次，静止不动，不占每帧开销；
-         * 用首帧后的异步 toBlob 放到后台线程编码 PNG，避免同步 toDataURL 在启动期阻塞主线程近 200ms。
+         * 直接在 JS 里编码 8-bit 灰度+Alpha 标准 PNG（单块无压缩 DEFLATE），不碰 2D canvas / Skia 管线，
+         * 彻底避免首帧与 Three.js 争抢 GPU/软件合成器造成数百毫秒阻塞。
          */
         const GRAIN_TILE = 160;
         const grainTiles = {};
-        const grainPending = {};
         const grainObjectUrls = [];
         let grainTask = null;
+        let crc32Table = null;
         const cancelGrain = () => {
             if (!grainTask) return;
             if (grainTask.kind === 'idle' && typeof global.cancelIdleCallback === 'function') global.cancelIdleCallback(grainTask.id);
             else if (grainTask.kind === 'timer') clearTimeout(grainTask.id);
             else cancelAnimationFrame(grainTask.id);
             grainTask = null;
+        };
+        const encodeGrainPng = (light) => {
+            if (!crc32Table) {
+                crc32Table = new Uint32Array(256);
+                for (let i = 0; i < 256; i++) {
+                    let c = i;
+                    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+                    crc32Table[i] = c >>> 0;
+                }
+            }
+            const crc32 = (bytes, start, len) => {
+                let c = 0xffffffff;
+                for (let i = start, end = start + len; i < end; i++) c = crc32Table[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+                return (c ^ 0xffffffff) >>> 0;
+            };
+            const w = GRAIN_TILE, h = GRAIN_TILE;
+            const rowBytes = 1 + w * 2;
+            const rawLen = h * rowBytes; // 51360 <= 65535，单个 stored DEFLATE 块即可装完
+            const idatLen = 2 + 5 + rawLen + 4;
+            const png = new Uint8Array(8 + 25 + (12 + idatLen) + 12);
+            const dv = new DataView(png.buffer);
+            // PNG signature
+            png.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+            // IHDR: 160x160, 8-bit Grayscale+Alpha (colorType=4)
+            let off = 8;
+            dv.setUint32(off, 13); off += 4;
+            png.set([73, 72, 68, 82], off);
+            dv.setUint32(off + 4, w);
+            dv.setUint32(off + 8, h);
+            png[off + 12] = 8; png[off + 13] = 4; png[off + 14] = 0; png[off + 15] = 0; png[off + 16] = 0;
+            dv.setUint32(off + 17, crc32(png, off, 17));
+            off += 21;
+            // IDAT header + zlib stored DEFLATE header
+            dv.setUint32(off, idatLen); off += 4;
+            const idatTypeStart = off;
+            png.set([73, 68, 65, 84], off); off += 4;
+            png[off++] = 0x78; png[off++] = 0x01; // zlib header (30721 % 31 === 0)
+            png[off++] = 0x01; // BFINAL=1, BTYPE=00 (stored)
+            png[off++] = rawLen & 0xff; png[off++] = (rawLen >>> 8) & 0xff;
+            const nlen = (~rawLen) & 0xffff;
+            png[off++] = nlen & 0xff; png[off++] = (nlen >>> 8) & 0xff;
+            // 固定种子：每次打开颗粒一样，不会一闪
+            let seed = 0x2f6b1d;
+            const v = light ? 0 : 255;
+            const scale = light ? 13 : 11;
+            let s1 = 1, s2 = 0;
+            for (let y = 0; y < h; y++) {
+                png[off++] = 0; // filter type 0 (None)
+                s2 += s1;
+                for (let x = 0; x < w; x++) {
+                    seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
+                    const r = ((seed >>> 0) % 100000) * 1e-5;
+                    const a = (r * r * r * scale + 0.5) | 0;
+                    png[off++] = v;
+                    s1 += v; s2 += s1;
+                    png[off++] = a;
+                    s1 += a; s2 += s1;
+                }
+                s1 %= 65521; s2 %= 65521;
+            }
+            dv.setUint32(off, ((s2 << 16) | s1) >>> 0); off += 4;
+            dv.setUint32(off, crc32(png, idatTypeStart, 4 + idatLen)); off += 4;
+            // IEND
+            dv.setUint32(off, 0); off += 4;
+            png.set([73, 69, 78, 68], off);
+            dv.setUint32(off + 4, 0xae426082);
+            return png;
         };
         const applyGrain = (light, dpr, url) => {
             if (state.destroyed) return;
@@ -1859,45 +1931,16 @@
         const buildGrainTile = (light, dpr) => {
             const k = light ? 'light' : 'dark';
             if (grainTiles[k] !== undefined) { applyGrain(light, dpr, grainTiles[k]); return; }
-            if (grainPending[k]) return;
-            grainPending[k] = true;
             try {
-                const c = document.createElement('canvas');
-                c.width = c.height = GRAIN_TILE;
-                const g = c.getContext('2d');
-                const img = g.createImageData(GRAIN_TILE, GRAIN_TILE);
-                const v = light ? 0 : 255;
-                // 固定种子：每次打开颗粒一样，不会一闪；按 32 位像素单次写入减少首屏像素循环开销
-                let seed = 0x2f6b1d;
-                const scale = light ? 13 : 11;
-                const data = img.data;
-                const u32 = new Uint32Array(data.buffer);
-                const rgb = v | (v << 8) | (v << 16);
-                for (let p = 0; p < u32.length; p++) {
-                    seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
-                    const r = ((seed >>> 0) % 100000) * 1e-5;
-                    const a = (r * r * r * scale + 0.5) | 0;
-                    u32[p] = rgb | (a << 24);
+                const png = encodeGrainPng(light);
+                let url = '';
+                if (typeof Blob === 'function' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+                    url = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+                    grainObjectUrls.push(url);
                 }
-                g.putImageData(img, 0, 0);
-                if (typeof c.toBlob === 'function' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-                    c.toBlob((blob) => {
-                        grainPending[k] = false;
-                        if (!blob) { grainTiles[k] = ''; applyGrain(light, dpr, ''); return; }
-                        if (state.destroyed) return;
-                        const url = URL.createObjectURL(blob);
-                        grainObjectUrls.push(url);
-                        grainTiles[k] = url;
-                        applyGrain(light, global.devicePixelRatio || 1, url);
-                    }, 'image/png');
-                } else {
-                    const url = c.toDataURL('image/png');
-                    grainPending[k] = false;
-                    grainTiles[k] = url;
-                    applyGrain(light, dpr, url);
-                }
+                grainTiles[k] = url;
+                applyGrain(light, dpr, url);
             } catch (e) {
-                grainPending[k] = false;
                 grainTiles[k] = '';
                 applyGrain(light, dpr, '');
             }

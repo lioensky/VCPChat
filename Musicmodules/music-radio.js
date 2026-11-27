@@ -59,7 +59,11 @@
         + Math.min(999, Math.round((Number(t.bitrate) || 0) / 1000));
     // 伴奏 / 纯音乐版 / 卡拉 OK：电台和推荐里往后放（种子本身是伴奏时不降）
     const INSTRUMENTAL = /instrumental|\binst\.?(?=\s*[)\]）】]|$)|off[\s-]?vocal|karaoke|backing track|伴奏|纯音乐版|純音樂|カラオケ|オフボーカル/i;
-    const isInstrumental = (t) => INSTRUMENTAL.test(String((t && t.title) || '').replace(AUDIO_EXT, ''));
+    // 无 /i、无词边界/前瞻的纯字面量预筛，对 99% 普通曲名走 V8 线性快路径；命中后再走精确匹配
+    const INSTRUMENTAL_HINT = /inst|off|karaoke|backing|伴奏|纯音乐版|純音樂|カラオケ|オフボーカル/;
+    const INSTRUMENTAL_LOWER = /instrumental|\binst\.?(?=\s*[)\]）】]|$)|off[\s-]?vocal|karaoke|backing track|伴奏|纯音乐版|純音樂|カラオケ|オフボーカル/;
+    const isInstrumentalLower = (lowTitle) => Boolean(lowTitle) && INSTRUMENTAL_HINT.test(lowTitle) && INSTRUMENTAL_LOWER.test(lowTitle);
+    const isInstrumental = (t) => isInstrumentalLower(norm(String((t && t.title) || '').replace(AUDIO_EXT, '')));
 
     /*
      * 从曲库里挑和种子相近的歌。seeds 是最近放的几首（越靠后越重要），exclude 是不要的（刚放过、已在队列里）。
@@ -88,7 +92,7 @@
         const bestRank = new Map();
         const keys = new Array(n);
         const normArtists = new Array(n);
-        const cleanTitles = new Array(n);
+        const normTitles = new Array(n);
         const ok = new Uint8Array(n);
         const hasSeedArtists = seedArtists.size > 0;
         const hasSeedAlbums = seedAlbums.size > 0;
@@ -98,10 +102,10 @@
             if (!t || !t.path || exclude.has(t) || !playable(t)) continue;
             ok[i] = 1;
             const na = norm(t.artist);
-            const ct = String(t.title || '').replace(AUDIO_EXT, '');
+            const nt = norm(String(t.title || '').replace(AUDIO_EXT, ''));
             normArtists[i] = na;
-            cleanTitles[i] = ct;
-            const k = na && ct ? norm(ct) + '\n' + na : '';
+            normTitles[i] = nt;
+            const k = na && nt ? nt + '\n' + na : '';
             keys[i] = k;
             if (!k || takenKeys.has(k)) continue;
             const prev = best.get(k);
@@ -147,7 +151,7 @@
             if (liked(t)) s += 1.5;
             s += novelty(t); // 每日推荐里给没听过的歌一点加分，让曲库里沉着的歌浮上来
             s += 1.2 * random();
-            if (!instrumentalOk && cleanTitles[i] && INSTRUMENTAL.test(cleanTitles[i])) s *= 0.25;
+            if (!instrumentalOk && isInstrumentalLower(normTitles[i])) s *= 0.25;
             s *= damp(t); // 每日推荐：前几批刚推过的往后放
             scored.push([s, t]);
         }
