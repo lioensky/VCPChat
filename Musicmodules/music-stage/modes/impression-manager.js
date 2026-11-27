@@ -21,6 +21,7 @@
     const RATIO = Object.freeze({ 'energy-saving': 1, standard: 1.5, ultimate: 2 });
     const PAINT = 768;          // 油画离屏图的边长
     const BANDS = 32;
+    const BAND_RATIOS = Float32Array.from({ length: BANDS }, (_, i) => Math.pow(i / BANDS, 1.6) * 0.85);
     const SECTION_GAP = 4.5;
     const REVEAL_SECONDS = 4.2;
 
@@ -229,7 +230,7 @@ vec3 gilt(vec3 F0, vec3 n, float env) {
     float fres = pow(1.0 - max(n.z, 0.0), 5.0);
     // 金箔不是镜子：一半是镜面反射，一半是被画灯从上面照亮的漫射（朝上的面亮）
     float lampK = 0.35 + 0.65 * uLamp.w;
-    vec3 diffuse = F0 * (mix(0.12, 0.3, uLight) + 0.42 * max(0.0, dot(n, normalize(vec3(0.0, 0.8, 0.6)))) * lampK);
+    vec3 diffuse = F0 * (mix(0.12, 0.3, uLight) + 0.42 * max(0.0, dot(n, vec3(0.0, 0.8, 0.6))) * lampK);
     return (F0 + (1.0 - F0) * fres) * env * 0.75 + diffuse;
 }
 vec3 grade(vec3 c) {
@@ -289,13 +290,14 @@ void main() {
         // 画面：笔触随音乐轻轻「呼吸」
         vec2 wob = (vec2(vnoise(p * 34.0 + uTime * 0.35), vnoise(p * 34.0 - uTime * 0.31 + 7.0)) - 0.5) * 0.0018 * (1.0 + 1.5 * uEnergy);
         vec4 paint = texture(uPaint, p + wob);
+        float pLuma = luma(paint.rgb);
         vec3 pc = grade(paint.rgb);
         // 光斑：画上细碎的、横着的小光块，跟音乐闪；夜里变成灯
         if (uFlecks > 0.0) {
             vec2 g = p * vec2(34.0, 48.0);
             vec2 cell = floor(g);
             float hcell = hash12(cell);
-            float bright = mix(smoothstep(0.35, 0.8, luma(paint.rgb)), 1.0 - smoothstep(0.15, 0.5, luma(paint.rgb)), uNight);
+            float bright = mix(smoothstep(0.35, 0.8, pLuma), 1.0 - smoothstep(0.15, 0.5, pLuma), uNight);
             float tw = pow(0.5 + 0.5 * sin(uTime * (0.8 + 2.2 * hcell) + hcell * 40.0), 6.0);
             vec2 d = (fract(g) - 0.5) * vec2(1.0, 2.4);
             float fleck = exp(-dot(d, d) * 26.0) * tw * step(mix(0.8, 0.9, uNight), hcell) * bright * (0.35 + 1.4 * uEnergy) * uFlecks;
@@ -310,9 +312,8 @@ void main() {
         // 背光的一沿暗，凸起的地方上光油一点细的反光；整幅画上面亮、往下慢慢暗（灯在画框上沿）
         {
             float e = 1.3 / size;
-            float h0 = luma(paint.rgb);
-            float hx = luma(texture(uPaint, p + wob + vec2(e, 0.0)).rgb) - h0;
-            float hy = luma(texture(uPaint, p + wob + vec2(0.0, e)).rgb) - h0;
+            float hx = luma(texture(uPaint, p + wob + vec2(e, 0.0)).rgb) - pLuma;
+            float hy = luma(texture(uPaint, p + wob + vec2(0.0, e)).rgb) - pLuma;
             vec3 n = normalize(vec3(-hx * 5.0, -hy * 5.0, 1.0));
             vec3 L = normalize(vec3((uLamp.x - frag.x) / size * 0.5, 1.1, 0.7));
             float lampK = mix(0.35, 1.0, uLamp.w);
@@ -322,16 +323,17 @@ void main() {
             pc = pc * relief * fall + vec3(1.0, 0.92, 0.8) * varnish * 0.22 * lampK;
         }
         // 布纹
-        pc *= 1.0 + (sin(frag.x * 2.1) * sin(frag.y * 2.1)) * 0.018;
+        float weave = sin(frag.x * 2.1) * sin(frag.y * 2.1);
+        pc *= 1.0 + weave * 0.018;
         // 没落笔的地方：打过底的画布上只有炭笔线稿
         if (uReveal < 1.05) {
             float e = 2.5 / size;
             float lx = luma(textureLod(uPaint, p + vec2(e, 0.0), 1.5).rgb) - luma(textureLod(uPaint, p - vec2(e, 0.0), 1.5).rgb);
             float ly = luma(textureLod(uPaint, p + vec2(0.0, e), 1.5).rgb) - luma(textureLod(uPaint, p - vec2(0.0, e), 1.5).rgb);
             float sketch = smoothstep(0.05, 0.2, length(vec2(lx, ly)));
-            vec3 primed = uPrimed * (1.0 + (sin(frag.x * 2.1) * sin(frag.y * 2.1)) * 0.02);
+            vec3 primed = uPrimed * (1.0 + weave * 0.02);
             // 换歌：没落到笔的地方还是上一幅画，炭笔线稿淡淡地压在上面
-            if (uHasPrev > 0.5) primed = grade(texture(uPrev, p).rgb) * (1.0 + (sin(frag.x * 2.1) * sin(frag.y * 2.1)) * 0.018);
+            if (uHasPrev > 0.5) primed = grade(texture(uPrev, p).rgb) * (1.0 + weave * 0.018);
             primed = mix(primed, primed * 0.45, sketch * smoothstep(0.0, 0.25, uReveal) * mix(0.8, 0.4, uHasPrev));
             float m = 1.0 - smoothstep(uReveal - 0.07, uReveal, paint.a);
             pc = mix(primed, pc, m);
@@ -752,7 +754,7 @@ void main() {
             if (frame.isPlaying) ripple.age = Math.min(1, ripple.age + dt / 1.4);
             const spectrum = audio.spectrum || [];
             for (let i = 0; i < BANDS; i += 1) {
-                const raw = spectrum.length ? clamp(Number(spectrum[Math.min(spectrum.length - 1, Math.floor(Math.pow(i / BANDS, 1.6) * spectrum.length * 0.85))]) || 0, 0, 1) : 0;
+                const raw = spectrum.length ? clamp(Number(spectrum[Math.min(spectrum.length - 1, Math.floor(BAND_RATIOS[i] * spectrum.length))]) || 0, 0, 1) : 0;
                 const v = clamp(raw * (0.7 + 0.5 * s.audioReactivity), 0, 1);
                 if (frame.isPlaying) bands[i] += (v - bands[i]) * (1 - Math.exp(-dt * (v > bands[i] ? 18 : 4)));
             }
@@ -886,6 +888,7 @@ void main() {
                 gl.deleteProgram(glState.main.program);
                 gl.deleteTexture(glState.cover);
                 glState.sheets.forEach(({ tex, fbo }) => { gl.deleteTexture(tex); gl.deleteFramebuffer(fbo); });
+                gl.deleteVertexArray(glState.vao);
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;

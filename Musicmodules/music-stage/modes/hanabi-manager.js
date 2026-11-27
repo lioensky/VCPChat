@@ -910,7 +910,8 @@ vec2 home(vec2 t) {
                 audioReactivity: clamp(tuning.audioReactivity ?? 1, 0, 2),
                 grain: clamp(tuning.grain ?? 0.3, 0, 1),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion),
+                quality: mode.config.quality || 'standard'
             };
         };
 
@@ -976,7 +977,11 @@ vec2 home(vec2 t) {
             glState.burstsKey = cuesFor;
         };
 
-        const family = () => global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
+        let cachedFamily = '';
+        const family = () => {
+            if (!cachedFamily) cachedFamily = global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
+            return cachedFamily;
+        };
 
         // 荧光笔：浅纸上是黄色记号笔，深色卡和夜空上用主题色，淡一些
         const markerColour = slot => (slot.dark ? [1.0, 0.86, 0.3, 0.62] : [...(colours?.accent || [0.95, 0.66, 0]), 0.42]);
@@ -1644,11 +1649,11 @@ vec2 home(vec2 t) {
 
         const redraw = () => { still.invalidate(); lastDraw = -Infinity; if (latestFrame) mode.updateFrame(latestFrame); };
         const updateConfig = mode.updateConfig;
-        mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); redraw(); };
+        mode.updateConfig = (config) => { updateConfig(config); cachedFamily = ''; resize(); readColours(); redraw(); };
         mode.resize = () => { resize(); redraw(); };
         mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
-        mode.updateTheme = () => { readColours(); redraw(); };
+        mode.updateTheme = () => { cachedFamily = ''; readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
             initialized: Boolean(glState), cues: cues.length, cue: stats.cue, bursts: stats.bursts, active: stats.active,
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`, effects: `${low[0]}x${low[1]}`
@@ -1668,7 +1673,11 @@ vec2 home(vec2 t) {
                 gl.deleteTexture(glState.bursts);
                 gl.deleteProgram(glState.sky.program);
                 gl.deleteProgram(glState.spark.program);
-                gl.deleteTexture(glState.sparkTarget.tex);
+                glState.sharp.dispose();
+                glState.glyphs.dispose();
+                glState.sparkTarget.dispose();
+                glState.bloom.dispose();
+                gl.deleteVertexArray(glState.vao);
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;

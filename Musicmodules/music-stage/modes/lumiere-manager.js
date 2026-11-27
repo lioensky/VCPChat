@@ -237,7 +237,7 @@ vec3 lightAt(vec2 p, float aspect, out float total) {
         col += uBeamCol[i].rgb * k;
         total += uBeamCol[i].a * k;
     }
-    if (uRig == 4) {
+    if (uRig == 4 && total > 0.0005) {
         // 焦散：两层扭过的网格，亮的地方是细线
         vec2 q = p * 3.2 + vec2(uTime * 0.05, uTime * 0.03);
         vec2 w = vec2(vnoise(q + uSeed), vnoise(q * 1.3 - uSeed)) * 1.8;
@@ -268,7 +268,7 @@ void main() {
     vec3 air = light * (0.1 + smoke * 0.4 * uSmoke + strands * 0.3 * uSmoke);
     // 字挡光：从这一点朝主光的灯口走几步，路上碰到字（取模糊过的字形），烟里就留下一道字的影子，
     // 像光从字后面穿过来。只算第一束光，五次等距取样都走糊的那一级贴图（影子边是软的，不加抖动免得出颗粒）
-    if (uBeamCount > 0) {
+    if (uBeamCount > 0 && total > 0.0005) {
         vec2 o = vec2(uBeam[0].x * aspect, uBeam[0].y);
         vec2 toO = o - p;
         float len = length(toO);
@@ -282,7 +282,7 @@ void main() {
         air *= 1.0 - smoothstep(0.05, 0.55, occ) * 0.7 * uLights;
     }
     // 浮尘：一格一粒，慢慢飘，只在光里亮
-    if (uDust > 0.0) {
+    if (uDust > 0.0 && total > 0.0005) {
         vec2 grid = vec2(aspect * 44.0, 44.0);
         vec2 dp = uv + vec2(uTime * 0.004, uTime * 0.007);
         vec2 cell = floor(dp * grid);
@@ -373,8 +373,10 @@ void main() {
             vec2 c = vec2(fract(0.17 + fi * 0.31 + uTime * (0.006 + fi * 0.002) + uSeed * 0.1), fract(0.73 + fi * 0.47 + sin(uTime * 0.05 + fi) * 0.08));
             vec2 d = (uv - c) * vec2(aspect, 1.0);
             float rad = 0.06 + fract(fi * 0.618) * 0.07;
-            float disc = smoothstep(rad, rad * 0.82, length(d));
-            float rim = smoothstep(rad * 0.75, rad, length(d)) * disc;
+            float dl = length(d);
+            if (dl >= rad) continue;
+            float disc = smoothstep(rad, rad * 0.82, dl);
+            float rim = smoothstep(rad * 0.75, rad, dl) * disc;
             extra += (light * 0.12 + uInk * 0.012) * (disc + rim * 0.8) * uBokeh;
         }
     }
@@ -537,7 +539,8 @@ vec2 home(vec2 t) {
                 flare: clamp(tuning.flare ?? 1, 0, 2),
                 bokeh: clamp(tuning.bokeh ?? 1, 0, 2),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion),
+                quality: mode.config.quality || 'standard'
             };
         };
 
@@ -585,7 +588,11 @@ vec2 home(vec2 t) {
             Utils.loadLyricFont(frame.lines, [500], () => { if (mode.destroyed) return; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
         };
 
-        const family = () => global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
+        let cachedFamily = '';
+        const family = () => {
+            if (!cachedFamily) cachedFamily = global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
+            return cachedFamily;
+        };
 
         // 一句的字形图：居中成几行，同一个字号；G 是字编号（字框）
         const slotFor = (index, build = true, s = settings()) => {
@@ -943,11 +950,11 @@ vec2 home(vec2 t) {
 
         const redraw = () => { still.invalidate(); lastDraw = -Infinity; if (latestFrame) mode.updateFrame(latestFrame); };
         const updateConfig = mode.updateConfig;
-        mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); redraw(); };
+        mode.updateConfig = (config) => { updateConfig(config); cachedFamily = ''; resize(); readColours(); redraw(); };
         mode.resize = () => { resize(); redraw(); };
         mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
-        mode.updateTheme = () => { readColours(); redraw(); };
+        mode.updateTheme = () => { cachedFamily = ''; readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
             initialized: Boolean(glState), cues: cues.length, cue: stats.cue, rig: stats.rig,
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`, effects: `${low[0]}x${low[1]}`
@@ -965,6 +972,9 @@ vec2 home(vec2 t) {
                 const { gl } = glState;
                 glState.slots.forEach((slot) => { gl.deleteTexture(slot.text); gl.deleteTexture(slot.glyph); });
                 gl.deleteProgram(glState.program);
+                glState.sharp.dispose();
+                glState.glyphs.dispose();
+                gl.deleteVertexArray(glState.vao);
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;

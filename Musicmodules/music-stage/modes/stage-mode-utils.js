@@ -1021,6 +1021,7 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
         const layers = Array.from({ length: 3 }, linearTexture);
         const vao = gl.createVertexArray();
         let size = [0, 0];
+        let disposed = false;
         const bindLayers = (u) => {
             layers.forEach((t, i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, t); });
             gl.uniform1i(u.uBase, 0);
@@ -1124,6 +1125,22 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
                 gl.uniform1i(uniforms.uBloomTex, 15);
                 bind?.(uniforms, 3);
                 gl.drawArrays(gl.TRIANGLES, 0, 3);
+            },
+            dispose() {
+                if (disposed) return;
+                disposed = true;
+                gl.deleteProgram(program);
+                gl.deleteFramebuffer(fbo);
+                layers.forEach(t => gl.deleteTexture(t));
+                gl.deleteVertexArray(vao);
+                if (bloomGl) {
+                    gl.deleteProgram(bloomGl.seed.program);
+                    gl.deleteProgram(bloomGl.down.program);
+                    gl.deleteProgram(bloomGl.up.program);
+                    bloomGl.levels.forEach(t => gl.deleteTexture(t));
+                    bloomGl.fbos.forEach(f => gl.deleteFramebuffer(f));
+                    bloomGl = null;
+                }
             }
         };
     };
@@ -1137,6 +1154,7 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         const fbo = gl.createFramebuffer();
         let size = [0, 0];
+        let disposed = false;
         return {
             tex, fbo, premul,
             get size() { return size; },
@@ -1154,6 +1172,12 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
                 gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
                 gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
                 gl.viewport(0, 0, w, h);
+            },
+            dispose() {
+                if (disposed) return;
+                disposed = true;
+                gl.deleteTexture(tex);
+                gl.deleteFramebuffer(fbo);
             }
         };
     };
@@ -1217,6 +1241,7 @@ void main() {
         const format = half ? [gl.RGBA16F, gl.HALF_FLOAT] : [gl.RGBA8, gl.UNSIGNED_BYTE];
         const levels = [], fbos = [];
         let base = [0, 0];
+        let disposed = false;
         const vao = gl.createVertexArray();
         return {
             // start：泛光最细一层是画面的 1/2^start（1 = 一半；2 = 四分之一，便宜很多，光晕只是更软）
@@ -1315,6 +1340,20 @@ void main() {
                 gl.uniform1f(adder.uniforms.uBloom, strength);
                 gl.drawArrays(gl.TRIANGLES, 0, 3);
                 gl.disable(gl.BLEND);
+            },
+            dispose() {
+                if (disposed) return;
+                disposed = true;
+                gl.deleteProgram(seed.program);
+                gl.deleteProgram(down.program);
+                gl.deleteProgram(up.program);
+                gl.deleteProgram(present.program);
+                if (adder) { gl.deleteProgram(adder.program); adder = null; }
+                levels.forEach(t => gl.deleteTexture(t));
+                fbos.forEach(f => gl.deleteFramebuffer(f));
+                levels.length = 0;
+                fbos.length = 0;
+                gl.deleteVertexArray(vao);
             }
         };
     };
@@ -1433,6 +1472,7 @@ void main() {
         const vao = gl.createVertexArray();
         const buffer = gl.createBuffer();
         let capacity = 0;
+        let disposed = false;
         gl.bindVertexArray(vao);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         for (let i = 0; i < GLYPH_FLOATS / 4; i += 1) {
@@ -1461,6 +1501,13 @@ void main() {
                 gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
                 gl.disable(gl.BLEND);
                 gl.bindVertexArray(null);
+            },
+            dispose() {
+                if (disposed) return;
+                disposed = true;
+                gl.deleteProgram(program);
+                gl.deleteBuffer(buffer);
+                gl.deleteVertexArray(vao);
             }
         };
     };

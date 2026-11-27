@@ -1343,7 +1343,9 @@
                 break;
             }
             case 'pullback': {
-                const step = (shot.steps || []).filter(st => st <= t).length;
+                const steps = shot.steps || [];
+                let step = 0;
+                for (let i = 0; i < steps.length; i += 1) { if (steps[i] <= t) step += 1; }
                 const k = clamp((step - 1) / 2, 0, 1);
                 const from = closeFrame ? closeFrame.c : wideC;
                 c = [from[0] + (wideC[0] - from[0]) * k, from[1] + (wideC[1] - from[1]) * k];
@@ -1956,7 +1958,8 @@ void main() {
         // 积墨（Folia 没有）：墨干的时候往笔画边上走，边上一窄圈浓、中间稍淡，像真墨水写在纸上
         float pool = 1.0 - smoothstep(0.0, 0.2, F - thr);
         float body = smoothstep(0.15, 0.6, F - thr);
-        vec3 inkPooled = clamp(inkK + (inkK - paper) * 0.14 * pool - (inkK - paper) * 0.07 * body, 0.0, 1.0);
+        vec3 diff = inkK - paper;
+        vec3 inkPooled = clamp(inkK + diff * (0.14 * pool - 0.07 * body), 0.0, 1.0);
         col = mix(col, inkPooled, a);
     }
     // 压印（Folia 没有）：字像是压进纸里的——右下边的纸上一线阴影，左上边一线亮
@@ -1964,8 +1967,9 @@ void main() {
         vec2 po = vec2(2.0, -2.0) * max(uDotPx, 0.5) / uRes;
         vec4 gA = texture(uGlyphF, suv - po);
         vec4 gB = texture(uGlyphF, suv + po);
-        float sh = smoothstep(0.25, 0.75, gA.r + gA.b) * (1.0 - smoothstep(0.25, 0.75, gInk));
-        float hi = smoothstep(0.25, 0.75, gB.r + gB.b) * (1.0 - smoothstep(0.25, 0.75, gInk));
+        float invCenter = 1.0 - smoothstep(0.25, 0.75, gInk);
+        float sh = smoothstep(0.25, 0.75, gA.r + gA.b) * invCenter;
+        float hi = smoothstep(0.25, 0.75, gB.r + gB.b) * invCenter;
         float outside = 1.0 - a;
         col *= 1.0 - sh * outside * 0.2 * uPress;
         col += hi * outside * 0.07 * uPress;
@@ -2025,24 +2029,26 @@ void main() {
         // 笔里墨的浓淡跟着鬃毛走一点
         col = mix(col, mix(ink, paper, (1.0 - bristle) * 0.18), cover);
     }
-    // 颗粒按 CSS 像素算：画面按原生分辨率画了，颗粒大小不跟着屏幕像素密度变
-    vec2 cssPx = gl_FragCoord.xy / max(uDotPx, 0.5);
-    if (uGrain > 0.0) {
-        float gr = hash12(floor(cssPx / 1.5) + uGrainStep * 17.0) - 0.5;
-        float fibre = vnoise(cssPx / 3.0 + uGrainStep * 5.0) - 0.5;
-        // 墨里的颗粒压一半：墨是一层实的，不像砂纸
-        col *= 1.0 + (gr * 0.44 * (1.0 - a * 0.6) + fibre * 0.2) * uGrain;
-    }
-    // 纸纹：纤维、绒、帘纹，钉在屏幕上不动（沸腾的只是上面那层颗粒）；墨里也透一点——干的墨盖不住纸的纤维
-    if (uPaperGrain > 0.0) {
-        float pt = texture(uPaperTex, cssPx / 256.0).r - 0.5;
-        float pk = uPaperGrain * (1.0 - a * 0.55);
-        col = col * (1.0 + pt * 0.26 * pk) + pt * 0.035 * pk;
-    }
-    // 杂点：纸上是墨色的点，墨里是纸色的点（印刷没压实的地方）
-    if (uGrain > 0.0) {
-        float speck = step(0.988, hash12(floor(cssPx / 2.2) + uGrainStep * 3.7 + 0.5));
-        col = mix(col, mix(ink, paper, a), speck * 0.55 * (1.0 - a * 0.7) * min(uGrain * 2.0, 1.0));
+    if (uGrain > 0.0 || uPaperGrain > 0.0) {
+        // 颗粒按 CSS 像素算：画面按原生分辨率画了，颗粒大小不跟着屏幕像素密度变
+        vec2 cssPx = gl_FragCoord.xy / max(uDotPx, 0.5);
+        if (uGrain > 0.0) {
+            float gr = hash12(floor(cssPx / 1.5) + uGrainStep * 17.0) - 0.5;
+            float fibre = vnoise(cssPx / 3.0 + uGrainStep * 5.0) - 0.5;
+            // 墨里的颗粒压一半：墨是一层实的，不像砂纸
+            col *= 1.0 + (gr * 0.44 * (1.0 - a * 0.6) + fibre * 0.2) * uGrain;
+        }
+        // 纸纹：纤维、绒、帘纹，钉在屏幕上不动（沸腾的只是上面那层颗粒）；墨里也透一点——干的墨盖不住纸的纤维
+        if (uPaperGrain > 0.0) {
+            float pt = texture(uPaperTex, cssPx / 256.0).r - 0.5;
+            float pk = uPaperGrain * (1.0 - a * 0.55);
+            col = col * (1.0 + pt * 0.26 * pk) + pt * 0.035 * pk;
+        }
+        // 杂点：纸上是墨色的点，墨里是纸色的点（印刷没压实的地方）
+        if (uGrain > 0.0) {
+            float speck = step(0.988, hash12(floor(cssPx / 2.2) + uGrainStep * 3.7 + 0.5));
+            col = mix(col, mix(ink, paper, a), speck * 0.55 * (1.0 - a * 0.7) * min(uGrain * 2.0, 1.0));
+        }
     }
     outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;

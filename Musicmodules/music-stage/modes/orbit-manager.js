@@ -160,18 +160,20 @@ float hash12(vec2 p) {
 ${Utils.NOISE_GLSL}
 
 // 打光：暗房间，一块左上的暖色柔光箱（慢慢挪一点，高光会沿环走），右边一条冷色灯带，下面一点强调色反光
+const vec3 TOP_DIR = vec3(0.152349, 0.761745, -0.629709);
 vec3 keyDir() {
     float a = -0.5 + 0.18 * sin(uTime * 0.05);
     return normalize(vec3(sin(a) * 0.8, 0.62, 0.72));
 }
-vec3 studio(vec3 r) {
+vec3 studio(vec3 r, vec3 kDir) {
     vec3 c = mix(uField * 0.7 + vec3(0.03), uField * 0.9 + vec3(0.12), uLight) * (0.55 + 0.45 * r.y);
     // 头顶后方一大块柔光：倾斜的环面大多把它反过来，环身因此是亮的
-    float top = smoothstep(0.55, 0.92, dot(r, normalize(vec3(0.15, 0.75, -0.62))));
+    float top = smoothstep(0.55, 0.92, dot(r, TOP_DIR));
     c += vec3(1.0, 0.9, 0.74) * top * 1.15;
-    float key = smoothstep(0.82, 0.96, dot(r, keyDir()));
+    float kd = dot(r, kDir);
+    float key = smoothstep(0.82, 0.96, kd);
     c += vec3(1.0, 0.93, 0.82) * key * 2.4;
-    c += vec3(1.0, 0.95, 0.88) * smoothstep(0.35, 0.95, dot(r, keyDir())) * 0.2;
+    c += vec3(1.0, 0.95, 0.88) * smoothstep(0.35, 0.95, kd) * 0.2;
     float strip = (1.0 - smoothstep(0.03, 0.12, abs(r.x - 0.72))) * smoothstep(-0.3, 0.4, r.y);
     c += vec3(0.72, 0.84, 1.0) * strip * 0.9;
     float stripL = (1.0 - smoothstep(0.02, 0.1, abs(r.x + 0.8))) * smoothstep(-0.5, 0.2, r.y);
@@ -207,8 +209,8 @@ void main() {
     col += uAccent * uChorus * mix(0.08, 0.04, uLight) * exp(-dot(d0, d0) * 2.2);
 
     // 转回轨道自己的坐标
-    float c = cos(-uRoll), s = sin(-uRoll);
-    vec2 q = vec2(d0.x * c - d0.y * s, d0.x * s + d0.y * c);
+    float cr = cos(uRoll), sr = sin(uRoll);
+    vec2 q = vec2(d0.x * cr + d0.y * sr, -d0.x * sr + d0.y * cr);
     float theta = atan(q.y / uAxes.y, q.x / uAxes.x);
     float depth = sin(theta);
     float front = 0.5 - depth * 0.5;
@@ -216,7 +218,7 @@ void main() {
     float ci = clamp(uAxes.y / max(uAxes.x, 1e-4), 0.05, 1.0), si = sqrt(1.0 - ci * ci);
     vec3 R = vec3(cos(theta), sin(theta) * ci, -sin(theta) * si);
     vec3 N = vec3(0.0, si, ci);
-    vec2 toScreen = vec2(cos(uRoll), sin(uRoll));
+    vec2 toScreen = vec2(cr, sr);
     float persp = 0.75 + front * 0.5;
 
     // 两道金属环：外环黄铜、内环钢；圆截面打光，外环面上刻着跟着转的刻度。
@@ -271,7 +273,7 @@ void main() {
 
     // 轴：一根抛光的细钢杆穿过圆心，中间套一颗小球；环的后半圈在杆后面，前半圈在杆前面
     if (uAxis > 0.5) {
-        vec2 dir = vec2(-sin(uRoll), cos(uRoll));
+        vec2 dir = vec2(-sr, cr);
         float along = dot(d0, dir);
         float perpS = dir.x * d0.y - dir.y * d0.x;
         float reach = 0.46 + uBeat * 0.08 + uChorus * 0.06;
@@ -295,6 +297,8 @@ void main() {
     }
 
     // 轨道上几颗慢慢转的小珠：上釉的彩珠，盖在最上面
+    vec3 kDir = vec3(0.0);
+    bool hasKDir = false;
     {
         float a = theta - uSpin;
         float idx = floor(a / 6.2832 * 7.0 + 0.5);
@@ -306,18 +310,22 @@ void main() {
         float r2 = dot(v, v);
         float cover = (1.0 - smoothstep(1.0 - aa / rb, 1.0 + aa / rb, sqrt(r2))) * (0.6 + fb * 0.4);
         if (cover > 0.0) {
+            kDir = keyDir();
+            hasKDir = true;
             sN = vec3(v, sqrt(max(1.0 - r2, 0.0)));
             sN.xy = vec2(sN.x * toScreen.x - sN.y * toScreen.y, sN.x * toScreen.y + sN.y * toScreen.x);
-            sBase = uAccent * (0.18 + 0.82 * max(dot(sN, keyDir()), 0.0));
+            sBase = uAccent * (0.18 + 0.82 * max(dot(sN, kDir), 0.0));
             sF0 = vec3(0.04); sA = max(sA * (1.0 - cover), cover); sTop = 3.0; sDim = 1.3; sLip = 0.0;
         }
     }
     if (sA > 0.0) {
+        if (!hasKDir) kDir = keyDir();
         sN = normalize(sN);
         vec3 r = reflect(vec3(0.0, 0.0, -1.0), sN);
         vec3 F = sF0 + (1.0 - sF0) * pow(1.0 - max(sN.z, 0.0), 5.0);
-        vec3 lit = sTop > 2.5 ? sBase + F * studio(r) * sDim
-                              : (F * studio(r) + sF0 * mix(0.05, 0.12, uLight)) * sDim + sF0 * sLip + sBase;
+        vec3 env = studio(r, kDir);
+        vec3 lit = sTop > 2.5 ? sBase + F * env * sDim
+                              : (F * env + sF0 * mix(0.05, 0.12, uLight)) * sDim + sF0 * sLip + sBase;
         col = mix(col, lit, sA);
     }
     // 鼓点：从轨道向外推出一圈细光环
@@ -385,6 +393,7 @@ void main() {
     float sung = vInfo.z;
     // 景深：轨道后半圈的字虚一点
     float m = textureLod(uAtlas, vTex, vBlur * 1.8).r * (1.0 + vBlur * 0.25);
+    if (m <= 0.001 && singing <= 0.001) discard;
     // 光晕取字图的模糊层，到四边形边上淡到 0，免得切出方块；未在唱的字不采样模糊层
     float halo = 0.0;
     float wide = 0.0;
@@ -477,6 +486,8 @@ void main() {
         const still = Utils.createStillGate();
         const bufA = new Float32Array(MAX_GLYPHS * 4);
         const bufB = new Float32Array(MAX_GLYPHS * 4);
+        const prevBufA = new Float32Array(MAX_GLYPHS * 4);
+        const prevBufB = new Float32Array(MAX_GLYPHS * 4);
         const arcTable = new Float32Array(TABLE + 1);
         let sung = [];
         let sungFor = null;
@@ -509,7 +520,8 @@ void main() {
                 audioReactivity: clamp(tuning.audioReactivity ?? 1, 0, 2),
                 grain: clamp(tuning.grain ?? 0.3, 0, 1),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion),
+                quality: mode.config.quality || 'standard'
             };
         };
 
@@ -544,7 +556,11 @@ void main() {
             Utils.loadLyricFont(frame.lines, [700], () => { if (mode.destroyed) return; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, frame.track?.title || '');
         };
 
-        const family = () => global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
+        let cachedFamily = '';
+        const family = () => {
+            if (!cachedFamily) cachedFamily = global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
+            return cachedFamily;
+        };
 
         // 一句的字图：每格一个字；记下每个字的宽度和时刻
         const slotFor = (index, build = true) => {
@@ -615,8 +631,8 @@ void main() {
         const sortByZDesc = (p, q) => q.z - p.z;
         let lastArcA = -1, lastArcB = -1, lastPerimeter = 0;
 
-        // 把一句的字排上轨道，写进 bufA/bufB 的 [from, …)，返回写了几个
-        const place = (line, t, geo, fade, from, rest, chorusAmt = 0) => {
+        // 把一句的字排上轨道，写进 outA/outB 的 [from, …)，返回写了几个
+        const place = (line, t, geo, fade, from, rest, chorusAmt = 0, outA = bufA, outB = bufB) => {
             const { items, centres } = line;
             const itemCount = items.length;
             const g = rest ? itemCount : singingPosition(items, t);
@@ -671,21 +687,21 @@ void main() {
                 if (k >= MAX_GLYPHS) break;
                 const entry = placeList[i];
                 const o = k * 4;
-                bufA[o] = entry.a0; bufA[o + 1] = entry.a1; bufA[o + 2] = entry.a2; bufA[o + 3] = entry.a3;
-                bufB[o] = entry.b0; bufB[o + 1] = entry.b1; bufB[o + 2] = entry.b2; bufB[o + 3] = entry.b3;
+                outA[o] = entry.a0; outA[o + 1] = entry.a1; outA[o + 2] = entry.a2; outA[o + 3] = entry.a3;
+                outB[o] = entry.b0; outB[o + 1] = entry.b1; outB[o + 2] = entry.b2; outB[o + 3] = entry.b3;
                 n += 1;
             }
             return n;
         };
 
-        const drawGlyphs = (slot, count, chorusLine = 0, waitingOpacity = 0.3) => {
+        const drawGlyphs = (slot, count, chorusLine = 0, waitingOpacity = 0.3, aBuf = bufA, bBuf = bufB) => {
             if (!count) return;
             const { gl, glyph } = glState;
             const u = glyph.uniforms;
             gl.useProgram(glyph.program);
             gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, slot.atlas); gl.uniform1i(u.uAtlas, 0);
-            gl.uniform4fv(u.uA, bufA);
-            gl.uniform4fv(u.uB, bufB);
+            gl.uniform4fv(u.uA, aBuf);
+            gl.uniform4fv(u.uB, bBuf);
             gl.uniform1i(u.uCount, count);
             gl.uniform2f(u.uRes, canvas.width, canvas.height);
             gl.uniform3fv(u.uInk, colours.ink);
@@ -765,20 +781,15 @@ void main() {
 
             const fadeIn = index >= 0 ? smooth(-0.1, 0.35, since) : smooth(0, 0.8, t);
             const hasPrev = Boolean(prev?.line);
-            const singleCount = hasPrev ? 0 : place(slot.line, t, geo, fadeIn, 0, false, s.reducedMotion ? 0 : chorusNow);
-            if (!hasPrev) stats.glyphs = singleCount;
+            const prevCount = hasPrev ? place(prev.line, t, geo, 1 - smooth(0, FADE, since), 0, true, s.reducedMotion ? 0 : chorusPrev, prevBufA, prevBufB) : 0;
+            const curCount = place(slot.line, t, geo, fadeIn, 0, false, s.reducedMotion ? 0 : chorusNow, bufA, bufB);
+            stats.glyphs = curCount;
             const drawText = () => {
                 gl.bindVertexArray(vao);
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-                if (hasPrev) {
-                    drawGlyphs(prev, place(prev.line, t, geo, 1 - smooth(0, FADE, since), 0, true, s.reducedMotion ? 0 : chorusPrev), chorusPrev, s.waitingOpacity);
-                    const n = place(slot.line, t, geo, fadeIn, 0, false, s.reducedMotion ? 0 : chorusNow);
-                    stats.glyphs = n;
-                    drawGlyphs(slot, n, chorusNow, s.waitingOpacity);
-                } else {
-                    drawGlyphs(slot, singleCount, chorusNow, s.waitingOpacity);
-                }
+                if (hasPrev) drawGlyphs(prev, prevCount, chorusPrev, s.waitingOpacity, prevBufA, prevBufB);
+                drawGlyphs(slot, curCount, chorusNow, s.waitingOpacity, bufA, bufB);
                 gl.disable(gl.BLEND);
             };
             // 泛光的种子：字也在小图上画一遍（透明底），和画面合起来取亮部
@@ -825,11 +836,11 @@ void main() {
 
         const redraw = () => { still.invalidate(); lastDraw = -Infinity; if (latestFrame) mode.updateFrame(latestFrame); };
         const updateConfig = mode.updateConfig;
-        mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); redraw(); };
+        mode.updateConfig = (config) => { updateConfig(config); cachedFamily = ''; resize(); readColours(); redraw(); };
         mode.resize = () => { resize(); redraw(); };
         mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
-        mode.updateTheme = () => { readColours(); redraw(); };
+        mode.updateTheme = () => { cachedFamily = ''; readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
             initialized: Boolean(glState), lines: sung.length, index: stats.index, glyphs: stats.glyphs,
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`
@@ -848,8 +859,10 @@ void main() {
                 glState.slots.forEach((slot) => gl.deleteTexture(slot.atlas));
                 gl.deleteProgram(glState.field.program);
                 gl.deleteProgram(glState.glyph.program);
-                gl.deleteTexture(glState.scene.tex);
-                gl.deleteTexture(glState.over.tex);
+                glState.scene.dispose();
+                glState.over.dispose();
+                glState.bloom.dispose();
+                gl.deleteVertexArray(glState.vao);
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;

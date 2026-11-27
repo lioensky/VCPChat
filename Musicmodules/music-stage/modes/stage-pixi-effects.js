@@ -43,9 +43,10 @@ vec4 sampleInside(vec2 uv) {
     if (uv.x < uInputClamp.x || uv.y < uInputClamp.y || uv.x > uInputClamp.z || uv.y > uInputClamp.w) return vec4(0.0);
     return texture(uTexture, uv);
 }
-float screenDot(vec2 p, float a, float v) {
-    float c = cos(a), s = sin(a);
-    float d = length(fract(mat2(c,s,-s,c) * p / 5.0) - 0.5) * 5.0;
+const mat2 DOT_R = mat2(0.965926, 0.258820, -0.258820, 0.965926);
+const mat2 DOT_G = mat2(0.258816, 0.965926, -0.965926, 0.258816);
+float screenDotM(vec2 q, float v) {
+    float d = length(fract(q) - 0.5) * 5.0;
     float r = sqrt(clamp(v,0.0,1.0)) * 3.1;
     return 1.0 - smoothstep(r - 1.2,r + 1.2,d);
 }
@@ -76,7 +77,8 @@ void main() {
     if (alpha > 0.0001) rgb /= alpha;
     rgb = clamp((rgb-0.5)*(1.0+uContrast*0.5)+0.5,0.0,1.0);
     if (uHalftone > 0.0) {
-        vec3 dots = vec3(screenDot(gl_FragCoord.xy,0.2618,rgb.r),screenDot(gl_FragCoord.xy,1.309,rgb.g),screenDot(gl_FragCoord.xy,0.0,rgb.b));
+        vec2 gp = gl_FragCoord.xy * 0.2;
+        vec3 dots = vec3(screenDotM(DOT_R * gp, rgb.r), screenDotM(DOT_G * gp, rgb.g), screenDotM(gp, rgb.b));
         rgb = mix(rgb,dots,uHalftone);
     }
     if (uGrain > 0.0) {

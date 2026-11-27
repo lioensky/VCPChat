@@ -216,11 +216,13 @@ vec3 shadeTube(Hit h, float energy) {
     float s = clamp(h.side / rad, -1.0, 1.0);
     vec3 n = normalize(vec3(h.n * s, sqrt(max(0.0, 1.0 - s * s))));
     vec3 L = uLightP;
-    float diff = max(dot(n, L), 0.0);
-    float wrap = max((dot(n, L) + 0.35) / 1.35, 0.0);
+    float ndl = dot(n, L);
+    float diff = max(ndl, 0.0);
+    float wrap = max((ndl + 0.35) / 1.35, 0.0);
     vec3 Hv = normalize(L + vec3(0.0, 0.0, 1.0));
-    float spec = pow(max(dot(n, Hv), 0.0), 18.0);
-    float sheen = pow(max(dot(n, Hv), 0.0), 4.0);
+    float ndh = max(dot(n, Hv), 0.0);
+    float spec = pow(ndh, 18.0);
+    float sheen = pow(ndh, 4.0);
     float rim = pow(1.0 - n.z, 2.5);
     vec3 copper = vec3(0.78, 0.46, 0.26);
     float e = pulseAt(h.u);
@@ -261,7 +263,7 @@ vec3 shadeTube(Hit h, float energy) {
     col = mix(col, mix(glowHue * 0.25, glowC, 0.35 + 0.65 * coreG), groove);
 
     // 铜套：比管身略粗，两边各一道暗缝
-    vec3 brass = copper * (0.1 + 0.62 * wrap) + vec3(1.0, 0.86, 0.7) * pow(max(dot(n, Hv), 0.0), 40.0) * 0.75;
+    vec3 brass = copper * (0.1 + 0.62 * wrap) + vec3(1.0, 0.86, 0.7) * pow(ndh, 40.0) * 0.75;
     brass *= 1.0 - rim * 0.5;
     brass += vec3(1.0, 0.78, 0.55) * uKick * 0.22 * (1.0 - rim);
     col = mix(col, brass, collar);
@@ -286,9 +288,9 @@ void main() {
     vec2 g = abs(fract(frag / (uK * 0.5)) - 0.5);
     col = mix(col, uInk, (1.0 - smoothstep(0.0, 1.0 / (uK * 0.5), min(g.x, g.y))) * mix(0.018, 0.03, uLight));
 
-    float c = cos(PHI), sn = sin(PHI);
-    vec2 t2up = vec2(HALF * c, HALF * sn), t2dn = vec2(HALF * c, -HALF * sn);
-    vec2 t1up = vec2(-HALF * c, HALF * sn), t1dn = vec2(-HALF * c, -HALF * sn);
+    const float C_PHI = ${Math.cos(PHI).toFixed(7)}, S_PHI = ${Math.sin(PHI).toFixed(7)};
+    vec2 t2up = vec2(HALF * C_PHI, HALF * S_PHI), t2dn = vec2(HALF * C_PHI, -HALF * S_PHI);
+    vec2 t1up = vec2(-HALF * C_PHI, HALF * S_PHI), t1dn = vec2(-HALF * C_PHI, -HALF * S_PHI);
 
     // 波纹：换句和鼓点时从交叉点往外扩一圈细线（环后面）
     if (uRipple.y > 0.0) {
@@ -335,7 +337,7 @@ void main() {
     if (uStrip.w > 0.5) {
         float dx = abs(frag.x - uCentre.x);
         float dy = abs(frag.y - uStrip.x);
-        if (dx < uStrip.y) {
+        if (dx < uStrip.y && dy < uStrip.z + 5.0) {
             float cell = dx / uStrip.y * float(${BANDS});
             int b = int(cell);
             float v = uBands[b];
@@ -354,7 +356,7 @@ void main() {
     if (uHistBox.w > 0.5) {
         float dx = frag.x - (uCentre.x - uHistBox.y);
         float dy = abs(frag.y - uHistBox.x);
-        if (dx >= 0.0 && dx < uHistBox.y * 2.0) {
+        if (dx >= 0.0 && dx < uHistBox.y * 2.0 && dy < uHistBox.z + 2.0) {
             float cell = dx / (uHistBox.y * 2.0) * float(${HIST});
             int b = int(cell);
             float v = uHist[b];
@@ -379,7 +381,6 @@ void main() {
         }
         col = mix(col, mix(uInk, mix(uAccent, vec3(1.0, 0.55, 0.22), 0.5), uCharge), br * (0.35 + 0.35 * uCharge + 0.3 * uKick));
         vec2 m = vec2(max(28.0, uRes.x * 0.03), max(28.0, uRes.y * 0.04));
-        vec2 e = min(frag - m, uRes - m - frag);
         vec2 cr = abs(vec2(frag.x < uRes.x * 0.5 ? frag.x - m.x : frag.x - (uRes.x - m.x), frag.y < uRes.y * 0.5 ? frag.y - m.y : frag.y - (uRes.y - m.y)));
         float cross = (step(cr.x, 0.6) * step(cr.y, 6.0) + step(cr.y, 0.6) * step(cr.x, 6.0));
         col = mix(col, uInk, clamp(cross, 0.0, 1.0) * 0.25);
@@ -495,7 +496,8 @@ void main() {
                 audioReactivity: clamp(tuning.audioReactivity ?? 1, 0, 2),
                 grain: clamp(tuning.grain ?? 0.3, 0, 1),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion),
+                quality: mode.config.quality || 'standard'
             };
         };
 
@@ -743,6 +745,7 @@ void main() {
             if (glState) {
                 const { gl } = glState;
                 gl.deleteProgram(glState.program);
+                gl.deleteVertexArray(glState.vao);
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;

@@ -499,10 +499,12 @@ vec3 aquarium(vec2 p) {
         float glow = exp(-d * d * 1.2) * 0.35;
         // 触须
         float tent = 0.0;
-        for (int k = 0; k < 4; k++) {
-            float ox = (float(k) - 1.5) * 0.32;
-            float tx = q.x - ox - sin(q.y * 2.2 - uT * 2.0 + fi + float(k)) * 0.18 * (-q.y) * 0.4;
-            tent += smoothstep(0.06, 0.0, abs(tx)) * smoothstep(-3.2 - h.x, -0.2, q.y) * step(q.y, -0.1);
+        if (q.y <= -0.1 && q.y >= -4.25 && abs(q.x) < 0.9) {
+            for (int k = 0; k < 4; k++) {
+                float ox = (float(k) - 1.5) * 0.32;
+                float tx = q.x - ox - sin(q.y * 2.2 - uT * 2.0 + fi + float(k)) * 0.18 * (-q.y) * 0.4;
+                tent += smoothstep(0.06, 0.0, abs(tx)) * smoothstep(-3.2 - h.x, -0.2, q.y) * step(q.y, -0.1);
+            }
         }
         float a = bell * 0.55 + rim * 0.9 + tent * 0.5;
         col += tint * (a * 1.3 + glow * 1.6 + exp(-d * d * 0.18) * 0.18);
@@ -511,6 +513,7 @@ vec3 aquarium(vec2 p) {
     for (int sIdx = 0; sIdx < 3; sIdx++) {
         float fs = float(sIdx);
         float sx = (0.18 + hash12(vec2(fs, 61.0)) * 0.7) * uAspect;
+        if (abs(p.x - sx) > 0.045) continue;
         for (int b = 0; b < 8; b++) {
             float fb = float(b);
             float y = fract(fb * 0.137 + hash12(vec2(fs, fb)) * 0.3 + uT * (0.09 + fs * 0.02));
@@ -623,6 +626,8 @@ float written(sampler2D atlas, sampler2D data, vec4 info, vec2 uv) {
 
 void main() {
     vec2 uv = gl_FragCoord.xy / uRes;
+    float aspect = uRes.x / uRes.y;
+    vec2 aspVec = vec2(aspect, 1.0);
     // 往下淌的水：走过的地方清出一道，慢慢又起雾
     float trail = 0.0;
     float bead = 0.0;
@@ -634,7 +639,7 @@ void main() {
         float x = dr.x + sin(uv.y * 23.0 + dr.w * 6.0) * 0.004 + sin(uv.y * 61.0 + dr.w) * 0.0015;
         float top = uDripTop[i];
         float headY = top - (uTime - dr.y) * dr.z;
-        float dx = abs(uv.x - x) * uRes.x / uRes.y;
+        float dx = abs(uv.x - x) * aspect;
         if (uv.y >= headY && uv.y <= top) {
             float passed = uTime - (dr.y + (top - uv.y) / dr.z);
             trail = max(trail, smoothstep(0.0032, 0.0012, dx) * exp(-passed / 7.0));
@@ -652,14 +657,14 @@ void main() {
     vec2 beadD = vec2(0.0);
     float beadR = 1.0;
     if (wet > 0.0) {
-        vec2 bg = vec2(uRes.x / uRes.y, 1.0) * 110.0;
+        vec2 bg = aspVec * 110.0;
         vec2 bc = floor(uv * bg);
         for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++) {
             vec2 c = bc + vec2(float(ox), float(oy));
             vec2 ctr = (c + 0.5 + (hash22(c) - 0.5) * 0.7) / bg;
             if (hash12(c + 7.7) < 0.62) continue;
             float r = 0.0018 + hash12(c + 3.1) * 0.0026;
-            vec2 dd = (uv - ctr) * vec2(uRes.x / uRes.y, 1.0);
+            vec2 dd = (uv - ctr) * aspVec;
             float m = smoothstep(r, r * 0.75, length(dd));
             if (m > edgeBead) { edgeBead = m; beadD = dd; beadR = r; }
         }
@@ -667,11 +672,12 @@ void main() {
     }
 
     // 雾后面两层模糊的窗外：用多级双滤波模糊（圆润），不用 mip（会糊成一块块方的光斑）
-    vec3 blurred = mix(texture(uFogBlur, uv).rgb * uFogNorm.x, texture(uFogGlow, uv).rgb * uFogNorm.y, 0.5);
-    float grainy = vnoise(uv * vec2(uRes.x / uRes.y, 1.0) * 180.0) - 0.5;
-    float clumps = vnoise(uv * vec2(uRes.x / uRes.y, 1.0) * 7.0);
-    // 雾里的灯：除了透过来的模糊光斑，再往外晕开一大圈
     vec3 wide = texture(uFogGlow, uv).rgb * uFogNorm.y;
+    vec3 blurred = mix(texture(uFogBlur, uv).rgb * uFogNorm.x, wide, 0.5);
+    vec2 uvAsp = uv * aspVec;
+    float grainy = vnoise(uvAsp * 180.0) - 0.5;
+    float clumps = vnoise(uvAsp * 7.0);
+    // 雾里的灯：除了透过来的模糊光斑，再往外晕开一大圈
     vec3 fog = mix(blurred * 1.15, uFogCol, uFogDensity * (0.78 + clumps * 0.22)) + grainy * 0.025 + blurred * 0.25 + max(wide - uFogCol * 0.6, 0.0) * 0.45;
     // 透过擦开的地方看窗外：眼睛对在玻璃上，窗外是虚的（窗外场景只有 1/3 分辨率，直接看会是一格格的方块）
     vec3 clear = textureLod(uScene, uv, 2.2).rgb * 1.05;
@@ -690,7 +696,7 @@ void main() {
     col = mix(col, clear * 1.2 + fog * 0.5, bead * 0.9);
     // 呵气：一团白雾慢慢晕开，把附近写过的字也蒙上
     if (uBreath.z > 0.0) {
-        vec2 bd = (uv - uBreath.xy) * vec2(uRes.x / uRes.y * 0.75, 1.0);
+        vec2 bd = (uv - uBreath.xy) * vec2(aspect * 0.75, 1.0);
         float edge = vnoise(uv * 7.0 + uTime * 0.2) * 0.12;
         float b = smoothstep(0.34 + edge, 0.05, length(bd)) * uBreath.z;
         col = mix(col, uFogCol * 1.22 + blurred * 0.3, b * 0.75);
@@ -701,37 +707,40 @@ void main() {
             float fi = float(i);
             vec2 c = vec2(fract(0.13 + fi * 0.37 + sin(uTime * 0.07 + fi * 2.1) * 0.08 + uTime * 0.004),
                           0.25 + fract(fi * 0.53) * 0.5 + sin(uTime * 0.31 + fi * 4.0) * 0.05);
-            vec2 fd = (uv - c) * vec2(uRes.x / uRes.y, 1.0);
+            vec2 fd = (uv - c) * aspVec;
+            float fd2 = dot(fd, fd);
+            if (fd2 > 0.002) continue;
             float blink = smoothstep(0.2, 1.0, sin(uTime * (0.9 + fract(fi * 0.71)) + fi * 3.0));
-            float g = exp(-dot(fd, fd) * mix(9000.0, 60000.0, wipe)) * blink;
+            float g = exp(-fd2 * mix(9000.0, 60000.0, wipe)) * blink;
             col += mix(vec3(1.0, 0.86, 0.4), vec3(0.45, 0.9, 1.0), uAquaMain) * g * mix(0.35, 1.1, wipe) * uFireflies;
         }
     }
     // 结霜：窗四角长出冰花，冰花上写不开
     if (uFrost > 0.0) {
-        vec2 e = min(uv, 1.0 - uv) * vec2(uRes.x / uRes.y, 1.0);
+        vec2 e = min(uv, 1.0 - uv) * aspVec;
         float edge = min(e.x, e.y);
-        float n = vnoise(uv * 14.0) * 0.6 + vnoise(uv * 60.0) * 0.4;
-        float hf = vnoise(gl_FragCoord.xy / 1.6) * 0.5 + vnoise(gl_FragCoord.xy / 5.0) * 0.5;
-        float band = smoothstep(0.16 + n * 0.12, 0.0, edge) * uFrost;
-        col = mix(col, vec3(0.82, 0.86, 0.93) * (0.72 + hf * 0.32), band * 0.62);
-        float glint = step(0.996, hash12(floor(gl_FragCoord.xy / 2.0))) * band;
-        col += vec3(0.9, 0.95, 1.0) * glint * 0.5;
+        if (edge < 0.28) {
+            float n = vnoise(uv * 14.0) * 0.6 + vnoise(uv * 60.0) * 0.4;
+            float hf = vnoise(gl_FragCoord.xy / 1.6) * 0.5 + vnoise(gl_FragCoord.xy / 5.0) * 0.5;
+            float band = smoothstep(0.16 + n * 0.12, 0.0, edge) * uFrost;
+            col = mix(col, vec3(0.82, 0.86, 0.93) * (0.72 + hf * 0.32), band * 0.62);
+            float glint = step(0.996, hash12(floor(gl_FragCoord.xy / 2.0))) * band;
+            col += vec3(0.9, 0.95, 1.0) * glint * 0.5;
+        }
     }
     // 正在写的那个字：指尖那一带的雾被呵暖，透出一点窗外的光
     if (uSpot.w > 0.0) {
-        vec2 sd = (uv - uSpot.xy) * vec2(uRes.x / uRes.y, 1.0);
+        vec2 sd = (uv - uSpot.xy) * aspVec;
         float spot = exp(-dot(sd, sd) / (uSpot.z * uSpot.z)) * uSpot.w;
         col += (clear * 0.22 + vec3(1.0, 0.86, 0.66) * 0.05) * spot;
     }
     // 聚光灯：远处楼底下左右两盏，追着正在写的字；雾把光束散开，擦开的地方看得见光柱
     if (uBeam.z > 0.0) {
-        float asp = uRes.x / uRes.y;
         float beam = 0.0;
         for (int k = 0; k < 2; k++) {
-            vec2 o = vec2(k == 0 ? 0.08 : 0.92, -0.06) * vec2(asp, 1.0);
-            vec2 a = uBeam.xy * vec2(asp, 1.0) - o;
-            vec2 q = uv * vec2(asp, 1.0) - o;
+            vec2 o = vec2(k == 0 ? 0.08 : 0.92, -0.06) * aspVec;
+            vec2 a = uBeam.xy * aspVec - o;
+            vec2 q = uvAsp - o;
             float L = max(length(a), 1e-3);
             vec2 dir = a / L;
             float along = dot(q, dir);
@@ -1513,7 +1522,10 @@ void main() {
                 gl.deleteProgram(glState.scene.program);
                 gl.deleteProgram(glState.main.program);
                 gl.deleteProgram(glState.drops.program);
-                gl.deleteTexture(glState.window.tex);
+                glState.window.dispose();
+                glState.upscale.dispose();
+                glState.fogBlur.dispose();
+                gl.deleteVertexArray(glState.vao);
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;

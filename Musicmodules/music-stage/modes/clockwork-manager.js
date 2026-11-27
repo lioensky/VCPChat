@@ -217,10 +217,12 @@ vec4 gearLit(vec3 F0, vec2 q, float R, float teeth, float spokes, float ang, flo
     float rings = (hash12(vec2(floor(r * 900.0), 3.0)) - 0.5) * (1.0 - smoothstep(0.6, 1.6, fw));
     vec3 top = shadeMetal(F0, n, radial, sp, 0.28) * (1.0 + rings * 0.3);
     // 倒角上一道窄的高光（抛光的边比面亮）
-    float slope = smoothstep(0.02, 0.2, 1.0 - n.z + length(grad) * 0.0);
-    top += F0 * pow(max(dot(n, normalize(vec3(-0.45, 0.55, 1.0))), 0.0), 60.0) * slope * 1.4;
+    const vec3 BEVEL_L = vec3(-0.366813, 0.448327, 0.815139);
+    const vec3 WALL_R = vec3(0.395092, -0.740797, 0.543251);
+    float slope = smoothstep(0.02, 0.2, 1.0 - n.z);
+    top += F0 * pow(max(dot(n, BEVEL_L), 0.0), 60.0) * slope * 1.4;
     // 侧壁：朝右下，反射的是暗的地面和房间，上沿贴着顶面的地方亮一线
-    vec3 wallCol = F0 * (0.06 + 0.1 * studio(normalize(vec3(0.4, -0.75, 0.55))));
+    vec3 wallCol = F0 * (0.06 + 0.1 * studio(WALL_R));
     vec3 c = mix(wallCol, top, g.x);
     return vec4(c, max(g.x, wall));
 }
@@ -256,8 +258,10 @@ void main() {
 
     // 两个小齿轮都咬着主齿轮：左下一个，左上一个。转角按齿数比算，齿正好错开半个齿
     const float PHI2 = 4.0, PHI3 = 2.1;
-    vec2 C2 = hubC + vec2(cos(PHI2), sin(PHI2)) * (0.33 + 0.17);
-    vec2 C3 = hubC + vec2(cos(PHI3), sin(PHI3)) * (0.33 + 0.095);
+    const vec2 DIR2 = vec2(-0.653644, -0.756802);
+    const vec2 DIR3 = vec2(-0.504846, 0.863209);
+    vec2 C2 = hubC + DIR2 * (0.33 + 0.17);
+    vec2 C3 = hubC + DIR3 * (0.33 + 0.095);
     float A2 = PHI2 + PI + ((PHI2 - uGear) * 72.0 - PI) / 37.0;
     float A3 = PHI3 + PI + ((PHI3 - uGear) * 72.0 - PI) / 20.0;
 
@@ -407,25 +411,27 @@ void main() {
     // 摆轮：右下角一只钢摆轮来回摆，游丝跟着一松一紧（每秒擒纵两次）
     {
         vec2 bc = vec2(aspect - 0.22, 0.25);
-        float swing = 1.25 * sin(uTime * 6.2832 * 1.25);
         vec2 q = p - bc;
         float r = length(q);
         float R = 0.085;
-        float a = atan(q.y, q.x) - swing;
         if (r < R + 0.02) {
+            float sSwing = sin(uTime * 6.2832 * 1.25);
+            float swing = 1.25 * sSwing;
+            float baseA = atan(q.y, q.x);
+            float a = baseA - swing;
             float ring = 1.0 - smoothstep(0.0045, 0.0045 + aa, abs(r - R));
             float sa = abs(fract(a * 3.0 / (2.0 * PI) + 0.5) - 0.5) * 2.0 * PI / 3.0 * r;
             float spoke = (1.0 - smoothstep(0.0022, 0.0022 + aa, sa)) * step(r, R);
             // 游丝：阿基米德螺线，摆到一头时紧、另一头松
-            float b = 0.0058 * (1.0 + 0.12 * sin(uTime * 6.2832 * 1.25));
-            float phi = atan(q.y, q.x) - swing * 0.6;
+            float b = 0.0058 * (1.0 + 0.12 * sSwing);
+            float phi = baseA - swing * 0.6;
             float turnK = floor((r - 0.008 - b * (phi + PI)) / (b * 2.0 * PI) + 0.5);
             float sr = 0.008 + b * (phi + PI + turnK * 2.0 * PI);
             float spring = (1.0 - smoothstep(0.0009, 0.0009 + aa, abs(r - sr))) * step(r, R * 0.72) * step(0.008, r);
             // 摆轮边上的螺钉
             float screws = (1.0 - smoothstep(0.0045, 0.0045 + aa, length(vec2(abs(fract(a * 8.0 / (2.0 * PI) + 0.5) - 0.5) * 2.0 * PI / 8.0 * R, r - R - 0.006)))) * step(R - 0.004, r);
             vec2 rq = q / max(r, 1e-4);
-            vec3 steel = shadeMetal(uSteel, normalize(vec3(rq * 0.35 * (r - R) / 0.01 * ring, 1.0)), rq, p - vec2(aspect * 0.5, 0.5), 0.2);
+            vec3 steel = shadeMetal(uSteel, normalize(vec3(rq * 0.35 * (r - R) / 0.01 * ring, 1.0)), rq, sp, 0.2);
             col = mix(col, steel, clamp(ring + spoke * 0.9 + screws, 0.0, 1.0));
             col = mix(col, mix(uSteel, uAccent, 0.35) * 1.2, spring * 0.8);
             float jewel = 1.0 - smoothstep(0.006, 0.006 + aa, r);
@@ -479,10 +485,11 @@ void main() {
             float dist = rowAng / STEP;
             float sc = mix(0.7 * max(0.7, 1.0 - dist * 0.08), 1.12, near);
             float ph = th * 0.35;
+            float cph = cos(ph), sph = sin(ph);
             vec2 anchor = vec2(cos(th), sin(th)) * R0;
             vec2 d = q - anchor;
-            float along = d.x * cos(ph) + d.y * sin(ph);
-            float perp = -d.x * sin(ph) + d.y * cos(ph);
+            float along = d.x * cph + d.y * sph;
+            float perp = -d.x * sph + d.y * cph;
             float h = rowH * sc;
             vec2 tc = vec2(along / (L * sc), (k + 3.0 + 0.5 - perp / h) / ROWS);
             if (tc.x <= 0.0 || tc.x >= 1.0 || abs(perp) >= h * 0.5) continue;
@@ -635,7 +642,8 @@ void main() {
                 audioReactivity: clamp(tuning.audioReactivity ?? 1, 0, 2),
                 grain: clamp(tuning.grain ?? 0.3, 0, 1),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion),
+                quality: mode.config.quality || 'standard'
             };
         };
 
@@ -675,7 +683,11 @@ void main() {
             Utils.loadLyricFont(frame.lines, [400], () => { if (mode.destroyed) return; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, frame.track?.title || '');
         };
 
-        const family = () => global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
+        let cachedFamily = '';
+        const family = () => {
+            if (!cachedFamily) cachedFamily = global.getComputedStyle?.(mode.root).fontFamily || 'system-ui, sans-serif';
+            return cachedFamily;
+        };
 
         // 以第 index 句为中心的七行字图；只有中间那行写字编号
         const slotFor = (index, build = true, s = settings()) => {
@@ -684,7 +696,8 @@ void main() {
             const aspect = canvas.width / Math.max(1, canvas.height);
             const avail = aspect - Math.min(0.3, aspect * 0.16) - 0.42 - 0.06;
             const fitPx = Math.round(clamp(avail * 100 / (0.052 * s.fontScale), 400, ATLAS_W - 24) / 40) * 40;
-            const key = `${index}|${sung.length}|${fitPx}`;
+            const fam = family();
+            const key = `${index}|${sung.length}|${fitPx}|${fam}`;
             const hit = glState.slots.find(slot => slot.key === key);
             if (hit) { hit.used = performance.now(); return hit; }
             if (!build) return null;
@@ -699,20 +712,23 @@ void main() {
             for (let row = 0; row < ROWS; row += 1) {
                 const i = index + row - 3;
                 let glyphs = null;
-                if (i >= 0 && i < sung.length) glyphs = buildGlyphTimeline(sung[i]).map(g => g.text);
-                else if (i === -1 && row === 3) {
+                let rowTimeline = null;
+                if (i >= 0 && i < sung.length) {
+                    rowTimeline = buildGlyphTimeline(sung[i]);
+                    glyphs = rowTimeline.map(g => g.text);
+                } else if (i === -1 && row === 3) {
                     const title = String(latestFrame?.track?.title || '').replace(/\.(mp3|flac|wav|m4a|ogg)$/i, '');
                     glyphs = title ? Array.from(title) : null;
                 }
                 if (!glyphs) continue;
                 let size = base;
-                ctx.font = `400 ${size}px ${family()}`;
+                ctx.font = `400 ${size}px ${fam}`;
                 const width = ctx.measureText(glyphs.join('')).width;
-                if (width > fitPx) { size = Math.floor(size * fitPx / width); ctx.font = `400 ${size}px ${family()}`; }
+                if (width > fitPx) { size = Math.floor(size * fitPx / width); ctx.font = `400 ${size}px ${fam}`; }
                 const baseline = row * ROW_PX + ROW_PX * 0.5 + size * 0.36;
                 let x = 4;
                 let id = 0;
-                const timeline = row === 3 && i >= 0 ? buildGlyphTimeline(sung[i]) : null;
+                const timeline = row === 3 ? rowTimeline : null;
                 glyphs.forEach((text, gi) => {
                     const w = ctx.measureText(text).width;
                     if (timeline && text.trim()) {
@@ -730,7 +746,7 @@ void main() {
                 });
             }
             const { gl } = glState;
-            const busy = `${stats.index}|${sung.length}|${fitPx}`;
+            const busy = `${stats.index}|${sung.length}|${fitPx}|${fam}`;
             const slot = glState.slots.filter(sl => sl.key !== busy).sort((a, b) => a.used - b.used)[0] || glState.slots[0];
             gl.bindTexture(gl.TEXTURE_2D, slot.text);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
@@ -900,11 +916,11 @@ void main() {
 
         const redraw = () => { still.invalidate(); lastDraw = -Infinity; if (latestFrame) mode.updateFrame(latestFrame); };
         const updateConfig = mode.updateConfig;
-        mode.updateConfig = (config) => { updateConfig(config); resize(); readColours(); glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); };
+        mode.updateConfig = (config) => { updateConfig(config); cachedFamily = ''; resize(); readColours(); redraw(); };
         mode.resize = () => { resize(); redraw(); };
         mode.suspend = () => { paused = true; cancelIdle(); mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
-        mode.updateTheme = () => { readColours(); redraw(); };
+        mode.updateTheme = () => { cachedFamily = ''; readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
             initialized: Boolean(glState), lines: sung.length, index: stats.index,
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`
@@ -925,6 +941,7 @@ void main() {
                 gl.deleteProgram(glState.smoke.program);
                 gl.deleteTexture(glState.smokeTex);
                 gl.deleteFramebuffer(glState.smokeFbo);
+                gl.deleteVertexArray(glState.vao);
                 gl.getExtension('WEBGL_lose_context')?.loseContext();
             }
             glState = null;
