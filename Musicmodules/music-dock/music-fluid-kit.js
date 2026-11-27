@@ -516,8 +516,13 @@
                 if (doc.body.classList.contains('music-drawer-open') || target.closest(LAYOUT_TRIGGERS)) remember();
             };
             const onKeyDown = (event) => {
+                if (!doc.body.classList.contains('music-archive-on') || doc.body.classList.contains('music-stage-active')) return;
                 const k = event.key;
-                if (k === 'Escape' || k === '/' || (!hud.classList.contains('list-open') && k && k.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey)) {
+                if (k === 'Escape') { remember(); return; }
+                const target = event.target;
+                const tag = target && target.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+                if (k === '/' || (!hud.classList.contains('list-open') && k && k.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey)) {
                     remember();
                 }
             };

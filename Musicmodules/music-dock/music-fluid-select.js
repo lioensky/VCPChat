@@ -199,7 +199,7 @@
         trigger.setAttribute('aria-expanded', 'false');
         trigger.removeAttribute('aria-controls');
         trigger.classList.remove('mfs-open');
-        const snap = global.MusicFluid?.snapshot?.(menu);
+        const snap = global.MusicFluid?.enabled?.() ? global.MusicFluid.snapshot?.(menu) : null;
         menu.remove();
         if (snap) global.MusicFluid.melt(snap, trigger, { duration: 240 });
         if (restoreFocus && doc.contains(trigger)) trigger.focus({ preventScroll: true });

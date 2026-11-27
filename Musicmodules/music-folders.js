@@ -105,8 +105,22 @@
             previousFocus = null;
             if (back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
-        // MusicDialog 的确认框开着时 Esc 归它
-        const onKey = (e) => { if (e.key === 'Escape' && !doc.querySelector('.dialog-overlay.music-dialog')) { e.preventDefault(); e.stopPropagation(); close(); } };
+        // MusicDialog 的确认框开着时 Esc 和焦点归它
+        const onKey = (e) => {
+            if (doc.querySelector('.dialog-overlay.music-dialog')) return;
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+            if (e.key === 'Tab' && overlay) {
+                const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                if (focusables.length) {
+                    const first = focusables[0], last = focusables[focusables.length - 1];
+                    const active = doc.activeElement;
+                    if (e.shiftKey ? (active === first || !overlay.contains(active)) : (active === last || !overlay.contains(active))) {
+                        e.preventDefault();
+                        (e.shiftKey ? last : first).focus({ preventScroll: true });
+                    }
+                }
+            }
+        };
 
         // 把这个文件夹下的歌从曲库拿掉（正在放的那首留着），然后让主进程忘掉这个文件夹
         const removeFolder = async (row) => {
@@ -124,7 +138,9 @@
                 app.playlist = app.playlist.filter((t) => !drop.has(t));
                 if (current) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current));
                 if (Array.isArray(app.currentFilteredTracks)) app.currentFilteredTracks = app.currentFilteredTracks.filter((t) => !drop.has(t));
-                for (const t of drop) { const at = (app.manualQueue || []).indexOf(t); if (at !== -1) app.queueRemove?.(at); }
+                if (Array.isArray(app.manualQueue) && app.manualQueue.length) {
+                    for (const t of drop) { const at = app.manualQueue.indexOf(t); if (at !== -1) app.queueRemove?.(at); }
+                }
                 try { await app.saveLibrary?.(); } catch (e) { /* 存盘失败另有提示 */ }
                 refreshViews();
             }
@@ -240,7 +256,7 @@
             global.requestAnimationFrame?.(() => overlay && overlay.classList.add('visible'));
             try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
             seen = libraryMark();
-            watchTimer = setInterval(() => { const m = libraryMark(); if (m !== seen) { seen = m; render(); } }, 1500);
+            watchTimer = setInterval(() => { if (doc.hidden) return; const m = libraryMark(); if (m !== seen) { seen = m; render(); } }, 1500);
             watchTimer?.unref?.(); // node 测试里不拖住进程
             render();
         };

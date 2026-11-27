@@ -18,6 +18,7 @@
     let frame = 0;
     let size = 34;
     let locked = false;
+    const reducedMq = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
 
     const send = (cmd, value) => { try { api?.sendDesktopLyricsCommand?.(cmd, value); } catch (e) { /* 主进程没有这个接口 */ } };
     const now = () => (snap ? snap.position + (snap.playing ? (Date.now() - snap.at) / 1000 : 0) : 0);
@@ -43,7 +44,7 @@
         if (key !== lineKey) {
             lineKey = key;
             cur.textContent = '';
-            cur.classList.remove('idle');
+            cur.classList.remove('idle', 'swap');
             words = null;
             lineSpan = null;
             if (line && line.text) {
@@ -63,9 +64,6 @@
                     cur.appendChild(el);
                     lineSpan = { el, s, e: s + Math.min(8, Math.max(0.6, nextAt - s)), last: '' };
                 }
-                cur.classList.remove('swap');
-                void cur.offsetWidth;
-                cur.classList.add('swap');
             } else {
                 // 间奏、前奏或没有歌词：显示歌名
                 cur.classList.add('idle');
@@ -74,7 +72,9 @@
             const nx = snap && snap.next;
             const nextText = line && line.tr ? line.tr : nx ? nx.text : '';
             next.textContent = nextText || (snap && !snap.hasLyrics && snap.path ? '这首歌没有歌词' : '');
+            // fit() 读取宽度正好完成一次布局刷新，随后再加 swap 重启动画，避免两次连续强制重排
             fit();
+            if (line && line.text && !reducedMq?.matches) cur.classList.add('swap');
         }
         paint();
     };
@@ -148,7 +148,11 @@
     $('lock').addEventListener('mouseleave', () => send('hover', false));
     document.addEventListener('wheel', (e) => { if (!locked && e.ctrlKey) send('size', size + (e.deltaY < 0 ? 2 : -2)); }, { passive: true });
     document.addEventListener('visibilitychange', paint);
-    window.addEventListener('resize', fit);
+    let fitRaf = 0;
+    window.addEventListener('resize', () => {
+        if (fitRaf) return;
+        fitRaf = requestAnimationFrame(() => { fitRaf = 0; fit(); });
+    });
 
     api?.onDesktopLyricsState?.((s) => { if (s && typeof s === 'object') { snap = s; render(); } });
     api?.onDesktopLyricsPrefs?.(applyPrefs);

@@ -106,13 +106,19 @@
         };
 
         // 队列每行右边的时长：曲目自带的优先；没带的用档案页记下的（播放过一次就有，存在本机同一个键里）
-        let qDurs = null, qDursAt = 0;
+        let qDurs = null, qDursRaw = null, qDursAt = 0;
         const queueDuration = (t) => {
             let sec = Number(t?.duration) > 0 ? Number(t.duration) : 0;
             if (!sec && t?.path) {
                 const now = performance.now();
                 if (!qDurs || now - qDursAt > 5000) {
-                    try { qDurs = JSON.parse(localStorage.getItem('musicArchiveDurations') || '{}') || {}; } catch (e) { qDurs = {}; }
+                    try {
+                        const raw = localStorage.getItem('musicArchiveDurations') || '';
+                        if (raw !== qDursRaw) {
+                            qDursRaw = raw;
+                            qDurs = raw ? (JSON.parse(raw) || {}) : {};
+                        } else if (!qDurs) qDurs = {};
+                    } catch (e) { qDurs = {}; }
                     qDursAt = now;
                 }
                 sec = Number(qDurs[t.path]) || 0;
@@ -185,14 +191,17 @@
         }
 
         // 拖动排序：按住超过 4px 才算拖；其他行 140ms 让位；靠近上下边 32px 自动滚动。
+        let abortActiveDrag = null;
+        cleanups.push(() => { if (abortActiveDrag) abortActiveDrag(); });
         function onQueuePointerDown(event) {
             const rowEl = event.target.closest('.md-man');
             if (!rowEl || event.button !== 0 || event.target.closest('.md-qx')) return;
             event.preventDefault(); // 拖动时别选中文字
+            if (abortActiveDrag) abortActiveDrag();
             const scroller = event.currentTarget;
             const from = Number(rowEl.dataset.qi);
             const manualEls = [...scroller.querySelectorAll('.md-man')];
-            state.queueDrag = { from, to: from, startY: event.clientY, startScroll: scroller.scrollTop, y: event.clientY, active: false, rowEl, manualEls, scroller, raf: 0, moved: false };
+            state.queueDrag = { from, to: from, startY: event.clientY, startScroll: scroller.scrollTop, y: event.clientY, lastDy: NaN, active: false, rowEl, manualEls, scroller, raf: 0, moved: false };
             const move = (e) => {
                 const d = state.queueDrag;
                 if (!d) return;
@@ -205,9 +214,10 @@
                     scroller.classList.add('md-qdragging');
                     const rect = scroller.getBoundingClientRect();
                     const loop = () => {
+                        const prevScroll = scroller.scrollTop;
                         if (d.y < rect.top + 32) scroller.scrollTop -= 6;
                         else if (d.y > rect.bottom - 32) scroller.scrollTop += 6;
-                        layoutDrag();
+                        if (scroller.scrollTop !== prevScroll) layoutDrag();
                         d.raf = requestAnimationFrame(loop);
                     };
                     d.raf = requestAnimationFrame(loop);
@@ -218,6 +228,8 @@
                 const d = state.queueDrag;
                 if (!d?.active) return;
                 const dy = (d.y - d.startY) + (scroller.scrollTop - d.startScroll);
+                if (dy === d.lastDy) return;
+                d.lastDy = dy;
                 const n = d.manualEls.length;
                 d.to = Math.max(0, Math.min(n - 1, d.from + Math.round(dy / QUEUE_ROW_H)));
                 d.rowEl.style.transform = `translateY(${dy}px)`;
@@ -230,10 +242,14 @@
                     node.style.transform = shift ? `translateY(${shift}px)` : '';
                 }
             };
-            const up = () => {
+            const detachDrag = () => {
                 document.removeEventListener('pointermove', move, true);
                 document.removeEventListener('pointerup', up, true);
                 document.removeEventListener('pointercancel', up, true);
+                abortActiveDrag = null;
+            };
+            const up = () => {
+                detachDrag();
                 const d = state.queueDrag;
                 if (!d) return;
                 cancelAnimationFrame(d.raf);
@@ -245,6 +261,13 @@
                     rerenderQueue();
                     setTimeout(() => { if (state.queueDrag?.suppressClick) state.queueDrag = null; }, 0);
                 }
+            };
+            abortActiveDrag = () => {
+                detachDrag();
+                const d = state.queueDrag;
+                if (d?.raf) cancelAnimationFrame(d.raf);
+                state.queueDrag = null;
+                scroller.classList.remove('md-qdragging');
             };
             document.addEventListener('pointermove', move, true);
             document.addEventListener('pointerup', up, true);

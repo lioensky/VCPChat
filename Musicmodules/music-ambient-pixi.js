@@ -122,6 +122,7 @@
             this.waveLayer = null;
             this.bubbleLayer = null;
             this.bubbles = [];
+            this.hadBubbles = false;
             this.maxBubbles = 75;
             this.lastKickEnergy = 0;
             this.kickCooldown = 0;
@@ -276,6 +277,7 @@
 
             const app = this.app;
             const isPlaying = Boolean(app.isPlaying);
+            const reduced = Boolean(global.MusicMotion?.reduced?.() || global.document?.body?.classList?.contains('music-reduce-motion'));
             const spectrum = app.currentVisualizerData || [];
             const hasAudio = spectrum.length > 0;
 
@@ -302,7 +304,7 @@
             this.smoothMid = lerp(this.smoothMid, midEnergy, 0.14);
             this.smoothHigh = lerp(this.smoothHigh, highEnergy, 0.12);
 
-            const idleBreath = Math.sin(Date.now() * 0.0012) * 0.035;
+            const idleBreath = reduced ? 0 : Math.sin(Date.now() * 0.0012) * 0.035;
             const currentBass = isPlaying ? this.smoothBass : (0.05 + idleBreath);
             const currentMid = isPlaying ? this.smoothMid : 0.03;
 
@@ -319,7 +321,7 @@
 
             // 4. 起音爆发生成气泡
             this.kickCooldown -= dt;
-            if (isPlaying && currentBass > 0.32 && (currentBass - this.lastKickEnergy > 0.08) && this.kickCooldown <= 0) {
+            if (!reduced && isPlaying && currentBass > 0.32 && (currentBass - this.lastKickEnergy > 0.08) && this.kickCooldown <= 0) {
                 const bubbleCount = Math.min(10, Math.floor(4 + currentBass * 8));
                 this.spawnBubbles(cx, cy, baseR, bubbleCount, softColor);
                 this.kickCooldown = 0.18;
@@ -336,7 +338,7 @@
             this.waveLayer.clear();
 
             this.rippleRings.forEach((ring) => {
-                ring.advance(dt, currentBass);
+                if (!reduced) ring.advance(dt, currentBass);
 
                 const ringScale = ring.getCurrentScale();
                 const ringAlpha = ring.getOpacity() * (isPlaying ? 1.0 : 0.45);
@@ -374,24 +376,28 @@
                 }
             });
 
-            // 7. 更新与绘制气泡粒子
-            this.bubbleLayer.clear();
-            for (let i = this.bubbles.length - 1; i >= 0; i--) {
-                const b = this.bubbles[i];
-                b.update(dt);
-                if (b.dead) {
-                    this.bubbles.splice(i, 1);
-                    continue;
+            // 7. 更新与绘制气泡粒子（无气泡时跳过每帧 clear）
+            if (this.bubbles.length > 0 || this.hadBubbles) {
+                this.bubbleLayer.clear();
+                this.hadBubbles = false;
+                for (let i = this.bubbles.length - 1; i >= 0; i--) {
+                    const b = this.bubbles[i];
+                    b.update(dt);
+                    if (b.dead) {
+                        this.bubbles.splice(i, 1);
+                        continue;
+                    }
+                    this.hadBubbles = true;
+
+                    this.bubbleLayer.circle(b.x, b.y, b.radius)
+                        .stroke({ color: b.color, alpha: b.alpha * 0.75, width: 1.2 })
+                        .fill({ color: b.color, alpha: b.alpha * 0.12 });
+
+                    const hlOffset = b.radius * 0.35;
+                    const hlRadius = Math.max(0.6, b.radius * 0.25);
+                    this.bubbleLayer.circle(b.x - hlOffset, b.y - hlOffset, hlRadius)
+                        .fill({ color: 0xffffff, alpha: b.alpha * 0.85 });
                 }
-
-                this.bubbleLayer.circle(b.x, b.y, b.radius)
-                    .stroke({ color: b.color, alpha: b.alpha * 0.75, width: 1.2 })
-                    .fill({ color: b.color, alpha: b.alpha * 0.12 });
-
-                const hlOffset = b.radius * 0.35;
-                const hlRadius = Math.max(0.6, b.radius * 0.25);
-                this.bubbleLayer.circle(b.x - hlOffset, b.y - hlOffset, hlRadius)
-                    .fill({ color: 0xffffff, alpha: b.alpha * 0.85 });
             }
 
             this.pixiApp.render();
@@ -484,10 +490,13 @@
             app.ambientPixiController?.update(dt);
         };
 
+        let resizeRaf = 0;
         window.addEventListener('resize', () => {
-            if (!app.isStageActive) {
-                app.ambientPixiController?.resize();
-            }
+            if (app.isStageActive || resizeRaf) return;
+            resizeRaf = requestAnimationFrame(() => {
+                resizeRaf = 0;
+                if (!app.isStageActive) app.ambientPixiController?.resize();
+            });
         });
 
         // 等这一轮启动代码跑完再决定要不要建：默认的档案页紧接着就会接管背景、把它销毁，

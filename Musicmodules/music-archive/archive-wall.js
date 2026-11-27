@@ -631,24 +631,33 @@
         panel.innerHTML = '<div class="aw-lyric" hidden><div class="aw-lyric-roll"></div></div><div class="aw-panel-head"><span class="aw-panel-no"></span><span class="aw-panel-dur"></span></div><b class="aw-panel-title"></b><span class="aw-panel-sub"></span>'
             + '<div class="aw-seek" data-wall="seek" role="slider" tabindex="0" aria-label="播放进度" hidden><span class="aw-seek-t">0:00</span><div class="aw-seek-bar"><i></i></div><span class="aw-seek-d">0:00</span></div>'
             + '<div class="aw-panel-acts"><button type="button" data-wall="prev" class="aw-round aw-prev" title="上一首" aria-label="上一首" hidden><i></i></button><button type="button" data-wall="play" class="aw-primary"><i></i><span>播放</span></button><button type="button" data-wall="next" class="aw-round aw-next" title="下一首" aria-label="下一首" hidden><i></i></button><button type="button" data-wall="stage">进入舞台</button><button type="button" data-wall="menu">更多…</button></div>';
+        const panelRefs = {
+            no: panel.querySelector('.aw-panel-no'),
+            dur: panel.querySelector('.aw-panel-dur'),
+            title: panel.querySelector('.aw-panel-title'),
+            sub: panel.querySelector('.aw-panel-sub'),
+            play: panel.querySelector('[data-wall="play"]'),
+            prev: panel.querySelector('.aw-prev'),
+            next: panel.querySelector('.aw-next')
+        };
         const fillPanel = (i) => {
             const t = opts.track(i);
             const m = opts.meta(t, i);
-            panel.querySelector('.aw-panel-no').textContent = m.code || '';
-            panel.querySelector('.aw-panel-dur').textContent = m.duration || '';
-            panel.querySelector('.aw-panel-title').textContent = m.title;
-            panel.querySelector('.aw-panel-sub').textContent = [m.artist, m.album].filter(Boolean).join(' · ');
+            panelRefs.no.textContent = m.code || '';
+            panelRefs.dur.textContent = m.duration || '';
+            panelRefs.title.textContent = m.title;
+            panelRefs.sub.textContent = [m.artist, m.album].filter(Boolean).join(' · ');
             const p = opts.playing();
             const isNow = p.index === i && p.active;
-            const btn = panel.querySelector('[data-wall="play"]');
+            const btn = panelRefs.play;
             const isCur = p.index === i;
             const canTransport = isCur && typeof opts.transport === 'function';
             // 展开的是当前这首：主键变成暂停/继续，两边出现上一首、下一首（和 Folia 大卡上的播放控制一样）
             btn.lastChild.textContent = isNow ? (canTransport ? '暂停' : '正在播放') : (isCur ? '继续播放' : '播放');
             btn.classList.toggle('is-now', isNow);
             btn.disabled = isNow && !canTransport;
-            panel.querySelector('.aw-prev').hidden = !canTransport;
-            panel.querySelector('.aw-next').hidden = !canTransport;
+            panelRefs.prev.hidden = !canTransport;
+            panelRefs.next.hidden = !canTransport;
             panel.dataset.item = String(i);
             syncSeek();
         };
@@ -668,19 +677,26 @@
          */
         const lyricEl = panel.querySelector('.aw-lyric');
         const lyricRoll = lyricEl.firstChild;
-        let lyricSrc = null, lyricAt = -2;
+        let lyricSrc = null, lyricTimed = false, lyricAt = -2;
         const paintLyric = (t) => {
             const lines = opts.lyrics ? opts.lyrics() : [];
-            const timed = lines.length > 1 && lines.some((l) => Number(l.time) > 0);
-            if (!timed) { lyricEl.hidden = true; lyricSrc = null; lyricAt = -2; return; }
             if (lines !== lyricSrc) {
                 lyricSrc = lines;
+                lyricTimed = lines.length > 1 && lines.some((l) => Number(l.time) > 0);
                 lyricAt = -2;
-                lyricRoll.innerHTML = lines.map((l) => '<p>' + esc(l.original || l.fullText || l.text || '') + (l.translation ? '<small>' + esc(l.translation) + '</small>' : '') + '</p>').join('');
+                if (lyricTimed) {
+                    lyricRoll.innerHTML = lines.map((l) => '<p>' + esc(l.original || l.fullText || l.text || '') + (l.translation ? '<small>' + esc(l.translation) + '</small>' : '') + '</p>').join('');
+                }
             }
+            if (!lyricTimed) { lyricEl.hidden = true; return; }
             lyricEl.hidden = false;
-            let at = -1;
-            for (let k = 0; k < lines.length; k++) { if ((Number(lines[k].time) || 0) <= t + 0.15) at = k; else break; }
+            const target = t + 0.15;
+            let lo = 0, hi = lines.length - 1, at = -1;
+            while (lo <= hi) {
+                const mid = (lo + hi) >> 1;
+                if ((Number(lines[mid].time) || 0) <= target) { at = mid; lo = mid + 1; }
+                else hi = mid - 1;
+            }
             if (at === lyricAt) return;
             const prev = lyricRoll.children[lyricAt];
             if (prev) prev.classList.remove('is-now');
@@ -1049,15 +1065,17 @@
                 e.stopPropagation();
                 if (btn.dataset.wall === 'locate') {
                     const p = opts.playing();
-                    const pos = p.index >= 0 ? st.ids.indexOf(p.index) : -1;
+                    const pos = p.index >= 0 ? (st.idIndex ? (st.idIndex.has(p.index) ? st.idIndex.get(p.index) : -1) : st.ids.indexOf(p.index)) : -1;
                     if (pos >= 0) {
                         const inst = nearestOf(st.g, pos, viewCenter(), st.gap);
                         if (st.expanded && st.expanded.id !== inst.id) setExpanded(null);
                         focusInstance(inst, { center: true });
                     }
-                    locateBtn.classList.remove('is-ping');
-                    void locateBtn.offsetWidth;
-                    locateBtn.classList.add('is-ping');
+                    if (!reduced()) {
+                        locateBtn.classList.remove('is-ping');
+                        void locateBtn.offsetWidth;
+                        locateBtn.classList.add('is-ping');
+                    }
                     return;
                 }
                 if (btn.dataset.wall === 'quickmenu') {
@@ -1141,7 +1159,8 @@
             el.classList.toggle('aw-dim', want);
         };
         el.addEventListener('pointermove', () => { if (el.classList.contains('aw-dim') || performance.now() - (st.touchedAt || 0) > 1000) wake(); }, { passive: true });
-        global.addEventListener('keydown', () => { if (st.on) wake(); }, true);
+        const onGlobalKey = () => { if (st.on) wake(); };
+        global.addEventListener('keydown', onGlobalKey, true);
 
         // ---------- 对外 ----------
         const api = {
@@ -1161,10 +1180,14 @@
                     schedule();
                 } else {
                     clearInterval(dimTimer);
-                    el.classList.remove('aw-dim');
+                    clearInterval(seekTimer);
+                    seekTimer = 0;
+                    if (movingOff) { clearTimeout(movingOff); movingOff = 0; }
+                    el.classList.remove('aw-dim', 'aw-moving');
                     cancelAnimationFrame(st.raf);
                     st.raf = 0;
                     setExpanded(null, { animate: false });
+                    if (panel.parentNode) panel.remove();
                     for (const node of st.nodes.values()) recycle(node);
                     st.nodes.clear();
                     thumbs.clearQueue();
@@ -1211,8 +1234,10 @@
             refresh() { st.dirty = true; schedule(); },
             destroy() {
                 st.on = false;
+                global.removeEventListener('keydown', onGlobalKey, true);
                 cancelAnimationFrame(st.raf);
                 clearTimeout(st.reflowTimer);
+                clearTimeout(movingOff);
                 clearInterval(seekTimer);
                 clearInterval(dimTimer);
                 thumbs.destroy();

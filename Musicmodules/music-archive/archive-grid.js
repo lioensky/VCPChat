@@ -341,9 +341,11 @@
             e.stopPropagation();
             const p = opts.playing();
             if (p.index >= 0 && st.where.has(p.index)) { opts.pick(p.index); reveal(p.index, { center: true }); }
-            locateBtn.classList.remove('is-ping');
-            void locateBtn.offsetWidth;
-            locateBtn.classList.add('is-ping');
+            if (!reduced()) {
+                locateBtn.classList.remove('is-ping');
+                void locateBtn.offsetWidth;
+                locateBtn.classList.add('is-ping');
+            }
         });
         el.addEventListener('click', (e) => {
             const i = cellOf(e.target);

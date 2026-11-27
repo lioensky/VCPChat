@@ -140,7 +140,7 @@
                     hint.innerHTML = '<div class="music-drop-hint-card"><b>松开，加进曲库</b><span>歌曲和文件夹加进曲库；.m3u / .m3u8 歌单导入成新歌单</span></div>';
                     doc.body.appendChild(hint);
                 }
-                global.requestAnimationFrame?.(() => hint && hint.classList.add('visible'));
+                global.requestAnimationFrame?.(() => { if (hint && depth > 0) hint.classList.add('visible'); });
             };
             // 保险：拖着悬停时 dragover 每几十毫秒来一次；停了大半秒还没来（按了 Esc、拖到别的窗口没收到 dragleave）就收起，提示不会卡在屏幕上
             let idle = 0;

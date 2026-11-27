@@ -115,7 +115,7 @@
             const n = state.lines.length;
             let text = '';
             if (n) {
-                const ww = state.lines.some((l) => wordsOf(l));
+                const ww = Array.isArray(state.lineWords) ? state.lineWords.some(Boolean) : state.lines.some((l) => wordsOf(l));
                 const tr = state.lines.some((l) => String(l.translation || '').trim());
                 text = (ww ? '逐字' : '逐句') + (tr ? ' · 译' : '');
             } else if (state.plain) text = '纯文本';
@@ -161,12 +161,16 @@
          * 歌词进度条（原来一行一格的密刻度太小、点不准）：一根细竖线，唱过的一段实一点，正在唱的位置一道强调色短横；
          * 指针移上去出现一道细线和那一句的预览（时间 + 原文），点一下跳过去。平时淡，指针进歌词栏才清楚。
          */
+        let indexTip = null;
+        let indexBox = null;
         const buildIndex = () => {
             const n = state.lines.length;
             state.indexN = n;
             state.indexAt = -2;
+            indexBox = null;
             r.index.hidden = n < 4;
             r.index.innerHTML = n < 4 ? '' : '<span class="rail"></span><span class="fill"></span><span class="cur"></span><span class="hov"></span><span class="tip"><b></b><span></span></span>';
+            indexTip = n < 4 ? null : r.index.querySelector('.tip');
             r.index.classList.remove('hovering');
         };
         const paintIndex = (k) => {
@@ -180,24 +184,26 @@
         const clock = (t) => { t = Math.max(0, Math.floor(Number(t) || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
         const indexAtY = (y) => {
             const n = state.indexN || 0;
-            const box = r.index.getBoundingClientRect();
+            const box = indexBox || r.index.getBoundingClientRect();
             if (n < 4 || !(box.height > 0)) return -1;
             return Math.round(Math.min(1, Math.max(0, (y - box.top) / box.height)) * (n - 1));
         };
+        r.index.addEventListener('pointerenter', () => { indexBox = r.index.getBoundingClientRect(); });
         r.index.addEventListener('pointermove', (e) => {
+            if (!indexBox) indexBox = r.index.getBoundingClientRect();
             const k = indexAtY(e.clientY);
             if (k < 0) return;
             const line = state.lines[k];
             r.index.classList.add('hovering');
             r.index.style.setProperty('--hv', String(k / ((state.indexN || 1) - 1)));
-            const tip = r.index.querySelector('.tip');
+            const tip = indexTip;
             if (tip && tip.dataset.k !== String(k)) {
                 tip.dataset.k = String(k);
                 tip.firstChild.textContent = clock(line && line.time);
                 tip.lastChild.textContent = textOf(line);
             }
         });
-        r.index.addEventListener('pointerleave', () => r.index.classList.remove('hovering'));
+        r.index.addEventListener('pointerleave', () => { indexBox = null; r.index.classList.remove('hovering'); });
         r.index.addEventListener('click', (e) => {
             const k = indexAtY(e.clientY);
             if (k >= 0) r.track.children[k]?.click();
@@ -278,7 +284,7 @@
         };
         r.desk.addEventListener('click', () => { app.desktopLyrics?.toggle?.(); });
         document.addEventListener('music-desktop-lyrics-change', syncDesk);
-        setTimeout(syncDesk, 0);
+        const deskInitTimer = setTimeout(syncDesk, 0);
         r.chip?.addEventListener('click', () => {
             if (typeof app.openLyricsFetchModal === 'function') app.openLyricsFetchModal(app.currentTrackIndex);
         });
@@ -358,6 +364,7 @@
 
         let fitWidth = 0;
         const resizeObserver = new ResizeObserver(() => {
+            indexBox = null;
             const w = r.viewport.clientWidth;
             if (w && w !== fitWidth) { fitWidth = w; fitSoon(); }
             if (!state.shown) return;
@@ -441,7 +448,7 @@
             tick,
             setAllowed: (on) => { state.allowed = Boolean(on); sync(); },
             get shown() { return state.shown; },
-            destroy: () => { document.removeEventListener('visibilitychange', onVis); resizeObserver.disconnect(); cancelAnimationFrame(fitRaf); if (state.timer) clearInterval(state.timer); state.timer = 0; clearTimeout(state.noneTimer); clearTimeout(state.noneRefresh); clearTimeout(state.manualTimer); el.remove(); },
+            destroy: () => { document.removeEventListener('visibilitychange', onVis); document.removeEventListener('music-desktop-lyrics-change', syncDesk); clearTimeout(deskInitTimer); resizeObserver.disconnect(); cancelAnimationFrame(fitRaf); if (state.timer) clearInterval(state.timer); state.timer = 0; clearTimeout(state.noneTimer); clearTimeout(state.noneRefresh); clearTimeout(state.manualTimer); el.remove(); },
             debug: () => ({ shown: state.shown, none: state.none, lines: state.lines.length, index: state.index, ticking: Boolean(state.timer) })
         };
     };

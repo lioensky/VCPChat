@@ -581,7 +581,11 @@
             event.stopPropagation();
             toggle();
         };
-        const onResize = () => { if (state.open) place(); };
+        let resizeRaf = 0;
+        const onResize = () => {
+            if (!state.open || resizeRaf) return;
+            resizeRaf = global.requestAnimationFrame(() => { resizeRaf = 0; if (state.open) place(); });
+        };
         document.addEventListener('keydown', onGlobalKey, true);
         global.addEventListener('resize', onResize);
 
@@ -592,6 +596,8 @@
             get isOpen() { return state.open; },
             destroy() {
                 close(false);
+                if (state.closeTimer) { clearTimeout(state.closeTimer); state.closeTimer = null; }
+                if (resizeRaf) { global.cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
                 document.removeEventListener('keydown', onGlobalKey, true);
                 global.removeEventListener('resize', onResize);
                 root.remove();
