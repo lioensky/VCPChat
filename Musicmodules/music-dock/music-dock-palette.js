@@ -60,19 +60,26 @@
 
     const hasSongFilter = (q) => Boolean(q.text || q.artist || q.album || q.title);
 
+    const compileQuery = (q) => ({
+        artist: q.artist ? lower(q.artist) : '',
+        album: q.album ? lower(q.album) : '',
+        title: q.title ? lower(q.title) : '',
+        words: q.text ? lower(q.text).split(/\s+/).filter(Boolean) : []
+    });
+
     /* 歌是否匹配：自由文字在标题/歌手/专辑里找，过滤只在对应字段里找；越靠前的命中分越高。 */
-    const scoreTrack = (track, q, stripExtension) => {
+    const scoreTrackCompiled = (track, cq, stripExtension) => {
         if (!track) return -1;
         const title = lower(stripExtension ? stripExtension(track.title) : track.title);
         const artist = lower(track.artist);
         const album = lower(track.album);
-        if (q.artist && !artist.includes(lower(q.artist))) return -1;
-        if (q.album && !album.includes(lower(q.album))) return -1;
-        if (q.title && !title.includes(lower(q.title))) return -1;
+        if (cq.artist && !artist.includes(cq.artist)) return -1;
+        if (cq.album && !album.includes(cq.album)) return -1;
+        if (cq.title && !title.includes(cq.title)) return -1;
         let score = 1;
-        if (q.text) {
-            const words = lower(q.text).split(/\s+/).filter(Boolean);
-            for (const word of words) {
+        if (cq.words.length) {
+            for (let i = 0; i < cq.words.length; i++) {
+                const word = cq.words[i];
                 if (title.startsWith(word)) score += 6;
                 else if (title.includes(word)) score += 4;
                 else if (artist.includes(word)) score += 2;
@@ -82,6 +89,8 @@
         }
         return score;
     };
+
+    const scoreTrack = (track, q, stripExtension) => scoreTrackCompiled(track, compileQuery(q), stripExtension);
 
     const readRecent = () => {
         try {
@@ -181,13 +190,14 @@
             return { id: 'volume-set', group: '音量', icon: 'volume-2', title: `把音量设为 ${value}%`, run: () => setVolume(value / 100), noRecent: true };
         };
 
-        const matchCommand = (cmd, text) => {
-            const words = lower(text).split(/\s+/).filter(Boolean);
+        const matchCommand = (cmd, words) => {
             if (!words.length) return 0;
+            const titleLower = lower(cmd.title);
             const hay = lower(`${cmd.title} ${cmd.words || ''} ${cmd.group}`);
             let score = 0;
-            for (const word of words) {
-                if (lower(cmd.title).startsWith(word)) score += 3;
+            for (let i = 0; i < words.length; i++) {
+                const word = words[i];
+                if (titleLower.startsWith(word)) score += 3;
                 else if (hay.includes(word)) score += 1;
                 else return 0;
             }
@@ -284,22 +294,29 @@
         };
 
         // 拼音索引：跟曲库同一份，曲库换了（数组或长度变了）才重建。
+        // 稳定包装函数引用（按 global.pinyinPro 复用），让 archive-index 的 WeakMap 缓存能够持续命中。
         let searchIndex = null;
         let indexedList = null;
         let indexedLength = -1;
         let indexedPinyin = false;
         const pinyinCache = new Map();
+        let cachedPinyinLib = null;
+        let cachedPinyinFn = null;
         const pinyinFn = () => {
             const lib = global.pinyinPro;
             if (!lib || typeof lib.pinyin !== 'function') return null;
-            return (c) => {
-                if (!pinyinCache.has(c)) {
-                    let p = '';
+            if (cachedPinyinLib === lib && cachedPinyinFn) return cachedPinyinFn;
+            pinyinCache.clear();
+            cachedPinyinLib = lib;
+            cachedPinyinFn = (c) => {
+                let p = pinyinCache.get(c);
+                if (p === undefined) {
                     try { p = lib.pinyin(c, { toneType: 'none' }); } catch (error) { p = ''; }
                     pinyinCache.set(c, p);
                 }
-                return pinyinCache.get(c);
+                return p;
             };
+            return cachedPinyinFn;
         };
         const getIndex = () => {
             const tracks = app.playlist || [];
@@ -316,14 +333,14 @@
             indexedPinyin = Boolean(pinyin);
             return searchIndex;
         };
-        const nameMatches = (name, text) => {
-            const words = lower(text).split(/\s+/).filter(Boolean);
+        const nameMatches = (name, words) => {
             if (!words.length) return 0;
             const plain = lower(name);
             let romanized = null;
             const Lib = global.MusicArchiveIndex;
             let score = 0;
-            for (const word of words) {
+            for (let i = 0; i < words.length; i++) {
+                const word = words[i];
                 if (plain.startsWith(word)) { score += 3; continue; }
                 if (plain.includes(word)) { score += 2; continue; }
                 if (/^[a-z0-9]+$/.test(word) && Lib?.romanize) {
@@ -341,17 +358,37 @@
             const index = getIndex();
             if (!index) {
                 const strip = app.stripAudioExtension;
-                return tracks.map((track, idx) => ({ track, index: idx, s: scoreTrack(track, q, strip) }))
-                    .filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, limit);
+                const cq = compileQuery(q);
+                const scored = [];
+                for (let idx = 0; idx < tracks.length; idx++) {
+                    const track = tracks[idx];
+                    const s = scoreTrackCompiled(track, cq, strip);
+                    if (s > 0) scored.push({ track, index: idx, s });
+                }
+                scored.sort((a, b) => b.s - a.s);
+                return scored.slice(0, limit);
             }
-            let order = q.text ? index.query(q.text, { limit: Math.max(limit * 4, 400) }) : tracks.map((_, i) => i);
+            let order;
+            let skipArtist = false;
+            let skipAlbum = false;
+            if (q.text) {
+                order = index.query(q.text, { limit: Math.max(limit * 4, 400) });
+            } else if (q.artist) {
+                order = index.query(q.artist, { kind: 'artist' });
+                skipArtist = true;
+            } else if (q.album) {
+                order = index.query(q.album, { kind: 'album' });
+                skipAlbum = true;
+            } else {
+                order = tracks.map((_, i) => i);
+            }
             const keep = (kind, value) => {
                 if (!value) return;
                 const hits = new Set(index.query(value, { kind }));
                 order = order.filter((i) => hits.has(i));
             };
-            keep('artist', q.artist);
-            keep('album', q.album);
+            if (!skipArtist) keep('artist', q.artist);
+            if (!skipAlbum) keep('album', q.album);
             if (q.title) {
                 const want = lower(q.title);
                 const strip = app.stripAudioExtension;
@@ -360,8 +397,8 @@
             return order.slice(0, limit).map((i) => (tracks[i] ? { track: tracks[i], index: i } : null)).filter(Boolean);
         };
 
-        const recentItems = () => {
-            const all = commands();
+        const recentItems = ({ songsAndPlaylistsOnly = false } = {}) => {
+            let all = null;
             const { byPath, bySongId } = getTrackMaps();
             return readRecent().map((id) => {
                 if (id.startsWith('song:')) { const hit = bySongId.get(id); return hit ? { ...songItem(hit.track, '最近', hit.index), section: '最近' } : null; }
@@ -369,6 +406,8 @@
                     const pl = (app.customPlaylists || []).find((p) => `playlist:${p.id}` === id);
                     return pl ? { ...playlistItem(pl, '最近', byPath), section: '最近' } : null;
                 }
+                if (songsAndPlaylistsOnly) return null;
+                if (!all) all = commands();
                 const cmd = all.find((c) => c.id === id);
                 return cmd ? { ...cmd, group: '最近', section: '最近' } : null;
             }).filter(Boolean);
@@ -380,7 +419,7 @@
             let items = [];
             if (!raw.trim()) {
                 // 没输入时只放最近找过的歌和歌单；播放、切歌这些底栏上都有，不在这里列一排。
-                items.push(...recentItems().filter((it) => !String(it.id).startsWith('cmd') && (it.queueable || String(it.id).startsWith('playlist:'))).slice(0, 8));
+                items.push(...recentItems({ songsAndPlaylistsOnly: true }).filter((it) => !String(it.id).startsWith('cmd') && (it.queueable || String(it.id).startsWith('playlist:'))).slice(0, 8));
             } else {
                 const songs = [];
                 const playlists = [];
@@ -388,16 +427,18 @@
                 const vol = volumeCommand(raw);
                 if (vol) cmds.push({ ...vol, section: '命令' });
                 const onlyText = q.text && !q.artist && !q.album && !q.title;
+                const qTextLower = q.text ? lower(q.text) : '';
                 let commandPrefix = false;
                 if (onlyText) {
+                    const textWords = qTextLower.split(/\s+/).filter(Boolean);
                     commands()
-                        .map((c) => ({ c, s: matchCommand(c, q.text) }))
+                        .map((c) => ({ c, s: matchCommand(c, textWords) }))
                         .filter((x) => x.s > 0)
                         .sort((a, b) => b.s - a.s)
                         .slice(0, 6)
                         .forEach((x) => { if (x.s >= 3) commandPrefix = true; cmds.push({ ...x.c, section: '命令' }); });
                     const matchedPlaylists = (app.customPlaylists || [])
-                        .map((pl) => ({ pl, s: nameMatches(pl.name || '', q.text) }))
+                        .map((pl) => ({ pl, s: nameMatches(pl.name || '', textWords) }))
                         .filter((x) => x.s > 0)
                         .sort((a, b) => b.s - a.s)
                         .slice(0, 6);
@@ -416,7 +457,7 @@
                     found.forEach((hit) => { if (!picked.has(hit.track)) songs.push(songItem(hit.track, '曲库', hit.index)); });
                 }
                 // 默认歌曲贴着输入框；输入像是在找操作（命令名开头命中、又没有歌名开头命中）时命令排前。
-                const songPrefix = songs.some((it) => lower(it.title).startsWith(lower(q.text)));
+                const songPrefix = Boolean(qTextLower) && songs.some((it) => lower(it.title).startsWith(qTextLower));
                 const groups = commandPrefix && !songPrefix ? [cmds, songs, playlists] : [songs, playlists, cmds];
                 items = groups.flat();
             }
@@ -456,13 +497,11 @@
                 if (item.section && (!next || next.section !== item.section)) parts.push(`<div class="md-cmd-sec" role="presentation">${escapeHtml(item.section)}</div>`);
             });
             list.innerHTML = parts.join('');
-            // 第一条（贴着输入框）最清楚，往上越远越淡；选中的那条和悬停的那条总是清楚。
-            list.querySelectorAll('.md-cmd-row').forEach((row, i) => { row.dataset.mdDist = String(Math.min(4, i)); });
             syncActive(false);
         };
 
         const rowHtml = (item, i) => (
-                `<button type="button" class="md-cmd-row${i === state.active ? ' md-act' : ''}${item.current ? ' md-cur' : ''}" role="option" id="md-cmd-opt-${i}" aria-selected="${i === state.active}" data-i="${i}">`
+                `<button type="button" class="md-cmd-row${i === state.active ? ' md-act' : ''}${item.current ? ' md-cur' : ''}" role="option" id="md-cmd-opt-${i}" aria-selected="${i === state.active}" data-i="${i}" data-md-dist="${Math.min(4, i)}">`
                 + `<span class="md-cmd-ri">${icon(item.icon || 'command', 16)}</span>`
                 + `<span class="md-cmd-rt"><span class="md-cmd-l1"><span class="md-cmd-title">${escapeHtml(item.title)}</span>`
                 + (item.hint ? `<kbd class="md-cmd-chip">${escapeHtml(item.hint)}</kbd>` : '')
@@ -638,6 +677,7 @@
                 global.removeEventListener('resize', onResize);
                 cachedPathList = cachedPathFirst = cachedPathLast = cachedByPath = cachedBySongId = null;
                 searchIndex = indexedList = null;
+                cachedPinyinLib = cachedPinyinFn = null;
                 pinyinCache.clear();
                 root.remove();
             }

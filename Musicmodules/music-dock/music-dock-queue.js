@@ -131,8 +131,9 @@
         function renderQueueWindow(scroller, force = false) {
             if (state.queueDrag?.active) return; // 拖动时别重建行
             const rows = state.queueRows || [];
-            const top = scroller.scrollTop - QUEUE_ROW_H * 4;
-            const bottom = scroller.scrollTop + (scroller.clientHeight || 300) + QUEUE_ROW_H * 4;
+            const scrollTop = scroller.scrollTop;
+            const top = scrollTop - QUEUE_ROW_H * 4;
+            const bottom = scrollTop + (scroller.clientHeight || 300) + QUEUE_ROW_H * 4;
             let lo = 0, hi = rows.length;
             while (lo < hi) {
                 const mid = (lo + hi) >> 1;
@@ -149,13 +150,25 @@
             if (!force && scroller.dataset.window === key) return;
             scroller.dataset.window = key;
             const current = currentTrack();
-            // 手动队列的行总是全画出来，拖动排序时才有地方让位。
-            const keep = new Set();
-            for (let k = first; k < last; k++) keep.add(k);
-            if (rows.length < 400 && rows.manualEnd > rows.manualStart) {
-                for (let k = rows.manualStart; k < rows.manualEnd; k++) keep.add(k);
+            // 手动队列的行总是全画出来，拖动排序时才有地方让位；两段区间本身有序，直接按升序拼接避免 Set + 排序开销。
+            const parts = [];
+            const keepManual = rows.length < 400 && rows.manualEnd > rows.manualStart;
+            if (!keepManual || (rows.manualStart >= first && rows.manualEnd <= last)) {
+                for (let k = first; k < last; k++) parts.push(queueRowHtml(rows[k], k, current));
+            } else {
+                const mStart = rows.manualStart, mEnd = rows.manualEnd;
+                const pushRange = (a, b) => { for (let k = a; k < b; k++) parts.push(queueRowHtml(rows[k], k, current)); };
+                if (mEnd <= first) {
+                    pushRange(mStart, mEnd);
+                    pushRange(first, last);
+                } else if (last <= mStart) {
+                    pushRange(first, last);
+                    pushRange(mStart, mEnd);
+                } else {
+                    pushRange(Math.min(first, mStart), Math.max(last, mEnd));
+                }
             }
-            scroller.firstElementChild.innerHTML = [...keep].sort((a, b) => a - b).map((k) => queueRowHtml(rows[k], k, current)).join('');
+            scroller.firstElementChild.innerHTML = parts.join('');
         }
 
         // 预先画好播放列表页：点开「更多」以后，在空闲时把队列页先画进（还藏着的）抽屉里，
@@ -203,7 +216,11 @@
 
         // 拖动排序：按住超过 4px 才算拖；其他行 140ms 让位；靠近上下边 32px 自动滚动。
         let abortActiveDrag = null;
-        cleanups.push(() => { if (abortActiveDrag) abortActiveDrag(); });
+        let suppressClickTimer = 0;
+        const clearSuppressTimer = () => {
+            if (suppressClickTimer) { clearTimeout(suppressClickTimer); suppressClickTimer = 0; }
+        };
+        cleanups.push(() => { clearSuppressTimer(); if (abortActiveDrag) abortActiveDrag(); });
         function onQueuePointerDown(event) {
             const rowEl = event.target.closest('.md-man');
             if (!rowEl || event.button !== 0 || event.target.closest('.md-qx')) return;
@@ -268,7 +285,20 @@
                 document.removeEventListener('pointermove', move, true);
                 document.removeEventListener('pointerup', up, true);
                 document.removeEventListener('pointercancel', up, true);
+                global.removeEventListener?.('blur', onBlur);
                 abortActiveDrag = null;
+            };
+            const resetDragDom = (d) => {
+                scroller.classList.remove('md-qdragging');
+                if (!d) return;
+                d.rowEl?.classList.remove('md-qdrag');
+                if (d.rowEl) d.rowEl.style.transform = '';
+                if (Array.isArray(d.manualEls)) {
+                    for (const node of d.manualEls) {
+                        node.style.transform = '';
+                        node._qShift = 0;
+                    }
+                }
             };
             const up = (e) => {
                 const d = state.queueDrag;
@@ -278,23 +308,30 @@
                 if (d.raf) cancelAnimationFrame(d.raf);
                 const { active, from: f, to } = d;
                 state.queueDrag = active ? { active: false, suppressClick: true } : null;
-                scroller.classList.remove('md-qdragging');
+                resetDragDom(d);
                 if (active) {
                     if (f !== to) app.queueMove?.(f, to);
                     rerenderQueue();
-                    setTimeout(() => { if (state.queueDrag?.suppressClick) state.queueDrag = null; }, 0);
+                    clearSuppressTimer();
+                    suppressClickTimer = setTimeout(() => {
+                        suppressClickTimer = 0;
+                        if (state.queueDrag?.suppressClick) state.queueDrag = null;
+                    }, 0);
                 }
             };
+            const onBlur = () => { if (abortActiveDrag) abortActiveDrag(); };
             abortActiveDrag = () => {
                 detachDrag();
+                clearSuppressTimer();
                 const d = state.queueDrag;
                 if (d?.raf) cancelAnimationFrame(d.raf);
                 state.queueDrag = null;
-                scroller.classList.remove('md-qdragging');
+                resetDragDom(d);
             };
             document.addEventListener('pointermove', move, true);
             document.addEventListener('pointerup', up, true);
             document.addEventListener('pointercancel', up, true);
+            global.addEventListener?.('blur', onBlur);
         }
 
         function onQueueAction(target) {

@@ -430,30 +430,42 @@
         const rebuild = ({ steady = false } = {}) => {
             const index = opts.getIndex();
             if (!index) return;
-            // 在写入任何目录 DOM 之前读取视口几何，避免末尾 inView()/render() 在刚写完 DOM 后触发强制同步布局
+            // 在写入任何目录 DOM 之前按需读取视口几何：空曲库首次构建跳过 clientHeight/scrollTop，避免启动同步强制布局
             const vpVisible = el.isConnected && !el.hidden;
-            const vpH = vpVisible ? viewportHeight() : 600;
-            let vpTop = vpVisible ? r.viewport.scrollTop : 0;
+            const needAnchor = Boolean(steady && state.rows.length);
+            let vpRead = false;
+            let vpH = 600;
+            let vpTop = 0;
+            const readViewportOnce = () => {
+                if (vpRead || !vpVisible) return;
+                vpRead = true;
+                vpH = viewportHeight();
+                vpTop = r.viewport.scrollTop;
+            };
             let anchor = null;
-            if (steady && state.rows.length && state.selectedRow >= 0 && state.rows[state.selectedRow]) {
-                const sy = state.offsets[state.selectedRow];
-                if (sy >= vpTop && sy + ROW_H <= vpTop + vpH - EDGE_FADE) {
-                    // 选中的那行就在眼前：让它留在原处（启动时曲库一批批进来，目录不该漂到别的字母去）
-                    const row = state.rows[state.selectedRow];
-                    anchor = { i: row.i, ctx: row.ctx, dy: sy - vpTop };
+            if (needAnchor) {
+                readViewportOnce();
+                if (state.selectedRow >= 0 && state.rows[state.selectedRow]) {
+                    const sy = state.offsets[state.selectedRow];
+                    if (sy >= vpTop && sy + ROW_H <= vpTop + vpH - EDGE_FADE) {
+                        // 选中的那行就在眼前：让它留在原处（启动时曲库一批批进来，目录不该漂到别的字母去）
+                        const row = state.rows[state.selectedRow];
+                        anchor = { i: row.i, ctx: row.ctx, dy: sy - vpTop };
+                    }
                 }
-            }
-            if (!anchor && steady && state.rows.length) {
-                for (let k = 0; k < state.rows.length; k++) {
-                    if (state.offsets[k] < vpTop || state.rows[k].type !== 'track') continue;
-                    anchor = { i: state.rows[k].i, ctx: state.rows[k].ctx, dy: state.offsets[k] - vpTop };
-                    break;
+                if (!anchor) {
+                    for (let k = 0; k < state.rows.length; k++) {
+                        if (state.offsets[k] < vpTop || state.rows[k].type !== 'track') continue;
+                        anchor = { i: state.rows[k].i, ctx: state.rows[k].ctx, dy: state.offsets[k] - vpTop };
+                        break;
+                    }
                 }
             }
             const out = Index.listRows({
                 tracks: tracks(), playlists: app.customPlaylists, recent: opts.getRecent(), sections: state.kind === 'recent' ? statsSections() : [], index,
                 kind: state.kind, query: state.query, columnOfGroup: opts.columnOfGroup, spec: opts.getSpec?.() || null
             });
+            if (out.rows.length > 0) readViewportOnce();
             state.rows = out.rows;
             state.count = out.count;
             // 检索时栏名写检索词本身：下面分组头已经写着「检索结果 N 首」，栏名再写一遍是重复
@@ -779,6 +791,13 @@
         const render = (known) => {
             state.raf = 0;
             if (!el.isConnected || el.hidden) return;
+            if (!state.rows.length) {
+                r.viewport.classList.toggle('at-top', true);
+                r.viewport.classList.toggle('at-bottom', true);
+                r.thumb.hidden = true;
+                r.sticky.textContent = '';
+                return;
+            }
             // 先集中读 scrollTop 和 clientHeight（或复用 rebuild 预读值），再统一写 at-top / at-bottom 类，避免读→写→读触发强制同步重排
             const hasKnown = Boolean(known && typeof known === 'object' && typeof known.top === 'number' && known.height > 0);
             const top = hasKnown ? known.top : r.viewport.scrollTop;
@@ -789,7 +808,6 @@
             r.viewport.classList.toggle('at-top', top <= 1);
             r.viewport.classList.toggle('at-bottom', top + h >= totalH - 1);
             syncThumb(top, h);
-            if (!state.rows.length) { r.sticky.textContent = ''; return; }
             const first = Math.max(0, rowAt(top) - OVERSCAN);
             const last = Math.min(state.rows.length - 1, rowAt(top + h) + OVERSCAN);
             for (const [k, node] of state.rendered) {

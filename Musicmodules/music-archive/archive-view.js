@@ -1208,9 +1208,9 @@
             };
         };
         /* wave: true 时从当前选中格起一圈圈翻色（运行中切主题用）；第一次建场景直接换 */
-        const applyTheme = ({ wave = false } = {}) => {
+        const applyTheme = ({ wave = false, theme = null } = {}) => {
             if (!state.scene) return;
-            const th = readTheme();
+            const th = theme || readTheme();
             state.scene.setTheme(th.colors, th.dark, wave && isShown() ? { wave: { lane: state.lane, row: state.row } } : {});
             syncCard();
             kick();
@@ -1229,6 +1229,8 @@
             const prev = state.scene;
             const keepTarget = prev ? prev.target : { lane: state.lane, row: state.row };
             if (prev) prev.dispose();
+            // 先读主题变量，再切 hud 类并插入 canvas，避免写完 DOM 后立即 getComputedStyle 触发全页样式重算
+            const initialTheme = readTheme();
             try {
                 state.scene = (options.sceneLib || SceneLib).create({ host: root, quality: quality(), reducedMotion });
             } catch (e) {
@@ -1257,7 +1259,7 @@
                 }
                 return cached.info;
             });
-            applyTheme();
+            applyTheme({ theme: initialTheme });
             resize();
             state.scene.jump(keepTarget.lane, keepTarget.row);
             updatePlaying(true);
@@ -1293,38 +1295,49 @@
             const w = full - inset;
             const h = root.clientHeight || global.innerHeight;
             const sc = hudScale(h);
+            // 在修改 hud 宽高与断点类之前读取安全底距，避免写后立刻 getComputedStyle 触发全页样式重算
+            const safe = parseFloat(getComputedStyle(document.body).getPropertyValue('--music-dock-safe-bottom')) || 0;
+            const hudW = w / sc;
+            const hudH = h / sc;
+            const lift = Math.round(safe / sc);
             refs.hud.classList.toggle('beside-drawer', inset > 0);
-            refs.hud.style.width = (w / sc) + 'px';
-            refs.hud.style.height = (h / sc) + 'px';
+            refs.hud.style.width = hudW + 'px';
+            refs.hud.style.height = hudH + 'px';
             refs.hud.style.transform = `scale(${sc})`;
-            refs.hud.classList.toggle('short', h / sc < 900);
+            refs.hud.classList.toggle('short', hudH < 900);
             // 设置抽屉让位后用中等宽度的搜索栏布局。
-            const midBeside = inset > 0 && listOpen() && w / sc >= 900 && w / sc < NARROW_W;
-            refs.hud.classList.toggle('narrow', w / sc < NARROW_W && !midBeside);
-            refs.hud.classList.toggle('mid', (w / sc >= NARROW_W && w / sc < MID_W) || midBeside);
+            const midBeside = inset > 0 && listOpen() && hudW >= 900 && hudW < NARROW_W;
+            refs.hud.classList.toggle('narrow', hudW < NARROW_W && !midBeside);
+            refs.hud.classList.toggle('mid', (hudW >= NARROW_W && hudW < MID_W) || midBeside);
             refs.hud.classList.toggle('squeeze', midBeside);
             // 抽屉和歌词同时打开时，提前切到上下布局，给卡片留出足够的宽度。
             const tinyWidth = inset && listOpen() && state.lyricsOn ? DRAWER_TINY_W : TINY_W;
-            refs.hud.classList.toggle('tiny', w / sc < tinyWidth);
-            const safe = parseFloat(getComputedStyle(document.body).getPropertyValue('--music-dock-safe-bottom')) || 0;
-            refs.hud.style.setProperty('--archive-dock-lift', Math.round(safe / sc) + 'px');
+            refs.hud.classList.toggle('tiny', hudW < tinyWidth);
+            refs.hud.style.setProperty('--archive-dock-lift', lift + 'px');
             state.scene?.resize(full, h);
             syncLyrics();
-            syncSceneLayout();
+            syncSceneLayout({ sc, hudW, hudH, lift });
             kick();
         };
         // 用目录、歌词和设置抽屉之间的可用空间给抽出的卡片构图。
-        const syncSceneLayout = () => {
+        const syncSceneLayout = (metrics) => {
             syncWallRoom();
             const scene = state.scene;
             if (!scene || !isShown()) return;
-            const sc = hudScale(root.clientHeight || global.innerHeight);
-            const stacked = refs.hud.classList.contains('tiny') && listOpen() && refs.hud.classList.contains('has-track');
-            const listWidth = listOpen() && !stacked ? list.el.offsetWidth : 0;
+            const sc = metrics ? metrics.sc : hudScale(root.clientHeight || global.innerHeight);
+            const openList = listOpen();
+            const stacked = refs.hud.classList.contains('tiny') && openList && refs.hud.classList.contains('has-track');
+            const listEl = openList ? list.el : null;
+            const listW = listEl ? listEl.offsetWidth : 0;
+            const listTop = listEl ? listEl.offsetTop : 0;
+            const listH = listEl ? listEl.offsetHeight : 0;
+            const listWidth = openList && !stacked ? listW : 0;
             const lyricsVisible = lyrics && !lyrics.el.hidden;
-            const paneRight = state.lyricsOn && lyrics ? lyrics.el.offsetLeft : refs.hud.clientWidth;
-            const safe = parseFloat(refs.hud.style.getPropertyValue('--archive-dock-lift')) || 0;
-            const bottom = stacked ? list.el.offsetTop - 8 : refs.hud.clientHeight - safe - 76;
+            const hudW = metrics ? metrics.hudW : refs.hud.clientWidth;
+            const hudH = metrics ? metrics.hudH : refs.hud.clientHeight;
+            const paneRight = state.lyricsOn && lyrics ? lyrics.el.offsetLeft : hudW;
+            const safe = metrics ? metrics.lift : (parseFloat(refs.hud.style.getPropertyValue('--archive-dock-lift')) || 0);
+            const bottom = stacked ? listTop - 8 : hudH - safe - 76;
             scene.setDetailRoom({
                 left: (listWidth + 22) * sc,
                 right: (paneRight - 22) * sc,
@@ -1332,14 +1345,14 @@
                 bottom: bottom * sc
             });
             const masks = [];
-            if (listOpen()) {
-                const el = list.el;
-                masks.push({ left: 0, right: el.offsetWidth * sc, top: el.offsetTop * sc, bottom: (el.offsetTop + el.offsetHeight) * sc });
+            if (listEl) {
+                masks.push({ left: 0, right: listW * sc, top: listTop * sc, bottom: (listTop + listH) * sc });
             }
             if (lyricsVisible) {
                 const el = lyrics.el;
-                masks.push({ left: el.offsetLeft * sc, right: (el.offsetLeft + el.offsetWidth) * sc,
-                    top: el.offsetTop * sc, bottom: (el.offsetTop + el.offsetHeight) * sc });
+                const lx = el.offsetLeft, ly = el.offsetTop;
+                masks.push({ left: lx * sc, right: (lx + el.offsetWidth) * sc,
+                    top: ly * sc, bottom: (ly + el.offsetHeight) * sc });
             }
             scene.setLabelMask(masks);
             kick();

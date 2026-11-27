@@ -58,6 +58,14 @@
         const host = document.getElementById('music-dock-root');
         if (!host || !app) return null;
 
+        // 在注入整套底栏 DOM 之前预读一次主题高亮色，避免首次 syncFluid 刚写完 host.innerHTML 就 getComputedStyle 触发全页样式重算
+        let bootAccentRaw = null;
+        let bootAccentLight = false;
+        try {
+            bootAccentRaw = getComputedStyle(document.documentElement).getPropertyValue('--highlight-text');
+            bootAccentLight = document.body.classList.contains('light-theme');
+        } catch (_) { bootAccentRaw = null; }
+
         const cleanups = [];
         const listen = (target, type, handler, options) => {
             target.addEventListener(type, handler, options);
@@ -341,8 +349,16 @@
         const themeAccent = () => {
             const stageRoot = document.getElementById('music-stage');
             if (stageActive() && stageRoot?.classList.contains('stage-theme-custom')) {
+                bootAccentRaw = null;
                 const custom = readRgb(getComputedStyle(stageRoot).getPropertyValue('--highlight-text'));
                 if (custom) return custom;
+            }
+            if (bootAccentRaw !== null) {
+                const raw = bootAccentRaw;
+                bootAccentRaw = null;
+                if (document.body.classList.contains('light-theme') === bootAccentLight) {
+                    return readRgb(raw);
+                }
             }
             return readRgb(getComputedStyle(document.documentElement).getPropertyValue('--highlight-text'));
         };

@@ -302,17 +302,22 @@ function setupUI(app) {
     };
 
     app.createSilentAudio = () => {
-        // The WAV only needs a known sample count. Creating an AudioContext here
-        // left a native audio graph alive for the entire renderer lifetime.
-        const sampleCount = 44100 * 60;
+        // The WAV only needs a known sample count for looped Media Session keepalive.
+        // 8 kHz 16-bit mono × 10 s (~160 KB vs ~5.3 MB at 44.1 kHz × 60 s) cuts startup allocation time and heap footprint ~33x.
+        if (app.silentAudioUrl) {
+            try { URL.revokeObjectURL(app.silentAudioUrl); } catch (_) {}
+            app.silentAudioUrl = null;
+        }
+        const sampleRate = 8000;
+        const sampleCount = sampleRate * 10;
         const getWav = (length) => {
             const ds = length * 2, view = new DataView(new ArrayBuffer(44 + ds));
-            let o = 0; const w = (s) => { for(let i=0;i<s.length;i++) view.setUint8(o++, s.charCodeAt(i)); };
-            w('RIFF'); view.setUint32(o, 36+ds, true); o+=4; w('WAVEfmt '); view.setUint32(o, 16, true); o+=4;
-            view.setUint16(o, 1, true); o+=2; view.setUint16(o, 1, true); o+=2;
-            view.setUint32(o, 44100, true); o+=4; view.setUint32(o, 88200, true); o+=4;
-            view.setUint16(o, 2, true); o+=2; view.setUint16(o, 16, true); o+=2;
-            w('data'); view.setUint32(o, ds, true); o+=4;
+            let o = 0; const w = (s) => { for (let i = 0; i < s.length; i++) view.setUint8(o++, s.charCodeAt(i)); };
+            w('RIFF'); view.setUint32(o, 36 + ds, true); o += 4; w('WAVEfmt '); view.setUint32(o, 16, true); o += 4;
+            view.setUint16(o, 1, true); o += 2; view.setUint16(o, 1, true); o += 2;
+            view.setUint32(o, sampleRate, true); o += 4; view.setUint32(o, sampleRate * 2, true); o += 4;
+            view.setUint16(o, 2, true); o += 2; view.setUint16(o, 16, true); o += 2;
+            w('data'); view.setUint32(o, ds, true); o += 4;
             return view.buffer;
         };
         const url = URL.createObjectURL(new Blob([getWav(sampleCount)], { type: 'audio/wav' }));
