@@ -587,8 +587,10 @@
             if (state.closeTimer) { clearTimeout(state.closeTimer); state.closeTimer = null; }
             place();
             root.hidden = false;
-            document.body.classList.add('music-dock-cmd-open');
             input.value = initial;
+            // 在切换 body 类和写入 60 条结果行之前先聚焦输入框，避免 focus() 触发整页样式与新列表的同步强制重算
+            input.focus({ preventScroll: true });
+            document.body.classList.add('music-dock-cmd-open');
             build();
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
             state.openRaf = requestAnimationFrame(() => {
@@ -599,7 +601,6 @@
                 const cap = state.capRect || host.querySelector('.md-cap')?.getBoundingClientRect();
                 if (cap && cap.width) global.MusicFluid?.bud(box, { x: cap.left + cap.width / 2, y: cap.top + 6 });
             });
-            input.focus({ preventScroll: true });
         }
         function close(restoreFocus = true) {
             if (!state.open) return;

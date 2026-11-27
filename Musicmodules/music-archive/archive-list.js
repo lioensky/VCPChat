@@ -208,13 +208,14 @@
             }
             relayout();
         };
-        let cachedVpH = 0, syncedTop = 0, syncedTopFresh = false, syncedTopQueued = false, lastRenderTop = -1, lastRenderRow = -2;
+        let cachedVpH = 0, cachedVpOff = -1, syncedTop = 0, syncedTopFresh = false, syncedTopQueued = false, lastRenderTop = -1, lastRenderRow = -2;
         const viewportHeight = () => {
             if (cachedVpH > 0) return cachedVpH;
             const h = r.viewport.clientHeight;
             if (h > 0) cachedVpH = h;
             return h || 600;
         };
+        const viewportOffsetTop = () => (cachedVpOff >= 0 ? cachedVpOff : (cachedVpOff = r.viewport.offsetTop || 0));
         const recordScrollTop = (top) => {
             syncedTop = top; syncedTopFresh = true;
             if (!syncedTopQueued) { syncedTopQueued = true; Promise.resolve().then(() => { syncedTopQueued = syncedTopFresh = false; }); }
@@ -222,6 +223,7 @@
         const readScrollTop = () => (syncedTopFresh ? syncedTop : r.viewport.scrollTop);
         const paintSlim = (entries) => {
             let elW = -1;
+            cachedVpOff = -1;
             if (Array.isArray(entries)) {
                 for (let i = 0; i < entries.length; i++) {
                     const e = entries[i];
@@ -399,7 +401,7 @@
             let vpRead = false, vpH = 600, vpTop = 0, anchor = null;
             const readViewportOnce = () => {
                 if (vpRead || !vpVisible) return;
-                vpRead = true; vpH = viewportHeight(); vpTop = r.viewport.scrollTop;
+                vpRead = true; vpH = viewportHeight(); vpTop = r.viewport.scrollTop; cachedVpOff = r.viewport.offsetTop || 0;
             };
             if (needAnchor) {
                 readViewportOnce();
@@ -882,7 +884,8 @@
         let thumbKey = '';
         const syncThumb = (top, h) => {
             const g = thumbGeo(h);
-            const y = g ? Math.round((r.viewport.offsetTop || 0) + THUMB_PAD[0] + (g.track - g.size) * Math.min(1, top / g.range)) : -1;
+            const baseY = g ? Math.round(viewportOffsetTop() + THUMB_PAD[0]) : 0;
+            const y = g ? Math.round(baseY + (g.track - g.size) * Math.min(1, top / g.range)) : -1;
             const key = g ? Math.round(g.size) + ':' + y : '';
             if (key === thumbKey) return;
             thumbKey = key;
@@ -890,8 +893,7 @@
             if (g) {
                 r.thumb.style.height = Math.round(g.size) + 'px';
                 r.thumb.style.transform = `translateY(${y}px)`;
-                // 淡轨道画在滑块的 ::before 上：从轨道顶端到底端，跟着滑块位置反向偏移
-                r.thumb.style.setProperty('--thumb-top', (y - Math.round((r.viewport.offsetTop || 0) + THUMB_PAD[0])) + 'px');
+                r.thumb.style.setProperty('--thumb-top', (y - baseY) + 'px');
                 r.thumb.style.setProperty('--thumb-track', Math.round(g.track) + 'px');
             }
         };

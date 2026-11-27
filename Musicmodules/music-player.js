@@ -1148,6 +1148,28 @@ function setupPlayer(app) {
         }
     };
 
+    // 曲库成员集合单槽缓存：避免 getUpNext / peekPrevious 在 5000+ 曲库下反复重建整张 Set 或线性 includes 扫描。
+    let libSetList = null;
+    let libSetLen = -1;
+    let libSetFirst = null;
+    let libSetLast = null;
+    let libSetCache = null;
+    const getLibrarySet = () => {
+        const pl = app.playlist || [];
+        const len = pl.length;
+        const first = len ? pl[0] : null;
+        const last = len ? pl[len - 1] : null;
+        if (libSetCache && libSetList === app.playlist && libSetLen === len && libSetFirst === first && libSetLast === last) {
+            return libSetCache;
+        }
+        libSetList = app.playlist;
+        libSetLen = len;
+        libSetFirst = first;
+        libSetLast = last;
+        libSetCache = new Set(pl);
+        return libSetCache;
+    };
+
     // 接下来会放什么：手动层 + 上下文层的真实顺序（随机时就是洗好的顺序）。
     app.getUpNext = (limit = 200) => {
         reconcileLibrary();
@@ -1155,7 +1177,7 @@ function setupPlayer(app) {
         const mode = app.playModes[app.currentPlayMode];
         manualHead();
         const manual = app.manualQueue.length
-            ? (() => { const lib = new Set(app.playlist); return app.manualQueue.filter(t => lib.has(t)); })()
+            ? (() => { const lib = getLibrarySet(); return app.manualQueue.filter(t => lib.has(t)); })()
             : [];
         const context = [];
         if (mode === 'repeat-one') {
@@ -1182,10 +1204,11 @@ function setupPlayer(app) {
         const activeList = app.currentFilteredTracks || app.playlist;
         if (!activeList.length) return null;
         const currentTrack = app.playlist[app.currentTrackIndex];
+        const lib = playHistory.length ? getLibrarySet() : null;
         for (let k = playHistory.length - 1; k >= 0; k--) {
             const track = playHistory[k];
             if (track === currentTrack) continue;
-            if (app.playlist.includes(track)) return track;
+            if (lib.has(track)) return track;
         }
         const position = activeList.indexOf(currentTrack);
         return activeList[(Math.max(position, 0) - 1 + activeList.length) % activeList.length] || null;

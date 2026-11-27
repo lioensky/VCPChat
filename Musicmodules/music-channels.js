@@ -97,8 +97,11 @@
             refs.summary.textContent = describe(wanted);
         };
         let previousFocus = null;
+        let openRaf = 0;
+        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const close = () => {
             if (!overlay) return;
+            if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
             const o = overlay;
             overlay = null;
             refs = null;
@@ -123,6 +126,7 @@
                 }
                 return;
             }
+            if (NAV_KEYS.has(e.key)) { e.stopPropagation(); return; }
             if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
         const open = () => {
@@ -193,7 +197,8 @@
             doc.body.appendChild(overlay);
             global.addEventListener('keydown', onKey, true);
             syncDialog();
-            global.requestAnimationFrame?.(() => overlay && overlay.classList.add('visible'));
+            const opening = overlay;
+            openRaf = global.requestAnimationFrame?.(() => { openRaf = 0; if (overlay === opening) opening.classList.add('visible'); }) || 0;
             try { x.focus({ preventScroll: true }); } catch (e) { /* 没关系 */ }
         };
 

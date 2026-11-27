@@ -165,11 +165,13 @@
             refresh();
             let done = false;
             let focusTimer = 0;
+            let openRaf = 0;
             const finish = (name) => {
                 if (done) return;
                 done = true;
                 asking = false;
                 closeActivePrompt = null;
+                if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
                 if (focusTimer) { clearTimeout(focusTimer); focusTimer = 0; }
                 global.removeEventListener('keydown', onKey, true);
                 overlay.classList.remove('visible');
@@ -177,6 +179,7 @@
                 if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === 'function') { try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
                 if (name) save(name);
             };
+            const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
             let finishActive = null;
             const onKey = (e) => {
                 if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(null); return; }
@@ -193,6 +196,7 @@
                     }
                     return;
                 }
+                if (NAV_KEYS.has(e.key) && e.target !== input) { e.stopPropagation(); return; }
                 if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && e.target !== input) e.stopPropagation();
             };
             finishActive = finish;
@@ -202,7 +206,7 @@
             overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(null); });
             doc.body.appendChild(overlay);
             global.addEventListener('keydown', onKey, true);
-            global.requestAnimationFrame?.(() => { if (!done) overlay.classList.add('visible'); });
+            openRaf = global.requestAnimationFrame?.(() => { openRaf = 0; if (!done) overlay.classList.add('visible'); }) || 0;
             focusTimer = setTimeout(() => { focusTimer = 0; if (!done) { try { input.focus(); input.select(); } catch (e) { /* 没关系 */ } } }, 30);
         };
 
