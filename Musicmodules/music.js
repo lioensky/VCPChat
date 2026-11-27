@@ -1094,7 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (document.querySelector('.dialog-overlay.music-dialog.visible')) return;
             if (app.playlistDialog?.classList.contains('visible')) { app.hidePlaylistDialog(); e.preventDefault(); return; }
             if (app.playlistEditModal?.classList.contains('visible')) { closePlaylistEditModal(); e.preventDefault(); return; }
-            if (app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
+            if (e.key === 'Escape' && !e.isComposing && app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
         });
         // ── 右键菜单的作用范围 ──
         // 「从列表中移除」要按右键时所在的视图决定删哪里，而不是按上一次从哪里点播。
@@ -1115,12 +1115,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (app.contextFrom?.('classic') && app.classicOrder) app.reorderContext(app.classicOrder(), 'classic');
             return result;
         });
+        const onScopeDoc = typeof addManagedListener === 'function'
+            ? (type, handler, opts) => addManagedListener(document, type, handler, opts)
+            : (type, handler, opts) => document.addEventListener(type, handler, opts);
         let pendingMenuSurface = null;
-        addManagedListener(document, 'contextmenu', (e) => {
+        onScopeDoc('contextmenu', (e) => {
             pendingMenuSurface = e.target?.closest?.('#playlist') ? 'classic'
                 : e.target?.closest?.('#music-archive-view') ? 'archive' : null;
         }, true);
-        addManagedListener(document, 'click', (e) => {
+        onScopeDoc('click', (e) => {
             if (e.target?.closest?.('#music-archive-view [data-act="save"]')) pendingMenuSurface = 'archive';
         }, true);
         const archiveMenuScope = () => {
