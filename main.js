@@ -724,6 +724,10 @@ function startAudioEngine() {
 }
 
 async function stopAudioEngine() {
+    if (audioEngineRestartTimer) {
+        clearTimeout(audioEngineRestartTimer);
+        audioEngineRestartTimer = null;
+    }
     if (!audioEngineProcess || audioEngineProcess.killed) {
         return;
     }

@@ -502,7 +502,30 @@ function setupLyrics(app) {
         // 重置滚动物理状态
         app.currentScrollY = 0;
         app.targetScrollY = 0;
+        lyricsVpW = 0;
+        lyricsVpH = 0;
     };
+
+    // 缓存歌词容器尺寸并在尺寸变化时失效，避免 60fps animateLyrics 每帧读 clientWidth/clientHeight 触发同步布局
+    let lyricsVpW = 0;
+    let lyricsVpH = 0;
+    let lyricsResizeObserver = null;
+    const onLyricsWindowResize = () => { lyricsVpW = 0; lyricsVpH = 0; };
+    if (app.lyricsContainer && typeof ResizeObserver === 'function') {
+        lyricsResizeObserver = new ResizeObserver((entries) => {
+            const rect = entries && entries[0] && entries[0].contentRect;
+            if (rect && rect.width > 0 && rect.height > 0) {
+                lyricsVpW = rect.width;
+                lyricsVpH = rect.height;
+            } else {
+                lyricsVpW = 0;
+                lyricsVpH = 0;
+            }
+        });
+        lyricsResizeObserver.observe(app.lyricsContainer);
+    } else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('resize', onLyricsWindowResize);
+    }
 
     // 点击跳转播放 (Seek-on-Click) 走列表单委托，避免每首歌为每句歌词分配上百个闭包
     let lyricClickHandler = null;
@@ -584,15 +607,39 @@ function setupLyrics(app) {
         const allLi = app.lyricsList.children;
         const totalLines = allLi.length;
         const now = Date.now();
-        // 先读取容器尺寸，避免在修改逐字样式/类名之后读取 clientWidth/clientHeight 触发每帧强制同步布局
-        const viewportWidth = app.lyricsContainer ? app.lyricsContainer.clientWidth : 0;
-        const viewportHeight = app.lyricsContainer ? app.lyricsContainer.clientHeight : 0;
+        // 先读取容器与目标行几何尺寸（容器尺寸由 ResizeObserver 缓存），避免在修改逐字样式/类名之后读取 offsetTop/clientHeight 触发强制同步布局
+        if ((!lyricsVpW || !lyricsVpH) && app.lyricsContainer) {
+            const cw = app.lyricsContainer.clientWidth;
+            const ch = app.lyricsContainer.clientHeight;
+            if (cw > 0) lyricsVpW = cw;
+            if (ch > 0) lyricsVpH = ch;
+        }
+        const viewportWidth = lyricsVpW;
+        const viewportHeight = lyricsVpH;
+
+        const layout = app._lyricLayout || (app._lyricLayout = {});
+        const activeLineChanged = layout.head !== allLi[0] || layout.index !== app.currentLyricIndex || layout.count !== totalLines;
+        if (app.currentLyricIndex > -1 && !app.lyricUserScrolling) {
+            const currentLineLi = allLi[app.currentLyricIndex];
+            if (currentLineLi && (activeLineChanged
+                || layout.measuredIndex !== app.currentLyricIndex
+                || now - layout.changedAt < 600
+                || layout.viewportWidth !== viewportWidth
+                || layout.viewportHeight !== viewportHeight)) {
+                const nextLineLi = app.currentLyrics[app.currentLyricIndex + 1] ? allLi[app.currentLyricIndex + 1] : null;
+                layout.measuredIndex = app.currentLyricIndex;
+                layout.viewportWidth = viewportWidth;
+                layout.viewportHeight = viewportHeight;
+                layout.currentOffset = currentLineLi.offsetTop;
+                layout.nextOffset = nextLineLi ? nextLineLi.offsetTop : layout.currentOffset;
+                layout.currentHeight = currentLineLi.clientHeight;
+            }
+        }
 
         // 整表的透明度、高亮和逐字复位只在“当前行变了”或“歌词重新渲染了”时做一遍。
         // 以前每一帧都对每一行写样式并查两次选择器，随后又读 offsetTop，
         // 等于每帧强制一次样式重算加布局，是播放时界面发卡的主要来源。
-        const layout = app._lyricLayout || (app._lyricLayout = {});
-        if (layout.head !== allLi[0] || layout.index !== app.currentLyricIndex || layout.count !== totalLines) {
+        if (activeLineChanged) {
             layout.head = allLi[0];
             layout.index = app.currentLyricIndex;
             layout.count = totalLines;
@@ -720,20 +767,6 @@ function setupLyrics(app) {
                     }
                 }
 
-                // 行高只在换行后的字号过渡期间（0.35s）和窗口尺寸变化后会变，
-                // 其余时间用上次量到的位置，不再每帧触发布局。
-                if (layout.measuredIndex !== app.currentLyricIndex
-                    || now - layout.changedAt < 600
-                    || layout.viewportWidth !== viewportWidth
-                    || layout.viewportHeight !== viewportHeight) {
-                    const nextLineLi = nextLine ? allLi[app.currentLyricIndex + 1] : null;
-                    layout.measuredIndex = app.currentLyricIndex;
-                    layout.viewportWidth = viewportWidth;
-                    layout.viewportHeight = viewportHeight;
-                    layout.currentOffset = currentLineLi.offsetTop;
-                    layout.nextOffset = nextLineLi ? nextLineLi.offsetTop : layout.currentOffset;
-                    layout.currentHeight = currentLineLi.clientHeight;
-                }
                 const interpolatedOffset = layout.currentOffset + (layout.nextOffset - layout.currentOffset) * progress;
 
                 const goldenRatioPoint = viewportHeight * 0.382;
@@ -825,6 +858,9 @@ function setupLyrics(app) {
                 app.lyricsList.removeEventListener('click', lyricClickHandler);
                 lyricClickHandler = null;
             }
+            lyricsResizeObserver?.disconnect();
+            lyricsResizeObserver = null;
+            window.removeEventListener('resize', onLyricsWindowResize);
         }, { once: true });
     }
 }

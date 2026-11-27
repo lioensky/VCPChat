@@ -131,17 +131,18 @@ function setupUI(app) {
         return li;
     };
     // 按当前滚动位置算出要建的那一段，和已建的不一样才重建（留下的行原样复用，离开视口的行进池就地更新避免反复创建节点）。
-    const renderWindow = (force = false) => {
+    const renderWindow = (force = false, knownView, knownScrollTop) => {
         const list = app.playlistEl;
         if (!list) return;
         const total = shownSongs.length;
         const pitch = rowPitch;
-        const view = list.clientHeight;
+        const view = knownView !== undefined ? knownView : list.clientHeight;
+        const scrollTop = knownScrollTop !== undefined ? knownScrollTop : list.scrollTop;
         let from = 0;
         let to = Math.min(total, FALLBACK_ROWS);
         if (pitch > 0 && view > 0) {
-            from = Math.max(0, Math.floor(list.scrollTop / pitch) - BUFFER);
-            to = Math.min(total, Math.ceil((list.scrollTop + view) / pitch) + BUFFER);
+            from = Math.max(0, Math.floor(scrollTop / pitch) - BUFFER);
+            to = Math.min(total, Math.ceil((scrollTop + view) / pitch) + BUFFER);
             if (from > to) from = Math.max(0, to - FALLBACK_ROWS);
         }
         if (!force && from === windowStart && to === windowEnd && list.children.length === to - from) return;
@@ -189,13 +190,35 @@ function setupUI(app) {
         windowEnd = to;
         if (!rowPitch) measurePitch(list);
         const p = rowPitch;
+        // 第一次量到行高时按已读的 view/scrollTop 校准视口：若新范围落在已渲染前缀内直接裁尾复用，免去二次重建与强制回流
+        if (!pitch && p > 0 && view > 0) {
+            let nextFrom = Math.max(0, Math.floor(scrollTop / p) - BUFFER);
+            const nextTo = Math.min(total, Math.ceil((scrollTop + view) / p) + BUFFER);
+            if (nextFrom > nextTo) nextFrom = Math.max(0, nextTo - FALLBACK_ROWS);
+            if (nextFrom === from && nextTo <= to) {
+                for (let j = to - 1; j >= nextTo; j -= 1) {
+                    const tail = rows[j - from];
+                    tail.remove();
+                    if (rowPool.length < ROW_POOL_MAX) { tail._track = null; rowPool.push(tail); }
+                }
+                rows.length = Math.max(0, nextTo - from);
+                to = nextTo;
+                windowEnd = to;
+                if (rows.length) {
+                    rows[0].style.marginTop = `${from * p}px`;
+                    rows[rows.length - 1].style.marginBottom = `${(total - to) * p}px`;
+                }
+                return;
+            }
+            if (nextFrom !== from || nextTo !== to) {
+                renderWindow(true, view, scrollTop);
+                return;
+            }
+        }
         if (rows.length && p > 0) {
             rows[0].style.marginTop = `${from * p}px`;
             rows[rows.length - 1].style.marginBottom = `${(total - to) * p}px`;
         }
-
-        // 第一次量到行高时补一遍（之前按估计的行数建的）
-        if (!pitch && p > 0 && view > 0) renderWindow(true);
     };
     let windowQueued = 0;
     let windowQueuedIsRaf = false;
@@ -344,7 +367,7 @@ function setupUI(app) {
 
     app.scrollCurrentTrackToSidebarTop = () => {
         const playlist = app.playlistEl;
-        if (!playlist || playlist.style.display === 'none') return false;
+        if (!playlist || playlist.style.display === 'none' || classicHidden()) return false;
         const viewportHeight = () => playlist.clientHeight || playlist.getBoundingClientRect().height || 0;
         const place = (desiredScrollTop) => {
             const maxScrollTop = Math.max(0, playlist.scrollHeight - viewportHeight());

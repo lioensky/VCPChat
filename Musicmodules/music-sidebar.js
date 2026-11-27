@@ -197,19 +197,46 @@ function setupSidebar(app) {
         });
     };
 
+    let submenuWired = null;
+    let lastSubmenuSig = null;
     app.updatePlaylistSubmenu = () => {
-        if (app.customPlaylists.length === 0) {
-            app.playlistSubmenu.innerHTML = '<div class="submenu-empty">暂无歌单</div>';
+        const sub = app.playlistSubmenu;
+        if (!sub) return;
+        if (submenuWired !== sub) {
+            submenuWired = sub;
+            sub.addEventListener('click', (e) => {
+                const item = e.target?.closest?.('.submenu-item');
+                if (!item || !sub.contains(item) || !('_playlistId' in item)) return;
+                e.stopPropagation();
+                app.addSelectedTracksToPlaylist(item._playlistId);
+                app.contextMenu.classList.remove('visible');
+            });
+        }
+        const list = Array.isArray(app.customPlaylists) ? app.customPlaylists : [];
+        let sig = '';
+        for (let i = 0; i < list.length; i += 1) {
+            const pl = list[i];
+            sig += (i ? '\x1e' : '') + typeof pl?.id + ':' + String(pl?.id ?? '') + '\x1f' + String(pl?.name ?? '');
+        }
+        if (sig === lastSubmenuSig && sub.childNodes.length > 0) return;
+        lastSubmenuSig = sig;
+        if (list.length === 0) {
+            sub.innerHTML = '<div class="submenu-empty">暂无歌单</div>';
             return;
         }
-        app.playlistSubmenu.innerHTML = '';
+        sub.innerHTML = '';
         const frag = document.createDocumentFragment();
-        app.customPlaylists.forEach(pl => {
-            const item = document.createElement('div'); item.className = 'submenu-item'; item.textContent = pl.name; item.title = pl.name;
-            item.addEventListener('click', (e) => { e.stopPropagation(); app.addSelectedTracksToPlaylist(pl.id); app.contextMenu.classList.remove('visible'); });
+        for (let i = 0; i < list.length; i += 1) {
+            const pl = list[i];
+            const item = document.createElement('div');
+            item.className = 'submenu-item';
+            item.dataset.playlistId = String(pl.id);
+            item._playlistId = pl.id;
+            item.textContent = pl.name;
+            item.title = pl.name;
             frag.appendChild(item);
-        });
-        app.playlistSubmenu.appendChild(frag);
+        }
+        sub.appendChild(frag);
     };
 
     app.addSelectedTracksToPlaylist = (playlistId) => {

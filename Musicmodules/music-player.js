@@ -1049,7 +1049,8 @@ function setupPlayer(app) {
     let byPathLast = null;
     let byPathNorm = null;
     let byPathCache = null;
-    const byPathMap = () => {
+    let byPathFirstIndexCache = null;
+    const ensureByPathCaches = () => {
         const pl = app.playlist || [];
         const len = pl.length;
         const first = len ? pl[0] : null;
@@ -1057,13 +1058,16 @@ function setupPlayer(app) {
         const norm = app.normalizePathForCompare || null;
         if (byPathCache && byPathList === app.playlist && byPathLen === len
             && byPathFirst === first && byPathLast === last && byPathNorm === norm) {
-            return byPathCache;
+            return;
         }
         const map = new Map();
+        const idxMap = new Map();
         for (let i = 0; i < len; i += 1) {
             const t = pl[i];
             if (!t) continue;
-            map.set(norm ? norm(t.path) : t.path, t);
+            const k = norm ? norm(t.path) : t.path;
+            map.set(k, t);
+            if (!idxMap.has(k)) idxMap.set(k, i);
         }
         byPathList = app.playlist;
         byPathLen = len;
@@ -1071,8 +1075,10 @@ function setupPlayer(app) {
         byPathLast = last;
         byPathNorm = norm;
         byPathCache = map;
-        return map;
+        byPathFirstIndexCache = idxMap;
     };
+    const byPathMap = () => { ensureByPathCaches(); return byPathCache; };
+    const byPathIndexMap = () => { ensureByPathCaches(); return byPathFirstIndexCache; };
     const lookup = (map, path) => map.get(app.normalizePathForCompare ? app.normalizePathForCompare(path) : path) || null;
     // 恢复上下文列表和手动队列（曲库里已经没有的歌跳过）。在侧栏初始化之后调，免得被它清掉。
     app.applySessionQueue = (session = app.readSession()) => {
@@ -1495,7 +1501,8 @@ function setupPlayer(app) {
     app.syncTrackIndexByPath = (path) => {
         if (!path) return;
         const normalizedPath = app.normalizePathForCompare(path);
-        let index = app.playlist.findIndex(t => app.normalizePathForCompare(t.path) === normalizedPath);
+        const idxHit = normalizedPath ? byPathIndexMap().get(normalizedPath) : undefined;
+        let index = idxHit !== undefined ? idxHit : -1;
         if (index === -1) {
             // 后端可能返回带 \\?\ 前缀或不同斜杠方向的路径：退回按文件名匹配
             const fileName = normalizedPath ? normalizedPath.split('/').pop() : null;
@@ -1519,10 +1526,14 @@ function setupPlayer(app) {
     (globalThis.MusicAppHooks || require('./music-app-hooks.js')).wrap(app, 'syncTrackIndexByPath', 'player-queue', (syncTrackIndexByPath) => (path) => {
         // 引擎无缝切进了一首曲库里已经没有的歌（预载之后被移除，重填又没赶上）：
         // 界面没法显示它，直接按现在的队列切到下一首，不让声音和界面对不上。
-        if (path && !app.playlist.some(t => sameFile(t.path, path))) {
-            console.warn('[Music.js] Engine switched to a track no longer in the library, moving on:', path);
-            app.nextTrack();
-            return;
+        if (path) {
+            const normP = app.normalizePathForCompare(path);
+            const exists = Boolean(normP && byPathIndexMap().has(normP)) || app.playlist.some(t => sameFile(t.path, path));
+            if (!exists) {
+                console.warn('[Music.js] Engine switched to a track no longer in the library, moving on:', path);
+                app.nextTrack();
+                return;
+            }
         }
         // 无缝切进了队列里的下一首：在当前索引变之前把它从手动层取出来，记下上下文位置。
         const queued = manualHead();

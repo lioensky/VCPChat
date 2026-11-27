@@ -237,23 +237,50 @@
             for (const k of cache.keys()) if (!keep.has(k)) cache.delete(k);
         }
 
-        /* 一个词在一个字段上的得分；0 表示不匹配 */
-        const termScore = (e, f, fPy, fIni, w, term, ascii) => {
-            const v = e[f];
+        /* 一个词在一个字段上的得分；0 表示不匹配（单趟 indexOf，跳过与原文等价的 py/ini） */
+        const scoreField = (v, py, ini, w, term, ascii) => {
             if (!v) return 0;
-            if (v.startsWith(term)) return 100 * w;
-            if (v.includes(term)) return 60 * w;
+            let idx = v.indexOf(term);
+            if (idx === 0) return 100 * w;
+            if (idx > 0) return 60 * w;
             if (ascii) {
-                const py = e[fPy], ini = e[fIni];
-                if (py.startsWith(term)) return 45 * w;
-                if (ini.startsWith(term)) return 40 * w;
-                if (py.includes(term)) return 30 * w;
-                if (ini.includes(term)) return 22 * w;
-            } else {
-                const ini = e[fIni];
-                if (ini.includes(term)) return 20 * w;
+                if (py && py !== v) {
+                    idx = py.indexOf(term);
+                    if (idx === 0) return 45 * w;
+                    if (idx > 0) return (ini && ini !== v && ini !== py && ini.startsWith(term)) ? 40 * w : 30 * w;
+                }
+                if (ini && ini !== v && ini !== py) {
+                    idx = ini.indexOf(term);
+                    if (idx === 0) return 40 * w;
+                    if (idx > 0) return 22 * w;
+                }
+                return 0;
             }
-            return 0;
+            return (ini && ini !== v && ini.includes(term)) ? 20 * w : 0;
+        };
+        const scoreEntryTerm = (e, kindCode, term, ascii) => {
+            if (kindCode === 1) return scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii);
+            if (kindCode === 2) return scoreField(e.album, e.albumPy, e.albumIni, 1, term, ascii);
+            let best = scoreField(e.title, e.titlePy, e.titleIni, 3, term, ascii);
+            if (best < 200) {
+                const sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii);
+                if (sa > best) best = sa;
+            }
+            if (best < 100) {
+                const sal = scoreField(e.album, e.albumPy, e.albumIni, 1, term, ascii);
+                if (sal > best) best = sal;
+            }
+            return best;
+        };
+        // 单槽增量收窄缓存：连续打字（如 A -> Ar -> Artist 1）的新词严格是上次查询词的超串或追加词时，
+        // 数学上必为上次全量命中集的子集，直接在上次命中集上打分，免去每次按键重扫 5000+ 曲库。
+        let lastQuery = null;
+        const canNarrowFrom = (prev, kindCode, terms) => {
+            if (!prev || prev.kindCode !== kindCode || terms.length < prev.terms.length) return false;
+            for (let k = 0; k < prev.terms.length; k += 1) {
+                if (terms[k].ascii !== prev.terms[k].ascii || !terms[k].term.includes(prev.terms[k].term)) return false;
+            }
+            return true;
         };
 
         /*
@@ -263,8 +290,10 @@
         const query = (q, { kind = 'all', only = null, limit = Infinity } = {}) => {
             // 智能条件词（喜欢、没听过、次数>N、>5分钟……，见 music-smart.js）先筛一遍，剩下的词照常检索
             let pool = only || null;
+            let hasSmart = false;
             const smart = global.MusicSmart && global.MusicSmart.ctx ? global.MusicSmart.parse(q) : null;
             if (smart && smart.preds.length) {
+                hasSmart = true;
                 const ctx = global.MusicSmart.ctx();
                 const filtered = [];
                 if (pool) {
@@ -282,28 +311,31 @@
                 if (!norm(q).trim()) return pool.slice(0, limit);
             }
             const rawTerms = norm(q).split(/\s+/).filter(Boolean);
-            const fields = kind === 'artist' ? ARTIST_FIELDS : kind === 'album' ? ALBUM_FIELDS : FIELDS;
+            const kindCode = kind === 'artist' ? 1 : kind === 'album' ? 2 : 0;
             if (!rawTerms.length) return only ? pool.slice(0, limit) : [];
             const terms = rawTerms.map((term) => ({ term, ascii: /^[a-z0-9]+$/.test(term) }));
             const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : entries.length;
             if (cap === 0) return [];
+            const cacheable = !only && !hasSmart;
+            if (cacheable && canNarrowFrom(lastQuery, kindCode, terms)) {
+                pool = lastQuery.matchedIds;
+            }
             // 1–4 词查询时得分必落在 1..1200 的离散整数桶内，按分桶 O(N) 收集天然保序且可提前截断，免去对象分配与排序
             if (terms.length <= 4) {
                 const buckets = new Array(terms.length * 300 + 1);
                 let maxScore = 0;
                 let totalHits = 0;
+                const matchedIds = cacheable ? [] : null;
+                const tLen = terms.length;
+                const t0 = terms[0].term;
+                const a0 = terms[0].ascii;
                 const bucketItem = (i) => {
                     const e = entries[i];
                     if (!e) return;
-                    let total = 0;
-                    for (let t = 0; t < terms.length; t++) {
-                        const { term, ascii } = terms[t];
-                        let best = 0;
-                        for (let fi = 0; fi < fields.length; fi++) {
-                            const fl = fields[fi];
-                            const s = termScore(e, fl[0], fl[1], fl[2], fl[3], term, ascii);
-                            if (s > best) best = s;
-                        }
+                    let total = scoreEntryTerm(e, kindCode, t0, a0);
+                    if (!total) return;
+                    for (let t = 1; t < tLen; t += 1) {
+                        const best = scoreEntryTerm(e, kindCode, terms[t].term, terms[t].ascii);
                         if (!best) return;
                         total += best;
                     }
@@ -312,12 +344,14 @@
                     else b.push(i);
                     if (total > maxScore) maxScore = total;
                     totalHits += 1;
+                    if (matchedIds) matchedIds.push(i);
                 };
                 if (pool) {
                     for (let order = 0; order < pool.length; order++) bucketItem(pool[order]);
                 } else {
                     for (let i = 0; i < entries.length; i++) bucketItem(i);
                 }
+                if (cacheable) lastQuery = { kindCode, terms, matchedIds };
                 if (!totalHits) return [];
                 const want = Math.min(totalHits, cap);
                 const out = new Array(want);
@@ -331,28 +365,25 @@
                 return out;
             }
             const hits = [];
+            const matchedIds = cacheable ? [] : null;
             const scoreItem = (i, order) => {
                 const e = entries[i];
                 if (!e) return;
                 let total = 0;
                 for (let t = 0; t < terms.length; t++) {
-                    const { term, ascii } = terms[t];
-                    let best = 0;
-                    for (let fi = 0; fi < fields.length; fi++) {
-                        const fl = fields[fi];
-                        const s = termScore(e, fl[0], fl[1], fl[2], fl[3], term, ascii);
-                        if (s > best) best = s;
-                    }
+                    const best = scoreEntryTerm(e, kindCode, terms[t].term, terms[t].ascii);
                     if (!best) return;
                     total += best;
                 }
                 hits.push({ i, total, order });
+                if (matchedIds) matchedIds.push(i);
             };
             if (pool) {
                 for (let order = 0; order < pool.length; order++) scoreItem(pool[order], order);
             } else {
                 for (let i = 0; i < entries.length; i++) scoreItem(i, i);
             }
+            if (cacheable) lastQuery = { kindCode, terms, matchedIds };
             hits.sort((a, b) => b.total - a.total || a.order - b.order);
             const capped = hits.length > cap ? hits.slice(0, cap) : hits;
             const out = new Array(capped.length);

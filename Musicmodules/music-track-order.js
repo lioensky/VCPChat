@@ -8,19 +8,9 @@
 (function (global) {
     'use strict';
 
-    const baseName = (p) => {
-        const s = String(p || '');
-        const cut = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
-        const b = cut >= 0 ? s.slice(cut + 1) : s;
+    const decodeBase = (b) => {
         if (!b || b.indexOf('%') === -1) return b;
         try { return /%[0-9a-f]{2}/i.test(b) ? decodeURIComponent(b) : b; } catch (e) { return b; } // 云端地址是 %20 这种
-    };
-    const parentName = (p) => {
-        const s = String(p || '');
-        const cut = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
-        if (cut <= 0) return '';
-        const prev = Math.max(s.lastIndexOf('/', cut - 1), s.lastIndexOf('\\', cut - 1));
-        return s.slice(prev + 1, cut);
     };
     const positive = (v) => { const n = Number(v); return Number.isInteger(n) && n > 0 && n < 1000 ? n : 0; };
 
@@ -30,6 +20,29 @@
     const LEADING_NO_RE = /^\s*(\d{1,3})(?=\s*[\s._)\-]|$)/;
     const TRACK_PREFIX_RE = /^\s*(?:track|トラック|曲目)\s*[_-]?\s*0*(\d{1,3})(?!\d)/i;
     const PARENT_DISC_RE = /(?:^|[\s_\-(\[])(?:cd|disc|disk|碟)\s*0*(\d{1,2})(?:\D|$)/i;
+    const EMPTY_ORDER = Object.freeze({ disc: 0, no: 0 });
+    const parentDiscCache = new Map();
+    const discFromParent = (parent) => {
+        if (!parent) return 0;
+        let hit = parentDiscCache.get(parent);
+        if (hit !== undefined) return hit;
+        const m = PARENT_DISC_RE.exec(parent);
+        hit = m ? positive(m[1]) : 0;
+        if (parentDiscCache.size >= 1024) parentDiscCache.clear();
+        parentDiscCache.set(parent, hit);
+        return hit;
+    };
+    const mayHaveTrackPrefix = (s, start) => {
+        if (start >= s.length) return false;
+        const c0 = s.charCodeAt(start);
+        // 数字、空白、%（URL 编码）、T/t（Track）、ト（トラック）、曲（曲目）才可能命中曲号正则
+        if ((c0 >= 48 && c0 <= 57) || c0 <= 32 || c0 === 37 || c0 === 0x30c8 || c0 === 0x66f2) return true;
+        if (c0 === 84 || c0 === 116) {
+            const c1 = s.charCodeAt(start + 1);
+            return c1 === 82 || c1 === 114; // Tr / tr
+        }
+        return false;
+    };
 
     const parsedCache = new WeakMap();
     // → { disc, no }，不知道的是 0
@@ -41,19 +54,25 @@
         const t = track || {};
         let disc = positive(t.discNo);
         let no = positive(t.trackNo);
-        if (!no) {
-            const name = baseName(t.path).replace(EXT_TRIM_RE, '');
-            // 1-03 标题 / 1.03 标题（碟号-曲号）；年份样的四位数（2019 xxx）不算曲号
-            let m = DISC_TRACK_RE.exec(name);
-            if (m && !FOUR_DIGIT_RE.test(name)) { disc = disc || positive(m[1]); no = positive(m[2]); }
-            else if ((m = LEADING_NO_RE.exec(name)) && !FOUR_DIGIT_RE.test(name)) no = positive(m[1]);
-            else if ((m = TRACK_PREFIX_RE.exec(name))) no = positive(m[1]); // 抓轨软件默认的「Track01」「Track 1」
+        const s = (!no || !disc) && t.path ? String(t.path) : '';
+        if (s) {
+            const cut = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+            const baseStart = cut + 1;
+            if (!no && mayHaveTrackPrefix(s, baseStart)) {
+                const b = decodeBase(baseStart > 0 ? s.slice(baseStart) : s);
+                const name = b.replace(EXT_TRIM_RE, '');
+                // 1-03 标题 / 1.03 标题（碟号-曲号）；年份样的四位数（2019 xxx）不算曲号
+                let m = DISC_TRACK_RE.exec(name);
+                if (m && !FOUR_DIGIT_RE.test(name)) { disc = disc || positive(m[1]); no = positive(m[2]); }
+                else if ((m = LEADING_NO_RE.exec(name)) && !FOUR_DIGIT_RE.test(name)) no = positive(m[1]);
+                else if ((m = TRACK_PREFIX_RE.exec(name))) no = positive(m[1]); // 抓轨软件默认的「Track01」「Track 1」
+            }
+            if (!disc && cut > 0) {
+                const prev = Math.max(s.lastIndexOf('/', cut - 1), s.lastIndexOf('\\', cut - 1));
+                if (cut > prev + 1) disc = discFromParent(s.slice(prev + 1, cut));
+            }
         }
-        if (!disc) {
-            const m = PARENT_DISC_RE.exec(parentName(t.path));
-            if (m) disc = positive(m[1]);
-        }
-        const v = { disc, no };
+        const v = (disc || no) ? { disc, no } : EMPTY_ORDER;
         if (track && typeof track === 'object') parsedCache.set(track, { p: track.path, d: track.discNo, n: track.trackNo, v });
         return v;
     };
@@ -62,11 +81,18 @@
     const albumCompare = (tracks, fallback) => {
         const list = Array.isArray(tracks) ? tracks : null;
         const len = list ? list.length : 0;
-        const cache = len ? new Array(len) : null;
+        // 仅按需缓存访问到的下标，避免 5000+ 曲库按专辑排序时预分配整表大数组引发 GC
+        const cache = len > 0 && len <= 64 ? new Array(len) : null;
+        const sparse = len > 64 ? new Map() : null;
         const get = (i) => {
             if (cache && i >= 0 && i < len) {
                 let v = cache[i];
                 if (v === undefined) cache[i] = v = numberOf(list[i]);
+                return v;
+            }
+            if (sparse) {
+                let v = sparse.get(i);
+                if (v === undefined) { v = numberOf(list[i]); sparse.set(i, v); }
                 return v;
             }
             return numberOf(tracks && tracks[i]);

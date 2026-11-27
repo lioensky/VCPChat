@@ -293,9 +293,11 @@ async function scanFolder(options) {
                 if (done === total) finish();
             };
 
+            const entries = [];
             try {
                 for (let i = 0; i < count; i++) {
                     const entry = { worker: new Worker(workerFile, { workerData: { coverCachePath } }), inFlight: new Map() };
+                    entries.push(entry);
                     workers.push(entry.worker);
                     alive++;
                     entry.worker.on('message', (result) => {
@@ -326,6 +328,10 @@ async function scanFolder(options) {
                 }
             } catch (err) {
                 console.error(`[MusicScan] Failed to spawn scanner worker: ${err.message}`);
+                for (const entry of entries) {
+                    for (const job of entry.inFlight.values()) settle(job, null);
+                    entry.inFlight.clear();
+                }
                 while (cursor < toParse.length) settle(toParse[cursor++], null);
                 finish();
             }
