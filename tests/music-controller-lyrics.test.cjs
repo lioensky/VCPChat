@@ -210,3 +210,13 @@ test('AI 点歌能进入播放器里的每一个演出模式', () => {
         assert.ok(manifest.includes(`${id}（${label}）`), `插件说明里没写 ${id}（${label}）`);
     }
 });
+
+test('stageMode 拒绝 Object.prototype 继承属性名', () => {
+    for (const bad of ['constructor', '__proto__', 'toString']) {
+        const result = spawnSync(process.execPath, [
+            path.join(root, 'VCPDistributedServer/Plugin/MusicController/music-controller.js')
+        ], { input: JSON.stringify({ songname: '歌曲', stageMode: bad }), encoding: 'utf8' });
+        assert.notEqual(result.status, 0, `${bad} must be rejected`);
+        assert.match(result.stderr, /Unknown stage mode/);
+    }
+});

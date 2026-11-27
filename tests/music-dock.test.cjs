@@ -1159,3 +1159,54 @@ test('MusicStageConfig strips undefined keys and returns independent clones on g
     assert.notEqual(dom.window.MusicStageConfig.get().modes.luminous.glow, 99);
     dom.window.close();
 });
+
+test('queue drag runs auto-scroll rAF only inside 32px edges and isolates events by pointerId', () => {
+    let rafId = 0;
+    let rafCalls = 0;
+    let cancelCalls = 0;
+    const { window, doc, app, dock } = setup((_app, win) => {
+        win.requestAnimationFrame = () => { rafCalls += 1; return ++rafId; };
+        win.cancelAnimationFrame = () => { cancelCalls += 1; };
+    });
+    try {
+        const [, b] = app.playlist;
+        const c = { path: 'C:/c.flac', title: 'Gamma.flac', artist: 'C' };
+        app.playlist.push(c);
+        app.manualQueue = [b, c];
+        app.getUpNext = () => ({ manual: app.manualQueue.slice(), context: [] });
+        app.queueMove = () => {};
+        dock.openPanel('播放列表');
+        const scroller = doc.querySelector('.md-ql');
+        scroller.getBoundingClientRect = () => ({ top: 100, bottom: 400, left: 0, right: 300, width: 300, height: 300 });
+        const row = doc.querySelector('.md-man');
+        const firePtr = (type, y, pointerId, target = doc) => {
+            const ev = new window.MouseEvent(type, { bubbles: true, clientY: y, button: 0 });
+            Object.defineProperty(ev, 'pointerId', { value: pointerId });
+            target.dispatchEvent(ev);
+        };
+        rafCalls = 0;
+        cancelCalls = 0;
+        firePtr('pointerdown', 200, 1, row);
+        firePtr('pointermove', 250, 1);
+        assert.ok(row.classList.contains('md-qdrag'), 'drag activated in middle zone');
+        assert.equal(rafCalls, 0, 'middle-zone drag schedules zero auto-scroll rAF');
+
+        // 另一个 pointerId 不应触发边缘滚屏或打断当前拖动
+        firePtr('pointermove', 110, 2);
+        assert.equal(rafCalls, 0, 'unrelated pointerId ignored');
+        firePtr('pointerup', 250, 2);
+        assert.ok(scroller.classList.contains('md-qdragging'), 'unrelated pointerup does not end drag');
+
+        // 拖入顶部 32px 边缘：启动自动滚屏 rAF；移回中间：立即取消 rAF
+        firePtr('pointermove', 110, 1);
+        assert.equal(rafCalls, 1, 'entering top 32px edge schedules auto-scroll rAF');
+        firePtr('pointermove', 250, 1);
+        assert.equal(cancelCalls, 1, 'leaving edge zone cancels auto-scroll rAF immediately');
+
+        firePtr('pointerup', 250, 1);
+        assert.ok(!scroller.classList.contains('md-qdragging'), 'matching pointerup ends drag');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

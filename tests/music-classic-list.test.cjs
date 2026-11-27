@@ -123,3 +123,30 @@ test('经典列表已显示时无关的 body class 变动不触发补拆 rAF', a
     assert.equal(rafCalls, 0, 'unrelated body classes should not trigger layout-measuring decorateSoon rAF');
     t.close();
 });
+
+test('music-like-change 仅更新受影响曲目行，且 beforeunload 清理监听', () => {
+    const t = setup({ count: 60 });
+    t.app.playlist.forEach((tr, i) => { tr.path = `/track-${i}.flac`; });
+    const liked = new Set();
+    let isLikedCalls = 0;
+    t.app.isLiked = (tr) => { isLikedCalls += 1; return Boolean(tr && liked.has(tr.path)); };
+
+    // 局部刷新：detail.tracks 只有第 0 首，不应扫描全部 40 个已装饰行
+    liked.add('/track-0.flac');
+    t.doc.dispatchEvent(new t.window.CustomEvent('music-like-change', { detail: { tracks: [t.app.playlist[0]], liked: true } }));
+    assert.equal(isLikedCalls, 1, 'scoped music-like-change only checks the changed track row');
+    assert.equal(t.list.children[0].classList.contains('is-liked'), true);
+    assert.equal(t.list.children[1].classList.contains('is-liked'), false);
+
+    // 未带 detail.tracks 时兜底刷新全部已装饰行
+    isLikedCalls = 0;
+    t.doc.dispatchEvent(new t.window.CustomEvent('music-like-change'));
+    assert.equal(isLikedCalls, 40, 'unscoped music-like-change refreshes all decorated rows');
+
+    // beforeunload 后不再响应 music-like-change
+    t.window.dispatchEvent(new t.window.Event('beforeunload'));
+    isLikedCalls = 0;
+    t.doc.dispatchEvent(new t.window.CustomEvent('music-like-change', { detail: { tracks: [t.app.playlist[0]], liked: false } }));
+    assert.equal(isLikedCalls, 0, 'beforeunload detaches music-like-change listener');
+    t.close();
+});

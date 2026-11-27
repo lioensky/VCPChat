@@ -160,3 +160,94 @@ test('WebDAV confirm button prevents double submit and server switch ignores sta
     assert.equal(app.webdavImportBtn.disabled, true);
     dom.window.close();
 });
+
+test('WebDAV browse drops stale server replies, test prevents double click, backdrop closes dialog, and import refreshes archive + toast', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="modal"><div id="servers"></div><div id="files"></div><div id="crumb"></div>
+            <button id="scan">扫描</button><button id="import">导入</button>
+        </div>
+        <div id="dialog" class="active">
+            <input id="webdav-server-name" value="NAS 2" />
+            <input id="webdav-server-url" value="http://nas2" />
+            <input id="webdav-server-username" value="u" />
+            <input id="webdav-server-password" value="p" />
+            <p id="status"></p>
+            <button id="test">测试</button>
+            <button id="confirm">确定</button>
+        </div>
+    </body>`, { runScripts: 'outside-only' });
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    const doc = dom.window.document;
+    const toasts = [];
+    dom.window.MusicToast = { show: (o) => toasts.push(o) };
+    const browseResolvers = [];
+    let testCalls = 0;
+    let resolveTest;
+    let archiveRefreshes = 0;
+    let queueEvents = 0;
+    doc.addEventListener('music-queue-change', () => { queueEvents += 1; });
+    const s1 = { id: 's1', name: 'NAS 1', url: 'http://nas1' };
+    const s2 = { id: 's2', name: 'NAS 2', url: 'http://nas2' };
+    const app = {
+        playlist: [],
+        stripAudioExtension: (s) => s,
+        renderPlaylist() {},
+        updateAllCount() {},
+        saveLibrary() {},
+        archiveView: { refresh() { archiveRefreshes += 1; } },
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavServerList: doc.getElementById('servers'),
+        webdavFileList: doc.getElementById('files'),
+        webdavBreadcrumb: doc.getElementById('crumb'),
+        webdavDialogStatus: doc.getElementById('status'),
+        webdavDialogTest: doc.getElementById('test'),
+        webdavDialogConfirm: doc.getElementById('confirm'),
+        webdavScanBtn: doc.getElementById('scan'),
+        webdavImportBtn: doc.getElementById('import'),
+        webdavServers: [s1, s2],
+        activeWebDavServer: s1,
+        webdavScannedTracks: [{ path: 'http://nas2/song.flac', title: 'Song' }],
+        api: {
+            listWebdavDirectory: () => new Promise((r) => browseResolvers.push(r)),
+            testWebdavConnection: () => { testCalls += 1; return new Promise((r) => { resolveTest = r; }); }
+        }
+    };
+    dom.window.setupWebDav(app);
+    app.webdavServers = [s1, s2];
+    app.activeWebDavServer = s1;
+    app.webdavScannedTracks = [{ path: 'http://nas2/song.flac', title: 'Song' }];
+    app.setupWebDavHandlers();
+
+    // 1. 切服务器时旧服务器同路径的目录回包不能覆盖新服务器列表
+    const p1 = app.browseWebDav('/music');
+    app.activeWebDavServer = s2;
+    const p2 = app.browseWebDav('/music');
+    browseResolvers[1]({ status: 'success', entries: [{ name: 'b.flac', href: '/music/b.flac', isDir: false }] });
+    await p2;
+    browseResolvers[0]({ status: 'success', entries: [{ name: 'a.flac', href: '/music/a.flac', isDir: false }] });
+    await p1;
+    assert.deepEqual([...doc.querySelectorAll('#files .webdav-file-name')].map((n) => n.textContent), ['b.flac']);
+
+    // 2. 测试连接防重入 + 点遮罩关弹窗
+    app.webdavDialogTest.click();
+    app.webdavDialogTest.click();
+    assert.equal(testCalls, 1, 'second click while testing is ignored');
+    assert.equal(app.webdavDialogTest.disabled, true);
+    resolveTest({ status: 'success', message: '连接成功' });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(app.webdavDialogTest.disabled, false);
+    assert.equal(doc.getElementById('status').textContent, '连接成功');
+    app.webdavServerDialog.click();
+    assert.equal(app.webdavServerDialog.classList.contains('active'), false, 'clicking dialog backdrop closes it');
+
+    // 3. 导入刷新档案页、派发队列变更事件并显示提示
+    app.webdavImportBtn.click();
+    assert.equal(app.playlist.length, 1);
+    assert.equal(archiveRefreshes, 1, 'import refreshes archiveView');
+    assert.equal(queueEvents, 1, 'import dispatches music-queue-change');
+    assert.equal(toasts.at(-1)?.kind, 'success');
+    dom.window.close();
+});

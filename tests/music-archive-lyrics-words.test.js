@@ -127,3 +127,28 @@ test('archive lyrics refresh immediately on translation/offset events and remove
     window.document.dispatchEvent(new window.CustomEvent('music-lyrics-translated'));
     assert.equal(ly.el.isConnected, false);
 });
+
+test('archive lyrics respects app.lyricsTranslation toggle and recalculates row offsets', () => {
+    const { window, app, ly, at } = setup({ playing: true });
+    const track = ly.el.querySelector('.archive-lyrics-track');
+    const vp = ly.el.querySelector('.archive-lyrics-viewport');
+    Object.defineProperty(track, 'offsetHeight', { get: () => 400 });
+    Object.defineProperty(vp, 'clientHeight', { get: () => 100 });
+    app.currentLyrics[0].translation = '你好世界';
+    app.lyricsTranslation = true;
+    window.document.dispatchEvent(new window.CustomEvent('music-lyrics-translated'));
+    at(4.5);
+    assert.equal(ly.el.querySelectorAll('p em').length, 1);
+    const transformWithTr = track.style.transform;
+
+    app.lyricsTranslation = false;
+    window.document.dispatchEvent(new window.CustomEvent('music-lyrics-translation'));
+    at(4.5);
+    assert.equal(ly.el.querySelectorAll('p em').length, 0, 'disabling lyricsTranslation hides em translations');
+    assert.notEqual(track.style.transform, transformWithTr, 'scroll offset updates from LINE_H_TR to LINE_H');
+
+    app.lyricsTranslation = true;
+    window.document.dispatchEvent(new window.CustomEvent('music-lyrics-translation'));
+    assert.equal(ly.el.querySelector('p[data-k="0"] em')?.textContent, '你好世界', 're-enabling restores em translations');
+    ly.destroy();
+});

@@ -270,3 +270,67 @@ test('desktop lyrics only observes body while active and unsubscribes IPC on bef
         window.close();
     }
 });
+
+test('lyricsTranslation 关闭时桌面歌词快照隐藏译文，切换事件立即同步且 beforeunload 解绑开关监听', async () => {
+    const vm = require('vm');
+    const { JSDOM } = require('jsdom');
+    const appBase = {
+        playlist: [{ path: 'a.flac', title: '晴天', artist: '周杰伦' }],
+        currentTrackIndex: 0,
+        isPlaying: false,
+        lastKnownCurrentTime: 3,
+        lastStateUpdateTime: 0,
+        lyricsTranslation: false,
+        currentLyrics: [
+            { time: 2, text: '第一句', translation: 'line one' },
+            { time: 6, text: '第二句', translation: 'line two' }
+        ]
+    };
+    const hiddenSnap = snapshot(appBase, 3);
+    assert.strictEqual(hiddenSnap.line.tr, '', 'current line translation hidden when lyricsTranslation is false');
+    assert.strictEqual(hiddenSnap.next.tr, '', 'next line translation hidden when lyricsTranslation is false');
+
+    const dom = new JSDOM('<!doctype html><body><div id="desktop-lyrics-item" hidden><input id="desktop-lyrics-switch" type="checkbox"></div></body>');
+    const { window } = dom;
+    try {
+        window.setInterval = () => 1;
+        window.clearInterval = () => {};
+        const ctx = vm.createContext({
+            window, document: window.document, CustomEvent: window.CustomEvent,
+            MutationObserver: window.MutationObserver, Date, console
+        });
+        ctx.window = window;
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-desktop-lyrics.js'), 'utf8'), ctx);
+        const published = [];
+        const app = {
+            ...appBase,
+            lyricsTranslation: true,
+            api: {
+                toggleDesktopLyrics: async (v) => v,
+                publishDesktopLyrics: (snap) => published.push(snap),
+                getDesktopLyrics: async () => ({ on: true }),
+                onDesktopLyricsChanged: () => () => {}
+            }
+        };
+        window.setupMusicDesktopLyrics(app);
+        await Promise.resolve();
+        await Promise.resolve();
+        assert.strictEqual(published.at(-1).line.tr, 'line one');
+
+        app.lyricsTranslation = false;
+        window.document.dispatchEvent(new window.CustomEvent('music-lyrics-translation'));
+        assert.strictEqual(published.at(-1).line.tr, '', 'music-lyrics-translation event immediately republishes without translation');
+
+        const sw = window.document.getElementById('desktop-lyrics-switch');
+        sw.checked = false;
+        window.document.dispatchEvent(new window.CustomEvent('music-desktop-lyrics-change'));
+        assert.strictEqual(sw.checked, true, 'switch syncs while active');
+
+        window.dispatchEvent(new window.Event('beforeunload'));
+        sw.checked = false;
+        window.document.dispatchEvent(new window.CustomEvent('music-desktop-lyrics-change'));
+        assert.strictEqual(sw.checked, false, 'beforeunload removes desktop-lyrics-switch sync listener');
+    } finally {
+        window.close();
+    }
+});

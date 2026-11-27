@@ -1127,3 +1127,50 @@ test('music-stage-skin avoids full-window edge-spectrum offscreen pass and trims
     edge.release();
     dom.window.close();
 });
+
+test('edge spectrum skips allocating canvases during reduced motion or silence and shrinks strips to 1x1 when disabled', () => {
+    const dom = createStageDom();
+    const clears = [];
+    dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+        if (type !== '2d') return null;
+        return new Proxy({
+            clearRect: (...args) => clears.push(args)
+        }, {
+            get(target, prop) { return prop in target ? target[prop] : () => {}; },
+            set(target, prop, value) { target[prop] = value; return true; }
+        });
+    };
+    for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+        runScript(dom, `Musicmodules/music-stage/${dep}`);
+    }
+    const root = dom.window.document.getElementById('music-stage');
+    let widthReads = 0;
+    Object.defineProperty(root, 'clientWidth', { get() { widthReads += 1; return 1200; } });
+    Object.defineProperty(root, 'clientHeight', { get() { return 700; } });
+    const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+    const state = { config: { quality: 'standard', edgeSpectrum: true } };
+    const edge = dom.window.MusicStageEdge.create({
+        app: {},
+        root,
+        elements: { edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'), edgeCanvas },
+        state,
+        scope: { add() {} },
+        clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+    });
+
+    // 静音/无频谱时不读取布局也不分配全分辨率边条画布
+    edge.draw({ now: 1000, isPlaying: false, viewport: { dpr: 2 }, audio: { power: 0, spectrum: [] } });
+    assert.equal(widthReads, 0, 'silent empty spectrum skips resizeEdgeCanvas layout reads');
+    assert.equal(edgeCanvas.width, 300, 'canvas remains unallocated default size while silent');
+
+    // 正常绘制后禁用边条频谱：清理 4 条边一次并立即缩回 1x1 释放显存
+    edge.draw({ now: 2000, isPlaying: true, viewport: { dpr: 2 }, audio: { power: 0.7, spectrum: new Array(64).fill(0.6) } });
+    assert.equal(edgeCanvas.width, 1800);
+    clears.length = 0;
+    state.config.edgeSpectrum = false;
+    edge.draw({ now: 2100, isPlaying: true, viewport: { dpr: 2 }, audio: { power: 0.7, spectrum: new Array(64).fill(0.6) } });
+    assert.equal(clears.length, 4, 'disabling edgeSpectrum clears all 4 strips once');
+    assert.equal(edgeCanvas.width, 1, 'disabling edgeSpectrum shrinks strip canvas to 1x1');
+    assert.equal(edgeCanvas.height, 1);
+    dom.window.close();
+});

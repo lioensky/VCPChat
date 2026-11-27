@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
+const { JSDOM } = require('jsdom');
 
 // 右键「转到歌手 / 转到专辑」：只在档案页可用，曲目缺这项信息时不给跳。
 const { setupMusicGoto } = require(path.join(__dirname, '../Musicmodules/music-goto.js'));
@@ -198,4 +200,72 @@ test('long lyrics (>240 lines) pad translations to full length and apply first 2
     assert.equal(app.currentLyrics[0].translation, '第1句译文');
     assert.equal(app.currentLyrics[239].translation, '第240句译文');
     assert.equal(app.currentLyrics[240].translation, undefined);
+});
+
+test('music-folders ignores stale overlapping list responses and cleans up on beforeunload', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' });
+    const { window } = dom;
+    try {
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-folders.js'), 'utf8'));
+        const resolvers = [];
+        let cleared = 0;
+        const origClearInterval = window.clearInterval.bind(window);
+        window.clearInterval = (id) => { cleared += 1; return origClearInterval(id); };
+        const app = {
+            playlist: [{ path: 'C:\\Music\\A\\s1.flac' }, { path: 'C:\\Music\\B\\s2.flac' }],
+            api: {
+                addMusicFolder: async () => {},
+                musicLibraryFolders: (payload) => {
+                    if (payload.op === 'list') return new Promise((resolve) => resolvers.push(resolve));
+                    return Promise.resolve({ ok: true });
+                }
+            }
+        };
+        window.MusicFolders.setupMusicFolders(app);
+        app.openLibraryFolders();
+        assert.equal(resolvers.length, 1);
+        // 点击添加文件夹触发第二次 list 请求，制造乱序返回（第二次先回，第一次后回）
+        const addBtn = [...window.document.querySelectorAll('button')].find((b) => b.textContent === '添加文件夹');
+        addBtn.click();
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(resolvers.length, 2);
+        resolvers[1]({ ok: true, folders: [{ path: 'C:\\Music\\B', exists: true }] });
+        await new Promise((r) => setTimeout(r, 0));
+        resolvers[0]({ ok: true, folders: [{ path: 'C:\\Music\\A', exists: true }] });
+        await new Promise((r) => setTimeout(r, 0));
+        const firstPath = window.document.querySelector('.mfold-path')?.textContent;
+        assert.equal(firstPath, 'C:\\Music\\B', 'stale first list response does not overwrite newer list');
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.ok(cleared >= 1, 'beforeunload clears folder watch timer');
+    } finally {
+        window.close();
+    }
+});
+
+test('music-utils fast-paths stripAudioExtension/searchTracks and shows toast on shareCurrentTrack failure', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' });
+    const { window } = dom;
+    try {
+        const toasts = [];
+        window.MusicToast = { show: (opts) => toasts.push(opts) };
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-utils.js'), 'utf8'));
+        const app = {
+            pendingTrackPath: 'C:\\a.flac',
+            api: { shareMusicTrack: async () => { throw new Error('disk offline'); } }
+        };
+        window.setupUtils(app);
+        assert.equal(app.stripAudioExtension('PlainTitle'), 'PlainTitle');
+        assert.equal(app.stripAudioExtension('Song.FLAC'), 'Song');
+        const tracks = [
+            { title: 'Alpha.mp3', artist: 'Beta', album: 'Gamma' },
+            { title: 'ＡＢＣ.flac', artist: '歌手', album: '专辑' }
+        ];
+        assert.equal(app.searchTracks(tracks, 'alpha beta').length, 1);
+        assert.equal(app.searchTracks(tracks, 'abc').length, 1, 'NFKC full-width Latin still matches');
+        await app.shareCurrentTrack();
+        assert.equal(toasts.length, 1);
+        assert.equal(toasts[0].kind, 'error');
+    } finally {
+        window.close();
+    }
 });

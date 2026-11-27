@@ -223,3 +223,45 @@ test('探测之后端口被别的程序抢走：别的程序在应答也不算�
         await close(intruder);
     }
 });
+
+test('waitForEngineResponding 抛错时不会挂起启动重试，超大非引擎响应流立即中止', async () => {
+    // 1. 非引擎端口持续吐出超过 64KB 数据时 checkEngineResponds 应立即销毁连接并返回 false
+    const flood = http.createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.write('x'.repeat(70000));
+    });
+    await new Promise((resolve, reject) => {
+        flood.once('error', reject);
+        flood.listen({ port: 0, host: '127.0.0.1' }, resolve);
+    });
+    try {
+        const start = Date.now();
+        const ok = await endpoint.checkEngineResponds(flood.address().port, { timeoutMs: 2500 });
+        assert.equal(ok, false);
+        assert.ok(Date.now() - start < 1000, 'oversized non-engine stream aborts promptly instead of waiting for timeout');
+    } finally {
+        await close(flood);
+    }
+
+    // 2. waitForEngineResponding 拒绝时 runAttempt 应捕获并重试，而不是永久挂起
+    let verifyCalls = 0;
+    const stubEndpoint = {
+        ...endpoint,
+        waitForEngineResponding: async (...args) => {
+            verifyCalls += 1;
+            if (verifyCalls === 1) throw new Error('synthetic verify boom');
+            return endpoint.waitForEngineResponding(...args);
+        },
+    };
+    const fake = createFakeEngine(['ok', 'ok']);
+    const { port, child, attempts } = await launchAudioEngine({
+        binaryPath: 'audio_server',
+        endpoint: stubEndpoint,
+        spawnProcess: fake.spawnProcess,
+        log: quietLog,
+    });
+    assert.equal(attempts, 2);
+    assert.equal(verifyCalls, 2);
+    assert.equal(endpoint.getPort(), port);
+    child.kill();
+});
