@@ -1426,6 +1426,11 @@ test('Batch 57: edge spectrum clamps narrow viewports, skips resolveAccent on th
         runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
         const root = dom.window.document.getElementById('music-stage');
         const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        if (!edgeSpectrum.querySelector('.music-stage-edge-flow')) {
+            const flow = dom.window.document.createElement('div');
+            flow.className = 'music-stage-edge-flow';
+            edgeSpectrum.appendChild(flow);
+        }
         const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
         Object.defineProperty(root, 'clientWidth', { configurable: true, get: () => 30 });
         Object.defineProperty(root, 'clientHeight', { configurable: true, get: () => 30 });
@@ -1738,6 +1743,11 @@ test('Batch 67: edge spectrum uses ResizeObserver contentRect without layout rea
         runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
         const root = dom.window.document.getElementById('music-stage');
         const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        if (!edgeSpectrum.querySelector('.music-stage-edge-flow')) {
+            const flow = dom.window.document.createElement('div');
+            flow.className = 'music-stage-edge-flow';
+            edgeSpectrum.appendChild(flow);
+        }
         const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
         let clientReads = 0;
         Object.defineProperty(root, 'clientWidth', { configurable: true, get: () => { clientReads += 1; return 800; } });
@@ -1814,6 +1824,11 @@ test('Batch 71: edge spectrum skips clearRect/stroke per quiet strip when anothe
         runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
         const root = dom.window.document.getElementById('music-stage');
         const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        if (!edgeSpectrum.querySelector('.music-stage-edge-flow')) {
+            const flow = dom.window.document.createElement('div');
+            flow.className = 'music-stage-edge-flow';
+            edgeSpectrum.appendChild(flow);
+        }
         const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
         const accent = Object.freeze({ r: 40, g: 120, b: 220 });
         dom.window.MusicStageModeUtils = { resolveAccent: () => accent };
@@ -2086,6 +2101,114 @@ test('Batch 81: runtime caches frozen waiting/passed word templates & EMPTY_AUDI
         assert.ok(volumeSetProps > 0, 'changed volume updates stage volume slider');
 
         app.stageHost.destroy();
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 83: edge spectrum prefix-sum matches sliding average with zero-spectrum fast path and runtime caches all-waiting/all-passed word states + interlude LUT', () => {
+    const dom = createStageDom();
+    try {
+        runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
+        const accent = Object.freeze({ r: 60, g: 140, b: 220 });
+        dom.window.MusicStageModeUtils = { resolveAccent: () => accent };
+        const root = dom.window.document.getElementById('music-stage');
+        const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        if (!edgeSpectrum.querySelector('.music-stage-edge-flow')) {
+            const flow = dom.window.document.createElement('div');
+            flow.className = 'music-stage-edge-flow';
+            edgeSpectrum.appendChild(flow);
+        }
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        Object.defineProperty(root, 'clientWidth', { configurable: true, get: () => 800 });
+        Object.defineProperty(root, 'clientHeight', { configurable: true, get: () => 600 });
+
+        let strokeCount = 0;
+        let curvePoints = [];
+        let clearCount = 0;
+        const stubCtx = () => ({
+            setTransform() {},
+            clearRect() { clearCount += 1; },
+            beginPath() {},
+            moveTo() {},
+            lineTo() {},
+            quadraticCurveTo(cx, cy) { curvePoints.push([cx, cy]); },
+            stroke() { strokeCount += 1; }
+        });
+        edgeCanvas.getContext = stubCtx;
+        const origClone = edgeCanvas.cloneNode.bind(edgeCanvas);
+        edgeCanvas.cloneNode = (deep) => {
+            const c = origClone(deep);
+            c.getContext = stubCtx;
+            return c;
+        };
+
+        const scope = new dom.window.MusicStageRuntime.DisposableScope();
+        const app = { stagePalette: { accentRgb: { r: 60, g: 140, b: 220 } } };
+        const edge = dom.window.MusicStageEdge.create({
+            app, root,
+            elements: { edgeSpectrum, edgeCanvas },
+            state: { config: { edgeSpectrum: true, quality: 'standard' } },
+            scope,
+            clamp: dom.window.MusicStageRuntime.clamp
+        });
+
+        // 1. edge-flow-light carries aria-hidden="true"
+        const flowLight = edgeSpectrum.querySelector('.music-stage-edge-flow-light');
+        assert.ok(flowLight, 'edge-flow-light created');
+        assert.equal(flowLight.getAttribute('aria-hidden'), 'true');
+
+        // 2. Zero-spectrum fast path draws baseline once, skips repeated zero-spectrum frames
+        const zeroSpec = new Float32Array(256);
+        edge.draw({ now: 1000, isPlaying: true, track: { path: 'a' }, audio: { spectrum: zeroSpec, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(clearCount, 4, 'initial zero-spectrum draws flat baseline on all 4 strips');
+        assert.equal(curvePoints.length, 0, 'zero-spectrum skips quadratic curves');
+        edge.draw({ now: 1100, isPlaying: true, track: { path: 'a' }, audio: { spectrum: zeroSpec, power: 0 }, viewport: { dpr: 1 } });
+        edge.draw({ now: 1200, isPlaying: true, track: { path: 'a' }, audio: { spectrum: zeroSpec, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(clearCount, 4, 'subsequent unchanged zero-spectrum frames skip redundant strip redraws');
+
+        // 3. Active spectrum draws curved edge points via prefix-sum lookup
+        const activeSpec = new Float32Array(256).fill(0.6);
+        edge.draw({ now: 1300, isPlaying: true, track: { path: 'a' }, audio: { spectrum: activeSpec, power: 0.6 }, viewport: { dpr: 1 } });
+        assert.equal(clearCount, 8, 'active spectrum redraws all 4 strips');
+        assert.ok(curvePoints.length > 50, 'active spectrum emits curved points');
+        edge.release();
+        scope.destroy();
+
+        // 4. Runtime resolveWordState reuses frozen all-waiting and all-passed results with 0 new allocations
+        const Runtime = dom.window.MusicStageRuntime;
+        const line = Runtime.normalizeLines([{
+            time: 10, endTime: 14, text: 'xy',
+            words: [
+                { text: 'x', startTime: 10.5, endTime: 11.5 },
+                { text: 'y', startTime: 11.5, endTime: 13.0 }
+            ]
+        }])[0];
+        const w1 = Runtime.resolveWordState(line, 10.0);
+        const w2 = Runtime.resolveWordState(line, 10.2);
+        assert.equal(w1, w2, 'all-waiting frames reuse identical frozen result object');
+        assert.equal(Object.isFrozen(w1), true);
+        assert.equal(w1.activeWordIndex, -1);
+        assert.equal(w1.wordStates.every((w) => w.status === 'waiting'), true);
+
+        const p1 = Runtime.resolveWordState(line, 13.1);
+        const p2 = Runtime.resolveWordState(line, 13.8);
+        assert.equal(p1, p2, 'all-passed frames reuse identical frozen result object');
+        assert.equal(Object.isFrozen(p1), true);
+        assert.equal(p1.wordStates.every((w) => w.status === 'passed'), true);
+
+        // 5. createInterludeVisualizer prefix-sum + LUT updates bar scales accurately and handles silent spectrum
+        const interlude = Runtime.createInterludeVisualizer({ barCount: 24 });
+        dom.window.document.body.appendChild(interlude.root);
+        interlude.update({ playbackTime: 1, isPlaying: true, audio: { spectrum: new Float32Array(128).fill(0.5), power: 0.5 } }, { visible: true });
+        const bars = [...interlude.root.querySelectorAll('.stage-interlude-bars i')];
+        assert.equal(bars.length, 24);
+        const expectedScale = (0.28 + Math.pow(0.5, 0.72) * 0.72).toFixed(3);
+        assert.match(bars[0].style.transform, new RegExp(`scaleY\\(${expectedScale.replace('.', '\\.')}\\)`));
+        interlude.update({ playbackTime: 2, isPlaying: true, audio: { spectrum: new Float32Array(128), power: 0 } }, { visible: true });
+        assert.match(bars[0].style.transform, /scaleY\(0\.280\)/, 'silent spectrum collapses bars to rest scale');
+        interlude.destroy();
     } finally {
         dom.window.close();
     }

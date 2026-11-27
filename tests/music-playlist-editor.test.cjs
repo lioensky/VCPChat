@@ -207,3 +207,68 @@ test('Batch 78: sidebar playlists match Windows slash/case variants and modal li
     assert.equal(rows[1].classList.contains('in-playlist'), false);
     dom.window.close();
 });
+
+test('Batch 83: sidebar caches album/artist groups, delegates category clicks, and escapes special cover paths', () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="sidebar-tab active" data-view="albums"></div>
+        <div class="sidebar-tab" data-view="all"></div>
+        <div id="sidebar-category-view"></div>
+        <div id="playlist-el"></div>
+        <div id="list"></div><span id="count"></span><h3 id="title"></h3>
+    </body>`, { runScripts: 'outside-only' });
+    let compareCalls = 0;
+    dom.window.MusicTrackOrder = {
+        albumCompare: (list) => {
+            compareCalls += 1;
+            return (ia, ib) => (list[ia].trackNumber || 0) - (list[ib].trackNumber || 0);
+        }
+    };
+    dom.window.eval(fs.readFileSync('Musicmodules/music-sidebar.js', 'utf8'));
+    const doc = dom.window.document;
+    const tracks = [
+        { path: 'D:/m/0.flac', title: 't0', artist: 'A', album: 'Duo', trackNumber: 2, albumArt: 'C:/art/a"b\\c.jpg' },
+        { path: 'D:/m/1.flac', title: 't1', artist: 'A', album: 'Duo', trackNumber: 1 }
+    ];
+    let rendered = null;
+    const app = {
+        playlist: tracks,
+        playlistEl: doc.getElementById('playlist-el'),
+        sidebarFooter: doc.createElement('div'),
+        stripAudioExtension: (s) => s,
+        fileUrl: (p) => `file:///${p}`,
+        customPlaylists: [],
+        modalSongList: doc.getElementById('list'),
+        modalCount: doc.getElementById('count'),
+        modalPlaylistTitle: doc.getElementById('title'),
+        modalSearchInput: { value: '' },
+        playlistEditModal: doc.createElement('div'),
+        renderPlaylist: (list) => { rendered = list; },
+        api: { saveCustomPlaylists: async () => ({ success: true }) },
+        searchTracks: (list) => list
+    };
+    dom.window.setupSidebar(app);
+
+    // 1. Repeated getAlbumGroups reuses cache without re-invoking albumCompare
+    const g1 = app.getAlbumGroups();
+    const g2 = app.getAlbumGroups();
+    assert.equal(compareCalls, 1, 'cached getAlbumGroups avoids re-running albumCompare');
+    assert.deepEqual(Array.from(g1[0].tracks, (t) => t.title), ['t1', 't0']);
+    assert.deepEqual(Array.from(g2[0].tracks, (t) => t.title), ['t1', 't0']);
+
+    // Mutating playlist invalidates cache
+    app.playlist.push({ path: 'D:/m/2.flac', title: 't2', artist: 'B', album: 'Solo' });
+    const g3 = app.getAlbumGroups();
+    assert.equal(g3.length, 2, 'playlist length change invalidates album group cache');
+    assert.equal(compareCalls, 2);
+
+    // 2. Delegated category-item click renders album tracks and safely escapes special cover URL characters
+    app.renderSidebarContent('albums');
+    const items = [...doc.querySelectorAll('#sidebar-category-view .category-item')];
+    assert.equal(items.length, 2);
+    const coverStyle = items[0].querySelector('.cover').getAttribute('style') || '';
+    assert.ok(coverStyle.includes('%22') && coverStyle.includes('%5C'), 'special quotes/backslashes in cover URL are percent-encoded');
+    items[0].click();
+    assert.equal(rendered?.length, 2, 'delegated click opens selected album tracks');
+    assert.equal(doc.querySelector('.sidebar-tab[data-view="all"]').classList.contains('active'), true);
+    dom.window.close();
+});

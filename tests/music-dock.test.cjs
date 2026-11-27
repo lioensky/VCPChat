@@ -2163,3 +2163,46 @@ test('Batch 81: palette normalizes Windows paths & deduplicates hints/meta, queu
         window.close();
     }
 });
+
+test('Batch 83: palette hydrateRowSlot caches button attributes to avoid per-keystroke DOM reads and reuses filtered queue Set', () => {
+    const { window, doc, app, dock } = setup((a) => {
+        a.playlist = Array.from({ length: 40 }, (_, i) => ({
+            path: `/m/${i}.flac`,
+            title: `Track ${i}.flac`,
+            artist: i % 2 === 0 ? 'Alpha' : 'Beta',
+            album: 'Alb'
+        }));
+        a.currentFilteredTracks = a.playlist.slice(0, 10);
+    });
+    try {
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        const list = doc.querySelector('.md-cmd-list');
+        input.value = 'Track';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const row0 = list.querySelector('.md-cmd-row[data-i="0"]');
+        assert.ok(row0, 'row 0 rendered');
+        assert.equal(row0.querySelector('.md-cmd-grp').textContent, '队列', 'filtered queue track ranks in 队列 group');
+
+        let attrReads = 0;
+        let classReads = 0;
+        const origGetAttr = row0.getAttribute.bind(row0);
+        row0.getAttribute = (k) => { attrReads += 1; return origGetAttr(k); };
+        const clsDesc = Object.getOwnPropertyDescriptor(window.Element.prototype, 'className');
+        Object.defineProperty(row0, 'className', {
+            configurable: true,
+            get() { classReads += 1; return clsDesc.get.call(this); },
+            set(v) { return clsDesc.set.call(this, v); }
+        });
+
+        // Re-typing a narrowed query keeps row0 at index 0 active with zero DOM attribute/className reads
+        input.value = 'Track 0';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(attrReads, 0, 'steady slot index skips getAttribute(aria-selected) reads');
+        assert.equal(classReads, 0, 'steady slot class skips row.className reads');
+        assert.equal(row0.querySelector('.md-cmd-grp').textContent, '队列', 'cached filtered queue Set preserves 队列 grouping');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

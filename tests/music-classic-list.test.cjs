@@ -921,3 +921,90 @@ test('Batch 82: classic list artist sort uses rank path even when first 64 track
     t.window.dispatchEvent(new t.window.Event('beforeunload'));
     t.close();
 });
+
+test('Batch 83: music-skin deduplicates renderTrack, restarts roller across rAF with zero offsetWidth reflow, filters settingsObs, and stage-skin stops menu animation under reduce-motion', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="track-title">Song A</div>
+        <div id="track-bitrate">320 kbps</div>
+        <div class="track-file-number" data-track-field="file-number"></div>
+        <div class="track-specs">
+            <div><span data-track-field="format"></span></div>
+            <div><span data-track-field="sample-rate"></span></div>
+            <div><span data-track-field="bit-depth"></span></div>
+            <div><span data-track-field="bitrate"></span></div>
+            <div><span data-track-field="specs"></span></div>
+        </div>
+        <div id="music-stage-settings-card"><div class="music-stage-settings-body"></div></div>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    const doc = w.document;
+    const rafQueue = [];
+    w.requestAnimationFrame = (cb) => { rafQueue.push(cb); return rafQueue.length; };
+    w.cancelAnimationFrame = () => {};
+    let reflowReads = 0;
+    const roller = doc.querySelector('.track-file-number');
+    Object.defineProperty(roller, 'offsetWidth', { configurable: true, get() { reflowReads += 1; return 100; } });
+    const fmtEl = doc.querySelector('[data-track-field="format"]');
+    const settingsBody = doc.querySelector('.music-stage-settings-body');
+
+    const app = {
+        playlist: [
+            { path: '/m/a.flac', title: 'Song A', album: 'Alb', codec: 'FLAC', sampleRate: 44100, bitsPerSample: 16, bitrate: 900000, lossless: true },
+            { path: '/m/b.flac', title: 'Song B', album: 'Alb2', codec: 'FLAC', sampleRate: 96000, bitsPerSample: 24, bitrate: 2400000, lossless: true }
+        ],
+        currentTrackIndex: 0,
+        trackTitle: doc.getElementById('track-title'),
+        trackBitrate: doc.getElementById('track-bitrate')
+    };
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+    w.setupMusicSkin(app);
+    assert.equal(reflowReads, 0, 'initial visible classic track render performs zero offsetWidth reflows');
+    assert.equal(roller.classList.contains('is-rolling'), false, 'roller waits for rAF frame before adding is-rolling');
+    rafQueue.splice(0).forEach((cb) => cb());
+    assert.equal(roller.classList.contains('is-rolling'), true, 'roller gains is-rolling on next animation frame');
+
+    // 1. Unchanged track mutation skips format/spec writes
+    let fmtWrites = 0;
+    const textDesc = Object.getOwnPropertyDescriptor(w.Node.prototype, 'textContent');
+    Object.defineProperty(fmtEl, 'textContent', {
+        configurable: true,
+        get() { return textDesc.get.call(this); },
+        set(v) { fmtWrites += 1; return textDesc.set.call(this, v); }
+    });
+    app.trackTitle.textContent = 'Song A';
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(fmtWrites, 0, 'identical track metadata short-circuits renderTrack without touching spec DOM');
+
+    // 2. Track change restarts roller via rAF with zero offsetWidth reflows
+    app.currentTrackIndex = 1;
+    app.trackTitle.textContent = 'Song B';
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(reflowReads, 0, 'track change in visible classic view triggers zero offsetWidth reflows');
+    assert.equal(roller.classList.contains('is-rolling'), false);
+    rafQueue.splice(0).forEach((cb) => cb());
+    assert.equal(roller.classList.contains('is-rolling'), true);
+
+    // 3. settingsObs ignores non-select DOM additions without scanning settingsBody
+    let qsaCalls = 0;
+    const origQsa = settingsBody.querySelectorAll.bind(settingsBody);
+    settingsBody.querySelectorAll = (...args) => { qsaCalls += 1; return origQsa(...args); };
+    const plainDiv = doc.createElement('div');
+    plainDiv.textContent = 'label update';
+    settingsBody.appendChild(plainDiv);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(qsaCalls, 0, 'adding plain non-select element skips settingsBody querySelectorAll scan');
+
+    const sel = doc.createElement('select');
+    sel.innerHTML = '<option value="a">开</option><option value="b">关</option>';
+    settingsBody.appendChild(sel);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(qsaCalls, 1, 'adding an unsegmented select triggers scan once');
+    assert.equal(sel.dataset.segmented, '1');
+
+    // 4. music-stage-skin.css disables mode-menu animation under body.music-reduce-motion
+    const stageSkinCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-stage-skin.css'), 'utf8');
+    assert.match(stageSkinCss, /body\.music-reduce-motion \.music-stage-mode-menu\s*\{[^}]*animation:\s*none/);
+
+    w.dispatchEvent(new w.Event('beforeunload'));
+    w.close();
+});
