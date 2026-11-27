@@ -39,7 +39,7 @@ function inferredDirs(tracks) {
     const count = new Map();
     for (const t of tracks || []) {
         const p = t && t.path;
-        if (typeof p !== 'string' || /^https?:\/\//i.test(p) || t.isRemote) continue;
+        if (typeof p !== 'string' || /^[a-z][a-z0-9+.-]+:\/\//i.test(p) || t.isRemote) continue;
         const d = path.dirname(p);
         const k = norm(d);
         const had = count.get(k);
@@ -204,7 +204,7 @@ function createLibraryWatch({
     const noteLibrarySaved = (prev, next) => {
         excludeChain = excludeChain.then(async () => {
             const nextPaths = new Set((next || []).map((t) => t && t.path).filter(Boolean));
-            const removed = (prev || []).map((t) => t && t.path).filter((p) => typeof p === 'string' && !nextPaths.has(p) && !/^https?:\/\//i.test(p));
+            const removed = (prev || []).map((t) => t && t.path).filter((p) => typeof p === 'string' && !nextPaths.has(p) && !/^[a-z][a-z0-9+.-]+:\/\//i.test(p));
             const list = (await readExcluded().catch(() => [])) || [];
             const set = new Set(list.filter((p) => !nextPaths.has(p)));
             let changed = set.size !== list.length;
@@ -236,7 +236,22 @@ function createLibraryWatch({
         queue = queue.filter((d) => !isUnder(d, dir));
         return kept.length !== list.length;
     };
-    return { start, stop, noteLibrarySaved, folders, forgetFolder, rememberFolder: rememberAndSync, rescanNow: () => roots().then(({ list, remembered }) => { rememberedNow = remembered; list.forEach(enqueue); }) };
+    return {
+        start,
+        stop,
+        noteLibrarySaved,
+        folders,
+        forgetFolder,
+        rememberFolder: rememberAndSync,
+        rescanNow: () => {
+            const gen = generation;
+            return roots().then(({ list, remembered }) => {
+                if (gen !== generation) return;
+                rememberedNow = remembered;
+                list.forEach(enqueue);
+            });
+        }
+    };
 }
 
 module.exports = { createLibraryWatch, collapseRoots, inferredDirs, changedSince };

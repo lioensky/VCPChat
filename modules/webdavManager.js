@@ -70,6 +70,7 @@ async function loadServers() {
 // 保存服务器列表到配置文件（串行排队 + 有原子写能力时先写临时文件，避免并发写坏 JSON）
 let saveChain = Promise.resolve();
 let savePending = false;
+let saveTmpSeq = 0;
 function saveServers() {
     if (savePending) return saveChain;
     savePending = true;
@@ -81,7 +82,7 @@ function saveServers() {
             await fs.ensureDir(path.dirname(configPath));
             const payload = { servers: servers.slice(), nextId: serverIdCounter };
             if (typeof fs.writeFile === 'function' && typeof fs.move === 'function') {
-                tmp = `${configPath}.${process.pid}.tmp`;
+                tmp = `${configPath}.${process.pid}.${++saveTmpSeq}.tmp`;
                 await fs.writeFile(tmp, JSON.stringify(payload, null, 2), 'utf8');
                 await fs.move(tmp, configPath, { overwrite: true });
                 tmp = null;
@@ -166,11 +167,12 @@ async function ensureEngineCredentials(baseUrl, username, password) {
 }
 
 function addServer(config) {
+    if (!config || typeof config.url !== 'string' || !config.url.trim()) return null;
     const id = `webdav_${serverIdCounter++}`;
     const server = {
         id,
         name: config.name || 'WebDAV Server',
-        url: config.url.replace(/\/$/, ''),
+        url: config.url.trim().replace(/\/$/, ''),
         username: config.username || '',
         password: config.password || ''
     };
@@ -188,6 +190,7 @@ function addServer(config) {
 // 移除服务器
 function removeServer(serverId) {
     servers = servers.filter(s => s.id !== serverId);
+    lastConfiguredKey = null;
     saveServers().catch(err => console.error('[WebDAV] Failed to save:', err.message));
 }
 

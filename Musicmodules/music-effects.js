@@ -2,6 +2,16 @@
 // 效果器逻辑：EQ, IR, Loudness, Saturation, Crossfeed, DynamicLoudness, NoiseShaper
 
 function setupEffects(app) {
+    // 缓存十段 EQ 滑块引用，拖动滑块时免去每帧 20 次 getElementById 查询
+    const eqSliderCache = new Map();
+    const getEqSlider = (band) => {
+        const cached = eqSliderCache.get(band);
+        if (cached && cached.isConnected !== false) return cached;
+        const el = document.getElementById(`eq-${band}`);
+        if (el) eqSliderCache.set(band, el);
+        return el;
+    };
+
     // --- EQ Control ---
     app.populateEqPresets = () => {
         const presetNames = {
@@ -32,15 +42,25 @@ function setupEffects(app) {
     app.syncEqPresetSelect = () => {
         if (!app.eqPresetSelect || !app.eqPresets) return;
         const current = {};
-        for (const band in app.eqBands || {}) {
-            const slider = document.getElementById(`eq-${band}`);
+        const bands = Object.keys(app.eqBands || {});
+        for (let i = 0; i < bands.length; i += 1) {
+            const band = bands[i];
+            const slider = getEqSlider(band);
             current[band] = Number(slider ? slider.value : app.eqBands[band]) || 0;
         }
-        const match = Object.keys(app.eqPresets).find((name) => {
+        let match = '';
+        for (const name in app.eqPresets) {
+            if (!Object.prototype.hasOwnProperty.call(app.eqPresets, name)) continue;
             const preset = app.eqPresets[name];
-            return Object.keys(current).every((band) => (Number(preset[band]) || 0) === current[band]);
-        });
-        app.eqPresetSelect.value = match || 'custom';
+            let ok = true;
+            for (let i = 0; i < bands.length; i += 1) {
+                const band = bands[i];
+                if ((Number(preset[band]) || 0) !== current[band]) { ok = false; break; }
+            }
+            if (ok) { match = name; break; }
+        }
+        const nextVal = match || 'custom';
+        if (app.eqPresetSelect.value !== nextVal) app.eqPresetSelect.value = nextVal;
     };
 
     app.updateEqSectionState = () => {
@@ -56,7 +76,7 @@ function setupEffects(app) {
         const preset = app.eqPresets[presetName];
         if (!preset) return;
         for (const band in preset) {
-            const slider = document.getElementById(`eq-${band}`);
+            const slider = getEqSlider(band);
             if (slider) slider.value = preset[band];
         }
         app.sendEqSettings();
@@ -65,6 +85,7 @@ function setupEffects(app) {
 
     app.createEqBands = () => {
         app.eqBandsContainer.innerHTML = '';
+        eqSliderCache.clear();
         const useFrag = typeof document.createDocumentFragment === 'function';
         const target = useFrag ? document.createDocumentFragment() : app.eqBandsContainer;
         for (const band in app.eqBands) {
@@ -79,6 +100,7 @@ function setupEffects(app) {
             slider.min = -15; slider.max = 15; slider.step = 1;
             slider.value = app.eqBands[band];
             slider.addEventListener('input', () => { app.sendEqSettings(); app.syncEqPresetSelect(); });
+            eqSliderCache.set(band, slider);
             bandContainer.appendChild(label);
             bandContainer.appendChild(slider);
             target.appendChild(bandContainer);
@@ -124,7 +146,7 @@ function setupEffects(app) {
         if (!app.api?.setMusicEq) return;
         const newBands = {};
         for (const band in app.eqBands) {
-            const slider = document.getElementById(`eq-${band}`);
+            const slider = getEqSlider(band);
             const parsed = parseInt(slider ? slider.value : app.eqBands[band], 10);
             const value = Number.isFinite(parsed) ? parsed : 0;
             newBands[band] = value;
@@ -167,8 +189,9 @@ function setupEffects(app) {
 
     // --- IR Convolver ---
     app.updateIrStatus = (text, state = 'idle') => {
+        if (!app.irStatus) return;
         const statusText = app.irStatus.querySelector('.ir-status-text');
-        statusText.textContent = text;
+        if (statusText) statusText.textContent = text;
         app.irStatus.className = 'ir-status';
         if (state === 'loaded') app.irStatus.classList.add('loaded');
         else if (state === 'error') app.irStatus.classList.add('error');

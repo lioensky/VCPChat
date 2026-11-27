@@ -18,6 +18,8 @@ function setupWebDav(app) {
         return window.MusicErrorText ? window.MusicErrorText(raw, fallback) : fallback;
     };
     app.webdavReason = webdavReason;
+    const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff', '.alac', '.dsf', '.dff']);
+    let browseReqId = 0;
 
     app.openWebDavModal = async () => {
         app.webdavModal.classList.add('active');
@@ -32,7 +34,10 @@ function setupWebDav(app) {
         if (app.activeWebDavServer) app.browseWebDav(app.webdavCurrentPath);
     };
 
-    app.closeWebDavModal = () => { app.webdavModal.classList.remove('active'); };
+    app.closeWebDavModal = () => {
+        browseReqId += 1;
+        app.webdavModal.classList.remove('active');
+    };
 
     app.renderWebDavServerList = () => {
         app.webdavServerList.innerHTML = '';
@@ -40,6 +45,7 @@ function setupWebDav(app) {
             app.webdavServerList.innerHTML = '<div class="no-lyrics" style="padding:12px;font-size:12px;">暂无服务器</div>';
             return;
         }
+        const frag = document.createDocumentFragment();
         app.webdavServers.forEach((server) => {
             const div = document.createElement('div');
             div.className = 'webdav-server-item' + (app.activeWebDavServer && app.activeWebDavServer.id === server.id ? ' active' : '');
@@ -62,7 +68,9 @@ function setupWebDav(app) {
                     return;
                 }
                 if (app.activeWebDavServer && app.activeWebDavServer.id === server.id) {
+                    browseReqId += 1;
                     app.activeWebDavServer = null;
+                    app.webdavScannedTracks = [];
                     app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">请先选择或添加一个 WebDAV 服务器</div>';
                     app.webdavBreadcrumb.innerHTML = '';
                     app.webdavScanBtn.disabled = true;
@@ -71,11 +79,11 @@ function setupWebDav(app) {
                 app.webdavServers = app.webdavServers.filter((s) => s.id !== server.id);
                 app.renderWebDavServerList();
             });
-            app.webdavServerList.appendChild(div);
+            frag.appendChild(div);
         });
+        app.webdavServerList.appendChild(frag);
     };
 
-    let browseReqId = 0;
     app.browseWebDav = async (dirPath) => {
         const targetServer = app.activeWebDavServer;
         if (!targetServer || !app.api?.listWebdavDirectory) return;
@@ -117,7 +125,6 @@ function setupWebDav(app) {
             app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">此目录为空</div>';
             return;
         }
-        const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff', '.alac', '.dsf', '.dff']);
         app.webdavFileList.innerHTML = '';
         entries.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name));
         const fragment = document.createDocumentFragment();
@@ -148,18 +155,19 @@ function setupWebDav(app) {
     app.renderWebDavBreadcrumb = (dirPath) => {
         app.webdavBreadcrumb.innerHTML = '';
         const parts = dirPath.replace(/^\/$/, '').split('/').filter(Boolean);
+        const frag = document.createDocumentFragment();
         const root = document.createElement('span');
         root.className = 'webdav-crumb';
         root.textContent = app.activeWebDavServer ? app.activeWebDavServer.name : '根目录';
         root.addEventListener('click', () => app.browseWebDav('/'));
-        app.webdavBreadcrumb.appendChild(root);
+        frag.appendChild(root);
         let cumPath = '';
         parts.forEach((part) => {
             cumPath += '/' + part;
             const sep = document.createElement('span');
             sep.textContent = ' / ';
             sep.style.opacity = '0.5';
-            app.webdavBreadcrumb.appendChild(sep);
+            frag.appendChild(sep);
             const span = document.createElement('span');
             span.className = 'webdav-crumb';
             let decodedPart = part;
@@ -167,8 +175,9 @@ function setupWebDav(app) {
             span.textContent = decodedPart;
             const snapPath = cumPath;
             span.addEventListener('click', () => app.browseWebDav(snapPath));
-            app.webdavBreadcrumb.appendChild(span);
+            frag.appendChild(span);
         });
+        app.webdavBreadcrumb.appendChild(frag);
     };
 
     app.playWebDavTrack = async (entry) => {
@@ -181,8 +190,11 @@ function setupWebDav(app) {
             isRemote: true,
             serverId: app.activeWebDavServer.id,
         };
-        if (!app.playlist.some((t) => t.path === track.path)) app.playlist.push(track);
-        const idx = app.playlist.findIndex((t) => t.path === track.path);
+        let idx = app.playlist.findIndex((t) => t && t.path === track.path);
+        if (idx === -1) {
+            idx = app.playlist.length;
+            app.playlist.push(track);
+        }
         // 走和本地曲目相同的加载流程：引擎是异步加载的，下发加载后立刻发“播放”
         // 会被随后的加载完成重置成停止，结果就是点了没声音。
         // 主进程的 music-load 会按 serverId 取凭据。
@@ -202,9 +214,13 @@ function setupWebDav(app) {
             app.webdavDialogStatus.textContent = '';
             app.webdavServerDialog.classList.add('active');
         });
-        app.webdavDialogCancel?.addEventListener('click', () => app.webdavServerDialog.classList.remove('active'));
-        app.webdavServerDialog?.addEventListener('click', (e) => { if (e.target === app.webdavServerDialog) app.webdavServerDialog.classList.remove('active'); });
         let testReqId = 0;
+        const closeServerDialog = () => {
+            testReqId += 1;
+            app.webdavServerDialog.classList.remove('active');
+        };
+        app.webdavDialogCancel?.addEventListener('click', closeServerDialog);
+        app.webdavServerDialog?.addEventListener('click', (e) => { if (e.target === app.webdavServerDialog) closeServerDialog(); });
         app.webdavDialogTest?.addEventListener('click', async () => {
             if (app.webdavDialogTest.disabled) return;
             const url = document.getElementById('webdav-server-url').value.trim();
@@ -251,19 +267,28 @@ function setupWebDav(app) {
                 return;
             }
             app.webdavServers.push(server);
-            app.webdavServerDialog.classList.remove('active');
+            closeServerDialog();
             app.renderWebDavServerList();
         });
+        let activeScanUnsub = null;
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('beforeunload', () => {
+                try { activeScanUnsub?.(); } catch (_) {}
+                activeScanUnsub = null;
+            }, { once: true });
+        }
         app.webdavScanBtn?.addEventListener('click', async () => {
             const scanServer = app.activeWebDavServer;
             if (!scanServer || !app.api?.scanWebdavAudio) return;
             app.webdavScanBtn.disabled = true;
             app.webdavScanBtn.textContent = '扫描中…';
+            try { activeScanUnsub?.(); } catch (_) {}
             const unsubscribeProgress = app.api.onWebdavScanProgress?.(({ count }) => {
                 if (app.activeWebDavServer?.id === scanServer.id) {
                     app.webdavScanBtn.textContent = `已找到 ${count} 首…`;
                 }
             });
+            activeScanUnsub = unsubscribeProgress || null;
             try {
                 const result = await app.api.scanWebdavAudio({
                     serverId: scanServer.id,
@@ -287,13 +312,14 @@ function setupWebDav(app) {
                 app.webdavImportBtn.disabled = true;
                 app.webdavImportBtn.textContent = `扫描出错：${webdavReason(err, '原因不明')}`;
             } finally {
+                if (activeScanUnsub === unsubscribeProgress) activeScanUnsub = null;
                 unsubscribeProgress?.();
                 app.webdavScanBtn.textContent = '扫描全部音频';
                 app.webdavScanBtn.disabled = !app.activeWebDavServer;
             }
         });
         app.webdavImportBtn?.addEventListener('click', () => {
-            if (app.webdavScannedTracks.length === 0) return;
+            if (!app.activeWebDavServer || app.webdavScannedTracks.length === 0) return;
             // 按地址去重：同名不同曲（各张专辑的 Intro）、本地已有同名歌，都不该把远程曲目挡掉；同一首导入两次才算重复。
             const known = new Set(app.playlist.map((p) => p && p.path).filter(Boolean));
             const newTracks = app.webdavScannedTracks
