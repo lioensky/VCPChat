@@ -377,3 +377,60 @@ test('Batch 82: drawVocalVisualizer recurrence matches Math.sin curve accurately
         w2.close();
     }
 });
+
+test('Batch 86: drawVisualizer rolling-window Catmull-Rom Bezier matches exact reference control points', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    try {
+        const { window } = dom;
+        const curves = [];
+        let firstLine = null;
+        const ctx = {
+            clearRect() {},
+            createLinearGradient() { return { addColorStop() {} }; },
+            beginPath() {},
+            moveTo() {},
+            lineTo(x, y) { if (!firstLine) firstLine = [x, y]; },
+            bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2) { curves.push([cp1x, cp1y, cp2x, cp2y, x2, y2]); },
+            closePath() {},
+            fill() {}
+        };
+        window.eval(`${source}\nwindow.setupVisualizer = setupVisualizer;`);
+        const w = 360, h = 90;
+        const app = {
+            particles: [], PARTICLE_COUNT: 4, easingFactor: 0.2,
+            visualizerCanvas: { width: w, height: h },
+            visualizerCtx: ctx,
+            visualizerColor: { r: 20, g: 140, b: 220 },
+            targetVisualizerData: [], currentVisualizerData: [],
+            isPlaying: false, isTrackLoading: false, bassScale: 1.0
+        };
+        window.setupVisualizer(app);
+        const data = [0.1, 0.45, 0.8, 0.35, 0.6, 0.2, 0.9, 0.15];
+        app.drawVisualizer(data);
+        const n = data.length;
+        const sliceWidth = w / (n - 1);
+        const scaleY = h * 1.2;
+        const t6 = 0.5 / 6;
+        assert.equal(curves.length, n - 1);
+        assert.ok(Math.abs(firstLine[0] - 0) < 1e-9 && Math.abs(firstLine[1] - (h - data[0] * scaleY)) < 1e-9);
+        for (let i = 0; i < n - 1; i += 1) {
+            const x1 = i * sliceWidth, y1 = h - data[i] * scaleY;
+            const x2 = (i + 1) * sliceWidth, y2 = h - data[i + 1] * scaleY;
+            const prevX = i > 0 ? (i - 1) * sliceWidth : x1;
+            const prevY = i > 0 ? h - data[i - 1] * scaleY : y1;
+            const nextX = i < n - 2 ? (i + 2) * sliceWidth : x2;
+            const nextY = i < n - 2 ? h - data[i + 2] * scaleY : y2;
+            const ref = [
+                x1 + (x2 - prevX) * t6, y1 + (y2 - prevY) * t6,
+                x2 - (nextX - x1) * t6, y2 - (nextY - y1) * t6,
+                x2, y2
+            ];
+            for (let k = 0; k < 6; k += 1) {
+                assert.ok(Math.abs(curves[i][k] - ref[k]) < 1e-9, `segment ${i} coord ${k} matches reference`);
+            }
+        }
+        app.destroyVisualizer();
+    } finally {
+        dom.window.close();
+    }
+});

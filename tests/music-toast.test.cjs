@@ -183,7 +183,15 @@ test('fresh toast avoids forced offsetWidth reflow and ignores rAF if closed imm
         const el = doc.querySelector('[data-key="fresh"]');
         assert.ok(el.classList.contains('mtst-evap'), 'evaporation class is still armed on mount');
         toast.show({ id: 'fresh', message: '延长提示', duration: 5000 });
-        assert.ok(offsetReads >= 1, 're-arming an active evaporating toast still restarts evaporation via reflow');
+        assert.equal(offsetReads, 0, 're-arming an active evaporating toast avoids forced offsetWidth reflow');
+        assert.equal(el.classList.contains('mtst-evap'), false, 're-arming removes mtst-evap before next rAF');
+        clock.advance(20);
+        assert.equal(el.classList.contains('mtst-evap'), true, 're-arming restores mtst-evap on next animation frame');
+        // Hovering during pending evapRaf cancels re-arm
+        toast.show({ id: 'fresh', message: '再次延长', duration: 5000 });
+        el.dispatchEvent(new window.Event('pointerenter'));
+        clock.advance(20);
+        assert.equal(el.classList.contains('mtst-evap'), false, 'hovering before evapRaf fires keeps mtst-evap cleared');
     } finally {
         if (origDesc) Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', origDesc);
         window.close();

@@ -797,3 +797,12 @@ test('Batch 85: musicDesktopLyrics calls getMusicWindow once per publish and cac
         fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 });
+
+test('Batch 86: desktop-lyrics replaces :has(b) with explicit .dl-size-btn class', () => {
+    const html = fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.html'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.css'), 'utf8');
+    assert.ok(!css.includes(':has('), 'desktop-lyrics.css avoids :has() selector');
+    assert.ok(css.includes('.dl-tools .dl-size-btn'), 'desktop-lyrics.css targets explicit .dl-size-btn class');
+    assert.match(html, /class="dl-size-btn"[^>]*data-cmd="smaller"/);
+    assert.match(html, /class="dl-size-btn"[^>]*data-cmd="bigger"/);
+});

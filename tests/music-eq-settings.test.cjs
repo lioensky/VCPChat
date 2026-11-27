@@ -288,3 +288,56 @@ test('Batch 58: music-effects deduplicates updateIrStatus, slider displays, and 
     app.syncDitherSection();
     assert.equal(secLookups, 1, 'syncDitherSection caches connected #noise-shaper-section element');
 });
+
+test('Batch 86: music-effects caches EQ section content lookup, deduplicates aria attrs, and matches presets without per-call Object.keys', () => {
+    let qsCalls = 0, switchAttrWrites = 0, contentAttrWrites = 0;
+    const attrs = new Map();
+    const contentAttrs = new Map();
+    const content = {
+        isConnected: true,
+        getAttribute: (k) => contentAttrs.get(k) ?? null,
+        setAttribute: (k, v) => { contentAttrWrites += 1; contentAttrs.set(k, v); }
+    };
+    const eqSection = {
+        classList: { toggle() {} },
+        contains: (n) => n === content,
+        querySelector: (sel) => { if (sel === '.block-content') qsCalls += 1; return content; }
+    };
+    const eqSwitch = {
+        checked: true,
+        getAttribute: (k) => attrs.get(k) ?? null,
+        setAttribute: (k, v) => { switchAttrWrites += 1; attrs.set(k, v); }
+    };
+    const sliders = { 'eq-60': { value: '0', isConnected: true }, 'eq-1k': { value: '3', isConnected: true } };
+    const app = {
+        eqSection,
+        eqSwitch,
+        eqBands: { 60: 0, '1k': 3 },
+        eqPresetSelect: { value: 'balance' },
+        eqPresets: { balance: { 60: 0, '1k': 0 }, vocal: { 60: 0, '1k': 3 } }
+    };
+    let keysCalls = 0;
+    const origKeys = Object.keys;
+    const FakeObject = Object.create(Object);
+    FakeObject.keys = (o) => { if (o === app.eqBands) keysCalls += 1; return origKeys(o); };
+    const context = {
+        app,
+        window: {},
+        Object: FakeObject,
+        document: { getElementById: (id) => sliders[id] || null }
+    };
+    vm.runInNewContext(fs.readFileSync('Musicmodules/music-effects.js', 'utf8') + '\nsetupEffects(app);', context);
+
+    app.updateEqSectionState();
+    app.updateEqSectionState();
+    assert.equal(qsCalls, 1, 'updateEqSectionState caches connected .block-content element');
+    assert.equal(switchAttrWrites, 1, 'unchanged aria-expanded skips redundant setAttribute');
+    assert.equal(contentAttrWrites, 1, 'unchanged aria-hidden skips redundant setAttribute');
+
+    app.syncEqPresetSelect();
+    assert.equal(app.eqPresetSelect.value, 'vocal');
+    sliders['eq-1k'].value = '7';
+    app.syncEqPresetSelect();
+    assert.equal(app.eqPresetSelect.value, 'custom');
+    assert.equal(keysCalls, 1, 'syncEqPresetSelect caches eqBands keys across slider drag updates');
+});

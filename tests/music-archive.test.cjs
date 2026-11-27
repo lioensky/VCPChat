@@ -776,3 +776,81 @@ test('Batch 85: archive-grid restarts sticky roll and locate ping via cancellabl
         w.close();
     }
 });
+
+test('Batch 86: archive-wall paintLyric reads geometry before is-now write and locate ping uses cancellable rAF', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        let rafId = 1;
+        const rafs = new Map();
+        const cancelled = [];
+        w.requestAnimationFrame = (cb) => { const id = rafId++; rafs.set(id, cb); return id; };
+        w.cancelAnimationFrame = (id) => { cancelled.push(id); rafs.delete(id); };
+        w.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-archive/archive-wall.js'), 'utf8'));
+        const tracks = Array.from({ length: 12 }, (_, i) => ({ path: `/w${i}.flac`, title: `Wall ${i}`, artist: 'A', duration: 180 }));
+        let tNow = 0;
+        const lines = [{ time: 1, text: 'Line 1' }, { time: 5, text: 'Line 2' }, { time: 10, text: 'Line 3' }];
+        const wall = w.MusicArchiveWall.create({
+            host: w.document.getElementById('host'),
+            items: () => ({ key: 'w', name: '全部', ids: tracks.map((_, i) => i) }),
+            track: (i) => tracks[i],
+            meta: (t, i) => ({ title: t.title, artist: t.artist, code: String(i + 1).padStart(2, '0'), duration: '3:00' }),
+            cover: () => '',
+            selected: () => 0,
+            playing: () => ({ index: 0, active: true }),
+            progress: () => ({ t: tNow, d: 180 }),
+            lyrics: () => lines,
+            pick() {},
+            play() {},
+            menu() {},
+            reducedMotion: () => false
+        });
+        const flush = () => {
+            const entries = [...rafs.entries()];
+            rafs.clear();
+            for (const [, cb] of entries) cb(w.performance.now());
+        };
+        wall.setRoom({ left: 0, top: 0, width: 800, height: 600 });
+        wall.show(true);
+        flush();
+
+        // Expand playing tile so panel + lyric roll mount
+        const focusTile = wall.el.querySelector('.aw-tile.is-focus');
+        assert.ok(focusTile, 'focused playing tile is rendered');
+        focusTile.click();
+        flush();
+        const ps = [...wall.el.querySelectorAll('.aw-lyric-roll p')];
+        assert.equal(ps.length, 3, 'expanded playing card renders timed lyrics');
+        const ops = [];
+        Object.defineProperty(ps[1], 'offsetTop', { configurable: true, get() { ops.push('read:top'); return 40; } });
+        Object.defineProperty(ps[0], 'offsetHeight', { configurable: true, get() { ops.push('read:h'); return 20; } });
+        const origAdd = ps[1].classList.add.bind(ps[1].classList);
+        ps[1].classList.add = (...a) => { if (a.includes('is-now')) ops.push('write:add'); return origAdd(...a); };
+        const origRem = ps[0].classList.remove.bind(ps[0].classList);
+        ps[0].classList.remove = (...a) => { if (a.includes('is-now')) ops.push('write:rem'); return origRem(...a); };
+        tNow = 6;
+        wall.refresh();
+        flush();
+        const firstWrite = ops.findIndex((o) => o.startsWith('write:'));
+        const lastRead = ops.reduce((acc, o, idx) => (o.startsWith('read:') ? idx : acc), -1);
+        assert.ok(firstWrite > 0 && lastRead < firstWrite, `paintLyric reads precede is-now class writes (${ops.join(',')})`);
+
+        // Locate button ping avoids offsetWidth forced reflow and cancels on hide
+        const locate = wall.el.querySelector('.aw-locate');
+        let reflowReads = 0;
+        Object.defineProperty(locate, 'offsetWidth', { configurable: true, get() { reflowReads += 1; return 40; } });
+        locate.hidden = false;
+        locate.click();
+        assert.equal(reflowReads, 0, 'wall locate ping avoids offsetWidth forced reflow');
+        const pendingIds = [...rafs.keys()];
+        assert.ok(pendingIds.length > 0, 'wall locate ping queues rAF');
+        wall.show(false);
+        assert.ok(pendingIds.some((id) => cancelled.includes(id)), 'hiding wall cancels pending locate ping rAF');
+        wall.destroy();
+    } finally {
+        w.close();
+    }
+});

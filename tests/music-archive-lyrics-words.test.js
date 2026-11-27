@@ -359,3 +359,34 @@ test('Batch 79: archive lyrics deduplicates syncDesk attribute writes and identi
     ly.destroy();
     window.close();
 });
+
+test('Batch 86: archive lyrics writes innerHTML once for plain lyrics and skips initial querySelector("p.on")', () => {
+    const { window, app, ly, at } = setup({ playing: false });
+    const track = ly.el.querySelector('.archive-lyrics-track');
+    let htmlWrites = 0;
+    const htmlDesc = Object.getOwnPropertyDescriptor(window.Element.prototype, 'innerHTML');
+    Object.defineProperty(track, 'innerHTML', {
+        configurable: true,
+        get() { return htmlDesc.get.call(this); },
+        set(v) { htmlWrites += 1; return htmlDesc.set.call(this, v); }
+    });
+    app.currentLyrics = [];
+    app.currentLyricsPlainLines = ['第一句', '第二句'];
+    ly.sync();
+    assert.equal(htmlWrites, 1, 'plain lyrics build writes track.innerHTML once without blank pre-write');
+
+    // Switch back to timed lyrics and ensure initial tick (state.index === -2) skips querySelector("p.on")
+    let pOnQueries = 0;
+    const origQs = track.querySelector.bind(track);
+    track.querySelector = (sel) => {
+        if (sel === 'p.on') pOnQueries += 1;
+        return origQs(sel);
+    };
+    app.currentLyrics = [{ time: 1, text: 'line A' }, { time: 5, text: 'line B' }];
+    app.currentLyricsPlainLines = [];
+    ly.sync();
+    at(1.5);
+    assert.equal(pOnQueries, 0, 'initial timed lyric tick skips redundant querySelector("p.on")');
+    ly.destroy();
+    window.close();
+});

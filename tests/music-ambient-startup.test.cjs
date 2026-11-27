@@ -336,3 +336,54 @@ test('Batch 78: AmbientPixi precomputes ring trig LUTs, skips idleBreath while p
     assert.ok(Math.abs(ring.xs[i] - expectedX) < 1e-3, `xs[${i}] matches exact polar formula`);
     assert.ok(Math.abs(ring.ys[i] - expectedY) < 1e-3, `ys[${i}] matches exact polar formula`);
 });
+
+test('Batch 86: AmbientPixi fast-paths inline hidden style before getComputedStyle and reuses Graphics style descriptors', async () => {
+    let csCalls = 0;
+    const fillObjs = new Set();
+    const strokeObjs = new Set();
+    class Graphics {
+        clear() { return this; }
+        circle() { return this; }
+        fill(o) { fillObjs.add(o); return this; }
+        moveTo() { return this; }
+        quadraticCurveTo() { return this; }
+        lineTo() { return this; }
+        stroke(o) { strokeObjs.add(o); return this; }
+    }
+    class Application {
+        async init() { this.canvas = { style: {} }; this.stage = { addChild() {} }; this.renderer = { resize() {} }; }
+        stop() {}
+        render() {}
+        destroy() {}
+    }
+    const container = { hidden: false, style: { display: 'none', visibility: '' }, innerHTML: '', appendChild() {}, clientWidth: 800, clientHeight: 600 };
+    const win = {
+        PIXI: { Application, Graphics },
+        devicePixelRatio: 1,
+        addEventListener() {},
+        getComputedStyle: () => { csCalls += 1; return { visibility: 'visible', display: 'block' }; }
+    };
+    const context = vm.createContext({
+        window: win, queueMicrotask, setTimeout, clearTimeout, console,
+        document: { getElementById: (id) => (id === 'ambient-wave-container' ? container : null), body: { classList: { contains: () => false } } }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), context);
+    const app = { isPlaying: true, visualizerColor: { r: 10, g: 120, b: 220 }, currentVisualizerData: new Float32Array(32).fill(0.5) };
+    win.setupAmbientPixi(app);
+    await app.createAmbientPixi();
+    assert.equal(csCalls, 0, 'inline display:none skips getComputedStyle');
+    container.style.display = '';
+    container.style.visibility = 'hidden';
+    await app.createAmbientPixi();
+    assert.equal(csCalls, 0, 'inline visibility:hidden skips getComputedStyle');
+
+    container.style.visibility = '';
+    await app.createAmbientPixi();
+    assert.equal(csCalls, 1);
+    app.ambientPixiController.spawnBubbles(400, 300, 100, 12, 0xffffff);
+    app.updateAmbientPixi(0.016);
+    app.updateAmbientPixi(0.016);
+    app.updateAmbientPixi(0.016);
+    assert.equal(fillObjs.size, 3, 'glow + bubble fill + bubble highlight reuse 3 descriptor objects across frames');
+    assert.equal(strokeObjs.size, 2, 'ring stroke + bubble stroke reuse 2 descriptor objects across frames');
+});
