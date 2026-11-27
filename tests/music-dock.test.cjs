@@ -1210,3 +1210,35 @@ test('queue drag runs auto-scroll rAF only inside 32px edges and isolates events
         window.close();
     }
 });
+
+test('dock destroy unsubscribes scan IPC listeners, cancels pending warm idle callbacks, and batches placeMarks without throwing', () => {
+    let scanStartOff = 0, scanProgOff = 0, scanDoneOff = 0;
+    let idleScheduled = 0, idleCancelled = 0;
+    const slid = [];
+    const { window, doc, dock } = setup((a, win) => {
+        a.api = {
+            onMusicScanStart: () => () => { scanStartOff += 1; },
+            onMusicScanProgress: () => () => { scanProgOff += 1; },
+            onMusicScanComplete: () => () => { scanDoneOff += 1; }
+        };
+        win.eval(read('Musicmodules/music-app-hooks.js'));
+        win.MusicToast = { show() {}, dismiss() {}, clear() {} };
+        win.requestIdleCallback = () => ++idleScheduled;
+        win.cancelIdleCallback = () => { idleCancelled += 1; };
+        win.MusicFluid = { slide: (el, to, opts) => slid.push({ el, to, key: opts?.key }) };
+    });
+    try {
+        // 打开控制页触发多个 .md-seg 的 placeMarks 批量读写
+        dock.openPanel('控制');
+        const marks = doc.querySelectorAll('.md-body .md-seg .md-mk');
+        assert.ok(marks.length >= 1, 'control panel renders segmented controls with markers');
+        assert.ok(slid.length >= 1 || [...marks].every((m) => m.style.left !== '' && m.style.width !== ''), 'placeMarks positions every segment marker in control body');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+    assert.equal(scanStartOff, 1, 'onMusicScanStart disposer called on destroy');
+    assert.equal(scanProgOff, 1, 'onMusicScanProgress disposer called on destroy');
+    assert.equal(scanDoneOff, 1, 'onMusicScanComplete disposer called on destroy');
+    assert.equal(idleCancelled, idleScheduled, 'any scheduled warm idle callbacks are cancelled on destroy');
+});
