@@ -128,11 +128,14 @@
     function paintSelected() {
         if (!openState) return;
         const { select, items } = openState;
-        items.forEach((item, index) => {
-            const on = index === select.selectedIndex;
-            item.setAttribute('aria-selected', String(on));
-            item.classList.toggle('mfs-on', on);
-        });
+        const selIdx = select.selectedIndex;
+        for (let index = 0; index < items.length; index += 1) {
+            const item = items[index];
+            const on = index === selIdx;
+            const selStr = on ? 'true' : 'false';
+            if (item.getAttribute('aria-selected') !== selStr) item.setAttribute('aria-selected', selStr);
+            if (item.classList.contains('mfs-on') !== on) item.classList.toggle('mfs-on', on);
+        }
     }
 
     function place(menu, trigger) {
@@ -320,7 +323,7 @@
     // 跳过叶节点和不可能包含 <select> 的高频变动容器（曲目虚拟列表、歌词行、队列、搜索结果、封面墙），
     // 避免列表滚动、搜索敲字、歌词渲染时逐条节点入队再跑 getElementsByTagName('select')。
     const LEAF_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'PATH', 'I', 'BR', 'HR', 'INPUT', 'BUTTON', 'OPTION', 'OPTGROUP', 'A', 'AUDIO', 'VIDEO', 'STYLE', 'SCRIPT', 'LINK']);
-    const SKIP_SUBTREE_SEL = '.archive-list-spacer, #playlist, .md-ql-sizer, .md-ql, .md-cmd-list, .archive-lyrics-track, #lyrics-list, .ag-canvas, .aw-stage, .music-stage-edge-spectrum, .mfs-menu, .archive-list-brand-title, .archive-list-recentq, .mtst-layer';
+    const SKIP_SUBTREE_SEL = '.archive-list-spacer, #playlist, .md-ql-sizer, .md-ql, .md-cmd-list, .archive-lyrics-track, #lyrics-list, .ag-content, .ag-scroll, .aw-world, #modal-song-list, #sidebar-content-list, .webdav-file-list, .mstats-list, .mdupes-list, .music-stage-edge-spectrum, .mfs-menu, .archive-list-brand-title, .archive-list-recentq, .mtst-layer';
     const scan = (root) => {
         if (root.nodeType !== 1 || !root.isConnected) return;
         const tag = root.tagName;

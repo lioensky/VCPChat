@@ -465,15 +465,19 @@
                 syncHead();
             });
             head.appendChild(button);
-            return { button, arrow: button.querySelector('i') };
+            return { button, arrow: button.querySelector('i'), wasOn: null };
         });
         const syncHead = () => {
-            for (const { button, arrow } of buttons) {
-                const on = button.dataset.sort === sort.key;
-                button.classList.toggle('is-on', on);
-                button.setAttribute('aria-pressed', String(on));
+            for (let i = 0; i < buttons.length; i += 1) {
+                const b = buttons[i];
+                const on = b.button.dataset.sort === sort.key;
+                if (on !== b.wasOn) {
+                    b.wasOn = on;
+                    b.button.classList.toggle('is-on', on);
+                    b.button.setAttribute('aria-pressed', String(on));
+                }
                 const nextArrow = on ? (sort.dir === 1 ? '↑' : '↓') : '';
-                if (arrow && arrow.textContent !== nextArrow) arrow.textContent = nextArrow;
+                if (b.arrow && b.arrow.textContent !== nextArrow) b.arrow.textContent = nextArrow;
             }
         };
         syncHead();

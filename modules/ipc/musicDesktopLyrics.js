@@ -94,9 +94,16 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
             win.webContents.send(channel, payload);
         }
     };
-    const applyLock = () => {
+    let lastIgnoreMouse = null;
+    const setIgnoreMouse = (ignore) => {
         if (!win || win.isDestroyed()) return;
-        win.setIgnoreMouseEvents(prefs.locked, { forward: true });
+        const next = Boolean(ignore);
+        if (next === lastIgnoreMouse) return;
+        lastIgnoreMouse = next;
+        win.setIgnoreMouseEvents(next, { forward: true });
+    };
+    const applyLock = () => {
+        setIgnoreMouse(prefs.locked);
     };
 
     const defaultBounds = () => {
@@ -149,6 +156,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
             }
         });
         const self = win;
+        lastIgnoreMouse = null;
         self.setAlwaysOnTop(true, 'screen-saver');
         self.setMenu?.(null);
         self.loadFile(path.join(projectRoot, 'Musicmodules', 'desktop-lyrics', 'desktop-lyrics.html'));
@@ -163,7 +171,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
         self.on('moved', () => { if (win === self) rememberBounds(); });
         self.on('resized', () => { if (win === self) rememberBounds(); });
         self.on('closed', () => {
-            if (win === self) win = null;
+            if (win === self) { win = null; lastIgnoreMouse = null; }
             // 用户在歌词条上点了关闭（或被系统关掉）：记成关；跟着音乐窗口一起关的不改开关
             if (!self.withMusic && prefs.on) { prefs.on = false; save(); tellMusic(); }
             flushSaveSync();
@@ -212,7 +220,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
             save(); applyLock(); tellBar('music-desktop-lyrics-prefs', { locked: prefs.locked, size: prefs.size }); tellMusic(); return;
         }
         // 锁定时悬停在锁形按钮上：临时接收点击，移开再穿透
-        if (command === 'hover') { if (prefs.locked) win.setIgnoreMouseEvents(value !== true, { forward: true }); return; }
+        if (command === 'hover') { if (prefs.locked) setIgnoreMouse(value !== true); return; }
         if (command === 'size') {
             const n = Math.round(Number(value));
             if (!Number.isFinite(n)) return;

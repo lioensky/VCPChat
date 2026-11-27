@@ -672,6 +672,14 @@ body.music-reduce-motion .mtst-progress .mtst-ic svg { animation: none; }
 }
 body.music-fl-low .mtst,
 #music-dock-root.md-fl-low .md-pnl { -webkit-backdrop-filter: none; backdrop-filter: none; }
+body.music-fl-low .md-cmd-scrim,
+body.music-fl-low .md-cmd-box,
+body.music-fl-low .md-keys-scrim,
+#music-dock-root.md-fl-low .md-cmd-scrim,
+#music-dock-root.md-fl-low .md-cmd-box,
+#music-dock-root.md-fl-low .md-keys-scrim { -webkit-backdrop-filter: none; backdrop-filter: none; }
+body.music-fl-low .md-cmd-box,
+#music-dock-root.md-fl-low .md-cmd-box { background: var(--md-menu); }
 
 /* ───────── 快捷键表（?）───────── */
 .md-keys { position: fixed; inset: 0; z-index: var(--mt-z-popover, 70); display: grid; place-items: center; pointer-events: auto; }

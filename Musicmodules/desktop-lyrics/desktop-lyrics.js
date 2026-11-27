@@ -98,31 +98,57 @@
         paint();
     };
 
+    const onFrame = () => {
+        frame = 0;
+        paint();
+    };
     const paint = () => {
         const t = now();
         let moving = false;
         if (words) {
-            for (const w of words) {
-                const f = pct(t, w.s, w.e);
-                const val = f.toFixed(1) + '%';
+            for (let i = 0; i < words.length; i += 1) {
+                const w = words[i];
+                if (t >= w.e) {
+                    if (w.last !== '100.0%') {
+                        w.last = '100.0%';
+                        w.el.style.setProperty('--f', '100.0%');
+                    }
+                    continue;
+                }
+                moving = true;
+                if (t <= w.s) {
+                    if (w.last !== '0.0%') {
+                        w.last = '0.0%';
+                        w.el.style.setProperty('--f', '0.0%');
+                    }
+                    continue;
+                }
+                const val = pct(t, w.s, w.e).toFixed(1) + '%';
                 if (val !== w.last) {
                     w.last = val;
                     w.el.style.setProperty('--f', val);
                 }
-                if (f < 100) moving = true;
             }
         } else if (lineSpan) {
-            const f = pct(t, lineSpan.s, lineSpan.e);
-            const val = f.toFixed(1) + '%';
+            let val;
+            if (t >= lineSpan.e) {
+                val = '100.0%';
+            } else {
+                moving = true;
+                val = t <= lineSpan.s ? '0.0%' : pct(t, lineSpan.s, lineSpan.e).toFixed(1) + '%';
+            }
             if (val !== lineSpan.last) {
                 lineSpan.last = val;
                 lineSpan.el.style.setProperty('--f', val);
             }
-            moving = f < 100;
         }
-        cancelAnimationFrame(frame);
-        frame = 0;
-        if (moving && snap && snap.playing && !document.hidden) frame = requestAnimationFrame(paint);
+        const wantFrame = Boolean(moving && snap && snap.playing && !document.hidden);
+        if (wantFrame) {
+            if (!frame) frame = requestAnimationFrame(onFrame);
+        } else if (frame) {
+            cancelAnimationFrame(frame);
+            frame = 0;
+        }
     };
 
     // 一行太长就把字缩小到放得下（不低于设定字号的 60%）

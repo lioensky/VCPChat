@@ -85,7 +85,8 @@
                 let first = wanted.map((key) => rowByKey.get(key)).filter(Boolean);
                 if (rows.length <= TUNE_FIRST_COUNT + 2) first = rows.slice();
                 else if (first.length < 3) first = rows.slice(0, TUNE_FIRST_COUNT);
-                const rest = rows.filter((row) => !first.includes(row));
+                const firstSet = new Set(first);
+                const rest = rows.filter((row) => !firstSet.has(row));
                 const ordered = first.concat(rest);
                 if (ordered.some((row, i) => row !== rows[i])) {
                     const frag = document.createDocumentFragment();
@@ -94,10 +95,14 @@
                 }
                 rest.forEach((row) => row.classList.add('md-tune-rest'));
                 first.forEach((row) => row.classList.remove('md-tune-rest'));
-                el.tuneSec.hidden = rows.length === 0;
-                el.tuneMore.hidden = rest.length === 0;
-                el.tuneSlot.classList.toggle('md-tune-all', state.tuneAll || rest.length === 0);
-                el.tuneMore.setAttribute('aria-expanded', String(state.tuneAll));
+                const hideSec = rows.length === 0;
+                if (el.tuneSec.hidden !== hideSec) el.tuneSec.hidden = hideSec;
+                const hideMore = rest.length === 0;
+                if (el.tuneMore.hidden !== hideMore) el.tuneMore.hidden = hideMore;
+                const showAll = Boolean(state.tuneAll || rest.length === 0);
+                if (el.tuneSlot.classList.contains('md-tune-all') !== showAll) el.tuneSlot.classList.toggle('md-tune-all', showAll);
+                const expStr = String(state.tuneAll);
+                if (el.tuneMore.getAttribute('aria-expanded') !== expStr) el.tuneMore.setAttribute('aria-expanded', expStr);
                 const moreKey = `${state.tuneAll ? 1 : 0}:${rows.length}`;
                 if (el.tuneMore.dataset.mdMoreKey !== moreKey) {
                     el.tuneMore.dataset.mdMoreKey = moreKey;
@@ -129,9 +134,11 @@
 
         const advWrap = el.advToggle?.closest('.md-adv') || null;
         let lastExtKey = '';
+        let introBtn = null;
         // 「显示」和开场回放在曲库、舞台都可用；当前舞台和共用舞台选项只在演出时可见。
         function renderExt(show) {
-            el.ext.hidden = !show;
+            const hideExt = !show;
+            if (el.ext.hidden !== hideExt) el.ext.hidden = hideExt;
             if (!show) return;
             dressTuning();
             const light = document.body.classList.contains('light-theme');
@@ -154,11 +161,16 @@
                 el.body2.innerHTML = html;
             }
             const hasIntro = typeof global.MusicIntro?.replay === 'function';
-            if (advWrap) advWrap.hidden = !hasIntro && !stageActive();
-            let introBtn = el.advActs.querySelector('[data-act="intro"]');
+            const hideAdv = !hasIntro && !stageActive();
+            if (advWrap && advWrap.hidden !== hideAdv) advWrap.hidden = hideAdv;
+            if (!introBtn || !introBtn.isConnected) introBtn = el.advActs.querySelector('[data-act="intro"]');
             if (hasIntro && !introBtn) {
                 el.advActs.insertAdjacentHTML('afterbegin', `<button class="md-wide md-intro" type="button" data-act="intro">${icon('clapperboard', 15)}<span>播放完整开场</span>${icon('chevron-right', 14)}</button>`);
-            } else if (!hasIntro && introBtn) introBtn.remove();
+                introBtn = el.advActs.firstElementChild;
+            } else if (!hasIntro && introBtn) {
+                introBtn.remove();
+                introBtn = null;
+            }
         }
         // 以前这里是「舞台调制」子页；现在只是打开控制页并滚到舞台那一段。
         function openStageSettings() {

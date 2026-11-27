@@ -57,7 +57,7 @@ function changedSince(known, scanned, root) {
     const pBack = p + '\\';
     const before = new Map();
     for (const t of known || []) {
-        if (!t || typeof t.path !== 'string') continue;
+        if (!t || typeof t.path !== 'string' || t.isRemote || URL_SCHEME_RE.test(t.path)) continue;
         const c = norm(t.path);
         if (c === p || c.startsWith(pSep) || c.startsWith(pSlash) || c.startsWith(pBack)) {
             before.set(t.path, t);
