@@ -144,3 +144,19 @@ test('throwing configureMusicOutput and configureMusicUpsampling roll back UI an
     assert.equal(app.targetUpsamplingRate, 48000, 'upsampling rate rolls back on error');
     assert.equal(app.upsamplingSelect.value, '48000', 'upsampling select rolls back on error');
 });
+
+test('configureOutput keeps applied device/exclusive state if post-success populateDeviceList throws', async () => {
+    const { app } = setup({ engineState: { exclusive_mode: true } });
+    const notices = [];
+    app.showPlaybackNotice = (m) => notices.push(m);
+    app.populateDeviceList = async () => { throw new Error('device list refresh failed'); };
+    app.currentDeviceId = 1;
+    app.useWasapiExclusive = false;
+    app.deviceSelect.value = '4';
+    app.wasapiSwitch.checked = true;
+    await app.configureOutput();
+    assert.equal(app.currentDeviceId, 4, 'already-applied device must not be rolled back');
+    assert.equal(app.useWasapiExclusive, true, 'already-applied exclusive mode must not be rolled back');
+    assert.equal(app.wasapiSwitch.checked, true, 'exclusive switch stays checked');
+    assert.equal(notices.length, 0, 'no failure rollback notice after IPC succeeded');
+});

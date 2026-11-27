@@ -43,3 +43,47 @@ test('the stylesheet shows the text from the list itself', () => {
     const css = fs.readFileSync('Musicmodules/music-theme/music-skin.css', 'utf8');
     assert.match(css, /#playlist\[data-empty-text\]:empty::after\s*\{\s*content:\s*attr\(data-empty-text\)/);
 });
+
+test('classic playlist visibilityWatch ignores unrelated body class toggles and disconnects on beforeunload', async () => {
+    const dom = new JSDOM('<input id="search-input"><ul id="playlist"></ul>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    let rafCount = 0;
+    window.requestAnimationFrame = () => ++rafCount;
+    window.cancelAnimationFrame = () => {};
+    const observers = [];
+    const OrigMO = window.MutationObserver;
+    window.MutationObserver = class TrackedMO extends OrigMO {
+        constructor(cb) { super(cb); this.disconnected = false; observers.push(this); }
+        disconnect() { this.disconnected = true; return super.disconnect(); }
+    };
+    window.eval(fs.readFileSync('Musicmodules/music-ui.js', 'utf8'));
+    const doc = window.document;
+    const app = {
+        playlistEl: doc.getElementById('playlist'),
+        searchInput: doc.getElementById('search-input'),
+        playlist: [{ title: 'a', path: 'a' }],
+        currentTrackIndex: 0,
+        updateAllCount() {},
+        stripAudioExtension: (s) => s,
+    };
+    window.setupUI(app);
+    app.renderPlaylist();
+    await new Promise((r) => setTimeout(r, 0));
+    const before = rafCount;
+
+    // 播放态等不相关的 body 类变化不应额外排经典列表重绘帧
+    doc.body.classList.add('music-playing');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(rafCount, before, 'unrelated body class toggle schedules zero rAF');
+
+    // 从档案页切回经典视图时才应重绘
+    doc.body.classList.add('music-archive-on');
+    await new Promise((r) => setTimeout(r, 0));
+    doc.body.classList.remove('music-archive-on');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(rafCount > before, 'returning from archive to classic view schedules a repaint');
+
+    window.dispatchEvent(new window.Event('beforeunload'));
+    assert.ok(observers.length > 0 && observers.every((o) => o.disconnected), 'visibilityWatch disconnects on beforeunload');
+    window.close();
+});

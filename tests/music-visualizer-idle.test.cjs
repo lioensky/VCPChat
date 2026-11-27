@@ -116,3 +116,36 @@ test('the loop also rests when hidden or covered by the archive page, and keeps 
     app.destroyVisualizer();
     assert.equal(app._visualizerWakeObserver, null);
 });
+
+test('socket onclose and destroyVisualizer skip redundant idle publishMusicGroove IPC', () => {
+    const { window, app } = setup();
+    const published = [];
+    const sockets = [];
+    app.api = { publishMusicGroove: (payload) => published.push(payload) };
+    window.WebSocket = class FakeSocket {
+        constructor(url) { this.url = url; this.readyState = 1; sockets.push(this); }
+        close() { this.readyState = 3; }
+    };
+    window.WebSocket.OPEN = 1;
+    window.WebSocket.CONNECTING = 0;
+
+    app.connectWebSocket();
+    assert.equal(sockets.length, 1);
+    sockets[0].onclose();
+    assert.equal(published.length, 0, 'idle disconnect does not spam publishMusicGroove({ playing: false })');
+
+    app.destroyVisualizer();
+    assert.equal(published.length, 0, 'destroy while already idle does not emit redundant groove stop');
+
+    const active = setup();
+    const activePublished = [];
+    active.app.api = { publishMusicGroove: (payload) => activePublished.push(payload) };
+    active.app._lastGroovePlaying = true;
+    active.app.destroyVisualizer();
+    assert.equal(activePublished.length, 1, 'destroy emits one stop event when groove was playing');
+    assert.equal(activePublished[0].playing, false);
+    assert.equal(active.app._lastGroovePlaying, false);
+
+    active.app.destroyVisualizer();
+    assert.equal(activePublished.length, 1, 'second destroy stays silent');
+});

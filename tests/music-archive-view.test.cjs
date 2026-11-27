@@ -1527,3 +1527,52 @@ test('the toolbar has 进入舞台 where 正在播放 used to be; Ctrl+L still f
     assert.equal(f.app.stageHost.active, true, 'clicking it enters the stage');
     f.close();
 });
+
+test('archive list render batches viewport reads before edge-class writes and destroy disconnects observers/listeners', () => {
+    const roInstances = [];
+    const f = fixture({
+        setup: (w) => {
+            w.ResizeObserver = class TrackedRO {
+                constructor(cb) { this.cb = cb; this.disconnected = false; roInstances.push(this); }
+                observe() {}
+                unobserve() {}
+                disconnect() { this.disconnected = true; }
+            };
+        }
+    });
+    f.view.setListOpen(true);
+    const vp = listEl(f, 'viewport');
+    const ops = [];
+    let scrollTopVal = 0;
+    Object.defineProperty(vp, 'scrollTop', {
+        configurable: true,
+        get() { ops.push('read:scrollTop'); return scrollTopVal; },
+        set(v) { scrollTopVal = v; }
+    });
+    Object.defineProperty(vp, 'clientHeight', {
+        configurable: true,
+        get() { ops.push('read:clientHeight'); return 480; }
+    });
+    const origToggle = vp.classList.toggle.bind(vp.classList);
+    vp.classList.toggle = (name, force) => {
+        if (name === 'at-top' || name === 'at-bottom') ops.push(`write:${name}`);
+        return origToggle(name, force);
+    };
+    f.view.list.reveal(0, 'all', { quiet: true });
+    const firstWrite = ops.findIndex((o) => o.startsWith('write:'));
+    const lastReadBefore = ops.reduce((idx, o, i) => (i < firstWrite && o.startsWith('read:') ? i : idx), -1);
+    assert.ok(firstWrite >= 2, `expected reads before writes, got ${ops.join(',')}`);
+    assert.ok(ops.slice(0, firstWrite).includes('read:scrollTop') && ops.slice(0, firstWrite).includes('read:clientHeight'), `both viewport metrics read before class toggles: ${ops.join(',')}`);
+    assert.ok(lastReadBefore >= 0);
+
+    assert.ok(roInstances.length > 0, 'ResizeObserver created');
+    f.view.destroy();
+    assert.ok(roInstances.some((ro) => ro.disconnected), 'kind ResizeObserver disconnected on destroy');
+    // 已销毁后派发全局目录事件不应报错或重新渲染
+    ops.length = 0;
+    f.w.document.dispatchEvent(new f.w.Event('music-like-change'));
+    f.w.document.dispatchEvent(new f.w.Event('music-stats-change'));
+    f.w.document.dispatchEvent(new f.w.Event('music-track-health'));
+    assert.equal(ops.length, 0, 'destroyed list does not respond to global events');
+    f.close();
+});
