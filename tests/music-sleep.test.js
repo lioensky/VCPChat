@@ -88,3 +88,22 @@ test('cancelling during the fade restores the volume after any fade request stil
     assert.deepEqual(sent, [0.4, 0.8], 'and is sent right after it, so it is the last value the engine sees');
     pending.shift()();
 });
+
+test('beforeunload during fade-out restores engine volume and stops the timer', () => {
+    const listeners = {};
+    const prevAdd = globalThis.addEventListener;
+    globalThis.addEventListener = (type, fn) => { listeners[type] = fn; };
+    try {
+        const { sleep, volumes, advance, running } = setup();
+        sleep.set(1);
+        advance(56);
+        assert.equal(volumes.at(-1), 0.32);
+        assert.equal(running(), true);
+        assert.equal(typeof listeners.beforeunload, 'function');
+        listeners.beforeunload();
+        assert.equal(running(), false, 'timer stopped on beforeunload');
+        assert.equal(volumes.at(-1), 0.8, 'engine volume restored to slider value on unload during fade');
+    } finally {
+        globalThis.addEventListener = prevAdd;
+    }
+});

@@ -119,3 +119,28 @@ test('an output change the engine rejects puts the old device and switch back, a
     await app.configureOutput();
     assert.equal(sent.length, 2, 'choosing the same device again sends it again');
 });
+
+test('throwing configureMusicOutput and configureMusicUpsampling roll back UI and state cleanly', async () => {
+    const { app } = setup();
+    const notices = [];
+    app.showPlaybackNotice = (m) => notices.push(m);
+    app.api.configureMusicOutput = async () => { throw new Error('IPC channel closed'); };
+    app.api.configureMusicUpsampling = async () => { throw new Error('engine offline'); };
+    app.saveSettings = () => { throw new Error('should not save on failure'); };
+    app.currentDeviceId = 1;
+    app.useWasapiExclusive = false;
+    app.deviceSelect.value = '4';
+    app.wasapiSwitch.checked = true;
+    await app.configureOutput();
+    assert.equal(app.currentDeviceId, 1, 'device rolls back on thrown IPC error');
+    assert.equal(app.useWasapiExclusive, false, 'exclusive flag rolls back on thrown IPC error');
+    assert.equal(app.wasapiSwitch.checked, false, 'exclusive switch rolls back');
+    assert.equal(String(app.deviceSelect.value), '1', 'device select value rolls back');
+    assert.equal(notices.length, 1);
+
+    app.targetUpsamplingRate = 48000;
+    app.upsamplingSelect = { value: '96000' };
+    await app.configureUpsampling();
+    assert.equal(app.targetUpsamplingRate, 48000, 'upsampling rate rolls back on error');
+    assert.equal(app.upsamplingSelect.value, '48000', 'upsampling select rolls back on error');
+});

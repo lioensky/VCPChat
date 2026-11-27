@@ -66,3 +66,39 @@ test('switching from the archive to the classic view later builds it then', asyn
     await original();
     assert.equal(made.length, 1);
 });
+
+test('ambient pixi caps resolution in energy-saving mode and cleans up on beforeunload', async () => {
+    const made = [];
+    const listeners = new Map();
+    let removedResize = 0;
+    class Application {
+        constructor() { made.push(this); this.destroyed = false; this.initOpts = null; }
+        async init(opts) { this.initOpts = opts; this.canvas = { style: {} }; this.stage = { addChild() {} }; this.renderer = { resize() {} }; }
+        stop() {}
+        render() {}
+        destroy() { this.destroyed = true; }
+    }
+    const container = { innerHTML: '', appendChild() {}, clientWidth: 800, clientHeight: 600 };
+    const win = {
+        PIXI: { Application, Graphics: class { clear() { return this; } } },
+        devicePixelRatio: 2,
+        addEventListener: (ev, fn) => listeners.set(ev, fn),
+        removeEventListener: (ev) => { if (ev === 'resize') removedResize += 1; },
+        requestAnimationFrame: (fn) => { fn(); return 1; },
+        cancelAnimationFrame() {}
+    };
+    const context = vm.createContext({
+        window: win, queueMicrotask, setTimeout, clearTimeout, console,
+        document: { getElementById: (id) => (id === 'ambient-wave-container' ? container : null), body: { classList: { contains: () => false } } }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), context);
+    const app = { currentStageQuality: 'energy-saving' };
+    win.setupAmbientPixi(app);
+    await settle();
+    assert.equal(made.length, 1);
+    assert.equal(made[0].initOpts.resolution, 1, 'energy-saving caps Pixi resolution to 1');
+    assert.equal(made[0].initOpts.antialias, false, 'energy-saving disables Pixi antialias');
+    listeners.get('beforeunload')?.();
+    assert.equal(made[0].destroyed, true, 'beforeunload destroys Pixi controller');
+    assert.equal(removedResize, 1, 'beforeunload removes window resize listener');
+});

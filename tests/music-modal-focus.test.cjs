@@ -287,3 +287,15 @@ test('music-spectrum traps Tab, ignores composing Escape and blocks single-key s
     window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     dom.window.close();
 });
+
+test('archive-wall.css uses compositor-only aw-breathe, no duplicate height and disables blur on music-fl-low', () => {
+    const css = fs.readFileSync('Musicmodules/music-archive/archive-wall.css', 'utf8');
+    const breatheRule = css.match(/@keyframes\s+aw-breathe\s*\{[^}]*\}/)?.[0] || '';
+    assert.ok(breatheRule, 'aw-breathe keyframe exists');
+    assert.doesNotMatch(breatheRule, /box-shadow/, 'aw-breathe must not animate main-thread box-shadow');
+    assert.match(breatheRule, /transform:\s*scale\(/, 'aw-breathe uses compositor transform');
+    const stickyRule = css.match(/\.ag-sticky\s*\{[^}]*\}/)?.[0] || '';
+    assert.equal((stickyRule.match(/\bheight\s*:/g) || []).length, 1, '.ag-sticky defines height once');
+    assert.match(css, /body\.music-fl-low\s+\.archive-wall\.aw-table::after\s*\{\s*display:\s*none;/);
+    assert.match(css, /body\.music-fl-low\s+#music-archive-view\s+\.aw-panel-acts\s+button[\s\S]*?backdrop-filter:\s*none;/);
+});

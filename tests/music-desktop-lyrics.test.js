@@ -221,3 +221,52 @@ test('暂停且进度未变时跳过周期重发；译文到达时立即补发',
         window.close();
     }
 });
+
+test('desktop lyrics only observes body while active and unsubscribes IPC on beforeunload', async () => {
+    const vm = require('vm');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body></body>');
+    const { window } = dom;
+    let observeCalls = 0;
+    let disconnectCalls = 0;
+    let unsubCalled = 0;
+    let onChangedCb = null;
+    class TrackingObserver {
+        constructor(cb) { this.cb = cb; }
+        observe() { observeCalls += 1; }
+        disconnect() { disconnectCalls += 1; }
+    }
+    try {
+        window.MutationObserver = TrackingObserver;
+        window.setInterval = () => 1;
+        window.clearInterval = () => {};
+        const ctx = vm.createContext({
+            window, document: window.document, CustomEvent: window.CustomEvent,
+            MutationObserver: TrackingObserver, Date, console
+        });
+        ctx.window = window;
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-desktop-lyrics.js'), 'utf8'), ctx);
+        const app = {
+            playlist: [],
+            currentTrackIndex: 0,
+            isPlaying: false,
+            api: {
+                toggleDesktopLyrics: async (v) => v,
+                publishDesktopLyrics: () => {},
+                getDesktopLyrics: async () => ({ on: false }),
+                onDesktopLyricsChanged: (cb) => { onChangedCb = cb; return () => { unsubCalled += 1; }; }
+            }
+        };
+        window.setupMusicDesktopLyrics(app);
+        await Promise.resolve();
+        assert.strictEqual(observeCalls, 0, 'body observer is idle while desktop lyrics is off');
+        onChangedCb({ on: true });
+        assert.strictEqual(observeCalls, 1, 'body observer starts when enabled');
+        onChangedCb({ on: false });
+        assert.strictEqual(disconnectCalls, 1, 'body observer disconnects when disabled');
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.strictEqual(unsubCalled, 1, 'onDesktopLyricsChanged unsubscribes on beforeunload');
+    } finally {
+        window.close();
+    }
+});
