@@ -97,14 +97,12 @@ test('unknown filename falls back to the closest image inside an exact package',
     assert.equal(actual, expected.url);
 });
 
-test('unknown package and filename still fall back to a valid library image', async () => {
-    const expected = libraryItem('通用表情包', '开心.png');
-    const fixer = await createInitializedFixer([expected]);
+test('unknown package keeps the original URL instead of borrowing an unrelated library image', async () => {
+    const library = libraryItem('通用表情包', '开心.png');
+    const fixer = await createInitializedFixer([library]);
+    const original = 'images/虚构表情包/完全不存在.png';
 
-    assert.equal(
-        fixer.fixEmoticonUrl('images/虚构表情包/完全不存在.png'),
-        expected.url
-    );
+    assert.equal(fixer.fixEmoticonUrl(original), original);
 });
 
 test('non-emoticon image paths remain untouched', async () => {
