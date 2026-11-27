@@ -163,13 +163,21 @@ function setupSidebar(app) {
 
     app.hidePlaylistDialog = () => { app.playlistDialog.classList.remove('visible'); app.pendingAddToPlaylist = null; };
 
+    let ctxMenuRaf = 0;
+    window.addEventListener?.('beforeunload', () => {
+        if (ctxMenuRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(ctxMenuRaf); ctxMenuRaf = 0; }
+    }, { once: true });
+
     app.showContextMenu = (x, y) => {
         app.updatePlaylistSubmenu();
         const sub = app.contextMenu.querySelector('.context-submenu');
-        if (sub) sub.style.maxWidth = '';
+        if (sub && sub.style.maxWidth) sub.style.maxWidth = '';
         app.contextMenu.style.left = `${x}px`; app.contextMenu.style.top = `${y}px`;
         app.contextMenu.classList.add('visible');
-        requestAnimationFrame(() => {
+        if (ctxMenuRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(ctxMenuRaf); ctxMenuRaf = 0; }
+        ctxMenuRaf = requestAnimationFrame(() => {
+            ctxMenuRaf = 0;
+            if (!app.contextMenu || !app.contextMenu.classList.contains('visible')) return;
             // 先一次性读完几何信息，再写样式，避免单帧多次强制回流
             const rect = app.contextMenu.getBoundingClientRect();
             const subWidth = sub ? Math.max(sub.offsetWidth, 160) : 160;

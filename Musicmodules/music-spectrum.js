@@ -205,6 +205,8 @@
         let overlay = null;
         let previousFocus = null;
         let openRaf = 0;
+        let closeTimer = 0;
+        let closingOverlay = null;
         const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const el = (tag, cls, text) => {
             const n = doc.createElement(tag);
@@ -213,28 +215,40 @@
             return n;
         };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
+        const disposeOverlay = (o) => {
+            const cv = o.querySelector('.mspec-canvas');
+            if (cv) { cv.width = 1; cv.height = 1; }
+            o.remove();
+        };
+        const flushClosing = () => {
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = 0; }
+            if (closingOverlay) { const prev = closingOverlay; closingOverlay = null; disposeOverlay(prev); }
+        };
         const close = (immediate = false) => {
-            if (!overlay) return;
+            const isImmediate = immediate === true;
+            if (!overlay) {
+                if (isImmediate) flushClosing();
+                return;
+            }
             if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
+            flushClosing();
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
-            const disposeOverlay = () => {
-                const cv = o.querySelector('.mspec-canvas');
-                if (cv) { cv.width = 1; cv.height = 1; }
-                o.remove();
-            };
-            if (immediate) disposeOverlay();
-            else setTimeout(disposeOverlay, 320);
+            if (isImmediate) disposeOverlay(o);
+            else {
+                closingOverlay = o;
+                closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === o) closingOverlay = null; disposeOverlay(o); }, 320);
+            }
             const back = previousFocus;
             previousFocus = null;
-            if (!immediate && back && back.isConnected && typeof back.focus === 'function') {
+            if (!isImmediate && back && back.isConnected && typeof back.focus === 'function') {
                 try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
             }
         };
         const onKey = (e) => {
-            if (doc.querySelector('.dialog-overlay.music-dialog')) return;
+            if (doc.querySelector('.dialog-overlay.music-dialog:not([data-closing])')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
                 const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
@@ -365,6 +379,7 @@
             const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };
             if (!track || !track.path) { toast('先放一首歌再看频谱'); return; }
             if (/^[a-z][a-z0-9+.-]{2,}:\/\//i.test(String(track.path))) { toast('网络上的歌没法看频谱'); return; }
+            flushClosing();
             previousFocus = doc.activeElement;
             const cur = el('div', 'dialog-overlay music-stats-dialog');
             overlay = cur;
@@ -380,7 +395,7 @@
             const x = el('button', 'mstats-close', '×');
             x.type = 'button';
             x.setAttribute('aria-label', '关闭');
-            x.addEventListener('click', close);
+            x.addEventListener('click', () => close());
             head.appendChild(x);
             dialog.appendChild(head);
             const body = el('div', 'mstats-body mspec-body');

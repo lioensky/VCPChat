@@ -60,6 +60,8 @@
         let overlay = null;
         let previousFocus = null;
         let openRaf = 0;
+        let closeTimer = 0;
+        let closingOverlay = null;
         let cachedGroups = null;
         let cachedPlaylist = null;
         let cachedPlaylistLen = -1;
@@ -67,22 +69,34 @@
         const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
         const toast = (message, action) => { try { global.MusicToast?.show?.({ message, action, duration: action ? 10000 : undefined }); } catch (e) { /* 没有提示层 */ } };
+        const flushClosing = () => {
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = 0; }
+            if (closingOverlay) { const prev = closingOverlay; closingOverlay = null; prev.remove(); }
+        };
 
         const close = (immediate = false) => {
-            if (!overlay) return;
+            const isImmediate = immediate === true;
+            if (!overlay) {
+                if (isImmediate) flushClosing();
+                return;
+            }
             if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
+            flushClosing();
             const o = overlay; overlay = null;
             cachedGroups = null; cachedPlaylist = null; cachedPlaylistLen = -1;
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
-            if (immediate) o.remove();
-            else setTimeout(() => o.remove(), 320);
+            if (isImmediate) o.remove();
+            else {
+                closingOverlay = o;
+                closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === o) closingOverlay = null; o.remove(); }, 320);
+            }
             const back = previousFocus;
             previousFocus = null;
-            if (!immediate && back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
+            if (!isImmediate && back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
         const onKey = (e) => {
-            if (doc.querySelector('.dialog-overlay.music-dialog')) return;
+            if (doc.querySelector('.dialog-overlay.music-dialog:not([data-closing])')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
                 const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
@@ -235,6 +249,7 @@
 
         app.openDupesView = () => {
             if (overlay) return;
+            flushClosing();
             previousFocus = doc.activeElement;
             overlay = el('div', 'dialog-overlay music-stats-dialog music-dupes-dialog');
             const dialog = el('div', 'dialog glass-panel mstats mdupes');
@@ -248,14 +263,14 @@
             const x = el('button', 'mstats-close', '×');
             x.type = 'button';
             x.setAttribute('aria-label', '关闭');
-            x.addEventListener('click', close);
+            x.addEventListener('click', () => close());
             head.appendChild(x);
             dialog.appendChild(head);
             dialog.appendChild(el('div', 'mdupes-body'));
             const actions = el('div', 'dialog-actions');
             const cancel = el('button', 'dialog-btn cancel', '关闭');
             cancel.type = 'button';
-            cancel.addEventListener('click', close);
+            cancel.addEventListener('click', () => close());
             const go = el('button', 'dialog-btn confirm mdupes-remove', '移除多余的文件');
             go.type = 'button';
             go.addEventListener('click', () => {

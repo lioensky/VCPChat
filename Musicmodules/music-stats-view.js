@@ -116,6 +116,8 @@
         let overlay = null;
         let previousFocus = null;
         let openRaf = 0;
+        let closeTimer = 0;
+        let closingOverlay = null;
         let range = 30;
         const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         try { const v = Number(global.localStorage?.getItem(RANGE_KEY)); if (RANGES.some(([d]) => d === v)) range = v; } catch (e) { /* 默认 30 天 */ }
@@ -127,24 +129,36 @@
             return n;
         };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
+        const flushClosing = () => {
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = 0; }
+            if (closingOverlay) { const prev = closingOverlay; closingOverlay = null; prev.remove(); }
+        };
 
         const close = (immediate = false) => {
-            if (!overlay) return;
+            const isImmediate = immediate === true;
+            if (!overlay) {
+                if (isImmediate) flushClosing();
+                return;
+            }
             if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
+            flushClosing();
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
-            if (immediate) o.remove();
-            else setTimeout(() => o.remove(), 320);
+            if (isImmediate) o.remove();
+            else {
+                closingOverlay = o;
+                closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === o) closingOverlay = null; o.remove(); }, 320);
+            }
             const back = previousFocus;
             previousFocus = null;
-            if (!immediate && back && back.isConnected && typeof back.focus === 'function') {
+            if (!isImmediate && back && back.isConnected && typeof back.focus === 'function') {
                 try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
             }
         };
         const onKey = (e) => {
-            if (doc.querySelector('.dialog-overlay.music-dialog')) return;
+            if (doc.querySelector('.dialog-overlay.music-dialog:not([data-closing])')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
                 const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
@@ -306,6 +320,7 @@
 
         app.openStatsView = () => {
             if (overlay) return;
+            flushClosing();
             previousFocus = doc.activeElement;
             overlay = el('div', 'dialog-overlay music-stats-dialog');
             const dialog = el('div', 'dialog glass-panel mstats');
@@ -334,7 +349,7 @@
             const x = el('button', 'mstats-close', '×');
             x.type = 'button';
             x.setAttribute('aria-label', '关闭');
-            x.addEventListener('click', close);
+            x.addEventListener('click', () => close());
             head.appendChild(x);
             dialog.appendChild(head);
             dialog.appendChild(el('div', 'mstats-body'));

@@ -137,8 +137,15 @@
         // 起名框：长相和「新建歌单」一样（.dialog-overlay > .dialog），Enter 存、Esc 取消
         let asking = false;
         let closeActivePrompt = null;
+        let closeTimer = 0;
+        let closingOverlay = null;
+        const flushClosing = () => {
+            if (closeTimer) { clearTimeout(closeTimer); closeTimer = 0; }
+            if (closingOverlay) { const prev = closingOverlay; closingOverlay = null; prev.remove(); }
+        };
         const promptSave = () => {
             if (!doc || asking) return;
+            flushClosing();
             asking = true;
             const previousFocus = doc.activeElement;
             const sel = select();
@@ -175,17 +182,24 @@
             let done = false;
             let focusTimer = 0;
             let openRaf = 0;
-            const finish = (name) => {
+            const finish = (name, immediate = false) => {
                 if (done) return;
                 done = true;
                 asking = false;
                 closeActivePrompt = null;
+                const isImmediate = immediate === true;
                 if (openRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(openRaf); openRaf = 0; }
                 if (focusTimer) { clearTimeout(focusTimer); focusTimer = 0; }
+                flushClosing();
                 global.removeEventListener('keydown', onKey, true);
+                overlay.dataset.closing = '1';
                 overlay.classList.remove('visible');
-                setTimeout(() => overlay.remove(), 320);
-                if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === 'function') { try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
+                if (isImmediate) overlay.remove();
+                else {
+                    closingOverlay = overlay;
+                    closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === overlay) closingOverlay = null; overlay.remove(); }, 320);
+                }
+                if (!isImmediate && previousFocus && previousFocus.isConnected && typeof previousFocus.focus === 'function') { try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
                 if (name) save(name);
             };
             const onKey = (e) => {
@@ -206,7 +220,7 @@
                 if (NAV_KEYS.has(e.key) && e.target !== input) { e.stopPropagation(); return; }
                 if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && e.target !== input) e.stopPropagation();
             };
-            closeActivePrompt = () => finish(null);
+            closeActivePrompt = (immediate = false) => finish(null, immediate);
             overlay.querySelector('.dialog-btn.cancel').addEventListener('click', () => finish(null));
             ok.addEventListener('click', () => { if (!ok.disabled) finish(input.value); });
             overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(null); });
@@ -235,8 +249,9 @@
         }
         global.addEventListener?.('beforeunload', () => {
             if (doc) doc.removeEventListener('change', onPresetSelectChange, true);
-            closeActivePrompt?.();
+            closeActivePrompt?.(true);
             closeActivePrompt = null;
+            flushClosing();
         }, { once: true });
 
         // 滑块变了、换了预设，「删除」项跟着更新

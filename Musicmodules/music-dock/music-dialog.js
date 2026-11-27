@@ -14,6 +14,14 @@
     let seq = 0;
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const activeStack = [];
+    const closingTimers = new Map();
+    global.addEventListener?.('beforeunload', () => {
+        for (const [el, timer] of closingTimers) {
+            clearTimeout(timer);
+            el.remove();
+        }
+        closingTimers.clear();
+    }, { once: true });
 
     const confirm = (options = {}) => new Promise((resolve) => {
         const {
@@ -48,22 +56,27 @@
 
         let done = false;
         let openRaf = 0;
-        let closeTimer = null;
         const onUnload = () => finish(false, true);
         const finish = (value, immediate = false) => {
             if (done) return;
             done = true;
+            const isImmediate = immediate === true;
             const idx = activeStack.indexOf(overlay);
             if (idx !== -1) activeStack.splice(idx, 1);
             if (openRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(openRaf); openRaf = 0; }
-            if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+            const pending = closingTimers.get(overlay);
+            if (pending) { clearTimeout(pending); closingTimers.delete(overlay); }
             global.removeEventListener('keydown', onKey, true);
             global.removeEventListener?.('beforeunload', onUnload);
+            overlay.dataset.closing = '1';
             overlay.classList.remove('visible');
             // 留给合上的动画（流体套件或 .2s 淡出）；窗口卸载时直接移除，避免悬挂定时器。
-            if (immediate) overlay.remove();
-            else closeTimer = setTimeout(() => { closeTimer = null; overlay.remove(); }, 320);
-            if (!immediate && previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+            if (isImmediate) overlay.remove();
+            else {
+                const timer = setTimeout(() => { closingTimers.delete(overlay); overlay.remove(); }, 320);
+                closingTimers.set(overlay, timer);
+            }
+            if (!isImmediate && previousFocus instanceof HTMLElement && previousFocus.isConnected) {
                 try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 焦点还不回去就算了 */ }
             }
             resolve(value);

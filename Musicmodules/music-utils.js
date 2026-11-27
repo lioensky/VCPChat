@@ -7,7 +7,7 @@ function setupUtils(app) {
     // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
     app.stripAudioExtension = (title) => {
         if (!title || typeof title !== 'string' || title.indexOf('.') === -1) return title;
-        return title.replace(/\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff|opus|wv)$/i, '');
+        return title.replace(/\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i, '');
     };
 
     // 列表搜索框和歌单编辑框共用的匹配：全角半角、大小写、合字统一（NFKC），标题去掉扩展名，
@@ -306,7 +306,7 @@ tag_boost:「始」0.95「末」
                 // 过滤掉元数据行
                 if (!trimmedLine || trimmedLine.startsWith('[') || trimmedLine.startsWith('---')) return;
 
-                const isAudioFile = /\.(mp3|flac|wav|m4a|ogg|aac|dsf|dff|ape)$/i.test(trimmedLine);
+                const isAudioFile = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i.test(trimmedLine);
                 if (isAudioFile) {
                     const songQuery = trimmedLine.replace(/\.[^.]+$/, '').toLowerCase();
                     for (let i = 0; i < indexedPlaylist.length; i++) {

@@ -57,13 +57,18 @@
         let pending = null;
         for (const el of menu.children) {
             if (el.classList.contains('context-menu-divider')) {
-                el.style.display = 'none';
+                if (pending && pending.style.display !== 'none') pending.style.display = 'none';
                 if (seenItem) pending = el;
+                else if (el.style.display !== 'none') el.style.display = 'none';
             } else if (el.classList.contains('context-menu-item') && shown(el)) {
-                if (pending) { pending.style.display = ''; pending = null; }
+                if (pending) {
+                    if (pending.style.display !== '') pending.style.display = '';
+                    pending = null;
+                }
                 seenItem = true;
             }
         }
+        if (pending && pending.style.display !== 'none') pending.style.display = 'none';
     }
 
     // 鼠标右键点开的菜单也要接住方向键 / 回车 / Esc：不接的话按键会落到后面的目录上（换了选中的歌，甚至直接开始播放）。
@@ -79,7 +84,19 @@
         if (!menu) return;
         arrange(menu);
         tidyDividers(menu);
-        const childObserver = new MutationObserver(() => { arrange(menu); childObserver.takeRecords(); });
+        const isMenuNode = (node) => Boolean(node && node.nodeType === 1 && (node.classList.contains('context-menu-item') || node.classList.contains('context-menu-divider')));
+        const childObserver = new MutationObserver((records) => {
+            let relevant = false;
+            for (let i = 0; i < records.length && !relevant; i++) {
+                const r = records[i];
+                for (let j = 0; j < r.addedNodes.length; j++) if (isMenuNode(r.addedNodes[j])) { relevant = true; break; }
+                if (relevant) break;
+                for (let j = 0; j < r.removedNodes.length; j++) if (isMenuNode(r.removedNodes[j])) { relevant = true; break; }
+            }
+            if (!relevant) return;
+            arrange(menu);
+            childObserver.takeRecords();
+        });
         childObserver.observe(menu, { childList: true });
         let wasVisible = menu.classList.contains('visible');
         const classObserver = new MutationObserver(() => {
