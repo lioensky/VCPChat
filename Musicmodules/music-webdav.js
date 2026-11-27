@@ -18,8 +18,109 @@ function setupWebDav(app) {
         return window.MusicErrorText ? window.MusicErrorText(raw, fallback) : fallback;
     };
     app.webdavReason = webdavReason;
-    const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff', '.alac', '.dsf', '.dff']);
+    const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff', '.aif', '.alac', '.dsf', '.dff']);
+    const AUDIO_EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|opus|wv|ape|wma|aiff?|alac|dsf|dff)$/i;
     let browseReqId = 0;
+    const boundLists = new WeakSet();
+    let currentEntries = [];
+
+    const selectServer = (server) => {
+        app.activeWebDavServer = server;
+        app.webdavCurrentPath = '/';
+        app.webdavScannedTracks = [];
+        if (app.webdavScanBtn) app.webdavScanBtn.disabled = false;
+        if (app.webdavImportBtn) {
+            app.webdavImportBtn.disabled = true;
+            app.webdavImportBtn.textContent = '导入到全部';
+        }
+        app.renderWebDavServerList();
+        app.browseWebDav('/');
+    };
+
+    const removeServerItem = async (server, removeBtn) => {
+        if (removeBtn.disabled) return;
+        removeBtn.disabled = true;
+        try {
+            await app.api.removeWebdavServer({ id: server.id });
+        } catch (err) {
+            removeBtn.disabled = false;
+            console.error('[Music] Failed to remove WebDAV server:', err);
+            return;
+        }
+        if (app.activeWebDavServer && app.activeWebDavServer.id === server.id) {
+            browseReqId += 1;
+            app.activeWebDavServer = null;
+            app.webdavScannedTracks = [];
+            currentEntries = [];
+            app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">请先选择或添加一个 WebDAV 服务器</div>';
+            app.webdavBreadcrumb.innerHTML = '';
+            if (app.webdavScanBtn) app.webdavScanBtn.disabled = true;
+            if (app.webdavImportBtn) {
+                app.webdavImportBtn.disabled = true;
+                app.webdavImportBtn.textContent = '导入到全部';
+            }
+        }
+        app.webdavServers = app.webdavServers.filter((s) => s.id !== server.id);
+        app.renderWebDavServerList();
+    };
+
+    const bindServerList = () => {
+        const list = app.webdavServerList;
+        if (!list || boundLists.has(list)) return;
+        boundLists.add(list);
+        list.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest?.('.webdav-server-remove');
+            if (removeBtn && list.contains(removeBtn)) {
+                e.stopPropagation();
+                const id = removeBtn.dataset.id;
+                const server = app.webdavServers.find((s) => String(s.id) === String(id));
+                if (server) removeServerItem(server, removeBtn);
+                return;
+            }
+            const nameEl = e.target.closest?.('.webdav-server-name');
+            if (!nameEl || !list.contains(nameEl)) return;
+            const row = nameEl.closest('.webdav-server-item');
+            const id = row?.dataset.serverId;
+            const server = app.webdavServers.find((s) => String(s.id) === String(id));
+            if (server) selectServer(server);
+        });
+    };
+
+    const bindFileList = () => {
+        const list = app.webdavFileList;
+        if (!list || boundLists.has(list)) return;
+        boundLists.add(list);
+        list.addEventListener('dblclick', (e) => {
+            const row = e.target.closest?.('.webdav-file-item');
+            if (!row || !list.contains(row)) return;
+            const entry = currentEntries[Number(row.dataset.entryIdx)];
+            if (!entry) return;
+            if (entry.isDir) {
+                if (!app.activeWebDavServer) return;
+                const href = String(entry.href || '').replace(/\/$/, '');
+                const base = String(app.activeWebDavServer.url || '').replace(/\/$/, '');
+                const originMatch = base.match(/^https?:\/\/[^/]+/);
+                const origin = originMatch ? originMatch[0] : base;
+                let newPath = href.replace(origin, '');
+                if (!newPath.startsWith('/')) newPath = '/' + newPath;
+                app.browseWebDav(newPath);
+            } else if (row.classList.contains('is-audio')) {
+                app.playWebDavTrack(entry);
+            }
+        });
+    };
+
+    const bindBreadcrumb = () => {
+        const bar = app.webdavBreadcrumb;
+        if (!bar || boundLists.has(bar)) return;
+        boundLists.add(bar);
+        bar.addEventListener('click', (e) => {
+            const crumb = e.target.closest?.('.webdav-crumb');
+            if (!crumb || !bar.contains(crumb)) return;
+            const targetPath = crumb.dataset.path;
+            if (targetPath) app.browseWebDav(targetPath);
+        });
+    };
 
     app.openWebDavModal = async () => {
         app.webdavModal.classList.add('active');
@@ -42,6 +143,7 @@ function setupWebDav(app) {
     };
 
     app.renderWebDavServerList = () => {
+        bindServerList();
         app.webdavServerList.innerHTML = '';
         if (app.webdavServers.length === 0) {
             app.webdavServerList.innerHTML = '<div class="no-lyrics" style="padding:12px;font-size:12px;">暂无服务器</div>';
@@ -51,42 +153,8 @@ function setupWebDav(app) {
         app.webdavServers.forEach((server) => {
             const div = document.createElement('div');
             div.className = 'webdav-server-item' + (app.activeWebDavServer && app.activeWebDavServer.id === server.id ? ' active' : '');
+            div.dataset.serverId = String(server.id);
             div.innerHTML = `<span class="webdav-server-name">${esc(server.name)}</span><button class="webdav-server-remove" data-id="${esc(server.id)}" title="删除这个服务器" aria-label="删除这个服务器"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
-            div.querySelector('.webdav-server-name').addEventListener('click', () => {
-                app.activeWebDavServer = server;
-                app.webdavCurrentPath = '/';
-                app.webdavScannedTracks = [];
-                app.webdavScanBtn.disabled = false;
-                app.webdavImportBtn.disabled = true;
-                app.webdavImportBtn.textContent = '导入到全部';
-                app.renderWebDavServerList();
-                app.browseWebDav('/');
-            });
-            const removeBtn = div.querySelector('.webdav-server-remove');
-            removeBtn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                if (removeBtn.disabled) return;
-                removeBtn.disabled = true;
-                try {
-                    await app.api.removeWebdavServer({ id: server.id });
-                } catch (err) {
-                    removeBtn.disabled = false;
-                    console.error('[Music] Failed to remove WebDAV server:', err);
-                    return;
-                }
-                if (app.activeWebDavServer && app.activeWebDavServer.id === server.id) {
-                    browseReqId += 1;
-                    app.activeWebDavServer = null;
-                    app.webdavScannedTracks = [];
-                    app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">请先选择或添加一个 WebDAV 服务器</div>';
-                    app.webdavBreadcrumb.innerHTML = '';
-                    app.webdavScanBtn.disabled = true;
-                    app.webdavImportBtn.disabled = true;
-                    app.webdavImportBtn.textContent = '导入到全部';
-                }
-                app.webdavServers = app.webdavServers.filter((s) => s.id !== server.id);
-                app.renderWebDavServerList();
-            });
             frag.appendChild(div);
         });
         app.webdavServerList.appendChild(frag);
@@ -95,7 +163,9 @@ function setupWebDav(app) {
     app.browseWebDav = async (dirPath) => {
         const targetServer = app.activeWebDavServer;
         if (!targetServer || !app.api?.listWebdavDirectory) return;
+        bindFileList();
         const reqId = ++browseReqId;
+        currentEntries = [];
         app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">加载中…</div>';
         app.webdavCurrentPath = dirPath;
         app.renderWebDavBreadcrumb(dirPath);
@@ -135,40 +205,33 @@ function setupWebDav(app) {
             return;
         }
         app.webdavFileList.innerHTML = '';
-        entries.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name));
+        entries.sort((a, b) => (b.isDir - a.isDir) || String(a.name || '').localeCompare(String(b.name || '')));
+        currentEntries = entries;
         const fragment = document.createDocumentFragment();
-        entries.forEach((entry) => {
-            const ext = entry.name.includes('.') ? '.' + entry.name.split('.').pop().toLowerCase() : '';
+        for (let i = 0; i < entries.length; i += 1) {
+            const entry = entries[i];
+            const name = String(entry.name || '');
+            const dot = name.lastIndexOf('.');
+            const ext = dot >= 0 ? name.slice(dot).toLowerCase() : '';
             const isAudio = !entry.isDir && AUDIO_EXTS.has(ext);
             const div = document.createElement('div');
             div.className = 'webdav-file-item' + (entry.isDir ? ' is-dir' : '') + (isAudio ? ' is-audio' : '');
-            div.innerHTML = `<span class="webdav-file-icon">${entry.isDir ? '📁' : (isAudio ? '🎵' : '📄')}</span><span class="webdav-file-name">${esc(entry.name)}</span>`;
-            if (entry.isDir) {
-                div.addEventListener('dblclick', () => {
-                    const href = entry.href.replace(/\/$/, '');
-                    const base = app.activeWebDavServer.url.replace(/\/$/, '');
-                    const originMatch = base.match(/^https?:\/\/[^/]+/);
-                    const origin = originMatch ? originMatch[0] : base;
-                    let newPath = href.replace(origin, '');
-                    if (!newPath.startsWith('/')) newPath = '/' + newPath;
-                    app.browseWebDav(newPath);
-                });
-            } else if (isAudio) {
-                div.addEventListener('dblclick', () => app.playWebDavTrack(entry));
-            }
+            div.dataset.entryIdx = String(i);
+            div.innerHTML = `<span class="webdav-file-icon">${entry.isDir ? '📁' : (isAudio ? '🎵' : '📄')}</span><span class="webdav-file-name">${esc(name)}</span>`;
             fragment.appendChild(div);
-        });
+        }
         app.webdavFileList.appendChild(fragment);
     };
 
     app.renderWebDavBreadcrumb = (dirPath) => {
+        bindBreadcrumb();
         app.webdavBreadcrumb.innerHTML = '';
         const parts = dirPath.replace(/^\/$/, '').split('/').filter(Boolean);
         const frag = document.createDocumentFragment();
         const root = document.createElement('span');
         root.className = 'webdav-crumb';
+        root.dataset.path = '/';
         root.textContent = app.activeWebDavServer ? app.activeWebDavServer.name : '根目录';
-        root.addEventListener('click', () => app.browseWebDav('/'));
         frag.appendChild(root);
         let cumPath = '';
         parts.forEach((part) => {
@@ -179,11 +242,10 @@ function setupWebDav(app) {
             frag.appendChild(sep);
             const span = document.createElement('span');
             span.className = 'webdav-crumb';
+            span.dataset.path = cumPath;
             let decodedPart = part;
             try { decodedPart = decodeURIComponent(part); } catch { /* raw */ }
             span.textContent = decodedPart;
-            const snapPath = cumPath;
-            span.addEventListener('click', () => app.browseWebDav(snapPath));
             frag.appendChild(span);
         });
         app.webdavBreadcrumb.appendChild(frag);
@@ -191,8 +253,9 @@ function setupWebDav(app) {
 
     app.playWebDavTrack = async (entry) => {
         if (!app.activeWebDavServer || !app.api?.loadWebdavTrack) return;
+        const rawName = String(entry.name || '');
         const track = {
-            title: entry.name.replace(/\.[^.]+$/, ''),
+            title: rawName.replace(AUDIO_EXT_RE, ''),
             artist: '',
             album: '',
             path: entry.url,
@@ -282,10 +345,16 @@ function setupWebDav(app) {
             closeServerDialog();
             app.renderWebDavServerList();
         });
+        app.webdavServerDialog?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.isComposing && e.target?.tagName === 'INPUT') {
+                e.preventDefault();
+                app.webdavDialogConfirm?.click();
+            }
+        });
         let activeScanUnsub = null;
         const onWebDavKeyDown = (e) => {
             if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
-            if (document.querySelector('.dialog-overlay.music-dialog.visible')) return;
+            if (document.querySelector('.dialog-overlay.music-dialog.visible:not([data-closing])')) return;
             if (app.webdavServerDialog?.classList.contains('active')) {
                 e.preventDefault();
                 closeServerDialog();

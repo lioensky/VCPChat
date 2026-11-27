@@ -139,6 +139,7 @@
 
         // ---- 一遍一遍地记 ----
         let session = null; // { path, listened, counted, lastTick, lastPos }
+        let lastTickPlaying = false;
         let unsaved = 0;
         const currentTrack = () => {
             return Array.isArray(app.playlist) ? app.playlist[app.currentTrackIndex] || null : null;
@@ -154,6 +155,7 @@
             const t = currentTrack();
             const path = t && t.path;
             const playing = app.isPlaying === true && !app.isTrackLoading;
+            lastTickPlaying = playing;
             const at = now();
             if (!path) { close(); return; }
             if (session && session.path !== path) close();
@@ -193,7 +195,13 @@
             else tick();
         };
         let bodyObserver = null;
-        const onQueueChange = () => tick();
+        const onQueueChange = () => {
+            // 仅编辑待播队列（当前播放曲目与播停态均未变）时跳过同步 tick，避免批量入队时反复统计与查盘
+            const p = currentTrack()?.path || null;
+            const playing = app.isPlaying === true && !app.isTrackLoading;
+            if (session && session.path === p && lastTickPlaying === playing) return;
+            tick();
+        };
         if (observe && global.MutationObserver && global.document?.body) {
             // 播放状态切换时 body 上的 music-playing 会变；切歌时也会经过这里
             let was = global.document.body.classList.contains('music-playing');

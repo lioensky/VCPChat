@@ -108,7 +108,8 @@
                 state.shift = 0;
             }
             buildIndex();
-            fitSoon();
+            if (state.lines.length || plain) fitSoon();
+            else { fitDirty = false; if (fitRaf) { cancelAnimationFrame(fitRaf); fitRaf = 0; } }
             trackH = 0;
             activeLineEl = null;
             activeWordsEl = null;
@@ -151,10 +152,14 @@
          */
         const FIT_MIN = 0.72;
         let fitRaf = 0;
+        let fitDirty = false;
         const fitLines = () => {
             fitRaf = 0;
+            if (!state.shown || el.hidden) { fitDirty = true; return; }
+            fitDirty = false;
             // 原文和译文各算各的（译文行 <em> 同样先缩字再省略）；拆成清属性 → 批量量 → 批量写，避免逐行读写交替触发 N 次重排
             const nodes = [...r.track.querySelectorAll('p:not(.plain-note) > b, p:not(.plain-note) > em')];
+            if (!nodes.length) return;
             for (let i = 0; i < nodes.length; i++) {
                 if (nodes[i].style.getPropertyValue('--fit')) nodes[i].style.removeProperty('--fit');
             }
@@ -230,7 +235,11 @@
             if (on === state.shown) return;
             state.shown = on;
             el.hidden = !(on || state.none);
-            if (on) { state.index = -2; tick(); }
+            if (on) {
+                state.index = -2;
+                if (fitDirty) fitSoon();
+                tick();
+            }
             schedule();
             onChange?.();
         };

@@ -21,10 +21,19 @@
         }
         return at;
     };
+    const wordsCache = new WeakMap();
     const wordsOf = (line) => {
+        if (!line || typeof line !== 'object') return null;
         const check = global.MusicArchiveLyrics && global.MusicArchiveLyrics.wordsOf;
-        const words = check ? check(line) : null;
-        return words ? words.map((w) => ({ text: w.text, s: Number(w.startTime), e: Number(w.endTime) })) : null;
+        if (!check) return null;
+        const raw = line.words;
+        const len = Array.isArray(raw) ? raw.length : -1;
+        const cached = wordsCache.get(line);
+        if (cached && cached.check === check && cached.raw === raw && cached.len === len) return cached.packed;
+        const words = check(line);
+        const packed = words ? words.map((w) => ({ text: w.text, s: Number(w.startTime), e: Number(w.endTime) })) : null;
+        wordsCache.set(line, { check, raw, len, packed });
+        return packed;
     };
     const pack = (line, showTr = true) => (line ? { text: textOf(line), tr: showTr ? String(line.translation || '').trim() : '', time: Number(line.time) || 0 } : null);
     const position = (app) => {

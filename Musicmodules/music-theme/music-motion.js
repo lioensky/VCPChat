@@ -50,7 +50,7 @@
         reduced: () => reduced,
         get preference() { return preference; },
         set(next) {
-            if (!PREFS.includes(next)) return;
+            if (!PREFS.includes(next) || next === preference) return;
             preference = next;
             try { localStorage.setItem(KEY, next); } catch (e) { /* 只是这次有效 */ }
             update();

@@ -56,7 +56,7 @@
             on: false, key: '', secs: [], rows: [], total: 0,
             width: 0, height: 0, cols: 1, cell: 150,
             where: new Map(),            // 曲库下标 → { s, k }（第几节第几个）
-            nodes: new Map(), heads: new Map(), pool: [],
+            nodes: new Map(), heads: new Map(), pool: [], headPool: [],
             sel: -1, raf: 0, dirtyAll: true, renderDirty: true, coverDirty: false, playKey: '',
             room: { left: 0, top: 0, width: 0, height: 0 }
         };
@@ -129,23 +129,28 @@
         };
 
         // ---------- 格子 ----------
+        const cellProto = document.createElement('div');
+        cellProto.className = 'ag-cell';
+        cellProto.setAttribute('role', 'gridcell');
+        cellProto.innerHTML = '<div class="ag-art"><img alt="" draggable="false" decoding="async"><span class="ag-blank"></span><span class="ag-no"></span><button type="button" class="ag-play" data-grid="play" tabindex="-1" title="播放" aria-label="播放"></button><button type="button" class="ag-more" data-grid="more" tabindex="-1" title="更多操作" aria-label="更多操作"></button></div><b class="ag-t"></b><span class="ag-a"></span>';
+        const headProto = document.createElement('div');
+        headProto.className = 'ag-head';
+        headProto.innerHTML = '<b></b><span></span><em></em><i></i>';
         const recycle = (n) => { n.el.remove(); n.idx = -1; if (st.pool.length < 120) st.pool.push(n); };
+        const recycleHead = (h) => { h.remove(); h._x = h._y = h._w = NaN; if (st.headPool.length < 24) st.headPool.push(h); };
         const makeNode = () => {
             const n = st.pool.pop();
             if (n) return n;
-            const t = document.createElement('div');
-            t.className = 'ag-cell';
-            t.setAttribute('role', 'gridcell');
-            t.innerHTML = '<div class="ag-art"><img alt="" draggable="false" decoding="async"><span class="ag-blank"></span><span class="ag-no"></span><button type="button" class="ag-play" data-grid="play" tabindex="-1" title="播放" aria-label="播放"></button><button type="button" class="ag-more" data-grid="more" tabindex="-1" title="更多操作" aria-label="更多操作"></button></div><b class="ag-t"></b><span class="ag-a"></span>';
-            return { el: t, img: t.querySelector('img'), blank: t.querySelector('.ag-blank'), no: t.querySelector('.ag-no'), title: t.querySelector('.ag-t'), sub: t.querySelector('.ag-a'), idx: -1, src: null, cls: '' };
+            const t = cellProto.cloneNode(true);
+            const art = t.firstChild;
+            return { el: t, img: art.children[0], blank: art.children[1], no: art.children[2], title: t.children[1], sub: t.children[2], idx: -1, src: null, cls: '' };
         };
         const headNode = (s) => {
             const sec = st.secs[s];
-            const h = document.createElement('div');
+            const h = st.headPool.pop() || headProto.cloneNode(true);
             h.className = 'ag-head' + (st.revealOk ? ' ag-reveal' : (performance.now() < (st.enterUntil || 0) ? ' ag-entering' : ''));
             // Folia 式题头：左边一个超大的节名，右上角「第几节 / 共几节」编号，底下数量和一条结构线
-            h.innerHTML = '<b></b><span></span><em></em><i></i>';
-            h.firstChild.textContent = sec.name;
+            h.children[0].textContent = sec.name;
             h.children[2].textContent = String(s + 1).padStart(2, '0') + ' / ' + String(st.secs.length).padStart(2, '0');
             h.children[1].textContent = sec.ids.length + ' 首' + (sec.sub ? ' · ' + sec.sub : '');
             return h;
@@ -275,14 +280,15 @@
             }
             if (frag) content.appendChild(frag);
             for (const [id, n] of st.nodes) if (!keep.has(id)) { st.nodes.delete(id); recycle(n); }
-            for (const [s, h] of st.heads) if (!keepHeads.has(s)) { h.remove(); st.heads.delete(s); }
+            for (const [s, h] of st.heads) if (!keepHeads.has(s)) { st.heads.delete(s); recycleHead(h); }
             // 吸顶节标题：最上面那一行属于哪一节（节标题自己还在视野里时不显示，免得叠两层）
             if (st.secs.length > 1) {
                 const r = st.rows[rowAt(top + 2)];
                 const sec = st.secs[r.s];
                 const headVisible = r.type === 'head' && r.y > top - 4;
-                sticky.hidden = headVisible || top < 4;
-                if (!sticky.hidden && stickySec !== r.s) {
+                const hideSticky = headVisible || top < 4;
+                if (sticky.hidden !== hideSticky) sticky.hidden = hideSticky;
+                if (!hideSticky && stickySec !== r.s) {
                     // 换节：节名从滚动方向那边卷进来（往下滚从下面上来，往上滚从上面下来），编号跟着换
                     const prev = stickySec;
                     stickySec = r.s;
@@ -291,15 +297,18 @@
                     sticky.children[1].textContent = sec.ids.length + ' 首';
                     sticky.children[2].textContent = String(r.s + 1).padStart(2, '0') + ' / ' + String(st.secs.length).padStart(2, '0');
                     if (!reduced() && prev >= 0) {
+                        const nextCls = r.s > prev ? 'ag-roll-up' : 'ag-roll-down';
+                        const same = sticky.classList.contains(nextCls);
                         sticky.classList.remove('ag-roll-up', 'ag-roll-down');
-                        void sticky.offsetWidth;
-                        sticky.classList.add(r.s > prev ? 'ag-roll-up' : 'ag-roll-down');
+                        if (same) void sticky.offsetWidth;
+                        sticky.classList.add(nextCls);
                     }
                 }
-            } else sticky.hidden = true;
+            } else if (!sticky.hidden) sticky.hidden = true;
             st.revealOk = !reduced();
             const pr = play.index >= 0 ? rectOf(play.index) : null;
-            locateBtn.hidden = !pr;
+            const hideLocate = !pr;
+            if (locateBtn.hidden !== hideLocate) locateBtn.hidden = hideLocate;
             if (pr) locateBtn.classList.toggle('is-away', pr.y + pr.h < top + 10 || pr.y > top + st.room.height - 10);
         };
         const schedule = (full = true) => { if (full) st.renderDirty = true; if (st.on && !st.raf) st.raf = requestAnimationFrame(render); };
@@ -460,6 +469,7 @@
                 st.nodes.clear();
                 st.heads.clear();
                 st.pool.length = 0;
+                st.headPool.length = 0;
                 st.where.clear();
                 thumbs.destroy();
                 el.remove();

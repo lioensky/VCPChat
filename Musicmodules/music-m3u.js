@@ -89,15 +89,14 @@
 
         const exportPlaylist = async (pl) => {
             if (!pl) return null;
-            const byPath = new Map();
             const byNorm = new Map();
             for (const t of app.playlist || []) {
                 if (!t || !t.path) continue;
-                byPath.set(t.path, t);
-                byNorm.set(norm(t.path), t);
+                const key = norm(t.path);
+                if (!byNorm.has(key)) byNorm.set(key, t);
             }
             const tracks = (pl.tracks || []).map((p) => {
-                const t = byPath.get(p) || byNorm.get(norm(p));
+                const t = byNorm.get(norm(p));
                 return t ? { path: t.path, title: t.title || '', artist: t.artist || '', duration: Number(t.duration) || 0 } : { path: p };
             }).filter((t) => typeof t.path === 'string' && !/^[a-z][a-z0-9+.-]+:\/\//i.test(t.path)); // 云端（WebDAV）的歌别的播放器打不开
             if (!tracks.length) { toast(`「${pl.name}」里没有本机的歌，没什么可导出的`, { kind: 'error' }); return null; }
@@ -164,14 +163,23 @@
             };
             // 保险：拖着悬停时 dragover 每几十毫秒来一次；停了大半秒还没来（按了 Esc、拖到别的窗口没收到 dragleave）就收起，提示不会卡在屏幕上
             let idle = 0;
+            let lastDragOverAt = 0;
             const hideHint = () => {
                 depth = 0;
+                lastDragOverAt = 0;
                 clearTimeout(idle); idle = 0;
                 if (hintRaf) { global.cancelAnimationFrame?.(hintRaf); hintRaf = 0; }
                 if (hint) hint.classList.remove('visible');
             };
-            const onDragEnter = (event) => { if (!isFileDrag(event)) return; depth++; showHint(); };
-            const onDragOver = (event) => { if (!isFileDrag(event)) return; clearTimeout(idle); idle = setTimeout(hideHint, 700); };
+            const onDragEnter = (event) => { if (!isFileDrag(event)) return; if (++depth === 1) showHint(); };
+            const onDragOver = (event) => {
+                if (!isFileDrag(event)) return;
+                const now = Date.now();
+                if (idle && now - lastDragOverAt < 150) return;
+                lastDragOverAt = now;
+                clearTimeout(idle);
+                idle = setTimeout(hideHint, 700);
+            };
             const onDragLeave = (event) => { if (!isFileDrag(event)) return; depth = Math.max(0, depth - 1); if (!depth) hideHint(); };
             const onDrop = (event) => {
                 // 文件夹名也可能带点（「Vol.1」）：用 webkitGetAsEntry 认出文件夹，只看真正的文件

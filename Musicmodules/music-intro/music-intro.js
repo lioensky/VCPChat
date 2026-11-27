@@ -85,6 +85,7 @@
         n.innerA = el('path', { class: 'mi-stroke', 'stroke-width': 1 }, n.scanRings);
         n.innerB = el('path', { class: 'mi-stroke', 'stroke-width': 1 }, n.scanRings);
         n.dots = [0, 1].map(() => el('circle', { r: 2.6, class: 'mi-block' }, n.scanRings));
+        n.scanFadeNodes = [n.white, n.innerA, n.innerB, ...n.dots];
 
         n.cap = el('circle', { r: 3, class: 'mi-block' }, n.scanRings);
         // 扫描收尾：环收到记号大小，字退场，环里画出记号；扫描环就是记号的圆周。
@@ -196,7 +197,8 @@
             dot.setAttribute('cy', (CY + Math.sin(orbit + i * Math.PI) * innerR * 0.86).toFixed(2));
         });
         // 收拢时辅助弧和轨道点退掉，只剩外环
-        for (const node of [n.white, n.innerA, n.innerB, ...n.dots]) node.style.opacity = String(1 - collapse);
+        const fadeOp = String(1 - collapse);
+        for (let i = 0; i < n.scanFadeNodes.length; i += 1) setStyleOp(n.scanFadeNodes[i], fadeOp);
         drawMark(n.scanMarkParts, t, 1.2, 0.26);
         const capA = outerStart + outerSweep;
         n.cap.setAttribute('cx', (CX + Math.cos(capA) * r).toFixed(2));
@@ -210,17 +212,17 @@
             n.scanRings.setAttribute('transform', glitch ? `translate(${CX} ${CY}) scale(1.9) translate(${-CX} ${-CY})` : '');
             n.scanRings.style.filter = glitch ? 'blur(1.4px)' : '';
         }
-        n.scanRings.style.opacity = glitch ? '0.32' : String(keys([[0, 0], [0.04, 0.2], [0.12, 0.65], [0.2, 1]], t));
+        setStyleOp(n.scanRings, glitch ? '0.32' : String(keys([[0, 0], [0.04, 0.2], [0.12, 0.65], [0.2, 1]], t)));
 
         // 字距从很散收拢到正常
-        const tracking = keys([[0, 26], [0.2, 12], [0.4, 5], [0.6, 1.6], [0.8, 0]], t);
-        n.scanText.setAttribute('letter-spacing', tracking.toFixed(2));
+        const tracking = keys([[0, 26], [0.2, 12], [0.4, 5], [0.6, 1.6], [0.8, 0]], t).toFixed(2);
+        if (n._scanTrack !== tracking) { n._scanTrack = tracking; n.scanText.setAttribute('letter-spacing', tracking); }
         const scanLabel = `${label} ${Math.max(0, Math.round(count))} 首`;
         if (n.scanText.textContent !== scanLabel) n.scanText.textContent = scanLabel;
         const textOut = 1 - smooth(progress(t, 1.02, 1.18));
-        n.scanText.style.opacity = String(keys([[0, 0], [0.16, 1]], t) * textOut);
+        setStyleOp(n.scanText, String(keys([[0, 0], [0.16, 1]], t) * textOut));
         if (n.scanSub.textContent !== sub) n.scanSub.textContent = sub;
-        n.scanSub.style.opacity = String(progress(t, 0.5, 0.7) * textOut);
+        setStyleOp(n.scanSub, String(progress(t, 0.5, 0.7) * textOut));
     };
 
     // ---------- 开场 ----------
@@ -256,10 +258,17 @@
             if (n._lastMarkWord !== word) { n._lastMarkWord = word; n.markWord.textContent = word; }
             n.brand.forEach((line, i) => {
                 const p = easeOut(progress(t, 3.3 + i * 0.08, 3.85 + i * 0.08));
-                line.setAttribute('opacity', String(clamp01(p * 3)));
-                line.setAttribute('transform', `translate(${(1 - p) * 60} 0)`);
+                if (line._bp !== p) {
+                    line._bp = p;
+                    line.setAttribute('opacity', String(clamp01(p * 3)));
+                    line.setAttribute('transform', `translate(${(1 - p) * 60} 0)`);
+                }
             });
-            n.mark.setAttribute('transform', `translate(${keys([[2.2, 70], [3.4, 70], [3.9, 0]], t)} 0)`);
+            const markX = keys([[2.2, 70], [3.4, 70], [3.9, 0]], t);
+            if (n._markX !== markX) {
+                n._markX = markX;
+                n.mark.setAttribute('transform', `translate(${markX} 0)`);
+            }
         }
 
         // 身份核验
@@ -302,17 +311,22 @@
             const k = f - frameOf(FULL.welcome);
             const panel = k >= 0 && k < 7 ? [1, 0, 0.28, 0, 1, 1, 1][k] : 1;
             const ink = k >= 0 && k < 7 ? [0, 0, 0.2, 1, 0, 0.25, 1][k] : 1;
-            n.welcomeBlock.style.opacity = String(panel);
-            n.welcomeName.style.opacity = String(panel);
-            n.welcomeHead.style.opacity = String(ink);
-            n.welcomeRule.setAttribute('width', String(256 * easeOut(progress(t, 8.3, 8.7))));
+            const panelStr = String(panel);
+            setStyleOp(n.welcomeBlock, panelStr);
+            setStyleOp(n.welcomeName, panelStr);
+            setStyleOp(n.welcomeHead, String(ink));
+            const wRule = String(256 * easeOut(progress(t, 8.3, 8.7)));
+            if (n._wRule !== wRule) { n._wRule = wRule; n.welcomeRule.setAttribute('width', wRule); }
             const subOn = t >= 8.55 && !(f === frameOf(8.63) || f === frameOf(8.71));
-            n.welcomeSub.style.opacity = subOn ? '1' : '0';
+            setStyleOp(n.welcomeSub, subOn ? '1' : '0');
             const welcomeCount = `曲库 ${Math.max(0, Math.round(ctx.count()))} 首`;
             if (n.welcomeSub.textContent !== welcomeCount) n.welcomeSub.textContent = welcomeCount;
-            n.welcomeMark.style.opacity = t >= 8.4 ? '1' : '0';
+            setStyleOp(n.welcomeMark, t >= 8.4 ? '1' : '0');
             const exit = smooth(progress(t, FULL.exit, FULL.exit + 0.36));
-            n.welcomeInner.setAttribute('transform', `translate(${CX} ${CY}) scale(${1 - 0.46 * exit}) translate(${-CX} ${-CY})`);
+            if (n._wExit !== exit) {
+                n._wExit = exit;
+                n.welcomeInner.setAttribute('transform', `translate(${CX} ${CY}) scale(${1 - 0.46 * exit}) translate(${-CX} ${-CY})`);
+            }
             setStyleOp(n.welcome, String(1 - Math.pow(exit, 3)));
             const welcomeBlur = exit > 0 ? `blur(${(8 * exit).toFixed(2)}px)` : '';
             if (n._welcomeBlur !== welcomeBlur) { n._welcomeBlur = welcomeBlur; n.welcome.style.filter = welcomeBlur; }
@@ -325,14 +339,14 @@
     };
 
     const renderShort = (n, t, ctx) => {
-        n.scan.style.opacity = String(1 - smooth(progress(t, 1.45, 1.75)));
+        setStyleOp(n.scan, String(1 - smooth(progress(t, 1.45, 1.75))));
         renderScan(n, t, {
             speed: 1.5,
             count: ctx.count() * easeOut(progress(t, 0.1, 1.0)),
             sub: ctx.name || ''
         });
         const white = smooth(progress(t, 1.35, 1.8));
-        n.flash.style.opacity = String(white * ctx.flashPeak);
+        setStyleOp(n.flash, String(white * ctx.flashPeak));
         ctx.wipe = smooth(progress(t, 1.8, SHORT.end));
         return 1;
     };
@@ -351,7 +365,11 @@
         const kind = ctx.direction;
         const releaseAt = kind === 'enter' ? TRANSIT.enterRelease : kind === 'exit' ? TRANSIT.exitRelease : TRANSIT.switchGate;
         if (!ctx.released && t >= releaseAt) { ctx.released = true; ctx.release?.(); }
-        n.innerA.setAttribute('d', ''); n.innerB.setAttribute('d', '');
+        if (!n._transitCleared) {
+            n._transitCleared = true;
+            n.innerA.setAttribute('d', '');
+            n.innerB.setAttribute('d', '');
+        }
         // 等加载时圆环一直转
         const spin = (ctx.wait || 0) * 200 * DEG;
         const loading = ctx.waiting && ctx.loadingLabel !== false ? '正在载入舞台' + '.'.repeat(1 + (Math.floor((ctx.wait || 0) * 3) % 3)) : '';
