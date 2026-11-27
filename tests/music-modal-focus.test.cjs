@@ -465,3 +465,57 @@ test('EQ preset & channels dialogs trap navigation keys and cancel stale open rA
         dom.window.close();
     }
 });
+
+test('stats, dupes, folders, track-file and spectrum modals trap navigation keys and cancel stale open rAF', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        let rafSeq = 0;
+        const cancelled = [];
+        window.requestAnimationFrame = () => ++rafSeq;
+        window.cancelAnimationFrame = (id) => cancelled.push(id);
+        let navLeaked = 0;
+        doc.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'Home') navLeaked += 1;
+        });
+        const t1 = { path: 'D:\\Music\\a.flac', title: 'Alpha.flac', artist: 'A', duration: 180 };
+        const t2 = { path: 'D:\\Music\\a.mp3', title: 'Alpha.mp3', artist: 'A', duration: 180 };
+        const app = {
+            playlist: [t1, t2],
+            currentTrackIndex: 0,
+            musicStats: { summary: () => ({ seconds: 0, plays: 0, activeDays: 0, hours: new Array(24).fill(0), tracks: [], daily: {} }), get: () => null },
+            api: {
+                musicLibraryFolders: async () => ({ ok: true, folders: [] }),
+                showMusicInFolder: async () => ({ ok: true }),
+                readMusicAudioFile: () => new Promise(() => {})
+            }
+        };
+        for (const f of ['music-radio.js', 'music-stats-view.js', 'music-dupes.js', 'music-folders.js', 'music-track-file.js', 'music-spectrum.js']) {
+            window.eval(fs.readFileSync(`Musicmodules/${f}`, 'utf8'));
+        }
+        window.MusicStatsView.setupMusicStatsView(app);
+        window.MusicDupes.setupMusicDupes(app);
+        window.MusicFolders.setupMusicFolders(app);
+        window.MusicTrackFile.setupMusicTrackFile(app);
+        window.MusicSpectrum.setupMusicSpectrum(app);
+
+        const checkModal = (openFn, closeSel) => {
+            openFn();
+            const id = rafSeq;
+            doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+            doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true }));
+            doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+            doc.querySelector(closeSel).click();
+            assert.ok(cancelled.includes(id), `closing ${closeSel} cancels pending open rAF`);
+        };
+        checkModal(() => app.openStatsView(), '.mstats .mstats-close');
+        checkModal(() => app.openDupesView(), '.mdupes .mstats-close');
+        checkModal(() => app.openLibraryFolders(), '.mfold .mstats-close');
+        checkModal(() => app.openTrackInfo(0), '.minfo:not(.mfold) .mstats-close');
+        checkModal(() => { app.openSpectrum(0); }, '.mspec .mstats-close');
+        assert.equal(navLeaked, 0, 'none of the 5 modals leak navigation keys to document');
+    } finally {
+        dom.window.close();
+    }
+});
