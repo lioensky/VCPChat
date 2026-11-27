@@ -123,3 +123,26 @@ test('pickSimilar deduplicates duplicate recordings deterministically and dailyM
     assert.equal(ranked.length, 1);
     assert.equal(ranked[0].path, '/local/s.flac', 'local high-res lossless beats mp3 and remote');
 });
+
+test('isInstrumental prefilter preserves exact matches and avoids false positives', () => {
+    const { isInstrumental } = require(path.join(__dirname, '../Musicmodules/music-radio.js'));
+    for (const title of [
+        'Song (Instrumental).flac',
+        'Song (Inst.).mp3',
+        'Song [inst]',
+        'Song - off vocal.wav',
+        'Song (Off-Vocal).flac',
+        'Song Karaoke Ver',
+        'Song (Backing Track)',
+        '晴天 伴奏.flac',
+        '夜曲 (纯音乐版)',
+        '星 (純音樂)',
+        '夏 (カラオケ)',
+        '冬 (オフボーカル)'
+    ]) {
+        assert.equal(isInstrumental({ title }), true, `expected instrumental: ${title}`);
+    }
+    for (const title of ['Instant Love.flac', 'Instagram.mp3', 'Coffee Shop', 'Office Hours', '晴天.flac', 'Instrument']) {
+        assert.equal(isInstrumental({ title }), false, `expected vocal/normal: ${title}`);
+    }
+});

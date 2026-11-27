@@ -240,3 +240,16 @@ test('music-spectrum reopens after mid-read close without stale overwrites and c
     assert.equal(dialogs[dialogs.length - 1].querySelector('.mspec-status').textContent, 'B 读不到');
     window.close();
 });
+
+test('empty musicStats table short-circuits lookups and resumes once a play is recorded', () => {
+    const { app, stats, play } = setup();
+    assert.equal(stats.get(app.playlist[0]), null);
+    assert.equal(stats.affinity(app.playlist[0]), 0);
+    assert.deepEqual(stats.top(5), []);
+    assert.deepEqual(stats.lastPlayed(5), []);
+    assert.deepEqual(stats.forgotten(), []);
+    play(105);
+    assert.equal(stats.get(app.playlist[0]).plays, 1);
+    assert.ok(stats.affinity(app.playlist[0]) > 0);
+    assert.deepEqual(stats.top(5, { minPlays: 1 }), ['C:\\Music\\A.flac']);
+});

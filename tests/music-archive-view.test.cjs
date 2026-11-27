@@ -1576,3 +1576,68 @@ test('archive list render batches viewport reads before edge-class writes and de
     assert.equal(ops.length, 0, 'destroyed list does not respond to global events');
     f.close();
 });
+
+test('archive grain tile encodes a valid PNG without 2D canvas and revokes object URL on destroy', () => {
+    const zlib = require('node:zlib');
+    const createdBlobs = [];
+    const revokedUrls = [];
+    let getContextCalls = 0;
+    const f = fixture({
+        setup: (w) => {
+            w.HTMLCanvasElement.prototype.getContext = () => { getContextCalls += 1; return null; };
+            w.Blob = class CapturedBlob {
+                constructor(parts, opts) { this.parts = parts; this.type = opts?.type || ''; }
+            };
+            w.URL.createObjectURL = (blob) => {
+                const url = `blob:grain-${createdBlobs.length}`;
+                createdBlobs.push({ url, blob });
+                return url;
+            };
+            w.URL.revokeObjectURL = (url) => { revokedUrls.push(url); };
+            w.requestIdleCallback = (fn) => { fn(); return 1; };
+        }
+    });
+    assert.equal(getContextCalls, 0, 'grain PNG encoding must not touch 2D canvas');
+    assert.equal(createdBlobs.length, 1, 'created one grain PNG blob');
+    assert.equal(createdBlobs[0].blob.type, 'image/png');
+    const buf = Buffer.from(createdBlobs[0].blob.parts[0]);
+    assert.equal(buf.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(buf.readUInt32BE(16), 160);
+    assert.equal(buf.readUInt32BE(20), 160);
+    const idatOff = 33;
+    const idatLen = buf.readUInt32BE(idatOff);
+    const inflated = zlib.inflateSync(buf.subarray(idatOff + 8, idatOff + 8 + idatLen));
+    assert.equal(inflated.length, 160 * 321);
+    if (typeof zlib.crc32 === 'function') {
+        assert.equal(zlib.crc32(buf.subarray(12, 29)), buf.readUInt32BE(29));
+        assert.equal(zlib.crc32(buf.subarray(idatOff + 4, idatOff + 8 + idatLen)), buf.readUInt32BE(idatOff + 8 + idatLen));
+    }
+    f.view.destroy();
+    assert.ok(revokedUrls.includes(createdBlobs[0].url), 'destroy revokes grain blob URL');
+    f.close();
+});
+
+test('archive wall createThumbs ignores in-flight completions and skips callbacks after destroy', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    const images = [];
+    w.Image = class FakeImage {
+        constructor() { images.push(this); }
+        set src(v) { this._src = v; }
+        get src() { return this._src; }
+    };
+    w.eval(read('Musicmodules/music-archive/archive-wall.js'));
+    let readyCalls = 0;
+    const thumbs = w.MusicArchiveWall.createThumbs(() => { readyCalls += 1; });
+    assert.equal(thumbs.get('file:///cover.jpg', 180), '');
+    assert.equal(images.length, 1);
+    thumbs.destroy();
+    // 销毁后在途图片完成加载，不应触发 onReady 或重新入队
+    images[0].naturalWidth = 100;
+    images[0].naturalHeight = 100;
+    images[0].onload();
+    assert.equal(readyCalls, 0, 'destroyed thumb cache suppresses late onReady callback');
+    assert.equal(thumbs.get('file:///cover2.jpg', 180), '');
+    assert.equal(images.length, 1, 'destroyed thumb cache does not enqueue new loads');
+    w.close();
+});
