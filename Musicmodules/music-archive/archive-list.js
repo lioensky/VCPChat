@@ -50,47 +50,14 @@
             + `<g clip-path="url(#archive-brand-clip)" fill="none" stroke="currentColor"><path d="${outer}" stroke-width="${(w * 0.62).toFixed(2)}"/><path d="${inner}" stroke-width="${(w * 0.45).toFixed(2)}" opacity=".6"/></g>`
             + `<circle cx="50" cy="50" r="${R}" fill="none" stroke="currentColor" stroke-width="${w}"/><circle cx="50" cy="50" r="${(w * 1.5).toFixed(2)}" fill="currentColor"/></svg>`;
     };
-    const TEMPLATE = `
-        <div class="archive-list-brand">
-            <h1 class="archive-list-brand-title" data-l="brandTitle"><span></span></h1>
-            <div class="archive-list-brand-sub">${brandMark()}<span>MUSIC DATABASE</span></div>
-        </div>
-        <div class="archive-list-toolbar">
-            <label class="archive-list-search">
-                <span class="archive-glyph-search" aria-hidden="true"></span>
-                <input type="search" data-l="input" placeholder="标题、歌手、专辑、拼音首字母" autocomplete="off" spellcheck="false" aria-label="检索曲目" aria-keyshortcuts="/">
-                <button type="button" class="archive-list-clear" data-l="clear" aria-label="清除检索" title="清除检索（Esc）"><svg class="archive-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-                <div class="archive-list-recentq mf-glass" data-l="recentQ" role="listbox" aria-label="最近检索" hidden></div>
-            </label>
-            <div class="archive-list-import" data-l="importTools">
-                <button type="button" class="archive-list-import-toggle" data-l="importToggle" aria-label="导入音乐" title="导入音乐" aria-expanded="false" aria-controls="archive-list-import-options"><span aria-hidden="true">+</span></button>
-                <div class="archive-list-import-options mf-glass" data-l="importOptions" id="archive-list-import-options" role="group" aria-label="导入方式" hidden>
-                    <button type="button" data-act="add-local">添加本地文件夹</button>
-                    <button type="button" data-act="add-cloud">从 WebDAV 导入</button>
-                </div>
-            </div>
-        </div>
-        <div class="archive-list-kinds" role="tablist" data-l="kinds">
-            ${KINDS.map(([k, zh, en]) => `<button type="button" role="tab" data-kind="${k}" title="按${zh === '全部' ? '曲名' : zh}浏览">${zh}</button>`).join('')}
-            <span class="archive-list-sort">
-                <button type="button" data-l="sortBtn" aria-haspopup="menu" aria-expanded="false" title="排序方式（阵列跟着重排）"><span class="archive-glyph-sort" aria-hidden="true"></span><span data-l="sortName">标题</span></button>
-                <span class="archive-list-sort-menu mf-glass" role="menu" data-l="sortMenu" hidden>
-                    ${SORTS.map(([k, zh, en]) => `<button type="button" role="menuitemradio" data-sort="${k}" aria-checked="false"><span>${zh}</span></button>`).join('')}
-                </span>
-            </span>
-        </div>
-        <div class="archive-list-cols" data-l="cols"><button type="button" data-col="added" title="按添加时间排">编号</button><button type="button" data-col="title" data-l="colTitle" title="按标题排（再点一次按歌手）">曲目 / TITLE</button><button type="button" data-col="duration" title="按时长排">时长 / TIME</button></div>
-        <div class="archive-list-newpl" data-l="newPl" hidden><button type="button" data-pl="new">＋ 新建歌单</button></div>
-        <div class="archive-list-viewport" data-l="viewport" tabindex="0" role="listbox" aria-label="曲目目录">
-            <div class="archive-list-sticky" data-l="sticky" aria-hidden="true"></div>
-            <div class="archive-list-spacer" data-l="spacer"></div>
-            <div class="archive-list-empty" data-l="empty" role="status"></div>
-        </div>
-        <div class="archive-list-thumb" data-l="thumb" aria-hidden="true" hidden></div>
-        <div class="archive-list-shelf" data-l="shelf" hidden></div>
-        <div class="archive-list-foot" aria-live="polite">
-            <b data-l="pos">000</b><i data-l="sep">/</i><span data-l="tot">首</span><em data-l="multiNote" hidden></em><button type="button" class="archive-list-smart" data-l="saveSmart" hidden title="把这条检索存成歌单：以后曲库、听歌记录变了，歌单自己跟着变">存为智能歌单</button>
-        </div>`;
+    const TEMPLATE = `<div class="archive-list-brand"><h1 class="archive-list-brand-title" data-l="brandTitle"><span></span></h1><div class="archive-list-brand-sub">${brandMark()}<span>MUSIC DATABASE</span></div></div>`
+        + `<div class="archive-list-toolbar"><label class="archive-list-search"><span class="archive-glyph-search" aria-hidden="true"></span><input type="search" data-l="input" placeholder="标题、歌手、专辑、拼音首字母" autocomplete="off" spellcheck="false" aria-label="检索曲目" aria-keyshortcuts="/"><button type="button" class="archive-list-clear" data-l="clear" aria-label="清除检索" title="清除检索（Esc）"><svg class="archive-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div class="archive-list-recentq mf-glass" data-l="recentQ" role="listbox" aria-label="最近检索" hidden></div></label><div class="archive-list-import" data-l="importTools"><button type="button" class="archive-list-import-toggle" data-l="importToggle" aria-label="导入音乐" title="导入音乐" aria-expanded="false" aria-controls="archive-list-import-options"><span aria-hidden="true">+</span></button><div class="archive-list-import-options mf-glass" data-l="importOptions" id="archive-list-import-options" role="group" aria-label="导入方式" hidden><button type="button" data-act="add-local">添加本地文件夹</button><button type="button" data-act="add-cloud">从 WebDAV 导入</button></div></div></div>`
+        + `<div class="archive-list-kinds" role="tablist" data-l="kinds">${KINDS.map(([k, zh]) => `<button type="button" role="tab" data-kind="${k}" title="按${zh === '全部' ? '曲名' : zh}浏览">${zh}</button>`).join('')}<span class="archive-list-sort"><button type="button" data-l="sortBtn" aria-haspopup="menu" aria-expanded="false" title="排序方式（阵列跟着重排）"><span class="archive-glyph-sort" aria-hidden="true"></span><span data-l="sortName">标题</span></button><span class="archive-list-sort-menu mf-glass" role="menu" data-l="sortMenu" hidden>${SORTS.map(([k, zh]) => `<button type="button" role="menuitemradio" data-sort="${k}" aria-checked="false"><span>${zh}</span></button>`).join('')}</span></span></div>`
+        + `<div class="archive-list-cols" data-l="cols"><button type="button" data-col="added" title="按添加时间排">编号</button><button type="button" data-col="title" data-l="colTitle" title="按标题排（再点一次按歌手）">曲目 / TITLE</button><button type="button" data-col="duration" title="按时长排">时长 / TIME</button></div>`
+        + `<div class="archive-list-newpl" data-l="newPl" hidden><button type="button" data-pl="new">＋ 新建歌单</button></div>`
+        + `<div class="archive-list-viewport" data-l="viewport" tabindex="0" role="listbox" aria-label="曲目目录"><div class="archive-list-sticky" data-l="sticky" aria-hidden="true"></div><div class="archive-list-spacer" data-l="spacer"></div><div class="archive-list-empty" data-l="empty" role="status"></div></div>`
+        + `<div class="archive-list-thumb" data-l="thumb" aria-hidden="true" hidden></div><div class="archive-list-shelf" data-l="shelf" hidden></div>`
+        + `<div class="archive-list-foot" aria-live="polite"><b data-l="pos">000</b><i data-l="sep">/</i><span data-l="tot">首</span><em data-l="multiNote" hidden></em><button type="button" class="archive-list-smart" data-l="saveSmart" hidden title="把这条检索存成歌单：以后曲库、听歌记录变了，歌单自己跟着变">存为智能歌单</button></div>`;
 
     /*
      * opts: {
@@ -241,30 +208,27 @@
             }
             relayout();
         };
-        // 目录被拖窄时，分类那一行收紧间距、去掉斜线，免得和右端的排序/搜索/添加图标挤在一起。
-        let cachedVpH = 0;
+        let cachedVpH = 0, syncedTop = 0, syncedTopFresh = false, syncedTopQueued = false, lastRenderTop = -1, lastRenderRow = -2;
         const viewportHeight = () => {
             if (cachedVpH > 0) return cachedVpH;
             const h = r.viewport.clientHeight;
             if (h > 0) cachedVpH = h;
             return h || 600;
         };
+        const recordScrollTop = (top) => {
+            syncedTop = top; syncedTopFresh = true;
+            if (!syncedTopQueued) { syncedTopQueued = true; Promise.resolve().then(() => { syncedTopQueued = syncedTopFresh = false; }); }
+        };
+        const readScrollTop = () => (syncedTopFresh ? syncedTop : r.viewport.scrollTop);
         const paintSlim = (entries) => {
             let elW = -1;
             if (Array.isArray(entries)) {
                 for (let i = 0; i < entries.length; i++) {
-                    const entry = entries[i];
-                    if (entry.target === r.viewport) {
-                        const h = entry.contentRect ? entry.contentRect.height : 0;
-                        cachedVpH = h > 0 ? h : 0;
-                    } else if (entry.target === el) {
-                        const box = entry.borderBoxSize && entry.borderBoxSize[0];
-                        elW = box ? box.inlineSize : (entry.contentRect ? entry.contentRect.width : -1);
-                    }
+                    const e = entries[i];
+                    if (e.target === r.viewport) cachedVpH = e.contentRect?.height > 0 ? e.contentRect.height : 0;
+                    else if (e.target === el) elW = e.borderBoxSize?.[0]?.inlineSize ?? e.contentRect?.width ?? -1;
                 }
-            } else {
-                cachedVpH = 0;
-            }
+            } else cachedVpH = 0;
             if (elW < 0) elW = el.offsetWidth;
             el.classList.toggle('slim', elW > 0 && elW < 340);
         };
@@ -430,25 +394,18 @@
         const rebuild = ({ steady = false } = {}) => {
             const index = opts.getIndex();
             if (!index) return;
-            // 在写入任何目录 DOM 之前按需读取视口几何：空曲库首次构建跳过 clientHeight/scrollTop，避免启动同步强制布局
             const vpVisible = el.isConnected && !el.hidden;
             const needAnchor = Boolean(steady && state.rows.length);
-            let vpRead = false;
-            let vpH = 600;
-            let vpTop = 0;
+            let vpRead = false, vpH = 600, vpTop = 0, anchor = null;
             const readViewportOnce = () => {
                 if (vpRead || !vpVisible) return;
-                vpRead = true;
-                vpH = viewportHeight();
-                vpTop = r.viewport.scrollTop;
+                vpRead = true; vpH = viewportHeight(); vpTop = r.viewport.scrollTop;
             };
-            let anchor = null;
             if (needAnchor) {
                 readViewportOnce();
                 if (state.selectedRow >= 0 && state.rows[state.selectedRow]) {
                     const sy = state.offsets[state.selectedRow];
                     if (sy >= vpTop && sy + ROW_H <= vpTop + vpH - EDGE_FADE) {
-                        // 选中的那行就在眼前：让它留在原处（启动时曲库一批批进来，目录不该漂到别的字母去）
                         const row = state.rows[state.selectedRow];
                         anchor = { i: row.i, ctx: row.ctx, dy: sy - vpTop };
                     }
@@ -551,7 +508,12 @@
                     vpTop = nextTop;
                 }
             }
+            if (vpVisible) recordScrollTop(vpTop);
             render(vpVisible ? { top: vpTop, height: vpH } : undefined);
+            if (vpVisible && state.rows.length) {
+                lastRenderTop = vpTop;
+                lastRenderRow = state.selectedRow;
+            }
         };
 
         /* 二分找 y 所在的行 */
@@ -730,7 +692,7 @@
 
         const fullName = (t) => {
             if (!t) return '';
-            const title = String(t.title || '').replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '') || '未知标题';
+            const title = String(t.title || '').replace(EXT_RE, '') || '未知标题';
             const meta = [t.artist, t.album].filter(Boolean).join(' · ');
             const s = app.musicStats?.get?.(t);
             let heard = '';
@@ -741,7 +703,6 @@
             }
             return [title, meta, heard].filter(Boolean).join('\n');
         };
-        /* 哪些分组标题下有正在放的歌：按「正在放的那首 + 这一版目录」缓存，滚动时不重复扫 */
         let liveCache = { playing: null, rows: null, heads: new Set() };
         const playingHeads = () => {
             if (liveCache.playing === state.playing && liveCache.rows === state.rows) return liveCache.heads;
@@ -765,7 +726,6 @@
             node.classList.toggle('playing', current && Boolean(app.isPlaying));
             if (row.type === 'head') {
                 node.classList.toggle('stuck', k === state.stuck);
-                // 正在放的歌在这一组里：组标题前亮一个小点
                 const live = !isLetter(row) && playingHeads().has(k);
                 node.classList.toggle('has-playing', live);
                 node.classList.toggle('live-on', live && Boolean(app.isPlaying));
@@ -773,15 +733,14 @@
             if (row.type === 'track') {
                 const failed = app.failedTracks instanceof Map ? app.failedTracks.get(tracks()[row.i]) : null;
                 node.classList.toggle('bad', Boolean(failed));
-                // 失败原因立刻更新；普通曲目悬停提示推迟到 pointerover 时按需计算，避免滚动每帧对 30 行跑正则与日期格式化
                 if (failed) {
                     const msg = `上次没能播放：${failed}`;
                     if (node.title !== msg) node.title = msg;
+                    node.dataset.tipBad = '1';
                 } else if (node.dataset.tipBad === '1') {
                     node.removeAttribute('title');
                     delete node.dataset.tipBad;
                 }
-                if (failed) node.dataset.tipBad = '1';
                 const picked = multi.size > 0 && multi.has(keyOf(row));
                 node.classList.toggle('picked', picked);
                 node.setAttribute('aria-selected', String(on || picked));
@@ -1069,13 +1028,19 @@
             const moved = k !== state.selectedRow;
             state.selectedRow = k;
             const h = viewportHeight();
-            let top = r.viewport.scrollTop;
+            const wasFresh = syncedTopFresh;
+            let top = readScrollTop();
             if (!quiet && (moved || center) && k >= 0) {
                 const y = state.offsets[k];
                 const outOfView = y < top || y + ROW_H > top + h - EDGE_FADE;
                 top = scrollToRow(k, { center: center || outOfView, top, height: h });
+                recordScrollTop(top);
+            } else if (wasFresh && !moved && !center && state.rendered.size > 0 && lastRenderTop === top && lastRenderRow === k) {
+                return;
             }
             render({ top, height: h }); // 当场画，避免阵列和目录高亮差一帧，同时复用刚才读过的 top/height
+            lastRenderTop = top;
+            lastRenderRow = k;
         };
         const inView = (k) => {
             const vp = r.viewport;
@@ -2045,10 +2010,17 @@
             const k = findRow(state.selected, null);
             if (k >= 0) state.selectedRow = k;
             const back = kindScroll.get(kind);
+            const vpH = viewportHeight();
             if (back && back.selected === state.selected && back.query === state.query) {
-                r.viewport.scrollTop = Math.min(back.top, Math.max(0, r.viewport.scrollHeight - r.viewport.clientHeight));
-                render();
-            } else if (k >= 0) scrollToRow(k, { center: true });
+                const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
+                const targetTop = Math.min(back.top, Math.max(0, totalH - vpH));
+                r.viewport.scrollTop = targetTop;
+                recordScrollTop(targetTop);
+                render({ top: targetTop, height: vpH });
+            } else if (k >= 0) {
+                const nextTop = scrollToRow(k, { center: true, top: readScrollTop(), height: vpH });
+                recordScrollTop(nextTop);
+            }
         };
 
         /*
@@ -2064,26 +2036,30 @@
             let h = -1;
             for (const hk of state.heads) { if (hk <= k) h = hk; else break; }
             const vp = r.viewport;
+            const vpH = viewportHeight();
             const top = h >= 0 ? state.offsets[h] : state.offsets[k] - LABEL_H;
             // 组太长、这首在一屏以外时，以这首为准居中
-            if (state.offsets[k] + ROW_H - top <= (vp.clientHeight || 600)) vp.scrollTop = Math.max(0, top);
-            else scrollToRow(k, { center: true });
+            if (state.offsets[k] + ROW_H - top <= vpH) {
+                const targetTop = Math.max(0, top);
+                vp.scrollTop = targetTop;
+                recordScrollTop(targetTop);
+            } else {
+                const targetTop = scrollToRow(k, { center: true, top: readScrollTop(), height: vpH });
+                recordScrollTop(targetTop);
+            }
             pickRow(k);
             r.viewport.focus({ preventScroll: true });
             return true;
         };
 
-        // 放不出来的歌标灰（播放器在加载失败 / 恢复时发这个事件）
         const onTrackHealth = () => { for (const [k, node] of state.rendered) paintRow(node, state.rows[k], k); };
-        document.addEventListener('music-track-health', onTrackHealth);
-        // 喜欢 / 取消喜欢：行尾的小心形要重画（行内容是按需生成的，扔掉已画的行让它重建）
-        // 听歌记录变了：「最近」那页的最常听 / 很久没听跟着更新（攒一下再重排，不在播放中途频繁重建）
         let statsTimer = null;
         const onStatsChange = () => {
             if (state.kind !== 'recent' || statsTimer) return;
             statsTimer = setTimeout(() => { statsTimer = null; if (state.kind === 'recent') rebuild({ steady: true }); }, 800);
         };
-        const onLikeChange = () => { for (const node of state.rendered.values()) node.remove(); state.rendered.clear(); render(); };
+        const onLikeChange = () => { for (const node of state.rendered.values()) recycleNode(node); state.rendered.clear(); render(); };
+        document.addEventListener('music-track-health', onTrackHealth);
         document.addEventListener('music-stats-change', onStatsChange);
         document.addEventListener('music-like-change', onLikeChange);
 
@@ -2094,10 +2070,8 @@
             if (kindMarkRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(kindMarkRaf); kindMarkRaf = 0; }
             if (statsTimer) { clearTimeout(statsTimer); statsTimer = null; }
             if (state.raf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(state.raf); state.raf = 0; }
-            kindResizeObserver?.disconnect();
-            kindResizeObserver = null;
-            slimResizeObserver?.disconnect();
-            slimResizeObserver = null;
+            kindResizeObserver?.disconnect(); kindResizeObserver = null;
+            slimResizeObserver?.disconnect(); slimResizeObserver = null;
             document.removeEventListener('music-track-health', onTrackHealth);
             document.removeEventListener('music-stats-change', onStatsChange);
             document.removeEventListener('music-like-change', onLikeChange);

@@ -44,9 +44,11 @@
         document.body.appendChild(overlay);
 
         let done = false;
+        let openRaf = 0;
         const finish = (value) => {
             if (done) return;
             done = true;
+            if (openRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(openRaf); openRaf = 0; }
             global.removeEventListener('keydown', onKey, true);
             overlay.classList.remove('visible');
             // 留给合上的动画（流体套件或 .2s 淡出）
@@ -56,15 +58,21 @@
             }
             resolve(value);
         };
-        // 捕获阶段拦住：Esc 只关这个框，不会顺带关掉抽屉、退出舞台。
+        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
+        // 捕获阶段拦住：Esc 只关这个框，方向键与单字母快捷键也不穿透到背后的档案阵列/舞台。
         const onKey = (e) => {
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(false); }
             else if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(document.activeElement !== cancelBtn); }
             else if (e.key === 'Tab') {
                 e.preventDefault();
+                e.stopPropagation();
                 (document.activeElement === confirmBtn ? cancelBtn : confirmBtn).focus();
-            } else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
-                // 单字母快捷键（空格播放、/ 搜索…）在框开着时不该生效
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                e.stopPropagation();
+                (document.activeElement === confirmBtn ? cancelBtn : confirmBtn).focus();
+            } else if (NAV_KEYS.has(e.key) || (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1)) {
+                // 单字母与导航快捷键（空格播放、/ 搜索、方向键翻阵列…）在框开着时不该生效
                 e.stopPropagation();
             }
         };
@@ -74,7 +82,8 @@
         overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(false); });
 
         // 先落到页面里再加 visible，过渡和流体动作才会播。
-        requestAnimationFrame(() => {
+        openRaf = requestAnimationFrame(() => {
+            openRaf = 0;
             if (done) return;
             overlay.classList.add('visible');
             confirmBtn.focus({ preventScroll: true });

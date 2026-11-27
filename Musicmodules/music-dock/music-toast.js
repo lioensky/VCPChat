@@ -26,8 +26,25 @@
     );
 
     let layer = null;
+    let posX = null;
+    let posMax = null;
     const toasts = new Map(); // key -> entry
     let seq = 0;
+
+    const applyLayerPosition = (node) => {
+        if (!node) return;
+        if (posX !== null) node.style.setProperty('--md-toast-x', `${posX}px`);
+        if (posMax !== null) node.style.setProperty('--md-toast-max', `${posMax}px`);
+    };
+
+    const setPosition = (x, maxW) => {
+        const nx = Number.isFinite(x) ? Math.round(x) : null;
+        const nw = Number.isFinite(maxW) ? Math.round(maxW) : null;
+        if (nx === posX && nw === posMax) return;
+        posX = nx;
+        posMax = nw;
+        if (layer && layer.isConnected) applyLayerPosition(layer);
+    };
 
     const ensureLayer = () => {
         if (layer && layer.isConnected) return layer;
@@ -35,6 +52,7 @@
         layer.className = 'mtst-layer';
         layer.setAttribute('role', 'region');
         layer.setAttribute('aria-label', '提示');
+        applyLayerPosition(layer);
         document.body.appendChild(layer);
         return layer;
     };
@@ -57,6 +75,7 @@
             startedAt: 0,
             timer: null,
             delayTimer: null,
+            inRaf: 0,
             countdown: null,
             tick: null,
             hovered: false
@@ -144,7 +163,10 @@
             render();
             host.appendChild(entry.el);
             entry.shown = true;
-            requestAnimationFrame(() => { if (!entry.closed) entry.el?.classList.add('mtst-in'); });
+            entry.inRaf = requestAnimationFrame(() => {
+                entry.inRaf = 0;
+                if (!entry.closed) entry.el?.classList.add('mtst-in');
+            });
             entry.el.addEventListener('pointerenter', () => { entry.hovered = true; pause(); });
             entry.el.addEventListener('pointerleave', () => { entry.hovered = false; arm(); });
             entry.el.addEventListener('click', (event) => {
@@ -159,6 +181,7 @@
             entry.closed = true;
             clearTimers();
             clearTimeout(entry.delayTimer);
+            if (entry.inRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(entry.inRaf); entry.inRaf = 0; }
             if (toasts.get(key) === entry) toasts.delete(key);
             const el = entry.el;
             if (!el) return;
@@ -171,8 +194,11 @@
             const patch = normalize(next);
             const prevKind = kind();
             const prevHadProgress = prevKind === 'progress' && Number.isFinite(entry.opts.progress);
-            const structureChanged = 'kind' in patch || 'icon' in patch || 'action' in patch || 'closable' in patch;
-            const timingChanged = 'duration' in patch || 'kind' in patch || 'action' in patch;
+            const nextKind = 'kind' in patch ? (DEFAULT_MS[patch.kind] !== undefined ? patch.kind : 'info') : prevKind;
+            const nextIcon = 'icon' in patch ? patch.icon : entry.opts.icon;
+            const nextClosable = 'closable' in patch ? patch.closable : entry.opts.closable;
+            const structureChanged = nextKind !== prevKind || nextIcon !== entry.opts.icon || 'action' in patch || nextClosable !== entry.opts.closable;
+            const timingChanged = 'duration' in patch || nextKind !== prevKind || 'action' in patch || (nextKind !== 'progress' && 'message' in patch);
             entry.opts = { ...entry.opts, ...patch };
             if (timingChanged) { entry.remaining = 0; entry.countdown = null; }
             if (!entry.shown) return;
@@ -180,7 +206,7 @@
             if (!structureChanged && prevHadProgress === nextHasProgress && entry.el) {
                 if ('message' in patch) {
                     const msgEl = entry.el.querySelector('.mtst-msg');
-                    if (msgEl) msgEl.textContent = entry.opts.message || '';
+                    if (msgEl && msgEl.textContent !== (entry.opts.message || '')) msgEl.textContent = entry.opts.message || '';
                 }
                 if (nextHasProgress && 'progress' in patch) {
                     const barEl = entry.el.querySelector('.mtst-bar > span');
@@ -212,5 +238,5 @@
     const dismiss = (id) => toasts.get(String(id))?.close();
     const clear = () => [...toasts.values()].forEach((t) => t.close());
 
-    global.MusicToast = Object.freeze({ show, dismiss, clear });
+    global.MusicToast = Object.freeze({ show, dismiss, clear, setPosition });
 })(window);

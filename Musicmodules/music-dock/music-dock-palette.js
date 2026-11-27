@@ -132,7 +132,7 @@
         const box = root.querySelector('.md-cmd-box');
         const foot = root.querySelector('.md-cmd-foot');
 
-        const state = { open: false, items: [], active: 0, lastFocus: null, closeTimer: null, openRaf: 0 };
+        const state = { open: false, items: [], active: 0, lastFocus: null, closeTimer: null, openRaf: 0, slideRaf: 0, capRect: null };
 
         // ───────── 命令表 ─────────
         const panelCmd = (tab, iconName, words) => ({
@@ -510,6 +510,19 @@
                 + `</span><span class="md-cmd-run">${icon('corner-down-left', 13)}${item.queueable ? '播放' : '运行'}</span></button>`
         );
 
+        const flushSlide = (scroll) => {
+            if (!state.open) return;
+            const row = list.querySelector(`[data-i="${state.active}"]`);
+            if (!row) return;
+            // 选中的那一行背后是一滴玻璃，上下键换行时流过去（延后到动画帧读取 offsetTop/offsetHeight，避免每次按键刚写完 innerHTML 就触发全页强制布局）
+            if (global.MusicFluid?.slide) {
+                let drop = list.querySelector(':scope > .md-cmd-drop');
+                if (!drop) { drop = document.createElement('i'); drop.className = 'md-cmd-drop'; drop.setAttribute('aria-hidden', 'true'); list.appendChild(drop); }
+                global.MusicFluid.slide(drop, { top: row.offsetTop, height: row.offsetHeight }, { key: 'md-cmd', axis: 'y', lead: 140, trail: 300 });
+            }
+            if (scroll) row.scrollIntoView?.({ block: 'nearest' });
+        };
+
         const syncActive = (scroll = true) => {
             const prev = list.querySelector('.md-cmd-row.md-act');
             if (prev) { prev.classList.remove('md-act'); prev.setAttribute('aria-selected', 'false'); }
@@ -518,14 +531,14 @@
             row.classList.add('md-act');
             row.setAttribute('aria-selected', 'true');
             input.setAttribute('aria-activedescendant', row.id);
-            // 选中的那一行背后是一滴玻璃，上下键换行时流过去（共用套件；列表重画也接着上一次的位置流）
-            if (global.MusicFluid?.slide) {
-                let drop = list.querySelector(':scope > .md-cmd-drop');
-                if (!drop) { drop = document.createElement('i'); drop.className = 'md-cmd-drop'; drop.setAttribute('aria-hidden', 'true'); list.appendChild(drop); }
-                global.MusicFluid.slide(drop, { top: row.offsetTop, height: row.offsetHeight }, { key: 'md-cmd', axis: 'y', lead: 140, trail: 300 });
-            }
             foot.hidden = !state.items[state.active]?.queueable;
-            if (scroll) row.scrollIntoView?.({ block: 'nearest' });
+            if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
+            if (global.MusicFluid?.slide || scroll) {
+                state.slideRaf = requestAnimationFrame(() => {
+                    state.slideRaf = 0;
+                    flushSlide(scroll);
+                });
+            }
         };
 
         const remember = (item) => {
@@ -560,13 +573,14 @@
         const place = () => {
             const cap = host.querySelector('.md-cap');
             const rect = cap?.getBoundingClientRect();
+            state.capRect = rect && rect.width ? rect : null;
             // 搜索框从播放条上方鼓出来：底边贴着播放条上沿再留 14px，播放条本身留在原处、不被遮。
             const gap = rect && rect.height ? Math.max(12, global.innerHeight - rect.top + 14) : 110;
             root.style.setProperty('--md-cmd-bottom', `${Math.round(gap)}px`);
             if (rect && rect.width) root.style.setProperty('--md-cmd-origin-x', `${Math.round(rect.left + rect.width / 2)}px`);
         };
         function open(initial = '') {
-            if (state.open) { input.focus(); input.select(); return; }
+            if (state.open) { input.focus({ preventScroll: true }); input.select(); return; }
             closeOthers?.();
             state.open = true;
             state.lastFocus = document.activeElement;
@@ -581,16 +595,18 @@
                 state.openRaf = 0;
                 if (!state.open) return;
                 root.classList.add('md-open');
-                // 搜索面板从播放条顶边长出来
-                const cap = host.querySelector('.md-cap')?.getBoundingClientRect();
+                // 搜索面板从播放条顶边长出来；复用 place() 已量好的播放条位置，避免写完 md-open 立刻重排
+                const cap = state.capRect || host.querySelector('.md-cap')?.getBoundingClientRect();
                 if (cap && cap.width) global.MusicFluid?.bud(box, { x: cap.left + cap.width / 2, y: cap.top + 6 });
             });
-            input.focus();
+            input.focus({ preventScroll: true });
         }
         function close(restoreFocus = true) {
             if (!state.open) return;
             state.open = false;
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
+            if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
+            state.capRect = null;
             root.classList.remove('md-open');
             document.body.classList.remove('music-dock-cmd-open');
             state.closeTimer = setTimeout(() => { state.closeTimer = null; if (!state.open) root.hidden = true; }, 200);
@@ -671,6 +687,7 @@
             destroy() {
                 close(false);
                 if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
+                if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
                 if (state.closeTimer) { clearTimeout(state.closeTimer); state.closeTimer = null; }
                 if (resizeRaf) { global.cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
                 document.removeEventListener('keydown', onGlobalKey, true);

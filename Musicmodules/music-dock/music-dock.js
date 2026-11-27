@@ -1520,12 +1520,20 @@
             };
             widthTimer = requestAnimationFrame(step);
         };
-        cleanups.push(() => cancelAnimationFrame(widthTimer));
-        const syncShift = () => {
+        let mistLayoutRaf = 0;
+        const scheduleFluidLayout = () => {
+            if (!fluid || mistLayoutRaf || state.destroyed) return;
+            mistLayoutRaf = requestAnimationFrame(() => {
+                mistLayoutRaf = 0;
+                if (!state.destroyed) fluid?.layout();
+            });
+        };
+        cleanups.push(() => { cancelAnimationFrame(widthTimer); cancelAnimationFrame(mistLayoutRaf); mistLayoutRaf = 0; });
+        const syncShift = (preEdges) => {
             const vw = global.innerWidth || 0;
             const natural = Math.min(640, Math.max(0, vw - 32)); // 和 CSS 的 --md-bar-w 同一个算式
             const open = state.panelOpen && vw >= COMPACT_BELOW;
-            const { listRight = 0, lyricsLeft = 0 } = archiveEdges(vw) || {};
+            const { listRight = 0, lyricsLeft = 0 } = (preEdges !== undefined ? preEdges : archiveEdges(vw)) || {};
             const edge = listRight > 0 && listRight < vw * 0.5 ? listRight : 0;
             const betweenPanes = listRight > 0 && lyricsLeft > listRight;
             const lo = edge ? edge + LIST_GAP : 12;
@@ -1570,9 +1578,9 @@
             document.body.classList.toggle('music-dock-beside-lyrics', lyricsGap >= lyricsClearance - 0.5);
             const mistRoom = betweenPanes ? Math.min(left - listRight, lyricsGap) : left - edge;
             const mistPad = betweenPanes || edge ? `${Math.round(Math.max(0, mistRoom))}px` : '';
-            if (host.style.getPropertyValue('--md-mist-pad') !== mistPad) {
+            const mistChanged = host.style.getPropertyValue('--md-mist-pad') !== mistPad;
+            if (mistChanged) {
                 if (mistPad) host.style.setProperty('--md-mist-pad', mistPad); else host.style.removeProperty('--md-mist-pad');
-                fluid?.layout();
             }
             // 首页按抽屉占掉的宽度重排（archive-view 的 resize 读 roomRight），区块让开，不被抽屉盖住
             roomRight = open ? DRAWER_W : 0;
@@ -1580,17 +1588,22 @@
             const shift = vw > 0 && barW ? left - (vw / 2 - barW / 2) : 0;
             host.style.setProperty('--md-shift', `${Math.round(shift)}px`);
             host.classList.toggle('md-shifted', shift < 0);
+            // 等 --md-bar-w / --md-mist-pad / --md-shift 全部写完后在下一帧重排流体层，避免写完立刻 getComputedStyle 同步回流
+            if (mistChanged) scheduleFluidLayout();
             // 提示层挂在 body 上：跟着播放条的中心走，宽度不伸进抽屉。
             const cx = vw / 2 + shift;
             const rightLimit = (open ? vw - DRAWER_W : vw) - 8;
             const maxW = Math.max(200, 2 * Math.min(cx - 8, rightLimit - cx));
             if (vw > 0) placeToasts(Math.round(cx), Math.round(maxW));
         };
-        // 提示层的位置写在一条只匹配 .mtst-layer 的样式规则里，不写在 body 上：
-        // body 上的自定义属性会让整页（曲库一万行）重算样式，开抽屉那一下要多花几十毫秒。
+        // 直接更新 .mtst-layer 自身行内变量，避免每次开关抽屉重写 <style> 触发整页样式表失效重算。
         let toastPos = null;
         let toastSheet = '';
         const placeToasts = (x, w) => {
+            if (typeof global.MusicToast?.setPosition === 'function') {
+                global.MusicToast.setPosition(x, w);
+                return;
+            }
             const text = `.mtst-layer{--md-toast-x:${x}px;--md-toast-max:${w}px}`;
             if (text === toastSheet) return;
             toastSheet = text;
@@ -1612,6 +1625,8 @@
         function openPanel(tab) {
             if (tab) { state.tab = tab; closePop(); }
             if (!state.panelOpen) {
+                // 先在任何 DOM 写入前量好档案页左右边界，避免写完 md-open 再读 hud.getBoundingClientRect 触发强制重排
+                const preEdges = archiveEdges(global.innerWidth || 0);
                 state.panelOpen = true;
                 el.pnl.classList.add('md-open');
                 el.pnl.setAttribute('aria-hidden', 'false');
@@ -1622,7 +1637,7 @@
                 el.panelSlot.classList.add('md-on');
                 host.classList.add('md-panel-open');
                 fluid?.setRingDocked(false);
-                syncShift();
+                syncShift(preEdges);
                 // 焦点进抽屉（落在当前页签上）；记住是从哪里打开的，关的时候还回去。
                 const from = document.activeElement;
                 panelReturn = from && from !== document.body && !el.pnl.contains(from) ? from : el.handle;
@@ -1641,6 +1656,7 @@
         }
         function closePanel() {
             if (!state.panelOpen) return;
+            const preEdges = archiveEdges(global.innerWidth || 0);
             state.panelOpen = false;
             closePop();
             syncFx(false);
@@ -1654,7 +1670,7 @@
             el.panelSlot.classList.remove('md-on');
             host.classList.remove('md-panel-open');
             fluid?.setRingDocked(true);
-            syncShift();
+            syncShift(preEdges);
             // 焦点原来在抽屉里（或在关闭钮上）才还回去，不去抢别处的焦点。
             const active = document.activeElement;
             if (active && (el.pnl.contains(active) || active === el.handle)) {

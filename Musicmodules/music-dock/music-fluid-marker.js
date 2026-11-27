@@ -51,8 +51,12 @@
         container.appendChild(svg);
 
         const s = { hs: 0, he: 0, ts: 0, te: 0, tgS: 0, tgE: 0, placed: false, vel: 0, frame: 0, last: 0 };
+        let destroyed = false;
         const reducedMq = win.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
-        const reduced = () => Boolean(doc.body?.classList.contains('music-reduce-motion') || reducedMq?.matches);
+        // 优先尊重 MusicMotion 三态开关（允许用户手动选「关」覆盖系统减弱动态）
+        const reduced = () => Boolean(typeof win.MusicMotion?.reduced === 'function'
+            ? win.MusicMotion.reduced()
+            : (doc.body?.classList.contains('music-reduce-motion') || reducedMq?.matches));
 
         // 只量容器的横截面（clientWidth/Height），不量整块内容，也不触发 getBoundingClientRect 的整页布局
         let cachedCs = 0;
@@ -144,6 +148,7 @@
         return {
             // opts.instant：直接落位，不拉细颈（跳到很远的地方时用）
             moveTo(target, opts) {
+                if (destroyed) return;
                 const sp = span(target);
                 if (!sp) {
                     if (!hidden) { hidden = true; svg.style.opacity = '0'; }
@@ -172,9 +177,10 @@
                     if (list[i].dataset.mdDist !== next) list[i].dataset.mdDist = next;
                 }
             },
-            relayout() { draw(true); },
+            relayout() { if (!destroyed) draw(true); },
             destroy() {
-                if (s.frame) win.cancelAnimationFrame(s.frame);
+                destroyed = true;
+                if (s.frame) { win.cancelAnimationFrame(s.frame); s.frame = 0; }
                 svg.remove();
             }
         };
