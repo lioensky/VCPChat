@@ -4228,6 +4228,17 @@ const messageRenderer = {
     disposeRootResources,
     createDomRenderer: (root = mainRendererReferences.chatMessagesDiv) => createChatDomRenderer({ root, renderer: messageRenderer }),
     restoreOffscreenMessages: () => offscreenWindow?.restoreAll(),
+    // UTTU: 导出图片前恢复并锁住这几条消息的完整 DOM（离屏回收会清空正文），再补跑延后的重渲染（公式、图表）。
+    holdMessagesForCapture: async (items) => {
+        const release = offscreenWindow ? await offscreenWindow.hold(items) : () => {};
+        try {
+            await Promise.all(items.map(item => item?._vcp_activateHeavy?.()));
+        } catch (error) {
+            release();
+            throw error;
+        }
+        return release;
+    },
     getOffscreenStats: () => offscreenWindow?.getStats() || null,
     getRenderWorkerStats: () => renderWorkerClient?.getStats() || null,
     getLazyToolStats: () => ({ entries: lazyToolContents.size }),

@@ -1,0 +1,86 @@
+/* 多选时给消息留一列显示勾选状态，并用操作条替换输入区。 */
+#chatMessages.message-image-picking > .message-item {
+    padding: 6px 8px 6px 34px;
+    user-select: none;
+}
+
+#chatMessages.message-image-picking > .message-item[data-message-image-picked] { box-shadow: inset 0 0 0 1px var(--highlight-text); }
+
+.message-item > .message-image-pick-box {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 0;
+}
+
+/* 离屏的消息平时跳过排版（chat.css 的 content-visibility: auto），画图时要排出来。 */
+#chatMessages > .message-item[data-message-image-drawing] {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+}
+
+html .chat-input-area .chat-input-card.message-image-picking { padding: 8px 8px 8px 14px; }
+html .chat-input-area .chat-input-card.message-image-picking > :not(.message-image-pickbar) { display: none !important; }
+
+.message-image-pickbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.message-image-pickbar-count {
+    flex: none;
+    color: var(--secondary-text);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+.message-image-pickbar-count b { color: var(--primary-text); font-weight: 600; }
+
+.message-image-pickbar-say {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--secondary-text);
+    font: inherit;
+}
+
+.message-image-pick-box > .box {
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: transparent;
+    font-size: 12px;
+}
+
+.message-image-pick-box[aria-checked="true"] > .box {
+    border-color: var(--button-bg);
+    background: var(--button-bg);
+    color: var(--text-on-accent, ButtonText);
+}
+
+.message-image-pickbar button {
+    flex: none;
+    padding: 4px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--primary-text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.message-image-pickbar button[data-act="copy"] {
+    border-color: var(--button-bg);
+    background: var(--button-bg);
+    color: var(--text-on-accent, ButtonText);
+}
+
+.message-image-pickbar button:disabled { cursor: default; opacity: .55; }
+.message-image-pickbar button:focus-visible { outline: 2px solid var(--highlight-text); }

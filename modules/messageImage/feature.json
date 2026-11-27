@@ -1,0 +1,17 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "MessageImage",
+  "displayName": "消息图片",
+  "version": "1.0.0",
+  "description": "把一条或几条消息画成一张长图，复制到剪贴板或存成 PNG。右键消息选“复制为图片”或“多选”。",
+  "pluginType": "feature",
+  "main": "index.js",
+  "renderer": "modules/messageImage/renderer/index.js",
+  "tests": [
+    "tests/message-image.test.mjs",
+    "tests/message-image-preview.test.mjs",
+    "tests/message-image-math.test.mjs",
+    "tests/message-image-offscreen-hold.test.mjs"
+  ],
+  "defaultEnabled": true
+}
