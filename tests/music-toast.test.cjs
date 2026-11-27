@@ -213,3 +213,49 @@ test('toast setPosition updates inline CSS vars on .mtst-layer and same-kind pro
         window.close();
     }
 });
+
+test('Batch 53: toast caches DOM refs on progress updates, fluid marker caches SVG attrs, and low-power CSS drops blur filters', () => {
+    const { window, doc, clock, toast, visible } = setup();
+    try {
+        toast.show({ id: 'p', kind: 'progress', message: '1 / 10', progress: 0.1 });
+        const el = doc.querySelector('[data-key="p"]');
+        let qsCalls = 0;
+        const origQs = el.querySelector.bind(el);
+        el.querySelector = (...args) => { qsCalls += 1; return origQs(...args); };
+        toast.show({ id: 'p', message: '2 / 10', progress: 0.2 });
+        toast.show({ id: 'p', message: '3 / 10', progress: 0.3 });
+        assert.equal(qsCalls, 0, 'cached toast msg/bar refs avoid querySelector on progress updates');
+        assert.equal(el.textContent.includes('3 / 10'), true);
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.equal(visible().length, 0, 'beforeunload clears active toasts');
+
+        // Verify music-fluid-marker caches static SVG rect attributes across animation frames
+        window.eval(read('Musicmodules/music-dock/music-fluid-marker.js'));
+        const box = doc.createElement('div');
+        Object.defineProperty(box, 'clientHeight', { value: 40 });
+        Object.defineProperty(box, 'scrollWidth', { value: 400 });
+        doc.body.appendChild(box);
+        const marker = window.createMusicFluidMarker(box, { axis: 'x', thickness: 4 });
+        marker.moveTo({ start: 10, end: 50 }, { instant: true });
+        const headRect = box.querySelector('svg rect');
+        let yWrites = 0;
+        let hWrites = 0;
+        const origSetAttr = headRect.setAttribute.bind(headRect);
+        headRect.setAttribute = (name, val) => {
+            if (name === 'y') yWrites += 1;
+            if (name === 'height') hWrites += 1;
+            return origSetAttr(name, val);
+        };
+        marker.moveTo({ start: 80, end: 120 }, { instant: true });
+        marker.moveTo({ start: 140, end: 180 }, { instant: true });
+        assert.equal(yWrites, 0, 'constant cross-axis y attribute is not rewritten on horizontal marker moves');
+        assert.equal(hWrites, 0, 'constant thickness height attribute is not rewritten on horizontal marker moves');
+        marker.destroy();
+
+        const drawerCss = read('Musicmodules/music-dock/music-dock-drawer.css');
+        assert.match(drawerCss, /#music-dock-root\.md-fl-low \.md-cmd-box[\s\S]*filter:\s*none/, 'low-power mode disables animated blur filters on palette/toast/tabs');
+        void clock;
+    } finally {
+        window.close();
+    }
+});

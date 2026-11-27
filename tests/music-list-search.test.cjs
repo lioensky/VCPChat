@@ -30,3 +30,21 @@ test('list search: full-width, case, album, several words', () => {
     assert.deepEqual(titles('flac'), [], 'the file extension is not part of the title');
     assert.equal(app.searchTracks(tracks, '   ').length, tracks.length);
 });
+
+test('Batch 53: searchTracks caches per-track haystack and invalidates when metadata changes', () => {
+    const app = utils();
+    let stripCalls = 0;
+    const origStrip = app.stripAudioExtension;
+    app.stripAudioExtension = (title) => { stripCalls += 1; return origStrip(title); };
+    const track = { title: '夜曲.flac', artist: '周杰伦', album: '十一月的萧邦' };
+    const tracks = [track];
+    assert.equal(app.searchTracks(tracks, '夜曲').length, 1);
+    const firstCalls = stripCalls;
+    assert.equal(app.searchTracks(tracks, '周杰伦').length, 1);
+    assert.equal(app.searchTracks(tracks, '萧邦').length, 1);
+    assert.equal(stripCalls, firstCalls, 'cached haystack avoids recomputing stripAudioExtension/NFKC across queries');
+
+    track.title = '七里香.flac';
+    assert.equal(app.searchTracks(tracks, '夜曲').length, 0, 'mutated track title invalidates cached haystack');
+    assert.equal(app.searchTracks(tracks, '七里香').length, 1);
+});

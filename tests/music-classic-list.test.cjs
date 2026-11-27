@@ -190,3 +190,60 @@ test('经典列表全行已拆列时滚动跳过 clientHeight 布局读取，且
     assert.equal(btns[1].disabled, true, 'sync reflects dynamic option.disabled changes');
     w.close();
 });
+
+test('Batch 53: classic-list caches like button & skips redundant attrs; skin caches spec cells & rollers', () => {
+    const t = setup({ count: 5, layout: false });
+    t.app.playlist.forEach((tr, i) => { tr.path = `/t-${i}.flac`; });
+    t.app.isLiked = () => false;
+    const row0 = t.list.children[0];
+    const btn0 = row0.querySelector('.cl-like');
+    let qsCalls = 0;
+    let attrWrites = 0;
+    const origQs = row0.querySelector.bind(row0);
+    row0.querySelector = (...args) => { qsCalls += 1; return origQs(...args); };
+    const origSetAttr = btn0.setAttribute.bind(btn0);
+    btn0.setAttribute = (...args) => { attrWrites += 1; return origSetAttr(...args); };
+
+    // Re-firing music-like-change with unchanged state skips both querySelector and setAttribute
+    t.doc.dispatchEvent(new t.window.CustomEvent('music-like-change', { detail: { tracks: [t.app.playlist[0]] } }));
+    assert.equal(qsCalls, 0, 'paintLike uses cached li._likeBtn without querySelector');
+    assert.equal(attrWrites, 0, 'unchanged like state skips redundant setAttribute writes');
+
+    t.app.isLiked = (tr) => tr?.path === '/t-0.flac';
+    t.doc.dispatchEvent(new t.window.CustomEvent('music-like-change', { detail: { tracks: [t.app.playlist[0]] } }));
+    assert.equal(qsCalls, 0, 'state toggle still uses cached li._likeBtn');
+    assert.ok(attrWrites > 0, 'changed like state updates aria attributes');
+    assert.equal(row0.classList.contains('is-liked'), true);
+    t.close();
+
+    // Verify music-skin caches .track-specs > div cell lookups across track changes
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="track-title">Song A</div>
+        <div class="track-file-number" data-track-field="file-number"></div>
+        <dl class="track-specs"><div><dd id="fmt" data-track-field="format"></dd></div></dl>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+    const fmtEl = w.document.getElementById('fmt');
+    const titleEl = w.document.querySelector('.track-title');
+    const app = {
+        playlist: [
+            { path: '/a.flac', title: 'Song A', codec: 'FLAC' },
+            { path: '/b.mp3', title: 'Song B', codec: 'MP3' }
+        ],
+        currentTrackIndex: 0,
+        trackTitle: titleEl
+    };
+    w.setupMusicSkin(app);
+    let closestCalls = 0;
+    const origClosest = fmtEl.closest.bind(fmtEl);
+    fmtEl.closest = (...args) => { closestCalls += 1; return origClosest(...args); };
+    app.currentTrackIndex = 1;
+    titleEl.textContent = 'Song B';
+    return new Promise((resolve) => setImmediate(() => {
+        assert.equal(fmtEl.textContent, 'MP3');
+        assert.equal(closestCalls, 0, 'setText reuses cached spec cell without repeated closest() calls');
+        w.close();
+        resolve();
+    }));
+});

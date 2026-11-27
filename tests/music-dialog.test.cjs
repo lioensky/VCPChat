@@ -135,3 +135,14 @@ test('navigation keys stay trapped inside MusicDialog and Left/Right switch betw
     assert.equal(await pending, false);
     assert.equal(leaked, 0);
 });
+
+test('Batch 53: beforeunload resolves open MusicDialog as false and removes global keydown listener', async () => {
+    const { window, doc } = setup();
+    let leaked = 0;
+    doc.addEventListener('keydown', () => { leaked += 1; });
+    const pending = window.MusicDialog.confirm({ title: '卸载测试' });
+    window.dispatchEvent(new window.Event('beforeunload'));
+    assert.equal(await pending, false, 'beforeunload resolves pending confirm promise as false');
+    key(window, ' ');
+    assert.equal(leaked, 1, 'keydown listener is detached after beforeunload');
+});
