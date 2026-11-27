@@ -1182,7 +1182,9 @@
                 + '</div>';
         }
 
-        function renderBody() {
+        let pendingQueueScroll = null;
+        function renderBody(deferQueueScroll = false) {
+            pendingQueueScroll = null;
             queuePage.dropPrebuilt();
             const oldScroller = state.tab === '播放列表' ? el.body.querySelector('.md-ql') : null;
             const keepScroll = oldScroller ? oldScroller.scrollTop : null;
@@ -1259,9 +1261,12 @@
                 const scroller = el.body.querySelector('.md-ql');
                 if (scroller) {
                     const initTop = keepScroll != null ? keepScroll : Math.max(0, (state.queueRows?.nowTop || 0) - QUEUE_HEAD_H);
-                    // 重画时保住滚动位置；第一次打开时从正在放的那首开始，避免 0→0 空写触发强制重排。
-                    if (initTop > 0) scroller.scrollTop = initTop;
+                    // 先把可见队列行一次性写完，再滚动（打开面板时留到 focus 之后复用同一次排版，避免连触两次整页重排）。
                     renderQueueWindow(scroller, false, { top: initTop, height: 0 });
+                    if (initTop > 0) {
+                        if (deferQueueScroll) pendingQueueScroll = { scroller, top: initTop };
+                        else scroller.scrollTop = initTop;
+                    }
                     scroller.addEventListener('scroll', () => renderQueueWindow(scroller), { passive: true });
                     scroller.addEventListener('pointerdown', onQueuePointerDown);
                 }
@@ -1650,10 +1655,15 @@
                 // 页签下划线要读排版，挪到下一帧和抽屉滑入的第一帧一起算：
                 // 同一下点击里和下面的焦点各读一次，会把刚插进来的行算两遍样式和排版。
                 renderTabs(false);
-                if (!(state.tab === '播放列表' && prebuiltFresh())) renderBody();
+                if (!(state.tab === '播放列表' && prebuiltFresh())) renderBody(true);
                 queuePage.dropPrebuilt();
                 syncSolid();
                 el.tabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true, focusVisible: lastKeyboard });
+                if (pendingQueueScroll) {
+                    const { scroller, top } = pendingQueueScroll;
+                    pendingQueueScroll = null;
+                    if (scroller.isConnected) scroller.scrollTop = top;
+                }
                 requestAnimationFrame(() => { if (state.panelOpen && !state.destroyed) placeMarks(el.pnl); });
                 return;
             }

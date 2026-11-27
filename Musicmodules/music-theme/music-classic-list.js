@@ -67,7 +67,22 @@
             return map;
         };
 
-        let sortedCache = null;
+        // 按同组曲目与列键缓存正/倒序结果：从正序按并列秩分段反排即可 O(N) 得到倒序（保留空项垫底与并列稳定顺序），不再重跑 Collator。
+        const reverseByRanks = (nonEmpty, ranks, empty) => {
+            const out = new Array(nonEmpty.length + empty.length);
+            let w = 0;
+            let hi = nonEmpty.length - 1;
+            while (hi >= 0) {
+                const r = ranks[hi];
+                let lo = hi;
+                while (lo > 0 && ranks[lo - 1] === r) lo -= 1;
+                for (let i = lo; i <= hi; i += 1) out[w++] = nonEmpty[i];
+                hi = lo - 1;
+            }
+            for (let i = 0; i < empty.length; i += 1) out[w++] = empty[i];
+            return out;
+        };
+        let sortCache = null;
         const sorted = (songs) => {
             if (sort.key === 'added' && sort.dir === 1) {
                 // 添加时间正序就是进曲库的先后，原样返回。
@@ -79,17 +94,26 @@
             const last = len ? songs[len - 1] : null;
             const pl = app.playlist;
             const plLen = Array.isArray(pl) ? pl.length : -1;
-            if (len > 32 && sortedCache && sortedCache.songs === songs && sortedCache.len === len
-                && sortedCache.first === first && sortedCache.mid === mid && sortedCache.last === last
-                && sortedCache.key === sort.key && sortedCache.dir === sort.dir
-                && sortedCache.pl === pl && sortedCache.plLen === plLen) {
-                return sortedCache.result;
+            let bucket = null;
+            if (len > 32) {
+                if (!sortCache || sortCache.songs !== songs || sortCache.len !== len
+                    || sortCache.first !== first || sortCache.mid !== mid || sortCache.last !== last
+                    || sortCache.pl !== pl || sortCache.plLen !== plLen) {
+                    sortCache = { songs, len, first, mid, last, pl, plLen, byKey: new Map() };
+                }
+                bucket = sortCache.byKey.get(sort.key) || null;
+                if (bucket) {
+                    if (sort.dir === 1 && bucket.asc) return bucket.asc;
+                    if (sort.dir === -1 && bucket.desc) return bucket.desc;
+                    if (sort.dir === -1 && bucket.nonEmpty) {
+                        bucket.desc = reverseByRanks(bucket.nonEmpty, bucket.ranks, bucket.empty);
+                        return bucket.desc;
+                    }
+                }
             }
             if (sort.key === 'added') {
                 const rev = songs.slice().reverse();
-                if (len > 32) {
-                    sortedCache = { songs, len, first, mid, last, key: sort.key, dir: sort.dir, pl, plLen, result: rev };
-                }
+                if (len > 32) sortCache.byKey.set('added', { desc: rev });
                 return rev;
             }
             const get = value[sort.key];
@@ -101,7 +125,8 @@
                 const v = get(t);
                 return { t, v, empty: v === '' || v === 0, ord: isFull ? i : (order.get(t) ?? 0), rank: 0 };
             });
-            // 字符串键按唯一值预排名（尤其是按歌手排序时唯一键远少于曲目数），保留 Collator 精确并列秩后按整数比较
+            // 始终先按正序排并记录并列秩，同源下再点表头切倒序直接 O(N) 翻转并列段
+            let usedRank = false;
             if (!isNum && len > 32) {
                 const uniq = new Set();
                 for (let i = 0; i < len; i += 1) if (!decorated[i].empty) uniq.add(decorated[i].v);
@@ -119,28 +144,43 @@
                         const d = decorated[i];
                         if (!d.empty) d.rank = rankMap.get(d.v);
                     }
-                    const dir = sort.dir;
-                    decorated.sort((a, b) => {
-                        if (a.empty !== b.empty) return a.empty ? 1 : -1;
-                        const c = a.rank - b.rank;
-                        return c ? c * dir : a.ord - b.ord;
-                    });
-                    const result = decorated.map((item) => item.t);
-                    sortedCache = { songs, len, first, mid, last, key: sort.key, dir: sort.dir, pl, plLen, result };
-                    return result;
+                    usedRank = true;
                 }
             }
             decorated.sort((a, b) => {
                 // 没有这一项的（没写歌手、时长未知）总是排在最后
                 if (a.empty !== b.empty) return a.empty ? 1 : -1;
-                const c = isNum ? a.v - b.v : collator.compare(a.v, b.v);
-                return c ? c * sort.dir : a.ord - b.ord;
+                const c = usedRank ? a.rank - b.rank : (isNum ? a.v - b.v : collator.compare(a.v, b.v));
+                return c || (a.ord - b.ord);
             });
-            const result = decorated.map((item) => item.t);
-            if (len > 32) {
-                sortedCache = { songs, len, first, mid, last, key: sort.key, dir: sort.dir, pl, plLen, result };
+            const nonEmpty = [];
+            const empty = [];
+            for (let i = 0; i < len; i += 1) {
+                if (decorated[i].empty) empty.push(decorated[i].t);
+                else nonEmpty.push(decorated[i].t);
             }
-            return result;
+            const neLen = nonEmpty.length;
+            const ranks = new Int32Array(neLen);
+            let curRank = 0;
+            for (let i = 1; i < neLen; i += 1) {
+                const prev = decorated[i - 1];
+                const curr = decorated[i];
+                const diff = usedRank ? (curr.rank !== prev.rank)
+                    : (isNum ? (curr.v !== prev.v) : (curr.v !== prev.v && collator.compare(prev.v, curr.v) !== 0));
+                if (diff) curRank += 1;
+                ranks[i] = curRank;
+            }
+            const asc = decorated.map((item) => item.t);
+            if (len > 32) {
+                const entry = { asc, desc: null, nonEmpty, ranks, empty };
+                sortCache.byKey.set(sort.key, entry);
+                if (sort.dir === -1) {
+                    entry.desc = reverseByRanks(nonEmpty, ranks, empty);
+                    return entry.desc;
+                }
+                return asc;
+            }
+            return sort.dir === -1 ? reverseByRanks(nonEmpty, ranks, empty) : asc;
         };
 
         const paintLike = (li, track) => {
@@ -298,7 +338,7 @@
             watch?.disconnect();
             watch = null;
             orderCacheList = orderCacheFirst = orderCacheLast = orderCacheMap = null;
-            sortedCache = null;
+            sortCache = null;
         }, { once: true });
 
         global.MusicAppHooks.wrap(app, 'renderPlaylist', 'classic-list', (base) => (filtered) => {
@@ -334,7 +374,6 @@
             button.innerHTML = `<span>${col.label}</span><i aria-hidden="true"></i>`;
             button.addEventListener('click', () => {
                 sort = sort.key === col.key ? { key: col.key, dir: -sort.dir } : { key: col.key, dir: 1 };
-                sortedCache = null;
                 try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch (e) { /* 只是记住排序 */ }
                 syncHead();
                 app.renderPlaylist(lastFiltered || undefined);

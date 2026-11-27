@@ -17,7 +17,12 @@
      */
     const create = (opts) => {
         const Wall = global.MusicArchiveWall;
-        const thumbs = Wall && Wall.createThumbs ? Wall.createThumbs(() => schedule(true)) : { get: () => '', clearQueue() {}, destroy() {} };
+        const readySrcs = new Set();
+        const thumbs = Wall && Wall.createThumbs ? Wall.createThumbs((src) => {
+            if (src) readySrcs.add(src);
+            st.coverDirty = true;
+            schedule(false);
+        }) : { get: () => '', clearQueue() {}, destroy() {} };
         const el = document.createElement('div');
         el.className = 'archive-grid';
         el.hidden = true;
@@ -52,7 +57,7 @@
             width: 0, height: 0, cols: 1, cell: 150,
             where: new Map(),            // 曲库下标 → { s, k }（第几节第几个）
             nodes: new Map(), heads: new Map(), pool: [],
-            sel: -1, raf: 0, dirtyAll: true, playKey: '',
+            sel: -1, raf: 0, dirtyAll: true, renderDirty: true, coverDirty: false, playKey: '',
             room: { left: 0, top: 0, width: 0, height: 0 }
         };
 
@@ -107,6 +112,7 @@
             st.nodes.clear();
             for (const h of st.heads.values()) h.remove();
             st.heads.clear();
+            readySrcs.clear();
             thumbs.clearQueue();
             emptyEl.hidden = st.secs.length > 0;
             if (!st.secs.length && Wall && Wall.fillEmpty) Wall.fillEmpty(emptyEl, '');
@@ -148,9 +154,34 @@
         const keepSet = new Set();
         const keepHeadsSet = new Set();
         let stickySec = -1;
+        const applyNodeCover = (n, t, dpr) => {
+            const src = opts.cover(t);
+            n.rawSrc = src || '';
+            const url = src ? thumbs.get(src, st.cell * dpr) : '';
+            if (url !== n.src) {
+                n.src = url;
+                if (url) { n.img.src = url; n.el.classList.add('has-art'); } else { n.img.removeAttribute('src'); n.el.classList.remove('has-art'); }
+            }
+            const wait = Boolean(src && !url && thumbs.failed && !thumbs.failed(src));
+            if (wait !== n.wait) { n.wait = wait; n.el.classList.toggle('is-wait', wait); }
+        };
+        const applyCovers = () => {
+            const dpr = global.devicePixelRatio || 1;
+            const only = readySrcs.size ? readySrcs : null;
+            for (const n of st.nodes.values()) {
+                if (n.idx < 0) continue;
+                if (only && !only.has(n.rawSrc)) continue;
+                applyNodeCover(n, opts.track(n.idx), dpr);
+            }
+            readySrcs.clear();
+        };
         const render = () => {
             st.raf = 0;
-            if (!st.on || !st.rows.length) { sticky.hidden = true; locateBtn.hidden = true; return; }
+            if (!st.on || !st.rows.length) { st.renderDirty = false; st.coverDirty = false; readySrcs.clear(); sticky.hidden = true; locateBtn.hidden = true; return; }
+            if (!st.renderDirty && st.coverDirty) { st.coverDirty = false; applyCovers(); return; }
+            st.renderDirty = false;
+            st.coverDirty = false;
+            readySrcs.clear();
             const top = scroller.scrollTop;
             const view0 = top - st.rowH, view1 = top + st.room.height + st.rowH;
             keepSet.clear();
@@ -230,14 +261,7 @@
                         n.el.setAttribute('aria-label', m.title + (m.artist ? '，' + m.artist : ''));
                         n.src = null;
                     }
-                    const src = opts.cover(t);
-                    const url = src ? thumbs.get(src, st.cell * dpr) : '';
-                    if (url !== n.src) {
-                        n.src = url;
-                        if (url) { n.img.src = url; n.el.classList.add('has-art'); } else { n.img.removeAttribute('src'); n.el.classList.remove('has-art'); }
-                    }
-                    const wait = Boolean(src && !url && thumbs.failed && !thumbs.failed(src));
-                    if (wait !== n.wait) { n.wait = wait; n.el.classList.toggle('is-wait', wait); }
+                    applyNodeCover(n, t, dpr);
                     const cls = (i === st.sel ? 'is-focus ' : '') + (i === play.index ? (play.active ? 'is-playing' : 'is-current') : '');
                     if (cls !== n.cls) {
                         n.el.classList.remove('is-focus', 'is-playing', 'is-current');
@@ -278,8 +302,8 @@
             locateBtn.hidden = !pr;
             if (pr) locateBtn.classList.toggle('is-away', pr.y + pr.h < top + 10 || pr.y > top + st.room.height - 10);
         };
-        const schedule = () => { if (st.on && !st.raf) st.raf = requestAnimationFrame(render); };
-        scroller.addEventListener('scroll', schedule, { passive: true });
+        const schedule = (full = true) => { if (full) st.renderDirty = true; if (st.on && !st.raf) st.raf = requestAnimationFrame(render); };
+        scroller.addEventListener('scroll', () => schedule(true), { passive: true });
 
         // ---------- 选中 ----------
         const rectOf = (i) => {
@@ -378,7 +402,7 @@
             opts.pick(i);
             opts.menu(i, e.clientX, e.clientY, null);
         });
-        el.addEventListener('wheel', (e) => e.stopPropagation());
+        el.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
 
         return {
             el,
@@ -428,7 +452,7 @@
                 if (pk !== st.playKey) { st.playKey = pk; schedule(); }
             },
             step,
-            coverFound: () => schedule(),
+            coverFound: () => { readySrcs.clear(); st.coverDirty = true; schedule(false); },
             collapse: () => false,
             destroy() {
                 st.on = false;

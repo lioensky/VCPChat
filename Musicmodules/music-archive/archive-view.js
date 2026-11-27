@@ -1158,9 +1158,14 @@
         };
         const shouldRender = () => Boolean(state.scene) && renderAllowed();
 
+        let classicInitRaf = 0;
+        const cancelClassicInit = () => {
+            if (classicInitRaf) { cancelAnimationFrame(classicInitRaf); classicInitRaf = 0; }
+        };
         const setMode = (mode, { persist = true } = {}) => {
             state.mode = mode === 'classic' ? 'classic' : 'archive';
             const on = state.mode === 'archive';
+            cancelClassicInit();
             // 读主题变量只依赖 light-theme，提前到改 hidden / body 类之前，避免随后建场景立刻 getComputedStyle 触发全页样式重算
             const initialTheme = on && (!state.scene || sceneQuality !== quality()) ? readTheme() : null;
             root.hidden = !on;
@@ -1181,12 +1186,21 @@
                 wall?.show(false);
                 table?.show(false);
                 grid?.show(false);
-                if (!app.isStageActive) originalCreateAmbient?.();
-                if (app.visualizerCanvas) {
-                    app.visualizerCanvas.width = app.visualizerCanvas.clientWidth;
-                    app.visualizerCanvas.height = app.visualizerCanvas.clientHeight;
-                    app.recreateParticles?.();
-                }
+                // 切到经典视图时刚移除 music-archive-on，推迟到下一帧再探测背景声纹与量画布尺寸，避免当场触发整页同步样式重算
+                classicInitRaf = requestAnimationFrame(() => {
+                    classicInitRaf = 0;
+                    if (state.destroyed || state.mode !== 'classic') return;
+                    if (!app.isStageActive) originalCreateAmbient?.();
+                    if (app.visualizerCanvas) {
+                        const cw = app.visualizerCanvas.clientWidth;
+                        const ch = app.visualizerCanvas.clientHeight;
+                        if (cw > 0 && ch > 0 && (app.visualizerCanvas.width !== cw || app.visualizerCanvas.height !== ch)) {
+                            app.visualizerCanvas.width = cw;
+                            app.visualizerCanvas.height = ch;
+                        }
+                        app.recreateParticles?.();
+                    }
+                });
             }
             syncLyrics();
         };
@@ -2082,6 +2096,7 @@
             clearTimeout(placeTimer);
             savePlace();
             state.destroyed = true;
+            cancelClassicInit();
             clearInterval(clockTimer);
             if (syncListRaf) { cancelAnimationFrame(syncListRaf); syncListRaf = 0; }
             if (pickRaf) { cancelAnimationFrame(pickRaf); pickRaf = 0; }

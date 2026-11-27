@@ -762,8 +762,10 @@
                     finally { editingSettings = false; }
                     syncTuningDependents();
                 };
-                if (definition.type === 'range') control.addEventListener('input', handleControlChange);
-                else control.addEventListener('change', handleControlChange);
+                if (definition.type === 'range') {
+                    control.addEventListener('input', handleControlChange);
+                    control.addEventListener('change', () => Config.flush?.());
+                } else control.addEventListener('change', handleControlChange);
                 row.append(header, valueText, control);
                 tuningFragment.appendChild(row);
             });
@@ -1113,7 +1115,10 @@
                 app.volumeSlider.value = String(volume);
                 app.updateVolumeSliderBackground?.(volume);
             }
-            app.api?.setMusicVolume?.(volume);
+            if (app.api?.setMusicVolume) {
+                if (app.sendLatest) app.sendLatest('volume', () => app.api.setMusicVolume(volume));
+                else app.api.setMusicVolume(volume);
+            }
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
             app.saveSettings?.();
             state.lastTransportSignature = '';
@@ -1354,8 +1359,11 @@
             app.lastStateUpdateTime = Date.now();
         };
 
+        let progressDragRect = null;
         const seekFromPointer = async (event, commit) => {
-            const rect = elements.progressTrack.getBoundingClientRect();
+            const rect = (progressDragRect && progressDragRect.width > 0)
+                ? progressDragRect
+                : elements.progressTrack.getBoundingClientRect();
             const ratio = clamp((event.clientX - rect.left) / Math.max(rect.width, 1));
             const duration = state.lastFrame?.duration || app.lastKnownDuration || 0;
             const target = duration * ratio;
@@ -1725,6 +1733,7 @@
         }, true);
         scope.listen(elements.progressTrack, 'pointerdown', (event) => {
             state.draggingProgress = true;
+            progressDragRect = elements.progressTrack.getBoundingClientRect();
             elements.progressTrack.setPointerCapture?.(event.pointerId);
             seekFromPointer(event, false);
         });
@@ -1736,9 +1745,11 @@
             state.draggingProgress = false;
             elements.progressTrack.releasePointerCapture?.(event.pointerId);
             seekFromPointer(event, true);
+            progressDragRect = null;
         });
         scope.listen(elements.progressTrack, 'pointercancel', () => {
             state.draggingProgress = false;
+            progressDragRect = null;
             cancelSeekHold();
         });
         scope.listen(elements.progressTrack, 'keydown', (event) => {
@@ -1860,6 +1871,9 @@
                 if (state.backgroundTimer) clearTimeout(state.backgroundTimer);
                 destroyMode();
                 edge.release();
+                for (const soft of [softCurrent, softNext, softWallpaper]) {
+                    if (soft?.canvas) { soft.canvas.width = 0; soft.canvas.height = 0; }
+                }
                 scope.destroy();
                 document.body.classList.remove('music-stage-active', 'music-stage-scene-3d');
                 root.remove();

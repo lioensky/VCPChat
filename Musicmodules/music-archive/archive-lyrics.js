@@ -177,11 +177,13 @@
          */
         let indexTip = null;
         let indexBox = null;
+        let lastHoverK = -1;
         const buildIndex = () => {
             const n = state.lines.length;
             state.indexN = n;
             state.indexAt = -2;
             indexBox = null;
+            lastHoverK = -1;
             r.index.hidden = n < 4;
             r.index.innerHTML = n < 4 ? '' : '<span class="rail"></span><span class="fill"></span><span class="cur"></span><span class="hov"></span><span class="tip"><b></b><span></span></span>';
             indexTip = n < 4 ? null : r.index.querySelector('.tip');
@@ -206,7 +208,8 @@
         r.index.addEventListener('pointermove', (e) => {
             if (!indexBox) indexBox = r.index.getBoundingClientRect();
             const k = indexAtY(e.clientY);
-            if (k < 0) return;
+            if (k < 0 || k === lastHoverK) return;
+            lastHoverK = k;
             const line = state.lines[k];
             r.index.classList.add('hovering');
             r.index.style.setProperty('--hv', String(k / ((state.indexN || 1) - 1)));
@@ -217,7 +220,7 @@
                 tip.lastChild.textContent = textOf(line);
             }
         });
-        r.index.addEventListener('pointerleave', () => { indexBox = null; r.index.classList.remove('hovering'); });
+        r.index.addEventListener('pointerleave', () => { indexBox = null; lastHoverK = -1; r.index.classList.remove('hovering'); });
         r.index.addEventListener('click', (e) => {
             const k = indexAtY(e.clientY);
             if (k >= 0) r.track.children[k]?.click();
@@ -383,10 +386,9 @@
             r.track.style.transition = !animate || reducedMotion() ? 'none' : '';
             r.track.style.transform = `translateY(${-y}px)`;
         };
-        const updateShift = () => {
-            const y = state.offsets[state.index] || 0;
+        const updateShift = (idx = state.index, row = r.track.children[idx]) => {
+            const y = state.offsets[idx] || 0;
             const height = viewportH();
-            const row = r.track.children[state.index];
             const rowBottom = row ? row.offsetTop + row.offsetHeight : 0;
             state.shift = Math.max(0, y - height * ANCHOR, rowBottom - height + 16);
         };
@@ -395,17 +397,25 @@
             const t = now();
             const k = lineAt(state.lines, t);
             if (k !== state.index) {
+                const node = k >= 0 ? r.track.children[k] : null;
+                // 先在修改类名和索引变量前读完目标行几何位置（.on 不改变行高），避免读写交替触发同步重排
+                updateShift(k, node);
                 const prev = activeLineEl || r.track.querySelector('p.on');
                 prev?.classList.remove('on');
-                prev?.querySelectorAll('.w[data-st]').forEach((n) => { n.className = 'w'; delete n.dataset.st; });
+                if (state.words) {
+                    const spans = state.words.children;
+                    for (let j = 0; j < spans.length; j += 1) {
+                        const sp = spans[j];
+                        if ('st' in sp.dataset) { sp.className = 'w'; delete sp.dataset.st; }
+                    }
+                    state.words = null;
+                }
                 state.index = k;
                 activeWordsIndex = -2;
                 activeWordsEl = null;
-                const node = k >= 0 ? r.track.children[k] : null;
                 activeLineEl = node;
                 node?.classList.add('on');
                 paintIndex(k);
-                updateShift();
                 if (!state.manualTimer) place();
             }
             paintWords(t);

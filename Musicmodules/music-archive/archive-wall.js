@@ -167,7 +167,6 @@
         for (let k = 0; k < n; k++) seat[(k * stride) % n] = k;
         return { n, pitch, perRow, rows, stride, seat, slots: perRow * rows * SLOTS, blockW: BW * pitch, blockH: BH * pitch, cellW: perRow * BW * pitch, cellH: rows * BH * pitch };
     };
-    const mod = (a, m) => ((a % m) + m) % m;
     /* 块坐标（可以是负数）和块里第几张 → 这张封面 */
     const instanceAt = (g, bc, br, slot, gap) => {
         const rx = Math.floor(bc / g.perRow), ry = Math.floor(br / g.rows);
@@ -429,7 +428,7 @@
 
         const st = {
             on: false,
-            key: '', ids: [], g: null, gap: 10,
+            key: '', ids: [], idIndex: new Map(), g: null, gap: 10,
             cam: { x: 0, y: 0 }, aim: null, vel: { x: 0, y: 0 },
             room: { left: 0, top: 0, width: 0, height: 0 },
             focus: null,                // 选中的那一张（具体哪一份）
@@ -441,9 +440,10 @@
             selIndex: -1, playKey: '',
             enterUntil: 0,
             drag: null,
-            wheelAim: null
+            wheelAim: null,
+            readySrcs: new Set()
         };
-        const thumbs = createThumbs(() => { st.coverDirty = true; schedule(); });
+        const thumbs = createThumbs((s) => { if (s) st.readySrcs.add(s); st.coverDirty = true; schedule(); });
 
         // ---------- 尺寸 ----------
         const pitchFor = (h) => (tilt ? Math.max(40, Math.min(96, Math.round(h * 0.72 / BH))) : Math.max(38, Math.min(104, Math.round(h * 0.8 / BH))));
@@ -506,6 +506,7 @@
             rebuildGeometry(st.g ? st.g.pitch : pitchFor(st.room.height || 800));
             for (const node of st.nodes.values()) recycle(node);
             st.nodes.clear();
+            st.readySrcs.clear();
             thumbs.clearQueue();
             emptyEl.hidden = ids.length > 0;
             if (!ids.length) fillEmpty(emptyEl, st.name);
@@ -562,12 +563,12 @@
         };
 
         // ---------- 选中、展开 ----------
-        const instancesOfFocusBlock = () => st.focus;
+        const posOf = (i) => (i >= 0 && st.idIndex.has(i) ? st.idIndex.get(i) : -1);
         const syncSelection = ({ center = false, instant = false } = {}) => {
             const sel = opts.selected();
             if (sel === st.selIndex && st.focus) return;
             st.selIndex = sel;
-            const pos = st.idIndex ? (st.idIndex.has(sel) ? st.idIndex.get(sel) : -1) : st.ids.indexOf(sel);
+            const pos = posOf(sel);
             if (pos < 0 || !st.g) { st.focus = null; setExpanded(null); st.dirty = true; schedule(); return; }
             if (st.focus && st.focus.item === pos) return;
             const keepExpanded = Boolean(st.expanded);
@@ -867,6 +868,7 @@
                 node.src = null;
             }
             const src = opts.cover(t);
+            node.rawSrc = src || '';
             const url = src ? thumbs.get(src, px) : '';
             if (url !== node.src) {
                 node.src = url;
@@ -878,9 +880,18 @@
                     node.el.classList.remove('has-art');
                 }
             }
-            // 有封面但还没解出来：底色上扫过一道微光，曲名先不露，免得先闪字再换图
             const wait = Boolean(src && !url && !thumbs.failed(src));
             if (wait !== node.wait) { node.wait = wait; node.el.classList.toggle('is-wait', wait); }
+        };
+        const applyCovers = () => {
+            const dpr = global.devicePixelRatio || 1;
+            const only = st.readySrcs.size ? st.readySrcs : null;
+            for (const node of st.nodes.values()) {
+                if (node.item < 0) continue;
+                if (only && !only.has(node.rawSrc)) continue;
+                fillContent(node, node.item, Math.max(node.w || 0, node.h || 0) * dpr);
+            }
+            st.readySrcs.clear();
         };
 
         /* 焦点在大卡/定位键上时，大卡收起或那一格被回收，按钮离开文档，焦点会掉回 body：拉回墙本身，方向键接着能用 */
@@ -946,7 +957,7 @@
             const sel = st.focus ? st.focus.id : '';
             const exp = st.expanded ? st.expanded.id : '';
             const play = opts.playing();
-            const playPos = play.index >= 0 ? (st.idIndex ? (st.idIndex.has(play.index) ? st.idIndex.get(play.index) : -1) : st.ids.indexOf(play.index)) : -1;
+            const playPos = posOf(play.index);
             let count = 0;
             let frag = null;
             for (let br = r0; br <= r1 && count < maxTiles; br++) {
@@ -1080,7 +1091,8 @@
             } else if (!st.drag) { st.vel.x = st.vel.y = 0; }
             applyCamera();
             setMoving(moving || Boolean(st.drag && st.drag.moved));
-            if (st.dirty || st.coverDirty) { st.coverDirty = false; layout(); }
+            if (st.dirty) { st.coverDirty = false; st.readySrcs.clear(); layout(); }
+            else if (st.coverDirty) { st.coverDirty = false; applyCovers(); }
             if (moving || st.drag) { st.last = now; st.raf = requestAnimationFrame(tick); }
             else st.last = 0;
         };
@@ -1145,7 +1157,7 @@
                 e.stopPropagation();
                 if (btn.dataset.wall === 'locate') {
                     const p = opts.playing();
-                    const pos = p.index >= 0 ? (st.idIndex ? (st.idIndex.has(p.index) ? st.idIndex.get(p.index) : -1) : st.ids.indexOf(p.index)) : -1;
+                    const pos = posOf(p.index);
                     if (pos >= 0) {
                         const inst = nearestOf(st.g, pos, viewCenter(), st.gap);
                         if (st.expanded && st.expanded.id !== inst.id) setExpanded(null);
@@ -1277,7 +1289,7 @@
                     setExpanded(null, { animate: false });
                     if (panel.parentNode) panel.remove();
                     for (const node of st.nodes.values()) recycle(node);
-                    st.nodes.clear();
+                    st.nodes.clear(); st.readySrcs.clear();
                     for (const node of st.pool) {
                         if (node.src) { node.img.removeAttribute('src'); node.src = null; node.el.classList.remove('has-art'); }
                     }
@@ -1318,7 +1330,7 @@
                     schedule();
                 }
             },
-            coverFound() { st.coverDirty = true; schedule(); },
+            coverFound() { st.readySrcs.clear(); st.coverDirty = true; schedule(); },
             step,
             collapse() { if (!st.expanded) return false; setExpanded(null); return true; },
             get expanded() { return Boolean(st.expanded); },

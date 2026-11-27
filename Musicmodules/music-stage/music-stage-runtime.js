@@ -250,9 +250,17 @@
     };
 
     const findActiveLineIndex = (lines, playbackTime, previousIndex = -1) => {
-        if (!lines.length) return -1;
+        const len = lines.length;
+        if (!len) return -1;
+        // Fast path for monotonic playback: stay on previousIndex or step to previousIndex + 1 in O(1).
+        if (previousIndex >= 0 && previousIndex < len && playbackTime >= lines[previousIndex].startTime) {
+            const next = previousIndex + 1;
+            if (next >= len || playbackTime < lines[next].startTime) return previousIndex;
+            const afterNext = next + 1;
+            if (afterNext >= len || playbackTime < lines[afterNext].startTime) return next;
+        }
         let low = 0;
-        let high = lines.length - 1;
+        let high = len - 1;
         let result = -1;
 
         while (low <= high) {
@@ -333,15 +341,12 @@
         const r4b = Math.min(length, Math.max(r4a + 1, Math.ceil(length * 0.98)));
 
         let t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
-        // One spectrum traversal with scalar accumulators; avoids per-frame array allocations.
-        for (let index = 0; index < length; index += 1) {
-            const value = Number(values[index]) || 0;
-            if (index >= r0a && index < r0b) t0 += value;
-            if (index >= r1a && index < r1b) t1 += value;
-            if (index >= r2a && index < r2b) t2 += value;
-            if (index >= r3a && index < r3b) t3 += value;
-            if (index >= r4a && index < r4b) t4 += value;
-        }
+        // Five tight branchless loops over the exact band slices; avoids 5 range checks per bin.
+        for (let i = r0a; i < r0b; i += 1) t0 += Number(values[i]) || 0;
+        for (let i = r1a; i < r1b; i += 1) t1 += Number(values[i]) || 0;
+        for (let i = r2a; i < r2b; i += 1) t2 += Number(values[i]) || 0;
+        for (let i = r3a; i < r3b; i += 1) t3 += Number(values[i]) || 0;
+        for (let i = r4a; i < r4b; i += 1) t4 += Number(values[i]) || 0;
 
         const bass = clamp(t0 / Math.max(1, r0b - r0a));
         const lowMid = clamp(t1 / Math.max(1, r1b - r1a));
