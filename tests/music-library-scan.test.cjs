@@ -253,3 +253,34 @@ test('musicLibraryWatch ignores late fs.watch callbacks fired after stop()', asy
     watchCb('rename', 'new-track.flac');
     assert.equal(scheduled.length, beforeStop, 'late fs.watch callback after stop() must not schedule a debounce timer');
 });
+
+test('musicLibraryWatch rescanNow aborts if stop() runs while readFolders is pending and ignores remote URL schemes', async () => {
+    const { createLibraryWatch, inferredDirs } = require('../modules/musicLibraryWatch');
+    assert.deepEqual(
+        inferredDirs([
+            { path: 'https://nas.example/dav/a.flac' },
+            { path: 'webdav://nas.example/b.flac' },
+            { path: 'sftp://nas.example/c.flac' }
+        ]),
+        [],
+        'remote URL schemes are not treated as local library folders'
+    );
+
+    let resolveFolders = null;
+    let scanCalls = 0;
+    const watcher = createLibraryWatch({
+        scan: async () => { scanCalls += 1; return { tracks: [], stats: {} }; },
+        readKnown: async () => [],
+        readFolders: () => new Promise((r) => { resolveFolders = r; }),
+        writeFolders: async () => {},
+        send: () => {},
+        exists: async () => true,
+        watch: () => ({ on() {}, close() {} }),
+        log: { log() {}, warn() {} }
+    });
+    const pending = watcher.rescanNow();
+    watcher.stop();
+    resolveFolders(['/fake-music']);
+    await pending;
+    assert.equal(scanCalls, 0, 'rescanNow must not launch scan() after stop() incremented generation');
+});

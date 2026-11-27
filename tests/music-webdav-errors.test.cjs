@@ -276,3 +276,78 @@ test('browseWebDav("/") keeps root audio files (including .wma) while skipping t
         dom.window.close();
     }
 });
+
+test('WebDAV close/remove guards drop stale in-flight replies and null active server import does not throw', async () => {
+    const dom = new JSDOM(`<!DOCTYPE html><body>
+        <div id="modal" class="active"></div>
+        <div id="dialog" class="active"></div>
+        <div id="servers"></div>
+        <div id="files"></div>
+        <div id="crumb"></div>
+        <div id="status"></div>
+        <input id="webdav-server-name" value="NAS"><input id="webdav-server-url" value="https://nas/dav">
+        <input id="webdav-server-username" value="u"><input id="webdav-server-password" value="p">
+        <button id="test"></button><button id="confirm"></button>
+        <button id="scan"></button><button id="import"></button>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const doc = dom.window.document;
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    let resolveBrowse = null;
+    let resolveTest = null;
+    const s1 = { id: 's1', name: 'NAS1', url: 'https://nas1/dav', username: 'u' };
+    const app = {
+        playlist: [],
+        renderPlaylist() {},
+        savePlaylistToStorage() {},
+        showToast() {},
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavServerList: doc.getElementById('servers'),
+        webdavFileList: doc.getElementById('files'),
+        webdavBreadcrumb: doc.getElementById('crumb'),
+        webdavDialogStatus: doc.getElementById('status'),
+        webdavDialogTest: doc.getElementById('test'),
+        webdavDialogConfirm: doc.getElementById('confirm'),
+        webdavScanBtn: doc.getElementById('scan'),
+        webdavImportBtn: doc.getElementById('import'),
+        api: {
+            listWebdavDirectory: () => new Promise((r) => { resolveBrowse = r; }),
+            testWebdavConnection: () => new Promise((r) => { resolveTest = r; }),
+            removeWebdavServer: async () => ({ status: 'success' })
+        }
+    };
+    dom.window.setupWebDav(app);
+    app.webdavServers = [s1];
+    app.activeWebDavServer = s1;
+    app.webdavScannedTracks = [{ path: 'https://nas1/dav/a.flac', title: 'A' }];
+    app.setupWebDavHandlers();
+
+    // Closing the WebDAV modal invalidates in-flight browse response
+    const browsePromise = app.browseWebDav('/music');
+    app.closeWebDavModal();
+    resolveBrowse({ status: 'success', entries: [{ name: 'stale.flac', href: '/music/stale.flac', isDir: false }] });
+    await browsePromise;
+    assert.equal(doc.querySelectorAll('#files .webdav-file-item').length, 0, 'closed modal ignores late browse reply');
+
+    // Closing the server dialog invalidates in-flight testConnection response
+    app.webdavServerDialog.classList.add('active');
+    app.webdavDialogStatus.textContent = '';
+    app.webdavDialogTest.click();
+    app.webdavServerDialog.click();
+    resolveTest({ status: 'success', message: 'late ok' });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.notEqual(app.webdavDialogStatus.textContent, 'late ok', 'closed server dialog ignores late test result');
+
+    // Removing active server clears scanned tracks and null active server import does not throw
+    app.renderWebDavServerList();
+    doc.querySelector('#servers .webdav-server-remove').click();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(app.activeWebDavServer, null);
+    assert.equal(app.webdavScannedTracks.length, 0);
+    app.webdavScannedTracks = [{ path: 'https://nas1/dav/orphan.flac', title: 'Orphan' }];
+    assert.doesNotThrow(() => app.webdavImportBtn.click());
+    assert.equal(app.playlist.length, 0, 'import without activeWebDavServer is skipped');
+    dom.window.close();
+});

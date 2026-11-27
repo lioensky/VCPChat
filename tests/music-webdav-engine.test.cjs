@@ -160,3 +160,27 @@ test('scanAudioFiles throttles rapid progress callbacks and always reports the f
     assert.ok(progress.length >= 1 && progress.length <= 5, `expected throttled progress updates, got ${progress.length}`);
     assert.equal(progress[progress.length - 1], 50, 'final progress callback reports total scanned count');
 });
+
+test('addServer rejects blank/missing URL and removeServer invalidates cached engine credentials', async () => {
+    let configCalls = 0;
+    const engine = async (url) => {
+        if (url.includes('/webdav/configure')) configCalls += 1;
+        return reply({ status: 'success', path: '/', entries: [] });
+    };
+    const { api } = load({ engine });
+    assert.equal(api.addServer(null), null);
+    assert.equal(api.addServer({ name: 'Bad', url: '   ' }), null);
+    assert.equal(api.listServers().length, 0);
+
+    const s1 = api.addServer({ name: 'NAS', url: 'https://nas/dav/', username: 'u', password: 'p' });
+    assert.equal(s1.url, 'https://nas/dav');
+    await api.listDirectory({ url: s1.url, username: 'u', password: 'p', path: '/' });
+    assert.equal(configCalls, 1);
+    await api.listDirectory({ url: s1.url, username: 'u', password: 'p', path: '/sub' });
+    assert.equal(configCalls, 1, 'same credentials reuse engine config');
+
+    api.removeServer(s1.id);
+    assert.equal(api.listServers().length, 0);
+    await api.listDirectory({ url: s1.url, username: 'u', password: 'p', path: '/' });
+    assert.equal(configCalls, 2, 'removeServer invalidates cached engine credential key');
+});

@@ -191,3 +191,52 @@ test('sendEqSettings syncs app.eqBands in memory and unloadIr reports error stat
     assert.equal(app.irLoadedPath, null);
     assert.equal(app.irSwitch.checked, false);
 });
+
+test('EQ slider cache avoids repeated getElementById lookups and recovers if a slider is detached', async () => {
+    let lookups = 0;
+    const sliders = {
+        'eq-32': { value: '0', isConnected: true },
+        'eq-1k': { value: '0', isConnected: true }
+    };
+    const app = {
+        eqBands: { 32: 0, '1k': 0 },
+        eqSwitch: { checked: true },
+        eqTypeSelect: { value: 'IIR' },
+        firTapsSelect: { value: '1023' },
+        eqPresetSelect: { value: 'balance', options: [], appendChild(o) { this.options.push(o); } },
+        eqPresets: { balance: { 32: 0, '1k': 0 }, bass: { 32: 5, '1k': 0 } },
+        _syncedEqType: 'IIR',
+        _syncedFirTaps: 1023,
+        api: { setMusicEq: async () => ({ status: 'success' }) },
+        saveSettings() {}
+    };
+    const context = {
+        app,
+        window: {},
+        document: {
+            getElementById(id) { lookups += 1; return sliders[id] || null; },
+            createElement: () => ({})
+        }
+    };
+    vm.runInNewContext(fs.readFileSync('Musicmodules/music-effects.js', 'utf8') + '\nsetupEffects(app);', context);
+
+    await app.sendEqSettings();
+    const afterFirst = lookups;
+    assert.equal(afterFirst, 2, 'initial sendEqSettings looks up each band once');
+
+    await app.sendEqSettings();
+    app.syncEqPresetSelect();
+    app.applyEqPreset('bass');
+    assert.equal(lookups, afterFirst, 'cached connected sliders avoid repeated getElementById calls');
+    assert.equal(sliders['eq-32'].value, 5);
+
+    // Detach old slider and replace in DOM -> cache refreshes automatically
+    sliders['eq-32'].isConnected = false;
+    sliders['eq-32'] = { value: '-2', isConnected: true };
+    await app.sendEqSettings();
+    assert.equal(lookups, afterFirst + 1);
+    assert.equal(app.eqBands[32], -2);
+
+    // Missing app.irStatus must not throw
+    assert.doesNotThrow(() => app.updateIrStatus('未加载', 'idle'));
+});
