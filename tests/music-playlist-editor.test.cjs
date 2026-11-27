@@ -150,3 +150,13 @@ test('Batch 70: showContextMenu cancels stale rAF on rapid reopen or beforeunloa
     assert.ok(cancelled.includes(3), 'beforeunload cancels pending showContextMenu rAF');
     dom.window.close();
 });
+
+test('Batch 74: music.js scopes progress drag listeners to active drag, fast-paths classicOrder, and refreshes archiveView on playlist creation', () => {
+    const musicJs = fs.readFileSync('Musicmodules/music.js', 'utf8');
+    assert.match(musicJs, /const detachProgressDrag\s*=\s*\(\)\s*=>/, 'music.js detaches global progress drag listeners when idle');
+    assert.match(musicJs, /app\.progressContainer\.onmousedown\s*=\s*\(e\)\s*=>[\s\S]{0,400}window\.addEventListener\('mousemove', onProgressMove\)/, 'progress drag binds global listeners only on mousedown');
+    assert.match(musicJs, /dragRect\s*=\s*app\.progressContainer\.getBoundingClientRect\(\)/, 'progress bar caches bounding rect on mousedown');
+    assert.match(musicJs, /if\s*\(shown === app\.playlist\)\s*return app\.playlist\.slice\(\)/, 'classicOrder fast-paths full playlist without Set construction');
+    assert.match(musicJs, /else if \(action === 'create-playlist-add'\)\s*\{\s*\r?\n\s*const track = app\.playlist\[app\.contextMenuTrackIndex\];/, 'create-playlist-add captures target track before opening modal');
+    assert.doesNotMatch(musicJs, /const scannedPaths = new Set\(scannedMap\.keys\(\)\)/, 'onMusicScanComplete uses scannedMap.has directly without redundant Set');
+});

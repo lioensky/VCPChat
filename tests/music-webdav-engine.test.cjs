@@ -265,3 +265,25 @@ test('Batch 69: webdavManager scans .alac/.aif/.dsf/.dff audio extensions and gu
     assert.equal(bad.status, 'success');
     assert.deepEqual(Array.from(bad.entries), [], 'non-array entries response normalized to empty array');
 });
+
+test('Batch 74: webdavManager scanAudioFiles tolerates malformed entries missing display_name/href and musicHandlers unrefs engine timeout', async () => {
+    const engine = async (url) => {
+        if (url.includes('/webdav/configure')) return reply({ status: 'success' });
+        return reply({
+            status: 'success',
+            path: '/mixed',
+            entries: [
+                { href: '/mixed/no-name.mp3', is_dir: false },
+                { display_name: null, is_dir: true },
+                { display_name: 'valid.flac', href: '/mixed/valid.flac', url: 'https://nas/dav/mixed/valid.flac', is_dir: false }
+            ]
+        });
+    };
+    const { api } = load({ engine });
+    const res = await api.scanAudioFiles({ url: 'https://nas/dav', username: 'u', password: 'p', path: '/mixed' });
+    assert.equal(res.status, 'success');
+    assert.deepEqual(Array.from(res.tracks, (t) => t.name), ['valid.flac'], 'malformed WebDAV entries skipped cleanly without aborting directory scan');
+
+    const handlersSrc = fs.readFileSync(path.join(__dirname, '..', 'modules', 'ipc', 'musicHandlers.js'), 'utf8');
+    assert.match(handlersSrc, /timer\.unref\?\.\(\)/, 'audioEngineApi abort timer calls unref so process exit is not held open');
+});

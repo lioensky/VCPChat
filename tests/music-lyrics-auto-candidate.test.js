@@ -225,3 +225,17 @@ test('manual lyrics translation with force=true bypasses failure cooldown while 
     assert.deepEqual(manualRetry.translations, ['你好世界']);
     assert.equal(attempts, 2, 'manual force=true bypasses cooldown');
 });
+
+test('Batch 74: lyricFetcher getBestMatch scores 1-character artist names accurately (matchDistance >= 0)', () => {
+    const fetcherSrc = fs.readFileSync(path.join(__dirname, '..', 'modules', 'lyricFetcher.js'), 'utf8');
+    const fnStart = fetcherSrc.indexOf('function getBestMatch(');
+    const fnEnd = fetcherSrc.indexOf('async function fetchAndSaveLyrics(');
+    assert.ok(fnStart >= 0 && fnEnd > fnStart);
+    const ctx = vm.createContext({});
+    vm.runInContext(fetcherSrc.slice(fnStart, fnEnd), ctx);
+    const picked = ctx.getBestMatch([
+        { id: 1, artists: [{ name: 'B' }] },
+        { id: 2, artists: [{ name: 'A' }] }
+    ], 'A');
+    assert.equal(picked?.id, 2, 'exact 1-char artist match outscores non-matching 1-char candidate');
+});

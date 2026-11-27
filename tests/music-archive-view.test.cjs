@@ -1975,3 +1975,60 @@ test('Batch 66: archive-list reuses mounted track rows in-place & updates likes 
     assert.equal(coverCalls, afterClick, 'repeated click on same expanded card avoids redundant setCover');
     f.close();
 });
+
+test('Batch 74: archive-list toggles .al-sq/.al-sq-f without :has() CSS and archive-view mirrors drawer-lyrics class onto body', () => {
+    const f = fixture({ n: 24 });
+    const listEl = f.view.list.el;
+    const input = f.view.list.input;
+    f.view.setListOpen(true);
+    assert.equal(listEl.classList.contains('al-sq'), false, 'idle empty search has no .al-sq');
+    assert.equal(listEl.classList.contains('al-sq-f'), false, 'idle unfocused search has no .al-sq-f');
+
+    // Focusing search sets both .al-sq and .al-sq-f
+    input.focus();
+    input.dispatchEvent(new f.w.FocusEvent('focus'));
+    assert.equal(listEl.classList.contains('al-sq'), true, 'focused search adds .al-sq');
+    assert.equal(listEl.classList.contains('al-sq-f'), true, 'focused search adds .al-sq-f');
+
+    // Typing query keeps .al-sq even after blur, while .al-sq-f clears on blur
+    input.value = 'Song 1';
+    input.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    input.blur();
+    input.dispatchEvent(new f.w.FocusEvent('blur'));
+    assert.equal(listEl.classList.contains('al-sq'), true, 'non-empty query retains .al-sq after blur');
+    assert.equal(listEl.classList.contains('al-sq-f'), false, 'blur clears .al-sq-f');
+
+    // Clearing search removes .al-sq
+    const clearBtn = listEl.querySelector('[data-l="clear"]');
+    clearBtn.click();
+    input.blur();
+    input.dispatchEvent(new f.w.FocusEvent('blur'));
+    assert.equal(listEl.classList.contains('al-sq'), false, 'clearing search removes .al-sq');
+
+    // Drawer + lyrics mirrors body.music-archive-drawer-lyrics and cleans up on close/destroy
+    f.app.currentLyrics = [{ time: 0, original: 'Line 1' }, { time: 5, original: 'Line 2' }];
+    const lyricsBtn = f.w.document.querySelector('[data-ref="lyricsBtn"]');
+    f.app.musicDock = { roomRight: 320 };
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    assert.equal(f.w.document.body.classList.contains('music-archive-drawer-lyrics'), false, 'lyrics closed keeps drawer-lyrics off');
+    lyricsBtn.click();
+    assert.equal(f.w.document.body.classList.contains('music-archive-drawer-lyrics'), true, 'lyrics open beside drawer sets body.music-archive-drawer-lyrics');
+    f.app.musicDock.roomRight = 0;
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    assert.equal(f.w.document.body.classList.contains('music-archive-drawer-lyrics'), false, 'drawer closed clears body.music-archive-drawer-lyrics');
+    f.app.musicDock.roomRight = 320;
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    assert.equal(f.w.document.body.classList.contains('music-archive-drawer-lyrics'), true, 'reopening drawer with lyrics open restores body.music-archive-drawer-lyrics');
+    f.view.destroy();
+    assert.equal(f.w.document.body.classList.contains('music-archive-drawer-lyrics'), false, 'destroy cleans up body.music-archive-drawer-lyrics');
+
+    const tuningCss = read('Musicmodules/music-archive/archive-tuning.css');
+    const drawerCss = read('Musicmodules/music-dock/music-dock-drawer.css');
+    assert.equal(tuningCss.includes('.archive-list:has('), false, 'archive-tuning.css drops all .archive-list:has(...) selectors');
+    assert.match(tuningCss, /\.archive-list\.al-sq\b/);
+    assert.match(tuningCss, /\.archive-list\.al-sq-f\b/);
+    assert.doesNotMatch(drawerCss, /body[^{]*:has\(/, 'music-dock-drawer.css drops body :has(...) selector');
+    assert.match(drawerCss, /body\.music-archive-on\.music-archive-drawer-lyrics/);
+    f.close();
+});
