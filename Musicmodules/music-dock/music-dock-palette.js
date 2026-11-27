@@ -123,7 +123,7 @@
         const box = root.querySelector('.md-cmd-box');
         const foot = root.querySelector('.md-cmd-foot');
 
-        const state = { open: false, items: [], active: 0, lastFocus: null, closeTimer: null };
+        const state = { open: false, items: [], active: 0, lastFocus: null, closeTimer: null, openRaf: 0 };
 
         // ───────── 命令表 ─────────
         const panelCmd = (tab, iconName, words) => ({
@@ -537,7 +537,10 @@
             document.body.classList.add('music-dock-cmd-open');
             input.value = initial;
             build();
-            requestAnimationFrame(() => {
+            if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
+            state.openRaf = requestAnimationFrame(() => {
+                state.openRaf = 0;
+                if (!state.open) return;
                 root.classList.add('md-open');
                 // 搜索面板从播放条顶边长出来
                 const cap = host.querySelector('.md-cap')?.getBoundingClientRect();
@@ -548,6 +551,7 @@
         function close(restoreFocus = true) {
             if (!state.open) return;
             state.open = false;
+            if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
             root.classList.remove('md-open');
             document.body.classList.remove('music-dock-cmd-open');
             state.closeTimer = setTimeout(() => { state.closeTimer = null; if (!state.open) root.hidden = true; }, 200);
@@ -570,7 +574,11 @@
                 event.preventDefault();
                 if (!event.isComposing) execute(state.active, event.shiftKey ? 'next' : (event.ctrlKey || event.metaKey) ? 'queue' : 'run');
             }
-            else if (event.key === 'Escape') { event.preventDefault(); if (input.value) { input.value = ''; build(); } else close(); }
+            else if (event.key === 'Escape') {
+                if (event.isComposing) return;
+                event.preventDefault();
+                if (input.value) { input.value = ''; build(); } else close();
+            }
             else if (event.key === 'Tab') {
                 event.preventDefault();
                 const hint = hints.hidden ? null : hints.querySelector('.md-cmd-hint');
@@ -623,6 +631,7 @@
             get isOpen() { return state.open; },
             destroy() {
                 close(false);
+                if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
                 if (state.closeTimer) { clearTimeout(state.closeTimer); state.closeTimer = null; }
                 if (resizeRaf) { global.cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
                 document.removeEventListener('keydown', onGlobalKey, true);

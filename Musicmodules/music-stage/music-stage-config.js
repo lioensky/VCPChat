@@ -437,6 +437,14 @@
         };
     };
 
+    const stripUndefined = (obj) => {
+        const out = {};
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key) && obj[key] !== undefined) out[key] = obj[key];
+        }
+        return out;
+    };
+
     const normalize = (candidate) => {
         const source = candidate && typeof candidate === 'object' ? candidate : {};
         const savedVersion = Number(source.version) || 0;
@@ -448,7 +456,7 @@
             .filter((id) => requestedModes.includes(id));
         const modes = {};
         MODE_META.forEach((entry) => {
-            modes[entry.id] = normalizeMode(source.modes?.[entry.id], DEFAULTS.modes[entry.id] || {});
+            modes[entry.id] = stripUndefined(normalizeMode(source.modes?.[entry.id], DEFAULTS.modes[entry.id] || {}));
         });
         if (!enabledModes.length) enabledModes.push('luminous');
 
@@ -465,8 +473,21 @@
         };
     };
 
-    const clone = (value) => JSON.parse(JSON.stringify(value));
-    let current = normalize(DEFAULTS);
+    const clone = (value) => {
+        if (!value || typeof value !== 'object') return value;
+        const modes = {};
+        if (value.modes) {
+            for (const key in value.modes) {
+                if (Object.prototype.hasOwnProperty.call(value.modes, key)) modes[key] = { ...value.modes[key] };
+            }
+        }
+        return {
+            ...value,
+            enabledModes: Array.isArray(value.enabledModes) ? value.enabledModes.slice() : [],
+            modes
+        };
+    };
+    let current = null;
     const listeners = new Set();
 
     const notify = () => {

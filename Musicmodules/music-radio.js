@@ -45,7 +45,13 @@
         return artist && title ? title + '\n' + artist : '';
     };
     // 同一首里放哪份：本机文件 > 网络；无损 > 有损；位深、采样率、码率高的优先。
-    const isRemote = (t) => Boolean(t && (t.isRemote || /^https?:\/\//i.test(String(t.path || ''))));
+    const isRemote = (t) => {
+        if (!t) return false;
+        if (t.isRemote) return true;
+        const p = String(t.path || '');
+        const c0 = p.charCodeAt(0);
+        return (c0 === 104 || c0 === 72) && /^https?:\/\//i.test(p);
+    };
     const versionRank = (t) => (isRemote(t) ? 0 : 1e9)
         + (t.lossless === true || /\.(flac|wav|ape|wv|aiff?|alac|dsf|dff)$/i.test(String(t.path || '')) ? 1e8 : 0)
         + (Number(t.bitsPerSample) || 0) * 1e6
@@ -76,11 +82,13 @@
         for (const t of seeds) { const k = recordingKey(t); if (k) takenKeys.add(k); }
         for (const t of exclude) { const k = recordingKey(t); if (k) takenKeys.add(k); }
         const instrumentalOk = seeds.some(isInstrumental);
-        // 每首歌先挑出最好的那份文件，其余的不参加打分（缓存第一遍的 recordingKey 与 playable，保持原始遍历顺序以维持确定性 random）
+        // 每首歌先挑出最好的那份文件，其余的不参加打分（缓存规范化歌手/标题并仅在重名录音冲突时懒算 versionRank）
         const n = library.length;
         const best = new Map();
         const bestRank = new Map();
         const keys = new Array(n);
+        const normArtists = new Array(n);
+        const cleanTitles = new Array(n);
         const ok = new Uint8Array(n);
         const hasSeedArtists = seedArtists.size > 0;
         const hasSeedAlbums = seedAlbums.size > 0;
@@ -89,14 +97,27 @@
             const t = library[i];
             if (!t || !t.path || exclude.has(t) || !playable(t)) continue;
             ok[i] = 1;
-            const k = recordingKey(t);
+            const na = norm(t.artist);
+            const ct = String(t.title || '').replace(AUDIO_EXT, '');
+            normArtists[i] = na;
+            cleanTitles[i] = ct;
+            const k = na && ct ? norm(ct) + '\n' + na : '';
             keys[i] = k;
             if (!k || takenKeys.has(k)) continue;
-            const r = versionRank(t);
-            const prevRank = bestRank.get(k);
-            if (prevRank === undefined || r > prevRank) {
+            const prev = best.get(k);
+            if (prev === undefined) {
                 best.set(k, t);
-                bestRank.set(k, r);
+            } else {
+                let prevRank = bestRank.get(k);
+                if (prevRank === undefined) {
+                    prevRank = versionRank(prev);
+                    bestRank.set(k, prevRank);
+                }
+                const r = versionRank(t);
+                if (r > prevRank) {
+                    best.set(k, t);
+                    bestRank.set(k, r);
+                }
             }
         }
         const scored = [];
@@ -106,14 +127,18 @@
             const key = keys[i];
             if (key && (best.get(key) !== t || takenKeys.has(key))) continue;
             let s = 0;
-            const normArtist = norm(t.artist);
-            const normAlbum = norm(t.album);
+            const normArtist = normArtists[i];
             if (hasSeedArtists && normArtist) {
                 let artistHit = 0;
-                for (const a of artistsOf(t)) artistHit = Math.max(artistHit, seedArtists.get(a) || 0);
+                for (const a of normArtist.split(/\s*(?:\/|,|，|、|&|;|feat\.?|ft\.)\s*/)) {
+                    if (a) artistHit = Math.max(artistHit, seedArtists.get(a) || 0);
+                }
                 s += 3 * artistHit;
             }
-            if (hasSeedAlbums && normAlbum && seedAlbums.has(normAlbum + '\n' + normArtist)) s += 1.5;
+            if (hasSeedAlbums) {
+                const normAlbum = norm(t.album);
+                if (normAlbum && seedAlbums.has(normAlbum + '\n' + normArtist)) s += 1.5;
+            }
             if (hasSeedGenres) {
                 const g = norm(t.genre);
                 if (g && seedGenres.has(g)) s += 1;
@@ -122,7 +147,7 @@
             if (liked(t)) s += 1.5;
             s += novelty(t); // 每日推荐里给没听过的歌一点加分，让曲库里沉着的歌浮上来
             s += 1.2 * random();
-            if (!instrumentalOk && isInstrumental(t)) s *= 0.25;
+            if (!instrumentalOk && cleanTitles[i] && INSTRUMENTAL.test(cleanTitles[i])) s *= 0.25;
             s *= damp(t); // 每日推荐：前几批刚推过的往后放
             scored.push([s, t]);
         }
@@ -283,7 +308,7 @@
                 novelty: (t) => (stats && !stats.get(t) ? 1.6 : 0),
                 random,
                 playable,
-                damp: (t) => damping.get(pathKey(t)) || 1
+                damp: damping.size ? (t) => damping.get(pathKey(t)) || 1 : undefined
             });
             mixCache = { key, list };
             if (list.length) writeSeen([{ id, p: list.map(pathKey) }, ...earlier].slice(0, SEEN_BATCHES));

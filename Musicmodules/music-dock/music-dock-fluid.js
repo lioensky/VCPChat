@@ -160,12 +160,23 @@
         const dockEl = bar.closest('.md-dock');
         let cachedShift = 0;
         let shiftAt = -1e9;
+        let shiftActive = false;
         const shiftX = (fresh = false) => {
             const now = (win.performance || Date).now();
             if (!fresh && now - shiftAt < 120) return cachedShift;
+            const rawVar = host.style.getPropertyValue('--md-shift').trim();
+            const hasVar = Boolean(rawVar) && rawVar !== '0' && rawVar !== '0px';
+            const inlineT = dockEl?.style?.translate?.trim();
+            const hasInline = Boolean(inlineT) && inlineT !== 'none' && inlineT !== '0' && inlineT !== '0px';
+            // 抽屉未展开让位且无进行中的位移动画时，跳过昂贵的 getComputedStyle(dockEl)
+            if (!hasVar && !hasInline && !shiftActive && cachedShift === 0) {
+                shiftAt = now;
+                return 0;
+            }
             const t = dockEl ? win.getComputedStyle(dockEl).translate : '';
             const n = parseFloat(t);
             cachedShift = Number.isFinite(n) ? n : 0;
+            shiftActive = hasVar || hasInline || Math.abs(cachedShift) > 0.05;
             shiftAt = now;
             return cachedShift;
         };

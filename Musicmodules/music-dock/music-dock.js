@@ -280,6 +280,20 @@
         const readRgb = (value) => {
             const text = String(value || '').trim();
             if (!text) return null;
+            // 纯 JS 解析 #hex 与 rgb()/rgba()，避免经 colorProbe 写入样式并触发 getComputedStyle 重算
+            if (text.charCodeAt(0) === 35) {
+                if (text.length === 7 && /^#[0-9a-f]{6}$/i.test(text)) {
+                    const n = parseInt(text.slice(1), 16);
+                    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+                }
+                if (text.length === 4 && /^#[0-9a-f]{3}$/i.test(text)) {
+                    const r = parseInt(text[1], 16), g = parseInt(text[2], 16), b = parseInt(text[3], 16);
+                    return [r * 17, g * 17, b * 17];
+                }
+            } else if (text.startsWith('rgb')) {
+                const direct = /^rgba?\(\s*([\d.]+)\s*[, ]\s*([\d.]+)\s*[, ]\s*([\d.]+)/i.exec(text);
+                if (direct) return [Number(direct[1]), Number(direct[2]), Number(direct[3])];
+            }
             colorProbe.style.color = '';
             colorProbe.style.color = text;
             if (!colorProbe.style.color) return null;
@@ -366,13 +380,14 @@
             host.classList.toggle('md-fl-low', !fluid);
             document.body.classList.toggle('music-fl-low', !fluid);
             host.classList.toggle('md-q-ultimate', global.MusicStageConfig?.get?.()?.quality === 'ultimate');
+            // 先写 md-light 与主题色变量，再做 fluid.layout()，把样式重算与布局测量合并为一次
+            syncGlow();
             if (fluid) {
                 fluid.layout();
                 lastRange = '';
                 cachedRange = null;
                 fluid.setHidden(document.hidden === true);
                 fluid.setRingDocked(!state.panelOpen);
-                syncGlow();
                 syncSolid();
                 syncRing();
                 renderProgress();
@@ -967,14 +982,14 @@
             flashVolume();
         }, { passive: false });
 
-        const renderStage = () => {
+        const renderStage = (skipGlow = false) => {
             const inStage = stageActive();
             host.classList.toggle('md-in-stage', inStage);
             if (!inStage) state.scenesOpen = false;
             el.stageSlot.classList.toggle('md-on', inStage);
             el.stageSlot.setAttribute('aria-pressed', String(inStage));
             el.stageSlot.title = inStage ? '离开歌词舞台' : '进入歌词舞台';
-            syncGlow();
+            if (!skipGlow) syncGlow();
             renderQuick();
             if (state.panelOpen && state.tab === '控制') renderBody();
         };
@@ -2116,7 +2131,7 @@
         renderTrack();
         renderPlay();
         renderMode();
-        renderStage();
+        renderStage(true);
         renderQuick();
         renderVolume();
         state.expanded = shouldExpand();

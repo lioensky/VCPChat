@@ -243,7 +243,11 @@
         };
         // 目录被拖窄时，分类那一行收紧间距、去掉斜线，免得和右端的排序/搜索/添加图标挤在一起。
         const paintSlim = () => el.classList.toggle('slim', el.offsetWidth > 0 && el.offsetWidth < 340);
-        if (typeof global.ResizeObserver === 'function') new global.ResizeObserver(paintSlim).observe(el);
+        let slimResizeObserver = null;
+        if (typeof global.ResizeObserver === 'function') {
+            slimResizeObserver = new global.ResizeObserver(paintSlim);
+            slimResizeObserver.observe(el);
+        }
         try {
             const saved = Number(localStorage.getItem(WIDTH_KEY));
             if (saved > 0) applyWidth(saved);
@@ -2011,6 +2015,8 @@
             if (state.raf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(state.raf); state.raf = 0; }
             kindResizeObserver?.disconnect();
             kindResizeObserver = null;
+            slimResizeObserver?.disconnect();
+            slimResizeObserver = null;
             document.removeEventListener('music-track-health', onTrackHealth);
             document.removeEventListener('music-stats-change', onStatsChange);
             document.removeEventListener('music-like-change', onLikeChange);
