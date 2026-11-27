@@ -54,7 +54,7 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
         } catch (e) { return null; }
     }
 
-    async function translate({ lines, title = '', artist = '' } = {}) {
+    async function translate({ lines, title = '', artist = '', force = false } = {}) {
         if (!Array.isArray(lines) || !lines.length) return { status: 'error', message: '没有歌词' };
         const clean = lines.slice(0, MAX_LINES).map((l) => String(l ?? '').slice(0, 500));
         const key = keyOf(clean);
@@ -64,7 +64,11 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
             const cached = await readCache(file);
             if (cached && cached.length === clean.length) return { status: 'success', translations: cached, cached: true };
         }
-        if ((failedUntil.get(key) || 0) > now()) return { status: 'error', message: '刚刚翻译失败过，稍后再试' };
+        const nowMs = now();
+        if (!force && (failedUntil.get(key) || 0) > nowMs) return { status: 'error', message: '刚刚翻译失败过，稍后再试' };
+        if (failedUntil.size > 64) {
+            for (const [k, until] of failedUntil) if (until <= nowMs) failedUntil.delete(k);
+        }
         if (inflight.has(key)) return inflight.get(key);
 
         const job = (async () => {

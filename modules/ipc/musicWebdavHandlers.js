@@ -14,7 +14,7 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
         return webdavManager.addServer(config);
     });
 
-    ipcMain.handle('webdav-remove-server', (event, { id }) => {
+    ipcMain.handle('webdav-remove-server', (event, { id } = {}) => {
         webdavManager.removeServer(id);
         return { ok: true };
     });
@@ -24,14 +24,14 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
     });
 
     // 前端传递: { url, username, password }
-    ipcMain.handle('webdav-test-connection', async (event, config) => {
+    ipcMain.handle('webdav-test-connection', async (event, config = {}) => {
         return await webdavManager.testConnection(config);
     });
 
     // 前端传递: { serverId?, url, username?, password?, path }
-    ipcMain.handle('webdav-list-directory', async (event, config) => {
+    ipcMain.handle('webdav-list-directory', async (event, config = {}) => {
         // 如果提供了 serverId，从后端获取完整凭据
-        if (config.serverId) {
+        if (config?.serverId) {
             const serverCreds = webdavManager.getServerCredentials(config.serverId);
             if (serverCreds) {
                 config.url = serverCreds.url;
@@ -43,10 +43,10 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
     });
 
     // 前端传递: { serverId?, url, username?, password?, path? }
-    ipcMain.handle('webdav-scan-audio', async (event, config) => {
-        console.log('[Music] webdav-scan-audio called with config:', { serverId: config.serverId, url: config.url });
+    ipcMain.handle('webdav-scan-audio', async (event, config = {}) => {
+        console.log('[Music] webdav-scan-audio called with config:', { serverId: config?.serverId, url: config?.url });
         // 如果提供了 serverId，从后端获取完整凭据
-        if (config.serverId) {
+        if (config?.serverId) {
             const serverCreds = webdavManager.getServerCredentials(config.serverId);
             console.log('[Music] serverCreds found:', !!serverCreds, 'hasPassword:', !!(serverCreds?.password));
             if (serverCreds) {
@@ -82,14 +82,14 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
     });
 
     // 获取服务器完整凭据（包含密码）
-    ipcMain.handle('webdav-get-server-credentials', (event, { serverId }) => {
+    ipcMain.handle('webdav-get-server-credentials', (event, { serverId } = {}) => {
         return webdavManager.getServerCredentials(serverId);
     });
 
     // Load a WebDAV file: 前端传递 { url, serverId?, username?, password?, trackMeta? }
     // 如果提供 serverId，则从后端获取完整凭据（包含密码）
-    ipcMain.handle('webdav-load-track', async (event, config) => {
-        if (!config.url) return { status: 'error', message: 'No URL provided' };
+    ipcMain.handle('webdav-load-track', async (event, config = {}) => {
+        if (!config?.url) return { status: 'error', message: 'No URL provided' };
         
         // 如果提供了 serverId，从后端获取完整凭据
         if (config.serverId && !config.password) {

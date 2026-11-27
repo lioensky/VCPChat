@@ -60,7 +60,8 @@
                 result = await app.api.translateMusicLyrics({
                     lines: texts,
                     title: app.stripAudioExtension ? app.stripAudioExtension(track?.title || '') : (track?.title || ''),
-                    artist: track?.artist || ''
+                    artist: track?.artist || '',
+                    force: manual
                 });
             } catch (e) {
                 result = { status: 'error', message: e?.message || String(e) };

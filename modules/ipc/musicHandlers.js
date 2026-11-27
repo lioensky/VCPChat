@@ -601,7 +601,7 @@ async function handleMusicControl(args) {
         try { await musicWindowPromise; } catch (_) { /* 按窗口不在处理 */ }
     }
 
-    switch (command.toLowerCase()) {
+    switch (String(command || '').toLowerCase()) {
         case 'getcurrentlyrics':
             return getCurrentLyrics();
         case 'play':
@@ -835,6 +835,10 @@ function initialize(options) {
                     })));
                     return { ok: true, folders: withState };
                 }
+                if (op === 'rescan') {
+                    await libraryWatch.rescanNow?.();
+                    return { ok: true };
+                }
                 if (!dir || !path.isAbsolute(dir)) return { ok: false, message: '不是本机文件夹' };
                 if (op === 'open') {
                     const stat = await fs.stat(dir).catch(() => null);
@@ -845,10 +849,6 @@ function initialize(options) {
                 if (op === 'forget') {
                     if (typeof libraryWatch.forgetFolder === 'function') await libraryWatch.forgetFolder(dir);
                     libraryWatch.start();
-                    return { ok: true };
-                }
-                if (op === 'rescan') {
-                    await libraryWatch.rescanNow?.();
                     return { ok: true };
                 }
                 return { ok: false, message: '不认识的操作' };

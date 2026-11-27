@@ -273,8 +273,9 @@ void main() {
         const vec3 KEY = vec3(0.0, 0.5477, 0.8367);
         vec3 v = normalize(cameraPosition - vWorld);
         float ndl = max(dot(wn, KEY), 0.0);
+        float ndh = max(dot(wn, normalize(KEY + v)), 0.0);
         float gloss = plateFront ? 0.6 : 0.35;
-        float spec = pow(max(dot(wn, normalize(KEY + v)), 0.0), mix(20.0, 90.0, gloss)) * mix(0.18, 0.85, gloss);
+        float spec = pow(ndh, mix(20.0, 90.0, gloss)) * mix(0.18, 0.85, gloss);
         vec3 lit = color * (0.55 + 0.45 * ndl) + spec;
         if (plateFront) {
             // 玻璃层：clearGlass = tint·0.06 + 雾色·(0.04 + 0.95·fresnel) + 高光 + sheen·0.85 + 亮边·0.55，
@@ -283,7 +284,7 @@ void main() {
             float fresnel = pow(1.0 - ndv, 5.0);
             float rim = pow(1.0 - ndv, 2.2);
             vec3 tint = mix(vec3(1.0, 0.992, 0.98), vec3(0.384, 0.42, 0.439), dark);
-            float gspec = pow(max(dot(wn, normalize(KEY + v)), 0.0), 90.0) * 1.2;
+            float gspec = pow(ndh, 90.0) * 1.2;
             vec3 glass = tint * 0.06 + fogColor * (0.04 + 0.95 * fresnel) + gspec + mix(tint, vec3(1.0), 0.3) * (0.10 + 1.15 * rim) * 0.85
                 + smoothstep(0.55, 0.98, rim) * 0.55;
             lit = mix(lit, glass, clamp(0.06 + rim * 1.3 + fresnel * 0.35, 0.0, 0.92));
@@ -1060,7 +1061,8 @@ vec3 archiveUntone(vec3 y) {
             }
             captionMap.needsUpdate = true;
         };
-        // 还没有可用的封面时，用写有曲名和歌手的卡面。
+        // 还没有可用的封面时，用写有曲名和歌手的卡面（复用同一块 512×512 离屏画布，避免切歌重复分配）。
+        let fallbackCoverCanvas = null;
         const setCover = (key, source, info = {}) => {
             if (key === coverKey && artMat.map) return;
             coverKey = key;
@@ -1071,8 +1073,11 @@ vec3 archiveUntone(vec3 y) {
             if (captionMesh.visible) drawCaption(info, Boolean(source));
             let img = source;
             if (!img) {
-                const c = document.createElement('canvas');
-                c.width = c.height = 512;
+                if (!fallbackCoverCanvas) {
+                    fallbackCoverCanvas = document.createElement('canvas');
+                    fallbackCoverCanvas.width = fallbackCoverCanvas.height = 512;
+                }
+                const c = fallbackCoverCanvas;
                 const g = c.getContext('2d');
                 g.fillStyle = lighting.tag;
                 g.fillRect(0, 0, 512, 512);
@@ -1083,10 +1088,14 @@ vec3 archiveUntone(vec3 y) {
                 g.textBaseline = 'alphabetic';
                 const fit = (text, size, weight, maxW) => {
                     g.font = `${weight} ${size}px ${fontStack}`;
-                    let s = String(text || '');
+                    const s = String(text || '');
                     if (g.measureText(s).width <= maxW) return s;
-                    while (s.length > 1 && g.measureText(s + '…').width > maxW) s = s.slice(0, -1);
-                    return s + '…';
+                    let lo = 1, hi = s.length - 1;
+                    while (lo < hi) {
+                        const mid = (lo + hi + 1) >> 1;
+                        if (g.measureText(s.slice(0, mid) + '…').width > maxW) hi = mid - 1; else lo = mid;
+                    }
+                    return s.slice(0, lo) + '…';
                 };
                 g.fillText(fit(info.title || '', 46, 700, 420), 52, 400);
                 g.fillText(fit(info.artist || '', 24, 500, 420), 52, 446);
@@ -1533,12 +1542,15 @@ vec3 archiveUntone(vec3 y) {
                     i++;
                 }
             }
+            let hoverMoving = false;
+            if (hovered && !hoverLifts.has(hovered)) hoverLifts.set(hovered, 0);
             for (const [k, v] of hoverLifts) {
                 const goal = hovered === k ? 0.28 : 0;   // 悬停的卡探出 0.28，按 14 的指数趋近（参考播放器同值）
-                const nv = v + (goal - v) * (reduced ? 1 : 1 - Math.exp(-dt * 14));
-                if (Math.abs(nv) < 0.001 && goal === 0) hoverLifts.delete(k); else hoverLifts.set(k, nv);
+                let nv = v + (goal - v) * (reduced ? 1 : 1 - Math.exp(-dt * 14));
+                if (Math.abs(nv - goal) < 0.001) nv = goal;
+                else hoverMoving = true;
+                if (nv === 0 && goal === 0) hoverLifts.delete(k); else hoverLifts.set(k, nv);
             }
-            if (hovered && !hoverLifts.has(hovered)) hoverLifts.set(hovered, 0.0001);
             for (const layer of layers) layer.instanceMatrix.needsUpdate = true;
             if (tinting) for (const [mesh] of TINTED) mesh.instanceColor.needsUpdate = true;
             // 选中卡在实例参数里打个记号（g = 1），着色器只在这张卡上算内部暖光和半透面板
@@ -1623,7 +1635,7 @@ vec3 archiveUntone(vec3 y) {
                 && (Math.abs(lift.v - (detailOn ? DETAIL_LIFT : liftGoal)) + Math.abs(lift.vel) / liftRate) * pxPerUnit < 0.5 && !returning.size
                 && Math.abs(detailK - (detailOn ? 1 : 0)) < 0.001 && Math.abs(inspect.v - inspect.goal) < 0.001
                 && !themeBusy() && Math.abs(camLane.vel) < 0.001
-                && !pulses.length && hoverLifts.size <= (hovered ? 1 : 0) && !labelsPending;
+                && !pulses.length && !hoverMoving && !labelsPending;
             return {
                 moving: !settled,
                 idle: now - Math.max(lastInput, lastPointer) > IDLE_AFTER,

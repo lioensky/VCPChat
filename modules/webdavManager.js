@@ -276,8 +276,9 @@ async function scanAudioFiles(config, progressCallback) {
     
     let rootError = null;
     async function scanDir(dirPath, isRoot = false) {
-        if (visitedDirs.has(dirPath)) return;
-        visitedDirs.add(dirPath);
+        const dirKey = String(dirPath || '/').replace(/\/+$/, '') || '/';
+        if (visitedDirs.has(dirKey)) return;
+        visitedDirs.add(dirKey);
         
         try {
             const result = await listDirectory({ ...scanConfig, path: dirPath });
@@ -364,11 +365,13 @@ async function configureAndLoad(config) {
         let baseUrl = '';
         const fileUrl = config.url || '';
         
-        // 尝试从已保存的服务器列表中找到匹配的服务器
-        const matchingServer = servers.find(s => {
-            const serverUrl = s.url.replace(/\/$/, '');
-            return fileUrl.startsWith(serverUrl + '/') || fileUrl === serverUrl;
-        });
+        // 尝试从已保存的服务器列表中找到路径边界最长匹配的服务器（与 credentialsForTrack 一致）
+        const matchingServer = servers
+            .filter(s => {
+                const serverUrl = String(s.url || '').replace(/\/$/, '');
+                return serverUrl && (fileUrl.startsWith(serverUrl + '/') || fileUrl === serverUrl);
+            })
+            .sort((a, b) => b.url.length - a.url.length)[0];
         
         if (matchingServer) {
             // 使用服务器配置的完整 URL（包含路径）

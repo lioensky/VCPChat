@@ -639,14 +639,14 @@ async function fetchAndSaveLyricsUnified({ artist, title, durationMs, album, lyr
         const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
         const baseName = artist ? `${sanitize(artist)} - ${sanitize(title)}` : sanitize(title);
 
-        // Save structured JSON format for high precision UI
+        // Save structured JSON format and traditional LRC in parallel
         const jsonPath = path.join(lyricDir, `${baseName}.json`);
-        await fs.writeJson(jsonPath, result.lyrics, { spaces: 2 });
-
-        // Save traditional LRC file for backwards compatibility
         const lrcString = convertToLrcString(result.lyrics);
         const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
-        await fs.writeFile(lrcPath, lrcString, 'utf8');
+        await Promise.all([
+            fs.writeJson(jsonPath, result.lyrics, { spaces: 2 }),
+            fs.writeFile(lrcPath, lrcString, 'utf8')
+        ]);
 
         console.log(`[LyricFetcher] Saved lyrics cache to ${lrcPath} and ${jsonPath}`);
     } catch (err) {

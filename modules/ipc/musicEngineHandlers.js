@@ -14,26 +14,26 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
         return await audioEngineApi(`/devices${refresh}`, 'GET');
     });
 
-    ipcMain.handle('music-configure-output', (event, { device_id, exclusive }) => {
+    ipcMain.handle('music-configure-output', (event, { device_id, exclusive } = {}) => {
         return audioEngineApi('/configure_output', 'POST', { device_id, exclusive });
     });
 
     // --- New handler for EQ ---
-    ipcMain.handle('music-set-eq', (event, { bands, enabled }) => {
+    ipcMain.handle('music-set-eq', (event, { bands, enabled } = {}) => {
         return audioEngineApi('/set_eq', 'POST', { bands, enabled });
     });
 
     // --- New handler for Upsampling ---
-    ipcMain.handle('music-configure-upsampling', (event, { target_samplerate }) => {
+    ipcMain.handle('music-configure-upsampling', (event, { target_samplerate } = {}) => {
         return audioEngineApi('/configure_upsampling', 'POST', { target_samplerate });
     });
 
     // --- Resampling Settings Handler ---
-    ipcMain.handle('music-configure-resampling', (event, { quality, use_cache, preemptive_resample }) => {
+    ipcMain.handle('music-configure-resampling', (event, { quality, use_cache, preemptive_resample } = {}) => {
         return audioEngineApi('/configure_resampling', 'POST', { quality, use_cache, preemptive_resample });
     });
 
-    ipcMain.handle('music-set-eq-type', (event, { type, fir_taps }) => {
+    ipcMain.handle('music-set-eq-type', (event, { type, fir_taps } = {}) => {
         return audioEngineApi('/set_eq_type', 'POST', { type, fir_taps });
     });
 
@@ -53,11 +53,11 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
         return await audioEngineApi('/loudness_info', 'GET');
     });
 
-    ipcMain.handle('music-scan-loudness', (event, { path }) => {
+    ipcMain.handle('music-scan-loudness', (event, { path } = {}) => {
         return audioEngineApi('/scan_loudness', 'POST', { path });
     });
 
-    ipcMain.handle('music-scan-loudness-background', (event, { path, store }) => {
+    ipcMain.handle('music-scan-loudness-background', (event, { path, store } = {}) => {
         return audioEngineApi('/scan_loudness_background', 'POST', { path, store });
     });
 
@@ -98,11 +98,11 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
         return await audioEngineApi('/noise_shaper_curve', 'GET');
     });
 
-    ipcMain.handle('music-set-noise-shaper-curve', (event, { curve }) => {
+    ipcMain.handle('music-set-noise-shaper-curve', (event, { curve } = {}) => {
         return audioEngineApi('/set_noise_shaper_curve', 'POST', { curve });
     });
 
-    ipcMain.handle('music-configure-output-bits', (event, { bits }) => {
+    ipcMain.handle('music-configure-output-bits', (event, { bits } = {}) => {
         return audioEngineApi('/configure_output_bits', 'POST', { bits });
     });
 
@@ -121,7 +121,7 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
     });
 
     // --- Gapless Playback Handlers ---
-    ipcMain.handle('music-queue-next', (event, { path, username, password, serverId }) => {
+    ipcMain.handle('music-queue-next', (event, { path, username, password, serverId } = {}) => {
         // 远程曲目预载要带上它所在服务器的账号；不然引擎用的是上一次配置的那台，换台就预载失败。
         if (!username && !password) {
             const creds = webdavManager.credentialsForTrack?.({ serverId, path });
@@ -135,7 +135,7 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
     });
 
     // --- FIR IR Convolver Handlers ---
-    ipcMain.handle('music-load-ir', (event, { path }) => {
+    ipcMain.handle('music-load-ir', (event, { path } = {}) => {
         return audioEngineApi('/load_ir', 'POST', { path });
     });
 

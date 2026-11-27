@@ -79,6 +79,7 @@ async function parseTrack(filePath) {
     let metadata;
     try {
         const parsePromise = musicMetadata.parseFile(filePath, { duration: true });
+        parsePromise.catch(() => {}); // 超时后底层延迟抛错时不触发 worker 未捕获拒绝
         const timeoutPromise = new Promise((_, reject) => {
             timer = setTimeout(() => reject(new Error('Parsing timed out')), PARSE_TIMEOUT_MS);
         });
