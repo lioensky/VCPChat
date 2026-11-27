@@ -570,3 +570,64 @@ test('MusicStageRuntime.isReducedMotion honors MusicMotion override ahead of mat
     assert.equal(rt.isReducedMotion({ matches: true }), false);
     dom.window.close();
 });
+
+test('interlude visualizer performs zero style writes on settled paused frames', () => {
+    const dom = createStageDom();
+    runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+    const interlude = dom.window.MusicStageRuntime.createInterludeVisualizer({ barCount: 12 });
+    dom.window.document.body.appendChild(interlude.root);
+
+    const frame = {
+        isPlaying: false,
+        playbackTime: 12.5,
+        audio: { power: 0, spectrum: new Array(64).fill(0) }
+    };
+    interlude.update(frame, { visible: true, intensity: 1 });
+
+    let writes = 0;
+    const origSet = interlude.root.style.setProperty.bind(interlude.root.style);
+    interlude.root.style.setProperty = (...args) => { writes += 1; return origSet(...args); };
+
+    interlude.update(frame, { visible: true, intensity: 1 });
+    interlude.update(frame, { visible: true, intensity: 1 });
+    assert.equal(writes, 0, 'settled paused frames do not rewrite CSS custom properties');
+    interlude.destroy();
+    dom.window.close();
+});
+
+test('stage host skips hidden backdrop audio writes in opaque modes and skips disabled edgeSpectrum', async () => {
+    const dom = createStageDom();
+    installCanvasStub(dom.window);
+    const stageRoot = dom.window.document.getElementById('music-stage');
+    stageRoot.querySelector('.music-stage-backdrop-current').classList.add('music-stage-backdrop-layer');
+    for (const file of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+        'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js', 'modes/luminous-manager.js',
+        'modes/partita-manager.js', 'modes/cadenza-manager.js', 'modes/diorama-manager.js',
+        'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js']) {
+        runScript(dom, `Musicmodules/music-stage/${file}`);
+    }
+    dom.window.localStorage.setItem('musicStageMode', 'luminous');
+    const { app } = createApp();
+    app.currentVisualizerData = new Array(64).fill(0.5);
+    dom.window.setupMusicStage(app);
+    app.stageHost.enter();
+    await wait(dom.window, 25);
+
+    const backdrop = stageRoot.querySelector('.music-stage-backdrop-current');
+    const edge = stageRoot.querySelector('.music-stage-edge-spectrum');
+    app.stageHost.updateFrame(1000);
+    const initialPower = backdrop.style.getPropertyValue('--stage-audio-power');
+    assert.ok(Number(initialPower) > 0, 'non-opaque mode writes backdrop audio power');
+    assert.equal(edge.style.getPropertyValue('--stage-audio-power'), initialPower);
+
+    // Mark stage opaque and disable edgeSpectrum, then feed different audio level
+    stageRoot.classList.add('stage-opaque');
+    dom.window.MusicStageConfig.update({ edgeSpectrum: false });
+    app.currentVisualizerData = new Array(64).fill(0.95);
+    app.stageHost.updateFrame(2000);
+    assert.equal(backdrop.style.getPropertyValue('--stage-audio-power'), initialPower, 'opaque mode skips hidden backdrop audio writes');
+    assert.equal(edge.style.getPropertyValue('--stage-audio-power'), initialPower, 'disabled edgeSpectrum skips audio writes');
+
+    app.stageHost.destroy();
+    dom.window.close();
+});

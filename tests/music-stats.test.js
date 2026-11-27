@@ -151,3 +151,92 @@ test('MusicStatsView traps Tab focus inside dialog and restores on Escape', () =
     assert.equal(window.document.activeElement, opener);
     window.close();
 });
+
+test('music-sidebar getAlbumGroups and getArtistGroups handle Object.prototype property names safely', () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="all-count"></div><ul id="playlist"></ul><div id="sidebar-category-view"></div></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-sidebar.js'), 'utf8'));
+    const app = {
+        playlist: [
+            { title: 'A', album: 'constructor', artist: 'toString' },
+            { title: 'B', album: 'constructor', artist: 'valueOf' },
+            { title: 'C', album: '__proto__', artist: 'toString' }
+        ],
+        playlistEl: window.document.getElementById('playlist'),
+        sidebarFooter: window.document.createElement('div'),
+        renderPlaylist() {}
+    };
+    window.setupSidebar(app);
+    const albums = app.getAlbumGroups();
+    const artists = app.getArtistGroups();
+    assert.equal(albums.length, 2);
+    assert.equal(albums[0].name, 'constructor');
+    assert.equal(albums[0].tracks.length, 2);
+    assert.equal(albums[1].name, '__proto__');
+    assert.equal(artists.length, 2);
+    assert.equal(artists[0].name, 'toString');
+    assert.equal(artists[0].tracks.length, 2);
+    assert.equal(artists[1].name, 'valueOf');
+    window.close();
+});
+
+test('music-spectrum reopens after mid-read close without stale overwrites and computes 1ch/2ch columns', async () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><button id="opener">open</button></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    window.requestAnimationFrame = (fn) => { fn(0); return 0; };
+    window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-spectrum.js'), 'utf8'));
+
+    // Pure FFT/columns fast paths (mono & stereo)
+    const sampleRate = 44100;
+    const len = 4096 * 4;
+    const chL = new Float32Array(len);
+    const chR = new Float32Array(len);
+    for (let i = 0; i < len; i++) {
+        const v = Math.sin(2 * Math.PI * 1000 * i / sampleRate) * 0.5;
+        chL[i] = v;
+        chR[i] = v;
+    }
+    const mono = window.MusicSpectrum.spectrumColumns([chL], { columns: 4 });
+    const stereo = window.MusicSpectrum.spectrumColumns([chL, chR], { columns: 4 });
+    assert.equal(mono.columns.length, 4);
+    assert.equal(stereo.columns.length, 4);
+    assert.equal(mono.loud, 4);
+    assert.ok(Math.abs(mono.average[93] - stereo.average[93]) < 1e-4, 'identical stereo matches mono spectrum');
+
+    // Reopen race: close while Track A read is pending, reopen on Track B, then resolve Track A
+    let resolveA;
+    let calls = 0;
+    const app = {
+        playlist: [
+            { path: 'C:\\Music\\A.flac', title: 'Track A' },
+            { path: 'C:\\Music\\B.flac', title: 'Track B' }
+        ],
+        currentTrackIndex: 0,
+        api: {
+            readMusicAudioFile: ({ path: p }) => {
+                calls++;
+                if (p.endsWith('A.flac')) return new Promise((r) => { resolveA = r; });
+                return Promise.resolve({ ok: false, message: 'B 读不到' });
+            }
+        }
+    };
+    const pA = window.MusicSpectrum.open(app, 0);
+    // Close first modal while Track A is still reading
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    // Immediately reopen on Track B — must not be blocked by stale busy flag
+    await window.MusicSpectrum.open(app, 1);
+    assert.equal(calls, 2);
+    const dialogs = window.document.querySelectorAll('.mspec');
+    const latestStatus = dialogs[dialogs.length - 1].querySelector('.mspec-status').textContent;
+    assert.equal(latestStatus, 'B 读不到');
+
+    // Now stale Track A resolves — must NOT overwrite Track B's status
+    resolveA({ ok: false, message: '过期的 A 错误' });
+    await pA;
+    assert.equal(dialogs[dialogs.length - 1].querySelector('.mspec-status').textContent, 'B 读不到');
+    window.close();
+});
