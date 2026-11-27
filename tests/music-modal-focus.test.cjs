@@ -633,3 +633,106 @@ test('music-eq-presets caches EQ sliders and music-channels deduplicates unchang
         dom.window.close();
     }
 });
+
+test('Batch 66: modal-focus skips overlay DOM queries on non-Tab/non-Nav keys, dupes reuses rendered groups, and pinButton cancels rAF on dispose', async () => {
+    // 1. music-modal-focus: normal keystrokes do 0 overlay querySelectorAll calls
+    const dom = new JSDOM(`<!doctype html><body>
+        <input id="search">
+        <div id="m1" class="music-modal-overlay"><button id="b1">OK</button></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        window.eval(fs.readFileSync('Musicmodules/music-modal-focus.js', 'utf8'));
+        await tick(window);
+        let qsaCalls = 0;
+        const origQsa = doc.querySelectorAll.bind(doc);
+        doc.querySelectorAll = (sel) => {
+            if (String(sel).includes('modal-overlay')) qsaCalls += 1;
+            return origQsa(sel);
+        };
+        const input = doc.getElementById('search');
+        for (const key of ['a', 'b', '1', 'Enter', ' ']) {
+            input.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        }
+        assert.equal(qsaCalls, 0, 'non-Tab/non-Nav keys perform zero overlay querySelectorAll calls');
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+        assert.equal(qsaCalls, 1, 'Tab checks open overlays directly');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+
+    // 2. music-dupes: clicking remove reuses cached groups computed during render() when playlist is unchanged
+    const dupDom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    try {
+        const { window } = dupDom;
+        const doc = window.document;
+        let rankCalls = 0;
+        window.MusicRadioUtils = {
+            recordingKey: (t) => `${t.title}|${t.artist}`,
+            versionRank: (t) => { rankCalls += 1; return t.lossless ? 10 : 1; }
+        };
+        const app = {
+            playlist: [
+                { path: '/a.flac', title: 'Alpha', artist: 'A', lossless: true },
+                { path: '/a.mp3', title: 'Alpha', artist: 'A', lossless: false }
+            ],
+            currentTrackIndex: -1,
+            customPlaylists: [],
+            saveLibrary() {}, renderPlaylist() {}, renderSidebarContent() {}, refreshPreload() {}
+        };
+        window.eval(fs.readFileSync('Musicmodules/music-dupes.js', 'utf8'));
+        window.MusicDupes.setupMusicDupes(app);
+        app.openDupesView();
+        const callsAfterRender = rankCalls;
+        assert.ok(callsAfterRender > 0);
+        doc.querySelector('.mdupes-remove').click();
+        assert.equal(rankCalls, callsAfterRender, 'confirming remove reuses cached duplicate groups without rescanning');
+        assert.equal(app.playlist.length, 1);
+    } finally {
+        dupDom.window.close();
+    }
+
+    // 3. pinButton.js: beforeunload cancels pending scheduleMount rAF and skips late tryMount
+    if (process.platform === 'win32') {
+        const pinDom = new JSDOM('<!doctype html><body><div class="window-controls"><button id="minimize-music-btn"></button></div></body>', {
+            runScripts: 'outside-only',
+            pretendToBeVisual: true,
+            url: 'http://localhost/music.html'
+        });
+        await tick(pinDom.window);
+        const prevWin = global.window, prevDoc = global.document, prevRaf = global.requestAnimationFrame, prevCaf = global.cancelAnimationFrame, prevMO = global.MutationObserver;
+        const queued = [];
+        const cancelled = [];
+        let rid = 1;
+        try {
+            global.window = pinDom.window;
+            global.document = pinDom.window.document;
+            global.MutationObserver = pinDom.window.MutationObserver;
+            global.requestAnimationFrame = (cb) => { const id = rid++; queued.push({ id, cb }); return id; };
+            global.cancelAnimationFrame = (id) => { cancelled.push(id); };
+            const { installPinButton } = require('../preloads/behaviors/pinButton.js');
+            let unsubbed = 0;
+            installPinButton({}, {
+                togglePinWindow: async () => {},
+                isWindowPinned: async () => false,
+                onWindowPinnedChanged: () => () => { unsubbed += 1; }
+            });
+            assert.equal(queued.length, 1, 'initial scheduleMount queued 1 rAF');
+            pinDom.window.dispatchEvent(new pinDom.window.Event('beforeunload'));
+            assert.equal(unsubbed, 1);
+            assert.ok(cancelled.includes(queued[0].id), 'dispose cancels pending mountRafId');
+            // Even if a stale rAF callback fires anyway, disposed guard prevents mounting
+            queued[0].cb(16);
+            assert.equal(pinDom.window.document.querySelector('.vcp-universal-pin-btn'), null, 'disposed guard blocks late mount');
+        } finally {
+            global.window = prevWin;
+            global.document = prevDoc;
+            global.requestAnimationFrame = prevRaf;
+            global.cancelAnimationFrame = prevCaf;
+            global.MutationObserver = prevMO;
+            pinDom.window.close();
+        }
+    }
+});

@@ -1875,3 +1875,103 @@ test('Batch 64: showClassic defers ambient/visualizer init to cancellable rAF, a
     grid.destroy();
     w.close();
 });
+
+test('Batch 66: archive-list reuses mounted track rows in-place & updates likes in-place; archive-view coalesces syncSceneLayout & skips hidden work', () => {
+    const rafs = [];
+    let rafId = 1;
+    let detailRooms = 0;
+    let coverCalls = 0;
+    const f = fixture({
+        n: 30,
+        setup: (w, app) => {
+            w.requestAnimationFrame = (cb) => { const id = rafId++; rafs.push({ id, cb }); return id; };
+            w.cancelAnimationFrame = (id) => { const i = rafs.findIndex((r) => r.id === id); if (i !== -1) rafs.splice(i, 1); };
+            const liked = new Set();
+            app.isLiked = (t) => Boolean(t && liked.has(t.path));
+            app._liked = liked;
+        }
+    });
+    f.view.destroy();
+    f.app.archiveView = null;
+    const root = f.w.document.getElementById('music-archive-view');
+    root.innerHTML = '';
+    const fakeSceneLib = {
+        create() {
+            const canvas = f.w.document.createElement('canvas');
+            root.appendChild(canvas);
+            return {
+                canvas, target: { lane: 0, row: 0 }, dirty: false, detail: true, tier: { fps: 60, idleFps: 12 },
+                setTheme() {}, resize() {}, setColumns() {}, jump() {}, select() {}, setPlaying() {}, setHover() {}, setPointer() {},
+                setDetail(on) { this.detail = Boolean(on); },
+                setCover() { coverCalls += 1; },
+                setDetailRoom() { detailRooms += 1; },
+                setLabelMask() {}, setLabeler() {}, refreshLabels() {}, touch() {}, raise() {},
+                hold() {}, unhold() {}, turn() {}, pick: () => null, detailRect: () => null, dragAxes: () => null, camAt: () => null,
+                step: () => ({ animated: false, idle: true, moving: false }),
+                dispose() {}, debug: () => ({})
+            };
+        }
+    };
+    const view = f.w.MusicArchive.init(f.app, { sceneLib: fakeSceneLib, pinyinSrc: false });
+    const origClose = f.close;
+    f.close = () => { view.destroy(); origClose(); };
+    f.view = view;
+    const flushRafs = () => { while (rafs.length) rafs.splice(0).forEach((r) => r.cb(16)); };
+    f.view.setListOpen(true);
+    flushRafs();
+
+    // 1. Archive-list in-place track row reuse across consecutive search rebuilds (preserves DOM order, clears stale title)
+    const input = f.view.list.input;
+    input.value = 'Song';
+    input.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    const initialRows = [...f.view.list.el.querySelectorAll('.archive-list-row')];
+    assert.ok(initialRows.length >= 10);
+    initialRows[0].title = 'stale hover tooltip';
+
+    let recentReads = 0;
+    const origGetItem = f.w.localStorage.getItem.bind(f.w.localStorage);
+    f.w.localStorage.getItem = (k) => { if (k === 'musicArchiveRecentQueries') recentReads += 1; return origGetItem(k); };
+
+    input.value = 'Song 1';
+    input.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    input.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    assert.equal(recentReads, 0, 'paintRecentQ skips localStorage read while search query is non-empty');
+
+    const nextRows = [...f.view.list.el.querySelectorAll('.archive-list-row')];
+    assert.ok(nextRows.length >= 2);
+    assert.equal(nextRows[0], initialRows[0], 'first mounted track row reused in-place across search rebuild');
+    assert.equal(nextRows[1], initialRows[1], 'second mounted track row reused in-place in ascending DOM order');
+    assert.equal(nextRows[0].hasAttribute('title'), false, 'stale hover tooltip cleared on in-place reuse');
+
+    // 2. music-like-change updates .lk.hidden in-place without tearing down rows
+    const targetTrack = f.app.playlist.find((t) => t.title.startsWith(nextRows[0].querySelector('b').textContent));
+    assert.ok(targetTrack);
+    f.app._liked.add(targetTrack.path);
+    f.w.document.dispatchEvent(new f.w.CustomEvent('music-like-change'));
+    assert.equal(f.view.list.el.querySelector('.archive-list-row'), nextRows[0], 'music-like-change keeps mounted row node');
+    assert.equal(nextRows[0].querySelector('.lk').hidden, false, 'music-like-change reveals heart in-place');
+
+    // 3. archive-view resize coalesces syncSceneLayout to rAF & skips when hidden in classic mode
+    detailRooms = 0;
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    assert.equal(detailRooms, 0, 'resize defers syncSceneLayout to rAF instead of forcing synchronous reflow');
+    flushRafs();
+    assert.equal(detailRooms, 1, 'multiple resizes coalesce into a single setDetailRoom call');
+
+    detailRooms = 0;
+    f.view.showClassic();
+    flushRafs();
+    assert.equal(detailRooms, 0, 'classic mode skips syncSceneLayout work');
+
+    // 4. setCardExpanded(true) skips redundant setCover when already expanded
+    f.view.show();
+    flushRafs();
+    coverCalls = 0;
+    f.view.list.el.querySelector('.archive-list-row')?.click();
+    const afterClick = coverCalls;
+    f.view.list.el.querySelector('.archive-list-row')?.click();
+    assert.equal(coverCalls, afterClick, 'repeated click on same expanded card avoids redundant setCover');
+    f.close();
+});

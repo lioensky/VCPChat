@@ -1655,3 +1655,63 @@ test('Batch 64: opening queue drawer renders window before setting scrollTop aft
         window.close();
     }
 });
+
+test('Batch 66: palette patches list children in-place without removing reused rows and mounts .md-cmd-drop before flushSlide reads layout', () => {
+    const rafs = [];
+    const slides = [];
+    const { window, doc, app, dock } = setup((_app, w) => {
+        w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+        w.cancelAnimationFrame = () => {};
+        w.MusicFluid = {
+            slide: (el, box) => slides.push({ el, box }),
+            bud() {}
+        };
+    });
+    try {
+        for (let i = 0; i < 12; i += 1) {
+            app.playlist.push({ path: `C:/a${i}.flac`, title: `Alpha Song ${i}.flac`, artist: 'Artist A', album: 'Alb' });
+        }
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        const list = doc.querySelector('.md-cmd-list');
+        input.value = 'Alpha Song';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const rowsBefore = [...list.querySelectorAll('.md-cmd-row')];
+        assert.ok(rowsBefore.length >= 6);
+        const dropMounted = list.querySelector(':scope > .md-cmd-drop');
+        assert.ok(dropMounted, 'render() mounts .md-cmd-drop ahead of flushSlide');
+
+        // Flush rAF: flushSlide must NOT appendChild before reading offsetTop
+        let listAppendsDuringSlide = 0;
+        const origAppend = list.appendChild.bind(list);
+        list.appendChild = (...args) => { listAppendsDuringSlide += 1; return origAppend(...args); };
+        while (rafs.length) rafs.splice(0).forEach((cb) => cb(16));
+        assert.equal(listAppendsDuringSlide, 0, 'flushSlide does not mutate DOM before reading row geometry');
+        assert.ok(slides.length > 0 && slides.at(-1).el === dropMounted);
+        list.appendChild = origAppend;
+
+        // Refining query with same row count must keep existing .md-cmd-row buttons in-place (zero detach/re-insert)
+        const removed = [];
+        const origInsert = list.insertBefore.bind(list);
+        let movedRows = 0;
+        list.insertBefore = (node, ref) => {
+            if (rowsBefore.includes(node)) movedRows += 1;
+            return origInsert(node, ref);
+        };
+        const obs = new window.MutationObserver((recs) => {
+            for (const r of recs) for (const n of r.removedNodes) if (rowsBefore.includes(n)) removed.push(n);
+        });
+        obs.observe(list, { childList: true });
+        input.value = 'Alpha Song ';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const rowsAfter = [...list.querySelectorAll('.md-cmd-row')];
+        assert.equal(rowsAfter.length, rowsBefore.length);
+        assert.equal(rowsAfter[0], rowsBefore[0]);
+        assert.equal(movedRows, 0, 'unchanged slot positions stay in-place without insertBefore churn');
+        assert.equal(removed.length, 0, 'reused palette rows are never detached');
+        obs.disconnect();
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

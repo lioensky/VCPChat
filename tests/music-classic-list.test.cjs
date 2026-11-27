@@ -514,3 +514,48 @@ test('Batch 65: music-ui renderWindow calibrates pitch in-place with single clie
     window.dispatchEvent(new window.Event('beforeunload'));
     window.close();
 });
+
+test('Batch 66: classic-list decorateRow clones template with pre-baked unliked state to skip redundant setAttribute calls', () => {
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    const list = doc.getElementById('playlist');
+    const playlist = Array.from({ length: 10 }, (_, i) => ({ path: `/m/${i}.flac`, title: `Song ${i}`, artist: `A${i}`, duration: 100 + i }));
+    const liked = new Set(['/m/3.flac']);
+    const app = {
+        playlist,
+        playlistEl: list,
+        isLiked: (t) => Boolean(t && liked.has(t.path)),
+        renderPlaylist() {
+            list.replaceChildren(...playlist.map((t, i) => {
+                const li = doc.createElement('li');
+                li.dataset.index = String(i);
+                li.textContent = t.title;
+                return li;
+            }));
+        }
+    };
+    window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-app-hooks.js'), 'utf8'));
+    window.eval(source);
+    window.setupMusicClassicList(app);
+
+    let setAttrOnClonedBtns = 0;
+    const origSetAttr = window.HTMLButtonElement.prototype.setAttribute;
+    window.HTMLButtonElement.prototype.setAttribute = function (name, val) {
+        if (this.className === 'cl-like' && this._likeState !== undefined) setAttrOnClonedBtns += 1;
+        return origSetAttr.call(this, name, val);
+    };
+    try {
+        app.renderPlaylist();
+    } finally {
+        window.HTMLButtonElement.prototype.setAttribute = origSetAttr;
+    }
+    // Only the 1 liked track (/m/3.flac) updates aria-pressed + aria-label (2 writes); all 9 unliked tracks make 0 writes!
+    assert.equal(setAttrOnClonedBtns, 2, '9 unliked cloned rows skip paintLike setAttribute writes; 1 liked row updates');
+    assert.equal(list.children[0].querySelector('.cl-like').getAttribute('aria-pressed'), 'false');
+    assert.equal(list.children[3].classList.contains('is-liked'), true);
+    assert.equal(list.children[3].querySelector('.cl-like').getAttribute('aria-pressed'), 'true');
+    assert.equal(list.children[3].querySelector('.cl-like').getAttribute('aria-label'), '取消喜欢');
+    window.dispatchEvent(new window.Event('beforeunload'));
+    window.close();
+});
