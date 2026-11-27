@@ -1008,3 +1008,126 @@ test('Batch 83: music-skin deduplicates renderTrack, restarts roller across rAF 
     w.dispatchEvent(new w.Event('beforeunload'));
     w.close();
 });
+
+test('Batch 88: classic-list skips scroll rAF when all rows decorated, skin preserves non-segmentable select for fluid-select, and utility/IPC hot paths behave identically', async () => {
+    // 1. Classic list: fully decorated list skips scroll rAF; single-track like-change fast path works
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    const doc = w.document;
+    const list = doc.getElementById('playlist');
+    let rafCalls = 0;
+    w.requestAnimationFrame = (fn) => { rafCalls += 1; fn(0); return rafCalls; };
+    w.cancelAnimationFrame = () => {};
+    const liked = new Set(['/m/0.flac']);
+    const tracks = [
+        { path: '/m/0.flac', title: 'Alpha.flac', artist: 'A', duration: 120 },
+        { path: '/m/1.flac', title: 'Beta.flac', artist: 'B', duration: 180 }
+    ];
+    const app = {
+        playlist: tracks,
+        playlistEl: list,
+        isLiked: (t) => Boolean(t && liked.has(t.path)),
+        toggleLike: () => {},
+        renderPlaylist(songs = tracks) {
+            list.replaceChildren();
+            songs.forEach((tr) => {
+                const li = doc.createElement('li');
+                li.dataset.index = String(tracks.indexOf(tr));
+                li.textContent = tr.title;
+                list.appendChild(li);
+            });
+        }
+    };
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-app-hooks.js'), 'utf8'));
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-classic-list.js'), 'utf8'));
+    w.setupMusicClassicList(app);
+    app.renderPlaylist();
+    assert.equal(list.children[0].dataset.cols, '1');
+    assert.equal(list.children[1].dataset.cols, '1');
+    const rafBeforeScroll = rafCalls;
+    list.dispatchEvent(new w.Event('scroll'));
+    assert.equal(rafCalls, rafBeforeScroll, 'fully decorated classic list skips scheduling scroll rAF');
+
+    // Single-track like change updates only the target row; empty-path track array touches nothing
+    liked.add('/m/1.flac');
+    doc.dispatchEvent(new w.CustomEvent('music-like-change', { detail: { tracks: [{}] } }));
+    assert.equal(list.children[1].classList.contains('is-liked'), false, 'empty-path like event updates nothing');
+    doc.dispatchEvent(new w.CustomEvent('music-like-change', { detail: { tracks: [tracks[1]] } }));
+    assert.equal(list.children[1].classList.contains('is-liked'), true, 'single-track like event updates target row');
+    w.dispatchEvent(new w.Event('beforeunload'));
+    w.close();
+
+    // 2. music-skin: non-segmentable <select> keeps dataset.segmented unset (so music-fluid-select still dresses it) and is not re-scanned on later DOM adds
+    const skinDom = new JSDOM('<!doctype html><body><div id="music-stage-settings-card"><div class="music-stage-settings-body"></div></div></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const sw = skinDom.window;
+    const sdoc = sw.document;
+    const body = sdoc.querySelector('.music-stage-settings-body');
+    const bigSel = sdoc.createElement('select');
+    bigSel.innerHTML = '<option value="1">选项一</option><option value="2">选项二</option><option value="3">选项三</option><option value="4">选项四</option><option value="5">选项五</option>';
+    body.appendChild(bigSel);
+    sw.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+    sw.setupMusicSkin({ playlist: [], currentTrackIndex: -1 });
+    assert.equal(bigSel.dataset.segmented, undefined, 'non-segmentable select must NOT set dataset.segmented');
+    let scanCalls = 0;
+    const origQsa = body.querySelectorAll.bind(body);
+    body.querySelectorAll = (...args) => { scanCalls += 1; return origQsa(...args); };
+    const wrap = sdoc.createElement('div');
+    wrap.appendChild(bigSel); // re-attaching already-checked non-segmentable select
+    body.appendChild(wrap);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(scanCalls, 0, 'already-checked non-segmentable select does not trigger repeated scan()');
+    sw.dispatchEvent(new sw.Event('beforeunload'));
+    sw.close();
+
+    // 3. music-smart evaluate without ctx.now handles 很久没听 + text
+    const smart = require('../Musicmodules/music-smart.js');
+    const oldTs = Date.now() - 40 * 86400000;
+    const recentTs = Date.now() - 2 * 86400000;
+    const statsMap = new Map([
+        [tracks[0], { plays: 3, last: oldTs }],
+        [tracks[1], { plays: 3, last: recentTs }]
+    ]);
+    const matched = smart.evaluate(tracks, '很久没听 alpha', { stats: statsMap });
+    assert.deepEqual(matched.map((t) => t.path), ['/m/0.flac']);
+
+    // 4. lyricsMarkdown escapes HTML, markdown metacharacters, and newlines cleanly
+    const { formatCurrentLyrics } = require('../modules/lyrics/lyricsMarkdown.js');
+    const md = formatCurrentLyrics({
+        track: { title: '<A & B> *test*', artist: 'X_Y' },
+        lines: [{ original: 'Line 1\n<tag> & [1]', translation: '译文' }]
+    });
+    assert.ok(md.includes('&lt;A &amp; B&gt; \\*test\\*'));
+    assert.ok(md.includes('Line 1 &lt;tag&gt; &amp; \\[1\\]'));
+
+    // 5. musicLyricsHandlers caches ensureDir per lyricDir and invalidates on error
+    const fsExtra = require('fs-extra');
+    const { registerMusicLyricsHandlers } = require('../modules/ipc/musicLyricsHandlers.js');
+    const handlers = new Map();
+    let ensureCalls = 0;
+    const origEnsureDir = fsExtra.ensureDir;
+    fsExtra.ensureDir = async () => { ensureCalls += 1; };
+    try {
+        let shouldFail = false;
+        registerMusicLyricsHandlers({
+            ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
+            getLyricDir: () => '/tmp/lyrics-cache-r88',
+            lyricFetcher: {
+                fetchAndSaveLyrics: async () => {
+                    if (shouldFail) throw new Error('boom');
+                    return { lines: [] };
+                }
+            }
+        });
+        const fetchHandler = handlers.get('music-fetch-lyrics');
+        await fetchHandler({}, { title: 'T1', artist: 'A1' });
+        await fetchHandler({}, { title: 'T2', artist: 'A2' });
+        assert.equal(ensureCalls, 1, 'ensureDir runs once per lyricDir across successful fetches');
+        shouldFail = true;
+        await fetchHandler({}, { title: 'T3', artist: 'A3' });
+        shouldFail = false;
+        await fetchHandler({}, { title: 'T4', artist: 'A4' });
+        assert.equal(ensureCalls, 2, 'error invalidates cached lyricDir so next fetch re-ensures directory');
+    } finally {
+        fsExtra.ensureDir = origEnsureDir;
+    }
+});
