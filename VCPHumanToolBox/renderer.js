@@ -1082,8 +1082,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 url: VCP_SERVER_URL,
                 apiKey: VCP_API_KEY,
                 toolName: finalToolName,
-                userName: USER_NAME,
-                args: args
+                args
             });
 
             clearInterval(timerInterval);

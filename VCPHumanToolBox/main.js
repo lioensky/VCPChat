@@ -273,31 +273,15 @@ ipcMain.handle('vcp-ht-process-wallpaper', async (event, imagePath) => {
 });
 
 // --- IPC Handler for proxying tool execution requests ---
-ipcMain.handle('vcp-ht-execute-tool-proxy', async (event, { url, apiKey, toolName, userName, args }) => {
-    // 动态导入 node-fetch
-    const { default: fetch } = await import('node-fetch');
-
-    // 1. 构造请求体
-    let requestBody = `<<<[TOOL_REQUEST]>>>\n`;
-    requestBody += `maid:「始」${userName}「末」,\n`;
-    requestBody += `tool_name:「始」${toolName}「末」,\n`;
-    for (const key in args) {
-        if (args[key] !== undefined) {
-            const value = typeof args[key] === 'boolean' ? String(args[key]) : args[key];
-            requestBody += `${key}:「始」${value}「末」,\n`;
-        }
-    }
-    requestBody += `<<<[END_TOOL_REQUEST]>>>`;
-
-    // 2. 发起网络请求
+ipcMain.handle('vcp-ht-execute-tool-proxy', async (event, { url, apiKey, toolName, args }) => {
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'text/plain;charset=UTF-8',
+                'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            body: requestBody
+            body: JSON.stringify({ name: toolName, arguments: args })
         });
 
         const responseText = await response.text();
