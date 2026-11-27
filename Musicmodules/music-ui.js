@@ -180,10 +180,19 @@ function setupUI(app) {
         app.playlistEl.addEventListener('scroll', renderWindowSoon, { passive: true });
         if (typeof window !== 'undefined') window.addEventListener('resize', renderWindowSoon);
     }
+    let visibilityWatch = null;
     if (typeof MutationObserver === 'function') {
-        // 合并成一个监听：切回经典视图时先刷延迟的列表，或者列表从隐藏变显示时补画视口。
-        const visibilityWatch = new MutationObserver(() => {
-            if (classicHidden()) return;
+        // 合并成一个监听：仅在切回经典视图或列表显示状态变化时补画视口，忽略 body 上无关类名切换（如播放态）。
+        let wasHidden = classicHidden();
+        let wasListNone = Boolean(app.playlistEl && app.playlistEl.style.display === 'none');
+        visibilityWatch = new MutationObserver(() => {
+            const nowHidden = classicHidden();
+            const nowListNone = Boolean(app.playlistEl && app.playlistEl.style.display === 'none');
+            const unhidClassic = wasHidden && !nowHidden;
+            const unhidList = wasListNone && !nowListNone;
+            wasHidden = nowHidden;
+            wasListNone = nowListNone;
+            if (nowHidden) return;
             if (deferred) {
                 const { filtered } = deferred;
                 deferred = null;
@@ -191,10 +200,19 @@ function setupUI(app) {
                 renderNow(filtered);
                 return;
             }
-            if (app.playlistEl && app.playlistEl.style.display !== 'none') renderWindowSoon();
+            if ((unhidClassic || unhidList) && app.playlistEl && !nowListNone) renderWindowSoon();
         });
         if (app.playlistEl) visibilityWatch.observe(app.playlistEl, { attributes: true, attributeFilter: ['style'] });
         visibilityWatch.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('beforeunload', () => {
+            visibilityWatch?.disconnect();
+            visibilityWatch = null;
+            if (windowQueued && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(windowQueued); windowQueued = 0; }
+            if (app.backgroundTransitionTimer) { clearTimeout(app.backgroundTransitionTimer); app.backgroundTransitionTimer = null; }
+            window.removeEventListener('resize', renderWindowSoon);
+        }, { once: true });
     }
     // 列表空着时那句话（样式表里 #playlist:empty::after 显示它）：
     // 曲库本身是空的就告诉人去哪添加，别说「没有匹配」；搜不到才说没有匹配。

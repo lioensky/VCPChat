@@ -215,7 +215,10 @@ function setupVisualizer(app) {
         socket.onclose = () => {
             if (app.ws === socket) {
                 app.ws = null;
-                app.api?.publishMusicGroove?.({ playing: false });
+                if (app._lastGroovePlaying) {
+                    app._lastGroovePlaying = false;
+                    app.api?.publishMusicGroove?.({ playing: false });
+                }
                 app.handleEngineDisconnected?.();
             }
             if (app.visualizerDestroyed || app.visualizerReconnectTimer) return;
@@ -255,7 +258,10 @@ function setupVisualizer(app) {
     app.destroyVisualizer = () => {
         if (app.visualizerDestroyed) return;
         app.visualizerDestroyed = true;
-        app.api?.publishMusicGroove?.({ playing: false });
+        if (app._lastGroovePlaying) {
+            app._lastGroovePlaying = false;
+            app.api?.publishMusicGroove?.({ playing: false });
+        }
         if (app.visualizerReconnectTimer) {
             clearTimeout(app.visualizerReconnectTimer);
             app.visualizerReconnectTimer = null;

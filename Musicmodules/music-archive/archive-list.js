@@ -368,7 +368,11 @@
                 : (placeKindMark(), 0);
         };
         // 目录收起时量不到宽度；展开、窗口变宽窄、字体换好时再落一次位
-        if (typeof global.ResizeObserver === 'function' && r.kinds) new global.ResizeObserver(() => scheduleKindMark()).observe(r.kinds);
+        let kindResizeObserver = null;
+        if (typeof global.ResizeObserver === 'function' && r.kinds) {
+            kindResizeObserver = new global.ResizeObserver(() => scheduleKindMark());
+            kindResizeObserver.observe(r.kinds);
+        }
         // 「为你」：最近播放后面接每日推荐、最常听、很久没听、还没听过（听歌记录 music-stats.js + 挑歌 music-radio.js）
         const statsSections = () => {
             const stats = app.musicStats;
@@ -725,12 +729,12 @@
         const render = () => {
             state.raf = 0;
             if (!el.isConnected || el.hidden) return;
+            // 先集中读 scrollTop 和 clientHeight，再统一写 at-top / at-bottom 类，避免读→写→读触发强制同步重排
             const top = r.viewport.scrollTop;
-            // 滚在最上面时顶上没有东西可淡出，第一行不该被遮淡
-            r.viewport.classList.toggle('at-top', top <= 1);
             const h = r.viewport.clientHeight || 600;
             const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
-            // 滚到底时最后一行也不该被下沿渐隐遮淡（直接用已知总高，避免每帧读 scrollHeight 强制同步排版）
+            // 滚在最上面/最下面时去掉对应一侧的边缘渐隐
+            r.viewport.classList.toggle('at-top', top <= 1);
             r.viewport.classList.toggle('at-bottom', top + h >= totalH - 1);
             syncThumb(top, h);
             if (!state.rows.length) { r.sticky.textContent = ''; return; }
@@ -1985,15 +1989,33 @@
         };
 
         // 放不出来的歌标灰（播放器在加载失败 / 恢复时发这个事件）
-        document.addEventListener('music-track-health', () => { for (const [k, node] of state.rendered) paintRow(node, state.rows[k], k); });
+        const onTrackHealth = () => { for (const [k, node] of state.rendered) paintRow(node, state.rows[k], k); };
+        document.addEventListener('music-track-health', onTrackHealth);
         // 喜欢 / 取消喜欢：行尾的小心形要重画（行内容是按需生成的，扔掉已画的行让它重建）
         // 听歌记录变了：「最近」那页的最常听 / 很久没听跟着更新（攒一下再重排，不在播放中途频繁重建）
         let statsTimer = null;
-        document.addEventListener('music-stats-change', () => {
+        const onStatsChange = () => {
             if (state.kind !== 'recent' || statsTimer) return;
             statsTimer = setTimeout(() => { statsTimer = null; if (state.kind === 'recent') rebuild({ steady: true }); }, 800);
-        });
-        document.addEventListener('music-like-change', () => { for (const node of state.rendered.values()) node.remove(); state.rendered.clear(); render(); });
+        };
+        const onLikeChange = () => { for (const node of state.rendered.values()) node.remove(); state.rendered.clear(); render(); };
+        document.addEventListener('music-stats-change', onStatsChange);
+        document.addEventListener('music-like-change', onLikeChange);
+
+        let listDisposed = false;
+        const disposeList = () => {
+            if (listDisposed) return;
+            listDisposed = true;
+            if (kindMarkRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(kindMarkRaf); kindMarkRaf = 0; }
+            if (statsTimer) { clearTimeout(statsTimer); statsTimer = null; }
+            if (state.raf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(state.raf); state.raf = 0; }
+            kindResizeObserver?.disconnect();
+            kindResizeObserver = null;
+            document.removeEventListener('music-track-health', onTrackHealth);
+            document.removeEventListener('music-stats-change', onStatsChange);
+            document.removeEventListener('music-like-change', onLikeChange);
+        };
+        global.addEventListener?.('beforeunload', disposeList, { once: true });
 
         const setPlaying = (i) => {
             if (i === state.playing) { schedule(); return; }
@@ -2013,7 +2035,8 @@
             clearMulti, closeBatchMenu,
             get picked() { return pickedIndices(null); },
             endPress,
-            destroyDrop: () => { drop?.destroy(); drop = null; dropAt = null; },
+            destroyDrop: () => { drop?.destroy(); drop = null; dropAt = null; disposeList(); },
+            destroy: disposeList,
             /* 在档案页直接打字：聚焦检索框并带入这个字（替换掉原来的检索词） */
             typeInto: (text) => {
                 r.input.focus();

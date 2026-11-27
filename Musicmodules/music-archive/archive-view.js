@@ -1839,7 +1839,14 @@
         const grainTiles = {};
         const grainPending = {};
         const grainObjectUrls = [];
-        let grainRaf = 0;
+        let grainTask = null;
+        const cancelGrain = () => {
+            if (!grainTask) return;
+            if (grainTask.kind === 'idle' && typeof global.cancelIdleCallback === 'function') global.cancelIdleCallback(grainTask.id);
+            else if (grainTask.kind === 'timer') clearTimeout(grainTask.id);
+            else cancelAnimationFrame(grainTask.id);
+            grainTask = null;
+        };
         const applyGrain = (light, dpr, url) => {
             if (state.destroyed) return;
             const el = refs.grain;
@@ -1860,15 +1867,17 @@
                 const g = c.getContext('2d');
                 const img = g.createImageData(GRAIN_TILE, GRAIN_TILE);
                 const v = light ? 0 : 255;
-                // 固定种子：每次打开颗粒一样，不会一闪
+                // 固定种子：每次打开颗粒一样，不会一闪；按 32 位像素单次写入减少首屏像素循环开销
                 let seed = 0x2f6b1d;
-                const rnd = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return ((seed >>> 0) % 100000) / 100000; };
-                const data = img.data;
                 const scale = light ? 13 : 11;
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = rnd();
-                    data[i] = data[i + 1] = data[i + 2] = v;
-                    data[i + 3] = Math.round(r * r * r * scale);
+                const data = img.data;
+                const u32 = new Uint32Array(data.buffer);
+                const rgb = v | (v << 8) | (v << 16);
+                for (let p = 0; p < u32.length; p++) {
+                    seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
+                    const r = ((seed >>> 0) % 100000) * 1e-5;
+                    const a = (r * r * r * scale + 0.5) | 0;
+                    u32[p] = rgb | (a << 24);
                 }
                 g.putImageData(img, 0, 0);
                 if (typeof c.toBlob === 'function' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
@@ -1907,15 +1916,21 @@
                 applyGrain(light, dpr, grainTiles[k]);
                 return;
             }
-            if (grainRaf) cancelAnimationFrame(grainRaf);
-            grainRaf = requestAnimationFrame(() => {
-                grainRaf = 0;
+            // 颗粒背景贴图延后到首屏空闲再生成，避免在冷启动第一帧与 Three.js 初始化抢占主线程与 Skia 管线
+            cancelGrain();
+            const run = () => {
+                grainTask = null;
                 if (state.destroyed) return;
                 const curLight = document.body.classList.contains('light-theme');
                 const curDpr = global.devicePixelRatio || 1;
                 lastGrainKey = (curLight ? '1' : '0') + '@' + curDpr;
                 buildGrainTile(curLight, curDpr);
-            });
+            };
+            if (typeof global.requestIdleCallback === 'function') {
+                grainTask = { kind: 'idle', id: global.requestIdleCallback(run, { timeout: 1200 }) };
+            } else {
+                grainTask = { kind: 'timer', id: setTimeout(run, 250) };
+            }
         };
         syncGrain();
         const onVisibility = () => { if (!document.hidden) { state.lastDraw = 0; kick(); } };
@@ -2024,7 +2039,7 @@
             document.removeEventListener('keydown', onKeyDown);
             clearTimeout(rehoverTimer);
             document.removeEventListener('pointerdown', onKeysOutside, true);
-            if (grainRaf) { cancelAnimationFrame(grainRaf); grainRaf = 0; }
+            cancelGrain();
             for (const u of grainObjectUrls) { try { URL.revokeObjectURL(u); } catch (e) {} }
             grainObjectUrls.length = 0;
             modeSweepEl?.remove();

@@ -380,18 +380,23 @@
         };
         // 节能档没有流体层：把同一套颜色混进实心播放条的进度底色和快捷胶囊的描边里。
         let lastGlowKey = '';
+        let lastGlowLight = null;
         const syncGlow = () => {
             const light = dockLight();
-            host.classList.toggle('md-light', light);
+            // 先读主题色再切 md-light 类，避免写类后立刻 getComputedStyle 触发全页样式重算
             const colors = currentGlow(light);
             const key = colors.join();
-            const a = readRgb(colors[0]) || FALLBACK_ACCENT;
-            host.style.setProperty('--md-fl-low-fill', hex(mix(a, light ? [247, 242, 238] : [43, 41, 39], light ? 0.62 : 0.55)));
-            host.style.setProperty('--md-fl-tint', colors[0]);
-            // 提示层挂在 body 上，也要拿到同一个颜色。
-            document.body.style.setProperty('--md-fl-tint', colors[0]);
+            host.classList.toggle('md-light', light);
+            if (key !== lastGlowKey || light !== lastGlowLight) {
+                const a = readRgb(colors[0]) || FALLBACK_ACCENT;
+                host.style.setProperty('--md-fl-low-fill', hex(mix(a, light ? [247, 242, 238] : [43, 41, 39], light ? 0.62 : 0.55)));
+                host.style.setProperty('--md-fl-tint', colors[0]);
+                // 提示层挂在 body 上，也要拿到同一个颜色。
+                document.body.style.setProperty('--md-fl-tint', colors[0]);
+            }
             if (fluid && (key !== lastGlowKey || !fluid.glowSet)) { fluid.setGlow(colors); fluid.glowSet = true; }
             lastGlowKey = key;
+            lastGlowLight = light;
         };
         // 实心 = 正在播放，或者正被关注（悬停、拖动）。
         const syncSolid = () => {

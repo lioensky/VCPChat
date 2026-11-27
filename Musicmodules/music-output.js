@@ -112,6 +112,7 @@ function setupOutput(app) {
             const reason = message ? (globalThis.MusicErrorText ? globalThis.MusicErrorText(message, '音频引擎没有响应') : message) : '音频引擎没有响应';
             app.showPlaybackNotice?.(`切换输出没有成功：${reason}`);
         };
+        let applied = false;
         try {
             app.currentDeviceId = selectedId;
             app.useWasapiExclusive = useExc;
@@ -119,14 +120,16 @@ function setupOutput(app) {
                 device_id: app.currentDeviceId,
                 exclusive: app.useWasapiExclusive
             });
-            if (result?.status === 'success') app.syncOutputFallback(result.state);
-            else rollback(result?.message);
+            if (result?.status === 'success') {
+                applied = true;
+                app.syncOutputFallback(result.state);
+            } else rollback(result?.message);
             app.checkOutputFallbackSoon();
             await app.populateDeviceList(false);
             app.deviceSelect.value = app.currentDeviceId === null ? 'default' : app.currentDeviceId;
         } catch (e) {
             console.error("Error configuring output:", e);
-            rollback(e?.message || String(e));
+            if (!applied) rollback(e?.message || String(e));
         } finally {
             app.deviceSelect.disabled = false;
             app.wasapiSwitch.disabled = false;
