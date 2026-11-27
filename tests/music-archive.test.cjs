@@ -401,3 +401,63 @@ test('Batch 72: archive-list search skips duplicate onResults/rAF/scrollTop read
         w.close();
     }
 });
+
+test('Batch 75: archive-list applyQuery reads scrollTop before toggling .al-sq and readViewportOnce reuses cached offsetTop', async () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        w.requestAnimationFrame = (fn) => { fn(0); return 1; };
+        w.cancelAnimationFrame = () => {};
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-index.js', 'utf8'));
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-list.js', 'utf8'));
+        const host = w.document.getElementById('host');
+        const tracks = Array.from({ length: 60 }, (_, i) => ({
+            path: `/m/${i}.flac`,
+            title: i % 3 === 0 ? `Live ${i}.flac` : `Track ${i}.flac`,
+            artist: `Artist ${i % 4}`,
+            album: `Album ${i % 2}`,
+            duration: 180
+        }));
+        const index = w.MusicArchiveIndex.createIndex(tracks);
+        const list = w.MusicArchiveList.create({
+            host, app: { playlist: tracks, customPlaylists: [] }, Index: w.MusicArchiveIndex,
+            getIndex: () => index, getRecent: () => [],
+            onResults() {}, onPick() {}, onPlay() {}
+        });
+        const vp = list.el.querySelector('[data-l="viewport"]');
+        let scrollTopVal = 240;
+        let offsetTopReads = 0;
+        const events = [];
+        Object.defineProperty(vp, 'clientHeight', { get: () => 400, configurable: true });
+        Object.defineProperty(vp, 'offsetTop', { get: () => { offsetTopReads += 1; return 48; }, configurable: true });
+        Object.defineProperty(vp, 'scrollTop', {
+            get: () => { events.push('read-scroll'); return scrollTopVal; },
+            set: (v) => { events.push('write-scroll'); scrollTopVal = Number(v) || 0; },
+            configurable: true
+        });
+        list.rebuild();
+        const readsAfterFirstRebuild = offsetTopReads;
+        list.rebuild();
+        assert.equal(offsetTopReads, readsAfterFirstRebuild, 'subsequent rebuild reuses cached viewport offsetTop');
+
+        // Let microtask expire syncedTopFresh so applyQuery actually reads vp.scrollTop
+        await Promise.resolve();
+        // Spy on .al-sq classList.toggle to verify scrollTop is read BEFORE .al-sq mutates style
+        const origToggle = list.el.classList.toggle.bind(list.el.classList);
+        list.el.classList.toggle = (cls, force) => {
+            if (cls === 'al-sq') events.push('toggle-al-sq');
+            return origToggle(cls, force);
+        };
+        events.length = 0;
+        list.input.value = 'Live';
+        list.input.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+        const firstRead = events.indexOf('read-scroll');
+        const firstToggle = events.indexOf('toggle-al-sq');
+        assert.ok(firstRead >= 0 && firstToggle > firstRead, `expected read-scroll before toggle-al-sq, got ${JSON.stringify(events)}`);
+        list.destroy();
+    } finally {
+        w.close();
+    }
+});

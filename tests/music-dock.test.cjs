@@ -1919,3 +1919,43 @@ test('Batch 72: palette scopes .md-cmd-open onto #music-dock-root and CSS isolat
         window.close();
     }
 });
+
+test('Batch 75: palette focuses input before body.music-dock-cmd-open and coalesces openRaf + slide into one frame', () => {
+    const rafs = [];
+    let rafSeq = 0;
+    const order = [];
+    const { window, doc, dock } = setup((_app, w) => {
+        w.requestAnimationFrame = (cb) => { const id = ++rafSeq; rafs.push({ id, cb }); return id; };
+        w.cancelAnimationFrame = (id) => { const i = rafs.findIndex((r) => r.id === id); if (i !== -1) rafs.splice(i, 1); };
+        w.MusicFluid = {
+            bud: () => { order.push('bud'); },
+            slide: () => { order.push('slide'); }
+        };
+    });
+    try {
+        const cap = doc.querySelector('.md-cap');
+        cap.getBoundingClientRect = () => ({ left: 100, right: 500, top: 600, bottom: 650, width: 400, height: 50 });
+        const input = doc.querySelector('.md-cmd-in');
+        const cmdRoot = doc.querySelector('.md-cmd');
+        const origFocus = input.focus.bind(input);
+        input.focus = (...a) => { order.push('focus'); return origFocus(...a); };
+        const origBodyAdd = doc.body.classList.add.bind(doc.body.classList);
+        doc.body.classList.add = (...cls) => { if (cls.includes('music-dock-cmd-open')) order.push('body-class'); return origBodyAdd(...cls); };
+        const origCmdAdd = cmdRoot.classList.add.bind(cmdRoot.classList);
+        cmdRoot.classList.add = (...cls) => { if (cls.includes('md-open')) order.push('md-open'); return origCmdAdd(...cls); };
+
+        rafs.length = 0;
+        order.length = 0;
+        dock.openPalette('a');
+        assert.ok(order.indexOf('focus') >= 0 && order.indexOf('body-class') > order.indexOf('focus'),
+            `input.focus runs before body.music-dock-cmd-open (${JSON.stringify(order)})`);
+        assert.equal(rafs.length, 1, 'initial open coalesces slideRaf into single openRaf');
+        rafs.splice(0).forEach((r) => r.cb(16));
+        assert.ok(order.indexOf('bud') >= 0 && order.indexOf('md-open') > order.indexOf('bud') && order.indexOf('slide') > order.indexOf('md-open'),
+            `openRaf runs bud before md-open and slide (${JSON.stringify(order)})`);
+        dock.closePalette();
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

@@ -720,3 +720,44 @@ test('Batch 71: music-skin deduplicates music-has-track/is-spec class toggles an
     w.dispatchEvent(new w.Event('beforeunload'));
     w.close();
 });
+
+test('Batch 75: music-skin drops container :has() rules via .acoustic-drawer-open and classic-list hides .music-list-head via hidden property', async () => {
+    const skinCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.css'), 'utf8');
+    assert.equal(skinCss.includes(':has('), false, 'music-skin.css has zero :has(...) container invalidation selectors');
+    assert.match(skinCss, /\.main-content\.acoustic-drawer-open\s+#visualizer/);
+    assert.match(skinCss, /\.music-list-head\[hidden\]/);
+
+    // 1. Acoustic drawer toggles .main-content.acoustic-drawer-open in sync with .acoustic-drawer.is-open
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="main-content">
+            <canvas id="visualizer"></canvas>
+            <div id="acoustic-drawer" class="acoustic-drawer">
+                <button class="acoustic-drawer-toggle" type="button"></button>
+                <span data-acoustic-summary></span>
+            </div>
+        </div></body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    const doc = w.document;
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+    w.setupMusicSkin({ playlist: [], currentTrackIndex: -1 });
+    const main = doc.querySelector('.main-content');
+    const toggle = doc.querySelector('.acoustic-drawer-toggle');
+    assert.equal(main.classList.contains('acoustic-drawer-open'), false);
+    toggle.click();
+    assert.equal(main.classList.contains('acoustic-drawer-open'), true, 'opening acoustic drawer adds .acoustic-drawer-open on .main-content');
+    toggle.click();
+    assert.equal(main.classList.contains('acoustic-drawer-open'), false, 'closing acoustic drawer clears .acoustic-drawer-open on .main-content');
+    w.close();
+
+    // 2. Classic list syncs .music-list-head.hidden when #playlist style.display changes
+    const t = setup({ count: 5 });
+    const head = t.doc.querySelector('.music-list-head');
+    assert.equal(head.hidden, false);
+    t.list.style.display = 'none';
+    await new Promise((r) => setImmediate(r));
+    assert.equal(head.hidden, true, 'hiding #playlist hides .music-list-head via hidden attribute');
+    t.list.style.display = '';
+    await new Promise((r) => setImmediate(r));
+    assert.equal(head.hidden, false, 'restoring #playlist restores .music-list-head');
+    t.close();
+});

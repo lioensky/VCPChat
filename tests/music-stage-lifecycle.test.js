@@ -1862,3 +1862,67 @@ test('Batch 71: edge spectrum skips clearRect/stroke per quiet strip when anothe
         dom.window.close();
     }
 });
+
+test('Batch 75: stageHost mirrors data-stage-mode without :has() CSS, runtime caches nextLines/wordState, and config skips no-op setModePatch', () => {
+    const dom = createStageDom();
+    try {
+        let storageWrites = 0;
+        const store = new Map();
+        Object.defineProperty(dom.window, 'localStorage', {
+            configurable: true,
+            value: {
+                getItem: (k) => (store.has(k) ? store.get(k) : null),
+                setItem: (k, v) => { if (k === 'musicStageConfig') storageWrites += 1; store.set(k, String(v)); }
+            }
+        });
+        for (const file of [
+            'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${file}`);
+        }
+        // 1. Runtime caches frozen nextLines & resolveWordState across identical frames
+        const Runtime = dom.window.MusicStageRuntime;
+        const { app } = createApp();
+        app.isPlaying = false;
+        app.lastKnownCurrentTime = 1.5;
+        const f1 = Runtime.createFrame(app, 100);
+        const f2 = Runtime.createFrame(app, 116);
+        assert.equal(f1.nextLines, f2.nextLines, 'unchanged line index reuses cached nextLines array ref');
+        assert.equal(Object.isFrozen(f1.nextLines), true);
+        assert.equal(f1.wordStates, f2.wordStates, 'paused frame with identical line & playbackTime reuses cached wordStates');
+        const emptyApp = { ...app, currentLyrics: [] };
+        const e1 = Runtime.createFrame(emptyApp, 100);
+        const e2 = Runtime.createFrame(emptyApp, 116);
+        assert.equal(e1.wordStates, e2.wordStates, 'no-lyrics frames share frozen EMPTY_WORD_STATE');
+
+        // 2. MusicStageConfig skips no-op setModePatch without notifying subscribers or scheduling storage writes
+        const cfg = dom.window.MusicStageConfig;
+        let notifies = 0;
+        const unsub = cfg.subscribe(() => { notifies += 1; });
+        const curGlow = cfg.get().modes.luminous.glow;
+        storageWrites = 0;
+        cfg.setModePatch('luminous', { glow: curGlow });
+        assert.equal(notifies, 0, 'identical setModePatch skips subscriber notification');
+        cfg.flush();
+        assert.equal(storageWrites, 0, 'identical setModePatch skips localStorage persistence');
+        unsub();
+
+        // 3. Stage host mirrors data-stage-mode and stage-skin CSS drops .music-stage:has(...)
+        const root = dom.window.document.getElementById('music-stage');
+        dom.window.setupMusicStage(app);
+        app.stageHost.enter();
+        assert.equal(root.dataset.stageMode, app.stageHost.modeId, 'createMode sets root.dataset.stageMode');
+        app.stageHost.destroy();
+        assert.equal(root.dataset.stageMode, undefined, 'destroyMode clears root.dataset.stageMode');
+
+        const stageSkinCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-stage-skin.css'), 'utf8');
+        assert.equal(stageSkinCss.includes('.music-stage:has('), false, 'music-stage-skin.css drops .music-stage:has(...) selectors');
+        assert.match(stageSkinCss, /\.music-stage\[data-stage-mode="diorama"\]/);
+        assert.match(stageSkinCss, /\.music-stage\[data-stage-mode="tunnel"\]/);
+    } finally {
+        dom.window.close();
+    }
+});
