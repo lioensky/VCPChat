@@ -369,6 +369,7 @@
             if (fluid) {
                 fluid.layout();
                 lastRange = '';
+                cachedRange = null;
                 fluid.setHidden(document.hidden === true);
                 fluid.setRingDocked(!state.panelOpen);
                 syncGlow();
@@ -427,15 +428,28 @@
             if (next === state.expanded) return;
             state.expanded = next;
             el.cap.classList.toggle('md-ex', next);
+            cachedRange = null;
         };
 
         // ───────── 进度 ─────────
         // 进度不从播放键底下开始：0% 落在曲名左缘，100% 在右边那组按钮前面，进度细轨就画在这一段的下沿。
-        // 曲名和按钮位置随悬停展开、紧凑档变化，每次用时量一下（只读三个矩形）。
-        const progressRange = () => {
+        // 曲名和按钮位置只在窗口尺寸、胶囊展开/收窄、右侧槽位增减时变化；缓存结果，避免播放时每 250ms 触发 3 次同步回流。
+        const capTxt = el.cap.querySelector('.md-txt');
+        const capSlots = el.cap.querySelector('.md-slots');
+        const trackParts = el.tracks.map((trk) => ({
+            trk, fill: trk.firstElementChild, knob: trk.querySelector('.md-kn-rail'), lastEdge: '', lastNow: ''
+        }));
+        let cachedRange = null;
+        if (typeof ResizeObserver === 'function') {
+            const capRo = new ResizeObserver(() => { cachedRange = null; });
+            capRo.observe(el.cap);
+            cleanups.push(() => capRo.disconnect());
+        }
+        const progressRange = (fresh = false) => {
+            if (!fresh && cachedRange) return cachedRange;
             const cap = el.cap.getBoundingClientRect();
-            const txt = el.cap.querySelector('.md-txt')?.getBoundingClientRect();
-            const slots = el.cap.querySelector('.md-slots')?.getBoundingClientRect();
+            const txt = capTxt?.getBoundingClientRect();
+            const slots = capSlots?.getBoundingClientRect();
             let a = PROGRESS_INSET;
             let b = 1 - PROGRESS_INSET;
             if (cap.width > 0 && txt && txt.width > 0) a = Math.min(0.45, Math.max(PROGRESS_INSET, (txt.left - cap.left) / cap.width));
@@ -446,7 +460,9 @@
                 fluid?.setProgressRange(a, b);
                 for (const trk of el.tracks) { trk.style.setProperty('--md-a', a.toFixed(4)); trk.style.setProperty('--md-b', b.toFixed(4)); }
             }
-            return [a, b];
+            const pair = [a, b];
+            if (cap.width > 0) cachedRange = pair;
+            return pair;
         };
         // 胶囊里的总时长点一下换成剩余时间（−03:12），再点换回；记在 localStorage musicDockRemain。
         let remainMode = false;
@@ -458,11 +474,20 @@
             // 进度边界从曲名左缘走到 94%（音量键前），和流体层、拖动反算用同一个区间。
             const [a, b] = progressRange();
             const edge = a + fraction * (b - a);
-            for (const trk of el.tracks) {
-                trk.firstElementChild.style.transform = `scaleX(${edge.toFixed(5)})`;
-                trk.style.setProperty('--md-edge', edge.toFixed(5));
-                trk.querySelector('.md-kn-rail').style.transform = `translateX(${(edge * 100).toFixed(3)}%)`;
-                trk.setAttribute('aria-valuenow', String(Math.round(t)));
+            const edgeText = edge.toFixed(5);
+            const knobText = `translateX(${(edge * 100).toFixed(3)}%)`;
+            const nowText = String(Math.round(t));
+            for (const part of trackParts) {
+                if (part.lastEdge !== edgeText) {
+                    part.lastEdge = edgeText;
+                    part.fill.style.transform = `scaleX(${edgeText})`;
+                    part.trk.style.setProperty('--md-edge', edgeText);
+                    part.knob.style.transform = knobText;
+                }
+                if (part.lastNow !== nowText) {
+                    part.lastNow = nowText;
+                    part.trk.setAttribute('aria-valuenow', nowText);
+                }
             }
             fluid?.setProgress(fraction);
             const timeText = formatClock(t);
@@ -614,7 +639,7 @@
             if (!el.sleep || !sleepAvailable()) return;
             const st = sleepState();
             const on = st.mode !== 'off';
-            el.sleep.hidden = !on;
+            if (el.sleep.hidden !== !on) { el.sleep.hidden = !on; cachedRange = null; }
             if (on) {
                 const text = st.mode === 'time' ? sleepClock(st.remaining) : '本曲';
                 if (el.sleepT.textContent !== text) el.sleepT.textContent = text;
@@ -844,12 +869,12 @@
             el.volSlot.classList.add('md-vshow');
             el.preview.textContent = v > 0.001 ? `音量 ${Math.round(v * 100)}%` : '已静音';
             el.tnav.classList.add('md-previewing');
-            clearTimeout(vtipTimer);
-            vtipTimer = setTimeout(() => {
+            cancel(vtipTimer);
+            vtipTimer = later(() => {
+                vtipTimer = null;
                 el.volSlot.classList.remove('md-vshow');
                 el.tnav.classList.remove('md-previewing');
             }, 900);
-            timers.add(vtipTimer);
         };
         listen(el.volSlot, 'click', (event) => { event.stopPropagation(); toggleMute(); flashVolume(); });
         // 悬停音量键一会儿（或者在上面滚轮）：音量像一滴水从播放条里分裂上去，里面是一根竖着的音量条，可以拖。
@@ -1483,6 +1508,7 @@
             host.classList.toggle('md-squeeze', squeezed);
             if (was !== now) {
                 if (resized) host.style.setProperty('--md-bar-w', now); else host.style.removeProperty('--md-bar-w');
+                cachedRange = null;
                 followWidth();
             }
             document.body.classList.toggle('music-dock-beside-list', betweenPanes ? left >= listRight : Boolean(edge));
@@ -1880,6 +1906,7 @@
         listen(global, 'blur', syncPower);
         listen(global, 'focus', syncPower);
         listen(global, 'resize', () => {
+            cachedRange = null;
             syncShift();
             animateCapsule();
             if (state.volOpen) placeRail();

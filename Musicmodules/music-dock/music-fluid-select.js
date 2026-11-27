@@ -110,16 +110,17 @@
     function place(menu, trigger) {
         const r = trigger.getBoundingClientRect();
         const vw = global.innerWidth, vh = global.innerHeight, m = 10;
+        const below = vh - r.bottom - m, above = r.top - m;
+        const maxH = Math.max(160, Math.min(360, Math.max(below, above) - 6));
         menu.style.minWidth = `${Math.max(r.width, 120)}px`;
-        const w = menu.offsetWidth, h = menu.offsetHeight;
+        menu.style.maxHeight = `${maxH}px`;
+        const w = menu.offsetWidth, h = Math.min(menu.offsetHeight, maxH);
         let left = Math.min(Math.max(m, r.right - w), vw - w - m);
         if (r.left + w <= vw - m && r.left >= m) left = r.left;
-        const below = vh - r.bottom - m, above = r.top - m;
         let top = below >= h || below >= above ? r.bottom + 6 : r.top - 6 - h;
         top = Math.max(m, Math.min(top, vh - h - m));
         menu.style.left = `${Math.round(left)}px`;
         menu.style.top = `${Math.round(top)}px`;
-        menu.style.maxHeight = `${Math.max(160, Math.min(360, Math.max(below, above) - 6))}px`;
     }
 
     function open(select) {
@@ -158,7 +159,7 @@
                 event.stopPropagation();
                 choose(index);
             });
-            item.addEventListener('pointermove', () => { if (doc.activeElement !== item) item.focus({ preventScroll: true }); });
+            item.addEventListener('pointermove', () => { if (!option.disabled && doc.activeElement !== item) item.focus({ preventScroll: true }); });
             items.push(item);
             // 只用来显示当前状态的项（隐藏且不能选，比如 EQ 的「自定义」）：不是当前值时不进菜单
             if (option.hidden && option.disabled && !option.selected) return;
@@ -241,8 +242,25 @@
     doc.addEventListener('pointerdown', (event) => {
         if (!openState) return;
         if (openState.menu.contains(event.target) || openState.trigger.contains(event.target)) return;
+        const lbl = event.target?.closest?.('label[for]');
+        if (lbl && openState.select.id && lbl.getAttribute('for') === openState.select.id) return;
         close(false);
     }, true);
+    // 点关联的 <label for="..."> 时转到自定义按钮，避免点到隐藏的原生 <select> 毫无反应
+    doc.addEventListener('click', (event) => {
+        const lbl = event.target?.closest?.('label[for]');
+        if (!lbl) return;
+        const forId = lbl.getAttribute('for');
+        if (!forId) return;
+        const target = doc.getElementById(forId);
+        const entry = target && DRESSED.get(target);
+        if (!entry || target.disabled || entry.trigger.contains(event.target)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        entry.trigger.focus({ preventScroll: true });
+        if (openState?.select === target) close(true);
+        else open(target);
+    });
     const reflow = () => { if (openState) close(false); };
     global.addEventListener('resize', reflow);
     doc.addEventListener('scroll', (event) => {

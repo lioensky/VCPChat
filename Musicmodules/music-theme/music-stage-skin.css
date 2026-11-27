@@ -1006,3 +1006,6 @@ body.music-stage-active #custom-title-bar .music-stage-mode-picker {
         transition: none;
     }
 }
+body.music-reduce-motion .music-stage-home-icon {
+    transition: none;
+}

@@ -469,6 +469,7 @@ body.music-reduce-motion .mtst,
 body.music-reduce-motion .mtst.mtst-in,
 body.music-reduce-motion .mtst.mtst-out { animation: none; transform: none; filter: none; }
 body.music-reduce-motion .mtst::before { display: none; }
+body.music-reduce-motion .mtst.mtst-evap::after { animation: none; }
 
 /* ───────── 通用流体选中标记（music-fluid-marker.js） ───────── */
 .mfm { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 0; transition: opacity .2s; }

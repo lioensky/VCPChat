@@ -360,7 +360,7 @@
                         </div>
                         <div id="eq-block-content" class="block-content" aria-hidden="true">
                             <div class="eq-controls-row">
-                                <select id="eq-type-select" class="eq-type-select">
+                                <select id="eq-type-select" class="eq-type-select" aria-label="均衡器类型">
                                     <option value="IIR">IIR (低延迟)</option>
                                     <option value="FIR">FIR (线性相位)</option>
                                 </select>
@@ -370,7 +370,7 @@
                                     <option value="2047">2047 taps</option>
                                     <option value="4095">4095 taps</option>
                                 </select>
-                                <select id="eq-preset-select" class="eq-preset-select">
+                                <select id="eq-preset-select" class="eq-preset-select" aria-label="均衡器预设">
                                     <!-- Presets populated by JS -->
                                 </select>
                             </div>
@@ -395,7 +395,7 @@
                             </div>
                             <div class="block-content">
                                 <div class="ir-controls">
-                                    <select id="ir-preset-select" class="ir-preset-select">
+                                    <select id="ir-preset-select" class="ir-preset-select" aria-label="脉冲响应预设">
                                         <option value="">选择预设</option>
                                         <!-- 动态加载 IRPreset 文件夹内容 -->
                                         <option value="custom">自定义混响文件…</option>
@@ -500,7 +500,7 @@
                             </div>
                             <div class="block-content">
                                 <div class="setting-item">
-                                    <label>时长</label>
+                                    <label for="crossfade-select">时长</label>
                                     <select id="crossfade-select" class="compact-select">
                                         <option value="0">关（无缝衔接）</option>
                                         <option value="2000">2 秒</option>
@@ -527,7 +527,7 @@
                             <div class="block-content">
                                 <div class="saturation-controls">
                                     <div class="setting-item">
-                                        <label>类型</label>
+                                        <label for="saturation-type-select">类型</label>
                                         <select id="saturation-type-select" class="compact-select" style="width: 60px;">
                                             <option value="tube">电子管</option>
                                             <option value="tape">磁带</option>
@@ -585,7 +585,7 @@
                             <div class="block-content">
                                 <div class="noise-shaper-controls">
                                     <div class="setting-item">
-                                        <label>位深</label>
+                                        <label for="output-bits-select">位深</label>
                                         <select id="output-bits-select" class="compact-select">
                                             <option value="32">32-bit</option>
                                             <option value="24" selected>24-bit</option>
@@ -593,7 +593,7 @@
                                         </select>
                                     </div>
                                     <div class="setting-item">
-                                        <label>曲线</label>
+                                        <label for="noise-shaper-curve-select">曲线</label>
                                         <select id="noise-shaper-curve-select" class="compact-select">
                                             <option value="TpdfOnly">只抖动，不整形</option>
                                             <option value="Lipshitz5">Lipshitz 5 阶</option>
@@ -616,7 +616,7 @@
                             <div class="block-content">
                                 <div class="resampling-controls">
                                     <div class="setting-item">
-                                        <label>质量</label>
+                                        <label for="resample-quality-select">质量</label>
                                         <select id="resample-quality-select" class="compact-select" style="width: 60px;">
                                             <option value="low">低</option>
                                             <option value="std">标准</option>
@@ -891,7 +891,7 @@
     </div>
 
     <!-- WebDAV 管理模态框 -->
-    <div id="webdav-modal" class="music-modal-overlay">
+    <div id="webdav-modal" class="music-modal-overlay" role="dialog" aria-modal="true" aria-label="从云端导入（WebDAV）">
         <div class="music-modal webdav-modal">
             <div class="music-modal-header">
                 <h3>从云端导入（WebDAV）</h3>
@@ -918,7 +918,7 @@
     </div>
 
     <!-- WebDAV 添加服务器对话框 -->
-    <div id="webdav-server-dialog" class="dialog-overlay">
+    <div id="webdav-server-dialog" class="dialog-overlay" role="dialog" aria-modal="true" aria-label="添加 WebDAV 服务器">
         <div class="dialog glass-panel">
             <h3>添加 WebDAV 服务器</h3>
             <label class="music-field-label" for="webdav-server-name">名称</label>
@@ -939,7 +939,7 @@
     </div>
 
     <!-- 新建歌单对话框 -->
-    <div id="playlist-dialog" class="dialog-overlay">
+    <div id="playlist-dialog" class="dialog-overlay" role="dialog" aria-modal="true" aria-label="新建歌单">
         <div class="dialog glass-panel">
             <h3>新建歌单</h3>
             <input type="text" id="playlist-name-input" placeholder="歌单名称">
@@ -951,7 +951,7 @@
     </div>
 
     <!-- 歌单编辑模态框 -->
-    <div id="playlist-edit-modal" class="music-modal-overlay">
+    <div id="playlist-edit-modal" class="music-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-playlist-title">
         <div class="music-modal">
             <div class="music-modal-header">
                 <h3 id="modal-playlist-title">编辑歌单</h3>

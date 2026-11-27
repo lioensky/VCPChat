@@ -144,31 +144,30 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
     });
 
     // --- IR Presets Handling ---
+    const IR_AUDIO_EXTENSIONS = new Set(['.wav', '.flac', '.mp3', '.ogg', '.m4a', '.ape']);
     ipcMain.handle('music-list-ir-presets', async () => {
-        if (!(await fs.pathExists(irPresetDir))) return [];
         try {
             const files = await fs.readdir(irPresetDir);
-            const audioExtensions = new Set(['.wav', '.flac', '.mp3', '.ogg', '.m4a', '.ape']);
             return files
-                .filter(file => audioExtensions.has(path.extname(file).toLowerCase()))
+                .filter(file => IR_AUDIO_EXTENSIONS.has(path.extname(file).toLowerCase()))
                 .map(file => path.parse(file).name);
         } catch (err) {
+            if (err?.code === 'ENOENT') return [];
             console.error('[Music] Failed to list IR presets:', err);
             return [];
         }
     });
 
     ipcMain.handle('music-get-ir-preset-path', async (event, presetName) => {
-        if (!(await fs.pathExists(irPresetDir))) return null;
         try {
             const files = await fs.readdir(irPresetDir);
-            const audioExtensions = new Set(['.wav', '.flac', '.mp3', '.ogg', '.m4a', '.ape']);
             const match = files.find(file => {
                 const p = path.parse(file);
-                return p.name === presetName && audioExtensions.has(p.ext.toLowerCase());
+                return p.name === presetName && IR_AUDIO_EXTENSIONS.has(p.ext.toLowerCase());
             });
             return match ? path.join(irPresetDir, match) : null;
         } catch (err) {
+            if (err?.code === 'ENOENT') return null;
             console.error('[Music] Failed to get IR preset path:', err);
             return null;
         }

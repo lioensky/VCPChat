@@ -6,8 +6,9 @@
 
 const path = require('path');
 
+const UTF8_FATAL = new TextDecoder('utf-8', { fatal: true });
 const looksUtf8 = (buf) => {
-    try { new TextDecoder('utf-8', { fatal: true }).decode(buf); return true; } catch (e) { return false; }
+    try { UTF8_FATAL.decode(buf); return true; } catch (e) { return false; }
 };
 
 function decodeM3u(buf, fileName = '') {

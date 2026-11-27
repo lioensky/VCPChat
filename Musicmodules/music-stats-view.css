@@ -218,6 +218,7 @@
 @media (prefers-reduced-motion: reduce) {
     .mstats-range button { transition: none; }
 }
+body.music-reduce-motion .mstats-range button { transition: none; }
 
 /* 歌曲信息（music-track-file.js）：借这套对话框，窄一点，左标签右内容 */
 .dialog-overlay.music-stats-dialog .dialog.glass-panel.mstats.minfo { width: min(520px, calc(100vw - 48px)); }
@@ -285,6 +286,8 @@
 @media (prefers-reduced-motion: reduce) {
     .music-drop-hint, .music-drop-hint-card { transition: none; }
 }
+body.music-reduce-motion .music-drop-hint,
+body.music-reduce-motion .music-drop-hint-card { transition: none; }
 
 /* 曲库文件夹（music-folders.js）：一行一个文件夹，路径 + 歌数，右边打开 / 移出曲库 */
 .dialog-overlay.music-stats-dialog .dialog.glass-panel.mstats.mfold { width: min(640px, calc(100vw - 48px)); }

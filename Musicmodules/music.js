@@ -589,6 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
             app.lyricsFetchCandidates.forEach(candidate => {
                 const item = document.createElement('div');
                 item.className = `lyrics-candidate${candidate.candidateKey === app.selectedLyricsCandidateKey ? ' selected' : ''}`;
+                item.dataset.candidateKey = candidate.candidateKey;
                 item.tabIndex = 0;
                 item.setAttribute('role', 'radio');
                 item.setAttribute('aria-checked', String(candidate.candidateKey === app.selectedLyricsCandidateKey));
@@ -648,7 +649,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     app.selectedLyricsCandidateKey = candidate.candidateKey;
                     app.lyricsFetchSelection.textContent = `已选择：${candidate.sourceLabel} · ${candidate.isWordByWord ? '流式逐字符' : '普通逐行'}`;
                     app.lyricsFetchApply.disabled = false;
-                    renderLyricsCandidates();
+                    // 原地切换选中态，保住键盘焦点，不销毁重建整张候选列表
+                    for (const row of app.lyricsFetchResults.children) {
+                        const on = row.dataset.candidateKey === candidate.candidateKey;
+                        row.classList.toggle('selected', on);
+                        row.setAttribute('aria-checked', String(on));
+                    }
                 };
                 item.onclick = selectCandidate;
                 item.onkeydown = (event) => {

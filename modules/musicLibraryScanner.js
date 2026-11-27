@@ -83,28 +83,45 @@ function pickFolderCover(names) {
     return null;
 }
 async function fillFolderCovers(tracks, readdir = (dir) => fsp.readdir(dir)) {
-    const byDir = new Map();
-    let filled = 0;
+    const candidates = [];
+    const uniqueDirs = [];
+    const seenDirs = new Set();
     for (const t of tracks) {
         if (!t || t.albumArt || typeof t.path !== 'string' || /^[a-z][a-z0-9+.-]+:\/\//i.test(t.path)) continue;
         const dir = path.dirname(t.path);
-        if (!byDir.has(dir)) {
-            let names = [];
-            try { names = await readdir(dir); } catch (_) { names = []; }
-            let hit = pickFolderCover(names);
-            let home = dir;
-            // 多碟专辑常把封面放在上一层（专辑/cover.jpg，歌在 专辑/CD1/ 里）
-            if (!hit && /^(?:cd|disc|disk|碟)\s*[-_]?\s*\d{1,2}\b/i.test(path.basename(dir))) {
-                const up = path.dirname(dir);
-                let upNames = [];
-                try { upNames = await readdir(up); } catch (_) { upNames = []; }
-                hit = pickFolderCover(upNames);
-                if (hit) home = up;
-            }
-            byDir.set(dir, hit ? path.join(home, hit) : null);
+        candidates.push({ track: t, dir });
+        if (!seenDirs.has(dir)) {
+            seenDirs.add(dir);
+            uniqueDirs.push(dir);
         }
+    }
+    if (!candidates.length) return 0;
+    // 同一目录及其父目录（CD1/CD2 共享专辑根目录）只读一次，并控制并发度并行查询
+    const dirNamesCache = new Map();
+    const readDirCached = (dir) => {
+        if (!dirNamesCache.has(dir)) {
+            dirNamesCache.set(dir, Promise.resolve().then(() => readdir(dir)).catch(() => []));
+        }
+        return dirNamesCache.get(dir);
+    };
+    const byDir = new Map();
+    await mapLimit(uniqueDirs, 16, async (dir) => {
+        const names = await readDirCached(dir);
+        let hit = pickFolderCover(names);
+        let home = dir;
+        // 多碟专辑常把封面放在上一层（专辑/cover.jpg，歌在 专辑/CD1/ 里）
+        if (!hit && /^(?:cd|disc|disk|碟)\s*[-_]?\s*\d{1,2}\b/i.test(path.basename(dir))) {
+            const up = path.dirname(dir);
+            const upNames = await readDirCached(up);
+            hit = pickFolderCover(upNames);
+            if (hit) home = up;
+        }
+        byDir.set(dir, hit ? path.join(home, hit) : null);
+    });
+    let filled = 0;
+    for (const { track, dir } of candidates) {
         const cover = byDir.get(dir);
-        if (cover) { t.albumArt = cover; filled++; }
+        if (cover) { track.albumArt = cover; filled++; }
     }
     return filled;
 }
