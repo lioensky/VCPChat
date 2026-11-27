@@ -1548,7 +1548,7 @@
                         first.focus({ preventScroll: true });
                     }
                 }
-            } else if (event.key === 'Escape') {
+            } else if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing) {
                 event.preventDefault();
                 if (picker.open) {
                     setModePickerOpen(false, { focus: 'toggle' });
@@ -1685,7 +1685,7 @@
                 event.preventDefault();
                 event.stopPropagation();
                 focusModeOption(index < 0 && event.key === 'ArrowUp' ? options.length - 1 : moves[event.key]);
-            } else if (event.key === 'Escape') {
+            } else if (event.key === 'Escape' && !event.isComposing) {
                 // 只收起菜单，不退出舞台
                 event.preventDefault();
                 event.stopPropagation();
@@ -1781,9 +1781,17 @@
                 console.warn('[MusicStage] preparing the diorama ahead failed:', error);
             }
         };
+        let prepareIdleId = 0;
+        scope.add(() => {
+            if (prepareIdleId) global.cancelIdleCallback?.(prepareIdleId);
+            prepareIdleId = 0;
+        });
         scope.timeout(() => {
             if (typeof global.requestIdleCallback === 'function') {
-                global.requestIdleCallback(() => preparePreferredStage(), { timeout: 10000 });
+                prepareIdleId = global.requestIdleCallback(() => {
+                    prepareIdleId = 0;
+                    preparePreferredStage();
+                }, { timeout: 10000 });
             } else preparePreferredStage();
         }, PREPARE_AFTER_MS);
 

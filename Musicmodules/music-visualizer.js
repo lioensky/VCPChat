@@ -45,6 +45,9 @@ function setupVisualizer(app) {
         ];
     }
 
+    let vocalFadeWidth = 0;
+    let vocalFade = null;
+
     app.drawVocalVisualizer = () => {
         if (!app.vocalCanvas || !app.vocalCtx || app.currentVisualizerData.length === 0) return;
 
@@ -58,7 +61,11 @@ function setupVisualizer(app) {
             canvas.height = canvas.clientHeight;
         }
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const w = canvas.width;
+        const h = canvas.height;
+        if (!w || !h) return;
+
+        ctx.clearRect(0, 0, w, h);
 
         // 提取人声范围能量 (约 300Hz - 3400Hz)
         const startBin = Math.floor(300 / 21.5);
@@ -74,27 +81,38 @@ function setupVisualizer(app) {
         if (app.smoothedVocalEnergy === undefined) app.smoothedVocalEnergy = 0;
         app.smoothedVocalEnergy += (vocalEnergy - app.smoothedVocalEnergy) * 0.15;
 
-        const centerY = canvas.height / 2;
+        if (vocalFadeWidth !== w) {
+            vocalFadeWidth = w;
+            const steps = (w >> 1) + 1;
+            vocalFade = new Float32Array(steps);
+            const invW = Math.PI / w;
+            for (let idx = 0; idx < steps; idx++) {
+                const s = Math.sin(idx * 2 * invW);
+                vocalFade[idx] = s * s;
+            }
+        }
+
+        const centerY = h * 0.5;
         const time = Date.now();
         const { r, g, b } = app.visualizerColor;
+        const energyBoost = app.smoothedVocalEnergy * 35;
+        ctx.lineWidth = 1.5;
 
-        app.vocalWaves.forEach((wave, i) => {
+        for (let wIdx = 0; wIdx < app.vocalWaves.length; wIdx++) {
+            const wave = app.vocalWaves[wIdx];
+            const amp = wave.amplitude + energyBoost;
+            const freq = wave.frequency;
+            const phaseOffset = time * wave.speed * 0.01 + wave.phase;
             ctx.beginPath();
             ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${wave.alpha})`;
-            ctx.lineWidth = 1.5;
 
-            for (let x = 0; x <= canvas.width; x += 2) {
-                const edgeFade = Math.pow(Math.sin((x / canvas.width) * Math.PI), 2);
-                const y = centerY + Math.sin(x * wave.frequency + time * wave.speed * 0.01 + wave.phase) 
-                          * (wave.amplitude + app.smoothedVocalEnergy * 35) 
-                          * edgeFade;
-
-
+            for (let x = 0, idx = 0; x <= w; x += 2, idx++) {
+                const y = centerY + Math.sin(x * freq + phaseOffset) * amp * vocalFade[idx];
                 if (x === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
             ctx.stroke();
-        });
+        }
     };
 
     // --- WebSocket for Visualization ---
@@ -266,6 +284,10 @@ function setupVisualizer(app) {
             clearTimeout(app.visualizerReconnectTimer);
             app.visualizerReconnectTimer = null;
         }
+        if (app._gaplessSwitchTimer) {
+            clearTimeout(app._gaplessSwitchTimer);
+            app._gaplessSwitchTimer = null;
+        }
         if (app.animationFrameId) {
             cancelAnimationFrame(app.animationFrameId);
             app.animationFrameId = null;
@@ -288,21 +310,28 @@ function setupVisualizer(app) {
         app.targetVisualizerData.length = 0;
         app.currentVisualizerData.length = 0;
         app.particles.length = 0;
-        app.visualizerCanvas.width = app.visualizerCanvas.height = 1;
+        vocalFadeWidth = 0;
+        vocalFade = null;
+        if (app.visualizerCanvas) app.visualizerCanvas.width = app.visualizerCanvas.height = 1;
         if (app.vocalCanvas) app.vocalCanvas.width = app.vocalCanvas.height = 1;
     };
 
     app.drawVisualizer = (data) => {
-        app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+        const canvas = app.visualizerCanvas;
+        const ctx = app.visualizerCtx;
+        if (!canvas || !ctx) return;
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
 
         const bufferLength = data.length;
-        if (bufferLength === 0) return;
+        if (bufferLength < 2 || !w || !h) return;
 
         // 渐变只和画布高度、主题色有关，不必每帧新建。
         const { r, g, b } = app.visualizerColor;
-        const gradientKey = `${app.visualizerCanvas.height}|${r},${g},${b}`;
+        const gradientKey = `${h}|${r},${g},${b}`;
         if (app._visualizerGradientKey !== gradientKey) {
-            const created = app.visualizerCtx.createLinearGradient(0, 0, 0, app.visualizerCanvas.height);
+            const created = ctx.createLinearGradient(0, 0, 0, h);
             created.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.85)`);
             created.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.4)`);
             created.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.05)`);
@@ -311,43 +340,42 @@ function setupVisualizer(app) {
         }
         const gradient = app._visualizerGradient;
 
-        app.visualizerCtx.fillStyle = gradient;
-        app.visualizerCtx.strokeStyle = gradient;
-        app.visualizerCtx.lineWidth = 2;
+        ctx.fillStyle = gradient;
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 2;
 
-        app.visualizerCtx.beginPath();
-        app.visualizerCtx.moveTo(0, app.visualizerCanvas.height);
+        ctx.beginPath();
+        ctx.moveTo(0, h);
 
-        const sliceWidth = app.visualizerCanvas.width / (bufferLength - 1);
+        const sliceWidth = w / (bufferLength - 1);
+        const scaleY = h * 1.2;
+        const t6 = 0.5 / 6;
+        const lastIdx = bufferLength - 1;
 
-        const getPoint = (index) => {
-            const value = data[index] || 0;
-            const x = index * sliceWidth;
-            const y = app.visualizerCanvas.height - (value * app.visualizerCanvas.height * 1.2);
-            return [x, y];
-        };
+        for (let i = 0; i < lastIdx; i++) {
+            const x1 = i * sliceWidth;
+            const y1 = h - (data[i] || 0) * scaleY;
+            const x2 = (i + 1) * sliceWidth;
+            const y2 = h - (data[i + 1] || 0) * scaleY;
+            const prevX = i > 0 ? (i - 1) * sliceWidth : x1;
+            const prevY = i > 0 ? h - (data[i - 1] || 0) * scaleY : y1;
+            const nextX = i < lastIdx - 1 ? (i + 2) * sliceWidth : x2;
+            const nextY = i < lastIdx - 1 ? h - (data[i + 2] || 0) * scaleY : y2;
 
-        for (let i = 0; i < bufferLength - 1; i++) {
-            const [x1, y1] = getPoint(i);
-            const [x2, y2] = getPoint(i + 1);
-            const [prev_x, prev_y] = i > 0 ? getPoint(i - 1) : [x1, y1];
-            const [next_x, next_y] = i < bufferLength - 2 ? getPoint(i + 2) : [x2, y2];
-
-            const tension = 0.5;
-            const cp1_x = x1 + (x2 - prev_x) / 6 * tension;
-            const cp1_y = y1 + (y2 - prev_y) / 6 * tension;
-            const cp2_x = x2 - (next_x - x1) / 6 * tension;
-            const cp2_y = y2 - (next_y - y1) / 6 * tension;
+            const cp1x = x1 + (x2 - prevX) * t6;
+            const cp1y = y1 + (y2 - prevY) * t6;
+            const cp2x = x2 - (nextX - x1) * t6;
+            const cp2y = y2 - (nextY - y1) * t6;
 
             if (i === 0) {
-                app.visualizerCtx.lineTo(x1, y1);
+                ctx.lineTo(x1, y1);
             }
-            app.visualizerCtx.bezierCurveTo(cp1_x, cp1_y, cp2_x, cp2_y, x2, y2);
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
         }
 
-        app.visualizerCtx.lineTo(app.visualizerCanvas.width, app.visualizerCanvas.height);
-        app.visualizerCtx.closePath();
-        app.visualizerCtx.fill();
+        ctx.lineTo(w, h);
+        ctx.closePath();
+        ctx.fill();
     };
 
     // 这条循环该不该跑：
@@ -370,9 +398,24 @@ function setupVisualizer(app) {
         if (!app.animationFrameId && app.visualizerShouldRun()) app.startVisualizerAnimation();
     };
     app._visualizerKeepUntil = performance.now() + 2500;
-    // 播放/暂停、进出舞台、档案页和经典视图互换都会改 body 的 class；再加上窗口重新可见。
+    // 播放/暂停、进出舞台、档案页和经典视图互换以及主题/画质切换会改 body 的 class；忽略无关类名，避免暂停时空转 1.2 秒。
     if (!app._visualizerWakeObserver && typeof MutationObserver === 'function') {
-        app._visualizerWakeObserver = new MutationObserver(() => app.wakeVisualizer(1200));
+        const wakeClassSig = () => {
+            const cl = document.body.classList;
+            return (cl.contains('music-archive-on') ? 1 : 0)
+                | (cl.contains('music-stage-active') ? 2 : 0)
+                | (cl.contains('music-playing') ? 4 : 0)
+                | (cl.contains('light-theme') ? 8 : 0)
+                | (cl.contains('music-reduce-motion') ? 16 : 0)
+                | (cl.contains('music-fl-low') ? 32 : 0);
+        };
+        let lastWakeSig = wakeClassSig();
+        app._visualizerWakeObserver = new MutationObserver(() => {
+            const sig = wakeClassSig();
+            if (sig === lastWakeSig) return;
+            lastWakeSig = sig;
+            app.wakeVisualizer(1200);
+        });
         app._visualizerWakeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
         app._visualizerWakeOnVisible = () => app.wakeVisualizer(400);
         document.addEventListener('visibilitychange', app._visualizerWakeOnVisible);
@@ -532,6 +575,6 @@ function setupVisualizer(app) {
 
             app.animationFrameId = requestAnimationFrame(draw);
         };
-        draw();
+        draw(performance.now());
     };
 }

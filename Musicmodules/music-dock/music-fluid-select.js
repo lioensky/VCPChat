@@ -9,6 +9,7 @@
     if (!doc) return;
 
     const DRESSED = new WeakMap(); // select -> { trigger, sync }
+    const SELECT_OBSERVERS = new Set();
     let openState = null;          // { select, menu, trigger, items, restore }
     let uid = 0;
 
@@ -74,7 +75,9 @@
         }
         select.addEventListener('change', sync);
         select.addEventListener('input', sync);
-        new MutationObserver(sync).observe(select, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'hidden', 'disabled', 'title'] });
+        const obs = new MutationObserver(sync);
+        obs.observe(select, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'hidden', 'disabled', 'title'] });
+        SELECT_OBSERVERS.add(obs);
 
         trigger.addEventListener('click', (event) => {
             event.preventDefault();
@@ -135,16 +138,21 @@
         menu.setAttribute('role', 'listbox');
         if (trigger.getAttribute('aria-label')) menu.setAttribute('aria-label', trigger.getAttribute('aria-label'));
         const items = [];
+        const frag = doc.createDocumentFragment();
         let group = null;
         Array.from(select.options).forEach((option, index) => {
-            const og = option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement.label : '';
+            const skipRender = option.hidden && option.disabled && !option.selected;
+            const ogEl = option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement : null;
+            const og = (!skipRender && ogEl && !ogEl.hidden) ? ogEl.label : '';
             if (og && og !== group) {
                 const head = doc.createElement('div');
                 head.className = 'mfs-group';
                 head.textContent = og;
-                menu.append(head);
+                frag.append(head);
+                group = og;
+            } else if (!skipRender && !og) {
+                group = null;
             }
-            group = og || null;
             const item = doc.createElement('div');
             item.className = 'mfs-item';
             item.setAttribute('role', 'option');
@@ -162,9 +170,10 @@
             item.addEventListener('pointermove', () => { if (!option.disabled && doc.activeElement !== item) item.focus({ preventScroll: true }); });
             items.push(item);
             // 只用来显示当前状态的项（隐藏且不能选，比如 EQ 的「自定义」）：不是当前值时不进菜单
-            if (option.hidden && option.disabled && !option.selected) return;
-            menu.append(item);
+            if (skipRender) return;
+            frag.append(item);
         });
+        menu.append(frag);
         doc.body.append(menu);
         trigger.setAttribute('aria-expanded', 'true');
         trigger.setAttribute('aria-controls', menu.id);
@@ -207,7 +216,7 @@
 
     // 键盘：上下移动、Home/End、回车或空格选中、Esc 收起、Tab 收起；直接打字跳到开头对得上的那项
     let typed = '', typedAt = 0;
-    doc.addEventListener('keydown', (event) => {
+    const onDocKeyDown = (event) => {
         if (!openState) return;
         const { items, menu } = openState;
         const live = items.filter((i) => i.getAttribute('aria-disabled') !== 'true');
@@ -238,16 +247,16 @@
         }
         event.preventDefault();
         event.stopPropagation();
-    }, true);
-    doc.addEventListener('pointerdown', (event) => {
+    };
+    const onDocPointerDown = (event) => {
         if (!openState) return;
         if (openState.menu.contains(event.target) || openState.trigger.contains(event.target)) return;
         const lbl = event.target?.closest?.('label[for]');
         if (lbl && openState.select.id && lbl.getAttribute('for') === openState.select.id) return;
         close(false);
-    }, true);
+    };
     // 点关联的 <label for="..."> 时转到自定义按钮，避免点到隐藏的原生 <select> 毫无反应
-    doc.addEventListener('click', (event) => {
+    const onDocClick = (event) => {
         const lbl = event.target?.closest?.('label[for]');
         if (!lbl) return;
         const forId = lbl.getAttribute('for');
@@ -260,12 +269,16 @@
         entry.trigger.focus({ preventScroll: true });
         if (openState?.select === target) close(true);
         else open(target);
-    });
+    };
     const reflow = () => { if (openState) close(false); };
-    global.addEventListener('resize', reflow);
-    doc.addEventListener('scroll', (event) => {
+    const onDocScroll = (event) => {
         if (openState && !openState.menu.contains(event.target)) close(false);
-    }, true);
+    };
+    doc.addEventListener('keydown', onDocKeyDown, true);
+    doc.addEventListener('pointerdown', onDocPointerDown, true);
+    doc.addEventListener('click', onDocClick);
+    global.addEventListener('resize', reflow);
+    doc.addEventListener('scroll', onDocScroll, true);
 
     // 页面里已有的和以后插进来的下拉框都换掉（舞台切模式会重建一批）。
     // 跳过叶节点和不可能包含 <select> 的标签，避免列表滚动、搜索敲字、歌词渲染时整棵子树跑 querySelectorAll。
@@ -295,7 +308,17 @@
             }
         });
         bodyObs.observe(doc.body, { childList: true, subtree: true });
-        global.addEventListener?.('beforeunload', () => bodyObs.disconnect(), { once: true });
+        global.addEventListener?.('beforeunload', () => {
+            close(false);
+            bodyObs.disconnect();
+            for (const obs of SELECT_OBSERVERS) obs.disconnect();
+            SELECT_OBSERVERS.clear();
+            doc.removeEventListener('keydown', onDocKeyDown, true);
+            doc.removeEventListener('pointerdown', onDocPointerDown, true);
+            doc.removeEventListener('click', onDocClick);
+            global.removeEventListener('resize', reflow);
+            doc.removeEventListener('scroll', onDocScroll, true);
+        }, { once: true });
     };
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true });
     else start();

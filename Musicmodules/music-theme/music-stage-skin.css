@@ -151,6 +151,7 @@
     -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
 
+body.music-fl-low .music-stage-mode-switcher,
 body.music-fl-low .music-stage-id3 {
     background: var(--ms-glass-strong);
     backdrop-filter: none;

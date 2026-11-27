@@ -53,9 +53,6 @@
   visibility: visible;
   transition: opacity .36s var(--mt-ease, ease), transform .42s var(--mt-ease, ease), visibility 0s;
 }
-#music-dock-root.md-fl-low .md-drbg,
-#music-dock-root.md-fl-low .md-cmd-scrim,
-#music-dock-root.md-fl-low .md-hdl-tip { backdrop-filter: none; -webkit-backdrop-filter: none; }
 @media (max-width: 639.98px) {
   .md-pnl { right: 0; bottom: var(--music-dock-safe-bottom, 96px); width: 100vw; max-width: 100vw; max-height: none; margin: 0; }
   .md-drbg {
@@ -546,6 +543,9 @@ body.music-reduce-motion #music-dock-root .md-cmd-row[data-md-dist="4"] { filter
 }
 #music-dock-root.md-fl-low .md-drbg,
 #music-dock-root.md-fl-low .md-cmd-scrim,
+#music-dock-root.md-fl-low .md-cmd-box,
+#music-dock-root.md-fl-low .md-keys-scrim,
+#music-dock-root.md-fl-low .md-hdl button,
 #music-dock-root.md-fl-low .md-hdl-tip { backdrop-filter: none; -webkit-backdrop-filter: none; }
 /* 浅色主题下白色焦点圈看不见，换成墨色 */
 #music-dock-root.md-light.md-fl-on .md-hdl button:focus-visible { outline-color: var(--md-t1); }

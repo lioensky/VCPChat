@@ -46,7 +46,13 @@ body.light-theme {
         color-mix(in srgb, var(--mi-paper) 92%, transparent),
         color-mix(in srgb, var(--mi-paper) 76%, transparent) 80%);
     backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     opacity: var(--mi-enter-backdrop, 0);
+}
+
+body.music-fl-low .music-intro.is-transit[data-intro="enter"]:not([data-still])::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .music-intro svg {

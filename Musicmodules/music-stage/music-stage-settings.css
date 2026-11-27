@@ -908,3 +908,21 @@ body.light-theme .music-stage-settings-card option {
     }
 }
 
+body.music-fl-low .music-stage-settings-toggle,
+body.music-fl-low .music-stage-settings-card,
+body.music-fl-low .music-stage-settings.is-open::before,
+body.music-fl-low .music-stage-settings-header,
+body.music-fl-low .music-stage-settings-footer {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.music-fl-low .music-stage-settings-card {
+    background: var(--stage-control-bg);
+}
+
+body.music-fl-low .music-stage-settings-header,
+body.music-fl-low .music-stage-settings-footer {
+    background: var(--stage-control-surface);
+}
+

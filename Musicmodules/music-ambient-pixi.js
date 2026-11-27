@@ -472,7 +472,11 @@
             if (app.isStageActive) return;
             clearStageRelease();
             if (app.ambientPixiController && !app.ambientPixiController.destroyed) {
-                app.ambientPixiController.resize();
+                if (!app.ambientPixiController.initialized) {
+                    await app.ambientPixiController.init();
+                } else {
+                    app.ambientPixiController.resize();
+                }
                 return;
             }
 
