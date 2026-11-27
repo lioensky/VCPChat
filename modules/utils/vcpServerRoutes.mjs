@@ -1,3 +1,3 @@
 import * as routes from './vcpServerRoutes.js';
 
-export const { normalizeVcpServerUrl, vcpServerEndpoint, vcpChatUrl } = routes.default ?? globalThis.vcpServerRoutes;
+export const { normalizeVcpServerUrl, vcpServerEndpoint, vcpChatUrl, postHumanTool } = routes.default ?? globalThis.vcpServerRoutes;

@@ -41,5 +41,20 @@
         return vcpServerEndpoint(value, enableVcpToolInjection === true ? 'chatWithTools' : 'chat');
     }
 
-    return Object.freeze({ normalizeVcpServerUrl, vcpServerEndpoint, vcpChatUrl });
+    // Keep response handling with the caller: search parses results, writers only need status.
+    function postHumanTool(settings, name, args, { signal } = {}) {
+        const { vcpServerUrl, vcpApiKey } = settings ?? {};
+        if (!vcpApiKey) throw new Error('API Key 未配置');
+        return fetch(vcpServerEndpoint(vcpServerUrl, 'humanTool'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${vcpApiKey}`
+            },
+            body: JSON.stringify({ name, arguments: args }),
+            signal
+        });
+    }
+
+    return Object.freeze({ normalizeVcpServerUrl, vcpServerEndpoint, vcpChatUrl, postHumanTool });
 });

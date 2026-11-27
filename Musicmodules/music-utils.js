@@ -42,23 +42,11 @@ function setupUtils(app) {
 
         try {
             const settings = await api.loadSettings();
-            const toolUrl = globalThis.vcpServerRoutes.vcpServerEndpoint(settings.vcpServerUrl, 'humanTool');
-
-            const toolRequest = `<<<[TOOL_REQUEST]>>>
-maid:「始」MusicPlay「末」,
-tool_name:「始」LightMemo「末」,
-query:「始」[音乐检索]${query}「末」,
-k:「始」10「末」,
-tag_boost:「始」0.95「末」
-<<<[END_TOOL_REQUEST]>>>`;
-
-            const res = await fetch(toolUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain;charset=UTF-8',
-                    'Authorization': `Bearer ${settings.vcpApiKey}`
-                },
-                body: toolRequest
+            const res = await globalThis.vcpServerRoutes.postHumanTool(settings, 'LightMemo', {
+                maid: 'MusicPlay',
+                query: `[音乐检索]${query}`,
+                k: 10,
+                tag_boost: 0.95
             });
 
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);

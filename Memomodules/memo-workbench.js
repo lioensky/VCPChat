@@ -174,32 +174,13 @@ const DiaryWorkbench = {
 
         try {
             const settings = await memoWorkbenchApi.loadSettings();
-            if (!settings?.vcpApiKey) throw new Error('API Key 未配置');
-
-            // 构造 TOOL_REQUEST（可选字段仅在有值时加入）
-            let toolFields = `maid:「始」${folder}「末」,
-tool_name:「始」DailyNote「末」,
-command:「始」create「末」,
-Date:「始」${date}「末」,`;
-
-            if (fileName) {
-                toolFields += `\nfileName:「始」${fileName}「末」,`;
-            }
-            if (tags) {
-                toolFields += `\nTag:「始」${tags}「末」,`;
-            }
-
-            toolFields += `\nContent:「始」${content}「末」`;
-
-            const toolRequest = `<<<[TOOL_REQUEST]>>>\n${toolFields}\n<<<[END_TOOL_REQUEST]>>>`;
-
-            const res = await fetch(`${serverBaseUrl}v1/human/tool`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain;charset=UTF-8',
-                    'Authorization': `Bearer ${settings.vcpApiKey}`
-                },
-                body: toolRequest
+            const res = await globalThis.vcpServerRoutes.postHumanTool(settings, 'DailyNote', {
+                command: 'create',
+                maid: folder,
+                Date: date,
+                ...(fileName ? { fileName } : {}),
+                ...(tags ? { Tag: tags } : {}),
+                Content: content
             });
 
             if (!res.ok) throw new Error(await res.text());
