@@ -223,7 +223,7 @@
             case 'Enter': case ' ':
                 if (menu.contains(doc.activeElement)) choose(items.indexOf(doc.activeElement));
                 break;
-            case 'Escape': close(true); break;
+            case 'Escape': if (event.isComposing) return; close(true); break;
             case 'Tab': close(true); return;
             default:
                 if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -284,7 +284,7 @@
     const flush = () => { const list = pending; pending = null; list.forEach(scan); };
     const start = () => {
         scan(doc.body);
-        new MutationObserver((records) => {
+        const bodyObs = new MutationObserver((records) => {
             for (const r of records) for (const n of r.addedNodes) {
                 if (n.nodeType !== 1) continue;
                 const tag = n.tagName;
@@ -293,7 +293,9 @@
                 if (!pending) { pending = new Set(); queueMicrotask(flush); }
                 pending.add(n);
             }
-        }).observe(doc.body, { childList: true, subtree: true });
+        });
+        bodyObs.observe(doc.body, { childList: true, subtree: true });
+        global.addEventListener?.('beforeunload', () => bodyObs.disconnect(), { once: true });
     };
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true });
     else start();

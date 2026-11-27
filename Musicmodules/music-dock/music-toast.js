@@ -117,9 +117,13 @@
             entry.startedAt = Date.now();
             entry.timer = setTimeout(close, entry.remaining);
             // 停留时间就是从实心慢慢蒸发成雾的过程（样式在 music-dock-drawer.css 的 .mtst-evap）。
+            // 仅在重播已有蒸发动画时触发回流，新建提示条首次挂载直接加类即可。
+            const hadEvap = entry.el.classList.contains('mtst-evap');
             entry.el.style.setProperty('--mtst-ms', `${entry.remaining}ms`);
-            entry.el.classList.remove('mtst-evap');
-            void entry.el.offsetWidth;
+            if (hadEvap) {
+                entry.el.classList.remove('mtst-evap');
+                void entry.el.offsetWidth;
+            }
             entry.el.classList.add('mtst-evap');
         };
 
@@ -140,7 +144,7 @@
             render();
             host.appendChild(entry.el);
             entry.shown = true;
-            requestAnimationFrame(() => entry.el?.classList.add('mtst-in'));
+            requestAnimationFrame(() => { if (!entry.closed) entry.el?.classList.add('mtst-in'); });
             entry.el.addEventListener('pointerenter', () => { entry.hovered = true; pause(); });
             entry.el.addEventListener('pointerleave', () => { entry.hovered = false; arm(); });
             entry.el.addEventListener('click', (event) => {

@@ -22,7 +22,12 @@ function setupWebDav(app) {
     app.openWebDavModal = async () => {
         app.webdavModal.classList.add('active');
         if (!app.api?.listWebdavServers) return;
-        app.webdavServers = await app.api.listWebdavServers() || [];
+        try {
+            app.webdavServers = await app.api.listWebdavServers() || [];
+        } catch (err) {
+            console.error('[Music] Failed to list WebDAV servers:', err);
+            app.webdavServers = [];
+        }
         app.renderWebDavServerList();
         if (app.activeWebDavServer) app.browseWebDav(app.webdavCurrentPath);
     };
@@ -50,7 +55,12 @@ function setupWebDav(app) {
             });
             div.querySelector('.webdav-server-remove').addEventListener('click', async (e) => {
                 e.stopPropagation();
-                await app.api.removeWebdavServer({ id: server.id });
+                try {
+                    await app.api.removeWebdavServer({ id: server.id });
+                } catch (err) {
+                    console.error('[Music] Failed to remove WebDAV server:', err);
+                    return;
+                }
                 if (app.activeWebDavServer && app.activeWebDavServer.id === server.id) {
                     app.activeWebDavServer = null;
                     app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">请先选择或添加一个 WebDAV 服务器</div>';
@@ -206,16 +216,20 @@ function setupWebDav(app) {
             app.webdavDialogStatus.textContent = ok ? (result.message || '连接成功') : `连接失败：${webdavReason(result?.message, '服务器没有响应', '服务器上没有这个地址，检查 URL')}`;
         });
         app.webdavDialogConfirm?.addEventListener('click', async () => {
+            if (app.webdavDialogConfirm.disabled) return;
             const name = document.getElementById('webdav-server-name').value.trim();
             const url = document.getElementById('webdav-server-url').value.trim();
             const username = document.getElementById('webdav-server-username').value.trim();
             const password = document.getElementById('webdav-server-password').value;
             if (!name || !url) { app.webdavDialogStatus.textContent = '名称和 URL 不能为空'; return; }
+            app.webdavDialogConfirm.disabled = true;
             let server;
             try {
                 server = await app.api.addWebdavServer({ name, url, username, password });
             } catch (error) {
                 server = null;
+            } finally {
+                app.webdavDialogConfirm.disabled = false;
             }
             if (!server || !server.id) {
                 // 主进程出错时：对话框留着说明一句，不把空的服务器塞进列表
@@ -228,17 +242,21 @@ function setupWebDav(app) {
             app.renderWebDavServerList();
         });
         app.webdavScanBtn?.addEventListener('click', async () => {
-            if (!app.activeWebDavServer || !app.api?.scanWebdavAudio) return;
+            const scanServer = app.activeWebDavServer;
+            if (!scanServer || !app.api?.scanWebdavAudio) return;
             app.webdavScanBtn.disabled = true;
             app.webdavScanBtn.textContent = '扫描中…';
             const unsubscribeProgress = app.api.onWebdavScanProgress?.(({ count }) => {
-                app.webdavScanBtn.textContent = `已找到 ${count} 首…`;
+                if (app.activeWebDavServer?.id === scanServer.id) {
+                    app.webdavScanBtn.textContent = `已找到 ${count} 首…`;
+                }
             });
             try {
                 const result = await app.api.scanWebdavAudio({
-                    serverId: app.activeWebDavServer.id,
-                    url: app.activeWebDavServer.url,
+                    serverId: scanServer.id,
+                    url: scanServer.url,
                 });
+                if (app.activeWebDavServer?.id !== scanServer.id) return;
                 if (result && result.status === 'success') {
                     app.webdavScannedTracks = result.tracks || [];
                     app.webdavImportBtn.disabled = app.webdavScannedTracks.length === 0;
@@ -250,15 +268,16 @@ function setupWebDav(app) {
                     app.webdavImportBtn.textContent = `扫描失败：${webdavReason(result?.message, '服务器没有响应')}`;
                 }
             } catch (err) {
+                if (app.activeWebDavServer?.id !== scanServer.id) return;
                 // 和服务器没响应时一样，把原因写在导入按钮上，不弹系统提示框。
                 app.webdavScannedTracks = [];
                 app.webdavImportBtn.disabled = true;
                 app.webdavImportBtn.textContent = `扫描出错：${webdavReason(err, '原因不明')}`;
             } finally {
                 unsubscribeProgress?.();
+                app.webdavScanBtn.textContent = '扫描全部音频';
+                app.webdavScanBtn.disabled = !app.activeWebDavServer;
             }
-            app.webdavScanBtn.textContent = '扫描全部音频';
-            app.webdavScanBtn.disabled = false;
         });
         app.webdavImportBtn?.addEventListener('click', () => {
             if (app.webdavScannedTracks.length === 0) return;

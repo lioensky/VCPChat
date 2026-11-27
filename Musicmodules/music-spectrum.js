@@ -217,7 +217,11 @@
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
             o.classList.remove('visible');
-            setTimeout(() => o.remove(), 320);
+            setTimeout(() => {
+                const cv = o.querySelector('.mspec-canvas');
+                if (cv) { cv.width = 1; cv.height = 1; }
+                o.remove();
+            }, 320);
             const back = previousFocus;
             previousFocus = null;
             if (back && back.isConnected && typeof back.focus === 'function') {
@@ -225,7 +229,20 @@
             }
         };
         const onKey = (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+            if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
+            if (e.key === 'Tab' && overlay) {
+                const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                if (focusables.length) {
+                    const first = focusables[0], last = focusables[focusables.length - 1];
+                    const active = doc.activeElement;
+                    if (e.shiftKey ? (active === first || !overlay.contains(active)) : (active === last || !overlay.contains(active))) {
+                        e.preventDefault();
+                        (e.shiftKey ? last : first).focus({ preventScroll: true });
+                    }
+                }
+                return;
+            }
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
         const setStatus = (target, text) => {
             if (overlay !== target) return;

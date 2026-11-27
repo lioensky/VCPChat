@@ -58,7 +58,7 @@
         };
         // 捕获阶段拦住：Esc 只关这个框，不会顺带关掉抽屉、退出舞台。
         const onKey = (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+            if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(false); }
             else if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(document.activeElement !== cancelBtn); }
             else if (e.key === 'Tab') {
                 e.preventDefault();
@@ -75,6 +75,7 @@
 
         // 先落到页面里再加 visible，过渡和流体动作才会播。
         requestAnimationFrame(() => {
+            if (done) return;
             overlay.classList.add('visible');
             confirmBtn.focus({ preventScroll: true });
         });

@@ -140,7 +140,7 @@
             }
         };
         const onKey = (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+            if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
                 const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
                 if (focusables.length) {
@@ -269,13 +269,15 @@
                 const grid = el('div', 'mstats-cal-grid');
                 grid.setAttribute('role', 'img');
                 grid.setAttribute('aria-label', `听歌日历：最近一年有 ${listened} 天在听歌`);
+                const gridFrag = doc.createDocumentFragment();
                 for (const col of weeks) {
                     for (const c of col) {
                         const cell = el('i', c.future ? 'future' : `l${c.level}`);
                         if (!c.future) cell.title = `${c.key}　${c.seconds ? '听了 ' + formatDuration(c.seconds) : '没听'}`;
-                        grid.appendChild(cell);
+                        gridFrag.appendChild(cell);
                     }
                 }
+                grid.appendChild(gridFrag);
                 cal.appendChild(grid);
                 const legend = el('div', 'mstats-cal-legend');
                 legend.appendChild(el('span', '', '少'));

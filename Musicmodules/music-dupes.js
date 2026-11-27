@@ -74,7 +74,7 @@
             if (back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
         const onKey = (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+            if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
                 const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
                 if (focusables.length) {
@@ -103,35 +103,58 @@
         const removeExtras = (groups) => {
             const current = app.playlist?.[app.currentTrackIndex] || null;
             const replace = new Map(); // 被移除的路径 → 留下的路径
+            const replaceTrack = new Map(); // 被移除的曲目对象 → 留下的曲目对象
             const drop = new Set();
             for (const g of groups) for (const t of g.extra) {
                 if (t === current) continue; // 正在放的这份先留着
                 drop.add(t);
                 replace.set(t.path, g.keep.path);
+                replaceTrack.set(t, g.keep);
             }
             if (!drop.size) return null;
             const beforeLibrary = app.playlist;
             const beforeFiltered = app.currentFilteredTracks;
+            const beforeQueue = Array.isArray(app.manualQueue) ? app.manualQueue.slice() : null;
             const beforeLists = JSON.stringify(app.customPlaylists || []);
             app.playlist = app.playlist.filter((t) => !drop.has(t));
             if (current) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current));
             if (Array.isArray(app.currentFilteredTracks)) app.currentFilteredTracks = app.currentFilteredTracks.filter((t) => !drop.has(t));
+            if (Array.isArray(app.manualQueue) && app.manualQueue.length) {
+                const seenQ = new Set();
+                const nextQ = [];
+                let queueChanged = false;
+                for (const item of app.manualQueue) {
+                    const mapped = replaceTrack.get(item) || item;
+                    if (mapped !== item) queueChanged = true;
+                    if (drop.has(mapped) || seenQ.has(mapped)) { queueChanged = true; continue; }
+                    seenQ.add(mapped);
+                    nextQ.push(mapped);
+                }
+                if (queueChanged) {
+                    app.manualQueue.length = 0;
+                    app.manualQueue.push(...nextQ);
+                }
+            }
             let listsChanged = false;
+            let likedChanged = false;
             for (const pl of app.customPlaylists || []) {
                 if (!pl || !Array.isArray(pl.tracks)) continue;
                 const seen = new Set();
                 const next = [];
+                let plChanged = false;
                 for (const p of pl.tracks) {
                     const q = replace.get(p) || p;
-                    if (q !== p) listsChanged = true;
-                    if (seen.has(q)) { listsChanged = true; continue; }
+                    if (q !== p) { listsChanged = true; plChanged = true; }
+                    if (seen.has(q)) { listsChanged = true; plChanged = true; continue; }
                     seen.add(q);
                     next.push(q);
                 }
                 pl.tracks = next;
+                if (plChanged && String(pl.id) === 'liked') likedChanged = true;
             }
             app.saveLibrary?.();
             if (listsChanged) app.saveCustomPlaylists?.();
+            if (likedChanged) { try { doc.dispatchEvent(new CustomEvent('music-like-change', { detail: { tracks: [...drop], liked: true } })); } catch (e) { /* 旧内核 */ } }
             refreshViews();
             return {
                 count: drop.size,
@@ -143,7 +166,12 @@
                     app.playlist = beforeLibrary.filter((t) => drop.has(t) || kept.has(t)).concat(app.playlist.filter((t) => !beforeSet.has(t)));
                     if (current2) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current2));
                     if (Array.isArray(beforeFiltered)) app.currentFilteredTracks = beforeFiltered;
+                    if (Array.isArray(beforeQueue) && Array.isArray(app.manualQueue)) {
+                        app.manualQueue.length = 0;
+                        app.manualQueue.push(...beforeQueue);
+                    }
                     if (listsChanged) { try { app.customPlaylists = JSON.parse(beforeLists); app.saveCustomPlaylists?.(); } catch (e) { /* 歌单保持现状 */ } }
+                    if (likedChanged) { try { doc.dispatchEvent(new CustomEvent('music-like-change', { detail: { tracks: [...drop], liked: true } })); } catch (e) { /* 旧内核 */ } }
                     app.saveLibrary?.();
                     refreshViews();
                 }

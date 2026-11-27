@@ -108,7 +108,7 @@
         // MusicDialog 的确认框开着时 Esc 和焦点归它
         const onKey = (e) => {
             if (doc.querySelector('.dialog-overlay.music-dialog')) return;
-            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+            if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
                 const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
                 if (focusables.length) {
@@ -119,7 +119,9 @@
                         (e.shiftKey ? last : first).focus({ preventScroll: true });
                     }
                 }
+                return;
             }
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
 
         // 把这个文件夹下的歌从曲库拿掉（正在放的那首留着），然后让主进程忘掉这个文件夹

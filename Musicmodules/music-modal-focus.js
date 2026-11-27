@@ -75,6 +75,7 @@
             observer.observe(o, { attributes: true, attributeFilter: ['class'] });
             sync(o);
         }
+        global.addEventListener?.('beforeunload', () => observer.disconnect(), { once: true });
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Tab' || e.defaultPrevented) return;
             const o = topOverlay();
