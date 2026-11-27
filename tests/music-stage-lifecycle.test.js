@@ -1483,3 +1483,135 @@ test('Batch 57: edge spectrum clamps narrow viewports, skips resolveAccent on th
         dom.window.close();
     }
 });
+
+test('Batch 60: stage slider input skips theme/mode-button rebuilds, debounces animationIntensity, and edge spectrum fast-paths settled paused frames', () => {
+    const dom = createStageDom();
+    try {
+        const store = new Map();
+        let storageWrites = 0;
+        Object.defineProperty(dom.window, 'localStorage', {
+            configurable: true,
+            value: {
+                getItem: (k) => (store.has(k) ? store.get(k) : null),
+                setItem: (k, v) => { if (k === 'musicStageConfig') storageWrites += 1; store.set(k, String(v)); }
+            }
+        });
+        for (const file of [
+            'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'music-stage-advanced-modes.js', 'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${file}`);
+        }
+        const { app } = createApp();
+        const doc = dom.window.document;
+        const settingsWrap = doc.createElement('div');
+        settingsWrap.className = 'music-stage-settings';
+        settingsWrap.innerHTML = `<button class="music-stage-settings-toggle" type="button"></button>
+            <div class="music-stage-settings-card" hidden>
+                <button class="music-stage-settings-close" type="button"></button>
+                <p class="music-stage-current-mode-hint"></p>
+                <div class="music-stage-mode-options"></div>
+                <div class="music-stage-tuning-controls"></div>
+                <div class="music-stage-common-controls"></div>
+                <button class="music-stage-settings-reset" type="button"></button>
+                <span class="music-stage-settings-status"></span>
+            </div>`;
+        doc.getElementById('music-stage').appendChild(settingsWrap);
+        dom.window.setupMusicStage(app);
+        app.stageHost.enter();
+        const settingsBtn = doc.querySelector('.music-stage-settings-toggle');
+        assert.ok(settingsBtn, 'settings toggle button mounted');
+        settingsBtn.click();
+
+        const firstModeBtn = doc.querySelector('.music-stage-mode-switcher button');
+        assert.ok(firstModeBtn, 'mode switcher button mounted');
+        const paletteBefore = app.stagePalette;
+        assert.ok(paletteBefore, 'stagePalette computed on enter');
+
+        // 拖动模式调优滑块不应重算主题，也不应重建模式切换按钮 DOM
+        const tuningRange = doc.querySelector('[data-stage-config-type="range"]');
+        assert.ok(tuningRange, 'mode tuning range slider rendered');
+        tuningRange.value = String(Number(tuningRange.max));
+        tuningRange.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        assert.equal(app.stagePalette, paletteBefore, 'slider input does not recompute stagePalette');
+        assert.equal(doc.querySelector('.music-stage-mode-switcher button'), firstModeBtn, 'slider input does not rebuild mode switcher DOM');
+
+        // checkbox / select 控件仅监听 change，不因 input+change 双重触发
+        const cfg = dom.window.MusicStageConfig;
+        let patchCalls = 0;
+        const unsubCfg = cfg.subscribe(() => { patchCalls += 1; });
+        const tuningCheck = doc.querySelector('[data-stage-config-type="toggle"]');
+        assert.ok(tuningCheck, 'mode tuning checkbox rendered');
+        tuningCheck.checked = !tuningCheck.checked;
+        tuningCheck.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        tuningCheck.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+        assert.equal(patchCalls, 1, 'checkbox fires config update once on change, not twice on input+change');
+        unsubCfg();
+
+        // 动效强度滑块 input 走防抖持久化，change 立即落盘
+        const intensitySlider = doc.querySelector('.music-stage-common-range');
+        assert.ok(intensitySlider, 'animationIntensity slider rendered');
+        storageWrites = 0;
+        intensitySlider.value = '1.3';
+        intensitySlider.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        assert.equal(storageWrites, 0, 'animationIntensity input coalesces persistence via debounce');
+        assert.equal(cfg.get().animationIntensity, 1.3);
+        intensitySlider.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+        assert.equal(storageWrites, 1, 'animationIntensity change flushes to localStorage once');
+        app.stageHost.destroy();
+    } finally {
+        dom.window.close();
+    }
+
+    // Edge spectrum: settled paused frame fast-paths unchanged accentRgb ref, release() skips already-1x1 strips
+    const dom2 = createStageDom();
+    try {
+        runScript(dom2, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom2, 'Musicmodules/music-stage/music-stage-edge.js');
+        const root = dom2.window.document.getElementById('music-stage');
+        const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        Object.defineProperty(root, 'clientWidth', { configurable: true, get: () => 800 });
+        Object.defineProperty(root, 'clientHeight', { configurable: true, get: () => 500 });
+        let accentCalls = 0;
+        const accentRef = Object.freeze({ r: 40, g: 120, b: 220 });
+        dom2.window.MusicStageModeUtils = {
+            resolveAccent: () => { accentCalls += 1; return accentRef; }
+        };
+        dom2.window.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, {
+            get(t, p) { return p in t ? t[p] : () => {}; },
+            set(t, p, v) { t[p] = v; return true; }
+        });
+        const scope = new dom2.window.MusicStageRuntime.DisposableScope();
+        const app2 = { stagePalette: { accentRgb: accentRef } };
+        const edge = dom2.window.MusicStageEdge.create({
+            app: app2, root, elements: { edgeSpectrum, edgeCanvas },
+            state: { config: { edgeSpectrum: true, quality: 'standard' } },
+            scope, clamp: dom2.window.MusicStageRuntime.clamp
+        });
+        const silent = new Float32Array(32);
+        edge.draw({ now: 1000, isPlaying: false, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        edge.draw({ now: 2600, isPlaying: false, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        const callsAtSettle = accentCalls;
+        edge.draw({ now: 3000, isPlaying: false, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        edge.draw({ now: 3500, isPlaying: false, audio: { spectrum: silent, power: 0 }, viewport: { dpr: 1 } });
+        assert.equal(accentCalls, callsAtSettle, 'settled paused frames with unchanged accentRgb ref skip resolveAccent');
+
+        // release() 后若再次 release()，已是 1x1 的画布不应重复赋值 width
+        edge.release();
+        let widthSets = 0;
+        const wDesc = Object.getOwnPropertyDescriptor(dom2.window.HTMLCanvasElement.prototype, 'width');
+        Object.defineProperty(edgeCanvas, 'width', {
+            configurable: true,
+            get() { return wDesc.get.call(this); },
+            set(v) { widthSets += 1; wDesc.set.call(this, v); }
+        });
+        edge.release();
+        assert.equal(widthSets, 0, 'release() skips reassigning width/height on already-1x1 strip canvas');
+        scope.destroy();
+    } finally {
+        dom2.window.close();
+    }
+});

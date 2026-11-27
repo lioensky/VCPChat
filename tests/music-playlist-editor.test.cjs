@@ -70,3 +70,47 @@ test('album and artist cards in the classic sidebar skip layout and covers off s
     assert.match(rule, /content-visibility:\s*auto/);
     assert.match(rule, /contain-intrinsic-size/);
 });
+
+test('Batch 60: modal song list uses stable O(N) partition, single-track albums skip albumCompare, and sidebar scroll class is localized', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="sidebar-category-view"></div><div id="list"></div><span id="count"></span><h3 id="title"></h3></body>', { runScripts: 'outside-only' });
+    let compareCalls = 0;
+    dom.window.MusicTrackOrder = {
+        albumCompare: (list) => {
+            compareCalls += 1;
+            return (ia, ib) => (list[ia].trackNumber || 0) - (list[ib].trackNumber || 0);
+        }
+    };
+    dom.window.eval(fs.readFileSync('Musicmodules/music-sidebar.js', 'utf8'));
+    const doc = dom.window.document;
+    const tracks = [
+        { path: 'D:/m/0.flac', title: 't0', artist: 'A', album: 'Solo1' },
+        { path: 'D:/m/1.flac', title: 't1', artist: 'A', album: 'Duo', trackNumber: 2 },
+        { path: 'D:/m/2.flac', title: 't2', artist: 'A', album: 'Solo2' },
+        { path: 'D:/m/3.flac', title: 't3', artist: 'A', album: 'Duo', trackNumber: 1 },
+        { path: 'D:/m/4.flac', title: 't4', artist: 'A', album: 'Solo3' }
+    ];
+    const app = {
+        playlist: tracks, stripAudioExtension: (s) => s,
+        customPlaylists: [{ id: '1', name: 'L', tracks: ['D:/m/3.flac', 'D:/m/1.flac'] }],
+        modalSongList: doc.getElementById('list'), modalCount: doc.getElementById('count'), modalPlaylistTitle: doc.getElementById('title'),
+        modalSearchInput: { value: '' }, playlistEditModal: doc.createElement('div'),
+        api: { saveCustomPlaylists: async () => ({ success: true }) },
+        searchTracks: (list) => list
+    };
+    dom.window.setupSidebar(app);
+    app.openPlaylistEditModal('1');
+    const titles = [...doc.querySelectorAll('.music-modal-song-item .music-modal-song-title')].map((el) => el.textContent);
+    assert.deepEqual(titles, ['t1', 't3', 't0', 't2', 't4'], 'selected tracks come first while preserving exact relative order in both partitions');
+
+    compareCalls = 0;
+    const albums = app.getAlbumGroups();
+    assert.equal(compareCalls, 1, 'single-track albums skip albumCompare; only multi-track album Duo sorts');
+    assert.deepEqual(Array.from(albums.find((g) => g.name === 'Duo').tracks, (t) => t.title), ['t3', 't1'], 'multi-track album still sorted by albumCompare');
+
+    const musicJs = fs.readFileSync('Musicmodules/music.js', 'utf8');
+    assert.doesNotMatch(musicJs, /document\.body\.classList\.add\('sidebar-is-scrolling'\)/, 'sidebar scroll hot path no longer adds class to document.body');
+    assert.match(musicJs, /sidebarScrollHost\.classList\.add\('sidebar-is-scrolling'\)/, 'sidebar scroll hot path scopes class to sidebarScrollHost');
+    const musicCss = fs.readFileSync('Musicmodules/music.css', 'utf8');
+    assert.match(musicCss, /\.left-sidebar\.sidebar-is-scrolling\s*\.sidebar-playlist\s+li/);
+    dom.window.close();
+});

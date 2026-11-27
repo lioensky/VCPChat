@@ -285,3 +285,58 @@ test('Batch 57: classic-list caches sorted output for >32 tracks and music-skin 
     assert.equal(btns[1].getAttribute('aria-pressed'), 'true', 'programmatic select.selectedIndex updates segmented button aria-pressed');
     w.close();
 });
+
+test('Batch 60: classic-list pre-ranked artist sort preserves Collator numeric ties, empty-last order, and caches reversed added sort', () => {
+    const t = setup({ count: 0 });
+    const tracks = [];
+    // 构造 >32 首曲目且唯一歌手数 < 曲目数/2，触发 unique-key Collator pre-rank 路径
+    const artists = ['Artist 10', 'Artist 2', 'Artist 01', 'Artist 1', '', 'Beta', 'Alpha'];
+    for (let i = 0; i < 42; i += 1) {
+        const artist = artists[i % artists.length];
+        tracks.push({
+            path: `/m/${i}.flac`,
+            title: `Track ${String(i).padStart(2, '0')}.flac`,
+            artist,
+            duration: 180
+        });
+    }
+    t.app.playlist.push(...tracks);
+    t.app.renderPlaylist();
+
+    // 按歌手升序：Alpha -> Artist 01/1 (平局保留原序) -> Artist 2 -> Artist 10 -> Beta -> 空歌手置后
+    t.doc.querySelector('.music-list-sort.is-artist').click();
+    const ascRows = [...t.list.children].map((li) => tracks[Number(li.dataset.index)]);
+    assert.equal(ascRows.length, 42);
+    const nonEmptyAsc = ascRows.filter((tr) => tr.artist);
+    const emptyAsc = ascRows.filter((tr) => !tr.artist);
+    assert.equal(emptyAsc.length, 6);
+    assert.ok(ascRows.slice(-6).every((tr) => tr.artist === ''), 'empty artists stay at bottom in asc order');
+    assert.equal(nonEmptyAsc[0].artist, 'Alpha');
+    // Artist 01 与 Artist 1 在 numeric Collator 下平局，应保留它们在原数组中的相对先后（先 01 后 1）
+    const tieGroupAsc = nonEmptyAsc.filter((tr) => tr.artist === 'Artist 01' || tr.artist === 'Artist 1');
+    for (let i = 1; i < tieGroupAsc.length; i += 1) {
+        const prevIdx = tracks.indexOf(tieGroupAsc[i - 1]);
+        const curIdx = tracks.indexOf(tieGroupAsc[i]);
+        assert.ok(prevIdx < curIdx, 'Collator numeric tie preserves original track order in asc');
+    }
+    assert.ok(nonEmptyAsc.findIndex((tr) => tr.artist === 'Artist 2') < nonEmptyAsc.findIndex((tr) => tr.artist === 'Artist 10'), 'numeric ordering puts Artist 2 before Artist 10');
+
+    // 按歌手降序：Beta -> Artist 10 -> Artist 2 -> Artist 01/1 -> Alpha -> 空歌手仍置后
+    t.doc.querySelector('.music-list-sort.is-artist').click();
+    const descRows = [...t.list.children].map((li) => tracks[Number(li.dataset.index)]);
+    assert.ok(descRows.slice(-6).every((tr) => tr.artist === ''), 'empty artists stay at bottom in desc order');
+    assert.equal(descRows[0].artist, 'Beta');
+    assert.ok(descRows.findIndex((tr) => tr.artist === 'Artist 10') < descRows.findIndex((tr) => tr.artist === 'Artist 2'), 'desc puts Artist 10 before Artist 2');
+
+    // 按「添加时间」降序（dir = -1）：先切回 added 升序再点一次切到降序，第二次 renderPlaylist 应命中 sortedCache
+    const addedBtn = t.doc.querySelector('.music-list-sort.is-added');
+    addedBtn.click(); // dir = 1
+    addedBtn.click(); // dir = -1
+    const firstDescOrder = [...t.list.children].map((li) => Number(li.dataset.index));
+    assert.equal(firstDescOrder[0], 41);
+    assert.equal(firstDescOrder[41], 0);
+    t.app.renderPlaylist();
+    const secondDescOrder = [...t.list.children].map((li) => Number(li.dataset.index));
+    assert.deepEqual(secondDescOrder, firstDescOrder, 'reversed added order remains consistent on cached render');
+    t.close();
+});

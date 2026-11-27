@@ -521,3 +521,30 @@ test('session: a saved position in the last seconds, or past a now-shorter file,
     next.context.localStorage.setItem('musicSession', JSON.stringify({ v: 1, track: 'C:/m/2.flac', time: 90 }));
     assert.deepEqual({ ...next.app.sessionStartPoint() }, { index: 2, time: 90 }, 'a normal position is kept');
 });
+
+test('Batch 60: byPathMap memoizes across repeated resolutions and invalidates when playlist changes', () => {
+    const { app, playlist } = setup({ count: 50 });
+    let normCalls = 0;
+    app.normalizePathForCompare = (p) => { normCalls += 1; return String(p || '').toLowerCase(); };
+    // 首次解析字符串路径会构建一次 path->track 缓存表
+    app.queueAdd('c:/m/12.flac');
+    const callsAfterFirst = normCalls;
+    assert.equal(app.manualQueue.length, 1);
+    assert.equal(app.manualQueue[0].path, 'C:/m/12.flac');
+    // 同一曲库下再次按路径解析不重建整张 50 项 Map（只归一化查询路径本身）
+    app.queueAdd('c:/m/35.flac');
+    app.queueAdd('c:/m/49.flac');
+    assert.ok(normCalls - callsAfterFirst <= 4, `cached byPathMap avoids O(N) rebuilds (extra normCalls=${normCalls - callsAfterFirst})`);
+    assert.equal(app.manualQueue.length, 3);
+
+    // 曲库发生变更后缓存自动失效并识别新曲目
+    const added = { path: 'C:/m/99.flac', title: 't99', artist: 'A', album: 'Alb' };
+    app.playlist.push(added);
+    app.queueAdd('c:/m/99.flac');
+    assert.equal(app.manualQueue.at(-1), added, 'byPathMap invalidates after playlist length changes');
+
+    // 从曲库移除曲目后 manualQueue / history 通过 O(1) Set 过滤掉孤立条目
+    app.playlist.pop();
+    const up = app.getUpNext();
+    assert.equal(up.manual.includes(added), false, 'removed track excluded from manual up-next');
+});

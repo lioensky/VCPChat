@@ -1744,3 +1744,27 @@ test('archive list skips viewport clientHeight read on initial empty rebuild and
     assert.equal(wav.length, 44 + 8000 * 10 * 2, '10-second 8 kHz 16-bit mono WAV is 160044 bytes');
     w.close();
 });
+
+test('Batch 60: dragging archive index ruler reads getBoundingClientRect once per pointermove', () => {
+    const f = fixture({ tracks: LIB, playlists: [] });
+    const bar = f.w.document.querySelector('[data-ref="rulerTrack"]');
+    let rectReads = 0;
+    bar.getBoundingClientRect = () => {
+        rectReads += 1;
+        return { left: 100, top: 0, width: 314, height: 40, right: 414, bottom: 40 };
+    };
+    bar.setPointerCapture = () => {};
+    const ev = (type, x) => {
+        const e = new f.w.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, button: 0 });
+        Object.defineProperty(e, 'pointerId', { value: 1 });
+        bar.dispatchEvent(e);
+    };
+    ev('pointerdown', 120);
+    rectReads = 0;
+    ev('pointermove', 180);
+    ev('pointermove', 260);
+    ev('pointermove', 340);
+    assert.equal(rectReads, 3, '3 dragging pointermoves read rulerTrack bounding rect exactly once each');
+    ev('pointerup', 340);
+    f.close();
+});

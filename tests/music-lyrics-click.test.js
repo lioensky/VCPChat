@@ -115,3 +115,46 @@ test('animateLyrics caches word state across line changes and resetLyrics clears
     assert.ok(cancelled.includes(rafSeq), 'resetLyrics cancels pending seek rAF');
     window.close();
 });
+
+test('Batch 60: lyric clicks use single delegated listener, ignore non-collapsed text selections, and detach on beforeunload', () => {
+    const dom = new JSDOM('<ul id="l"></ul><div id="c"></div>');
+    const { window } = dom;
+    let selectionCollapsed = true;
+    let selectionAnchor = null;
+    window.getSelection = () => ({ isCollapsed: selectionCollapsed, anchorNode: selectionAnchor, toString: () => (selectionCollapsed ? '' : '第一句') });
+    const context = vm.createContext({ console: { log() {}, warn() {}, error() {} }, setTimeout, clearTimeout, window, document: window.document });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-lyrics.js'), 'utf8'), context);
+    const seeks = [];
+    const app = {
+        lyricSpeedFactor: 1, lyricOffset: 0, currentLyrics: [],
+        lyricsList: window.document.getElementById('l'),
+        lyricsContainer: window.document.getElementById('c'),
+        isPlaying: true, isTrackLoading: false, lastKnownDuration: 60,
+        api: { seekMusic: () => {} },
+        seekTo: (t) => seeks.push(t),
+        playTrack: () => {},
+        formatTime: (t) => `0:${String(Math.floor(t)).padStart(2, '0')}`
+    };
+    context.setupLyrics(app);
+    app.currentLyrics = app.parseLrc('[00:08.00]第一句\n[00:12.00]第二句');
+    app.renderLyrics();
+    const items = app.lyricsList.querySelectorAll('li');
+    assert.equal(items[0].onclick, null, 'individual lyric <li> does not allocate per-line onclick closure');
+
+    // 正在选中歌词文本时不触发跳转
+    selectionCollapsed = false;
+    selectionAnchor = items[1].firstChild;
+    items[1].click();
+    assert.deepEqual(seeks, [], 'non-collapsed text selection suppresses lyric seek');
+
+    // 折叠选区时点击内部子元素也可委托跳转
+    selectionCollapsed = true;
+    items[1].querySelector('.lyric-original').click();
+    assert.deepEqual(seeks, [12]);
+
+    // beforeunload 卸载委托监听
+    window.dispatchEvent(new window.Event('beforeunload'));
+    items[0].click();
+    assert.deepEqual(seeks, [12], 'delegated click listener detaches on beforeunload');
+    window.close();
+});
