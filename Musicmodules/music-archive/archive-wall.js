@@ -235,6 +235,8 @@
                 const img = new Image();
                 img.decoding = 'async';
                 const done = (url) => {
+                    img.onload = null;
+                    img.onerror = null;
                     busy--;
                     if (destroyed) {
                         if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
@@ -255,7 +257,14 @@
                         if (destroyed) { bmp.close?.(); done(''); return; }
                         const c = document.createElement('canvas');
                         c.width = cw; c.height = ch;
-                        c.getContext('2d').drawImage(bmp, 0, 0);
+                        const ctx = c.getContext('2d');
+                        if (!ctx) {
+                            bmp.close?.();
+                            c.width = 0; c.height = 0;
+                            done(job.src);
+                            return;
+                        }
+                        ctx.drawImage(bmp, 0, 0);
                         bmp.close?.();
                         c.toBlob((blob) => {
                             c.width = 0; c.height = 0;
@@ -682,7 +691,7 @@
         const panel = document.createElement('div');
         panel.className = 'aw-panel';
         panel.innerHTML = '<div class="aw-lyric" hidden><div class="aw-lyric-roll"></div></div><div class="aw-panel-head"><span class="aw-panel-no"></span><span class="aw-panel-dur"></span></div><b class="aw-panel-title"></b><span class="aw-panel-sub"></span>'
-            + '<div class="aw-seek" data-wall="seek" role="slider" tabindex="0" aria-label="播放进度" hidden><span class="aw-seek-t">0:00</span><div class="aw-seek-bar"><i></i></div><span class="aw-seek-d">0:00</span></div>'
+            + '<div class="aw-seek" data-wall="seek" role="slider" tabindex="0" aria-valuemin="0" aria-label="播放进度" hidden><span class="aw-seek-t">0:00</span><div class="aw-seek-bar"><i></i></div><span class="aw-seek-d">0:00</span></div>'
             + '<div class="aw-panel-acts"><button type="button" data-wall="prev" class="aw-round aw-prev" title="上一首" aria-label="上一首" hidden><i></i></button><button type="button" data-wall="play" class="aw-primary"><i></i><span>播放</span></button><button type="button" data-wall="next" class="aw-round aw-next" title="下一首" aria-label="下一首" hidden><i></i></button><button type="button" data-wall="stage">进入舞台</button><button type="button" data-wall="menu">更多…</button></div>';
         const panelRefs = {
             no: panel.querySelector('.aw-panel-no'),
@@ -693,31 +702,38 @@
             prev: panel.querySelector('.aw-prev'),
             next: panel.querySelector('.aw-next')
         };
+        let panelStateKey = '';
         const fillPanel = (i) => {
             const t = opts.track(i);
             const m = opts.meta(t, i);
-            panelRefs.no.textContent = m.code || '';
-            panelRefs.dur.textContent = m.duration || '';
-            panelRefs.title.textContent = m.title;
-            panelRefs.sub.textContent = [m.artist, m.album].filter(Boolean).join(' · ');
             const p = opts.playing();
             const isNow = p.index === i && p.active;
-            const btn = panelRefs.play;
             const isCur = p.index === i;
             const canTransport = isCur && typeof opts.transport === 'function';
-            // 展开的是当前这首：主键变成暂停/继续，两边出现上一首、下一首（和 Folia 大卡上的播放控制一样）
-            btn.lastChild.textContent = isNow ? (canTransport ? '暂停' : '正在播放') : (isCur ? '继续播放' : '播放');
-            btn.classList.toggle('is-now', isNow);
-            btn.disabled = isNow && !canTransport;
-            panelRefs.prev.hidden = !canTransport;
-            panelRefs.next.hidden = !canTransport;
-            panel.dataset.item = String(i);
+            const subText = [m.artist, m.album].filter(Boolean).join(' · ');
+            const key = `${i}|${m.code || ''}|${m.duration || ''}|${m.title}|${subText}|${isNow ? 1 : 0}|${isCur ? 1 : 0}|${canTransport ? 1 : 0}`;
+            if (key !== panelStateKey) {
+                panelStateKey = key;
+                panelRefs.no.textContent = m.code || '';
+                panelRefs.dur.textContent = m.duration || '';
+                panelRefs.title.textContent = m.title;
+                panelRefs.sub.textContent = subText;
+                const btn = panelRefs.play;
+                // 展开的是当前这首：主键变成暂停/继续，两边出现上一首、下一首（和 Folia 大卡上的播放控制一样）
+                btn.lastChild.textContent = isNow ? (canTransport ? '暂停' : '正在播放') : (isCur ? '继续播放' : '播放');
+                btn.classList.toggle('is-now', isNow);
+                btn.disabled = isNow && !canTransport;
+                panelRefs.prev.hidden = !canTransport;
+                panelRefs.next.hidden = !canTransport;
+                panel.dataset.item = String(i);
+            }
             syncSeek();
         };
 
         // ---------- 大卡进度条：只在展开的是当前这首时出现 ----------
         const seekEl = panel.querySelector('.aw-seek');
-        const seekFill = seekEl.querySelector('.aw-seek-bar i');
+        const seekBar = seekEl.querySelector('.aw-seek-bar');
+        const seekFill = seekBar.firstElementChild;
         const fmt = (sec) => { sec = Math.max(0, Math.floor(sec || 0)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
         let seekTimer = 0, seekDrag = null;
         const seekIsLive = () => {
@@ -778,7 +794,6 @@
                 const dStr = fmt(p.d);
                 if (seekEl.firstChild.textContent !== tStr) seekEl.firstChild.textContent = tStr;
                 if (seekEl.lastChild.textContent !== dStr) seekEl.lastChild.textContent = dStr;
-                seekEl.setAttribute('aria-valuemin', '0');
                 seekEl.setAttribute('aria-valuemax', String(dSec));
                 seekEl.setAttribute('aria-valuenow', String(tSec));
                 seekEl.setAttribute('aria-valuetext', tStr + ' / ' + dStr);
@@ -789,8 +804,8 @@
             paintSeek();
             if (seekIsLive() && !seekTimer) seekTimer = setInterval(paintSeek, 250);
         };
-        const seekAt = (clientX) => {
-            const r = seekEl.querySelector('.aw-seek-bar').getBoundingClientRect();
+        const seekAt = (clientX, rect) => {
+            const r = rect || seekBar.getBoundingClientRect();
             const d = opts.progress().d;
             return Math.max(0, Math.min(1, (clientX - r.left) / Math.max(1, r.width))) * d;
         };
@@ -798,11 +813,12 @@
             if (e.button !== 0) return;
             e.stopPropagation();
             seekEl.setPointerCapture?.(e.pointerId);
-            seekDrag = { id: e.pointerId, t: seekAt(e.clientX) };
+            const rect = seekBar.getBoundingClientRect();
+            seekDrag = { id: e.pointerId, rect, t: seekAt(e.clientX, rect) };
             seekEl.classList.add('is-drag');
             paintSeek();
         });
-        seekEl.addEventListener('pointermove', (e) => { if (seekDrag && seekDrag.id === e.pointerId) { seekDrag.t = seekAt(e.clientX); paintSeek(); } });
+        seekEl.addEventListener('pointermove', (e) => { if (seekDrag && seekDrag.id === e.pointerId) { seekDrag.t = seekAt(e.clientX, seekDrag.rect); paintSeek(); } });
         let seekPaintTimer = 0;
         const seekEnd = (e) => {
             if (!seekDrag || seekDrag.id !== e.pointerId) return;
@@ -879,18 +895,26 @@
          * 桌面 = translate(W/2, H·TILT_EYE) rotateX(TILT) translate(-cam)。反解出相对 cam 的 (u, v)。
          */
         const TILT_D = 1500, TILT_OY = 0.08;
+        const TILT_COS = Math.cos(TILT * Math.PI / 180), TILT_SIN = Math.sin(TILT * Math.PI / 180);
+        let tiltBoundsCache = null;
         const tiltBounds = (W, H) => {
-            const c = Math.cos(TILT * Math.PI / 180), sn = Math.sin(TILT * Math.PI / 180);
+            if (tiltBoundsCache && tiltBoundsCache.W === W && tiltBoundsCache.H === H) return tiltBoundsCache.val;
             const oy = H * TILT_OY;
             const at = (xs, ys) => {
                 const a = ys - oy;
-                const v = TILT_D * (a - (H * TILT_EYE - oy)) / (TILT_D * c + a * sn);
-                const k = TILT_D / (TILT_D - v * sn);
+                const v = TILT_D * (a - (H * TILT_EYE - oy)) / (TILT_D * TILT_COS + a * TILT_SIN);
+                const k = TILT_D / (TILT_D - v * TILT_SIN);
                 return { u: W / 2 + (xs - W / 2) / k, v: H / 2 + v };   // 相对 cam（视口左上对应的桌面点）
             };
-            const pts = [at(0, 0), at(W, 0), at(0, H), at(W, H)];
-            const us = pts.map((p) => p.u), vs = pts.map((p) => p.v);
-            return { u0: Math.min(...us), u1: Math.max(...us), v0: Math.min(...vs), v1: Math.max(...vs) };
+            const p0 = at(0, 0), p1 = at(W, 0), p2 = at(0, H), p3 = at(W, H);
+            const val = {
+                u0: Math.min(p0.u, p1.u, p2.u, p3.u),
+                u1: Math.max(p0.u, p1.u, p2.u, p3.u),
+                v0: Math.min(p0.v, p1.v, p2.v, p3.v),
+                v1: Math.max(p0.v, p1.v, p2.v, p3.v)
+            };
+            tiltBoundsCache = { W, H, val };
+            return val;
         };
         const keepSet = new Set();
         const layoutTiles = () => {
@@ -1035,11 +1059,10 @@
             if (st.aim) {
                 // 镜头用和卡片让位同一组弹簧参数（300/34）走过去，展开时卡和镜头一起到位
                 const av = st.aimVel || (st.aimVel = { x: 0, y: 0 });
-                for (const ax of ['x', 'y']) {
-                    const acc = 300 * (st.aim[ax] - st.cam[ax]) - 34 * av[ax];
-                    av[ax] += acc * dt;
-                    st.cam[ax] += av[ax] * dt;
-                }
+                av.x += (300 * (st.aim.x - st.cam.x) - 34 * av.x) * dt;
+                st.cam.x += av.x * dt;
+                av.y += (300 * (st.aim.y - st.cam.y) - 34 * av.y) * dt;
+                st.cam.y += av.y * dt;
                 if (Math.abs(st.aim.x - st.cam.x) < 0.5 && Math.abs(st.aim.y - st.cam.y) < 0.5 && Math.hypot(av.x, av.y) < 20) { st.cam.x = st.aim.x; st.cam.y = st.aim.y; st.aim = null; av.x = av.y = 0; }
                 else moving = true;
             } else if (st.wheelAim) {
@@ -1244,7 +1267,11 @@
                     if (movingOff) { clearTimeout(movingOff); movingOff = 0; }
                     if (st.reflowTimer) { clearTimeout(st.reflowTimer); st.reflowTimer = 0; world.classList.remove('aw-reflow'); }
                     clearGhost();
-                    el.classList.remove('aw-dim', 'aw-moving');
+                    st.drag = null;
+                    seekDrag = null;
+                    panelStateKey = '';
+                    el.classList.remove('aw-dim', 'aw-moving', 'is-grabbing');
+                    seekEl.classList.remove('is-drag');
                     cancelAnimationFrame(st.raf);
                     st.raf = 0;
                     setExpanded(null, { animate: false });
@@ -1298,6 +1325,9 @@
             refresh() { st.dirty = true; schedule(); },
             destroy() {
                 st.on = false;
+                st.drag = null;
+                seekDrag = null;
+                panelStateKey = '';
                 global.removeEventListener('keydown', onGlobalKey, true);
                 cancelAnimationFrame(st.raf);
                 clearTimeout(st.reflowTimer);

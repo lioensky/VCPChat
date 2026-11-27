@@ -52,10 +52,16 @@
         });
         const TUNE_FIRST_COUNT = 6;
         let tuneBusy = false;
+        let tuningDirty = true;
+        let lastTuneSceneId = '';
+        let lastTuneAll = null;
         // 宿主每次换舞台都会重建这些行。这里只做三件事：把「名字（说明）」拆成名字和一行小字说明、
         // 把常用项排到前面、给其余的行打上记号；控件本身和它上面的事件不动。
         const dressTuning = () => {
             if (!tuningNode || tuneBusy) return;
+            const scene = currentStageMode();
+            const sceneId = scene?.id || '';
+            if (!tuningDirty && sceneId === lastTuneSceneId && state.tuneAll === lastTuneAll) return;
             tuneBusy = true;
             try {
                 const rows = Array.from(tuningNode.children);
@@ -75,8 +81,7 @@
                         label.appendChild(note);
                     }
                 }
-                const scene = currentStageMode();
-                const wanted = TUNE_FIRST[scene?.id] || [];
+                const wanted = TUNE_FIRST[sceneId] || [];
                 let first = wanted.map((key) => rowByKey.get(key)).filter(Boolean);
                 if (rows.length <= TUNE_FIRST_COUNT + 2) first = rows.slice();
                 else if (first.length < 3) first = rows.slice(0, TUNE_FIRST_COUNT);
@@ -102,16 +107,19 @@
                 if (el.tuneTitle.textContent !== nextTitle) el.tuneTitle.textContent = nextTitle;
                 const nextHint = scene?.description || '';
                 if (el.tuneHint.textContent !== nextHint) el.tuneHint.textContent = nextHint;
+                tuningDirty = false;
+                lastTuneSceneId = sceneId;
+                lastTuneAll = state.tuneAll;
             } finally {
                 tuneBusy = false;
             }
         };
         if (tuningNode) {
-            const tuneObserver = new MutationObserver(() => { dressTuning(); tuneObserver.takeRecords(); });
+            const tuneObserver = new MutationObserver(() => { tuningDirty = true; dressTuning(); tuneObserver.takeRecords(); });
             tuneObserver.observe(tuningNode, { childList: true });
             cleanups.push(() => tuneObserver.disconnect());
         }
-        listen(el.tuneMore, 'click', () => { state.tuneAll = !state.tuneAll; dressTuning(); });
+        listen(el.tuneMore, 'click', () => { state.tuneAll = !state.tuneAll; tuningDirty = true; dressTuning(); });
         listen(el.advToggle, 'click', () => {
             const open = el.advBody.hidden;
             el.advBody.hidden = !open;
@@ -119,27 +127,34 @@
             el.advToggle.classList.toggle('md-open', open);
         });
 
+        const advWrap = el.advToggle?.closest('.md-adv') || null;
+        let lastExtKey = '';
         // 「显示」和开场回放在曲库、舞台都可用；当前舞台和共用舞台选项只在演出时可见。
         function renderExt(show) {
             el.ext.hidden = !show;
             if (!show) return;
             dressTuning();
             const light = document.body.classList.contains('light-theme');
-            let html = '<div class="md-grp-h"><b>显示</b></div>'
-                + `<div class="md-nrow"><span class="md-lb">外观</span><span class="md-r">`
-                + segment('data-act="theme"', [{ html: icon('sun', 15), aria: '浅色' }, { html: icon('moon', 15), aria: '深色' }], light ? 0 : 1, 'md-inline')
-                + '</span></div>';
             const motion = global.MusicMotion;
-            if (motion && Array.isArray(motion.PREFERENCES)) {
-                const prefs = motion.PREFERENCES;
-                const at = Math.max(0, prefs.findIndex((p) => p.value === motion.preference));
-                html += `<div class="md-nrow"><span class="md-lb">降低动态</span><span class="md-r">`
-                    + segment('data-act="motion"', prefs.map((p) => ({ html: escapeHtml(p.label), aria: `降低动态：${p.label}` })), at, 'md-inline md-seg-tx')
+            const hasMotion = Boolean(motion && Array.isArray(motion.PREFERENCES));
+            const extKey = `${light ? 1 : 0}|${hasMotion ? motion.preference : ''}`;
+            if (extKey !== lastExtKey || !el.body2.firstChild) {
+                lastExtKey = extKey;
+                let html = '<div class="md-grp-h"><b>显示</b></div>'
+                    + `<div class="md-nrow"><span class="md-lb">外观</span><span class="md-r">`
+                    + segment('data-act="theme"', [{ html: icon('sun', 15), aria: '浅色' }, { html: icon('moon', 15), aria: '深色' }], light ? 0 : 1, 'md-inline')
                     + '</span></div>';
+                if (hasMotion) {
+                    const prefs = motion.PREFERENCES;
+                    const at = Math.max(0, prefs.findIndex((p) => p.value === motion.preference));
+                    html += `<div class="md-nrow"><span class="md-lb">降低动态</span><span class="md-r">`
+                        + segment('data-act="motion"', prefs.map((p) => ({ html: escapeHtml(p.label), aria: `降低动态：${p.label}` })), at, 'md-inline md-seg-tx')
+                        + '</span></div>';
+                }
+                el.body2.innerHTML = html;
             }
-            el.body2.innerHTML = html;
             const hasIntro = typeof global.MusicIntro?.replay === 'function';
-            el.advToggle.closest('.md-adv').hidden = !hasIntro && !stageActive();
+            if (advWrap) advWrap.hidden = !hasIntro && !stageActive();
             let introBtn = el.advActs.querySelector('[data-act="intro"]');
             if (hasIntro && !introBtn) {
                 el.advActs.insertAdjacentHTML('afterbegin', `<button class="md-wide md-intro" type="button" data-act="intro">${icon('clapperboard', 15)}<span>播放完整开场</span>${icon('chevron-right', 14)}</button>`);

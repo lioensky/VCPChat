@@ -25,8 +25,14 @@
     const wordsOf = (line) => {
         const words = line && Array.isArray(line.words) ? line.words : null;
         if (!words || words.length < 2) return null;
-        if (!words.every((w) => w && typeof w.text === 'string' && Number.isFinite(w.startTime) && Number.isFinite(w.endTime) && w.endTime >= w.startTime)) return null;
-        return words.map((w) => w.text).join('').trim() === textOf(line).replace(/\s+/g, ' ').trim() || words.map((w) => w.text).join('').replace(/\s+/g, '') === textOf(line).replace(/\s+/g, '') ? words : null;
+        let joined = '';
+        for (let i = 0; i < words.length; i += 1) {
+            const w = words[i];
+            if (!w || typeof w.text !== 'string' || !Number.isFinite(w.startTime) || !Number.isFinite(w.endTime) || w.endTime < w.startTime) return null;
+            joined += w.text;
+        }
+        const lineText = textOf(line);
+        return joined.trim() === lineText.replace(/\s+/g, ' ').trim() || joined.replace(/\s+/g, '') === lineText.replace(/\s+/g, '') ? words : null;
     };
 
     /* 第几行在唱：最后一个 time <= t 的行；都还没到就是 -1 */
@@ -103,6 +109,12 @@
             }
             buildIndex();
             fitSoon();
+            trackH = 0;
+            activeLineEl = null;
+            activeWordsEl = null;
+            activeWordsIndex = -2;
+            lpNode = null;
+            lastLpVal = '';
             state.index = -2;
             state.words = null;
             const t = current();
@@ -155,6 +167,7 @@
             for (let i = 0; i < nodes.length; i++) {
                 if (need[i] < 1) nodes[i].style.setProperty('--fit', String(need[i]));
             }
+            trackH = 0;
         };
         const fitSoon = () => { if (!fitRaf) fitRaf = requestAnimationFrame(fitLines); };
 
@@ -299,23 +312,41 @@
          * （借鉴 RhinE 歌词条「一根细线填到下一句」）。每次刷新（200ms）只改一个变量，过渡补成连续的。
          */
         let lpNode = null;
+        let lastLpVal = '';
+        let activeLineEl = null;
+        let activeWordsEl = null;
+        let activeWordsIndex = -2;
         const paintLineProgress = (t, hasWords) => {
             const k = state.index;
             const node = !hasWords && k >= 0 ? r.track.children[k] : null;
-            if (lpNode && lpNode !== node) { lpNode.style.removeProperty('--lp'); lpNode.classList.remove('lp'); }
+            if (lpNode && lpNode !== node) { lpNode.style.removeProperty('--lp'); lpNode.classList.remove('lp'); lastLpVal = ''; }
             lpNode = node;
             if (!node) return;
             const start = Number(state.lines[k].time) || 0;
             const next = state.lines[k + 1];
             const end = next ? Number(next.time) || 0 : start + 6;
             const f = end > start ? Math.min(1, Math.max(0, (t - start) / (end - start))) : 1;
-            node.classList.add('lp');
-            node.style.setProperty('--lp', (f * 100).toFixed(1) + '%');
+            const pct = (f * 100).toFixed(1) + '%';
+            if (!node.classList.contains('lp')) node.classList.add('lp');
+            if (pct !== lastLpVal) {
+                lastLpVal = pct;
+                node.style.setProperty('--lp', pct);
+            }
         };
         const paintWords = (t) => {
             const k = state.index;
             const words = k >= 0 && state.lineWords ? state.lineWords[k] : (k >= 0 && state.lines[k] ? wordsOf(state.lines[k]) : null);
-            const node = words ? r.track.children[k]?.querySelector('b.ww') : null;
+            let node = null;
+            if (words) {
+                if (activeWordsIndex !== k) {
+                    activeWordsIndex = k;
+                    activeWordsEl = r.track.children[k]?.querySelector('b.ww') || null;
+                }
+                node = activeWordsEl;
+            } else {
+                activeWordsIndex = k;
+                activeWordsEl = null;
+            }
             paintLineProgress(t, Boolean(node));
             if (!node) { state.words = null; return; }
             const spans = node.children;
@@ -332,15 +363,22 @@
             state.words = node;
         };
         let vpH = 0;
+        let trackH = 0;
         const viewportH = () => {
             if (vpH > 0) return vpH;
             const h = r.viewport.clientHeight;
             if (h > 0) vpH = h;
             return h;
         };
+        const trackHeight = () => {
+            if (trackH > 0) return trackH;
+            const h = r.track.offsetHeight;
+            if (h > 0) trackH = h;
+            return h;
+        };
         const place = (animate = true) => {
             // 歌曲末尾保留一点渐隐空间，让前面的歌词填满余下的可视区域。
-            const max = Math.max(0, r.track.offsetHeight - viewportH() + 16);
+            const max = Math.max(0, trackHeight() - viewportH() + 16);
             const y = Math.max(0, Math.min(max, state.shift + state.manual));
             r.track.style.transition = !animate || reducedMotion() ? 'none' : '';
             r.track.style.transform = `translateY(${-y}px)`;
@@ -357,11 +395,14 @@
             const t = now();
             const k = lineAt(state.lines, t);
             if (k !== state.index) {
-                const prev = r.track.querySelector('p.on');
+                const prev = activeLineEl || r.track.querySelector('p.on');
                 prev?.classList.remove('on');
                 prev?.querySelectorAll('.w[data-st]').forEach((n) => { n.className = 'w'; delete n.dataset.st; });
                 state.index = k;
+                activeWordsIndex = -2;
+                activeWordsEl = null;
                 const node = k >= 0 ? r.track.children[k] : null;
+                activeLineEl = node;
                 node?.classList.add('on');
                 paintIndex(k);
                 updateShift();
@@ -373,6 +414,7 @@
         let fitWidth = 0;
         const resizeObserver = new ResizeObserver((entries) => {
             indexBox = null;
+            trackH = 0;
             const rect = entries && entries[0] && entries[0].contentRect;
             const w = rect && rect.width > 0 ? rect.width : r.viewport.clientWidth;
             vpH = rect && rect.height > 0 ? rect.height : r.viewport.clientHeight;
@@ -393,15 +435,18 @@
             const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 400 : 1;
             if (state.plain) {
                 // 纯文本：翻到哪停在哪，不自己滑回
-                const max = Math.max(0, r.track.offsetHeight - viewportH() + 16);
+                const max = Math.max(0, trackHeight() - viewportH() + 16);
                 state.manual = Math.max(0, Math.min(max, state.manual + e.deltaY * unit));
                 place(false);
                 return;
             }
             state.manual += e.deltaY * unit;
             state.manual = Math.max(-state.shift, state.manual);
-            if (r.back) r.back.dataset.dir = state.manual > 0 ? 'up' : 'down';
-            el.classList.add('browsing');
+            if (r.back) {
+                const dir = state.manual > 0 ? 'up' : 'down';
+                if (r.back.dataset.dir !== dir) r.back.dataset.dir = dir;
+            }
+            if (!el.classList.contains('browsing')) el.classList.add('browsing');
             place(false);
             clearTimeout(state.manualTimer);
             state.manualTimer = setTimeout(() => {
@@ -486,6 +531,11 @@
                 clearTimeout(state.noneTimer);
                 clearTimeout(state.noneRefresh);
                 clearTimeout(state.manualTimer);
+                lpNode = null;
+                activeLineEl = null;
+                activeWordsEl = null;
+                indexTip = null;
+                indexBox = null;
                 el.remove();
             },
             debug: () => ({ shown: state.shown, none: state.none, lines: state.lines.length, index: state.index, ticking: Boolean(state.timer) })

@@ -26,10 +26,12 @@
      */
     const pathIndex = (list) => {
         const map = new Map();
-        (Array.isArray(list) ? list : []).forEach((track, index) => {
+        if (!Array.isArray(list)) return map;
+        for (let index = 0; index < list.length; index += 1) {
+            const track = list[index];
             const key = normalizePath(track && track.path);
             if (key && !map.has(key)) map.set(key, index);
-        });
+        }
         return map;
     };
     const buildColumns = (tracks, playlists, options = {}) => {
@@ -38,12 +40,14 @@
         // 路径 → 曲库下标。调用方已经有这张表时（options.indexByPath）直接用，大曲库省一遍
         const indexByPath = options.indexByPath || pathIndex(list);
 
+        const allItems = new Array(list.length);
+        for (let index = 0; index < list.length; index += 1) allItems[index] = index;
         const columns = [{
             id: 'all',
             kind: 'all',
             name: '全部曲目',
             ref: 'ALL FILES',
-            items: list.map((_, index) => index)
+            items: allItems
         }];
 
         (Array.isArray(playlists) ? playlists : []).forEach((playlist, order) => {
@@ -94,13 +98,23 @@
     /* 普通搜索：标题、歌手、专辑包含关键字（不分大小写），返回曲库下标。 */
     const search = (tracks, query) => {
         const q = String(query || '').trim().toLowerCase();
-        if (!q) return [];
+        if (!q || !Array.isArray(tracks) || !tracks.length) return [];
         const out = [];
-        (tracks || []).forEach((track, index) => {
-            if (!track) return;
-            const hay = (stripExtension(track.title) + '\n' + (track.artist || '') + '\n' + (track.album || '')).toLowerCase();
-            if (hay.includes(q)) out.push(index);
-        });
+        const multiLine = q.includes('\n');
+        for (let index = 0; index < tracks.length; index += 1) {
+            const track = tracks[index];
+            if (!track) continue;
+            if (multiLine) {
+                const hay = (stripExtension(track.title) + '\n' + (track.artist || '') + '\n' + (track.album || '')).toLowerCase();
+                if (hay.includes(q)) out.push(index);
+            } else if (
+                (track.title && stripExtension(track.title).toLowerCase().includes(q)) ||
+                (track.artist && String(track.artist).toLowerCase().includes(q)) ||
+                (track.album && String(track.album).toLowerCase().includes(q))
+            ) {
+                out.push(index);
+            }
+        }
         return out;
     };
 
@@ -190,7 +204,9 @@
             push(rows, t) {
                 gliding = false; v = 0; pos = 0;
                 samples.push([t, rows]);
-                samples = samples.filter((sample) => t - sample[0] <= window);
+                let drop = 0;
+                while (drop < samples.length && t - samples[drop][0] > window) drop += 1;
+                if (drop > 0) samples.splice(0, drop);
             },
             release(t) {
                 if (!samples.length) return false;

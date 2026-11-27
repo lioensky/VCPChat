@@ -21,9 +21,19 @@
         const win = doc.defaultView || global;
         const uid = `mdf${Math.random().toString(36).slice(2, 8)}`;
         const id = (name) => `${uid}-${name}`;
+        const attrCache = new WeakMap();
         const make = (tag, attrs = {}, parent = null) => {
             const node = doc.createElementNS(NS, tag);
-            for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+            const entries = Object.entries(attrs);
+            if (entries.length) {
+                const map = Object.create(null);
+                for (const [k, v] of entries) {
+                    const text = String(v);
+                    map[k] = text;
+                    node.setAttribute(k, text);
+                }
+                attrCache.set(node, map);
+            }
             if (parent) parent.appendChild(node);
             return node;
         };
@@ -151,7 +161,14 @@
         const toHex = (rgb) => `#${rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
         const setAttr = (node, name, value) => {
             const text = typeof value === 'number' ? value.toFixed(2) : String(value);
-            if (node.getAttribute(name) !== text) node.setAttribute(name, text);
+            let map = attrCache.get(node);
+            if (!map) {
+                map = Object.create(null);
+                attrCache.set(node, map);
+            }
+            if (map[name] === text) return;
+            map[name] = text;
+            node.setAttribute(name, text);
         };
 
         // 播放条在窗口里的位置变了（窗口缩放、紧凑档）就重新量。
@@ -314,9 +331,12 @@
         // 两块遮罩（实心/雾的分界、雾的外沿）也一样：遮罩按区域逐帧算亮度，区域收小，算得就少。
         const FILTER_MARGIN = 56;
         const fitted = [...filters, solidMask, vapMask];
+        let lastFilterY = -1;
         const fitFilters = (topBody) => {
             const top = Math.min(topBody, geo.y - 16) - FILTER_MARGIN;
             const y = Math.max(0, Math.floor(top / 8) * 8);
+            if (y === lastFilterY) return;
+            lastFilterY = y;
             for (const f of fitted) { setAttr(f, 'y', y); setAttr(f, 'height', LAYER_H - y); }
         };
         let lastGrow = '';
@@ -369,13 +389,18 @@
                 const layerTop = vh - geo.bottom - LAYER_H;
                 const left = geo.left + rx - RING_R;
                 const top = layerTop + ry - RING_R;
+                const left1 = Math.round(left * 10);
+                const top1 = Math.round(top * 10);
                 const shText = `${sh.toFixed(3)}:${sz.toFixed(3)}`;
-                if (force || ring.__mdfLeft !== left || ring.__mdfTop !== top || ring.__mdfShow !== shText) {
-                    ring.__mdfLeft = left; ring.__mdfTop = top; ring.__mdfShow = shText;
-                    ring.style.transform = `translate3d(${left.toFixed(1)}px, ${top.toFixed(1)}px, 0) scale(${((0.4 + 0.6 * sh) * sz).toFixed(3)})`;
-                    ring.style.opacity = sh.toFixed(3);
-                    ring.classList.toggle('md-hdl-bead', sz < 0.8);
-                    ring.style.pointerEvents = sh > 0.5 ? '' : 'none';
+                const showChanged = force || ring.__mdfShow !== shText;
+                if (showChanged || ring.__mdfLeft1 !== left1 || ring.__mdfTop1 !== top1) {
+                    ring.__mdfLeft1 = left1; ring.__mdfTop1 = top1; ring.__mdfShow = shText;
+                    ring.style.transform = `translate3d(${(left1 / 10).toFixed(1)}px, ${(top1 / 10).toFixed(1)}px, 0) scale(${((0.4 + 0.6 * sh) * sz).toFixed(3)})`;
+                    if (showChanged) {
+                        ring.style.opacity = sh.toFixed(3);
+                        ring.classList.toggle('md-hdl-bead', sz < 0.8);
+                        ring.style.pointerEvents = sh > 0.5 ? '' : 'none';
+                    }
                     onRingMove?.({ left, top, docked: s.ring.docked, near });
                 }
             }
@@ -511,16 +536,40 @@
             setGlow(colors) {
                 const target = [0, 1, 2].map((i) => parseHex(colors?.[i]) || glow.cur[i]);
                 if (glow.frame) { win.cancelAnimationFrame(glow.frame); glow.frame = 0; }
-                const paint = (rgbs) => { glow.cur = rgbs; [in0, in1, in2].forEach((stop, i) => setAttr(stop, 'stop-color', toHex(rgbs[i]))); };
+                const glowStops = [in0, in1, in2];
+                const paint = (rgbs) => {
+                    glow.cur = rgbs;
+                    for (let i = 0; i < 3; i += 1) setAttr(glowStops[i], 'stop-color', toHex(rgbs[i]));
+                };
                 glow.paintTarget = () => paint(target);
-                if (reduced() || s.hidden || s.suspended || !glow.cur.every(Boolean)) { paint(target); return; }
-                const from = glow.cur.slice();
+                const hadCur = Boolean(glow.cur[0] && glow.cur[1] && glow.cur[2]);
+                if (hadCur && target[0] && target[1] && target[2]) {
+                    let same = true;
+                    for (let i = 0; i < 3 && same; i += 1) {
+                        if (glow.cur[i][0] !== target[i][0] || glow.cur[i][1] !== target[i][1] || glow.cur[i][2] !== target[i][2]) same = false;
+                    }
+                    if (same) return;
+                }
+                if (reduced() || s.hidden || s.suspended || !hadCur) { paint(target); return; }
+                const from = [glow.cur[0].slice(), glow.cur[1].slice(), glow.cur[2].slice()];
+                const curBuf = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
                 const start = win.performance?.now?.() ?? Date.now();
                 const step = (now) => {
                     const t = Math.min(1, (now - start) / GLOW_MS);
                     const k = t * t * (3 - 2 * t);
-                    paint(from.map((c, i) => c.map((v, j) => v + (target[i][j] - v) * k)));
-                    glow.frame = t < 1 ? win.requestAnimationFrame(step) : 0;
+                    for (let i = 0; i < 3; i += 1) {
+                        const f = from[i], tg = target[i], o = curBuf[i];
+                        o[0] = f[0] + (tg[0] - f[0]) * k;
+                        o[1] = f[1] + (tg[1] - f[1]) * k;
+                        o[2] = f[2] + (tg[2] - f[2]) * k;
+                    }
+                    if (t >= 1) {
+                        paint(target);
+                        glow.frame = 0;
+                    } else {
+                        paint(curBuf);
+                        glow.frame = win.requestAnimationFrame(step);
+                    }
                 };
                 glow.frame = win.requestAnimationFrame(step);
             },
@@ -528,7 +577,10 @@
                 s.enabled = Boolean(on);
                 svg.style.display = on ? '' : 'none';
                 mist.style.display = on ? '' : 'none';
-                if (!on && frame) { win.cancelAnimationFrame(frame); frame = 0; }
+                if (!on) {
+                    if (frame) { win.cancelAnimationFrame(frame); frame = 0; }
+                    if (glow.frame) { win.cancelAnimationFrame(glow.frame); glow.frame = 0; glow.paintTarget?.(); }
+                }
                 if (on) { layout(); kick(); }
             },
             get enabled() { return s.enabled; },

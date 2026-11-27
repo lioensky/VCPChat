@@ -113,6 +113,9 @@
             // 换一组：这一屏的格子按行列依次落下（从左上往右下一波）
             st.enterUntil = reduced() ? 0 : performance.now() + 700;
             st.revealOk = false;
+            stickySec = -1;
+            delete sticky.dataset.s;
+            sticky.hidden = true;
             measure();
             st.sel = -2;
             syncSelection(true);
@@ -144,6 +147,7 @@
 
         const keepSet = new Set();
         const keepHeadsSet = new Set();
+        let stickySec = -1;
         const render = () => {
             st.raf = 0;
             if (!st.on || !st.rows.length) { sticky.hidden = true; locateBtn.hidden = true; return; }
@@ -158,6 +162,7 @@
             const entering = now < (st.enterUntil || 0);
             const sweepOn = entering && now - (st.shownAt || 0) < 400 && Boolean(opts.host.querySelector('.archive-layout-sweep'));
             const hostW = sweepOn ? (opts.host.clientWidth || global.innerWidth || 1600) : 0;
+            const hw = st.cols * st.cell + (st.cols - 1) * GAP_X;
             let frag = null;
             for (let r = rowAt(Math.max(0, view0)); r < st.rows.length && st.rows[r].y < view1; r++) {
                 const row = st.rows[r];
@@ -165,7 +170,6 @@
                     keepHeads.add(row.s);
                     let h = st.heads.get(row.s);
                     if (!h) { h = headNode(row.s); st.heads.set(row.s, h); if (!frag) frag = document.createDocumentFragment(); frag.appendChild(h); }
-                    const hw = st.cols * st.cell + (st.cols - 1) * GAP_X;
                     if (h._x !== st.left || h._y !== row.y) {
                         h._x = st.left; h._y = row.y;
                         h.style.transform = `translate3d(${st.left}px,${row.y}px,0)`;
@@ -213,9 +217,9 @@
                         n.el.style.width = st.cell + 'px';
                     }
                     const i = sec.ids[k];
+                    const t = opts.track(i);
                     if (n.idx !== i) {
                         n.idx = i;
-                        const t = opts.track(i);
                         const m = opts.meta(t, i);
                         n.title.textContent = m.title;
                         n.sub.textContent = m.artist || m.album || '';
@@ -226,7 +230,7 @@
                         n.el.setAttribute('aria-label', m.title + (m.artist ? '，' + m.artist : ''));
                         n.src = null;
                     }
-                    const src = opts.cover(opts.track(i));
+                    const src = opts.cover(t);
                     const url = src ? thumbs.get(src, st.cell * dpr) : '';
                     if (url !== n.src) {
                         n.src = url;
@@ -254,14 +258,15 @@
                 const sec = st.secs[r.s];
                 const headVisible = r.type === 'head' && r.y > top - 4;
                 sticky.hidden = headVisible || top < 4;
-                if (!sticky.hidden && sticky.dataset.s !== String(r.s)) {
+                if (!sticky.hidden && stickySec !== r.s) {
                     // 换节：节名从滚动方向那边卷进来（往下滚从下面上来，往上滚从上面下来），编号跟着换
-                    const prev = Number(sticky.dataset.s);
+                    const prev = stickySec;
+                    stickySec = r.s;
                     sticky.dataset.s = String(r.s);
                     sticky.children[0].textContent = sec.name;
                     sticky.children[1].textContent = sec.ids.length + ' 首';
                     sticky.children[2].textContent = String(r.s + 1).padStart(2, '0') + ' / ' + String(st.secs.length).padStart(2, '0');
-                    if (!reduced() && Number.isFinite(prev)) {
+                    if (!reduced() && prev >= 0) {
                         sticky.classList.remove('ag-roll-up', 'ag-roll-down');
                         void sticky.offsetWidth;
                         sticky.classList.add(r.s > prev ? 'ag-roll-up' : 'ag-roll-down');
@@ -386,6 +391,9 @@
                 if (on) { st.shownAt = performance.now(); syncData(true); schedule(); }
                 else {
                     cancelAnimationFrame(st.raf); st.raf = 0;
+                    stickySec = -1;
+                    delete sticky.dataset.s;
+                    sticky.hidden = true;
                     for (const n of st.nodes.values()) recycle(n);
                     st.nodes.clear();
                     for (const n of st.pool) {
