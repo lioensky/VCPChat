@@ -1072,3 +1072,21 @@ test('non-sound switches live on the control page: autoplay in 播放, desktop l
         assert.equal(legacy.checked, true, 'state survives the moves');
     } finally { dock.destroy(); }
 });
+
+test('queue prebuild cancels pending requestIdleCallback on destroy', () => {
+    let idleId = 0;
+    const cancelledIdle = [];
+    const timers = [];
+    const { window, doc, dock } = setup((_app, win) => {
+        win.setTimeout = (fn) => { timers.push(fn); return timers.length; };
+        win.clearTimeout = () => {};
+        win.requestIdleCallback = () => ++idleId;
+        win.cancelIdleCallback = (id) => { cancelledIdle.push(id); };
+    });
+    doc.querySelector('[data-md="more"]').click();
+    timers.splice(0).forEach((fn) => fn());
+    assert.ok(idleId > 0, 'scheduled idle prebuild');
+    dock.destroy();
+    assert.ok(cancelledIdle.includes(idleId), 'destroy cancels queued requestIdleCallback');
+    window.close();
+});

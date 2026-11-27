@@ -220,3 +220,25 @@ test('加载没好就一直盖着，好了才揭开', async () => {
     assert.deepEqual(t.leftovers(), CLEAN);
     t.close();
 });
+
+test('完整开场在非打字区间跳过 getComputedTextLength，且不重复写相同 stroke-dasharray', async () => {
+    const t = setup();
+    let measureCalls = 0;
+    const origCreateNS = t.doc.createElementNS.bind(t.doc);
+    t.doc.createElementNS = (ns, tag) => {
+        const node = origCreateNS(ns, tag);
+        if (tag === 'text') {
+            node.getComputedTextLength = () => { measureCalls += 1; return (node.textContent || '').length * 10; };
+        }
+        return node;
+    };
+    t.intro.replay();
+    await t.advance(3000); // 跨越 access（0.4~1.0s）后继续运行到 3.0s
+    const afterAccess = measureCalls;
+    assert.ok(afterAccess > 0 && afterAccess <= 10, `expected bounded textWidth calls during access typing, got ${afterAccess}`);
+    await t.advance(500); // 3.0~3.5s 既不在 access 也不在 auth 区间，不应再量文本宽度
+    assert.equal(measureCalls, afterAccess, 'no textWidth calls outside access/auth windows');
+    t.intro.skip();
+    await t.advance(50);
+    t.close();
+});

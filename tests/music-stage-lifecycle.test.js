@@ -838,3 +838,109 @@ test('2D WebGL2 stages honor 24/30/60fps quality tiers and delete VAOs on destro
         dom.window.close();
     }
 });
+
+test('fume skips redundant clearRect when background disabled and groupchat uses WAAPI on onset', () => {
+    const dom = createStageDom();
+    installCanvasStub(dom.window);
+    let clearCount = 0;
+    const origGetCtx = dom.window.HTMLCanvasElement.prototype.getContext;
+    dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type, ...args) {
+        const ctx = origGetCtx.call(this, type, ...args);
+        if (type === '2d' && ctx) {
+            return new Proxy(ctx, {
+                get(target, prop) {
+                    if (prop === 'clearRect') return () => { clearCount += 1; };
+                    return prop in target ? target[prop] : () => {};
+                }
+            });
+        }
+        return ctx;
+    };
+    for (const dep of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js', 'modes/fume-manager.js', 'modes/groupchat-manager.js']) {
+        runScript(dom, `Musicmodules/music-stage/${dep}`);
+    }
+    const { app } = createApp();
+    const lines = dom.window.MusicStageRuntime.normalizeLines(app.currentLyrics);
+    const host = dom.window.document.createElement('div');
+    dom.window.document.body.appendChild(host);
+    const fume = dom.window.MusicStageFumeManager.create(host, { app });
+    fume.updateConfig({ modes: { fume: { geometricBackground: false } } });
+    clearCount = 0;
+    const mkFrame = (t, onset = 0) => ({
+        now: 1000 + t * 1000,
+        isPlaying: true,
+        playbackTime: t,
+        duration: 180,
+        lines,
+        currentLineIndex: 0,
+        activeLine: lines[0],
+        lineProgress: 0.2,
+        wordStates: [],
+        track: app.playlist[0],
+        audio: { power: 0.5, bass: 0.4, lowMid: 0.3, mid: 0.3, vocal: 0.4, treble: 0.2, onsets: onset, spectrum: new Array(64).fill(0.3) }
+    });
+    fume.updateFrame(mkFrame(1.1));
+    fume.updateFrame(mkFrame(1.2));
+    fume.updateFrame(mkFrame(1.3));
+    assert.equal(clearCount, 1, 'fume clears disabled background canvas once instead of every frame');
+    fume.destroy();
+
+    let animated = 0;
+    let offsetReads = 0;
+    dom.window.HTMLElement.prototype.animate = () => { animated += 1; return { cancel() {} }; };
+    const gcHost = dom.window.document.createElement('div');
+    dom.window.document.body.appendChild(gcHost);
+    const gc = dom.window.MusicStageGroupchatManager.create(gcHost, { app });
+    gc.updateFrame(mkFrame(1.1, 1));
+    const bubble = gcHost.querySelector('.gc-bubble');
+    assert.ok(bubble, 'groupchat rendered lyric bubble');
+    animated = 0;
+    Object.defineProperty(bubble, 'offsetWidth', { get() { offsetReads += 1; return 200; }, configurable: true });
+    gc.updateFrame(mkFrame(1.5, 2));
+    assert.equal(animated, 1, 'onset pulse uses Web Animations API');
+    assert.equal(offsetReads, 0, 'onset pulse avoids forced offsetWidth reflow');
+    gc.destroy();
+    dom.window.close();
+});
+
+test('sonnet and tempera respond immediately to music-motion-change while paused', () => {
+    for (const { file, globalName, dirName } of [
+        { file: 'modes/sonnet-manager.js', globalName: 'MusicStageSonnetManager', dirName: 'SonnetPixiDirector' },
+        { file: 'modes/tempera-manager.js', globalName: 'MusicStageTemperaManager', dirName: 'TemperaPixiDirector' }
+    ]) {
+        const dom = createStageDom();
+        let reduced = false;
+        let updates = 0;
+        let lastReduced = null;
+        dom.window.MusicMotion = { reduced: () => reduced };
+        dom.window.MusicStagePixiEffects = { lensOn: () => false };
+        dom.window[dirName] = class {
+            constructor() { this.initialized = true; this.width = 800; this.height = 600; }
+            init() { return Promise.resolve(); }
+            resize() {}
+            buildShot() {}
+            update(_f, t) { updates += 1; lastReduced = t.reducedMotion; }
+            destroy() {}
+        };
+        for (const dep of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js', file]) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const { app } = createApp();
+        const lines = dom.window.MusicStageRuntime.normalizeLines(app.currentLyrics);
+        const host = dom.window.document.createElement('div');
+        dom.window.document.body.appendChild(host);
+        const mode = dom.window[globalName].create(host, { app });
+        mode.updateFrame({
+            isPlaying: false, playbackTime: 1.2, duration: 180, lines, currentLineIndex: 0,
+            activeLine: lines[0], lineProgress: 0.2, wordStates: [], track: app.playlist[0], audio: {}
+        });
+        assert.equal(updates, 1);
+        assert.equal(lastReduced, false);
+        reduced = true;
+        dom.window.dispatchEvent(new dom.window.Event('music-motion-change'));
+        assert.equal(updates, 2, `${globalName} repaints on music-motion-change while paused`);
+        assert.equal(lastReduced, true);
+        mode.destroy();
+        dom.window.close();
+    }
+});

@@ -243,3 +243,42 @@ test('watchHud keydown skips HUD measurement when archive is hidden, stage is ac
     assert.equal(reads, 2);
     dom.window.close();
 });
+
+test('watchTrails skips DOM queries on pointerdown when no menu trail is active, and slide stops when detached', async () => {
+    const dom = new JSDOM('<!doctype html><body><div class="context-menu"><div class="context-menu-item">项</div></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    let now = 0;
+    const frames = [];
+    window.performance.now = () => now;
+    window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+    window.cancelAnimationFrame = () => {};
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+    let qsaCount = 0;
+    const origQsa = doc.querySelectorAll.bind(doc);
+    doc.querySelectorAll = (...args) => { qsaCount += 1; return origQsa(...args); };
+
+    // 无菜单 trail 激活时点击页面，不应触发全 DOM querySelectorAll
+    doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(qsaCount, 0, 'pointerdown with no active menu trails does zero DOM querySelectorAll');
+
+    // 无关子节点挂载到 body 不应触发 body > .mtst-layer 全量扫描
+    const dummy = doc.createElement('div');
+    doc.body.appendChild(dummy);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(qsaCount, 0, 'watchToasts inspects addedNodes without rescanning document.body');
+
+    // slide 在元素脱离 DOM 后立即停止后续 rAF
+    const marker = doc.createElement('i');
+    doc.body.appendChild(marker);
+    window.MusicFluid.slide(marker, { left: 0, width: 30 });
+    window.MusicFluid.slide(marker, { left: 100, width: 30 });
+    assert.equal(frames.length, 1);
+    marker.remove();
+    now += 50;
+    frames.splice(0).forEach((fn) => fn());
+    assert.equal(frames.length, 0, 'detached slide target stops requesting frames');
+    dom.window.close();
+});
