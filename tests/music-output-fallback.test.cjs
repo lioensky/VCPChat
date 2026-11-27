@@ -160,3 +160,41 @@ test('configureOutput keeps applied device/exclusive state if post-success popul
     assert.equal(app.wasapiSwitch.checked, true, 'exclusive switch stays checked');
     assert.equal(notices.length, 0, 'no failure rollback notice after IPC succeeded');
 });
+
+test('populateDeviceList discards stale overlapping replies and upsampling/resampling handle status error', async () => {
+    const { app } = setup();
+    const resolvers = [];
+    const appended = [];
+    app.deviceSelect = {
+        value: 'default', disabled: false, options: [],
+        set innerHTML(v) { appended.length = 0; },
+        appendChild(node) { appended.push(node); },
+        querySelectorAll: () => []
+    };
+    app.api.getMusicDevices = () => new Promise((resolve) => resolvers.push(resolve));
+    const p1 = app.populateDeviceList(false);
+    const p2 = app.populateDeviceList(true);
+    resolvers[1]({ status: 'success', devices: { preferred: [{ id: 2, name: 'New DAC' }], other: [] } });
+    await p2;
+    const countAfterNew = appended.length;
+    resolvers[0]({ status: 'success', devices: { preferred: [{ id: 1, name: 'Stale DAC' }], other: [] } });
+    await p1;
+    assert.equal(appended.length, countAfterNew, 'stale earlier getMusicDevices reply does not overwrite newer device list');
+
+    let saved = 0;
+    app.saveSettings = () => { saved += 1; };
+    app.targetUpsamplingRate = 48000;
+    app.upsamplingSelect = { value: '192000' };
+    app.api.configureMusicUpsampling = async () => ({ status: 'error', message: 'unsupported' });
+    await app.configureUpsampling();
+    assert.equal(app.targetUpsamplingRate, 48000, 'status error rolls back targetUpsamplingRate');
+    assert.equal(app.upsamplingSelect.value, '48000', 'status error rolls back upsamplingSelect');
+    assert.equal(saved, 0, 'status error does not save upsampling settings');
+
+    app.resampleQualitySelect = { value: 'hq' };
+    app.resampleCacheSwitch = { checked: true };
+    app.preemptiveResampleSwitch = { checked: false };
+    app.api.configureMusicResampling = async () => ({ status: 'error' });
+    await app.configureResampling();
+    assert.equal(saved, 0, 'status error does not save resampling settings');
+});

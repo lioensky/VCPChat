@@ -41,3 +41,33 @@ test('the scanning indicator stays up until every running scan has finished', ()
     fns.complete({ tracks: [], folderPath: 'D:/D' });
     assert.equal(app.loadingIndicator.style.display, 'none');
 });
+
+test('setupElectronHandlers returns a disposer that unsubscribes IPC listeners and clears pending scan batch timer', () => {
+    let unsubCalls = 0;
+    let renderCalls = 0;
+    let batchFn = null;
+    const style = () => ({ display: '' });
+    const app = {
+        playlist: [], currentTrackIndex: 0, currentSidebarView: 'all',
+        loadingIndicator: { style: style() }, scanProgressContainer: { style: style() },
+        scanProgressBar: { style: style() }, scanProgressLabel: {},
+        normalizePathForCompare: (p) => String(p || '').replace(/\\/g, '/').toLowerCase(),
+        renderPlaylist() { renderCalls += 1; }, renderSidebarContent() {}, saveLibrary() {}, applyTheme() {},
+        api: {
+            onMusicScanStart: () => () => { unsubCalls += 1; },
+            onMusicScanProgress: () => () => { unsubCalls += 1; },
+            onMusicScanBatch: (fn) => { batchFn = fn; return () => { unsubCalls += 1; }; },
+            onMusicScanComplete: () => () => { unsubCalls += 1; },
+            onThemeUpdated: () => () => { unsubCalls += 1; },
+            onMusicControl: () => () => { unsubCalls += 1; },
+            onMusicSetTrack: () => () => { unsubCalls += 1; }
+        }
+    };
+    const context = vm.createContext({ app, console, setTimeout, clearTimeout });
+    const dispose = vm.runInContext(`${src.slice(start, end + 7)}\nsetupElectronHandlers();`, context);
+    assert.equal(typeof dispose, 'function', 'setupElectronHandlers returns a disposer');
+    batchFn({ tracks: [{ path: 'D:/A/1.flac', title: '1' }] });
+    dispose();
+    assert.equal(unsubCalls, 7, 'disposer unsubscribes all 7 IPC listeners');
+    assert.equal(renderCalls, 0, 'pending scan batch timer cleared on dispose');
+});

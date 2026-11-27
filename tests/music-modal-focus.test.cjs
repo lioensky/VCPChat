@@ -353,3 +353,16 @@ test('eq-preset dialog blocks single-key shortcuts on buttons and cleans up on b
         dom.window.close();
     }
 });
+
+test('dock panel and archive list/lyrics CSS enforce low-power blur cutoffs and prefers-reduced-motion parity', () => {
+    const panelCss = fs.readFileSync('Musicmodules/music-dock/music-dock-panel.css', 'utf8');
+    assert.match(panelCss, /body\.music-fl-low \.mtst,\s*#music-dock-root\.md-fl-low \.md-pnl\s*\{[^}]*backdrop-filter:\s*none/);
+    assert.match(panelCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.mtst-progress \.mtst-ic svg/);
+
+    const listCss = fs.readFileSync('Musicmodules/music-archive/archive-list.css', 'utf8');
+    assert.match(listCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.archive-list-row\.playing \.eq i/);
+
+    const lyricsCss = fs.readFileSync('Musicmodules/music-archive/archive-lyrics.css', 'utf8');
+    assert.match(lyricsCss, /body\.music-fl-low \.archive-list\.has-drop \.archive-list-letter\[data-md-dist="4"\] > span\s*\{\s*filter:\s*none;/);
+    assert.match(lyricsCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.archive-lyrics-track/);
+});

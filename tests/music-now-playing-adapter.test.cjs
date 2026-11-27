@@ -43,3 +43,62 @@ test('the now-playing update for a track with a cover is sent, with an encoded c
     assert.equal(decodeURIComponent(new URL(last.cover).pathname), "/C:/Users/John's PC/cover #1.jpg");
     adapter.destroy();
 });
+
+test('WebNowPlayingAdapter pauses reconnect timers while hidden, resumes on visibilitychange, and tolerates missing volumeSlider', () => {
+    let connectCount = 0;
+    let hidden = true;
+    const visListeners = new Set();
+    const timers = [];
+    class FakeSocket {
+        constructor() { connectCount += 1; this.readyState = FakeSocket.OPEN; }
+        send() {}
+        close() {}
+    }
+    FakeSocket.OPEN = 1;
+    const doc = {
+        get hidden() { return hidden; },
+        addEventListener: (ev, fn) => { if (ev === 'visibilitychange') visListeners.add(fn); },
+        removeEventListener: (ev, fn) => { if (ev === 'visibilitychange') visListeners.delete(fn); }
+    };
+    const context = {
+        window: {}, document: doc, console, WebSocket: FakeSocket, navigator: {},
+        setTimeout: (fn) => { timers.push(fn); return timers.length; },
+        clearTimeout: () => {}
+    };
+    vm.createContext(context);
+    vm.runInContext(read('Musicmodules/music-utils.js'), context);
+    vm.runInContext(read('Musicmodules/music-ui.js'), context);
+    const app = {
+        api: {},
+        playlist: [{ path: 'C:\\Music\\a.flac', title: 'a.flac' }],
+        currentTrackIndex: 0, isPlaying: false, lastKnownDuration: 0, lastKnownCurrentTime: 0,
+        volumeSlider: null, playModes: ['repeat'], currentPlayMode: 0
+    };
+    context.setupUtils(app);
+    const Adapter = vm.runInContext('WebNowPlayingAdapter', context);
+    const adapter = new Adapter(app);
+    assert.doesNotThrow(() => adapter.sendUpdate(), 'sendUpdate tolerates missing volumeSlider');
+    assert.equal(connectCount, 1);
+
+    // Simulate disconnect while document is hidden: timer fires once, then parks on visibilitychange instead of spinning timers
+    adapter.ws.onclose();
+    assert.equal(timers.length, 1);
+    timers.shift()();
+    assert.equal(timers.length, 0, 'hidden document does not schedule another background reconnect timer');
+    assert.equal(visListeners.size, 1, 'waits on visibilitychange instead of polling timers while hidden');
+    assert.equal(connectCount, 1);
+
+    // Becoming visible triggers reconnect once and removes visibilitychange listener
+    hidden = false;
+    for (const fn of [...visListeners]) fn();
+    assert.equal(connectCount, 2, 'reconnects once window becomes visible again');
+    assert.equal(visListeners.size, 0, 'visibilitychange listener cleaned up after reconnect');
+
+    // Destroy cleans up pending visibility wait too
+    hidden = true;
+    adapter.ws.onclose();
+    timers.shift()();
+    assert.equal(visListeners.size, 1);
+    adapter.destroy();
+    assert.equal(visListeners.size, 0, 'destroy removes pending visibilitychange listener');
+});
