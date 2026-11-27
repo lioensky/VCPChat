@@ -862,3 +862,32 @@ test('Batch 77: music-ui caches playlist viewport height via ResizeObserver, hea
     w.dispatchEvent(new w.Event('beforeunload'));
     w.close();
 });
+
+test('classic list syncHead deduplicates aria-pressed and classList writes on active column reversal', () => {
+    const t = setup({ count: 3, layout: false });
+    const titleBtn = t.doc.querySelector('.music-list-sort.is-title');
+    assert.ok(titleBtn);
+    titleBtn.click(); // title asc -> becomes active
+    assert.equal(titleBtn.getAttribute('aria-pressed'), 'true');
+    assert.equal(titleBtn.classList.contains('is-on'), true);
+
+    let ariaWrites = 0;
+    const origSetAttr = titleBtn.setAttribute.bind(titleBtn);
+    titleBtn.setAttribute = (k, v) => {
+        if (k === 'aria-pressed') ariaWrites += 1;
+        return origSetAttr(k, v);
+    };
+    let toggleCalls = 0;
+    const origToggle = titleBtn.classList.toggle.bind(titleBtn.classList);
+    titleBtn.classList.toggle = (cls, force) => {
+        if (cls === 'is-on') toggleCalls += 1;
+        return origToggle(cls, force);
+    };
+
+    titleBtn.click(); // title desc -> still active, only arrow changes
+    assert.equal(ariaWrites, 0, 'reversing the active sort column does not rewrite aria-pressed');
+    assert.equal(toggleCalls, 0, 'reversing the active sort column does not re-toggle is-on');
+
+    t.window.dispatchEvent(new t.window.Event('beforeunload'));
+    t.close();
+});

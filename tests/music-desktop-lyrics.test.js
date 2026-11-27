@@ -643,3 +643,92 @@ test('Batch 76: musicDesktopLyrics setOn skips redundant disk save when state an
         fs.writeFileSync = origWriteSync;
     }
 });
+
+test('Batch 80: desktop-lyrics renderer skips per-frame cancelAnimationFrame & redundant word writes, and IPC deduplicates setIgnoreMouseEvents', async () => {
+    const h = harness();
+    await h.handles.get('music-desktop-lyrics-toggle')(fromMusic(h), true);
+    const bar = h.windows[0];
+    let ignoreCalls = 0;
+    const origSetIgnore = bar.setIgnoreMouseEvents.bind(bar);
+    bar.setIgnoreMouseEvents = (...args) => { ignoreCalls += 1; return origSetIgnore(...args); };
+    const cmd = (c, v) => h.ons.get('music-desktop-lyrics-command')({ sender: bar.webContents }, c, v);
+    cmd('lock', true);
+    const afterLock = ignoreCalls;
+    cmd('hover', true);
+    cmd('hover', true);
+    cmd('hover', true);
+    assert.strictEqual(ignoreCalls, afterLock + 1, 'repeated hover(true) deduplicates setIgnoreMouseEvents');
+    cmd('hover', false);
+    cmd('hover', false);
+    assert.strictEqual(ignoreCalls, afterLock + 2, 'repeated hover(false) deduplicates setIgnoreMouseEvents');
+    h.dl.musicClosed();
+
+    // Renderer desktop-lyrics.js paint() avoids redundant cancelAnimationFrame and skips formatting settled spans
+    const vm = require('vm');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="cur"></div><div id="next"></div><button id="play"></button><button id="lock"></button></body>', { pretendToBeVisual: true });
+    const { window } = dom;
+    try {
+        let stateCb = null;
+        let fakeNow = 10000;
+        let cancelCalls = 0;
+        const rafs = [];
+        window.utilityAPI = {
+            onDesktopLyricsState: (cb) => { stateCb = cb; return () => {}; },
+            onDesktopLyricsPrefs: () => () => {},
+            sendDesktopLyricsCommand() {}
+        };
+        const ctx = vm.createContext({
+            window,
+            document: window.document,
+            requestAnimationFrame: (fn) => { rafs.push(fn); return rafs.length; },
+            cancelAnimationFrame: () => { cancelCalls += 1; },
+            Date: { now: () => fakeNow },
+            console
+        });
+        ctx.window = window;
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.js'), 'utf8'), ctx);
+        stateCb({
+            path: '/a.flac',
+            index: 0,
+            playing: true,
+            position: 2.5,
+            at: fakeNow,
+            hasLyrics: true,
+            line: {
+                text: 'abc',
+                time: 1,
+                words: [
+                    { text: 'a', s: 1, e: 2 },
+                    { text: 'b', s: 2, e: 3 },
+                    { text: 'c', s: 3, e: 4 }
+                ]
+            }
+        });
+        const spans = [...window.document.querySelectorAll('#cur .w')];
+        assert.strictEqual(spans.length, 3);
+        assert.strictEqual(spans[0].style.getPropertyValue('--f'), '100.0%');
+        assert.strictEqual(spans[1].style.getPropertyValue('--f'), '50.0%');
+        assert.strictEqual(spans[2].style.getPropertyValue('--f'), '0.0%');
+
+        let w0Writes = 0;
+        let w2Writes = 0;
+        const orig0 = spans[0].style.setProperty.bind(spans[0].style);
+        spans[0].style.setProperty = (...a) => { w0Writes += 1; return orig0(...a); };
+        const orig2 = spans[2].style.setProperty.bind(spans[2].style);
+        spans[2].style.setProperty = (...a) => { w2Writes += 1; return orig2(...a); };
+
+        cancelCalls = 0;
+        fakeNow += 100;
+        rafs.shift()();
+        fakeNow += 100;
+        rafs.shift()();
+        assert.strictEqual(cancelCalls, 0, 'steady rAF playback ticks do not call cancelAnimationFrame');
+        assert.strictEqual(w0Writes, 0, 'finished word span skips redundant --f writes');
+        assert.strictEqual(w2Writes, 0, 'unstarted word span skips redundant --f writes');
+        assert.strictEqual(spans[1].style.getPropertyValue('--f'), '70.0%');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        window.close();
+    }
+});

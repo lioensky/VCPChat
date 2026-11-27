@@ -538,6 +538,7 @@ test('Batch 72: music-fluid-select delegates option clicks, blocks ArrowLeft/Arr
     const doc = window.document;
     window.CSS = { escape: (s) => String(s) };
     try {
+        window.CSS = { escape: (s) => String(s) };
         window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
         if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
         const sel = doc.getElementById('eq-sel');
@@ -668,6 +669,98 @@ test('Batch 77: watchToasts batches all getBoundingClientRect reads before calli
         const lastRead = Math.max(events.lastIndexOf('read:t1'), events.lastIndexOf('read:t2'), events.lastIndexOf('read:t3'));
         const firstAnim = Math.min(events.indexOf('anim:t1'), events.indexOf('anim:t2'));
         assert.ok(lastRead >= 0 && firstAnim > lastRead, `all rect reads precede WAAPI animate writes (${JSON.stringify(events)})`);
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 80: music-fluid-select skips .aw-world/.ag-content/#modal-song-list scans, music-dock-stage-settings caches introBtn, and panel CSS disables low-power palette blur', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="aw-world"></div>
+        <div class="ag-content"></div>
+        <div id="modal-song-list"></div>
+        <div class="webdav-file-list"></div>
+        <select id="s-open"><option value="a">A</option><option value="b">B</option></select>
+        <div id="music-stage"></div>
+        <div id="ext"><div id="body2"></div><div class="md-adv"><button id="adv-t" type="button"></button><div id="adv-b"><div id="adv-acts"></div></div></div></div>
+        <div id="tune-sec"><span id="tune-t"></span><span id="tune-h"></span><div id="tune-slot"></div><button id="tune-more" type="button"></button></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.CSS = { escape: (s) => String(s) };
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        for (const sel of ['.aw-world', '.ag-content', '#modal-song-list', '.webdav-file-list']) {
+            const box = doc.querySelector(sel);
+            const item = doc.createElement('div');
+            item.innerHTML = '<span>Item</span><span>Sub</span>';
+            let tagScans = 0;
+            const origTag = item.getElementsByTagName.bind(item);
+            item.getElementsByTagName = (...args) => { tagScans += 1; return origTag(...args); };
+            box.appendChild(item);
+            await new Promise((r) => setTimeout(r, 0));
+            assert.equal(tagScans, 0, `nodes appended to ${sel} bypass select subtree scan`);
+        }
+
+        // Open select menu and verify unchanged sync skips redundant aria-selected writes
+        const sOpen = doc.getElementById('s-open');
+        const trigger = sOpen.nextElementSibling;
+        trigger.click();
+        const menuItems = [...doc.querySelectorAll('.mfs-menu .mfs-item')];
+        assert.equal(menuItems.length, 2);
+        let ariaSelWrites = 0;
+        for (const item of menuItems) {
+            const origSet = item.setAttribute.bind(item);
+            item.setAttribute = (k, v) => { if (k === 'aria-selected') ariaSelWrites += 1; return origSet(k, v); };
+        }
+        sOpen.value = 'a';
+        assert.equal(ariaSelWrites, 0, 'unchanged selectedIndex skips redundant aria-selected writes in open menu');
+        sOpen.value = 'b';
+        assert.equal(ariaSelWrites, 2, 'changing selectedIndex updates only the old and new option');
+
+        // music-dock-stage-settings caches introBtn across repeated renderExt(true) calls
+        window.MusicIntro = { replay() {} };
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-stage-settings.js'), 'utf8'));
+        const advActs = doc.getElementById('adv-acts');
+        const cleanups = [];
+        const stageSettings = window.MusicDockStageSettings.create({
+            state: { tuneAll: false },
+            el: {
+                ext: doc.getElementById('ext'),
+                body: doc.getElementById('ext'),
+                body2: doc.getElementById('body2'),
+                advToggle: doc.getElementById('adv-t'),
+                advBody: doc.getElementById('adv-b'),
+                advActs,
+                tuneSec: doc.getElementById('tune-sec'),
+                tuneTitle: doc.getElementById('tune-t'),
+                tuneHint: doc.getElementById('tune-h'),
+                tuneSlot: doc.getElementById('tune-slot'),
+                tuneMore: doc.getElementById('tune-more')
+            },
+            cleanups,
+            listen() {},
+            openPanel() {},
+            stageActive: () => false,
+            currentStageMode: () => null,
+            segment: () => '<div></div>',
+            escapeHtml: (s) => String(s),
+            icon: () => '<svg></svg>'
+        });
+        stageSettings.renderExt(true);
+        let introQueries = 0;
+        const origQs = advActs.querySelector.bind(advActs);
+        advActs.querySelector = (s) => { if (s.includes('intro')) introQueries += 1; return origQs(s); };
+        stageSettings.renderExt(true);
+        stageSettings.renderExt(true);
+        assert.equal(introQueries, 0, 'repeated renderExt(true) reuses cached introBtn without querySelector');
+
+        // music-dock-panel.css disables backdrop-filter on command palette & keys scrim in low-power mode
+        const panelCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-panel.css'), 'utf8');
+        assert.match(panelCss, /body\.music-fl-low \.md-cmd-box[\s\S]*?backdrop-filter:\s*none/);
+        assert.match(panelCss, /body\.music-fl-low \.md-cmd-box[\s\S]*?background:\s*var\(--md-menu\)/);
+        cleanups.forEach((fn) => fn());
         window.dispatchEvent(new window.Event('beforeunload'));
     } finally {
         dom.window.close();

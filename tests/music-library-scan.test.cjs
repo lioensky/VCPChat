@@ -451,3 +451,15 @@ test('Batch 76: musicLibraryWatch recognizes modern/hi-res audio extensions alig
     }
     watcher.stop();
 });
+
+test('Batch 80: musicLibraryWatch.changedSince skips remote URL tracks without miscounting them under local root', () => {
+    const { changedSince } = require('../modules/musicLibraryWatch');
+    const cwdRoot = process.cwd();
+    const localTrack = { path: path.join(cwdRoot, 'song.flac'), size: 1000, mtimeMs: 5000 };
+    const known = [
+        localTrack,
+        { path: 'https://nas.example/dav/remote.flac', isRemote: true, size: 2000, mtimeMs: 6000 },
+        { path: 'webdav://nas.example/other.mp3', size: 3000, mtimeMs: 7000 }
+    ];
+    assert.equal(changedSince(known, [localTrack], cwdRoot), false, 'remote URLs are ignored by changedSince even when root is process.cwd()');
+});
