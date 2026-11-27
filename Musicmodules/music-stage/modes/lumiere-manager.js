@@ -537,7 +537,7 @@ vec2 home(vec2 t) {
                 flare: clamp(tuning.flare ?? 1, 0, 2),
                 bokeh: clamp(tuning.bokeh ?? 1, 0, 2),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: Boolean(reducedMotion?.matches)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
             };
         };
 

@@ -433,4 +433,8 @@ body.light-theme .music-stage-mode-groupchat {
 @media (prefers-reduced-motion: reduce) {
     .gc-list, .gc-row, .gc-bubble, .gc-echo { transition: none !important; animation: none !important; }
 }
+body.music-reduce-motion .gc-list,
+body.music-reduce-motion .gc-row,
+body.music-reduce-motion .gc-bubble,
+body.music-reduce-motion .gc-echo { transition: none !important; animation: none !important; }
 

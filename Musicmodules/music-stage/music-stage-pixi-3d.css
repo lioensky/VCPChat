@@ -364,6 +364,9 @@
         animation: none;
     }
 }
+body.music-reduce-motion .music-stage-mode-diorama .diorama-vector-decor {
+    animation: none;
+}
 .diorama-fallback {
     position: absolute;
     inset: 0;

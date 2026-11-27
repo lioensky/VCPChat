@@ -466,7 +466,7 @@
         const onset = R.createAudioOnset();
         const audio = { energy: 0, bass: 0, vocal: 0, impact: 0 };
         const palette = () => services?.app?.stagePalette || {};
-        const options = () => ({ ...(mode.config.modes?.kowloon || {}), reducedMotion: Boolean(reduced?.matches), quality: mode.config.quality });
+        const options = () => ({ ...(mode.config.modes?.kowloon || {}), reducedMotion: global.MusicStageRuntime.isReducedMotion(reduced), quality: mode.config.quality });
         const renderScale = U.createRenderScale();
         const showCaption = () => !signs;
 

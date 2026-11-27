@@ -128,6 +128,9 @@
     .signal-slot.is-in, .signal-slot.is-out { animation: none; }
     .signal-slot.is-out { opacity: 0; }
 }
+body.music-reduce-motion .signal-slot.is-in,
+body.music-reduce-motion .signal-slot.is-out { animation: none; }
+body.music-reduce-motion .signal-slot.is-out { opacity: 0; }
 .signal-rule {
     position: relative;
     width: min(46%, 420px);
@@ -201,4 +204,5 @@
 }
 .hanabi-credits-artist:empty { display: none; }
 @media (prefers-reduced-motion: reduce) { .hanabi-credits { transition: none; } }
+body.music-reduce-motion .hanabi-credits { transition: none; }
 

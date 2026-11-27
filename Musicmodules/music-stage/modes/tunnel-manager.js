@@ -4413,7 +4413,7 @@
         const tuning = () => ({
             ...(mode.config.modes?.tunnel || {}),
             animationIntensity: mode.config.animationIntensity ?? 1,
-            reducedMotion: Boolean(reduced?.matches),
+            reducedMotion: global.MusicStageRuntime.isReducedMotion(reduced),
             quality: drawn().quality
         });
 

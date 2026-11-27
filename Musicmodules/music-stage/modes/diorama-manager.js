@@ -48,7 +48,7 @@
         const options = () => ({
             ...(mode.config.modes?.diorama || {}),
             animationIntensity: mode.config.animationIntensity ?? 1,
-            reducedMotion: Boolean(reduced?.matches), aspect: width / height, quality: drawn().quality
+            reducedMotion: global.MusicStageRuntime.isReducedMotion(reduced), aspect: width / height, quality: drawn().quality
         });
         const renderFallback = frame => {
             fallback.hidden = false;

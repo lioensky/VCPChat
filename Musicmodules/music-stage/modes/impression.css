@@ -126,6 +126,8 @@ body.light-theme .music-stage-mode-impression { background: #efece6; }
 @media (prefers-reduced-motion: reduce) {
     .impression-track, .impression-line { transition: none; }
 }
+body.music-reduce-motion .impression-track,
+body.music-reduce-motion .impression-line { transition: none; }
 
 /* 九个 2D 歌词舞台统一用 Noto Sans SC（画布上的字也读这里的字体栈） */
 .music-stage-mode-inkdraft,

@@ -1580,9 +1580,16 @@ uniform float uPop;
 out vec2 vUv;
 out vec4 vT;
 void main() {
-    vec2 corner = aPosition * 0.5 + 0.5;
     float dt = uTime - iB.x;
     float on = step(0.0, dt);
+    // 还没到时间的注记和未触发的飞溅墨点输出恒为 0：在顶点阶段直接裁剪，免去全四边形光栅化与片元噪声
+    if (iB.w > 0.5 && on < 0.5) {
+        gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+        vUv = vec2(0.0);
+        vT = iB;
+        return;
+    }
+    vec2 corner = aPosition * 0.5 + 0.5;
     // 开唱的一下鼓起来、慢慢收回；还没唱到的略小一点
     float scale = mix(0.94, 1.0 + uPop * 0.18 * exp(-max(dt, 0.0) * 2.2), on);
     // 飞溅的墨点：一下甩开（0.1 秒从小到满）
@@ -1751,7 +1758,12 @@ void main() {
     for (int i = 0; i < ${MAX_RINGS}; i++) {
         vec4 r = uRings[i];
         if (r.w <= 0.0) continue;
-        float d = (length(wp - r.xy) - r.z) / r.w;
+        vec2 rd = wp - r.xy;
+        float r2 = dot(rd, rd);
+        float maxR = r.z + r.w * 4.0;
+        float minR = max(0.0, r.z - r.w * 4.0);
+        if (r2 > maxR * maxR || r2 < minR * minR) continue;
+        float d = (sqrt(r2) - r.z) / r.w;
         ring += exp(-d * d) * 0.9;
     }
     // 灰墨团：有边的融球（中间高、到半轴边上平滑落到 0），挨近了连成一片；边被低频噪声推得不圆，像泼上去的。
@@ -1780,7 +1792,9 @@ void main() {
         vec4 c = uClouds[i];
         if (c.w <= 0.0) continue;
         vec2 d = (wp - c.xy) / c.z;
-        float q = max(0.0, 1.0 - dot(d, d));
+        float d2 = dot(d, d);
+        if (d2 >= 1.0) continue;
+        float q = 1.0 - d2;
         cloudT += q * q * c.w;
     }
     // 网点云最浓也只到圆点刚好分开（0.55），远看是一片网点，不糊成一块带喷枪边的平灰
@@ -1847,15 +1861,6 @@ vec2 worldAt(vec4 view, vec2 suv) {
     float c = cos(view.w), s = sin(view.w);
     return view.xy + vec2(q.x * c - q.y * s, q.x * s + q.y * c);
 }
-// 流场：按屏幕算（大特写也不会把字推出一大截），每秒跳 8 格（uFlowT 是取整过的时间）。一层大的慢慢推，一层小的抖
-vec2 warped() {
-    vec2 suv = gl_FragCoord.xy / uRes;
-    vec2 p = vec2(suv.x * uAspect, suv.y);
-    vec2 warp = (vec2(vnoise(p * 3.2 + vec2(0.0, uFlowT * 0.16)), vnoise(p * 3.2 + vec2(17.3, -uFlowT * 0.13))) - 0.5) * 0.024
-        + (vec2(vnoise(p * 9.0 + vec2(uFlowT * 0.3, 3.0)), vnoise(p * 9.0 + vec2(31.7, -uFlowT * 0.27))) - 0.5) * 0.007;
-    warp.x /= uAspect;
-    return suv + warp;
-}
 
 uniform sampler2D uWarp;
 uniform sampler2D uPaperTex;
@@ -1863,7 +1868,8 @@ uniform float uPaperGrain;
 uniform float uBeat;
 uniform float uPress;    // 压印的深浅：浅色纸 1，深色 0.5，关了纸纹 0
 void main() {
-    vec2 suv = gl_FragCoord.xy / uRes + (texture(uWarp, gl_FragCoord.xy / uRes).rg - 0.5) * 0.1;
+    vec2 screenUv = gl_FragCoord.xy / uRes;
+    vec2 suv = screenUv + (texture(uWarp, screenUv).rg - 0.5) * 0.1;
     vec2 w = worldAt(uView, suv);
     // 这一句的字：逐字层画好的墨场（R 墨、G 网点浓淡、B 关键词的墨）
     vec4 gf = texture(uGlyphF, suv);
@@ -1880,29 +1886,37 @@ void main() {
 
     vec2 wp = w;
     // 墨团的场、冲击环、强调色墨团、网点云：都是平滑的，在低分辨率那一遍算好（uSmooth），这里按屏幕取
-    vec4 sm = texture(uSmooth, gl_FragCoord.xy / uRes);
+    vec4 sm = texture(uSmooth, screenUv);
     float field = sm.r * 4.0;
     float ring = sm.g * 2.0;
     float accent = sm.b * 4.0;
 
     float k = uWorld.y;
-    // 阈值被噪点搅过：墨边是纸上洇出来的毛边，按屏幕像素算（不跟镜头放大，不会啃出大缺口），也不跟时间跳。
-    // 只用连续的噪声（两层），不用逐像素的散列——那种是一圈椒盐点，放大看像数码噪点，不像墨
-    vec2 px = gl_FragCoord.xy / max(uRes.y / 900.0, 0.5);
-    float rough = ((vnoise(px * 0.45) - 0.5) * 0.16 + (vnoise(px * 0.7 + 11.0) - 0.5) * 0.08) * (0.5 + uGrain);
     float F = gInk + lineInk * 1.1 + field * 0.5 + ring;
-    float thr = 0.5 + rough;
-    // 段尾硬切之前，字从边上一块块散掉，散的方向朝外
-    if (uExit > 0.0) thr += uExit * (0.25 + vnoise(wp / (k * 0.03)) * 0.9 + length(gl_FragCoord.xy / uRes - 0.5) * 0.8);
-    // 边的软硬只有一个像素：按 F 在屏幕上的变化率算，大特写和小字都是干净的一刀
+    // 边的软硬只有一个像素：fwidth 留在统一控制流内计算
     float edgeW = max(fwidth(F), 0.0001) * 0.75;
-    float a = smoothstep(thr - edgeW, thr + edgeW, F);
-    // 灰墨团的边和字一样：切阈值、被噪点搅过、一个像素宽的抗锯齿，不再是喷枪那样一圈散开的雾
     float aW = max(fwidth(accent), 0.0001) * 0.75;
-    float aA = smoothstep(0.5 + rough - aW, 0.5 + rough + aW, accent);
+    float maxRough = 0.12 * (0.5 + uGrain);
+    float rough = 0.0;
+    float thr = 0.5;
+    float a = 0.0;
+    float aA = 0.0;
+    // 纯底纸区域（F 与 accent 远低于最小可能阈值且无上段残留）精确跳过两层 2D 噪声采样
+    if (F + edgeW > 0.5 - maxRough || accent + aW > 0.5 - maxRough || uPrevFade > 0.0) {
+        // 阈值被噪点搅过：墨边是纸上洇出来的毛边，按屏幕像素算（不跟镜头放大，不会啃出大缺口），也不跟时间跳。
+        // 只用连续的噪声（两层），不用逐像素的散列——那种是一圈椒盐点，放大看像数码噪点，不像墨
+        vec2 px = gl_FragCoord.xy / max(uRes.y / 900.0, 0.5);
+        rough = ((vnoise(px * 0.45) - 0.5) * 0.16 + (vnoise(px * 0.7 + 11.0) - 0.5) * 0.08) * (0.5 + uGrain);
+        thr = 0.5 + rough;
+        // 段尾硬切之前，字从边上一块块散掉，散的方向朝外
+        if (uExit > 0.0) thr += uExit * (0.25 + vnoise(wp / (k * 0.03)) * 0.9 + length(screenUv - 0.5) * 0.8);
+        a = smoothstep(thr - edgeW, thr + edgeW, F);
+        // 灰墨团的边和字一样：切阈值、被噪点搅过、一个像素宽的抗锯齿，不再是喷枪那样一圈散开的雾
+        aA = smoothstep(0.5 + rough - aW, 0.5 + rough + aW, accent);
+    }
 
     // 半调：网点格在世界里（跟着镜头放大），网点大小随浓淡
-    vec2 sp = gl_FragCoord.xy / uRes - 0.5;
+    vec2 sp = screenUv - 0.5;
     // 墨云：大尺度的浓淡，每秒跳 8 格地翻涌；四角压暗；字周围的晕、墨团的场也算进浓淡
     float vig = smoothstep(0.4, 0.85, length(sp * vec2(1.0, 0.8)));
     float T = m.b * uTone + clamp(field * 0.18, 0.0, 0.35) * smoothstep(0.2, 0.0, a);
@@ -1935,14 +1949,16 @@ void main() {
     col = mix(col, uBlobCol, aA);
     // 灰墨团盖着还没唱到的字：字的网点影子压在它上面，照样看得见
     col = mix(col, mix(uBlobCol, ink, 0.45), dots * aA * smoothstep(0.3, 0.8, gf.g));
-    // 关键词的字身用强调色
-    vec3 inkK = mix(ink, uAccentCol, kwShare);
-    // 墨最后画：灰墨团漂到字上时，字压在它上面照样读得出来。
-    // 积墨（Folia 没有）：墨干的时候往笔画边上走，边上一窄圈浓、中间稍淡，像真墨水写在纸上
-    float pool = 1.0 - smoothstep(0.0, 0.2, F - thr);
-    float body = smoothstep(0.15, 0.6, F - thr);
-    vec3 inkPooled = clamp(inkK + (inkK - paper) * 0.14 * pool - (inkK - paper) * 0.07 * body, 0.0, 1.0);
-    col = mix(col, inkPooled, a);
+    if (a > 0.0) {
+        // 关键词的字身用强调色
+        vec3 inkK = mix(ink, uAccentCol, kwShare);
+        // 墨最后画：灰墨团漂到字上时，字压在它上面照样读得出来。
+        // 积墨（Folia 没有）：墨干的时候往笔画边上走，边上一窄圈浓、中间稍淡，像真墨水写在纸上
+        float pool = 1.0 - smoothstep(0.0, 0.2, F - thr);
+        float body = smoothstep(0.15, 0.6, F - thr);
+        vec3 inkPooled = clamp(inkK + (inkK - paper) * 0.14 * pool - (inkK - paper) * 0.07 * body, 0.0, 1.0);
+        col = mix(col, inkPooled, a);
+    }
     // 压印（Folia 没有）：字像是压进纸里的——右下边的纸上一线阴影，左上边一线亮
     if (uPress > 0.0 && gInk + gf.g > 0.01) {
         vec2 po = vec2(2.0, -2.0) * max(uDotPx, 0.5) / uRes;
@@ -1979,7 +1995,7 @@ void main() {
 
     if (uFlood.w > 0.0) {
         // 墨漫：整屏是墨，从一点开一个毛边的口子，口子里是新的一段；口子边上一圈网点
-        vec2 fp = (gl_FragCoord.xy / uRes - uFlood.xy) * vec2(uAspect, 1.0);
+        vec2 fp = (screenUv - uFlood.xy) * vec2(uAspect, 1.0);
         float edge = length(fp) - uFlood.z + (vnoise(fp * 9.0 + uFlow) - 0.5) * 0.12 + (vnoise(fp * 40.0) - 0.5) * 0.03;
         float inked = smoothstep(-0.004, 0.004, edge);
         float band = (1.0 - smoothstep(0.0, 0.09, abs(edge + 0.05))) * (1.0 - inked);
@@ -1988,10 +2004,10 @@ void main() {
     if (uSweep.w > 0.0) {
         // 扫笔：一笔干刷横扫过画面（前三分之一笔头扫过去盖满，换句就在笔下面发生），
         // 后三分之二笔里的墨干了，飞白从起笔那头开始一条条裂开，新的一句从裂缝里露出来
-        vec2 sp = (gl_FragCoord.xy / uRes - 0.5) * vec2(uAspect, 1.0);
+        vec2 swp = sp * vec2(uAspect, 1.0);
         vec2 sd = vec2(cos(uSweep.y), sin(uSweep.y));
-        float along = dot(sp, sd);
-        float across = dot(sp, vec2(-sd.y, sd.x));
+        float along = dot(swp, sd);
+        float across = dot(swp, vec2(-sd.y, sd.x));
         float span = 0.5 * uAspect + 0.35;
         float u = uSweep.x;
         float head = mix(-span, span + 0.1, clamp(u / 0.32, 0.0, 1.0));
@@ -2152,7 +2168,7 @@ void main() {
                 showTranslation: tuning.showTranslation !== false,
                 audioReactivity: clamp(tuning.audioReactivity ?? 1, 0, 2),
                 figureScale: clamp(tuning.objectDensity ?? 1, 0.25, 2) > 1 ? 1.1 : 1,
-                reducedMotion: Boolean(reducedMotion?.matches),
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion),
                 quality: mode.config.quality || 'standard'
             };
         };
@@ -2176,9 +2192,12 @@ void main() {
             mode.root.style.setProperty('--inkdraft-mark', css(ink, 0.62));
         };
 
+        let cachedFontFamily = '';
         const fontFamily = () => {
+            if (cachedFontFamily) return cachedFontFamily;
             const family = global.getComputedStyle?.(mode.root).fontFamily || '';
-            return family || Utils.STAGE_FONT;
+            cachedFontFamily = family || Utils.STAGE_FONT;
+            return cachedFontFamily;
         };
 
         const resize = () => {
@@ -2416,6 +2435,7 @@ void main() {
 
         const updateConfig = mode.updateConfig;
         mode.updateConfig = (config) => {
+            cachedFontFamily = '';
             updateConfig(config);
             resize();
             readPalette();
@@ -2428,7 +2448,7 @@ void main() {
             mode.root.classList.add('is-suspended');
         };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
-        mode.updateTheme = () => { readPalette(); redraw(); };
+        mode.updateTheme = () => { cachedFontFamily = ''; readPalette(); redraw(); };
         mode.getDebugSnapshot = () => ({
             initialized: Boolean(glState), cues: cues.length, cue: stats.cue, shot: stats.lastShot,
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws,

@@ -144,6 +144,25 @@ body.light-theme .music-stage {
     }
 }
 
+body.music-reduce-motion .music-stage-edge-spectrum {
+    display: none;
+}
+
+body.music-reduce-motion .music-stage *,
+body.music-reduce-motion .music-stage *::before,
+body.music-reduce-motion .music-stage *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+}
+
+body.music-reduce-motion .music-stage-backdrop-layer,
+body.music-reduce-motion .music-stage-cover,
+body.music-reduce-motion .fume-world {
+    transform: none !important;
+}
+
 /* 舞台控制舱：右侧非对称抽屉取代传统居中设置框。 */
 .music-stage-settings {
     --stage-control-bg: #0b1017;

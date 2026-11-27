@@ -949,7 +949,7 @@ void main() {
                 cameraSpeed: clamp(tuning.cameraSpeed ?? 1, 0.55, 1.85),
                 grain: clamp(tuning.grain ?? 0.4, 0, 1),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: Boolean(reducedMotion?.matches),
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion),
                 quality: mode.config.quality || 'standard'
             };
         };

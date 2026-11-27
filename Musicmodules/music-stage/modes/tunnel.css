@@ -110,8 +110,8 @@
     text-align: center;
 }
 
-.music-stage-mode-tunnel .stage-word {
-    will-change: transform, opacity, filter;
+.music-stage-mode-tunnel .stage-word.is-active {
+    will-change: transform, opacity;
 }
 
 @media (max-width: 560px) {
@@ -129,4 +129,12 @@
     .tunnel-fallback-word {
         transition: none;
     }
+}
+
+body.music-reduce-motion .music-stage-mode-tunnel::after {
+    display: none;
+}
+
+body.music-reduce-motion .tunnel-fallback-word {
+    transition: none;
 }

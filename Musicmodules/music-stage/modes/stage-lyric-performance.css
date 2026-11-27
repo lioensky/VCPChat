@@ -272,3 +272,10 @@
         opacity: 0.3 !important;
     }
 }
+body.music-reduce-motion .stage-interlude-orbit {
+    transform: none !important;
+}
+body.music-reduce-motion .stage-interlude-bars > i {
+    transform: rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(0.28) !important;
+    opacity: 0.3 !important;
+}

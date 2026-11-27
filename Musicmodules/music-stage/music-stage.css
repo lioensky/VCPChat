@@ -227,7 +227,6 @@ body.music-stage-active .music-stage {
         drop-shadow(0 0 13px color-mix(in srgb, var(--stage-accent) 36%, transparent));
     opacity: calc(0.32 + var(--stage-edge-energy) * 0.68);
     animation: stage-edge-flow-orbit 9s linear infinite;
-    will-change: --stage-edge-angle;
     -webkit-mask:
         linear-gradient(#000 0 0) content-box,
         linear-gradient(#000 0 0);
@@ -848,7 +847,6 @@ body.music-stage-scene-3d .music-stage-empty-notice {
     display: inline-block;
     color: color-mix(in srgb, var(--stage-ink) 24%, transparent);
     white-space: pre-wrap;
-    will-change: transform, opacity, filter;
 }
 
 .stage-word.is-passed {
@@ -857,5 +855,6 @@ body.music-stage-scene-3d .music-stage-empty-notice {
 
 .stage-word.is-active {
     color: var(--stage-ink);
+    will-change: transform, opacity;
 }
 

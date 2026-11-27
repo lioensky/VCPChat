@@ -32,7 +32,7 @@
             palette: services?.app?.stagePalette,
             animationIntensity: mode.config.animationIntensity ?? 1,
             quality: mode.config.quality,
-            reducedMotion: Boolean(reducedMotion?.matches)
+            reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
         });
 
         // 实例化 Pixi.js 商籁高级图形导演

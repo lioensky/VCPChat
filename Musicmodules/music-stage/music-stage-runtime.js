@@ -506,7 +506,7 @@
 
             const spectrum = frame?.audio?.spectrum || EMPTY_WORDS;
             const hasSpectrum = spectrum.length > 0;
-            const motion = reducedMotionQuery?.matches
+            const motion = isReducedMotion(reducedMotionQuery)
                 ? 0 : clamp(finiteNumber(state.intensity, 1), 0, 2);
             const time = finiteNumber(frame?.playbackTime, 0) * motion;
             const playing = Boolean(frame?.isPlaying);
@@ -602,6 +602,11 @@
         }
     }
 
+    const isReducedMotion = (mediaQuery) => {
+        if (typeof global.MusicMotion?.reduced === 'function') return Boolean(global.MusicMotion.reduced());
+        return Boolean(mediaQuery?.matches);
+    };
+
     // Call after intentional in-place lyric edits; normal source replacement is
     // already tracked by array identity without hashing the whole song per frame.
     const invalidateLines = (lines) => {
@@ -610,6 +615,7 @@
 
     global.MusicStageRuntime = Object.freeze({
         invalidateLines,
+        isReducedMotion,
         finiteNumber,
         clamp,
         hashString,

@@ -219,7 +219,7 @@
             if (state.config.edgeSpectrum === false) return;
             if (!resizeEdgeCanvas(frame) || !edgeContext) return;
             const { width, height } = edgeCanvasState;
-            if (prefersReducedMotion?.matches || !frame.audio.spectrum?.length) {
+            if (global.MusicStageRuntime.isReducedMotion(prefersReducedMotion) || !frame.audio.spectrum?.length) {
                 if (!edgeCanvasState.blank) clearEdgeStrips();
                 edgeCanvasState.blank = true;
                 return;

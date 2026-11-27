@@ -311,7 +311,7 @@
                 reactions: tuning.reactions !== false,
                 audioReactivity: clamp(tuning.audioReactivity ?? 1, 0, 2),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: Boolean(reducedMotion?.matches)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
             };
         };
         const applyScale = () => mode.root.style.setProperty('--gc-scale', String(settings().fontScale));

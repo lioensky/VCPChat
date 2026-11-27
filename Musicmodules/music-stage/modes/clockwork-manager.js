@@ -623,7 +623,7 @@ void main() {
                 audioReactivity: clamp(tuning.audioReactivity ?? 1, 0, 2),
                 grain: clamp(tuning.grain ?? 0.3, 0, 1),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: Boolean(reducedMotion?.matches)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
             };
         };
 

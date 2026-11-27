@@ -308,7 +308,7 @@
             }
             const { width, height } = viewportSize;
             const tuning = getTuning();
-            const motion = reduced?.matches ? 0 : number(mode.config.animationIntensity, 1);
+            const motion = global.MusicStageRuntime.isReducedMotion(reduced) ? 0 : number(mode.config.animationIntensity, 1);
             const nextTrack = frame.track?.path || frame.track?.title || '';
             const changedSource = source !== frame.lines || trackKey !== nextTrack;
             const accent = U.resolveAccent(services.app);

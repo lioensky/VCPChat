@@ -535,7 +535,7 @@ void main() {
                 grain: clamp(tuning.grain ?? 0.3, 0, 1),
                 lamp: clamp(tuning.lamp ?? 1, 0, 1.5),
                 showTranslation: tuning.showTranslation !== false,
-                reducedMotion: Boolean(reducedMotion?.matches)
+                reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
             };
         };
         const applyScale = () => mode.root.style.setProperty('--impression-scale', String(settings().fontScale));

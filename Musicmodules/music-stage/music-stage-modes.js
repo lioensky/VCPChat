@@ -184,7 +184,7 @@
                     line.vocalEndTime ?? line.endTime
                 );
             }
-            const duration = reduced?.matches ? 0.001 : 0.52;
+            const duration = global.MusicStageRuntime.isReducedMotion(reduced) ? 0.001 : 0.52;
             children.forEach(child => {
                 const retired = child.retireAt !== null;
                 const elapsed = frame.playbackTime - (retired ? child.retireAt : child.born);

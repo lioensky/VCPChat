@@ -38,7 +38,7 @@
         let shapes = [];
         const still = U.createStillGate();
         const tuning = () => mode.config.modes?.fume || {};
-        const intensity = () => reduced?.matches ? 0 : value(mode.config.animationIntensity, 1);
+        const intensity = () => global.MusicStageRuntime.isReducedMotion(reduced) ? 0 : value(mode.config.animationIntensity, 1);
 
         // The size is known from the resize observer; reading it every frame
         // makes the browser lay the page out again before each one.
