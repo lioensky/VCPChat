@@ -122,3 +122,14 @@ test('ResizeObserver watches capsule parent instead of root itself', () => {
     assert.equal(observed[0], dom.window.document.getElementById('slot'));
     dom.window.close();
 });
+
+test('capsule ignores Escape while IME is composing', () => {
+    const f = fixture();
+    f.push({ open: true, title: 'Song', trackKey: 'k1', playing: true });
+    assert.equal(f.root.classList.contains('is-expanded'), true);
+    f.root.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true }));
+    assert.equal(f.root.classList.contains('is-expanded'), true, 'composing Escape must not collapse capsule');
+    f.root.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Escape', isComposing: false, bubbles: true }));
+    assert.equal(f.root.classList.contains('is-expanded'), false);
+    f.dom.window.close();
+});

@@ -54,3 +54,35 @@ test('playlist saves reject non-arrays and back up before emptying', async () =>
     assert.deepEqual(await h.get('get-custom-playlists')({}), []);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('get-music-playlist reuses mtime+size cache after save and invalidates when modified on disk', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-cache-'));
+    const fse = require('fs-extra');
+    let readJsonCalls = 0;
+    const origReadJson = fse.readJson;
+    fse.readJson = async function (...args) {
+        if (String(args[0]).endsWith('songlist.json')) readJsonCalls += 1;
+        return origReadJson.apply(this, args);
+    };
+    try {
+        const h = loadHandlers(dir);
+        const tracks = [{ path: 'D:\\cached.flac', title: 'Cached' }];
+        assert.deepEqual(await h.get('save-music-playlist')({}, tracks), { success: true });
+        assert.equal(readJsonCalls, 0, 'saving into an empty dir warms cache without reading songlist.json');
+        const first = await h.get('get-music-playlist')({});
+        const second = await h.get('get-music-playlist')({});
+        assert.deepEqual(first, tracks);
+        assert.deepEqual(second, tracks);
+        assert.equal(readJsonCalls, 0, 'subsequent get-music-playlist hits mtime+size memory cache');
+
+        const songlist = path.join(dir, 'songlist.json');
+        const updated = [{ path: 'D:\\external.flac', title: 'External Update' }];
+        fs.writeFileSync(songlist, JSON.stringify(updated));
+        const third = await h.get('get-music-playlist')({});
+        assert.deepEqual(third, updated, 'external disk edit invalidates cache via size/mtime');
+        assert.equal(readJsonCalls, 1);
+    } finally {
+        fse.readJson = origReadJson;
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});

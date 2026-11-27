@@ -88,3 +88,15 @@ test('parserCore aligns translations with binary search, tie-breaks to first ent
     assert.equal(stringSimilarity('abc', 'abx'), 2 / 4);
     assert.equal(stringSimilarity('ab', 'abcd'), 0.5);
 });
+
+test('convertToLrcString clamps negative and NaN timestamps safely to [00:00.00]', () => {
+    const { convertToLrcString } = require('../modules/lyrics/parserCore');
+    const out = convertToLrcString({
+        lines: [
+            { startTime: -5.2, fullText: '负时间' },
+            { startTime: NaN, fullText: '无效时间' },
+            { startTime: 65.5, fullText: '正常时间', translation: 'Normal' }
+        ]
+    });
+    assert.equal(out, '[00:00.00]负时间\n[00:00.00]无效时间\n[01:05.50]正常时间\n[01:05.50]Normal');
+});

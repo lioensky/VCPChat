@@ -111,3 +111,30 @@ test('credentials for a remote track: by server id, else by the server its addre
     assert.equal(api.credentialsForTrack({ path: 'https://other/x.flac' }), null);
     assert.equal(api.credentialsForTrack({ serverId: 'gone', path: 'https://nas/dav2/y.flac' }).username, 'u2');
 });
+
+test('reconciles serverIdCounter above existing server IDs when saved nextId is stale', () => {
+    const module = { exports: {} };
+    const context = {
+        module, exports: module.exports, process, URL, AbortController, clearTimeout, setTimeout, Promise,
+        console: { log() {}, error() {}, warn() {} },
+        require(name) {
+            if (name === './services/audioEngineEndpoint') return { getBaseUrl: () => 'http://engine' };
+            if (name === 'fs-extra') {
+                return {
+                    pathExistsSync: () => true,
+                    readJsonSync: () => ({
+                        servers: [{ id: 'webdav_5', name: 'Existing', url: 'https://nas/dav', username: 'u', password: 'p' }],
+                        nextId: 1
+                    }),
+                    ensureDir: async () => {},
+                    writeJson: async () => {}
+                };
+            }
+            return require(name);
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(source, context);
+    const added = module.exports.addServer({ name: 'New', url: 'https://nas2/dav' });
+    assert.equal(added.id, 'webdav_6', 'new server ID advances past existing webdav_5 despite stale nextId=1');
+});

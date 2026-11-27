@@ -16,6 +16,7 @@ test('the music window refuses to navigate away from its own page', async () => 
             this.webContents = new EventEmitter();
             this.webContents.send = () => {};
             this.webContents.getURL = () => '';
+            this.webContents.setWindowOpenHandler = (fn) => { this.windowOpenHandler = fn; };
             created.push(this);
         }
         loadFile() {} setMenu() {} show() {} focus() {} isDestroyed() { return false; } isVisible() { return true; }
@@ -48,5 +49,7 @@ test('the music window refuses to navigate away from its own page', async () => 
     assert.equal(navigate('file:///C:/Users/me/Pictures/cover.png'), true);
     assert.equal(navigate('https://example.com/'), true);
     assert.equal(navigate('file:///C:/VCPChat/Musicmodules/music.html'), false);
+    assert.equal(typeof win.windowOpenHandler, 'function', 'registers setWindowOpenHandler');
+    assert.deepEqual(win.windowOpenHandler({ url: 'https://example.com/' }), { action: 'deny' });
     win.emit('closed');
 });
