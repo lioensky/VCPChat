@@ -509,22 +509,23 @@ void main() {
         const labelGeo = new THREE.PlaneGeometry(LABEL_W, LABEL_H);
         labelGeo.translate(0.2, 3.5, FRONT + 0.004);
         const labelInk = { ink: 'rgba(224,227,220,.86)', muted: 'rgba(166,176,177,.8)' };
+        const maxLabelAniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
         const labels = Array.from({ length: LABEL_POOL }, () => {
             const c = document.createElement('canvas');
             c.width = LABEL_CW; c.height = LABEL_CH;
             const tex = new THREE.CanvasTexture(c);
             tex.colorSpace = THREE.SRGBColorSpace;
-            tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+            tex.anisotropy = maxLabelAniso;
             const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
             const mesh = new THREE.Mesh(labelGeo, mat);
             mesh.visible = false;
             scene.add(mesh);
-            return { mesh, canvas: c, ctx: c.getContext('2d'), tex, mat, cell: null, drawn: null };
+            return { mesh, canvas: c, ctx: null, tex, mat, cell: null, drawn: null };
         });
         let labelFor = null;                 // (lane, row) => { key, title, code } | null
         let labelEpoch = 0;                  // 主题、字体、数据变了就加一，旧的画面全部作废
         const drawLabel = (L, info) => {
-            const g = L.ctx || L.canvas.getContext('2d');
+            const g = L.ctx || (L.ctx = L.canvas.getContext('2d'));
             if (!g) return;
             g.clearRect(0, 0, LABEL_CW, LABEL_CH);
             g.textBaseline = 'middle';
@@ -1185,10 +1186,11 @@ vec3 archiveUntone(vec3 y) {
             if (lane === target.lane && row === target.row) return;
             if (pulse && !reducedMotion()) pulses.push({ lane, row, t: performance.now() / 1000 });
             // 旧卡从当时的高度落回去，不瞬间掉下（参考播放器 NativeScene::select：抬起高于 0.0001 就进归位队列）
-            if (lift.v > 0.0001 && !reducedMotion()) returning.set(target.lane + ':' + target.row, { v: lift.v, vel: 0, rot: inspect.v, hold: detailOn, lane: target.lane, row: target.row });
+            if (lift.v > 0.0001 && !reducedMotion()) returning.set(cellKey(target.lane, target.row), { v: lift.v, vel: 0, rot: inspect.v, hold: detailOn, lane: target.lane, row: target.row });
             // 选回一张还在落的卡：从它当时的高度和角度接着走，不先掉到底再升起
-            const back = returning.get(lane + ':' + row);
-            returning.delete(lane + ':' + row);
+            const nextKey = cellKey(lane, row);
+            const back = returning.get(nextKey);
+            returning.delete(nextKey);
             target.lane = lane; target.row = row;
             lift.v = back ? back.v : 0; lift.vel = 0;
             inspect.v = back ? back.rot || 0 : 0; inspect.vel = inspect.goal = 0;

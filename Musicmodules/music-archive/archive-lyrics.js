@@ -371,10 +371,11 @@
         };
 
         let fitWidth = 0;
-        const resizeObserver = new ResizeObserver(() => {
+        const resizeObserver = new ResizeObserver((entries) => {
             indexBox = null;
-            const w = r.viewport.clientWidth;
-            vpH = r.viewport.clientHeight;
+            const rect = entries && entries[0] && entries[0].contentRect;
+            const w = rect && rect.width > 0 ? rect.width : r.viewport.clientWidth;
+            vpH = rect && rect.height > 0 ? rect.height : r.viewport.clientHeight;
             if (w && w !== fitWidth) { fitWidth = w; fitSoon(); }
             if (!state.shown) return;
             const previousShift = state.shift;
@@ -392,7 +393,7 @@
             const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 400 : 1;
             if (state.plain) {
                 // 纯文本：翻到哪停在哪，不自己滑回
-                const max = Math.max(0, r.track.offsetHeight - r.viewport.clientHeight + 16);
+                const max = Math.max(0, r.track.offsetHeight - viewportH() + 16);
                 state.manual = Math.max(0, Math.min(max, state.manual + e.deltaY * unit));
                 place(false);
                 return;
@@ -411,9 +412,9 @@
             }, FOLLOW_AFTER);
         }, { passive: false });
 
-        // 只在显示着、窗口可见且在播放时走表（暂停或最小化时停表省电）
+        // 只在显示着、有时间轴歌词、窗口可见且在播放时走表（纯文本/暂停/最小化时停表省电）
         const schedule = () => {
-            const want = state.shown && Boolean(app.isPlaying) && !document.hidden;
+            const want = state.shown && state.lines.length > 0 && Boolean(app.isPlaying) && !document.hidden;
             if (want && !state.timer) state.timer = setInterval(tick, TICK_MS);
             else if (!want && state.timer) { clearInterval(state.timer); state.timer = 0; }
         };

@@ -142,12 +142,16 @@
             return h;
         };
 
+        const keepSet = new Set();
+        const keepHeadsSet = new Set();
         const render = () => {
             st.raf = 0;
             if (!st.on || !st.rows.length) { sticky.hidden = true; locateBtn.hidden = true; return; }
             const top = scroller.scrollTop;
             const view0 = top - st.rowH, view1 = top + st.room.height + st.rowH;
-            const keep = new Set(), keepHeads = new Set();
+            keepSet.clear();
+            keepHeadsSet.clear();
+            const keep = keepSet, keepHeads = keepHeadsSet;
             const dpr = global.devicePixelRatio || 1;
             const play = opts.playing();
             const now = performance.now();
@@ -384,6 +388,9 @@
                     cancelAnimationFrame(st.raf); st.raf = 0;
                     for (const n of st.nodes.values()) recycle(n);
                     st.nodes.clear();
+                    for (const n of st.pool) {
+                        if (n.src) { n.img.removeAttribute('src'); n.src = null; n.el.classList.remove('has-art'); }
+                    }
                     for (const h of st.heads.values()) h.remove();
                     st.heads.clear();
                     thumbs.clearQueue();
@@ -415,7 +422,16 @@
             step,
             coverFound: () => schedule(),
             collapse: () => false,
-            destroy() { st.on = false; cancelAnimationFrame(st.raf); thumbs.destroy(); el.remove(); },
+            destroy() {
+                st.on = false;
+                cancelAnimationFrame(st.raf);
+                st.nodes.clear();
+                st.heads.clear();
+                st.pool.length = 0;
+                st.where.clear();
+                thumbs.destroy();
+                el.remove();
+            },
             debug: () => ({ on: st.on, sections: st.secs.length, cols: st.cols, cell: st.cell, cells: st.nodes.size, total: st.total, scroll: scroller.scrollTop, sel: st.sel })
         };
     };

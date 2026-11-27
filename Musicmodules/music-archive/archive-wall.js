@@ -268,38 +268,71 @@
                 img.src = job.src;
             }
         };
+        const compactQueue = () => {
+            const seen = new Set();
+            let w = queue.length - 1;
+            const kept = [];
+            for (let i = w; i >= 0; i -= 1) {
+                const job = queue[i];
+                const entry = cache.get(job.key);
+                if (!entry || entry.state !== 'queued' || seen.has(job.key)) continue;
+                seen.add(job.key);
+                kept.push(job);
+            }
+            kept.reverse();
+            queue.length = 0;
+            for (let i = 0; i < kept.length; i += 1) queue.push(kept[i]);
+        };
+        const enqueueJob = (key, src, size) => {
+            const top = queue.length ? queue[queue.length - 1] : null;
+            if (!top || top.key !== key) queue.push({ key, src, size });
+            if (queue.length > LIMIT * 2) compactQueue();
+        };
         return {
             /* 有了就给地址；没有就排队，好了回调 onReady(src) */
             get(src, px) {
                 if (!src || destroyed) return '';
                 const size = bucket(px);
-                // 已经有更大一档的就直接用
-                for (const s of [size, 384, 768]) {
-                    if (s < size) continue;
-                    const e = cache.get(src + '|' + s);
-                    if (e && e.state === 'ok') { cache.delete(src + '|' + s); cache.set(src + '|' + s, e); return e.url; }
+                // 已经有更大一档的就直接用（不分配临时数组）
+                const k0 = src + '|' + size;
+                let e = cache.get(k0);
+                if (e && e.state === 'ok') { cache.delete(k0); cache.set(k0, e); return e.url; }
+                if (size < 384) {
+                    const k384 = src + '|384';
+                    const e384 = cache.get(k384);
+                    if (e384 && e384.state === 'ok') { cache.delete(k384); cache.set(k384, e384); return e384.url; }
                 }
-                const key = src + '|' + size;
-                const e = cache.get(key);
+                if (size < 768) {
+                    const k768 = src + '|768';
+                    const e768 = cache.get(k768);
+                    if (e768 && e768.state === 'ok') { cache.delete(k768); cache.set(k768, e768); return e768.url; }
+                }
                 if (e && e.state === 'fail') return '';
                 if (!e) {
-                    cache.set(key, { state: 'queued', url: '' });
-                    queue.push({ key, src, size });
+                    cache.set(k0, { state: 'queued', url: '' });
+                    enqueueJob(k0, src, size);
                     evict();
                     pump();
                 } else if (e.state === 'queued') {
-                    queue.push({ key, src, size });
+                    enqueueJob(k0, src, size);
                     pump();
                 }
                 // 小一档的先顶着
-                for (const s of [384, 192]) {
-                    if (s >= size) continue;
-                    const lower = cache.get(src + '|' + s);
-                    if (lower && lower.state === 'ok') return lower.url;
+                if (size > 384) {
+                    const l384 = cache.get(src + '|384');
+                    if (l384 && l384.state === 'ok') return l384.url;
+                }
+                if (size > 192) {
+                    const l192 = cache.get(src + '|192');
+                    if (l192 && l192.state === 'ok') return l192.url;
                 }
                 return '';
             },
-            failed(src) { return [192, 384, 768].some((s) => cache.get(src + '|' + s)?.state === 'fail'); },
+            failed(src) {
+                return cache.get(src + '|192')?.state === 'fail'
+                    || cache.get(src + '|384')?.state === 'fail'
+                    || cache.get(src + '|768')?.state === 'fail';
+            },
             clearQueue() { queue.length = 0; for (const v of cache.values()) if (v.state === 'queued') v.state = 'idle'; for (const [k, v] of cache) if (v.state === 'idle') cache.delete(k); },
             destroy() { destroyed = true; for (const v of cache.values()) if (v.url && v.url.startsWith('blob:')) URL.revokeObjectURL(v.url); cache.clear(); queue.length = 0; },
             get size() { return cache.size; }
@@ -493,8 +526,15 @@
          * 换一组之前，旧的那面墙先整体抬起、缩小、淡出（同样从左上往右下一波），
          * 拿一层快照盖在上面跑，底下立刻换成新的一组接着落下来。
          */
+        let ghostEl = null;
+        let ghostTimer = 0;
+        const clearGhost = () => {
+            if (ghostTimer) { clearTimeout(ghostTimer); ghostTimer = 0; }
+            if (ghostEl) { ghostEl.remove(); ghostEl = null; }
+        };
         const leave = () => {
             if (reduced() || !st.nodes.size || !st.on) return;
+            clearGhost();
             const ghost = world.cloneNode(true);
             ghost.classList.add('aw-ghost');
             ghost.classList.remove('aw-reflow');
@@ -508,7 +548,8 @@
                 t.firstChild.style.animationDelay = Math.round(u * 160) + 'ms';
             }
             el.insertBefore(ghost, world.nextSibling);
-            setTimeout(() => ghost.remove(), 520);
+            ghostEl = ghost;
+            ghostTimer = setTimeout(clearGhost, 520);
         };
 
         // ---------- 选中、展开 ----------
@@ -851,6 +892,7 @@
             const us = pts.map((p) => p.u), vs = pts.map((p) => p.v);
             return { u0: Math.min(...us), u1: Math.max(...us), v0: Math.min(...vs), v1: Math.max(...vs) };
         };
+        const keepSet = new Set();
         const layoutTiles = () => {
             st.dirty = false;
             if (!st.g || !st.ids.length || !st.room.width) {
@@ -872,7 +914,8 @@
             }
             const c0 = Math.floor(vx0 / g.blockW), c1 = Math.floor(vx1 / g.blockW);
             const r0 = Math.floor(vy0 / g.blockH), r1 = Math.floor(vy1 / g.blockH);
-            const keep = new Set();
+            keepSet.clear();
+            const keep = keepSet;
             const dpr = global.devicePixelRatio || 1;
             const now = performance.now();
             const entering = now < st.enterUntil;
@@ -1015,7 +1058,7 @@
             applyCamera();
             setMoving(moving || Boolean(st.drag && st.drag.moved));
             if (st.dirty || st.coverDirty) { st.coverDirty = false; layout(); }
-            if (moving || st.drag || performance.now() < st.enterUntil) { st.last = now; st.raf = requestAnimationFrame(tick); }
+            if (moving || st.drag) { st.last = now; st.raf = requestAnimationFrame(tick); }
             else st.last = 0;
         };
         const schedule = () => { if (st.on && !st.raf) st.raf = requestAnimationFrame(tick); };
@@ -1194,10 +1237,13 @@
                     schedule();
                 } else {
                     clearInterval(dimTimer);
+                    dimTimer = 0;
                     clearInterval(seekTimer);
                     seekTimer = 0;
                     if (seekPaintTimer) { clearTimeout(seekPaintTimer); seekPaintTimer = 0; }
                     if (movingOff) { clearTimeout(movingOff); movingOff = 0; }
+                    if (st.reflowTimer) { clearTimeout(st.reflowTimer); st.reflowTimer = 0; world.classList.remove('aw-reflow'); }
+                    clearGhost();
                     el.classList.remove('aw-dim', 'aw-moving');
                     cancelAnimationFrame(st.raf);
                     st.raf = 0;
@@ -1205,6 +1251,9 @@
                     if (panel.parentNode) panel.remove();
                     for (const node of st.nodes.values()) recycle(node);
                     st.nodes.clear();
+                    for (const node of st.pool) {
+                        if (node.src) { node.img.removeAttribute('src'); node.src = null; node.el.classList.remove('has-art'); }
+                    }
                     thumbs.clearQueue();
                 }
             },
@@ -1254,8 +1303,11 @@
                 clearTimeout(st.reflowTimer);
                 clearTimeout(movingOff);
                 clearTimeout(seekPaintTimer);
+                clearGhost();
                 clearInterval(seekTimer);
                 clearInterval(dimTimer);
+                st.nodes.clear();
+                st.pool.length = 0;
                 thumbs.destroy();
                 el.remove();
             },
