@@ -29,6 +29,7 @@
     let posX = null;
     let posMax = null;
     const toasts = new Map(); // key -> entry
+    const closing = new Set(); // { el, timer }
     let seq = 0;
 
     const applyLayerPosition = (node) => {
@@ -178,18 +179,28 @@
             arm();
         };
 
-        function close() {
+        function close(immediate = false) {
             if (entry.closed) return;
             entry.closed = true;
             clearTimers();
             clearTimeout(entry.delayTimer);
+            entry.delayTimer = null;
             if (entry.inRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(entry.inRaf); entry.inRaf = 0; }
             if (toasts.get(key) === entry) toasts.delete(key);
             const el = entry.el;
             if (!el) return;
+            if (immediate === true) {
+                el.remove();
+                return;
+            }
             el.classList.remove('mtst-in');
             el.classList.add('mtst-out');
-            setTimeout(() => el.remove(), 320);
+            const pending = { el, timer: null };
+            pending.timer = setTimeout(() => {
+                closing.delete(pending);
+                el.remove();
+            }, 320);
+            closing.add(pending);
         }
 
         entry.update = (next) => {
@@ -237,7 +248,14 @@
     }
 
     const dismiss = (id) => toasts.get(String(id))?.close();
-    const clear = () => [...toasts.values()].forEach((t) => t.close());
+    const clear = () => {
+        [...toasts.values()].forEach((t) => t.close(true));
+        for (const pending of [...closing]) {
+            clearTimeout(pending.timer);
+            pending.el.remove();
+        }
+        closing.clear();
+    };
     global.addEventListener?.('beforeunload', clear, { once: true });
 
     global.MusicToast = Object.freeze({ show, dismiss, clear, setPosition });

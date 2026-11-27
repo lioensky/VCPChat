@@ -75,13 +75,31 @@
     function setupMusicDesktopLyrics(app) {
         if (!app || app.desktopLyrics) return;
         const api = app.api || global.utilityAPI || global.electronAPI;
-        const state = { on: false, timer: null, sent: null, sentAt: 0 };
+        const state = { on: false, timer: null, sent: null, sentAt: 0, sentLyrics: null, sentLyricsLen: -1, sentShowTr: true };
         const announce = () => {
             try { global.document?.dispatchEvent?.(new CustomEvent('music-desktop-lyrics-change', { detail: { on: state.on } })); } catch (e) { /* 旧内核 */ }
         };
         const key = (s) => [s.path, s.index, s.playing, s.hasLyrics, s.line && s.line.text, s.line && s.line.tr, s.next && s.next.text, s.next && s.next.tr].join('\u0001');
-        const publish = (force = false) => {
+        const publish = (force = false, fromEvent = false) => {
             if (!state.on || !api?.publishDesktopLyrics) return;
+            // 暂停且歌曲/歌词/译文开关/进度均无变化时，定时轮询直接短路，避免每秒 4 次构造 snapshot 与逐字数组
+            if (!force && !fromEvent && !app.isPlaying && state.sent && !state.sent.playing) {
+                const track = Array.isArray(app.playlist) ? app.playlist[app.currentTrackIndex] : null;
+                const path = track ? track.path : null;
+                const all = Array.isArray(app.currentLyrics) ? app.currentLyrics : null;
+                const lyricsLen = all ? all.length : 0;
+                const showTr = app.lyricsTranslation !== false;
+                const pos = Number(app.lastKnownCurrentTime) || 0;
+                if (
+                    path === state.sent.path
+                    && all === state.sentLyrics
+                    && lyricsLen === state.sentLyricsLen
+                    && showTr === state.sentShowTr
+                    && Math.abs(pos - state.sent.position) < 0.05
+                ) {
+                    return;
+                }
+            }
             const snap = snapshot(app);
             const k = key(snap);
             const now = Date.now();
@@ -94,14 +112,26 @@
                     if (now - state.sentAt < RESYNC_MS && drift < 1) return;
                 }
             }
-            state.sent = snap; state.sentKey = k; state.sentAt = now;
+            state.sent = snap;
+            state.sentKey = k;
+            state.sentAt = now;
+            state.sentLyrics = Array.isArray(app.currentLyrics) ? app.currentLyrics : null;
+            state.sentLyricsLen = state.sentLyrics ? state.sentLyrics.length : 0;
+            state.sentShowTr = app.lyricsTranslation !== false;
             try { api.publishDesktopLyrics(snap); } catch (e) { /* 主进程没有这个接口 */ }
         };
         let bodyObserver = null;
-        const onUpdate = () => publish(false);
+        let lastBodyPlaying = false;
+        const onUpdate = () => publish(false, true);
         const startBodyObserver = () => {
             if (!bodyObserver && global.MutationObserver && global.document?.body) {
-                bodyObserver = new global.MutationObserver(onUpdate);
+                lastBodyPlaying = Boolean(global.document.body.classList?.contains('music-playing'));
+                bodyObserver = new global.MutationObserver(() => {
+                    const nowPlaying = Boolean(global.document.body.classList?.contains('music-playing'));
+                    if (nowPlaying === lastBodyPlaying) return;
+                    lastBodyPlaying = nowPlaying;
+                    onUpdate();
+                });
                 bodyObserver.observe(global.document.body, { attributes: true, attributeFilter: ['class'] });
             }
         };

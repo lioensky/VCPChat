@@ -290,7 +290,7 @@
     // 跳过叶节点和不可能包含 <select> 的高频变动容器（曲目虚拟列表、歌词行、队列、搜索结果、封面墙），
     // 避免列表滚动、搜索敲字、歌词渲染时逐条节点入队再跑 getElementsByTagName('select')。
     const LEAF_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'PATH', 'I', 'BR', 'HR', 'INPUT', 'BUTTON', 'OPTION', 'OPTGROUP', 'A', 'AUDIO', 'VIDEO', 'STYLE', 'SCRIPT', 'LINK']);
-    const SKIP_SUBTREE_SEL = '.archive-list-spacer, #playlist, .md-ql-sizer, .md-cmd-list, .archive-lyrics-track, #lyrics-list, .ag-canvas, .aw-stage, .music-stage-edge-spectrum, .mfs-menu';
+    const SKIP_SUBTREE_SEL = '.archive-list-spacer, #playlist, .md-ql-sizer, .md-ql, .md-cmd-list, .archive-lyrics-track, #lyrics-list, .ag-canvas, .aw-stage, .music-stage-edge-spectrum, .mfs-menu, .archive-list-brand-title, .archive-list-recentq, .mtst-layer';
     const scan = (root) => {
         if (root.nodeType !== 1 || !root.isConnected) return;
         const tag = root.tagName;
@@ -307,10 +307,18 @@
     const start = () => {
         scan(doc.body);
         bodyObs = new MutationObserver((records) => {
+            let lastTgt = null;
+            let lastSkipped = false;
             for (const r of records) {
                 if (!r.addedNodes.length) continue;
                 const tgt = r.target;
-                if (tgt && tgt.nodeType === 1 && tgt.closest?.(SKIP_SUBTREE_SEL)) continue;
+                if (tgt && tgt.nodeType === 1) {
+                    if (tgt !== lastTgt) {
+                        lastTgt = tgt;
+                        lastSkipped = Boolean(tgt.closest?.(SKIP_SUBTREE_SEL));
+                    }
+                    if (lastSkipped) continue;
+                }
                 for (const n of r.addedNodes) {
                     if (n.nodeType !== 1) continue;
                     const tag = n.tagName;

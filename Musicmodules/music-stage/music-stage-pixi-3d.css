@@ -685,6 +685,9 @@ body.music-stage-active #custom-title-bar,
     animation-timing-function: steps(540);
     animation-play-state: paused;
 }
+.music-stage:not(.is-active) .music-stage-edge-flow-light {
+    animation-play-state: paused;
+}
 body.music-fl-low .music-stage.is-playing .music-stage-edge-flow-light {
     animation-timing-function: steps(135);
 }

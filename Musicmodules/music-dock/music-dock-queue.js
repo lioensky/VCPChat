@@ -73,6 +73,7 @@
                 up.context.forEach((track) => push({ type: 'ctx', track }, QUEUE_ROW_H));
             }
             rows.total = y;
+            rows.upcoming = up.manual.length + up.context.length;
             state.queueRows = rows;
             return rows;
         }

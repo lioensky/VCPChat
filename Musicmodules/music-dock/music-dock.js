@@ -1222,7 +1222,9 @@
                 }
             } else if (tab === '播放列表') {
                 const rows = buildQueueRows();
-                const upcoming = rows.filter((r) => r.type === 'manual' || r.type === 'ctx').length;
+                const upcoming = Number.isFinite(rows.upcoming)
+                    ? rows.upcoming
+                    : rows.filter((r) => r.type === 'manual' || r.type === 'ctx').length;
                 // 队列来自哪一组（全部曲目 / 某个歌单 / 某位歌手…），原来写在首页页脚，挪到这里
                 const source = String((typeof app.playbackSourceName === 'function' && app.playbackSourceName()) || app.queueSourceName || (upcoming ? '全部曲目' : '')).trim();
                 html += `<div class="md-qh"><b>播放队列</b><span>${upcoming}</span>`

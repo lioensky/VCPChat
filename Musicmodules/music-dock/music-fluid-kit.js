@@ -304,7 +304,7 @@
         let timer = 0;
         const remember = () => { timer = 0; if (isOpen(node)) snap = snapshot(node); };
         if (open) timer = global.setTimeout(remember, DURATION + 40);
-        new global.MutationObserver(() => {
+        const obs = new global.MutationObserver(() => {
             const now = isOpen(node);
             if (now === open) {
                 // 开着的时候换了位置（又在别处右键）：等新位置长完再重新记
@@ -323,7 +323,13 @@
             const fresh = lastPress && Date.now() - lastPress.at < 1500 ? lastPress : null;
             if (snap && fresh) melt(snap, fresh, { duration: 260 });
             snap = null;
-        }).observe(node, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
+        });
+        obs.observe(node, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
+        addCleanup(() => {
+            global.clearTimeout(timer);
+            timer = 0;
+            obs.disconnect();
+        });
     }
     const watchMenus = () => {
         for (const node of global.document.querySelectorAll('.context-menu')) {
@@ -416,15 +422,16 @@
                 const btn = target.closest(t.item);
                 const row = btn?.closest(t.row);
                 if (!row || btn.disabled) continue;
-                const drop = dropOf(row);
-                const fresh = !drop.classList.contains('mf-on');
+                let drop = row.querySelector(':scope > .mf-trail');
+                const fresh = !drop || !drop.classList.contains('mf-on');
                 // 指针在同一个按钮的内部子元素间移动时跳过重复布局测量与补间
                 if (!fresh && activeBtnByDrop.get(drop) === btn) return;
-                activeBtnByDrop.set(drop, btn);
-                if (fresh) slides.delete(t.key);
+                // 先读几何再按需挂载装饰层，避免首次悬停先改 DOM 再测布局触发强制重排
                 const to = placeIn(row, btn, t);
+                if (!drop) drop = dropOf(row);
+                activeBtnByDrop.set(drop, btn);
                 // 两列的列表（axis: 'xy'）横竖各流各的，斜着过去时像一滴被拉长再收拢
-                if (fresh) { slides.delete(`${t.key}:x`); slides.delete(`${t.key}:y`); }
+                if (fresh) { slides.delete(t.key); slides.delete(`${t.key}:x`); slides.delete(`${t.key}:y`); }
                 if (t.axis === 'xy') {
                     slide(drop, to, { key: `${t.key}:x`, axis: 'x', lead: 160, trail: 320 });
                     slide(drop, to, { key: `${t.key}:y`, axis: 'y', lead: 160, trail: 320 });
@@ -558,9 +565,19 @@
         const doc = global.document;
         if (typeof global.MutationObserver !== 'function') return;
         let tries = 0;
+        let retryTimer = 0;
+        let disposed = false;
+        let hudCleanup = null;
+        addCleanup(() => {
+            disposed = true;
+            if (retryTimer) { global.clearTimeout(retryTimer); retryTimer = 0; }
+            if (hudCleanup) { hudCleanup(); hudCleanup = null; }
+        });
         const attach = () => {
+            retryTimer = 0;
+            if (disposed) return;
             const hud = doc.querySelector('#music-archive-view .archive-hud');
-            if (!hud) { if (++tries < 60) global.setTimeout(attach, 500); return; }
+            if (!hud) { if (++tries < 60) retryTimer = global.setTimeout(attach, 500); return; }
             // 目录开合、设置抽屉让位（首页整层变窄、可能换档）都会让这些块跳到新位置：
             // 记一个「排版档位」的指纹，变了才补过渡；窗口拖边改大小没有按键，不会触发。
             const layoutKey = () => ['list-open', 'narrow', 'mid', 'squeeze', 'tiny', 'beside-drawer']
@@ -580,12 +597,18 @@
                 return out;
             };
             // 只在可能触发布局切换的交互前才量一次旧位置，避免普通点击、拖动、方向键选歌和打字时每次都强制全页同步重排
-            const LAYOUT_TRIGGERS = '[data-act="list"], [data-act="controls"], [data-act="lyrics"], [data-act="search"], [data-md="panel"], [data-md="close"], .md-hdl, .md-slot';
+            const LAYOUT_TRIGGERS = '[data-act="list"], [data-act="controls"], [data-act="lyrics"], [data-act="search"], [data-act="intro"], [data-md="panel"], [data-md="close"], .md-hdl, .md-slot';
             const remember = () => { if (enabled()) before = { at: Date.now(), map: measure() }; };
             const onPointerDown = (event) => {
+                if (!doc.body.classList.contains('music-archive-on') || doc.body.classList.contains('music-stage-active')) return;
                 const target = event.target;
                 if (!(target instanceof global.Element)) return;
-                if (doc.body.classList.contains('music-drawer-open') || target.closest(LAYOUT_TRIGGERS)) remember();
+                if (
+                    target.closest(LAYOUT_TRIGGERS)
+                    || (doc.body.classList.contains('music-drawer-open') && !target.closest('.md-pnl, .mfs-menu, .custom-select-dropdown'))
+                ) {
+                    remember();
+                }
             };
             const onKeyDown = (event) => {
                 if (!doc.body.classList.contains('music-archive-on') || doc.body.classList.contains('music-stage-active')) return;
@@ -601,7 +624,7 @@
             // 挂在 window 的捕获阶段：底栏在 document 上处理 Esc 时会同步收抽屉，首页随即重排，挂 document 上就晚了一步
             global.addEventListener('pointerdown', onPointerDown, true);
             global.addEventListener('keydown', onKeyDown, true);
-            new global.MutationObserver(() => {
+            const hudObs = new global.MutationObserver(() => {
                 const now = layoutKey();
                 if (now === open) return;
                 open = now;
@@ -635,7 +658,13 @@
                         { transformOrigin: '0 0', transform: 'none' }
                     ], { duration: 520, easing: ease, composite: 'add' }); // 叠在块自己的 transform 上（底部一排有让底栏的上移），结束时不跳
                 }
-            }).observe(hud, { attributes: true, attributeFilter: ['class', 'style'] });
+            });
+            hudObs.observe(hud, { attributes: true, attributeFilter: ['class', 'style'] });
+            hudCleanup = () => {
+                global.removeEventListener('pointerdown', onPointerDown, true);
+                global.removeEventListener('keydown', onKeyDown, true);
+                hudObs.disconnect();
+            };
         };
         attach();
     };

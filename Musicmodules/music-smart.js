@@ -26,31 +26,69 @@
 
     const api = { parse, evaluate: null, hasRules: null, setupMusicSmart: null, ctx: null };
 
-    const RULES = [
-        [/^(喜欢|liked)$/i, (m) => ({ word: '喜欢', test: (t, ctx) => Boolean(ctx && ctx.isLiked && ctx.isLiked(t)) })],
-        [/^(没听过|未听过|unplayed)$/i, () => ({ word: '没听过', test: (t, ctx) => !statOf(ctx, t) || !(statOf(ctx, t).plays > 0) })],
-        [/^(常听|top)$/i, () => ({ word: '常听', test: (t, ctx) => (statOf(ctx, t)?.plays || 0) >= 5 })],
-        [/^(很久没听|forgotten)$/i, () => ({ word: '很久没听', test: (t, ctx) => { const s = statOf(ctx, t); return Boolean(s && s.plays > 0 && s.last && (ctx.now || Date.now()) - s.last > 30 * DAY); } })],
+    const PRED_LIKED = Object.freeze({ word: '喜欢', test: (t, ctx) => Boolean(ctx && ctx.isLiked && ctx.isLiked(t)) });
+    const PRED_UNPLAYED = Object.freeze({ word: '没听过', test: (t, ctx) => !statOf(ctx, t) || !(statOf(ctx, t).plays > 0) });
+    const PRED_TOP = Object.freeze({ word: '常听', test: (t, ctx) => (statOf(ctx, t)?.plays || 0) >= 5 });
+    const PRED_FORGOTTEN = Object.freeze({
+        word: '很久没听',
+        test: (t, ctx) => {
+            const s = statOf(ctx, t);
+            return Boolean(s && s.plays > 0 && s.last && (ctx.now || Date.now()) - s.last > 30 * DAY);
+        }
+    });
+    const EXACT_RULES = new Map([
+        ['喜欢', PRED_LIKED], ['liked', PRED_LIKED],
+        ['没听过', PRED_UNPLAYED], ['未听过', PRED_UNPLAYED], ['unplayed', PRED_UNPLAYED],
+        ['常听', PRED_TOP], ['top', PRED_TOP],
+        ['很久没听', PRED_FORGOTTEN], ['forgotten', PRED_FORGOTTEN]
+    ]);
+    const CMP_RULES = [
         [/^(?:次数|plays)([<>]=?)(\d+)$/i, (m) => { const n = Number(m[2]); const op = m[1]; return { word: '次数' + op + n, test: (t, ctx) => cmp(statOf(ctx, t)?.plays || 0, op, n) }; }],
         [/^([<>]=?)(\d+(?:\.\d+)?)(?:分钟|分|min|m)$/i, (m) => { const n = Number(m[2]) * 60; const op = m[1]; return { word: m[1] + m[2] + '分钟', test: (t) => lengthOf(t) > 0 && cmp(lengthOf(t), op, n) }; }]
     ];
+    const hasCmpChar = (s) => s.includes('>') || s.includes('<') || s.includes('＞') || s.includes('＜');
+    const WHITESPACE = /\s/;
     function cmp(a, op, b) { return op === '>' ? a > b : op === '>=' ? a >= b : op === '<' ? a < b : a <= b; }
 
+    function matchCmpRule(raw) {
+        if (!hasCmpChar(raw)) return null;
+        const token = raw.includes('＞') || raw.includes('＜')
+            ? raw.replace(/＞/g, '>').replace(/＜/g, '<')
+            : raw;
+        for (let i = 0; i < CMP_RULES.length; i++) {
+            const m = CMP_RULES[i][0].exec(token);
+            if (m) return CMP_RULES[i][1](m);
+        }
+        return null;
+    }
+
     function parse(q) {
+        const str = String(q || '').trim();
+        if (!str) return { preds: [], text: '' };
+        // 单一普通检索词占绝大多数输入：走 O(1) 哈希查表，免去分词数组与逐条正则回溯
+        if (!WHITESPACE.test(str)) {
+            const exact = EXACT_RULES.get(str.toLowerCase());
+            if (exact) return { preds: [exact], text: '' };
+            const cmpPred = matchCmpRule(str);
+            return cmpPred ? { preds: [cmpPred], text: '' } : { preds: [], text: str };
+        }
         const preds = [];
         const rest = [];
-        for (const raw of String(q || '').trim().split(/\s+/).filter(Boolean)) {
-            const token = raw.replace(/＞/g, '>').replace(/＜/g, '<');
-            let matched = false;
-            for (let i = 0; i < RULES.length; i++) {
-                const m = RULES[i][0].exec(token);
-                if (m) {
-                    preds.push(RULES[i][1](m));
-                    matched = true;
-                    break;
-                }
+        const tokens = str.split(/\s+/);
+        for (let t = 0; t < tokens.length; t++) {
+            const raw = tokens[t];
+            if (!raw) continue;
+            const exact = EXACT_RULES.get(raw.toLowerCase());
+            if (exact) {
+                preds.push(exact);
+                continue;
             }
-            if (!matched) rest.push(raw);
+            const cmpPred = matchCmpRule(raw);
+            if (cmpPred) {
+                preds.push(cmpPred);
+                continue;
+            }
+            rest.push(raw);
         }
         return { preds, text: rest.join(' ') };
     }
