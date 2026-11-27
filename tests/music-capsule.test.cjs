@@ -210,3 +210,63 @@ test('Batch 61: parent ResizeObserver keeps chrome metrics cached while window r
     assert.equal(titleStyleReads, 2, 'beforeunload detaches window resize handler');
     dom.window.close();
 });
+
+test('Batch 82: music-capsule skips unchanged hidden/title writes, publishCapsuleState skips repeated stripAudioExtension, and stage CSS honors reduce-motion', () => {
+    const f = fixture();
+    try {
+        f.push({ open: true, title: 'Steady', trackKey: 'k1', playing: true, musicInfoInjectionEnabled: true });
+        const titleEl = f.root.querySelector('.music-capsule-title');
+        let hiddenWrites = 0;
+        const hiddenDesc = Object.getOwnPropertyDescriptor(f.dom.window.HTMLElement.prototype, 'hidden');
+        Object.defineProperty(f.root, 'hidden', {
+            configurable: true,
+            get() { return hiddenDesc.get.call(this); },
+            set(v) { hiddenWrites += 1; return hiddenDesc.set.call(this, v); }
+        });
+        let titleWrites = 0;
+        const textDesc = Object.getOwnPropertyDescriptor(f.dom.window.Node.prototype, 'textContent');
+        Object.defineProperty(titleEl, 'textContent', {
+            configurable: true,
+            get() { return textDesc.get.call(this); },
+            set(v) { titleWrites += 1; return textDesc.set.call(this, v); }
+        });
+        f.push({ open: true, title: 'Steady', trackKey: 'k1', playing: false, musicInfoInjectionEnabled: true });
+        f.push({ open: true, title: 'Steady', trackKey: 'k1', playing: true, musicInfoInjectionEnabled: true });
+        assert.equal(hiddenWrites, 0, 'steady open state skips redundant root.hidden writes');
+        assert.equal(titleWrites, 0, 'steady title skips redundant title.textContent writes');
+
+        // music-player publishCapsuleState skips stripAudioExtension & IPC on identical polls
+        const hooksSrc = fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8');
+        const playerSrc = fs.readFileSync('Musicmodules/music-player.js', 'utf8');
+        const ctx = vm.createContext({ console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Math, Number, String, Boolean, Array, Object, Promise, RegExp });
+        vm.runInContext(hooksSrc, ctx);
+        vm.runInContext(playerSrc, ctx);
+        let stripCalls = 0;
+        const published = [];
+        const pApp = {
+            playlist: [{ path: 'C:/a.flac', title: 'Alpha.flac', artist: 'A', album: 'Alb' }],
+            currentTrackIndex: 0,
+            isPlaying: true,
+            stripAudioExtension: (s) => { stripCalls += 1; return String(s || '').replace(/\.flac$/i, ''); },
+            api: { publishMusicCapsuleState: (st) => published.push(st) }
+        };
+        ctx.setupPlayer(pApp);
+        pApp.publishCapsuleState();
+        pApp.publishCapsuleState();
+        pApp.publishCapsuleState();
+        assert.equal(published.length, 1, 'identical polls publish capsule state once');
+        assert.equal(stripCalls, 1, 'identical polls skip stripAudioExtension via primitive field fast-path');
+        pApp.isPlaying = false;
+        pApp.publishCapsuleState();
+        assert.equal(published.length, 2, 'play state change publishes immediately');
+
+        // Stage CSS stops edge-flow orbit & title enter animation under reduce-motion
+        const pixi3dCss = fs.readFileSync('Musicmodules/music-stage/music-stage-pixi-3d.css', 'utf8');
+        const stageCss = fs.readFileSync('Musicmodules/music-stage/music-stage.css', 'utf8');
+        assert.match(pixi3dCss, /body\.music-reduce-motion \.music-stage-edge-flow-light\s*\{[^}]*animation:\s*none/);
+        assert.match(pixi3dCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.music-stage-edge-flow-light\s*\{[^}]*animation:\s*none/);
+        assert.match(stageCss, /body\.music-reduce-motion \.music-stage-track-title\.is-changing\s*\{[^}]*animation:\s*none/);
+    } finally {
+        f.dom.window.close();
+    }
+});

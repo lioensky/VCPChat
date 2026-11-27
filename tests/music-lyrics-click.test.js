@@ -225,3 +225,96 @@ test('Batch 65: animateLyrics caches viewport via ResizeObserver, reads geometry
     assert.equal(roDisconnected, true, 'ResizeObserver disconnects on beforeunload');
     window.close();
 });
+
+test('Batch 82: lyricIndexAt uses monotonic hint fast path, lyricInterlude accepts knownAt, opacity LUT matches formula, and transition layout reads throttle to 64ms', () => {
+    const dom = new JSDOM('<ul id="l"></ul><div id="c"></div>');
+    const { window } = dom;
+    let fakeNow = 10000;
+    const FakeDate = { now: () => fakeNow };
+    const context = vm.createContext({
+        console: { log() {}, warn() {}, error() {} },
+        Date: FakeDate,
+        setTimeout, clearTimeout,
+        window, document: window.document
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-lyrics.js'), 'utf8'), context);
+    const container = window.document.getElementById('c');
+    Object.defineProperty(container, 'clientWidth', { get: () => 480, configurable: true });
+    Object.defineProperty(container, 'clientHeight', { get: () => 320, configurable: true });
+    const app = {
+        lyricSpeedFactor: 1, lyricOffset: 0, currentLyrics: [],
+        lyricsList: window.document.getElementById('l'),
+        lyricsContainer: container,
+        isPlaying: true, isTrackLoading: false, lastKnownDuration: 120,
+        lastKnownCurrentTime: 1, lastStateUpdateTime: fakeNow,
+        api: { seekMusic: () => {} },
+        seekTo: () => {}, playTrack: () => {}, formatTime: (t) => String(t)
+    };
+    context.setupLyrics(app);
+    app.currentLyrics = Array.from({ length: 12 }, (_, i) => ({
+        time: i * 10,
+        endTime: i * 10 + 4,
+        original: `第 ${i} 句`,
+        text: `第 ${i} 句`
+    }));
+    app.renderLyrics();
+    const items = [...app.lyricsList.querySelectorAll('li')];
+
+    // 1. lyricIndexAt monotonic hint matches full binary search
+    assert.equal(app.lyricIndexAt(1, app.currentLyrics, -1), 0);
+    assert.equal(app.lyricIndexAt(5, app.currentLyrics, 0), 0);
+    assert.equal(app.lyricIndexAt(12, app.currentLyrics, 0), 1);
+    assert.equal(app.lyricIndexAt(55, app.currentLyrics, 1), 5);
+    assert.equal(app.lyricIndexAt(2, app.currentLyrics, 5), 0);
+
+    // 2. lyricInterlude with knownAt avoids calling lyricIndexAt again
+    let indexAtCalls = 0;
+    const origIndexAt = app.lyricIndexAt;
+    app.lyricIndexAt = (...a) => { indexAtCalls += 1; return origIndexAt(...a); };
+    const gap = app.lyricInterlude(7, app.currentLyrics, 0);
+    assert.ok(gap && gap.index === 1 && Math.abs(gap.progress - 0.5) < 1e-6);
+    assert.equal(indexAtCalls, 0, 'lyricInterlude uses knownAt without redundant binary search');
+    app.lyricIndexAt = origIndexAt;
+
+    // 3. Opacity LUT matches exact distance formula + 64ms transition measurement throttle
+    let offsetReads = 0;
+    for (let i = 0; i < items.length; i += 1) {
+        Object.defineProperty(items[i], 'offsetTop', { get() { offsetReads += 1; return i * 40; }, configurable: true });
+        Object.defineProperty(items[i], 'clientHeight', { get: () => 36, configurable: true });
+    }
+    app.lastKnownCurrentTime = 2;
+    app.lastStateUpdateTime = fakeNow;
+    app.animateLyrics();
+    assert.equal(app.currentLyricIndex, 0);
+    assert.equal(items[0].style.opacity, '1');
+    assert.equal(items[1].style.opacity, '0.78');
+    assert.equal(items[2].style.opacity, '0.56');
+    assert.equal(items[3].style.opacity, '0.34');
+    assert.equal(items[4].style.opacity, '0.12');
+    assert.equal(items[5].style.opacity, '0.1');
+    assert.equal(items[5]._lyricOpacity, '0.10');
+    assert.equal(items[10].style.opacity, '0.1');
+    assert.equal(items[10]._lyricOpacity, '0.10');
+
+    const readsAfterChange = offsetReads;
+    // 16ms and 32ms inside 600ms transition window skip re-measure
+    fakeNow += 16;
+    app.animateLyrics();
+    fakeNow += 16;
+    app.animateLyrics();
+    assert.equal(offsetReads, readsAfterChange, 'frames under 64ms throttle skip transition re-measure');
+
+    // >=64ms inside transition window takes one sample
+    fakeNow += 40;
+    app.animateLyrics();
+    assert.ok(offsetReads > readsAfterChange, 'frame after 64ms throttle re-measures transition geometry');
+
+    // Past 600ms transition window stops measuring on steady frames
+    const readsBeforeSteady = offsetReads;
+    fakeNow += 600;
+    app.animateLyrics();
+    fakeNow += 100;
+    app.animateLyrics();
+    assert.equal(offsetReads, readsBeforeSteady, 'steady frames past 600ms make zero layout reads');
+    window.close();
+});

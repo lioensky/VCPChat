@@ -891,3 +891,33 @@ test('classic list syncHead deduplicates aria-pressed and classList writes on ac
     t.window.dispatchEvent(new t.window.Event('beforeunload'));
     t.close();
 });
+
+test('Batch 82: classic list artist sort uses rank path even when first 64 tracks have distinct artists', () => {
+    const t = setup({ count: 0 });
+    // 400 tracks across 80 artists where the first 64 tracks all have distinct artists (used to trip the 64-item sample check)
+    const tracks = Array.from({ length: 400 }, (_, i) => ({
+        path: `/m/${i}.flac`,
+        title: `Song ${i}.flac`,
+        artist: i % 80 === 79 ? '' : `Artist ${i % 80}`,
+        duration: 180
+    }));
+    t.app.playlist.push(...tracks);
+    t.app.renderPlaylist();
+
+    const artistBtn = t.doc.querySelector('.music-list-sort.is-artist');
+    artistBtn.click(); // artist asc
+    const asc = [...t.list.children].map((li) => tracks[Number(li.dataset.index)]);
+    assert.equal(asc[0].artist, 'Artist 0');
+    assert.equal(asc[5].artist, 'Artist 1', 'numeric Collator puts Artist 1 before Artist 10');
+    assert.ok(asc.slice(-5).every((tr) => tr.artist === ''), 'empty artists stay at bottom in asc');
+
+    artistBtn.click(); // artist desc
+    const desc = [...t.list.children].map((li) => tracks[Number(li.dataset.index)]);
+    assert.equal(desc[0].artist, 'Artist 78', 'highest numeric artist leads in desc');
+    const tie78 = desc.slice(0, 5).map((tr) => tracks.indexOf(tr));
+    for (let i = 1; i < tie78.length; i += 1) assert.ok(tie78[i] > tie78[i - 1], 'tied artists keep original relative order in desc');
+    assert.ok(desc.slice(-5).every((tr) => tr.artist === ''), 'empty artists stay at bottom in desc');
+
+    t.window.dispatchEvent(new t.window.Event('beforeunload'));
+    t.close();
+});

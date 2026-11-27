@@ -301,3 +301,79 @@ test('Batch 68: vocalResizeObserver captures contentRect directly so drawVocalVi
         dom.window.close();
     }
 });
+
+test('Batch 82: drawVocalVisualizer recurrence matches Math.sin curve accurately and cover pulse respects music-reduce-motion', () => {
+    const dom = new JSDOM('<!doctype html><body><canvas id="vocal-visualizer"></canvas></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    try {
+        const { window } = dom;
+        const canvas = window.document.getElementById('vocal-visualizer');
+        const points = [];
+        let curWave = null;
+        canvas.getContext = () => ({
+            clearRect() {},
+            beginPath() { curWave = []; points.push(curWave); },
+            moveTo(x, y) { curWave.push([x, y]); },
+            lineTo(x, y) { curWave.push([x, y]); },
+            stroke() {}
+        });
+        Object.defineProperty(canvas, 'clientWidth', { configurable: true, get: () => 200 });
+        Object.defineProperty(canvas, 'clientHeight', { configurable: true, get: () => 60 });
+        const fixedNow = 1700000000000;
+        window.Date.now = () => fixedNow;
+        window.eval(`${source}\nwindow.setupVisualizer = setupVisualizer;`);
+        const app = {
+            particles: [], PARTICLE_COUNT: 4, easingFactor: 0.2,
+            visualizerCanvas: { width: 200, height: 60 },
+            visualizerCtx: { clearRect() {} }, visualizerColor: { r: 20, g: 140, b: 220 },
+            targetVisualizerData: new Array(64).fill(0.5),
+            currentVisualizerData: new Array(64).fill(0.5),
+            isPlaying: true, isTrackLoading: false, bassScale: 1.0,
+            COVER_MID_START_RATIO: 0.1, COVER_MID_END_RATIO: 0.5,
+            COVER_PULSE_FLOOR: 0.2, COVER_PULSE_SMOOTHING: 0.5, COVER_PULSE_INTENSITY: 0.1
+        };
+        window.setupVisualizer(app);
+        app.drawVocalVisualizer();
+        assert.equal(points.length, app.vocalWaves.length);
+        const w = 200;
+        const centerY = 30;
+        const energyBoost = app.smoothedVocalEnergy * 35;
+        let maxErr = 0;
+        for (let wi = 0; wi < app.vocalWaves.length; wi += 1) {
+            const wave = app.vocalWaves[wi];
+            const amp = wave.amplitude + energyBoost;
+            const phaseOffset = fixedNow * wave.speed * 0.01 + wave.phase;
+            for (const [x, y] of points[wi]) {
+                const s = Math.sin((x / w) * Math.PI);
+                const expected = centerY + Math.sin(x * wave.frequency + phaseOffset) * amp * Math.fround(s * s);
+                maxErr = Math.max(maxErr, Math.abs(y - expected));
+            }
+        }
+        assert.ok(maxErr < 1e-4, `recurrence matches Math.sin within 1e-4 px at epoch timestamps (maxErr=${maxErr})`);
+        app.destroyVisualizer();
+    } finally {
+        dom.window.close();
+    }
+
+    // Cover pulse disabled under body.music-reduce-motion
+    const { window: w2, app: app2, run } = setup();
+    try {
+        w2.document.body.classList.add('music-reduce-motion');
+        const styleObj = { transform: '' };
+        app2.albumArtWrapper = { style: styleObj };
+        app2.COVER_MID_START_RATIO = 0.1;
+        app2.COVER_MID_END_RATIO = 0.5;
+        app2.COVER_PULSE_FLOOR = 0.1;
+        app2.COVER_PULSE_SMOOTHING = 0.8;
+        app2.COVER_PULSE_INTENSITY = 0.12;
+        app2.isPlaying = true;
+        app2.targetVisualizerData = new Array(32).fill(0.9);
+        app2.currentVisualizerData = new Array(32).fill(0.9);
+        app2.startVisualizerAnimation();
+        run(120);
+        assert.equal(app2.bassScale, 1.0, 'reduce-motion suppresses cover pulse scaling');
+        assert.equal(styleObj.transform, '', 'reduce-motion skips cover pulse transform writes');
+        app2.destroyVisualizer();
+    } finally {
+        w2.close();
+    }
+});

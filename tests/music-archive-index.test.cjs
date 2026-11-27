@@ -404,3 +404,25 @@ test('Batch 68: sortSpec caches Uint32Array order for title/artist and groupColu
     assert.ok(spArtist2.order instanceof Uint32Array && spArtist2.order.length === tracks.length, 'prepareSort populates artistOrder');
     assert.deepEqual([...spArtist2.order], [...Index.sortSpec(idx1, { mode: 'artist', tracks }).order]);
 });
+
+test('Batch 82: sortSpec lazily builds title/artist comparators so cached calls skip buildArtistKeyRanks', () => {
+    const tracks = Array.from({ length: 120 }, (_, i) => ({
+        path: `/m/${i}.flac`,
+        title: `Track ${120 - i}`,
+        artist: `Artist ${i % 20}`
+    }));
+    const idx = Index.createIndex(tracks);
+    let artistKeyReads = 0;
+    const origArtistKey = idx.artistKey;
+    idx.artistKey = (i) => { artistKeyReads += 1; return origArtistKey(i); };
+
+    const sp1 = Index.sortSpec(idx, { mode: 'artist', tracks });
+    assert.equal(artistKeyReads, tracks.length, 'first artist sortSpec scans artistKey once');
+
+    artistKeyReads = 0;
+    const sp2 = Index.sortSpec(idx, { mode: 'artist', tracks });
+    const sp3 = Index.sortSpec(idx, { mode: 'artist', tracks });
+    assert.equal(artistKeyReads, 0, 'cached artist sortSpec skips buildArtistKeyRanks completely');
+    assert.equal(sp2.order, sp1.order);
+    assert.equal(sp3.order, sp1.order);
+});
