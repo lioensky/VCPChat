@@ -90,13 +90,17 @@
         };
 
         const paintLike = (li, track) => {
-            const button = li.querySelector('.cl-like');
+            const button = li._likeBtn || li.querySelector('.cl-like');
             if (!button) return;
             const on = typeof app.isLiked === 'function' && app.isLiked(track);
+            const pressed = String(on);
+            if (button._likeState === pressed) return;
+            button._likeState = pressed;
             li.classList.toggle('is-liked', on);
-            button.setAttribute('aria-pressed', String(on));
-            button.setAttribute('aria-label', on ? '取消喜欢' : '喜欢');
-            button.title = on ? '取消喜欢' : '喜欢';
+            button.setAttribute('aria-pressed', pressed);
+            const label = on ? '取消喜欢' : '喜欢';
+            button.setAttribute('aria-label', label);
+            button.title = label;
         };
         // 点心形只切换喜欢，不触发这一行的播放
         const onLikeClick = (e) => {
@@ -144,9 +148,12 @@
             like.className = 'cl-like';
             like.tabIndex = -1;
             like.textContent = '♥';
+            li._likeBtn = like;
             li.replaceChildren(title, artist, like, duration);
             paintLike(li, track);
-            li.title = [titleText || titleOf(track), track?.artist].filter(Boolean).join(' — ');
+            const mainTitle = titleText || titleOf(track);
+            const artistText = track?.artist || '';
+            li.title = mainTitle && artistText ? `${mainTitle} — ${artistText}` : (mainTitle || artistText);
             li.dataset.cols = '1';
         };
 
@@ -262,14 +269,15 @@
                 app.renderPlaylist(lastFiltered || undefined);
             });
             head.appendChild(button);
-            return button;
+            return { button, arrow: button.querySelector('i') };
         });
         const syncHead = () => {
-            for (const button of buttons) {
+            for (const { button, arrow } of buttons) {
                 const on = button.dataset.sort === sort.key;
                 button.classList.toggle('is-on', on);
                 button.setAttribute('aria-pressed', String(on));
-                button.querySelector('i').textContent = on ? (sort.dir === 1 ? '↑' : '↓') : '';
+                const nextArrow = on ? (sort.dir === 1 ? '↑' : '↓') : '';
+                if (arrow && arrow.textContent !== nextArrow) arrow.textContent = nextArrow;
             }
         };
         syncHead();

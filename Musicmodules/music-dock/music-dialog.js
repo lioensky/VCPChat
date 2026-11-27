@@ -12,6 +12,7 @@
     'use strict';
 
     let seq = 0;
+    const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
     const confirm = (options = {}) => new Promise((resolve) => {
         const {
@@ -45,11 +46,13 @@
 
         let done = false;
         let openRaf = 0;
+        const onUnload = () => finish(false);
         const finish = (value) => {
             if (done) return;
             done = true;
             if (openRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(openRaf); openRaf = 0; }
             global.removeEventListener('keydown', onKey, true);
+            global.removeEventListener?.('beforeunload', onUnload);
             overlay.classList.remove('visible');
             // 留给合上的动画（流体套件或 .2s 淡出）
             setTimeout(() => overlay.remove(), 320);
@@ -58,7 +61,6 @@
             }
             resolve(value);
         };
-        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         // 捕获阶段拦住：Esc 只关这个框，方向键与单字母快捷键也不穿透到背后的档案阵列/舞台。
         const onKey = (e) => {
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(false); }
@@ -77,6 +79,7 @@
             }
         };
         global.addEventListener('keydown', onKey, true);
+        global.addEventListener?.('beforeunload', onUnload, { once: true });
         cancelBtn.addEventListener('click', () => finish(false));
         confirmBtn.addEventListener('click', () => finish(true));
         overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(false); });

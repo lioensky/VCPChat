@@ -2,18 +2,27 @@
 // UI 辅助：背景切换、主题、MediaSession、WNP、音量、渲染列表
 
 function setupUI(app) {
+    let bgCurr = null;
+    let bgNext = null;
     app.initBackgroundLayers = () => {
         if (!app.playerBackground) return;
         app.playerBackground.innerHTML = '<div class="bg-layer current"></div><div class="bg-layer next"></div>';
+        bgCurr = app.playerBackground.firstElementChild;
+        bgNext = bgCurr ? bgCurr.nextElementSibling : null;
     };
 
     app.updateBlurredBackground = (imageUrl) => {
         if (!app.playerBackground) return;
-        const layers = app.playerBackground.querySelectorAll('.bg-layer');
-        if (layers.length < 2) {
-            app.playerBackground.style.backgroundImage = imageUrl; return;
+        if (!bgCurr || !bgNext || !bgCurr.isConnected || !bgNext.isConnected) {
+            const layers = app.playerBackground.querySelectorAll('.bg-layer');
+            if (layers.length < 2) {
+                app.playerBackground.style.backgroundImage = imageUrl; return;
+            }
+            bgCurr = layers[0];
+            bgNext = layers[1];
         }
-        const [curr, next] = layers;
+        const curr = bgCurr;
+        const next = bgNext;
         const newBg = imageUrl || 'none';
         if (curr.style.backgroundImage === newBg) return;
 
@@ -80,6 +89,8 @@ function setupUI(app) {
     let libraryIndexOf = new Map();    // 歌 → 在曲库里的下标
     let renderedBase = null;
     let renderedBaseLength = -1;
+    let renderedBaseFirst = null;
+    let renderedBaseLast = null;
     let renderedTitles = null;
     let windowStart = 0;
     let windowEnd = 0;
@@ -245,27 +256,53 @@ function setupUI(app) {
         const songs = filtered || app.playlist;
         const empty = emptyText(songs);
         if (empty) app.playlistEl.dataset.emptyText = empty; else delete app.playlistEl.dataset.emptyText;
-        const unchanged = renderedBase === app.playlist
-            && renderedBaseLength === app.playlist.length
-            && shownSongs.length === songs.length
-            && songs.every((t, i) => shownSongs[i] === t && renderedTitles[i] === t.title);
+        const pl = app.playlist || [];
+        const plLen = pl.length;
+        const plFirst = plLen ? pl[0] : null;
+        const plLast = plLen ? pl[plLen - 1] : null;
+        const sameBase = renderedBase === app.playlist
+            && renderedBaseLength === plLen
+            && renderedBaseFirst === plFirst
+            && renderedBaseLast === plLast;
+        let unchanged = sameBase && shownSongs.length === songs.length;
         if (unchanged) {
-            // 列表没变：只移动高亮
-            for (const li of app.playlistEl.querySelectorAll('li.active')) li.classList.remove('active');
+            for (let i = 0; i < songs.length; i += 1) {
+                if (shownSongs[i] !== songs[i] || renderedTitles[i] !== songs[i]?.title) {
+                    unchanged = false;
+                    break;
+                }
+            }
+        }
+        if (unchanged) {
+            // 列表没变：单趟同步高亮
+            const cur = app.currentTrackIndex;
             for (const li of app.playlistEl.children) {
-                if (Number(li.dataset.index) === app.currentTrackIndex) li.classList.add('active');
+                const isActive = Number(li.dataset.index) === cur;
+                if (li.classList.contains('active') !== isActive) li.classList.toggle('active', isActive);
             }
             app.updateAllCount();
             return;
         }
-        libraryIndexOf = new Map();
-        app.playlist.forEach((t, i) => { if (!libraryIndexOf.has(t)) libraryIndexOf.set(t, i); });
+        if (!sameBase || !libraryIndexOf.size) {
+            libraryIndexOf = new Map();
+            for (let i = 0; i < plLen; i += 1) {
+                const t = pl[i];
+                if (!libraryIndexOf.has(t)) libraryIndexOf.set(t, i);
+            }
+        }
         shownSongs = songs.slice();
         positionOf = new Map();
-        shownSongs.forEach((t, i) => { if (!positionOf.has(t)) positionOf.set(t, i); });
+        const nextTitles = new Array(shownSongs.length);
+        for (let i = 0; i < shownSongs.length; i += 1) {
+            const t = shownSongs[i];
+            if (!positionOf.has(t)) positionOf.set(t, i);
+            nextTitles[i] = t?.title;
+        }
         renderedBase = app.playlist;
-        renderedBaseLength = app.playlist.length;
-        renderedTitles = shownSongs.map(t => t.title);
+        renderedBaseLength = plLen;
+        renderedBaseFirst = plFirst;
+        renderedBaseLast = plLast;
+        renderedTitles = nextTitles;
         // 换了一组歌：已建的行按新下标重算，不能复用
         for (const li of app.playlistEl.children) li._track = null;
         renderWindow(true);

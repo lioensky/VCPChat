@@ -69,19 +69,28 @@
         const fieldCache = new Map();
         const fields = (name) => {
             let list = fieldCache.get(name);
-            if (!list || list.some((el) => !el.isConnected)) {
-                list = Array.from(document.querySelectorAll(`[data-track-field="${name}"]`));
+            if (!list || list.some((entry) => !entry.el.isConnected)) {
+                list = Array.from(document.querySelectorAll(`[data-track-field="${name}"]`), (el) => ({
+                    el,
+                    cell: el.closest('.track-specs > div')
+                }));
                 fieldCache.set(name, list);
             }
             return list;
         };
+        let rollerCache = null;
+        const getRollers = () => {
+            if (!rollerCache || rollerCache.some((el) => !el.isConnected)) {
+                rollerCache = Array.from(document.querySelectorAll('.track-file-number'));
+            }
+            return rollerCache;
+        };
         const setText = (name, value, empty = '—') => {
             const text = value || empty;
             const hide = !value && (!empty || empty === '—');
-            for (const el of fields(name)) {
+            for (const { el, cell } of fields(name)) {
                 if (el.textContent !== text) el.textContent = text;
                 // 规格栏里读不出来的项（只剩一个「—」）整格收起，不摆一排破折号
-                const cell = el.closest('.track-specs > div');
                 if (cell && cell.hidden !== hide) cell.hidden = hide;
             }
         };
@@ -123,7 +132,7 @@
                     || document.body.classList.contains('music-stage-active');
                 if (!reduceMotion && !hiddenClassic) {
                     // 换曲时编号向上滚入；批量读写只触发一次回流（档案页与舞台期间经典列表隐藏，不触发无谓回流）。
-                    const rollers = Array.from(document.querySelectorAll('.track-file-number'));
+                    const rollers = getRollers();
                     for (const el of rollers) el.classList.remove('is-rolling');
                     if (rollers.length) void rollers[0].offsetWidth;
                     for (const el of rollers) el.classList.add('is-rolling');

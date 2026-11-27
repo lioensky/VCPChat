@@ -104,8 +104,11 @@
                 + (action ? `<button class="mtst-act" type="button"></button>` : '')
                 + (entry.opts.closable === false ? '' : `<button class="mtst-x" type="button" aria-label="关闭提示">${icon('x', 14)}</button>`)
                 + progress;
-            el.querySelector('.mtst-msg').textContent = entry.opts.message || '';
-            if (action) el.querySelector('.mtst-act').textContent = `${action.label || '好'}${count}`;
+            entry.msgEl = el.querySelector('.mtst-msg');
+            entry.actEl = action ? el.querySelector('.mtst-act') : null;
+            entry.barEl = progress ? el.querySelector('.mtst-bar > span') : null;
+            if (entry.msgEl) entry.msgEl.textContent = entry.opts.message || '';
+            if (entry.actEl) entry.actEl.textContent = `${action.label || '好'}${count}`;
         };
 
         const clearTimers = () => {
@@ -126,8 +129,7 @@
                 entry.tick = setInterval(() => {
                     entry.countdown -= 1;
                     if (entry.countdown <= 0) { runAction(); return; }
-                    const btn = entry.el.querySelector('.mtst-act');
-                    if (btn) btn.textContent = `${entry.opts.action.label || '好'} ${entry.countdown}`;
+                    if (entry.actEl) entry.actEl.textContent = `${entry.opts.action.label || '好'} ${entry.countdown}`;
                 }, 1000);
                 return;
             }
@@ -204,13 +206,12 @@
             if (!entry.shown) return;
             const nextHasProgress = kind() === 'progress' && Number.isFinite(entry.opts.progress);
             if (!structureChanged && prevHadProgress === nextHasProgress && entry.el) {
-                if ('message' in patch) {
-                    const msgEl = entry.el.querySelector('.mtst-msg');
-                    if (msgEl && msgEl.textContent !== (entry.opts.message || '')) msgEl.textContent = entry.opts.message || '';
+                if ('message' in patch && entry.msgEl) {
+                    const nextText = entry.opts.message || '';
+                    if (entry.msgEl.textContent !== nextText) entry.msgEl.textContent = nextText;
                 }
-                if (nextHasProgress && 'progress' in patch) {
-                    const barEl = entry.el.querySelector('.mtst-bar > span');
-                    if (barEl) barEl.style.transform = `scaleX(${Math.max(0, Math.min(1, entry.opts.progress))})`;
+                if (nextHasProgress && 'progress' in patch && entry.barEl) {
+                    entry.barEl.style.transform = `scaleX(${Math.max(0, Math.min(1, entry.opts.progress))})`;
                 }
                 entry.el.classList.add('mtst-in');
                 if (timingChanged) arm();
@@ -237,6 +238,7 @@
 
     const dismiss = (id) => toasts.get(String(id))?.close();
     const clear = () => [...toasts.values()].forEach((t) => t.close());
+    global.addEventListener?.('beforeunload', clear, { once: true });
 
     global.MusicToast = Object.freeze({ show, dismiss, clear, setPosition });
 })(window);

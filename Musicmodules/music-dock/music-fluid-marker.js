@@ -70,13 +70,33 @@
             if (align === 'center') return size / 2;
             return size - inset - thickness / 2;
         };
+        const pillCache = new WeakMap();
+        const setRectAttr = (node, cache, name, value) => {
+            if (cache[name] === value) return;
+            cache[name] = value;
+            node.setAttribute(name, value);
+        };
         let origin = 0; // SVG 沿轴方向的起点（容器内容坐标），形状坐标都减去它
         const pill = (node, a, b, c, t) => {
+            let cache = pillCache.get(node);
+            if (!cache) {
+                cache = Object.create(null);
+                pillCache.set(node, cache);
+            }
             const lo = Math.min(a, b) - origin;
             const len = Math.max(t, Math.abs(b - a));
-            if (axis === 'x') { node.setAttribute('x', lo.toFixed(1)); node.setAttribute('y', (c - t / 2).toFixed(1)); node.setAttribute('width', len.toFixed(1)); node.setAttribute('height', t.toFixed(1)); }
-            else { node.setAttribute('y', lo.toFixed(1)); node.setAttribute('x', (c - t / 2).toFixed(1)); node.setAttribute('height', len.toFixed(1)); node.setAttribute('width', t.toFixed(1)); }
-            node.setAttribute('rx', (t / 2).toFixed(1));
+            if (axis === 'x') {
+                setRectAttr(node, cache, 'x', lo.toFixed(1));
+                setRectAttr(node, cache, 'y', (c - t / 2).toFixed(1));
+                setRectAttr(node, cache, 'width', len.toFixed(1));
+                setRectAttr(node, cache, 'height', t.toFixed(1));
+            } else {
+                setRectAttr(node, cache, 'y', lo.toFixed(1));
+                setRectAttr(node, cache, 'x', (c - t / 2).toFixed(1));
+                setRectAttr(node, cache, 'height', len.toFixed(1));
+                setRectAttr(node, cache, 'width', t.toFixed(1));
+            }
+            setRectAttr(node, cache, 'rx', (t / 2).toFixed(1));
         };
         // SVG 只盖住小滴所在的那一段（加上模糊的余量），不再撑成整块内容那么大：
         // 目录有一万首时内容有几十万像素高，整张 SVG 会变成一张同样高的合成层，每次重画都很贵。
@@ -170,9 +190,16 @@
             },
             setVelocity(v) { s.vel = Number(v) || 0; },
             setDistances(items, active) {
-                const list = Array.from(items || []);
-                const ai = typeof active === 'number' ? active : list.indexOf(active);
-                for (let i = 0; i < list.length; i += 1) {
+                if (!items) return;
+                const list = typeof items.length === 'number' ? items : Array.from(items);
+                const len = list.length;
+                let ai = typeof active === 'number' ? active : -1;
+                if (typeof active !== 'number') {
+                    for (let i = 0; i < len; i += 1) {
+                        if (list[i] === active) { ai = i; break; }
+                    }
+                }
+                for (let i = 0; i < len; i += 1) {
                     const next = String(ai < 0 ? 4 : Math.min(4, Math.abs(i - ai)));
                     if (list[i].dataset.mdDist !== next) list[i].dataset.mdDist = next;
                 }

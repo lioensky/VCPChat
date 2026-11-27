@@ -547,6 +547,13 @@ body.music-reduce-motion #music-dock-root .md-cmd-row[data-md-dist="4"] { filter
 #music-dock-root.md-fl-low .md-keys-scrim,
 #music-dock-root.md-fl-low .md-hdl button,
 #music-dock-root.md-fl-low .md-hdl-tip { backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* 节能档免去整块模糊滤镜动画，降低低配设备开合搜索框、提示条和页签的合成开销 */
+#music-dock-root.md-fl-low .md-cmd-box,
+#music-dock-root.md-fl-low .md-cmd-row[data-md-dist="4"],
+body.music-fl-low .mtst,
+body.music-fl-low .mtst.mtst-out,
+body.music-fl-low .music-stage-mode-switcher .music-stage-mode-button { filter: none; }
+body.music-fl-low .mtst.mtst-in { animation: none; filter: none; }
 /* 浅色主题下白色焦点圈看不见，换成墨色 */
 #music-dock-root.md-light.md-fl-on .md-hdl button:focus-visible { outline-color: var(--md-t1); }
 

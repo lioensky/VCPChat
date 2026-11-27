@@ -17,14 +17,29 @@ function setupUtils(app) {
         const s = String(text || '');
         return ASCII_ONLY.test(s) ? s.toLowerCase() : s.normalize('NFKC').toLowerCase();
     };
+    const searchHayCache = new WeakMap();
+    const hayOfTrack = (t) => {
+        const title = t.title || '';
+        const artist = t.artist || '';
+        const album = t.album || '';
+        const hit = searchHayCache.get(t);
+        if (hit && hit.title === title && hit.artist === artist && hit.album === album) return hit.hay;
+        const hay = searchKey(`${app.stripAudioExtension(title)}\n${artist}\n${album}`);
+        searchHayCache.set(t, { title, artist, album, hay });
+        return hay;
+    };
     app.searchTracks = (tracks, query) => {
         const words = searchKey(query).split(/\s+/).filter(Boolean);
         const list = Array.isArray(tracks) ? tracks : [];
         if (!words.length) return list;
+        const wLen = words.length;
         return list.filter((t) => {
             if (!t) return false;
-            const hay = searchKey(`${app.stripAudioExtension(t.title || '')}\n${t.artist || ''}\n${t.album || ''}`);
-            return words.every((w) => hay.includes(w));
+            const hay = hayOfTrack(t);
+            for (let j = 0; j < wLen; j += 1) {
+                if (!hay.includes(words[j])) return false;
+            }
+            return true;
         });
     };
 
@@ -80,7 +95,7 @@ function setupUtils(app) {
     app.performSemanticSearch = async (query) => {
         if (app.isSemanticSearching) return;
         app.isSemanticSearching = true;
-        app.semanticSearchBtn.classList.add('loading');
+        app.semanticSearchBtn?.classList.add('loading');
         // 结果回来时语义搜索已经关掉、或者框里已经换了别的字：这份结果不用了，不能盖掉现在的列表。
         const stillWanted = () => app.isSemanticSearchActive && String(app.searchInput?.value || '').trim() === query;
         const tell = (message) => { try { (globalThis.MusicToast?.show || (() => {}))({ message, kind: 'error' }); } catch (e) { /* 没有提示层 */ } };
@@ -144,7 +159,7 @@ tag_boost:「始」0.95「末」
             }
         } finally {
             app.isSemanticSearching = false;
-            app.semanticSearchBtn.classList.remove('loading');
+            app.semanticSearchBtn?.classList.remove('loading');
         }
     };
 
@@ -314,7 +329,7 @@ tag_boost:「始」0.95「末」
 
         // 强制切换到 "全部" 视图并渲染结果
         app.currentSidebarView = 'all';
-        app.sidebarTabs.forEach(t => t.classList.remove('active'));
+        app.sidebarTabs?.forEach(t => t.classList.remove('active'));
         const allTab = document.querySelector('.sidebar-tab[data-view="all"]');
         if (allTab) allTab.classList.add('active');
         
