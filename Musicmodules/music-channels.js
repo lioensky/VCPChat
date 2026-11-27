@@ -122,6 +122,7 @@
             overlay = null;
             refs = null;
             global.removeEventListener('keydown', onKey, true);
+            o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) o.remove();
             else {

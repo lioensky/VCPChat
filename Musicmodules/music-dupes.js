@@ -12,8 +12,9 @@
     const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
     const isRemote = (t) => Boolean(t && (t.isRemote || /^https?:\/\//i.test(String(t.path || ''))));
 
-    function dupeKey(t) {
-        const k = radio().recordingKey ? radio().recordingKey(t) : '';
+    function dupeKey(t, recKeyFn) {
+        const fn = recKeyFn !== undefined ? recKeyFn : radio().recordingKey;
+        const k = fn ? fn(t) : '';
         if (k) return k;
         const title = norm(String((t && t.title) || '').replace(AUDIO_EXT, ''));
         const dur = Math.round(Number(t && t.duration) || 0);
@@ -23,14 +24,17 @@
 
     // 找出重复的组：[{ keep, extra: [...] }]，组内按留哪份排好；按多余文件数从多到少不重要，按曲库顺序
     function findDuplicates(library) {
-        const rank = radio().versionRank || (() => 0);
+        const r = radio();
+        const rank = r.versionRank || (() => 0);
+        const recKey = r.recordingKey || null;
         const groups = new Map();
         for (const t of library || []) {
             if (!t || !t.path) continue;
-            const k = dupeKey(t);
+            const k = dupeKey(t, recKey);
             if (!k) continue;
-            if (!groups.has(k)) groups.set(k, []);
-            groups.get(k).push(t);
+            let list = groups.get(k);
+            if (!list) { list = []; groups.set(k, list); }
+            list.push(t);
         }
         const out = [];
         for (const list of groups.values()) {
@@ -86,6 +90,7 @@
             const o = overlay; overlay = null;
             cachedGroups = null; cachedPlaylist = null; cachedPlaylistLen = -1;
             global.removeEventListener('keydown', onKey, true);
+            o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) o.remove();
             else {

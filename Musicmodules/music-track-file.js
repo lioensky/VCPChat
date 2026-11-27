@@ -105,6 +105,7 @@
             overlay = null;
             if (copyTimer) { clearTimeout(copyTimer); copyTimer = 0; }
             global.removeEventListener('keydown', onKey, true);
+            o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) o.remove();
             else {

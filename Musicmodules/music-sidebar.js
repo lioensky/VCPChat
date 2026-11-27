@@ -246,7 +246,7 @@ function setupSidebar(app) {
                 let styleAttr = '';
                 if (g.art) {
                     const artUrl = app.fileUrl ? app.fileUrl(g.art) : `file://${encodeURI(g.art.replace(/\\/g, '/'))}`;
-                    const safeUrl = String(artUrl).replace(/["\\)]/g, (ch) => encodeURIComponent(ch));
+                    const safeUrl = String(artUrl).replace(/["\\)]/g, (ch) => ({ '"': '%22', '\\': '%5C', ')': '%29' }[ch]));
                     styleAttr = ` style="background-image:url(&quot;${esc(safeUrl)}&quot;)"`;
                 }
                 parts[i] = `<div class="category-item" data-cat-idx="${i}">`

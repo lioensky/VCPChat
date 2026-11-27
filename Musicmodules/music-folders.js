@@ -116,6 +116,7 @@
             global.removeEventListener('keydown', onKey, true);
             clearInterval(watchTimer);
             watchTimer = 0;
+            o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) o.remove();
             else {
@@ -220,8 +221,21 @@
                 return;
             }
             const ul = el('ul', 'mfold-list');
+            ul.addEventListener('click', async (e) => {
+                const btn = e.target?.closest?.('button[data-mfold-act]');
+                if (!btn || !ul.contains(btn)) return;
+                const row = rows[Number(btn.dataset.mfoldIdx)];
+                if (!row) return;
+                if (btn.dataset.mfoldAct === 'open') {
+                    const r = await call({ op: 'open', path: row.path }).catch(() => null);
+                    if (!r || !r.ok) toast(r?.message || '打不开这个文件夹', { kind: 'error' });
+                } else if (btn.dataset.mfoldAct === 'remove') {
+                    removeFolder(row);
+                }
+            });
             const frag = doc.createDocumentFragment();
-            for (const row of rows) {
+            for (let idx = 0; idx < rows.length; idx += 1) {
+                const row = rows[idx];
                 const li = el('li', 'mfold-row' + (row.exists ? '' : ' missing'));
                 const text = el('div', 'mfold-text');
                 const p = el('span', 'mfold-path', row.path);
@@ -234,15 +248,14 @@
                 if (row.exists) {
                     const open = el('button', 'minfo-btn', '打开');
                     open.type = 'button';
-                    open.addEventListener('click', async () => {
-                        const r = await call({ op: 'open', path: row.path }).catch(() => null);
-                        if (!r || !r.ok) toast(r?.message || '打不开这个文件夹', { kind: 'error' });
-                    });
+                    open.dataset.mfoldAct = 'open';
+                    open.dataset.mfoldIdx = String(idx);
                     acts.appendChild(open);
                 }
                 const rm = el('button', 'minfo-btn mfold-remove', '移出曲库');
                 rm.type = 'button';
-                rm.addEventListener('click', () => removeFolder(row));
+                rm.dataset.mfoldAct = 'remove';
+                rm.dataset.mfoldIdx = String(idx);
                 acts.appendChild(rm);
                 li.appendChild(acts);
                 frag.appendChild(li);

@@ -175,34 +175,60 @@
     };
 
     // ---------- 扫描环（开场与短版共用） ----------
+    // 预分配关键帧曲线，避免 60fps 过场每帧构造十余个临时二维数组。
+    const K_SCAN_R = Object.freeze([[0, 1500], [0.2, 900], [0.4, 520], [0.6, 330], [0.8, 274], [1.0, 258], [1.9, 246]]);
+    const K_OUTER_START = Object.freeze([[0, 470], [0.4, 230], [0.8, 20], [1.2, -70], [1.9, -90]]);
+    const K_OUTER_SWEEP = Object.freeze([[0, 30], [0.4, 190], [0.8, 300], [1.2, 352], [1.6, 360]]);
+    const K_WHITE_START = Object.freeze([[0, -100], [0.5, 120], [1.0, 230], [1.9, 270]]);
+    const K_WHITE_SWEEP = Object.freeze([[0, 18], [0.6, 70], [1.2, 40], [1.9, 28]]);
+    const K_INNER_SWEEP = Object.freeze([[0, 0], [0.5, 60], [1.0, 120], [1.9, 140]]);
+    const K_SCAN_RING_OP = Object.freeze([[0, 0], [0.04, 0.2], [0.12, 0.65], [0.2, 1]]);
+    const K_SCAN_TRACK = Object.freeze([[0, 26], [0.2, 12], [0.4, 5], [0.6, 1.6], [0.8, 0]]);
+    const K_SCAN_TEXT_IN = Object.freeze([[0, 0], [0.16, 1]]);
+    const K_MARK_X = Object.freeze([[2.2, 70], [3.4, 70], [3.9, 0]]);
+    const K_SCAN_OUT = Object.freeze([[7.75, 1], [7.9, 0.1]]);
+    const WELCOME_PANEL_FLICKER = Object.freeze([1, 0, 0.28, 0, 1, 1, 1]);
+    const WELCOME_INK_FLICKER = Object.freeze([0, 0, 0.2, 1, 0, 0.25, 1]);
+
     // local 是扫描段内的秒数；speed 把同一条轨迹压快（短版 1.5 倍）。
     const renderScan = (n, local, { speed = 1, count = 0, label = '整理曲目', sub = '' } = {}) => {
         const t = local * speed;
         const collapse = smooth(progress(t, 1.12, 1.38));
-        const r = keys([[0, 1500], [0.2, 900], [0.4, 520], [0.6, 330], [0.8, 274], [1.0, 258], [1.9, 246]], t) * (1 - collapse) + 46 * collapse;
-        const outerStart = keys([[0, 470], [0.4, 230], [0.8, 20], [1.2, -70], [1.9, -90]], t) * DEG;
-        const outerSweep = keys([[0, 30], [0.4, 190], [0.8, 300], [1.2, 352], [1.6, 360]], t) * DEG;
-        const whiteStart = keys([[0, -100], [0.5, 120], [1.0, 230], [1.9, 270]], t) * DEG;
-        const whiteSweep = keys([[0, 18], [0.6, 70], [1.2, 40], [1.9, 28]], t) * DEG;
+        const r = keys(K_SCAN_R, t) * (1 - collapse) + 46 * collapse;
+        const outerStart = keys(K_OUTER_START, t) * DEG;
+        const outerSweep = keys(K_OUTER_SWEEP, t) * DEG;
+        const whiteStart = keys(K_WHITE_START, t) * DEG;
+        const whiteSweep = keys(K_WHITE_SWEEP, t) * DEG;
         const innerR = r * 0.78;
         const innerStart = (-40 + t * 140) * DEG;
-        const innerSweep = keys([[0, 0], [0.5, 60], [1.0, 120], [1.9, 140]], t) * DEG;
-        n.outer.setAttribute('d', arc(r, outerStart, outerSweep));
-        n.white.setAttribute('d', arc(r * 0.91, whiteStart, whiteSweep));
-        n.innerA.setAttribute('d', arc(innerR, innerStart, innerSweep));
-        n.innerB.setAttribute('d', arc(innerR, innerStart + Math.PI, innerSweep));
+        const innerSweep = keys(K_INNER_SWEEP, t) * DEG;
+        const nextOuterD = arc(r, outerStart, outerSweep);
+        if (n._scanOuterD !== nextOuterD) { n._scanOuterD = nextOuterD; n.outer.setAttribute('d', nextOuterD); }
+        const nextWhiteD = arc(r * 0.91, whiteStart, whiteSweep);
+        if (n._scanWhiteD !== nextWhiteD) { n._scanWhiteD = nextWhiteD; n.white.setAttribute('d', nextWhiteD); }
+        const nextInnerAD = arc(innerR, innerStart, innerSweep);
+        if (n._scanInnerAD !== nextInnerAD) { n._scanInnerAD = nextInnerAD; n.innerA.setAttribute('d', nextInnerAD); }
+        const nextInnerBD = arc(innerR, innerStart + Math.PI, innerSweep);
+        if (n._scanInnerBD !== nextInnerBD) { n._scanInnerBD = nextInnerBD; n.innerB.setAttribute('d', nextInnerBD); }
         const orbit = (t * 210) * DEG;
-        n.dots.forEach((dot, i) => {
-            dot.setAttribute('cx', (CX + Math.cos(orbit + i * Math.PI) * innerR * 0.86).toFixed(2));
-            dot.setAttribute('cy', (CY + Math.sin(orbit + i * Math.PI) * innerR * 0.86).toFixed(2));
-        });
+        const dotR = innerR * 0.86;
+        for (let i = 0; i < n.dots.length; i += 1) {
+            const dot = n.dots[i];
+            const ang = orbit + i * Math.PI;
+            const cx = (CX + Math.cos(ang) * dotR).toFixed(2);
+            const cy = (CY + Math.sin(ang) * dotR).toFixed(2);
+            if (dot._cx !== cx) { dot._cx = cx; dot.setAttribute('cx', cx); }
+            if (dot._cy !== cy) { dot._cy = cy; dot.setAttribute('cy', cy); }
+        }
         // 收拢时辅助弧和轨道点退掉，只剩外环
         const fadeOp = String(1 - collapse);
         for (let i = 0; i < n.scanFadeNodes.length; i += 1) setStyleOp(n.scanFadeNodes[i], fadeOp);
         drawMark(n.scanMarkParts, t, 1.2, 0.26);
         const capA = outerStart + outerSweep;
-        n.cap.setAttribute('cx', (CX + Math.cos(capA) * r).toFixed(2));
-        n.cap.setAttribute('cy', (CY + Math.sin(capA) * r).toFixed(2));
+        const capX = (CX + Math.cos(capA) * r).toFixed(2);
+        const capY = (CY + Math.sin(capA) * r).toFixed(2);
+        if (n._scanCapX !== capX) { n._scanCapX = capX; n.cap.setAttribute('cx', capX); }
+        if (n._scanCapY !== capY) { n._scanCapY = capY; n.cap.setAttribute('cy', capY); }
 
         // 两帧频闪：圆环突然放大变淡，像信号没对上。
         const f = frameOf(t);
@@ -212,15 +238,15 @@
             n.scanRings.setAttribute('transform', glitch ? `translate(${CX} ${CY}) scale(1.9) translate(${-CX} ${-CY})` : '');
             n.scanRings.style.filter = glitch ? 'blur(1.4px)' : '';
         }
-        setStyleOp(n.scanRings, glitch ? '0.32' : String(keys([[0, 0], [0.04, 0.2], [0.12, 0.65], [0.2, 1]], t)));
+        setStyleOp(n.scanRings, glitch ? '0.32' : String(keys(K_SCAN_RING_OP, t)));
 
         // 字距从很散收拢到正常
-        const tracking = keys([[0, 26], [0.2, 12], [0.4, 5], [0.6, 1.6], [0.8, 0]], t).toFixed(2);
+        const tracking = keys(K_SCAN_TRACK, t).toFixed(2);
         if (n._scanTrack !== tracking) { n._scanTrack = tracking; n.scanText.setAttribute('letter-spacing', tracking); }
         const scanLabel = `${label} ${Math.max(0, Math.round(count))} 首`;
         if (n.scanText.textContent !== scanLabel) n.scanText.textContent = scanLabel;
         const textOut = 1 - smooth(progress(t, 1.02, 1.18));
-        setStyleOp(n.scanText, String(keys([[0, 0], [0.16, 1]], t) * textOut));
+        setStyleOp(n.scanText, String(keys(K_SCAN_TEXT_IN, t) * textOut));
         if (n.scanSub.textContent !== sub) n.scanSub.textContent = sub;
         setStyleOp(n.scanSub, String(progress(t, 0.5, 0.7) * textOut));
     };
@@ -264,7 +290,7 @@
                     line.setAttribute('transform', `translate(${(1 - p) * 60} 0)`);
                 }
             });
-            const markX = keys([[2.2, 70], [3.4, 70], [3.9, 0]], t);
+            const markX = keys(K_MARK_X, t);
             if (n._markX !== markX) {
                 n._markX = markX;
                 n.mark.setAttribute('transform', `translate(${markX} 0)`);
@@ -295,7 +321,7 @@
 
         // 扫描环：曲库计数跟着环收拢一起数上来
         const scanOn = t >= FULL.scan && t < FULL.welcome;
-        setStyleOp(n.scan, scanOn ? String(f >= frameOf(7.75) ? keys([[7.75, 1], [7.9, 0.1]], t) : 1) : '0');
+        setStyleOp(n.scan, scanOn ? String(f >= frameOf(7.75) ? keys(K_SCAN_OUT, t) : 1) : '0');
         if (scanOn) {
             const local = t - FULL.scan;
             renderScan(n, local, {
@@ -309,8 +335,8 @@
         if (!welcomeOn) setStyleOp(n.welcome, '0');
         if (welcomeOn) {
             const k = f - frameOf(FULL.welcome);
-            const panel = k >= 0 && k < 7 ? [1, 0, 0.28, 0, 1, 1, 1][k] : 1;
-            const ink = k >= 0 && k < 7 ? [0, 0, 0.2, 1, 0, 0.25, 1][k] : 1;
+            const panel = k >= 0 && k < 7 ? WELCOME_PANEL_FLICKER[k] : 1;
+            const ink = k >= 0 && k < 7 ? WELCOME_INK_FLICKER[k] : 1;
             const panelStr = String(panel);
             setStyleOp(n.welcomeBlock, panelStr);
             setStyleOp(n.welcomeName, panelStr);
@@ -493,12 +519,28 @@
 
         // 舞台「按住」：进场时舞台先不显示，退场时舞台先不消失，等白场盖严再放开。
         const HOLD = ['mi-stage-hold-enter', 'mi-stage-hold-exit'];
+        let snapRaf1 = 0;
+        let snapRaf2 = 0;
+        const cancelSnap = () => {
+            if (snapRaf1) { cancelAnimationFrame(snapRaf1); snapRaf1 = 0; }
+            if (snapRaf2) { cancelAnimationFrame(snapRaf2); snapRaf2 = 0; }
+        };
+        const scheduleSnapRelease = () => {
+            cancelSnap();
+            document.body.classList.add('mi-stage-snap');
+            snapRaf1 = requestAnimationFrame(() => {
+                snapRaf1 = 0;
+                snapRaf2 = requestAnimationFrame(() => {
+                    snapRaf2 = 0;
+                    document.body.classList.remove('mi-stage-snap');
+                });
+            });
+        };
         const releaseStage = () => {
             if (!HOLD.some((c) => document.body.classList.contains(c))) return;
             // 放开的那一下不要再走舞台自己的 0.38 秒淡入淡出，白场后面直接换好。
-            document.body.classList.add('mi-stage-snap');
             document.body.classList.remove(...HOLD);
-            requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('mi-stage-snap')));
+            scheduleSnapRelease();
         };
 
         const stop = (instant = false) => {
@@ -648,8 +690,10 @@
         // 3D 模式名单以舞台登记表为准（music-stage-advanced-modes.js 的 traits）；舞台脚本没加载时（测试）用这份
         const SCENE_3D_FALLBACK = ['diorama', 'tunnel', 'kowloon'];
         const isScene3d = (id) => (global.MusicStageModes?.traits ? global.MusicStageModes.traits(id).scene3d : SCENE_3D_FALLBACK.includes(id));
-        const stageRoot = () => document.querySelector('.music-stage');
-        const modeRoot = () => document.querySelector('.music-stage-mode-root');
+        let cachedStageRoot = null;
+        let cachedModeRoot = null;
+        const stageRoot = () => (cachedStageRoot && cachedStageRoot.isConnected ? cachedStageRoot : (cachedStageRoot = document.querySelector('.music-stage')));
+        const modeRoot = () => (cachedModeRoot && cachedModeRoot.isConnected ? cachedModeRoot : (cachedModeRoot = document.querySelector('.music-stage-mode-root')));
         const modeLabel = (id) => global.MusicStageModes?.get?.(id)?.label
             || modeRoot()?.closest('.music-stage')?.querySelector(`[data-stage-mode="${id}"]`)?.textContent || id || '';
         // 舞台当前模式加载好了没有：3D 模式看它自己报的 initialized（着色器预热完）或已降级成文字；2D 模式建好就算好。
@@ -725,10 +769,9 @@
                     ready: stageGone,
                     action: extra.deferred ? () => {
                         // 纸色底已经盖严：舞台不用再淡出，直接撤
-                        document.body.classList.add('mi-stage-snap');
                         wasStage = false;
+                        scheduleSnapRelease();
                         hostExit();
-                        requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('mi-stage-snap')));
                     } : null
                 }
             });
@@ -851,6 +894,8 @@
         if (!modeObserver) document.addEventListener('DOMContentLoaded', watchModeRoot, { once: true });
         global.addEventListener?.('beforeunload', () => {
             stop(true);
+            cancelSnap();
+            document.body.classList.remove('mi-stage-snap');
             if (waitTimer) { clearInterval(waitTimer); waitTimer = null; }
             document.removeEventListener('DOMContentLoaded', watchModeRoot);
             document.removeEventListener('keydown', onEscape);

@@ -571,6 +571,8 @@
                 node.className = 'archive-list-row';
                 node.removeAttribute('title');
                 delete node.dataset.tipBad;
+                node._pMask = 0;
+                node._pBad = '';
                 rowPool.push(node);
             }
         };
@@ -668,7 +670,7 @@
             r.multiNote.hidden = n < 2;
             r.multiNote.textContent = n < 2 ? '' : `已选 ${n} 首 · 右键或菜单键操作 · ESC 取消`;
             el.classList.toggle('has-multi', n > 1);
-            for (const [k, node] of state.rendered) paintRow(node, state.rows[k], k);
+            paintRendered();
         };
         const clearMulti = () => { if (!multi.size) return false; multi.clear(); paintMulti(); return true; };
         const clickRow = (k, e) => {
@@ -723,34 +725,41 @@
             liveCache = { playing: state.playing, rows: state.rows, heads };
             return heads;
         };
-        const paintRow = (node, row, k) => {
-            const on = k === state.selectedRow;
-            node.classList.toggle('on', on);
-            const current = row.type === 'track' && row.i === state.playing;
-            node.classList.toggle('current', current);
-            node.classList.toggle('playing', current && Boolean(app.isPlaying));
-            if (row.type === 'head') {
-                node.classList.toggle('stuck', k === state.stuck);
-                const live = !isLetter(row) && playingHeads().has(k);
-                node.classList.toggle('has-playing', live);
-                node.classList.toggle('live-on', live && Boolean(app.isPlaying));
-            }
-            if (row.type === 'track') {
-                const failed = app.failedTracks instanceof Map ? app.failedTracks.get(tracks()[row.i]) : null;
-                node.classList.toggle('bad', Boolean(failed));
-                if (failed) {
-                    const msg = `上次没能播放：${failed}`;
-                    if (node.title !== msg) node.title = msg;
-                    node.dataset.tipBad = '1';
-                } else if (node.dataset.tipBad === '1') {
-                    node.removeAttribute('title');
-                    delete node.dataset.tipBad;
-                }
-                const picked = multi.size > 0 && multi.has(keyOf(row));
-                node.classList.toggle('picked', picked);
-                node.setAttribute('aria-selected', String(on || picked));
-            }
+        const PF = ['on', 'current', 'playing', 'stuck', 'has-playing', 'live-on', 'bad', 'picked'];
+        const isListHidden = () => !el.isConnected || el.hidden || app.isArchiveActive === false;
+        let dirtyLike = false;
+        const syncLiked = (node, row, list) => {
+            if (!row || row.type !== 'track' || !node._r) return;
+            const liked = Boolean(app.isLiked(list[row.i]));
+            if (node._r.liked !== liked) { node._r.liked = liked; node._r.lk.hidden = !liked; }
         };
+        const paintRow = (node, row, k) => {
+            const on = k === state.selectedRow, isT = row.type === 'track', play = Boolean(app.isPlaying), cur = isT && row.i === state.playing;
+            let m = (on ? 1 : 0) | (cur ? 2 : 0) | (cur && play ? 4 : 0);
+            if (!isT) {
+                if (k === state.stuck) m |= 8;
+                if (!isLetter(row) && playingHeads().has(k)) m |= play ? 48 : 16;
+            }
+            const bad = isT && app.failedTracks instanceof Map ? app.failedTracks.get(tracks()[row.i]) : null;
+            const pick = isT && multi.size > 0 && multi.has(keyOf(row));
+            if (bad) m |= 64;
+            if (pick) m |= 128;
+            let d = (node._pMask || 0) ^ m;
+            if (d) {
+                node._pMask = m;
+                for (let b = 0; d; b++, d >>>= 1) if (d & 1) node.classList.toggle(PF[b], Boolean(m & (1 << b)));
+            }
+            if (!isT) return;
+            if (bad) {
+                const msg = `上次没能播放：${bad}`;
+                if (node._pBad !== msg) { node._pBad = msg; node.title = msg; node.dataset.tipBad = '1'; }
+            } else if (node._pBad || node.dataset.tipBad === '1') {
+                node._pBad = ''; node.removeAttribute('title'); delete node.dataset.tipBad;
+            }
+            const aria = on || pick ? 'true' : 'false';
+            if (node._pAria !== aria) { node._pAria = aria; node.setAttribute('aria-selected', aria); }
+        };
+        const paintRendered = () => { if (!isListHidden()) for (const [k, n] of state.rendered) paintRow(n, state.rows[k], k); };
 
         const render = (known) => {
             state.raf = 0;
@@ -826,9 +835,10 @@
                         frag.appendChild(node);
                     }
                     state.rendered.set(k, node);
-                }
+                } else if (dirtyLike && typeof app.isLiked === 'function') syncLiked(node, row, tracks());
                 paintRow(node, row, k);
             }
+            dirtyLike = false;
             if (staleIdx < staleRows.length) {
                 for (let j = staleIdx; j < staleRows.length; j++) recycleNode(staleRows[j]);
             }
@@ -1988,66 +1998,41 @@
             chooseSort(b.dataset.sort);
         });
         r.sortMenu.addEventListener('keydown', (e) => {
-            const items = [...r.sortMenu.querySelectorAll('[data-sort]')];
-            const at = items.indexOf(document.activeElement);
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                items[(at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
-            } else if (e.key === 'Home' || e.key === 'End') {
-                e.preventDefault();
-                items[e.key === 'Home' ? 0 : items.length - 1].focus();
-            } else if (e.key === 'Escape' || e.key === 'Tab') {
-                e.preventDefault();
-                closeSort({ focus: true });
-            } else if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                if (at >= 0) chooseSort(items[at].dataset.sort);
-            } else return;
-            e.stopPropagation();
+            const items = [...r.sortMenu.querySelectorAll('[data-sort]')], at = items.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') items[(at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+            else if (e.key === 'Home' || e.key === 'End') items[e.key === 'Home' ? 0 : items.length - 1].focus();
+            else if (e.key === 'Escape' || e.key === 'Tab') closeSort({ focus: true });
+            else if (e.key === 'Enter' || e.key === ' ') { if (at >= 0) chooseSort(items[at].dataset.sort); }
+            else return;
+            e.preventDefault(); e.stopPropagation();
         });
 
-        /*
-         * 每个分类记住自己翻到哪里：切走再切回来，回到刚才的位置。
-         * 只有离开之后选中的歌变了（在阵列里换了卡、播了别的歌），才改为跟到选中那一行。
-         */
+        // 每个分类记住滚动位置，仅在选中项变化后重定位
         const kindScroll = new Map();
         const setKind = (kind, { auto = false } = {}) => {
             if (!auto) autoKind = null;
             if (kind === state.kind) return;
-            const prevTop = readScrollTop();
-            const vpH = viewportHeight();
+            const prevTop = readScrollTop(), vpH = viewportHeight();
             kindScroll.set(state.kind, { top: prevTop, selected: state.selected, query: state.query });
             state.kind = kind;
-            // 跟着阵列自动切的不记住，下次打开还是用户自己选的分类
-            if (!auto) { try { localStorage.setItem('musicArchiveListKind', kind); } catch (e) { /* 只是记住上次 */ } }
+            if (!auto) try { localStorage.setItem('musicArchiveListKind', kind); } catch (e) {}
             rebuild({ skipRender: true });
-            // 用户自己换的分类告诉档案页，阵列和左上标题跟过去（跟着阵列自动切的不回传，免得来回切）
-            if (!auto) {
-                inSetKind = true;
-                try { opts.onKind?.(kind); } finally { inSetKind = false; }
-            }
+            if (!auto) { inSetKind = true; try { opts.onKind?.(kind); } finally { inSetKind = false; } }
             const k = state.selectedRow >= 0 && state.rows[state.selectedRow]?.i === state.selected ? state.selectedRow : findRow(state.selected, null);
             if (k >= 0) state.selectedRow = k;
             const back = kindScroll.get(kind);
             const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
             const maxS = Math.max(0, totalH - vpH);
             let targetTop = 0;
-            if (back && back.selected === state.selected && back.query === state.query) {
-                targetTop = Math.min(back.top, maxS);
-            } else if (k >= 0) {
-                targetTop = Math.min(maxS, Math.max(0, state.offsets[k] - vpH / 2 + ROW_H / 2));
-            }
+            if (back && back.selected === state.selected && back.query === state.query) targetTop = Math.min(back.top, maxS);
+            else if (k >= 0) targetTop = Math.min(maxS, Math.max(0, state.offsets[k] - vpH / 2 + ROW_H / 2));
             if (targetTop !== prevTop) r.viewport.scrollTop = targetTop;
             recordScrollTop(targetTop);
             render({ top: targetTop, height: vpH });
-            lastRenderTop = targetTop;
-            lastRenderRow = state.selectedRow;
+            lastRenderTop = targetTop; lastRenderRow = state.selectedRow;
         };
 
-        /*
-         * 「转到歌手 / 转到专辑」：换到那个分类、清掉检索词，把这首所在的组顶到最上面并选中它
-         * （和主流播放器右键「转到歌手」一样，落点是整组，不是只有这一首）
-         */
+        // 「转到歌手 / 转到专辑」：切分类并定位到目标组
         const goToGroup = (i, kind) => {
             if (!KINDS.some(([k]) => k === kind)) return false;
             if (state.query) { clearTimeout(typeTimer); r.input.value = ''; state.query = ''; syncSq(); }
@@ -2056,24 +2041,18 @@
             if (k < 0) return false;
             let h = -1;
             for (const hk of state.heads) { if (hk <= k) h = hk; else break; }
-            const vp = r.viewport;
-            const vpH = viewportHeight();
+            const vp = r.viewport, vpH = viewportHeight();
             const top = h >= 0 ? state.offsets[h] : state.offsets[k] - LABEL_H;
-            // 组太长、这首在一屏以外时，以这首为准居中
-            if (state.offsets[k] + ROW_H - top <= vpH) {
-                const targetTop = Math.max(0, top);
-                vp.scrollTop = targetTop;
-                recordScrollTop(targetTop);
-            } else {
-                const targetTop = scrollToRow(k, { center: true, top: readScrollTop(), height: vpH });
-                recordScrollTop(targetTop);
-            }
+            const targetTop = state.offsets[k] + ROW_H - top <= vpH
+                ? (vp.scrollTop = Math.max(0, top))
+                : scrollToRow(k, { center: true, top: readScrollTop(), height: vpH });
+            recordScrollTop(targetTop);
             pickRow(k);
-            r.viewport.focus({ preventScroll: true });
+            vp.focus({ preventScroll: true });
             return true;
         };
 
-        const onTrackHealth = () => { for (const [k, node] of state.rendered) paintRow(node, state.rows[k], k); };
+        const onTrackHealth = paintRendered;
         let statsTimer = null;
         const onStatsChange = () => {
             if (state.kind !== 'recent' || statsTimer) return;
@@ -2081,13 +2060,10 @@
         };
         const onLikeChange = () => {
             if (typeof app.isLiked !== 'function') return;
+            if (isListHidden()) { dirtyLike = true; return; }
+            dirtyLike = false;
             const list = tracks();
-            for (const [k, node] of state.rendered) {
-                const row = state.rows[k];
-                if (!row || row.type !== 'track' || !node._r) continue;
-                const liked = Boolean(app.isLiked(list[row.i]));
-                if (node._r.liked !== liked) { node._r.liked = liked; node._r.lk.hidden = !liked; }
-            }
+            for (const [k, node] of state.rendered) syncLiked(node, state.rows[k], list);
         };
         document.addEventListener('music-track-health', onTrackHealth);
         document.addEventListener('music-stats-change', onStatsChange);
@@ -2097,11 +2073,10 @@
         const disposeList = () => {
             if (listDisposed) return;
             listDisposed = true;
-            if (kindMarkRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(kindMarkRaf); kindMarkRaf = 0; }
+            if (kindMarkRaf) { cancelAnimationFrame?.(kindMarkRaf); kindMarkRaf = 0; }
             if (statsTimer) { clearTimeout(statsTimer); statsTimer = null; }
-            if (state.raf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(state.raf); state.raf = 0; }
-            staleRows.length = 0;
-            rowPool.length = 0;
+            if (state.raf) { cancelAnimationFrame?.(state.raf); state.raf = 0; }
+            staleRows.length = rowPool.length = 0;
             kindResizeObserver?.disconnect(); kindResizeObserver = null;
             slimResizeObserver?.disconnect(); slimResizeObserver = null;
             document.removeEventListener('music-track-health', onTrackHealth);
@@ -2111,9 +2086,9 @@
         global.addEventListener?.('beforeunload', disposeList, { once: true });
 
         const setPlaying = (i) => {
-            if (i === state.playing) { schedule(); return; }
+            if (i === state.playing) { if (!isListHidden()) schedule(); return; }
             state.playing = i;
-            for (const [k, node] of state.rendered) paintRow(node, state.rows[k], k);
+            paintRendered();
         };
 
         return {

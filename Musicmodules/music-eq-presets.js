@@ -17,9 +17,12 @@
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
     const cleanName = (s) => String(s || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 24);
+    const hasOwn = Object.prototype.hasOwnProperty;
     const bandsEqual = (a, b) => {
-        const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
-        for (const k of keys) if ((Number(a?.[k]) || 0) !== (Number(b?.[k]) || 0)) return false;
+        const ba = a || {};
+        const bb = b || {};
+        for (const k in ba) if (hasOwn.call(ba, k) && (Number(ba[k]) || 0) !== (Number(bb[k]) || 0)) return false;
+        for (const k in bb) if (hasOwn.call(bb, k) && !hasOwn.call(ba, k) && (Number(bb[k]) || 0) !== 0) return false;
         return true;
     };
 

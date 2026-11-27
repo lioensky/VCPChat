@@ -20,6 +20,7 @@
     const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
     const openers = new WeakMap();
     const focusRafs = new WeakMap();
+    const openOverlays = new Set();
 
     // 多数弹窗用 visible 开关，WebDAV 两个弹窗用的是 active：两种都算开着，不然开着的弹窗会被设成 inert，点什么都没反应
     const isOpen = (o) => o.classList.contains('visible') || o.classList.contains('active');
@@ -62,6 +63,7 @@
 
     const sync = (o) => {
         const open = isOpen(o);
+        if (open) openOverlays.add(o); else openOverlays.delete(o);
         const wantInert = !open;
         if (o.inert !== wantInert) o.inert = wantInert;
         if (open && !openers.has(o)) {
@@ -105,8 +107,11 @@
         const onDocCaptureKey = (e) => {
             if (e.defaultPrevented) return;
             const isTab = e.key === 'Tab';
-            // 绝大多数打字与快捷键既不是 Tab 也不是导航键，跳过全文档弹窗查询
-            if (!isTab && (e.ctrlKey || e.metaKey || e.altKey || !NAV_KEYS.has(e.key))) return;
+            const isNav = !e.ctrlKey && !e.metaKey && !e.altKey && NAV_KEYS.has(e.key);
+            const isSingle = !e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1;
+            // 无静态弹窗打开时，单键与普通键零查询；静态弹窗打开时同时拦住焦点落在弹窗外的单键快捷键防穿透
+            if (!isTab && !isNav && !(isSingle && openOverlays.size > 0)) return;
+            if (!isTab && openOverlays.size === 0) return;
             const o = topOverlay();
             if (!o) return;
             if (isTab) {
@@ -126,7 +131,7 @@
         // Esc 关最上面那个弹窗（按它自己的关闭／取消钮，走原来的关闭逻辑）。
         // WebDAV 两个弹窗和编辑歌单以前按 Esc 没反应；已经自己处理过 Esc 的弹窗，到这里时已经关了。
         const onDocEscape = (e) => {
-            if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+            if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || openOverlays.size === 0) return;
             const o = topOverlay();
             if (!o) return;
             const close = o.querySelector('.music-modal-close-btn, [id$="-cancel"]');

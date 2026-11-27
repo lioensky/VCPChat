@@ -20,10 +20,13 @@
         }
         return { enabled: Boolean(enabled), bands: b };
     };
+    const hasOwn = Object.prototype.hasOwnProperty;
     const sameProfile = (a, b) => {
         if (!a || !b || a.enabled !== b.enabled) return false;
-        const keys = new Set([...Object.keys(a.bands || {}), ...Object.keys(b.bands || {})]);
-        for (const k of keys) if ((a.bands[k] || 0) !== (b.bands[k] || 0)) return false;
+        const ba = a.bands || {};
+        const bb = b.bands || {};
+        for (const k in ba) if (hasOwn.call(ba, k) && (ba[k] || 0) !== (bb[k] || 0)) return false;
+        for (const k in bb) if (hasOwn.call(bb, k) && !hasOwn.call(ba, k) && (bb[k] || 0) !== 0) return false;
         return true;
     };
 
