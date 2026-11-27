@@ -101,11 +101,15 @@
         };
 
         let lastPath = null;
+        let lastHasTrack = null;
         const renderTrack = () => {
             const track = currentTrack();
             const path = track?.path || null;
             const hasTrack = Boolean(track) && app.trackTitle?.textContent !== '未选择歌曲';
-            document.body.classList.toggle('music-has-track', hasTrack);
+            if (hasTrack !== lastHasTrack) {
+                lastHasTrack = hasTrack;
+                document.body.classList.toggle('music-has-track', hasTrack);
+            }
             if (!hasTrack) {
                 setText('file-number', '', '');
                 setText('album', '曲目档案', '曲目档案');
@@ -150,7 +154,13 @@
         renderTrack();
 
         if (app.trackBitrate) {
-            const markSpec = () => app.trackBitrate.classList.toggle('is-spec', /^\d+\s*kbps$/.test(app.trackBitrate.textContent.trim()));
+            let lastIsSpec = null;
+            const markSpec = () => {
+                const isSpec = /^\d+\s*kbps$/.test(app.trackBitrate.textContent.trim());
+                if (isSpec === lastIsSpec) return;
+                lastIsSpec = isSpec;
+                app.trackBitrate.classList.toggle('is-spec', isSpec);
+            };
             const bitrateObs = new MutationObserver(markSpec);
             bitrateObs.observe(app.trackBitrate, { childList: true, characterData: true, subtree: true });
             skinObservers.push(bitrateObs);
@@ -262,6 +272,21 @@
             });
             group.appendChild(button);
         }
+        group.addEventListener('keydown', (event) => {
+            const dir = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1
+                : event.key === 'Home' ? -2 : event.key === 'End' ? 2 : 0;
+            if (!dir) return;
+            const enabled = Array.from(group.children).filter((b) => !b.disabled);
+            if (enabled.length < 2) return;
+            const cur = enabled.indexOf(document.activeElement);
+            const next = dir === -2 ? enabled[0]
+                : dir === 2 ? enabled[enabled.length - 1]
+                : enabled[(Math.max(0, cur) + dir + enabled.length) % enabled.length];
+            if (!next) return;
+            event.preventDefault();
+            next.focus({ preventScroll: true });
+            next.click();
+        });
         // 程序里直接给 value / selectedIndex 赋值（如恢复默认设置）不会发 change，拦截下来同步分段高亮。
         if (typeof HTMLSelectElement !== 'undefined' && HTMLSelectElement.prototype) {
             for (const key of ['value', 'selectedIndex']) {

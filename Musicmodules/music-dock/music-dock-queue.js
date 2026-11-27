@@ -78,33 +78,165 @@
             return rows;
         }
 
-        const queueRowHtml = (row, k, current) => {
-            const style = `top:${row.top}px;height:${row.h - 2}px`;
-            if (row.type === 'head') {
-                return `<div class="md-qhd" role="presentation" style="${style}"><span>${escapeHtml(row.label)}</span><em>${row.count}</em>`
-                    + (row.clear ? '<span class="md-g"></span><button class="md-qclr" type="button" data-qact="clear">清空</button>' : '') + '</div>';
+        // 复用队列行 DOM 节点与 SVG 图标模板，避免滚动或队列增删时经 innerHTML 拆建整批行与 SVG 节点
+        const iconTplCache = new Map();
+        const cloneIconInto = (target, name, size) => {
+            const k = `${name}:${size}`;
+            let tpl = iconTplCache.get(k);
+            if (!tpl) {
+                tpl = document.createElement('span');
+                tpl.innerHTML = icon(name, size);
+                iconTplCache.set(k, tpl);
             }
-            const dur = queueDuration(row.track);
-            const text = `<span class="md-qi-tx"><b>${escapeHtml(trackTitle(row.track))}</b><span>${escapeHtml(trackArtist(row.track))}</span></span>`
-                + (dur && row.type !== 'now' ? `<span class="md-qdur">${dur}</span>` : '');
-            if (row.type === 'now') {
-                return `<div class="md-qi md-cur md-now" role="listitem" style="${style}">${text}<span class="md-g"></span><span class="md-qtag">正在播放</span></div>`;
-            }
-            if (row.type === 'manual') {
-                return `<div class="md-qi md-man" role="listitem" data-k="${k}" data-qi="${row.i}" style="${style}">`
-                    + `<span class="md-qgrip" title="拖动排序" aria-hidden="true">${icon('grip-vertical', 14)}</span>`
-                    + `<button class="md-qplay" type="button" data-qact="play" aria-label="现在播放 ${escapeHtml(trackTitle(row.track))}">${text}</button>`
-                    + `<button class="md-qx" type="button" data-qact="remove" aria-label="从队列移除" title="从队列移除">${icon('x', 14)}</button></div>`;
-            }
-            if (row.type === 'hist') {
-                return `<div class="md-qi md-hist" role="listitem" data-k="${k}" style="${style}">`
-                    + `<button class="md-qplay" type="button" data-qact="play" aria-label="再放一次 ${escapeHtml(trackTitle(row.track))}">${text}</button>`
-                    + `<button class="md-qx md-qnext" type="button" data-qact="next" aria-label="下一首播放" title="下一首播放">${icon('list-plus', 15)}</button></div>`;
-            }
-            return `<div class="md-qi${row.track === current ? ' md-cur' : ''}" role="listitem" data-k="${k}" style="${style}">`
-                + `<button class="md-qplay" type="button" data-qact="play" aria-label="播放 ${escapeHtml(trackTitle(row.track))}">${text}</button>`
-                + `<button class="md-qx md-qnext" type="button" data-qact="next" aria-label="下一首播放" title="下一首播放">${icon('list-plus', 15)}</button></div>`;
+            target.textContent = '';
+            for (let n = tpl.firstChild; n; n = n.nextSibling) target.appendChild(n.cloneNode(true));
         };
+        const POOL_MAX = 64;
+        const pools = { head: [], now: [], manual: [], track: [] };
+        const kindOf = (row) => (row.type === 'head' ? 'head' : row.type === 'now' ? 'now' : row.type === 'manual' ? 'manual' : 'track');
+        const createSlot = (kind) => {
+            if (kind === 'head') {
+                const root = document.createElement('div');
+                root.className = 'md-qhd';
+                root.setAttribute('role', 'presentation');
+                const labelEl = document.createElement('span');
+                const countEl = document.createElement('em');
+                const spacerEl = document.createElement('span');
+                spacerEl.className = 'md-g';
+                const clearBtn = document.createElement('button');
+                clearBtn.className = 'md-qclr';
+                clearBtn.type = 'button';
+                clearBtn.dataset.qact = 'clear';
+                clearBtn.textContent = '清空';
+                root.append(labelEl, countEl);
+                return { kind, el: root, labelEl, countEl, spacerEl, clearBtn, hasClear: false, lastTop: NaN, lastH: NaN, lastLabel: null, lastCount: null, k: -1 };
+            }
+            const root = document.createElement('div');
+            root.setAttribute('role', 'listitem');
+            const tx = document.createElement('span');
+            tx.className = 'md-qi-tx';
+            const titleEl = document.createElement('b');
+            const artistEl = document.createElement('span');
+            tx.append(titleEl, artistEl);
+            if (kind === 'now') {
+                root.className = 'md-qi md-cur md-now';
+                const spacerEl = document.createElement('span');
+                spacerEl.className = 'md-g';
+                const tagEl = document.createElement('span');
+                tagEl.className = 'md-qtag';
+                tagEl.textContent = '正在播放';
+                root.append(tx, spacerEl, tagEl);
+                return { kind, el: root, titleEl, artistEl, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, k: -1 };
+            }
+            const durEl = document.createElement('span');
+            durEl.className = 'md-qdur';
+            const playBtn = document.createElement('button');
+            playBtn.className = 'md-qplay';
+            playBtn.type = 'button';
+            playBtn.dataset.qact = 'play';
+            playBtn.appendChild(tx);
+            if (kind === 'manual') {
+                root.className = 'md-qi md-man';
+                const gripEl = document.createElement('span');
+                gripEl.className = 'md-qgrip';
+                gripEl.title = '拖动排序';
+                gripEl.setAttribute('aria-hidden', 'true');
+                cloneIconInto(gripEl, 'grip-vertical', 14);
+                const actBtn = document.createElement('button');
+                actBtn.className = 'md-qx';
+                actBtn.type = 'button';
+                actBtn.dataset.qact = 'remove';
+                actBtn.setAttribute('aria-label', '从队列移除');
+                actBtn.title = '从队列移除';
+                cloneIconInto(actBtn, 'x', 14);
+                root.append(gripEl, playBtn, actBtn);
+                return { kind, el: root, playBtn, titleEl, artistEl, durEl, hasDur: false, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastQi: '', k: -1 };
+            }
+            root.className = 'md-qi';
+            const actBtn = document.createElement('button');
+            actBtn.className = 'md-qx md-qnext';
+            actBtn.type = 'button';
+            actBtn.dataset.qact = 'next';
+            actBtn.setAttribute('aria-label', '下一首播放');
+            actBtn.title = '下一首播放';
+            cloneIconInto(actBtn, 'list-plus', 15);
+            root.append(playBtn, actBtn);
+            return { kind, el: root, playBtn, titleEl, artistEl, durEl, hasDur: false, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastCls: 'md-qi', k: -1 };
+        };
+        const acquireSlot = (kind) => (pools[kind].length ? pools[kind].pop() : createSlot(kind));
+        const releaseSlot = (slot) => {
+            if (!slot) return;
+            slot.k = -1;
+            const list = pools[slot.kind];
+            if (list && list.length < POOL_MAX) list.push(slot);
+        };
+        const recycleScroller = (scroller) => {
+            const sizer = scroller?.firstElementChild;
+            const mounted = sizer?._qMounted;
+            if (!Array.isArray(mounted) || !mounted.length) return;
+            for (let i = 0; i < mounted.length; i += 1) releaseSlot(mounted[i]);
+            mounted.length = 0;
+        };
+        const hydrateSlot = (slot, row, k, current) => {
+            const h = row.h - 2;
+            if (slot.lastTop !== row.top) { slot.lastTop = row.top; slot.el.style.top = `${row.top}px`; }
+            if (slot.lastH !== h) { slot.lastH = h; slot.el.style.height = `${h}px`; }
+            slot.k = k;
+            if (slot.kind === 'head') {
+                const label = String(row.label ?? '');
+                if (slot.lastLabel !== label) { slot.lastLabel = label; slot.labelEl.textContent = label; }
+                const countStr = String(row.count ?? '');
+                if (slot.lastCount !== countStr) { slot.lastCount = countStr; slot.countEl.textContent = countStr; }
+                const wantClear = Boolean(row.clear);
+                if (wantClear && !slot.hasClear) {
+                    slot.el.append(slot.spacerEl, slot.clearBtn);
+                    slot.hasClear = true;
+                } else if (!wantClear && slot.hasClear) {
+                    slot.spacerEl.remove();
+                    slot.clearBtn.remove();
+                    slot.hasClear = false;
+                }
+                return slot.el;
+            }
+            const title = String(trackTitle(row.track) ?? '');
+            const artist = String(trackArtist(row.track) ?? '');
+            if (slot.lastTitle !== title) { slot.lastTitle = title; slot.titleEl.textContent = title; }
+            if (slot.lastArtist !== artist) { slot.lastArtist = artist; slot.artistEl.textContent = artist; }
+            if (slot.kind === 'now') return slot.el;
+
+            const kStr = String(k);
+            if (slot.lastK !== kStr) { slot.lastK = kStr; slot.el.dataset.k = kStr; }
+            const dur = queueDuration(row.track);
+            if (dur) {
+                if (slot.lastDur !== dur) { slot.lastDur = dur; slot.durEl.textContent = dur; }
+                if (!slot.hasDur) { slot.playBtn.appendChild(slot.durEl); slot.hasDur = true; }
+            } else if (slot.hasDur) {
+                slot.durEl.remove();
+                slot.hasDur = false;
+            }
+            if (slot.kind === 'manual') {
+                const qiStr = String(row.i);
+                if (slot.lastQi !== qiStr) { slot.lastQi = qiStr; slot.el.dataset.qi = qiStr; }
+                if (slot.el.style.transform) slot.el.style.transform = '';
+                slot.el._qShift = 0;
+                const aria = `现在播放 ${title}`;
+                if (slot.lastAria !== aria) { slot.lastAria = aria; slot.playBtn.setAttribute('aria-label', aria); }
+                return slot.el;
+            }
+            const isHist = row.type === 'hist';
+            const cls = isHist ? 'md-qi md-hist' : (row.track === current ? 'md-qi md-cur' : 'md-qi');
+            if (slot.lastCls !== cls) { slot.lastCls = cls; slot.el.className = cls; }
+            const aria = `${isHist ? '再放一次' : '播放'} ${title}`;
+            if (slot.lastAria !== aria) { slot.lastAria = aria; slot.playBtn.setAttribute('aria-label', aria); }
+            return slot.el;
+        };
+        cleanups.push(() => {
+            iconTplCache.clear();
+            pools.head.length = 0;
+            pools.now.length = 0;
+            pools.manual.length = 0;
+            pools.track.length = 0;
+        });
 
         // 队列每行右边的时长：曲目自带的优先；没带的用档案页记下的（播放过一次就有，存在本机同一个键里）
         let qDurs = null, qDursRaw = null, qDursAt = 0;
@@ -132,8 +264,10 @@
         let cachedQueueH = 0;
         function renderQueueWindow(scroller, force = false, known = null) {
             if (state.queueDrag?.active) return; // 拖动时别重建行
-            const rows = state.queueRows || [];
             const hasKnown = Boolean(known && typeof known.top === 'number');
+            // 抽屉已关闭时跳过延迟到达的 scroll 事件，避免触发隐藏容器的强制排版
+            if (!state.panelOpen && !hasKnown) return;
+            const rows = state.queueRows || [];
             const scrollTop = hasKnown ? known.top : scroller.scrollTop;
             let vh = hasKnown ? (known.height || cachedQueueH) : scroller.clientHeight;
             if (vh > 0) {
@@ -158,15 +292,17 @@
             const key = `${first}:${last}:${app.currentTrackIndex}:${rows.length}`;
             if (!force && scroller.dataset.window === key) return;
             scroller.dataset.window = key;
+            const sizer = scroller.firstElementChild;
+            if (!sizer) return;
             const current = currentTrack();
-            // 手动队列的行总是全画出来，拖动排序时才有地方让位；两段区间本身有序，直接按升序拼接避免 Set + 排序开销。
-            const parts = [];
+            // 手动队列的行总是全画出来，拖动排序时才有地方让位；两段区间本身有序，直接按升序收集索引。
+            const indices = [];
             const keepManual = rows.length < 400 && rows.manualEnd > rows.manualStart;
             if (!keepManual || (rows.manualStart >= first && rows.manualEnd <= last)) {
-                for (let k = first; k < last; k++) parts.push(queueRowHtml(rows[k], k, current));
+                for (let k = first; k < last; k++) indices.push(k);
             } else {
                 const mStart = rows.manualStart, mEnd = rows.manualEnd;
-                const pushRange = (a, b) => { for (let k = a; k < b; k++) parts.push(queueRowHtml(rows[k], k, current)); };
+                const pushRange = (a, b) => { for (let k = a; k < b; k++) indices.push(k); };
                 if (mEnd <= first) {
                     pushRange(mStart, mEnd);
                     pushRange(first, last);
@@ -177,7 +313,52 @@
                     pushRange(Math.min(first, mStart), Math.max(last, mEnd));
                 }
             }
-            scroller.firstElementChild.innerHTML = parts.join('');
+            const prevMounted = Array.isArray(sizer._qMounted) ? sizer._qMounted : [];
+            const byK = new Map();
+            for (let i = 0; i < prevMounted.length; i += 1) {
+                const slot = prevMounted[i];
+                if (slot.k >= 0 && !byK.has(slot.k)) byK.set(slot.k, slot);
+                else releaseSlot(slot);
+            }
+            const nextSlots = new Array(indices.length);
+            for (let i = 0; i < indices.length; i += 1) {
+                const k = indices[i];
+                const wantKind = kindOf(rows[k]);
+                const hit = byK.get(k);
+                if (hit && hit.kind === wantKind) {
+                    byK.delete(k);
+                    nextSlots[i] = hit;
+                }
+            }
+            for (const leftover of byK.values()) {
+                leftover.el.remove();
+                releaseSlot(leftover);
+            }
+            for (let i = 0; i < indices.length; i += 1) {
+                const k = indices[i];
+                const row = rows[k];
+                let slot = nextSlots[i];
+                if (!slot) {
+                    slot = acquireSlot(kindOf(row));
+                    nextSlots[i] = slot;
+                }
+                hydrateSlot(slot, row, k, current);
+            }
+            let cursor = sizer.firstElementChild;
+            for (let i = 0; i < nextSlots.length; i += 1) {
+                const node = nextSlots[i].el;
+                if (cursor === node) {
+                    cursor = cursor.nextElementSibling;
+                } else {
+                    sizer.insertBefore(node, cursor);
+                }
+            }
+            while (cursor) {
+                const next = cursor.nextElementSibling;
+                cursor.remove();
+                cursor = next;
+            }
+            sizer._qMounted = nextSlots;
         }
 
         // 预先画好播放列表页：点开「更多」以后，在空闲时把队列页先画进（还藏着的）抽屉里，
@@ -220,7 +401,36 @@
 
         function rerenderQueue() {
             if (!state.panelOpen || state.tab !== '播放列表' || state.queueDrag?.active) return;
-            renderBody();
+            const scroller = el.body.querySelector('.md-ql');
+            const head = el.body.querySelector('.md-qh');
+            if (!scroller || !head) { renderBody(); return; }
+            const rows = buildQueueRows();
+            const hasSaveBtn = Boolean(head.querySelector('[data-act="q-save"]'));
+            const source = String((typeof app.playbackSourceName === 'function' && app.playbackSourceName()) || app.queueSourceName || (rows.upcoming ? '全部曲目' : '')).trim();
+            const srcEl = head.querySelector('.md-qsrc');
+            if (!rows.length || hasSaveBtn !== (rows.length > 1) || Boolean(srcEl) !== Boolean(source)) {
+                renderBody();
+                return;
+            }
+            prebuilt = null;
+            const countEl = head.querySelector(':scope > span');
+            const upStr = String(rows.upcoming);
+            if (countEl && countEl.textContent !== upStr) countEl.textContent = upStr;
+            if (srcEl) {
+                const srcText = `来自 ${source}`;
+                if (srcEl.textContent !== srcText) {
+                    srcEl.textContent = srcText;
+                    srcEl.title = `这个队列来自：${source}`;
+                }
+            }
+            const shuffleBtn = head.querySelector('[data-act="shuffle"]');
+            if (shuffleBtn) shuffleBtn.classList.toggle('md-lit', playMode() === 'shuffle');
+            state.queueSource = activeList();
+            state.queueLength = state.queueSource.length;
+            const sizer = scroller.firstElementChild;
+            const nextH = `${rows.total}px`;
+            if (sizer && sizer.style.height !== nextH) sizer.style.height = nextH;
+            renderQueueWindow(scroller, true);
         }
 
         // 拖动排序：按住超过 4px 才算拖；其他行 140ms 让位；靠近上下边 32px 自动滚动。
@@ -364,7 +574,7 @@
         }
 
         return {
-            saveQueueAsPlaylist, buildQueueRows, renderQueueWindow, schedulePrebuild, prebuiltFresh,
+            saveQueueAsPlaylist, buildQueueRows, renderQueueWindow, recycleScroller, schedulePrebuild, prebuiltFresh,
             dropPrebuilt: () => { prebuilt = null; },
             rerenderQueue, onQueuePointerDown, onQueueAction
         };

@@ -28,7 +28,7 @@
                 elements.edgeCanvas.after(canvas);
                 scope?.add?.(() => canvas.remove());
             }
-            edgeStrips[side] = { canvas, context, x: 0, y: 0, width: 0, height: 0, lookup: null };
+            edgeStrips[side] = { canvas, context, x: 0, y: 0, width: 0, height: 0, lookup: null, flatKey: '' };
         });
         const edgeContext = EDGE_SIDES.every((side) => edgeStrips[side]?.context) ? edgeStrips.top.context : null;
         // The orbiting light of the edge ring: its gradient is drawn once and
@@ -61,6 +61,11 @@
             lastQuality: '',
             lastTrack: null,
             lastFlatKey: '',
+            lastColorKey: '',
+            glowStroke: '',
+            glowShadow: '',
+            mainStroke: '',
+            mainShadow: '',
             blank: false,
             top: new Float32Array(0),
             right: new Float32Array(0),
@@ -132,6 +137,7 @@
                     strip.context.lineCap = 'round';
                     strip.context.lineJoin = 'round';
                     strip.lookup = null;
+                    strip.flatKey = '';
                 });
                 edgeCanvasState.width = width;
                 edgeCanvasState.height = height;
@@ -153,6 +159,7 @@
             edgeCanvasState.lastFlatKey = '';
             for (let i = 0; i < EDGE_SIDES.length; i += 1) {
                 const strip = edgeStrips[EDGE_SIDES[i]];
+                strip.flatKey = '';
                 strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
             }
         };
@@ -296,11 +303,13 @@
             edgeCanvasState.lastQuality = '';
             edgeCanvasState.lastTrack = null;
             edgeCanvasState.lastFlatKey = '';
+            edgeCanvasState.lastColorKey = '';
             edgeCanvasState.blank = true;
             for (let i = 0; i < EDGE_SIDES.length; i += 1) {
                 const strip = edgeStrips[EDGE_SIDES[i]];
                 if (!strip) continue;
                 strip.lookup = null;
+                strip.flatKey = '';
                 if (strip.canvas.width !== 1) strip.canvas.width = 1;
                 if (strip.canvas.height !== 1) strip.canvas.height = 1;
             }
@@ -342,7 +351,7 @@
                 edgeCanvasState.pausedAt = 0;
                 const aim = 1000 / (EDGE_FPS[quality] || 30);
                 if (now < edgeCanvasState.drawnAt) edgeCanvasState.drawnAt = 0;
-                if (!needsResize && !trackChanged && edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
+                if (!needsResize && !trackChanged && !edgeCanvasState.blank && edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
             } else {
                 if (now < edgeCanvasState.pausedAt) edgeCanvasState.pausedAt = now;
                 const palRef = app?.stagePalette?.accentRgb || null;
@@ -402,24 +411,36 @@
             const alphaKey = alpha.toFixed(3);
             const lightGlow = quality === 'energy-saving';
             const hasMotion = mTop || mRight || mBottom || mLeft;
-            const flatKey = hasMotion ? '' : `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
+            const flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
+            const flatKey = hasMotion ? '' : flatBase;
             edgeCanvasState.drawnAt = now;
             if (!hasMotion && !edgeCanvasState.blank && flatKey === edgeCanvasState.lastFlatKey) {
                 return;
             }
+            const wasBlank = edgeCanvasState.blank;
             edgeCanvasState.blank = false;
-            clearEdgeStrips();
             edgeCanvasState.lastFlatKey = flatKey;
 
-            const glowAlpha = alpha * 0.5;
-            const glowStroke = `rgba(${rgb}, ${glowAlpha.toFixed(3)})`;
-            const glowShadow = `rgba(${rgb}, ${Math.min(0.9, glowAlpha * 1.45).toFixed(3)})`;
-            const mainStroke = `rgba(${rgb}, ${alphaKey})`;
-            const mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45).toFixed(3)})`;
-            strokeEdgePair(edgeStrips.top.context, top, mTop, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
-            strokeEdgePair(edgeStrips.right.context, right, mRight, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
-            strokeEdgePair(edgeStrips.bottom.context, bottom, mBottom, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
-            strokeEdgePair(edgeStrips.left.context, left, mLeft, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            const colorKey = `${rgb}|${alphaKey}`;
+            if (colorKey !== edgeCanvasState.lastColorKey) {
+                edgeCanvasState.lastColorKey = colorKey;
+                const glowAlpha = alpha * 0.5;
+                edgeCanvasState.glowStroke = `rgba(${rgb}, ${glowAlpha.toFixed(3)})`;
+                edgeCanvasState.glowShadow = `rgba(${rgb}, ${Math.min(0.9, glowAlpha * 1.45).toFixed(3)})`;
+                edgeCanvasState.mainStroke = `rgba(${rgb}, ${alphaKey})`;
+                edgeCanvasState.mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45).toFixed(3)})`;
+            }
+            const { glowStroke, glowShadow, mainStroke, mainShadow } = edgeCanvasState;
+            const drawSide = (strip, pts, moving) => {
+                if (!moving && !wasBlank && strip.flatKey === flatBase) return;
+                strip.flatKey = moving ? '' : flatBase;
+                strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
+                strokeEdgePair(strip.context, pts, moving, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            };
+            drawSide(edgeStrips.top, top, mTop);
+            drawSide(edgeStrips.right, right, mRight);
+            drawSide(edgeStrips.bottom, bottom, mBottom);
+            drawSide(edgeStrips.left, left, mLeft);
         };
 
         return {
@@ -429,6 +450,10 @@
                 edgeCanvasState.width = 0;
                 edgeCanvasState.height = 0;
                 edgeCanvasState.lastFlatKey = '';
+                for (let i = 0; i < EDGE_SIDES.length; i += 1) {
+                    const strip = edgeStrips[EDGE_SIDES[i]];
+                    if (strip) strip.flatKey = '';
+                }
             },
             release
         };

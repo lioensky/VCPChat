@@ -1536,7 +1536,8 @@
             const list = indices.map((i) => tracks()[i]).filter(Boolean);
             const before = typeof app.queueSnapshot === 'function' ? app.queueSnapshot() : (app.manualQueue || []).slice();
             // 「下一首播放」是插到队首：倒着插，听的时候才是选中的顺序
-            const queued = (next ? list.slice().reverse() : list).map((t) => fn(t)).filter(Boolean);
+            const run = () => (next ? list.slice().reverse() : list).map((t) => fn(t)).filter(Boolean);
+            const queued = list.length > 1 && typeof app.queueBatch === 'function' ? app.queueBatch(run) : run();
             if (!queued.length) return;
             toast(`${next ? '下一首播放' : '已加入队列'}：${queued.length} 首`, { label: '撤销', run: () => {
                 // 本来就在队列里的那几首放回原位，不跟着一起拿掉

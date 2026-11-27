@@ -722,7 +722,25 @@ function setupPlayer(app) {
             .catch((error) => console.warn('[Music.js] Refreshing preload failed:', error?.message || error));
     };
     app.refreshPreload = refreshPreload;
-    const queueChanged = () => { announceQueue(); refreshPreload(); };
+    let queueBatchDepth = 0;
+    let queueBatchDirty = false;
+    const queueChanged = () => {
+        if (queueBatchDepth > 0) { queueBatchDirty = true; return; }
+        announceQueue();
+        refreshPreload();
+    };
+    app.queueBatch = (fn) => {
+        queueBatchDepth += 1;
+        try {
+            return fn();
+        } finally {
+            queueBatchDepth -= 1;
+            if (queueBatchDepth === 0 && queueBatchDirty) {
+                queueBatchDirty = false;
+                queueChanged();
+            }
+        }
+    };
     const resolveTrack = (ref) => {
         if (ref == null) return null;
         if (typeof ref === 'number') return app.playlist[ref] || null;

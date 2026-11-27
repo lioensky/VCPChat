@@ -1203,8 +1203,9 @@
         function renderBody(deferQueueScroll = false) {
             pendingQueueScroll = null;
             queuePage.dropPrebuilt();
-            const oldScroller = state.tab === '播放列表' ? el.body.querySelector('.md-ql') : null;
-            const keepScroll = oldScroller ? oldScroller.scrollTop : null;
+            const existingScroller = el.body.querySelector('.md-ql');
+            const keepScroll = state.tab === '播放列表' && existingScroller ? existingScroller.scrollTop : null;
+            if (existingScroller) queuePage.recycleScroller?.(existingScroller);
             const tab = state.tab;
             let html = '';
             if (tab === '控制') {
@@ -1288,7 +1289,7 @@
                         if (deferQueueScroll) pendingQueueScroll = { scroller, top: initTop };
                         else scroller.scrollTop = initTop;
                     }
-                    scroller.addEventListener('scroll', () => renderQueueWindow(scroller), { passive: true });
+                    scroller.addEventListener('scroll', () => { if (state.panelOpen) renderQueueWindow(scroller); }, { passive: true });
                     scroller.addEventListener('pointerdown', onQueuePointerDown);
                 }
             }
@@ -1530,11 +1531,21 @@
         const followWidth = () => {
             // 宽度有 CSS 过渡；流体层跟随实际宽度变化更新，连续稳定后提前结束循环
             if (!fluid) return;
-            const end = performance.now() + 560;
             cancelAnimationFrame(widthTimer);
+            const noAnim = document.hidden || Boolean(global.MusicMotion ? global.MusicMotion.reduced() : reducedMotion.matches)
+                || document.body.classList.contains('music-reduce-motion');
+            if (noAnim) {
+                widthTimer = requestAnimationFrame(() => {
+                    widthTimer = 0;
+                    if (!state.destroyed) fluid.layout();
+                });
+                return;
+            }
+            const end = performance.now() + 560;
             let prevW = -1;
             let steady = 0;
             const step = () => {
+                if (state.destroyed || document.hidden) { widthTimer = 0; return; }
                 const w = el.cap.offsetWidth;
                 if (Math.abs(w - prevW) >= 0.5) {
                     prevW = w;
@@ -1547,7 +1558,7 @@
                     widthTimer = requestAnimationFrame(step);
                 } else {
                     widthTimer = 0;
-                    if (!state.destroyed) fluid.layout();
+                    if (!state.destroyed && steady < 4) fluid.layout();
                 }
             };
             widthTimer = requestAnimationFrame(step);

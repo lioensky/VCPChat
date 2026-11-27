@@ -260,12 +260,28 @@
 
         // ---- 同一首的另一份文件（这份放不了时顶上）：同录音里挑 versionRank 最高、这次没放失败过的 ----
         app.alternateCopy = (track) => {
-            const key = recordingKey(track);
-            if (!key) return null;
+            const wantArtist = norm(track && track.artist);
+            const rawWantTitle = String((track && track.title) || '');
+            const wantTitle = norm(rawWantTitle.lastIndexOf('.') >= 0 ? rawWantTitle.replace(AUDIO_EXT, '') : rawWantTitle);
+            if (!wantArtist || !wantTitle) return null;
+            const artistMatch = new Map();
             let best = null;
-            for (const t of app.playlist || []) {
-                if (!t || t === track || !t.path || t.path === track.path || !playable(t) || recordingKey(t) !== key) continue;
-                if (!best || versionRank(t) > versionRank(best)) best = t;
+            let bestRank = -1;
+            const lib = app.playlist || [];
+            for (let i = 0; i < lib.length; i += 1) {
+                const t = lib[i];
+                if (!t || t === track || !t.path || t.path === track.path || !t.artist || !t.title) continue;
+                let okArtist = artistMatch.get(t.artist);
+                if (okArtist === undefined) {
+                    okArtist = norm(t.artist) === wantArtist;
+                    artistMatch.set(t.artist, okArtist);
+                }
+                if (!okArtist || !playable(t)) continue;
+                const rawTitle = String(t.title);
+                const stripped = rawTitle.lastIndexOf('.') >= 0 ? rawTitle.replace(AUDIO_EXT, '') : rawTitle;
+                if (norm(stripped) !== wantTitle) continue;
+                const r = versionRank(t);
+                if (!best || r > bestRank) { best = t; bestRank = r; }
             }
             return best;
         };

@@ -228,9 +228,12 @@
         const queueTracks = (tracks, front, label) => {
             const list = tracks.filter(Boolean);
             if (!list.length || typeof app.queueAdd !== 'function') return;
-            // 「下一首播放」一组歌：倒着插到最前，放出来还是原来的顺序。
-            if (front) list.slice().reverse().forEach((t) => app.queuePlayNext?.(t));
-            else list.forEach((t) => app.queueAdd(t));
+            // 「下一首播放」一组歌：倒着插到最前，放出来还是原来的顺序；批量入队合并成一次通知避免 N 倍重绘。
+            const run = () => {
+                if (front) list.slice().reverse().forEach((t) => app.queuePlayNext?.(t));
+                else list.forEach((t) => app.queueAdd(t));
+            };
+            if (list.length > 1 && typeof app.queueBatch === 'function') app.queueBatch(run); else run();
             notify(`${front ? '下一首播放' : '已加入队列'}：${label}`);
         };
 
