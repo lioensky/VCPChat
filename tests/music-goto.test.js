@@ -154,3 +154,48 @@ test('music-lyrics-ai deduplicates concurrent translation requests for the same 
     assert.equal(app.currentLyrics[0].translation, '你好晨光');
     assert.equal(app.currentLyrics[1].translation, '漫步雨中');
 });
+
+test('long lyrics (>240 lines) pad translations to full length and apply first 240 translated lines instead of discarding', async () => {
+    const { createLyricsTranslator } = require(path.join(__dirname, '../modules/musicLyricsTranslate.js'));
+    const { setupMusicLyricsAi } = require(path.join(__dirname, '../Musicmodules/music-lyrics-ai.js'));
+    const totalLines = 250;
+    const lyrics = Array.from({ length: totalLines }, (_, i) => ({
+        time: i + 1,
+        original: `English lyric line number ${i + 1}`
+    }));
+    const translator = createLyricsTranslator({
+        getSettings: async () => ({ vcpServerUrl: 'http://127.0.0.1:6005', vcpApiKey: 'k', musicLyricsTranslateModel: 'test-model' }),
+        getCacheDir: () => null,
+        fetchImpl: async () => ({
+            ok: true,
+            json: async () => ({
+                choices: [{
+                    message: {
+                        content: JSON.stringify(Array.from({ length: 240 }, (_, i) => `第${i + 1}句译文`))
+                    }
+                }]
+            })
+        })
+    });
+    const translated = await translator.translate({ lines: lyrics.map((l) => l.original) });
+    assert.equal(translated.status, 'success');
+    assert.equal(translated.translations.length, totalLines, 'translator pads truncated MAX_LINES output to input length');
+    assert.equal(translated.translations[0], '第1句译文');
+    assert.equal(translated.translations[239], '第240句译文');
+    assert.equal(translated.translations[240], '');
+
+    const app = {
+        playlist: [{ path: '/long.flac', title: 'Long.flac', artist: 'A' }],
+        currentTrackIndex: 0,
+        currentLyrics: lyrics,
+        lyricsRequestToken: 9,
+        fetchAndDisplayLyrics: async () => {},
+        renderLyrics() {},
+        api: { translateMusicLyrics: async () => translated }
+    };
+    setupMusicLyricsAi(app, { storage: { getItem: () => null, setItem() {} } });
+    await app.lyricsAi.translateNow();
+    assert.equal(app.currentLyrics[0].translation, '第1句译文');
+    assert.equal(app.currentLyrics[239].translation, '第240句译文');
+    assert.equal(app.currentLyrics[240].translation, undefined);
+});

@@ -242,3 +242,32 @@ test('完整开场在非打字区间跳过 getComputedTextLength，且不重复�
     await t.advance(50);
     t.close();
 });
+
+test('输入法组合态按 Esc 不误退舞台，beforeunload 立即清理活跃过场', async () => {
+    const t = setup({ startInStage: true });
+    const composingEsc = new t.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    Object.defineProperty(composingEsc, 'isComposing', { value: true });
+    t.doc.body.dispatchEvent(composingEsc);
+    assert.equal(t.doc.querySelector('.music-intro[data-intro="exit"]'), null, 'IME composing Escape must not trigger exit');
+    assert.equal(t.host.active, true);
+
+    t.host.exit();
+    assert.ok(t.doc.querySelector('.music-intro.is-transit'));
+    t.window.dispatchEvent(new t.window.Event('beforeunload'));
+    assert.equal(t.doc.querySelectorAll('.music-intro').length, 0, 'beforeunload removes transit overlay immediately');
+    await t.advance(50);
+    assert.deepEqual(t.leftovers(), CLEAN, 'beforeunload cleans active transit overlay and body classes');
+    t.close();
+});
+
+test('降低动态且无 Element.animate 时，过场降级为定时器正常收尾', async () => {
+    const t = setup({ reduced: true });
+    t.window.Element.prototype.animate = undefined;
+    t.host.enter();
+    await t.advance(100);
+    await new Promise((r) => setTimeout(r, 420));
+    await t.advance(100);
+    assert.equal(t.host.active, true);
+    assert.deepEqual(t.leftovers(), CLEAN);
+    t.close();
+});

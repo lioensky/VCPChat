@@ -95,3 +95,35 @@ test('destroy removes document desktop-lyrics listener and cancels pending init 
     assert.equal(active.size, 0, 'listener removed on destroy');
     assert.ok(cleared.length >= 1, 'pending init timer cleared on destroy');
 });
+
+test('dragging to select lyric text does not trigger click-to-seek', () => {
+    const { window, ly, at, calls } = setup({ playing: true });
+    at(1.5);
+    const p = ly.el.querySelectorAll('p[data-k]')[1];
+    window.getSelection = () => ({ isCollapsed: false, anchorNode: p.firstChild });
+    p.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    assert.deepEqual(calls, [], 'non-collapsed selection inside lyric line blocks seek');
+    window.getSelection = () => ({ isCollapsed: true, anchorNode: p.firstChild });
+    p.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    assert.deepEqual(calls, ['seek:4'], 'collapsed click still seeks');
+    ly.destroy();
+});
+
+test('archive lyrics refresh immediately on translation/offset events and remove listeners on destroy', () => {
+    const { window, app, ly, at } = setup({ playing: true });
+    at(1.5);
+    assert.equal(ly.el.querySelectorAll('p em').length, 0);
+    // In-place mutation of app.currentLyrics (as done by music-lyrics-ai) + custom event
+    app.currentLyrics[0].translation = '你好世界';
+    window.document.dispatchEvent(new window.CustomEvent('music-lyrics-translated'));
+    assert.equal(ly.el.querySelector('p[data-k="0"] em')?.textContent, '你好世界', 'translation appears immediately without track change');
+    // In-place offset shift (as done by app.setLyricOffset) + music-lyrics-offset event
+    app.currentLyrics[1].time = 1.2;
+    window.document.dispatchEvent(new window.CustomEvent('music-lyrics-offset'));
+    assert.equal(ly.el.querySelector('p.on')?.dataset.k, '1', 'offset mutation immediately re-anchors active line');
+    ly.destroy();
+    // After destroy, dispatching mutation events must not throw or recreate content
+    app.currentLyrics[0].translation = '不会重建';
+    window.document.dispatchEvent(new window.CustomEvent('music-lyrics-translated'));
+    assert.equal(ly.el.isConnected, false);
+});

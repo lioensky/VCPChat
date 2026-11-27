@@ -282,3 +282,41 @@ test('watchTrails skips DOM queries on pointerdown when no menu trail is active,
     assert.equal(frames.length, 0, 'detached slide target stops requesting frames');
     dom.window.close();
 });
+
+test('createMusicFluidMarker skips redundant measureContainer on repeated moveTo and settles immediately when document is hidden', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="box"><span id="a">A</span><span id="b">B</span></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    let rafCalls = 0;
+    window.requestAnimationFrame = () => ++rafCalls;
+    window.cancelAnimationFrame = () => {};
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-marker.js'), 'utf8'));
+
+    const box = doc.getElementById('box');
+    const spanA = doc.getElementById('a');
+    const spanB = doc.getElementById('b');
+    let measureReads = 0;
+    Object.defineProperty(box, 'clientHeight', { configurable: true, get() { measureReads += 1; return 40; } });
+    Object.defineProperty(box, 'scrollWidth', { configurable: true, get() { return 200; } });
+    box.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 40, right: 200, bottom: 40 });
+    spanA.getBoundingClientRect = () => ({ left: 10, top: 4, width: 80, height: 24, right: 90, bottom: 28 });
+    spanB.getBoundingClientRect = () => ({ left: 110, top: 4, width: 80, height: 24, right: 190, bottom: 28 });
+
+    const marker = window.createMusicFluidMarker(box);
+    marker.moveTo(spanA);
+    assert.equal(measureReads, 1);
+    assert.equal(rafCalls, 0, 'initial placement is instant');
+
+    // Repeated moveTo on the same settled target skips measureContainer and rAF
+    marker.moveTo(spanA);
+    marker.moveTo(spanA);
+    assert.equal(measureReads, 1, 'identical settled target does not re-measure container');
+    assert.equal(rafCalls, 0);
+
+    // When document is hidden, moving to a new target settles immediately without rAF
+    Object.defineProperty(doc, 'hidden', { configurable: true, value: true });
+    marker.moveTo(spanB);
+    assert.equal(rafCalls, 0, 'hidden document settles marker immediately with 0 rAF');
+    marker.destroy();
+    dom.window.close();
+});

@@ -211,3 +211,45 @@ test('rescan deduplicates concurrent cover access checks for tracks sharing an a
         fs.promises.access = origAccess;
     }
 });
+
+test('musicLibraryWatch ignores late fs.watch callbacks fired after stop()', async () => {
+    const { createLibraryWatch } = require('../modules/musicLibraryWatch');
+    let watchCb = null;
+    let closed = false;
+    const scheduled = [];
+    const watcher = createLibraryWatch({
+        scan: async () => ({ tracks: [], stats: {} }),
+        readKnown: async () => [],
+        readFolders: async () => ['/fake-music'],
+        writeFolders: async () => {},
+        send: () => {},
+        exists: async () => true,
+        watch: (_dir, cb) => {
+            watchCb = cb;
+            return {
+                on() {},
+                close() { closed = true; }
+            };
+        },
+        setTimer: (fn, ms) => {
+            const id = scheduled.length + 1;
+            scheduled.push({ id, fn, ms, cleared: false });
+            return id;
+        },
+        clearTimer: (id) => {
+            const entry = scheduled.find((t) => t.id === id);
+            if (entry) entry.cleared = true;
+        },
+        log: { log() {}, warn() {} }
+    });
+    watcher.start();
+    assert.equal(scheduled.length, 1, 'initial start timer scheduled');
+    await scheduled[0].fn();
+    assert.equal(typeof watchCb, 'function', 'watcher attached to folder');
+    const beforeStop = scheduled.length;
+    watcher.stop();
+    assert.equal(closed, true);
+    // Simulate a late OS watcher event arriving after stop()
+    watchCb('rename', 'new-track.flac');
+    assert.equal(scheduled.length, beforeStop, 'late fs.watch callback after stop() must not schedule a debounce timer');
+});
