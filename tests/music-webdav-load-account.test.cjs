@@ -39,3 +39,29 @@ test('loading a remote track uses the account of the server its address sits und
     await load({}, { path: 'https://nas/dav/d.flac', isRemote: true, serverId: second.id });
     assert.deepEqual(calls.map((c) => c.username), ['u2', 'u1', 'u2', 'u2']);
 });
+
+test('configureAndLoad prefers the longest matching WebDAV server prefix', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-webdav-prefix-'));
+    process.env.VCP_DATA_PATH = dir;
+    delete require.cache[require.resolve('../modules/webdavManager.js')];
+    const webdav = require('../modules/webdavManager.js');
+    await new Promise((r) => setTimeout(r, 20));
+    webdav.addServer({ url: 'https://nas/dav', username: 'u1', password: 'p1' });
+    webdav.addServer({ url: 'https://nas/dav/flac', username: 'u2', password: 'p2' });
+    const requests = [];
+    const origFetch = global.fetch;
+    global.fetch = async (url, opts) => {
+        requests.push({ url: String(url), body: opts?.body ? JSON.parse(opts.body) : null });
+        return { ok: true, json: async () => ({ status: 'success' }) };
+    };
+    try {
+        const res = await webdav.configureAndLoad({ url: 'https://nas/dav/flac/sub/01.flac', username: 'u2', password: 'p2' });
+        assert.equal(res.status, 'success');
+        const cfg = requests.find((r) => r.url.endsWith('/webdav/configure'));
+        assert.ok(cfg, 'sent /webdav/configure request');
+        assert.equal(cfg.body.base_url, 'https://nas/dav/flac');
+        assert.equal(cfg.body.username, 'u2');
+    } finally {
+        global.fetch = origFetch;
+    }
+});

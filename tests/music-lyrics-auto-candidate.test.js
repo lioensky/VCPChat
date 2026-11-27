@@ -191,3 +191,37 @@ test('a lyric search that failed (offline) is not remembered as "no lyrics"', as
     assert.equal(searches, 2, 'searched again once the network is back');
     assert.equal(app.currentLyrics[0]?.original, '回来了');
 });
+
+test('manual lyrics translation with force=true bypasses failure cooldown while auto translation still respects it', async () => {
+    const { createLyricsTranslator } = require('../modules/musicLyricsTranslate');
+    let attempts = 0;
+    let clock = 1000;
+    const translator = createLyricsTranslator({
+        getSettings: async () => ({ vcpServerUrl: 'http://127.0.0.1:6005/v1/chatvcp/completions', topicSummaryModel: 'test-model' }),
+        getCacheDir: () => null,
+        now: () => clock,
+        fetchImpl: async () => {
+            attempts += 1;
+            if (attempts === 1) return { ok: false, status: 503 };
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({ choices: [{ message: { content: '["你好世界"]' } }] })
+            };
+        }
+    });
+    const first = await translator.translate({ lines: ['Hello world'], title: 'T', artist: 'A' });
+    assert.equal(first.status, 'error');
+    assert.equal(attempts, 1);
+
+    clock += 1000;
+    const autoRetry = await translator.translate({ lines: ['Hello world'], title: 'T', artist: 'A', force: false });
+    assert.equal(autoRetry.status, 'error');
+    assert.match(autoRetry.message, /稍后再试/);
+    assert.equal(attempts, 1, 'auto translate respects cooldown');
+
+    const manualRetry = await translator.translate({ lines: ['Hello world'], title: 'T', artist: 'A', force: true });
+    assert.equal(manualRetry.status, 'success');
+    assert.deepEqual(manualRetry.translations, ['你好世界']);
+    assert.equal(attempts, 2, 'manual force=true bypasses cooldown');
+});

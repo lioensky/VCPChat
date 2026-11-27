@@ -60,3 +60,38 @@ test('wheel pauses following, then it comes back', () => {
     timers.at(-1)();
     assert.ok(!ly.el.classList.contains('browsing'));
 });
+
+test('destroy removes document desktop-lyrics listener and cancels pending init timer', () => {
+    const dom = new JSDOM('<div id="h"></div>', { pretendToBeVisual: true });
+    const { window } = dom;
+    const active = new Set();
+    const origAdd = window.document.addEventListener.bind(window.document);
+    const origRemove = window.document.removeEventListener.bind(window.document);
+    window.document.addEventListener = (type, fn, opts) => {
+        if (type === 'music-desktop-lyrics-change') active.add(fn);
+        return origAdd(type, fn, opts);
+    };
+    window.document.removeEventListener = (type, fn, opts) => {
+        if (type === 'music-desktop-lyrics-change') active.delete(fn);
+        return origRemove(type, fn, opts);
+    };
+    const cleared = [];
+    let tid = 0;
+    const context = vm.createContext({
+        ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+        window, document: window.document, console,
+        setInterval: () => 1, clearInterval() {},
+        setTimeout: () => ++tid, clearTimeout: (id) => { if (id) cleared.push(id); },
+        requestAnimationFrame: () => 0, cancelAnimationFrame() {}, Date
+    });
+    context.globalThis = context;
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-archive/archive-lyrics.js'), 'utf8'), context);
+    const ly = window.MusicArchiveLyrics.create({
+        host: window.document.getElementById('h'),
+        app: { playlist: [], currentTrackIndex: -1, isPlaying: false, currentLyrics: [] }
+    });
+    assert.equal(active.size, 1, 'listener registered on document');
+    ly.destroy();
+    assert.equal(active.size, 0, 'listener removed on destroy');
+    assert.ok(cleared.length >= 1, 'pending init timer cleared on destroy');
+});

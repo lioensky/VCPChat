@@ -151,3 +151,23 @@ test('有流体小滴时也一样：暂停静止后 rAF 为 0', { skip: !FLUID &
     assert.equal(f.count(3000), 0, JSON.stringify(f.clock.bySource));
     f.close();
 });
+
+test('暂停时悬停卡片：指针停下后仍平滑抬起到位，到位后 rAF 归零，移开后平滑落回再归零', () => {
+    const f = setup({ playing: false, lyrics: true });
+    browse(f);
+    f.advance(4000);
+    assert.equal(f.count(1000), 0, JSON.stringify(f.clock.bySource));
+    f.view.scene.setHover({ lane: 0, row: 1 });
+    f.view.refresh();
+    const liftRaf = f.count(350);
+    assert.ok(liftRaf >= 10, '悬停抬起不应在一帧后停住，实际 rAF=' + liftRaf);
+    f.advance(900);
+    assert.equal(f.count(1000), 0, JSON.stringify(f.clock.bySource));
+    f.view.scene.setHover(null);
+    f.view.refresh();
+    const dropRaf = f.count(350);
+    assert.ok(dropRaf >= 10, '移开后应平滑落回，实际 rAF=' + dropRaf);
+    f.advance(900);
+    assert.equal(f.count(1000), 0, JSON.stringify(f.clock.bySource));
+    f.close();
+});

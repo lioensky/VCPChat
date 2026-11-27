@@ -74,3 +74,34 @@ test('pause during window creation waits for the window instead of going nowhere
     await result;
     assert.deepEqual(h.sent.map((m) => [m.channel, m.payload]), [['music-control', 'pause']]);
 });
+
+test('music-library-folders rescan runs without requiring a folder path', async () => {
+    const handlers = new Map();
+    const ipcMain = Object.assign(new EventEmitter(), { handle: (name, fn) => handlers.set(name, fn) });
+    const win = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents: { send() {} } });
+    let rescans = 0;
+    const context = {
+        module: { exports: {} }, console: { log() {}, error() {}, warn() {} }, setTimeout, clearTimeout,
+        __dirname: path.join(root, 'modules/ipc'),
+        require(name) {
+            if (name === 'electron') return { ipcMain, BrowserWindow: function () {}, app: { getPath: () => root }, dialog: {}, shell: {}, nativeTheme: {} };
+            if (name === 'fs-extra') return { pathExists: async () => false, ensureDirSync() {}, stat: async () => null };
+            if (name === '../musicLibraryWatch') return { createLibraryWatch: () => ({ folders: async () => [], rescanNow: async () => { rescans++; }, start() {}, stop() {}, rememberFolder: async () => {}, forgetFolder: async () => {}, noteLibrarySaved() {} }) };
+            if (name === '../services/audioEngineEndpoint') return { onStatus() {}, getBaseUrl: () => 'http://127.0.0.1:43789', getStatus: () => ({ state: 'ready' }) };
+            if (name === '../musicWindowBounds') return { readSavedBounds: () => null, writeSavedBounds() {} };
+            if (name === '../musicThumbar') return { createMusicThumbar: () => ({ update() {}, reset() {} }) };
+            if (name === '../services/musicGrooveBus') return { publish() {} };
+            if (name === './musicDesktopLyrics') return { createDesktopLyrics: () => ({ musicClosed() {} }) };
+            if (['path', 'crypto', 'worker_threads'].includes(name)) return require(name);
+            return {};
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(source, context);
+    context.module.exports.initialize({ mainWindow: null, openChildWindows: [], startAudioEngine() {}, stopAudioEngine() {}, APP_DATA_ROOT_IN_PROJECT: root });
+    context.testWin = win;
+    vm.runInContext('musicWindow = testWin;', context);
+    const res = await handlers.get('music-library-folders')({ sender: win.webContents }, { op: 'rescan' });
+    assert.equal(res.ok, true);
+    assert.equal(rescans, 1);
+});

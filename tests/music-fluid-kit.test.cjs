@@ -204,3 +204,42 @@ test('MusicFluidSelect clamps tall menu height before placement, forwards label 
         if (origOffsetH) Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', origOffsetH);
     }
 });
+
+test('watchHud keydown skips HUD measurement when archive is hidden, stage is active, or typing in an input', async () => {
+    const dom = new JSDOM('<!doctype html><body><div id="music-archive-view"><div class="archive-hud"><div class="archive-nav"></div></div></div><input id="q" /></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.requestAnimationFrame = (fn) => 1;
+    window.cancelAnimationFrame = () => {};
+    let reads = 0;
+    const nav = doc.querySelector('.archive-nav');
+    nav.getBoundingClientRect = () => { reads++; return { left: 10, top: 10, width: 100, height: 30, right: 110, bottom: 40 }; };
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+    const keyOn = (el, key) => el.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }));
+    // 档案页未打开时不测量
+    keyOn(doc.body, '/');
+    keyOn(doc.body, 'a');
+    assert.equal(reads, 0);
+
+    // 档案页打开但在输入框内打字时不测量（Escape 除外）
+    doc.body.classList.add('music-archive-on');
+    const input = doc.getElementById('q');
+    keyOn(input, '/');
+    keyOn(input, 'a');
+    assert.equal(reads, 0);
+    keyOn(input, 'Escape');
+    assert.equal(reads, 1);
+
+    // 档案页非输入焦点按 '/' 时触发测量
+    keyOn(doc.body, '/');
+    assert.equal(reads, 2);
+
+    // 切进舞台后不测量
+    doc.body.classList.add('music-stage-active');
+    keyOn(doc.body, '/');
+    keyOn(doc.body, 'Escape');
+    assert.equal(reads, 2);
+    dom.window.close();
+});
