@@ -43,6 +43,30 @@
             duration: (t) => Number(t?.duration) || 0
         };
 
+        let orderCacheList = null;
+        let orderCacheLen = -1;
+        let orderCacheFirst = null;
+        let orderCacheLast = null;
+        let orderCacheMap = null;
+        const getOrderMap = () => {
+            const pl = app.playlist || [];
+            const len = pl.length;
+            const first = len ? pl[0] : null;
+            const last = len ? pl[len - 1] : null;
+            if (orderCacheMap && orderCacheList === app.playlist && orderCacheLen === len
+                && orderCacheFirst === first && orderCacheLast === last) {
+                return orderCacheMap;
+            }
+            const map = new Map();
+            for (let i = 0; i < len; i += 1) map.set(pl[i], i);
+            orderCacheList = app.playlist;
+            orderCacheLen = len;
+            orderCacheFirst = first;
+            orderCacheLast = last;
+            orderCacheMap = map;
+            return map;
+        };
+
         const sorted = (songs) => {
             if (sort.key === 'added') {
                 // 添加时间就是进曲库的先后：正序原样返回，倒序反过来。
@@ -50,7 +74,7 @@
             }
             const get = value[sort.key];
             const isFull = songs === app.playlist;
-            const order = isFull ? null : new Map(app.playlist.map((t, i) => [t, i]));
+            const order = isFull ? null : getOrderMap();
             // 预先提取一次排序键，避免 O(N log N) 次重复正则去扩展名与属性访问
             const decorated = songs.map((t, i) => {
                 const v = get(t);
@@ -75,7 +99,7 @@
             button.title = on ? '取消喜欢' : '喜欢';
         };
         // 点心形只切换喜欢，不触发这一行的播放
-        list.addEventListener('click', (e) => {
+        const onLikeClick = (e) => {
             const button = e.target.closest?.('.cl-like');
             if (!button || typeof app.toggleLike !== 'function') return;
             e.stopPropagation();
@@ -83,8 +107,10 @@
             const li = button.closest('li');
             const track = li && app.playlist[Number(li.dataset.index)];
             if (track) app.toggleLike(track);
-        }, true);
-        list.addEventListener('dblclick', (e) => { if (e.target.closest?.('.cl-like')) { e.stopPropagation(); e.preventDefault(); } }, true);
+        };
+        const onLikeDblClick = (e) => { if (e.target.closest?.('.cl-like')) { e.stopPropagation(); e.preventDefault(); } };
+        list.addEventListener('click', onLikeClick, true);
+        list.addEventListener('dblclick', onLikeDblClick, true);
         const onLikeChange = (event) => {
             const changed = Array.isArray(event?.detail?.tracks) && event.detail.tracks.length
                 ? new Set(event.detail.tracks.map((t) => t && t.path).filter(Boolean))
@@ -102,9 +128,10 @@
         const decorateRow = (li) => {
             if (li.dataset.cols === '1') return;
             const track = app.playlist[Number(li.dataset.index)];
+            const titleText = li.textContent || '';
             const title = document.createElement('span');
             title.className = 'cl-title';
-            title.textContent = li.textContent;
+            title.textContent = titleText;
             const artist = document.createElement('span');
             artist.className = 'cl-artist';
             artist.textContent = track?.artist || '';
@@ -119,7 +146,7 @@
             like.textContent = '♥';
             li.replaceChildren(title, artist, like, duration);
             paintLike(li, track);
-            li.title = [titleOf(track), track?.artist].filter(Boolean).join(' — ');
+            li.title = [titleText || titleOf(track), track?.artist].filter(Boolean).join(' — ');
             li.dataset.cols = '1';
         };
 
@@ -135,6 +162,12 @@
             const rows = list.children;
             const count = rows.length;
             if (!count || !shown()) return;
+            // 虚拟列表建行时已逐行拆完：纯 JS 快速扫描全部可见节点，已全拆则直接返回，避免无谓读取 offsetTop/clientHeight 触发强制布局
+            let anyUndecorated = false;
+            for (let i = 0; i < count; i += 1) {
+                if (rows[i].dataset.cols !== '1') { anyUndecorated = true; break; }
+            }
+            if (!anyUndecorated) return;
             const pitch = count > 1 ? rows[1].offsetTop - rows[0].offsetTop : rows[0].offsetHeight;
             const view = list.clientHeight;
             let from = 0;
@@ -182,10 +215,13 @@
         global.addEventListener?.('beforeunload', () => {
             if (queued) { cancelAnimationFrame(queued); queued = 0; }
             list.removeEventListener('scroll', decorateSoon);
+            list.removeEventListener('click', onLikeClick, true);
+            list.removeEventListener('dblclick', onLikeDblClick, true);
             global.removeEventListener('resize', decorateSoon);
             document.removeEventListener('music-like-change', onLikeChange);
             watch?.disconnect();
             watch = null;
+            orderCacheList = orderCacheFirst = orderCacheLast = orderCacheMap = null;
         }, { once: true });
 
         global.MusicAppHooks.wrap(app, 'renderPlaylist', 'classic-list', (base) => (filtered) => {

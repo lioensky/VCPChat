@@ -400,13 +400,16 @@
             document.body.classList.toggle('music-fl-low', !fluid);
             host.classList.toggle('md-q-ultimate', global.MusicStageConfig?.get?.()?.quality === 'ultimate');
             if (fluid) {
-                fluid.layout();
-                lastRange = '';
-                cachedRange = null;
+                // 先完成全部类与状态写入，再连续执行只读测量与 fluid.layout()，最后统一写入进度区间，避免双连环强制重排。
                 fluid.setHidden(document.hidden === true);
                 fluid.setRingDocked(!state.panelOpen);
                 syncSolid();
                 syncRing();
+                lastRange = '';
+                cachedRange = null;
+                const measured = measureProgressRange();
+                fluid.layout();
+                applyProgressRange(measured);
                 renderProgress();
             }
         };
@@ -482,8 +485,7 @@
             capRo.observe(el.cap);
             cleanups.push(() => capRo.disconnect());
         }
-        const progressRange = (fresh = false) => {
-            if (!fresh && cachedRange) return cachedRange;
+        const measureProgressRange = () => {
             const cap = el.cap.getBoundingClientRect();
             const txt = capTxt?.getBoundingClientRect();
             const slots = capSlots?.getBoundingClientRect();
@@ -491,6 +493,9 @@
             let b = 1 - PROGRESS_INSET;
             if (cap.width > 0 && txt && txt.width > 0) a = Math.min(0.45, Math.max(PROGRESS_INSET, (txt.left - cap.left) / cap.width));
             if (cap.width > 0 && slots && slots.width > 0) b = Math.max(a + 0.2, Math.min(b, (slots.left - 14 - cap.left) / cap.width));
+            return { a, b, valid: cap.width > 0 };
+        };
+        const applyProgressRange = ({ a, b, valid }) => {
             const key = `${a.toFixed(4)}:${b.toFixed(4)}`;
             if (key !== lastRange) {
                 lastRange = key;
@@ -498,8 +503,12 @@
                 for (const trk of el.tracks) { trk.style.setProperty('--md-a', a.toFixed(4)); trk.style.setProperty('--md-b', b.toFixed(4)); }
             }
             const pair = [a, b];
-            if (cap.width > 0) cachedRange = pair;
+            if (valid) cachedRange = pair;
             return pair;
+        };
+        const progressRange = (fresh = false) => {
+            if (!fresh && cachedRange) return cachedRange;
+            return applyProgressRange(measureProgressRange());
         };
         // 胶囊里的总时长点一下换成剩余时间（−03:12），再点换回；记在 localStorage musicDockRemain。
         let remainMode = false;

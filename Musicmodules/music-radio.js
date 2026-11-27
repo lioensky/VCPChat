@@ -97,17 +97,31 @@
         const hasSeedArtists = seedArtists.size > 0;
         const hasSeedAlbums = seedAlbums.size > 0;
         const hasSeedGenres = seedGenres.size > 0;
+        const hasTakenKeys = takenKeys.size > 0;
+        const artistNormCache = new Map();
+        const normArtistCached = (raw) => {
+            if (!raw) return '';
+            let v = artistNormCache.get(raw);
+            if (v === undefined) {
+                v = norm(raw);
+                artistNormCache.set(raw, v);
+            }
+            return v;
+        };
         for (let i = 0; i < n; i += 1) {
             const t = library[i];
             if (!t || !t.path || exclude.has(t) || !playable(t)) continue;
+            const na = normArtistCached(t.artist);
+            const rawTitle = String(t.title || '');
+            const stripped = rawTitle.lastIndexOf('.') >= 0 ? rawTitle.replace(AUDIO_EXT, '') : rawTitle;
+            const nt = norm(stripped);
+            const k = na && nt ? nt + '\n' + na : '';
+            if (k && hasTakenKeys && takenKeys.has(k)) continue;
             ok[i] = 1;
-            const na = norm(t.artist);
-            const nt = norm(String(t.title || '').replace(AUDIO_EXT, ''));
             normArtists[i] = na;
             normTitles[i] = nt;
-            const k = na && nt ? nt + '\n' + na : '';
             keys[i] = k;
-            if (!k || takenKeys.has(k)) continue;
+            if (!k) continue;
             const prev = best.get(k);
             if (prev === undefined) {
                 best.set(k, t);
@@ -129,7 +143,7 @@
             if (!ok[i]) continue;
             const t = library[i];
             const key = keys[i];
-            if (key && (best.get(key) !== t || takenKeys.has(key))) continue;
+            if (key && best.get(key) !== t) continue;
             let s = 0;
             const normArtist = normArtists[i];
             if (hasSeedArtists && normArtist) {
@@ -260,10 +274,42 @@
             for (const ch of seedText) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
             return () => { h += 0x6D2B79F5; let x = h; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
         };
-        const byPaths = (paths) => {
+        const normSlashPath = (p) => norm(String(p || '').replace(/\\/g, '/'));
+        const byPaths = (paths, sharedMap) => {
             if (!paths || !paths.length) return [];
-            const want = new Map((app.playlist || []).map((t) => [norm(String(t.path).replace(/\\/g, '/')), t]));
-            return paths.map((p) => want.get(norm(String(p).replace(/\\/g, '/')))).filter(Boolean);
+            const lib = app.playlist || [];
+            if (!lib.length) return [];
+            if (sharedMap) {
+                const out = [];
+                for (let i = 0; i < paths.length; i++) {
+                    const hit = sharedMap.get(normSlashPath(paths[i]));
+                    if (hit) out.push(hit);
+                }
+                return out;
+            }
+            // 待查路径较少时（每日推荐通常仅 8~15 条），按需扫描并找齐即止，避免重建整张 5000+ 曲库 Map
+            const keys = paths.map(normSlashPath);
+            const need = new Map();
+            for (let i = 0; i < keys.length; i++) {
+                if (keys[i] && !need.has(keys[i])) need.set(keys[i], null);
+            }
+            let remaining = need.size;
+            if (!remaining) return [];
+            for (let i = 0; i < lib.length && remaining > 0; i++) {
+                const t = lib[i];
+                if (!t || !t.path) continue;
+                const k = normSlashPath(t.path);
+                if (need.has(k) && need.get(k) === null) {
+                    need.set(k, t);
+                    remaining--;
+                }
+            }
+            const out = [];
+            for (let i = 0; i < keys.length; i++) {
+                const hit = need.get(keys[i]);
+                if (hit) out.push(hit);
+            }
+            return out;
         };
         // 「今天」按本机时区算（以前按 UTC，东八区要到早上 8 点才换）
         const today = () => localDay(new Date());
@@ -292,21 +338,46 @@
             const id = app.dailyMixKey();
             const key = id + '|' + lib.length + '|' + size;
             if (mixCache.key === key) return mixCache.list;
-            const earlier = recentBatches(readSeen(), id, day);
+            const storedSeen = readSeen();
+            const earlier = recentBatches(storedSeen, id, day);
             const damping = new Map();
             earlier.forEach((b, k) => { for (const p of b.p) if (!damping.has(p)) damping.set(p, SEEN_DAMP[k]); });
             const stats = app.musicStats;
-            let seeds = byPaths(stats ? stats.top(8, { minPlays: 1 }) : []);
-            if (seeds.length < 3) {
-                let recent = [];
-                try { recent = JSON.parse(global.localStorage?.getItem('musicArchiveRecent') || '[]'); } catch (e) { recent = []; }
-                seeds = seeds.concat(byPaths(recent.slice(0, 8)).filter((t) => !seeds.includes(t)));
+            const topPaths = stats ? stats.top(8, { minPlays: 1 }) : [];
+            const lastPaths = stats ? stats.lastPlayed(15) : [];
+            let recentPaths = [];
+            if (topPaths.length < 3) {
+                try { recentPaths = JSON.parse(global.localStorage?.getItem('musicArchiveRecent') || '[]').slice(0, 8); } catch (e) { recentPaths = []; }
+            }
+            // 三组小路径集一次线性查找收集，避免重复扫描曲库或重复构建 5000 项 Map
+            let lookup = null;
+            const combined = [...topPaths, ...recentPaths, ...lastPaths];
+            if (combined.length) {
+                lookup = new Map();
+                for (let i = 0; i < combined.length; i++) {
+                    const k = normSlashPath(combined[i]);
+                    if (k && !lookup.has(k)) lookup.set(k, null);
+                }
+                let rem = lookup.size;
+                for (let i = 0; i < lib.length && rem > 0; i++) {
+                    const t = lib[i];
+                    if (!t || !t.path) continue;
+                    const k = normSlashPath(t.path);
+                    if (lookup.has(k) && lookup.get(k) === null) {
+                        lookup.set(k, t);
+                        rem--;
+                    }
+                }
+            }
+            let seeds = byPaths(topPaths, lookup);
+            if (seeds.length < 3 && recentPaths.length) {
+                seeds = seeds.concat(byPaths(recentPaths, lookup).filter((t) => !seeds.includes(t)));
             }
             const shuffle = readShuffle();
             const random = seeded(day + '|' + lib.length + (shuffle ? '|' + shuffle : ''));
             const list = pickSimilar(lib, seeds, {
                 size,
-                exclude: new Set(byPaths(stats ? stats.lastPlayed(15) : [])),
+                exclude: new Set(byPaths(lastPaths, lookup)),
                 affinity: (t) => app.musicStats?.affinity?.(t) || 0,
                 liked: (t) => Boolean(app.isLiked?.(t)),
                 novelty: (t) => (stats && !stats.get(t) ? 1.6 : 0),
@@ -315,7 +386,14 @@
                 damp: damping.size ? (t) => damping.get(pathKey(t)) || 1 : undefined
             });
             mixCache = { key, list };
-            if (list.length) writeSeen([{ id, p: list.map(pathKey) }, ...earlier].slice(0, SEEN_BATCHES));
+            if (list.length) {
+                const nextPaths = list.map(pathKey);
+                const prevTop = storedSeen[0];
+                const sameAsStored = Boolean(prevTop && prevTop.id === id && Array.isArray(prevTop.p)
+                    && prevTop.p.length === nextPaths.length
+                    && prevTop.p.every((p, idx) => p === nextPaths[idx]));
+                if (!sameAsStored) writeSeen([{ id, p: nextPaths }, ...earlier].slice(0, SEEN_BATCHES));
+            }
             return list;
         };
         // 换一批：今天的批号加一，目录和阵列重排

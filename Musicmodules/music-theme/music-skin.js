@@ -172,17 +172,26 @@
                 try { localStorage.setItem(DRAWER_KEY, open ? '1' : '0'); } catch (error) {}
             });
 
+            const ctrlCache = Object.create(null);
+            const ctrl = (id) => {
+                let node = ctrlCache[id];
+                if (!node || !node.isConnected) {
+                    node = document.getElementById(id);
+                    ctrlCache[id] = node;
+                }
+                return node;
+            };
             const describe = () => {
                 if (!summaryEl) return;
                 const parts = [];
-                const upsampling = document.getElementById('upsampling-select');
+                const upsampling = ctrl('upsampling-select');
                 if (upsampling && upsampling.value !== '0') parts.push(`升频 ${upsampling.selectedOptions[0]?.textContent || ''}`.trim());
-                if (document.getElementById('wasapi-switch')?.checked) parts.push('独占');
-                if (document.getElementById('eq-switch')?.checked) parts.push('均衡器');
-                if (document.getElementById('ir-switch')?.checked) parts.push('脉冲响应');
-                if (document.getElementById('loudness-switch')?.checked) parts.push('响度归一化');
-                if (document.getElementById('saturation-switch')?.checked) parts.push('饱和');
-                if (document.getElementById('crossfeed-switch')?.checked) parts.push('交叉馈送');
+                if (ctrl('wasapi-switch')?.checked) parts.push('独占');
+                if (ctrl('eq-switch')?.checked) parts.push('均衡器');
+                if (ctrl('ir-switch')?.checked) parts.push('脉冲响应');
+                if (ctrl('loudness-switch')?.checked) parts.push('响度归一化');
+                if (ctrl('saturation-switch')?.checked) parts.push('饱和');
+                if (ctrl('crossfeed-switch')?.checked) parts.push('交叉馈送');
                 const nextSummary = parts.length ? parts.join(' · ') : '直通';
                 if (summaryEl.textContent !== nextSummary) summaryEl.textContent = nextSummary;
             };
@@ -215,7 +224,12 @@
         const label = select.getAttribute('aria-label') || select.closest('label')?.querySelector('.music-stage-tuning-label')?.textContent;
         if (label) group.setAttribute('aria-label', label);
         const sync = () => {
-            for (const button of group.children) button.setAttribute('aria-pressed', String(button.dataset.value === select.value));
+            const buttons = group.children;
+            for (let i = 0; i < buttons.length; i += 1) {
+                const button = buttons[i];
+                button.setAttribute('aria-pressed', String(button.dataset.value === select.value));
+                if (options[i]) button.disabled = options[i].disabled;
+            }
         };
         for (const option of options) {
             const button = document.createElement('button');
@@ -244,13 +258,21 @@
         // 设置各项所在的正文节点会被底栏整块搬进控制面板，所以盯的是这个节点本身，不是它原来的外壳。
         const settingsBody = document.querySelector('#music-stage-settings-card .music-stage-settings-body, .music-stage-settings-body');
         if (settingsBody) {
-            const scan = () => settingsBody.querySelectorAll('select:not([data-segmented])').forEach(enhanceSelect);
-            // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换；忽略纯文本节点变动（如拖滑块刷新数值）
+            let scanning = false;
+            const scan = () => {
+                if (scanning) return;
+                scanning = true;
+                try { settingsBody.querySelectorAll('select:not([data-segmented])').forEach(enhanceSelect); }
+                finally { scanning = false; }
+            };
+            // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换；忽略纯文本节点变动及自身插入分段控件产生的回调
             const settingsObs = new MutationObserver((records) => {
+                if (scanning) return;
                 for (let i = 0; i < records.length; i += 1) {
                     const added = records[i].addedNodes;
                     for (let j = 0; j < added.length; j += 1) {
-                        if (added[j].nodeType === 1) { scan(); return; }
+                        const node = added[j];
+                        if (node.nodeType === 1 && !node.classList?.contains('music-skin-segmented')) { scan(); return; }
                     }
                 }
             });
@@ -263,9 +285,19 @@
         // 同步一份到 body，舞台里的底栏和面板也能按舞台的深浅取色。
         const stage = document.getElementById('music-stage');
         if (stage) {
+            let lastLight = null;
+            let lastDark = null;
             const mirror = () => {
-                document.body.classList.toggle('music-stage-light', stage.classList.contains('stage-theme-light'));
-                document.body.classList.toggle('music-stage-dark', stage.classList.contains('stage-theme-dark'));
+                const light = stage.classList.contains('stage-theme-light');
+                const dark = stage.classList.contains('stage-theme-dark');
+                if (light !== lastLight) {
+                    lastLight = light;
+                    document.body.classList.toggle('music-stage-light', light);
+                }
+                if (dark !== lastDark) {
+                    lastDark = dark;
+                    document.body.classList.toggle('music-stage-dark', dark);
+                }
             };
             const stageObs = new MutationObserver(mirror);
             stageObs.observe(stage, { attributes: true, attributeFilter: ['class'] });
