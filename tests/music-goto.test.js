@@ -361,3 +361,58 @@ test('music-utils fast-paths stripAudioExtension/searchTracks and shows toast on
         window.close();
     }
 });
+
+test('Batch 79: music-goto paint skips redundant display and title writes on repeated context menu opens', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="menu"><div data-action="toggle-like"></div></div></body>', { runScripts: 'outside-only' });
+    const { window } = dom;
+    try {
+        const doc = window.document;
+        const menu = doc.getElementById('menu');
+        const app = {
+            contextMenu: menu,
+            contextMenuTrackIndex: 0,
+            playlist: [
+                { title: 'Song A', artist: 'Artist One', album: 'Album One' },
+                { title: 'Song B', artist: 'Artist Two', album: '' }
+            ],
+            archiveView: { mode: 'archive', list: { goToGroup: () => true } },
+            showContextMenu() {}
+        };
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-app-hooks.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-goto.js'), 'utf8'));
+        window.setupMusicGoto(app);
+
+        const artistItem = menu.querySelector('[data-action="goto-artist"]');
+        const albumItem = menu.querySelector('[data-action="goto-album"]');
+        assert.ok(artistItem && albumItem);
+
+        let titleWrites = 0;
+        let displayWrites = 0;
+        const titleDesc = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, 'title');
+        const dispDesc = Object.getOwnPropertyDescriptor(window.CSSStyleDeclaration.prototype, 'display');
+        Object.defineProperty(artistItem, 'title', {
+            configurable: true,
+            get() { return titleDesc.get.call(this); },
+            set(v) { titleWrites += 1; return titleDesc.set.call(this, v); }
+        });
+        Object.defineProperty(albumItem.style, 'display', {
+            configurable: true,
+            get() { return dispDesc.get.call(this); },
+            set(v) { displayWrites += 1; return dispDesc.set.call(this, v); }
+        });
+
+        app.showContextMenu();
+        app.showContextMenu();
+        app.showContextMenu();
+        assert.equal(titleWrites, 1, 'repeated menu opens on same track write title once');
+        assert.equal(displayWrites, 0, 'already-visible album item skips redundant empty display write');
+
+        app.contextMenuTrackIndex = 1;
+        app.showContextMenu();
+        app.showContextMenu();
+        assert.equal(titleWrites, 2, 'switching artist writes title once');
+        assert.equal(displayWrites, 1, 'hiding missing album writes display="none" once');
+    } finally {
+        window.close();
+    }
+});

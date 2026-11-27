@@ -311,3 +311,51 @@ test('Batch 73: archive lyrics defers fitLines layout reads while hidden and run
     ly.destroy();
     window.close();
 });
+
+test('Batch 79: archive lyrics deduplicates syncDesk attribute writes and identical place() style writes', () => {
+    const { window, app, ly, at } = setup({ playing: true });
+    const track = ly.el.querySelector('.archive-lyrics-track');
+    const vp = ly.el.querySelector('.archive-lyrics-viewport');
+    const desk = ly.el.querySelector('.archive-lyrics-desk');
+    Object.defineProperty(vp, 'clientHeight', { get: () => 200, configurable: true });
+    Object.defineProperty(track, 'offsetHeight', { get: () => 400, configurable: true });
+
+    let deskAttrWrites = 0;
+    const origSetAttr = desk.setAttribute.bind(desk);
+    desk.setAttribute = (k, v) => { if (k === 'aria-pressed') deskAttrWrites += 1; return origSetAttr(k, v); };
+    app.desktopLyrics = { available: true, on: false, toggle() {} };
+    window.document.dispatchEvent(new window.CustomEvent('music-desktop-lyrics-change'));
+    window.document.dispatchEvent(new window.CustomEvent('music-desktop-lyrics-change'));
+    assert.equal(desk.hidden, false);
+    assert.equal(deskAttrWrites, 0, 'unchanged aria-pressed="false" skips redundant setAttribute');
+    app.desktopLyrics.on = true;
+    window.document.dispatchEvent(new window.CustomEvent('music-desktop-lyrics-change'));
+    window.document.dispatchEvent(new window.CustomEvent('music-desktop-lyrics-change'));
+    assert.equal(deskAttrWrites, 1, 'aria-pressed writes once when desktopLyrics.on flips to true');
+
+    // Track style writes are deduplicated across repeated place() calls at the same scroll position
+    at(1.2);
+    let tfWrites = 0;
+    let trWrites = 0;
+    const style = track.style;
+    const tfDesc = Object.getOwnPropertyDescriptor(window.CSSStyleDeclaration.prototype, 'transform');
+    const trDesc = Object.getOwnPropertyDescriptor(window.CSSStyleDeclaration.prototype, 'transition');
+    Object.defineProperty(style, 'transform', {
+        configurable: true,
+        get() { return tfDesc.get.call(this); },
+        set(v) { tfWrites += 1; return tfDesc.set.call(this, v); }
+    });
+    Object.defineProperty(style, 'transition', {
+        configurable: true,
+        get() { return trDesc.get.call(this); },
+        set(v) { trWrites += 1; return trDesc.set.call(this, v); }
+    });
+    // Click back button twice when manual is already 0 -> same shift, same animate=true
+    const backBtn = ly.el.querySelector('.archive-lyrics-back');
+    backBtn.click();
+    backBtn.click();
+    assert.equal(tfWrites, 0, 'unchanged translateY skips redundant track.style.transform writes');
+    assert.equal(trWrites, 0, 'unchanged transition skips redundant track.style.transition writes');
+    ly.destroy();
+    window.close();
+});

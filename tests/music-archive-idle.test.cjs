@@ -171,3 +171,31 @@ test('暂停时悬停卡片：指针停下后仍平滑抬起到位，到位后 r
     assert.equal(f.count(1000), 0, JSON.stringify(f.clock.bySource));
     f.close();
 });
+
+test('Batch 79: archive-scene skips redundant camera.updateProjectionMatrix when fov is unchanged and settles detailRoom cleanly', () => {
+    const f = setup({ playing: true, lyrics: true });
+    browse(f);
+    f.advance(5000);
+    let projUpdates = 0;
+    const origProj = f.w.THREE.PerspectiveCamera.prototype.updateProjectionMatrix;
+    f.w.THREE.PerspectiveCamera.prototype.updateProjectionMatrix = function (...args) {
+        projUpdates += 1;
+        return origProj.apply(this, args);
+    };
+    const drawsBefore = f.w.__renderer.draws;
+    f.advance(1500);
+    assert.ok(f.w.__renderer.draws > drawsBefore, 'idle wave still renders frames');
+    assert.equal(projUpdates, 0, 'steady browse frames with unchanged fov skip camera.updateProjectionMatrix');
+
+    // Updating detailRoom animates and then settles without leaking rAF when paused
+    f.app.isPlaying = false;
+    f.view.refresh();
+    f.advance(4000);
+    assert.equal(f.count(1000), 0);
+    f.view.scene.setDetailRoom({ left: 420, right: 1200, top: 80, bottom: 760 });
+    f.view.refresh();
+    assert.ok(f.count(400) > 0, 'setDetailRoom wakes rendering to ease room bounds');
+    f.advance(1500);
+    assert.equal(f.count(1000), 0, 'settled detailRoom returns to zero rAF');
+    f.close();
+});

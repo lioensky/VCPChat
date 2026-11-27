@@ -617,3 +617,81 @@ test('Batch 78: archive-grid recycles section headers across dataset switch/resi
         w.close();
     }
 });
+
+test('Batch 79: archive-wall uses bitmask class sync and dedupes locateBtn, aw-has-open, and camera transform writes', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        const rafs = [];
+        w.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+        w.cancelAnimationFrame = () => {};
+        w.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-archive/archive-wall.js'), 'utf8'));
+        const tracks = Array.from({ length: 16 }, (_, i) => ({ path: `/t${i}.flac`, title: `Track ${i}`, artist: `Art ${i}`, duration: 180 }));
+        let sel = 0;
+        let playing = { index: 0, active: true };
+        const wall = w.MusicArchiveWall.create({
+            host: w.document.getElementById('host'),
+            items: () => ({ key: 'all', name: '全部', ids: tracks.map((_, i) => i) }),
+            track: (i) => tracks[i],
+            meta: (t, i) => ({ title: t.title, artist: t.artist, code: String(i + 1).padStart(2, '0'), duration: '3:00' }),
+            cover: () => '',
+            selected: () => sel,
+            playing: () => playing,
+            pick: (i) => { sel = i; },
+            play() {},
+            menu() {},
+            reducedMotion: () => true
+        });
+        const flush = () => {
+            let guard = 0;
+            while (rafs.length && guard++ < 8) rafs.shift()(w.performance.now());
+        };
+        wall.setRoom({ left: 0, top: 0, width: 800, height: 600 });
+        wall.show(true);
+        flush();
+
+        const tiles = [...wall.el.querySelectorAll('.aw-tile')];
+        assert.ok(tiles.length > 0, 'wall rendered tiles');
+        const focused = tiles.find((t) => t.classList.contains('is-focus'));
+        assert.ok(focused, 'focused tile has is-focus');
+        assert.equal(focused.getAttribute('aria-selected'), 'true');
+        const unfocused = tiles.find((t) => !t.classList.contains('is-focus'));
+        assert.ok(unfocused && unfocused.getAttribute('aria-selected') === 'false', 'unfocused tile carries aria-selected="false"');
+        assert.ok(tiles.some((t) => t.classList.contains('is-playing')), 'active playing tile has is-playing');
+
+        // Repeated refresh with unchanged camera and state skips world transform & aw-has-open writes
+        const world = wall.el.querySelector('.aw-world');
+        let tfWrites = 0;
+        let openToggles = 0;
+        const tfDesc = Object.getOwnPropertyDescriptor(w.CSSStyleDeclaration.prototype, 'transform');
+        Object.defineProperty(world.style, 'transform', {
+            configurable: true,
+            get() { return tfDesc.get.call(this); },
+            set(v) { tfWrites += 1; return tfDesc.set.call(this, v); }
+        });
+        const origWorldToggle = world.classList.toggle.bind(world.classList);
+        world.classList.toggle = (cls, force) => {
+            if (cls === 'aw-has-open') openToggles += 1;
+            return origWorldToggle(cls, force);
+        };
+        wall.refresh();
+        flush();
+        wall.refresh();
+        flush();
+        assert.equal(tfWrites, 0, 'unchanged camera skips redundant world.style.transform writes');
+        assert.equal(openToggles, 0, 'unchanged expanded state skips redundant aw-has-open toggles');
+
+        // Switching playing to paused swaps is-playing -> is-current cleanly via bitmask diff
+        playing = { index: 0, active: false };
+        wall.sync();
+        flush();
+        assert.equal(wall.el.querySelectorAll('.aw-tile.is-playing').length, 0, 'paused clears is-playing');
+        assert.ok(wall.el.querySelectorAll('.aw-tile.is-current').length > 0, 'paused sets is-current');
+        wall.destroy();
+    } finally {
+        w.close();
+    }
+});

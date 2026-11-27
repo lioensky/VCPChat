@@ -813,3 +813,87 @@ test('Batch 70: close button click restores focus with animation, rapid reopen f
         dom.window.close();
     }
 });
+
+test('Batch 79: eq-presets dedupes syncDelete writes & hoists isCustom slider reads, modal-focus guards inert writes, and archive-wall.css drops duplicate selector', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <select id="eq-preset-select"><option value="flat">平坦</option><option value="custom">自定义</option></select>
+        <input id="eq-60Hz" value="2"><input id="eq-1kHz" value="-1">
+        <div id="m1" class="music-modal-overlay"><button type="button">ok</button></div>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        const sel = doc.getElementById('eq-preset-select');
+        const s60 = doc.getElementById('eq-60Hz');
+        let valueReads = 0;
+        const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+        Object.defineProperty(s60, 'value', {
+            configurable: true,
+            get() { valueReads += 1; return desc.get.call(this); },
+            set(v) { return desc.set.call(this, v); }
+        });
+        const app = {
+            eqPresetSelect: sel,
+            eqBands: { '60Hz': 0, '1kHz': 0 },
+            eqPresets: {
+                flat: { '60Hz': 0, '1kHz': 0 },
+                bass: { '60Hz': 5, '1kHz': 0 },
+                vocal: { '60Hz': -2, '1kHz': 4 },
+                rock: { '60Hz': 3, '1kHz': -1 }
+            },
+            applyEqPreset() {},
+            populateEqPresets() {},
+            syncEqPresetSelect() {}
+        };
+        window.eval(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-eq-presets.js', 'utf8'));
+        window.MusicEqPresets.setupMusicEqPresets(app, { storage: { getItem: () => '[]', setItem() {} } });
+
+        const delOpt = sel.querySelector('option[value="__eq-delete"]');
+        assert.ok(delOpt, 'delete option appended');
+        let delMutations = 0;
+        const mo = new window.MutationObserver((recs) => { delMutations += recs.length; });
+        mo.observe(delOpt, { attributes: true, childList: true, characterData: true, subtree: true });
+        sel.value = 'custom';
+        app.syncEqPresetSelect();
+        app.syncEqPresetSelect();
+        app.syncEqPresetSelect();
+        await tick(window);
+        assert.equal(delMutations, 0, 'repeated syncEqPresetSelect on unchanged non-user preset triggers zero DOM mutations on delOpt');
+        mo.disconnect();
+
+        valueReads = 0;
+        assert.equal(app.eqUserPresets.isCustom(), true);
+        assert.equal(valueReads, 1, 'isCustom reads each EQ slider once instead of once per preset');
+
+        // music-modal-focus guards redundant inert writes on unrelated class mutations
+        const overlay = doc.getElementById('m1');
+        let inertWrites = 0;
+        let inertVal = undefined;
+        Object.defineProperty(overlay, 'inert', {
+            configurable: true,
+            get() { return inertVal; },
+            set(v) { inertWrites += 1; inertVal = v; }
+        });
+        window.eval(fs.readFileSync('Musicmodules/music-modal-focus.js', 'utf8'));
+        assert.equal(inertVal, true);
+        assert.equal(inertWrites, 1, 'initial sync sets inert once');
+        overlay.classList.add('unrelated-a');
+        await tick(window);
+        overlay.classList.remove('unrelated-a');
+        await tick(window);
+        assert.equal(inertWrites, 1, 'unrelated class toggles on closed overlay skip redundant inert writes');
+        overlay.classList.add('visible');
+        await tick(window);
+        assert.equal(inertVal, false);
+        assert.equal(inertWrites, 2, 'opening overlay clears inert once');
+
+        // archive-wall.css no duplicate .aw-panel-acts button in music-fl-low blur cutoff rule
+        const css = fs.readFileSync('Musicmodules/music-archive/archive-wall.css', 'utf8');
+        const rule = css.match(/body\.music-fl-low\s+#music-archive-view\s+\.aw-locate[^{]*\{[^}]*\}/)?.[0] || '';
+        assert.ok(rule, 'music-fl-low aw-locate rule exists');
+        assert.equal((rule.match(/\.aw-panel-acts\s+button/g) || []).length, 1, 'no duplicate .aw-panel-acts button selector');
+    } finally {
+        dom.window.close();
+    }
+});
