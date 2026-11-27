@@ -1380,3 +1380,41 @@ test('interlude visualizer caches per-bar transform and opacity strings on ident
     interlude.destroy();
     dom.window.close();
 });
+
+test('Batch 56: MusicStageConfig debounces slider setModePatch writes, Starborn skips energy-saving blur, and low-power stage CSS disables blur filters', () => {
+    const dom = createStageDom();
+    try {
+        const store = new Map();
+        let storageWrites = 0;
+        Object.defineProperty(dom.window, 'localStorage', {
+            configurable: true,
+            value: {
+                getItem: (k) => (store.has(k) ? store.get(k) : null),
+                setItem: (k, v) => { if (k === 'musicStageConfig') storageWrites += 1; store.set(k, String(v)); }
+            }
+        });
+        runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
+        const cfg = dom.window.MusicStageConfig;
+        storageWrites = 0;
+        for (let g = 0.2; g <= 1.2; g += 0.2) cfg.setModePatch('luminous', { glow: g });
+        assert.equal(storageWrites, 0, 'rapid slider setModePatch calls coalesce via trailing debounce instead of writing 60Hz');
+        assert.equal(cfg.get().modes.luminous.glow, 1.2, 'in-memory config reflects latest slider value synchronously');
+        cfg.flush();
+        assert.equal(storageWrites, 1, 'flush persists latest slider value once');
+        const persisted = JSON.parse(dom.window.localStorage.getItem('musicStageConfig'));
+        assert.equal(persisted.modes.luminous.glow, 1.2);
+        // update() and reset() persist immediately
+        cfg.update({ quality: 'energy-saving' });
+        assert.equal(storageWrites, 2, 'update persists immediately');
+
+        const stageCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage.css'), 'utf8');
+        assert.match(stageCss, /body\.music-fl-low\s+\.music-stage-mode-switcher\s*\{[^}]*backdrop-filter:\s*none/);
+        assert.match(stageCss, /body\.music-fl-low\s+\.music-stage-backdrop-noise\s*\{\s*display:\s*none;/);
+        assert.match(stageCss, /body\.music-fl-low\s+\.music-stage-edge-spectrum-canvas[\s\S]*?filter:\s*none;/);
+        const settingsCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-settings.css'), 'utf8');
+        assert.match(settingsCss, /body\.music-fl-low\s+\.music-stage-settings-card\s*\{[^}]*animation:\s*none;/);
+        assert.match(settingsCss, /body\.music-fl-low\s+\.music-stage-settings-card::before\s*\{\s*display:\s*none;/);
+    } finally {
+        dom.window.close();
+    }
+});

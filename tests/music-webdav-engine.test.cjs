@@ -184,3 +184,54 @@ test('addServer rejects blank/missing URL and removeServer invalidates cached en
     await api.listDirectory({ url: s1.url, username: 'u', password: 'p', path: '/' });
     assert.equal(configCalls, 2, 'removeServer invalidates cached engine credential key');
 });
+
+test('Batch 56: WebDAV/Engine/Lyrics IPC handlers avoid mutating caller configs and guard null window/blank titles', async () => {
+    const { registerMusicWebdavHandlers } = require('../modules/ipc/musicWebdavHandlers');
+    const { registerMusicEngineHandlers } = require('../modules/ipc/musicEngineHandlers');
+    const { registerMusicLyricsHandlers } = require('../modules/ipc/musicLyricsHandlers');
+    const handles = new Map();
+    const ipcMain = { handle: (ch, fn) => handles.set(ch, fn) };
+    const songInfos = [];
+    const seenListArgs = [];
+    registerMusicWebdavHandlers({
+        ipcMain,
+        webdavManager: {
+            getServerCredentials: () => ({ url: 'https://nas/dav', username: 'alice', password: 'secret' }),
+            listDirectory: async (req) => { seenListArgs.push(req); return { status: 'success', entries: [] }; },
+            scanAudioFiles: async () => ({ status: 'success', tracks: [] }),
+            configureAndLoad: async (req) => ({ status: 'success', url: req.url })
+        },
+        getMusicWindow: () => null,
+        setCurrentSongInfo: (info) => songInfos.push(info)
+    });
+    const callerCfg = Object.freeze({ serverId: 's1', path: '/music' });
+    await handles.get('webdav-list-directory')({}, callerCfg);
+    assert.equal(seenListArgs[0].password, 'secret', 'credentials attached on shallow copy');
+    assert.equal('password' in callerCfg, false, 'caller config object is not mutated');
+    await handles.get('webdav-list-directory')({}, null);
+    assert.equal(seenListArgs.length, 2, 'null config handled safely');
+
+    await handles.get('webdav-load-track')({}, { url: 'https://nas/dav/' });
+    assert.equal(songInfos.at(-1).title, '', 'trailing-slash URL does not yield literal "undefined" title');
+
+    const dialogCalls = [];
+    registerMusicEngineHandlers({
+        ipcMain,
+        dialog: {
+            showOpenDialog: async (...args) => { dialogCalls.push(args); return { canceled: true, filePaths: [] }; }
+        },
+        audioEngineApi: async () => ({ status: 'success' }),
+        webdavManager: {},
+        getDialogWindow: () => null
+    });
+    assert.equal(await handles.get('select-ir-file')({}), null);
+    assert.equal(dialogCalls[0].length, 1, 'null parent window omits invalid window argument from dialog.showOpenDialog');
+
+    registerMusicLyricsHandlers({
+        ipcMain,
+        lyricFetcher: {},
+        getLyricDir: () => require('node:os').tmpdir()
+    });
+    assert.equal(await handles.get('music-get-lyrics')({}, { title: '   ' }), null, 'blank title returns null safely');
+    assert.equal(await handles.get('music-get-lyrics')({}, { title: 12345 }), null, 'non-string title does not throw');
+});

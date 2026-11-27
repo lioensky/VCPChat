@@ -284,3 +284,13 @@ test('musicLibraryWatch rescanNow aborts if stop() runs while readFolders is pen
     await pending;
     assert.equal(scanCalls, 0, 'rescanNow must not launch scan() after stop() incremented generation');
 });
+
+test('Batch 56: pickFolderCover single-pass scan preserves priority and lexicographical tie-breaking', () => {
+    const { pickFolderCover } = require('../modules/musicLibraryScanner');
+    assert.equal(pickFolderCover(null), null);
+    assert.equal(pickFolderCover([]), null);
+    assert.equal(pickFolderCover(['track01.flac', 'notes.txt']), null);
+    assert.equal(pickFolderCover(['front.png', 'folder.jpg', 'Cover.webp', 'cover.jpg']), 'Cover.webp', 'cover beats folder/front and lexicographical min matches Array.sort');
+    assert.equal(pickFolderCover(['albumart_small.jpg', 'albumart_large.jpg', 'front.png']), 'front.png');
+    assert.equal(pickFolderCover(['albumart_z.jpg', 'albumart_a.png']), 'albumart_a.png');
+});

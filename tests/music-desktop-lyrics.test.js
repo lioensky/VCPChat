@@ -432,3 +432,36 @@ test('music-desktop-lyrics resyncs switch and shows error toast when toggle IPC 
         window.close();
     }
 });
+
+test('Batch 56: desktop lyrics flushSaveSync is atomic, ignores degenerate bounds, and deduplicates unchanged lock/size commands', async () => {
+    const h = harness();
+    await h.handles.get('music-desktop-lyrics-toggle')(fromMusic(h), true);
+    const bar = h.windows[0];
+    const cmd = (c, v) => h.ons.get('music-desktop-lyrics-command')({ sender: bar.webContents }, c, v);
+
+    // 边界已达上限后重复加大字号不触发重复广播
+    cmd('size', 999);
+    const sentAfterMax = bar.sent.length;
+    cmd('size', 999);
+    assert.strictEqual(bar.sent.length, sentAfterMax, 'clamped identical size skips redundant broadcast');
+
+    // 相同锁定状态不重复广播
+    cmd('lock', true);
+    const sentAfterLock = bar.sent.length;
+    const musicAfterLock = h.musicSent.length;
+    cmd('lock', true);
+    assert.strictEqual(bar.sent.length, sentAfterLock, 'unchanged lock skips redundant bar broadcast');
+    assert.strictEqual(h.musicSent.length, musicAfterLock, 'unchanged lock skips redundant music broadcast');
+
+    // 退化 0x0 窗口尺寸不覆盖已保存的正常尺寸
+    let curBounds = { x: 120, y: 240, width: 640, height: 120 };
+    bar.getBounds = () => ({ ...curBounds });
+    bar.emit('moved');
+    curBounds = { x: -32000, y: -32000, width: 0, height: 0 };
+    bar.emit('moved');
+    h.dl.musicClosed();
+    const saved = JSON.parse(fs.readFileSync(h.stateFile, 'utf8'));
+    assert.deepStrictEqual(saved.bounds, { x: 120, y: 240, width: 640, height: 120 });
+    const dirFiles = fs.readdirSync(path.dirname(h.stateFile));
+    assert.deepStrictEqual(dirFiles, [path.basename(h.stateFile)], 'atomic sync save leaves no stray tmp files');
+});
