@@ -8,19 +8,6 @@
     const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
     const lerp = (a, b, t) => a + (b - a) * t;
 
-    // 极坐标闭合平滑采样 (首尾无缝镜像连续)
-    function sampleSpectrumMirror(spectrum, ratio) {
-        if (!spectrum || spectrum.length === 0) return 0;
-        const folded = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
-        const indexFloat = folded * (spectrum.length - 1);
-        const i1 = Math.floor(indexFloat);
-        const i2 = Math.min(i1 + 1, spectrum.length - 1);
-        const frac = indexFloat - i1;
-        const v1 = spectrum[i1] || 0;
-        const v2 = spectrum[i2] || 0;
-        return v1 + (v2 - v1) * frac;
-    }
-
     // 气泡微粒
     class AmbientBubble {
         constructor(x, y, vx, vy, radius, color, maxLife) {
@@ -78,8 +65,26 @@
             this.bandOffset = config.bandOffset || 0;
             this.baseWidth = config.baseWidth || 1.8;
             this.colorType = config.colorType || 'primary'; // 'primary' | 'soft' | 'highlight'
-            this.xs = new Float32Array(this.segments + 1);
-            this.ys = new Float32Array(this.segments + 1);
+            const n = this.segments + 1;
+            this.xs = new Float32Array(n);
+            this.ys = new Float32Array(n);
+            // 预计算各顶点基角、3 倍频有机扰动角及镜像频谱采样位置，用和角公式把每帧 ~900 次三角函数降到 16 次
+            this.cosBase = new Float32Array(n);
+            this.sinBase = new Float32Array(n);
+            this.cosSway = new Float32Array(n);
+            this.sinSway = new Float32Array(n);
+            this.foldedPos = new Float32Array(n);
+            for (let i = 0; i < n; i++) {
+                const ratio = i / this.segments;
+                const a = ratio * TAU;
+                this.cosBase[i] = Math.cos(a);
+                this.sinBase[i] = Math.sin(a);
+                const swayA = a * 3;
+                this.cosSway[i] = Math.cos(swayA);
+                this.sinSway[i] = Math.sin(swayA);
+                const shifted = (ratio + this.bandOffset) % 1.0;
+                this.foldedPos[i] = shifted <= 0.5 ? shifted * 2 : (1 - shifted) * 2;
+            }
         }
 
         advance(dt, energyFactor) {
@@ -317,8 +322,9 @@
             this.smoothMid = lerp(this.smoothMid, midEnergy, 0.14);
             this.smoothHigh = lerp(this.smoothHigh, highEnergy, 0.12);
 
-            const idleBreath = reduced ? 0 : Math.sin(Date.now() * 0.0012) * 0.035;
-            const currentBass = isPlaying ? this.smoothBass : (0.05 + idleBreath);
+            const currentBass = isPlaying
+                ? this.smoothBass
+                : (0.05 + (reduced ? 0 : Math.sin(Date.now() * 0.0012) * 0.035));
 
             // 2. 颜色计算
             const { r, g, b } = app.visualizerColor || { r: 0, g: 195, b: 255 };
@@ -372,17 +378,36 @@
                 const segments = ring.segments;
                 const xs = ring.xs;
                 const ys = ring.ys;
+                const cosBase = ring.cosBase;
+                const sinBase = ring.sinBase;
+                const cosSway = ring.cosSway;
+                const sinSway = ring.sinSway;
+                const foldedPos = ring.foldedPos;
+                const cosRot = Math.cos(ringRotation);
+                const sinRot = Math.sin(ringRotation);
+                const phaseTau = ring.phase * TAU;
+                const cosPhase = Math.cos(phaseTau);
+                const sinPhase = Math.sin(phaseTau);
+                const specMax = hasAudio ? spectrum.length - 1 : -1;
 
                 for (let i = 0; i <= segments; i++) {
-                    const ratio = i / segments;
-                    const theta = ratio * TAU + ringRotation;
-                    // 结合频谱与平滑正弦扰动
-                    const specVal = sampleSpectrumMirror(spectrum, (ratio + ring.bandOffset) % 1.0);
-                    const organicSway = Math.sin(ratio * TAU * 3 + ring.phase * TAU) * 0.12;
+                    // 结合频谱与平滑正弦扰动（使用预计算查表 + 和角展开）
+                    let specVal = 0;
+                    if (specMax >= 0) {
+                        const indexFloat = foldedPos[i] * specMax;
+                        const i1 = indexFloat | 0;
+                        const i2 = i1 < specMax ? i1 + 1 : specMax;
+                        const v1 = spectrum[i1] || 0;
+                        const v2 = spectrum[i2] || 0;
+                        specVal = v1 + (v2 - v1) * (indexFloat - i1);
+                    }
+                    const organicSway = (sinSway[i] * cosPhase + cosSway[i] * sinPhase) * 0.12;
                     const r = ringRadius + (specVal * 1.1 + organicSway) * waveAmp;
+                    const cb = cosBase[i];
+                    const sb = sinBase[i];
 
-                    xs[i] = cx + Math.cos(theta) * r;
-                    ys[i] = cy + Math.sin(theta) * r;
+                    xs[i] = cx + (cb * cosRot - sb * sinRot) * r;
+                    ys[i] = cy + (sb * cosRot + cb * sinRot) * r;
                 }
 
                 if (segments >= 2) {
@@ -480,7 +505,7 @@
         };
 
         const isContainerHidden = () => {
-            if (container.hidden) return true;
+            if (app.isArchiveActive || container.hidden) return true;
             if (typeof global.getComputedStyle === 'function') {
                 try {
                     const cs = global.getComputedStyle(container);

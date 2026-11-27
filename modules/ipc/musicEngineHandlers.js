@@ -42,11 +42,8 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
     });
 
     // --- Loudness Normalization Handlers ---
-    ipcMain.handle('music-configure-normalization', async (event, data) => {
-        console.log('[Music] configure_normalization request:', JSON.stringify(data));
-        const result = await audioEngineApi('/configure_normalization', 'POST', data);
-        console.log('[Music] configure_normalization response:', JSON.stringify(result));
-        return result;
+    ipcMain.handle('music-configure-normalization', (event, data) => {
+        return audioEngineApi('/configure_normalization', 'POST', data);
     });
 
     ipcMain.handle('music-get-loudness-info', async () => {

@@ -110,7 +110,7 @@
             st.secs.forEach((sec, s) => sec.ids.forEach((i, k) => { if (!st.where.has(i)) st.where.set(i, { s, k }); }));
             for (const n of st.nodes.values()) recycle(n);
             st.nodes.clear();
-            for (const h of st.heads.values()) h.remove();
+            for (const h of st.heads.values()) recycleHead(h);
             st.heads.clear();
             readySrcs.clear();
             thumbs.clearQueue();
@@ -159,6 +159,7 @@
         const keepSet = new Set();
         const keepHeadsSet = new Set();
         let stickySec = -1;
+        let locateAway = false;
         const applyNodeCover = (n, t, dpr) => {
             const src = opts.cover(t);
             n.rawSrc = src || '';
@@ -267,12 +268,16 @@
                         n.src = null;
                     }
                     applyNodeCover(n, t, dpr);
-                    const cls = (i === st.sel ? 'is-focus ' : '') + (i === play.index ? (play.active ? 'is-playing' : 'is-current') : '');
+                    const isSel = i === st.sel;
+                    const isPlaying = i === play.index && play.active;
+                    const isCurrent = i === play.index && !play.active;
+                    const cls = (isSel ? 1 : 0) | (isPlaying ? 2 : 0) | (isCurrent ? 4 : 0);
                     if (cls !== n.cls) {
-                        n.el.classList.remove('is-focus', 'is-playing', 'is-current');
-                        if (cls.trim()) n.el.classList.add(...cls.trim().split(' '));
+                        n.el.classList.toggle('is-focus', isSel);
+                        n.el.classList.toggle('is-playing', isPlaying);
+                        n.el.classList.toggle('is-current', isCurrent);
                         n.cls = cls;
-                        n.el.setAttribute('aria-selected', i === st.sel ? 'true' : 'false');
+                        n.el.setAttribute('aria-selected', isSel ? 'true' : 'false');
                     }
                     const badge = i === play.index ? (play.active ? '正在播放' : '暂停') : n.code;
                     if (badge !== n.badge) { n.badge = badge; n.no.textContent = badge; }
@@ -309,7 +314,10 @@
             const pr = play.index >= 0 ? rectOf(play.index) : null;
             const hideLocate = !pr;
             if (locateBtn.hidden !== hideLocate) locateBtn.hidden = hideLocate;
-            if (pr) locateBtn.classList.toggle('is-away', pr.y + pr.h < top + 10 || pr.y > top + st.room.height - 10);
+            if (pr) {
+                const away = pr.y + pr.h < top + 10 || pr.y > top + st.room.height - 10;
+                if (away !== locateAway) { locateAway = away; locateBtn.classList.toggle('is-away', away); }
+            }
         };
         const schedule = (full = true) => { if (full) st.renderDirty = true; if (st.on && !st.raf) st.raf = requestAnimationFrame(render); };
         scroller.addEventListener('scroll', () => schedule(true), { passive: true });
@@ -432,20 +440,20 @@
                     for (const n of st.pool) {
                         if (n.src) { n.img.removeAttribute('src'); n.src = null; n.el.classList.remove('has-art'); }
                     }
-                    for (const h of st.heads.values()) h.remove();
+                    for (const h of st.heads.values()) recycleHead(h);
                     st.heads.clear();
                     thumbs.clearQueue();
                 }
             },
             setRoom(room) {
                 const r = { left: Math.round(room.left), top: Math.round(room.top), width: Math.max(0, Math.round(room.width)), height: Math.max(0, Math.round(room.height)) };
-                if (['left', 'top', 'width', 'height'].every((k) => r[k] === st.room[k])) return;
+                if (r.left === st.room.left && r.top === st.room.top && r.width === st.room.width && r.height === st.room.height) return;
                 const widthChanged = r.width !== st.room.width;
                 st.room = r;
                 Object.assign(el.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
                 if (widthChanged && st.secs.length) {
                     for (const n of st.nodes.values()) n.pos = '';
-                    for (const h of st.heads.values()) h.remove();
+                    for (const h of st.heads.values()) recycleHead(h);
                     st.heads.clear();
                     measure();
                     reveal(st.sel, { center: true, instant: true });

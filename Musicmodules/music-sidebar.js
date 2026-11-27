@@ -142,9 +142,13 @@ function setupSidebar(app) {
                 });
                 div.addEventListener('click', () => {
                     app.filteredPlaylistSource = { type: 'playlist', name: pl.name, id: pl.id };
+                    const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
                     const byPath = new Map();
-                    for (const t of app.playlist) if (t && t.path && !byPath.has(t.path)) byPath.set(t.path, t);
-                    app.currentFilteredTracks = pl.tracks.map(p => byPath.get(p)).filter(Boolean);
+                    for (const t of app.playlist) {
+                        const key = normPath(t && t.path);
+                        if (key && !byPath.has(key)) byPath.set(key, t);
+                    }
+                    app.currentFilteredTracks = pl.tracks.map(p => byPath.get(normPath(p))).filter(Boolean);
                     app.playlistEl.style.display = 'block'; categoryView.style.display = 'none';
                     app.renderPlaylist(app.currentFilteredTracks);
                     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
@@ -279,12 +283,13 @@ function setupSidebar(app) {
             const t = filtered[i];
             if (selectedPaths.has(t.path)) inPl.push(t); else rest.push(t);
         }
+        const inPlCount = inPl.length;
         const sortedFiltered = inPl.concat(rest);
         // 一次拼好整张列表再写进去，点击交给列表本身（以前每行各建三层元素、各挂一个监听，5000 首打开、每敲一个字都要重建半秒多）
         app.modalRows = sortedFiltered;
         app.lastModalClickIndex = -1; // 行号换了一套：Shift 连选从下一次单击重新算起
         app.modalSongList.innerHTML = sortedFiltered.length === 0 ? '<div class="music-modal-empty">没有匹配的歌曲</div>'
-            : sortedFiltered.map((t, i) => `<div class="music-modal-song-item${selectedPaths.has(t.path) ? ' in-playlist' : ''}" data-index="${i}">`
+            : sortedFiltered.map((t, i) => `<div class="music-modal-song-item${i < inPlCount ? ' in-playlist' : ''}" data-index="${i}">`
                 + `<div class="music-modal-song-checkbox"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/></svg></div>`
                 + `<div class="music-modal-song-info"><div class="music-modal-song-title">${esc(app.stripAudioExtension(t.title) || '未知标题')}</div><div class="music-modal-song-artist">${esc(t.artist || '未知艺术家')}</div></div></div>`).join('');
         app.modalCount.textContent = `${pl.tracks.length} 首已添加`;

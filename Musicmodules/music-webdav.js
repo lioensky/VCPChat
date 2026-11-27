@@ -281,13 +281,15 @@ function setupWebDav(app) {
         app.webdavModalClose?.addEventListener('click', app.closeWebDavModal);
         app.webdavModal?.addEventListener('click', (e) => { if (e.target === app.webdavModal) app.closeWebDavModal(); });
         app.webdavAddServerBtn?.addEventListener('click', () => {
-            document.getElementById('webdav-server-name').value = '';
+            const nameInput = document.getElementById('webdav-server-name');
+            if (nameInput) nameInput.value = '';
             document.getElementById('webdav-server-url').value = '';
             document.getElementById('webdav-server-username').value = '';
             document.getElementById('webdav-server-password').value = '';
             app.webdavDialogStatus.style.color = '';
             app.webdavDialogStatus.textContent = '';
             app.webdavServerDialog.classList.add('active');
+            nameInput?.focus?.();
         });
         let testReqId = 0;
         const closeServerDialog = () => {
@@ -354,11 +356,14 @@ function setupWebDav(app) {
         let activeScanUnsub = null;
         const onWebDavKeyDown = (e) => {
             if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
+            const subActive = app.webdavServerDialog?.classList.contains('active');
+            const modalActive = app.webdavModal?.classList.contains('active');
+            if (!subActive && !modalActive) return;
             if (document.querySelector('.dialog-overlay.music-dialog.visible:not([data-closing])')) return;
-            if (app.webdavServerDialog?.classList.contains('active')) {
+            if (subActive) {
                 e.preventDefault();
                 closeServerDialog();
-            } else if (app.webdavModal?.classList.contains('active')) {
+            } else if (modalActive) {
                 e.preventDefault();
                 app.closeWebDavModal();
             }

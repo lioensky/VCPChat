@@ -374,58 +374,66 @@
         const spin = (ctx.wait || 0) * 200 * DEG;
         const loading = ctx.waiting && ctx.loadingLabel !== false ? '正在载入舞台' + '.'.repeat(1 + (Math.floor((ctx.wait || 0) * 3) % 3)) : '';
         let r, sweep, start, nextFileLabel = '', nextFileText = '';
+        let nextFlashOp = '', nextScanOp = '', nextWhiteD = '', nextVeilOp = null;
         if (kind === 'enter') {
-            const backdropOpacity = t < releaseAt ? smooth(progress(t, 0, 0.14)) : 0;
-            n.svg.parentElement.style.setProperty('--mi-enter-backdrop', String(backdropOpacity));
+            const backdropOpacity = String(t < releaseAt ? smooth(progress(t, 0, 0.14)) : 0);
+            if (n._lastBackdrop !== backdropOpacity) {
+                n._lastBackdrop = backdropOpacity;
+                n.svg.parentElement.style.setProperty('--mi-enter-backdrop', backdropOpacity);
+            }
             r = keys([[0, 640], [0.2, 300], [0.45, 168], [0.7, 160]], t);
             sweep = keys([[0, 30], [0.25, 220], [0.5, 360]], t) * DEG;
             start = keys([[0, 200], [0.5, -90]], t) * DEG + spin;
-            n.white.setAttribute('d', arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG));
-            n.scan.style.opacity = String(smooth(progress(t, 0, 0.08)));
+            nextWhiteD = arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG);
+            nextScanOp = t >= releaseAt ? '0' : String(smooth(progress(t, 0, 0.08)));
             nextFileLabel = loading || '进入舞台';
             nextFileText = typed(ctx.file, t, 0.04, 0.34);
             // 白场 90% 以上只维持约 110ms：0.45 起快速升到不透明，放开舞台后立刻开始退。
-            n.flash.style.opacity = String(smooth(progress(t, 0.45, releaseAt)) * (1 - smooth(progress(t, releaseAt + 0.01, TRANSIT.enter - 0.1))));
-            // 白场盖严之后，遮罩和圆环一起撤掉，白场退去时只剩舞台。
-            if (t >= releaseAt) n.scan.style.opacity = '0';
+            nextFlashOp = String(smooth(progress(t, 0.45, releaseAt)) * (1 - smooth(progress(t, releaseAt + 0.01, TRANSIT.enter - 0.1))));
         } else if (kind === 'exit') {
             // 0.28 秒内纸色底盖严、圆环收拢；闸门（0.3）之后白场 0.1 秒升起，纸色底在白场后面撤掉，白场退去露出档案页。
             const gate = TRANSIT.exitGate;
-            n.flash.style.opacity = String(smooth(progress(t, gate, gate + 0.1)) * (1 - smooth(progress(t, gate + 0.11, gate + 0.42))));
-            n.veil.setAttribute('opacity', String(t < gate + 0.1 ? smooth(progress(t, 0.04, 0.28)) : 0));
+            nextFlashOp = String(smooth(progress(t, gate, gate + 0.1)) * (1 - smooth(progress(t, gate + 0.11, gate + 0.42))));
+            nextVeilOp = String(t < gate + 0.1 ? smooth(progress(t, 0.04, 0.28)) : 0);
             if (t < gate + 0.1) {
                 r = keys([[0, 640], [0.18, 300], [0.3, 168]], t);
                 sweep = keys([[0, 30], [0.26, 360]], t) * DEG;
                 start = keys([[0, 200], [0.3, -90]], t) * DEG + spin;
-                n.scan.style.opacity = String(smooth(progress(t, 0, 0.08)));
+                nextScanOp = String(smooth(progress(t, 0, 0.08)));
             } else {
                 r = keys([[gate + 0.1, 160], [gate + 0.3, 520]], t);
                 sweep = keys([[gate + 0.1, 360], [gate + 0.3, 40]], t) * DEG;
                 start = keys([[gate + 0.1, -90], [gate + 0.3, 160]], t) * DEG + spin;
-                n.scan.style.opacity = String(1 - smooth(progress(t, gate + 0.1, gate + 0.38)));
+                nextScanOp = String(1 - smooth(progress(t, gate + 0.1, gate + 0.38)));
             }
-            n.white.setAttribute('d', t < gate + 0.1 ? arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG) : '');
+            nextWhiteD = t < gate + 0.1 ? arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG) : '';
             nextFileLabel = loading || '返回';
             nextFileText = typed('曲库', t, 0.04, 0.2);
         } else {
             // 换模式：舞台在点击 0.17 秒后才开始建新模式，纸色底 0.14 秒就盖严；等新模式加载好后揭开
             const gate = TRANSIT.switchGate;
-            n.flash.style.opacity = '0';
-            n.veil.setAttribute('opacity', String(smooth(progress(t, 0, 0.14)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch)))));
+            nextFlashOp = '0';
+            nextVeilOp = String(smooth(progress(t, 0, 0.14)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch))));
             r = keys([[0, 400], [0.18, 168], [gate + 0.05, 160], [TRANSIT.switch, 420]], t);
             sweep = keys([[0, 60], [0.18, 360], [gate + 0.05, 360], [TRANSIT.switch, 40]], t) * DEG;
             start = keys([[0, 120], [0.18, -90]], t) * DEG + spin;
-            n.white.setAttribute('d', arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG));
-            n.scan.style.opacity = String(smooth(progress(t, 0, 0.1)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch - 0.1))));
+            nextWhiteD = arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG);
+            nextScanOp = String(smooth(progress(t, 0, 0.1)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch - 0.1))));
             nextFileLabel = loading || '切换舞台';
             nextFileText = typed(ctx.file, t, 0.02, 0.18);
         }
+        if (nextVeilOp !== null && n._lastVeilOp !== nextVeilOp) { n._lastVeilOp = nextVeilOp; n.veil.setAttribute('opacity', nextVeilOp); }
+        if (n._lastFlashOp !== nextFlashOp) { n._lastFlashOp = nextFlashOp; n.flash.style.opacity = nextFlashOp; }
+        if (n._lastScanOp !== nextScanOp) { n._lastScanOp = nextScanOp; n.scan.style.opacity = nextScanOp; n.file.style.opacity = nextScanOp; }
+        if (n._lastWhiteD !== nextWhiteD) { n._lastWhiteD = nextWhiteD; n.white.setAttribute('d', nextWhiteD); }
         if (n._lastFileLabel !== nextFileLabel) { n._lastFileLabel = nextFileLabel; n.fileLabel.textContent = nextFileLabel; }
         if (n._lastFileText !== nextFileText) { n._lastFileText = nextFileText; n.fileText.textContent = nextFileText; }
-        n.outer.setAttribute('d', arc(r, start, sweep));
-        n.cap.setAttribute('cx', (CX + Math.cos(start + sweep) * r).toFixed(2));
-        n.cap.setAttribute('cy', (CY + Math.sin(start + sweep) * r).toFixed(2));
-        n.file.style.opacity = n.scan.style.opacity;
+        const nextOuterD = arc(r, start, sweep);
+        if (n._lastOuterD !== nextOuterD) { n._lastOuterD = nextOuterD; n.outer.setAttribute('d', nextOuterD); }
+        const nextCapX = (CX + Math.cos(start + sweep) * r).toFixed(2);
+        const nextCapY = (CY + Math.sin(start + sweep) * r).toFixed(2);
+        if (n._lastCapX !== nextCapX) { n._lastCapX = nextCapX; n.cap.setAttribute('cx', nextCapX); }
+        if (n._lastCapY !== nextCapY) { n._lastCapY = nextCapY; n.cap.setAttribute('cy', nextCapY); }
         return 1;
     };
 
@@ -447,12 +455,14 @@
     const renderStill = (n, t, ctx) => {
         const releaseAt = ctx.direction === 'enter' ? 0.001 : 0;
         if (!ctx.released && t >= releaseAt) { ctx.released = true; ctx.release?.(); }
-        n.veil.setAttribute('opacity', '1');
-        n.flash.style.opacity = '0';
-        n.scan.style.opacity = '0';
-        n.fileLabel.textContent = '正在载入舞台';
-        n.fileText.textContent = ctx.file || '';
-        n.file.style.opacity = ctx.waiting && ctx.wait > 0.4 ? '1' : '0';
+        if (n._lastVeilOp !== '1') { n._lastVeilOp = '1'; n.veil.setAttribute('opacity', '1'); }
+        if (n._lastFlashOp !== '0') { n._lastFlashOp = '0'; n.flash.style.opacity = '0'; }
+        if (n._lastScanOp !== '0') { n._lastScanOp = '0'; n.scan.style.opacity = '0'; }
+        if (n._lastFileLabel !== '正在载入舞台') { n._lastFileLabel = '正在载入舞台'; n.fileLabel.textContent = '正在载入舞台'; }
+        const nextFileText = ctx.file || '';
+        if (n._lastFileText !== nextFileText) { n._lastFileText = nextFileText; n.fileText.textContent = nextFileText; }
+        const nextFileOp = ctx.waiting && ctx.wait > 0.4 ? '1' : '0';
+        if (n._lastStillFileOp !== nextFileOp) { n._lastStillFileOp = nextFileOp; n.file.style.opacity = nextFileOp; }
         return 1;
     };
 
