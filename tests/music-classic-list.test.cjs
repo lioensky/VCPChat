@@ -150,3 +150,43 @@ test('music-like-change 仅更新受影响曲目行，且 beforeunload 清理监
     assert.equal(isLikedCalls, 0, 'beforeunload detaches music-like-change listener');
     t.close();
 });
+
+test('经典列表全行已拆列时滚动跳过 clientHeight 布局读取，且 skin 分段控件同步 disabled 不自触发重扫', async () => {
+    const t = setup({ count: 20, layout: false });
+    // 20 行在首屏已经全拆完，再滚动不应触发任何 clientHeight 同步布局读取
+    let clientHeightReads = 0;
+    Object.defineProperty(t.list, 'clientHeight', { get() { clientHeightReads += 1; return 400; }, configurable: true });
+    t.list.scrollTop = 100;
+    t.list.dispatchEvent(new t.window.Event('scroll'));
+    await t.flush();
+    assert.equal(clientHeightReads, 0, 'fully decorated classic list skips layout reads on scroll');
+    t.close();
+
+    // 验证 music-skin 分段控件：同步 option.disabled 且插入分段 DOM 不自触发二次 querySelectorAll
+    const { JSDOM } = require('jsdom');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="music-stage"></div>
+        <div id="music-stage-settings-card"><div class="music-stage-settings-body">
+            <label><span class="music-stage-tuning-label">档位</span>
+                <select id="s1"><option value="a">甲</option><option value="b">乙</option></select>
+            </label>
+        </div></div></body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    const body = w.document.querySelector('.music-stage-settings-body');
+    let qsaCount = 0;
+    const origQsa = body.querySelectorAll.bind(body);
+    body.querySelectorAll = (sel) => { if (sel.includes('select')) qsaCount += 1; return origQsa(sel); };
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+    w.setupMusicSkin({ playlist: [], currentTrackIndex: -1 });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(qsaCount, 1, 'inserting .music-skin-segmented does not re-trigger settings MutationObserver scan');
+    const sel = w.document.getElementById('s1');
+    const btns = w.document.querySelectorAll('.music-skin-segmented button');
+    assert.equal(btns.length, 2);
+    sel.options[1].disabled = true;
+    sel.dispatchEvent(new w.Event('change'));
+    assert.equal(btns[1].disabled, true, 'sync reflects dynamic option.disabled changes');
+    w.close();
+});

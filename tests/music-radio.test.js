@@ -146,3 +146,34 @@ test('isInstrumental prefilter preserves exact matches and avoids false positive
         assert.equal(isInstrumental({ title }), false, `expected vocal/normal: ${title}`);
     }
 });
+
+test('dailyMix avoids redundant localStorage writes when the same day batch is already recorded', () => {
+    const store = new Map();
+    let setCalls = 0;
+    const storage = {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => { setCalls += 1; store.set(k, String(v)); },
+        removeItem: (k) => store.delete(k)
+    };
+    const library = Array.from({ length: 40 }, (_, i) => ({
+        path: `D:\\Music\\a${i % 8}\\s${i}.flac`,
+        title: `Song ${i}`,
+        artist: `Artist ${i % 10}`,
+        album: `Album ${i % 8}`
+    }));
+    const makeApp = () => {
+        const app = { playlist: library, currentTrackIndex: -1, playModes: ['repeat'], currentPlayMode: 0, loadTrack: async () => {} };
+        setupMusicRadio(app, { storage });
+        return app;
+    };
+    const app1 = makeApp();
+    const first = app1.dailyMix({ size: 15 });
+    assert.equal(first.length, 15);
+    assert.equal(setCalls, 1, 'initial dailyMix records today batch once');
+
+    // 模拟重启窗口：同一天、同一曲库再算一次 dailyMix，不应重复写相同的 localStorage 历史
+    const app2 = makeApp();
+    const second = app2.dailyMix({ size: 15 });
+    assert.deepEqual(second.map((t) => t.path), first.map((t) => t.path));
+    assert.equal(setCalls, 1, 'recomputing identical same-day batch skips redundant localStorage write');
+});
