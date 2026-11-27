@@ -146,3 +146,18 @@ test('Batch 53: beforeunload resolves open MusicDialog as false and removes glob
     key(window, ' ');
     assert.equal(leaked, 1, 'keydown listener is detached after beforeunload');
 });
+
+test('Batch 57: stacked MusicDialog confirms route Escape only to the topmost dialog', async () => {
+    const { window } = setup();
+    let firstDone = false;
+    const p1 = window.MusicDialog.confirm({ title: '第一层' }).then((v) => { firstDone = true; return v; });
+    const p2 = window.MusicDialog.confirm({ title: '第二层' });
+
+    key(window, 'Escape');
+    assert.equal(await p2, false, 'Escape dismisses the topmost dialog');
+    await new Promise((r) => setImmediate(r));
+    assert.equal(firstDone, false, 'underlying dialog remains open after topmost is dismissed');
+
+    key(window, 'Enter');
+    assert.equal(await p1, true, 'subsequent Enter confirms the now-topmost underlying dialog');
+});

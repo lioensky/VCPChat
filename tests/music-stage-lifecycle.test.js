@@ -1418,3 +1418,68 @@ test('Batch 56: MusicStageConfig debounces slider setModePatch writes, Starborn 
         dom.window.close();
     }
 });
+
+test('Batch 57: edge spectrum clamps narrow viewports, skips resolveAccent on throttled frames, interlude quantizes CSS vars, and CSS fixes reduced-motion/low-power', () => {
+    const dom = createStageDom();
+    try {
+        runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
+        const root = dom.window.document.getElementById('music-stage');
+        const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        Object.defineProperty(root, 'clientWidth', { configurable: true, get: () => 30 });
+        Object.defineProperty(root, 'clientHeight', { configurable: true, get: () => 30 });
+
+        let accentReads = 0;
+        dom.window.MusicStageModeUtils = {
+            resolveAccent: () => { accentReads += 1; return { r: 100, g: 180, b: 255 }; }
+        };
+        const fakeCtx = () => ({
+            setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {},
+            quadraticCurveTo() {}, stroke() {}, lineCap: '', lineJoin: '', lineWidth: 1,
+            strokeStyle: '', shadowColor: '', shadowBlur: 0
+        });
+        dom.window.HTMLCanvasElement.prototype.getContext = function () { return fakeCtx(); };
+
+        const scope = new dom.window.MusicStageRuntime.DisposableScope();
+        const edge = dom.window.MusicStageEdge.create({
+            app: {}, root,
+            elements: { edgeSpectrum, edgeCanvas },
+            state: { config: { edgeSpectrum: true, quality: 'standard' } },
+            scope, clamp: dom.window.MusicStageRuntime.clamp
+        });
+        const spectrum = new Float32Array(32).fill(0.5);
+        const track = { path: '/a.flac' };
+        edge.draw({ now: 100, isPlaying: true, audio: { spectrum, power: 0.4 }, viewport: { dpr: 1 }, track });
+        const strips = [...edgeSpectrum.querySelectorAll('.music-stage-edge-spectrum-canvas')];
+        assert.equal(strips.length, 4);
+        for (const c of strips) {
+            assert.ok(parseFloat(c.style.left) >= 0, 'clamped strip left >= 0 on narrow viewport');
+            assert.ok(parseFloat(c.style.top) >= 0, 'clamped strip top >= 0 on narrow viewport');
+            assert.ok(parseFloat(c.style.width) <= 30 && parseFloat(c.style.height) <= 30, 'clamped strip stays within viewport');
+        }
+        const readsAfterFirst = accentReads;
+        // 10ms later in standard (30fps => 33.3ms): throttled BEFORE resolveAccent
+        edge.draw({ now: 110, isPlaying: true, audio: { spectrum, power: 0.4 }, viewport: { dpr: 1 }, track });
+        assert.equal(accentReads, readsAfterFirst, 'throttled playing frame skips resolveAccent');
+        scope.destroy();
+
+        // Interlude visualizer quantizes phase & power CSS vars
+        const vis = dom.window.MusicStageRuntime.createInterludeVisualizer({ barCount: 20 });
+        vis.update({ isPlaying: true, playbackTime: 1.23456789, audio: { spectrum, power: 0.456789 } }, { visible: true, intensity: 1 });
+        assert.equal(vis.root.style.getPropertyValue('--interlude-phase'), '3.70deg');
+        assert.equal(vis.root.style.getPropertyValue('--interlude-power'), '0.457');
+        vis.destroy();
+
+        // CSS reduced-motion & low-power rules
+        const coreCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-core-modes.css'), 'utf8');
+        assert.match(coreCss, /body\.music-fl-low\s+\.luminous-aura[\s\S]*?filter:\s*none;/);
+        assert.match(coreCss, /body\.music-fl-low\s+\.luminous-line\.is-entering[\s\S]*?animation:\s*none;/);
+        const pixiCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-pixi-3d.css'), 'utf8');
+        assert.match(pixiCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.diorama-hud-circle-dashed[\s\S]*?animation:\s*none;/);
+        assert.match(pixiCss, /body\.music-reduce-motion\s+\.music-stage-mode-diorama\s+\.diorama-hud-circle-dashed[\s\S]*?animation:\s*none;/);
+        assert.match(pixiCss, /body\.music-fl-low\s+\.music-stage\.stage-theme-light\s+\.music-stage-settings-card[\s\S]*?backdrop-filter:\s*none;/);
+    } finally {
+        dom.window.close();
+    }
+});

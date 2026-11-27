@@ -370,3 +370,49 @@ test('createMusicFluidMarker respects MusicMotion.reduced override over matchMed
     assert.equal(rafCalls, 1, 'destroyed marker ignores subsequent moveTo/relayout');
     dom.window.close();
 });
+
+test('Batch 57: music-fluid-select skips high-churn list subtrees in bodyObs and deduplicates trigger updates', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="archive-list-spacer"></div>
+        <ul id="playlist"></ul>
+        <div id="controls">
+            <select id="s-init" aria-label="排序"><option value="a">默认</option><option value="b">歌手</option></select>
+        </div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+
+    const spacer = doc.querySelector('.archive-list-spacer');
+    const row = doc.createElement('div');
+    row.className = 'archive-row';
+    row.innerHTML = '<span>Track 1</span><span>Artist 1</span>';
+    let rowTagLookups = 0;
+    const origGetByTag = row.getElementsByTagName.bind(row);
+    row.getElementsByTagName = (...args) => { rowTagLookups += 1; return origGetByTag(...args); };
+    spacer.appendChild(row);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(rowTagLookups, 0, 'rows appended inside .archive-list-spacer bypass getElementsByTagName("select")');
+
+    // Dynamic select outside skipped containers is still dressed automatically
+    const wrap = doc.createElement('div');
+    const dynSel = doc.createElement('select');
+    dynSel.innerHTML = '<option value="1">一</option><option value="2">二</option>';
+    wrap.appendChild(dynSel);
+    doc.getElementById('controls').appendChild(wrap);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(dynSel.classList.contains('mfs-native'), 'dynamic select outside list subtrees is still dressed');
+
+    // Unchanged mirror/sync skips redundant aria-label writes
+    const initSel = doc.getElementById('s-init');
+    const trigger = initSel.nextElementSibling;
+    assert.ok(trigger && trigger.classList.contains('mfs-trigger'));
+    let ariaWrites = 0;
+    const origSetAttr = trigger.setAttribute.bind(trigger);
+    trigger.setAttribute = (name, val) => { if (name === 'aria-label') ariaWrites += 1; return origSetAttr(name, val); };
+    initSel.value = 'a';
+    assert.equal(ariaWrites, 0, 'assigning identical select value skips redundant aria-label write');
+    initSel.value = 'b';
+    assert.equal(ariaWrites, 1, 'changing select value updates aria-label once');
+    dom.window.close();
+});

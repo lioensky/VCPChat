@@ -247,3 +247,41 @@ test('Batch 53: classic-list caches like button & skips redundant attrs; skin ca
         resolve();
     }));
 });
+
+test('Batch 57: classic-list caches sorted output for >32 tracks and music-skin syncs segmented buttons on programmatic select.value write', () => {
+    const t = setup({ count: 50 });
+    let stripCalls = 0;
+    t.app.stripAudioExtension = (s) => { stripCalls += 1; return String(s || ''); };
+    t.doc.querySelector('.music-list-sort.is-title').click();
+    const callsAfterSort = stripCalls;
+    assert.ok(callsAfterSort >= 50, 'initial title sort extracts keys once per track');
+    // Re-rendering the unchanged 50-track list hits sortedCache instead of re-sorting
+    t.app.renderPlaylist();
+    t.app.renderPlaylist();
+    assert.equal(stripCalls, callsAfterSort, 'repeated renderPlaylist reuses cached sorted list without re-sorting');
+    // Clicking the sort header again flips direction and invalidates cache
+    t.doc.querySelector('.music-list-sort.is-title').click();
+    assert.ok(stripCalls > callsAfterSort, 'sort header toggle invalidates sortedCache and re-sorts');
+    t.close();
+
+    // Verify music-skin segmented control tracks programmatic select.value / selectedIndex updates
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="music-stage"></div>
+        <div id="music-stage-settings-card"><div class="music-stage-settings-body">
+            <label><span class="music-stage-tuning-label">画质</span>
+                <select id="s2"><option value="low">节能</option><option value="std">标准</option><option value="max">极致</option></select>
+            </label>
+        </div></div></body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const w = dom.window;
+    w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+    w.setupMusicSkin({ playlist: [], currentTrackIndex: -1 });
+    const sel = w.document.getElementById('s2');
+    const btns = [...w.document.querySelectorAll('.music-skin-segmented button')];
+    assert.equal(btns[0].getAttribute('aria-pressed'), 'true');
+    sel.value = 'max';
+    assert.equal(btns[2].getAttribute('aria-pressed'), 'true', 'programmatic select.value updates segmented button aria-pressed');
+    assert.equal(btns[0].getAttribute('aria-pressed'), 'false');
+    sel.selectedIndex = 1;
+    assert.equal(btns[1].getAttribute('aria-pressed'), 'true', 'programmatic select.selectedIndex updates segmented button aria-pressed');
+    w.close();
+});
