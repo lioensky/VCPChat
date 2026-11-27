@@ -56,3 +56,62 @@ test('animateLyrics updates currentLyricIndex without touching classic DOM when 
     assert.equal(app.currentLyricIndex, 1);
     assert.equal(items[1].classList.contains('active'), true, 'updates classic DOM once visible');
 });
+
+test('animateLyrics caches word state across line changes and resetLyrics clears layout & seek rAF', () => {
+    const dom = new JSDOM('<ul id="l"></ul><div id="c"></div>');
+    const { window } = dom;
+    const cancelled = [];
+    let rafSeq = 0;
+    window.requestAnimationFrame = () => ++rafSeq;
+    window.cancelAnimationFrame = (id) => cancelled.push(id);
+    const context = vm.createContext({
+        console: { log() {}, warn() {}, error() {} },
+        setTimeout, clearTimeout,
+        requestAnimationFrame: window.requestAnimationFrame,
+        cancelAnimationFrame: window.cancelAnimationFrame,
+        window, document: window.document
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-lyrics.js'), 'utf8'), context);
+    const app = {
+        lyricSpeedFactor: 1, lyricOffset: 0, currentLyrics: [],
+        lyricsList: window.document.getElementById('l'),
+        lyricsContainer: window.document.getElementById('c'),
+        isPlaying: true, isTrackLoading: false, lastKnownDuration: 60,
+        lastKnownCurrentTime: 1, lastStateUpdateTime: Date.now(),
+        api: { seekMusic: () => {} },
+        seekTo: () => {}, playTrack: () => {}, formatTime: (t) => String(t)
+    };
+    context.setupLyrics(app);
+    app.currentLyrics = [
+        { time: 0, endTime: 5, text: '第一句', isWordByWord: true, words: [{ text: '第', startTime: 0, endTime: 2 }, { text: '一句', startTime: 2, endTime: 5 }] },
+        { time: 5, endTime: 10, text: '第二句', isWordByWord: true, words: [{ text: '第', startTime: 5, endTime: 7 }, { text: '二句', startTime: 7, endTime: 10 }] },
+        { time: 10, endTime: 15, text: '第三句', isWordByWord: true, words: [{ text: '第', startTime: 10, endTime: 12 }, { text: '三句', startTime: 12, endTime: 15 }] }
+    ];
+    app.renderLyrics();
+    const items = [...app.lyricsList.querySelectorAll('li')];
+    let qsaOnThird = 0;
+    const origQsa = items[2].querySelectorAll.bind(items[2]);
+    items[2].querySelectorAll = (...args) => { qsaOnThird++; return origQsa(...args); };
+
+    app.lastKnownCurrentTime = 1;
+    app.animateLyrics();
+    assert.equal(app.currentLyricIndex, 0);
+    const afterFirst = qsaOnThird;
+
+    // 切到第 2 句时，未触及的第 3 句处于已结算的 future 状态，不应再次全量扫描 .lyric-word
+    app.lastKnownCurrentTime = 6;
+    app.animateLyrics();
+    assert.equal(app.currentLyricIndex, 1);
+    assert.equal(qsaOnThird, afterFirst, 'settled future line should not run querySelectorAll again');
+
+    app.isPlaying = false;
+    Object.defineProperty(items[1], 'offsetTop', { value: 180, configurable: true });
+    Object.defineProperty(items[2], 'offsetTop', { value: 260, configurable: true });
+    app.lastKnownCurrentTime = 7;
+    app.syncLyricsAfterSeek();
+    assert.ok(rafSeq > 0);
+    app.resetLyrics();
+    assert.equal(app._lyricLayout, null);
+    assert.ok(cancelled.includes(rafSeq), 'resetLyrics cancels pending seek rAF');
+    window.close();
+});

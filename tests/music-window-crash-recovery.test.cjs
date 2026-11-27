@@ -8,7 +8,7 @@ const path = require('node:path');
 const Module = require('node:module');
 const { EventEmitter } = require('node:events');
 
-async function openWindow() {
+async function openWindow(openChildWindows = []) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-crash-'));
     const created = [];
     class FakeWindow extends EventEmitter {
@@ -37,7 +37,7 @@ async function openWindow() {
     try {
         for (const f of Object.keys(require.cache)) if (/modules[\\/](ipc[\\/]musicHandlers|services[\\/]windowService)/.test(f)) delete require.cache[f];
         const music = require('../modules/ipc/musicHandlers.js');
-        music.initialize({ mainWindow: null, openChildWindows: [], startAudioEngine: async () => {}, stopAudioEngine() {}, APP_DATA_ROOT_IN_PROJECT: dir });
+        music.initialize({ mainWindow: null, openChildWindows, startAudioEngine: async () => {}, stopAudioEngine() {}, APP_DATA_ROOT_IN_PROJECT: dir });
         music.createOrFocusMusicWindow?.().catch(() => {});
     } finally {
         Module._load = original;
@@ -76,4 +76,14 @@ test('crashing again and again closes the window instead of reloading forever', 
     await wait(400);
     assert.equal(win.closes, 1);
     assert.equal(win.reloads, 0, 'the pending reloads must not touch a closed window');
+});
+
+test('closing musicWindow mutates shared openChildWindows in place without detaching array reference', async () => {
+    const shared = [{ id: 'other' }];
+    const win = await openWindow(shared);
+    assert.equal(shared.length, 2);
+    assert.equal(shared[1], win);
+    win.close();
+    assert.equal(shared.length, 1);
+    assert.deepEqual(shared, [{ id: 'other' }]);
 });

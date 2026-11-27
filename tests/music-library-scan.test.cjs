@@ -189,3 +189,25 @@ test('fillFolderCovers caches parent directory reads across multi-disc folders',
     assert.equal(reads.get(path.join(root, 'CD1')), 1);
     assert.equal(reads.get(path.join(root, 'CD2')), 1);
 });
+
+test('rescan deduplicates concurrent cover access checks for tracks sharing an album cover', async () => {
+    const names = Array.from({ length: 12 }, (_, i) => `alb/t${String(i).padStart(2, '0')}.mp3`);
+    const lib = library(names);
+    const first = await scanFolder({ folderPath: lib.music, coverCachePath: lib.cache, workerFile: lib.workerFile });
+    const sharedCover = path.join(lib.cache, 'shared-album.jpg');
+    fs.writeFileSync(sharedCover, 'img');
+    const known = first.tracks.map((t) => ({ ...t, albumArt: sharedCover }));
+    let accessCount = 0;
+    const origAccess = fs.promises.access;
+    fs.promises.access = async (file, ...rest) => {
+        if (file === sharedCover) accessCount++;
+        return origAccess.call(fs.promises, file, ...rest);
+    };
+    try {
+        const second = await scanFolder({ folderPath: lib.music, coverCachePath: lib.cache, workerFile: lib.workerFile, knownTracks: known });
+        assert.equal(second.stats.reused, 12);
+        assert.equal(accessCount, 1, 'shared cover path should only be checked once across concurrent tracks');
+    } finally {
+        fs.promises.access = origAccess;
+    }
+});

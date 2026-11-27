@@ -167,3 +167,57 @@ test('调字号或锁定后立刻关窗口，防抖未到也会同步落盘', as
     assert.strictEqual(saved.size, 48);
     assert.strictEqual(saved.locked, true);
 });
+
+test('暂停且进度未变时跳过周期重发；译文到达时立即补发', async () => {
+    const vm = require('vm');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body></body>');
+    const { window } = dom;
+    let tickFn = null;
+    let fakeNow = 10000;
+    const origNow = Date.now;
+    Date.now = () => fakeNow;
+    try {
+        window.setInterval = (fn) => { tickFn = fn; return 1; };
+        window.clearInterval = () => { tickFn = null; };
+        const ctx = vm.createContext({
+            window, document: window.document, CustomEvent: window.CustomEvent,
+            MutationObserver: window.MutationObserver, Date, console
+        });
+        ctx.window = window;
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-desktop-lyrics.js'), 'utf8'), ctx);
+        const published = [];
+        const app = {
+            playlist: [{ path: 'a.flac', title: '晴天', artist: '周杰伦' }],
+            currentTrackIndex: 0,
+            isPlaying: false,
+            lastKnownCurrentTime: 3,
+            lastStateUpdateTime: fakeNow,
+            currentLyrics: [{ time: 2, text: '故事的小黄花', translation: '' }],
+            api: {
+                toggleDesktopLyrics: async (v) => v,
+                publishDesktopLyrics: (snap) => published.push(snap),
+                getDesktopLyrics: async () => ({ on: true }),
+                onDesktopLyricsChanged: () => {}
+            }
+        };
+        window.setupMusicDesktopLyrics(app);
+        await Promise.resolve();
+        await Promise.resolve();
+        assert.strictEqual(published.length, 1);
+        // 暂停且进度未动：即使过了 10 秒也不重复发送 IPC
+        fakeNow += 10000;
+        tickFn();
+        assert.strictEqual(published.length, 1, 'paused unchanged position should skip periodic IPC');
+        // 译文异步到达：派发 music-lyrics-translated 应立即补发包含译文的快照
+        app.currentLyrics[0].translation = 'Little yellow flower';
+        window.document.dispatchEvent(new window.CustomEvent('music-lyrics-translated'));
+        assert.strictEqual(published.length, 2);
+        assert.strictEqual(published[1].line.tr, 'Little yellow flower');
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.strictEqual(tickFn, null, 'beforeunload clears poll timer');
+    } finally {
+        Date.now = origNow;
+        window.close();
+    }
+});

@@ -98,3 +98,27 @@ test('sidebar mode toast removed and capsule IPC validates publishers and comman
     assert.match(handlers, /event.sender !== mainWindow.webContents/);
     assert.match(handlers, /\['previous', 'next', 'play', 'pause'\]\.includes\(command\)/);
 });
+
+test('ResizeObserver watches capsule parent instead of root itself', () => {
+    const source = new JSDOM(html);
+    const markup = source.window.document.querySelector('.music-capsule').outerHTML;
+    source.window.close();
+    const dom = new JSDOM(`<div id="slot">${markup}</div>`, { runScripts: 'outside-only' });
+    const observed = [];
+    dom.window.ResizeObserver = class {
+        observe(el) { observed.push(el); }
+        disconnect() {}
+    };
+    dom.window.electronAPI = {
+        onMusicCapsuleState: () => () => {},
+        getMusicCapsuleState: () => Promise.resolve({ open: false }),
+        sendMusicCapsuleCommand: () => {}
+    };
+    dom.window.eval(script);
+    dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+    const root = dom.window.document.querySelector('.music-capsule');
+    assert.equal(observed.length, 1);
+    assert.notEqual(observed[0], root, 'must not observe root itself during width transitions');
+    assert.equal(observed[0], dom.window.document.getElementById('slot'));
+    dom.window.close();
+});
