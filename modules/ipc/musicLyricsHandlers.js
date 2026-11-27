@@ -10,16 +10,19 @@ const { parseTTML } = require('../lyrics/parserCore');
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]{2,}:\/\//i;
 const LRC_TIMESTAMP_RE = /\[\d{1,3}:\d{2}/;
 const SANITIZE_RE = /[\\/:"*?<>|]/g;
+const SIDECAR_EXTS = ['.ttml', '.lrc'];
 const sanitizeFilePart = (str) => String(str || '').replace(SANITIZE_RE, '_').trim();
 
 function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
+    const ensuredLyricDirs = new Set();
     // 和歌放在一起的歌词（同目录同名的 .ttml / .lrc，很多人整理曲库时就这么放）：比歌词目录里自动下载的优先
     const readSidecarLyrics = async (trackPath) => {
         const p = typeof trackPath === 'string' ? trackPath : '';
         if (!p || URL_SCHEME_RE.test(p) || !path.isAbsolute(p)) return null;
         const base = p.slice(0, p.length - path.extname(p).length);
         if (!base || base === p) return null;
-        for (const ext of ['.ttml', '.lrc']) {
+        for (let i = 0; i < SIDECAR_EXTS.length; i += 1) {
+            const ext = SIDECAR_EXTS[i];
             const file = base + ext;
             try {
                 const stat = await fs.stat(file);
@@ -77,9 +80,13 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
     ipcMain.handle('music-fetch-lyrics', async (event, { artist, title, duration, durationMs, album, rawObject } = {}) => {
         if (!title) return null;
         console.log(`[Music] IPC: Received request to fetch lyrics for "${title}" by "${artist}"`);
+        const lyricDir = getLyricDir();
         try {
-            await fs.ensureDir(getLyricDir());
-            const result = await lyricFetcher.fetchAndSaveLyrics(artist, title, getLyricDir(), {
+            if (!ensuredLyricDirs.has(lyricDir)) {
+                await fs.ensureDir(lyricDir);
+                ensuredLyricDirs.add(lyricDir);
+            }
+            const result = await lyricFetcher.fetchAndSaveLyrics(artist, title, lyricDir, {
                 duration,
                 durationMs,
                 album,
@@ -87,6 +94,7 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
             });
             return result;
         } catch (error) {
+            ensuredLyricDirs.delete(lyricDir);
             console.error(`[Music] Error fetching lyrics via IPC for "${title}":`, error);
             return null;
         }

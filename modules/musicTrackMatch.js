@@ -6,6 +6,9 @@
 
 const AUDIO_EXT = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff|wv)$/i;
 const ASCII_ONLY = /^[\x00-\x7f]*$/;
+const SPACE_UNDER_RE = /[\s_]+/g;
+const PATH_SEP_RE = /[\\/]/;
+const SPLIT_QUERY_RE = /\s+[-–—]\s+|\s+by\s+|\s*\/\s*|\s*的\s*/i;
 
 function norm(value) {
     const raw = String(value ?? '');
@@ -13,7 +16,7 @@ function norm(value) {
     return (ASCII_ONLY.test(raw) ? raw : raw.normalize('NFKC'))
         .toLowerCase()
         .replace(AUDIO_EXT, '')
-        .replace(/[\s_]+/g, ' ')
+        .replace(SPACE_UNDER_RE, ' ')
         .trim();
 }
 
@@ -33,7 +36,7 @@ function getTrackNorm(track) {
     if (hit && hit.rawTitle === rawTitle && hit.rawPath === rawPath && hit.rawArtist === rawArtist && hit.rawAlbum === rawAlbum) {
         return hit;
     }
-    const title = norm(rawTitle || (rawPath ? String(rawPath).split(/[\\/]/).pop() : ''));
+    const title = norm(rawTitle || (rawPath ? String(rawPath).split(PATH_SEP_RE).pop() : ''));
     const entry = {
         rawTitle, rawPath, rawArtist, rawAlbum,
         title,
@@ -47,21 +50,22 @@ function getTrackNorm(track) {
 
 // 「歌名 - 歌手」「歌名 by 歌手」「歌手 的 歌名」这类写法拆成两半。
 function splitQuery(q) {
-    const parts = q.split(/\s+[-–—]\s+|\s+by\s+|\s*\/\s*|\s*的\s*/i).map((s) => s.trim()).filter(Boolean);
+    const parts = q.split(SPLIT_QUERY_RE).map((s) => s.trim()).filter(Boolean);
     return parts.length === 2 ? parts : null;
 }
+
+const fieldMatches = (field, part) => Boolean(field && (field === part || field.includes(part)));
 
 function scoreTrack(track, q, qs, pair, minScore = 0) {
     const entry = getTrackNorm(track);
     const { title, titleS } = entry;
     if (title && (title === q || (qs && titleS === qs))) return 100;
-    const getArtist = () => (entry.artist === null ? (entry.artist = norm(entry.rawArtist)) : entry.artist);
+    let aName = null;
     if (pair && minScore < 95) {
-        const aName = getArtist();
+        aName = entry.artist === null ? (entry.artist = norm(entry.rawArtist)) : entry.artist;
         if (title || aName) {
             const [a, b] = pair;
-            const has = (field, part) => field && (field === part || field.includes(part));
-            if ((has(title, a) && has(aName, b)) || (has(title, b) && has(aName, a))) {
+            if ((fieldMatches(title, a) && fieldMatches(aName, b)) || (fieldMatches(title, b) && fieldMatches(aName, a))) {
                 return (title === a || title === b) ? 95 : 90;
             }
         }
@@ -69,7 +73,7 @@ function scoreTrack(track, q, qs, pair, minScore = 0) {
     if (minScore < 80 && title && title.startsWith(q)) return 80;
     if (minScore < 60 && title && (title.includes(q) || (qs && titleS.includes(qs)))) return 60;
     if (minScore < 40) {
-        const aName = getArtist();
+        if (aName === null) aName = entry.artist === null ? (entry.artist = norm(entry.rawArtist)) : entry.artist;
         if (aName && aName === q) return 40;
         if (minScore < 30 && aName && aName.includes(q)) return 30;
     }

@@ -48,12 +48,15 @@
     ];
     const hasCmpChar = (s) => s.includes('>') || s.includes('<') || s.includes('＞') || s.includes('＜');
     const WHITESPACE = /\s/;
+    const WS_SPLIT_RE = /\s+/;
+    const GT_FULL_RE = /＞/g;
+    const LT_FULL_RE = /＜/g;
     function cmp(a, op, b) { return op === '>' ? a > b : op === '>=' ? a >= b : op === '<' ? a < b : a <= b; }
 
     function matchCmpRule(raw) {
         if (!hasCmpChar(raw)) return null;
         const token = raw.includes('＞') || raw.includes('＜')
-            ? raw.replace(/＞/g, '>').replace(/＜/g, '<')
+            ? raw.replace(GT_FULL_RE, '>').replace(LT_FULL_RE, '<')
             : raw;
         for (let i = 0; i < CMP_RULES.length; i++) {
             const m = CMP_RULES[i][0].exec(token);
@@ -74,7 +77,7 @@
         }
         const preds = [];
         const rest = [];
-        const tokens = str.split(/\s+/);
+        const tokens = str.split(WS_SPLIT_RE);
         for (let t = 0; t < tokens.length; t++) {
             const raw = tokens[t];
             if (!raw) continue;
@@ -96,15 +99,32 @@
 
     // 不经过检索索引的简单匹配（智能歌单自己刷新时用）：每个词都要出现在歌名、歌手或专辑里
     function evaluate(tracks, q, ctx = {}) {
+        const list = Array.isArray(tracks) ? tracks : [];
+        if (!list.length) return [];
         const { preds, text } = parse(q);
-        const terms = norm(text).split(/\s+/).filter(Boolean);
-        return (tracks || []).filter((t) => {
-            if (!t || !t.path) return false;
-            if (!preds.every((p) => p.test(t, ctx))) return false;
-            if (!terms.length) return true;
-            const hay = norm([t.title, t.artist, t.album].join(' '));
-            return terms.every((w) => hay.includes(w));
-        });
+        const terms = text ? norm(text).split(WS_SPLIT_RE).filter(Boolean) : [];
+        const evalCtx = ctx && ctx.now ? ctx : { ...ctx, now: Date.now() };
+        const predLen = preds.length;
+        const termLen = terms.length;
+        const out = [];
+        for (let i = 0; i < list.length; i += 1) {
+            const t = list[i];
+            if (!t || !t.path) continue;
+            let ok = true;
+            for (let p = 0; p < predLen; p += 1) {
+                if (!preds[p].test(t, evalCtx)) { ok = false; break; }
+            }
+            if (!ok) continue;
+            if (termLen > 0) {
+                const hay = norm(`${t.title || ''} ${t.artist || ''} ${t.album || ''}`);
+                for (let w = 0; w < termLen; w += 1) {
+                    if (!hay.includes(terms[w])) { ok = false; break; }
+                }
+                if (!ok) continue;
+            }
+            out.push(t);
+        }
+        return out;
     }
 
     function setupMusicSmart(app) {

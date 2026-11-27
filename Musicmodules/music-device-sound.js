@@ -12,15 +12,18 @@
     const SWITCH_KEY = 'musicDeviceSoundEnabled';
     const MAX_DEVICES = 24;
 
+    const hasOwn = Object.prototype.hasOwnProperty;
     const snapshotOf = (bands, enabled) => {
         const b = {};
-        for (const [k, v] of Object.entries(bands || {})) {
-            const n = Number(v);
-            if (Number.isFinite(n)) b[k] = n;
+        if (bands) {
+            for (const k in bands) {
+                if (!hasOwn.call(bands, k)) continue;
+                const n = Number(bands[k]);
+                if (Number.isFinite(n)) b[k] = n;
+            }
         }
         return { enabled: Boolean(enabled), bands: b };
     };
-    const hasOwn = Object.prototype.hasOwnProperty;
     const sameProfile = (a, b) => {
         if (!a || !b || a.enabled !== b.enabled) return false;
         const ba = a.bands || {};
@@ -77,14 +80,20 @@
         };
         const current = () => {
             const bands = {};
-            for (const band of Object.keys(app.eqBands || {})) bands[band] = sliderValue(band);
-            return snapshotOf(bands, app.eqSwitch ? app.eqSwitch.checked : app.eqEnabled);
+            const src = app.eqBands;
+            if (src) {
+                for (const band in src) {
+                    if (hasOwn.call(src, band)) bands[band] = sliderValue(band);
+                }
+            }
+            return { enabled: Boolean(app.eqSwitch ? app.eqSwitch.checked : app.eqEnabled), bands };
         };
         const remember = (immediate = false) => {
             if (!enabled || !device || applying) return;
             const next = current();
             if (profiles[device] && sameProfile(profiles[device], next)) return;
-            profiles[device] = { ...next, at: Date.now() };
+            next.at = Date.now();
+            profiles[device] = next;
             save(immediate);
         };
         const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };

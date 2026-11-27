@@ -10,7 +10,8 @@
     const BASE = '音乐播放器';
     const PLACEHOLDER_TITLES = new Set(['', '未选择歌曲', '未知标题']);
     const PLACEHOLDER_ARTISTS = new Set(['', '未知艺术家', '未知歌手']);
-    const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const WS_RE = /\s+/g;
+    const clean = (s) => String(s || '').replace(WS_RE, ' ').trim();
 
     const windowTitle = (title, artist) => {
         const t = clean(title);

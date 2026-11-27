@@ -275,13 +275,35 @@
         list.addEventListener('click', onLikeClick, true);
         list.addEventListener('dblclick', onLikeDblClick, true);
         const onLikeChange = (event) => {
-            const changed = Array.isArray(event?.detail?.tracks) && event.detail.tracks.length
-                ? new Set(event.detail.tracks.map((t) => t && t.path).filter(Boolean))
-                : null;
-            for (const li of list.children) {
+            const tracks = Array.isArray(event?.detail?.tracks) && event.detail.tracks.length ? event.detail.tracks : null;
+            let singlePath = '';
+            let hasSingle = false;
+            let changed = null;
+            if (tracks) {
+                if (tracks.length === 1) {
+                    const p = tracks[0] && tracks[0].path;
+                    if (!p) return;
+                    singlePath = p;
+                    hasSingle = true;
+                } else {
+                    changed = new Set();
+                    for (let i = 0; i < tracks.length; i += 1) {
+                        const p = tracks[i] && tracks[i].path;
+                        if (p) changed.add(p);
+                    }
+                    if (!changed.size) return;
+                }
+            }
+            const rows = list.children;
+            for (let i = 0, n = rows.length; i < n; i += 1) {
+                const li = rows[i];
                 if (li.dataset.cols !== '1') continue;
                 const track = app.playlist[Number(li.dataset.index)];
-                if (changed && (!track || !changed.has(track.path))) continue;
+                if (hasSingle) {
+                    if (!track || track.path !== singlePath) continue;
+                } else if (changed && (!track || !changed.has(track.path))) {
+                    continue;
+                }
                 paintLike(li, track);
             }
         };
@@ -357,6 +379,7 @@
         // 显示时只拆视口上下各 BUFFER 行，滚到哪拆到哪。
         const BUFFER = 30;
         const shown = () => !document.body.classList.contains('music-archive-on') && list.style.display !== 'none';
+        let hasUndecorated = false;
         const decorate = () => {
             const rows = list.children;
             const count = rows.length;
@@ -366,7 +389,10 @@
             for (let i = 0; i < count; i += 1) {
                 if (rows[i].dataset.cols !== '1') { anyUndecorated = true; break; }
             }
-            if (!anyUndecorated) return;
+            if (!anyUndecorated) {
+                hasUndecorated = false;
+                return;
+            }
             const pitch = count > 1 ? rows[1].offsetTop - rows[0].offsetTop : rows[0].offsetHeight;
             const view = list.clientHeight;
             let from = 0;
@@ -377,6 +403,7 @@
                 to = Math.min(count, Math.ceil((list.scrollTop + view) / pitch) + BUFFER);
             }
             for (let i = from; i < to; i += 1) decorateRow(rows[i]);
+            hasUndecorated = from > 0 || to < count;
         };
 
         let queued = 0;
@@ -386,6 +413,7 @@
         let needsSync = !wasShown;
         const decorateSoon = () => {
             if (queued || !shown()) return;
+            if (!hasUndecorated && !needsSync && !deferredSort) return;
             queued = requestAnimationFrame(() => {
                 queued = 0;
                 if (!shown()) return;

@@ -6,6 +6,17 @@ const path = require('path');
 const fs = require('fs-extra');
 
 const DEFAULT_IR_PRESET_DIR = path.join(__dirname, '..', '..', 'audio_engine', 'IRPreset');
+const IR_AUDIO_EXTENSIONS = new Set(['.wav', '.flac', '.mp3', '.ogg', '.m4a', '.ape']);
+const IR_DIALOG_OPTIONS = {
+    title: '选择脉冲响应文件 (IR)',
+    filters: [
+        { name: '音频文件', extensions: ['wav', 'flac', 'mp3', 'ogg', 'm4a', 'ape'] },
+        { name: 'WAV', extensions: ['wav'] },
+        { name: 'FLAC', extensions: ['flac'] },
+        { name: '所有文件', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+};
 
 function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavManager, getDialogWindow, irPresetDir = DEFAULT_IR_PRESET_DIR }) {
     // --- New handlers for WASAPI and device selection ---
@@ -141,7 +152,6 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
     });
 
     // --- IR Presets Handling ---
-    const IR_AUDIO_EXTENSIONS = new Set(['.wav', '.flac', '.mp3', '.ogg', '.m4a', '.ape']);
     ipcMain.handle('music-list-ir-presets', async () => {
         try {
             const files = await fs.readdir(irPresetDir);
@@ -173,20 +183,10 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
 
     // --- IR File Selection Dialog ---
     ipcMain.handle('select-ir-file', async () => {
-        const dialogOptions = {
-            title: '选择脉冲响应文件 (IR)',
-            filters: [
-                { name: '音频文件', extensions: ['wav', 'flac', 'mp3', 'ogg', 'm4a', 'ape'] },
-                { name: 'WAV', extensions: ['wav'] },
-                { name: 'FLAC', extensions: ['flac'] },
-                { name: '所有文件', extensions: ['*'] }
-            ],
-            properties: ['openFile']
-        };
         const parentWin = typeof getDialogWindow === 'function' ? getDialogWindow() : null;
         const result = parentWin && !parentWin.isDestroyed?.()
-            ? await dialog.showOpenDialog(parentWin, dialogOptions)
-            : await dialog.showOpenDialog(dialogOptions);
+            ? await dialog.showOpenDialog(parentWin, IR_DIALOG_OPTIONS)
+            : await dialog.showOpenDialog(IR_DIALOG_OPTIONS);
         if (!result || result.canceled || !result.filePaths?.length) return null;
         return result.filePaths[0];
     });

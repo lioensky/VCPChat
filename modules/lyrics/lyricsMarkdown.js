@@ -1,11 +1,16 @@
 'use strict';
 
+const HTML_ESC_RE = /[&<>]/g;
+const HTML_ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
+const MD_ESC_RE = /([\\`*_{}\[\]()#+.!|~-])/g;
+const NEWLINE_RE = /\r\n?|\n/g;
+
 // 只输出可读正文，不向工具结果暴露逐字计时等内部 JSON。
 function escapeMarkdown(value) {
     return (typeof value === 'string' ? value : '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/([\\`*_{}\[\]()#+.!|~-])/g, '\\$1')
-        .replace(/\r\n?|\n/g, ' ').trim();
+        .replace(HTML_ESC_RE, (ch) => HTML_ESC_MAP[ch])
+        .replace(MD_ESC_RE, '\\$1')
+        .replace(NEWLINE_RE, ' ').trim();
 }
 
 function formatCurrentLyrics(snapshot) {

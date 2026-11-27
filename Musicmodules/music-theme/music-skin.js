@@ -17,8 +17,12 @@
         return `TRK-${pad((h >>> 0) % 10000, 4)}`;
     };
 
+    const EXT_RE = /\.([a-z0-9]{2,5})(?:[?#].*)?$/i;
+    const BITRATE_SPEC_RE = /^\d+\s*kbps$/;
+    const EMPTY_SPEC_FIELDS = ['format', 'sample-rate', 'bit-depth', 'bitrate', 'specs'];
+
     const extensionOf = (track) => {
-        const match = /\.([a-z0-9]{2,5})(?:[?#].*)?$/i.exec(String(track?.path || ''));
+        const match = EXT_RE.exec(String(track?.path || ''));
         return match ? match[1].toUpperCase() : '';
     };
 
@@ -69,7 +73,13 @@
         const fieldCache = new Map();
         const fields = (name) => {
             let list = fieldCache.get(name);
-            if (!list || list.some((entry) => !entry.el.isConnected)) {
+            let stale = !list;
+            if (!stale) {
+                for (let i = 0; i < list.length; i += 1) {
+                    if (!list[i].el.isConnected) { stale = true; break; }
+                }
+            }
+            if (stale) {
                 list = Array.from(document.querySelectorAll(`[data-track-field="${name}"]`), (el) => ({
                     el,
                     cell: el.closest('.track-specs > div')
@@ -80,7 +90,13 @@
         };
         let rollerCache = null;
         const getRollers = () => {
-            if (!rollerCache || rollerCache.some((el) => !el.isConnected)) {
+            let stale = !rollerCache;
+            if (!stale) {
+                for (let i = 0; i < rollerCache.length; i += 1) {
+                    if (!rollerCache[i].isConnected) { stale = true; break; }
+                }
+            }
+            if (stale) {
                 rollerCache = Array.from(document.querySelectorAll('.track-file-number'));
             }
             return rollerCache;
@@ -124,7 +140,7 @@
                 cancelRoll();
                 setText('file-number', '', '');
                 setText('album', '曲目档案', '曲目档案');
-                for (const name of ['format', 'sample-rate', 'bit-depth', 'bitrate', 'specs']) setText(name, '');
+                for (let i = 0; i < EMPTY_SPEC_FIELDS.length; i += 1) setText(EMPTY_SPEC_FIELDS[i], '');
                 lastPath = null;
                 return;
             }
@@ -183,7 +199,7 @@
         if (app.trackBitrate) {
             let lastIsSpec = null;
             const markSpec = () => {
-                const isSpec = /^\d+\s*kbps$/.test(app.trackBitrate.textContent.trim());
+                const isSpec = BITRATE_SPEC_RE.test(app.trackBitrate.textContent.trim());
                 if (isSpec === lastIsSpec) return;
                 lastIsSpec = isSpec;
                 app.trackBitrate.classList.toggle('is-spec', isSpec);
@@ -256,11 +272,16 @@
     // 原 <select> 保留并继续接收值和 change 事件，舞台代码不需要知道有这一层。
     const SEGMENT_MAX_OPTIONS = 4;
     const SEGMENT_MAX_CHARS = 18;
+    // 用 WeakSet 记住检查过但不能拆成分段按钮的 <select>（不写 dataset.segmented，免得 music-fluid-select 误以为已替换）
+    const checkedSelects = new WeakSet();
     const enhanceSelect = (select) => {
-        if (select.dataset.segmented) return;
+        if (select.dataset.segmented || checkedSelects.has(select)) return;
         const options = Array.from(select.options);
         const chars = options.reduce((sum, option) => sum + option.textContent.trim().length, 0);
-        if (options.length < 2 || options.length > SEGMENT_MAX_OPTIONS || chars > SEGMENT_MAX_CHARS) return;
+        if (options.length < 2 || options.length > SEGMENT_MAX_OPTIONS || chars > SEGMENT_MAX_CHARS) {
+            if (options.length > 0) checkedSelects.add(select);
+            return;
+        }
         select.dataset.segmented = '1';
         select.classList.add('music-skin-segmented-source');
         select.tabIndex = -1;
@@ -345,7 +366,7 @@
                 try { settingsBody.querySelectorAll('select:not([data-segmented])').forEach(enhanceSelect); }
                 finally { scanning = false; }
             };
-            // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换；仅在新增节点本身或其子树含未替换 <select> 时才扫描
+            // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换；仅在新增节点本身或其子树含未检查 <select> 时才扫描
             const settingsObs = new MutationObserver((records) => {
                 if (scanning) return;
                 for (let i = 0; i < records.length; i += 1) {
@@ -353,10 +374,15 @@
                     for (let j = 0; j < added.length; j += 1) {
                         const node = added[j];
                         if (node.nodeType !== 1 || node.classList?.contains('music-skin-segmented')) continue;
-                        if ((node.tagName === 'SELECT' && !node.dataset?.segmented)
-                            || node.querySelector?.('select:not([data-segmented])')) {
-                            scan();
-                            return;
+                        if (node.tagName === 'SELECT') {
+                            if (!node.dataset?.segmented && !checkedSelects.has(node)) { scan(); return; }
+                            continue;
+                        }
+                        const nested = node.querySelectorAll?.('select:not([data-segmented])');
+                        if (nested && nested.length) {
+                            for (let k = 0; k < nested.length; k += 1) {
+                                if (!checkedSelects.has(nested[k])) { scan(); return; }
+                            }
                         }
                     }
                 }

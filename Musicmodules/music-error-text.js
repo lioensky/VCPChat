@@ -18,16 +18,20 @@
         [/EBUSY|resource busy|locked/i, '文件被别的程序占用'],
     ];
 
+    const INVOKE_PREFIX_RE = /^Error invoking remote method '[^']*':\s*/i;
+    const ERR_PREFIX_RE = /^(?:[A-Z][A-Za-z]*Error|Error):\s*/;
+    const CJK_RE = /[一-鿿]/;
+
     function errorText(err, fallback = '出错了') {
         let msg = typeof err === 'string' ? err : (err && err.message) || '';
         msg = String(msg)
-            .replace(/^Error invoking remote method '[^']*':\s*/i, '')
-            .replace(/^(?:[A-Z][A-Za-z]*Error|Error):\s*/, '')
+            .replace(INVOKE_PREFIX_RE, '')
+            .replace(ERR_PREFIX_RE, '')
             .trim();
         if (!msg) return fallback;
         for (const [re, text] of KNOWN) if (re.test(msg)) return `${fallback}：${text}`;
         // 已经是中文的说明就直接用；纯英文的技术信息不给人看
-        return /[一-鿿]/.test(msg) ? msg : fallback;
+        return CJK_RE.test(msg) ? msg : fallback;
     }
 
     global.MusicErrorText = errorText;
