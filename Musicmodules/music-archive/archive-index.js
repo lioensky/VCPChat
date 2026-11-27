@@ -148,7 +148,13 @@
         : (a, b) => (a < b ? -1 : a > b ? 1 : 0);
     const LOCALE_CMP = typeof Intl !== 'undefined' ? new Intl.Collator().compare : (a, b) => a.localeCompare(b);
 
-    const FIELDS = [['title', 3], ['artist', 2], ['album', 1]];
+    const FIELDS = [
+        ['title', 'titlePy', 'titleIni', 3],
+        ['artist', 'artistPy', 'artistIni', 2],
+        ['album', 'albumPy', 'albumIni', 1]
+    ];
+    const ARTIST_FIELDS = [FIELDS[1]];
+    const ALBUM_FIELDS = [FIELDS[2]];
 
     const FIELD_CACHE_BY_PY = new WeakMap();
     const FIELD_CACHE_NO_PY = new Map();
@@ -226,23 +232,25 @@
         const entries = list.map((t) => cachedEntry(t, pinyin, cache));
         if (cache && cache.size > list.length + 64) {
             // 曲库里已经没有的歌，条目不留
-            const keep = new Set(list.map((t) => t && t.path));
+            const keep = new Set();
+            for (let i = 0; i < list.length; i += 1) keep.add(list[i] && list[i].path);
             for (const k of cache.keys()) if (!keep.has(k)) cache.delete(k);
         }
 
         /* 一个词在一个字段上的得分；0 表示不匹配 */
-        const termScore = (e, f, w, term, ascii) => {
+        const termScore = (e, f, fPy, fIni, w, term, ascii) => {
             const v = e[f];
+            if (!v) return 0;
             if (v.startsWith(term)) return 100 * w;
             if (v.includes(term)) return 60 * w;
             if (ascii) {
-                const py = e[f + 'Py'], ini = e[f + 'Ini'];
+                const py = e[fPy], ini = e[fIni];
                 if (py.startsWith(term)) return 45 * w;
                 if (ini.startsWith(term)) return 40 * w;
                 if (py.includes(term)) return 30 * w;
                 if (ini.includes(term)) return 22 * w;
             } else {
-                const ini = e[f + 'Ini'];
+                const ini = e[fIni];
                 if (ini.includes(term)) return 20 * w;
             }
             return 0;
@@ -274,7 +282,7 @@
                 if (!norm(q).trim()) return pool.slice(0, limit);
             }
             const rawTerms = norm(q).split(/\s+/).filter(Boolean);
-            const fields = kind === 'artist' ? [['artist', 2]] : kind === 'album' ? [['album', 1]] : FIELDS;
+            const fields = kind === 'artist' ? ARTIST_FIELDS : kind === 'album' ? ALBUM_FIELDS : FIELDS;
             if (!rawTerms.length) return only ? pool.slice(0, limit) : [];
             const terms = rawTerms.map((term) => ({ term, ascii: /^[a-z0-9]+$/.test(term) }));
             const hits = [];
@@ -286,7 +294,8 @@
                     const { term, ascii } = terms[t];
                     let best = 0;
                     for (let fi = 0; fi < fields.length; fi++) {
-                        const s = termScore(e, fields[fi][0], fields[fi][1], term, ascii);
+                        const fl = fields[fi];
+                        const s = termScore(e, fl[0], fl[1], fl[2], fl[3], term, ascii);
                         if (s > best) best = s;
                     }
                     if (!best) return;
@@ -587,43 +596,82 @@
         }
         if (kind === 'playlist') {
             const byPath = new Map();
-            list.forEach((t, i) => { const k = String(t && t.path || '').replace(/\\/g, '/').toLowerCase(); if (k && !byPath.has(k)) byPath.set(k, i); });
-            (playlists || []).forEach((pl, order) => {
-                if (!pl) return;
-                const items = (pl.tracks || []).map((p) => byPath.get(String(p || '').replace(/\\/g, '/').toLowerCase())).filter((i) => i !== undefined);
-                const nameHit = q && norm(pl.name).includes(norm(q));
+            for (let i = 0; i < list.length; i += 1) {
+                const t = list[i];
+                const rawPath = t && t.path;
+                if (!rawPath) continue;
+                const k = String(rawPath).replace(/\\/g, '/').toLowerCase();
+                if (k && !byPath.has(k)) byPath.set(k, i);
+            }
+            const qNorm = q ? norm(q) : '';
+            for (let order = 0; order < (playlists || []).length; order += 1) {
+                const pl = playlists[order];
+                if (!pl) continue;
+                const tracksInPl = pl.tracks || [];
+                const items = [];
+                for (let j = 0; j < tracksInPl.length; j += 1) {
+                    const hit = byPath.get(String(tracksInPl[j] || '').replace(/\\/g, '/').toLowerCase());
+                    if (hit !== undefined) items.push(hit);
+                }
+                const nameHit = Boolean(qNorm) && norm(pl.name).includes(qNorm);
                 const hits = !q || nameHit ? items : index.query(q, { only: items });
-                if (!hits.length && (q || items.length)) return;
+                if (!hits.length && (q || items.length)) continue;
                 const id = 'playlist:' + (pl.id ?? order);
                 head(String(pl.name || '未命名歌单'), id, hits.length);
-                hits.forEach((i) => push(i, id));
-            });
+                for (let j = 0; j < hits.length; j += 1) push(hits[j], id);
+            }
             return { rows, count };
         }
         if (kind === 'artist' || kind === 'album') {
             const field = kind;
-            const pool = q ? index.query(q, { kind: field }) : list.map((_, i) => i);
+            const fallbackName = field === 'artist' ? '未知歌手' : '未知专辑';
             const groups = new Map();
-            for (let k = 0; k < pool.length; k += 1) {
-                const i = pool[k];
-                const name = String(list[i] && list[i][field] || '').trim() || (field === 'artist' ? '未知歌手' : '未知专辑');
-                let bucket = groups.get(name);
-                if (!bucket) { bucket = []; groups.set(name, bucket); }
-                bucket.push(i);
+            if (q) {
+                const pool = index.query(q, { kind: field });
+                for (let k = 0; k < pool.length; k += 1) {
+                    const i = pool[k];
+                    const raw = list[i] && list[i][field];
+                    const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
+                    let bucket = groups.get(name);
+                    if (!bucket) { bucket = []; groups.set(name, bucket); }
+                    bucket.push(i);
+                }
+            } else {
+                for (let i = 0; i < list.length; i += 1) {
+                    const raw = list[i] && list[i][field];
+                    const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
+                    let bucket = groups.get(name);
+                    if (!bucket) { bucket = []; groups.set(name, bucket); }
+                    bucket.push(i);
+                }
             }
-            const ordered = q
-                ? [...groups.entries()]
-                : [...groups.entries()]
-                    .map(([name, items]) => ({ name, items, key: romanize(name, null).py }))
-                    .sort((a, b) => LOCALE_CMP(a.key, b.key))
-                    .map(({ name, items }) => [name, items]);
-            ordered.forEach(([name, items]) => {
-                    const ctx = field === 'album' ? 'album:' + name : null;
-                    head(name, field + ':' + name, items.length);
-                    // 专辑按碟号、曲号排（排序方式是默认的「标题」时）；选了时长、加入时间就照选的排
-                    const inAlbum = field === 'album' && sp.mode === 'title' && global.MusicTrackOrder ? global.MusicTrackOrder.albumCompare(list, byTitle) : byTitle;
-                    (q ? items : items.sort(inAlbum)).forEach((i) => push(i, ctx || allCtx(i)));
-                });
+            let ordered;
+            if (q) {
+                ordered = [...groups.entries()];
+            } else {
+                const keyed = [];
+                for (const [name, items] of groups) keyed.push({ name, items, key: romanize(name, null).py });
+                keyed.sort((a, b) => LOCALE_CMP(a.key, b.key));
+                ordered = keyed;
+            }
+            // 专辑按碟号、曲号排（排序方式是默认的「标题」时）；选了时长、加入时间就照选的排。
+            // 比较器提到分组循环外复用同一份缓存，避免 400+ 张专辑各建一遍 Map。
+            const inAlbum = !q && field === 'album' && sp.mode === 'title' && global.MusicTrackOrder
+                ? global.MusicTrackOrder.albumCompare(list, byTitle)
+                : byTitle;
+            const isAlbum = field === 'album';
+            const prefix = field + ':';
+            for (let oi = 0; oi < ordered.length; oi += 1) {
+                const name = q ? ordered[oi][0] : ordered[oi].name;
+                const items = q ? ordered[oi][1] : ordered[oi].items;
+                const ctx = isAlbum ? 'album:' + name : null;
+                head(name, prefix + name, items.length);
+                if (!q && items.length > 1) items.sort(inAlbum);
+                for (let j = 0; j < items.length; j += 1) {
+                    const idx = items[j];
+                    push(idx, ctx || allCtx(idx));
+                }
+            }
             return { rows, count };
         }
         // all

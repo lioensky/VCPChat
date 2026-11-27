@@ -214,16 +214,27 @@
             notify(`${front ? '下一首播放' : '已加入队列'}：${label}`);
         };
 
+        const iconCache = new Map();
+        const iconHtml = (name, size) => {
+            const k = `${name}:${size}`;
+            let s = iconCache.get(k);
+            if (s === undefined) { s = icon(name, size); iconCache.set(k, s); }
+            return s;
+        };
+        const enterIcon = iconHtml('corner-down-left', 13);
+
         const songItem = (track, group, knownIndex) => {
             const index = Number.isInteger(knownIndex) ? knownIndex : app.playlist.indexOf(track);
             const isCurrent = index === app.currentTrackIndex;
+            const artist = trackArtist(track);
+            const album = track.album;
             return {
                 id: `song:${track.path}`,
                 section: '歌曲',
                 group,
                 icon: isCurrent && app.isPlaying ? 'audio-lines' : 'music',
                 title: trackTitle(track),
-                desc: [trackArtist(track), track.album].filter(Boolean).join(' · '),
+                desc: artist && album ? `${artist} · ${album}` : (artist || album || ''),
                 current: isCurrent,
                 queueable: true,
                 run: () => { if (index !== -1) app.loadTrack?.(index); },
@@ -232,42 +243,44 @@
             };
         };
 
-        // 曲目路径映射缓存：避免每次打开面板或每次按键都重建整份 O(N) 曲库 Map
+        // 曲目路径映射缓存：单表存 { track, index }，省去 5000+ 条 `song:` 前缀字符串与第二张 Map 的构造和 GC
         let cachedPathList = null;
         let cachedPathLen = -1;
         let cachedPathFirst = null;
         let cachedPathLast = null;
         let cachedByPath = null;
-        let cachedBySongId = null;
-        const getTrackMaps = () => {
+        const getTrackByPath = () => {
             const tracks = app.playlist || [];
             const len = tracks.length;
             const first = len ? tracks[0] : null;
             const last = len ? tracks[len - 1] : null;
             if (cachedByPath && cachedPathList === app.playlist && cachedPathLen === len
                 && cachedPathFirst === first && cachedPathLast === last) {
-                return { byPath: cachedByPath, bySongId: cachedBySongId };
+                return cachedByPath;
             }
             const byPath = new Map();
-            const bySongId = new Map();
             for (let i = 0; i < len; i++) {
                 const t = tracks[i];
                 if (!t) continue;
-                byPath.set(t.path, t);
-                bySongId.set(`song:${t.path}`, { track: t, index: i });
+                byPath.set(t.path, { track: t, index: i });
             }
             cachedPathList = app.playlist;
             cachedPathLen = len;
             cachedPathFirst = first;
             cachedPathLast = last;
             cachedByPath = byPath;
-            cachedBySongId = bySongId;
-            return { byPath, bySongId };
+            return byPath;
         };
 
         const playlistTracks = (pl, byPath) => {
-            const map = byPath || getTrackMaps().byPath;
-            return (pl.tracks || []).map((p) => map.get(p)).filter(Boolean);
+            const map = byPath || getTrackByPath();
+            const raw = pl.tracks || [];
+            const out = [];
+            for (let i = 0; i < raw.length; i += 1) {
+                const hit = map.get(raw[i]);
+                if (hit) out.push(hit.track);
+            }
+            return out;
         };
         const playlistItem = (pl, group = '歌单', byPath) => {
             const tracks = playlistTracks(pl, byPath);
@@ -398,19 +411,33 @@
         };
 
         const recentItems = ({ songsAndPlaylistsOnly = false } = {}) => {
+            const recent = readRecent();
+            if (!recent.length) return [];
             let all = null;
-            const { byPath, bySongId } = getTrackMaps();
-            return readRecent().map((id) => {
-                if (id.startsWith('song:')) { const hit = bySongId.get(id); return hit ? { ...songItem(hit.track, '最近', hit.index), section: '最近' } : null; }
+            let byPath = null;
+            const out = [];
+            for (let i = 0; i < recent.length; i += 1) {
+                const id = recent[i];
+                if (id.startsWith('song:')) {
+                    if (!byPath) byPath = getTrackByPath();
+                    const hit = byPath.get(id.slice(5));
+                    if (hit) out.push({ ...songItem(hit.track, '最近', hit.index), section: '最近' });
+                    continue;
+                }
                 if (id.startsWith('playlist:')) {
                     const pl = (app.customPlaylists || []).find((p) => `playlist:${p.id}` === id);
-                    return pl ? { ...playlistItem(pl, '最近', byPath), section: '最近' } : null;
+                    if (pl) {
+                        if (!byPath) byPath = getTrackByPath();
+                        out.push({ ...playlistItem(pl, '最近', byPath), section: '最近' });
+                    }
+                    continue;
                 }
-                if (songsAndPlaylistsOnly) return null;
+                if (songsAndPlaylistsOnly) continue;
                 if (!all) all = commands();
                 const cmd = all.find((c) => c.id === id);
-                return cmd ? { ...cmd, group: '最近', section: '最近' } : null;
-            }).filter(Boolean);
+                if (cmd) out.push({ ...cmd, group: '最近', section: '最近' });
+            }
+            return out;
         };
 
         const build = () => {
@@ -443,7 +470,7 @@
                         .sort((a, b) => b.s - a.s)
                         .slice(0, 6);
                     if (matchedPlaylists.length) {
-                        const { byPath } = getTrackMaps();
+                        const byPath = getTrackByPath();
                         matchedPlaylists.forEach((x) => playlists.push(playlistItem(x.pl, '歌单', byPath)));
                     }
                 }
@@ -480,7 +507,9 @@
             void q;
         };
 
+        let activeRowEl = null;
         const render = () => {
+            activeRowEl = null;
             if (!state.items.length) {
                 list.innerHTML = input.value.trim()
                     ? `<div class="md-cmd-empty"><span>没有找到匹配的歌、歌单或操作</span></div>`
@@ -491,28 +520,29 @@
             }
             // 列表是倒着排的（column-reverse），所以每组的标题写在这组最后一项后面，显示出来就在上方。
             const parts = [];
-            state.items.forEach((item, i) => {
+            for (let i = 0; i < state.items.length; i += 1) {
+                const item = state.items[i];
                 parts.push(rowHtml(item, i));
                 const next = state.items[i + 1];
                 if (item.section && (!next || next.section !== item.section)) parts.push(`<div class="md-cmd-sec" role="presentation">${escapeHtml(item.section)}</div>`);
-            });
+            }
             list.innerHTML = parts.join('');
-            syncActive(false);
+            syncActive(false, true);
         };
 
         const rowHtml = (item, i) => (
                 `<button type="button" class="md-cmd-row${i === state.active ? ' md-act' : ''}${item.current ? ' md-cur' : ''}" role="option" id="md-cmd-opt-${i}" aria-selected="${i === state.active}" data-i="${i}" data-md-dist="${Math.min(4, i)}">`
-                + `<span class="md-cmd-ri">${icon(item.icon || 'command', 16)}</span>`
+                + `<span class="md-cmd-ri">${iconHtml(item.icon || 'command', 16)}</span>`
                 + `<span class="md-cmd-rt"><span class="md-cmd-l1"><span class="md-cmd-title">${escapeHtml(item.title)}</span>`
                 + (item.hint ? `<kbd class="md-cmd-chip">${escapeHtml(item.hint)}</kbd>` : '')
                 + `<span class="md-cmd-grp">${escapeHtml(item.group)}</span></span>`
                 + (item.desc ? `<span class="md-cmd-desc">${escapeHtml(item.desc)}</span>` : '')
-                + `</span><span class="md-cmd-run">${icon('corner-down-left', 13)}${item.queueable ? '播放' : '运行'}</span></button>`
+                + `</span><span class="md-cmd-run">${enterIcon}${item.queueable ? '播放' : '运行'}</span></button>`
         );
 
         const flushSlide = (scroll) => {
             if (!state.open) return;
-            const row = list.querySelector(`[data-i="${state.active}"]`);
+            const row = activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector(`[data-i="${state.active}"]`);
             if (!row) return;
             // 选中的那一行背后是一滴玻璃，上下键换行时流过去（延后到动画帧读取 offsetTop/offsetHeight，避免每次按键刚写完 innerHTML 就触发全页强制布局）
             if (global.MusicFluid?.slide) {
@@ -523,15 +553,26 @@
             if (scroll) row.scrollIntoView?.({ block: 'nearest' });
         };
 
-        const syncActive = (scroll = true) => {
-            const prev = list.querySelector('.md-cmd-row.md-act');
-            if (prev) { prev.classList.remove('md-act'); prev.setAttribute('aria-selected', 'false'); }
-            const row = list.querySelector(`[data-i="${state.active}"]`);
-            if (!row) return;
-            row.classList.add('md-act');
-            row.setAttribute('aria-selected', 'true');
-            input.setAttribute('aria-activedescendant', row.id);
-            foot.hidden = !state.items[state.active]?.queueable;
+        const syncActive = (scroll = true, fromRender = false) => {
+            if (fromRender) {
+                const row = list.firstElementChild?.dataset?.i === String(state.active)
+                    ? list.firstElementChild
+                    : list.querySelector(`[data-i="${state.active}"]`);
+                if (!row) return;
+                activeRowEl = row;
+                input.setAttribute('aria-activedescendant', row.id);
+                foot.hidden = !state.items[state.active]?.queueable;
+            } else {
+                const prev = activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector('.md-cmd-row.md-act');
+                if (prev) { prev.classList.remove('md-act'); prev.setAttribute('aria-selected', 'false'); }
+                const row = list.querySelector(`[data-i="${state.active}"]`);
+                if (!row) { activeRowEl = null; return; }
+                activeRowEl = row;
+                row.classList.add('md-act');
+                row.setAttribute('aria-selected', 'true');
+                input.setAttribute('aria-activedescendant', row.id);
+                foot.hidden = !state.items[state.active]?.queueable;
+            }
             if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
             if (global.MusicFluid?.slide || scroll) {
                 state.slideRaf = requestAnimationFrame(() => {
@@ -693,7 +734,9 @@
                 if (resizeRaf) { global.cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
                 document.removeEventListener('keydown', onGlobalKey, true);
                 global.removeEventListener('resize', onResize);
-                cachedPathList = cachedPathFirst = cachedPathLast = cachedByPath = cachedBySongId = null;
+                cachedPathList = cachedPathFirst = cachedPathLast = cachedByPath = null;
+                activeRowEl = null;
+                iconCache.clear();
                 searchIndex = indexedList = null;
                 cachedPinyinLib = cachedPinyinFn = null;
                 pinyinCache.clear();

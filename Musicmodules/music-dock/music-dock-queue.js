@@ -128,12 +128,20 @@
             const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = String(sec % 60).padStart(2, '0');
             return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`;
         };
-        function renderQueueWindow(scroller, force = false) {
+        let cachedQueueH = 0;
+        function renderQueueWindow(scroller, force = false, known = null) {
             if (state.queueDrag?.active) return; // 拖动时别重建行
             const rows = state.queueRows || [];
-            const scrollTop = scroller.scrollTop;
+            const hasKnown = Boolean(known && typeof known.top === 'number');
+            const scrollTop = hasKnown ? known.top : scroller.scrollTop;
+            let vh = hasKnown ? (known.height || cachedQueueH) : scroller.clientHeight;
+            if (vh > 0) {
+                if (!hasKnown) cachedQueueH = vh;
+            } else {
+                vh = hasKnown ? (global.innerHeight ? Math.max(300, global.innerHeight - 160) : 480) : 300;
+            }
             const top = scrollTop - QUEUE_ROW_H * 4;
-            const bottom = scrollTop + (scroller.clientHeight || 300) + QUEUE_ROW_H * 4;
+            const bottom = scrollTop + vh + QUEUE_ROW_H * 4;
             let lo = 0, hi = rows.length;
             while (lo < hi) {
                 const mid = (lo + hi) >> 1;

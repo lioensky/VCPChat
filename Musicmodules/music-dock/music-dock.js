@@ -1248,15 +1248,16 @@
             syncMoved(tab === '控制');
             syncFx(tab === '声音');
             placeMarks(el.body);
-            placeMarks(el.body2);
+            if (tab === '控制') placeMarks(el.body2);
             if (tab === '播放列表') {
                 state.queueSource = activeList();
                 state.queueLength = state.queueSource.length;
                 const scroller = el.body.querySelector('.md-ql');
                 if (scroller) {
-                    // 重画时保住滚动位置；第一次打开时从正在放的那首开始。
-                    scroller.scrollTop = keepScroll != null ? keepScroll : Math.max(0, (state.queueRows?.nowTop || 0) - QUEUE_HEAD_H);
-                    renderQueueWindow(scroller);
+                    const initTop = keepScroll != null ? keepScroll : Math.max(0, (state.queueRows?.nowTop || 0) - QUEUE_HEAD_H);
+                    // 重画时保住滚动位置；第一次打开时从正在放的那首开始，避免 0→0 空写触发强制重排。
+                    if (initTop > 0) scroller.scrollTop = initTop;
+                    renderQueueWindow(scroller, false, { top: initTop, height: 0 });
                     scroller.addEventListener('scroll', () => renderQueueWindow(scroller), { passive: true });
                     scroller.addEventListener('pointerdown', onQueuePointerDown);
                 }
@@ -1646,8 +1647,8 @@
                 renderTabs(false);
                 if (!(state.tab === '播放列表' && prebuiltFresh())) renderBody();
                 queuePage.dropPrebuilt();
-                el.tabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true, focusVisible: lastKeyboard });
                 syncSolid();
+                el.tabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true, focusVisible: lastKeyboard });
                 requestAnimationFrame(() => { if (state.panelOpen && !state.destroyed) placeMarks(el.pnl); });
                 return;
             }

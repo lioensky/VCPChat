@@ -393,7 +393,7 @@
                 { label: '还没听过', key: 'recent:new', items: app.neverPlayed ? idxOf(app.neverPlayed()) : [] }
             ];
         };
-        const rebuild = ({ steady = false } = {}) => {
+        const rebuild = ({ steady = false, skipRender = false } = {}) => {
             const index = opts.getIndex();
             if (!index) return;
             const vpVisible = el.isConnected && !el.hidden;
@@ -492,24 +492,19 @@
                 el.classList.toggle('has-multi', multi.size > 1);
             }
             state.selectedRow = findRow(state.selected, state.preferCtx);
-            // 重排后（比如拼音表加载好、分组变了）选中行可能跑到视野外，拉回来（沿用写 DOM 前量好的高度，避免强制重排）
+            if (skipRender) return;
+            // 重排后选中行可能跑到视野外，拉回来（沿用写 DOM 前量好的高度，仅位置变化时写 scrollTop）
             const maxScroll = Math.max(0, y - vpH);
+            const rawTop = vpTop;
             if (vpTop > maxScroll) vpTop = maxScroll;
             if (steady) {
                 const k = anchor ? findRow(anchor.i, anchor.ctx) : -1;
-                if (k >= 0) {
-                    const nextTop = Math.min(maxScroll, Math.max(0, state.offsets[k] - anchor.dy));
-                    r.viewport.scrollTop = nextTop;
-                    vpTop = nextTop;
-                }
+                if (k >= 0) vpTop = Math.min(maxScroll, Math.max(0, state.offsets[k] - anchor.dy));
             } else if (state.selectedRow >= 0) {
                 const sy = state.offsets[state.selectedRow];
-                if (sy < vpTop || sy + ROW_H > vpTop + vpH - EDGE_FADE) {
-                    const nextTop = Math.min(maxScroll, Math.max(0, sy - vpH / 2 + ROW_H / 2));
-                    r.viewport.scrollTop = nextTop;
-                    vpTop = nextTop;
-                }
+                if (sy < vpTop || sy + ROW_H > vpTop + vpH - EDGE_FADE) vpTop = Math.min(maxScroll, Math.max(0, sy - vpH / 2 + ROW_H / 2));
             }
+            if (vpTop !== rawTop) r.viewport.scrollTop = vpTop;
             if (vpVisible) recordScrollTop(vpTop);
             render(vpVisible ? { top: vpTop, height: vpH } : undefined);
             if (vpVisible && state.rows.length) {
@@ -761,7 +756,7 @@
             }
             // 先集中读 scrollTop 和 clientHeight（或复用 rebuild 预读值），再统一写 at-top / at-bottom 类，避免读→写→读触发强制同步重排
             const hasKnown = Boolean(known && typeof known === 'object' && typeof known.top === 'number' && known.height > 0);
-            const top = hasKnown ? known.top : r.viewport.scrollTop;
+            const top = hasKnown ? known.top : readScrollTop();
             const rawH = hasKnown ? known.height : viewportHeight();
             const h = rawH || 600;
             const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
@@ -987,18 +982,15 @@
             const vp = r.viewport;
             const y = state.offsets[k];
             const h = knownHeight > 0 ? knownHeight : viewportHeight();
-            let top = typeof knownTop === 'number' ? knownTop : vp.scrollTop;
+            const curTop = typeof knownTop === 'number' ? knownTop : readScrollTop();
+            let top = curTop;
             const pad2 = LABEL_H;
-            if (center) {
-                top = Math.max(0, y - h / 2 + ROW_H / 2);
+            if (center) top = Math.max(0, y - h / 2 + ROW_H / 2);
+            else if (y < top + pad2) top = Math.max(0, y - pad2);
+            else if (y + ROW_H > top + h - EDGE_FADE) top = y + ROW_H - h + EDGE_FADE;
+            if (top !== curTop) {
                 vp.scrollTop = top;
-            } else if (y < top + pad2) {
-                top = Math.max(0, y - pad2);
-                vp.scrollTop = top;
-            } else if (y + ROW_H > top + h - EDGE_FADE) {
-                // 底部留出渐隐那一段（26px），键盘往下走时选中行不会落在半透明的边上
-                top = y + ROW_H - h + EDGE_FADE;
-                vp.scrollTop = top;
+                recordScrollTop(top);
             }
             schedule();
             return top;
@@ -1021,12 +1013,14 @@
                 setKind(back, { auto: true });
             }
         };
+        let inSetKind = false;
         const reveal = (i, ctx, { center = false, quiet = false } = {}) => {
             followArray(ctx);
             if (state.kind === 'recent' && ARRAY_SECTIONS[ctx]) ctx = ARRAY_SECTIONS[ctx];
             state.selected = i;
             state.preferCtx = ctx;
             const k = findRow(i, ctx);
+            if (inSetKind) { state.selectedRow = k; return; }
             const moved = k !== state.selectedRow;
             state.selectedRow = k;
             const h = viewportHeight();
@@ -1057,9 +1051,10 @@
             state.selectedRow = k;
             state.selected = row.i;
             state.preferCtx = row.ctx;
-            scrollToRow(k);
+            const h = viewportHeight();
+            const top = scrollToRow(k, { height: h });
             opts.onPick(row.i, columnCtx(row.ctx));
-            render();
+            render({ top, height: h });
         };
         const stepRow = (dir, n = 1) => {
             if (!state.rows.length) return;
@@ -1074,8 +1069,9 @@
         };
         const edgeRow = (end) => {
             for (let j = end ? state.rows.length - 1 : 0; j >= 0 && j < state.rows.length; j += end ? -1 : 1) {
-                if (state.rows[j].type === 'track') { pickRow(j); return; }
+                if (state.rows[j].type === 'track') { pickRow(j); return true; }
             }
+            return false;
         };
         /*
          * 键盘移动之后：按着 Shift 就把起点到现在这一行都选上（起点是上一次不带 Shift 停下的那一行），
@@ -1137,15 +1133,16 @@
 
         // ---------- 输入 ----------
         let typeTimer = 0;
+        const applyQuery = (resetScroll) => {
+            state.query = r.input.value;
+            const hasQ = Boolean(state.query.trim());
+            if (resetScroll && readScrollTop() !== 0) { r.viewport.scrollTop = 0; recordScrollTop(0); }
+            rebuild({ skipRender: hasQ });
+            if (hasQ && !edgeRow(false)) render({ top: readScrollTop(), height: viewportHeight() });
+        };
         r.input.addEventListener('input', () => {
             clearTimeout(typeTimer);
-            typeTimer = setTimeout(() => {
-                state.query = r.input.value;
-                r.viewport.scrollTop = 0;
-                rebuild();
-                // 有检索词时第一条就是最可能的结果，直接选中，回车即可播放
-                if (state.query.trim()) edgeRow(false);
-            }, 30); // 570 首时一次检索约 5–15ms，去抖只为合并连续按键，不再让人等
+            typeTimer = setTimeout(() => applyQuery(true), 30); // 570 首时一次检索约 5–15ms，去抖只为合并连续按键，不再让人等
         });
         // 有检索词时右边出现 ✕：点一下清空，焦点留在输入框里接着打字（显示 / 隐藏只靠 CSS 的 :placeholder-shown）
         r.clear?.addEventListener('mousedown', (e) => e.preventDefault());
@@ -1182,9 +1179,7 @@
         const flushQuery = () => {
             if (r.input.value === state.query) return;
             clearTimeout(typeTimer);
-            state.query = r.input.value;
-            rebuild();
-            if (state.query.trim()) edgeRow(false);
+            applyQuery(false);
         };
 
         const onKey = (e) => {
@@ -2001,28 +1996,34 @@
         const setKind = (kind, { auto = false } = {}) => {
             if (!auto) autoKind = null;
             if (kind === state.kind) return;
-            kindScroll.set(state.kind, { top: r.viewport.scrollTop, selected: state.selected, query: state.query });
+            const prevTop = readScrollTop();
+            const vpH = viewportHeight();
+            kindScroll.set(state.kind, { top: prevTop, selected: state.selected, query: state.query });
             state.kind = kind;
             // 跟着阵列自动切的不记住，下次打开还是用户自己选的分类
             if (!auto) { try { localStorage.setItem('musicArchiveListKind', kind); } catch (e) { /* 只是记住上次 */ } }
-            r.viewport.scrollTop = 0;
-            rebuild();
+            rebuild({ skipRender: true });
             // 用户自己换的分类告诉档案页，阵列和左上标题跟过去（跟着阵列自动切的不回传，免得来回切）
-            if (!auto) opts.onKind?.(kind);
-            const k = findRow(state.selected, null);
+            if (!auto) {
+                inSetKind = true;
+                try { opts.onKind?.(kind); } finally { inSetKind = false; }
+            }
+            const k = state.selectedRow >= 0 && state.rows[state.selectedRow]?.i === state.selected ? state.selectedRow : findRow(state.selected, null);
             if (k >= 0) state.selectedRow = k;
             const back = kindScroll.get(kind);
-            const vpH = viewportHeight();
+            const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
+            const maxS = Math.max(0, totalH - vpH);
+            let targetTop = 0;
             if (back && back.selected === state.selected && back.query === state.query) {
-                const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
-                const targetTop = Math.min(back.top, Math.max(0, totalH - vpH));
-                r.viewport.scrollTop = targetTop;
-                recordScrollTop(targetTop);
-                render({ top: targetTop, height: vpH });
+                targetTop = Math.min(back.top, maxS);
             } else if (k >= 0) {
-                const nextTop = scrollToRow(k, { center: true, top: readScrollTop(), height: vpH });
-                recordScrollTop(nextTop);
+                targetTop = Math.min(maxS, Math.max(0, state.offsets[k] - vpH / 2 + ROW_H / 2));
             }
+            if (targetTop !== prevTop) r.viewport.scrollTop = targetTop;
+            recordScrollTop(targetTop);
+            render({ top: targetTop, height: vpH });
+            lastRenderTop = targetTop;
+            lastRenderRow = state.selectedRow;
         };
 
         /*
