@@ -691,6 +691,14 @@ body.music-stage-active #custom-title-bar,
 body.music-fl-low .music-stage.is-playing .music-stage-edge-flow-light {
     animation-timing-function: steps(135);
 }
+body.music-reduce-motion .music-stage-edge-flow-light {
+    animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-edge-flow-light {
+        animation: none;
+    }
+}
 @keyframes stage-edge-flow-turn {
     to {
         rotate: 360deg;

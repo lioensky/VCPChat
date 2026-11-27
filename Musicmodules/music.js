@@ -1500,14 +1500,17 @@ document.addEventListener('DOMContentLoaded', () => {
         app.lastKnownCurrentTime = state.current_time; app.lastKnownDuration = state.duration;
         app.lastStateUpdateTime = Date.now();
         app.syncMediaPosition?.();
-        if (state.duration > 0 && !app.dragInProgress) {
-            const percent = (state.current_time / state.duration) * 100;
-            const widthStr = `${percent.toFixed(2)}%`;
-            if (app.progress.style.width !== widthStr) app.progress.style.width = widthStr;
+        const uic = app.updateUIWithState._c || (app.updateUIWithState._c = { w: '', cur: '', dur: '', lufsOn: false, lufs: '', dyn: '', dynOn: false });
+        if (!app.lastEngineProgress) { uic.w = ''; uic.cur = ''; uic.dur = ''; }
+        if (app.dragInProgress) {
+            uic.w = ''; uic.cur = '';
+        } else if (state.duration > 0) {
+            const widthStr = `${((state.current_time / state.duration) * 100).toFixed(2)}%`;
+            if (widthStr !== uic.w) { uic.w = widthStr; app.progress.style.width = widthStr; }
             const curText = app.formatTime(state.current_time);
-            if (app.currentTimeEl.textContent !== curText) app.currentTimeEl.textContent = curText;
+            if (curText !== uic.cur) { uic.cur = curText; app.currentTimeEl.textContent = curText; }
             const durText = app.formatTime(state.duration);
-            if (app.durationEl.textContent !== durText) app.durationEl.textContent = durText;
+            if (durText !== uic.dur) { uic.dur = durText; app.durationEl.textContent = durText; }
         }
         // 引擎的 is_playing 只在输出流建好之后才为真：刚发出播放、或者引擎重建输出流的那段时间，
         // 它会报“未播放”，可声音其实马上就来（或者一直在响）。所以“在不在播”要结合进度看：
@@ -1557,16 +1560,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (!app.isTrackLoading) app.publishCapsuleState?.();
         if (state.loudness_info) {
-            if (app.loudnessInfo.style.display !== 'block') app.loudnessInfo.style.display = 'block';
+            if (!uic.lufsOn) { uic.lufsOn = true; app.loudnessInfo.style.display = 'block'; }
             const lufsText = state.loudness_info.current_lufs.toFixed(1);
-            if (app.loudnessCurrentLufs.textContent !== lufsText) app.loudnessCurrentLufs.textContent = lufsText;
+            if (lufsText !== uic.lufs) { uic.lufs = lufsText; app.loudnessCurrentLufs.textContent = lufsText; }
         }
         if (state.dynamic_loudness_factor !== undefined) {
             const factorText = state.dynamic_loudness_factor.toFixed(2) + 'x';
-            if (app.dynamicLoudnessFactor.textContent !== factorText) app.dynamicLoudnessFactor.textContent = factorText;
+            if (factorText !== uic.dyn) { uic.dyn = factorText; app.dynamicLoudnessFactor.textContent = factorText; }
             // 引擎报上来之前不显示「补偿：--」这种占位
-            const info = app.dynamicLoudnessFactor.parentElement;
-            if (info?.hidden) info.hidden = false;
+            if (!uic.dynOn) { uic.dynOn = true; const info = app.dynamicLoudnessFactor.parentElement; if (info?.hidden) info.hidden = false; }
         }
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
     };

@@ -441,10 +441,11 @@
         while (b < fresh.length) order[k++] = fresh[b++];
         return order;
     };
-    const rankOf = (index, key, cmp) => {
+    const rankOf = (index, key, cmpFactory) => {
         let per = RANKS.get(index);
         if (!per) RANKS.set(index, per = {});
         if (!per[key]) {
+            const cmp = cmpFactory();
             const order = mergeOrder(index, LAST_ORDER[key], cmp) || Array.from({ length: index.size }, (_, i) => i).sort(cmp);
             const rank = new Uint32Array(index.size);
             const packed = new Uint32Array(order.length);
@@ -557,11 +558,11 @@
 
     const sortSpec = (index, { mode = 'title', tracks = [], durationOf = null } = {}) => {
         // 标题的名次只排一次（按索引缓存）：之后各处比较都是数字相减，两万首切排序才不卡
-        const titleRank = rankOf(index, 'title', TITLE_CMP(index));
+        const titleRank = rankOf(index, 'title', () => TITLE_CMP(index));
         const byTitle = (a, b) => titleRank[a] - titleRank[b];
         const letter = { rank: (g) => GROUP_RANK.get(g) ?? 999, name: groupName, ref: groupRef, family: familyOf };
         if (mode === 'artist') {
-            const artistRank = rankOf(index, 'artist', ARTIST_CMP(index, titleRank));
+            const artistRank = rankOf(index, 'artist', () => ARTIST_CMP(index, titleRank));
             const order = RANKS.get(index)?.artistOrder || null;
             return { mode, ...letter, group: (i) => index.artistGroup(i), cmp: (a, b) => artistRank[a] - artistRank[b], order };
         }

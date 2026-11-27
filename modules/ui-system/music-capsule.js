@@ -97,21 +97,29 @@
             details.inert = !expanded;
         };
         let lastPlaying = null;
+        let lastOpen = null;
+        let lastTitleText = null;
         const apply = next => {
             if (disposed || !next) return;
             const changed = next.open && next.trackKey && next.trackKey !== state.trackKey;
-            const reopened = Boolean(next.open) && !state.open;
+            const open = Boolean(next.open);
+            const reopened = open && !state.open;
             state = next;
-            root.hidden = !state.open;
+            if (open !== lastOpen) {
+                lastOpen = open;
+                root.hidden = !open;
+            }
             if (reopened) chromeMetricsDirty = true;
             renderInjection();
             const nextTitle = state.title || '尚未选择曲目';
-            const needsMeasure = title.textContent !== nextTitle || !measure.textContent || reopened;
-            if (title.textContent !== nextTitle) {
+            const titleChanged = nextTitle !== lastTitleText;
+            const needsMeasure = titleChanged || !measure.textContent || reopened;
+            if (titleChanged) {
+                lastTitleText = nextTitle;
                 title.textContent = nextTitle;
                 title.title = nextTitle;
             }
-            if (state.open && needsMeasure) updateWidth();
+            if (open && needsMeasure) updateWidth();
             const playing = Boolean(state.playing);
             if (playing !== lastPlaying) {
                 lastPlaying = playing;

@@ -74,8 +74,14 @@ body.music-fl-low .music-stage-mode-root > .music-stage-mode.is-soft-leaving {
     filter: none;
 }
 
-body.music-fl-low .music-stage-track-title.is-changing {
+body.music-fl-low .music-stage-track-title.is-changing,
+body.music-reduce-motion .music-stage-track-title.is-changing {
     animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-track-title.is-changing {
+        animation: none;
+    }
 }
 
 body.music-stage-active #custom-title-bar .title {

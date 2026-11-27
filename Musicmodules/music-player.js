@@ -3,45 +3,47 @@
 
 // 引擎报错是英文原文（Rust 的错误串），直接拼进提示里看不懂。常见几类换成一句能照着做的中文，
 // 认不出的原样保留，免得把真正的原因藏掉。
+const ENGINE_ERROR_RULES = [
+    // 主进程连本机音频引擎失败时 Node 只给「fetch failed」：引擎进程退出了，不是网络问题
+    [/^fetch failed$|socket hang up|econnrefused 127\.0\.0\.1|econnrefused ::1|econnrefused localhost/, '连不上音频引擎（可能已经退出），关掉音乐窗口再打开试试'],
+    [/no song loaded/, '还没有加载歌曲'],
+    [/private\/internal address/, '这台 WebDAV 服务器在内网，当前音频引擎不允许访问，更新音频引擎后就能放'],
+    [/file not found|no such file|cannot find the (file|path)|系统找不到|os error [23]\b/, '文件不在原来的位置了（被移动、改名，或所在的盘没插上）'],
+    [/access is denied|permission denied|拒绝访问|os error 5\b/, '没有权限读取这个文件'],
+    [/\b401\b|unauthorized/, 'WebDAV 账号或密码不对'],
+    [/\b403\b|forbidden/, 'WebDAV 服务器拒绝了访问'],
+    [/\b404\b/, '服务器上找不到这首歌了'],
+    [/timed out|timeout|error sending request|connection (refused|reset)|dns|failed to lookup/, '连不上服务器，检查网络或 WebDAV 地址'],
+    [/unsupported (format|codec)|no audio track|unsupported feature|probe error/, '不支持这种音频格式'],
+    [/decoded track is empty/, '文件里没有可播放的声音'],
+    [/malformed|invalid data|corrupt|end of stream|unexpected eof|format error|decoder error/, '文件已损坏或不完整'],
+    [/too large for non-range/, '文件太大，服务器又不支持分段下载'],
+];
 function describeEngineError(raw) {
     const text = String(raw || '').trim();
     const t = text.toLowerCase();
-    const rules = [
-        // 主进程连本机音频引擎失败时 Node 只给「fetch failed」：引擎进程退出了，不是网络问题
-        [/^fetch failed$|socket hang up|econnrefused 127\.0\.0\.1|econnrefused ::1|econnrefused localhost/, '连不上音频引擎（可能已经退出），关掉音乐窗口再打开试试'],
-        [/no song loaded/, '还没有加载歌曲'],
-        [/private\/internal address/, '这台 WebDAV 服务器在内网，当前音频引擎不允许访问，更新音频引擎后就能放'],
-        [/file not found|no such file|cannot find the (file|path)|系统找不到|os error [23]\b/, '文件不在原来的位置了（被移动、改名，或所在的盘没插上）'],
-        [/access is denied|permission denied|拒绝访问|os error 5\b/, '没有权限读取这个文件'],
-        [/\b401\b|unauthorized/, 'WebDAV 账号或密码不对'],
-        [/\b403\b|forbidden/, 'WebDAV 服务器拒绝了访问'],
-        [/\b404\b/, '服务器上找不到这首歌了'],
-        [/timed out|timeout|error sending request|connection (refused|reset)|dns|failed to lookup/, '连不上服务器，检查网络或 WebDAV 地址'],
-        [/unsupported (format|codec)|no audio track|unsupported feature|probe error/, '不支持这种音频格式'],
-        [/decoded track is empty/, '文件里没有可播放的声音'],
-        [/malformed|invalid data|corrupt|end of stream|unexpected eof|format error|decoder error/, '文件已损坏或不完整'],
-        [/too large for non-range/, '文件太大，服务器又不支持分段下载'],
-    ];
-    for (const [pattern, message] of rules) if (pattern.test(t)) return message;
+    for (let i = 0; i < ENGINE_ERROR_RULES.length; i += 1) {
+        if (ENGINE_ERROR_RULES[i][0].test(t)) return ENGINE_ERROR_RULES[i][1];
+    }
     // 主进程的超时说明末尾带着接口路径（「…没有响应（/play）」），给人看时去掉
     return text.replace(/（\/[\w-]+）$/, '');
 }
 
 function setupPlayer(app) {
-    let lastCapsuleSnapshot = '';
+    let capInit = false, capTrk = null, capRawT = '', capTitle = '', capArtist = '', capAlbum = '', capKey = '', capPlay = false;
     app.publishCapsuleState = () => {
-        const track = app.playlist[app.currentTrackIndex];
-        const state = {
-            title: track ? app.stripAudioExtension(track.title) || '未知标题' : '',
-            artist: track?.artist || '',
-            album: track?.album || '',
-            trackKey: track?.path || '',
-            playing: app.isPlaying === true
-        };
-        const snapshot = JSON.stringify(state);
-        if (snapshot === lastCapsuleSnapshot) return;
-        lastCapsuleSnapshot = snapshot;
-        app.api?.publishMusicCapsuleState?.(state);
+        const track = app.playlist[app.currentTrackIndex] || null;
+        const playing = app.isPlaying === true;
+        const rawT = track ? (track.title || '') : '';
+        const artist = track?.artist || '', album = track?.album || '', trackKey = track?.path || '';
+        if (capInit && track === capTrk && playing === capPlay && rawT === capRawT
+            && artist === capArtist && album === capAlbum && trackKey === capKey) return;
+        const title = track ? app.stripAudioExtension(track.title) || '未知标题' : '';
+        if (capInit && title === capTitle && artist === capArtist && album === capAlbum
+            && trackKey === capKey && playing === capPlay) { capTrk = track; capRawT = rawT; return; }
+        capInit = true; capTrk = track; capRawT = rawT;
+        capTitle = title; capArtist = artist; capAlbum = album; capKey = trackKey; capPlay = playing;
+        app.api?.publishMusicCapsuleState?.({ title, artist, album, trackKey, playing });
     };
     // --- 播放控制的三个约定 ---
     // 1. playIntent 记录用户最后一次想要的状态；加载期间按下的播放/暂停不丢，也不会被自动播放覆盖。

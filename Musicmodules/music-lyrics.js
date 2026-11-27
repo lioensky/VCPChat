@@ -441,9 +441,19 @@ function setupLyrics(app) {
         return resultLines;
     };
 
-    // 当前该亮哪一句：最后一个开始时间不晚于 t 的句子（二分查找），没有就是 -1。
-    app.lyricIndexAt = (t, lines = app.currentLyrics) => {
-        let lo = 0, hi = (lines?.length || 0) - 1, at = -1;
+    // 当前该亮哪一句：最后一个开始时间不晚于 t 的句子（顺播 O(1) 快路径 + 二分查找），没有就是 -1。
+    app.lyricIndexAt = (t, lines = app.currentLyrics, hint = -2) => {
+        const len = lines?.length || 0;
+        if (!len) return -1;
+        if (hint >= -1 && hint < len) {
+            const curOk = hint < 0 || lines[hint].time <= t;
+            if (curOk) {
+                const next = hint + 1;
+                if (next >= len || lines[next].time > t) return hint;
+                if (next + 1 >= len || lines[next + 1].time > t) return next;
+            }
+        }
+        let lo = 0, hi = len - 1, at = -1;
         while (lo <= hi) {
             const mid = (lo + hi) >> 1;
             if (lines[mid].time <= t) { at = mid; lo = mid + 1; } else hi = mid - 1;
@@ -453,9 +463,10 @@ function setupLyrics(app) {
     // 间奏：上一句结束到下一句开始之间空了 5 秒以上（或者第一句前的前奏有 5 秒以上），
     // 返回 { index: 间奏之后那一句, start, end, progress }，否则 null。
     const INTERLUDE_MIN = 5;
-    app.lyricInterlude = (t, lines = app.currentLyrics) => {
+    const LYRIC_DIST_OPACITY = ['1', '0.78', '0.56', '0.34', '0.12'];
+    app.lyricInterlude = (t, lines = app.currentLyrics, knownAt = undefined) => {
         if (!lines?.length) return null;
-        const at = app.lyricIndexAt(t, lines);
+        const at = typeof knownAt === 'number' ? knownAt : app.lyricIndexAt(t, lines);
         const next = lines[at + 1];
         if (!next) return null;
         const start = at < 0 ? 0 : Number(lines[at].endTime ?? next.time);
@@ -608,7 +619,8 @@ function setupLyrics(app) {
         const elapsedTime = app.isPlaying ? (now - app.lastStateUpdateTime) / 1000 : 0;
         const estimatedTime = app.lastKnownCurrentTime + elapsedTime;
 
-        let newLyricIndex = app.lyricIndexAt(estimatedTime);
+        const rawLyricIndex = app.lyricIndexAt(estimatedTime, app.currentLyrics, seek ? -2 : app.currentLyricIndex);
+        let newLyricIndex = rawLyricIndex;
 
         // 防回滚保护：当音乐正常向前播放时，如果只是一两帧估计时间的微小扰动，禁止行索引后退
         if (!seek && newLyricIndex < app.currentLyricIndex) {
@@ -645,13 +657,15 @@ function setupLyrics(app) {
         const activeLineChanged = layout.head !== allLi[0] || layout.index !== app.currentLyricIndex || layout.count !== totalLines;
         if (app.currentLyricIndex > -1 && !app.lyricUserScrolling) {
             const currentLineLi = allLi[app.currentLyricIndex];
-            if (currentLineLi && (activeLineChanged
+            if (currentLineLi && (seek
+                || activeLineChanged
                 || layout.measuredIndex !== app.currentLyricIndex
-                || now - layout.changedAt < 600
+                || (now - layout.changedAt < 600 && now - (layout.measuredAt || 0) >= 64)
                 || layout.viewportWidth !== viewportWidth
                 || layout.viewportHeight !== viewportHeight)) {
                 const nextLineLi = app.currentLyrics[app.currentLyricIndex + 1] ? allLi[app.currentLyricIndex + 1] : null;
                 layout.measuredIndex = app.currentLyricIndex;
+                layout.measuredAt = now;
                 layout.viewportWidth = viewportWidth;
                 layout.viewportHeight = viewportHeight;
                 layout.currentOffset = currentLineLi.offsetTop;
@@ -692,7 +706,8 @@ function setupLyrics(app) {
                     continue;
                 }
                 if (li.classList.contains('active')) li.classList.remove('active');
-                const nextOpacity = Math.max(0.1, 1 - Math.abs(i - app.currentLyricIndex) * 0.22).toFixed(2);
+                const dist = Math.abs(i - app.currentLyricIndex);
+                const nextOpacity = dist >= 5 ? '0.10' : LYRIC_DIST_OPACITY[dist];
                 if (li._lyricOpacity !== nextOpacity) {
                     li._lyricOpacity = nextOpacity;
                     li.style.opacity = nextOpacity;
@@ -751,7 +766,7 @@ function setupLyrics(app) {
         }
 
         // 间奏：下一句上方的三个点按间奏进度依次亮起，刚唱完的那句淡下去。只在进出间奏时改 class。
-        const gap = app.lyricInterlude(estimatedTime);
+        const gap = app.lyricInterlude(estimatedTime, app.currentLyrics, rawLyricIndex);
         const gapIndex = gap ? gap.index : -1;
         if (layout.gapIndex !== gapIndex || layout.gapHead !== allLi[0]) {
             for (const li of layout.gapMarked || []) li.classList.remove('gap-on', 'gap-rest');

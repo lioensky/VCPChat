@@ -179,14 +179,18 @@
             let usedRank = false;
             let itemRanks = null;
             if (!isNum && neLen > 32) {
-                // 先抽样前 64 项：若高基数列（如几乎全不重名的标题）重复率极低，直接跳过整表 Set 探测
+                // 仅标题列做前 64 项高基数快退抽样；歌手等低基数列前 64 项常来自不同歌手，直接用全表 50% 上限探测避免错失秩排序
                 const uniq = new Set();
-                const sampleEnd = Math.min(neLen, 64);
-                for (let i = 0; i < sampleEnd; i += 1) uniq.add(nonEmptyVals[i]);
-                let tooMany = neLen > 64 && uniq.size > 48;
+                let start = 0;
+                let tooMany = false;
+                if (sort.key === 'title' && neLen > 64) {
+                    for (let i = 0; i < 64; i += 1) uniq.add(nonEmptyVals[i]);
+                    tooMany = uniq.size > 48;
+                    start = 64;
+                }
                 if (!tooMany) {
                     const uniqLimit = (neLen - 1) >> 1;
-                    for (let i = sampleEnd; i < neLen; i += 1) {
+                    for (let i = start; i < neLen; i += 1) {
                         uniq.add(nonEmptyVals[i]);
                         if (uniq.size > uniqLimit) { tooMany = true; break; }
                     }
