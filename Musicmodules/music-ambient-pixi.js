@@ -348,7 +348,9 @@
             // 6. 核心：绘制一圈圈一边旋转一边扩散的声纹涟漪波 (Expanding Ripple Rings)
             this.waveLayer.clear();
 
-            this.rippleRings.forEach((ring) => {
+            const rings = this.rippleRings;
+            for (let rIdx = 0; rIdx < rings.length; rIdx++) {
+                const ring = rings[rIdx];
                 if (!reduced) ring.advance(dt, currentBass);
 
                 const ringScale = ring.getCurrentScale();
@@ -385,7 +387,7 @@
                     this.waveLayer.lineTo(xs[segments], ys[segments]);
                     this.waveLayer.stroke({ color: ringColor, alpha: ringAlpha, width: strokeWidth });
                 }
-            });
+            }
 
             // 7. 更新与绘制气泡粒子（无气泡时跳过每帧 clear）
             if (this.bubbles.length > 0 || this.hadBubbles) {
@@ -395,7 +397,9 @@
                     const b = this.bubbles[i];
                     b.update(dt);
                     if (b.dead) {
-                        this.bubbles.splice(i, 1);
+                        const last = this.bubbles.length - 1;
+                        if (i !== last) this.bubbles[i] = this.bubbles[last];
+                        this.bubbles.pop();
                         continue;
                     }
                     this.hadBubbles = true;
@@ -469,7 +473,7 @@
         };
 
         app.createAmbientPixi = async () => {
-            if (app.isStageActive) return;
+            if (app.isStageActive || app.destroyed) return;
             clearStageRelease();
             if (app.ambientPixiController && !app.ambientPixiController.destroyed) {
                 if (!app.ambientPixiController.initialized) {

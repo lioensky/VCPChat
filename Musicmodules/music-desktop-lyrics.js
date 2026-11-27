@@ -77,7 +77,7 @@
         const announce = () => {
             try { global.document?.dispatchEvent?.(new CustomEvent('music-desktop-lyrics-change', { detail: { on: state.on } })); } catch (e) { /* 旧内核 */ }
         };
-        const key = (s) => [s.path, s.index, s.playing, s.hasLyrics, s.line && s.line.text, s.line && s.line.tr].join('\u0001');
+        const key = (s) => [s.path, s.index, s.playing, s.hasLyrics, s.line && s.line.text, s.line && s.line.tr, s.next && s.next.text, s.next && s.next.tr].join('\u0001');
         const publish = (force = false) => {
             if (!state.on || !api?.publishDesktopLyrics) return;
             const snap = snapshot(app);
@@ -132,7 +132,14 @@
             async toggle(on) {
                 if (!api?.toggleDesktopLyrics) return state.on;
                 const want = typeof on === 'boolean' ? on : !state.on;
-                try { apply({ on: await api.toggleDesktopLyrics(want) }); } catch (e) { console.warn('[Music] 桌面歌词开关失败：', e); }
+                try {
+                    apply({ on: await api.toggleDesktopLyrics(want) });
+                } catch (e) {
+                    console.warn('[Music] 桌面歌词开关失败：', e);
+                    announce();
+                    try { global.MusicToast?.show?.({ message: '桌面歌词开关失败，请稍后重试', kind: 'error', duration: 3000 }); } catch (_) { /* 没有提示层 */ }
+                    return state.on;
+                }
                 try {
                     global.MusicToast?.show?.({ message: state.on ? '桌面歌词已打开：悬停在歌词上可以锁定、调字号' : '桌面歌词已关闭', duration: 3000 });
                 } catch (e) { /* 没有提示层 */ }
@@ -145,9 +152,12 @@
         const item = doc?.getElementById?.('desktop-lyrics-item');
         const sw = doc?.getElementById?.('desktop-lyrics-switch');
         let onDeskSwitchSync = null;
+        let onDeskSwitchChange = null;
         if (item && sw && app.desktopLyrics.available) {
             item.hidden = false;
-            sw.addEventListener('change', () => app.desktopLyrics.toggle(sw.checked));
+            sw.checked = state.on;
+            onDeskSwitchChange = () => app.desktopLyrics.toggle(sw.checked);
+            sw.addEventListener('change', onDeskSwitchChange);
             onDeskSwitchSync = () => { sw.checked = state.on; };
             doc.addEventListener('music-desktop-lyrics-change', onDeskSwitchSync);
         }
@@ -159,6 +169,7 @@
         global.addEventListener?.('beforeunload', () => {
             if (state.timer !== null) { global.clearInterval(state.timer); state.timer = null; }
             stopBodyObserver();
+            if (onDeskSwitchChange) sw?.removeEventListener?.('change', onDeskSwitchChange);
             if (onDeskSwitchSync) doc?.removeEventListener?.('music-desktop-lyrics-change', onDeskSwitchSync);
             updateEvents.forEach((name) => global.document?.removeEventListener?.(name, onUpdate));
             try { if (typeof unsubChanged === 'function') unsubChanged(); } catch (e) { /* 同上 */ }

@@ -41,9 +41,16 @@
         const rest = [];
         for (const raw of String(q || '').trim().split(/\s+/).filter(Boolean)) {
             const token = raw.replace(/＞/g, '>').replace(/＜/g, '<');
-            const rule = RULES.find(([re]) => re.test(token));
-            if (rule) preds.push(rule[1](token.match(rule[0])));
-            else rest.push(raw);
+            let matched = false;
+            for (let i = 0; i < RULES.length; i++) {
+                const m = RULES[i][0].exec(token);
+                if (m) {
+                    preds.push(RULES[i][1](m));
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) rest.push(raw);
         }
         return { preds, text: rest.join(' ') };
     }
@@ -86,7 +93,10 @@
         app.createSmartPlaylist = (query, name) => {
             const q = String(query || '').trim();
             if (!q) return null;
-            const pl = { id: 's' + Date.now(), name: String(name || '').trim() || '智能：' + q, tracks: evaluate(app.playlist, q, ctx()).map((t) => t.path), smart: { query: q } };
+            const taken = new Set(lists().map((p) => String(p && p.id || '')));
+            let idNum = Date.now();
+            while (taken.has('s' + idNum)) idNum += 1;
+            const pl = { id: 's' + idNum, name: String(name || '').trim() || '智能：' + q, tracks: evaluate(app.playlist, q, ctx()).map((t) => t.path), smart: { query: q } };
             lists().push(pl);
             refreshViews();
             try {

@@ -348,7 +348,7 @@
         // 等加载时圆环一直转
         const spin = (ctx.wait || 0) * 200 * DEG;
         const loading = ctx.waiting && ctx.loadingLabel !== false ? '正在载入舞台' + '.'.repeat(1 + (Math.floor((ctx.wait || 0) * 3) % 3)) : '';
-        let r, sweep, start;
+        let r, sweep, start, nextFileLabel = '', nextFileText = '';
         if (kind === 'enter') {
             const backdropOpacity = t < releaseAt ? smooth(progress(t, 0, 0.14)) : 0;
             n.svg.parentElement.style.setProperty('--mi-enter-backdrop', String(backdropOpacity));
@@ -357,8 +357,8 @@
             start = keys([[0, 200], [0.5, -90]], t) * DEG + spin;
             n.white.setAttribute('d', arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG));
             n.scan.style.opacity = String(smooth(progress(t, 0, 0.08)));
-            n.fileLabel.textContent = loading || '进入舞台';
-            n.fileText.textContent = typed(ctx.file, t, 0.04, 0.34);
+            nextFileLabel = loading || '进入舞台';
+            nextFileText = typed(ctx.file, t, 0.04, 0.34);
             // 白场 90% 以上只维持约 110ms：0.45 起快速升到不透明，放开舞台后立刻开始退。
             n.flash.style.opacity = String(smooth(progress(t, 0.45, releaseAt)) * (1 - smooth(progress(t, releaseAt + 0.01, TRANSIT.enter - 0.1))));
             // 白场盖严之后，遮罩和圆环一起撤掉，白场退去时只剩舞台。
@@ -380,8 +380,8 @@
                 n.scan.style.opacity = String(1 - smooth(progress(t, gate + 0.1, gate + 0.38)));
             }
             n.white.setAttribute('d', t < gate + 0.1 ? arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG) : '');
-            n.fileLabel.textContent = loading || '返回';
-            n.fileText.textContent = typed('曲库', t, 0.04, 0.2);
+            nextFileLabel = loading || '返回';
+            nextFileText = typed('曲库', t, 0.04, 0.2);
         } else {
             // 换模式：舞台在点击 0.17 秒后才开始建新模式，纸色底 0.14 秒就盖严；等新模式加载好后揭开
             const gate = TRANSIT.switchGate;
@@ -392,9 +392,11 @@
             start = keys([[0, 120], [0.18, -90]], t) * DEG + spin;
             n.white.setAttribute('d', arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG));
             n.scan.style.opacity = String(smooth(progress(t, 0, 0.1)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch - 0.1))));
-            n.fileLabel.textContent = loading || '切换舞台';
-            n.fileText.textContent = typed(ctx.file, t, 0.02, 0.18);
+            nextFileLabel = loading || '切换舞台';
+            nextFileText = typed(ctx.file, t, 0.02, 0.18);
         }
+        if (n._lastFileLabel !== nextFileLabel) { n._lastFileLabel = nextFileLabel; n.fileLabel.textContent = nextFileLabel; }
+        if (n._lastFileText !== nextFileText) { n._lastFileText = nextFileText; n.fileText.textContent = nextFileText; }
         n.outer.setAttribute('d', arc(r, start, sweep));
         n.cap.setAttribute('cx', (CX + Math.cos(start + sweep) * r).toFixed(2));
         n.cap.setAttribute('cy', (CY + Math.sin(start + sweep) * r).toFixed(2));
@@ -468,7 +470,7 @@
             cancelAnimationFrame(run.raf);
             run.detach();
             document.body.classList.remove('music-intro-playing');
-            if (instant || reducedMotion()) { run.root.remove(); run.done?.(); return; }
+            if (instant || reducedMotion() || typeof run.root.animate !== 'function') { run.root.remove(); run.done?.(); return; }
             const fade = run.root.animate([{ opacity: getComputedStyle(run.root).opacity }, { opacity: 0 }], { duration: 220, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' });
             fade.finished.catch(() => {}).then(() => { run.root.remove(); run.done?.(); });
         };

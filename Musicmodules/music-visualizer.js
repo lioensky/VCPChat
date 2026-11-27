@@ -47,6 +47,22 @@ function setupVisualizer(app) {
 
     let vocalFadeWidth = 0;
     let vocalFade = null;
+    let vocalSizeDirty = true;
+    let vocalResizeObserver = null;
+    let vocalStrokeKey = '';
+    let vocalStrokeStyles = null;
+    let particleStrokeKey = '';
+    let particleStrokeStyle = '';
+
+    const markVocalSizeDirty = () => { vocalSizeDirty = true; };
+    if (app.vocalCanvas && typeof ResizeObserver === 'function') {
+        try {
+            vocalResizeObserver = new ResizeObserver(markVocalSizeDirty);
+            vocalResizeObserver.observe(app.vocalCanvas);
+        } catch (e) {
+            vocalResizeObserver = null;
+        }
+    }
 
     app.drawVocalVisualizer = () => {
         if (!app.vocalCanvas || !app.vocalCtx || app.currentVisualizerData.length === 0) return;
@@ -55,10 +71,20 @@ function setupVisualizer(app) {
         const canvas = app.vocalCanvas;
         const data = app.currentVisualizerData;
 
-        // Resize canvas if needed
-        if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
+        // 仅在尺寸标记脏时读取布局尺寸，避免 60fps 帧循环在歌词更新后触发强制重排
+        if (vocalSizeDirty) {
+            const cw = canvas.clientWidth;
+            const ch = canvas.clientHeight;
+            if (cw > 0 && ch > 0) {
+                if (canvas.width !== cw || canvas.height !== ch) {
+                    canvas.width = cw;
+                    canvas.height = ch;
+                }
+                vocalSizeDirty = false;
+            } else if (canvas.width !== cw || canvas.height !== ch) {
+                canvas.width = cw;
+                canvas.height = ch;
+            }
         }
 
         const w = canvas.width;
@@ -95,6 +121,11 @@ function setupVisualizer(app) {
         const centerY = h * 0.5;
         const time = Date.now();
         const { r, g, b } = app.visualizerColor;
+        const colorKey = `${r},${g},${b}`;
+        if (vocalStrokeKey !== colorKey) {
+            vocalStrokeKey = colorKey;
+            vocalStrokeStyles = app.vocalWaves.map((wave) => `rgba(${r}, ${g}, ${b}, ${wave.alpha})`);
+        }
         const energyBoost = app.smoothedVocalEnergy * 35;
         ctx.lineWidth = 1.5;
 
@@ -104,7 +135,7 @@ function setupVisualizer(app) {
             const freq = wave.frequency;
             const phaseOffset = time * wave.speed * 0.01 + wave.phase;
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${wave.alpha})`;
+            ctx.strokeStyle = vocalStrokeStyles[wIdx];
 
             for (let x = 0, idx = 0; x <= w; x += 2, idx++) {
                 const y = centerY + Math.sin(x * freq + phaseOffset) * amp * vocalFade[idx];
@@ -294,9 +325,12 @@ function setupVisualizer(app) {
         }
         app._visualizerWakeObserver?.disconnect();
         app._visualizerWakeObserver = null;
+        vocalResizeObserver?.disconnect();
+        vocalResizeObserver = null;
         if (app._visualizerWakeOnVisible) {
             document.removeEventListener('visibilitychange', app._visualizerWakeOnVisible);
             window.removeEventListener('resize', app._visualizerWakeOnVisible);
+            app._visualizerWakeOnVisible = null;
         }
         const socket = app.ws;
         app.ws = null;
@@ -414,10 +448,11 @@ function setupVisualizer(app) {
             const sig = wakeClassSig();
             if (sig === lastWakeSig) return;
             lastWakeSig = sig;
+            markVocalSizeDirty();
             app.wakeVisualizer(1200);
         });
         app._visualizerWakeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-        app._visualizerWakeOnVisible = () => app.wakeVisualizer(400);
+        app._visualizerWakeOnVisible = () => { markVocalSizeDirty(); app.wakeVisualizer(400); };
         document.addEventListener('visibilitychange', app._visualizerWakeOnVisible);
         window.addEventListener('resize', app._visualizerWakeOnVisible);
     }
@@ -532,45 +567,57 @@ function setupVisualizer(app) {
             app.drawVocalVisualizer();
 
             // 更新粒子
-            app.particles.forEach(p => {
-                const positionRatio = p.x / app.visualizerCanvas.width;
-                const dataIndexFloat = positionRatio * (app.currentVisualizerData.length - 1);
-                const index1 = Math.floor(dataIndexFloat);
-                const index2 = Math.min(index1 + 1, app.currentVisualizerData.length - 1);
+            const particles = app.particles;
+            const pCount = particles.length;
+            const visW = app.visualizerCanvas.width;
+            const visH = app.visualizerCanvas.height;
+            const curData = app.currentVisualizerData;
+            const dataLast = curData.length - 1;
+            if (pCount > 0 && visW > 0 && dataLast >= 0) {
+                const invVisW = dataLast / visW;
+                const scaleVisH = visH * 1.2;
+                for (let i = 0; i < pCount; i++) {
+                    const p = particles[i];
+                    const dataIndexFloat = p.x * invVisW;
+                    const index1 = Math.floor(dataIndexFloat);
+                    const index2 = index1 < dataLast ? index1 + 1 : dataLast;
 
-                const value1 = app.currentVisualizerData[index1] || 0;
-                const value2 = app.currentVisualizerData[index2] || 0;
-                const fraction = dataIndexFloat - index1;
-                const interpolatedValue = value1 + (value2 - value1) * fraction;
+                    const value1 = curData[index1] || 0;
+                    const value2 = curData[index2] || 0;
+                    const interpolatedValue = value1 + (value2 - value1) * (dataIndexFloat - index1);
 
-                const spectrumY = app.visualizerCanvas.height - (interpolatedValue * app.visualizerCanvas.height * 1.2);
-                p.targetY = spectrumY - 6;
-                p.update();
-            });
+                    p.targetY = visH - (interpolatedValue * scaleVisH) - 6;
+                    p.update();
+                }
+            }
 
             // 绘制粒子曲线
-            if (app.particles.length > 1) {
-                app.visualizerCtx.beginPath();
-                app.visualizerCtx.moveTo(app.particles[0].x, app.particles[0].y);
+            if (pCount > 1) {
+                const vctx = app.visualizerCtx;
+                vctx.beginPath();
+                vctx.moveTo(particles[0].x, particles[0].y);
 
-                for (let i = 0; i < app.particles.length - 2; i++) {
-                    const p1 = app.particles[i];
-                    const p2 = app.particles[i + 1];
-                    const xc = (p1.x + p2.x) / 2;
-                    const yc = (p1.y + p2.y) / 2;
-                    app.visualizerCtx.quadraticCurveTo(p1.x, p1.y, xc, yc);
+                for (let i = 0; i < pCount - 2; i++) {
+                    const p1 = particles[i];
+                    const p2 = particles[i + 1];
+                    vctx.quadraticCurveTo(p1.x, p1.y, (p1.x + p2.x) * 0.5, (p1.y + p2.y) * 0.5);
                 }
 
-                const secondLast = app.particles[app.particles.length - 2];
-                const last = app.particles[app.particles.length - 1];
-                app.visualizerCtx.quadraticCurveTo(secondLast.x, secondLast.y, last.x, last.y);
+                const secondLast = particles[pCount - 2];
+                const last = particles[pCount - 1];
+                vctx.quadraticCurveTo(secondLast.x, secondLast.y, last.x, last.y);
 
                 const { r, g, b } = app.visualizerColor;
-                app.visualizerCtx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
-                app.visualizerCtx.lineWidth = 1.5;
-                app.visualizerCtx.lineJoin = 'round';
-                app.visualizerCtx.lineCap = 'round';
-                app.visualizerCtx.stroke();
+                const pColorKey = `${r},${g},${b}`;
+                if (particleStrokeKey !== pColorKey) {
+                    particleStrokeKey = pColorKey;
+                    particleStrokeStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
+                }
+                vctx.strokeStyle = particleStrokeStyle;
+                vctx.lineWidth = 1.5;
+                vctx.lineJoin = 'round';
+                vctx.lineCap = 'round';
+                vctx.stroke();
             }
 
             app.animationFrameId = requestAnimationFrame(draw);

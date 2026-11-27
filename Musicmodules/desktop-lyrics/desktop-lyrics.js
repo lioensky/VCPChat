@@ -22,7 +22,7 @@
     const reducedMq = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
 
     const send = (cmd, value) => { try { api?.sendDesktopLyricsCommand?.(cmd, value); } catch (e) { /* 主进程没有这个接口 */ } };
-    const now = () => (snap ? snap.position + (snap.playing ? (Date.now() - snap.at) / 1000 : 0) : 0);
+    const now = () => (snap ? snap.position + (snap.playing ? Math.max(0, Date.now() - (snap.at || Date.now())) / 1000 : 0) : 0);
     const pct = (t, s, e) => (t >= e ? 100 : t <= s ? 0 : ((t - s) / Math.max(0.05, e - s)) * 100);
 
     const wordSpan = (text) => {
@@ -120,16 +120,18 @@
 
     const applyPrefs = (p) => {
         if (!p) return;
-        if (Number.isFinite(p.size)) {
+        let sizeChanged = false;
+        if (Number.isFinite(p.size) && p.size !== size) {
             size = p.size;
             document.documentElement.style.setProperty('--dl-size', size + 'px');
+            sizeChanged = true;
         }
         locked = p.locked === true;
         body.classList.toggle('locked', locked);
         const lock = $('lock');
         lock.title = locked ? '解锁：可以拖动、点按钮' : '锁定：鼠标穿过歌词，点不到它';
         lock.setAttribute('aria-label', locked ? '解锁' : '锁定');
-        fit();
+        if (sizeChanged) fit();
     };
 
     // ---- 交互 ----

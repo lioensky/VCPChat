@@ -34,7 +34,12 @@
         return { paths, toAdd, missing };
     };
 
-    // 和已有歌单重名时加「 (2)」「 (3)」
+    const uniqueId = (lists) => {
+        const taken = new Set((lists || []).map((p) => String(p && p.id || '')));
+        let id = Date.now();
+        while (taken.has(String(id))) id += 1;
+        return String(id);
+    };
     const uniqueName = (name, lists) => {
         const base = String(name || '').trim() || '导入的歌单';
         const taken = new Set((lists || []).map((p) => String(p && p.name || '')));
@@ -67,7 +72,7 @@
                 toast(res.entries?.length || lost ? `「${res.name}」里的 ${lost} 首在这台电脑上都找不到，没有导入` : `「${res.name}」是空的，没有导入`, { kind: 'error', duration: 6000 });
                 return null;
             }
-            const pl = { id: Date.now().toString(), name: uniqueName(res.name, lists()), tracks: paths };
+            const pl = { id: uniqueId(lists()), name: uniqueName(res.name, lists()), tracks: paths };
             lists().push(pl);
             refreshViews();
             if (toAdd.length) { try { api().addMusicPaths?.(toAdd)?.catch?.(() => {}); } catch (e) { /* 曲库之后自己会扫到 */ } }
@@ -84,9 +89,15 @@
 
         const exportPlaylist = async (pl) => {
             if (!pl) return null;
-            const byPath = new Map((app.playlist || []).map((t) => [t.path, t]));
+            const byPath = new Map();
+            const byNorm = new Map();
+            for (const t of app.playlist || []) {
+                if (!t || !t.path) continue;
+                byPath.set(t.path, t);
+                byNorm.set(norm(t.path), t);
+            }
             const tracks = (pl.tracks || []).map((p) => {
-                const t = byPath.get(p);
+                const t = byPath.get(p) || byNorm.get(norm(p));
                 return t ? { path: t.path, title: t.title || '', artist: t.artist || '', duration: Number(t.duration) || 0 } : { path: p };
             }).filter((t) => typeof t.path === 'string' && !/^[a-z][a-z0-9+.-]+:\/\//i.test(t.path)); // 云端（WebDAV）的歌别的播放器打不开
             if (!tracks.length) { toast(`「${pl.name}」里没有本机的歌，没什么可导出的`, { kind: 'error' }); return null; }
@@ -139,6 +150,7 @@
                 for (let i = 0; i < types.length; i++) if (types[i] === 'Files') return true;
                 return false;
             };
+            let hintRaf = 0;
             const showHint = () => {
                 if (!hint) {
                     hint = doc.createElement('div');
@@ -147,11 +159,17 @@
                     hint.innerHTML = '<div class="music-drop-hint-card"><b>松开，加进曲库</b><span>歌曲和文件夹加进曲库；.m3u / .m3u8 歌单导入成新歌单</span></div>';
                     doc.body.appendChild(hint);
                 }
-                global.requestAnimationFrame?.(() => { if (hint && depth > 0) hint.classList.add('visible'); });
+                if (hintRaf) global.cancelAnimationFrame?.(hintRaf);
+                hintRaf = global.requestAnimationFrame?.(() => { hintRaf = 0; if (hint && depth > 0) hint.classList.add('visible'); }) || 0;
             };
             // 保险：拖着悬停时 dragover 每几十毫秒来一次；停了大半秒还没来（按了 Esc、拖到别的窗口没收到 dragleave）就收起，提示不会卡在屏幕上
             let idle = 0;
-            const hideHint = () => { depth = 0; clearTimeout(idle); idle = 0; if (hint) hint.classList.remove('visible'); };
+            const hideHint = () => {
+                depth = 0;
+                clearTimeout(idle); idle = 0;
+                if (hintRaf) { global.cancelAnimationFrame?.(hintRaf); hintRaf = 0; }
+                if (hint) hint.classList.remove('visible');
+            };
             const onDragEnter = (event) => { if (!isFileDrag(event)) return; depth++; showHint(); };
             const onDragOver = (event) => { if (!isFileDrag(event)) return; clearTimeout(idle); idle = setTimeout(hideHint, 700); };
             const onDragLeave = (event) => { if (!isFileDrag(event)) return; depth = Math.max(0, depth - 1); if (!depth) hideHint(); };
@@ -181,8 +199,8 @@
             doc.addEventListener('drop', hideHint, true);
             doc.addEventListener('drop', onDrop);
             global.addEventListener?.('beforeunload', () => {
-                clearTimeout(idle);
-                idle = 0;
+                hideHint();
+                if (hint) { hint.remove(); hint = null; }
                 doc.removeEventListener('dragenter', onDragEnter, true);
                 doc.removeEventListener('dragover', onDragOver, true);
                 doc.removeEventListener('dragleave', onDragLeave, true);
