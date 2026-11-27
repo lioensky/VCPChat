@@ -119,6 +119,76 @@ function extractEmoticonInfo(url) {
 }
 
 
+function getExtension(filename) {
+    const name = typeof filename === 'string' ? filename.trim().normalize('NFC').toLowerCase() : '';
+    const extensionIndex = name.lastIndexOf('.');
+    return extensionIndex > 0 ? name.slice(extensionIndex) : '';
+}
+
+function toPackageStemKey(packageName, filename) {
+    const stem = getFilenameStem(filename);
+    const pkg = normalizePackageName(packageName);
+    if (!stem || !pkg) return null;
+    return `${pkg}/${stem}`;
+}
+
+// 表情库数组按引用缓存索引；主进程刷新后换新数组，索引自然重建。
+let libraryIndexSource = null;
+let libraryIndex = null;
+
+function getLibraryIndex() {
+    if (libraryIndexSource !== emoticonLibrary) {
+        const byPackageStem = new Map();
+        for (const item of emoticonLibrary) {
+            const info = extractEmoticonInfo(item.url);
+            const filename = (typeof item.filename === 'string' && item.filename.trim())
+                ? item.filename
+                : info.filename;
+            const key = toPackageStemKey(item.category || info.packageName, filename);
+            if (!key) continue;
+            if (!byPackageStem.has(key)) byPackageStem.set(key, []);
+            byPackageStem.get(key).push({ item, extension: getExtension(filename) });
+        }
+        libraryIndexSource = emoticonLibrary;
+        libraryIndex = byPackageStem;
+    }
+    return libraryIndex;
+}
+
+// 库内存在哪些分类；用于判断一段 URL 的包名是否值得跨包兜底。
+let libraryPackageSource = null;
+let libraryPackageSet = null;
+
+function getLibraryPackageSet() {
+    if (libraryPackageSource !== emoticonLibrary) {
+        const packages = new Set();
+        for (const item of emoticonLibrary) {
+            const info = extractEmoticonInfo(item.url);
+            const pkg = normalizePackageName(item.category || info.packageName);
+            if (pkg) packages.add(pkg);
+        }
+        libraryPackageSource = emoticonLibrary;
+        libraryPackageSet = packages;
+    }
+    return libraryPackageSet;
+}
+
+function subscribeToLibraryUpdates() {
+    if (typeof electronAPI?.onEmoticonLibraryUpdated !== 'function') return;
+
+    electronAPI.onEmoticonLibraryUpdated(async () => {
+        try {
+            const library = await electronAPI.getEmoticonLibrary();
+            if (Array.isArray(library) && library.length > 0) {
+                emoticonLibrary = library;
+                console.log(`[EmoticonFixer] Library refreshed with ${library.length} items.`);
+            }
+        } catch (error) {
+            console.warn(`[EmoticonFixer] Refresh failed: ${error.message || error}`);
+        }
+    });
+}
+
 function initialize(api) {
     if (initializationPromise) {
         return initializationPromise;
@@ -131,6 +201,7 @@ function initialize(api) {
             const library = await electronAPI.getEmoticonLibrary();
             emoticonLibrary = Array.isArray(library) ? library : [];
             isInitialized = true;
+            subscribeToLibraryUpdates();
             if (emoticonLibrary.length > 0) {
                 console.log(`[EmoticonFixer] Library loaded with ${emoticonLibrary.length} items.`);
             } else {
@@ -153,17 +224,7 @@ function fixEmoticonUrl(originalSrc) {
         return originalSrc; // Not ready, pass through
     }
 
-    // 1. Quick check: if the URL is already perfect, return it.
-    try {
-        const decodedOriginalSrc = decodeURIComponent(originalSrc);
-        if (emoticonLibrary.some(item => decodeURIComponent(item.url) === decodedOriginalSrc)) {
-            return originalSrc; // It's a perfect match, don't touch it.
-        }
-    } catch (e) {
-        console.warn(`[EmoticonFixer] Could not decode originalSrc for perfect match check: ${originalSrc}`, e);
-    }
-
-    // 2. Check if it's likely an emoticon URL by looking for "表情包"
+    // 1. Check if it's likely an emoticon URL by looking for "表情包"
     try {
         if (!decodeURIComponent(originalSrc).includes('表情包')) {
             return originalSrc;
@@ -172,12 +233,29 @@ function fixEmoticonUrl(originalSrc) {
         return originalSrc; // Malformed URI
     }
 
-    // 3. 文件主名是表情身份，扩展名不参与匹配；分类只用于同名表情消歧。
+    // 2. 文件主名是表情身份，扩展名不参与匹配；分类只用于同名表情消歧。
     const searchInfo = extractEmoticonInfo(originalSrc);
 
     if (!searchInfo.filenameStem) {
         console.log(`[EmoticonFixer] Could not extract filename from "${originalSrc}". Passing through.`);
         return originalSrc;
+    }
+
+    // 3. host 无关的同包同主名快速命中。库里存的是 settings.vcpServerUrl 的 host，
+    //    AI 写出的常是 localhost，比整条 URL 会让每条正常表情都掉进后面的猜测分支。
+    //    扩展名不参与身份，只在包内同主名多后缀（如 生气.jpeg / 生气.png）时用于消歧。
+    const packageStemKey = toPackageStemKey(searchInfo.packageName, searchInfo.filename);
+    if (packageStemKey) {
+        const samePackageMatches = getLibraryIndex().get(packageStemKey);
+        if (samePackageMatches && samePackageMatches.length > 0) {
+            const wantedExtension = getExtension(searchInfo.filename);
+            const preferred = samePackageMatches.find(candidate => candidate.extension === wantedExtension)
+                || samePackageMatches[0];
+            if (preferred.item.url !== originalSrc) {
+                console.log(`[EmoticonFixer] Normalized emoticon URL to library form. Original: "${originalSrc}", Canonical: "${preferred.item.url}"`);
+            }
+            return preferred.item.url;
+        }
     }
 
     const candidates = emoticonLibrary
@@ -203,6 +281,15 @@ function fixEmoticonUrl(originalSrc) {
         candidate.info.filenameStem === searchInfo.filenameStem
     );
 
+    const normalizedSearchPackage = normalizePackageName(searchInfo.packageName);
+
+    // 4.5 包名不在库且主名也没有精确命中：跨包兜底只会拿一张无关的图顶替原地址
+    //     （新拷贝但尚未入库的表情包、AI 编造的路径都走这里），保留原 URL 更诚实。
+    if (exactNameMatches.length === 0 && normalizedSearchPackage && !getLibraryPackageSet().has(normalizedSearchPackage)) {
+        console.log(`[EmoticonFixer] Package "${searchInfo.packageName}" is absent from the library and no filename matched; keeping original URL.`);
+        return originalSrc;
+    }
+
     if (exactNameMatches.length === 1) {
         const exactMatch = exactNameMatches[0].item;
         console.log(`[EmoticonFixer] Fixed URL by exact filename stem. Original: "${originalSrc}", Match: "${exactMatch.url}"`);
@@ -210,8 +297,6 @@ function fixEmoticonUrl(originalSrc) {
     }
 
     if (exactNameMatches.length > 1 && searchInfo.packageName) {
-        const normalizedSearchPackage = normalizePackageName(searchInfo.packageName);
-
         // 多个分类存在同名表情时，AI 写出的 xx表情包 是第二优先级。
         const exactPackageMatch = exactNameMatches.find(candidate =>
             normalizePackageName(candidate.info.packageName) === normalizedSearchPackage
@@ -261,7 +346,6 @@ function fixEmoticonUrl(originalSrc) {
     }
 
     // 5. 主名没有命中，但分类精确命中时，先锁定该表情包，再在包内找最相似文件。
-    const normalizedSearchPackage = normalizePackageName(searchInfo.packageName);
     const samePackageCandidates = normalizedSearchPackage
         ? candidates.filter(candidate =>
             normalizePackageName(candidate.info.packageName) === normalizedSearchPackage
