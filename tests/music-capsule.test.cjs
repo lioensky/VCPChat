@@ -155,3 +155,58 @@ test('capsule deduplicates unchanged playing/injection/expansion DOM updates on 
     assert.ok(toggleAttrs > 0, 'changed playing state updates toggle attributes');
     f.dom.window.close();
 });
+
+test('Batch 61: parent ResizeObserver keeps chrome metrics cached while window resize invalidates them and beforeunload detaches resize', () => {
+    const source = new JSDOM(html);
+    const markup = source.window.document.querySelector('.music-capsule').outerHTML;
+    source.window.close();
+    const dom = new JSDOM(`<div id="slot">${markup}</div>`, { runScripts: 'outside-only' });
+    let roCallback = null;
+    let push = null;
+    const rafs = [];
+    dom.window.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+    dom.window.cancelAnimationFrame = () => {};
+    dom.window.ResizeObserver = class {
+        constructor(cb) { roCallback = cb; }
+        observe() {}
+        disconnect() {}
+    };
+    dom.window.electronAPI = {
+        onMusicCapsuleState: (cb) => { push = cb; return () => {}; },
+        getMusicCapsuleState: () => new Promise(() => {}),
+        sendMusicCapsuleCommand: () => {}
+    };
+    dom.window.eval(script);
+    dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+    const root = dom.window.document.querySelector('.music-capsule');
+    const titleEl = root.querySelector('.music-capsule-title');
+    for (const b of root.querySelectorAll('button')) {
+        b.getBoundingClientRect = () => ({ width: 24, height: 24, left: 0, top: 0, right: 24, bottom: 24 });
+    }
+    let titleStyleReads = 0;
+    const origGetCS = dom.window.getComputedStyle.bind(dom.window);
+    dom.window.getComputedStyle = (el, ...rest) => {
+        if (el === titleEl) titleStyleReads += 1;
+        return origGetCS(el, ...rest);
+    };
+
+    push({ open: true, title: 'Song A', trackKey: 'a', playing: true });
+    assert.equal(titleStyleReads, 1, 'initial open measures chrome width once');
+
+    // Parent ResizeObserver should re-measure title only, not chrome computed styles
+    roCallback();
+    rafs.splice(0).forEach((fn) => fn());
+    assert.equal(titleStyleReads, 1, 'parent ResizeObserver does not dirty cached chrome metrics');
+
+    // Window resize invalidates chrome metrics once
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    rafs.splice(0).forEach((fn) => fn());
+    assert.equal(titleStyleReads, 2, 'window resize re-measures chrome metrics');
+
+    // beforeunload detaches window resize listener
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    rafs.splice(0).forEach((fn) => fn());
+    assert.equal(titleStyleReads, 2, 'beforeunload detaches window resize handler');
+    dom.window.close();
+});

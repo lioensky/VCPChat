@@ -152,3 +152,28 @@ test('UI preserves enabled appearance and gives retry hint when persistence fail
     assert.match(trigger.title, /保存失败/);
     assert.equal(trigger.getAttribute('aria-busy'), 'false');
 });
+
+test('Batch 61: unchanged injection setting skips redundant music-capsule-state broadcasts and toggle publishes once', async t => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vchat-music-inj-dedup-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const file = path.join(dir, 'settings.json');
+    fs.writeFileSync(file, JSON.stringify({ agentMusicControl: true, musicInfoInjectionEnabled: true }));
+    const manager = new SettingsManager(file);
+    const { handles, mainWindow, sent } = loadMusic(manager);
+    const snapshot = handles.get('music-capsule-get-state');
+    const toggle = handles.get('music-info-injection-toggle');
+
+    // Reading unchanged default-true state emits 0 IPC broadcasts
+    await snapshot();
+    assert.equal(sent.length, 0, 'reading unchanged injection setting does not broadcast music-capsule-state');
+
+    // Updating an unrelated setting emits 0 IPC broadcasts
+    await manager.updateSettings(cur => ({ ...cur, userName: 'Other' }));
+    assert.equal(sent.length, 0, 'unrelated settings update does not broadcast music-capsule-state');
+
+    // Toggling injection emits exactly once (not duplicated by settings-updated + explicit apply)
+    await toggle({ sender: mainWindow.webContents });
+    const capsulePushes = sent.filter(([ch]) => ch === 'music-capsule-state');
+    assert.equal(capsulePushes.length, 1, 'injection toggle broadcasts music-capsule-state exactly once');
+    assert.equal(capsulePushes[0][1].musicInfoInjectionEnabled, false);
+});

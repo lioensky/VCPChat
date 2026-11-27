@@ -268,3 +268,29 @@ test('Batch 59: artist pre-ranked sort preserves Collator numeric tie order and 
     assert.deepEqual(sorted, expected, 'pre-ranked artist sort must match reference Collator exact total order including numeric ties');
     assert.deepEqual(sorted.slice(-2), [5, 2], 'empty artist tracks sort last ordered by title');
 });
+
+test('Batch 61: bucketed 1-4 term query preserves exact score & order with limit/only, 5-term fallback works, and archive.css hides classic layout', () => {
+    const tracks = [
+        { path: '/0', title: 'Alpha Beta Gamma Delta Echo', artist: 'Band X', album: 'Disk 1' },
+        { path: '/1', title: 'X Alpha', artist: 'Alpha Singer', album: 'Alpha Album' },
+        { path: '/2', title: 'Alpha One', artist: 'Band Y', album: 'Disk 2' },
+        { path: '/3', title: 'Alpha Two', artist: 'Band Z', album: 'Disk 3' },
+        { path: '/4', title: 'Other', artist: 'Alpha Prefix', album: 'Disk 4' },
+        { path: '/5', title: 'Alpha Beta Gamma Delta Echo Foxtrot', artist: 'Band W', album: 'Disk 5' }
+    ];
+    const idx = Index.createIndex(tracks);
+
+    // 1-term query: title startsWith (300) > artist startsWith (200) > title includes (180), stable tie order
+    assert.deepEqual(idx.query('alpha'), [0, 2, 3, 5, 1, 4]);
+    assert.deepEqual(idx.query('alpha', { limit: 3 }), [0, 2, 3]);
+    assert.deepEqual(idx.query('alpha', { limit: 0 }), []);
+    assert.deepEqual(idx.query('alpha', { only: [4, 3, 1, 2], limit: 3 }), [3, 2, 4]);
+
+    // 5-term fallback (> 4 terms)
+    assert.deepEqual(idx.query('alpha beta gamma delta echo'), [0, 5]);
+    assert.deepEqual(idx.query('alpha beta gamma delta echo', { limit: 1 }), [0]);
+
+    // archive.css hides .music-player-container from layout via content-visibility: hidden
+    const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'Musicmodules/music-archive/archive.css'), 'utf8');
+    assert.match(css, /body\.music-archive-on\s+\.music-player-container[\s\S]*?content-visibility:\s*hidden/);
+});

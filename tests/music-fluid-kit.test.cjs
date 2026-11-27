@@ -416,3 +416,44 @@ test('Batch 57: music-fluid-select skips high-churn list subtrees in bodyObs and
     assert.equal(ariaWrites, 1, 'changing select value updates aria-label once');
     dom.window.close();
 });
+
+test('Batch 61: watchTrails skips duplicate layout reads on child hover within same button and disposes listeners/observers on beforeunload', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="archive-nav">
+            <button id="b1" type="button"><span id="s1">按钮一</span></button>
+            <button id="b2" type="button"><span id="s2">按钮二</span></button>
+        </div>
+        <div class="dialog-overlay"><div class="dialog"></div></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+    const row = doc.querySelector('.archive-nav');
+    const b1 = doc.getElementById('b1');
+    const s1 = doc.getElementById('s1');
+    const b2 = doc.getElementById('b2');
+    let rectReads = 0;
+    row.getBoundingClientRect = () => { rectReads += 1; return { left: 0, top: 0, width: 200, height: 40, right: 200, bottom: 40 }; };
+    b1.getBoundingClientRect = () => ({ left: 0, top: 0, width: 90, height: 40, right: 90, bottom: 40 });
+    b2.getBoundingClientRect = () => ({ left: 100, top: 0, width: 90, height: 40, right: 190, bottom: 40 });
+
+    b1.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.equal(rectReads, 1, 'initial button hover measures row');
+    s1.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.equal(rectReads, 1, 'hovering inner child of same active button skips redundant measurement');
+    b2.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.equal(rectReads, 2, 'moving to sibling button measures row once');
+
+    // beforeunload detaches pointerover & dialog observers
+    window.dispatchEvent(new window.Event('beforeunload'));
+    b1.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.equal(rectReads, 2, 'beforeunload detaches watchTrails pointerover listener');
+    doc.querySelector('.dialog-overlay').classList.add('visible');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(doc.querySelector('svg.mf-goo'), null, 'beforeunload disconnects dialog MutationObserver');
+    dom.window.close();
+});

@@ -1486,3 +1486,79 @@ test('Batch 59: closePanel and palette close restore focus cleanly and playlist 
         window.close();
     }
 });
+
+test('Batch 61: palette pools row DOM nodes, dock gates stage config fluid sync, and progress/volume drags cache bounding rects', () => {
+    const subs = [];
+    let stageCfg = { quality: 'high', themeMode: 'auto', themeFile: '', themeVariant: '', modes: { luminous: { glow: 0.5 } } };
+    const { window, doc, app, dock } = setup((_app, win) => {
+        win.MusicStageConfig = {
+            get: () => stageCfg,
+            subscribe: (fn) => { subs.push(fn); return () => {}; }
+        };
+    });
+    try {
+        // 1. Palette DOM pooling: consecutive queries reuse button elements and preserve .md-cmd-drop
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        const list = doc.querySelector('.md-cmd-list');
+        input.value = 'a';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const firstRow = list.querySelector('.md-cmd-row[data-i="0"]');
+        assert.ok(firstRow, 'initial palette query renders row 0');
+        const drop = doc.createElement('i');
+        drop.className = 'md-cmd-drop';
+        list.appendChild(drop);
+
+        input.value = 'b';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const secondRow = list.querySelector('.md-cmd-row[data-i="0"]');
+        assert.equal(secondRow, firstRow, 'subsequent palette query reuses pooled .md-cmd-row node');
+        assert.equal(list.querySelector(':scope > .md-cmd-drop'), drop, 'palette render preserves .md-cmd-drop indicator');
+        dock.closePalette();
+
+        // 2. MusicStageConfig subscription ignores unrelated mode slider edits and fires on quality/theme change
+        const bar = doc.querySelector('.md-cap');
+        let barRectReads = 0;
+        const origBarRect = bar.getBoundingClientRect.bind(bar);
+        bar.getBoundingClientRect = () => { barRectReads += 1; return origBarRect(); };
+        assert.ok(subs.length > 0, 'dock subscribed to MusicStageConfig');
+        const beforeReads = barRectReads;
+        stageCfg = { ...stageCfg, modes: { luminous: { glow: 0.9 } } };
+        subs.forEach((fn) => fn(stageCfg));
+        assert.equal(barRectReads, beforeReads, 'non-material stage slider update skips fluid relayout');
+        stageCfg = { ...stageCfg, quality: 'energy-saving' };
+        subs.forEach((fn) => fn(stageCfg));
+        assert.ok(doc.getElementById('music-dock-root').classList.contains('md-fl-low'), 'quality change updates fluid tier');
+
+        // 3. Progress strip pointermove reads trk.getBoundingClientRect() at most once per move
+        const trk = doc.querySelector('.md-trk');
+        app.lastKnownDuration = 200;
+        let trkRectReads = 0;
+        trk.getBoundingClientRect = () => { trkRectReads += 1; return { left: 100, right: 300, top: 600, bottom: 612, width: 200, height: 12 }; };
+        trk.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 150 }));
+        assert.equal(trkRectReads, 1, 'progress hover reads bounding rect once');
+        trkRectReads = 0;
+        trk.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 160 }));
+        assert.equal(trkRectReads, 1, 'progress pointerdown reads bounding rect once');
+        trkRectReads = 0;
+        trk.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 200 }));
+        assert.equal(trkRectReads, 1, 'progress drag pointermove reads bounding rect once');
+        trk.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, clientX: 200 }));
+
+        // 4. Drawer volume slider drag caches rect on pointerdown (0 extra rect reads during pointermove)
+        dock.openPanel('控制');
+        const volWrap = doc.querySelector('[data-md="body"] .md-sld');
+        assert.ok(volWrap, 'control panel renders drawer volume slider');
+        let volRectReads = 0;
+        volWrap.getBoundingClientRect = () => { volRectReads += 1; return { left: 20, right: 220, top: 300, bottom: 320, width: 200, height: 20 }; };
+        volWrap.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 120 }));
+        assert.equal(volRectReads, 1, 'volume pointerdown reads bounding rect once');
+        window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 140 }));
+        window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 180 }));
+        assert.equal(volRectReads, 1, 'volume drag pointermove reuses cached bounding rect');
+        window.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, clientX: 180 }));
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
