@@ -1812,6 +1812,7 @@ body.light-theme #music-theme-toggle-btn .music-theme-sun {
  * preserve full glass while idle, but stop live backdrop sampling during the
  * short interval in which Chromium is compositing playlist scroll frames.
  */
+.left-sidebar.sidebar-is-scrolling,
 body.sidebar-is-scrolling .left-sidebar {
     background: rgba(20, 20, 20, 0.88);
     backdrop-filter: none;
@@ -1819,10 +1820,12 @@ body.sidebar-is-scrolling .left-sidebar {
     transition: none;
 }
 
+body.light-theme .left-sidebar.sidebar-is-scrolling,
 body.light-theme.sidebar-is-scrolling .left-sidebar {
     background: rgba(255, 255, 255, 0.92);
 }
 
+.left-sidebar.sidebar-is-scrolling .sidebar-playlist li,
 body.sidebar-is-scrolling .sidebar-playlist li {
     transition: none;
 }

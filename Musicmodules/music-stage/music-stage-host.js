@@ -603,8 +603,14 @@
             return `${Number(value).toFixed(definition.step < 0.1 ? 2 : 1)}${definition.unit || ''}`;
         };
 
+        let themeCatalogVersion = 0;
+        let lastAppliedThemeKey = '';
+        let lastEnabledModesKey = '';
+        const themeKeyOf = (cfg) => `${cfg.themeMode}|${cfg.themeFile}|${cfg.themeVariant}|${themeCatalogVersion}`;
+
         const applyStageTheme = () => {
             const config = state.config;
+            lastAppliedThemeKey = themeKeyOf(config);
             const useCustom = config.themeMode === 'custom';
             const selectedTheme = state.themeCatalog.find(theme => theme.fileName === config.themeFile);
             const variables = useCustom
@@ -658,7 +664,9 @@
             if (!app.api?.getThemes) return;
             try {
                 const themes = await app.api.getThemes();
+                if (state.destroyed) return;
                 state.themeCatalog = Array.isArray(themes) ? themes : [];
+                themeCatalogVersion += 1;
                 if (
                     state.config.themeMode === 'custom'
                     && !state.themeCatalog.some(theme => theme.fileName === state.config.themeFile)
@@ -754,8 +762,8 @@
                     finally { editingSettings = false; }
                     syncTuningDependents();
                 };
-                control.addEventListener('input', handleControlChange);
-                control.addEventListener('change', handleControlChange);
+                if (definition.type === 'range') control.addEventListener('input', handleControlChange);
+                else control.addEventListener('change', handleControlChange);
                 row.append(header, valueText, control);
                 tuningFragment.appendChild(row);
             });
@@ -797,9 +805,10 @@
                 const next = Number(intensity.value);
                 intensityValue.textContent = `${next.toFixed(2)}x`;
                 editingSettings = true;
-                try { Config.update({ animationIntensity: next }); }
+                try { Config.update({ animationIntensity: next }, { debounce: true }); }
                 finally { editingSettings = false; }
             });
+            intensity.addEventListener('change', () => Config.flush?.());
             const intensityRow = createElement('label', 'music-stage-tuning-row');
             intensityRow.append(createElement('span', 'music-stage-tuning-label', '动画总强度'), intensityValue, intensity);
             // Says when the 3D stage has had to draw below the chosen tier.
@@ -950,6 +959,7 @@
                 elements.backdropNext.style.backgroundImage = cssImage;
                 root.classList.add('is-changing-cover');
                 state.backgroundTimer = setTimeout(() => {
+                    if (state.destroyed) return;
                     if (softNext && softCurrent) paintSoft(softCurrent, image, 46, 1.45);
                     elements.backdropCurrent.classList.toggle('is-empty', !nextUrl);
                     elements.backdropCurrent.style.backgroundImage = cssImage;
@@ -1583,6 +1593,13 @@
 
             if (nextOpen) settingsReturnFocus = document.activeElement;
             state.settingsOpen = nextOpen;
+            const focusTarget = !state.settingsOpen && !state.destroyed
+                ? (settingsReturnFocus?.isConnected ? settingsReturnFocus : elements.settingsToggle)
+                : null;
+            if (!state.settingsOpen) {
+                focusTarget?.focus?.({ preventScroll: true });
+                settingsReturnFocus = null;
+            }
             if (elements.settingsCard) {
                 elements.settingsCard.hidden = !state.settingsOpen;
                 elements.settingsCard.setAttribute('aria-hidden', String(!state.settingsOpen));
@@ -1592,12 +1609,8 @@
             if (state.settingsOpen) {
                 renderSettingsControls();
                 elements.settingsClose?.focus({ preventScroll: true });
-            } else if (!state.destroyed) {
-                const focusTarget = settingsReturnFocus?.isConnected
-                    ? settingsReturnFocus
-                    : elements.settingsToggle;
-                focusTarget?.focus?.({ preventScroll: true });
-                settingsReturnFocus = null;
+            } else if (focusTarget && document.activeElement !== focusTarget) {
+                focusTarget.focus?.({ preventScroll: true });
             }
         };
 
@@ -1606,8 +1619,13 @@
         const handleConfigChange = (config) => {
             state.config = config;
             root.classList.toggle('stage-edge-spectrum-off', config.edgeSpectrum === false);
-            applyStageTheme();
-            renderModeButtons();
+            const nextThemeKey = themeKeyOf(config);
+            if (nextThemeKey !== lastAppliedThemeKey) applyStageTheme();
+            const nextModesKey = `${state.modeId}|${config.enabledModes.join(',')}`;
+            if (nextModesKey !== lastEnabledModesKey) {
+                lastEnabledModesKey = nextModesKey;
+                renderModeButtons();
+            }
             if (!editingSettings) renderSettingsControls();
             state.modeInstance?.updateConfig?.(config);
             if (elements.settingsStatus) {
@@ -1622,6 +1640,8 @@
         };
 
         root.classList.toggle('stage-edge-spectrum-off', state.config.edgeSpectrum === false);
+        lastEnabledModesKey = `${state.modeId}|${state.config.enabledModes.join(',')}`;
+        lastAppliedThemeKey = themeKeyOf(state.config);
         renderModeButtons();
         renderSettingsControls();
         loadThemeCatalog();

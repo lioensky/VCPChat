@@ -56,6 +56,7 @@
             lastR: -1,
             lastG: -1,
             lastB: -1,
+            lastAccentRef: null,
             lastRgb: '',
             lastQuality: '',
             lastTrack: null,
@@ -280,6 +281,7 @@
             edgeCanvasState.lastR = -1;
             edgeCanvasState.lastG = -1;
             edgeCanvasState.lastB = -1;
+            edgeCanvasState.lastAccentRef = null;
             edgeCanvasState.lastRgb = '';
             edgeCanvasState.lastQuality = '';
             edgeCanvasState.lastTrack = null;
@@ -288,8 +290,8 @@
                 const strip = edgeStrips[EDGE_SIDES[i]];
                 if (!strip) continue;
                 strip.lookup = null;
-                strip.canvas.width = 1;
-                strip.canvas.height = 1;
+                if (strip.canvas.width !== 1) strip.canvas.width = 1;
+                if (strip.canvas.height !== 1) strip.canvas.height = 1;
             }
         };
 
@@ -326,12 +328,22 @@
                 const aim = 1000 / (EDGE_FPS[quality] || 30);
                 if (now < edgeCanvasState.drawnAt) edgeCanvasState.drawnAt = 0;
                 if (!needsResize && !trackChanged && edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
+            } else {
+                if (now < edgeCanvasState.pausedAt) edgeCanvasState.pausedAt = now;
+                const palRef = app?.stagePalette?.accentRgb || null;
+                if (!needsResize && !trackChanged && !edgeCanvasState.blank
+                    && palRef && palRef === edgeCanvasState.lastAccentRef) {
+                    edgeCanvasState.pausedAt ||= now;
+                    if (now - edgeCanvasState.pausedAt > 1500) return;
+                    if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;
+                }
             }
             const color = global.MusicStageModeUtils.resolveAccent(app);
             const colorChanged = color.r !== edgeCanvasState.lastR
                 || color.g !== edgeCanvasState.lastG
                 || color.b !== edgeCanvasState.lastB;
             if (!frame.isPlaying && !needsResize && !trackChanged && !colorChanged && !edgeCanvasState.blank) {
+                edgeCanvasState.lastAccentRef = app?.stagePalette?.accentRgb || null;
                 edgeCanvasState.pausedAt ||= now;
                 if (now - edgeCanvasState.pausedAt > 1500) return;
                 if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;
@@ -339,6 +351,7 @@
             if (!resizeEdgeCanvas(frame)) return;
             const { width, height, inset, horizontalAmplitude, verticalAmplitude, horizontalCount, verticalCount } = edgeCanvasState;
             edgeCanvasState.lastTrack = track;
+            edgeCanvasState.lastAccentRef = app?.stagePalette?.accentRgb || null;
             // If track/theme accent or quality tier changed while paused, wake the settled paused border once to match.
             if (colorChanged || qualityChanged) {
                 edgeCanvasState.lastR = color.r;

@@ -240,6 +240,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let disposeAudioEngineStatus = null;
     let disposeElectronHandlers = null;
+    let disposeEventListeners = null;
+    let modalSearchTimer = null;
     app.destroy = () => {
         if (app.destroyed) return;
         app.destroyed = true;
@@ -250,6 +252,8 @@ document.addEventListener('DOMContentLoaded', () => {
         disposeAudioEngineStatus = null;
         disposeElectronHandlers?.();
         disposeElectronHandlers = null;
+        disposeEventListeners?.();
+        disposeEventListeners = null;
 
         app.stageHost?.destroy?.();
         app.destroyAmbientPixi?.();
@@ -266,6 +270,10 @@ document.addEventListener('DOMContentLoaded', () => {
             clearTimeout(app.searchInputTimer);
             app.searchInputTimer = null;
         }
+        if (modalSearchTimer) {
+            clearTimeout(modalSearchTimer);
+            modalSearchTimer = null;
+        }
         if (app.backgroundTransitionTimer) {
             clearTimeout(app.backgroundTransitionTimer);
             app.backgroundTransitionTimer = null;
@@ -279,6 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
             app.sidebarScrollEndTimer = null;
         }
         app.isSidebarScrolling = false;
+        app.leftSidebar?.classList.remove('sidebar-is-scrolling');
         document.body.classList.remove('sidebar-is-scrolling');
 
         if ('mediaSession' in navigator) {
@@ -437,7 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.MusicArchive?.init(app);
 
         // --- Handlers & Listeners ---
-        setupEventListeners();
+        disposeEventListeners = setupEventListeners();
         disposeElectronHandlers = setupElectronHandlers();
         window.setupMusicLikes?.(app); // 「喜欢」：右键菜单那一项要包在上面的菜单入口外面
         window.setupMusicGoto?.(app); // 右键「转到歌手 / 转到专辑」
@@ -568,17 +577,22 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const setupEventListeners = () => {
+        const listenerDisposers = [];
+        const addManagedListener = (target, type, fn, opts) => {
+            target?.addEventListener?.(type, fn, opts);
+            listenerDisposers.push(() => target?.removeEventListener?.(type, fn, opts));
+        };
         // 从资源管理器拖进来的文件：拦下默认动作，不然 Chromium 会跳去打开那个文件，整个播放器被换掉。
         // 能拿到本地路径时（新 preload）把拖进来的歌和文件夹加进曲库；拿不到就只是拦下。
         // 窗口里自己的拖拽（行拖到底栏入队）不带 Files，不受影响。
         const isFileDrag = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
         const canImport = () => typeof app.api?.getPathForFile === 'function' && typeof app.api?.addMusicPaths === 'function';
-        document.addEventListener('dragover', (event) => {
+        addManagedListener(document, 'dragover', (event) => {
             if (!isFileDrag(event)) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = canImport() ? 'copy' : 'none';
         });
-        document.addEventListener('drop', (event) => {
+        addManagedListener(document, 'drop', (event) => {
             if (!isFileDrag(event)) return;
             event.preventDefault();
             if (!canImport()) return;
@@ -851,11 +865,11 @@ document.addEventListener('DOMContentLoaded', () => {
             app.handleProgressUpdate(e);
         };
 
-        window.addEventListener('mousemove', (e) => {
+        addManagedListener(window, 'mousemove', (e) => {
             if (app.dragInProgress) app.handleProgressUpdate(e);
         });
 
-        window.addEventListener('mouseup', (e) => {
+        addManagedListener(window, 'mouseup', (e) => {
             if (app.dragInProgress) {
                 app.handleProgressUpdate(e, true);
                 setTimeout(() => { app.dragInProgress = false; }, 0);
@@ -970,7 +984,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // 点击外部关闭提示
-            document.addEventListener('click', (e) => {
+            addManagedListener(document, 'click', (e) => {
                 if (irHelpTip.style.display === 'block' && !irHelpTip.contains(e.target) && e.target !== irHelpIcon) {
                     irHelpTip.style.display = 'none';
                 }
@@ -996,19 +1010,20 @@ document.addEventListener('DOMContentLoaded', () => {
         app.outputBitsSelect.onchange = () => app.updateNoiseShaperSettings();
         app.noiseShaperCurveSelect.onchange = () => app.updateNoiseShaperSettings();
 
+        const sidebarScrollHost = app.leftSidebar || document.body;
         const markSidebarScrolling = () => {
             if (!app.isSidebarScrolling) {
                 app.isSidebarScrolling = true;
-                document.body.classList.add('sidebar-is-scrolling');
+                sidebarScrollHost.classList.add('sidebar-is-scrolling');
             }
             if (app.sidebarScrollEndTimer) clearTimeout(app.sidebarScrollEndTimer);
             app.sidebarScrollEndTimer = setTimeout(() => {
                 app.sidebarScrollEndTimer = null;
                 app.isSidebarScrolling = false;
-                document.body.classList.remove('sidebar-is-scrolling');
+                sidebarScrollHost.classList.remove('sidebar-is-scrolling');
             }, 140);
         };
-        app.playlistEl.addEventListener('scroll', markSidebarScrolling, { passive: true });
+        addManagedListener(app.playlistEl, 'scroll', markSidebarScrolling, { passive: true });
 
         // 经典列表当前显示的顺序（可能按标题、歌手等排过序）。
         app.classicOrder = () => {
@@ -1056,12 +1071,30 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'Escape') app.dialogCancel.click();
         };
 
-        app.modalCloseBtn.onclick = app.modalDoneBtn.onclick = () => { app.playlistEditModal.classList.remove('visible'); if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists'); };
-        app.modalSearchInput.oninput = (e) => { app.modalSearchQuery = e.target.value; app.renderModalSongList(); };
+        const closePlaylistEditModal = () => {
+            if (modalSearchTimer) { clearTimeout(modalSearchTimer); modalSearchTimer = null; }
+            app.playlistEditModal.classList.remove('visible');
+            if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists');
+        };
+        app.modalCloseBtn.onclick = app.modalDoneBtn.onclick = closePlaylistEditModal;
+        app.modalSearchInput.oninput = (e) => {
+            const nextQuery = e.target.value;
+            app.modalSearchQuery = nextQuery;
+            if (modalSearchTimer) { clearTimeout(modalSearchTimer); modalSearchTimer = null; }
+            if (!nextQuery.trim()) { app.renderModalSongList(); return; }
+            modalSearchTimer = setTimeout(() => {
+                modalSearchTimer = null;
+                if (app.playlistEditModal?.classList.contains('visible')) app.renderModalSongList();
+            }, 120);
+        };
 
-        document.addEventListener('click', (e) => { if (!app.contextMenu.contains(e.target)) app.contextMenu.classList.remove('visible'); });
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && !e.isComposing && app.lyricsFetchModal.classList.contains('visible')) closeLyricsFetchModal();
+        addManagedListener(document, 'click', (e) => { if (!app.contextMenu.contains(e.target)) app.contextMenu.classList.remove('visible'); });
+        addManagedListener(document, 'keydown', (e) => {
+            if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
+            if (document.querySelector('.dialog-overlay.music-dialog.visible')) return;
+            if (app.playlistDialog?.classList.contains('visible')) { app.hidePlaylistDialog(); e.preventDefault(); return; }
+            if (app.playlistEditModal?.classList.contains('visible')) { closePlaylistEditModal(); e.preventDefault(); return; }
+            if (app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
         });
         // ── 右键菜单的作用范围 ──
         // 「从列表中移除」要按右键时所在的视图决定删哪里，而不是按上一次从哪里点播。
@@ -1083,11 +1116,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return result;
         });
         let pendingMenuSurface = null;
-        document.addEventListener('contextmenu', (e) => {
+        addManagedListener(document, 'contextmenu', (e) => {
             pendingMenuSurface = e.target?.closest?.('#playlist') ? 'classic'
                 : e.target?.closest?.('#music-archive-view') ? 'archive' : null;
         }, true);
-        document.addEventListener('click', (e) => {
+        addManagedListener(document, 'click', (e) => {
             if (e.target?.closest?.('#music-archive-view [data-act="save"]')) pendingMenuSurface = 'archive';
         }, true);
         const archiveMenuScope = () => {
@@ -1262,7 +1295,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.closeBtn.onclick = () => { app.api?.closeWindow?.(); };
 
 
-        window.addEventListener('resize', () => {
+        addManagedListener(window, 'resize', () => {
             if (document.body.classList.contains('music-archive-on') || !app.visualizerCanvas) return;
             const w = app.visualizerCanvas.clientWidth;
             const h = app.visualizerCanvas.clientHeight;
@@ -1272,6 +1305,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 app.recreateParticles();
             }
         });
+        return () => {
+            while (listenerDisposers.length) {
+                const dispose = listenerDisposers.pop();
+                try { dispose(); } catch (_) {}
+            }
+        };
     };
 
     const setupElectronHandlers = () => {
@@ -1280,12 +1319,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const trackIpc = (unsub) => { if (typeof unsub === 'function') disposers.push(unsub); };
         // 同时在扫几个文件夹（连着拖进来、或扫描途中又加了一个）：先扫完的那个不能把「正在扫描」藏掉。
         let activeScans = 0;
-        trackIpc(app.api.onMusicScanStart(() => { activeScans += 1; app.loadingIndicator.style.display = 'flex'; app.scanProgressContainer.style.display = 'none'; }));
+        let lastScanPct = '';
+        let lastScanLabel = '';
+        trackIpc(app.api.onMusicScanStart(() => { activeScans += 1; lastScanPct = ''; lastScanLabel = ''; app.loadingIndicator.style.display = 'flex'; app.scanProgressContainer.style.display = 'none'; }));
         trackIpc(app.api.onMusicScanProgress((data) => {
-            app.scanProgressContainer.style.display = 'block';
+            if (app.scanProgressContainer.style.display !== 'block') app.scanProgressContainer.style.display = 'block';
             const percent = data.total > 0 ? Math.min(100, (data.current / data.total) * 100) : 0;
-            app.scanProgressBar.style.width = `${percent}%`;
-            app.scanProgressLabel.textContent = `正在扫描: ${data.current} / ${data.total}`;
+            const pctStr = `${percent.toFixed(1)}%`;
+            if (pctStr !== lastScanPct) { lastScanPct = pctStr; app.scanProgressBar.style.width = pctStr; }
+            const label = `正在扫描: ${data.current} / ${data.total}`;
+            if (label !== lastScanLabel) { lastScanLabel = label; app.scanProgressLabel.textContent = label; }
         }));
         // 扫描途中先把新读到的曲目接到列表末尾，不用等整个文件夹读完才看得到歌；
         // 列表最多每 400 毫秒重排一次。扫描结束时下面的 complete 再按磁盘顺序整理并保存。
@@ -1622,10 +1665,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // 从当前 DOM slider 读取频段增益，作为持久化载荷（回填后 app.eqBands 已同步）
+    const eqSliderEls = new Map();
     app.buildEqBandsPayload = () => {
         const bands = {};
         for (const band in app.eqBands) {
-            const slider = document.getElementById(`eq-${band}`);
+            let slider = eqSliderEls.get(band);
+            if (!slider || !slider.isConnected) {
+                slider = document.getElementById(`eq-${band}`);
+                if (slider) eqSliderEls.set(band, slider);
+            }
             bands[band] = slider ? parseInt(slider.value, 10) : app.eqBands[band];
         }
         return bands;

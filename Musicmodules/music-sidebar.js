@@ -46,10 +46,16 @@ function setupSidebar(app) {
             }
             group.tracks.push(t);
         });
-        // 专辑里按碟号、曲号排，和「目录」一致
+        // 专辑里按碟号、曲号排，和「目录」一致（单首专辑跳过比较器构造）
         const order = globalThis.MusicTrackOrder;
         const list = Array.from(albums.values());
-        if (order) for (const g of list) { const cmp = order.albumCompare(g.tracks, (a, b) => a - b); g.tracks = g.tracks.map((t, i) => i).sort(cmp).map((i) => g.tracks[i]); }
+        if (order) {
+            for (const g of list) {
+                if (g.tracks.length <= 1) continue;
+                const cmp = order.albumCompare(g.tracks, (a, b) => a - b);
+                g.tracks = g.tracks.map((_, i) => i).sort(cmp).map((i) => g.tracks[i]);
+            }
+        }
         return list.sort((a,b) => b.tracks.length - a.tracks.length);
     };
 
@@ -231,15 +237,14 @@ function setupSidebar(app) {
         const q = String(app.modalSearchQuery || '').trim();
         const selectedPaths = new Set(pl.tracks);
         const filtered = q && app.searchTracks ? app.searchTracks(app.playlist, q) : app.playlist;
-        const sortedFiltered = filtered
-            .map((track, index) => ({ track, index }))
-            .sort((a, b) => {
-                const aSelected = selectedPaths.has(a.track.path);
-                const bSelected = selectedPaths.has(b.track.path);
-                if (aSelected !== bSelected) return aSelected ? -1 : 1;
-                return a.index - b.index;
-            })
-            .map(item => item.track);
+        // 单趟稳定分区（已选歌在前，未选歌在后），保持原有相对顺序，避免 O(N log N) 排序与临时包装对象
+        const inPl = [];
+        const rest = [];
+        for (let i = 0; i < filtered.length; i += 1) {
+            const t = filtered[i];
+            if (selectedPaths.has(t.path)) inPl.push(t); else rest.push(t);
+        }
+        const sortedFiltered = inPl.concat(rest);
         // 一次拼好整张列表再写进去，点击交给列表本身（以前每行各建三层元素、各挂一个监听，5000 首打开、每敲一个字都要重建半秒多）
         app.modalRows = sortedFiltered;
         app.lastModalClickIndex = -1; // 行号换了一套：Shift 连选从下一次单击重新算起

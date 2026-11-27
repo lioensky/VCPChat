@@ -69,9 +69,9 @@
 
         let sortedCache = null;
         const sorted = (songs) => {
-            if (sort.key === 'added') {
-                // 添加时间就是进曲库的先后：正序原样返回，倒序反过来。
-                return sort.dir === 1 ? null : songs.slice().reverse();
+            if (sort.key === 'added' && sort.dir === 1) {
+                // 添加时间正序就是进曲库的先后，原样返回。
+                return null;
             }
             const len = songs.length;
             const first = len ? songs[0] : null;
@@ -85,18 +85,55 @@
                 && sortedCache.pl === pl && sortedCache.plLen === plLen) {
                 return sortedCache.result;
             }
+            if (sort.key === 'added') {
+                const rev = songs.slice().reverse();
+                if (len > 32) {
+                    sortedCache = { songs, len, first, mid, last, key: sort.key, dir: sort.dir, pl, plLen, result: rev };
+                }
+                return rev;
+            }
             const get = value[sort.key];
             const isFull = songs === pl;
             const order = isFull ? null : getOrderMap();
+            const isNum = sort.key === 'duration';
             // 预先提取一次排序键，避免 O(N log N) 次重复正则去扩展名与属性访问
             const decorated = songs.map((t, i) => {
                 const v = get(t);
-                return { t, v, empty: v === '' || v === 0, ord: isFull ? i : (order.get(t) ?? 0) };
+                return { t, v, empty: v === '' || v === 0, ord: isFull ? i : (order.get(t) ?? 0), rank: 0 };
             });
+            // 字符串键按唯一值预排名（尤其是按歌手排序时唯一键远少于曲目数），保留 Collator 精确并列秩后按整数比较
+            if (!isNum && len > 32) {
+                const uniq = new Set();
+                for (let i = 0; i < len; i += 1) if (!decorated[i].empty) uniq.add(decorated[i].v);
+                if (uniq.size > 0 && uniq.size * 2 < len) {
+                    const keys = Array.from(uniq);
+                    keys.sort(collator.compare);
+                    const rankMap = new Map();
+                    let r = 0;
+                    rankMap.set(keys[0], 0);
+                    for (let i = 1; i < keys.length; i += 1) {
+                        if (collator.compare(keys[i - 1], keys[i]) !== 0) r = i;
+                        rankMap.set(keys[i], r);
+                    }
+                    for (let i = 0; i < len; i += 1) {
+                        const d = decorated[i];
+                        if (!d.empty) d.rank = rankMap.get(d.v);
+                    }
+                    const dir = sort.dir;
+                    decorated.sort((a, b) => {
+                        if (a.empty !== b.empty) return a.empty ? 1 : -1;
+                        const c = a.rank - b.rank;
+                        return c ? c * dir : a.ord - b.ord;
+                    });
+                    const result = decorated.map((item) => item.t);
+                    sortedCache = { songs, len, first, mid, last, key: sort.key, dir: sort.dir, pl, plLen, result };
+                    return result;
+                }
+            }
             decorated.sort((a, b) => {
                 // 没有这一项的（没写歌手、时长未知）总是排在最后
                 if (a.empty !== b.empty) return a.empty ? 1 : -1;
-                const c = typeof a.v === 'number' ? a.v - b.v : collator.compare(a.v, b.v);
+                const c = isNum ? a.v - b.v : collator.compare(a.v, b.v);
                 return c ? c * sort.dir : a.ord - b.ord;
             });
             const result = decorated.map((item) => item.t);

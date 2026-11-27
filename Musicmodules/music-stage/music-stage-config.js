@@ -557,7 +557,7 @@
         return clone(current);
     };
 
-    const update = (patch) => {
+    const update = (patch, options = null) => {
         const source = typeof patch === 'function' ? patch(clone(current)) : patch;
         current = normalize({
             ...current,
@@ -567,7 +567,8 @@
                 ...(source?.modes || {})
             }
         });
-        persistNow();
+        if (options && options.debounce) schedulePersist();
+        else persistNow();
         notify();
         return clone(current);
     };

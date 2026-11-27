@@ -612,8 +612,8 @@ function setupPlayer(app) {
         const list = playHistory.slice();
         while (list.length && list[list.length - 1] === current) list.pop();
         if (!list.length) return [];
-        const live = list.length > 4 ? new Set(app.playlist) : null;
-        return list.filter((t) => (live ? live.has(t) : app.playlist.includes(t))).slice(-limit);
+        const live = getLibrarySet();
+        return list.filter((t) => live.has(t)).slice(-limit);
     };
 
     // ───────── 播放队列 ─────────
@@ -675,11 +675,14 @@ function setupPlayer(app) {
     const contextCurrent = () => {
         const current = app.playlist[app.currentTrackIndex];
         const anchor = app.queueAnchor;
-        return anchor && anchor.playing === current && app.playlist.includes(anchor.from) ? anchor.from : current;
+        return anchor && anchor.playing === current && getLibrarySet().has(anchor.from) ? anchor.from : current;
     };
     const manualHead = () => {
         reconcileLibrary();
-        while (app.manualQueue.length && !app.playlist.includes(app.manualQueue[0])) app.manualQueue.shift();
+        if (app.manualQueue.length) {
+            const lib = getLibrarySet();
+            while (app.manualQueue.length && !lib.has(app.manualQueue[0])) app.manualQueue.shift();
+        }
         return app.playModes?.[app.currentPlayMode] === 'repeat-one' ? null : (app.manualQueue[0] || null);
     };
     const beginManual = (track) => {
@@ -723,11 +726,8 @@ function setupPlayer(app) {
     const resolveTrack = (ref) => {
         if (ref == null) return null;
         if (typeof ref === 'number') return app.playlist[ref] || null;
-        if (typeof ref === 'string') {
-            const want = app.normalizePathForCompare ? app.normalizePathForCompare(ref) : ref;
-            return app.playlist.find(t => (app.normalizePathForCompare ? app.normalizePathForCompare(t.path) : t.path) === want) || null;
-        }
-        return app.playlist.includes(ref) ? ref : (app.playlist.find(t => t.path === ref.path) || null);
+        if (typeof ref === 'string') return lookup(byPathMap(), ref);
+        return getLibrarySet().has(ref) ? ref : (ref.path ? lookup(byPathMap(), ref.path) : null);
     };
     const enqueue = (ref, atFront) => {
         const track = resolveTrack(ref);
@@ -1043,9 +1043,34 @@ function setupPlayer(app) {
             return session;
         } catch (error) { return null; }
     };
+    let byPathList = null;
+    let byPathLen = -1;
+    let byPathFirst = null;
+    let byPathLast = null;
+    let byPathNorm = null;
+    let byPathCache = null;
     const byPathMap = () => {
+        const pl = app.playlist || [];
+        const len = pl.length;
+        const first = len ? pl[0] : null;
+        const last = len ? pl[len - 1] : null;
+        const norm = app.normalizePathForCompare || null;
+        if (byPathCache && byPathList === app.playlist && byPathLen === len
+            && byPathFirst === first && byPathLast === last && byPathNorm === norm) {
+            return byPathCache;
+        }
         const map = new Map();
-        for (const t of app.playlist || []) map.set(app.normalizePathForCompare ? app.normalizePathForCompare(t.path) : t.path, t);
+        for (let i = 0; i < len; i += 1) {
+            const t = pl[i];
+            if (!t) continue;
+            map.set(norm ? norm(t.path) : t.path, t);
+        }
+        byPathList = app.playlist;
+        byPathLen = len;
+        byPathFirst = first;
+        byPathLast = last;
+        byPathNorm = norm;
+        byPathCache = map;
         return map;
     };
     const lookup = (map, path) => map.get(app.normalizePathForCompare ? app.normalizePathForCompare(path) : path) || null;

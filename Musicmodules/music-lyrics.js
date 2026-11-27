@@ -493,27 +493,6 @@ function setupLyrics(app) {
             gap.innerHTML = '<i></i><i></i><i></i>';
             li.insertBefore(gap, li.firstChild);
 
-            // 4. 点击跳转播放 (Seek-on-Click)；正在选中歌词文字（想复制）时不跳
-            li.onclick = (e) => {
-                e.stopPropagation();
-                const picked = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
-                if (picked && !picked.isCollapsed && li.contains(picked.anchorNode)) return;
-                if (typeof line.time === 'number' && app.api?.seekMusic) {
-                    if (app.seekTo) app.seekTo(line.time); else app.api.seekMusic(line.time);
-                    if (app.lastKnownDuration > 0) {
-                        app.progress.style.width = `${(line.time / app.lastKnownDuration) * 100}%`;
-                        app.currentTimeEl.textContent = app.formatTime(line.time);
-                    }
-                    app.lastKnownCurrentTime = line.time;
-                    app.lastStateUpdateTime = Date.now();
-                    app.currentLyricIndex = index;
-                    // 用户点击后暂时锁定手动滚动，强制恢复自动跟踪
-                    app.lyricUserScrolling = false;
-                    if (app.lyricUserScrollTimer) clearTimeout(app.lyricUserScrollTimer);
-                    // 暂停时点一句：跳过去并接着播（和主流播放器的歌词页一样，点了就从这句唱起）
-                    if (!app.isPlaying && !app.isTrackLoading && typeof app.playTrack === 'function') app.playTrack();
-                }
-            };
             if (typeof line.time === 'number' && app.formatTime) li.title = `从 ${app.formatTime(line.time)} 这句开始播放`;
 
             fragment.appendChild(li);
@@ -524,6 +503,37 @@ function setupLyrics(app) {
         app.currentScrollY = 0;
         app.targetScrollY = 0;
     };
+
+    // 点击跳转播放 (Seek-on-Click) 走列表单委托，避免每首歌为每句歌词分配上百个闭包
+    let lyricClickHandler = null;
+    if (app.lyricsList && typeof app.lyricsList.addEventListener === 'function') {
+        lyricClickHandler = (e) => {
+            const li = e.target?.closest?.('li[data-index]');
+            if (!li || !app.lyricsList.contains(li)) return;
+            const index = Number(li.dataset.index);
+            const line = app.currentLyrics[index];
+            if (!line) return;
+            e.stopPropagation();
+            const picked = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
+            if (picked && !picked.isCollapsed && li.contains(picked.anchorNode)) return;
+            if (typeof line.time === 'number' && app.api?.seekMusic) {
+                if (app.seekTo) app.seekTo(line.time); else app.api.seekMusic(line.time);
+                if (app.lastKnownDuration > 0) {
+                    app.progress.style.width = `${(line.time / app.lastKnownDuration) * 100}%`;
+                    app.currentTimeEl.textContent = app.formatTime(line.time);
+                }
+                app.lastKnownCurrentTime = line.time;
+                app.lastStateUpdateTime = Date.now();
+                app.currentLyricIndex = index;
+                // 用户点击后暂时锁定手动滚动，强制恢复自动跟踪
+                app.lyricUserScrolling = false;
+                if (app.lyricUserScrollTimer) clearTimeout(app.lyricUserScrollTimer);
+                // 暂停时点一句：跳过去并接着播（和主流播放器的歌词页一样，点了就从这句唱起）
+                if (!app.isPlaying && !app.isTrackLoading && typeof app.playTrack === 'function') app.playTrack();
+            }
+        };
+        app.lyricsList.addEventListener('click', lyricClickHandler);
+    }
 
     // 监听用户在歌词容器的手动滚动，暂停自动视口吸附
     let lyricScrollHandler = null;
@@ -810,6 +820,10 @@ function setupLyrics(app) {
                 app.lyricsContainer.removeEventListener('touchstart', lyricScrollHandler);
                 lyricScrollHandler = null;
                 app._lyricScrollListenersAttached = false;
+            }
+            if (lyricClickHandler && app.lyricsList) {
+                app.lyricsList.removeEventListener('click', lyricClickHandler);
+                lyricClickHandler = null;
             }
         }, { once: true });
     }
