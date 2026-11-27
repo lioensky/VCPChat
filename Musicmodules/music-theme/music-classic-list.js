@@ -36,7 +36,16 @@
             if (saved && COLUMNS.some((c) => c.key === saved.key)) sort = { key: saved.key, dir: saved.dir === -1 ? -1 : 1 };
         } catch (e) { /* 用默认顺序 */ }
 
-        const titleOf = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t?.title || '') : (t?.title || '')) || '';
+        const strippedTitles = new WeakMap();
+        const titleOf = (t) => {
+            if (!t || typeof t !== 'object') return '';
+            const raw = t.title || '';
+            const cached = strippedTitles.get(t);
+            if (cached && cached.raw === raw) return cached.clean;
+            const clean = (app.stripAudioExtension ? app.stripAudioExtension(raw) : raw) || '';
+            strippedTitles.set(t, { raw, clean });
+            return clean;
+        };
         const value = {
             title: (t) => titleOf(t),
             artist: (t) => String(t?.artist || ''),
@@ -82,6 +91,33 @@
             for (let i = 0; i < empty.length; i += 1) out[w++] = empty[i];
             return out;
         };
+        const ensureRanks = (entry) => {
+            if (entry.ranks) return entry.ranks;
+            const neLen = entry.nonEmpty.length;
+            const ranks = new Int32Array(neLen);
+            let curRank = 0;
+            if (entry.usedRank) {
+                const rk = entry.rankKeys;
+                for (let i = 1; i < neLen; i += 1) {
+                    if (rk[i] !== rk[i - 1]) curRank += 1;
+                    ranks[i] = curRank;
+                }
+            } else {
+                const vals = entry.vals;
+                const isNum = entry.isNum;
+                for (let i = 1; i < neLen; i += 1) {
+                    const prev = vals[i - 1];
+                    const curr = vals[i];
+                    const diff = isNum ? (curr !== prev) : (curr !== prev && collator.compare(prev, curr) !== 0);
+                    if (diff) curRank += 1;
+                    ranks[i] = curRank;
+                }
+            }
+            entry.ranks = ranks;
+            entry.vals = null;
+            entry.rankKeys = null;
+            return ranks;
+        };
         let sortCache = null;
         const sorted = (songs) => {
             if (sort.key === 'added' && sort.dir === 1) {
@@ -106,7 +142,7 @@
                     if (sort.dir === 1 && bucket.asc) return bucket.asc;
                     if (sort.dir === -1 && bucket.desc) return bucket.desc;
                     if (sort.dir === -1 && bucket.nonEmpty) {
-                        bucket.desc = reverseByRanks(bucket.nonEmpty, bucket.ranks, bucket.empty);
+                        bucket.desc = reverseByRanks(bucket.nonEmpty, ensureRanks(bucket), bucket.empty);
                         return bucket.desc;
                     }
                 }
@@ -125,12 +161,19 @@
                 const v = get(t);
                 return { t, v, empty: v === '' || v === 0, ord: isFull ? i : (order.get(t) ?? 0), rank: 0 };
             });
-            // 始终先按正序排并记录并列秩，同源下再点表头切倒序直接 O(N) 翻转并列段
+            // 始终先按正序排并按需懒算并列秩，同源下再点表头切倒序直接 O(N) 翻转并列段
             let usedRank = false;
             if (!isNum && len > 32) {
                 const uniq = new Set();
-                for (let i = 0; i < len; i += 1) if (!decorated[i].empty) uniq.add(decorated[i].v);
-                if (uniq.size > 0 && uniq.size * 2 < len) {
+                const uniqLimit = (len - 1) >> 1;
+                let tooMany = false;
+                for (let i = 0; i < len; i += 1) {
+                    if (!decorated[i].empty) {
+                        uniq.add(decorated[i].v);
+                        if (uniq.size > uniqLimit) { tooMany = true; break; }
+                    }
+                }
+                if (!tooMany && uniq.size > 0) {
                     const keys = Array.from(uniq);
                     keys.sort(collator.compare);
                     const rankMap = new Map();
@@ -155,32 +198,29 @@
             });
             const nonEmpty = [];
             const empty = [];
+            const vals = usedRank ? null : [];
+            const rankKeys = usedRank ? [] : null;
+            const asc = new Array(len);
             for (let i = 0; i < len; i += 1) {
-                if (decorated[i].empty) empty.push(decorated[i].t);
-                else nonEmpty.push(decorated[i].t);
+                const d = decorated[i];
+                asc[i] = d.t;
+                if (d.empty) empty.push(d.t);
+                else {
+                    nonEmpty.push(d.t);
+                    if (usedRank) rankKeys.push(d.rank);
+                    else vals.push(d.v);
+                }
             }
-            const neLen = nonEmpty.length;
-            const ranks = new Int32Array(neLen);
-            let curRank = 0;
-            for (let i = 1; i < neLen; i += 1) {
-                const prev = decorated[i - 1];
-                const curr = decorated[i];
-                const diff = usedRank ? (curr.rank !== prev.rank)
-                    : (isNum ? (curr.v !== prev.v) : (curr.v !== prev.v && collator.compare(prev.v, curr.v) !== 0));
-                if (diff) curRank += 1;
-                ranks[i] = curRank;
-            }
-            const asc = decorated.map((item) => item.t);
+            const entry = { asc, desc: null, nonEmpty, empty, vals, rankKeys, usedRank, isNum, ranks: null };
             if (len > 32) {
-                const entry = { asc, desc: null, nonEmpty, ranks, empty };
                 sortCache.byKey.set(sort.key, entry);
                 if (sort.dir === -1) {
-                    entry.desc = reverseByRanks(nonEmpty, ranks, empty);
+                    entry.desc = reverseByRanks(nonEmpty, ensureRanks(entry), empty);
                     return entry.desc;
                 }
                 return asc;
             }
-            return sort.dir === -1 ? reverseByRanks(nonEmpty, ranks, empty) : asc;
+            return sort.dir === -1 ? reverseByRanks(nonEmpty, ensureRanks(entry), empty) : asc;
         };
 
         const paintLike = (li, track) => {

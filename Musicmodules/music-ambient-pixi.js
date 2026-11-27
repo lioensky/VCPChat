@@ -128,6 +128,7 @@
             this.kickCooldown = 0;
             this.width = 1;
             this.height = 1;
+            this.lastStaticKey = '';
             this.initialized = false;
             this.destroyed = false;
             this.initPromise = null;
@@ -260,6 +261,7 @@
             if (w === this.width && h === this.height) return;
             this.width = w;
             this.height = h;
+            this.lastStaticKey = '';
             this.pixiApp.renderer.resize(w, h);
         }
 
@@ -317,12 +319,17 @@
 
             const idleBreath = reduced ? 0 : Math.sin(Date.now() * 0.0012) * 0.035;
             const currentBass = isPlaying ? this.smoothBass : (0.05 + idleBreath);
-            const currentMid = isPlaying ? this.smoothMid : 0.03;
 
             // 2. 颜色计算
             const { r, g, b } = app.visualizerColor || { r: 0, g: 195, b: 255 };
             const primaryColor = (r << 16) | (g << 8) | b;
             const softColor = (Math.min(255, r + 45) << 16) | (Math.min(255, g + 45) << 8) | Math.min(255, b + 45);
+
+            // 暂停且降低动态时涟漪与呼吸均静止：首帧落稳且气泡清零后直接跳过重复重绘与 WebGL 提交
+            const isStatic = !isPlaying && reduced && this.smoothBass < 0.001 && !this.bubbles.length && !this.hadBubbles;
+            const staticKey = isStatic ? `${this.width}x${this.height}|${primaryColor}` : '';
+            if (isStatic && staticKey === this.lastStaticKey) return;
+            this.lastStaticKey = staticKey;
 
             // 3. 中心位置与基础尺寸
             const cx = this.width * 0.50;

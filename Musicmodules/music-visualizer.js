@@ -48,6 +48,8 @@ function setupVisualizer(app) {
     let vocalFadeWidth = 0;
     let vocalFade = null;
     let vocalSizeDirty = true;
+    let vocalObsWidth = -1;
+    let vocalObsHeight = -1;
     let vocalResizeObserver = null;
     let vocalR = -1, vocalG = -1, vocalB = -1;
     let vocalStrokeStyles = null;
@@ -55,10 +57,24 @@ function setupVisualizer(app) {
     let particleStrokeStyle = '';
     let lastCoverScaleStr = '';
 
-    const markVocalSizeDirty = () => { vocalSizeDirty = true; };
+    const markVocalSizeDirty = () => {
+        vocalSizeDirty = true;
+        vocalObsWidth = -1;
+        vocalObsHeight = -1;
+    };
     if (app.vocalCanvas && typeof ResizeObserver === 'function') {
         try {
-            vocalResizeObserver = new ResizeObserver(markVocalSizeDirty);
+            vocalResizeObserver = new ResizeObserver((entries) => {
+                const rect = entries?.[entries.length - 1]?.contentRect;
+                if (rect && rect.width >= 0 && rect.height >= 0) {
+                    vocalObsWidth = Math.round(rect.width);
+                    vocalObsHeight = Math.round(rect.height);
+                } else {
+                    vocalObsWidth = -1;
+                    vocalObsHeight = -1;
+                }
+                vocalSizeDirty = true;
+            });
             vocalResizeObserver.observe(app.vocalCanvas);
         } catch (e) {
             vocalResizeObserver = null;
@@ -72,10 +88,10 @@ function setupVisualizer(app) {
         const canvas = app.vocalCanvas;
         const data = app.currentVisualizerData;
 
-        // 仅在尺寸标记脏时读取布局尺寸，避免 60fps 帧循环在歌词更新后触发强制重排
+        // 仅在尺寸标记脏时同步画布像素：优先使用 ResizeObserver 提供的 contentRect，避免帧循环触发同步布局读取
         if (vocalSizeDirty) {
-            const cw = canvas.clientWidth;
-            const ch = canvas.clientHeight;
+            const cw = vocalObsWidth >= 0 ? vocalObsWidth : canvas.clientWidth;
+            const ch = vocalObsHeight >= 0 ? vocalObsHeight : canvas.clientHeight;
             if (cw > 0 && ch > 0) {
                 if (canvas.width !== cw || canvas.height !== ch) {
                     canvas.width = cw;

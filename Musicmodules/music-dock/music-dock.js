@@ -1255,8 +1255,10 @@
             renderExt(tab === '控制');
             syncMoved(tab === '控制');
             syncFx(tab === '声音');
-            placeMarks(el.body);
-            if (tab === '控制') placeMarks(el.body2);
+            if (state.panelOpen && tab !== '播放列表' && tab !== '封面' && tab !== '歌词') {
+                placeMarks(el.body);
+                if (tab === '控制') placeMarks(el.body2);
+            }
             if (tab === '播放列表') {
                 state.queueSource = activeList();
                 state.queueLength = state.queueSource.length;
@@ -1629,6 +1631,8 @@
         };
         cleanups.push(() => { toastPos?.remove(); toastPos = null; toastSheet = ''; });
         let panelReturn = null;
+        let openMarksRaf = 0;
+        cleanups.push(() => { if (openMarksRaf) { cancelAnimationFrame(openMarksRaf); openMarksRaf = 0; } });
         // 开关面板时会用脚本挪焦点；用鼠标开关的不该亮出焦点框（还回去的那颗按钮上会出现一个粗框），只有键盘操作才显示
         let lastKeyboard = false;
         const markInput = (kbd) => { lastKeyboard = kbd; document.documentElement.classList.toggle('md-pointer-mode', !kbd); };
@@ -1666,7 +1670,11 @@
                     pendingQueueScroll = null;
                     if (scroller.isConnected) scroller.scrollTop = top;
                 }
-                requestAnimationFrame(() => { if (state.panelOpen && !state.destroyed) placeMarks(el.pnl); });
+                if (openMarksRaf) cancelAnimationFrame(openMarksRaf);
+                openMarksRaf = requestAnimationFrame(() => {
+                    openMarksRaf = 0;
+                    if (state.panelOpen && !state.destroyed) placeMarks(el.tabs.parentElement || el.pnl);
+                });
                 return;
             }
             renderTabs();
@@ -1674,6 +1682,7 @@
         }
         function closePanel() {
             if (!state.panelOpen) return;
+            if (openMarksRaf) { cancelAnimationFrame(openMarksRaf); openMarksRaf = 0; }
             const preEdges = archiveEdges(global.innerWidth || 0);
             // 在修改 body/host/panel 类之前把焦点还给目标（此时排版仍是干净的），避免写完 body 类立刻 focus() 触发整页强制样式重算
             const active = document.activeElement;

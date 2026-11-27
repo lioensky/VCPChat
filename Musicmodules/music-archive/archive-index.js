@@ -447,8 +447,14 @@
         if (!per[key]) {
             const order = mergeOrder(index, LAST_ORDER[key], cmp) || Array.from({ length: index.size }, (_, i) => i).sort(cmp);
             const rank = new Uint32Array(index.size);
-            order.forEach((i, k) => { rank[i] = k; });
+            const packed = new Uint32Array(order.length);
+            for (let k = 0; k < order.length; k += 1) {
+                const idx = order[k];
+                rank[idx] = k;
+                packed[k] = idx;
+            }
             per[key] = rank;
+            per[key + 'Order'] = packed;
             if (index.entry) LAST_ORDER[key] = order.map((i) => index.entry(i));
         }
         return per[key];
@@ -463,8 +469,14 @@
             let per = RANKS.get(index);
             if (!per) RANKS.set(index, per = {});
             const rank = new Uint32Array(index.size);
-            order.forEach((i, k) => { rank[i] = k; });
+            const packed = new Uint32Array(order.length);
+            for (let k = 0; k < order.length; k += 1) {
+                const idx = order[k];
+                rank[idx] = k;
+                packed[k] = idx;
+            }
             per[key] = rank;
+            per[key + 'Order'] = packed;
             if (index.entry) LAST_ORDER[key] = order.map((i) => index.entry(i));
             done = true;
         };
@@ -550,7 +562,8 @@
         const letter = { rank: (g) => GROUP_RANK.get(g) ?? 999, name: groupName, ref: groupRef, family: familyOf };
         if (mode === 'artist') {
             const artistRank = rankOf(index, 'artist', ARTIST_CMP(index, titleRank));
-            return { mode, ...letter, group: (i) => index.artistGroup(i), cmp: (a, b) => artistRank[a] - artistRank[b] };
+            const order = RANKS.get(index)?.artistOrder || null;
+            return { mode, ...letter, group: (i) => index.artistGroup(i), cmp: (a, b) => artistRank[a] - artistRank[b], order };
         }
         if (mode === 'duration') {
             const len = (i) => {
@@ -596,7 +609,8 @@
                 cmp: (a, b) => b - a
             };
         }
-        return { mode: 'title', ...letter, group: (i) => index.group(i), cmp: byTitle };
+        const order = RANKS.get(index)?.titleOrder || null;
+        return { mode: 'title', ...letter, group: (i) => index.group(i), cmp: byTitle, order };
     };
 
     const familyOf = (g) => (/^[A-Z]$/.test(g) ? 'latin' : KANA_ROW_OF.has(g) ? 'kana' : g);
@@ -611,11 +625,20 @@
      * minSize > 1 时，同一类（拉丁字母、假名行）里歌太少的相邻组合并成「X–Z」这样的一列，免得一列只有一两张卡。
      * 返回的每列带 groups（包含的首字母），方便从首字母找到所在列。
      */
+    const isFullRange = (indices, size) => {
+        if (!indices || indices.length !== size) return false;
+        for (let k = 0; k < size; k += 1) if (indices[k] !== k) return false;
+        return true;
+    };
+
     const groupColumns = (index, indices, { minSize = 1, spec = null } = {}) => {
         const sp = spec || sortSpec(index);
+        // 全库下标且已缓存全局有序序列时直接按序分桶：单组桶天然有序，省去各组 O(N log N) 重排
+        const preSorted = Boolean(sp.order && sp.order.length === index.size && isFullRange(indices, index.size));
+        const src = preSorted ? sp.order : indices;
         const groups = new Map();
-        for (let k = 0; k < indices.length; k += 1) {
-            const i = indices[k];
+        for (let k = 0; k < src.length; k += 1) {
+            const i = src[k];
             const g = sp.group(i);
             let bucket = groups.get(g);
             if (!bucket) { bucket = []; groups.set(g, bucket); }
@@ -623,7 +646,7 @@
         }
         const ordered = [...groups.entries()].sort((a, b) => sp.rank(a[0]) - sp.rank(b[0]));
         const runs = [];
-        const appendAll = (dst, src) => { for (let j = 0; j < src.length; j++) dst.push(src[j]); };
+        const appendAll = (dst, srcArr) => { for (let j = 0; j < srcArr.length; j++) dst.push(srcArr[j]); };
         for (const [g, items] of ordered) {
             const last = runs[runs.length - 1];
             if (last && sp.family(last.groups[0]) === sp.family(g) && last.items.length < minSize) {
@@ -650,7 +673,7 @@
                 groups: gs,
                 name: single ? sp.name(first) : mergedName(first, lastG),
                 ref: single ? sp.ref(first) : 'INDEX ' + first + '–' + lastG,
-                items: items.sort(sp.cmp)
+                items: preSorted && single ? items : items.sort(sp.cmp)
             };
         });
     };
@@ -718,11 +741,27 @@
         if (kind === 'artist' || kind === 'album') {
             const field = kind;
             const fallbackName = field === 'artist' ? '未知歌手' : '未知专辑';
+            // 专辑按碟号、曲号排（排序方式是默认的「标题」时）；选了时长、加入时间就照选的排。
+            // 比较器提到分组循环外复用同一份缓存，避免 400+ 张专辑各建一遍 Map。
+            const inAlbum = !q && field === 'album' && sp.mode === 'title' && global.MusicTrackOrder
+                ? global.MusicTrackOrder.albumCompare(list, byTitle)
+                : byTitle;
+            const useOrder = !q && inAlbum === byTitle && Boolean(sp.order && sp.order.length === list.length);
             const groups = new Map();
             if (q) {
                 const pool = index.query(q, { kind: field });
                 for (let k = 0; k < pool.length; k += 1) {
                     const i = pool[k];
+                    const raw = list[i] && list[i][field];
+                    const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
+                    let bucket = groups.get(name);
+                    if (!bucket) { bucket = []; groups.set(name, bucket); }
+                    bucket.push(i);
+                }
+            } else if (useOrder) {
+                const ord = sp.order;
+                for (let k = 0; k < ord.length; k += 1) {
+                    const i = ord[k];
                     const raw = list[i] && list[i][field];
                     const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
                     let bucket = groups.get(name);
@@ -747,11 +786,6 @@
                 keyed.sort((a, b) => LOCALE_CMP(a.key, b.key));
                 ordered = keyed;
             }
-            // 专辑按碟号、曲号排（排序方式是默认的「标题」时）；选了时长、加入时间就照选的排。
-            // 比较器提到分组循环外复用同一份缓存，避免 400+ 张专辑各建一遍 Map。
-            const inAlbum = !q && field === 'album' && sp.mode === 'title' && global.MusicTrackOrder
-                ? global.MusicTrackOrder.albumCompare(list, byTitle)
-                : byTitle;
             const isAlbum = field === 'album';
             const prefix = field + ':';
             for (let oi = 0; oi < ordered.length; oi += 1) {
@@ -759,7 +793,7 @@
                 const items = q ? ordered[oi][1] : ordered[oi].items;
                 const ctx = isAlbum ? 'album:' + name : null;
                 head(name, prefix + name, items.length);
-                if (!q && items.length > 1) items.sort(inAlbum);
+                if (!q && !useOrder && items.length > 1) items.sort(inAlbum);
                 for (let j = 0; j < items.length; j += 1) {
                     const idx = items[j];
                     push(idx, ctx || allCtx(idx));
@@ -774,12 +808,24 @@
             hits.forEach((i) => push(i, allCtx(i)));
             return { rows, count };
         }
+        const preSortedAll = Boolean(sp.order && sp.order.length === list.length);
         const groups = new Map();
-        for (let i = 0; i < list.length; i += 1) {
-            const g = sp.group(i);
-            let bucket = groups.get(g);
-            if (!bucket) { bucket = []; groups.set(g, bucket); }
-            bucket.push(i);
+        if (preSortedAll) {
+            const ord = sp.order;
+            for (let k = 0; k < ord.length; k += 1) {
+                const i = ord[k];
+                const g = sp.group(i);
+                let bucket = groups.get(g);
+                if (!bucket) { bucket = []; groups.set(g, bucket); }
+                bucket.push(i);
+            }
+        } else {
+            for (let i = 0; i < list.length; i += 1) {
+                const g = sp.group(i);
+                let bucket = groups.get(g);
+                if (!bucket) { bucket = []; groups.set(g, bucket); }
+                bucket.push(i);
+            }
         }
         // 标题、歌手排序：组标题是首字母（放在左侧外边距）；时长、添加时间：组标题是小标题行
         const letterHeads = sp.mode === 'title' || sp.mode === 'artist';
@@ -788,7 +834,7 @@
             .forEach(([g, items]) => {
                 head(sp.name(g), (letterHeads ? 'letter:' : 'sort:') + g, items.length);
                 const bucketCtx = columnOfGroup ? columnOfGroup(g) : 'all';
-                items.sort(sp.cmp);
+                if (!preSortedAll) items.sort(sp.cmp);
                 for (let k = 0; k < items.length; k += 1) push(items[k], bucketCtx);
             });
         return { rows, count };

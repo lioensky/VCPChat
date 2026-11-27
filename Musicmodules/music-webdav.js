@@ -58,6 +58,7 @@ function setupWebDav(app) {
                 app.webdavScannedTracks = [];
                 app.webdavScanBtn.disabled = false;
                 app.webdavImportBtn.disabled = true;
+                app.webdavImportBtn.textContent = '导入到全部';
                 app.renderWebDavServerList();
                 app.browseWebDav('/');
             });
@@ -81,6 +82,7 @@ function setupWebDav(app) {
                     app.webdavBreadcrumb.innerHTML = '';
                     app.webdavScanBtn.disabled = true;
                     app.webdavImportBtn.disabled = true;
+                    app.webdavImportBtn.textContent = '导入到全部';
                 }
                 app.webdavServers = app.webdavServers.filter((s) => s.id !== server.id);
                 app.renderWebDavServerList();
@@ -140,7 +142,7 @@ function setupWebDav(app) {
             const isAudio = !entry.isDir && AUDIO_EXTS.has(ext);
             const div = document.createElement('div');
             div.className = 'webdav-file-item' + (entry.isDir ? ' is-dir' : '') + (isAudio ? ' is-audio' : '');
-            div.innerHTML = `<span class="webdav-file-icon">${entry.isDir ? '📁' : (isAudio ? '🎍' : '📄')}</span><span class="webdav-file-name">${esc(entry.name)}</span>`;
+            div.innerHTML = `<span class="webdav-file-icon">${entry.isDir ? '📁' : (isAudio ? '🎵' : '📄')}</span><span class="webdav-file-name">${esc(entry.name)}</span>`;
             if (entry.isDir) {
                 div.addEventListener('dblclick', () => {
                     const href = entry.href.replace(/\/$/, '');
@@ -201,6 +203,8 @@ function setupWebDav(app) {
         if (idx === -1) {
             idx = app.playlist.length;
             app.playlist.push(track);
+            try { app.archiveView?.refresh?.(); } catch (e) { /* 档案页没开 */ }
+            try { document.dispatchEvent(new CustomEvent('music-queue-change')); } catch (e) { /* 旧内核 */ }
         }
         // 走和本地曲目相同的加载流程：引擎是异步加载的，下发加载后立刻发“播放”
         // 会被随后的加载完成重置成停止，结果就是点了没声音。
@@ -218,6 +222,7 @@ function setupWebDav(app) {
             document.getElementById('webdav-server-url').value = '';
             document.getElementById('webdav-server-username').value = '';
             document.getElementById('webdav-server-password').value = '';
+            app.webdavDialogStatus.style.color = '';
             app.webdavDialogStatus.textContent = '';
             app.webdavServerDialog.classList.add('active');
         });
@@ -233,7 +238,7 @@ function setupWebDav(app) {
             const url = document.getElementById('webdav-server-url').value.trim();
             const username = document.getElementById('webdav-server-username').value.trim();
             const password = document.getElementById('webdav-server-password').value;
-            if (!url) { app.webdavDialogStatus.textContent = '请输入 URL'; return; }
+            if (!url) { app.webdavDialogStatus.style.color = '#e55'; app.webdavDialogStatus.textContent = '请输入 URL'; return; }
             const reqId = ++testReqId;
             app.webdavDialogTest.disabled = true;
             app.webdavDialogStatus.style.color = '';
@@ -257,7 +262,7 @@ function setupWebDav(app) {
             const url = document.getElementById('webdav-server-url').value.trim();
             const username = document.getElementById('webdav-server-username').value.trim();
             const password = document.getElementById('webdav-server-password').value;
-            if (!name || !url) { app.webdavDialogStatus.textContent = '名称和 URL 不能为空'; return; }
+            if (!name || !url) { app.webdavDialogStatus.style.color = '#e55'; app.webdavDialogStatus.textContent = '名称和 URL 不能为空'; return; }
             app.webdavDialogConfirm.disabled = true;
             let server;
             try {

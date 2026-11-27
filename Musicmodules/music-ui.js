@@ -156,21 +156,32 @@ function setupUI(app) {
         }
         const count = to - from;
         const rows = new Array(count);
+        let keptCount = 0;
         for (let i = from; i < to; i += 1) {
             const t = shownSongs[i];
             const li = keep.get(t);
             if (li) {
                 keep.delete(t);
+                keptCount += 1;
                 if (li.style.marginTop) li.style.marginTop = '';
                 if (li.style.marginBottom) li.style.marginBottom = '';
                 rows[i - from] = li;
             }
         }
         for (const li of keep.values()) unused.push(li);
+        // FIFO 复用旧 DOM 行：排序/筛选无重叠曲目时保持原 DOM 节点顺序原地更新，零节点摘挂；
+        // 有重叠曲目（增量滚动）时先摘除少数滑出视口的旧节点，让留下的行保持原地不动。
+        let uHead = 0;
+        const uLen = unused.length;
         for (let i = from; i < to; i += 1) {
             let li = rows[i - from];
             if (!li) {
-                li = unused.length ? unused.pop() : (rowPool.length ? rowPool.pop() : document.createElement('li'));
+                if (uHead < uLen) {
+                    li = unused[uHead++];
+                    if (keptCount > 0 && li.parentNode === list) li.remove();
+                } else {
+                    li = rowPool.length ? rowPool.pop() : document.createElement('li');
+                }
                 if (li.style.marginTop) li.style.marginTop = '';
                 if (li.style.marginBottom) li.style.marginBottom = '';
                 hydrateRow(li, shownSongs[i]);
@@ -180,12 +191,29 @@ function setupUI(app) {
             const n = String(i + 1).padStart(2, '0');
             if (li.dataset.n !== n) { li.dataset.n = n; li.classList.toggle('n-long', n.length > 4); }
         }
-        while (unused.length && rowPool.length < ROW_POOL_MAX) {
-            const stale = unused.pop();
-            stale._track = null;
-            rowPool.push(stale);
+        for (let u = uHead; u < uLen; u += 1) {
+            const stale = unused[u];
+            if (stale.parentNode === list) stale.remove();
+            if (rowPool.length < ROW_POOL_MAX) {
+                stale._track = null;
+                rowPool.push(stale);
+            }
         }
-        list.replaceChildren(...rows);
+        // 原地对位补丁，避免 list.replaceChildren 整批摘下再重挂触发整表样式重算
+        let cursor = list.firstElementChild;
+        for (let k = 0; k < count; k += 1) {
+            const want = rows[k];
+            if (cursor === want) {
+                cursor = cursor.nextElementSibling;
+            } else {
+                list.insertBefore(want, cursor);
+            }
+        }
+        while (cursor) {
+            const next = cursor.nextElementSibling;
+            cursor.remove();
+            cursor = next;
+        }
         windowStart = from;
         windowEnd = to;
         if (!rowPitch) measurePitch(list);
@@ -279,7 +307,8 @@ function setupUI(app) {
                 const { filtered } = deferred;
                 deferred = null;
                 app.classicPendingSongs = null;
-                renderNow(filtered);
+                // 走 app.renderPlaylist 让经典列表排序包装一步完成，避免先画未排序列表再在下一帧二次重排
+                app.renderPlaylist(filtered);
                 return;
             }
             if ((unhidClassic || unhidList) && app.playlistEl && !nowListNone) renderWindowSoon();
