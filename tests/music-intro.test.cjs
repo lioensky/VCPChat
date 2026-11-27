@@ -321,3 +321,49 @@ test('Batch 73: music-intro guards settled mark transform and scan letter-spacin
     await t.advance(50);
     t.close();
 });
+
+test('Batch 78: music-intro renderTransit and renderStill deduplicate constant per-frame opacity/attribute writes', async () => {
+    const t = setup();
+    let ready = false;
+    t.host.getDebugSnapshot = () => ({ hasModeInstance: true, mode: { initialized: ready, fallbackMode: false } });
+    t.intro.transit('switch', { label: '镜台' });
+    const root = t.doc.querySelector('.music-intro.is-transit');
+    assert.ok(root);
+    const flash = root.querySelector('.mi-flash');
+    let flashWrites = 0;
+    const origSet = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(flash.style), 'opacity')?.set;
+    if (origSet) {
+        Object.defineProperty(flash.style, 'opacity', {
+            configurable: true,
+            get() { return this.getPropertyValue('opacity'); },
+            set(v) { flashWrites += 1; return origSet.call(this, v); }
+        });
+    }
+    await t.advance(500);
+    if (origSet) assert.equal(flashWrites, 1, 'switch transit writes flash opacity "0" only once across frames');
+    ready = true;
+    await t.advance(1200);
+    assert.deepEqual(t.leftovers(), CLEAN);
+    t.close();
+
+    // Reduced motion still overlay while waiting for stage ready
+    const t2 = setup({ reduced: true });
+    let ready2 = false;
+    t2.host.getDebugSnapshot = () => ({ hasModeInstance: true, mode: { initialized: ready2, fallbackMode: false } });
+    t2.host.enter();
+    const root2 = t2.doc.querySelector('.music-intro.is-transit');
+    assert.ok(root2);
+    const veil2 = root2.querySelector('svg > rect');
+    let veilWrites = 0;
+    const origVeilSet = veil2.setAttribute.bind(veil2);
+    veil2.setAttribute = (name, val) => {
+        if (name === 'opacity') veilWrites += 1;
+        return origVeilSet(name, val);
+    };
+    await t2.advance(600);
+    assert.equal(veilWrites, 1, 'renderStill writes veil opacity only once across waiting frames');
+    ready2 = true;
+    await t2.advance(1000);
+    assert.deepEqual(t2.leftovers(), CLEAN);
+    t2.close();
+});

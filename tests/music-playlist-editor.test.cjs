@@ -160,3 +160,50 @@ test('Batch 74: music.js scopes progress drag listeners to active drag, fast-pat
     assert.match(musicJs, /else if \(action === 'create-playlist-add'\)\s*\{\s*\r?\n\s*const track = app\.playlist\[app\.contextMenuTrackIndex\];/, 'create-playlist-add captures target track before opening modal');
     assert.doesNotMatch(musicJs, /const scannedPaths = new Set\(scannedMap\.keys\(\)\)/, 'onMusicScanComplete uses scannedMap.has directly without redundant Set');
 });
+
+test('Batch 78: sidebar playlists match Windows slash/case variants and modal list uses partitioned count directly', () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="sidebar-tab active" data-view="playlists"></div>
+        <div class="sidebar-tab" data-view="all"></div>
+        <div id="sidebar-category-view"></div>
+        <div id="playlist-el"></div>
+        <div id="list"></div><span id="count"></span><h3 id="title"></h3>
+    </body>`, { runScripts: 'outside-only' });
+    dom.window.eval(fs.readFileSync('Musicmodules/music-sidebar.js', 'utf8'));
+    const doc = dom.window.document;
+    const tracks = [
+        { path: 'D:/Music/Track0.flac', title: 'Track 0', artist: 'A' },
+        { path: 'D:/Music/Track1.flac', title: 'Track 1', artist: 'B' }
+    ];
+    let rendered = null;
+    const app = {
+        playlist: tracks,
+        playlistEl: doc.getElementById('playlist-el'),
+        sidebarFooter: doc.createElement('div'),
+        stripAudioExtension: (s) => s,
+        customPlaylists: [{ id: 'pl1', name: 'Mix', tracks: ['d:\\music\\track1.FLAC'] }],
+        modalSongList: doc.getElementById('list'),
+        modalCount: doc.getElementById('count'),
+        modalPlaylistTitle: doc.getElementById('title'),
+        modalSearchInput: { value: '' },
+        playlistEditModal: doc.createElement('div'),
+        renderPlaylist: (list) => { rendered = list; },
+        api: { saveCustomPlaylists: async () => ({ success: true }) },
+        searchTracks: (list) => list
+    };
+    dom.window.setupSidebar(app);
+    app.renderSidebarContent('playlists');
+    const item = doc.querySelector('#sidebar-category-view .category-item');
+    assert.ok(item, 'playlist sidebar item rendered');
+    item.click();
+    assert.equal(rendered?.length, 1, 'Windows slash/case variant path resolves to library track');
+    assert.equal(rendered[0].path, 'D:/Music/Track1.flac');
+
+    app.customPlaylists[0].tracks = ['D:/Music/Track1.flac'];
+    app.openPlaylistEditModal('pl1');
+    const rows = [...doc.querySelectorAll('.music-modal-song-item')];
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].classList.contains('in-playlist'), true);
+    assert.equal(rows[1].classList.contains('in-playlist'), false);
+    dom.window.close();
+});

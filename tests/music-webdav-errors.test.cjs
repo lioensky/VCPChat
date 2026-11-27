@@ -599,3 +599,48 @@ test('Batch 73: WebDAV delegates list/crumb/file clicks, recognizes .aif, keeps 
     dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
     dom.window.close();
 });
+
+test('Batch 78: WebDAV Escape skips DOM query when inactive and Add Server focuses name input', () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="modal"><div id="servers"></div><div id="files"></div><div id="crumb"></div>
+            <button id="add">添加</button>
+        </div>
+        <div id="dialog">
+            <input id="webdav-server-name" />
+            <input id="webdav-server-url" />
+            <input id="webdav-server-username" />
+            <input id="webdav-server-password" />
+            <p id="status"></p>
+        </div>
+    </body>`, { runScripts: 'outside-only' });
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    const doc = dom.window.document;
+    const app = {
+        playlist: [],
+        renderPlaylist() {},
+        updateAllCount() {},
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavAddServerBtn: doc.getElementById('add'),
+        webdavDialogStatus: doc.getElementById('status'),
+        webdavServers: [],
+        api: {}
+    };
+    dom.window.setupWebDav(app);
+    app.setupWebDavHandlers();
+
+    let queryCalls = 0;
+    const origQuery = doc.querySelector.bind(doc);
+    doc.querySelector = (sel) => { queryCalls += 1; return origQuery(sel); };
+    doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(queryCalls, 0, 'inactive WebDAV Escape handler skips document.querySelector');
+
+    app.webdavAddServerBtn.click();
+    assert.equal(app.webdavServerDialog.classList.contains('active'), true);
+    assert.equal(doc.activeElement, doc.getElementById('webdav-server-name'), 'Add Server dialog focuses server name input');
+
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.close();
+});

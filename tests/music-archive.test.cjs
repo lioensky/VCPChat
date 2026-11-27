@@ -536,3 +536,84 @@ test('Batch 77: archive-list applyQuery resets scrollTop before .al-sq and typeI
         w.close();
     }
 });
+
+test('Batch 78: archive-grid recycles section headers across dataset switch/resize and deduplicates locate is-away toggles', () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        let rafCb = null;
+        w.requestAnimationFrame = (fn) => { rafCb = fn; return 1; };
+        w.cancelAnimationFrame = () => { rafCb = null; };
+        w.HTMLElement.prototype.scrollTo = function (o) { this.scrollTop = o?.top || 0; };
+        const flush = () => { while (rafCb) { const fn = rafCb; rafCb = null; fn(16); } };
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-grid.js', 'utf8'));
+        const host = w.document.getElementById('host');
+        const tracks = Array.from({ length: 40 }, (_, i) => ({ path: `/m/${i}.flac`, title: `Song ${i}`, artist: 'A', album: 'B' }));
+        let ds = 0;
+        let sel = 0;
+        let playing = { index: 39, active: true };
+        const grid = w.MusicArchiveGrid.create({
+            host,
+            sections: () => ({
+                key: String(ds),
+                list: [
+                    { id: 's1', name: ds === 0 ? 'A' : 'C', ids: tracks.slice(0, 20).map((_, i) => i) },
+                    { id: 's2', name: ds === 0 ? 'B' : 'D', ids: tracks.slice(20).map((_, i) => i + 20) }
+                ]
+            }),
+            track: (i) => tracks[i],
+            cover: () => '',
+            selected: () => sel,
+            playing: () => playing,
+            meta: (t, i) => ({ title: t.title, artist: t.artist, album: t.album, code: String(i + 1).padStart(3, '0') }),
+            pick() {},
+            play() {},
+            menu() {},
+            reducedMotion: () => true
+        });
+        grid.setRoom({ left: 0, top: 0, width: 800, height: 400 });
+        grid.show(true);
+        flush();
+
+        const firstHead = grid.el.querySelector('.ag-head');
+        assert.ok(firstHead, 'initial section header rendered');
+        const firstCell = grid.el.querySelector('.ag-cell[data-id="0:0"]');
+        assert.ok(firstCell.classList.contains('is-focus'));
+        assert.equal(firstCell.getAttribute('aria-selected'), 'true');
+
+        // Dataset switch recycles existing header node from headPool instead of dropping it
+        ds = 1;
+        grid.sync();
+        flush();
+        const afterSwitchHeads = [...grid.el.querySelectorAll('.ag-head')];
+        assert.ok(afterSwitchHeads.includes(firstHead), 'syncData recycles header DOM node via headPool');
+
+        // Width resize also recycles header node
+        grid.setRoom({ left: 0, top: 0, width: 1000, height: 400 });
+        flush();
+        const afterResizeHeads = [...grid.el.querySelectorAll('.ag-head')];
+        assert.ok(afterResizeHeads.includes(firstHead), 'setRoom width change recycles header DOM node via headPool');
+
+        // Steady scrolling with playing track still offscreen does not repeatedly call locateBtn.classList.toggle('is-away')
+        const locateBtn = grid.el.querySelector('.ag-locate');
+        const scroller = grid.el.querySelector('.ag-scroll');
+        let awayToggles = 0;
+        const origToggle = locateBtn.classList.toggle.bind(locateBtn.classList);
+        locateBtn.classList.toggle = (cls, force) => {
+            if (cls === 'is-away') awayToggles += 1;
+            return origToggle(cls, force);
+        };
+        scroller.scrollTop = 10;
+        scroller.dispatchEvent(new w.Event('scroll'));
+        flush();
+        scroller.scrollTop = 20;
+        scroller.dispatchEvent(new w.Event('scroll'));
+        flush();
+        assert.equal(awayToggles, 0, 'locateBtn skips redundant is-away classList toggles while state is unchanged');
+        grid.destroy();
+    } finally {
+        w.close();
+    }
+});

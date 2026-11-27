@@ -259,3 +259,80 @@ test('Batch 68: AmbientPixi skips redundant WebGL redraws when paused under redu
     app.updateAmbientPixi(0.016);
     assert.equal(renders, 3, 'resize invalidates static cache and redraws once');
 });
+
+test('Batch 78: AmbientPixi precomputes ring trig LUTs, skips idleBreath while playing, and skips getComputedStyle when archive is active', async () => {
+    let trigCalls = 0;
+    let dateNowCalls = 0;
+    let computedStyleCalls = 0;
+    const origSin = Math.sin;
+    const origCos = Math.cos;
+    const fakeMath = Object.create(Math);
+    fakeMath.sin = (x) => { trigCalls += 1; return origSin(x); };
+    fakeMath.cos = (x) => { trigCalls += 1; return origCos(x); };
+    const FakeDate = class extends Date {
+        static now() { dateNowCalls += 1; return Date.now(); }
+    };
+    class Graphics {
+        clear() { return this; }
+        circle() { return this; }
+        fill() { return this; }
+        moveTo() { return this; }
+        quadraticCurveTo() { return this; }
+        lineTo() { return this; }
+        stroke() { return this; }
+    }
+    class Application {
+        async init() {
+            this.canvas = { style: {} };
+            this.stage = { addChild() {} };
+            this.renderer = { resize() {} };
+        }
+        stop() {}
+        render() {}
+        destroy() {}
+    }
+    const container = { hidden: false, innerHTML: '', appendChild() {}, clientWidth: 800, clientHeight: 600 };
+    const win = {
+        PIXI: { Application, Graphics },
+        devicePixelRatio: 1,
+        addEventListener() {},
+        getComputedStyle: () => { computedStyleCalls += 1; return { visibility: 'visible', display: 'block' }; }
+    };
+    const context = vm.createContext({
+        window: win, Math: fakeMath, Date: FakeDate, queueMicrotask, setTimeout, clearTimeout, console,
+        document: { getElementById: (id) => (id === 'ambient-wave-container' ? container : null), body: { classList: { contains: () => false } } }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), context);
+
+    const app = { isArchiveActive: true, isPlaying: true, visualizerColor: { r: 20, g: 180, b: 240 }, currentVisualizerData: new Float32Array(64).fill(0.4) };
+    win.setupAmbientPixi(app);
+    await app.createAmbientPixi();
+    assert.equal(computedStyleCalls, 0, 'isArchiveActive short-circuits before getComputedStyle');
+    assert.equal(app.ambientPixiController, null);
+
+    app.isArchiveActive = false;
+    await app.createAmbientPixi();
+    assert.ok(app.ambientPixiController?.initialized);
+
+    trigCalls = 0;
+    dateNowCalls = 0;
+    app.updateAmbientPixi(0.016);
+    assert.equal(dateNowCalls, 0, 'playing frame skips Date.now() / idleBreath calculation');
+    assert.ok(trigCalls <= 24, `expected <= 24 trig calls per playing frame via LUTs, got ${trigCalls}`);
+
+    // Verify angle-addition LUT geometry matches exact polar formula
+    const ring = app.ambientPixiController.rippleRings[0];
+    const rot = ring.getCurrentRotation();
+    const baseR = 600 * 0.26 * (1 + app.ambientPixiController.smoothBass * 0.22);
+    const scale = ring.getCurrentScale();
+    const ringRadius = baseR * scale;
+    const waveAmp = 600 * (0.02 + app.ambientPixiController.smoothBass * 0.09) * Math.sqrt(scale);
+    const i = 17;
+    const ratio = i / ring.segments;
+    const sway = origSin(ratio * Math.PI * 2 * 3 + ring.phase * Math.PI * 2) * 0.12;
+    const expectedR = ringRadius + (0.4 * 1.1 + sway) * waveAmp;
+    const expectedX = 400 + origCos(ratio * Math.PI * 2 + rot) * expectedR;
+    const expectedY = 300 + origSin(ratio * Math.PI * 2 + rot) * expectedR;
+    assert.ok(Math.abs(ring.xs[i] - expectedX) < 1e-3, `xs[${i}] matches exact polar formula`);
+    assert.ok(Math.abs(ring.ys[i] - expectedY) < 1e-3, `ys[${i}] matches exact polar formula`);
+});
