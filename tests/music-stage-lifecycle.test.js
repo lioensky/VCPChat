@@ -631,3 +631,210 @@ test('stage host skips hidden backdrop audio writes in opaque modes and skips di
     app.stageHost.destroy();
     dom.window.close();
 });
+
+const createMockWebGL2 = () => {
+    let nextId = 1;
+    const stats = {
+        created: { tex: 0, fbo: 0, buf: 0, prog: 0, vao: 0 },
+        deleted: { tex: 0, fbo: 0, buf: 0, prog: 0, vao: 0 },
+        draws: 0
+    };
+    const gl = {
+        stats,
+        VERTEX_SHADER: 0x8B31, FRAGMENT_SHADER: 0x8B30,
+        COMPILE_STATUS: 0x8B81, LINK_STATUS: 0x8B82, ACTIVE_UNIFORMS: 0x8B86,
+        TEXTURE_2D: 0x0DE1, TEXTURE_MIN_FILTER: 0x2801, TEXTURE_MAG_FILTER: 0x2800,
+        TEXTURE_WRAP_S: 0x2802, TEXTURE_WRAP_T: 0x2803,
+        LINEAR: 0x2601, LINEAR_MIPMAP_LINEAR: 0x2703, NEAREST: 0x2600,
+        CLAMP_TO_EDGE: 0x812F, REPEAT: 0x2901,
+        RGBA: 0x1908, RGBA8: 0x8058, RGBA16F: 0x881A, RED: 0x1903, R8: 0x8229, RG: 0x8227, RG8: 0x822B,
+        UNSIGNED_BYTE: 0x1401, HALF_FLOAT: 0x140B, FLOAT: 0x1406,
+        FRAMEBUFFER: 0x8D40, COLOR_ATTACHMENT0: 0x8CE0, COLOR_ATTACHMENT1: 0x8CE1, COLOR_ATTACHMENT2: 0x8CE2,
+        ARRAY_BUFFER: 0x8892, DYNAMIC_DRAW: 0x88E8, STATIC_DRAW: 0x88E4,
+        TRIANGLES: 0x0004, TRIANGLE_STRIP: 0x0005, POINTS: 0x0000,
+        BLEND: 0x0BE2, ONE: 1, ZERO: 0, SRC_ALPHA: 0x0302, ONE_MINUS_SRC_ALPHA: 0x0303,
+        COLOR_BUFFER_BIT: 0x4000, UNPACK_PREMULTIPLY_ALPHA_WEBGL: 0x9241, UNPACK_FLIP_Y_WEBGL: 0x9240,
+        MAX_TEXTURE_SIZE: 0x0D33,
+        TEXTURE0: 0x84C0, TEXTURE1: 0x84C1, TEXTURE2: 0x84C2, TEXTURE3: 0x84C3,
+        TEXTURE4: 0x84C4, TEXTURE5: 0x84C5, TEXTURE6: 0x84C6, TEXTURE15: 0x84CF,
+        getExtension: (name) => (name === 'WEBGL_lose_context' ? { loseContext() {} } : {}),
+        getParameter: (p) => (p === 0x0D33 ? 4096 : 0),
+        createShader: () => ({ id: nextId++ }),
+        shaderSource() {},
+        compileShader() {},
+        getShaderParameter: () => true,
+        getShaderInfoLog: () => '',
+        deleteShader() {},
+        createProgram: () => { stats.created.prog += 1; return { id: nextId++ }; },
+        attachShader() {},
+        linkProgram() {},
+        getProgramParameter: (_p, pname) => (pname === 0x8B86 ? 0 : true),
+        getProgramInfoLog: () => '',
+        getActiveUniform: () => null,
+        getUniformLocation: () => ({ id: nextId++ }),
+        deleteProgram: (p) => { if (p) stats.deleted.prog += 1; },
+        useProgram() {},
+        createTexture: () => { stats.created.tex += 1; return { id: nextId++ }; },
+        bindTexture() {},
+        texParameteri() {},
+        texImage2D() {},
+        texSubImage2D() {},
+        generateMipmap() {},
+        pixelStorei() {},
+        activeTexture() {},
+        deleteTexture: (t) => { if (t) stats.deleted.tex += 1; },
+        createFramebuffer: () => { stats.created.fbo += 1; return { id: nextId++ }; },
+        bindFramebuffer() {},
+        framebufferTexture2D() {},
+        drawBuffers() {},
+        deleteFramebuffer: (f) => { if (f) stats.deleted.fbo += 1; },
+        createVertexArray: () => { stats.created.vao += 1; return { id: nextId++ }; },
+        bindVertexArray() {},
+        deleteVertexArray: (v) => { if (v) stats.deleted.vao += 1; },
+        createBuffer: () => { stats.created.buf += 1; return { id: nextId++ }; },
+        bindBuffer() {},
+        bufferData() {},
+        bufferSubData() {},
+        enableVertexAttribArray() {},
+        vertexAttribPointer() {},
+        vertexAttribDivisor() {},
+        deleteBuffer: (b) => { if (b) stats.deleted.buf += 1; },
+        viewport() {},
+        clearColor() {},
+        clear() {},
+        enable() {},
+        disable() {},
+        blendFunc() {},
+        blendFuncSeparate() {},
+        drawArrays() { stats.draws += 1; },
+        drawArraysInstanced() { stats.draws += 1; },
+        uniform1f() {}, uniform1i() {}, uniform1iv() {}, uniform2f() {}, uniform3f() {}, uniform4f() {},
+        uniform1fv() {}, uniform2fv() {}, uniform3fv() {}, uniform4fv() {},
+        uniformMatrix2fv() {}, uniformMatrix3fv() {}, uniformMatrix4fv() {}
+    };
+    return new Proxy(gl, {
+        get(target, prop) {
+            if (prop in target) return target[prop];
+            return typeof prop === 'string' && prop === prop.toUpperCase() ? 0 : () => {};
+        }
+    });
+};
+
+test('stage-mode-utils WebGL2 helpers dispose every created GL resource idempotently', () => {
+    const dom = createStageDom();
+    runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+    runScript(dom, 'Musicmodules/music-stage/modes/stage-mode-utils.js');
+    const U = dom.window.MusicStageModeUtils;
+    const gl = createMockWebGL2();
+
+    const target = U.createTarget(gl);
+    target.bind(64, 64);
+    const bloom = U.createBloom(gl, { label: 'test' });
+    const glowTex = bloom.run(target, null);
+    bloom.add(glowTex, 64, 64, 1);
+    const sharp = U.createSharpText(gl, { coverage: 'vec4 coverage(vec2 uv) { return vec4(0.0); }', label: 'test' });
+    sharp.begin(64, 64);
+    sharp.finish(128, 128, { bloom: 0.5 });
+    const glyphs = U.createGlyphLayer(gl, { home: 'vec2 home(vec2 t) { return t; }', label: 'test' });
+
+    target.dispose();
+    target.dispose();
+    bloom.dispose();
+    bloom.dispose();
+    sharp.dispose();
+    sharp.dispose();
+    glyphs.dispose();
+    glyphs.dispose();
+
+    assert.equal(gl.stats.deleted.prog, gl.stats.created.prog, 'all programs deleted once');
+    assert.equal(gl.stats.deleted.tex, gl.stats.created.tex, 'all textures deleted once');
+    assert.equal(gl.stats.deleted.fbo, gl.stats.created.fbo, 'all framebuffers deleted once');
+    assert.equal(gl.stats.deleted.buf, gl.stats.created.buf, 'all buffers deleted once');
+    assert.equal(gl.stats.deleted.vao, gl.stats.created.vao, 'all VAOs deleted once');
+    assert.ok(gl.stats.created.vao >= 3 && gl.stats.created.prog >= 8, 'helpers actually allocated GL resources');
+    dom.window.close();
+});
+
+test('2D WebGL2 stages honor 24/30/60fps quality tiers and delete VAOs on destroy', () => {
+    const stages = [
+        { file: 'modes/clockwork-manager.js', globalName: 'MusicStageClockworkManager' },
+        { file: 'modes/orbit-manager.js', globalName: 'MusicStageOrbitManager' },
+        { file: 'modes/lumiere-manager.js', globalName: 'MusicStageLumiereManager' },
+        { file: 'modes/hanabi-manager.js', globalName: 'MusicStageHanabiManager' },
+        { file: 'modes/signal-manager.js', globalName: 'MusicStageSignalManager' }
+    ];
+    for (const { file, globalName } of stages) {
+        const dom = createStageDom();
+        installCanvasStub(dom.window);
+        let mockNow = 1000;
+        dom.window.performance.now = () => mockNow;
+        const gl = createMockWebGL2();
+        const stub2d = new Proxy({
+            font: '', fillStyle: '', strokeStyle: '', textAlign: 'left', textBaseline: 'alphabetic',
+            globalAlpha: 1, lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', globalCompositeOperation: 'source-over',
+            createLinearGradient: () => ({ addColorStop() {} }),
+            createRadialGradient: () => ({ addColorStop() {} }),
+            getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+            measureText: (text) => ({ width: Math.max(12, String(text || '').length * 24), actualBoundingBoxAscent: 18, actualBoundingBoxDescent: 6 }),
+            getImageData: () => ({ data: new Uint8ClampedArray(4) })
+        }, {
+            get(target, prop) {
+                if (prop in target) return target[prop];
+                return () => {};
+            }
+        });
+        dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+            if (type === 'webgl2') return gl;
+            if (type === '2d') return stub2d;
+            return null;
+        };
+        for (const dep of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js', file]) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const host = dom.window.document.createElement('div');
+        Object.defineProperty(host, 'clientWidth', { value: 960 });
+        Object.defineProperty(host, 'clientHeight', { value: 540 });
+        dom.window.document.body.appendChild(host);
+        const { app } = createApp();
+        const mode = dom.window[globalName].create(host, { app });
+        const lines = dom.window.MusicStageRuntime.normalizeLines(app.currentLyrics);
+        const runWindow = (quality) => {
+            mode.updateConfig({ quality });
+            mockNow += 200;
+            let drawn = 0;
+            for (let i = 0; i < 60; i += 1) {
+                mockNow += 1000 / 60;
+                const before = gl.stats.draws;
+                const t = 1 + i * (1 / 60);
+                mode.updateFrame({
+                    isPlaying: true,
+                    playbackTime: t,
+                    duration: 180,
+                    lines,
+                    currentLineIndex: 0,
+                    activeLine: lines[0],
+                    lineProgress: 0.3,
+                    wordStates: [],
+                    track: app.playlist[0],
+                    audio: { power: 0.4, bass: 0.3, lowMid: 0.3, mid: 0.3, vocal: 0.4, treble: 0.2, spectrum: new Array(64).fill(0.3) }
+                });
+                if (gl.stats.draws > before) drawn += 1;
+            }
+            return drawn;
+        };
+        const ultimateFrames = runWindow('ultimate');
+        const standardFrames = runWindow('standard');
+        const savingFrames = runWindow('energy-saving');
+        assert.ok(ultimateFrames >= 55, `${globalName} ultimate drew ${ultimateFrames} of 60`);
+        assert.ok(standardFrames >= 25 && standardFrames <= 35, `${globalName} standard drew ${standardFrames} of 60`);
+        assert.ok(savingFrames >= 20 && savingFrames <= 27, `${globalName} energy-saving drew ${savingFrames} of 60`);
+        assert.ok(ultimateFrames > standardFrames && standardFrames > savingFrames, `${globalName} tiers strictly ordered (${ultimateFrames} > ${standardFrames} > ${savingFrames})`);
+
+        mode.destroy();
+        assert.equal(gl.stats.deleted.vao, gl.stats.created.vao, `${globalName} deleted every VAO`);
+        assert.equal(gl.stats.deleted.prog, gl.stats.created.prog, `${globalName} deleted every program`);
+        assert.equal(gl.stats.deleted.fbo, gl.stats.created.fbo, `${globalName} deleted every framebuffer`);
+        assert.equal(gl.stats.deleted.buf, gl.stats.created.buf, `${globalName} deleted every buffer`);
+        dom.window.close();
+    }
+});
