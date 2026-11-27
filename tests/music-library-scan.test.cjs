@@ -294,3 +294,42 @@ test('Batch 56: pickFolderCover single-pass scan preserves priority and lexicogr
     assert.equal(pickFolderCover(['albumart_small.jpg', 'albumart_large.jpg', 'front.png']), 'front.png');
     assert.equal(pickFolderCover(['albumart_z.jpg', 'albumart_a.png']), 'albumart_a.png');
 });
+
+test('Batch 58: musicLibraryWatch.forgetFolder cancels pending debounce timers for the forgotten root', async () => {
+    const { createLibraryWatch } = require('../modules/musicLibraryWatch');
+    let nextId = 1;
+    const activeTimers = new Map();
+    let watchCb = null;
+    let scanCalls = 0;
+    const folders = ['/fake-music/album-a'];
+    const watcher = createLibraryWatch({
+        scan: async () => { scanCalls += 1; return { tracks: [], stats: {} }; },
+        readKnown: async () => [],
+        readFolders: async () => folders.slice(),
+        writeFolders: async (next) => { folders.length = 0; folders.push(...next); },
+        send: () => {},
+        exists: async () => true,
+        watch: (_dir, cb) => { watchCb = cb; return { on() {}, close() {} }; },
+        setTimer: (fn) => { const id = nextId++; activeTimers.set(id, fn); return id; },
+        clearTimer: (id) => { activeTimers.delete(id); },
+        log: { log() {}, warn() {} }
+    });
+    watcher.start();
+    // Fire start delay timer and let initial background scan settle
+    const startFn = [...activeTimers.values()][0];
+    activeTimers.clear();
+    await startFn();
+    await new Promise((r) => setTimeout(r, 20));
+    scanCalls = 0;
+
+    // Trigger file change inside watched folder -> schedules debounce timer
+    assert.ok(typeof watchCb === 'function');
+    watchCb('change', 'song.flac');
+    assert.equal(activeTimers.size, 1, 'fs.watch schedules a debounce timer');
+
+    // Forget the folder BEFORE debounce fires -> timer must be canceled
+    await watcher.forgetFolder('/fake-music/album-a');
+    assert.equal(activeTimers.size, 0, 'forgetFolder cancels pending debounce timer for forgotten folder');
+    assert.equal(scanCalls, 0);
+    watcher.stop();
+});

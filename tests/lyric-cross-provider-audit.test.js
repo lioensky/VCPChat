@@ -183,3 +183,50 @@ test('decodeKrcLanguageTag and calculateMatchScore handle null/empty inputs safe
     assert.equal(typeof score.score, 'number');
     assert.equal(score.titleMatched, false);
 });
+
+test('Batch 58: parserCore guards null inputs, saveSelectedLyrics sanitizes whitespace artist atomically, and completionsUrl trims URL', async () => {
+    const os = require('node:os');
+    const path = require('node:path');
+    const fs = require('node:fs');
+    const { parseYRC, parseQRC, parseKRC, parseLRC } = require('../modules/lyrics/parserCore');
+    for (const [fn, wbyw] of [[parseYRC, true], [parseQRC, true], [parseKRC, true], [parseLRC, false]]) {
+        assert.deepEqual(fn(null), { lines: [], isWordByWord: wbyw });
+        assert.deepEqual(fn(undefined), { lines: [], isWordByWord: wbyw });
+        assert.deepEqual(fn(123), { lines: [], isWordByWord: wbyw });
+    }
+
+    const { saveSelectedLyrics } = require('../modules/lyrics/lyricFetcherUnified');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vmusic-b58-lyric-'));
+    try {
+        const sum = createCandidateSummary(candidate('netease', 95), lyricResult({ source: 'netease', wordByWord: true }));
+        const saved = await saveSelectedLyrics({
+            candidateKey: sum.candidateKey,
+            artist: '   ',
+            title: 'Starlight',
+            lyricDir: tmpDir
+        });
+        assert.equal(saved.success, true);
+        const files = fs.readdirSync(tmpDir).sort();
+        assert.deepEqual(files, ['Starlight.json', 'Starlight.lrc'], 'whitespace artist produces clean Title filename with zero leftover .tmp');
+
+        const sum2 = createCandidateSummary(candidate('netease', 95), lyricResult({ source: 'netease' }));
+        const bad = await saveSelectedLyrics({ candidateKey: sum2.candidateKey, artist: 'A', title: '   ', lyricDir: tmpDir });
+        assert.equal(bad.success, false, 'blank title is rejected cleanly');
+
+        const { completionsUrl, createLyricsTranslator } = require('../modules/musicLyricsTranslate');
+        assert.equal(completionsUrl('  http://127.0.0.1:6005/v1/chatvcp/completions  '), 'http://127.0.0.1:6005/v1/chat/completions');
+        const trDir = path.join(tmpDir, 'translations');
+        const translator = createLyricsTranslator({
+            getSettings: async () => ({ vcpServerUrl: ' http://127.0.0.1:6005/v1/chat/completions ', topicSummaryModel: 'm1' }),
+            getCacheDir: () => trDir,
+            fetchImpl: async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '["星光"]' } }] }) })
+        });
+        const trRes = await translator.translate({ lines: ['Starlight'] });
+        assert.equal(trRes.status, 'success');
+        const trFiles = fs.readdirSync(trDir);
+        assert.equal(trFiles.length, 1);
+        assert.ok(trFiles[0].endsWith('.json'), 'atomic translation cache leaves no .tmp files');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});

@@ -234,3 +234,28 @@ test('drawVocalVisualizer caches layout size across 60fps frames and re-measures
         dom.window.close();
     }
 });
+
+test('Batch 58: visualizer deduplicates albumArtWrapper scale transform writes on steady playing frames', () => {
+    const { window, app, run } = setup();
+    let transformWrites = 0;
+    const styleObj = {
+        _t: '',
+        get transform() { return this._t; },
+        set transform(v) { transformWrites += 1; this._t = v; }
+    };
+    app.albumArtWrapper = { style: styleObj };
+    app.COVER_MID_START_RATIO = 0.1;
+    app.COVER_MID_END_RATIO = 0.5;
+    app.COVER_PULSE_FLOOR = 0.22;
+    app.COVER_PULSE_SMOOTHING = 0.5;
+    app.COVER_PULSE_INTENSITY = 0.08;
+    app.isPlaying = true;
+    app.targetVisualizerData = new Array(32).fill(0);
+    app.currentVisualizerData = new Array(32).fill(0);
+    app.startVisualizerAnimation();
+    run(200); // ~12 frames of steady silence (scale stays 1.0000)
+    assert.equal(transformWrites, 1, 'steady zero energy writes scale(1.0000) once instead of every frame');
+    assert.equal(styleObj._t, 'scale(1.0000)');
+    app.destroyVisualizer();
+    window.close();
+});

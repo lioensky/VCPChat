@@ -281,3 +281,36 @@ test('musicStats.flush skips redundant localStorage writes when clean and flushe
     stats.flush();
     assert.equal(writes, 2, 'second consecutive flush skips redundant writes');
 });
+
+test('Batch 58: stats/track-file/dupes dialogs yield Escape when a MusicDialog confirm is stacked above and clean up immediately on beforeunload', () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        window.requestAnimationFrame = (fn) => { fn(); return 1; };
+        window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stats-view.js'), 'utf8'));
+        const app = {
+            playlist: [],
+            musicStats: { summary: () => ({ seconds: 0, plays: 0, activeDays: 0, hours: new Array(24).fill(0), tracks: [], daily: {} }) }
+        };
+        window.MusicStatsView.open(app);
+        const statsOverlay = doc.querySelector('.music-stats-dialog');
+        assert.ok(statsOverlay && statsOverlay.classList.contains('visible'));
+
+        // Simulate a MusicDialog confirm stacked on top -> Escape must NOT dismiss underlying stats dialog
+        const confirmOverlay = doc.createElement('div');
+        confirmOverlay.className = 'dialog-overlay music-dialog visible';
+        doc.body.appendChild(confirmOverlay);
+        doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        assert.ok(statsOverlay.classList.contains('visible'), 'stats dialog yields Escape while a MusicDialog is open above it');
+        confirmOverlay.remove();
+
+        // beforeunload removes stats overlay synchronously without dangling timeout
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.equal(doc.querySelector('.music-stats-dialog'), null, 'beforeunload removes overlay immediately');
+    } finally {
+        dom.window.close();
+    }
+});

@@ -240,3 +240,51 @@ test('EQ slider cache avoids repeated getElementById lookups and recovers if a s
     // Missing app.irStatus must not throw
     assert.doesNotThrow(() => app.updateIrStatus('未加载', 'idle'));
 });
+
+test('Batch 58: music-effects deduplicates updateIrStatus, slider displays, and caches noise-shaper section lookup', () => {
+    let classWrites = 0, textWrites = 0, secLookups = 0;
+    const statusText = {
+        isConnected: true,
+        _tc: '',
+        get textContent() { return this._tc; },
+        set textContent(v) { textWrites += 1; this._tc = v; }
+    };
+    const irStatus = {
+        _cn: '',
+        get className() { return this._cn; },
+        set className(v) { classWrites += 1; this._cn = v; },
+        contains: (n) => n === statusText,
+        querySelector: () => statusText
+    };
+    const lufsVal = { _tc: '', get textContent() { return this._tc; }, set textContent(v) { textWrites += 1; this._tc = v; } };
+    const secEl = { isConnected: true, classList: { toggle() {} } };
+    const app = {
+        irStatus,
+        loudnessLufsSlider: { value: '-14' },
+        loudnessLufsValue: lufsVal,
+        ditherSwitch: { checked: true },
+        outputBitsSelect: { disabled: false },
+        noiseShaperCurveSelect: { disabled: false }
+    };
+    const context = {
+        app,
+        window: {},
+        document: {
+            getElementById(id) { if (id === 'noise-shaper-section') { secLookups += 1; return secEl; } return null; }
+        }
+    };
+    vm.runInNewContext(fs.readFileSync('Musicmodules/music-effects.js', 'utf8') + '\nsetupEffects(app);', context);
+
+    app.updateIrStatus('加载成功', 'loaded');
+    app.updateIrStatus('加载成功', 'loaded');
+    assert.equal(classWrites, 1, 'unchanged updateIrStatus skips redundant className writes');
+    assert.equal(textWrites, 1, 'unchanged updateIrStatus skips redundant textContent writes');
+
+    app.updateLoudnessLufsDisplay();
+    app.updateLoudnessLufsDisplay();
+    assert.equal(textWrites, 2, 'unchanged slider display skips redundant textContent writes');
+
+    app.syncDitherSection();
+    app.syncDitherSection();
+    assert.equal(secLookups, 1, 'syncDitherSection caches connected #noise-shaper-section element');
+});
