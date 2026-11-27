@@ -133,3 +133,25 @@ test('capsule ignores Escape while IME is composing', () => {
     assert.equal(f.root.classList.contains('is-expanded'), false);
     f.dom.window.close();
 });
+
+test('capsule deduplicates unchanged playing/injection/expansion DOM updates on repeated pushes', () => {
+    const f = fixture();
+    f.push({ open: true, title: 'Same', trackKey: 's1', playing: true, musicInfoInjectionEnabled: true });
+    const trigger = f.root.querySelector('.music-capsule-trigger');
+    const toggle = f.root.querySelector('[data-music-command="toggle"]');
+    let triggerAttrs = 0;
+    let toggleAttrs = 0;
+    const origTrig = trigger.setAttribute.bind(trigger);
+    const origTog = toggle.setAttribute.bind(toggle);
+    trigger.setAttribute = (...a) => { triggerAttrs += 1; return origTrig(...a); };
+    toggle.setAttribute = (...a) => { toggleAttrs += 1; return origTog(...a); };
+
+    f.push({ open: true, title: 'Same', trackKey: 's1', playing: true, musicInfoInjectionEnabled: true });
+    assert.equal(triggerAttrs, 0, 'identical push skips redundant trigger attribute writes');
+    assert.equal(toggleAttrs, 0, 'identical push skips redundant toggle attribute writes');
+
+    f.push({ open: true, title: 'Same', trackKey: 's1', playing: false, musicInfoInjectionEnabled: false });
+    assert.ok(triggerAttrs > 0, 'changed injection updates trigger attributes');
+    assert.ok(toggleAttrs > 0, 'changed playing state updates toggle attributes');
+    f.dom.window.close();
+});

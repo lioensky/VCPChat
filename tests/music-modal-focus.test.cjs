@@ -519,3 +519,48 @@ test('stats, dupes, folders, track-file and spectrum modals trap navigation keys
         dom.window.close();
     }
 });
+
+test('music-modal-focus isolates navigation and single-key shortcuts inside open overlays and cancels pending focus rAF', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <button id="opener">open</button>
+        <div id="webdav-modal" class="music-modal-overlay">
+            <button class="music-modal-close-btn">close</button>
+            <input id="dav-input" type="text">
+        </div>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        let rafSeq = 0;
+        const cancelled = [];
+        window.requestAnimationFrame = () => ++rafSeq;
+        window.cancelAnimationFrame = (id) => cancelled.push(id);
+        let leaked = 0;
+        doc.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'm') leaked += 1;
+        });
+        window.eval(fs.readFileSync('Musicmodules/music-modal-focus.js', 'utf8'));
+        const modal = doc.getElementById('webdav-modal');
+        const closeBtn = modal.querySelector('.music-modal-close-btn');
+        closeBtn.getClientRects = () => [{ width: 20, height: 20 }];
+        const input = doc.getElementById('dav-input');
+        input.getClientRects = () => [{ width: 80, height: 20 }];
+
+        modal.classList.add('active');
+        await new Promise((r) => setTimeout(r, 0));
+        const pendingRaf = rafSeq;
+        assert.ok(pendingRaf > 0);
+
+        closeBtn.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        closeBtn.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true }));
+        closeBtn.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'm', bubbles: true, cancelable: true }));
+        assert.equal(leaked, 0, 'open modal overlay blocks navigation and single-key shortcuts from leaking to document');
+
+        modal.classList.remove('active');
+        await new Promise((r) => setTimeout(r, 0));
+        assert.ok(cancelled.includes(pendingRaf), 'closing overlay cancels pending focusInside rAF');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

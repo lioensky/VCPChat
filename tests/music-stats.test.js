@@ -253,3 +253,31 @@ test('empty musicStats table short-circuits lookups and resumes once a play is r
     assert.ok(stats.affinity(app.playlist[0]) > 0);
     assert.deepEqual(stats.top(5, { minPlays: 1 }), ['C:\\Music\\A.flac']);
 });
+
+test('musicStats.flush skips redundant localStorage writes when clean and flushes unsaved seconds', () => {
+    let t = 1_000_000_000;
+    let writes = 0;
+    const store = new Map();
+    const storage = {
+        getItem: (k) => store.get(k) ?? null,
+        setItem: (k, v) => { if (k === 'musicPlayStats' || k === 'musicListenLog') writes += 1; store.set(k, v); },
+        removeItem: (k) => store.delete(k)
+    };
+    globalThis.document = { dispatchEvent() {} };
+    globalThis.CustomEvent = class { constructor(type, init) { this.detail = init?.detail; } };
+    const app = {
+        playlist: [{ path: 'C:\\Music\\A.flac', duration: 200 }],
+        currentTrackIndex: 0, isPlaying: false, isTrackLoading: false, lastKnownDuration: 200, pos: 0,
+        playedSeconds: () => app.pos
+    };
+    const stats = setupMusicStats(app, { now: () => t, storage, setTimer: () => 1, clearTimer() {}, observe: false });
+    stats.flush();
+    assert.equal(writes, 0, 'clean flush performs zero storage writes');
+
+    app.isPlaying = true;
+    for (let i = 0; i < 5; i++) { t += 1000; app.pos += 1; stats.tick(); }
+    stats.flush();
+    assert.equal(writes, 2, 'flush with unsaved seconds writes stats and log once');
+    stats.flush();
+    assert.equal(writes, 2, 'second consecutive flush skips redundant writes');
+});

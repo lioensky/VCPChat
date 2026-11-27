@@ -1301,3 +1301,82 @@ test('stageHost.updateTheme skips refreshTheme while stage is closed and runs it
     app.stageHost.destroy();
     dom.window.close();
 });
+
+test('edge spectrum uses flat-line fast path on silence, wakes paused border on accent change, and removes cloned canvases on scope destroy', () => {
+    const dom = createStageDom();
+    let quadCalls = 0;
+    let strokeCalls = 0;
+    const strokeColors = [];
+    dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+        if (type !== '2d') return null;
+        let lastStyle = '';
+        return new Proxy({
+            quadraticCurveTo() { quadCalls += 1; },
+            set strokeStyle(v) { lastStyle = v; },
+            get strokeStyle() { return lastStyle; },
+            stroke() { strokeCalls += 1; strokeColors.push(lastStyle); }
+        }, {
+            get(target, prop) { return prop in target ? target[prop] : () => {}; },
+            set(target, prop, value) { target[prop] = value; return true; }
+        });
+    };
+    for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+        runScript(dom, `Musicmodules/music-stage/${dep}`);
+    }
+    const root = dom.window.document.getElementById('music-stage');
+    Object.defineProperty(root, 'clientWidth', { value: 960 });
+    Object.defineProperty(root, 'clientHeight', { value: 540 });
+    const app = { stagePalette: { accentRgb: { r: 10, g: 20, b: 30 } } };
+    const scope = new dom.window.MusicStageRuntime.DisposableScope();
+    const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+    const edge = dom.window.MusicStageEdge.create({
+        app,
+        root,
+        elements: { edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'), edgeCanvas },
+        state: { config: { quality: 'standard', edgeSpectrum: true } },
+        scope,
+        clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+    });
+    assert.equal(root.querySelectorAll('.music-stage-edge-spectrum-canvas').length, 4, '4 strip canvases mounted');
+
+    // Silent spectrum takes flat-line fast path (0 quadraticCurveTo calls)
+    edge.draw({ now: 1000, isPlaying: false, viewport: { dpr: 1 }, audio: { power: 0, spectrum: new Float32Array(64) } });
+    assert.equal(quadCalls, 0, 'silent spectrum skips Bezier subdivision');
+    assert.equal(strokeCalls, 8);
+
+    // After 1500ms paused settle window, same accent stays idle
+    edge.draw({ now: 3000, isPlaying: false, viewport: { dpr: 1 }, audio: { power: 0, spectrum: new Float32Array(64) } });
+    assert.equal(strokeCalls, 8, 'settled paused border skips redundant redraw');
+
+    // Changing accent color while paused immediately wakes and redraws in new accent
+    app.stagePalette = { accentRgb: { r: 200, g: 100, b: 50 } };
+    edge.draw({ now: 3100, isPlaying: false, viewport: { dpr: 1 }, audio: { power: 0, spectrum: new Float32Array(64) } });
+    assert.equal(strokeCalls, 16, 'accent change wakes settled paused border');
+    assert.ok(strokeColors.at(-1).includes('200, 100, 50'), 'redrawn stroke uses updated accent');
+
+    scope.destroy();
+    assert.equal(root.querySelectorAll('.music-stage-edge-spectrum-canvas').length, 1, 'scope destroy removes the 3 cloned strip canvases');
+    dom.window.close();
+});
+
+test('interlude visualizer caches per-bar transform and opacity strings on identical playing frames', () => {
+    const dom = createStageDom();
+    runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+    const interlude = dom.window.MusicStageRuntime.createInterludeVisualizer({ barCount: 20 });
+    dom.window.document.body.appendChild(interlude.root);
+    const frame = { isPlaying: true, playbackTime: 5, audio: { power: 0, spectrum: new Float32Array(64) } };
+    interlude.update(frame, { visible: true, intensity: 1 });
+    const bar0 = interlude.root.querySelector('.stage-interlude-bars i');
+    let transformWrites = 0;
+    const origStyle = bar0.style;
+    const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(origStyle), 'transform');
+    Object.defineProperty(origStyle, 'transform', {
+        configurable: true,
+        get() { return origDesc?.get ? origDesc.get.call(this) : ''; },
+        set(v) { transformWrites += 1; if (origDesc?.set) origDesc.set.call(this, v); }
+    });
+    interlude.update({ isPlaying: true, playbackTime: 5.5, audio: { power: 0, spectrum: new Float32Array(64) } }, { visible: true, intensity: 1 });
+    assert.equal(transformWrites, 0, 'identical silent spectrum skips redundant bar transform writes');
+    interlude.destroy();
+    dom.window.close();
+});
