@@ -59,7 +59,7 @@
         // 捕获阶段拦住：Esc 只关这个框，不会顺带关掉抽屉、退出舞台。
         const onKey = (e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
-            else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(document.activeElement !== cancelBtn); }
+            else if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(document.activeElement !== cancelBtn); }
             else if (e.key === 'Tab') {
                 e.preventDefault();
                 (document.activeElement === confirmBtn ? cancelBtn : confirmBtn).focus();

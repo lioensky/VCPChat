@@ -175,7 +175,7 @@
             };
             const onKey = (e) => {
                 if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); }
-                else if (e.key === 'Enter' && doc.activeElement === input) { e.preventDefault(); e.stopPropagation(); if (!ok.disabled) finish(input.value); }
+                else if (e.key === 'Enter' && !e.isComposing && doc.activeElement === input) { e.preventDefault(); e.stopPropagation(); if (!ok.disabled) finish(input.value); }
             };
             overlay.querySelector('.dialog-btn.cancel').addEventListener('click', () => finish(null));
             ok.addEventListener('click', () => { if (!ok.disabled) finish(input.value); });

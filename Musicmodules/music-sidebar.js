@@ -143,23 +143,29 @@ function setupSidebar(app) {
 
     app.showContextMenu = (x, y) => {
         app.updatePlaylistSubmenu();
+        const sub = app.contextMenu.querySelector('.context-submenu');
+        if (sub) sub.style.maxWidth = '';
         app.contextMenu.style.left = `${x}px`; app.contextMenu.style.top = `${y}px`;
         app.contextMenu.classList.add('visible');
         requestAnimationFrame(() => {
+            // 先一次性读完几何信息，再写样式，避免单帧多次强制回流
             const rect = app.contextMenu.getBoundingClientRect();
-            if (rect.right > window.innerWidth) app.contextMenu.style.left = `${window.innerWidth - rect.width - 10}px`;
-            if (rect.bottom > window.innerHeight) app.contextMenu.style.top = `${window.innerHeight - rect.height - 10}px`;
-            // 菜单比窗口剩下的空间还高、或按键打开时锚点在可视区外：贴住上边，不顶出窗口。
-            if (app.contextMenu.getBoundingClientRect().top < 10) app.contextMenu.style.top = '10px';
-            if (rect.left < 10) app.contextMenu.style.left = '10px';
+            const subWidth = sub ? Math.max(sub.offsetWidth, 160) : 160;
+            const winW = window.innerWidth;
+            const winH = window.innerHeight;
+            let finalLeft = rect.left;
+            let finalTop = rect.top;
+            if (rect.right > winW) finalLeft = winW - rect.width - 10;
+            if (rect.bottom > winH) finalTop = winH - rect.height - 10;
+            // 菜单比窗口剩下的空间还高、或按键打开时锚点在可视区外：贴住上边/左边，不顶出窗口。
+            if (finalTop < 10) finalTop = 10;
+            if (finalLeft < 10) finalLeft = 10;
+            if (finalLeft !== rect.left) app.contextMenu.style.left = `${finalLeft}px`;
+            if (finalTop !== rect.top) app.contextMenu.style.top = `${finalTop}px`;
             // 右边放不下「添加到歌单」的子菜单时，往左边展开（不然歌单名被窗口边裁掉）
             // 窗口窄到两边都放不下时（最小宽度 420），挑空间大的一边，把子菜单收窄到放得下，歌单名用省略号
-            const sub = app.contextMenu.querySelector('.context-submenu');
-            if (sub) sub.style.maxWidth = '';
-            const subWidth = sub ? Math.max(sub.offsetWidth, 160) : 160;
-            const box = app.contextMenu.getBoundingClientRect();
-            const roomRight = window.innerWidth - box.right - 4 - 8;
-            const roomLeft = box.left - 4 - 8;
+            const roomRight = winW - (finalLeft + rect.width) - 4 - 8;
+            const roomLeft = finalLeft - 4 - 8;
             const left = subWidth > roomRight && roomLeft > roomRight;
             app.contextMenu.classList.toggle('sub-left', left);
             const room = Math.floor(left ? roomLeft : roomRight);

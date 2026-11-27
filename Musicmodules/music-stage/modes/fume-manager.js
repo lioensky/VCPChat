@@ -299,10 +299,15 @@
             const detail = value(t.backgroundDetail, 0.6, 0, 1);
             const breeze = value(t.backgroundMotion, 1) * strength;
             const count = mode.config.quality === 'energy-saving' ? 12 : shapes.length;
+            if (count > 0) {
+                context.strokeStyle = shapes[0].color;
+                context.fillStyle = shapes[0].color;
+            }
+            const minDim = Math.min(width, height);
             for (let index = 0; index < count; index += 1) {
                 const shape = shapes[index];
                 const energy = value(frame.audio?.[shape.band], 0, 0, 1) * strength;
-                const size = shape.size * Math.min(width, height) * (1 + energy * 0.25);
+                const size = shape.size * minDim * (1 + energy * 0.25);
                 const y = ((shape.y * height - cameraY * 0.12) % (height * 1.4) + height * 1.4) % (height * 1.4) - height * 0.2;
                 context.save();
                 const x = ((shape.x * width - cameraX * 0.1) % (width * 1.4) + width * 1.4) % (width * 1.4) - width * 0.2;
@@ -310,7 +315,6 @@
                 context.translate(x, y + drift);
                 context.rotate(shape.phase + frame.playbackTime * shape.speed * breeze);
                 context.globalAlpha = 0.08 + energy * 0.12;
-                context.strokeStyle = shape.color;
                 context.lineWidth = 1;
                 context.beginPath();
                 if (shape.kind === 0) context.arc(0, 0, size, 0, Math.PI * 1.7);
@@ -336,7 +340,6 @@
                     if (shape.kind === 0) {
                         const phase = shape.phase + frame.playbackTime * 0.25 * breeze;
                         context.globalAlpha = (0.2 + energy * 0.25) * detail;
-                        context.fillStyle = shape.color;
                         context.beginPath();
                         context.arc(Math.cos(phase) * size, Math.sin(phase) * size, 1.5 + energy, 0, Math.PI * 2);
                         context.fill();
@@ -350,6 +353,7 @@
         let lastGlowVal = '';
         let lastHideBg = null;
         let lastHideSym = null;
+        let lastWorldTx = '';
         mode.updateFrame = frame => {
             if (mode.destroyed || paused) return;
             latestFrame = frame;
@@ -384,7 +388,8 @@
                 const pose = resolveCamera(index, time);
                 cameraX = pose.x; cameraY = pose.y; cameraScale = pose.scale;
                 syncWindow(index, Math.max(0, index - 1));
-                world.style.transform = `translate3d(${width * 0.5 - cameraX * cameraScale}px,${height * 0.44 - cameraY * cameraScale}px,0) scale(${cameraScale})`;
+                const worldTx = `translate3d(${(width * 0.5 - cameraX * cameraScale).toFixed(2)}px,${(height * 0.44 - cameraY * cameraScale).toFixed(2)}px,0) scale(${cameraScale.toFixed(4)})`;
+                if (worldTx !== lastWorldTx) { lastWorldTx = worldTx; world.style.transform = worldTx; }
                 const songDuration = (lines[lines.length - 1]?.endTime || 0) - (lines[0]?.startTime || 0);
                 const holdRatio = value(t.textHoldRatio, 0.35, 0, 1);
                 const hold = holdRatio >= 1 ? Infinity : clamp(songDuration * holdRatio, 2.4, 130);
@@ -450,6 +455,10 @@
         mode.updateTheme = () => { shapeKey = ''; dirty = true; still.invalidate(); };
         mode.scope.listen(document.fonts, 'loadingdone', () => {
             dirty = true;
+            if (latestFrame) mode.updateFrame(latestFrame);
+        });
+        mode.scope.listen(global, 'music-motion-change', () => {
+            still.invalidate();
             if (latestFrame) mode.updateFrame(latestFrame);
         });
         mode.scope.add(() => {

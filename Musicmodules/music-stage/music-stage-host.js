@@ -1580,6 +1580,8 @@
             }
         };
 
+        let settingsStatusTimer = 0;
+        scope.add(() => global.clearTimeout(settingsStatusTimer));
         const handleConfigChange = (config) => {
             state.config = config;
             root.classList.toggle('stage-edge-spectrum-off', config.edgeSpectrum === false);
@@ -1590,7 +1592,11 @@
             if (elements.settingsStatus) {
                 elements.settingsStatus.textContent = '已保存';
                 elements.settingsStatus.classList.add('is-visible');
-                scope.timeout(() => elements.settingsStatus.classList.remove('is-visible'), 1200);
+                global.clearTimeout(settingsStatusTimer);
+                settingsStatusTimer = global.setTimeout(() => {
+                    settingsStatusTimer = 0;
+                    if (!state.destroyed) elements.settingsStatus.classList.remove('is-visible');
+                }, 1200);
             }
         };
 
@@ -1736,6 +1742,9 @@
                 if (document.hidden) state.modeInstance.suspend?.();
                 else state.modeInstance.resume?.();
             }
+        });
+        scope.listen(global, 'music-motion-change', () => {
+            if (state.active && !state.destroyed) updateFrame(performance.now());
         });
         scope.listen(global, 'beforeunload', () => app.stageHost?.destroy?.(), { once: true });
 

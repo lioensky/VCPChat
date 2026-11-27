@@ -70,38 +70,53 @@
         const y = offsetY + number(p.driftY, 0) * drift * motion + Math.cos(time * 1.5 + token.index) * float * 2.5;
         const angle = rotation ? (number(p.rotate, 0) + (instant ? 0 : 20 * (1 - enter))
             + number(p.passedRotate, 0) * drift) * motion : 0;
-        outer.style.transform = `translate3d(${x.toFixed(2)}px,${y.toFixed(2)}px,0) rotate(${angle.toFixed(2)}deg) scale(${Math.max(0.05, scale).toFixed(4)})`;
-        outer.style.opacity = String(elapsed < 0 ? number(tuning.waitingOpacity, 0) : lerp(1, 0.82, release));
-        outer.style.zIndex = active ? '3' : '1';
+        const tx = `translate3d(${x.toFixed(2)}px,${y.toFixed(2)}px,0) rotate(${angle.toFixed(2)}deg) scale(${Math.max(0.05, scale).toFixed(4)})`;
+        if (node._tx !== tx) { node._tx = tx; outer.style.transform = tx; }
+        const op = (elapsed < 0 ? number(tuning.waitingOpacity, 0) : lerp(1, 0.82, release)).toFixed(3);
+        if (node._op !== op) { node._op = op; outer.style.opacity = op; }
+        const z = active ? '3' : '1';
+        if (node._z !== z) { node._z = z; outer.style.zIndex = z; }
         const blur = instant ? 0 : Math.max(0, 10 * (1 - ease(elapsed / 0.2)));
-        body.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : 'none';
+        const flt = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : 'none';
+        if (node._flt !== flt) { node._flt = flt; body.style.filter = flt; }
         const mix = time < token.startTime ? 0 : passed
             ? 1 - ease((time - end) / (profile.reveal === 'fast' ? 0.24 : 0.8))
             : instant ? 1 : clamp((time - token.startTime) / Math.max(0.001, end - token.startTime));
-        body.style.color = `color-mix(in srgb, var(--word-color) ${(mix * 100).toFixed(2)}%, var(--performance-ink))`;
+        const col = `color-mix(in srgb, var(--word-color) ${(mix * 100).toFixed(1)}%, var(--performance-ink))`;
+        if (node._col !== col) { node._col = col; body.style.color = col; }
         const glowAmount = number(tuning.glow, 1);
         const fade = passed ? Math.pow(1 - clamp((time - end) / 0.9), 2) : 1;
-        token.glyphs.forEach((glyph, index) => {
+        const shadow = glowAmount <= 0 ? 'none'
+            : `0 0 ${20 * glowAmount}px var(--word-color),0 0 ${40 * glowAmount}px var(--word-color)`;
+        const shadowChanged = node._shadow !== shadow;
+        if (shadowChanged) node._shadow = shadow;
+        const gOps = node._gOps || (node._gOps = new Array(glyphs.length));
+        const tGlyphs = token.glyphs;
+        const multiGlyph = (token.sourceGlyphCount || tGlyphs.length) > 1;
+        for (let index = 0; index < tGlyphs.length; index += 1) {
+            const glyph = tGlyphs[index];
             let strength;
             if (instant) strength = glowPulse((time - token.startTime) / 0.067);
             else if (profile.reveal === 'fast') strength = glowPulse((time - token.startTime) / Math.max(0.12, end - token.startTime));
-            else if ((token.sourceGlyphCount || token.glyphs.length) > 1) {
+            else if (multiGlyph) {
                 strength = glowPulse((time - glyph.startTime) / Math.max(0.006, (glyph.endTime - glyph.startTime) * 6)) * fade;
             } else {
                 strength = time < token.startTime ? 0
                     : passed ? 0.9 * fade : ease((time - token.startTime) / Math.max(0.018, (end - token.startTime) * 0.18));
             }
-            glyphs[index].style.opacity = String(clamp(strength * glowAmount, 0, 1));
-            glyphs[index].style.textShadow = glowAmount <= 0 ? 'none'
-                : `0 0 ${20 * glowAmount}px var(--word-color),0 0 ${40 * glowAmount}px var(--word-color)`;
-        });
+            const gOp = clamp(strength * glowAmount, 0, 1).toFixed(3);
+            if (gOps[index] !== gOp) { gOps[index] = gOp; glyphs[index].style.opacity = gOp; }
+            if (shadowChanged) glyphs[index].style.textShadow = shadow;
+        }
         const rippleProgress = clamp((time - token.startTime) / 0.5);
         const showRipple = scene.line.isChorus && tuning.chorusRipple !== false && intensity > 0
             && time >= token.startTime && rippleProgress < 1;
         setHidden(ripple, !showRipple);
         if (showRipple) {
-            ripple.style.opacity = String((1 - rippleProgress) * 0.8);
-            ripple.style.transform = `translate(-50%,-50%) scale(${0.2 + rippleProgress * number(p.rippleScale, 2.5)})`;
+            const rOp = ((1 - rippleProgress) * 0.8).toFixed(3);
+            if (node._rOp !== rOp) { node._rOp = rOp; ripple.style.opacity = rOp; }
+            const rTx = `translate(-50%,-50%) scale(${(0.2 + rippleProgress * number(p.rippleScale, 2.5)).toFixed(3)})`;
+            if (node._rTx !== rTx) { node._rTx = rTx; ripple.style.transform = rTx; }
         }
     };
 
@@ -189,30 +204,49 @@
         const forcedExit = scene.retireAt === null ? 0 : clamp((time - scene.retireAt) / Math.max(0.03, profile.exit));
         const exit = Math.max(naturalExit, forcedExit);
         const transitions = tuning.sceneTransitions !== false && intensity > 0;
-        scene.root.style.opacity = String(transitions ? enter * (1 - ease(exit)) : (scene.retireAt === null && time <= profile.end ? 1 : 0));
+        const rootOp = (transitions ? enter * (1 - ease(exit)) : (scene.retireAt === null && time <= profile.end ? 1 : 0)).toFixed(3);
+        if (scene._op !== rootOp) { scene._op = rootOp; scene.root.style.opacity = rootOp; }
         // blur(0.00px) draws the same as none but keeps an offscreen pass alive.
         const sceneBlur = transitions ? ((1 - enter) * 10 + exit * 20).toFixed(2) : '0.00';
-        scene.root.style.filter = sceneBlur !== '0.00' ? `blur(${sceneBlur}px)` : 'none';
-        scene.root.style.transform = `scale(${transitions ? (0.9 + enter * 0.1 + exit * 0.1).toFixed(4) : 1})`;
+        const rootFlt = sceneBlur !== '0.00' ? `blur(${sceneBlur}px)` : 'none';
+        if (scene._flt !== rootFlt) { scene._flt = rootFlt; scene.root.style.filter = rootFlt; }
+        const rootTx = `scale(${transitions ? (0.9 + enter * 0.1 + exit * 0.1).toFixed(4) : '1'})`;
+        if (scene._tx !== rootTx) { scene._tx = rootTx; scene.root.style.transform = rootTx; }
         const breath = number(tuning.breathing, 1) * intensity * number(tuning.motion, 1);
         const phase = (time % 7) / 7 * Math.PI * 2;
         const floatY = (-Math.sin(phase) * 14 + Math.sin(phase * 2) * 2) * breath;
-        scene.field.style.transform = `translate(-50%,-50%) translate(${shift.x.toFixed(1)}px,${(shift.y + floatY).toFixed(2)}px) scale(${number(scene.fitScale, 1) * (1 + Math.sin(phase) * 0.01 * breath)})`;
-        scene.groups.forEach(group => {
+        const fieldScale = (number(scene.fitScale, 1) * (1 + Math.sin(phase) * 0.01 * breath)).toFixed(4);
+        const fieldTx = `translate(-50%,-50%) translate(${shift.x.toFixed(1)}px,${(shift.y + floatY).toFixed(2)}px) scale(${fieldScale})`;
+        if (scene._fieldTx !== fieldTx) { scene._fieldTx = fieldTx; scene.field.style.transform = fieldTx; }
+        const groups = scene.groups;
+        for (let gi = 0; gi < groups.length; gi += 1) {
+            const group = groups[gi];
             const entry = spring(time - group.startTime + profile.lookahead);
             const waiting = time < group.startTime - profile.lookahead;
-            group.wrapper.style.opacity = waiting ? '0' : '1';
-            group.wrapper.style.transform = `translateX(${((1 - entry) * (group.side === 'left' ? -40 : 40) * intensity).toFixed(2)}px)`;
-            setHidden(group.guide, tuning.guideLines === false);
-            const progress = ease((time - group.startTime + profile.lookahead) / 0.4);
-            group.guide.style.transform = `scaleX(${progress})`;
-            group.guide.style.opacity = time <= group.endTime ? '0.8' : '0.24';
-            const reading = clamp((time - group.startTime) / Math.max(0.001, group.endTime - group.startTime));
-            setHidden(group.head, tuning.guidePulse === false || waiting || time > group.endTime || intensity <= 0);
-            group.head.style.left = `${reading * 100}%`;
-            group.head.style.opacity = String(0.45 + clamp(frame.audio.vocal) * 0.55);
-        });
-        scene.nodes.forEach(node => animateWord(node, scene, time, tuning, intensity, frame.audio));
+            const wOp = waiting ? '0' : '1';
+            if (group._op !== wOp) { group._op = wOp; group.wrapper.style.opacity = wOp; }
+            const wTx = `translateX(${((1 - entry) * (group.side === 'left' ? -40 : 40) * intensity).toFixed(2)}px)`;
+            if (group._tx !== wTx) { group._tx = wTx; group.wrapper.style.transform = wTx; }
+            const hideGuide = tuning.guideLines === false;
+            setHidden(group.guide, hideGuide);
+            if (!hideGuide) {
+                const gTx = `scaleX(${ease((time - group.startTime + profile.lookahead) / 0.4).toFixed(4)})`;
+                if (group._gTx !== gTx) { group._gTx = gTx; group.guide.style.transform = gTx; }
+                const gOp = time <= group.endTime ? '0.8' : '0.24';
+                if (group._gOp !== gOp) { group._gOp = gOp; group.guide.style.opacity = gOp; }
+                const hideHead = tuning.guidePulse === false || waiting || time > group.endTime || intensity <= 0;
+                setHidden(group.head, hideHead);
+                if (!hideHead) {
+                    const reading = clamp((time - group.startTime) / Math.max(0.001, group.endTime - group.startTime));
+                    const hLeft = `${(reading * 100).toFixed(2)}%`;
+                    if (group._hLeft !== hLeft) { group._hLeft = hLeft; group.head.style.left = hLeft; }
+                    const hOp = (0.45 + clamp(frame.audio.vocal) * 0.55).toFixed(3);
+                    if (group._hOp !== hOp) { group._hOp = hOp; group.head.style.opacity = hOp; }
+                }
+            }
+        }
+        const nodes = scene.nodes;
+        for (let ni = 0; ni < nodes.length; ni += 1) animateWord(nodes[ni], scene, time, tuning, intensity, frame.audio);
     };
 
     const createManager = (id, label, container, services, compile, options = {}) => {
@@ -417,7 +451,9 @@
         const resume = mode.resume;
         mode.resume = () => { resume(); if (latest) mode.updateFrame(latest); };
         mode.scope.listen(document.fonts, 'loadingdone', () => { fontEpoch += 1; invalidate(); });
-        mode.scope.listen(reduced, 'change', invalidate);
+        const onMotionChange = () => { invalidate(); lastRenderNow = -Infinity; if (latest) mode.updateFrame(latest); };
+        mode.scope.listen(reduced, 'change', onMotionChange);
+        mode.scope.listen(global, 'music-motion-change', onMotionChange);
         if (options.pretext) {
             L.loadPretext().then(module => {
                 if (mode.destroyed) return;

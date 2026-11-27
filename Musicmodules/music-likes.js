@@ -25,9 +25,37 @@
             if (!Array.isArray(pl.tracks)) pl.tracks = [];
             return pl;
         };
-        app.isLiked = (track) => {
+        let likedCachePl = null;
+        let likedCacheTracks = null;
+        let likedCacheLen = -1;
+        let likedCacheFirst = undefined;
+        let likedCacheLast = undefined;
+        let likedCacheSet = null;
+        const invalidateLikedCache = () => { likedCacheTracks = null; likedCacheSet = null; };
+        const likedSetOf = () => {
             const pl = app.likedPlaylist();
-            return Boolean(track && pl && Array.isArray(pl.tracks) && pl.tracks.includes(track.path));
+            const tracks = pl && Array.isArray(pl.tracks) ? pl.tracks : null;
+            if (!tracks || !tracks.length) {
+                invalidateLikedCache();
+                return null;
+            }
+            const len = tracks.length;
+            if (pl === likedCachePl && tracks === likedCacheTracks && len === likedCacheLen
+                && tracks[0] === likedCacheFirst && tracks[len - 1] === likedCacheLast && likedCacheSet) {
+                return likedCacheSet;
+            }
+            likedCachePl = pl;
+            likedCacheTracks = tracks;
+            likedCacheLen = len;
+            likedCacheFirst = tracks[0];
+            likedCacheLast = tracks[len - 1];
+            likedCacheSet = new Set(tracks);
+            return likedCacheSet;
+        };
+        app.isLiked = (track) => {
+            if (!track || !track.path) return false;
+            const set = likedSetOf();
+            return Boolean(set && set.has(track.path));
         };
         const announce = (tracks, liked) => {
             try { app.saveCustomPlaylists?.(); } catch (e) { /* 存不了也先在界面上生效 */ }
@@ -58,6 +86,7 @@
                 if (toRemove.size) pl.tracks = pl.tracks.filter((p) => !toRemove.has(p));
             }
             if (!changed.length) return target;
+            invalidateLikedCache();
             announce(changed, target);
             if (!quiet) {
                 const name = changed.length === 1 ? `「${app.stripAudioExtension ? app.stripAudioExtension(changed[0].title || '') : (changed[0].title || '')}」` : `${changed.length} 首`;

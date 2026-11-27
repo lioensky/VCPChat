@@ -218,15 +218,21 @@
             const floor = top - 100;
             const invRange = 255 / (top - floor);
             const data = img.data;
+            const k0Lut = new Int32Array(ROWS);
+            const k1Lut = new Int32Array(ROWS);
+            for (let y = 0; y < ROWS; y++) {
+                const k0 = Math.floor(((ROWS - 1 - y) / ROWS) * bins);
+                const k1 = Math.min(bins, Math.max(k0 + 1, Math.floor(((ROWS - y) / ROWS) * bins)));
+                k0Lut[y] = k0;
+                k1Lut[y] = k1;
+            }
             for (let x = 0; x < w; x++) {
                 const col = columns[x];
                 for (let y = 0; y < ROWS; y++) {
-                    const f0 = (ROWS - 1 - y) / ROWS * nyquist;
-                    const f1 = (ROWS - y) / ROWS * nyquist;
-                    const k0 = Math.floor(f0 / nyquist * bins);
-                    const k1 = Math.max(k0 + 1, Math.floor(f1 / nyquist * bins));
+                    const k0 = k0Lut[y];
+                    const k1 = k1Lut[y];
                     let m = -200;
-                    for (let k = k0; k < k1 && k < bins; k++) if (col[k] > m) m = col[k];
+                    for (let k = k0; k < k1; k++) if (col[k] > m) m = col[k];
                     const idx = Math.max(0, Math.min(255, Math.round((m - floor) * invRange))) * 3;
                     const o = (y * w + x) * 4;
                     data[o] = COLOR_LUT[idx]; data[o + 1] = COLOR_LUT[idx + 1]; data[o + 2] = COLOR_LUT[idx + 2]; data[o + 3] = 255;
@@ -288,8 +294,9 @@
             figure.appendChild(axis);
             figure.appendChild(plot);
             body.appendChild(figure);
-            const mins = Math.floor(audio.duration / 60);
-            const secs = String(Math.round(audio.duration % 60)).padStart(2, '0');
+            const totalSec = Math.max(0, Math.round(audio.duration));
+            const mins = Math.floor(totalSec / 60);
+            const secs = String(totalSec % 60).padStart(2, '0');
             const spec = [String(track.path || '').split('.').pop().toUpperCase(), `${(sampleRate / 1000).toFixed(sampleRate % 1000 ? 1 : 0)} kHz`, track.bitsPerSample ? `${track.bitsPerSample} bit` : '', track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '', `${mins}:${secs}`].filter(Boolean).join(' · ');
             body.appendChild(el('p', 'mspec-spec', spec));
             body.appendChild(el('p', 'mstats-note', '只是按频谱估计：老录音、某些母带本身高频就少，也会显示成被切掉。'));

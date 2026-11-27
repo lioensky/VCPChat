@@ -133,12 +133,20 @@
                 show.addEventListener('click', () => app.showTrackInFolder(track));
                 actions.appendChild(show);
             }
+            let copyTimer = 0;
             const copy = el('button', 'minfo-btn', '复制路径');
             copy.type = 'button';
             copy.addEventListener('click', () => {
-                Promise.resolve(global.navigator?.clipboard?.writeText?.(String(track.path || '')))
-                    .then(() => { copy.textContent = '已复制'; setTimeout(() => { copy.textContent = '复制路径'; }, 1600); })
-                    .catch(() => { copy.textContent = '复制失败'; });
+                const writeText = global.navigator?.clipboard?.writeText;
+                if (typeof writeText !== 'function') { copy.textContent = '复制失败'; return; }
+                Promise.resolve(writeText.call(global.navigator.clipboard, String(track.path || '')))
+                    .then(() => {
+                        if (!copy.isConnected) return;
+                        copy.textContent = '已复制';
+                        clearTimeout(copyTimer);
+                        copyTimer = setTimeout(() => { copyTimer = 0; if (copy.isConnected) copy.textContent = '复制路径'; }, 1600);
+                    })
+                    .catch(() => { if (copy.isConnected) copy.textContent = '复制失败'; });
             });
             actions.appendChild(copy);
             dialog.appendChild(actions);

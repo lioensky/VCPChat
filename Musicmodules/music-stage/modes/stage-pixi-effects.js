@@ -774,18 +774,24 @@ void main() {
             const tail = duration > 1.5 && tailAge >= 0 && tailAge < 0.65
                 ? Math.sin(tailAge / 0.65 * Math.PI) * 0.45 : 0;
             const amplitude = Math.min(1, (pulse + tail) * strength);
+            const showFlourish = flourish && duration >= 0.65 && amplitude > 0;
             const cx = (group.left + group.right) / 2, cy = (group.top + group.bottom) / 2;
-            group.echoes.forEach((echo, index) => {
-                echo.visible = flourish && duration >= 0.65 && amplitude > 0;
+            const echoes = group.echoes;
+            for (let index = 0; index < echoes.length; index += 1) {
+                const echo = echoes[index];
+                echo.visible = showFlourish;
+                if (!showFlourish) continue;
                 const spread = (index + 1) * amplitude;
                 echo.position.set(cx + (tuning.performanceMode === 'tempera' ? spread * 9 : 0), cy - spread * 4);
                 echo.scale.set(1 + spread * 0.07, 1 + spread * 0.15);
                 echo.alpha = amplitude * (index ? 0.2 : 0.35);
-            });
-            group.rays.visible = flourish && duration >= 0.65 && amplitude > 0;
-            group.rays.position.set(cx, cy);
-            group.rays.scale.set(1 + amplitude * 0.14);
-            group.rays.alpha = amplitude * (frame.activeLine?.isChorus ? 0.85 : 0.55);
+            }
+            group.rays.visible = showFlourish;
+            if (showFlourish) {
+                group.rays.position.set(cx, cy);
+                group.rays.scale.set(1 + amplitude * 0.14);
+                group.rays.alpha = amplitude * (frame.activeLine?.isChorus ? 0.85 : 0.55);
+            }
         }
     };
 
@@ -874,6 +880,7 @@ void main() {
         let entries = [];
         let source = null;
         let signature = '';
+        let layoutSignature = '';
         let activeIndex = -1;
         let width = 1;
         let height = 1;
@@ -1148,11 +1155,16 @@ void main() {
         };
 
         const rebuild = (frame, tuning, nextColor, seed) => {
+            const nextLayoutSig = `${seed}:${width}:${height}:${tuning.trackVerticalChance}:${tuning.trackJunction}`;
+            const needLayout = source !== frame.lines || layoutSignature !== nextLayoutSig || layout.length !== frame.lines.length;
             release();
             source = frame.lines;
             activeIndex = frame.currentLineIndex;
             color = nextColor;
-            layout = compileLayout(frame.lines, seed, width, height, tuning);
+            if (needLayout) {
+                layout = compileLayout(frame.lines, seed, width, height, tuning);
+                layoutSignature = nextLayoutSig;
+            }
             const before = tuning.quality === 'energy-saving' ? 1 : 2;
             const after = tuning.quality === 'energy-saving' ? 2 : 4;
             const first = Math.max(0, activeIndex - before);

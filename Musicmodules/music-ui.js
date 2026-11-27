@@ -148,19 +148,6 @@ function setupUI(app) {
         const run = () => { windowQueued = 0; if (!classicHidden()) renderWindow(); };
         windowQueued = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(run) : (setTimeout(run, 16) || 1);
     };
-    if (app.playlistEl) {
-        app.playlistEl.addEventListener('scroll', renderWindowSoon, { passive: true });
-        if (typeof window !== 'undefined') window.addEventListener('resize', renderWindowSoon);
-        if (typeof MutationObserver === 'function') {
-            // 列表从隐藏变显示（切回曲目分页、离开档案页）时才量得到视口，补画一次
-            const reveal = new MutationObserver(() => {
-                if (!classicHidden() && app.playlistEl.style.display !== 'none') renderWindowSoon();
-            });
-            reveal.observe(app.playlistEl, { attributes: true, attributeFilter: ['style'] });
-            reveal.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-        }
-    }
-
     // 档案页开着时经典列表整个藏着：这时不重建（删一首歌、重扫、换排序都会走到这里），
     // 记下要画什么，切回经典视图再画。
     let deferred = null;
@@ -169,7 +156,7 @@ function setupUI(app) {
     app.renderPlaylist = (filtered) => {
         if (classicHidden()) {
             deferred = { filtered };
-            app.classicPendingSongs = (filtered || app.playlist).slice();
+            app.classicPendingSongs = filtered || app.playlist;
             app.updateAllCount();
             return;
         }
@@ -177,14 +164,25 @@ function setupUI(app) {
         app.classicPendingSongs = null;
         renderNow(filtered);
     };
+    if (app.playlistEl) {
+        app.playlistEl.addEventListener('scroll', renderWindowSoon, { passive: true });
+        if (typeof window !== 'undefined') window.addEventListener('resize', renderWindowSoon);
+    }
     if (typeof MutationObserver === 'function') {
-        new MutationObserver(() => {
-            if (!deferred || classicHidden()) return;
-            const { filtered } = deferred;
-            deferred = null;
-            app.classicPendingSongs = null;
-            renderNow(filtered);
-        }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        // 合并成一个监听：切回经典视图时先刷延迟的列表，或者列表从隐藏变显示时补画视口。
+        const visibilityWatch = new MutationObserver(() => {
+            if (classicHidden()) return;
+            if (deferred) {
+                const { filtered } = deferred;
+                deferred = null;
+                app.classicPendingSongs = null;
+                renderNow(filtered);
+                return;
+            }
+            if (app.playlistEl && app.playlistEl.style.display !== 'none') renderWindowSoon();
+        });
+        if (app.playlistEl) visibilityWatch.observe(app.playlistEl, { attributes: true, attributeFilter: ['style'] });
+        visibilityWatch.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     }
     // 列表空着时那句话（样式表里 #playlist:empty::after 显示它）：
     // 曲库本身是空的就告诉人去哪添加，别说「没有匹配」；搜不到才说没有匹配。

@@ -526,7 +526,10 @@
                 row.played = cut;
             }
             if (!live) {
-                if (row.wasLive) row.bars.forEach(b => { b.style.transform = `scaleY(${b.dataset.rest})`; });
+                if (row.wasLive) row.bars.forEach(b => {
+                    const tr = `scaleY(${b.dataset.rest})`;
+                    if (b._tr !== tr) { b._tr = tr; b.style.transform = tr; }
+                });
                 row.wasLive = false;
                 return;
             }
@@ -537,7 +540,8 @@
                 const mirror = Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
                 const v = n ? clamp(Number(spec[Math.floor(Math.pow(1 - mirror, 1.6) * n * 0.6)]) || 0, 0, 1) : 0;
                 const h = clamp(0.14 + v * 1.1 * s.audioReactivity, 0.12, 1);
-                b.style.transform = `scaleY(${h.toFixed(3)})`;
+                const tr = `scaleY(${h.toFixed(3)})`;
+                if (b._tr !== tr) { b._tr = tr; b.style.transform = tr; }
             });
         };
 
@@ -646,6 +650,7 @@
         mode.suspend = () => { paused = true; mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); lastDraw = -Infinity; if (latest) mode.updateFrame(latest); };
         mode.updateTheme = () => {};
+        mode.scope.listen(global, 'music-motion-change', refresh);
         mode.getDebugSnapshot = () => ({ initialized: true, messages: messages.length, rows: stats.rows, rebuilds: stats.rebuilds });
         return mode;
     };

@@ -191,7 +191,7 @@
             }
         };
 
-        const strokeEdgePath = (edgeContext, points, color, alpha, blur) => {
+        const strokeEdgePair = (edgeContext, points, glowStroke, glowShadow, mainStroke, mainShadow) => {
             if (!edgeContext || points.length < 4) return;
             edgeContext.save();
             edgeContext.beginPath();
@@ -200,17 +200,23 @@
                 edgeContext.quadraticCurveTo(
                     points[index],
                     points[index + 1],
-                    (points[index] + points[index + 2]) / 2,
-                    (points[index + 1] + points[index + 3]) / 2
+                    (points[index] + points[index + 2]) * 0.5,
+                    (points[index + 1] + points[index + 3]) * 0.5
                 );
             }
             edgeContext.lineTo(points[points.length - 2], points[points.length - 1]);
             edgeContext.lineCap = 'round';
             edgeContext.lineJoin = 'round';
-            edgeContext.lineWidth = blur > 0 ? 2.8 : 1.05;
-            edgeContext.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
-            edgeContext.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${Math.min(0.9, alpha * 1.45)})`;
-            edgeContext.shadowBlur = blur;
+            // The wide soft pass stands in for the glow filters the canvas used to have.
+            edgeContext.lineWidth = 2.8;
+            edgeContext.strokeStyle = glowStroke;
+            edgeContext.shadowColor = glowShadow;
+            edgeContext.shadowBlur = 18;
+            edgeContext.stroke();
+            edgeContext.lineWidth = 1.05;
+            edgeContext.strokeStyle = mainStroke;
+            edgeContext.shadowColor = mainShadow;
+            edgeContext.shadowBlur = 3.5;
             edgeContext.stroke();
             edgeContext.restore();
         };
@@ -255,15 +261,15 @@
 
             const alpha = 0.28 + frame.audio.power * 0.62;
             const glowAlpha = alpha * 0.5;
-            // The wide soft pass stands in for the glow filters the canvas used to have.
-            strokeEdgePath(edgeStrips.top.context, top, color, glowAlpha, 18);
-            strokeEdgePath(edgeStrips.top.context, top, color, alpha, 3.5);
-            strokeEdgePath(edgeStrips.right.context, right, color, glowAlpha, 18);
-            strokeEdgePath(edgeStrips.right.context, right, color, alpha, 3.5);
-            strokeEdgePath(edgeStrips.bottom.context, bottom, color, glowAlpha, 18);
-            strokeEdgePath(edgeStrips.bottom.context, bottom, color, alpha, 3.5);
-            strokeEdgePath(edgeStrips.left.context, left, color, glowAlpha, 18);
-            strokeEdgePath(edgeStrips.left.context, left, color, alpha, 3.5);
+            const rgb = `${color.r}, ${color.g}, ${color.b}`;
+            const glowStroke = `rgba(${rgb}, ${glowAlpha})`;
+            const glowShadow = `rgba(${rgb}, ${Math.min(0.9, glowAlpha * 1.45)})`;
+            const mainStroke = `rgba(${rgb}, ${alpha})`;
+            const mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45)})`;
+            strokeEdgePair(edgeStrips.top.context, top, glowStroke, glowShadow, mainStroke, mainShadow);
+            strokeEdgePair(edgeStrips.right.context, right, glowStroke, glowShadow, mainStroke, mainShadow);
+            strokeEdgePair(edgeStrips.bottom.context, bottom, glowStroke, glowShadow, mainStroke, mainShadow);
+            strokeEdgePair(edgeStrips.left.context, left, glowStroke, glowShadow, mainStroke, mainShadow);
         };
 
         return {
