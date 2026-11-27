@@ -167,3 +167,40 @@ test('a watched menu melts back to the item that was clicked when it closes, and
     for (let i = 0; i < 20; i++) { now += 40; frames.splice(0).forEach((fn) => fn()); }
     assert.equal(doc.querySelector('svg.mf-goo'), null);
 });
+
+test('MusicFluidSelect clamps tall menu height before placement, forwards label clicks, and skips disabled hover focus', () => {
+    const dom = new JSDOM(`<!doctype html><body><label for="tall-sel">预设</label><select id="tall-sel"><option value="a">第一项</option><option value="b" disabled>不可选</option><option value="c">第三项</option></select></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 700, configurable: true });
+    window.CSS = { escape: (s) => String(s) };
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+    const select = doc.getElementById('tall-sel');
+    window.MusicFluidSelect.dress(select);
+    const trigger = doc.querySelector('.mfs-trigger');
+    assert.ok(trigger, 'custom trigger created');
+    trigger.getBoundingClientRect = () => ({ left: 100, top: 200, right: 260, bottom: 232, width: 160, height: 32 });
+    // 模拟高菜单在 maxHeight 之前撑到 540px，但下方空间有 458px（足够放下 360px 限高后的菜单）
+    const origOffsetH = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', {
+        configurable: true,
+        get() { return this.classList?.contains('mfs-menu') ? (parseInt(this.style.maxHeight, 10) || 540) : 0; }
+    });
+    try {
+        doc.querySelector('label[for="tall-sel"]').click();
+        const menu = doc.querySelector('.mfs-menu');
+        assert.ok(menu, 'clicking associated <label for> opens the fluid select menu');
+        assert.equal(menu.style.maxHeight, '360px');
+        assert.equal(menu.style.top, '238px', 'tall menu opens below trigger once clamped by maxHeight');
+        const disabledItem = menu.querySelector('[aria-disabled="true"]');
+        const firstItem = menu.querySelector('.mfs-item');
+        assert.equal(doc.activeElement, firstItem);
+        disabledItem.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true }));
+        assert.equal(doc.activeElement, firstItem, 'hovering a disabled option does not steal focus');
+        doc.querySelector('label[for="tall-sel"]').click();
+        assert.equal(doc.querySelector('.mfs-menu'), null, 'clicking associated label again closes open menu');
+    } finally {
+        if (origOffsetH) Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', origOffsetH);
+    }
+});

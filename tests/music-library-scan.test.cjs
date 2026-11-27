@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { scanFolder, collectAudioFiles } = require('../modules/musicLibraryScanner');
+const { scanFolder, collectAudioFiles, fillFolderCovers } = require('../modules/musicLibraryScanner');
 
 // 曲库扫描的三条约定：同时在读的文件有上限、没动过的文件不再读、结果按磁盘顺序且途中成批送出。
 // 解析这一步换成假 worker，不依赖真实音频文件。
@@ -165,4 +165,27 @@ test('a known track that fails to read this time keeps its last result; an unrea
     });
     assert.deepEqual(third.tracks.map((t) => t.title), ['y']);
     assert.equal(third.stats.unreadable, 1);
+});
+
+test('fillFolderCovers caches parent directory reads across multi-disc folders', async () => {
+    const reads = new Map();
+    const readdir = async (dir) => {
+        reads.set(dir, (reads.get(dir) || 0) + 1);
+        const base = path.basename(dir).toLowerCase();
+        if (base === 'album') return ['cover.jpg', 'CD1', 'CD2'];
+        return ['01.flac', '02.flac'];
+    };
+    const root = path.join(path.sep, 'music', 'album');
+    const tracks = [
+        { path: path.join(root, 'CD1', '01.flac'), albumArt: null },
+        { path: path.join(root, 'CD1', '02.flac'), albumArt: null },
+        { path: path.join(root, 'CD2', '01.flac'), albumArt: null },
+        { path: path.join(root, 'CD2', '02.flac'), albumArt: null }
+    ];
+    const filled = await fillFolderCovers(tracks, readdir);
+    assert.equal(filled, 4);
+    assert.ok(tracks.every((t) => t.albumArt === path.join(root, 'cover.jpg')));
+    assert.equal(reads.get(root), 1, 'album parent directory should be read only once for both CD1 and CD2');
+    assert.equal(reads.get(path.join(root, 'CD1')), 1);
+    assert.equal(reads.get(path.join(root, 'CD2')), 1);
 });
