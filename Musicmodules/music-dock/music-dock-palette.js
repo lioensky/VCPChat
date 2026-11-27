@@ -306,12 +306,29 @@
             return byPath;
         };
 
+        const normPath = (p) => String(p ?? '').replace(/\\/g, '/').toLowerCase();
+        const lookupTrack = (byPath, rawPath) => {
+            if (!rawPath) return null;
+            const exact = byPath.get(rawPath);
+            if (exact) return exact;
+            let byNorm = byPath._norm;
+            if (!byNorm) {
+                byNorm = new Map();
+                for (const [k, v] of byPath) {
+                    const nk = normPath(k);
+                    if (nk && !byNorm.has(nk)) byNorm.set(nk, v);
+                }
+                byPath._norm = byNorm;
+            }
+            return byNorm.get(normPath(rawPath)) || null;
+        };
+
         const playlistTracks = (pl, byPath) => {
             const map = byPath || getTrackByPath();
             const raw = pl.tracks || [];
             const out = [];
             for (let i = 0; i < raw.length; i += 1) {
-                const hit = map.get(raw[i]);
+                const hit = lookupTrack(map, raw[i]);
                 if (hit) out.push(hit.track);
             }
             return out;
@@ -472,7 +489,7 @@
                 const id = recent[i];
                 if (id.startsWith('song:')) {
                     if (!byPath) byPath = getTrackByPath();
-                    const hit = byPath.get(id.slice(5));
+                    const hit = lookupTrack(byPath, id.slice(5));
                     if (hit) out.push({ ...songItem(hit.track, '最近', hit.index), section: '最近' });
                     continue;
                 }
@@ -546,12 +563,25 @@
             render();
         };
 
+        let lastHintsKey = '';
         const renderHints = (raw, q) => {
             const last = String(raw || '').split(/\s+/).pop() || '';
             const show = last.startsWith('--') && !FLAG_LOOKUP.has(last.slice(2));
-            hints.hidden = !show;
-            if (!show) { hints.innerHTML = ''; return; }
+            if (!show) {
+                if (lastHintsKey !== '') {
+                    lastHintsKey = '';
+                    hints.hidden = true;
+                    hints.innerHTML = '';
+                } else if (!hints.hidden) {
+                    hints.hidden = true;
+                }
+                return;
+            }
             const typed = lower(last.slice(2));
+            const key = `1:${typed}`;
+            if (key === lastHintsKey && !hints.hidden) return;
+            lastHintsKey = key;
+            hints.hidden = false;
             const options = FILTERS.filter((f) => !typed || f.flag.startsWith(typed) || f.aliases.some((a) => a.startsWith(typed)));
             hints.innerHTML = '<div class="md-cmd-hints-k">过滤</div>' + (options.length ? options : FILTERS).map((f) => (
                 `<button type="button" class="md-cmd-hint" data-flag="${f.flag}"><b>--${f.flag}</b><span>${f.hint}</span><i>${f.aliases.map((a) => `--${a}`).join(' ')}</i></button>`
@@ -648,6 +678,19 @@
             dropEl.setAttribute('aria-hidden', 'true');
             return dropEl;
         };
+        let lastActiveId = '';
+        let lastFootHidden = null;
+        const setActiveMeta = (id, hideFoot) => {
+            if (id !== lastActiveId) {
+                lastActiveId = id;
+                if (id) input.setAttribute('aria-activedescendant', id);
+                else input.removeAttribute('aria-activedescendant');
+            }
+            if (hideFoot !== lastFootHidden) {
+                lastFootHidden = hideFoot;
+                foot.hidden = hideFoot;
+            }
+        };
         const render = () => {
             activeRowEl = null;
             if (!state.items.length) {
@@ -663,8 +706,7 @@
                         : '<span>输入歌名、歌手或专辑</span><span class="md-cmd-tip">只找某个歌手或专辑：写「歌手:周杰伦」「专辑:叶惠美」</span><span class="md-cmd-tip">也可以直接输入「暂停」「音量 50」这样的指令</span>';
                 }
                 if (list.childNodes.length !== 1 || list.firstChild !== emptyEl) list.replaceChildren(emptyEl);
-                input.removeAttribute('aria-activedescendant');
-                foot.hidden = true;
+                setActiveMeta('', true);
                 return;
             }
             const drop = ensureDrop();
@@ -732,8 +774,7 @@
                     : list.querySelector(`[data-i="${state.active}"]`);
                 if (!row) return;
                 activeRowEl = row;
-                input.setAttribute('aria-activedescendant', row.id);
-                foot.hidden = !state.items[state.active]?.queueable;
+                setActiveMeta(row.id, !state.items[state.active]?.queueable);
             } else {
                 const prev = activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector('.md-cmd-row.md-act');
                 if (prev) { prev.classList.remove('md-act'); prev.setAttribute('aria-selected', 'false'); }
@@ -742,8 +783,7 @@
                 activeRowEl = row;
                 row.classList.add('md-act');
                 row.setAttribute('aria-selected', 'true');
-                input.setAttribute('aria-activedescendant', row.id);
-                foot.hidden = !state.items[state.active]?.queueable;
+                setActiveMeta(row.id, !state.items[state.active]?.queueable);
             }
             if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
             if (global.MusicFluid?.slide || scroll) {

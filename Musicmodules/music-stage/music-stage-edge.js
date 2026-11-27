@@ -315,6 +315,18 @@
             }
         };
 
+        const drawSide = (strip, pts, moving, wasBlank, flatBase, lightGlow) => {
+            if (!moving && !wasBlank && strip.flatKey === flatBase) return;
+            strip.flatKey = moving ? '' : flatBase;
+            strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
+            strokeEdgePair(
+                strip.context, pts, moving,
+                edgeCanvasState.glowStroke, edgeCanvasState.glowShadow,
+                edgeCanvasState.mainStroke, edgeCanvasState.mainShadow,
+                lightGlow
+            );
+        };
+
         const drawEdgeSpectrum = (frame) => {
             if (state.config.edgeSpectrum === false) {
                 if (edgeContext && !edgeCanvasState.blank) {
@@ -430,17 +442,10 @@
                 edgeCanvasState.mainStroke = `rgba(${rgb}, ${alphaKey})`;
                 edgeCanvasState.mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45).toFixed(3)})`;
             }
-            const { glowStroke, glowShadow, mainStroke, mainShadow } = edgeCanvasState;
-            const drawSide = (strip, pts, moving) => {
-                if (!moving && !wasBlank && strip.flatKey === flatBase) return;
-                strip.flatKey = moving ? '' : flatBase;
-                strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
-                strokeEdgePair(strip.context, pts, moving, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
-            };
-            drawSide(edgeStrips.top, top, mTop);
-            drawSide(edgeStrips.right, right, mRight);
-            drawSide(edgeStrips.bottom, bottom, mBottom);
-            drawSide(edgeStrips.left, left, mLeft);
+            drawSide(edgeStrips.top, top, mTop, wasBlank, flatBase, lightGlow);
+            drawSide(edgeStrips.right, right, mRight, wasBlank, flatBase, lightGlow);
+            drawSide(edgeStrips.bottom, bottom, mBottom, wasBlank, flatBase, lightGlow);
+            drawSide(edgeStrips.left, left, mLeft, wasBlank, flatBase, lightGlow);
         };
 
         return {

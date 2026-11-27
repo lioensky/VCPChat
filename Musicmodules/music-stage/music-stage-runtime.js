@@ -283,6 +283,16 @@
         wordProgress: 0,
         wordStates: EMPTY_WORDS
     });
+    const wordTemplatesCache = new WeakMap();
+    const EMPTY_AUDIO_BANDS = Object.freeze({
+        power: 0,
+        bass: 0,
+        lowMid: 0,
+        mid: 0,
+        vocal: 0,
+        treble: 0,
+        spectrum: EMPTY_WORDS
+    });
     let lastWordLine = null;
     let lastWordTime = NaN;
     let lastWordResult = EMPTY_WORD_STATE;
@@ -291,22 +301,39 @@
         if (line === lastWordLine && playbackTime === lastWordTime) return lastWordResult;
 
         const words = line.resolvedWords || (line.words.length ? line.words : buildFallbackWords(line));
+        const len = words.length;
+        let tpl = wordTemplatesCache.get(words);
+        if (!tpl || tpl.waiting.length !== len) {
+            tpl = { waiting: new Array(len), passed: new Array(len) };
+            wordTemplatesCache.set(words, tpl);
+        }
         let activeWordIndex = -1;
         let activeProgress = 0;
-        const wordStates = words.map((word, index) => {
-            const duration = Math.max(0.001, word.endTime - word.startTime);
-            const progress = clamp((playbackTime - word.startTime) / duration);
-            const status = playbackTime < word.startTime
-                ? 'waiting'
-                : playbackTime >= word.endTime
-                    ? 'passed'
-                    : 'active';
-            if (status === 'active') {
+        const wordStates = new Array(len);
+        for (let index = 0; index < len; index += 1) {
+            const word = words[index];
+            if (playbackTime < word.startTime) {
+                let entry = tpl.waiting[index];
+                if (!entry) {
+                    entry = Object.freeze({ ...word, progress: 0, status: 'waiting' });
+                    tpl.waiting[index] = entry;
+                }
+                wordStates[index] = entry;
+            } else if (playbackTime >= word.endTime) {
+                let entry = tpl.passed[index];
+                if (!entry) {
+                    entry = Object.freeze({ ...word, progress: 1, status: 'passed' });
+                    tpl.passed[index] = entry;
+                }
+                wordStates[index] = entry;
+            } else {
+                const duration = Math.max(0.001, word.endTime - word.startTime);
+                const progress = clamp((playbackTime - word.startTime) / duration);
                 activeWordIndex = index;
                 activeProgress = progress;
+                wordStates[index] = { ...word, progress, status: 'active' };
             }
-            return { ...word, progress, status };
-        });
+        }
 
         lastWordLine = line;
         lastWordTime = playbackTime;
@@ -331,10 +358,12 @@
     };
 
     const resolveAudioBands = (spectrum) => {
-        const values = spectrum || [];
+        const values = spectrum || EMPTY_WORDS;
         const length = values.length;
         if (!length) {
-            return { power: 0, bass: 0, lowMid: 0, mid: 0, vocal: 0, treble: 0, spectrum: values };
+            return values === EMPTY_WORDS
+                ? EMPTY_AUDIO_BANDS
+                : { power: 0, bass: 0, lowMid: 0, mid: 0, vocal: 0, treble: 0, spectrum: values };
         }
 
         const r0a = Math.max(0, Math.floor(length * 0.01));
@@ -468,8 +497,9 @@
         const lineDuration = activeLine ? Math.max(0.001, activeLine.endTime - activeLine.startTime) : 1;
         const lineProgress = activeLine ? clamp((playbackTime - activeLine.startTime) / lineDuration) : 0;
         const wordState = resolveWordState(activeLine, playbackTime);
-        const spectrum = Array.isArray(app?.currentVisualizerData) || ArrayBuffer.isView(app?.currentVisualizerData)
-            ? app.currentVisualizerData : [];
+        const rawSpec = app?.currentVisualizerData;
+        const spectrum = (Array.isArray(rawSpec) || ArrayBuffer.isView(rawSpec)) && rawSpec.length
+            ? rawSpec : EMPTY_WORDS;
         const track = app?.playlist?.[app?.currentTrackIndex] || null;
 
         return {

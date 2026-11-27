@@ -424,7 +424,10 @@
                 }
             }
             const shuffleBtn = head.querySelector('[data-act="shuffle"]');
-            if (shuffleBtn) shuffleBtn.classList.toggle('md-lit', playMode() === 'shuffle');
+            const wantShuffle = playMode() === 'shuffle';
+            if (shuffleBtn && shuffleBtn.classList.contains('md-lit') !== wantShuffle) {
+                shuffleBtn.classList.toggle('md-lit', wantShuffle);
+            }
             state.queueSource = activeList();
             state.queueLength = state.queueSource.length;
             const sizer = scroller.firstElementChild;
@@ -448,7 +451,8 @@
             const scroller = event.currentTarget;
             const from = Number(rowEl.dataset.qi);
             const manualEls = [...scroller.querySelectorAll('.md-man')];
-            state.queueDrag = { from, to: from, startY: event.clientY, startScroll: scroller.scrollTop, y: event.clientY, lastDy: NaN, active: false, rowEl, manualEls, scroller, raf: 0, moved: false, pointerId: event.pointerId ?? null, rect: null };
+            const manualIndices = manualEls.map((node) => Number(node.dataset.qi));
+            state.queueDrag = { from, to: from, lastTo: from, startY: event.clientY, startScroll: scroller.scrollTop, y: event.clientY, lastDy: NaN, active: false, rowEl, manualEls, manualIndices, scroller, raf: 0, moved: false, pointerId: event.pointerId ?? null, rect: null };
             const inScrollEdge = (d) => d.rect && (d.y < d.rect.top + 32 || d.y > d.rect.bottom - 32);
             const stepAutoScroll = () => {
                 const d = state.queueDrag;
@@ -486,14 +490,18 @@
                 if (dy === d.lastDy) return;
                 d.lastDy = dy;
                 const n = d.manualEls.length;
-                d.to = Math.max(0, Math.min(n - 1, d.from + Math.round(dy / QUEUE_ROW_H)));
+                const nextTo = Math.max(0, Math.min(n - 1, d.from + Math.round(dy / QUEUE_ROW_H)));
+                d.to = nextTo;
                 d.rowEl.style.transform = `translateY(${dy}px)`;
-                for (const node of d.manualEls) {
+                if (nextTo === d.lastTo) return;
+                d.lastTo = nextTo;
+                for (let idx = 0; idx < n; idx += 1) {
+                    const node = d.manualEls[idx];
                     if (node === d.rowEl) continue;
-                    const i = Number(node.dataset.qi);
+                    const i = d.manualIndices[idx];
                     let shift = 0;
-                    if (d.from < d.to && i > d.from && i <= d.to) shift = -QUEUE_ROW_H;
-                    if (d.from > d.to && i < d.from && i >= d.to) shift = QUEUE_ROW_H;
+                    if (d.from < nextTo && i > d.from && i <= nextTo) shift = -QUEUE_ROW_H;
+                    if (d.from > nextTo && i < d.from && i >= nextTo) shift = QUEUE_ROW_H;
                     if (node._qShift !== shift) {
                         node._qShift = shift;
                         node.style.transform = shift ? `translateY(${shift}px)` : '';

@@ -411,6 +411,10 @@
             draggingProgress: false,
             seekHold: null,
             lastTransportSignature: '',
+            lastTransportMode: '',
+            lastTransportVol: NaN,
+            lastProgTime: NaN,
+            lastProgDur: NaN,
             lastProgressWidth: '',
             lastCurrentTimeText: '',
             lastDurationText: '',
@@ -1051,6 +1055,9 @@
         };
 
         const updateProgress = (frame) => {
+            if (frame.playbackTime === state.lastProgTime && frame.duration === state.lastProgDur) return;
+            state.lastProgTime = frame.playbackTime;
+            state.lastProgDur = frame.duration;
             const percent = frame.duration > 0 ? clamp(frame.playbackTime / frame.duration) * 100 : 0;
             const width = `${percent.toFixed(3)}%`;
             if (width !== state.lastProgressWidth) {
@@ -1101,8 +1108,12 @@
 
         const updateTransportControls = () => {
             const volume = clamp(Number(app.volumeSlider?.value) || 0);
+            const mode = app.playModes[app.currentPlayMode] || 'repeat';
+            if (state.lastTransportSignature && mode === state.lastTransportMode && volume === state.lastTransportVol) return;
             const presentation = getPlayModePresentation();
             const signature = `${presentation.mode}:${volume.toFixed(3)}`;
+            state.lastTransportMode = mode;
+            state.lastTransportVol = volume;
             if (signature === state.lastTransportSignature) return;
             state.lastTransportSignature = signature;
 
@@ -1149,22 +1160,56 @@
         const LYRICS_WAIT_MS = 2000;
         const linesIds = new WeakMap();
         let nextLinesId = 1;
+        let lastSongTrack = undefined;
+        let lastSongPath = null;
+        let lastSongTitle = null;
+        let lastSongArtist = null;
+        let lastSongLines = undefined;
+        let lastSongLinesLen = -1;
+        let lastSongOut = null;
         const songKey = (frame) => {
             const track = frame.track;
-            const identity = track?.path || `${track?.title || ''}\u0001${track?.artist || ''}`;
             const lines = frame.lines;
-            if (!lines?.length) return { identity, key: `${identity}\u0001-` };
-            if (!linesIds.has(lines)) linesIds.set(lines, nextLinesId++);
-            return { identity, key: `${identity}\u0001${linesIds.get(lines)}` };
+            const len = lines?.length || 0;
+            const tp = track?.path ?? null;
+            const tt = track?.title ?? null;
+            const ta = track?.artist ?? null;
+            if (lastSongOut && track === lastSongTrack && lines === lastSongLines && len === lastSongLinesLen
+                && tp === lastSongPath && tt === lastSongTitle && ta === lastSongArtist) {
+                return lastSongOut;
+            }
+            const identity = tp || `${tt || ''}\u0001${ta || ''}`;
+            let key;
+            if (!len) key = `${identity}\u0001-`;
+            else {
+                let lid = linesIds.get(lines);
+                if (!lid) { lid = nextLinesId++; linesIds.set(lines, lid); }
+                key = `${identity}\u0001${lid}`;
+            }
+            lastSongTrack = track;
+            lastSongPath = tp;
+            lastSongTitle = tt;
+            lastSongArtist = ta;
+            lastSongLines = lines;
+            lastSongLinesLen = len;
+            lastSongOut = { identity, key };
+            return lastSongOut;
         };
         // Returns whether the mode should get this frame.
         const songHandover = (frame) => {
             const instance = state.modeInstance;
-            const { identity, key } = songKey(frame);
             const handover = state.handover;
-            if (!instance || !modeTraits(state.modeId).scene3d || reducedMotion() || state.arriving
-                || state.committedSong === null || state.committedInstance !== instance) {
+            if (!instance || !state.scene3d || reducedMotion() || state.arriving) {
                 if (handover) instance?.root.classList.remove('is-song-leaving');
+                state.handover = null;
+                state.committedSong = null;
+                state.committedIdentity = null;
+                state.committedInstance = instance;
+                return true;
+            }
+            const { identity, key } = songKey(frame);
+            if (state.committedSong === null || state.committedInstance !== instance) {
+                if (handover) instance.root.classList.remove('is-song-leaving');
                 state.handover = null;
                 state.committedSong = key;
                 state.committedIdentity = identity;
@@ -1254,11 +1299,10 @@
         let audioSinkInitialized = false;
         let audioSinkOpaque = false;
         let audioSinkEdge = true;
+        let lastAudioPower = NaN;
+        let lastAudioBass = NaN;
+        let lastAudioVocal = NaN;
         const writeAudioLevels = (audio) => {
-            const power = audio.power.toFixed(4);
-            const bass = audio.bass.toFixed(4);
-            const vocal = audio.vocal.toFixed(4);
-            const key = `${power}|${bass}|${vocal}`;
             // Mode roots come and go with switches; the list follows them.
             const children = elements.modeRoot?.children;
             const len = children ? children.length : 0;
@@ -1274,6 +1318,9 @@
                     }
                 }
             }
+            if (!changed && audio.power === lastAudioPower && audio.bass === lastAudioBass && audio.vocal === lastAudioVocal) {
+                return;
+            }
             if (changed) {
                 audioSinkInitialized = true;
                 audioSinkOpaque = opaque;
@@ -1286,6 +1333,13 @@
                 }
                 collectAudioSinks(opaque, edgeActive);
             }
+            lastAudioPower = audio.power;
+            lastAudioBass = audio.bass;
+            lastAudioVocal = audio.vocal;
+            const power = audio.power.toFixed(4);
+            const bass = audio.bass.toFixed(4);
+            const vocal = audio.vocal.toFixed(4);
+            const key = `${power}|${bass}|${vocal}`;
             for (let i = 0; i < audioSinks.length; i += 1) {
                 const node = audioSinks[i];
                 if (audioWritten.get(node) === key) continue;
@@ -1379,6 +1433,7 @@
             const duration = state.lastFrame?.duration || app.lastKnownDuration || 0;
             const target = duration * ratio;
             const width = `${(ratio * 100).toFixed(3)}%`;
+            state.lastProgTime = NaN;
             state.lastProgressWidth = width;
             elements.progressFill.style.width = width;
             if (elements.progressGlow) elements.progressGlow.style.width = width;

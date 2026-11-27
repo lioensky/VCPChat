@@ -193,13 +193,25 @@
         const store = key ? slides : elSlides;
         const id = key || el;
         const prev = store.get(id);
-        if (prev?.frame) global.cancelAnimationFrame(prev.frame);
-        const place = (pos, size) => { el.style[P] = `${pos.toFixed(1)}px`; el.style[S] = `${Math.max(0, size).toFixed(1)}px`; };
+        const wasAnimating = Boolean(prev?.frame);
+        if (wasAnimating) global.cancelAnimationFrame(prev.frame);
+        const place = (pos, size) => {
+            const pStr = `${pos.toFixed(1)}px`;
+            const sStr = `${Math.max(0, size).toFixed(1)}px`;
+            el.style[P] = pStr;
+            el.style[S] = sStr;
+            return { pStr, sStr };
+        };
         const from = prev?.at;
         const motion = Boolean(global.document?.body) && !global.document.body.classList.contains('music-reduce-motion') && typeof global.requestAnimationFrame === 'function';
         if (!from || !motion || (Math.abs(from.pos - goal.pos) < 0.5 && Math.abs(from.size - goal.size) < 0.5)) {
-            place(goal.pos, goal.size);
-            store.set(id, { at: { ...goal }, frame: 0 });
+            const pStr = `${goal.pos.toFixed(1)}px`;
+            const sStr = `${Math.max(0, goal.size).toFixed(1)}px`;
+            if (wasAnimating || prev?.el !== el || prev.posStr !== pStr || prev.sizeStr !== sStr) {
+                el.style[P] = pStr;
+                el.style[S] = sStr;
+            }
+            store.set(id, { el, at: { ...goal }, frame: 0, posStr: pStr, sizeStr: sStr });
             return;
         }
         el.style.transition = 'none';
@@ -209,7 +221,7 @@
         const clock = () => global.performance?.now?.() ?? Date.now();
         const t0 = clock();
         const out = (t) => 1 - Math.pow(1 - t, 3);
-        const state = { at: { pos: s0, size: from.size }, frame: 0 };
+        const state = { el, at: { pos: s0, size: from.size }, frame: 0, posStr: '', sizeStr: '' };
         store.set(id, state);
         const step = () => {
             if (!el.isConnected) { state.frame = 0; return; }
@@ -220,8 +232,17 @@
             const start = lerp(s0, s1, forward ? b : a);
             const end = lerp(e0, e1, forward ? a : b);
             state.at = { pos: start, size: end - start };
-            place(start, end - start);
-            if (ms >= trail) { state.frame = 0; state.at = { ...goal }; place(goal.pos, goal.size); return; }
+            const placed = place(start, end - start);
+            state.posStr = placed.pStr;
+            state.sizeStr = placed.sStr;
+            if (ms >= trail) {
+                state.frame = 0;
+                state.at = { ...goal };
+                const fin = place(goal.pos, goal.size);
+                state.posStr = fin.pStr;
+                state.sizeStr = fin.sStr;
+                return;
+            }
             state.frame = global.requestAnimationFrame(step);
         };
         step();

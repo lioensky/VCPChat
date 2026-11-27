@@ -450,20 +450,21 @@
             lastGlowKey = key;
             lastGlowLight = light;
         };
-        // 实心 = 正在播放，或者正被关注（悬停、拖动）。
+        let lastSolid = null, lastTip = null, lastPH = null;
         const syncSolid = () => {
             const solid = app.isPlaying === true || state.hover || state.dragging !== null;
-            host.classList.toggle('md-vapor', !solid);
-            fluid?.setSolid(solid);
-            fluid?.setPlaying?.(app.isPlaying === true);
-            // 键盘焦点落在播放头上时和拖着它一样：放大、显示时间，暂停时也露出来，看得见焦点在哪。
-            const ringHeld = state.dragging?.fromRing === true || state.ringKbd === true;
-            fluid?.setRingFocus?.(state.ringHover === true || ringHeld, ringHeld);
-            const asPlayhead = !state.panelOpen;
-            el.hdl.classList.toggle('md-tip', asPlayhead && (state.ringHover === true || ringHeld));
-            // 读屏：当作播放头时把时间读出来，并说明方向键可以跳转。
-            if (asPlayhead) { el.handle.setAttribute('aria-describedby', 'music-dock-playhead-tip'); el.handle.title = '播放头：拖动或按左右方向键跳转，点一下打开面板'; }
-            else { el.handle.removeAttribute('aria-describedby'); el.handle.title = '关闭面板（Esc）'; }
+            if (solid !== lastSolid) host.classList.toggle('md-vapor', !(lastSolid = solid));
+            fluid?.setSolid(solid); fluid?.setPlaying?.(app.isPlaying === true);
+            const held = state.dragging?.fromRing === true || state.ringKbd === true, ph = !state.panelOpen;
+            fluid?.setRingFocus?.(state.ringHover === true || held, held);
+            const tip = ph && (state.ringHover === true || held);
+            if (tip !== lastTip) el.hdl.classList.toggle('md-tip', lastTip = tip);
+            if (ph !== lastPH) {
+                lastPH = ph;
+                const h = el.handle;
+                if (ph) { h.setAttribute('aria-describedby', 'music-dock-playhead-tip'); h.title = '播放头：拖动或按左右方向键跳转，点一下打开面板'; }
+                else { h.removeAttribute('aria-describedby'); h.title = '关闭面板（Esc）'; }
+            }
         };
         const animateCapsule = () => { fluid?.layout(); };
 
@@ -556,7 +557,7 @@
             const timeText = formatClock(t);
             const totalText = formatClock(d);
             const tipText = `${timeText} / ${totalText}`;
-            if (el.hdlTip && el.hdlTip.textContent !== tipText) el.hdlTip.textContent = tipText;
+            if (el.hdlTip && state.lastTipText !== tipText) { state.lastTipText = tipText; el.hdlTip.textContent = tipText; }
             const durText = remainMode && d > 0 ? `−${formatClock(Math.max(0, d - t))}` : totalText;
             if (timeText !== state.lastTimeText) {
                 state.lastTimeText = timeText;
@@ -742,17 +743,21 @@
         // 心形：喜欢的接口在（music-likes.js）才显示。点一下切换，点亮时像一滴液体鼓起来、外面荡开一圈；
         // 别处（档案菜单、快捷键）改了喜欢，靠 music-like-change 同步。
         const likeAvailable = () => typeof app.isLiked === 'function' && typeof app.toggleLike === 'function';
+        let lastLike = '';
         const paintLike = () => {
             if (!el.like) return;
-            const track = currentTrack();
-            el.like.hidden = !likeAvailable();
-            if (el.like.hidden) return;
-            const liked = Boolean(track && app.isLiked(track));
-            el.like.disabled = !track;
-            el.like.classList.toggle('md-liked', liked);
-            el.like.setAttribute('aria-pressed', String(liked));
-            el.like.setAttribute('aria-label', liked ? '取消喜欢' : '喜欢');
-            el.like.title = liked ? '取消喜欢（L）' : '喜欢（L）';
+            const ok = likeAvailable(), track = currentTrack(), liked = Boolean(ok && track && app.isLiked(track));
+            const sig = `${+ok}${+Boolean(track)}${+liked}`;
+            if (sig === lastLike) return;
+            lastLike = sig;
+            const b = el.like;
+            if (b.hidden !== !ok) b.hidden = !ok;
+            if (!ok) return;
+            b.disabled = !track;
+            b.classList.toggle('md-liked', liked);
+            b.setAttribute('aria-pressed', String(liked));
+            b.setAttribute('aria-label', liked ? '取消喜欢' : '喜欢');
+            b.title = liked ? '取消喜欢（L）' : '喜欢（L）';
         };
         const toggleCurrentLike = () => {
             const track = currentTrack();
@@ -870,12 +875,11 @@
 
         // ───────── 播放按钮、切歌、两个槽位 ─────────
         const renderPlay = () => {
-            const playing = app.isPlaying === true;
-            el.play.innerHTML = playing
-                ? icon('pause', 20, { fill: 'currentColor' })
-                : `<span class="md-play-nudge">${icon('play', 20, { fill: 'currentColor' })}</span>`;
-            el.play.setAttribute('aria-label', playing ? '暂停' : '播放');
-            el.play.dataset.on = playing ? '1' : '0';
+            const p = app.isPlaying === true, on = p ? '1' : '0';
+            if (el.play.dataset.on === on) return;
+            el.play.innerHTML = p ? icon('pause', 20, { fill: 'currentColor' }) : `<span class="md-play-nudge">${icon('play', 20, { fill: 'currentColor' })}</span>`;
+            el.play.setAttribute('aria-label', p ? '暂停' : '播放');
+            el.play.dataset.on = on;
         };
         listen(el.play, 'click', (event) => {
             event.stopPropagation();
@@ -917,11 +921,13 @@
             else app.modeBtn?.click();
         };
         const renderMode = () => {
-            const mode = playMode();
-            el.modeSlot.innerHTML = icon(MODE_ICONS[mode] || 'repeat', 18);
-            el.modeSlot.classList.toggle('md-on', mode !== 'repeat');
-            el.modeSlot.setAttribute('aria-label', MODE_LABELS[mode] || '播放模式');
-            el.modeSlot.title = MODE_LABELS[mode] || '播放模式';
+            const m = playMode(), b = el.modeSlot;
+            if (b.dataset.mode === m) return;
+            b.dataset.mode = m;
+            b.innerHTML = icon(MODE_ICONS[m] || 'repeat', 18);
+            b.classList.toggle('md-on', m !== 'repeat');
+            b.setAttribute('aria-label', MODE_LABELS[m] || '播放模式');
+            b.title = MODE_LABELS[m] || '播放模式';
         };
         listen(el.modeSlot, 'click', (event) => { event.stopPropagation(); cycleMode(); });
 
@@ -1042,27 +1048,24 @@
         };
 
         // ───────── 曲目信息 ─────────
+        let lastTrkSig = '', lastCv = null;
+        const setT = (n, v) => { if (n.textContent !== v) n.textContent = v; };
         const renderTrack = () => {
-            const track = currentTrack();
-            const title = trackTitle(track);
-            const artist = trackArtist(track);
-            const cover = coverUrl(track);
-            const key = track?.path || '';
-            el.title.textContent = title;
-            el.artist.textContent = artist;
-            el.pTitle.textContent = title;
-            el.pArtist.textContent = artist;
+            const track = currentTrack(), title = trackTitle(track), artist = trackArtist(track), cover = coverUrl(track), key = track?.path || '';
+            paintLike(); paintSleep();
+            const sig = `${key}\0${title}\0${artist}\0${cover}\0${+Boolean(track)}`;
+            if (sig === lastTrkSig && key === state.trackKey) return;
+            lastTrkSig = sig;
+            setT(el.title, title); setT(el.artist, artist); setT(el.pTitle, title); setT(el.pArtist, artist);
             el.cap.classList.toggle('md-notrack', !track);
-            paintLike();
-            paintSleep();
-            const coverCss = cover ? `url("${cover.replace(/"/g, '%22')}")` : '';
-            el.pCover.innerHTML = cover ? '' : icon('music', 18);
-            el.pCover.style.backgroundImage = coverCss;
+            if (cover !== lastCv) {
+                lastCv = cover;
+                el.pCover.innerHTML = cover ? '' : icon('music', 18);
+                el.pCover.style.backgroundImage = cover ? `url("${cover.replace(/"/g, '%22')}")` : '';
+            }
             if (key !== state.trackKey) {
-                // 换歌：上一首像一滴水从右边分裂出去蒸发掉（第一次渲染不算）。
                 if (state.trackKey) { fluid?.split(); fluid?.dropRing(); }
                 state.trackKey = key;
-                // 换了歌，上一首的加载失败提示就不用再留着了。
                 if (state.noticeTrackKey && state.noticeTrackKey !== key) { global.MusicToast?.dismiss('playback'); state.noticeTrackKey = ''; }
                 state.lyricIndex = -2;
                 if (state.panelOpen) renderBody();
@@ -1103,32 +1106,36 @@
             slider.dispatchEvent(new Event('input', { bubbles: true }));
             renderVolume();
         };
+        let lastVRail = '', lastVSlot = '';
         const renderVolume = () => {
-            const v = readVolume();
+            const v = readVolume(), pct = Math.round(v * 100), muted = v <= 0.001, name = volumeIcon(v);
             const row = el.body.querySelector('.md-vol');
             if (row) {
-                row.querySelector('.md-sld-fill').style.transform = `scaleX(${v})`;
-                row.querySelector('.md-sld-kn').style.left = `calc(${v} * (100% - 16px))`;
-                row.querySelector('.md-pct').textContent = `${Math.round(v * 100)}%`;
-                row.querySelector('.md-sld').setAttribute('aria-valuenow', String(Math.round(v * 100)));
-                const btn = row.querySelector('[data-act="mute"]');
-                const name = volumeIcon(v);
+                const q = (s) => row.querySelector(s);
+                q('.md-sld-fill').style.transform = `scaleX(${v})`;
+                q('.md-sld-kn').style.left = `calc(${v} * (100% - 16px))`;
+                q('.md-pct').textContent = `${pct}%`;
+                q('.md-sld').setAttribute('aria-valuenow', String(pct));
+                const btn = q('[data-act="mute"]');
                 if (btn.dataset.icon !== name) { btn.dataset.icon = name; btn.innerHTML = icon(name, 17); }
             }
             if (el.vfill) {
-                el.vfill.style.transform = `scaleY(${v.toFixed(3)})`;
-                el.vrail.setAttribute('aria-valuenow', String(Math.round(v * 100)));
-                el.vrail.setAttribute('aria-valuetext', v > 0.001 ? `${Math.round(v * 100)}%` : '已静音');
+                const vs = v.toFixed(3), rk = `${vs}|${pct}|${+muted}`;
+                if (rk !== lastVRail) {
+                    lastVRail = rk;
+                    el.vfill.style.transform = `scaleY(${vs})`;
+                    el.vrail.setAttribute('aria-valuenow', String(pct));
+                    el.vrail.setAttribute('aria-valuetext', muted ? '已静音' : `${pct}%`);
+                }
             }
             if (el.volSlot) {
-                const name = volumeIcon(v);
-                const pct = Math.round(v * 100);
-                if (el.volSlot.dataset.icon !== name) {
-                    el.volSlot.dataset.icon = name;
-                    el.volSlot.innerHTML = icon(name, 18);
+                const sk = `${name}|${pct}|${+muted}`, b = el.volSlot;
+                if (sk !== lastVSlot) {
+                    lastVSlot = sk;
+                    if (b.dataset.icon !== name) { b.dataset.icon = name; b.innerHTML = icon(name, 18); }
+                    b.setAttribute('aria-label', muted ? '取消静音' : `静音（音量 ${pct}%）`);
+                    b.title = muted ? '已静音：点一下恢复（M）' : `音量 ${pct}%：滚轮调节，点一下静音（M）`;
                 }
-                el.volSlot.setAttribute('aria-label', v > 0.001 ? `静音（音量 ${pct}%）` : '取消静音');
-                el.volSlot.title = v > 0.001 ? `音量 ${pct}%：滚轮调节，点一下静音（M）` : '已静音：点一下恢复（M）';
             }
         };
 
