@@ -202,3 +202,41 @@ test('CJK 快路径与重复歌手/专辑缓存保留全角、片假名与代理
     assert.equal(idx.entry(1).artistGroup, 'Z');
     assert.equal(idx.entry(0).album, idx.entry(1).album);
 });
+
+test('Batch 55: listRows hoists albumCompare across albums, handles empty fields, and prunes stale cache entries', () => {
+    const TrackOrder = require('../Musicmodules/music-track-order.js');
+    const origOrder = globalThis.MusicTrackOrder;
+    let compareBuilds = 0;
+    globalThis.MusicTrackOrder = {
+        ...TrackOrder,
+        albumCompare(tracks, fallback) {
+            compareBuilds += 1;
+            return TrackOrder.albumCompare(tracks, fallback);
+        }
+    };
+    try {
+        const tracks = [
+            { path: '/a/02.flac', title: 'B', artist: '', album: 'Alb1', trackNo: 2 },
+            { path: '/a/01.flac', title: 'A', artist: 'X', album: 'Alb1', trackNo: 1 },
+            { path: '/b/02.flac', title: 'D', artist: 'Y', album: 'Alb2', trackNo: 2 },
+            { path: '/b/01.flac', title: 'C', artist: 'Y', album: 'Alb2', trackNo: 1 },
+            { path: '/c/01.flac', title: 'E', artist: '', album: 'Alb3', trackNo: 1 }
+        ];
+        const cache = new Map();
+        for (let i = 0; i < 80; i++) cache.set('/stale/' + i, { pinyin, title: 'x', artist: '', album: '', e: {} });
+        const idx = Index.createIndex(tracks, { pinyin, cache });
+        assert.equal(cache.size, tracks.length, 'stale cache entries removed when cache exceeds list.length + 64');
+        assert.deepEqual(idx.query('x', { kind: 'artist' }), [1], 'empty artist fields short-circuit without false matches');
+
+        const { rows } = Index.listRows({ tracks, index: idx, kind: 'album' });
+        assert.equal(compareBuilds, 1, 'albumCompare constructed once for all albums instead of once per album');
+        const trackOrder = rows.filter((r) => r.type === 'track').map((r) => r.i);
+        assert.deepEqual(trackOrder, [1, 0, 3, 2, 4], 'multi-album disc/track ordering preserved');
+
+        // Also verify albumCompare handles out-of-range indices gracefully
+        const cmp = TrackOrder.albumCompare(tracks, (a, b) => a - b);
+        assert.equal(typeof cmp(0, 99), 'number');
+    } finally {
+        globalThis.MusicTrackOrder = origOrder;
+    }
+});

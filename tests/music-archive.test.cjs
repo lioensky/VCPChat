@@ -223,3 +223,64 @@ test('Batch 52: archive-grid resets sticky header on dataset switch and archive-
     wall.destroy();
     w.close();
 });
+
+test('Batch 55: archive-list setKind suppresses duplicate reveal render and search skips no-op scrollTop writes', async () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const w = dom.window;
+    try {
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-index.js', 'utf8'));
+        w.eval(fs.readFileSync('Musicmodules/music-archive/archive-list.js', 'utf8'));
+        const host = w.document.getElementById('host');
+        const tracks = Array.from({ length: 40 }, (_, i) => ({
+            path: `/m/${i}.flac`,
+            title: `Song ${i}${i % 4 === 0 ? ' Live' : ''}`,
+            artist: `Artist ${i % 5}`,
+            album: `Album ${i % 6}`,
+            duration: 180
+        }));
+        const index = w.MusicArchiveIndex.createIndex(tracks);
+        const app = { playlist: tracks, customPlaylists: [] };
+        let list;
+        list = w.MusicArchiveList.create({
+            host, app, Index: w.MusicArchiveIndex,
+            getIndex: () => index,
+            getRecent: () => [],
+            onKind: () => {
+                // Simulate archive-view followListKind calling reveal synchronously inside onKind
+                list.reveal(12, null);
+            },
+            onPick() {}, onPlay() {}
+        });
+        const vp = list.el.querySelector('[data-l="viewport"]');
+        Object.defineProperty(vp, 'clientHeight', { value: 400, configurable: true });
+        let scrollTopVal = 0;
+        let scrollWrites = 0;
+        Object.defineProperty(vp, 'scrollTop', {
+            get: () => scrollTopVal,
+            set: (v) => { scrollWrites += 1; scrollTopVal = Number(v) || 0; },
+            configurable: true
+        });
+        list.rebuild();
+
+        // Search while already at scrollTop = 0: must not issue redundant scrollTop = 0 writes
+        scrollWrites = 0;
+        list.typeInto('Live');
+        await new Promise((r) => w.setTimeout(r, 50));
+        assert.equal(scrollWrites, 0, 'search starting at scrollTop=0 performs zero no-op scrollTop writes');
+        assert.equal(list.el.querySelectorAll('.archive-list-row').length > 0, true);
+
+        // Clear search, then switch kind to album: onKind calls reveal(12) synchronously;
+        // setKind should perform at most 1 scrollTop write instead of 3.
+        list.typeInto('');
+        await new Promise((r) => w.setTimeout(r, 50));
+        scrollWrites = 0;
+        list.setKind('album');
+        assert.ok(scrollWrites <= 1, `expected <= 1 scrollTop write during setKind with nested reveal, got ${scrollWrites}`);
+        assert.equal(list.el.dataset.kind, 'album');
+        list.destroy();
+    } finally {
+        w.close();
+    }
+});

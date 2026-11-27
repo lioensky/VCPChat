@@ -1394,3 +1394,46 @@ test('Batch 52: stage settings dedupes body2 rebuilds and fluid layer caches SVG
         window.close();
     }
 });
+
+test('Batch 55: palette skips playlist scan on empty recent, resolves song/playlist recents via single map, and queue open skips body2 marks', () => {
+    const { window, doc, app, dock } = setup();
+    try {
+        // 1. Opening palette with empty recent commands must not scan app.playlist
+        let playlistReads = 0;
+        const backing = app.playlist;
+        Object.defineProperty(app, 'playlist', {
+            configurable: true,
+            get() { playlistReads += 1; return backing; }
+        });
+        window.localStorage.removeItem('musicDockRecentCommands');
+        dock.openPalette();
+        assert.equal(playlistReads, 0, 'opening palette with empty recent history does not build track path map');
+        dock.closePalette?.();
+        doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+        // 2. With a saved song + playlist recent entry, both resolve via single byPath cache
+        app.customPlaylists = [{ id: 'fav', name: '收藏', tracks: [backing[0].path] }];
+        window.localStorage.setItem('musicDockRecentCommands', JSON.stringify([`song:${backing[1].path}`, 'playlist:fav']));
+        dock.openPalette();
+        const titles = [...doc.querySelectorAll('.md-cmd-title')].map((n) => n.textContent);
+        assert.ok(titles.some((t) => t.includes('Beta')), 'song recent item resolved from single byPath map');
+        assert.ok(titles.includes('收藏'), 'playlist recent item resolved from single byPath map');
+        doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+        // 3. Opening 播放列表 tab must not query hidden body2 for .md-seg marks
+        dock.openPanel('控制');
+        const body2 = doc.querySelector('[data-md="body2"]');
+        assert.ok(body2);
+        let body2MarkQueries = 0;
+        const origQsa = body2.querySelectorAll.bind(body2);
+        body2.querySelectorAll = (sel) => {
+            if (sel === '.md-seg') body2MarkQueries += 1;
+            return origQsa(sel);
+        };
+        dock.openPanel('播放列表');
+        assert.equal(body2MarkQueries, 0, 'queue tab skips placeMarks(el.body2) on hidden control panel');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
