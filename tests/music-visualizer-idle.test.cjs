@@ -259,3 +259,45 @@ test('Batch 58: visualizer deduplicates albumArtWrapper scale transform writes o
     app.destroyVisualizer();
     window.close();
 });
+
+test('Batch 68: vocalResizeObserver captures contentRect directly so drawVocalVisualizer resizes with 0 clientWidth reflows', () => {
+    const dom = new JSDOM('<!doctype html><body><canvas id="vocal-visualizer"></canvas></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    try {
+        const { window } = dom;
+        let roCb = null;
+        window.ResizeObserver = class {
+            constructor(cb) { roCb = cb; }
+            observe() {}
+            disconnect() {}
+        };
+        let clientReads = 0;
+        const canvas = window.document.getElementById('vocal-visualizer');
+        const noop = () => {};
+        canvas.getContext = () => ({ clearRect: noop, beginPath: noop, moveTo: noop, lineTo: noop, stroke: noop });
+        Object.defineProperty(canvas, 'clientWidth', { configurable: true, get: () => { clientReads += 1; return 320; } });
+        Object.defineProperty(canvas, 'clientHeight', { configurable: true, get: () => { clientReads += 1; return 60; } });
+        window.eval(`${source}\nwindow.setupVisualizer = setupVisualizer;`);
+        const app = {
+            particles: [], PARTICLE_COUNT: 4, easingFactor: 0.2,
+            visualizerCanvas: { width: 320, height: 60 },
+            visualizerCtx: { clearRect: noop }, visualizerColor: { r: 10, g: 20, b: 30 },
+            targetVisualizerData: [], currentVisualizerData: new Array(128).fill(0.25),
+            isPlaying: false, isTrackLoading: false, bassScale: 1.0
+        };
+        window.setupVisualizer(app);
+        roCb([{ contentRect: { width: 420, height: 72 } }]);
+        app.drawVocalVisualizer();
+        assert.equal(clientReads, 0, 'ResizeObserver contentRect avoids clientWidth/clientHeight reads');
+        assert.equal(canvas.width, 420);
+        assert.equal(canvas.height, 72);
+
+        roCb([{ contentRect: { width: 512, height: 84 } }]);
+        app.drawVocalVisualizer();
+        assert.equal(clientReads, 0, 'subsequent ResizeObserver updates avoid clientWidth/clientHeight reads');
+        assert.equal(canvas.width, 512);
+        assert.equal(canvas.height, 84);
+        app.destroyVisualizer();
+    } finally {
+        dom.window.close();
+    }
+});

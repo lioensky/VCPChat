@@ -365,3 +365,42 @@ test('Batch 65: monomorphic scorer parity, incremental narrowing cache, and Musi
     assert.equal(ordered[39], 0, '40 Song comes 40th');
     assert.deepEqual(ordered.slice(40), Array.from({ length: 40 }, (_, i) => 40 + i), 'unnumbered tracks stay after numbered in fallback order');
 });
+
+test('Batch 68: sortSpec caches Uint32Array order for title/artist and groupColumns/listRows preserve exact order without re-sorting single-group buckets', () => {
+    const tracks = [
+        { path: '/0', title: 'Zebra 10', artist: 'Singer B' },
+        { path: '/1', title: 'Zebra 2', artist: 'Singer A' },
+        { path: '/2', title: 'Alpha 12', artist: 'Singer B' },
+        { path: '/3', title: 'Alpha 2', artist: 'Singer A' },
+        { path: '/4', title: 'Alpha 1', artist: '' },
+        { path: '/5', title: 'Beta', artist: 'Singer A' },
+        { path: '/6', title: 'Gamma', artist: 'Singer C' }
+    ];
+    const all = tracks.map((_, i) => i);
+
+    // 1. Direct sortSpec path populates order Uint32Array and matches reference comparator order
+    const idx1 = Index.createIndex(tracks);
+    for (const mode of ['title', 'artist']) {
+        const sp = Index.sortSpec(idx1, { mode, tracks });
+        assert.ok(sp.order instanceof Uint32Array && sp.order.length === tracks.length, `${mode} sortSpec caches packed order`);
+        const colsSingle = Index.groupColumns(idx1, all, { minSize: 1, spec: sp });
+        const colsMerged = Index.groupColumns(idx1, all, { minSize: 3, spec: sp });
+        const rowsAll = Index.listRows({ tracks, index: idx1, kind: 'all', spec: sp });
+        const rowsArtist = Index.listRows({ tracks, index: idx1, kind: 'artist', spec: sp });
+
+        // Compare against manual spec without order fast-path
+        const noOrderSp = { ...sp, order: null };
+        assert.deepEqual(colsSingle, Index.groupColumns(idx1, all, { minSize: 1, spec: noOrderSp }), `${mode} minSize=1 matches reference`);
+        assert.deepEqual(colsMerged, Index.groupColumns(idx1, all, { minSize: 3, spec: noOrderSp }), `${mode} minSize=3 merged matches reference`);
+        assert.deepEqual(rowsAll, Index.listRows({ tracks, index: idx1, kind: 'all', spec: noOrderSp }), `${mode} listRows(all) matches reference`);
+        assert.deepEqual(rowsArtist, Index.listRows({ tracks, index: idx1, kind: 'artist', spec: noOrderSp }), `${mode} listRows(artist) matches reference`);
+    }
+
+    // 2. Chunked prepareSort path also populates cached order identically
+    const idx2 = Index.createIndex(tracks);
+    const step = Index.prepareSort(idx2, 'artist');
+    while (!step(50)) { /* drain */ }
+    const spArtist2 = Index.sortSpec(idx2, { mode: 'artist', tracks });
+    assert.ok(spArtist2.order instanceof Uint32Array && spArtist2.order.length === tracks.length, 'prepareSort populates artistOrder');
+    assert.deepEqual([...spArtist2.order], [...Index.sortSpec(idx1, { mode: 'artist', tracks }).order]);
+});

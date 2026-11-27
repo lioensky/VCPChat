@@ -419,3 +419,93 @@ test('Batch 59: WebDAV guards non-array entries, ignores stale openWebDavModal l
     dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
     dom.window.close();
 });
+
+test('Batch 68: WebDAV uses music note icon, resets import label on server switch, styles validation errors red, and refreshes archive on playWebDavTrack', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="modal"><div id="servers"></div><div id="files"></div><div id="crumb"></div>
+            <button id="scan">扫描全部音频</button><button id="import" disabled>导入到全部</button>
+            <button id="add-srv">添加</button>
+        </div>
+        <div id="dialog">
+            <input id="webdav-server-name" value="" />
+            <input id="webdav-server-url" value="" />
+            <input id="webdav-server-username" value="" />
+            <input id="webdav-server-password" value="" />
+            <p id="status"></p>
+            <button id="test">测试</button>
+            <button id="confirm">确定</button>
+        </div>
+    </body>`, { runScripts: 'outside-only' });
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    const doc = dom.window.document;
+    let refreshes = 0;
+    let queueEvents = 0;
+    let loaded = null;
+    doc.addEventListener('music-queue-change', () => { queueEvents += 1; });
+    const s1 = { id: 's1', name: 'NAS 1', url: 'http://nas1' };
+    const s2 = { id: 's2', name: 'NAS 2', url: 'http://nas2' };
+    const app = {
+        playlist: [],
+        stripAudioExtension: (s) => s,
+        renderPlaylist() {},
+        updateAllCount() {},
+        archiveView: { refresh() { refreshes += 1; } },
+        loadTrack: async (idx, play) => { loaded = { idx, play }; },
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavServerList: doc.getElementById('servers'),
+        webdavFileList: doc.getElementById('files'),
+        webdavBreadcrumb: doc.getElementById('crumb'),
+        webdavDialogStatus: doc.getElementById('status'),
+        webdavDialogTest: doc.getElementById('test'),
+        webdavDialogConfirm: doc.getElementById('confirm'),
+        webdavScanBtn: doc.getElementById('scan'),
+        webdavImportBtn: doc.getElementById('import'),
+        webdavAddServerBtn: doc.getElementById('add-srv'),
+        webdavServers: [s1, s2],
+        activeWebDavServer: s1,
+        webdavScannedTracks: [],
+        api: {
+            listWebdavDirectory: async () => ({ status: 'success', entries: [{ name: 'a.flac', href: '/a.flac', url: 'http://nas1/a.flac', isDir: false }] }),
+            loadWebdavTrack: async () => ({ status: 'success' })
+        }
+    };
+    dom.window.setupWebDav(app);
+    app.webdavServers = [s1, s2];
+    app.activeWebDavServer = s1;
+    app.setupWebDavHandlers();
+
+    // 1. Audio row uses 🎵 instead of stray 🎍
+    await app.browseWebDav('/');
+    assert.equal(doc.querySelector('#files .webdav-file-icon')?.textContent, '🎵');
+
+    // 2. Switching server resets stale scan-error import button label
+    app.webdavImportBtn.textContent = '扫描失败：超时';
+    app.renderWebDavServerList();
+    doc.querySelectorAll('#servers .webdav-server-name')[1].click();
+    assert.equal(app.webdavImportBtn.textContent, '导入到全部');
+
+    // 3. Validation errors color status red even after green success, and reopening resets color
+    app.webdavDialogStatus.style.color = 'var(--music-highlight)';
+    app.webdavDialogTest.click();
+    assert.equal(app.webdavDialogStatus.textContent, '请输入 URL');
+    assert.equal(app.webdavDialogStatus.style.color, 'rgb(238, 85, 85)');
+    app.webdavDialogStatus.style.color = 'var(--music-highlight)';
+    app.webdavDialogConfirm.click();
+    assert.equal(app.webdavDialogStatus.textContent, '名称和 URL 不能为空');
+    assert.equal(app.webdavDialogStatus.style.color, 'rgb(238, 85, 85)');
+    app.webdavAddServerBtn.click();
+    assert.equal(app.webdavDialogStatus.style.color, '');
+
+    // 4. playWebDavTrack notifies archiveView & music-queue-change when adding a new remote track
+    await app.playWebDavTrack({ name: 'song.flac', url: 'http://nas2/song.flac' });
+    assert.equal(app.playlist.length, 1);
+    assert.equal(refreshes, 1, 'playWebDavTrack refreshes archiveView for new remote track');
+    assert.equal(queueEvents, 1, 'playWebDavTrack dispatches music-queue-change for new remote track');
+    assert.deepEqual(loaded, { idx: 0, play: true });
+
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.close();
+});

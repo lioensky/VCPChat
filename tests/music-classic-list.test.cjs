@@ -479,6 +479,7 @@ test('Batch 65: music-ui renderWindow calibrates pitch in-place with single clie
     const list = doc.getElementById('playlist');
     let clientHeightReads = 0;
     let replaceChildrenCalls = 0;
+    let insertCalls = 0;
     Object.defineProperty(list, 'clientHeight', { get() { clientHeightReads += 1; return 360; }, configurable: true });
     Object.defineProperty(window.HTMLElement.prototype, 'offsetTop', {
         get() { return this.parentNode === list ? Array.prototype.indexOf.call(list.children, this) * ROW : 0; },
@@ -486,6 +487,8 @@ test('Batch 65: music-ui renderWindow calibrates pitch in-place with single clie
     });
     const origReplace = list.replaceChildren.bind(list);
     list.replaceChildren = (...args) => { replaceChildrenCalls += 1; return origReplace(...args); };
+    const origInsert = list.insertBefore.bind(list);
+    list.insertBefore = (...args) => { insertCalls += 1; return origInsert(...args); };
 
     const playlist = Array.from({ length: 200 }, (_, i) => ({ path: `/m/${i}.flac`, title: `Song ${i}.flac`, artist: `A${i}` }));
     const app = {
@@ -500,9 +503,10 @@ test('Batch 65: music-ui renderWindow calibrates pitch in-place with single clie
     window.setupUI(app);
     app.renderPlaylist();
 
-    // 360px / 36px = 10 visible + 40 buffer = 50 rows trimmed in-place from 80 fallback rows -> only 1 clientHeight read & 1 replaceChildren
+    // 360px / 36px = 10 visible + 40 buffer = 50 rows trimmed in-place from 80 fallback rows -> only 1 clientHeight read, 0 replaceChildren, single insert pass
     assert.equal(clientHeightReads, 1, 'initial renderWindow + pitch calibration reads clientHeight only once');
-    assert.equal(replaceChildrenCalls, 1, 'prefix trim avoids recursive renderWindow rebuild');
+    assert.equal(replaceChildrenCalls, 0, 'in-place patching avoids list.replaceChildren teardown');
+    assert.equal(insertCalls, 80, 'prefix trim avoids recursive renderWindow rebuild');
     assert.equal(list.children.length, 50, 'trimmed in-place to visible + buffer rows');
     assert.equal(list.lastElementChild.style.marginBottom, `${(200 - 50) * ROW}px`);
 
@@ -556,6 +560,86 @@ test('Batch 66: classic-list decorateRow clones template with pre-baked unliked 
     assert.equal(list.children[3].classList.contains('is-liked'), true);
     assert.equal(list.children[3].querySelector('.cl-like').getAttribute('aria-pressed'), 'true');
     assert.equal(list.children[3].querySelector('.cl-like').getAttribute('aria-label'), '取消喜欢');
+    window.dispatchEvent(new window.Event('beforeunload'));
+    window.close();
+});
+
+test('Batch 68: music-ui patches sorted rows in-place with zero DOM moves, visibilityWatch renders sorted in one pass, and classic-list lazily ranks ties', async () => {
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    const list = doc.getElementById('playlist');
+    Object.defineProperty(list, 'clientHeight', { get: () => 360, configurable: true });
+    Object.defineProperty(window.HTMLElement.prototype, 'offsetTop', {
+        get() { return this.parentNode === list ? Array.prototype.indexOf.call(list.children, this) * ROW : 0; },
+        configurable: true
+    });
+    let stripCalls = 0;
+    const playlist = Array.from({ length: 120 }, (_, i) => ({
+        path: `/m/${i}.flac`,
+        title: i % 20 === 0 ? '' : `Track ${String(120 - i).padStart(3, '0')}.flac`,
+        artist: i % 15 === 0 ? '' : `Artist ${i % 10}`,
+        duration: 100 + i
+    }));
+    const app = {
+        playlist,
+        playlistEl: list,
+        currentTrackIndex: 0,
+        stripAudioExtension: (s) => { stripCalls += 1; return String(s || '').replace(/\.flac$/i, ''); },
+        updateAllCount() {}
+    };
+    window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-app-hooks.js'), 'utf8'));
+    window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-ui.js'), 'utf8'));
+    window.eval(source);
+    window.setupUI(app);
+    window.setupMusicClassicList(app);
+
+    app.renderPlaylist();
+    const initialNodes = [...list.children];
+    assert.equal(initialNodes.length, 50);
+
+    // Clicking title sort (asc) reuses the exact 50 mounted <li> elements in-place with 0 insertBefore/remove calls
+    let inserts = 0;
+    let removes = 0;
+    const origInsert = list.insertBefore.bind(list);
+    list.insertBefore = (...args) => { inserts += 1; return origInsert(...args); };
+    const origRemove = window.Element.prototype.remove;
+    window.Element.prototype.remove = function () { if (this.parentNode === list) removes += 1; return origRemove.call(this); };
+
+    const titleBtn = doc.querySelector('.music-list-sort.is-title');
+    titleBtn.click(); // asc
+    const ascNodes = [...list.children];
+    assert.equal(ascNodes.length, 50);
+    assert.equal(ascNodes[0], initialNodes[0], 'first <li> node stays mounted in-place on sort');
+    assert.equal(ascNodes[49], initialNodes[49], 'last <li> node stays mounted in-place on sort');
+    assert.equal(inserts, 0, 'FIFO in-place patching performs 0 insertBefore on disjoint sort');
+    assert.equal(removes, 0, 'FIFO in-place patching performs 0 remove on equal-window sort');
+    assert.equal(ascNodes[0].querySelector('.cl-title').textContent, 'Track 001');
+
+    // Clicking title sort again (desc) lazily builds ranks and reverses accurately while keeping empty titles at end
+    titleBtn.click(); // desc
+    assert.equal(list.children[0].querySelector('.cl-title').textContent, 'Track 119');
+    const stripBeforeCacheHit = stripCalls;
+    titleBtn.click(); // asc (sortCache hit: only music-ui renders 50 visible rows, 0 sorting stripAudioExtension)
+    assert.equal(stripCalls - stripBeforeCacheHit, 50, 'sortCache avoids sorting stripAudioExtension calls (only 50 visible rows rendered)');
+    // Passing a new array copy bypasses sortCache; WeakMap title cache + music-ui row reuse yield 0 stripAudioExtension calls
+    const stripBeforeCopy = stripCalls;
+    app.renderPlaylist(playlist.slice());
+    assert.equal(stripCalls - stripBeforeCopy, 0, 'WeakMap title cache avoids re-stripping 120 tracks on sortCache miss');
+
+    // Archive -> classic transition with active sort renders sorted in a single pass via app.renderPlaylist
+    window.Element.prototype.remove = origRemove;
+    list.insertBefore = origInsert;
+    doc.body.classList.add('music-archive-on');
+    app.renderPlaylist();
+    let renderCalls = 0;
+    const prevRender = app.renderPlaylist;
+    app.renderPlaylist = (...args) => { renderCalls += 1; return prevRender(...args); };
+    doc.body.classList.remove('music-archive-on');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(renderCalls, 1, 'visibilityWatch delegates deferred flush to app.renderPlaylist so sorted classic list renders once');
+    assert.equal(list.children[0].querySelector('.cl-title').textContent, 'Track 001');
+
     window.dispatchEvent(new window.Event('beforeunload'));
     window.close();
 });

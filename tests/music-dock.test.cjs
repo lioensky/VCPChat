@@ -1732,3 +1732,34 @@ test('Batch 67: queue drawer reads precomputed rows.upcoming count without filte
         window.close();
     }
 });
+
+test('Batch 68: openPanel skips body placeMarks on queue tab and closePanel cancels pending openMarksRaf', () => {
+    const rafs = new Map();
+    let nextRaf = 1;
+    const cancelled = [];
+    const slides = [];
+    const { window, doc, dock } = setup((_app, w) => {
+        w.requestAnimationFrame = (cb) => { const id = nextRaf++; rafs.set(id, cb); return id; };
+        w.cancelAnimationFrame = (id) => { cancelled.push(id); rafs.delete(id); };
+        w.MusicFluid = { slide: (el, to, opts) => slides.push({ el, to, key: opts?.key }), bud() {}, melt() {}, snapshot: () => null };
+    });
+    try {
+        let bodySegQueries = 0;
+        const body = doc.querySelector('.md-body');
+        const origQsa = body.querySelectorAll.bind(body);
+        body.querySelectorAll = (sel) => {
+            if (sel === '.md-seg') bodySegQueries += 1;
+            return origQsa(sel);
+        };
+        dock.openPanel('播放列表');
+        assert.equal(bodySegQueries, 0, 'queue tab skips placeMarks(el.body) query');
+        const beforeClose = cancelled.length;
+        dock.closePanel();
+        assert.ok(cancelled.length > beforeClose, 'closePanel cancels pending openMarksRaf');
+        for (const cb of [...rafs.values()]) cb(16);
+        assert.equal(slides.length, 0, 'cancelled openMarksRaf does not place marks after panel closed');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

@@ -198,3 +198,64 @@ test('Batch 59: createAmbientPixi skips WebGL initialization when container is h
     await app.createAmbientPixi();
     assert.equal(made.length, 1, 'visible container initializes PixiJS once');
 });
+
+test('Batch 68: AmbientPixi skips redundant WebGL redraws when paused under reduced motion and redraws on resize/color/play', async () => {
+    let renders = 0;
+    let clears = 0;
+    class Graphics {
+        clear() { clears += 1; return this; }
+        circle() { return this; }
+        fill() { return this; }
+        moveTo() { return this; }
+        quadraticCurveTo() { return this; }
+        lineTo() { return this; }
+        stroke() { return this; }
+    }
+    class Application {
+        async init() {
+            this.canvas = { style: {} };
+            this.stage = { addChild() {} };
+            this.renderer = { resize() {} };
+        }
+        stop() {}
+        render() { renders += 1; }
+        destroy() {}
+    }
+    const container = { hidden: false, innerHTML: '', appendChild() {}, clientWidth: 800, clientHeight: 600 };
+    const win = {
+        PIXI: { Application, Graphics },
+        MusicMotion: { reduced: () => true },
+        devicePixelRatio: 1,
+        addEventListener() {}
+    };
+    const context = vm.createContext({
+        window: win, queueMicrotask, setTimeout, clearTimeout, console,
+        document: { getElementById: (id) => (id === 'ambient-wave-container' ? container : null), body: { classList: { contains: () => true } } }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), context);
+    const app = { isPlaying: false, visualizerColor: { r: 0, g: 195, b: 255 }, currentVisualizerData: [] };
+    win.setupAmbientPixi(app);
+    await settle();
+
+    // First static paused + reduced-motion update draws once; subsequent ticks skip clear & render
+    app.updateAmbientPixi(0.016);
+    assert.equal(renders, 1);
+    const clearsAfterFirst = clears;
+    app.updateAmbientPixi(0.016);
+    app.updateAmbientPixi(0.016);
+    assert.equal(renders, 1, 'settled paused reduced-motion ticks skip redundant WebGL render');
+    assert.equal(clears, clearsAfterFirst, 'settled paused reduced-motion ticks skip Graphics.clear');
+
+    // Theme color change wakes static cache and draws once
+    app.visualizerColor = { r: 240, g: 80, b: 120 };
+    app.updateAmbientPixi(0.016);
+    assert.equal(renders, 2, 'accent color change redraws static frame once');
+    app.updateAmbientPixi(0.016);
+    assert.equal(renders, 2);
+
+    // Resize invalidates static cache and draws once
+    container.clientWidth = 1024;
+    app.ambientPixiController.resize();
+    app.updateAmbientPixi(0.016);
+    assert.equal(renders, 3, 'resize invalidates static cache and redraws once');
+});
