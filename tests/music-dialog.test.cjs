@@ -109,3 +109,29 @@ test('no native confirm()/alert() is called directly in the music window', () =>
     }
     assert.match(read('Musicmodules/music.html'), /music-dock\/music-dialog\.js/);
 });
+
+test('navigation keys stay trapped inside MusicDialog and Left/Right switch between confirm and cancel buttons', async () => {
+    const { window, doc } = setup();
+    let leaked = 0;
+    doc.addEventListener('keydown', () => { leaked += 1; });
+    const pending = window.MusicDialog.confirm({ title: '确认操作' });
+    const overlay = doc.querySelector('.dialog-overlay.music-dialog');
+    const confirmBtn = overlay.querySelector('.dialog-btn.confirm');
+    const cancelBtn = overlay.querySelector('.dialog-btn.cancel');
+    assert.equal(doc.activeElement, confirmBtn);
+
+    key(window, 'ArrowDown');
+    key(window, 'ArrowUp');
+    key(window, 'Home');
+    key(window, 'End');
+    key(window, 'PageDown');
+    assert.equal(leaked, 0, 'navigation keys do not leak to archive/stage behind dialog');
+
+    key(window, 'ArrowLeft');
+    assert.equal(doc.activeElement, cancelBtn, 'ArrowLeft toggles focus to cancel');
+    key(window, 'ArrowRight');
+    assert.equal(doc.activeElement, confirmBtn, 'ArrowRight toggles focus back to confirm');
+    key(window, 'Escape');
+    assert.equal(await pending, false);
+    assert.equal(leaked, 0);
+});

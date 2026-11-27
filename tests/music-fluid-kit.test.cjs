@@ -337,3 +337,36 @@ test('createMusicFluidMarker skips redundant measureContainer on repeated moveTo
     marker.destroy();
     dom.window.close();
 });
+
+test('createMusicFluidMarker respects MusicMotion.reduced override over matchMedia and ignores calls after destroy', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="box"><span id="a">A</span><span id="b">B</span></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    let rafCalls = 0;
+    window.requestAnimationFrame = () => ++rafCalls;
+    window.cancelAnimationFrame = () => {};
+    window.matchMedia = () => ({ matches: true });
+    window.MusicMotion = { reduced: () => false };
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-marker.js'), 'utf8'));
+
+    const box = doc.getElementById('box');
+    const spanA = doc.getElementById('a');
+    const spanB = doc.getElementById('b');
+    Object.defineProperty(box, 'clientHeight', { configurable: true, get: () => 40 });
+    Object.defineProperty(box, 'scrollWidth', { configurable: true, get: () => 200 });
+    box.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 40, right: 200, bottom: 40 });
+    spanA.getBoundingClientRect = () => ({ left: 10, top: 4, width: 80, height: 24, right: 90, bottom: 28 });
+    spanB.getBoundingClientRect = () => ({ left: 110, top: 4, width: 80, height: 24, right: 190, bottom: 28 });
+
+    const marker = window.createMusicFluidMarker(box);
+    marker.moveTo(spanA);
+    assert.equal(rafCalls, 0, 'initial placement is instant');
+    marker.moveTo(spanB);
+    assert.equal(rafCalls, 1, 'explicit MusicMotion.reduced()=false animates even when OS matchMedia matches');
+
+    marker.destroy();
+    marker.moveTo(spanA);
+    marker.relayout();
+    assert.equal(rafCalls, 1, 'destroyed marker ignores subsequent moveTo/relayout');
+    dom.window.close();
+});

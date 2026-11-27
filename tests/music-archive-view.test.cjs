@@ -1528,7 +1528,7 @@ test('the toolbar has 进入舞台 where 正在播放 used to be; Ctrl+L still f
     f.close();
 });
 
-test('archive list render batches viewport reads before edge-class writes and destroy disconnects observers/listeners', () => {
+test('archive list render batches viewport reads before edge-class writes and destroy disconnects observers/listeners', async () => {
     const roInstances = [];
     const f = fixture({
         setup: (w) => {
@@ -1558,12 +1558,20 @@ test('archive list render batches viewport reads before edge-class writes and de
         if (name === 'at-top' || name === 'at-bottom') ops.push(`write:${name}`);
         return origToggle(name, force);
     };
+    // 等过微任务让 rebuild 的同帧 scrollTop 快照过期，再验证常规 reveal 严格先读后写
+    await Promise.resolve();
     f.view.list.reveal(0, 'all', { quiet: true });
     const firstWrite = ops.findIndex((o) => o.startsWith('write:'));
     const lastReadBefore = ops.reduce((idx, o, i) => (i < firstWrite && o.startsWith('read:') ? i : idx), -1);
     assert.ok(firstWrite >= 2, `expected reads before writes, got ${ops.join(',')}`);
     assert.ok(ops.slice(0, firstWrite).includes('read:scrollTop') && ops.slice(0, firstWrite).includes('read:clientHeight'), `both viewport metrics read before class toggles: ${ops.join(',')}`);
     assert.ok(lastReadBefore >= 0);
+
+    // 紧跟 rebuild() 的同帧 reveal(已选中行, quiet) 应复用刚同步的 scrollTop，不再触发重排或冗余写入
+    f.view.list.rebuild();
+    ops.length = 0;
+    f.view.list.reveal(f.app.playlist.length ? 0 : -1, 'all', { quiet: true });
+    assert.ok(!ops.includes('read:scrollTop'), `same-tick reveal after rebuild skips scrollTop reflow: ${ops.join(',')}`);
 
     assert.ok(roInstances.length > 0, 'ResizeObserver created');
     f.view.destroy();

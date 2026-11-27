@@ -189,3 +189,27 @@ test('fresh toast avoids forced offsetWidth reflow and ignores rAF if closed imm
         window.close();
     }
 });
+
+test('toast setPosition updates inline CSS vars on .mtst-layer and same-kind progress update keeps DOM intact', () => {
+    const { window, doc, toast } = setup();
+    try {
+        toast.setPosition(520, 480);
+        toast.show({ id: 'scan', kind: 'progress', message: '正在扫描 1 / 100', progress: 0.01 });
+        const layer = doc.querySelector('.mtst-layer');
+        assert.equal(layer.style.getPropertyValue('--md-toast-x'), '520px');
+        assert.equal(layer.style.getPropertyValue('--md-toast-max'), '480px');
+        toast.setPosition(400, 360);
+        assert.equal(layer.style.getPropertyValue('--md-toast-x'), '400px');
+        assert.equal(layer.style.getPropertyValue('--md-toast-max'), '360px');
+
+        const msgNode = doc.querySelector('[data-key="scan"] .mtst-msg');
+        const iconSvg = doc.querySelector('[data-key="scan"] .mtst-ic svg');
+        // 即使再次传入相同的 kind: 'progress'，也不应销毁重建 DOM 与 SVG
+        toast.show({ id: 'scan', kind: 'progress', message: '正在扫描 50 / 100', progress: 0.5 });
+        assert.equal(doc.querySelector('[data-key="scan"] .mtst-msg'), msgNode, 'same-kind update preserves message node');
+        assert.equal(doc.querySelector('[data-key="scan"] .mtst-ic svg'), iconSvg, 'same-kind update preserves icon SVG');
+        assert.equal(msgNode.textContent, '正在扫描 50 / 100');
+    } finally {
+        window.close();
+    }
+});
