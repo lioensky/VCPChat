@@ -25,8 +25,12 @@
         let focused = false;
         let previewing = false;
         let injectionPending = false;
+        let lastInjectionSig = '';
         const renderInjection = () => {
             const enabled = state.musicInfoInjectionEnabled !== false;
+            const sig = `${enabled ? 1 : 0}|${injectionPending ? 1 : 0}`;
+            if (sig === lastInjectionSig) return;
+            lastInjectionSig = sig;
             root.classList.toggle('is-injection-disabled', !enabled);
             trigger.title = injectionPending ? '正在保存音乐信息注入状态…'
                 : `音乐信息注入已${enabled ? '开启' : '关闭'}；右键${enabled ? '关闭' : '开启'}`;
@@ -34,58 +38,84 @@
             trigger.setAttribute('aria-busy', String(injectionPending));
         };
         let lastExpandedWidth = 0;
+        let chromeMetricsDirty = true;
+        let cachedChromeWidth = 0;
+        const number = value => parseFloat(value) || 0;
+        const readChromeWidth = () => {
+            const titleStyle = getComputedStyle(title);
+            const detailsStyle = getComputedStyle(details);
+            const surfaceStyle = getComputedStyle(surface);
+            let buttonWidth = 0;
+            for (let i = 0; i < buttons.length; i += 1) {
+                buttonWidth += buttons[i].getBoundingClientRect().width;
+            }
+            return buttonWidth
+                + number(titleStyle.paddingLeft) + number(titleStyle.paddingRight)
+                + number(detailsStyle.columnGap) * (details.children.length - 1)
+                + number(surfaceStyle.borderLeftWidth) + number(surfaceStyle.borderRightWidth)
+                + number(surfaceStyle.paddingLeft) + number(surfaceStyle.paddingRight);
+        };
         const updateWidth = () => {
             if (disposed || root.hidden) return;
             const currentTitle = title.textContent;
             if (measure.textContent !== currentTitle) measure.textContent = currentTitle;
-            const number = value => parseFloat(value) || 0;
-            const titleStyle = getComputedStyle(title);
-            const detailsStyle = getComputedStyle(details);
-            const surfaceStyle = getComputedStyle(surface);
-            const buttonWidth = buttons.reduce((sum, button) =>
-                sum + button.getBoundingClientRect().width, 0);
-            const width = Math.ceil(measure.getBoundingClientRect().width + buttonWidth
-                + number(titleStyle.paddingLeft) + number(titleStyle.paddingRight)
-                + number(detailsStyle.columnGap) * (details.children.length - 1)
-                + number(surfaceStyle.borderLeftWidth) + number(surfaceStyle.borderRightWidth)
-                + number(surfaceStyle.paddingLeft) + number(surfaceStyle.paddingRight));
+            if (chromeMetricsDirty) {
+                const measured = readChromeWidth();
+                cachedChromeWidth = measured;
+                if (measured > 0) chromeMetricsDirty = false;
+            }
+            const width = Math.ceil(measure.getBoundingClientRect().width + cachedChromeWidth);
             if (width !== lastExpandedWidth) {
                 lastExpandedWidth = width;
                 root.style.setProperty('--music-capsule-expanded-width', `${width}px`);
             }
         };
         const scheduleWidth = () => {
+            chromeMetricsDirty = true;
             if (disposed || root.hidden || resizeRaf) return;
             resizeRaf = requestAnimationFrame(() => { resizeRaf = 0; updateWidth(); });
         };
+        const onFontsDone = () => { chromeMetricsDirty = true; updateWidth(); };
         // 监听外层容器而非胶囊自身：避免展开/收起宽度过渡动画每一帧都触发 ResizeObserver 强制同步布局
         const resizeTarget = root.parentElement || document.documentElement;
         const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleWidth) : null;
         if (resizeTarget) resizeObserver?.observe(resizeTarget);
         window.addEventListener('resize', scheduleWidth);
-        document.fonts?.addEventListener('loadingdone', updateWidth);
-        document.fonts?.ready.then(() => { if (!disposed) updateWidth(); });
+        document.fonts?.addEventListener('loadingdone', onFontsDone);
+        document.fonts?.ready.then(() => { if (!disposed) onFontsDone(); });
+        let lastExpanded = null;
         const renderExpansion = () => {
-            const expanded = state.open && (hovering || focused || previewing);
+            const expanded = Boolean(state.open && (hovering || focused || previewing));
+            if (expanded === lastExpanded && root.classList.contains('is-expanded') === expanded) return;
+            lastExpanded = expanded;
             root.classList.toggle('is-expanded', expanded);
             trigger.setAttribute('aria-expanded', String(expanded));
             details.inert = !expanded;
         };
+        let lastPlaying = null;
         const apply = next => {
             if (disposed || !next) return;
             const changed = next.open && next.trackKey && next.trackKey !== state.trackKey;
+            const reopened = Boolean(next.open) && !state.open;
             state = next;
             root.hidden = !state.open;
+            if (reopened) chromeMetricsDirty = true;
             renderInjection();
             const nextTitle = state.title || '尚未选择曲目';
-            const needsMeasure = title.textContent !== nextTitle || !measure.textContent;
-            title.textContent = nextTitle;
-            title.title = nextTitle;
+            const needsMeasure = title.textContent !== nextTitle || !measure.textContent || reopened;
+            if (title.textContent !== nextTitle) {
+                title.textContent = nextTitle;
+                title.title = nextTitle;
+            }
             if (state.open && needsMeasure) updateWidth();
-            toggle.setAttribute('aria-label', state.playing ? '暂停' : '播放');
-            playIcon.hidden = state.playing;
-            pauseIcon.hidden = !state.playing;
-            root.classList.toggle('is-playing', state.playing);
+            const playing = Boolean(state.playing);
+            if (playing !== lastPlaying) {
+                lastPlaying = playing;
+                toggle.setAttribute('aria-label', playing ? '暂停' : '播放');
+                playIcon.hidden = playing;
+                pauseIcon.hidden = !playing;
+                root.classList.toggle('is-playing', playing);
+            }
             if (!state.open) {
                 clearTimeout(timer);
                 previewing = hovering = focused = false;
@@ -134,6 +164,7 @@
                 if (!disposed) {
                     renderInjection();
                     if (failure) {
+                        lastInjectionSig = '';
                         trigger.title = '音乐信息注入状态保存失败，请右键重试';
                         trigger.setAttribute('aria-label', trigger.title);
                     }
@@ -156,7 +187,7 @@
             unsubscribe?.();
             resizeObserver?.disconnect();
             window.removeEventListener('resize', scheduleWidth);
-            document.fonts?.removeEventListener('loadingdone', updateWidth);
+            document.fonts?.removeEventListener('loadingdone', onFontsDone);
             measure.remove();
         }, { once: true });
     }

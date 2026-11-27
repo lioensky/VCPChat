@@ -98,12 +98,19 @@
             if (changed) announce(next ? next.path : null);
         };
         let saveTimer = null;
+        let dirty = false;
+        const persistTables = () => {
+            dirty = false;
+            unsaved = 0;
+            try { storage?.setItem(KEY, JSON.stringify({ v: 1, t: table })); } catch (e) { /* 存不下也不影响播放 */ }
+            try { storage?.setItem(LOG_KEY, JSON.stringify({ v: 1, d: log })); } catch (e) { /* 同上 */ }
+        };
         const save = () => {
+            dirty = true;
             if (saveTimer !== null) return;
             saveTimer = global.setTimeout(() => {
                 saveTimer = null;
-                try { storage?.setItem(KEY, JSON.stringify({ v: 1, t: table })); } catch (e) { /* 存不下也不影响播放 */ }
-                try { storage?.setItem(LOG_KEY, JSON.stringify({ v: 1, d: log })); } catch (e) { /* 同上 */ }
+                persistTables();
             }, 1500);
         };
         const announce = (path) => {
@@ -231,8 +238,16 @@
             // 首页「接着听」：{ track, position, at } 或 null（那首歌已不在曲库里也返回 null）
             resume() {
                 if (!resume) return null;
-                const k = normPath(resume.path);
-                const track = (app.playlist || []).find((t) => normPath(t && t.path) === k);
+                const list = app.playlist || [];
+                const raw = resume.path;
+                let track = null;
+                for (let i = 0; i < list.length; i += 1) {
+                    if (list[i] && list[i].path === raw) { track = list[i]; break; }
+                }
+                if (!track) {
+                    const k = normPath(raw);
+                    track = list.find((t) => normPath(t && t.path) === k) || null;
+                }
                 return track ? { track, position: resume.position, at: resume.at } : null;
             },
             summary({ days = 0 } = {}) {
@@ -271,8 +286,7 @@
             sync,
             flush() {
                 if (saveTimer !== null) { global.clearTimeout(saveTimer); saveTimer = null; }
-                try { storage?.setItem(KEY, JSON.stringify({ v: 1, t: table })); } catch (e) { /* 同上 */ }
-                try { storage?.setItem(LOG_KEY, JSON.stringify({ v: 1, d: log })); } catch (e) { /* 同上 */ }
+                if (dirty || unsaved > 0) persistTables();
                 if (resume) setResume(resume, true);
             }
         };

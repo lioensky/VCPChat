@@ -6,19 +6,29 @@
 (function (global) {
     'use strict';
 
+    const EDGE_SIDES = ['top', 'right', 'bottom', 'left'];
+    const POW_LUT_SIZE = 1024;
+    const POW_LUT = new Float32Array(POW_LUT_SIZE + 1);
+    for (let i = 0; i <= POW_LUT_SIZE; i += 1) {
+        const v = i / POW_LUT_SIZE;
+        POW_LUT[i] = v > 0.025 ? Math.min(1, Math.pow(v - 0.025, 0.78)) : 0;
+    }
+
     function create(ctx) {
         const { app, root, elements, state, scope, clamp } = ctx;
 
         // The spectrum lives in the outer band of the window, so each side has a
         // strip canvas of its own instead of one canvas the size of the window.
-        const EDGE_SIDES = ['top', 'right', 'bottom', 'left'];
         const edgeStrips = {};
         EDGE_SIDES.forEach((side, index) => {
             const canvas = index === 0 ? elements.edgeCanvas : elements.edgeCanvas?.cloneNode(false);
             const context = canvas?.getContext?.('2d', { alpha: true });
             if (!canvas || !context) return;
-            if (index > 0) elements.edgeCanvas.after(canvas);
-            edgeStrips[side] = { canvas, context, x: 0, y: 0, width: 0, height: 0 };
+            if (index > 0) {
+                elements.edgeCanvas.after(canvas);
+                scope?.add?.(() => canvas.remove());
+            }
+            edgeStrips[side] = { canvas, context, x: 0, y: 0, width: 0, height: 0, lookup: null };
         });
         const edgeContext = edgeStrips.left ? edgeStrips.top.context : null;
         // The orbiting light of the edge ring: its gradient is drawn once and
@@ -43,6 +53,8 @@
             verticalCount: 40,
             drawnAt: 0,
             pausedAt: 0,
+            lastColorKey: '',
+            lastQuality: '',
             blank: false,
             top: new Float32Array(0),
             right: new Float32Array(0),
@@ -104,6 +116,9 @@
                     });
                     // Draw in window coordinates, whichever strip it is.
                     strip.context.setTransform(dpr, 0, 0, dpr, -strip.x * dpr, -strip.y * dpr);
+                    strip.context.lineCap = 'round';
+                    strip.context.lineJoin = 'round';
+                    strip.lookup = null;
                 });
                 edgeCanvasState.width = width;
                 edgeCanvasState.height = height;
@@ -120,31 +135,42 @@
             return true;
         };
 
-        const clearEdgeStrips = () => EDGE_SIDES.forEach((side) => {
-            const strip = edgeStrips[side];
-            strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
-        });
+        const clearEdgeStrips = () => {
+            for (let i = 0; i < EDGE_SIDES.length; i += 1) {
+                const strip = edgeStrips[EDGE_SIDES[i]];
+                strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
+            }
+        };
 
-        const edgeLookupCache = new Map();
-        const getEdgeLookup = (side, count, offset, specLen) => {
-            const key = `${side}|${count}|${specLen}`;
-            let entry = edgeLookupCache.get(key);
-            if (entry) return entry;
-            const ratios = new Float32Array(count);
-            const fades = new Float32Array(count);
+        const getEdgeLookup = (side, count, offset, specLen, inset, width, height, amplitude) => {
+            const strip = edgeStrips[side];
+            let entry = strip?.lookup;
+            if (entry && entry.count === count && entry.specLen === specLen
+                && entry.width === width && entry.height === height
+                && entry.inset === inset && entry.amplitude === amplitude) {
+                return entry;
+            }
+            const fixed = new Float32Array(count);
+            const scaledFades = new Float32Array(count);
             const centers = new Int32Array(count);
             const denom = Math.max(1, count - 1);
             const maxIdx = Math.max(0, specLen - 1);
+            const span = (side === 'top' || side === 'bottom' ? width : height) - inset * 2;
+            const reverse = side === 'bottom' || side === 'left';
+            const edgeLen = side === 'bottom' ? width : height;
             for (let index = 0; index < count; index += 1) {
                 const ratio = index / denom;
-                ratios[index] = ratio;
-                fades[index] = Math.pow(Math.sin(ratio * Math.PI), 0.42);
+                fixed[index] = reverse ? edgeLen - inset - ratio * span : inset + ratio * span;
+                scaledFades[index] = Math.pow(Math.sin(ratio * Math.PI), 0.42) * amplitude;
                 const wrappedRatio = (clamp(ratio) * 0.86 + offset) % 1;
                 centers[index] = Math.floor(Math.pow(wrappedRatio, 1.55) * maxIdx);
             }
-            entry = { ratios, fades, centers, radius: Math.max(1, Math.floor(specLen / 180)) };
-            if (edgeLookupCache.size > 16) edgeLookupCache.clear();
-            edgeLookupCache.set(key, entry);
+            entry = {
+                count, specLen, width, height, inset, amplitude,
+                fixed, scaledFades, centers,
+                radius: Math.max(1, Math.floor(specLen / 180))
+            };
+            if (strip) strip.lookup = entry;
             return entry;
         };
 
@@ -167,19 +193,22 @@
             amplitude,
             idleScale
         ) => {
-            const count = points.length / 2;
+            const count = points.length >> 1;
             const specLen = spectrum?.length || 0;
-            const lookup = specLen ? getEdgeLookup(side, count, offset, specLen) : null;
-            const span = side === 'top' || side === 'bottom'
-                ? width - inset * 2
-                : height - inset * 2;
-            const radius = lookup ? lookup.radius : 1;
+            const lookup = getEdgeLookup(side, count, offset, specLen, inset, width, height, amplitude);
+            const { fixed, scaledFades, centers, radius } = lookup;
             const maxIdx = specLen - 1;
+            const isTop = side === 'top';
+            const isBottom = side === 'bottom';
+            const isLeft = side === 'left';
+            const baseAxis = isTop || isLeft ? inset : (isBottom ? height - inset : width - inset);
+            const sign = isTop || isLeft ? 1 : -1;
+            const horizontal = isTop || isBottom;
+            let hasMotion = false;
             for (let index = 0; index < count; index += 1) {
-                const ratio = lookup ? lookup.ratios[index] : index / Math.max(1, count - 1);
-                let energy = 0;
-                if (lookup) {
-                    const center = lookup.centers[index];
+                let disp = 0;
+                if (specLen > 0) {
+                    const center = centers[index];
                     const lo = center > radius ? center - radius : 0;
                     const hi = center + radius < maxIdx ? center + radius : maxIdx;
                     let total = 0;
@@ -188,52 +217,55 @@
                         if (v > 0) total += v;
                     }
                     const value = total / (hi - lo + 1);
-                    const sample = value > 0.025 ? clamp(Math.pow(value - 0.025, 0.78)) : 0;
-                    energy = sample * lookup.fades[index] * idleScale;
+                    if (value > 0.025) {
+                        const lutIdx = value >= 1 ? POW_LUT_SIZE : (value * POW_LUT_SIZE) | 0;
+                        const sample = POW_LUT[lutIdx];
+                        if (sample > 0) {
+                            disp = sample * scaledFades[index] * idleScale;
+                            if (disp > 0.05) hasMotion = true;
+                        }
+                    }
                 }
-                const coordinateIndex = index * 2;
-                if (side === 'top') {
-                    points[coordinateIndex] = inset + ratio * span;
-                    points[coordinateIndex + 1] = inset + energy * amplitude;
-                } else if (side === 'bottom') {
-                    points[coordinateIndex] = width - inset - ratio * span;
-                    points[coordinateIndex + 1] = height - inset - energy * amplitude;
-                } else if (side === 'left') {
-                    points[coordinateIndex] = inset + energy * amplitude;
-                    points[coordinateIndex + 1] = height - inset - ratio * span;
+                const coordinateIndex = index << 1;
+                if (horizontal) {
+                    points[coordinateIndex] = fixed[index];
+                    points[coordinateIndex + 1] = baseAxis + sign * disp;
                 } else {
-                    points[coordinateIndex] = width - inset - energy * amplitude;
-                    points[coordinateIndex + 1] = inset + ratio * span;
+                    points[coordinateIndex] = baseAxis + sign * disp;
+                    points[coordinateIndex + 1] = fixed[index];
                 }
             }
+            return hasMotion;
         };
 
-        const strokeEdgePair = (edgeContext, points, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow) => {
-            if (!edgeContext || points.length < 4) return;
-            edgeContext.beginPath();
-            edgeContext.moveTo(points[0], points[1]);
-            for (let index = 2; index < points.length - 2; index += 2) {
-                edgeContext.quadraticCurveTo(
-                    points[index],
-                    points[index + 1],
-                    (points[index] + points[index + 2]) * 0.5,
-                    (points[index + 1] + points[index + 3]) * 0.5
-                );
+        const strokeEdgePair = (ctx2d, points, hasMotion, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow) => {
+            if (!ctx2d || points.length < 4) return;
+            ctx2d.beginPath();
+            ctx2d.moveTo(points[0], points[1]);
+            if (hasMotion) {
+                for (let index = 2; index < points.length - 2; index += 2) {
+                    ctx2d.quadraticCurveTo(
+                        points[index],
+                        points[index + 1],
+                        (points[index] + points[index + 2]) * 0.5,
+                        (points[index + 1] + points[index + 3]) * 0.5
+                    );
+                }
             }
-            edgeContext.lineTo(points[points.length - 2], points[points.length - 1]);
-            edgeContext.lineCap = 'round';
-            edgeContext.lineJoin = 'round';
+            ctx2d.lineTo(points[points.length - 2], points[points.length - 1]);
             // The wide soft pass stands in for the glow filters the canvas used to have.
-            edgeContext.lineWidth = 2.8;
-            edgeContext.strokeStyle = glowStroke;
-            edgeContext.shadowColor = glowShadow;
-            edgeContext.shadowBlur = lightGlow ? 8 : 18;
-            edgeContext.stroke();
-            edgeContext.lineWidth = 1.05;
-            edgeContext.strokeStyle = mainStroke;
-            edgeContext.shadowColor = lightGlow ? 'transparent' : mainShadow;
-            edgeContext.shadowBlur = lightGlow ? 0 : 3.5;
-            edgeContext.stroke();
+            ctx2d.lineWidth = 2.8;
+            ctx2d.strokeStyle = glowStroke;
+            ctx2d.shadowColor = glowShadow;
+            ctx2d.shadowBlur = lightGlow ? 8 : 18;
+            ctx2d.stroke();
+            ctx2d.lineWidth = 1.05;
+            ctx2d.strokeStyle = mainStroke;
+            ctx2d.shadowColor = lightGlow ? 'transparent' : mainShadow;
+            ctx2d.shadowBlur = lightGlow ? 0 : 3.5;
+            ctx2d.stroke();
+            ctx2d.shadowBlur = 0;
+            ctx2d.shadowColor = 'transparent';
         };
 
         const release = () => {
@@ -241,14 +273,15 @@
             edgeCanvasState.height = 0;
             edgeCanvasState.drawnAt = 0;
             edgeCanvasState.pausedAt = 0;
+            edgeCanvasState.lastColorKey = '';
             edgeCanvasState.blank = true;
-            edgeLookupCache.clear();
-            EDGE_SIDES.forEach((side) => {
-                const strip = edgeStrips[side];
-                if (!strip) return;
+            for (let i = 0; i < EDGE_SIDES.length; i += 1) {
+                const strip = edgeStrips[EDGE_SIDES[i]];
+                if (!strip) continue;
+                strip.lookup = null;
                 strip.canvas.width = 1;
                 strip.canvas.height = 1;
-            });
+            }
         };
 
         const drawEdgeSpectrum = (frame) => {
@@ -274,9 +307,19 @@
             }
             if (!resizeEdgeCanvas(frame)) return;
             const { width, height, inset, horizontalAmplitude, verticalAmplitude, horizontalCount, verticalCount } = edgeCanvasState;
+            const color = global.MusicStageModeUtils.resolveAccent(app);
+            const rgb = `${color.r}, ${color.g}, ${color.b}`;
+            const quality = state.config.quality || 'standard';
+            // If track/theme accent or quality tier changed while paused, wake the settled paused border once to match.
+            if (rgb !== edgeCanvasState.lastColorKey || quality !== edgeCanvasState.lastQuality) {
+                edgeCanvasState.lastColorKey = rgb;
+                edgeCanvasState.lastQuality = quality;
+                edgeCanvasState.pausedAt = 0;
+                edgeCanvasState.drawnAt = 0;
+            }
             // A paused stage holds a faint, still line: let it settle for a
             // moment after the pause, then leave the canvases alone.
-            // While playing, pace 4-canvas shadowBlur rasterization to match the quality tier.
+            // While playing, pace 4-canvas glow rasterization to match the quality tier.
             const now = Number.isFinite(frame.now) ? frame.now : performance.now();
             if (frame.isPlaying) {
                 edgeCanvasState.pausedAt = 0;
@@ -293,30 +336,28 @@
             clearEdgeStrips();
 
             const spectrum = frame.audio.spectrum;
-            const color = global.MusicStageModeUtils.resolveAccent(app);
             const idleScale = frame.isPlaying ? 1 : 0.12;
 
             const top = ensureEdgeBuffer('top', horizontalCount);
             const right = ensureEdgeBuffer('right', verticalCount);
             const bottom = ensureEdgeBuffer('bottom', horizontalCount);
             const left = ensureEdgeBuffer('left', verticalCount);
-            fillEdgePoints(top, 'top', spectrum, 0, inset, width, height, horizontalAmplitude, idleScale);
-            fillEdgePoints(right, 'right', spectrum, 0.11, inset, width, height, verticalAmplitude, idleScale);
-            fillEdgePoints(bottom, 'bottom', spectrum, 0.21, inset, width, height, horizontalAmplitude, idleScale);
-            fillEdgePoints(left, 'left', spectrum, 0.34, inset, width, height, verticalAmplitude, idleScale);
+            const mTop = fillEdgePoints(top, 'top', spectrum, 0, inset, width, height, horizontalAmplitude, idleScale);
+            const mRight = fillEdgePoints(right, 'right', spectrum, 0.11, inset, width, height, verticalAmplitude, idleScale);
+            const mBottom = fillEdgePoints(bottom, 'bottom', spectrum, 0.21, inset, width, height, horizontalAmplitude, idleScale);
+            const mLeft = fillEdgePoints(left, 'left', spectrum, 0.34, inset, width, height, verticalAmplitude, idleScale);
 
             const alpha = 0.28 + frame.audio.power * 0.62;
             const glowAlpha = alpha * 0.5;
-            const rgb = `${color.r}, ${color.g}, ${color.b}`;
             const glowStroke = `rgba(${rgb}, ${glowAlpha.toFixed(3)})`;
             const glowShadow = `rgba(${rgb}, ${Math.min(0.9, glowAlpha * 1.45).toFixed(3)})`;
             const mainStroke = `rgba(${rgb}, ${alpha.toFixed(3)})`;
             const mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45).toFixed(3)})`;
-            const lightGlow = state.config.quality === 'energy-saving';
-            strokeEdgePair(edgeStrips.top.context, top, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
-            strokeEdgePair(edgeStrips.right.context, right, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
-            strokeEdgePair(edgeStrips.bottom.context, bottom, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
-            strokeEdgePair(edgeStrips.left.context, left, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            const lightGlow = quality === 'energy-saving';
+            strokeEdgePair(edgeStrips.top.context, top, mTop, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            strokeEdgePair(edgeStrips.right.context, right, mRight, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            strokeEdgePair(edgeStrips.bottom.context, bottom, mBottom, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            strokeEdgePair(edgeStrips.left.context, left, mLeft, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
         };
 
         return {

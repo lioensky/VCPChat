@@ -357,6 +357,7 @@
     // schedule cuts or change a deterministic camera pose.
     const createAudioOnset = () => {
         const bins = new Float32Array(48);
+        let binsDirty = false;
         let lastTime = null, track = null, source = null, playing = false;
         let baseline = 0.02, energy = 0, hitAt = -Infinity, hitStrength = 0, hits = 0;
         const state = { impact: 0, energy: 0, time: 0, reset: true, onsets: 0 };
@@ -373,12 +374,20 @@
                 const spectrum = frame.audio?.spectrum || EMPTY_WORDS;
                 if (reset || resumed || (frame.isPlaying && dt > 0)) {
                     let flux = 0;
-                    for (let i = 0; i < bins.length; i++) {
-                        const value = clamp(spectrum[Math.floor(i / bins.length * spectrum.length)]);
-                        flux += Math.max(0, value - bins[i]);
-                        bins[i] = value;
+                    const specLen = spectrum.length;
+                    if (specLen > 0) {
+                        binsDirty = true;
+                        const scale = specLen / bins.length;
+                        for (let i = 0; i < bins.length; i++) {
+                            const value = clamp(spectrum[Math.floor(i * scale)]);
+                            flux += Math.max(0, value - bins[i]);
+                            bins[i] = value;
+                        }
+                        flux /= bins.length;
+                    } else if (binsDirty) {
+                        bins.fill(0);
+                        binsDirty = false;
                     }
-                    flux /= bins.length;
                     if (reset || resumed) {
                         baseline = 0.02;
                         hitAt = -Infinity;
@@ -495,6 +504,8 @@
         let lastPlaying = null;
         let lastPowerText = '';
         let lastPhaseText = '';
+        const lastBarScale = new Array(barCount).fill('');
+        const lastBarOpacity = new Array(barCount).fill('');
         const reducedMotionQuery = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const update = (frame, state = {}) => {
             if (destroyed) return;
@@ -539,7 +550,8 @@
             const specLen = spectrum.length;
             const radius = hasSpectrum ? Math.max(1, Math.floor(specLen / 128)) : 1;
             const motionScale = Math.min(1, motion);
-            barsList.forEach((bar, index) => {
+            for (let index = 0; index < barsList.length; index += 1) {
+                const bar = barsList[index];
                 let energy;
                 if (hasSpectrum) {
                     const center = Math.min(specLen - 1, Math.floor(barSpectrumRatios[index] * specLen));
@@ -557,11 +569,18 @@
                     energy = 0.16 + Math.max(0, wave) * 0.22;
                 }
                 const settled = playing ? energy * motionScale : 0;
-                const length = 0.28 + settled * 0.72;
-                // Translate from the centre first; scaling only changes the stroke length.
-                bar.style.transform = `rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(${length.toFixed(4)})`;
-                bar.style.opacity = (0.3 + settled * 0.5).toFixed(4);
-            });
+                const lengthStr = (0.28 + settled * 0.72).toFixed(4);
+                if (lengthStr !== lastBarScale[index]) {
+                    lastBarScale[index] = lengthStr;
+                    // Translate from the centre first; scaling only changes the stroke length.
+                    bar.style.transform = `rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(${lengthStr})`;
+                }
+                const opStr = (0.3 + settled * 0.5).toFixed(4);
+                if (opStr !== lastBarOpacity[index]) {
+                    lastBarOpacity[index] = opStr;
+                    bar.style.opacity = opStr;
+                }
+            }
         };
         const destroy = () => {
             if (destroyed) return;

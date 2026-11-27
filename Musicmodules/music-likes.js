@@ -110,13 +110,16 @@
                 menu.classList.remove('visible');
                 if (track) app.toggleLike(track);
             });
+            const labelEl = item.querySelector('span');
+            const likeOnEl = item.querySelector('.like-on');
+            const likeOffEl = item.querySelector('.like-off');
             const paint = () => {
                 const track = app.playlist?.[app.contextMenuTrackIndex];
                 const on = app.isLiked(track);
                 item.classList.toggle('is-liked', on);
-                item.querySelector('span').textContent = on ? '取消喜欢' : '喜欢';
-                item.querySelector('.like-on').style.display = on ? '' : 'none';
-                item.querySelector('.like-off').style.display = on ? 'none' : '';
+                labelEl.textContent = on ? '取消喜欢' : '喜欢';
+                likeOnEl.style.display = on ? '' : 'none';
+                likeOffEl.style.display = on ? 'none' : '';
             };
             (global.MusicAppHooks || require('./music-app-hooks.js')).before(app, 'showContextMenu', 'likes', () => paint());
         }

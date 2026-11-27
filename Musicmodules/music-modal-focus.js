@@ -16,7 +16,9 @@
 
     const OVERLAY = '.music-modal-overlay, .dialog-overlay';
     const FOCUSABLE = 'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+    const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
     const openers = new WeakMap();
+    const focusRafs = new WeakMap();
 
     // 多数弹窗用 visible 开关，WebDAV 两个弹窗用的是 active：两种都算开着，不然开着的弹窗会被设成 inert，点什么都没反应
     const isOpen = (o) => o.classList.contains('visible') || o.classList.contains('active');
@@ -49,6 +51,14 @@
         return mark.root.querySelectorAll(mark.sel)[mark.index] || null;
     };
 
+    const cancelFocusRaf = (o) => {
+        const id = focusRafs.get(o);
+        if (id) {
+            global.cancelAnimationFrame?.(id);
+            focusRafs.delete(o);
+        }
+    };
+
     const sync = (o) => {
         const open = isOpen(o);
         o.inert = !open;
@@ -57,8 +67,14 @@
             openers.set(o, from && from !== document.body && !o.contains(from) ? remember(from) : null);
             // 打开的代码可能在去掉 inert 之前就 focus 过（那次会落空），这里补上
             focusInside(o);
-            global.requestAnimationFrame?.(() => { if (isOpen(o)) focusInside(o); });
+            cancelFocusRaf(o);
+            const id = global.requestAnimationFrame?.(() => {
+                focusRafs.delete(o);
+                if (isOpen(o)) focusInside(o);
+            });
+            if (id) focusRafs.set(o, id);
         } else if (!open && openers.has(o)) {
+            cancelFocusRaf(o);
             const back = recall(openers.get(o));
             openers.delete(o);
             const lost = document.activeElement === document.body || o.contains(document.activeElement);
@@ -71,26 +87,40 @@
         const observer = new MutationObserver((records) => {
             for (const r of records) if (r.target.matches?.(OVERLAY)) sync(r.target);
         });
+        // 弹窗开着时截住方向键/翻页键和单键快捷键，免得透到后面的档案目录或播放控制；
+        // 放在弹窗根节点冒泡阶段，保留弹窗内输入框和按钮的原生键盘行为，也不拦 Esc/Tab。
+        const onOverlayKey = (e) => {
+            if (!isOpen(e.currentTarget) || e.key === 'Escape' || e.key === 'Tab') return;
+            if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                if (NAV_KEYS.has(e.key) || e.key.length === 1) e.stopPropagation();
+            }
+        };
         for (const o of overlays) {
             observer.observe(o, { attributes: true, attributeFilter: ['class'] });
+            o.addEventListener('keydown', onOverlayKey);
             sync(o);
         }
-        global.addEventListener?.('beforeunload', () => observer.disconnect(), { once: true });
-        document.addEventListener('keydown', (e) => {
-            if (e.key !== 'Tab' || e.defaultPrevented) return;
+        const onDocCaptureKey = (e) => {
+            if (e.defaultPrevented) return;
             const o = topOverlay();
             if (!o) return;
-            const list = focusables(o);
-            if (!list.length) { e.preventDefault(); return; }
-            const at = list.indexOf(document.activeElement);
-            const next = e.shiftKey
-                ? (at <= 0 ? list[list.length - 1] : null)
-                : (at < 0 || at === list.length - 1 ? list[0] : null);
-            if (next) { e.preventDefault(); next.focus({ preventScroll: true }); }
-        }, true);
+            if (e.key === 'Tab') {
+                const list = focusables(o);
+                if (!list.length) { e.preventDefault(); return; }
+                const at = list.indexOf(document.activeElement);
+                const next = e.shiftKey
+                    ? (at <= 0 ? list[list.length - 1] : null)
+                    : (at < 0 || at === list.length - 1 ? list[0] : null);
+                if (next) { e.preventDefault(); next.focus({ preventScroll: true }); }
+                return;
+            }
+            if (!o.contains(e.target) && !e.ctrlKey && !e.metaKey && !e.altKey && NAV_KEYS.has(e.key)) {
+                e.stopPropagation();
+            }
+        };
         // Esc 关最上面那个弹窗（按它自己的关闭／取消钮，走原来的关闭逻辑）。
         // WebDAV 两个弹窗和编辑歌单以前按 Esc 没反应；已经自己处理过 Esc 的弹窗，到这里时已经关了。
-        document.addEventListener('keydown', (e) => {
+        const onDocEscape = (e) => {
             if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
             const o = topOverlay();
             if (!o) return;
@@ -98,7 +128,18 @@
             if (!close || close.disabled) return;
             e.preventDefault();
             close.click();
-        });
+        };
+        document.addEventListener('keydown', onDocCaptureKey, true);
+        document.addEventListener('keydown', onDocEscape);
+        global.addEventListener?.('beforeunload', () => {
+            observer.disconnect();
+            for (const o of overlays) {
+                cancelFocusRaf(o);
+                o.removeEventListener('keydown', onOverlayKey);
+            }
+            document.removeEventListener('keydown', onDocCaptureKey, true);
+            document.removeEventListener('keydown', onDocEscape);
+        }, { once: true });
     };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch, { once: true });

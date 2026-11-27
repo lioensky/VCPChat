@@ -1033,10 +1033,19 @@ body.music-stage-active #custom-title-bar .music-stage-mode-picker {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .music-stage-home-icon {
+    .music-stage-home-icon,
+    .music-stage-mode-picker-chevron,
+    .music-stage-mode-picker-toggle,
+    body.music-stage-active #custom-title-bar .music-stage-home {
         transition: none;
     }
+    .music-stage-mode-menu {
+        animation: none;
+    }
 }
-body.music-reduce-motion .music-stage-home-icon {
+body.music-reduce-motion .music-stage-home-icon,
+body.music-reduce-motion .music-stage-mode-picker-chevron,
+body.music-reduce-motion .music-stage-mode-picker-toggle,
+body.music-reduce-motion.music-stage-active #custom-title-bar .music-stage-home {
     transition: none;
 }
