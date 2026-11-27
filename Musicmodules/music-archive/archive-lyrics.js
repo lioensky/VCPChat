@@ -330,16 +330,23 @@
             }
             state.words = node;
         };
+        let vpH = 0;
+        const viewportH = () => {
+            if (vpH > 0) return vpH;
+            const h = r.viewport.clientHeight;
+            if (h > 0) vpH = h;
+            return h;
+        };
         const place = (animate = true) => {
             // 歌曲末尾保留一点渐隐空间，让前面的歌词填满余下的可视区域。
-            const max = Math.max(0, r.track.offsetHeight - r.viewport.clientHeight + 16);
+            const max = Math.max(0, r.track.offsetHeight - viewportH() + 16);
             const y = Math.max(0, Math.min(max, state.shift + state.manual));
             r.track.style.transition = !animate || reducedMotion() ? 'none' : '';
             r.track.style.transform = `translateY(${-y}px)`;
         };
         const updateShift = () => {
             const y = state.offsets[state.index] || 0;
-            const height = r.viewport.clientHeight;
+            const height = viewportH();
             const row = r.track.children[state.index];
             const rowBottom = row ? row.offsetTop + row.offsetHeight : 0;
             state.shift = Math.max(0, y - height * ANCHOR, rowBottom - height + 16);
@@ -366,6 +373,7 @@
         const resizeObserver = new ResizeObserver(() => {
             indexBox = null;
             const w = r.viewport.clientWidth;
+            vpH = r.viewport.clientHeight;
             if (w && w !== fitWidth) { fitWidth = w; fitSoon(); }
             if (!state.shown) return;
             const previousShift = state.shift;
@@ -409,7 +417,17 @@
             else if (!want && state.timer) { clearInterval(state.timer); state.timer = 0; }
         };
         const onVis = () => { schedule(); if (!document.hidden && state.shown) tick(); };
+        const onLyricsMutated = () => {
+            // AI 翻译完成、调整偏移或切换译文显示时立刻重建/刷新右侧歌词
+            state.source = null;
+            sync();
+            schedule();
+            if (state.shown) tick();
+        };
         document.addEventListener('visibilitychange', onVis);
+        document.addEventListener('music-lyrics-translated', onLyricsMutated);
+        document.addEventListener('music-lyrics-offset', onLyricsMutated);
+        document.addEventListener('music-lyrics-translation', onLyricsMutated);
 
         /* 滚轮翻看时（5 秒后自己滑回）下方出现「回到当前句」：点一下马上回去 */
         r.back?.addEventListener('click', () => {
@@ -426,7 +444,11 @@
                 return;
             }
             const p = e.target.closest('p[data-k]');
-            const line = p && state.lines[Number(p.dataset.k)];
+            if (!p) return;
+            // 正在拖选歌词文字（想复制）时不触发跳播，与经典歌词区行为一致
+            const picked = typeof global.getSelection === 'function' ? global.getSelection() : null;
+            if (picked && !picked.isCollapsed && p.contains(picked.anchorNode)) return;
+            const line = state.lines[Number(p.dataset.k)];
             if (!line || typeof app.seekTo !== 'function') return;
             const t = Number(line.time) || 0;
             app.seekTo(t);
@@ -448,7 +470,22 @@
             tick,
             setAllowed: (on) => { state.allowed = Boolean(on); sync(); },
             get shown() { return state.shown; },
-            destroy: () => { document.removeEventListener('visibilitychange', onVis); document.removeEventListener('music-desktop-lyrics-change', syncDesk); clearTimeout(deskInitTimer); resizeObserver.disconnect(); cancelAnimationFrame(fitRaf); if (state.timer) clearInterval(state.timer); state.timer = 0; clearTimeout(state.noneTimer); clearTimeout(state.noneRefresh); clearTimeout(state.manualTimer); el.remove(); },
+            destroy: () => {
+                document.removeEventListener('visibilitychange', onVis);
+                document.removeEventListener('music-desktop-lyrics-change', syncDesk);
+                document.removeEventListener('music-lyrics-translated', onLyricsMutated);
+                document.removeEventListener('music-lyrics-offset', onLyricsMutated);
+                document.removeEventListener('music-lyrics-translation', onLyricsMutated);
+                clearTimeout(deskInitTimer);
+                resizeObserver.disconnect();
+                cancelAnimationFrame(fitRaf);
+                if (state.timer) clearInterval(state.timer);
+                state.timer = 0;
+                clearTimeout(state.noneTimer);
+                clearTimeout(state.noneRefresh);
+                clearTimeout(state.manualTimer);
+                el.remove();
+            },
             debug: () => ({ shown: state.shown, none: state.none, lines: state.lines.length, index: state.index, ticking: Boolean(state.timer) })
         };
     };

@@ -104,6 +104,11 @@
         const moving = () => Math.abs(s.hs - s.tgS) + Math.abs(s.he - s.tgE) + Math.abs(s.ts - s.tgS) + Math.abs(s.te - s.tgE) > 0.6;
         const step = (now) => {
             s.frame = 0;
+            if (doc.hidden) {
+                s.hs = s.ts = s.tgS; s.he = s.te = s.tgE; s.vel = 0;
+                draw();
+                return;
+            }
             const dt = Math.min(0.25, (now - s.last) / 1000 || 0.016); // 低帧率时几帧内收尾
             s.last = now;
             // 头快尾慢；速度越大，尾巴越拖
@@ -135,15 +140,22 @@
                 : [r.top - box.top + container.scrollTop, r.bottom - box.top + container.scrollTop];
         };
 
+        let hidden = false;
         return {
             // opts.instant：直接落位，不拉细颈（跳到很远的地方时用）
             moveTo(target, opts) {
                 const sp = span(target);
-                if (!sp) { svg.style.opacity = '0'; return; }
+                if (!sp) {
+                    if (!hidden) { hidden = true; svg.style.opacity = '0'; }
+                    return;
+                }
+                const sameTarget = s.placed && !hidden && !s.frame
+                    && Math.abs(sp[0] - s.tgS) < 0.2 && Math.abs(sp[1] - s.tgE) < 0.2;
+                if (sameTarget) return;
                 measureContainer();
-                svg.style.opacity = '';
+                if (hidden) { hidden = false; svg.style.opacity = ''; }
                 s.tgS = sp[0]; s.tgE = sp[1];
-                if (!s.placed || reduced() || opts?.instant) {
+                if (!s.placed || doc.hidden || reduced() || opts?.instant) {
                     if (s.frame) { win.cancelAnimationFrame(s.frame); s.frame = 0; }
                     s.hs = s.ts = s.tgS; s.he = s.te = s.tgE; s.placed = true;
                     draw();

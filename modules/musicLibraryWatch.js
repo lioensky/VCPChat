@@ -173,6 +173,7 @@ function createLibraryWatch({
                 if (!(await exists(root)) || gen !== generation) continue;
                 try {
                     const w = watch(root, (_type, file) => {
+                        if (gen !== generation) return;
                         const f = String(file || '');
                         // 文件夹本身的变化（拷进来一整张专辑）也算；别的文件（封面、歌词）不管
                         if (f && path.extname(f) && !AUDIO_EXT.test(f)) return;

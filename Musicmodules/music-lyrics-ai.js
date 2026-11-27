@@ -82,7 +82,7 @@
                 if (manual) toast(`没法翻译：${result.message}`);
                 return;
             }
-            if (result?.status !== 'success' || !Array.isArray(result.translations) || result.translations.length !== texts.length) {
+            if (result?.status !== 'success' || !Array.isArray(result.translations) || !result.translations.length || result.translations.length > texts.length) {
                 if (manual) toast(`翻译没有成功：${result?.message || '模型没有回应'}`);
                 return;
             }

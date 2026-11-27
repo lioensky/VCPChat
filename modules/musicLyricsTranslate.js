@@ -60,16 +60,22 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
         const key = keyOf(clean);
         const dir = getCacheDir && getCacheDir();
         const file = dir ? path.join(dir, `${key}.json`) : null;
+        const padLength = (arr) => (arr.length < lines.length ? arr.concat(new Array(lines.length - arr.length).fill('')) : arr);
         if (file) {
             const cached = await readCache(file);
-            if (cached && cached.length === clean.length) return { status: 'success', translations: cached, cached: true };
+            if (cached && cached.length === clean.length) return { status: 'success', translations: padLength(cached), cached: true };
         }
         const nowMs = now();
         if (!force && (failedUntil.get(key) || 0) > nowMs) return { status: 'error', message: '刚刚翻译失败过，稍后再试' };
         if (failedUntil.size > 64) {
             for (const [k, until] of failedUntil) if (until <= nowMs) failedUntil.delete(k);
         }
-        if (inflight.has(key)) return inflight.get(key);
+        if (inflight.has(key)) {
+            const shared = await inflight.get(key);
+            return shared?.status === 'success' && Array.isArray(shared.translations)
+                ? { ...shared, translations: padLength(shared.translations) }
+                : shared;
+        }
 
         const job = (async () => {
             const settings = (await getSettings()) || {};
@@ -78,6 +84,7 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
             if (!settings.vcpServerUrl) return { status: 'unavailable', message: '没有配置 VCP 服务器地址' };
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+            timer.unref?.();
             try {
                 const response = await fetchImpl(completionsUrl(settings.vcpServerUrl), {
                     method: 'POST',
@@ -103,7 +110,7 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
                 if (file) {
                     try { await fs.outputJson(file, { v: 1, model, at: now(), translations }); } catch (e) { /* 缓存写不进去不影响这次 */ }
                 }
-                return { status: 'success', translations, model };
+                return { status: 'success', translations: padLength(translations), model };
             } catch (error) {
                 failedUntil.set(key, now() + FAIL_COOLDOWN_MS);
                 const message = error?.name === 'AbortError' ? '翻译超时' : (error?.message || String(error));

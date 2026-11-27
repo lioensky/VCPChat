@@ -580,8 +580,12 @@
             root.className = 'music-intro';
             document.body.appendChild(root);
             dropCover();
-            root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-out', fill: 'forwards' })
-                .finished.catch(() => {}).then(() => root.remove());
+            if (typeof root.animate === 'function') {
+                root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 320, easing: 'ease-out', fill: 'forwards' })
+                    .finished.catch(() => {}).then(() => root.remove());
+            } else {
+                setTimeout(() => root.remove(), 320);
+            }
         };
 
         const playIntro = (kind) => {
@@ -743,7 +747,7 @@
         };
         // Esc 由舞台宿主自行处理，在它前面拦截以保留过渡动画。
         const onEscape = (event) => {
-            if (event.key !== 'Escape' || event.defaultPrevented || !adoptHost() || !app.stageHost.active) return;
+            if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || !adoptHost() || !app.stageHost.active) return;
             if (document.querySelector('.music-stage-settings.is-open, .music-stage-mode-switcher.is-open')) return; // 先关设置或模式菜单，交给宿主
             event.preventDefault();
             event.stopPropagation();
@@ -796,7 +800,9 @@
         watchModeRoot();
         if (!modeObserver) document.addEventListener('DOMContentLoaded', watchModeRoot, { once: true });
         global.addEventListener?.('beforeunload', () => {
+            stop(true);
             if (waitTimer) { clearInterval(waitTimer); waitTimer = null; }
+            document.removeEventListener('DOMContentLoaded', watchModeRoot);
             document.removeEventListener('keydown', onEscape);
             bodyObserver.disconnect();
             modeObserver?.disconnect();
