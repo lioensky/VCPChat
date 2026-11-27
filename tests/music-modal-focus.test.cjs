@@ -897,3 +897,100 @@ test('Batch 79: eq-presets dedupes syncDelete writes & hoists isCustom slider re
         dom.window.close();
     }
 });
+
+test('Batch 84: modal-focus blocks out-of-modal single-key leaks, closing dialogs mark data-closing=1, folders delegates actions, and band comparisons match', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <button id="bg-btn">bg</button>
+        <div id="m1" class="music-modal-overlay"><button id="m1-ok">OK</button></div>
+        <select id="eq-preset-select"><option value="flat">平坦</option></select>
+        <input id="eq-32" value="0"><input id="eq-64" value="0">
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        window.eval(fs.readFileSync('Musicmodules/music-modal-focus.js', 'utf8'));
+        await tick(window);
+
+        // 1. Open static overlay blocks single-key shortcut dispatched outside modal from reaching document listeners
+        const leaked = [];
+        doc.addEventListener('keydown', (e) => { if (!e.defaultPrevented) leaked.push(e.key); });
+        const bg = doc.getElementById('bg-btn');
+        bg.focus();
+        bg.dispatchEvent(new window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+        assert.deepEqual(leaked, [' '], 'single-key reaches document when no modal is open');
+
+        leaked.length = 0;
+        const m1 = doc.getElementById('m1');
+        m1.classList.add('visible');
+        await tick(window);
+        bg.dispatchEvent(new window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+        bg.dispatchEvent(new window.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true }));
+        assert.deepEqual(leaked, [], 'open static modal blocks single-key shortcuts dispatched outside modal');
+        m1.classList.remove('visible');
+        await tick(window);
+
+        // 2. Dialog close marks data-closing=1 and music-folders delegates row button clicks
+        const folderCalls = [];
+        const t1 = { path: 'D:\\Music\\a.flac', title: 'Alpha.flac', artist: 'A', duration: 180 };
+        const t2 = { path: 'D:\\Music\\a.mp3', title: 'Alpha.mp3', artist: 'A', duration: 180 };
+        const app = {
+            playlist: [t1, t2],
+            currentTrackIndex: 0,
+            eqBands: { 32: 0, 64: 0 },
+            eqPresets: { flat: { 32: 0, 64: 0 }, zeroExtra: { 32: 0, 64: 0, 125: 0 }, bump: { 32: 0, 64: 0, 125: 3 } },
+            eqPresetSelect: doc.getElementById('eq-preset-select'),
+            populateEqPresets() {}, applyEqPreset() {}, syncEqPresetSelect() {}, updateUIWithState() {},
+            api: {
+                musicLibraryFolders: async (req) => {
+                    folderCalls.push(req);
+                    if (req.op === 'list') return { ok: true, folders: [{ path: 'D:\\Music', exists: true, count: 2 }] };
+                    return { ok: true };
+                },
+                showMusicInFolder: async () => ({ ok: true }),
+                setMusicChannels: async (p) => ({ status: 'success', channels: p })
+            }
+        };
+        for (const f of ['music-app-hooks.js', 'music-radio.js', 'music-dupes.js', 'music-folders.js', 'music-track-file.js', 'music-channels.js', 'music-eq-presets.js']) {
+            window.eval(fs.readFileSync(`Musicmodules/${f}`, 'utf8'));
+        }
+        window.MusicDupes.setupMusicDupes(app);
+        window.MusicFolders.setupMusicFolders(app);
+        window.MusicTrackFile.setupMusicTrackFile(app);
+        window.MusicChannels.setupMusicChannels(app);
+        window.MusicEqPresets.setupMusicEqPresets(app, { storage: { getItem: () => '[]', setItem() {} } });
+
+        // Closing dupes / track-file / channels marks data-closing="1"
+        for (const [openFn, sel] of [
+            [() => app.openDupesView(), '.mdupes'],
+            [() => app.openTrackInfo(0), '.minfo'],
+            [() => app.channels.open(), '.mchan']
+        ]) {
+            openFn();
+            const overlay = doc.querySelector(sel).closest('.dialog-overlay');
+            overlay.querySelector('.mstats-close').click();
+            assert.equal(overlay.dataset.closing, '1', `${sel} marks data-closing=1 on close`);
+        }
+
+        // Folders delegated click invokes open action and marks data-closing=1 on close
+        app.openLibraryFolders();
+        await tick(window);
+        await tick(window);
+        const foldOverlay = doc.querySelector('.mfold').closest('.dialog-overlay');
+        const openBtn = foldOverlay.querySelector('button[data-mfold-act="open"]');
+        assert.ok(openBtn, 'folders renders delegated open button');
+        openBtn.click();
+        await tick(window);
+        assert.ok(folderCalls.some((c) => c && c.op === 'open' && c.path === 'D:\\Music'), 'delegated open click invokes musicLibraryFolders open');
+        foldOverlay.querySelector('.mstats-close').click();
+        assert.equal(foldOverlay.dataset.closing, '1', '.mfold marks data-closing=1 on close');
+
+        // Zero-allocation bandsEqual: matches asymmetric zero keys and rejects asymmetric non-zero keys
+        assert.equal(app.eqUserPresets.isCustom(), false, 'matches flat/zeroExtra preset with extra 0 key');
+        app.eqPresets = { bump: { 32: 0, 64: 0, 125: 3 } };
+        assert.equal(app.eqUserPresets.isCustom(), true, 'rejects preset with extra non-zero key');
+
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

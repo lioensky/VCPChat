@@ -367,3 +367,38 @@ test('Batch 78: music-intro renderTransit and renderStill deduplicate constant p
     assert.deepEqual(t2.leftovers(), CLEAN);
     t2.close();
 });
+
+test('Batch 84: music-intro deduplicates steady scan SVG writes and clears snap state on beforeunload', async () => {
+    const t = setup();
+    let ready = false;
+    t.host.getDebugSnapshot = () => ({ hasModeInstance: true, mode: { initialized: ready, fallbackMode: false } });
+    t.host.enter();
+    const root = t.doc.querySelector('.music-intro.is-transit');
+    assert.ok(root);
+    // Advance until waiting at the hold gate where scan local time is clamped
+    await t.advance(1200);
+    assert.ok(root.hasAttribute('data-waiting'), 'transit is holding at waiting gate');
+    const paths = [...root.querySelectorAll('svg path')];
+    const outerPath = paths[0];
+    let outerDWrites = 0;
+    const origSetAttr = outerPath.setAttribute.bind(outerPath);
+    outerPath.setAttribute = (name, val) => {
+        if (name === 'd') outerDWrites += 1;
+        return origSetAttr(name, val);
+    };
+    await t.advance(400);
+    assert.equal(outerDWrites, 0, 'clamped scan arc skips redundant d attribute writes across waiting frames');
+    ready = true;
+    await t.advance(1600);
+    assert.deepEqual(t.leftovers(), CLEAN);
+    t.close();
+
+    // beforeunload during deferred exit snap removes mi-stage-snap and cancels pending snapRaf
+    const t2 = setup({ startInStage: true });
+    t2.host.exit();
+    await t2.advance(700); // crosses gate where scheduleSnapRelease adds mi-stage-snap
+    t2.window.dispatchEvent(new t2.window.Event('beforeunload'));
+    assert.equal(t2.doc.body.classList.contains('mi-stage-snap'), false, 'beforeunload removes mi-stage-snap immediately');
+    assert.deepEqual(t2.leftovers(), CLEAN);
+    t2.close();
+});

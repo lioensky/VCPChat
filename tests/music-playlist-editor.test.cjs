@@ -226,7 +226,7 @@ test('Batch 83: sidebar caches album/artist groups, delegates category clicks, a
     dom.window.eval(fs.readFileSync('Musicmodules/music-sidebar.js', 'utf8'));
     const doc = dom.window.document;
     const tracks = [
-        { path: 'D:/m/0.flac', title: 't0', artist: 'A', album: 'Duo', trackNumber: 2, albumArt: 'C:/art/a"b\\c.jpg' },
+        { path: 'D:/m/0.flac', title: 't0', artist: 'A', album: 'Duo', trackNumber: 2, albumArt: 'C:/art/a"b\\c(1).jpg' },
         { path: 'D:/m/1.flac', title: 't1', artist: 'A', album: 'Duo', trackNumber: 1 }
     ];
     let rendered = null;
@@ -266,7 +266,7 @@ test('Batch 83: sidebar caches album/artist groups, delegates category clicks, a
     const items = [...doc.querySelectorAll('#sidebar-category-view .category-item')];
     assert.equal(items.length, 2);
     const coverStyle = items[0].querySelector('.cover').getAttribute('style') || '';
-    assert.ok(coverStyle.includes('%22') && coverStyle.includes('%5C'), 'special quotes/backslashes in cover URL are percent-encoded');
+    assert.ok(coverStyle.includes('%22') && coverStyle.includes('%5C') && coverStyle.includes('%29'), 'special quotes, backslashes, and parens in cover URL are percent-encoded');
     items[0].click();
     assert.equal(rendered?.length, 2, 'delegated click opens selected album tracks');
     assert.equal(doc.querySelector('.sidebar-tab[data-view="all"]').classList.contains('active'), true);

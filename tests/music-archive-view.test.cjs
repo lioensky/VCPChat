@@ -2067,3 +2067,70 @@ test('Batch 76: archive-view onKeyDown skips modalOpen DOM query on input typing
         f.close();
     }
 });
+
+test('Batch 84: archive-list paintRow bitmask skips unchanged writes and guards hidden background updates', async () => {
+    const liked = new Set();
+    const f = fixture({
+        n: 40,
+        setup: (w, app) => {
+            app.isLiked = (t) => Boolean(t && liked.has(t.path));
+            app.failedTracks = new w.Map();
+        }
+    });
+    try {
+        f.view.setListOpen(true);
+        const rows = [...f.view.list.el.querySelectorAll('.archive-list-row')];
+        assert.ok(rows.length >= 6);
+        const row0 = rows[0];
+        const row1 = rows[1];
+
+        let toggleCalls = 0;
+        let ariaCalls = 0;
+        for (const r of [row0, row1]) {
+            const origToggle = r.classList.toggle.bind(r.classList);
+            r.classList.toggle = (cls, force) => { toggleCalls += 1; return origToggle(cls, force); };
+            const origSet = r.setAttribute.bind(r);
+            r.setAttribute = (name, val) => {
+                if (name === 'aria-selected') ariaCalls += 1;
+                return origSet(name, val);
+            };
+        }
+
+        // Unchanged health event does zero redundant classList.toggle / aria-selected writes
+        f.w.document.dispatchEvent(new f.w.CustomEvent('music-track-health'));
+        assert.equal(toggleCalls, 0, 'unchanged paintRow skips classList.toggle writes');
+        assert.equal(ariaCalls, 0, 'unchanged paintRow skips aria-selected writes');
+
+        // Marking a track bad toggles only the single 'bad' bit on that row
+        const t1 = f.app.playlist.find((t) => t.title === row1.querySelector('b').textContent);
+        assert.ok(t1);
+        f.app.failedTracks.set(t1, 'decode error');
+        f.w.document.dispatchEvent(new f.w.CustomEvent('music-track-health'));
+        assert.equal(toggleCalls, 1, 'bad track toggles only the single changed bit');
+        assert.equal(ariaCalls, 0, 'unchanged selection skips aria-selected write');
+        assert.equal(row1.classList.contains('bad'), true);
+        assert.equal(row1.dataset.tipBad, '1');
+
+        // While hidden in classic mode, health / setPlaying / like events skip background DOM writes
+        f.view.showClassic();
+        assert.equal(f.app.isArchiveActive, false);
+        toggleCalls = 0;
+        f.app.failedTracks.delete(t1);
+        f.w.document.dispatchEvent(new f.w.CustomEvent('music-track-health'));
+        f.view.list.setPlaying(1);
+        liked.add(t1.path);
+        f.w.document.dispatchEvent(new f.w.CustomEvent('music-like-change'));
+        assert.equal(toggleCalls, 0, 'hidden archive-list skips paintRow during classic mode');
+        assert.equal(row1.querySelector('.lk').hidden, true, 'like update deferred while archive-list is hidden');
+
+        // Returning to archive view catches up pending like/health/playing state cleanly
+        f.view.show();
+        f.view.list.setPlaying(1);
+        f.view.list.render();
+        await new Promise((r) => f.w.requestAnimationFrame(r));
+        assert.equal(row1.classList.contains('bad'), false, 'cleared bad state synced when archive returns');
+        assert.equal(row1.querySelector('.lk').hidden, false, 'deferred like state flushed on render');
+    } finally {
+        f.close();
+    }
+});
