@@ -8,12 +8,29 @@
 (function (global) {
     'use strict';
 
-    const baseName = (p) => { const b = String(p || '').split(/[\\/]/).pop() || ''; try { return /%[0-9a-f]{2}/i.test(b) ? decodeURIComponent(b) : b; } catch (e) { return b; } }; // 云端地址是 %20 这种
-    const parentName = (p) => { const parts = String(p || '').split(/[\\/]/); return parts.length > 1 ? parts[parts.length - 2] : ''; };
+    const baseName = (p) => {
+        const s = String(p || '');
+        const cut = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+        const b = cut >= 0 ? s.slice(cut + 1) : s;
+        if (!b || b.indexOf('%') === -1) return b;
+        try { return /%[0-9a-f]{2}/i.test(b) ? decodeURIComponent(b) : b; } catch (e) { return b; } // 云端地址是 %20 这种
+    };
+    const parentName = (p) => {
+        const s = String(p || '');
+        const cut = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+        if (cut <= 0) return '';
+        const prev = Math.max(s.lastIndexOf('/', cut - 1), s.lastIndexOf('\\', cut - 1));
+        return s.slice(prev + 1, cut);
+    };
     const positive = (v) => { const n = Number(v); return Number.isInteger(n) && n > 0 && n < 1000 ? n : 0; };
 
+    const parsedCache = new WeakMap();
     // → { disc, no }，不知道的是 0
     const numberOf = (track) => {
+        if (track && typeof track === 'object') {
+            const hit = parsedCache.get(track);
+            if (hit && hit.p === track.path && hit.d === track.discNo && hit.n === track.trackNo) return hit.v;
+        }
         const t = track || {};
         let disc = positive(t.discNo);
         let no = positive(t.trackNo);
@@ -29,7 +46,9 @@
             const m = /(?:^|[\s_\-(\[])(?:cd|disc|disk|碟)\s*0*(\d{1,2})(?:\D|$)/i.exec(parentName(t.path));
             if (m) disc = positive(m[1]);
         }
-        return { disc, no };
+        const v = { disc, no };
+        if (track && typeof track === 'object') parsedCache.set(track, { p: track.path, d: track.discNo, n: track.trackNo, v });
+        return v;
     };
 
     // 给一组曲库下标排序用：有曲号的在前按碟、曲号；同号或都没有的按 fallback（一般是标题）

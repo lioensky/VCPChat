@@ -140,8 +140,20 @@
             }
         };
         const onKey = (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
-            else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+            if (e.key === 'Tab' && overlay) {
+                const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                if (focusables.length) {
+                    const first = focusables[0], last = focusables[focusables.length - 1];
+                    const active = doc.activeElement;
+                    if (e.shiftKey ? (active === first || !overlay.contains(active)) : (active === last || !overlay.contains(active))) {
+                        e.preventDefault();
+                        (e.shiftKey ? last : first).focus({ preventScroll: true });
+                    }
+                }
+                return;
+            }
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
 
         /*

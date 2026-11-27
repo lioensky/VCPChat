@@ -609,7 +609,9 @@ function setupPlayer(app) {
         const current = app.playlist[app.currentTrackIndex];
         const list = playHistory.slice();
         while (list.length && list[list.length - 1] === current) list.pop();
-        return list.filter((t) => app.playlist.includes(t)).slice(-limit);
+        if (!list.length) return [];
+        const live = list.length > 4 ? new Set(app.playlist) : null;
+        return list.filter((t) => (live ? live.has(t) : app.playlist.includes(t))).slice(-limit);
     };
 
     // ───────── 播放队列 ─────────
@@ -870,9 +872,32 @@ function setupPlayer(app) {
         try { const raw = localStorage.getItem(key); return raw == null ? fallback : JSON.parse(raw); } catch (error) { return fallback; }
     };
     const writeStore = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (error) { /* 存不了就只在本次生效 */ } };
+    let offsetsRawCache = undefined;
+    let offsetsMapCache = null;
+    const readOffsets = () => {
+        try {
+            const raw = localStorage.getItem(LYRIC_OFFSETS_KEY);
+            if (raw === offsetsRawCache && offsetsMapCache) return offsetsMapCache;
+            offsetsRawCache = raw;
+            const parsed = raw == null ? {} : JSON.parse(raw);
+            offsetsMapCache = parsed && typeof parsed === 'object' ? parsed : {};
+            return offsetsMapCache;
+        } catch (error) {
+            return {};
+        }
+    };
+    const writeOffsets = (offsets) => {
+        try {
+            const raw = JSON.stringify(offsets);
+            localStorage.setItem(LYRIC_OFFSETS_KEY, raw);
+            offsetsRawCache = raw;
+            offsetsMapCache = offsets;
+        } catch (error) { /* 存不了就只在本次生效 */ }
+    };
     app.lyricOffsetFor = (path) => {
-        const offsets = readStore(LYRIC_OFFSETS_KEY, {});
-        const value = Number(path && offsets && offsets[path]);
+        if (!path) return 0;
+        const offsets = readOffsets();
+        const value = Number(offsets && offsets[path]);
         return Number.isFinite(value) ? value : 0;
     };
     const lyricTrackPath = () => app.playlist?.[app.currentTrackIndex]?.path || null;
@@ -889,6 +914,7 @@ function setupPlayer(app) {
         }
     };
     const lyricIndexAt = (time) => {
+        if (typeof app.lyricIndexAt === 'function') return app.lyricIndexAt(time);
         const lines = Array.isArray(app.currentLyrics) ? app.currentLyrics : [];
         let index = -1;
         for (let i = 0; i < lines.length && time >= lines[i].time; i++) index = i;
@@ -902,12 +928,12 @@ function setupPlayer(app) {
         for (const line of Array.isArray(app.currentLyrics) ? app.currentLyrics : []) shiftLine(line, d);
         const path = lyricTrackPath();
         if (path) {
-            const offsets = readStore(LYRIC_OFFSETS_KEY, {}) || {};
+            const offsets = { ...readOffsets() };
             delete offsets[path];
             if (next) offsets[path] = next;
             const keys = Object.keys(offsets);
             for (const k of keys.slice(0, Math.max(0, keys.length - MAX_LYRIC_OFFSETS))) delete offsets[k];
-            writeStore(LYRIC_OFFSETS_KEY, offsets);
+            writeOffsets(offsets);
         }
         // 当前行按新时间轴重新定位，再重画（逐字高亮的时间在 DOM 上也要跟着变）。
         app.currentLyricIndex = lyricIndexAt(Number(app.lastKnownCurrentTime) || 0);

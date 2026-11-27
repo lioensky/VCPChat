@@ -74,8 +74,20 @@
             if (back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
         const onKey = (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
-            else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+            if (e.key === 'Tab' && overlay) {
+                const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                if (focusables.length) {
+                    const first = focusables[0], last = focusables[focusables.length - 1];
+                    const active = doc.activeElement;
+                    if (e.shiftKey ? (active === first || !overlay.contains(active)) : (active === last || !overlay.contains(active))) {
+                        e.preventDefault();
+                        (e.shiftKey ? last : first).focus({ preventScroll: true });
+                    }
+                }
+                return;
+            }
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) e.stopPropagation();
         };
 
         const refreshViews = () => {
@@ -121,17 +133,20 @@
             app.saveLibrary?.();
             if (listsChanged) app.saveCustomPlaylists?.();
             refreshViews();
-            return () => {
-                const current2 = app.playlist?.[app.currentTrackIndex] || null;
-                const kept = new Set(app.playlist);
-                const beforeSet = new Set(beforeLibrary);
-                // 撤销期间又加进来的歌也留着
-                app.playlist = beforeLibrary.filter((t) => drop.has(t) || kept.has(t)).concat(app.playlist.filter((t) => !beforeSet.has(t)));
-                if (current2) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current2));
-                if (Array.isArray(beforeFiltered)) app.currentFilteredTracks = beforeFiltered;
-                if (listsChanged) { try { app.customPlaylists = JSON.parse(beforeLists); app.saveCustomPlaylists?.(); } catch (e) { /* 歌单保持现状 */ } }
-                app.saveLibrary?.();
-                refreshViews();
+            return {
+                count: drop.size,
+                undo: () => {
+                    const current2 = app.playlist?.[app.currentTrackIndex] || null;
+                    const kept = new Set(app.playlist);
+                    const beforeSet = new Set(beforeLibrary);
+                    // 撤销期间又加进来的歌也留着
+                    app.playlist = beforeLibrary.filter((t) => drop.has(t) || kept.has(t)).concat(app.playlist.filter((t) => !beforeSet.has(t)));
+                    if (current2) app.currentTrackIndex = Math.max(0, app.playlist.indexOf(current2));
+                    if (Array.isArray(beforeFiltered)) app.currentFilteredTracks = beforeFiltered;
+                    if (listsChanged) { try { app.customPlaylists = JSON.parse(beforeLists); app.saveCustomPlaylists?.(); } catch (e) { /* 歌单保持现状 */ } }
+                    app.saveLibrary?.();
+                    refreshViews();
+                }
             };
         };
 
@@ -200,11 +215,10 @@
             go.type = 'button';
             go.addEventListener('click', () => {
                 const groups = findDuplicates(app.playlist || []);
-                const undo = removeExtras(groups);
+                const removed = removeExtras(groups);
                 close();
-                if (!undo) { toast('没有可以移除的文件（正在放的那份先留着）'); return; }
-                const n = groups.reduce((k, g) => k + g.extra.length, 0);
-                toast(`已从曲库移除 ${n} 个重复文件（磁盘上的没删）`, { label: '撤销', run: () => { undo(); toast('已恢复'); } });
+                if (!removed) { toast('没有可以移除的文件（正在放的那份先留着）'); return; }
+                toast(`已从曲库移除 ${removed.count} 个重复文件（磁盘上的没删）`, { label: '撤销', run: () => { removed.undo(); toast('已恢复'); } });
             });
             actions.appendChild(cancel);
             actions.appendChild(go);

@@ -563,6 +563,11 @@ function setupLyrics(app) {
             app.currentLyricIndex = newLyricIndex;
         }
 
+        // 档案页或舞台激活时，经典视图的歌词列表完全隐藏：只保持 currentLyricIndex 同步，
+        // 避免每帧或每次 seek 对隐藏 DOM 写入样式与触发布局测量。
+        const bodyCls = typeof document !== 'undefined' ? document.body?.classList : null;
+        if (bodyCls && (bodyCls.contains('music-archive-on') || bodyCls.contains('music-stage-active'))) return;
+
         const allLi = app.lyricsList.children;
         const totalLines = allLi.length;
         const now = Date.now();
@@ -713,7 +718,10 @@ function setupLyrics(app) {
         if (app.targetScrollY === undefined) app.targetScrollY = 0;
 
         if (!app.lyricUserScrolling) {
-            app.currentScrollY += (app.targetScrollY - app.currentScrollY) * 0.12;
+            const reduced = typeof globalThis !== 'undefined' && typeof globalThis.MusicMotion?.reduced === 'function'
+                && globalThis.MusicMotion.reduced();
+            if (reduced || Math.abs(app.targetScrollY - app.currentScrollY) < 0.05) app.currentScrollY = app.targetScrollY;
+            else app.currentScrollY += (app.targetScrollY - app.currentScrollY) * 0.12;
             const transform = `translate3d(0, -${app.currentScrollY.toFixed(2)}px, 0)`;
             if (transform !== layout.transform) {
                 layout.transform = transform;
@@ -727,12 +735,16 @@ function setupLyrics(app) {
     app.syncLyricsAfterSeek = () => {
         app.animateLyrics(true);
         if (app.isPlaying || typeof requestAnimationFrame !== 'function') return;
+        const bodyCls = typeof document !== 'undefined' ? document.body?.classList : null;
+        if (bodyCls && (bodyCls.contains('music-archive-on') || bodyCls.contains('music-stage-active'))) return;
+        if (Math.abs((app.targetScrollY || 0) - (app.currentScrollY || 0)) < 0.05) return;
         const running = seekFrames > 0;
         seekFrames = 40;
         if (running) return;
         const step = () => {
             if (app.isPlaying || --seekFrames <= 0) { seekFrames = 0; return; }
             app.animateLyrics(true);
+            if (Math.abs((app.targetScrollY || 0) - (app.currentScrollY || 0)) < 0.05) { seekFrames = 0; return; }
             requestAnimationFrame(step);
         };
         requestAnimationFrame(step);

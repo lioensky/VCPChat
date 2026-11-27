@@ -58,6 +58,9 @@
         SHARED_SHAPES.set(name, { T, shape });
         return shape;
     };
+    let sheetPixelCache = null;
+    let sheetRegionCache = null;
+    let detailPixelCache = null;
     const create = (T, scene) => {
         const root = new T.Group();
         scene.add(root);
@@ -229,8 +232,9 @@
          * from the palette, never from the sheet.
          */
         const SHEET = 1024;
-        const sheetRegions = {};
+        const sheetRegions = sheetRegionCache || {};
         const paintSheet = () => {
+            if (sheetPixelCache) return sheetPixelCache;
             const doc = global.document;
             const canvas = doc?.createElement?.('canvas');
             const layers = canvas && ['albedo', 'relief', 'glow'].map(() => {
@@ -487,6 +491,8 @@
                 const from = (y * SHEET + x) * 4, to = ((SHEET - 1 - y) * SHEET + x) * 4;
                 data[to] = a[from]; data[to + 1] = hh[from]; data[to + 2] = e[from]; data[to + 3] = 255;
             }
+            sheetPixelCache = data;
+            sheetRegionCache = sheetRegions;
             return data;
         };
         const sheetTexture = (() => {
@@ -501,6 +507,7 @@
                 texture.anisotropy = 4;
             }
             texture.needsUpdate = true;
+            scans.push(texture);
             return texture;
         })();
         const regionOf = name => sheetRegions[name] || [0, 0, 1, 1];
@@ -1089,35 +1096,40 @@
          * by whatever wants surface detail (one sampler, no extra draws).
          */
         const detailAtlas = (() => {
-            const SIZE = 256, data = new Uint8Array(SIZE * SIZE * 4);
-            let seed = 0x2f6e2b1;
-            const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-            const lattice = cells => { const g = new Float32Array(cells * cells); for (let i = 0; i < g.length; i++) g[i] = random(); return g; };
-            const value = (g, cells, x, y) => {
-                const fx = x * cells, fy = y * cells, ix = Math.floor(fx), iy = Math.floor(fy);
-                const tx = fx - ix, ty = fy - iy, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
-                const at = (i, j) => g[((j % cells) + cells) % cells * cells + ((i % cells) + cells) % cells];
-                const top = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * sx;
-                const bottom = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * sx;
-                return top + (bottom - top) * sy;
-            };
-            const octaves = [4, 8, 16, 32].map(cells => [cells, lattice(cells)]);
-            const fine = lattice(128), pile = lattice(64), streakRows = lattice(SIZE);
-            for (let y = 0; y < SIZE; y++) {
-                for (let x = 0; x < SIZE; x++) {
-                    const u = x / SIZE, v = y / SIZE, i = (y * SIZE + x) * 4;
-                    // Pile: a basket weave every 4 texels, each tuft a little different.
-                    const weave = ((x >> 2) + (y >> 2)) % 2 ? Math.sin((x % 4 + 0.5) / 4 * Math.PI) : Math.sin((y % 4 + 0.5) / 4 * Math.PI);
-                    const tuft = value(pile, 64, u, v);
-                    data[i] = Math.round(255 * clamp(0.35 + 0.4 * weave * (0.6 + 0.4 * tuft) + 0.25 * (random() - 0.5)));
-                    // Brushing runs along u; rows differ, and drift slowly.
-                    const row = streakRows[y] * 0.6 + value(octaves[3][1], 32, u * 0.25, v) * 0.4;
-                    data[i + 1] = Math.round(255 * clamp(0.5 + (row - 0.5) * 0.9 + (random() - 0.5) * 0.12));
-                    let grime = 0, weight = 0.5;
-                    octaves.forEach(([cells, g]) => { grime += value(g, cells, u, v) * weight; weight *= 0.5; });
-                    data[i + 2] = Math.round(255 * clamp(grime / 0.9375));
-                    data[i + 3] = Math.round(255 * clamp(value(fine, 128, u, v) * 0.7 + random() * 0.3));
+            const SIZE = 256;
+            let data = detailPixelCache;
+            if (!data) {
+                data = new Uint8Array(SIZE * SIZE * 4);
+                let seed = 0x2f6e2b1;
+                const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+                const lattice = cells => { const g = new Float32Array(cells * cells); for (let i = 0; i < g.length; i++) g[i] = random(); return g; };
+                const value = (g, cells, x, y) => {
+                    const fx = x * cells, fy = y * cells, ix = Math.floor(fx), iy = Math.floor(fy);
+                    const tx = fx - ix, ty = fy - iy, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+                    const at = (i, j) => g[((j % cells) + cells) % cells * cells + ((i % cells) + cells) % cells];
+                    const top = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * sx;
+                    const bottom = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * sx;
+                    return top + (bottom - top) * sy;
+                };
+                const octaves = [4, 8, 16, 32].map(cells => [cells, lattice(cells)]);
+                const fine = lattice(128), pile = lattice(64), streakRows = lattice(SIZE);
+                for (let y = 0; y < SIZE; y++) {
+                    for (let x = 0; x < SIZE; x++) {
+                        const u = x / SIZE, v = y / SIZE, i = (y * SIZE + x) * 4;
+                        // Pile: a basket weave every 4 texels, each tuft a little different.
+                        const weave = ((x >> 2) + (y >> 2)) % 2 ? Math.sin((x % 4 + 0.5) / 4 * Math.PI) : Math.sin((y % 4 + 0.5) / 4 * Math.PI);
+                        const tuft = value(pile, 64, u, v);
+                        data[i] = Math.round(255 * clamp(0.35 + 0.4 * weave * (0.6 + 0.4 * tuft) + 0.25 * (random() - 0.5)));
+                        // Brushing runs along u; rows differ, and drift slowly.
+                        const row = streakRows[y] * 0.6 + value(octaves[3][1], 32, u * 0.25, v) * 0.4;
+                        data[i + 1] = Math.round(255 * clamp(0.5 + (row - 0.5) * 0.9 + (random() - 0.5) * 0.12));
+                        let grime = 0, weight = 0.5;
+                        octaves.forEach(([cells, g]) => { grime += value(g, cells, u, v) * weight; weight *= 0.5; });
+                        data[i + 2] = Math.round(255 * clamp(grime / 0.9375));
+                        data[i + 3] = Math.round(255 * clamp(value(fine, 128, u, v) * 0.7 + random() * 0.3));
+                    }
                 }
+                detailPixelCache = data;
             }
             const texture = new T.DataTexture(data, SIZE, SIZE, T.RGBAFormat);
             texture.wrapS = texture.wrapT = T.RepeatWrapping;
@@ -1126,6 +1138,7 @@
             texture.generateMipmaps = true;
             texture.anisotropy = 4;
             texture.needsUpdate = true;
+            scans.push(texture);
             return texture;
         })();
         const cabinLightFunctions = `

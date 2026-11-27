@@ -42,9 +42,10 @@
     const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
     const pick = (random, list) => list[Math.floor(random() * list.length) % list.length];
     const take = (random, pool, fallback) => pool.length ? pool.splice(Math.floor(random() * pool.length), 1)[0] : pick(random, fallback);
+    const graphemeSegmenter = global.Intl?.Segmenter ? new Intl.Segmenter('zh', { granularity: 'grapheme' }) : null;
     const graphemes = text => {
         const s = String(text || '');
-        if (global.Intl?.Segmenter) return Array.from(new Intl.Segmenter('zh', { granularity: 'grapheme' }).segment(s), x => x.segment);
+        if (graphemeSegmenter) return Array.from(graphemeSegmenter.segment(s), x => x.segment);
         return Array.from(s);
     };
     const isWide = ch => /[⺀-鿿豈-﫿＀-￯　-〿가-힯]/.test(ch);
@@ -1644,12 +1645,15 @@
                             +(h(vec2(row,win+seed))-0.5)*0.16*glitch*step(0.55,h(vec2(row*3.1,win)));
                         uv.y=fract(uv.y+drop*0.08*(h(vec2(win,seed+1.0))-0.5));
                         uv=clamp(uv,vec2(0.002),vec2(0.998));
-                        vec2 auv=vec2((column+uv.x)*0.25,(1.0-slide)*0.5+uv.y*0.5);
-                        vec4 t=texture2D(map,auv);
                         float ca=0.0015+glitch*0.006;
-                        float tl=texture2D(map,auv-vec2(ca,0.0)).r,tr=texture2D(map,auv+vec2(ca,0.0)).r;
-                        col=main*t.r*1.1+other*t.g*0.75+main*t.b*0.07;
-                        col+=magenta*max(tl-t.r,0.0)*0.6+cyan*max(tr-t.r,0.0)*0.6;
+                        col=vec3(0.0);
+                        if(lyr<0.999){
+                            vec2 auv=vec2((column+uv.x)*0.25,(1.0-slide)*0.5+uv.y*0.5);
+                            vec4 t=texture2D(map,auv);
+                            float tl=texture2D(map,auv-vec2(ca,0.0)).r,tr=texture2D(map,auv+vec2(ca,0.0)).r;
+                            col=main*t.r*1.1+other*t.g*0.75+main*t.b*0.07;
+                            col+=magenta*max(tl-t.r,0.0)*0.6+cyan*max(tr-t.r,0.0)*0.6;
+                        }
                         if(lyr>0.001){
                             // The tall screen's column of the line, cropped to the sheet.
                             vec2 q=tallRegion.xy+vec2(0.5+(uv.x-0.5)*0.5,uv.y)*tallRegion.zw;

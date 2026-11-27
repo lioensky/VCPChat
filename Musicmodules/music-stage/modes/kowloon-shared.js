@@ -106,22 +106,22 @@
         float kwGlowScale = 1.0;
         vec3 kwLight(vec3 p, vec3 n, vec3 albedo, float rough){
             float up = n.y * 0.5 + 0.5;
-            vec3 col = albedo * mix(uGround, uSky, up) * 1.1;
+            vec3 irr = mix(uGround, uSky, up) * 1.1;
             // 街上霓虹和店铺灯从下往上打的一层暖光，楼越高越弱。
-            col += albedo * uGlow * uGlowStrength * kwGlowScale * exp(-max(p.y, 0.0) / 14.0) * (0.6 + 0.4 * (1.0 - abs(n.y)));
+            irr += uGlow * uGlowStrength * kwGlowScale * exp(-max(p.y, 0.0) / 14.0) * (0.6 + 0.4 * (1.0 - abs(n.y)));
             for (int i = 0; i < KW_MAX_LIGHTS; i++) {
                 if (i >= uLightCount) break;
                 vec3 d = uLightPos[i] - p;
                 float r = uLightRad[i];
                 float d2 = dot(d, d);
                 if (d2 >= r * r) continue;
-                float dist = sqrt(d2);
-                float fall = 1.0 - dist / r;
+                float invDist = inversesqrt(max(d2, 1e-6));
+                float fall = 1.0 - (d2 * invDist) / r;
                 fall *= fall;
-                float lam = max(0.0, dot(n, d / max(dist, 1e-3))) * 0.8 + 0.2;
-                col += albedo * uLightCol[i] * fall * lam;
+                float lam = max(0.0, dot(n, d) * invDist) * 0.8 + 0.2;
+                irr += uLightCol[i] * (fall * lam);
             }
-            return col;
+            return albedo * irr;
         }
     `;
 

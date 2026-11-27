@@ -90,17 +90,23 @@
         void kLights(vec3 P,vec3 N,vec3 V,float gloss,float aniso,inout vec3 diff,inout vec3 spec){
             vec2 c=normalize(V.xz+vec2(1e-4));vec3 tAlong=vec3(c.x,0.0,c.y),tAcross=vec3(-c.y,0.0,c.x);
             float ax=mix(0.35,0.02,gloss),ay=ax*(1.0+aniso*9.0);
+            float invAx2=1.0/(ax*ax),invAy2=1.0/(ay*ay);
+            float specScale=mix(0.3,3.0,gloss)/(1.0+ax*ay*40.0);
             for(int i=0;i<${MAX_LIGHTS};i++){
                 if(i>=uLightCount)break;
                 vec3 L=uLightPos[i]-P;float d2=dot(L,L);float r=uLightRad[i];
                 if(d2>r*r)continue;
-                float fall=1.0-sqrt(d2)/r;float att=fall*fall;
-                L*=inversesqrt(max(d2,1e-4));
-                diff+=uLightCol[i]*att*max(dot(N,L),0.0);
+                float invDist=inversesqrt(max(d2,1e-4));
+                float fall=1.0-(d2*invDist)/r;float att=fall*fall;
+                L*=invDist;
+                float ndl=max(dot(N,L),0.0);
+                if(ndl<=0.0)continue;
+                vec3 col=uLightCol[i]*(att*ndl);
+                diff+=col;
                 vec3 H=normalize(L+V);float hn=max(H.y*N.y+dot(H.xz,N.xz),0.05);
                 float hx=dot(H,tAcross)/hn,hy=dot(H,tAlong)/hn;
-                float lobe=exp(-(hx*hx/(ax*ax)+hy*hy/(ay*ay)))/(1.0+ax*ay*40.0);
-                spec+=uLightCol[i]*att*lobe*max(dot(N,L),0.0)*mix(0.3,3.0,gloss);
+                float lobe=exp(-(hx*hx*invAx2+hy*hy*invAy2));
+                spec+=col*(lobe*specScale);
             }
         }`;
 

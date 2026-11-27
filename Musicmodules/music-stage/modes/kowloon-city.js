@@ -256,8 +256,12 @@
                         for (int i = 0; i < KW_MAX_LIGHTS; i++) {
                             if (i >= uLightCount) break;
                             vec3 d = uLightPos[i] - vWorld;
-                            float fall = max(0.0, 1.0 - length(d) / uLightRad[i]);
-                            col += alb * uLightCol[i] * fall * fall * max(0.0, -normalize(d).y);
+                            float r = uLightRad[i];
+                            float d2 = dot(d, d);
+                            if (d2 >= r * r) continue;
+                            float invDist = inversesqrt(max(d2, 1e-6));
+                            float fall = 1.0 - (d2 * invDist) / r;
+                            col += alb * uLightCol[i] * (fall * fall * max(0.0, -d.y * invDist));
                         }
                         gl_FragColor = vec4(col, 1.0);
                         #include <tonemapping_fragment>
@@ -270,11 +274,12 @@
                         vec3 alb = vec3(0.17, 0.17, 0.18) * (0.7 + 0.6 * kwFbm(p * 0.35 + seed * 40.0));
                         float tar = smoothstep(0.55, 0.6, kwFbm(p * 0.18 + seed * 13.0));
                         alb = mix(alb, vec3(0.06), tar * 0.8);
-                        vec3 col = kwLight(vWorld, n, alb, 0.8);
+                        vec3 irr = kwLight(vWorld, n, vec3(1.0), 0.8);
+                        vec3 col = alb * irr;
                         // 积水的屋顶反一点天光。
                         float puddle = smoothstep(0.62, 0.66, kwFbm(p * 0.25 + seed * 91.0)) * wet;
                         float fresR = pow(1.0 - max(0.0, -V.y), 4.0);
-                        col = mix(col, uSky * (0.18 + 0.5 * fresR) + kwLight(vWorld, n, vec3(0.5), 0.1) * 0.4, puddle * 0.75);
+                        col = mix(col, uSky * (0.18 + 0.5 * fresR) + irr * 0.2, puddle * 0.75);
                         gl_FragColor = vec4(col, 1.0);
                         #include <tonemapping_fragment>
                         #include <colorspace_fragment>
@@ -351,7 +356,8 @@
                     vec2 fw = fwidth(cell) * 1.5;
                     vec2 inA = smoothstep(wMin - fw, wMin + fw, cell) * (1.0 - smoothstep(wMax - fw, wMax + fw, cell));
                     float inWin = inA.x * inA.y * hasWindow;
-                    vec3 col = kwLight(vWorld, n, alb, 0.9);
+                    vec3 irr = kwLight(vWorld, n, vec3(1.0), 0.9);
+                    vec3 col = alb * irr;
 
                     if (inWin > 0.001) {
                         vec2 wc = (cell - wMin) / (wMax - wMin);
@@ -373,7 +379,7 @@
                         inside = mix(inside, tone * lit * 0.55 * vec3(1.0, 0.85, 0.8), curtain * 0.75);
                         // 不亮的窗：暗玻璃反着天光和远处的霓虹。
                         float fres = pow(1.0 - max(0.0, dot(-V, n)), 3.0);
-                        vec3 glass = uSky * (0.25 + 0.8 * fres) + kwLight(vWorld, n, vec3(0.25), 0.1) * 0.6;
+                        vec3 glass = uSky * (0.25 + 0.8 * fres) + irr * 0.15;
                         vec3 win = mix(glass, inside + glass * 0.15, lit);
                         // 窗框和中间的横档、竖档。
                         vec2 fwc = fwidth(wc) * 1.2;
@@ -385,7 +391,7 @@
                         float reveal = min(min(wc.x, 1.0 - wc.x) * bay * (wMax.x - wMin.x), min(wc.y, 1.0 - wc.y) * uFloor * (wMax.y - wMin.y));
                         float ao = smoothstep(0.0, 0.18, reveal) * (1.0 - 0.35 * smoothstep(0.75, 1.0, wc.y));
                         win *= 0.55 + 0.45 * ao;
-                        win = mix(win, kwLight(vWorld, n, vec3(0.45, 0.46, 0.44), 0.5), frame);
+                        win = mix(win, vec3(0.45, 0.46, 0.44) * irr, frame);
                         col = mix(col, win, inWin);
                     }
                     // 地面层店面：开着的店露出里面的日光灯和货架，关着的由巷道模块的卷闸挡住。
@@ -404,14 +410,14 @@
                             vec3 dark = vec3(0.015, 0.016, 0.02);
                             vec3 front = mix(dark, inside, open_);
                             float fr = max(1.0 - smoothstep(0.0, 0.03, sc.x), smoothstep(0.97, 1.0, sc.x));
-                            front = mix(front, kwLight(vWorld, n, vec3(0.3), 0.5), max(fr, 1.0 - smoothstep(0.92, 0.96, 1.0 - sc.y)) * 0.8);
+                            front = mix(front, vec3(0.3) * irr, max(fr, 1.0 - smoothstep(0.92, 0.96, 1.0 - sc.y)) * 0.8);
                             col = mix(col, front, shop);
                         }
                     }
                     // 窗台：窗下一道浅色的台，台下有水痕。
                     float sill = hasWindow * step(wMin.x - 0.03, cell.x) * step(cell.x, wMax.x + 0.03)
                         * smoothstep(wMin.y - 0.06, wMin.y - 0.045, cell.y) * (1.0 - smoothstep(wMin.y - 0.005, wMin.y, cell.y));
-                    col = mix(col, kwLight(vWorld, n, vec3(0.42, 0.41, 0.38), 0.6), sill * 0.8 * uDetail);
+                    col = mix(col, vec3(0.42, 0.41, 0.38) * irr, sill * 0.8 * uDetail);
                     gl_FragColor = vec4(col, 1.0);
                     #include <tonemapping_fragment>
                     #include <colorspace_fragment>
@@ -785,9 +791,10 @@
         tailWing.translate(0, 1, -17);
         const engine = new T.CylinderGeometry(0.95, 0.95, 3.6, 10, 1);
         engine.rotateX(Math.PI / 2);
-        const planeGeo = mergeGeometries(T, [fuselage, wing, tailFin, tailWing,
-            engine.clone().translate(-6.5, -1.2, 1.5), engine.clone().translate(6.5, -1.2, 1.5)]);
-        [fuselage, wing, tailFin, tailWing, engine].forEach(g => g.dispose());
+        const engL = engine.clone().translate(-6.5, -1.2, 1.5);
+        const engR = engine.clone().translate(6.5, -1.2, 1.5);
+        const planeGeo = mergeGeometries(T, [fuselage, wing, tailFin, tailWing, engL, engR]);
+        [fuselage, wing, tailFin, tailWing, engine, engL, engR].forEach(g => g.dispose());
         disposables.push(planeGeo);
         // 道具材质的颜色来自 instanceColor，所以机身也用单实例的 InstancedMesh。
         const planeInst = new T.InstancedMesh(planeGeo, planeMat, 1);
@@ -917,6 +924,7 @@
             },
             dispose() {
                 skyline?.dispose();
+                group.traverse(o => { if (o.isInstancedMesh) o.dispose(); });
                 scene.remove(group);
                 disposables.forEach(d => d.dispose());
             }

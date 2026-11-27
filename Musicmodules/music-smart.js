@@ -16,7 +16,11 @@
     'use strict';
 
     const DAY = 86400000;
-    const norm = (s) => String(s || '').toLowerCase().normalize('NFKC');
+    const ASCII_ONLY = /^[\x00-\x7f]*$/;
+    const norm = (s) => {
+        const str = String(s || '');
+        return ASCII_ONLY.test(str) ? str.toLowerCase() : str.toLowerCase().normalize('NFKC');
+    };
     const statOf = (ctx, t) => (ctx && ctx.stats ? ctx.stats.get(t) : null);
     const lengthOf = (t) => Number(t && t.duration) || 0;
 
@@ -94,9 +98,10 @@
             } catch (e) { /* 没有提示层 */ }
             return pl;
         };
-        // 听歌记录、喜欢变了就重算（攒一下，播放中途不频繁写盘）
+        // 听歌记录、喜欢变了就重算（攒一下，播放中途不频繁写盘；没有智能歌单时不排空定时器）
         let timer = null;
-        const later = () => { if (timer) return; timer = global.setTimeout(() => { timer = null; app.refreshSmartPlaylists(); }, 4000); };
+        const hasSmart = () => lists().some((pl) => pl && pl.smart && typeof pl.smart.query === 'string');
+        const later = () => { if (timer || !hasSmart()) return; timer = global.setTimeout(() => { timer = null; app.refreshSmartPlaylists(); }, 4000); };
         global.document?.addEventListener?.('music-stats-change', later);
         global.document?.addEventListener?.('music-like-change', later);
         later();

@@ -548,6 +548,7 @@
             stats: () => ({ megaTowers: TOWERS.length, stacks: STACKS.length, craft: CRAFT, trainCars: CARS }),
             towers: TOWERS,
             dispose() {
+                group.traverse(o => { if (o.isInstancedMesh) o.dispose(); });
                 scene.remove(group);
                 disposables.forEach(d => d.dispose());
             }
