@@ -24,12 +24,14 @@ function setupWebDav(app) {
     app.openWebDavModal = async () => {
         app.webdavModal.classList.add('active');
         if (!app.api?.listWebdavServers) return;
+        const reqId = ++browseReqId;
         try {
             app.webdavServers = await app.api.listWebdavServers() || [];
         } catch (err) {
             console.error('[Music] Failed to list WebDAV servers:', err);
             app.webdavServers = [];
         }
+        if (reqId !== browseReqId || !app.webdavModal.classList.contains('active')) return;
         app.renderWebDavServerList();
         if (app.activeWebDavServer) app.browseWebDav(app.webdavCurrentPath);
     };
@@ -59,11 +61,15 @@ function setupWebDav(app) {
                 app.renderWebDavServerList();
                 app.browseWebDav('/');
             });
-            div.querySelector('.webdav-server-remove').addEventListener('click', async (e) => {
+            const removeBtn = div.querySelector('.webdav-server-remove');
+            removeBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
+                if (removeBtn.disabled) return;
+                removeBtn.disabled = true;
                 try {
                     await app.api.removeWebdavServer({ id: server.id });
                 } catch (err) {
+                    removeBtn.disabled = false;
                     console.error('[Music] Failed to remove WebDAV server:', err);
                     return;
                 }
@@ -116,8 +122,9 @@ function setupWebDav(app) {
         }
         const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
         const currentPath = safeDecode(dirPath.replace(/\/$/, ''));
-        const entries = result.entries.filter((entry) => {
-            if (!entry.isDir) return true;
+        const rawEntries = Array.isArray(result.entries) ? result.entries : [];
+        const entries = rawEntries.filter((entry) => {
+            if (!entry || !entry.isDir) return Boolean(entry);
             const entryPath = safeDecode(String(entry.href || '').replace(/\/$/, ''));
             return currentPath ? entryPath !== currentPath : entryPath !== '';
         });
@@ -271,8 +278,21 @@ function setupWebDav(app) {
             app.renderWebDavServerList();
         });
         let activeScanUnsub = null;
+        const onWebDavKeyDown = (e) => {
+            if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
+            if (document.querySelector('.dialog-overlay.music-dialog.visible')) return;
+            if (app.webdavServerDialog?.classList.contains('active')) {
+                e.preventDefault();
+                closeServerDialog();
+            } else if (app.webdavModal?.classList.contains('active')) {
+                e.preventDefault();
+                app.closeWebDavModal();
+            }
+        };
+        document.addEventListener('keydown', onWebDavKeyDown);
         if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
             window.addEventListener('beforeunload', () => {
+                document.removeEventListener('keydown', onWebDavKeyDown);
                 try { activeScanUnsub?.(); } catch (_) {}
                 activeScanUnsub = null;
             }, { once: true });

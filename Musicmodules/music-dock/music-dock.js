@@ -1658,6 +1658,13 @@
         function closePanel() {
             if (!state.panelOpen) return;
             const preEdges = archiveEdges(global.innerWidth || 0);
+            // 在修改 body/host/panel 类之前把焦点还给目标（此时排版仍是干净的），避免写完 body 类立刻 focus() 触发整页强制样式重算
+            const active = document.activeElement;
+            const returnTarget = active && (el.pnl.contains(active) || active === el.handle)
+                ? (panelReturn && panelReturn.isConnected ? panelReturn : el.panelSlot)
+                : null;
+            panelReturn = null;
+            if (returnTarget) returnTarget.focus?.({ preventScroll: true, focusVisible: lastKeyboard });
             state.panelOpen = false;
             closePop();
             syncFx(false);
@@ -1672,13 +1679,9 @@
             host.classList.remove('md-panel-open');
             fluid?.setRingDocked(true);
             syncShift(preEdges);
-            // 焦点原来在抽屉里（或在关闭钮上）才还回去，不去抢别处的焦点。
-            const active = document.activeElement;
-            if (active && (el.pnl.contains(active) || active === el.handle)) {
-                const back = panelReturn && panelReturn.isConnected ? panelReturn : el.panelSlot;
-                back.focus?.({ preventScroll: true, focusVisible: lastKeyboard });
+            if (returnTarget && document.activeElement !== returnTarget) {
+                returnTarget.focus?.({ preventScroll: true, focusVisible: lastKeyboard });
             }
-            panelReturn = null;
             syncSolid();
         }
         function togglePanel() { if (state.panelOpen) closePanel(); else openPanel(); }

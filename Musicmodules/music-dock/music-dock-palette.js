@@ -346,6 +346,22 @@
             indexedPinyin = Boolean(pinyin);
             return searchIndex;
         };
+        const playlistRomanCache = new Map();
+        let playlistRomanFn = null;
+        const getPlaylistRoman = (name, Lib) => {
+            const fn = pinyinFn();
+            if (fn !== playlistRomanFn) {
+                playlistRomanFn = fn;
+                playlistRomanCache.clear();
+            }
+            let r = playlistRomanCache.get(name);
+            if (r === undefined) {
+                r = Lib.romanize(name, fn);
+                if (playlistRomanCache.size > 512) playlistRomanCache.clear();
+                playlistRomanCache.set(name, r);
+            }
+            return r;
+        };
         const nameMatches = (name, words) => {
             if (!words.length) return 0;
             const plain = lower(name);
@@ -357,7 +373,7 @@
                 if (plain.startsWith(word)) { score += 3; continue; }
                 if (plain.includes(word)) { score += 2; continue; }
                 if (/^[a-z0-9]+$/.test(word) && Lib?.romanize) {
-                    romanized = romanized || Lib.romanize(name, pinyinFn());
+                    romanized = romanized || getPlaylistRoman(name, Lib);
                     if (romanized.py.includes(word) || romanized.ini.includes(word)) { score += 1; continue; }
                 }
                 return 0;
@@ -649,13 +665,17 @@
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
             if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
             state.capRect = null;
+            const back = restoreFocus && state.lastFocus?.isConnected ? state.lastFocus : null;
+            state.lastFocus = null;
+            // 在切换 body 类之前还回焦点，避免写完 music-dock-cmd-open 立刻 focus() 触发整页强制重排
+            if (back) back.focus?.({ preventScroll: true });
+            else if (root.contains(document.activeElement)) document.activeElement.blur();
             root.classList.remove('md-open');
             document.body.classList.remove('music-dock-cmd-open');
             state.closeTimer = setTimeout(() => { state.closeTimer = null; if (!state.open) root.hidden = true; }, 200);
-            if (restoreFocus && state.lastFocus?.isConnected) state.lastFocus.focus?.({ preventScroll: true });
+            if (back && document.activeElement !== back) back.focus?.({ preventScroll: true });
             // 关掉后输入框不能还占着焦点，否则下一次 Ctrl+K 会落进已关闭的面板里。
             if (root.contains(document.activeElement)) document.activeElement.blur();
-            state.lastFocus = null;
         }
         const toggle = () => (state.open ? close() : open());
 
@@ -740,6 +760,8 @@
                 searchIndex = indexedList = null;
                 cachedPinyinLib = cachedPinyinFn = null;
                 pinyinCache.clear();
+                playlistRomanFn = null;
+                playlistRomanCache.clear();
                 root.remove();
             }
         };

@@ -501,6 +501,7 @@ body.music-reduce-motion #music-dock-root *::after { transition-duration: 0s !im
   flex-direction: column-reverse;
   gap: 2px;
   scrollbar-width: thin;
+  contain: layout style;
 }
 #music-dock-root .md-cmd-row {
   display: flex;

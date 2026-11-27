@@ -472,8 +472,19 @@
             }
         };
 
+        const isContainerHidden = () => {
+            if (container.hidden) return true;
+            if (typeof global.getComputedStyle === 'function') {
+                try {
+                    const cs = global.getComputedStyle(container);
+                    if (cs && (cs.visibility === 'hidden' || cs.display === 'none')) return true;
+                } catch (_) { /* noop */ }
+            }
+            return false;
+        };
+
         app.createAmbientPixi = async () => {
-            if (app.isStageActive || app.destroyed) return;
+            if (app.isStageActive || app.destroyed || isContainerHidden()) return;
             clearStageRelease();
             if (app.ambientPixiController && !app.ambientPixiController.destroyed) {
                 if (!app.ambientPixiController.initialized) {

@@ -33,12 +33,14 @@
         return base + Math.max(0, Date.now() - app.lastStateUpdateTime) / 1000;
     };
 
-    // 按原数组引用缓存过滤后的有效歌词行，避免每 250ms 轮询都重新过滤整首歌
+    // 按原数组引用与长度缓存过滤后的有效歌词行，避免每 250ms 轮询都重新过滤整首歌
     let cachedLyricsSrc = null;
+    let cachedLyricsLen = -1;
     let cachedLyricsLines = [];
     const filteredLines = (all) => {
-        if (all === cachedLyricsSrc && cachedLyricsLines.length <= all.length) return cachedLyricsLines;
+        if (all === cachedLyricsSrc && all.length === cachedLyricsLen) return cachedLyricsLines;
         cachedLyricsSrc = all;
+        cachedLyricsLen = all.length;
         cachedLyricsLines = all.filter((l) => textOf(l));
         return cachedLyricsLines;
     };

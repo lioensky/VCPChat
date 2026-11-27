@@ -434,10 +434,34 @@
         };
     };
     const TITLE_CMP = (index) => (a, b) => COLLATE(index.sortKey(a), index.sortKey(b)) || a - b;
-    const ARTIST_CMP = (index, titleRank) => (a, b) => {
-        const ka = index.artistKey(a), kb = index.artistKey(b);
-        if (!ka !== !kb) return ka ? -1 : 1; // 没写歌手的放最后
-        return COLLATE(ka, kb) || titleRank[a] - titleRank[b];
+    // 先仅对去重后的非空歌手键做一次 Collator 排序（邻项 Collator 判等时共享名次），
+    // 再用纯整数比较排全曲库，避免上万首曲目重复触发数万次 ICU Collator 调用。
+    const buildArtistKeyRanks = (index) => {
+        const n = index.size;
+        const uniq = new Map();
+        const rawKeys = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const k = index.artistKey(i);
+            rawKeys[i] = k;
+            if (k && !uniq.has(k)) uniq.set(k, 0);
+        }
+        const sorted = [...uniq.keys()].sort(COLLATE);
+        let curRank = 0;
+        for (let j = 0; j < sorted.length; j++) {
+            if (j > 0 && COLLATE(sorted[j - 1], sorted[j]) !== 0) curRank = j;
+            uniq.set(sorted[j], curRank);
+        }
+        const emptyRank = sorted.length + 1;
+        const keyRanks = new Uint32Array(n);
+        for (let i = 0; i < n; i++) {
+            const k = rawKeys[i];
+            keyRanks[i] = k ? uniq.get(k) : emptyRank;
+        }
+        return keyRanks;
+    };
+    const ARTIST_CMP = (index, titleRank) => {
+        const keyRanks = buildArtistKeyRanks(index);
+        return (a, b) => (keyRanks[a] - keyRanks[b]) || (titleRank[a] - titleRank[b]);
     };
     /* 给界面用：为某种排序方式分片备好名次。返回 step(budgetMs) → 是否完成 */
     const prepareSort = (index, mode = 'title') => {
@@ -531,19 +555,20 @@
         }
         const ordered = [...groups.entries()].sort((a, b) => sp.rank(a[0]) - sp.rank(b[0]));
         const runs = [];
+        const appendAll = (dst, src) => { for (let j = 0; j < src.length; j++) dst.push(src[j]); };
         for (const [g, items] of ordered) {
             const last = runs[runs.length - 1];
             if (last && sp.family(last.groups[0]) === sp.family(g) && last.items.length < minSize) {
-                last.groups.push(g); last.items.push(...items);
+                last.groups.push(g); appendAll(last.items, items);
             } else {
-                runs.push({ groups: [g], items: [...items] });
+                runs.push({ groups: [g], items });
             }
         }
         // 每一类最后一段还是太少，就并到同一类的前一段
         for (let k = runs.length - 1; k > 0; k--) {
             const cur = runs[k], prev = runs[k - 1];
             if (cur.items.length < minSize && sp.family(prev.groups[0]) === sp.family(cur.groups[0])) {
-                prev.groups.push(...cur.groups); prev.items.push(...cur.items); runs.splice(k, 1);
+                appendAll(prev.groups, cur.groups); appendAll(prev.items, cur.items); runs.splice(k, 1);
             }
         }
         const prefix = sp.mode === 'title' ? 'letter:' : 'sort-' + sp.mode + ':';

@@ -208,6 +208,8 @@
             }
             relayout();
         };
+        const kindBtns = [...el.querySelectorAll('[data-kind]')];
+        let lDig = '', lDk = '', lKm = '';
         let cachedVpH = 0, cachedVpOff = -1, syncedTop = 0, syncedTopFresh = false, syncedTopQueued = false, lastRenderTop = -1, lastRenderRow = -2;
         const viewportHeight = () => {
             if (cachedVpH > 0) return cachedVpH;
@@ -401,7 +403,7 @@
             let vpRead = false, vpH = 600, vpTop = 0, anchor = null;
             const readViewportOnce = () => {
                 if (vpRead || !vpVisible) return;
-                vpRead = true; vpH = viewportHeight(); vpTop = r.viewport.scrollTop; cachedVpOff = r.viewport.offsetTop || 0;
+                vpRead = true; vpH = viewportHeight(); vpTop = readScrollTop(); recordScrollTop(vpTop); cachedVpOff = r.viewport.offsetTop || 0;
             };
             if (needAnchor) {
                 readViewportOnce();
@@ -424,7 +426,7 @@
                 tracks: tracks(), playlists: app.customPlaylists, recent: opts.getRecent(), sections: state.kind === 'recent' ? statsSections() : [], index,
                 kind: state.kind, query: state.query, columnOfGroup: opts.columnOfGroup, spec: opts.getSpec?.() || null
             });
-            if (out.rows.length > 0) readViewportOnce();
+            if (!skipRender && out.rows.length > 0) readViewportOnce();
             state.rows = out.rows;
             state.count = out.count;
             // 检索时栏名写检索词本身：下面分组头已经写着「检索结果 N 首」，栏名再写一遍是重复
@@ -432,7 +434,8 @@
             state.offsets = new Array(out.rows.length + 1);
             state.ord = new Array(out.rows.length);
             state.ordWidth = Math.max(2, String(out.count || 0).length);
-            el.style.setProperty('--no-digits', String(state.ordWidth));
+            const d = String(state.ordWidth);
+            if (d !== lDig) { lDig = d; el.style.setProperty('--no-digits', d); }
             state.heads = [];
             state.trackRows = new Map();
             let y = 0;
@@ -450,17 +453,15 @@
                 y += row.type === 'head' ? (isLetter(row) ? LETTER_H : LABEL_H) : ROW_H;
             });
             state.offsets[out.rows.length] = y;
-            r.spacer.style.height = y + 'px';
-            r.empty.style.display = out.count ? 'none' : 'block';
+            const yh = y + 'px'; if (r.spacer.style.height !== yh) r.spacer.style.height = yh;
+            const ed = out.count ? 'none' : 'block'; if (r.empty.style.display !== ed) r.empty.style.display = ed;
             el.classList.toggle('no-rows', !out.count);
-            if (!out.count) setFoot(0, 0);   // 没有结果时 render 不会走到计数那里，别留着上一次的数
-            // 告诉档案页当前检索词和结果数（左上标题跟着显示）
+            if (!out.count) setFoot(0, 0);
             const q0 = state.query.trim();
-            // 有检索词、有结果时给「存为智能歌单」（多选时让给多选说明）
-            r.saveSmart.hidden = !(q0 && out.count && app.createSmartPlaylist) || multi.size > 1;
+            const hss = !(q0 && out.count && app.createSmartPlaylist) || multi.size > 1;
+            if (r.saveSmart.hidden !== hss) r.saveSmart.hidden = hss;
             if (q0 !== state.lastReported || out.count !== state.lastCount) { state.lastReported = q0; state.lastCount = out.count; opts.onResults?.(q0, out.count, out.rows.find((row) => row.type === 'track') || null); }
             if (!out.count) {
-                // 空的原因不同，说法也不同：没搜到、曲库是空的、还没有歌单、还没播过
                 const q = state.query.trim();
                 const [line, hint] = q ? ['没有找到「' + q + '」', 'Esc 清除检索']
                     : !tracks().length ? ['曲库里还没有歌曲', '']
@@ -470,15 +471,15 @@
                 r.empty.innerHTML = `<span>${esc(line)}</span>${hint ? `<i>${esc(hint)}</i>` : ''}`;
             }
             manage.confirm = null;
-            r.newPl.hidden = state.kind !== 'playlist' || Boolean(state.query.trim());
-            el.querySelectorAll('[data-kind]').forEach((b) => {
-                const on = b.dataset.kind === state.kind;
-                b.classList.toggle('on', on);
-                b.setAttribute('aria-selected', String(on));
-            });
-            scheduleKindMark();
-            // 歌单、为你、检索结果有自己的顺序，不跟排序菜单走；表头按这个决定标不标排序列
-            el.dataset.kind = state.query.trim() ? 'search' : state.kind;
+            const hnp = state.kind !== 'playlist' || Boolean(q0);
+            if (r.newPl.hidden !== hnp) r.newPl.hidden = hnp;
+            if (lKm !== state.kind) {
+                lKm = state.kind;
+                for (const b of kindBtns) { const on = b.dataset.kind === state.kind; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); }
+                scheduleKindMark();
+            }
+            const dk = q0 ? 'search' : state.kind;
+            if (dk !== lDk) { lDk = dk; el.dataset.kind = dk; }
             paintSort();
             for (const node of state.rendered.values()) recycleNode(node);
             state.rendered.clear();
@@ -1136,7 +1137,8 @@
         const applyQuery = (resetScroll) => {
             state.query = r.input.value;
             const hasQ = Boolean(state.query.trim());
-            if (resetScroll && readScrollTop() !== 0) { r.viewport.scrollTop = 0; recordScrollTop(0); }
+            const top = readScrollTop();
+            if (resetScroll && top) { r.viewport.scrollTop = 0; recordScrollTop(0); } else recordScrollTop(top);
             rebuild({ skipRender: hasQ });
             if (hasQ && !edgeRow(false)) render({ top: readScrollTop(), height: viewportHeight() });
         };

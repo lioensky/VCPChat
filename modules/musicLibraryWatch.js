@@ -181,12 +181,13 @@ function createLibraryWatch({
                         clearTimer(timers.get(root));
                         timers.set(root, setTimer(() => { timers.delete(root); if (gen === generation) enqueue(root); }, DEBOUNCE_MS));
                     });
+                    const entry = { root, w };
                     w.on?.('error', () => {
-                        const idx = watchers.indexOf(w);
+                        const idx = watchers.indexOf(entry);
                         if (idx !== -1) watchers.splice(idx, 1);
                         try { w.close(); } catch (e) { /* 已关 */ }
                     });
-                    watchers.push(w);
+                    watchers.push(entry);
                 } catch (e) { log.warn?.('[MusicWatch] watch failed:', root, e?.message || e); }
             }
         }, START_DELAY_MS);
@@ -199,7 +200,7 @@ function createLibraryWatch({
         abort?.abort();
         for (const t of timers.values()) clearTimer(t);
         timers.clear();
-        for (const w of watchers) { try { w.close(); } catch (e) { /* 已关 */ } }
+        for (const entry of watchers) { try { entry.w.close(); } catch (e) { /* 已关 */ } }
         watchers = [];
     }
 
@@ -243,6 +244,12 @@ function createLibraryWatch({
             if (rootKey !== 'start' && isUnder(rootKey, dir)) {
                 clearTimer(timerId);
                 timers.delete(rootKey);
+            }
+        }
+        for (let i = watchers.length - 1; i >= 0; i--) {
+            if (isUnder(watchers[i].root, dir)) {
+                try { watchers[i].w.close(); } catch (e) { /* 已关 */ }
+                watchers.splice(i, 1);
             }
         }
         return kept.length !== list.length;

@@ -73,8 +73,13 @@ function setupUI(app) {
         navigator.mediaSession.playbackState = app.isPlaying ? 'playing' : 'paused';
     };
 
+    let lastVolBg = '';
     app.updateVolumeSliderBackground = (val) => {
-        app.volumeSlider.style.backgroundSize = `${val * 100}% 100%`;
+        if (!app.volumeSlider) return;
+        const next = `${val * 100}% 100%`;
+        if (next === lastVolBg) return;
+        lastVolBg = next;
+        app.volumeSlider.style.backgroundSize = next;
     };
 
     // ───────── 经典列表：只画看得见的行 ─────────

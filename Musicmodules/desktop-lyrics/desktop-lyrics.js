@@ -9,6 +9,8 @@
     const $ = (id) => document.getElementById(id);
     const cur = $('cur');
     const next = $('next');
+    const playBtn = $('play');
+    const lockBtn = $('lock');
     const body = document.body;
 
     let snap = null;       // 最近一份状态
@@ -16,6 +18,9 @@
     let lineSpan = null;   // 没有逐字时间时整句的起止
     let lineKey = '';
     let lastNextText = '';
+    let lastPlaying = null;
+    let lastPaused = null;
+    let lastLocked = null;
     let frame = 0;
     let size = 34;
     let locked = false;
@@ -34,11 +39,21 @@
     };
 
     const render = () => {
-        body.classList.toggle('playing', Boolean(snap && snap.playing));
-        body.classList.toggle('paused', Boolean(snap && !snap.playing));
-        const play = $('play');
-        play.title = snap && snap.playing ? '暂停' : '播放';
-        play.setAttribute('aria-label', play.title);
+        const playing = Boolean(snap && snap.playing);
+        const paused = Boolean(snap && !snap.playing);
+        if (playing !== lastPlaying) {
+            lastPlaying = playing;
+            body.classList.toggle('playing', playing);
+            if (playBtn) {
+                const title = playing ? '暂停' : '播放';
+                playBtn.title = title;
+                playBtn.setAttribute('aria-label', title);
+            }
+        }
+        if (paused !== lastPaused) {
+            lastPaused = paused;
+            body.classList.toggle('paused', paused);
+        }
 
         const line = snap && snap.line;
         const key = snap ? [snap.path, snap.index, line && line.text].join('\u0001') : '';
@@ -127,10 +142,14 @@
             sizeChanged = true;
         }
         locked = p.locked === true;
-        body.classList.toggle('locked', locked);
-        const lock = $('lock');
-        lock.title = locked ? '解锁：可以拖动、点按钮' : '锁定：鼠标穿过歌词，点不到它';
-        lock.setAttribute('aria-label', locked ? '解锁' : '锁定');
+        if (locked !== lastLocked) {
+            lastLocked = locked;
+            body.classList.toggle('locked', locked);
+            if (lockBtn) {
+                lockBtn.title = locked ? '解锁：可以拖动、点按钮' : '锁定：鼠标穿过歌词，点不到它';
+                lockBtn.setAttribute('aria-label', locked ? '解锁' : '锁定');
+            }
+        }
         if (sizeChanged) fit();
     };
 
@@ -149,9 +168,9 @@
     const enter = () => { if (!body.classList.contains('hover')) body.classList.add('hover'); };
     document.addEventListener('mouseenter', enter);
     document.addEventListener('mousemove', enter, { passive: true });
-    document.addEventListener('mouseleave', () => { body.classList.remove('hover'); if (locked) send('hover', false); });
-    $('lock').addEventListener('mouseenter', () => { if (locked) send('hover', true); });
-    $('lock').addEventListener('mouseleave', () => { if (locked) send('hover', false); });
+    document.addEventListener('mouseleave', () => { if (body.classList.contains('hover')) body.classList.remove('hover'); if (locked) send('hover', false); });
+    lockBtn?.addEventListener('mouseenter', () => { if (locked) send('hover', true); });
+    lockBtn?.addEventListener('mouseleave', () => { if (locked) send('hover', false); });
     document.addEventListener('wheel', (e) => { if (!locked && e.ctrlKey) send('size', size + (e.deltaY < 0 ? 2 : -2)); }, { passive: true });
     document.addEventListener('visibilitychange', paint);
     let fitRaf = 0;
