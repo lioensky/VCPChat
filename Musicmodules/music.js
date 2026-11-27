@@ -451,16 +451,31 @@ document.addEventListener('DOMContentLoaded', () => {
         app.setupWebDavHandlers();
         app.setupMediaSessionHandlers();
 
+        // 并行预发起互不依赖的启动 IPC（引擎地址、主题、曲库、待播请求、歌单、当前状态），
+        // 避免主进程读盘和引擎探测串行等待，后面仍严格按原顺序应用结果。
+        const endpointPromise = app.api?.getAudioEngineEndpoint?.().catch((error) => {
+            console.warn('[Music] Failed to read audio engine endpoint:', error);
+            return null;
+        });
+        const themePromise = app.api?.getCurrentTheme?.().catch(() => null);
+        const playlistPromise = app.api?.getMusicPlaylist?.();
+        const pendingPromise = app.api?.getMusicPlaylist ? app.api?.getMusicPendingTrack?.() : null;
+        const customPlaylistsPromise = app.api?.getMusicPlaylist ? app.loadCustomPlaylists() : null;
+        const initialStatePromise = app.api?.getMusicPlaylist ? app.api?.getMusicState?.() : null;
+
         // Initial values
         app.initBackgroundLayers();
         app.visualizerCanvas.width = app.visualizerCanvas.clientWidth;
         app.visualizerCanvas.height = app.visualizerCanvas.clientHeight;
         app.recreateParticles();
-        await refreshAudioEngineEndpoint();
+        if (endpointPromise) applyAudioEngineEndpoint(await endpointPromise);
         app.connectWebSocket();
         if (!app.animationFrameId) app.startVisualizerAnimation();
         app.updateModeButton();
-        await initializeTheme();
+        if (themePromise) {
+            const theme = await themePromise;
+            if (theme) app.applyTheme(theme);
+        }
         window.MusicIntroLib?.init(app);
 
         if (typeof initMusicDock === 'function') initMusicDock(app);
@@ -470,14 +485,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (app.api?.getMusicPlaylist) {
             let restoreQueueAfterSidebar = false;
-            const savedPlaylist = await app.api.getMusicPlaylist();
+            const savedPlaylist = await playlistPromise;
             if (savedPlaylist && savedPlaylist.length > 0) {
                 app.playlist = savedPlaylist;
                 app.renderPlaylist();
             }
 
             // 检查是否有待播放请求（AI 点歌触发的新窗口）
-            const pendingPlayback = await app.api.getMusicPendingTrack();
+            const pendingPlayback = await pendingPromise;
             const pendingTrack = pendingPlayback?.track || pendingPlayback;
             if (pendingTrack && pendingTrack.path) {
                 console.log(
@@ -512,12 +527,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 restoreQueueAfterSidebar = !pendingTrack;
             }
 
-            await app.loadCustomPlaylists();
+            await customPlaylistsPromise;
             app.renderSidebarContent('all');
             // 侧栏初始化会清掉当前列表，所以上次的上下文和手动队列放在它之后恢复。
             if (restoreQueueAfterSidebar) app.applySessionQueue?.();
 
-            const initialState = await app.api.getMusicState();
+            const initialState = await initialStatePromise;
             if (initialState?.state?.volume !== undefined) {
                 app.volumeSlider.value = initialState.state.volume;
                 app.updateVolumeSliderBackground(initialState.state.volume);

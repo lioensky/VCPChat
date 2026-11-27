@@ -360,17 +360,31 @@
             const k = box.offsetWidth / b.width || 1;
             global.MusicFluid.slide(mark, { left: (t.left - b.left) * k, width: t.width * k }, { key: 'archive-kinds' });
         };
+        let kindMarkRaf = 0;
+        const scheduleKindMark = () => {
+            if (kindMarkRaf) return;
+            kindMarkRaf = typeof requestAnimationFrame === 'function'
+                ? requestAnimationFrame(() => { kindMarkRaf = 0; placeKindMark(); })
+                : (placeKindMark(), 0);
+        };
         // 目录收起时量不到宽度；展开、窗口变宽窄、字体换好时再落一次位
-        if (typeof global.ResizeObserver === 'function' && r.kinds) new global.ResizeObserver(() => placeKindMark()).observe(r.kinds);
+        if (typeof global.ResizeObserver === 'function' && r.kinds) new global.ResizeObserver(() => scheduleKindMark()).observe(r.kinds);
         // 「为你」：最近播放后面接每日推荐、最常听、很久没听、还没听过（听歌记录 music-stats.js + 挑歌 music-radio.js）
         const statsSections = () => {
             const stats = app.musicStats;
-            const idxOf = (list) => list.map((t) => tracks().indexOf(t)).filter((i) => i >= 0);
+            const list = tracks();
+            const byRef = new Map();
+            const byPath = new Map();
+            for (let i = 0; i < list.length; i += 1) {
+                const t = list[i];
+                if (!byRef.has(t)) byRef.set(t, i);
+                const k = String(t && t.path || '').replace(/\\/g, '/').toLowerCase();
+                if (k && !byPath.has(k)) byPath.set(k, i);
+            }
+            const idxOf = (arr) => arr.map((t) => byRef.get(t)).filter((i) => i !== undefined);
             // 每日推荐不依赖听歌记录（没有记录时按曲库挑），先放上
             const daily = { label: '每日推荐', key: 'recent:daily', items: app.dailyMix ? idxOf(app.dailyMix()) : [] };
             if (!stats) return [daily];
-            const byPath = new Map();
-            tracks().forEach((t, i) => { const k = String(t && t.path || '').replace(/\\/g, '/').toLowerCase(); if (k && !byPath.has(k)) byPath.set(k, i); });
             const idx = (paths) => paths.map((p) => byPath.get(String(p).replace(/\\/g, '/').toLowerCase())).filter((i) => i !== undefined);
             return [
                 daily,
@@ -450,7 +464,7 @@
                 b.classList.toggle('on', on);
                 b.setAttribute('aria-selected', String(on));
             });
-            placeKindMark();
+            scheduleKindMark();
             // 歌单、为你、检索结果有自己的顺序，不跟排序菜单走；表头按这个决定标不标排序列
             el.dataset.kind = state.query.trim() ? 'search' : state.kind;
             paintSort();

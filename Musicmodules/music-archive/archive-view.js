@@ -1829,24 +1829,31 @@
             const done = () => { if (modeSweepEl === el) modeSweepEl = null; el.remove(); };
             if (anim) anim.onfinish = anim.oncancel = done; else setTimeout(done, 0);
         };
-        const modeObserver = new MutationObserver(() => {
-            const light = document.body.classList.contains('light-theme');
-            if (light === modeLight) return;
-            modeLight = light;
-            modeSweep();
-        });
-        modeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
         /*
          * 颗粒质感（借鉴 RhinE 的 grain）：一块无缝噪点小图平铺在场景上、HUD 下面，按设备像素 1:1。
          * 深色时是白色噪点（只把黑底提亮），浅色时是黑色噪点（只把纸面压暗），平均只差两三级灰，
-         * 让大面积的纸色和黑底不那么像塑料。图只生成一次，静止不动，不占每帧开销。
+         * 让大面积的纸色和黑底不那么像塑料。图只生成一次，静止不动，不占每帧开销；
+         * 用首帧后的异步 toBlob 放到后台线程编码 PNG，避免同步 toDataURL 在启动期阻塞主线程近 200ms。
          */
         const GRAIN_TILE = 160;
         const grainTiles = {};
-        const grainTile = (light) => {
+        const grainPending = {};
+        const grainObjectUrls = [];
+        let grainRaf = 0;
+        const applyGrain = (light, dpr, url) => {
+            if (state.destroyed) return;
+            const el = refs.grain;
+            if (!el) return;
+            const curLight = document.body.classList.contains('light-theme');
+            if (curLight !== light) return;
+            el.style.backgroundImage = url ? `url("${url}")` : 'none';
+            el.style.backgroundSize = (GRAIN_TILE / dpr) + 'px';
+        };
+        const buildGrainTile = (light, dpr) => {
             const k = light ? 'light' : 'dark';
-            if (grainTiles[k] !== undefined) return grainTiles[k];
-            let url = '';
+            if (grainTiles[k] !== undefined) { applyGrain(light, dpr, grainTiles[k]); return; }
+            if (grainPending[k]) return;
+            grainPending[k] = true;
             try {
                 const c = document.createElement('canvas');
                 c.width = c.height = GRAIN_TILE;
@@ -1856,33 +1863,61 @@
                 // 固定种子：每次打开颗粒一样，不会一闪
                 let seed = 0x2f6b1d;
                 const rnd = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return ((seed >>> 0) % 100000) / 100000; };
-                for (let i = 0; i < img.data.length; i += 4) {
+                const data = img.data;
+                const scale = light ? 13 : 11;
+                for (let i = 0; i < data.length; i += 4) {
                     const r = rnd();
-                    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-                    img.data[i + 3] = Math.round(r * r * r * (light ? 13 : 11));
+                    data[i] = data[i + 1] = data[i + 2] = v;
+                    data[i + 3] = Math.round(r * r * r * scale);
                 }
                 g.putImageData(img, 0, 0);
-                url = c.toDataURL('image/png');
-            } catch (e) { url = ''; }
-            grainTiles[k] = url;
-            return url;
+                if (typeof c.toBlob === 'function' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+                    c.toBlob((blob) => {
+                        grainPending[k] = false;
+                        if (!blob) { grainTiles[k] = ''; applyGrain(light, dpr, ''); return; }
+                        if (state.destroyed) return;
+                        const url = URL.createObjectURL(blob);
+                        grainObjectUrls.push(url);
+                        grainTiles[k] = url;
+                        applyGrain(light, global.devicePixelRatio || 1, url);
+                    }, 'image/png');
+                } else {
+                    const url = c.toDataURL('image/png');
+                    grainPending[k] = false;
+                    grainTiles[k] = url;
+                    applyGrain(light, dpr, url);
+                }
+            } catch (e) {
+                grainPending[k] = false;
+                grainTiles[k] = '';
+                applyGrain(light, dpr, '');
+            }
         };
         let lastGrainKey = '';
         const syncGrain = () => {
             const el = refs.grain;
-            if (!el) return;
+            if (!el || state.destroyed) return;
             const light = document.body.classList.contains('light-theme');
             const dpr = global.devicePixelRatio || 1;
             const key = (light ? '1' : '0') + '@' + dpr;
             if (key === lastGrainKey) return;
             lastGrainKey = key;
-            const url = grainTile(light);
-            el.style.backgroundImage = url ? `url("${url}")` : 'none';
-            el.style.backgroundSize = (GRAIN_TILE / dpr) + 'px';
+            const k = light ? 'light' : 'dark';
+            if (grainTiles[k] !== undefined) {
+                applyGrain(light, dpr, grainTiles[k]);
+                return;
+            }
+            if (grainRaf) cancelAnimationFrame(grainRaf);
+            grainRaf = requestAnimationFrame(() => {
+                grainRaf = 0;
+                if (state.destroyed) return;
+                const curLight = document.body.classList.contains('light-theme');
+                const curDpr = global.devicePixelRatio || 1;
+                lastGrainKey = (curLight ? '1' : '0') + '@' + curDpr;
+                buildGrainTile(curLight, curDpr);
+            });
         };
         syncGrain();
-        const grainObserver = new MutationObserver(syncGrain);
-        grainObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
         const onVisibility = () => { if (!document.hidden) { state.lastDraw = 0; kick(); } };
         document.addEventListener('visibilitychange', onVisibility);
         // 主题（light-theme）、舞台进出（music-stage-active）、底栏高度（body 上的变量）都挂在 body 上
@@ -1896,11 +1931,19 @@
             const safe = dockSafe();
             const safeChanged = safe !== lastDockSafe;
             lastDockSafe = safe;
-            const themeChanged = cls.includes('light-theme') !== lastBodyClass.includes('light-theme');
+            const light = cls.includes('light-theme');
+            const themeChanged = light !== lastBodyClass.includes('light-theme');
             const stageChanged = cls.includes('music-stage-active') !== lastBodyClass.includes('music-stage-active');
             const enteringChanged = cls.includes('music-stage-entering') !== lastBodyClass.includes('music-stage-entering');
             lastBodyClass = cls;
-            if (themeChanged) applyTheme({ wave: true });
+            if (themeChanged) {
+                applyTheme({ wave: true });
+                syncGrain();
+                if (light !== modeLight) {
+                    modeLight = light;
+                    modeSweep();
+                }
+            }
             if (enteringChanged) syncEntering();
             if (stageChanged) savePlace();
             if (stageChanged && !cls.includes('music-stage-active') && isShown()) {
@@ -1972,8 +2015,10 @@
             document.removeEventListener('keydown', onKeyDown);
             clearTimeout(rehoverTimer);
             document.removeEventListener('pointerdown', onKeysOutside, true);
-            grainObserver.disconnect();
-            modeObserver.disconnect(); modeSweepEl?.remove();
+            if (grainRaf) { cancelAnimationFrame(grainRaf); grainRaf = 0; }
+            for (const u of grainObjectUrls) { try { URL.revokeObjectURL(u); } catch (e) {} }
+            grainObjectUrls.length = 0;
+            modeSweepEl?.remove();
             pick.timers.forEach(clearTimeout); pick.on = false;
             document.removeEventListener('pointerdown', onPickInterrupt, true);
             document.removeEventListener('wheel', onPickInterrupt, { capture: true });

@@ -7,13 +7,32 @@
 (function (global) {
     'use strict';
 
+    const NON_ASCII = /[^\x20-\x7e]/;
     const toHiragana = (s) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
-    const norm = (s) => toHiragana(String(s || '').normalize('NFKC').toLowerCase()).trim();
+    const norm = (s) => {
+        const raw = String(s || '');
+        if (!raw) return '';
+        if (!NON_ASCII.test(raw)) return raw.toLowerCase().trim();
+        return toHiragana(raw.normalize('NFKC').toLowerCase()).trim();
+    };
     const stripExt = (t) => String(t || '').replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '');
     const HAN = /[㐀-䶿一-鿿豈-﫿]/;
     const LATIN = /[a-z]/;
     const DIGIT = /[0-9]/;
     const LEADING_JUNK = /^[\s\p{P}\p{S}]+/u;
+    const SKIP_NON_ASCII = /\s|\p{P}|\p{S}/u;
+    const PINYIN_CACHE = new WeakMap();
+    const cachedPinyin = (pinyin, ch) => {
+        let map = PINYIN_CACHE.get(pinyin);
+        if (!map) { map = new Map(); PINYIN_CACHE.set(pinyin, map); }
+        let hit = map.get(ch);
+        if (hit === undefined) {
+            hit = String(pinyin(ch) || '').normalize('NFD').toLowerCase().replace(/[^a-z]/g, '');
+            if (map.size >= 8192) map.clear();
+            map.set(ch, hit);
+        }
+        return hit;
+    };
 
     const KANA_ROWS = [
         ['あ', 'ぁあぃいぅうぇえぉおゔ'], ['か', 'かがきぎくぐけげこごゕゖ'], ['さ', 'さざしじすずせぜそぞ'],
@@ -38,43 +57,51 @@
      * py  = 全拼串（汉字换成拼音，其他字母数字原样，去掉空白和符号），
      * ini = 首字母串（汉字取拼音首字母，拉丁词取词首，假名和数字原样）。
      */
-    const romanize = (text, pinyin) => {
-        const s = norm(text);
+    const romanizeNormalized = (s, pinyin) => {
         let py = '';
         let ini = '';
         let wordStart = true;
         for (const c of s) {
-            if (HAN.test(c)) {
-                const p = pinyin ? String(pinyin(c) || '').normalize('NFD').toLowerCase().replace(/[^a-z]/g, '') : '';
+            const code = c.charCodeAt(0);
+            if (code < 0x80) {
+                if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57)) {
+                    py += c;
+                    if (wordStart) ini += c;
+                    wordStart = false;
+                } else {
+                    wordStart = true;
+                }
+            } else if (HAN.test(c)) {
+                const p = pinyin ? cachedPinyin(pinyin, c) : '';
                 if (p) { py += p; ini += p[0]; } else { py += c; ini += c; }
                 wordStart = true;
-            } else if (LATIN.test(c) || DIGIT.test(c)) {
-                py += c;
-                if (wordStart) ini += c;
-                wordStart = false;
-            } else if (KANA_ROW_OF.has(c) || /[぀-ゟー]/.test(c)) {
+            } else if (KANA_ROW_OF.has(c) || (code >= 0x3040 && code <= 0x309f) || code === 0x30fc) {
                 py += c; ini += c; wordStart = true;
             } else {
-                if (!/\s|\p{P}|\p{S}/u.test(c)) { py += c; ini += c; }
+                if (!SKIP_NON_ASCII.test(c)) { py += c; ini += c; }
                 wordStart = true;
             }
         }
         return { py, ini };
     };
+    const romanize = (text, pinyin) => romanizeNormalized(norm(text), pinyin);
 
-    const groupOf = (title, pinyin) => {
-        const s = norm(stripExt(title)).replace(LEADING_JUNK, '');
-        const c = [...s][0] || '';
+    const groupFromNorm = (normText, pinyin) => {
+        const s = normText.replace(LEADING_JUNK, '');
+        const c = s ? s[0] : '';
         if (!c) return '#';
-        if (LATIN.test(c)) return c.toUpperCase();
-        if (DIGIT.test(c)) return '0-9';
-        if (KANA_ROW_OF.has(c)) return KANA_ROW_OF.get(c);
-        if (HAN.test(c) && pinyin) {
-            const p = String(pinyin(c) || '').normalize('NFD').toLowerCase();
-            if (/^[a-z]/.test(p)) return p[0].toUpperCase();
+        const code = c.charCodeAt(0);
+        if (code >= 97 && code <= 122) return String.fromCharCode(code - 32);
+        if (code >= 48 && code <= 57) return '0-9';
+        const first = code >= 0xd800 && code <= 0xdbff ? [...s][0] : c;
+        if (KANA_ROW_OF.has(first)) return KANA_ROW_OF.get(first);
+        if (HAN.test(first) && pinyin) {
+            const p = cachedPinyin(pinyin, first);
+            if (p) return p[0].toUpperCase();
         }
         return '#';
     };
+    const groupOf = (title, pinyin) => groupFromNorm(norm(stripExt(title)), pinyin);
 
     // 组内排序：数字按数值比（Song 2 在 Song 10 前面）
     const COLLATE = typeof Intl !== 'undefined' ? new Intl.Collator('en', { numeric: true, sensitivity: 'base' }).compare
@@ -84,16 +111,19 @@
 
     /* 一首歌的检索条目：三个字段的原文、全拼、首字母，加上分组和排序键 */
     const entryOf = (t, pinyin) => {
-        const e = { group: groupOf(t && t.title, pinyin) };
-        for (const [f] of FIELDS) {
+        const e = {};
+        for (let fi = 0; fi < FIELDS.length; fi += 1) {
+            const f = FIELDS[fi][0];
             const raw = f === 'title' ? stripExt(t && t.title) : (t && t[f]) || '';
-            const r = romanize(raw, pinyin);
-            e[f] = norm(raw);
+            const n = norm(raw);
+            const r = romanizeNormalized(n, pinyin);
+            e[f] = n;
             e[f + 'Py'] = r.py;
             e[f + 'Ini'] = r.ini;
         }
+        e.group = groupFromNorm(e.title, pinyin);
         e.sort = e.titlePy || e.title;
-        e.artistGroup = e.artist ? groupOf(t && t.artist, pinyin) : '#';
+        e.artistGroup = e.artist ? groupFromNorm(e.artist, pinyin) : '#';
         e.artistSort = e.artistPy || e.artist;
         return e;
     };

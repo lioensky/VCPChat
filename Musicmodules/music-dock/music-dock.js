@@ -355,7 +355,7 @@
                     host,
                     bar: el.cap,
                     ring: el.hdl,
-                    reduced: () => reducedMotion.matches
+                    reduced: () => Boolean(global.MusicMotion ? global.MusicMotion.reduced() : reducedMotion.matches)
                 });
             } else if (!want && fluid) {
                 fluid.destroy();

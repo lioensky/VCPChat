@@ -76,26 +76,48 @@
         for (const t of seeds) { const k = recordingKey(t); if (k) takenKeys.add(k); }
         for (const t of exclude) { const k = recordingKey(t); if (k) takenKeys.add(k); }
         const instrumentalOk = seeds.some(isInstrumental);
-        // 每首歌先挑出最好的那份文件，其余的不参加打分
+        // 每首歌先挑出最好的那份文件，其余的不参加打分（缓存第一遍的 recordingKey 与 playable，保持原始遍历顺序以维持确定性 random）
+        const n = library.length;
         const best = new Map();
-        for (const t of library) {
+        const bestRank = new Map();
+        const keys = new Array(n);
+        const ok = new Uint8Array(n);
+        const hasSeedArtists = seedArtists.size > 0;
+        const hasSeedAlbums = seedAlbums.size > 0;
+        const hasSeedGenres = seedGenres.size > 0;
+        for (let i = 0; i < n; i += 1) {
+            const t = library[i];
             if (!t || !t.path || exclude.has(t) || !playable(t)) continue;
+            ok[i] = 1;
             const k = recordingKey(t);
-            if (!k) continue;
-            const had = best.get(k);
-            if (!had || versionRank(t) > versionRank(had)) best.set(k, t);
+            keys[i] = k;
+            if (!k || takenKeys.has(k)) continue;
+            const r = versionRank(t);
+            const prevRank = bestRank.get(k);
+            if (prevRank === undefined || r > prevRank) {
+                best.set(k, t);
+                bestRank.set(k, r);
+            }
         }
         const scored = [];
-        for (const t of library) {
-            if (!t || !t.path || exclude.has(t)) continue;
-            const key = recordingKey(t);
-            if (key ? (best.get(key) !== t || takenKeys.has(key)) : !playable(t)) continue;
+        for (let i = 0; i < n; i += 1) {
+            if (!ok[i]) continue;
+            const t = library[i];
+            const key = keys[i];
+            if (key && (best.get(key) !== t || takenKeys.has(key))) continue;
             let s = 0;
-            let artistHit = 0;
-            for (const a of artistsOf(t)) artistHit = Math.max(artistHit, seedArtists.get(a) || 0);
-            s += 3 * artistHit;
-            if (seedAlbums.has(norm(t.album) + '\n' + norm(t.artist))) s += 1.5;
-            if (norm(t.genre) && seedGenres.has(norm(t.genre))) s += 1;
+            const normArtist = norm(t.artist);
+            const normAlbum = norm(t.album);
+            if (hasSeedArtists && normArtist) {
+                let artistHit = 0;
+                for (const a of artistsOf(t)) artistHit = Math.max(artistHit, seedArtists.get(a) || 0);
+                s += 3 * artistHit;
+            }
+            if (hasSeedAlbums && normAlbum && seedAlbums.has(normAlbum + '\n' + normArtist)) s += 1.5;
+            if (hasSeedGenres) {
+                const g = norm(t.genre);
+                if (g && seedGenres.has(g)) s += 1;
+            }
             s += 2 * affinity(t);
             if (liked(t)) s += 1.5;
             s += novelty(t); // 每日推荐里给没听过的歌一点加分，让曲库里沉着的歌浮上来
@@ -210,6 +232,7 @@
             return () => { h += 0x6D2B79F5; let x = h; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
         };
         const byPaths = (paths) => {
+            if (!paths || !paths.length) return [];
             const want = new Map((app.playlist || []).map((t) => [norm(String(t.path).replace(/\\/g, '/')), t]));
             return paths.map((p) => want.get(norm(String(p).replace(/\\/g, '/')))).filter(Boolean);
         };
