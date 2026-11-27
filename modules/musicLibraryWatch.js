@@ -50,8 +50,18 @@ function inferredDirs(tracks) {
 
 // 这次扫到的和上次存的比，有没有变化（新增、删除、文件改过）
 function changedSince(known, scanned, root) {
+    const p = norm(root);
+    const pSep = p + path.sep.toLowerCase();
+    const pSlash = p + '/';
+    const pBack = p + '\\';
     const before = new Map();
-    for (const t of known || []) if (t && typeof t.path === 'string' && isUnder(t.path, root)) before.set(t.path, t);
+    for (const t of known || []) {
+        if (!t || typeof t.path !== 'string') continue;
+        const c = norm(t.path);
+        if (c === p || c.startsWith(pSep) || c.startsWith(pSlash) || c.startsWith(pBack)) {
+            before.set(t.path, t);
+        }
+    }
     const after = scanned || [];
     if (after.length !== before.size) return true;
     for (const t of after) {
@@ -197,8 +207,13 @@ function createLibraryWatch({
             const list = (await readExcluded().catch(() => [])) || [];
             const set = new Set(list.filter((p) => !nextPaths.has(p)));
             let changed = set.size !== list.length;
-            for (const p of removed.slice(0, 5000)) {
-                if (!set.has(p) && await fileExists(p)) { set.add(p); changed = true; }
+            const toCheck = removed.slice(0, 5000).filter((p) => !set.has(p));
+            for (let at = 0; at < toCheck.length; at += 32) {
+                const slice = toCheck.slice(at, at + 32);
+                const results = await Promise.all(slice.map((p) => fileExists(p)));
+                for (let i = 0; i < slice.length; i++) {
+                    if (results[i] && !set.has(slice[i])) { set.add(slice[i]); changed = true; }
+                }
             }
             if (changed) await writeExcluded([...set].slice(-20000));
         }).catch((e) => log.warn?.('[MusicWatch] note removals failed:', e?.message || e));

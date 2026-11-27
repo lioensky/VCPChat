@@ -1,5 +1,5 @@
 // modules/musicScannerWorker.js
-const { parentPort, workerData } = require('worker_threads');
+const { parentPort, workerData, threadId } = require('worker_threads');
 const musicMetadata = require('music-metadata');
 const path = require('path');
 const fs = require('fs/promises');
@@ -12,17 +12,64 @@ if (!parentPort) {
 
 const { coverCachePath } = workerData;
 const PARSE_TIMEOUT_MS = 30000;
+const MIME_EXT_MAP = {
+    jpeg: 'jpg',
+    jpg: 'jpg',
+    png: 'png',
+    webp: 'webp',
+    gif: 'gif',
+    bmp: 'bmp',
+    'x-ms-bmp': 'bmp',
+    avif: 'avif',
+    tiff: 'tiff',
+    'svg+xml': 'svg'
+};
+
+function safeCoverExtension(format) {
+    const raw = String(format || 'image/jpeg').split(';')[0].trim().toLowerCase();
+    const sub = raw.includes('/') ? raw.split('/')[1] : raw;
+    if (MIME_EXT_MAP[sub]) return MIME_EXT_MAP[sub];
+    const clean = sub.replace(/[^a-z0-9]/g, '').slice(0, 8);
+    return clean || 'jpg';
+}
 
 // 一张专辑的每首歌通常内嵌同一张封面：同名（内容哈希）文件写过一次就不再写。
-const coversWritten = new Map();
+// 写完后只保留路径到 Set，释放进行中的 Promise 引用；多 worker 同写用临时文件 + 改名防 Windows EBUSY/半截文件。
+const coversDone = new Set();
+const coversInFlight = new Map();
+let tmpSeq = 0;
+
+async function writeCoverAtomic(fullCoverPath, data) {
+    const present = await fs.stat(fullCoverPath)
+        .then((stat) => stat.size === data.length, () => false);
+    if (present) return;
+    const tmpPath = `${fullCoverPath}.${process.pid}.${threadId}.${++tmpSeq}.tmp`;
+    await fs.writeFile(tmpPath, data);
+    try {
+        await fs.rename(tmpPath, fullCoverPath);
+    } catch (err) {
+        await fs.unlink(tmpPath).catch(() => {});
+        const already = await fs.stat(fullCoverPath)
+            .then((stat) => stat.size === data.length, () => false);
+        if (!already) throw err;
+    }
+}
+
 function ensureCover(fullCoverPath, data) {
-    let pending = coversWritten.get(fullCoverPath);
+    if (coversDone.has(fullCoverPath)) return Promise.resolve();
+    let pending = coversInFlight.get(fullCoverPath);
     if (!pending) {
-        pending = fs.stat(fullCoverPath)
-            .then((stat) => stat.size === data.length, () => false)
-            .then((present) => (present ? undefined : fs.writeFile(fullCoverPath, data)));
-        coversWritten.set(fullCoverPath, pending);
-        pending.catch(() => coversWritten.delete(fullCoverPath));
+        pending = writeCoverAtomic(fullCoverPath, data).then(
+            () => {
+                coversDone.add(fullCoverPath);
+                coversInFlight.delete(fullCoverPath);
+            },
+            (err) => {
+                coversInFlight.delete(fullCoverPath);
+                throw err;
+            }
+        );
+        coversInFlight.set(fullCoverPath, pending);
     }
     return pending;
 }
@@ -50,7 +97,7 @@ async function parseTrack(filePath) {
     if (picture) {
         // Content hash as the filename: identical covers share one cache file
         const hash = crypto.createHash('md5').update(picture.data).digest('hex');
-        const extension = (picture.format || 'image/jpeg').split('/')[1] || 'jpg';
+        const extension = safeCoverExtension(picture.format);
         const fullCoverPath = path.join(coverCachePath, `${hash}.${extension}`);
         await ensureCover(fullCoverPath, picture.data);
         coverPath = fullCoverPath;

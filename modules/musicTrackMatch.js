@@ -16,8 +16,9 @@ function norm(value) {
 }
 
 // 去掉空格和常见标点后再比一次：「星の余韻」和「星の 余韻」、全角半角括号都算一样。
-function squash(value) {
-    return norm(value).replace(/[\s\-–—·・.,，。、!！?？'"“”‘’()（）[\]【】「」『』]/g, '');
+const NOISE_RE = /[\s\-–—·・.,，。、!！?？'"“”‘’()（）[\]【】「」『』]/g;
+function stripNoise(normalized) {
+    return normalized.replace(NOISE_RE, '');
 }
 
 // 「歌名 - 歌手」「歌名 by 歌手」「歌手 的 歌名」这类写法拆成两半。
@@ -30,7 +31,7 @@ function scoreTrack(track, q, qs, pair) {
     const title = norm(track.title || (track.path ? String(track.path).split(/[\\/]/).pop() : ''));
     const artist = norm(track.artist);
     const album = norm(track.album);
-    const titleS = squash(title);
+    const titleS = stripNoise(title);
     if (!title && !artist) return 0;
     if (title === q || (qs && titleS === qs)) return 100;
     if (pair) {
@@ -52,7 +53,7 @@ function findTrack(playlist, target) {
     if (!Array.isArray(playlist) || typeof target !== 'string') return null;
     const q = norm(target);
     if (!q) return null;
-    const qs = squash(q);
+    const qs = stripNoise(q);
     const pair = splitQuery(q);
     let best = null;
     let bestScore = 0;

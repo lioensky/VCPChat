@@ -58,7 +58,7 @@ function stringSimilarity(s1, s2, normalizer = normalizeLyricMatchText) {
     for (const char of set1) {
         if (set2.has(char)) intersection++;
     }
-    const union = new Set([...set1, ...set2]).size;
+    const union = set1.size + set2.size - intersection;
     return union > 0 ? intersection / union : 0;
 }
 

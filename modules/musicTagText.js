@@ -17,14 +17,25 @@ function looksLikeGbkAsLatin1(text) {
     return true;
 }
 
+const UTF8_FATAL = new TextDecoder('utf-8', { fatal: true });
+let gb18030Fatal = null;
+function getGb18030Fatal() {
+    if (gb18030Fatal === null) {
+        try { gb18030Fatal = new TextDecoder('gb18030', { fatal: true }); } catch (_) { gb18030Fatal = false; }
+    }
+    return gb18030Fatal;
+}
+
 function repairTagText(text) {
     if (!looksLikeGbkAsLatin1(text)) return text;
     const bytes = Buffer.from(text, 'latin1');
     let decoded;
     try {
-        decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes); // 也可能是标成 Latin-1 的 UTF-8
+        decoded = UTF8_FATAL.decode(bytes); // 也可能是标成 Latin-1 的 UTF-8
     } catch (_) {
-        try { decoded = new TextDecoder('gb18030', { fatal: true }).decode(bytes); } catch (error) { return text; }
+        const gb = getGb18030Fatal();
+        if (!gb) return text;
+        try { decoded = gb.decode(bytes); } catch (error) { return text; }
     }
     return CJK.test(decoded) && !decoded.includes('�') ? decoded : text;
 }

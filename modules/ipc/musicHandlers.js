@@ -24,7 +24,7 @@ const { registerMusicEngineHandlers } = require('./musicEngineHandlers');
 const { registerMusicWebdavHandlers } = require('./musicWebdavHandlers');
 const { registerMusicLyricsHandlers } = require('./musicLyricsHandlers');
 const { randomUUID } = require('crypto');
-let fetch;
+let fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : null;
 
 let musicWindow = null;
 // 任务栏缩略图上的上一首/播放暂停/下一首（只在 Windows 上）
@@ -296,9 +296,9 @@ function createOrFocusMusicWindow() {
         });
 
         // 从资源管理器把歌曲或图片拖进窗口时，Chromium 默认会跳转去打开那个文件，整个播放器被换掉、
-        // 播放状态全丢。音乐窗口只该停在自己的页面上。
+        // 播放状态全丢。音乐窗口只该停在自己的页面上（含旧版界面）。
         musicWindow.webContents.on('will-navigate', (event, url) => {
-            if (!/\/Musicmodules\/music\.html(?:[?#]|$)/.test(String(url).replace(/\\/g, '/'))) event.preventDefault();
+            if (!/\/Musicmodules(?:-legacy)?\/music\.html(?:[?#]|$)/.test(String(url).replace(/\\/g, '/'))) event.preventDefault();
         });
 
         musicWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -829,8 +829,10 @@ function initialize(options) {
             try {
                 if (op === 'list') {
                     const folders = typeof libraryWatch.folders === 'function' ? await libraryWatch.folders() : [];
-                    const withState = [];
-                    for (const d of folders) withState.push({ path: d, exists: Boolean((await fs.stat(d).catch(() => null))?.isDirectory()) });
+                    const withState = await Promise.all(folders.map(async (d) => ({
+                        path: d,
+                        exists: Boolean((await fs.stat(d).catch(() => null))?.isDirectory())
+                    })));
                     return { ok: true, folders: withState };
                 }
                 if (!dir || !path.isAbsolute(dir)) return { ok: false, message: '不是本机文件夹' };
@@ -993,7 +995,7 @@ function initialize(options) {
         }
 
         ipcMain.handle('music-add-folder', async (event) => {
-            const result = await dialog.showOpenDialog(mainWindow, {
+            const result = await dialog.showOpenDialog(musicWindow || mainWindow, {
                 properties: ['openDirectory']
             });
 
@@ -1008,11 +1010,18 @@ function initialize(options) {
         // 拖进窗口的文件和文件夹：文件夹整个扫，单曲只读这几首。路径来自渲染端，逐个确认是本地的目录或音频文件。
         ipcMain.handle('music-add-paths', async (event, paths) => {
             if (!Array.isArray(paths)) return { added: 0 };
+            const candidates = paths.slice(0, 2000).filter((raw) => typeof raw === 'string' && path.isAbsolute(raw));
+            const stats = new Array(candidates.length);
+            for (let at = 0; at < candidates.length; at += 32) {
+                await Promise.all(candidates.slice(at, at + 32).map(async (raw, k) => {
+                    stats[at + k] = await fs.stat(raw).catch(() => null);
+                }));
+            }
             const folders = [];
             const files = [];
-            for (const raw of paths.slice(0, 2000)) {
-                if (typeof raw !== 'string' || !path.isAbsolute(raw)) continue;
-                const stat = await fs.stat(raw).catch(() => null);
+            for (let i = 0; i < candidates.length; i++) {
+                const raw = candidates[i];
+                const stat = stats[i];
                 if (stat?.isDirectory()) folders.push(raw);
                 else if (stat?.isFile() && SUPPORTED_FORMATS.has(path.extname(raw).toLowerCase())) files.push(raw);
             }
@@ -1141,20 +1150,19 @@ function initialize(options) {
         }
     };
 
-    // 使用动态导入，并在成功后注册所有IPC处理器
-    // 先注册 IPC 处理器，再异步加载 node-fetch
-    console.error('[Music] About to call registerIpcHandlers...');
+    // 先注册 IPC 处理器；仅当运行时无原生 fetch 时才动态加载 node-fetch
     registerIpcHandlers();
     ipcHandlersRegistered = true;
-    console.error('[Music] IPC handlers registered.');
     console.log('[Music] IPC handlers registered.');
-    
-    import('node-fetch').then(module => {
-        fetch = module.default;
-        console.log('[Music] node-fetch loaded successfully.');
-    }).catch(err => {
-        console.error('[Music] Failed to load node-fetch:', err);
-    });
+
+    if (!fetch) {
+        import('node-fetch').then(module => {
+            fetch = module.default;
+            console.log('[Music] node-fetch loaded successfully.');
+        }).catch(err => {
+            console.error('[Music] Failed to load node-fetch:', err);
+        });
+    }
 }
 
 module.exports = {

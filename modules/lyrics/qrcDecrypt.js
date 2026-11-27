@@ -166,26 +166,22 @@ function f(state, key) {
     bitnum_intl(state, 0, 23)
   ) >>> 0;
 
-  const lrgstate = [
-    (t1 >>> 24) & 0xff,
-    (t1 >>> 16) & 0xff,
-    (t1 >>> 8) & 0xff,
-    (t2 >>> 24) & 0xff,
-    (t2 >>> 16) & 0xff,
-    (t2 >>> 8) & 0xff,
-  ];
-
-  const xorState = lrgstate.map((item, idx) => item ^ key[idx]);
+  const x0 = ((t1 >>> 24) & 0xff) ^ key[0];
+  const x1 = ((t1 >>> 16) & 0xff) ^ key[1];
+  const x2 = ((t1 >>> 8) & 0xff) ^ key[2];
+  const x3 = ((t2 >>> 24) & 0xff) ^ key[3];
+  const x4 = ((t2 >>> 16) & 0xff) ^ key[4];
+  const x5 = ((t2 >>> 8) & 0xff) ^ key[5];
 
   const outputState = (
-    (SBOX[0][sbox_bit(xorState[0] >>> 2)] << 28) |
-    (SBOX[1][sbox_bit(((xorState[0] & 0x03) << 4) | (xorState[1] >>> 4))] << 24) |
-    (SBOX[2][sbox_bit(((xorState[1] & 0x0f) << 2) | (xorState[2] >>> 6))] << 20) |
-    (SBOX[3][sbox_bit(xorState[2] & 0x3f)] << 16) |
-    (SBOX[4][sbox_bit(xorState[3] >>> 2)] << 12) |
-    (SBOX[5][sbox_bit(((xorState[3] & 0x03) << 4) | (xorState[4] >>> 4))] << 8) |
-    (SBOX[6][sbox_bit(((xorState[4] & 0x0f) << 2) | (xorState[5] >>> 6))] << 4) |
-    SBOX[7][sbox_bit(xorState[5] & 0x3f)]
+    (SBOX[0][sbox_bit(x0 >>> 2)] << 28) |
+    (SBOX[1][sbox_bit(((x0 & 0x03) << 4) | (x1 >>> 4))] << 24) |
+    (SBOX[2][sbox_bit(((x1 & 0x0f) << 2) | (x2 >>> 6))] << 20) |
+    (SBOX[3][sbox_bit(x2 & 0x3f)] << 16) |
+    (SBOX[4][sbox_bit(x3 >>> 2)] << 12) |
+    (SBOX[5][sbox_bit(((x3 & 0x03) << 4) | (x4 >>> 4))] << 8) |
+    (SBOX[6][sbox_bit(((x4 & 0x0f) << 2) | (x5 >>> 6))] << 4) |
+    SBOX[7][sbox_bit(x5 & 0x3f)]
   ) >>> 0;
 
   return (
@@ -288,6 +284,8 @@ function tripledes_crypt(data, keySchedule) {
   return temp;
 }
 
+const QRC_DECRYPT_SCHEDULE = tripledes_key_setup(Buffer.from('!@#)(*$%123ZXC!@!@#)(NHL', 'utf8'), 0);
+
 /**
  * Decrypts QQ Music QRC lyrics string.
  * Supports Hex-encoded strings or raw Buffer/Uint8Array.
@@ -297,9 +295,14 @@ async function qrcDecrypt(encryptedHexOrBytes) {
   let encryptedBytes;
   if (typeof encryptedHexOrBytes === 'string') {
     const hex = encryptedHexOrBytes.trim();
-    const matches = hex.match(/.{1,2}/g);
-    if (!matches) throw new Error('Invalid hexadecimal lyric string');
-    encryptedBytes = new Uint8Array(matches.map(byte => parseInt(byte, 16)));
+    if (!hex) throw new Error('Invalid hexadecimal lyric string');
+    if (hex.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(hex)) {
+      encryptedBytes = Buffer.from(hex, 'hex');
+    } else {
+      const matches = hex.match(/.{1,2}/g);
+      if (!matches) throw new Error('Invalid hexadecimal lyric string');
+      encryptedBytes = new Uint8Array(matches.map(byte => parseInt(byte, 16)));
+    }
   } else {
     encryptedBytes = new Uint8Array(encryptedHexOrBytes);
   }
@@ -308,8 +311,7 @@ async function qrcDecrypt(encryptedHexOrBytes) {
     throw new Error('No data to decrypt');
   }
 
-  const QRC_KEY = Buffer.from('!@#)(*$%123ZXC!@!@#)(NHL', 'utf8');
-  const schedule = tripledes_key_setup(QRC_KEY, 0); // 0 = DECRYPT
+  const schedule = QRC_DECRYPT_SCHEDULE; // precomputed 3DES DECRYPT schedule
 
   const decryptedBytes = new Uint8Array(encryptedBytes.length);
   for (let i = 0; i < encryptedBytes.length; i += 8) {

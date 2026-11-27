@@ -14,6 +14,7 @@ const { calculateMatchScore } = require('./matchScore');
 const DEFAULT_TIMEOUT_MS = 6000;
 const AMLL_DB_BASE_URL = 'https://amll-ttml-db.stevexmh.net';
 const MANUAL_CANDIDATE_TTL_MS = 10 * 60 * 1000;
+const MANUAL_CANDIDATE_MAX_ENTRIES = 200;
 const AUTO_MATCH_MIN_SCORE = 60;
 const AUTO_CANDIDATES_PER_SOURCE = 3;
 const LYRIC_QUALITY_BONUS = Object.freeze({
@@ -364,6 +365,11 @@ function cleanupManualCandidateCache() {
             manualCandidateCache.delete(key);
         }
     }
+    while (manualCandidateCache.size > MANUAL_CANDIDATE_MAX_ENTRIES) {
+        const oldestKey = manualCandidateCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        manualCandidateCache.delete(oldestKey);
+    }
 }
 
 function scoreCandidates(target, candidates, limit = 3) {
@@ -390,6 +396,14 @@ function createCandidateSummary(candidate, result) {
     if (!lyrics || !Array.isArray(lyrics.lines) || lyrics.lines.length === 0) return null;
 
     const candidateKey = crypto.randomUUID();
+    if (manualCandidateCache.size >= MANUAL_CANDIDATE_MAX_ENTRIES) {
+        cleanupManualCandidateCache();
+        while (manualCandidateCache.size >= MANUAL_CANDIDATE_MAX_ENTRIES) {
+            const oldestKey = manualCandidateCache.keys().next().value;
+            if (oldestKey === undefined) break;
+            manualCandidateCache.delete(oldestKey);
+        }
+    }
     manualCandidateCache.set(candidateKey, {
         createdAt: Date.now(),
         lyrics,

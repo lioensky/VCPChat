@@ -119,23 +119,46 @@ function parseTimedEntries(content) {
 }
 
 /**
+ * Aligns a single lyric start time to the closest sorted translation entry (1.2s tolerance).
+ * Preserves first-entry tie breaking when two entries are equidistant.
+ */
+function findClosestTimedText(startTime, entries) {
+    const n = entries.length;
+    if (n === 0) return undefined;
+    let lo = 0;
+    let hi = n;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (entries[mid].startTime < startTime) lo = mid + 1;
+        else hi = mid;
+    }
+    let bestEntry = undefined;
+    let minDiff = 1.2; // 1.2s tolerance
+    if (lo > 0) {
+        let left = lo - 1;
+        const leftTime = entries[left].startTime;
+        while (left > 0 && entries[left - 1].startTime === leftTime) left--;
+        const diff = Math.abs(leftTime - startTime);
+        if (diff < minDiff) {
+            minDiff = diff;
+            bestEntry = entries[left].text;
+        }
+    }
+    if (lo < n) {
+        const diff = Math.abs(entries[lo].startTime - startTime);
+        if (diff < minDiff) {
+            bestEntry = entries[lo].text;
+        }
+    }
+    return bestEntry;
+}
+
+/**
  * Aligns translation text with lyric start times
  */
 function matchTranslations(startTimes, entries) {
     if (startTimes.length === 0 || entries.length === 0) return startTimes.map(() => undefined);
-
-    return startTimes.map(startTime => {
-        let bestEntry = undefined;
-        let minDiff = 1.2; // 1.2s tolerance
-        for (const entry of entries) {
-            const diff = Math.abs(entry.startTime - startTime);
-            if (diff < minDiff) {
-                minDiff = diff;
-                bestEntry = entry.text;
-            }
-        }
-        return bestEntry;
-    });
+    return startTimes.map(startTime => findClosestTimedText(startTime, entries));
 }
 
 /**
@@ -343,10 +366,10 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
         let trans = embeddedTranslations[idx];
         let roma = embeddedRomanizations[idx];
         if (!trans && translationEntries.length > 0) {
-            trans = matchTranslations([line.startTime], translationEntries)[0];
+            trans = findClosestTimedText(line.startTime, translationEntries);
         }
         if (!roma && romanizationEntries.length > 0) {
-            roma = matchTranslations([line.startTime], romanizationEntries)[0];
+            roma = findClosestTimedText(line.startTime, romanizationEntries);
         }
         if (trans) line.translation = trans;
         if (roma) line.romanization = roma;
@@ -390,8 +413,15 @@ function parseTtmlTime(str) {
     if (parts.some(part => !/^\d+(?:\.\d+)?$/.test(part))) return NaN;
     return parts.reduce((sum, part) => sum * 60 + parseFloat(part), 0);
 }
+const TTML_ATTR_RE_CACHE = new Map();
 function ttmlAttr(attrs, name) {
-    const m = new RegExp('(?:^|\\s)(?:[\\w-]+:)?' + name + '\\s*=\\s*("([^"]*)"|\'([^\']*)\')', 'i').exec(attrs || '');
+    if (!attrs) return '';
+    let re = TTML_ATTR_RE_CACHE.get(name);
+    if (!re) {
+        re = new RegExp('(?:^|\\s)(?:[\\w-]+:)?' + name + '\\s*=\\s*("([^"]*)"|\'([^\']*)\')', 'i');
+        TTML_ATTR_RE_CACHE.set(name, re);
+    }
+    const m = re.exec(attrs);
     return m ? decodeXmlText(m[2] !== undefined ? m[2] : m[3]) : '';
 }
 function ttmlHeadTexts(ttmlString, tag) {
@@ -439,12 +469,18 @@ function parseTTML(ttmlString) {
         while ((tm = tokenRe.exec(pMatch[2])) !== null) {
             if (tm[5] !== undefined) {
                 const text = decodeXmlText(tm[5]);
-                const roles = stack.map(f => f.role);
-                if (roles.includes('x-translation')) { translation += text; continue; }
-                if (roles.includes('x-roman')) { romanization += text; continue; }
-                const target = roles.includes('x-bg') ? background : main;
-                const word = [...stack].reverse().find(f => f.word);
-                if (word && word.word) word.word.text += text;
+                let isTrans = false, isRoman = false, isBg = false, wordFrame = null;
+                for (let si = stack.length - 1; si >= 0; si--) {
+                    const frame = stack[si];
+                    if (frame.role === 'x-translation') isTrans = true;
+                    else if (frame.role === 'x-roman') isRoman = true;
+                    else if (frame.role === 'x-bg') isBg = true;
+                    if (!wordFrame && frame.word) wordFrame = frame;
+                }
+                if (isTrans) { translation += text; continue; }
+                if (isRoman) { romanization += text; continue; }
+                const target = isBg ? background : main;
+                if (wordFrame && wordFrame.word) wordFrame.word.text += text;
                 else if (/^\s+$/.test(text)) {
                     // 词之间的空格保留；带换行的是排版缩进（美化过的文件），不算
                     if (!/[\r\n]/.test(text) && target.length) target[target.length - 1].text += ' ';

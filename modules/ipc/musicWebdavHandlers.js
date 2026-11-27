@@ -2,6 +2,10 @@
 // WebDAV 的 IPC：服务器增删查、测试连接、浏览目录、扫描音频、取文件地址和凭据、加载远程曲目。
 // 由 musicHandlers.js 在注册 IPC 时调用；从那里搬出来，行为不变。
 
+function safeDecode(text) {
+    try { return decodeURIComponent(text); } catch (_) { return text; }
+}
+
 function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, setCurrentSongInfo }) {
     // ============ WebDAV IPC Handlers ============
     // 前端直接传递完整凭据 {url, username, password, path}
@@ -51,12 +55,23 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
                 config.password = serverCreds.password;
             }
         }
-        const results = await webdavManager.scanAudioFiles(config, (count) => {
+        let lastSentAt = 0;
+        let lastSentCount = -1;
+        const sendProgress = (count, force = false) => {
+            const now = Date.now();
+            if (!force && now - lastSentAt < 100) return;
+            if (count === lastSentCount) return;
+            lastSentAt = now;
+            lastSentCount = count;
             const musicWindow = getMusicWindow();
             if (musicWindow && !musicWindow.isDestroyed()) {
                 musicWindow.webContents.send('webdav-scan-progress', { count });
             }
+        };
+        const results = await webdavManager.scanAudioFiles(config, (count) => {
+            sendProgress(count, false);
         });
+        if (results?.tracks?.length) sendProgress(results.tracks.length, true);
         console.log('[Music] scanAudioFiles returned:', results?.status, 'tracks:', results?.tracks?.length);
         return results;
     });
@@ -85,8 +100,9 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
             }
         }
         
+        const rawName = String(config.url).split('/').pop().split('?')[0];
         setCurrentSongInfo({
-            title: config.trackMeta?.title || config.url.split('/').pop().split('?')[0],
+            title: config.trackMeta?.title || safeDecode(rawName),
             artist: config.trackMeta?.artist || '未知艺术家',
             album: config.trackMeta?.album || '未知专辑',
         });

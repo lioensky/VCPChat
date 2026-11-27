@@ -17,15 +17,36 @@ const getConfigPath = () => {
     return path.join(appPath, 'webdav_servers.json');
 };
 
-// 从配置文件加载服务器列表
+// 从配置文件加载服务器列表（同步优先避免刚启动时读写竞态；测试 mock 无同步接口时退回异步）
+function loadServersSync() {
+    if (serversLoaded) return;
+    if (typeof fs.pathExistsSync === 'function' && typeof fs.readJsonSync === 'function') {
+        try {
+            const configPath = getConfigPath();
+            if (fs.pathExistsSync(configPath)) {
+                const data = fs.readJsonSync(configPath);
+                servers = Array.isArray(data?.servers) ? data.servers : [];
+                serverIdCounter = data?.nextId || 1;
+            }
+            serversLoaded = true;
+            return;
+        } catch (err) {
+            console.error('[WebDAV] Failed to load servers config:', err.message);
+            serversLoaded = true;
+            return;
+        }
+    }
+    loadServers();
+}
+
 async function loadServers() {
     if (serversLoaded) return;
     try {
         const configPath = getConfigPath();
         if (await fs.pathExists(configPath)) {
             const data = await fs.readJson(configPath);
-            servers = data.servers || [];
-            serverIdCounter = data.nextId || 1;
+            if (!servers.length && Array.isArray(data?.servers)) servers = data.servers;
+            serverIdCounter = Math.max(serverIdCounter, data?.nextId || 1);
         }
         serversLoaded = true;
     } catch (err) {
@@ -34,15 +55,30 @@ async function loadServers() {
     }
 }
 
-// 保存服务器列表到配置文件
-async function saveServers() {
-    try {
-        const configPath = getConfigPath();
-        await fs.ensureDir(path.dirname(configPath));
-        await fs.writeJson(configPath, { servers, nextId: serverIdCounter }, { spaces: 2 });
-    } catch (err) {
-        console.error('[WebDAV] Failed to save servers config:', err.message);
-    }
+// 保存服务器列表到配置文件（串行排队 + 有原子写能力时先写临时文件，避免并发写坏 JSON）
+let saveChain = Promise.resolve();
+let savePending = false;
+function saveServers() {
+    if (savePending) return saveChain;
+    savePending = true;
+    saveChain = saveChain.then(async () => {
+        savePending = false;
+        try {
+            const configPath = getConfigPath();
+            await fs.ensureDir(path.dirname(configPath));
+            const payload = { servers: servers.slice(), nextId: serverIdCounter };
+            if (typeof fs.writeFile === 'function' && typeof fs.move === 'function') {
+                const tmp = `${configPath}.${process.pid}.tmp`;
+                await fs.writeFile(tmp, JSON.stringify(payload, null, 2), 'utf8');
+                await fs.move(tmp, configPath, { overwrite: true });
+            } else {
+                await fs.writeJson(configPath, payload, { spaces: 2 });
+            }
+        } catch (err) {
+            console.error('[WebDAV] Failed to save servers config:', err.message);
+        }
+    });
+    return saveChain;
 }
 
 // 调用 Rust 音频引擎 API。引擎自己对远端有 30 秒（整首下载 120 秒）的超时，
@@ -50,7 +86,9 @@ async function saveServers() {
 const ENGINE_TIMEOUT_MS = { '/load': 150000 };
 async function audioEngineApi(endpoint, method = 'POST', body = null) {
     if (!fetch) {
-        fetch = (await import('node-fetch')).default;
+        fetch = typeof globalThis !== 'undefined' && typeof globalThis.fetch === 'function'
+            ? globalThis.fetch
+            : (await import('node-fetch')).default;
     }
     
     const url = `${audioEngineEndpoint.getBaseUrl()}${endpoint}`;
@@ -83,11 +121,33 @@ async function audioEngineApi(endpoint, method = 'POST', body = null) {
 
 // 引擎只记一套 WebDAV 凭据：「配置凭据 + 用它发请求」必须成对执行，
 // 否则同时扫一台、播另一台时，请求会带着另一台的账号发出去。
+// 同一引擎实例连续对同一台服务器发请求（例如递归扫目录）时跳过重复 /webdav/configure；
+// 引擎重启/异常或任意请求出错时清空缓存，确保下次重新下发凭据。
 let engineQueue = Promise.resolve();
+let lastConfiguredKey = null;
+if (typeof audioEngineEndpoint.onStatus === 'function') {
+    audioEngineEndpoint.onStatus((ep) => {
+        if (!ep || ep.state !== 'ready') lastConfiguredKey = null;
+    });
+}
 function withEngineCredentials(task) {
     const run = engineQueue.then(task, task);
     engineQueue = run.catch(() => {});
     return run;
+}
+async function ensureEngineCredentials(baseUrl, username, password) {
+    const base = String(baseUrl || '').replace(/\/$/, '');
+    const user = username || null;
+    const pass = password || null;
+    const key = `${audioEngineEndpoint.getBaseUrl()}\0${base}\0${user ?? ''}\0${pass ?? ''}`;
+    if (lastConfiguredKey === key) return;
+    lastConfiguredKey = null;
+    await audioEngineApi('/webdav/configure', 'POST', {
+        base_url: base,
+        username: user,
+        password: pass
+    });
+    lastConfiguredKey = key;
 }
 
 function addServer(config) {
@@ -149,20 +209,19 @@ function getServerCredentials(serverId) {
 async function testConnection(config) {
     try {
         const result = await withEngineCredentials(async () => {
-            await audioEngineApi('/webdav/configure', 'POST', {
-                base_url: config.url.replace(/\/$/, ''),
-                username: config.username || null,
-                password: config.password || null
-            });
+            lastConfiguredKey = null; // 显式测试时总是重新下发凭据验证
+            await ensureEngineCredentials(config.url, config.username, config.password);
             return audioEngineApi('/webdav/browse?path=/', 'GET');
         });
         
         if (result.status === 'success') {
             return { status: 'success', message: '连接成功' };
         } else {
+            lastConfiguredKey = null;
             return { status: 'error', message: result.message || '连接失败' };
         }
     } catch (err) {
+        lastConfiguredKey = null;
         console.error('[WebDAV] Test connection failed:', err.message);
         return { status: 'error', message: err.message };
     }
@@ -172,11 +231,7 @@ async function testConnection(config) {
 async function listDirectory(config) {
     try {
         const result = await withEngineCredentials(async () => {
-            await audioEngineApi('/webdav/configure', 'POST', {
-                base_url: config.url.replace(/\/$/, ''),
-                username: config.username || null,
-                password: config.password || null
-            });
+            await ensureEngineCredentials(config.url, config.username, config.password);
             return audioEngineApi(`/webdav/browse?path=${encodeURIComponent(config.path || '/')}`, 'GET');
         });
         
@@ -192,9 +247,11 @@ async function listDirectory(config) {
             }));
             return { status: 'success', entries, path: result.path };
         } else {
+            lastConfiguredKey = null;
             return { status: 'error', message: result.message || '浏览失败' };
         }
     } catch (err) {
+        lastConfiguredKey = null;
         console.error('[WebDAV] List directory failed:', err.message);
         return { status: 'error', message: err.message };
     }
@@ -333,14 +390,11 @@ async function configureAndLoad(config) {
         
         // 配置 Rust 引擎的 WebDAV 凭据，紧接着用它加载曲目
         return await withEngineCredentials(async () => {
-            await audioEngineApi('/webdav/configure', 'POST', {
-                base_url: baseUrl,
-                username: config.username || null,
-                password: config.password || null
-            });
+            await ensureEngineCredentials(baseUrl, config.username, config.password);
             return audioEngineApi('/load', 'POST', { path: config.url });
         });
     } catch (err) {
+        lastConfiguredKey = null;
         console.error('[WebDAV] Configure and load failed:', err.message);
         return { status: 'error', message: err.message };
     }
@@ -359,7 +413,7 @@ function credentialsForTrack({ serverId, path: trackPath } = {}) {
 }
 
 // 初始化时加载服务器列表
-loadServers();
+loadServersSync();
 
 module.exports = {
     addServer,

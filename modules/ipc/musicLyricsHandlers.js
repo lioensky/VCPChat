@@ -4,6 +4,8 @@
 // 由 musicHandlers.js 在注册 IPC 时调用；从那里搬出来，行为不变。
 const path = require('path');
 const fs = require('fs-extra');
+const { decodeLyricText } = require('../lyrics/decodeLyricText');
+const { parseTTML } = require('../lyrics/parserCore');
 
 function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
     // 和歌放在一起的歌词（同目录同名的 .ttml / .lrc，很多人整理曲库时就这么放）：比歌词目录里自动下载的优先
@@ -17,9 +19,9 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
             try {
                 const stat = await fs.stat(file);
                 if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
-                const text = require('../lyrics/decodeLyricText').decodeLyricText(await fs.readFile(file));
+                const text = decodeLyricText(await fs.readFile(file));
                 if (ext === '.ttml') {
-                    const parsed = require('../lyrics/parserCore').parseTTML(text);
+                    const parsed = parseTTML(text);
                     if (parsed && parsed.lines.length) return { ...parsed, source: 'sidecar' };
                     continue;
                 }
@@ -40,41 +42,26 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
         const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
         const sanitizedTitle = sanitize(title);
         const sanitizedArtist = artist ? sanitize(artist) : '';
+        const baseName = sanitizedArtist ? `${sanitizedArtist} - ${sanitizedTitle}` : sanitizedTitle;
+        const lyricDir = getLyricDir();
 
         // Check JSON first if rawObject requested or available
-        const possibleJsonPaths = [];
-        if (sanitizedArtist) {
-            possibleJsonPaths.push(path.join(getLyricDir(), `${sanitizedArtist} - ${sanitizedTitle}.json`));
-        } else {
-            possibleJsonPaths.push(path.join(getLyricDir(), `${sanitizedTitle}.json`));
-        }
-
-        for (const jsonPath of possibleJsonPaths) {
-            try {
-                if (await fs.pathExists(jsonPath)) {
-                    const data = await fs.readJson(jsonPath);
-                    return data;
-                }
-            } catch (err) {
+        const jsonPath = path.join(lyricDir, `${baseName}.json`);
+        try {
+            return await fs.readJson(jsonPath);
+        } catch (err) {
+            if (!err || err.code !== 'ENOENT') {
                 console.warn(`[Music] Error reading JSON lyric cache ${jsonPath}:`, err.message);
             }
         }
 
         // Fallback to LRC text cache
-        const possibleLrcPaths = [];
-        if (sanitizedArtist) {
-            possibleLrcPaths.push(path.join(getLyricDir(), `${sanitizedArtist} - ${sanitizedTitle}.lrc`));
-        } else {
-            possibleLrcPaths.push(path.join(getLyricDir(), `${sanitizedTitle}.lrc`));
-        }
-
-        for (const lrcPath of possibleLrcPaths) {
-            try {
-                if (await fs.pathExists(lrcPath)) {
-                    // 自己放进歌词目录的 .lrc 常是 GBK 或带 BOM 的 UTF-8/UTF-16
-                    return require('../lyrics/decodeLyricText').decodeLyricText(await fs.readFile(lrcPath));
-                }
-            } catch (error) {
+        const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
+        try {
+            // 自己放进歌词目录的 .lrc 常是 GBK 或带 BOM 的 UTF-8/UTF-16
+            return decodeLyricText(await fs.readFile(lrcPath));
+        } catch (error) {
+            if (!error || error.code !== 'ENOENT') {
                 console.error(`[Music] Error reading lyric file ${lrcPath}:`, error);
             }
         }

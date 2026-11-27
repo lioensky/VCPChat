@@ -27,12 +27,26 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
     let win = null;
     let last = null;          // 音乐窗口最近送来的状态，歌词条刚打开时先补一份
     let saveTimer = null;
+    let dirty = false;
+    let writeChain = Promise.resolve();
 
     const save = () => {
+        dirty = true;
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
-            try { fs.writeFileSync(stateFile, JSON.stringify(prefs)); } catch (e) { console.error('[Music] 桌面歌词设置没存上:', e.message); }
+            saveTimer = null;
+            if (!dirty) return;
+            dirty = false;
+            const payload = JSON.stringify(prefs);
+            writeChain = writeChain.then(() => fs.promises.writeFile(stateFile, payload))
+                .catch((e) => console.error('[Music] 桌面歌词设置没存上:', e.message));
         }, 300);
+    };
+    const flushSaveSync = () => {
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+        if (!dirty) return;
+        dirty = false;
+        try { fs.writeFileSync(stateFile, JSON.stringify(prefs)); } catch (e) { console.error('[Music] 桌面歌词设置没存上:', e.message); }
     };
     const musicWin = () => {
         const w = getMusicWindow();
@@ -107,6 +121,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
             if (win === self) win = null;
             // 用户在歌词条上点了关闭（或被系统关掉）：记成关；跟着音乐窗口一起关的不改开关
             if (!self.withMusic && prefs.on) { prefs.on = false; save(); tellMusic(); }
+            flushSaveSync();
         });
         return win;
     };
@@ -154,6 +169,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
         musicClosed() {
             last = null;
             if (win && !win.isDestroyed()) { win.withMusic = true; win.close(); }
+            flushSaveSync();
         },
         isOpen: () => Boolean(win && !win.isDestroyed()),
         prefs: () => ({ ...prefs })
