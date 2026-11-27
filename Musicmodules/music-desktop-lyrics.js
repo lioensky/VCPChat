@@ -76,15 +76,21 @@
         const announce = () => {
             try { global.document?.dispatchEvent?.(new CustomEvent('music-desktop-lyrics-change', { detail: { on: state.on } })); } catch (e) { /* 旧内核 */ }
         };
-        const key = (s) => [s.path, s.index, s.playing, s.hasLyrics, s.line && s.line.text].join('\u0001');
+        const key = (s) => [s.path, s.index, s.playing, s.hasLyrics, s.line && s.line.text, s.line && s.line.tr].join('\u0001');
         const publish = (force = false) => {
             if (!state.on || !api?.publishDesktopLyrics) return;
             const snap = snapshot(app);
             const k = key(snap);
             const now = Date.now();
-            // 进度和预期差了 1 秒以上（拖动、卡顿）也要补发
-            const drift = state.sent && state.sent.playing ? Math.abs(snap.position - (state.sent.position + (now - state.sent.at) / 1000)) : 0;
-            if (!force && k === state.sentKey && now - state.sentAt < RESYNC_MS && drift < 1) return;
+            // 暂停且进度未变时无需每 3 秒重发相同快照；播放中进度偏离 1 秒以上或到对时间隔再补发
+            if (!force && k === state.sentKey) {
+                if (!snap.playing && state.sent && !state.sent.playing) {
+                    if (Math.abs(snap.position - state.sent.position) < 0.05) return;
+                } else {
+                    const drift = state.sent && state.sent.playing ? Math.abs(snap.position - (state.sent.position + (now - state.sent.at) / 1000)) : 0;
+                    if (now - state.sentAt < RESYNC_MS && drift < 1) return;
+                }
+            }
             state.sent = snap; state.sentKey = k; state.sentAt = now;
             try { api.publishDesktopLyrics(snap); } catch (e) { /* 主进程没有这个接口 */ }
         };
@@ -126,11 +132,19 @@
         }
         api?.onDesktopLyricsChanged?.(apply);
         try { api?.getDesktopLyrics?.().then(apply).catch(() => {}); } catch (e) { /* 同上 */ }
-        // 换歌、播放状态变了马上检查一次（内容没变就不送）
-        ['music-queue-change', 'music-lyrics-change'].forEach((name) => global.document?.addEventListener?.(name, () => publish(false)));
+        // 换歌、播放状态、翻译/偏移变了马上检查一次（内容没变就不送）
+        const onUpdate = () => publish(false);
+        ['music-queue-change', 'music-lyrics-change', 'music-lyrics-translated', 'music-lyrics-offset'].forEach((name) => global.document?.addEventListener?.(name, onUpdate));
+        let bodyObserver = null;
         if (global.MutationObserver && global.document?.body) {
-            new global.MutationObserver(() => publish(false)).observe(global.document.body, { attributes: true, attributeFilter: ['class'] });
+            bodyObserver = new global.MutationObserver(onUpdate);
+            bodyObserver.observe(global.document.body, { attributes: true, attributeFilter: ['class'] });
         }
+        global.addEventListener?.('beforeunload', () => {
+            if (state.timer !== null) { global.clearInterval(state.timer); state.timer = null; }
+            bodyObserver?.disconnect();
+            bodyObserver = null;
+        }, { once: true });
         announce(); // 让已经画好的入口（歌词面板的按钮）知道这个功能在
     }
 

@@ -118,10 +118,10 @@ body.locked .dl-lock .i-unlocked { display: none; }
     position: absolute;
     left: 0;
     top: 0;
-    width: var(--f, 0%);
-    overflow: hidden;
+    width: 100%;
     white-space: pre;
     color: var(--dl-sung);
+    clip-path: inset(-0.25em calc(100% - var(--f, 0%)) -0.25em -0.25em);
 }
 .dl-cur.idle { color: rgba(251, 247, 238, 0.86); font-weight: 600; }
 body.paused .dl-lines { opacity: 0.8; }

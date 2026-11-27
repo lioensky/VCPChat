@@ -131,8 +131,8 @@ async function reusable(known, stat, coverSeen) {
     if (!known || !Number.isFinite(known.mtimeMs) || !Number.isFinite(known.size)) return false;
     if (known.size !== stat.size || Math.abs(known.mtimeMs - stat.mtimeMs) > 1) return false;
     if (!known.albumArt) return true;
-    if (!coverSeen.has(known.albumArt)) coverSeen.set(known.albumArt, await exists(known.albumArt));
-    return coverSeen.get(known.albumArt);
+    if (!coverSeen.has(known.albumArt)) coverSeen.set(known.albumArt, exists(known.albumArt));
+    return await coverSeen.get(known.albumArt);
 }
 
 /**

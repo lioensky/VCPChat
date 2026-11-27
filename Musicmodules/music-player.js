@@ -377,6 +377,7 @@ function setupPlayer(app) {
         app.syncMediaPosition?.(true);
     };
 
+    let preloadClearTimer = null;
     app.loadTrack = async (trackIndex, andPlay = true) => {
         const requestId = ++app.pendingLoadRequestId;
         const skipHistory = app.skipHistoryOnce === true;
@@ -387,6 +388,7 @@ function setupPlayer(app) {
         clearFailureNotice();
         // 切歌意图一出现就作废旧歌词，不能等取消预加载返回后才作废。
         app.resetLyrics();
+        if (preloadClearTimer) { clearTimeout(preloadClearTimer); preloadClearTimer = null; }
         app.isPreloadingNext = false;
         try {
             await app.api?.cancelMusicPreload?.();
@@ -1307,7 +1309,8 @@ function setupPlayer(app) {
             } catch (e) {
                 console.error('[Music.js] Preload failed:', e);
             } finally {
-                setTimeout(() => { app.isPreloadingNext = false; }, 500);
+                if (preloadClearTimer) clearTimeout(preloadClearTimer);
+                preloadClearTimer = setTimeout(() => { preloadClearTimer = null; app.isPreloadingNext = false; }, 500);
             }
             return true;
         }

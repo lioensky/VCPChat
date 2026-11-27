@@ -284,7 +284,10 @@ function createOrFocusMusicWindow() {
             audioEngineApi('/stop').catch(err => console.error("[Music] Failed to send stop command on close:", err));
 
             desktopLyrics?.musicClosed();
-            openChildWindows = openChildWindows.filter(win => win !== musicWindow);
+            if (Array.isArray(openChildWindows)) {
+                const winIdx = openChildWindows.indexOf(musicWindow);
+                if (winIdx !== -1) openChildWindows.splice(winIdx, 1);
+            }
             musicWindow = null;
             currentSongInfo = null; // 清理歌曲信息
             musicCapsuleState = { open: false, title: '', trackKey: '', playing: false };

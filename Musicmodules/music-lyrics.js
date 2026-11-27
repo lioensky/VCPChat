@@ -198,6 +198,7 @@ function setupLyrics(app) {
                 } else if (failed) {
                     app.lyricsList.innerHTML = '<li class="no-lyrics">歌词获取失败，检查网络后重新播放这首</li>';
                 } else {
+                    if (lyricSearchMisses.size >= 256) lyricSearchMisses.delete(lyricSearchMisses.keys().next().value);
                     lyricSearchMisses.set(missKey, Date.now() + LYRIC_MISS_TTL_MS);
                     app.lyricsList.innerHTML = '<li class="no-lyrics">暂无歌词</li>';
                 }
@@ -571,6 +572,9 @@ function setupLyrics(app) {
         const allLi = app.lyricsList.children;
         const totalLines = allLi.length;
         const now = Date.now();
+        // 先读取容器尺寸，避免在修改逐字样式/类名之后读取 clientWidth/clientHeight 触发每帧强制同步布局
+        const viewportWidth = app.lyricsContainer ? app.lyricsContainer.clientWidth : 0;
+        const viewportHeight = app.lyricsContainer ? app.lyricsContainer.clientHeight : 0;
 
         // 整表的透明度、高亮和逐字复位只在“当前行变了”或“歌词重新渲染了”时做一遍。
         // 以前每一帧都对每一行写样式并查两次选择器，随后又读 offsetTop，
@@ -585,11 +589,16 @@ function setupLyrics(app) {
 
             for (let i = 0; i < totalLines; i++) {
                 const li = allLi[i];
+                const lineData = app.currentLyrics[i];
+                const hasWords = Boolean(lineData && lineData.isWordByWord && lineData.words && lineData.words.length > 0);
                 if (i === app.currentLyricIndex) {
-                    li.classList.add('active');
-                    li.style.opacity = '1';
-                    const lineData = app.currentLyrics[i];
-                    if (lineData && lineData.isWordByWord && lineData.words && lineData.words.length > 0) {
+                    if (!li.classList.contains('active')) li.classList.add('active');
+                    if (li._lyricOpacity !== '1') {
+                        li._lyricOpacity = '1';
+                        li.style.opacity = '1';
+                    }
+                    li._lyricWordState = 'active';
+                    if (hasWords) {
                         layout.wordSpans = Array.from(li.querySelectorAll('.lyric-word'), span => ({
                             span,
                             start: parseFloat(span.dataset.start),
@@ -599,17 +608,26 @@ function setupLyrics(app) {
                     }
                     continue;
                 }
-                li.classList.remove('active');
-                li.style.opacity = Math.max(0.1, 1 - Math.abs(i - app.currentLyricIndex) * 0.22).toFixed(2);
+                if (li.classList.contains('active')) li.classList.remove('active');
+                const nextOpacity = Math.max(0.1, 1 - Math.abs(i - app.currentLyricIndex) * 0.22).toFixed(2);
+                if (li._lyricOpacity !== nextOpacity) {
+                    li._lyricOpacity = nextOpacity;
+                    li.style.opacity = nextOpacity;
+                }
 
-                // 已唱过或未唱到的行统一重置 word 状态，避免跳播时状态错乱
+                if (!hasWords) continue;
+                // 已唱过或未唱到的行统一重置 word 状态，避免跳播时状态错乱；已处于目标状态的行直接跳过 DOM 查询
                 if (i < app.currentLyricIndex) {
-                    li.querySelectorAll('.lyric-word:not(.finished)').forEach(w => {
-                        w.style.setProperty('--word-progress', '100%');
-                        w.classList.remove('singing');
-                        w.classList.add('finished');
-                    });
-                } else {
+                    if (li._lyricWordState !== 'finished') {
+                        li._lyricWordState = 'finished';
+                        li.querySelectorAll('.lyric-word:not(.finished)').forEach(w => {
+                            w.style.setProperty('--word-progress', '100%');
+                            w.classList.remove('singing');
+                            w.classList.add('finished');
+                        });
+                    }
+                } else if (li._lyricWordState && li._lyricWordState !== 'pending') {
+                    li._lyricWordState = 'pending';
                     li.querySelectorAll('.lyric-word.singing, .lyric-word.finished').forEach(w => {
                         w.style.setProperty('--word-progress', '0%');
                         w.classList.remove('singing', 'finished');
@@ -692,8 +710,6 @@ function setupLyrics(app) {
 
                 // 行高只在换行后的字号过渡期间（0.35s）和窗口尺寸变化后会变，
                 // 其余时间用上次量到的位置，不再每帧触发布局。
-                const viewportWidth = app.lyricsContainer.clientWidth;
-                const viewportHeight = app.lyricsContainer.clientHeight;
                 if (layout.measuredIndex !== app.currentLyricIndex
                     || now - layout.changedAt < 600
                     || layout.viewportWidth !== viewportWidth
@@ -732,22 +748,29 @@ function setupLyrics(app) {
 
     // 跳播后歌词跟上。播放中由频谱循环每帧接着画；暂停时那个循环停着，这里自己补几十帧把滚动走完。
     let seekFrames = 0;
+    let seekRafId = 0;
+    const cancelSeekAnim = () => {
+        seekFrames = 0;
+        if (seekRafId && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(seekRafId);
+        seekRafId = 0;
+    };
     app.syncLyricsAfterSeek = () => {
         app.animateLyrics(true);
-        if (app.isPlaying || typeof requestAnimationFrame !== 'function') return;
+        if (app.isPlaying || typeof requestAnimationFrame !== 'function') { cancelSeekAnim(); return; }
         const bodyCls = typeof document !== 'undefined' ? document.body?.classList : null;
         if (bodyCls && (bodyCls.contains('music-archive-on') || bodyCls.contains('music-stage-active'))) return;
-        if (Math.abs((app.targetScrollY || 0) - (app.currentScrollY || 0)) < 0.05) return;
+        if (Math.abs((app.targetScrollY || 0) - (app.currentScrollY || 0)) < 0.05) { cancelSeekAnim(); return; }
         const running = seekFrames > 0;
         seekFrames = 40;
         if (running) return;
         const step = () => {
+            seekRafId = 0;
             if (app.isPlaying || --seekFrames <= 0) { seekFrames = 0; return; }
             app.animateLyrics(true);
             if (Math.abs((app.targetScrollY || 0) - (app.currentScrollY || 0)) < 0.05) { seekFrames = 0; return; }
-            requestAnimationFrame(step);
+            seekRafId = requestAnimationFrame(step);
         };
-        requestAnimationFrame(step);
+        seekRafId = requestAnimationFrame(step);
     };
 
     // 歌词文件里有字、但一句带时间的都没有（纯文本歌词）：记下有几行，首页歌词栏据此说明「没有时间轴」而不是「没有歌词」
@@ -760,12 +783,14 @@ function setupLyrics(app) {
     };
 
     app.resetLyrics = () => {
+        cancelSeekAnim();
         app.lyricsRequestToken = (app.lyricsRequestToken || 0) + 1;
         app.currentLyricsData = null;
         app.currentLyrics = [];
         app.currentLyricsPlain = 0;
         app.currentLyricsPlainLines = [];
         app.currentLyricIndex = -1;
+        app._lyricLayout = null;
         app.currentScrollY = 0;
         app.targetScrollY = 0;
         app.lyricUserScrolling = false;

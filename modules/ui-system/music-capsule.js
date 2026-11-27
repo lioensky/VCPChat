@@ -36,7 +36,8 @@
         let lastExpandedWidth = 0;
         const updateWidth = () => {
             if (disposed || root.hidden) return;
-            measure.textContent = title.textContent;
+            const currentTitle = title.textContent;
+            if (measure.textContent !== currentTitle) measure.textContent = currentTitle;
             const number = value => parseFloat(value) || 0;
             const titleStyle = getComputedStyle(title);
             const detailsStyle = getComputedStyle(details);
@@ -57,8 +58,11 @@
             if (disposed || root.hidden || resizeRaf) return;
             resizeRaf = requestAnimationFrame(() => { resizeRaf = 0; updateWidth(); });
         };
+        // 监听外层容器而非胶囊自身：避免展开/收起宽度过渡动画每一帧都触发 ResizeObserver 强制同步布局
+        const resizeTarget = root.parentElement || document.documentElement;
         const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleWidth) : null;
-        resizeObserver?.observe(root);
+        if (resizeTarget) resizeObserver?.observe(resizeTarget);
+        window.addEventListener('resize', scheduleWidth);
         document.fonts?.addEventListener('loadingdone', updateWidth);
         document.fonts?.ready.then(() => { if (!disposed) updateWidth(); });
         const renderExpansion = () => {
@@ -151,6 +155,7 @@
             if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
             unsubscribe?.();
             resizeObserver?.disconnect();
+            window.removeEventListener('resize', scheduleWidth);
             document.fonts?.removeEventListener('loadingdone', updateWidth);
             measure.remove();
         }, { once: true });

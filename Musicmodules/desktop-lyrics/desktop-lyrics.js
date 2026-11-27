@@ -15,6 +15,7 @@
     let words = null;      // 当前行每个字：{ el, s, e }
     let lineSpan = null;   // 没有逐字时间时整句的起止
     let lineKey = '';
+    let lastNextText = '';
     let frame = 0;
     let size = 34;
     let locked = false;
@@ -69,12 +70,15 @@
                 cur.classList.add('idle');
                 cur.textContent = snap && snap.title ? (snap.artist ? `${snap.title} — ${snap.artist}` : snap.title) : '没有在放的歌';
             }
-            const nx = snap && snap.next;
-            const nextText = line && line.tr ? line.tr : nx ? nx.text : '';
-            next.textContent = nextText || (snap && !snap.hasLyrics && snap.path ? '这首歌没有歌词' : '');
             // fit() 读取宽度正好完成一次布局刷新，随后再加 swap 重启动画，避免两次连续强制重排
             fit();
             if (line && line.text && !reducedMq?.matches) cur.classList.add('swap');
+        }
+        const nx = snap && snap.next;
+        const nextText = (line && line.tr ? line.tr : nx ? nx.text : '') || (snap && !snap.hasLyrics && snap.path ? '这首歌没有歌词' : '');
+        if (nextText !== lastNextText) {
+            lastNextText = nextText;
+            next.textContent = nextText;
         }
         paint();
     };
@@ -143,9 +147,9 @@
     const enter = () => { if (!body.classList.contains('hover')) body.classList.add('hover'); };
     document.addEventListener('mouseenter', enter);
     document.addEventListener('mousemove', enter, { passive: true });
-    document.addEventListener('mouseleave', () => { body.classList.remove('hover'); send('hover', false); });
-    $('lock').addEventListener('mouseenter', () => send('hover', true));
-    $('lock').addEventListener('mouseleave', () => send('hover', false));
+    document.addEventListener('mouseleave', () => { body.classList.remove('hover'); if (locked) send('hover', false); });
+    $('lock').addEventListener('mouseenter', () => { if (locked) send('hover', true); });
+    $('lock').addEventListener('mouseleave', () => { if (locked) send('hover', false); });
     document.addEventListener('wheel', (e) => { if (!locked && e.ctrlKey) send('size', size + (e.deltaY < 0 ? 2 : -2)); }, { passive: true });
     document.addEventListener('visibilitychange', paint);
     let fitRaf = 0;
@@ -153,6 +157,10 @@
         if (fitRaf) return;
         fitRaf = requestAnimationFrame(() => { fitRaf = 0; fit(); });
     });
+    window.addEventListener('beforeunload', () => {
+        cancelAnimationFrame(frame); frame = 0;
+        if (fitRaf) { cancelAnimationFrame(fitRaf); fitRaf = 0; }
+    }, { once: true });
 
     api?.onDesktopLyricsState?.((s) => { if (s && typeof s === 'object') { snap = s; render(); } });
     api?.onDesktopLyricsPrefs?.(applyPrefs);
