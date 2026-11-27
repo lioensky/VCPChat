@@ -5,9 +5,32 @@
  */
 
 /* ---------- 边缘频谱：去掉金色波浪框，留一圈很淡的单色细线随声音起伏 ---------- */
+/* 不在全窗容器上叠 filter / opacity（否则每帧整窗离屏合成），改为落到四条窄边画布与单色光带，乘系数折进 --stage-edge-fade */
 .music-stage .music-stage-edge-spectrum {
+    --stage-edge-fade: calc((0.26 + var(--stage-edge-energy) * 0.72) * 0.38);
+    filter: none;
+    opacity: 1;
+}
+
+.music-stage:not(.is-playing) .music-stage-edge-spectrum {
+    --stage-edge-fade: 0.0836;
+}
+
+.music-stage .music-stage-edge-spectrum-canvas {
     filter: grayscale(1);
-    opacity: .38;
+}
+
+.music-stage .music-stage-edge-flow-light {
+    background: conic-gradient(
+        from 0deg,
+        transparent 0deg 36deg,
+        color-mix(in srgb, var(--ms-ink) 16%, transparent) 58deg,
+        color-mix(in srgb, var(--ms-ink) 90%, transparent) 76deg,
+        transparent 101deg 192deg,
+        color-mix(in srgb, var(--ms-ink) 28%, transparent) 220deg,
+        color-mix(in srgb, var(--ms-ink) 72%, transparent) 242deg,
+        transparent 270deg 360deg
+    );
 }
 
 .music-stage .music-stage-edge-corners i {
@@ -126,6 +149,12 @@
     background: var(--ms-glass);
     backdrop-filter: blur(16px) saturate(1.2);
     -webkit-backdrop-filter: blur(16px) saturate(1.2);
+}
+
+body.music-fl-low .music-stage-id3 {
+    background: var(--ms-glass-strong);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .music-stage-id3 .music-stage-cover {

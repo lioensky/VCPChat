@@ -1214,8 +1214,13 @@ body.music-reduce-motion .acoustic-drawer.is-open .acoustic-drawer-body {
 }
 
 body.music-reduce-motion .sidebar-tab::after,
-body.music-reduce-motion .acoustic-drawer-chevron {
+body.music-reduce-motion .acoustic-drawer-chevron,
+body.music-reduce-motion .sidebar-playlist .cl-like {
     transition: none;
+}
+
+body.music-reduce-motion .sidebar-playlist .cl-like:hover {
+    transform: none;
 }
 
 /* ---------- 窄窗口：右栏歌词并到中栏下方，侧栏收窄 ---------- */

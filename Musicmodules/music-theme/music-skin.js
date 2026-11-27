@@ -119,11 +119,11 @@
             if (changed) {
                 const reduceMotion = Boolean(window.MusicMotion?.reduced?.()
                     ?? window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
-                const archiveOnly = document.body.classList.contains('music-archive-on')
-                    && !document.body.classList.contains('music-stage-active');
-                if (!reduceMotion && !archiveOnly) {
-                    // 换曲时编号和曲名一起向上滚入；批量读写只触发一次回流。
-                    const rollers = Array.from(document.querySelectorAll('.track-file-number, .music-stage-track-file'));
+                const hiddenClassic = document.body.classList.contains('music-archive-on')
+                    || document.body.classList.contains('music-stage-active');
+                if (!reduceMotion && !hiddenClassic) {
+                    // 换曲时编号向上滚入；批量读写只触发一次回流（档案页与舞台期间经典列表隐藏，不触发无谓回流）。
+                    const rollers = Array.from(document.querySelectorAll('.track-file-number'));
                     for (const el of rollers) el.classList.remove('is-rolling');
                     if (rollers.length) void rollers[0].offsetWidth;
                     for (const el of rollers) el.classList.add('is-rolling');
@@ -131,16 +131,27 @@
             }
         };
 
+        const skinObservers = [];
         // 曲名由播放器在换曲和状态同步时写入；跟着它刷新，不用另开轮询。
         if (app.trackTitle) {
-            new MutationObserver(renderTrack).observe(app.trackTitle, { childList: true, characterData: true, subtree: true });
+            const titleObs = new MutationObserver(renderTrack);
+            titleObs.observe(app.trackTitle, { childList: true, characterData: true, subtree: true });
+            skinObservers.push(titleObs);
         }
         renderTrack();
 
         if (app.trackBitrate) {
             const markSpec = () => app.trackBitrate.classList.toggle('is-spec', /^\d+\s*kbps$/.test(app.trackBitrate.textContent.trim()));
-            new MutationObserver(markSpec).observe(app.trackBitrate, { childList: true, characterData: true, subtree: true });
+            const bitrateObs = new MutationObserver(markSpec);
+            bitrateObs.observe(app.trackBitrate, { childList: true, characterData: true, subtree: true });
+            skinObservers.push(bitrateObs);
             markSpec();
+        }
+        if (skinObservers.length) {
+            window.addEventListener('beforeunload', () => {
+                for (const obs of skinObservers) obs.disconnect();
+                skinObservers.length = 0;
+            }, { once: true });
         }
 
         // 声学处理抽屉：默认收起，记住上次的开合。

@@ -42,6 +42,7 @@
     };
 
     media?.addEventListener?.('change', update);
+    global.addEventListener?.('beforeunload', () => media?.removeEventListener?.('change', update), { once: true });
     if (document.body) apply();
     else document.addEventListener('DOMContentLoaded', apply, { once: true });
 

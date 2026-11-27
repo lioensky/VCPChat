@@ -194,7 +194,7 @@
             }
         };
 
-        const strokeEdgePair = (edgeContext, points, glowStroke, glowShadow, mainStroke, mainShadow) => {
+        const strokeEdgePair = (edgeContext, points, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow) => {
             if (!edgeContext || points.length < 4) return;
             edgeContext.save();
             edgeContext.beginPath();
@@ -214,12 +214,12 @@
             edgeContext.lineWidth = 2.8;
             edgeContext.strokeStyle = glowStroke;
             edgeContext.shadowColor = glowShadow;
-            edgeContext.shadowBlur = 18;
+            edgeContext.shadowBlur = lightGlow ? 8 : 18;
             edgeContext.stroke();
             edgeContext.lineWidth = 1.05;
             edgeContext.strokeStyle = mainStroke;
-            edgeContext.shadowColor = mainShadow;
-            edgeContext.shadowBlur = 3.5;
+            edgeContext.shadowColor = lightGlow ? 'transparent' : mainShadow;
+            edgeContext.shadowBlur = lightGlow ? 0 : 3.5;
             edgeContext.stroke();
             edgeContext.restore();
         };
@@ -280,10 +280,11 @@
             const glowShadow = `rgba(${rgb}, ${Math.min(0.9, glowAlpha * 1.45)})`;
             const mainStroke = `rgba(${rgb}, ${alpha})`;
             const mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45)})`;
-            strokeEdgePair(edgeStrips.top.context, top, glowStroke, glowShadow, mainStroke, mainShadow);
-            strokeEdgePair(edgeStrips.right.context, right, glowStroke, glowShadow, mainStroke, mainShadow);
-            strokeEdgePair(edgeStrips.bottom.context, bottom, glowStroke, glowShadow, mainStroke, mainShadow);
-            strokeEdgePair(edgeStrips.left.context, left, glowStroke, glowShadow, mainStroke, mainShadow);
+            const lightGlow = state.config.quality === 'energy-saving';
+            strokeEdgePair(edgeStrips.top.context, top, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            strokeEdgePair(edgeStrips.right.context, right, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            strokeEdgePair(edgeStrips.bottom.context, bottom, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
+            strokeEdgePair(edgeStrips.left.context, left, glowStroke, glowShadow, mainStroke, mainShadow, lightGlow);
         };
 
         return {
@@ -293,6 +294,7 @@
                 edgeCanvasState.width = 0;
                 edgeCanvasState.height = 0;
                 edgeCanvasState.blank = false;
+                edgeLookupCache.clear();
                 EDGE_SIDES.forEach((side) => {
                     const strip = edgeStrips[side];
                     if (!strip) return;

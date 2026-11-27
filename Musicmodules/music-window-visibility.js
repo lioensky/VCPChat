@@ -28,10 +28,13 @@
         return;
     }
 
-    api.onMusicWindowVisibility((payload) => {
+    const unsub = api.onMusicWindowVisibility((payload) => {
         const hidden = !!(payload && payload.hidden);
         if (hidden === windowHidden) return;
         windowHidden = hidden;
         doc.dispatchEvent(new Event('visibilitychange'));
     });
+    if (typeof unsub === 'function') {
+        global.addEventListener?.('beforeunload', () => { try { unsub(); } catch (e) { /* 窗口正在关闭 */ } }, { once: true });
+    }
 })(window);
