@@ -1437,3 +1437,52 @@ test('Batch 55: palette skips playlist scan on empty recent, resolves song/playl
         window.close();
     }
 });
+
+test('Batch 59: closePanel and palette close restore focus cleanly and playlist search caches romanization accurately', () => {
+    const { window, doc, app, dock } = setup();
+    try {
+        // 1. Focus restored before panel class teardown, without losing activeElement
+        const play = doc.querySelector('[data-md="play"]');
+        play.focus();
+        dock.openPanel('控制');
+        assert.notEqual(doc.activeElement, play);
+        dock.closePanel();
+        assert.equal(doc.activeElement, play, 'closePanel synchronously returns focus to trigger element');
+        assert.equal(doc.body.classList.contains('music-drawer-open'), false);
+
+        // 2. Palette focus restore + cached pinyin matching for playlists
+        if (!window.MusicArchiveIndex) window.eval(read('Musicmodules/music-archive/archive-index.js'));
+        let pinyinCalls = 0;
+        window.pinyinPro = {
+            pinyin: (ch) => {
+                pinyinCalls += 1;
+                return ({ '夜': 'ye', '曲': 'qu', '收': 'shou', '藏': 'cang' })[ch] || '';
+            }
+        };
+        app.customPlaylists = [{ id: 'p1', name: '夜曲收藏', tracks: [app.playlist[0].path] }];
+        play.focus();
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        assert.equal(doc.activeElement, input);
+        input.value = 'yq';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        let titles = [...doc.querySelectorAll('.md-cmd-title')].map((n) => n.textContent);
+        assert.ok(titles.includes('夜曲收藏'), 'pinyin initials match custom playlist');
+        const callsAfterFirst = pinyinCalls;
+        input.value = 'yqsc';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        titles = [...doc.querySelectorAll('.md-cmd-title')].map((n) => n.textContent);
+        assert.ok(titles.includes('夜曲收藏'), 'repeated query reuses cached playlist romanization');
+        assert.equal(pinyinCalls, callsAfterFirst, 'playlist romanization cache avoids recomputing pinyin on every keystroke');
+
+        // First Escape clears input, second Escape closes palette and synchronously restores focus
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        assert.equal(input.value, '');
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        assert.equal(doc.activeElement, play, 'palette Escape synchronously restores focus');
+        assert.equal(doc.body.classList.contains('music-dock-cmd-open'), false);
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

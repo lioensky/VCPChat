@@ -333,3 +333,30 @@ test('Batch 58: musicLibraryWatch.forgetFolder cancels pending debounce timers f
     assert.equal(scanCalls, 0);
     watcher.stop();
 });
+
+test('Batch 59: musicLibraryWatch.forgetFolder closes active fs.watch handle for the forgotten folder only', async () => {
+    const { createLibraryWatch } = require('../modules/musicLibraryWatch');
+    const closedDirs = [];
+    const activeTimers = [];
+    const folders = ['/fake-music/a', '/fake-music/b'];
+    const watcher = createLibraryWatch({
+        scan: async () => ({ tracks: [], stats: {} }),
+        readKnown: async () => [],
+        readFolders: async () => folders.slice(),
+        writeFolders: async (next) => { folders.length = 0; folders.push(...next); },
+        send: () => {},
+        exists: async () => true,
+        watch: (dir) => ({ on() {}, close() { closedDirs.push(dir); } }),
+        setTimer: (fn) => { activeTimers.push(fn); return activeTimers.length; },
+        clearTimer: () => {},
+        log: { log() {}, warn() {} }
+    });
+    watcher.start();
+    await activeTimers[0]();
+    await new Promise((r) => setTimeout(r, 20));
+
+    await watcher.forgetFolder('/fake-music/a');
+    assert.deepEqual(closedDirs, ['/fake-music/a'], 'forgetting /a closes only /a fs.watch handle');
+    watcher.stop();
+    assert.deepEqual(closedDirs, ['/fake-music/a', '/fake-music/b'], 'stop() closes remaining /b handle');
+});

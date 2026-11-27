@@ -465,3 +465,21 @@ test('Batch 56: desktop lyrics flushSaveSync is atomic, ignores degenerate bound
     const dirFiles = fs.readdirSync(path.dirname(h.stateFile));
     assert.deepStrictEqual(dirFiles, [path.basename(h.stateFile)], 'atomic sync save leaves no stray tmp files');
 });
+
+test('Batch 59: snapshot invalidates filtered cache when lines are appended in-place onto currentLyrics', () => {
+    const lyrics = [{ time: 2, text: '第一句' }];
+    const app = {
+        playlist: [{ path: 'a.flac', title: 'T', artist: 'A' }],
+        currentTrackIndex: 0,
+        isPlaying: true,
+        currentLyrics: lyrics
+    };
+    const first = snapshot(app, 3);
+    assert.strictEqual(first.line.text, '第一句');
+    assert.strictEqual(first.next, null);
+
+    // Mutate the same array reference in place (e.g. streaming or lazy append)
+    lyrics.push({ time: 6, text: '第二句' });
+    const second = snapshot(app, 7);
+    assert.strictEqual(second.line.text, '第二句', 'filteredLines cache must rebuild when all.length grows on same array');
+});

@@ -351,3 +351,71 @@ test('WebDAV close/remove guards drop stale in-flight replies and null active se
     assert.equal(app.playlist.length, 0, 'import without activeWebDavServer is skipped');
     dom.window.close();
 });
+
+test('Batch 59: WebDAV guards non-array entries, ignores stale openWebDavModal list after close, and Escape respects dialog layering', async () => {
+    const dom = new JSDOM(`<!DOCTYPE html><body>
+        <div id="modal"></div>
+        <div id="dialog"></div>
+        <div id="servers"></div>
+        <div id="files"></div>
+        <div id="crumb"></div>
+        <div id="status"></div>
+        <div class="dialog-overlay music-dialog"></div>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    const doc = dom.window.document;
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    let resolveServers = null;
+    let browseCalls = 0;
+    const app = {
+        stripAudioExtension: (s) => s,
+        renderPlaylist() {},
+        updateAllCount() {},
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavServerList: doc.getElementById('servers'),
+        webdavFileList: doc.getElementById('files'),
+        webdavBreadcrumb: doc.getElementById('crumb'),
+        webdavDialogStatus: doc.getElementById('status'),
+        api: {
+            listWebdavServers: () => new Promise((r) => { resolveServers = r; }),
+            listWebdavDirectory: async () => { browseCalls += 1; return { status: 'success', entries: null }; }
+        }
+    };
+    dom.window.setupWebDav(app);
+    app.setupWebDavHandlers();
+
+    // 1. Stale listWebdavServers resolving after modal closed must not trigger browseWebDav
+    const openP = app.openWebDavModal();
+    app.closeWebDavModal();
+    resolveServers([{ id: 's1', name: 'NAS', url: 'http://nas' }]);
+    await openP;
+    assert.equal(browseCalls, 0, 'closed WebDAV modal ignores late listWebdavServers completion');
+
+    // 2. Non-array entries in browseWebDav renders empty state without throwing
+    app.webdavServers = [{ id: 's1', name: 'NAS', url: 'http://nas' }];
+    app.activeWebDavServer = app.webdavServers[0];
+    app.webdavModal.classList.add('active');
+    await app.browseWebDav('/');
+    assert.match(doc.getElementById('files').textContent, /此目录为空/);
+
+    // 3. Escape layering: yields to visible .music-dialog, then closes inner server dialog, then outer modal
+    const musicDlg = doc.querySelector('.dialog-overlay.music-dialog');
+    app.webdavServerDialog.classList.add('active');
+    musicDlg.classList.add('visible');
+    doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(app.webdavServerDialog.classList.contains('active'), true, 'Escape yields while music-dialog is visible');
+    assert.equal(app.webdavModal.classList.contains('active'), true);
+
+    musicDlg.classList.remove('visible');
+    doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(app.webdavServerDialog.classList.contains('active'), false, 'Escape closes inner server dialog first');
+    assert.equal(app.webdavModal.classList.contains('active'), true);
+
+    doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(app.webdavModal.classList.contains('active'), false, 'second Escape closes outer WebDAV modal');
+
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.close();
+});

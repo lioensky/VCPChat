@@ -240,3 +240,31 @@ test('Batch 55: listRows hoists albumCompare across albums, handles empty fields
         globalThis.MusicTrackOrder = origOrder;
     }
 });
+
+test('Batch 59: artist pre-ranked sort preserves Collator numeric tie order and empty-artist placement', () => {
+    const tracks = [
+        { path: '/1', title: 'Zeta', artist: 'Artist 01' },
+        { path: '/2', title: 'Alpha', artist: 'Artist 1' },
+        { path: '/3', title: 'Beta', artist: '' },
+        { path: '/4', title: 'Gamma', artist: 'Artist 2' },
+        { path: '/5', title: 'Delta', artist: 'Artist 10' },
+        { path: '/6', title: 'Aa', artist: '' },
+        { path: '/7', title: 'Mid', artist: 'Artist 001' }
+    ];
+    const idx = Index.createIndex(tracks, { pinyin });
+    const all = tracks.map((_, i) => i);
+    const sorted = Index.sortedIndices(idx, all, Index.sortSpec(idx, { mode: 'artist' }));
+    const collate = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' }).compare;
+    const titleRank = new Int32Array(tracks.length);
+    const byTitle = Index.sortedIndices(idx, all, Index.sortSpec(idx, { mode: 'title' }));
+    for (let p = 0; p < byTitle.length; p++) titleRank[byTitle[p]] = p;
+    const expected = all.slice().sort((a, b) => {
+        const ea = idx.entry(a).artistSort;
+        const eb = idx.entry(b).artistSort;
+        if (!ea && eb) return 1;
+        if (ea && !eb) return -1;
+        return collate(ea, eb) || (titleRank[a] - titleRank[b]);
+    });
+    assert.deepEqual(sorted, expected, 'pre-ranked artist sort must match reference Collator exact total order including numeric ties');
+    assert.deepEqual(sorted.slice(-2), [5, 2], 'empty artist tracks sort last ordered by title');
+});

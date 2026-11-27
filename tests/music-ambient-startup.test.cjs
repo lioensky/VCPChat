@@ -157,3 +157,44 @@ test('ambient pixi recovers cleanly after a transient init rejection and clamps 
     const delta = app.ambientPixiController.rippleRings[0].phase - beforePhase;
     assert.ok(delta > 0 && delta < 0.02, `expected clamped dt <= 0.1 (phase delta ~0.01), got ${delta}`);
 });
+
+test('Batch 59: createAmbientPixi skips WebGL initialization when container is hidden by CSS or hidden attr', async () => {
+    const made = [];
+    class Application {
+        constructor() { made.push(this); }
+        async init() { this.canvas = { style: {} }; this.stage = { addChild() {} }; this.renderer = { resize() {} }; }
+        stop() {}
+        render() {}
+        destroy() {}
+    }
+    let style = { visibility: 'hidden', display: 'block' };
+    const container = { hidden: false, innerHTML: '', appendChild() {}, clientWidth: 800, clientHeight: 600 };
+    const win = {
+        PIXI: { Application, Graphics: class { clear() { return this; } } },
+        devicePixelRatio: 1,
+        addEventListener() {},
+        getComputedStyle: () => style
+    };
+    const context = vm.createContext({
+        window: win, queueMicrotask, setTimeout, clearTimeout, console,
+        document: { getElementById: (id) => (id === 'ambient-wave-container' ? container : null) }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), context);
+    const app = {};
+    win.setupAmbientPixi(app);
+    await settle();
+    assert.equal(made.length, 0, 'visibility: hidden container must not spin up a hidden WebGL context');
+
+    style = { visibility: 'visible', display: 'none' };
+    await app.createAmbientPixi();
+    assert.equal(made.length, 0, 'display: none container must not spin up a hidden WebGL context');
+
+    style = { visibility: 'visible', display: 'block' };
+    container.hidden = true;
+    await app.createAmbientPixi();
+    assert.equal(made.length, 0, 'hidden=true container must not spin up a hidden WebGL context');
+
+    container.hidden = false;
+    await app.createAmbientPixi();
+    assert.equal(made.length, 1, 'visible container initializes PixiJS once');
+});
