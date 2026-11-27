@@ -92,3 +92,71 @@ test('malformed percent-encoding in WebDAV paths and filenames renders without t
     assert.deepEqual(items, ['100% Pure', 'song%ZZ.flac']);
     dom.window.close();
 });
+
+test('WebDAV confirm button prevents double submit and server switch ignores stale scan results', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="modal"><div id="servers"></div><div id="files"></div><div id="crumb"></div>
+            <button id="scan">扫描</button><button id="import" disabled>导入</button>
+        </div>
+        <div id="dialog">
+            <input id="webdav-server-name" value="NAS 2" />
+            <input id="webdav-server-url" value="http://nas2" />
+            <input id="webdav-server-username" value="u" />
+            <input id="webdav-server-password" value="p" />
+            <p id="status"></p>
+            <button id="confirm">确定</button>
+        </div>
+    </body>`, { runScripts: 'outside-only' });
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    const doc = dom.window.document;
+    let resolveAdd;
+    let addCalls = 0;
+    let resolveScan;
+    let progressCb = null;
+    const app = {
+        stripAudioExtension: (s) => s,
+        renderPlaylist() {},
+        updateAllCount() {},
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavServerList: doc.getElementById('servers'),
+        webdavFileList: doc.getElementById('files'),
+        webdavBreadcrumb: doc.getElementById('crumb'),
+        webdavDialogStatus: doc.getElementById('status'),
+        webdavDialogConfirm: doc.getElementById('confirm'),
+        webdavScanBtn: doc.getElementById('scan'),
+        webdavImportBtn: doc.getElementById('import'),
+        webdavServers: [{ id: 's1', name: 'NAS 1', url: 'http://nas1' }],
+        webdavScannedTracks: [],
+        api: {
+            addWebdavServer: () => { addCalls += 1; return new Promise((r) => { resolveAdd = r; }); },
+            onWebdavScanProgress: (fn) => { progressCb = fn; return () => { progressCb = null; }; },
+            scanWebdavAudio: () => new Promise((r) => { resolveScan = r; })
+        }
+    };
+    app.activeWebDavServer = app.webdavServers[0];
+    dom.window.setupWebDav(app);
+    app.setupWebDavHandlers();
+
+    app.webdavDialogConfirm.click();
+    app.webdavDialogConfirm.click();
+    assert.equal(addCalls, 1, 'second click while saving is ignored');
+    assert.equal(app.webdavDialogConfirm.disabled, true);
+    resolveAdd({ id: 's2', name: 'NAS 2', url: 'http://nas2' });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(app.webdavDialogConfirm.disabled, false);
+    assert.equal(app.webdavServers.length, 2);
+
+    app.webdavScanBtn.click();
+    app.activeWebDavServer = app.webdavServers[1];
+    app.webdavScanBtn.textContent = '扫描全部音频';
+    progressCb?.({ count: 9 });
+    assert.equal(app.webdavScanBtn.textContent, '扫描全部音频', 'stale progress from old server does not overwrite label');
+    resolveScan({ status: 'success', tracks: [{ path: 'http://nas1/a.flac', title: 'A' }] });
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(app.webdavScannedTracks, [], 'stale scan completion does not overwrite new server state');
+    assert.equal(app.webdavImportBtn.disabled, true);
+    dom.window.close();
+});

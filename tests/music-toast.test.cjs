@@ -162,3 +162,30 @@ test('the dock routes playback failures and scan progress through the toast laye
         window.close();
     }
 });
+
+test('fresh toast avoids forced offsetWidth reflow and ignores rAF if closed immediately', () => {
+    const { window, doc, clock, toast } = setup();
+    let offsetReads = 0;
+    const origDesc = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', {
+        configurable: true,
+        get() { offsetReads += 1; return origDesc?.get ? origDesc.get.call(this) : 0; }
+    });
+    try {
+        const quick = toast.show({ id: 'quick', message: '闪现' });
+        const quickEl = doc.querySelector('[data-key="quick"]');
+        quick.close();
+        clock.advance(20);
+        assert.equal(quickEl.classList.contains('mtst-in'), false, 'closed toast must not gain mtst-in on stale rAF');
+
+        toast.show({ id: 'fresh', message: '新建提示' });
+        assert.equal(offsetReads, 0, 'fresh toast mount triggers zero forced offsetWidth reflows');
+        const el = doc.querySelector('[data-key="fresh"]');
+        assert.ok(el.classList.contains('mtst-evap'), 'evaporation class is still armed on mount');
+        toast.show({ id: 'fresh', message: '延长提示', duration: 5000 });
+        assert.ok(offsetReads >= 1, 're-arming an active evaporating toast still restarts evaporation via reflow');
+    } finally {
+        if (origDesc) Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', origDesc);
+        window.close();
+    }
+});

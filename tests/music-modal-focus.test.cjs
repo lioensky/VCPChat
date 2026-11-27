@@ -218,3 +218,72 @@ test('music-skin skips forced reflow during stage mode and window-visibility uns
     assert.equal(unsubCalled, 1, 'window-visibility unsubscribes on beforeunload');
     dom.window.close();
 });
+
+test('music-dupes remaps manualQueue, emits music-like-change on liked updates and restores on undo', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    const keep = { path: 'D:\\Music\\a.flac', title: 'Alpha', artist: 'Artist', lossless: true, bitsPerSample: 24, sampleRate: 96000 };
+    const extra = { path: 'D:\\Music\\a.mp3', title: 'Alpha', artist: 'Artist', bitrate: 320000 };
+    const other = { path: 'D:\\Music\\b.flac', title: 'Beta', artist: 'Other' };
+    let toastAction = null;
+    window.MusicToast = { show: ({ action }) => { toastAction = action; } };
+    const likeEvents = [];
+    doc.addEventListener('music-like-change', (e) => likeEvents.push(e.detail));
+    const app = {
+        playlist: [other, extra, keep],
+        currentTrackIndex: 0,
+        manualQueue: [extra, keep, other, extra],
+        customPlaylists: [{ id: 'liked', name: '我喜欢的音乐', tracks: [extra.path] }],
+        saveLibrary() {},
+        saveCustomPlaylists() {},
+        renderPlaylist() {},
+        renderSidebarContent() {},
+        refreshPreload() {}
+    };
+    window.eval(fs.readFileSync('Musicmodules/music-radio.js', 'utf8'));
+    window.eval(fs.readFileSync('Musicmodules/music-dupes.js', 'utf8'));
+    window.MusicDupes.setupMusicDupes(app);
+    app.openDupesView();
+    const removeBtn = doc.querySelector('.mdupes-remove');
+    assert.ok(removeBtn && !removeBtn.hidden);
+    removeBtn.click();
+    assert.deepEqual(app.playlist, [other, keep], 'extra duplicate removed from library');
+    assert.deepEqual(app.manualQueue, [keep, other], 'manualQueue remapped to kept track and deduplicated');
+    assert.deepEqual([...app.customPlaylists[0].tracks], [keep.path], 'liked playlist remapped to kept path');
+    assert.equal(likeEvents.length, 1, 'music-like-change dispatched when liked playlist updated');
+    assert.ok(toastAction && typeof toastAction.run === 'function', 'undo action offered via toast');
+    toastAction.run();
+    assert.equal(app.playlist.length, 3, 'undo restores library');
+    assert.deepEqual(app.manualQueue, [extra, keep, other, extra], 'undo restores original manualQueue');
+    assert.deepEqual([...app.customPlaylists[0].tracks], [extra.path], 'undo restores liked playlist');
+    assert.equal(likeEvents.length, 2, 'undo dispatches music-like-change again');
+    dom.window.close();
+});
+
+test('music-spectrum traps Tab, ignores composing Escape and blocks single-key shortcuts', async () => {
+    const dom = new JSDOM('<!doctype html><body><button id="out">out</button></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    const { window } = dom;
+    const doc = window.document;
+    let leaked = 0;
+    doc.addEventListener('keydown', (e) => { if (e.key === ' ') leaked += 1; });
+    const app = {
+        playlist: [{ path: 'D:\\Music\\a.flac', title: 'Alpha', artist: 'Artist' }],
+        currentTrackIndex: 0,
+        api: { readMusicAudioFile: () => new Promise(() => {}) }
+    };
+    window.eval(fs.readFileSync('Musicmodules/music-spectrum.js', 'utf8'));
+    window.MusicSpectrum.setupMusicSpectrum(app);
+    app.openSpectrum(0);
+    const closeBtn = doc.querySelector('.mspec .mstats-close');
+    assert.ok(closeBtn);
+    doc.getElementById('out').focus();
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, closeBtn, 'Tab moves focus back into spectrum dialog');
+    doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+    assert.equal(leaked, 0, 'single-key shortcut is blocked while spectrum modal is open');
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, cancelable: true }));
+    assert.ok(doc.querySelector('.mspec'), 'composing Escape does not close spectrum modal');
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    dom.window.close();
+});

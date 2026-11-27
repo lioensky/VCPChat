@@ -64,16 +64,37 @@ test('Enter confirms unless the cancel button has focus; Tab stays between the t
     assert.equal(await pending, false);
 });
 
-test('Enter during IME composition does not confirm the dialog', async () => {
+test('Enter and Escape during IME composition do not dismiss the dialog', async () => {
     const { window, doc } = setup();
     let settled = false;
     const pending = window.MusicDialog.confirm({ title: '确认' }).then((res) => { settled = true; return res; });
     key(window, 'Enter', { isComposing: true });
+    key(window, 'Escape', { isComposing: true });
     await new Promise((r) => setImmediate(r));
-    assert.equal(settled, false, 'IME composition Enter must be ignored');
+    assert.equal(settled, false, 'IME composition Enter/Escape must be ignored');
     assert.ok(doc.querySelector('.dialog-overlay.music-dialog').classList.contains('visible'));
     key(window, 'Enter', { isComposing: false });
     assert.equal(await pending, true);
+});
+
+test('dismissing MusicDialog before the opening rAF prevents stale visible class and focus hijack', async () => {
+    const dom = new JSDOM('<!doctype html><body><button id="opener">x</button></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    const rafs = [];
+    window.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+    window.eval(read('Musicmodules/music-dock/music-dialog.js'));
+    const opener = doc.getElementById('opener');
+    opener.focus();
+    const pending = window.MusicDialog.confirm({ title: 't' });
+    const overlay = doc.querySelector('.dialog-overlay.music-dialog');
+    overlay.querySelector('.dialog-btn.cancel').click();
+    assert.equal(await pending, false);
+    assert.equal(rafs.length, 1);
+    rafs[0]();
+    assert.equal(overlay.classList.contains('visible'), false, 'stale rAF must not re-add .visible');
+    assert.equal(doc.activeElement, opener, 'stale rAF must not hijack focus back to closed dialog');
+    dom.window.close();
 });
 
 test('no native confirm()/alert() is called directly in the music window', () => {
