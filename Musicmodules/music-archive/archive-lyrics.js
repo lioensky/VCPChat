@@ -80,8 +80,17 @@
         const build = () => {
             const src = Array.isArray(app.currentLyrics) ? app.currentLyrics : [];
             state.source = app.currentLyrics;
-            state.lines = src.filter((l) => l && textOf(l));
-            state.lineWords = state.lines.map((l) => wordsOf(l));
+            const lines = [];
+            const lineWords = [];
+            for (let i = 0; i < src.length; i += 1) {
+                const l = src[i];
+                if (l && textOf(l)) {
+                    lines.push(l);
+                    lineWords.push(wordsOf(l));
+                }
+            }
+            state.lines = lines;
+            state.lineWords = lineWords;
             state.offsets = [];
             // 纯文本歌词（没有时间轴）：先判再写，避免先清空再二次覆盖 r.track.innerHTML
             const plain = !state.lines.length && Array.isArray(app.currentLyricsPlainLines) && app.currentLyricsPlainLines.length
@@ -90,9 +99,11 @@
             el.classList.toggle('plain', Boolean(plain));
             if (plain) {
                 const canFetch = typeof app.openLyricsFetchModal === 'function';
-                r.track.innerHTML = '<p class="plain-note"><em>没有时间轴 · 滚轮翻看</em>'
-                    + (canFetch ? '<button type="button" class="plain-fetch">换一份带时间轴的 <i aria-hidden="true">→</i></button>' : '') + '</p>'
-                    + plain.map((text) => `<p class="plain"><b>${esc(text)}</b></p>`).join('');
+                const parts = new Array(plain.length + 1);
+                parts[0] = '<p class="plain-note"><em>没有时间轴 · 滚轮翻看</em>'
+                    + (canFetch ? '<button type="button" class="plain-fetch">换一份带时间轴的 <i aria-hidden="true">→</i></button>' : '') + '</p>';
+                for (let i = 0; i < plain.length; i += 1) parts[i + 1] = `<p class="plain"><b>${esc(plain[i])}</b></p>`;
+                r.track.innerHTML = parts.join('');
                 clearTimeout(state.manualTimer);
                 state.manualTimer = 0;
                 state.manual = 0;
@@ -100,14 +111,27 @@
             } else {
                 let y = 0;
                 const showTr = app.lyricsTranslation !== false;
-                r.track.innerHTML = state.lines.map((l, k) => {
-                    state.offsets.push(y);
+                const n = lines.length;
+                const offsets = new Array(n);
+                const htmlParts = new Array(n);
+                for (let k = 0; k < n; k += 1) {
+                    const l = lines[k];
+                    offsets[k] = y;
                     const tr = showTr ? String(l.translation || '').trim() : '';
                     y += tr ? LINE_H_TR : LINE_H;
-                    const words = state.lineWords[k];
-                    const body = words ? words.map((w) => `<span class="w">${esc(w.text)}</span>`).join('') : esc(textOf(l));
-                    return `<p data-k="${k}"${tr ? ' class="tr"' : ''}><b${words ? ' class="ww"' : ''}>${body}</b>${tr ? `<em>${esc(tr)}</em>` : ''}</p>`;
-                }).join('');
+                    const words = lineWords[k];
+                    let body;
+                    if (words) {
+                        const wParts = new Array(words.length);
+                        for (let j = 0; j < words.length; j += 1) wParts[j] = `<span class="w">${esc(words[j].text)}</span>`;
+                        body = wParts.join('');
+                    } else {
+                        body = esc(textOf(l));
+                    }
+                    htmlParts[k] = `<p data-k="${k}"${tr ? ' class="tr"' : ''}><b${words ? ' class="ww"' : ''}>${body}</b>${tr ? `<em>${esc(tr)}</em>` : ''}</p>`;
+                }
+                state.offsets = offsets;
+                r.track.innerHTML = htmlParts.join('');
             }
             buildIndex();
             if (state.lines.length || plain) fitSoon();
@@ -117,7 +141,7 @@
             activeWordsEl = null;
             activeWordsIndex = -2;
             lpNode = null;
-            lastLpVal = '';
+            lastLpQ = -1;
             state.index = -2;
             state.words = null;
             const t = current();
@@ -131,16 +155,23 @@
             const n = state.lines.length;
             let text = '';
             if (n) {
-                const ww = Array.isArray(state.lineWords) ? state.lineWords.some(Boolean) : state.lines.some((l) => wordsOf(l));
-                const tr = state.lines.some((l) => String(l.translation || '').trim());
+                let ww = false;
+                let tr = false;
+                const lw = Array.isArray(state.lineWords) ? state.lineWords : null;
+                for (let i = 0; i < n && (!ww || !tr); i += 1) {
+                    if (!ww && (lw ? Boolean(lw[i]) : Boolean(wordsOf(state.lines[i])))) ww = true;
+                    if (!tr && String(state.lines[i].translation || '').trim()) tr = true;
+                }
                 text = (ww ? '逐字' : '逐句') + (tr ? ' · 译' : '');
             } else if (state.plain) text = '纯文本';
-            r.chip.hidden = !text;
-            r.chip.textContent = text;
+            const hide = !text;
+            if (r.chip.hidden !== hide) r.chip.hidden = hide;
+            if (r.chip.textContent !== text) r.chip.textContent = text;
             const canFetch = typeof app.openLyricsFetchModal === 'function';
-            r.chip.disabled = !canFetch;
-            r.chip.title = (text === '纯文本' ? '这份歌词没有时间轴' : text.startsWith('逐字') ? '这份歌词带逐字时间' : '这份歌词按句对时间')
+            if (r.chip.disabled !== !canFetch) r.chip.disabled = !canFetch;
+            const nextTitle = (text === '纯文本' ? '这份歌词没有时间轴' : text.startsWith('逐字') ? '这份歌词带逐字时间' : '这份歌词按句对时间')
                 + (text.includes('译') ? '，带译文' : '') + (canFetch ? '。点一下换一份' : '');
+            if (r.chip.title !== nextTitle) r.chip.title = nextTitle;
         };
 
         /*
@@ -160,7 +191,7 @@
             if (!state.shown || el.hidden) { fitDirty = true; return; }
             fitDirty = false;
             // 原文和译文各算各的（译文行 <em> 同样先缩字再省略）；拆成清属性 → 批量量 → 批量写，避免逐行读写交替触发 N 次重排
-            const nodes = [...r.track.querySelectorAll('p:not(.plain-note) > b, p:not(.plain-note) > em')];
+            const nodes = r.track.querySelectorAll('p:not(.plain-note) > b, p:not(.plain-note) > em');
             if (!nodes.length) return;
             for (let i = 0; i < nodes.length; i++) {
                 if (nodes[i].style.getPropertyValue('--fit')) nodes[i].style.removeProperty('--fit');
@@ -336,25 +367,25 @@
          * （借鉴 RhinE 歌词条「一根细线填到下一句」）。每次刷新（200ms）只改一个变量，过渡补成连续的。
          */
         let lpNode = null;
-        let lastLpVal = '';
+        let lastLpQ = -1;
         let activeLineEl = null;
         let activeWordsEl = null;
         let activeWordsIndex = -2;
         const paintLineProgress = (t, hasWords) => {
             const k = state.index;
             const node = !hasWords && k >= 0 ? r.track.children[k] : null;
-            if (lpNode && lpNode !== node) { lpNode.style.removeProperty('--lp'); lpNode.classList.remove('lp'); lastLpVal = ''; }
+            if (lpNode && lpNode !== node) { lpNode.style.removeProperty('--lp'); lpNode.classList.remove('lp'); lastLpQ = -1; }
             lpNode = node;
             if (!node) return;
             const start = Number(state.lines[k].time) || 0;
             const next = state.lines[k + 1];
             const end = next ? Number(next.time) || 0 : start + 6;
             const f = end > start ? Math.min(1, Math.max(0, (t - start) / (end - start))) : 1;
-            const pct = (f * 100).toFixed(1) + '%';
+            const q = Math.round(f * 1000);
             if (!node.classList.contains('lp')) node.classList.add('lp');
-            if (pct !== lastLpVal) {
-                lastLpVal = pct;
-                node.style.setProperty('--lp', pct);
+            if (q !== lastLpQ) {
+                lastLpQ = q;
+                node.style.setProperty('--lp', q === 1000 ? '100.0%' : q === 0 ? '0.0%' : (q / 10).toFixed(1) + '%');
             }
         };
         const paintWords = (t) => {

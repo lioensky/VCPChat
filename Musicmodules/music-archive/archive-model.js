@@ -6,16 +6,31 @@
 (function (global) {
     'use strict';
 
+    const BSLASH_RE = /\\/g;
+    const AUDIO_EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i;
+    const NON_ASCII_RE = /[^\x00-\x7f]/;
+    const NON_PRINT_RE = /[^\x20-\x7e]/g;
+    const WS_RE = /\s+/g;
+
     const wrap = (value, size) => (size > 0 ? ((value % size) + size) % size : 0);
 
-    const normalizePath = (value) => String(value || '').replace(/\\/g, '/').toLowerCase();
+    const normalizePath = (value) => {
+        const s = String(value || '');
+        return (s.indexOf('\\') >= 0 ? s.replace(BSLASH_RE, '/') : s).toLowerCase();
+    };
 
-    const stripExtension = (title) => String(title || '').replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '');
+    const stripExtension = (title) => {
+        const s = String(title || '');
+        const dot = s.lastIndexOf('.');
+        return dot >= 0 && s.length - dot <= 5 ? s.replace(AUDIO_EXT_RE, '') : s;
+    };
 
     const LOCALE_CMP = typeof Intl !== 'undefined' ? new Intl.Collator().compare : (a, b) => a.localeCompare(b);
 
     const asciiRef = (name, fallback) => {
-        const ascii = String(name || '').normalize('NFKD').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+        const raw = String(name || '');
+        const norm = NON_ASCII_RE.test(raw) ? raw.normalize('NFKD') : raw;
+        const ascii = norm.replace(NON_PRINT_RE, '').replace(WS_RE, ' ').trim().toUpperCase();
         return ascii.length >= 2 ? ascii.slice(0, 28) : fallback;
     };
 
@@ -50,13 +65,16 @@
             items: allItems
         }];
 
-        (Array.isArray(playlists) ? playlists : []).forEach((playlist, order) => {
-            if (!playlist) return;
+        const plList = Array.isArray(playlists) ? playlists : [];
+        for (let order = 0; order < plList.length; order += 1) {
+            const playlist = plList[order];
+            if (!playlist) continue;
             const items = [];
-            (playlist.tracks || []).forEach((path) => {
-                const index = indexByPath.get(normalizePath(path));
+            const plTracks = playlist.tracks || [];
+            for (let j = 0; j < plTracks.length; j += 1) {
+                const index = indexByPath.get(normalizePath(plTracks[j]));
                 if (index !== undefined) items.push(index);
-            });
+            }
             columns.push({
                 id: 'playlist:' + (playlist.id ?? order),
                 kind: 'playlist',
@@ -65,7 +83,7 @@
                 ref: asciiRef(playlist.name, 'PLAYLIST ' + String(order + 1).padStart(2, '0')),
                 items
             });
-        });
+        }
 
         if (maxAlbums > 0) {
             const albums = new Map();
@@ -77,20 +95,32 @@
                 if (!bucket) { bucket = []; albums.set(name, bucket); }
                 bucket.push(index);
             }
-            [...albums.entries()]
-                .filter(([, items]) => items.length >= 2)
-                .sort((a, b) => b[1].length - a[1].length || LOCALE_CMP(a[0], b[0]))
-                .slice(0, maxAlbums)
-                .forEach(([name, items], order) => {
-                    if (global.MusicTrackOrder) items.sort(global.MusicTrackOrder.albumCompare(list, (a, b) => a - b)); // 碟号、曲号
-                    columns.push({
-                        id: 'album:' + name,
-                        kind: 'album',
-                        name,
-                        ref: asciiRef(name, 'ALBUM ' + String(order + 1).padStart(2, '0')),
-                        items
-                    });
+            const multiAlbums = [];
+            for (const entry of albums) {
+                if (entry[1].length >= 2) multiAlbums.push(entry);
+            }
+            multiAlbums.sort((a, b) => b[1].length - a[1].length || LOCALE_CMP(a[0], b[0]));
+            const trackOrder = global.MusicTrackOrder || null;
+            const cap = Math.min(maxAlbums, multiAlbums.length);
+            for (let order = 0; order < cap; order += 1) {
+                const name = multiAlbums[order][0];
+                const items = multiAlbums[order][1];
+                if (trackOrder) {
+                    let anyNumbered = false;
+                    for (let j = 0; j < items.length; j += 1) {
+                        const ord = trackOrder.numberOf(list[items[j]]);
+                        if (ord.no > 0 || ord.disc > 0) { anyNumbered = true; break; }
+                    }
+                    if (anyNumbered) items.sort(trackOrder.albumCompare(list, (a, b) => a - b));
+                }
+                columns.push({
+                    id: 'album:' + name,
+                    kind: 'album',
+                    name,
+                    ref: asciiRef(name, 'ALBUM ' + String(order + 1).padStart(2, '0')),
+                    items
                 });
+            }
         }
         return columns;
     };

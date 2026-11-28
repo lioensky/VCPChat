@@ -204,9 +204,9 @@
             }
             relayout();
         };
-        const kindBtns = [...el.querySelectorAll('[data-kind]')];
+        const kindBtns = el.querySelectorAll('[data-kind]');
         let lDig = '', lDk = '', lKm = '';
-        let cachedVpH = 0, cachedVpOff = -1, syncedTop = 0, syncedTopFresh = false, syncedTopQueued = false, lastRenderTop = -1, lastRenderRow = -2;
+        let cachedVpH = 0, cachedVpOff = -1, syncedTop = 0, scrollTopDirty = true, lastRenderTop = -1, lastRenderRow = -2;
         const viewportHeight = () => {
             if (cachedVpH > 0) return cachedVpH;
             const h = r.viewport.clientHeight;
@@ -215,10 +215,15 @@
         };
         const viewportOffsetTop = () => (cachedVpOff >= 0 ? cachedVpOff : (cachedVpOff = r.viewport.offsetTop || 0));
         const recordScrollTop = (top) => {
-            syncedTop = top; syncedTopFresh = true;
-            if (!syncedTopQueued) { syncedTopQueued = true; Promise.resolve().then(() => { syncedTopQueued = syncedTopFresh = false; }); }
+            syncedTop = top > 0 ? top : 0;
+            scrollTopDirty = false;
         };
-        const readScrollTop = () => (syncedTopFresh ? syncedTop : r.viewport.scrollTop);
+        const readScrollTop = () => {
+            if (!scrollTopDirty) return syncedTop;
+            const top = r.viewport.scrollTop;
+            recordScrollTop(top);
+            return top;
+        };
         const captureViewport = () => {
             if (!el.isConnected || el.hidden) return;
             viewportHeight();
@@ -228,6 +233,7 @@
         const paintSlim = (entries) => {
             let elW = -1;
             cachedVpOff = -1;
+            scrollTopDirty = true;
             if (Array.isArray(entries)) {
                 for (let i = 0; i < entries.length; i++) {
                     const e = entries[i];
@@ -787,7 +793,9 @@
             }
             // 先集中读 scrollTop 和 clientHeight，再写类名，避免强制回流
             const hasKnown = Boolean(known && typeof known === 'object' && typeof known.top === 'number' && known.height > 0);
-            const top = hasKnown ? known.top : readScrollTop();
+            let top;
+            if (hasKnown) top = known.top;
+            else { top = r.viewport.scrollTop; recordScrollTop(top); }
             const rawH = hasKnown ? known.height : viewportHeight();
             const h = rawH || 600;
             const totalH = state.offsets.length ? state.offsets[state.offsets.length - 1] : 0;
@@ -1068,7 +1076,7 @@
             const moved = k !== state.selectedRow;
             state.selectedRow = k;
             const h = viewportHeight();
-            const wasFresh = syncedTopFresh;
+            const wasFresh = !scrollTopDirty;
             let top = readScrollTop();
             if (!quiet && (moved || center) && k >= 0) {
                 const y = state.offsets[k];
@@ -1085,7 +1093,8 @@
         const inView = (k) => {
             const vp = r.viewport;
             const y = state.offsets[k];
-            return y >= vp.scrollTop && y + ROW_H <= vp.scrollTop + viewportHeight() - EDGE_FADE;
+            const curTop = readScrollTop();
+            return y >= curTop && y + ROW_H <= curTop + viewportHeight() - EDGE_FADE;
         };
 
         /* 列表里换选中（键盘/单击）：告诉阵列 */
@@ -1308,7 +1317,7 @@
         r.input.addEventListener('keydown', onKey);
         r.viewport.addEventListener('keydown', onKey);
 
-        r.viewport.addEventListener('scroll', () => { lastRenderTop = -1; schedule(); }, { passive: true });
+        r.viewport.addEventListener('scroll', () => { scrollTopDirty = true; lastRenderTop = -1; schedule(); }, { passive: true });
         // 悬停时按需生成完整曲名/听歌记录提示，避免虚拟滚动每帧对全部可见行执行正则与日期格式化
         r.viewport.addEventListener('pointerover', (e) => {
             const node = e.target && e.target.closest ? e.target.closest('.archive-list-row') : null;

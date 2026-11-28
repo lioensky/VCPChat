@@ -71,7 +71,8 @@
             const flight = { token, lines, manual, promise: null };
             const task = (async () => {
                 const track = currentTrack();
-                const texts = lines.map(textOf);
+                const texts = new Array(lines.length);
+                for (let i = 0; i < lines.length; i += 1) texts[i] = textOf(lines[i]);
                 if (manual) toast('正在翻译歌词…');
                 let result;
                 try {
@@ -98,11 +99,14 @@
                     if (wantManual) toast(`翻译没有成功：${result?.message || '模型没有回应'}`);
                     return;
                 }
-                const next = lines.map((line, i) => {
+                const next = new Array(lines.length);
+                for (let i = 0; i < lines.length; i += 1) {
+                    const line = lines[i];
                     const tr = String(result.translations[i] || '').trim();
-                    if (!tr || tr === texts[i] || String(line.translation || '').trim()) return line;
-                    return { ...line, translation: tr, translationSource: 'ai' };
-                });
+                    next[i] = (!tr || tr === texts[i] || String(line.translation || '').trim())
+                        ? line
+                        : { ...line, translation: tr, translationSource: 'ai' };
+                }
                 // 换一个新数组：首页歌词、舞台按引用判断歌词变了没有
                 app.currentLyrics = next;
                 app._lyricLayout = null;

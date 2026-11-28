@@ -112,7 +112,9 @@
         const setText = (name, value, empty = '—') => {
             const text = value || empty;
             const hide = !value && (!empty || empty === '—');
-            for (const { el, cell } of fields(name)) {
+            const list = fields(name);
+            for (let i = 0; i < list.length; i += 1) {
+                const { el, cell } = list[i];
                 if (el.textContent !== text) el.textContent = text;
                 // 规格栏里读不出来的项（只剩一个「—」）整格收起，不摆一排破折号
                 if (cell && cell.hidden !== hide) cell.hidden = hide;
@@ -318,7 +320,9 @@
                 }
             }
         };
-        for (const option of options) {
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < optLen; i += 1) {
+            const option = options[i];
             const button = document.createElement('button');
             button.type = 'button';
             button.dataset.value = option.value;
@@ -333,8 +337,9 @@
                 select.dispatchEvent(new Event('change', { bubbles: true }));
                 sync();
             });
-            group.appendChild(button);
+            frag.appendChild(button);
         }
+        group.appendChild(frag);
         group.addEventListener('keydown', (event) => {
             const dir = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1
                 : event.key === 'Home' ? -2 : event.key === 'End' ? 2 : 0;
@@ -381,8 +386,10 @@
             const scan = () => {
                 if (scanning) return;
                 scanning = true;
-                try { settingsBody.querySelectorAll('select:not([data-segmented])').forEach(enhanceSelect); }
-                finally { scanning = false; }
+                try {
+                    const selects = settingsBody.querySelectorAll('select:not([data-segmented])');
+                    for (let i = 0; i < selects.length; i += 1) enhanceSelect(selects[i]);
+                } finally { scanning = false; }
             };
             // 舞台切换模式时会重建「模式调制」里的控件，跟着重新替换；仅在新增节点本身或其子树含未检查 <select> 时才扫描
             const settingsObs = new MutationObserver((records) => {

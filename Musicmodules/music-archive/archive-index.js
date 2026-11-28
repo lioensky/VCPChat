@@ -500,16 +500,22 @@
             return out;
         };
 
-        return {
+        const groupFn = (i) => (entries[i] ? entries[i].group : '#');
+        const artistGroupFn = (i) => (entries[i] ? entries[i].artistGroup : '#');
+        const idxObj = {
             size: entries.length,
             entry: (i) => entries[i],
-            group: (i) => (entries[i] ? entries[i].group : '#'),
+            group: groupFn,
             sortKey: (i) => (entries[i] ? entries[i].sort : ''),
-            artistGroup: (i) => (entries[i] ? entries[i].artistGroup : '#'),
+            artistGroup: artistGroupFn,
             artistKey: (i) => (entries[i] ? entries[i].artistSort : ''),
             query
         };
+        INDEX_META.set(idxObj, { entries, groupFn, artistGroupFn });
+        return idxObj;
     };
+
+    const INDEX_META = new WeakMap();
 
     /*
      * 排序方式：标题（默认）、歌手、时长、添加时间。每种方式给出：
@@ -795,23 +801,55 @@
         return true;
     };
 
+    const directEntriesForGroup = (index, sp) => {
+        const meta = INDEX_META.get(index);
+        if (!meta) return null;
+        if (sp.mode === 'title' && index.group === meta.groupFn && sp.group) return { entries: meta.entries, field: 'group' };
+        if (sp.mode === 'artist' && index.artistGroup === meta.artistGroupFn && sp.group) return { entries: meta.entries, field: 'artistGroup' };
+        return null;
+    };
+
     const groupColumns = (index, indices, { minSize = 1, spec = null } = {}) => {
         const sp = spec || sortSpec(index);
         // 全库下标且已缓存全局有序序列时直接按序分桶：单组桶天然有序，省去各组 O(N log N) 重排
         const preSorted = Boolean(sp.order && sp.order.length === index.size && isFullRange(indices, index.size));
         const src = preSorted ? sp.order : indices;
         const groups = new Map();
-        for (let k = 0; k < src.length; k += 1) {
-            const i = src[k];
-            const g = sp.group(i);
-            let bucket = groups.get(g);
-            if (!bucket) { bucket = []; groups.set(g, bucket); }
-            bucket.push(i);
+        const fast = directEntriesForGroup(index, sp);
+        let prevG = null;
+        let prevBucket = null;
+        if (fast) {
+            const ents = fast.entries;
+            const byArtist = fast.field === 'artistGroup';
+            for (let k = 0; k < src.length; k += 1) {
+                const i = src[k];
+                const e = ents[i];
+                const g = e ? (byArtist ? e.artistGroup : e.group) : '#';
+                if (g === prevG) { prevBucket.push(i); continue; }
+                let bucket = groups.get(g);
+                if (!bucket) { bucket = []; groups.set(g, bucket); }
+                bucket.push(i);
+                prevG = g;
+                prevBucket = bucket;
+            }
+        } else {
+            for (let k = 0; k < src.length; k += 1) {
+                const i = src[k];
+                const g = sp.group(i);
+                if (g === prevG) { prevBucket.push(i); continue; }
+                let bucket = groups.get(g);
+                if (!bucket) { bucket = []; groups.set(g, bucket); }
+                bucket.push(i);
+                prevG = g;
+                prevBucket = bucket;
+            }
         }
         const ordered = [...groups.entries()].sort((a, b) => sp.rank(a[0]) - sp.rank(b[0]));
         const runs = [];
         const appendAll = (dst, srcArr) => { for (let j = 0; j < srcArr.length; j++) dst.push(srcArr[j]); };
-        for (const [g, items] of ordered) {
+        for (let oi = 0; oi < ordered.length; oi += 1) {
+            const g = ordered[oi][0];
+            const items = ordered[oi][1];
             const last = runs[runs.length - 1];
             if (last && sp.family(last.groups[0]) === sp.family(g) && last.items.length < minSize) {
                 last.groups.push(g); appendAll(last.items, items);
@@ -827,10 +865,13 @@
             }
         }
         const prefix = sp.mode === 'title' ? 'letter:' : 'sort-' + sp.mode + ':';
-        return runs.map(({ groups: gs, items }) => {
+        const out = new Array(runs.length);
+        for (let ri = 0; ri < runs.length; ri += 1) {
+            const gs = runs[ri].groups;
+            const items = runs[ri].items;
             const first = gs[0], lastG = gs[gs.length - 1];
             const single = gs.length === 1;
-            return {
+            out[ri] = {
                 id: prefix + (single ? first : first + '-' + lastG),
                 kind: 'letter',
                 group: first,
@@ -839,7 +880,8 @@
                 ref: single ? sp.ref(first) : 'INDEX ' + first + '–' + lastG,
                 items: preSorted && single ? items : items.sort(sp.cmp)
             };
-        });
+        }
+        return out;
     };
 
     /*
@@ -912,12 +954,25 @@
             const useOrder = !q && Boolean(sp.order && sp.order.length === list.length);
             const groups = new Map();
             const albumsToSort = useOrder && trackOrder ? new Set() : null;
+            let prevRaw = undefined;
+            let prevName = '';
+            let prevBucket = null;
             const pushGroup = (i) => {
                 const tr = list[i];
                 const raw = tr && tr[field];
-                const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
-                let bucket = groups.get(name);
-                if (!bucket) { bucket = []; groups.set(name, bucket); }
+                let name;
+                let bucket;
+                if (raw === prevRaw && prevBucket) {
+                    name = prevName;
+                    bucket = prevBucket;
+                } else {
+                    name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
+                    bucket = groups.get(name);
+                    if (!bucket) { bucket = []; groups.set(name, bucket); }
+                    prevRaw = raw;
+                    prevName = name;
+                    prevBucket = bucket;
+                }
                 bucket.push(i);
                 if (albumsToSort && !albumsToSort.has(name)) {
                     const ordInfo = trackOrder.numberOf(tr);
@@ -962,26 +1017,51 @@
         if (q) {
             const hits = index.query(q);
             if (hits.length) head('检索结果', 'search', hits.length);
-            hits.forEach((i) => push(i, allCtx(i)));
+            for (let k = 0; k < hits.length; k += 1) push(hits[k], allCtx(hits[k]));
             return { rows, count };
         }
         const preSortedAll = Boolean(sp.order && sp.order.length === list.length);
         const groups = new Map();
+        const fastAll = directEntriesForGroup(index, sp);
+        let prevG = null;
+        let prevBucket = null;
         if (preSortedAll) {
             const ord = sp.order;
-            for (let k = 0; k < ord.length; k += 1) {
-                const i = ord[k];
-                const g = sp.group(i);
-                let bucket = groups.get(g);
-                if (!bucket) { bucket = []; groups.set(g, bucket); }
-                bucket.push(i);
+            if (fastAll) {
+                const ents = fastAll.entries;
+                const byArtist = fastAll.field === 'artistGroup';
+                for (let k = 0; k < ord.length; k += 1) {
+                    const i = ord[k];
+                    const e = ents[i];
+                    const g = e ? (byArtist ? e.artistGroup : e.group) : '#';
+                    if (g === prevG) { prevBucket.push(i); continue; }
+                    let bucket = groups.get(g);
+                    if (!bucket) { bucket = []; groups.set(g, bucket); }
+                    bucket.push(i);
+                    prevG = g;
+                    prevBucket = bucket;
+                }
+            } else {
+                for (let k = 0; k < ord.length; k += 1) {
+                    const i = ord[k];
+                    const g = sp.group(i);
+                    if (g === prevG) { prevBucket.push(i); continue; }
+                    let bucket = groups.get(g);
+                    if (!bucket) { bucket = []; groups.set(g, bucket); }
+                    bucket.push(i);
+                    prevG = g;
+                    prevBucket = bucket;
+                }
             }
         } else {
             for (let i = 0; i < list.length; i += 1) {
                 const g = sp.group(i);
+                if (g === prevG) { prevBucket.push(i); continue; }
                 let bucket = groups.get(g);
                 if (!bucket) { bucket = []; groups.set(g, bucket); }
                 bucket.push(i);
+                prevG = g;
+                prevBucket = bucket;
             }
         }
         // 标题、歌手排序：组标题是首字母（放在左侧外边距）；时长、添加时间：组标题是小标题行
