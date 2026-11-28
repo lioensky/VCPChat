@@ -1295,78 +1295,53 @@
             note.hidden = !text;
         };
 
-        /*
-         * The audio levels change every frame. Set on the stage root they would
-         * be inherited by, and restyle, every element of the stage each frame,
-         * although only a handful of parts read them. They go to those parts
-         * only: the backdrop, the edge spectrum (its corners and flow inherit),
-         * the cover, and the two mode roots whose own decoration reads them.
-         */
-        const audioWritten = new WeakMap();
+        // Route per-frame audio vars only to nodes that read them (avoids root restyle).
         const audioSinks = [];
+        const pushNodes = (list) => { for (let i = 0; i < list.length; i += 1) audioSinks.push(list[i]); };
         const collectAudioSinks = (opaque, edgeActive) => {
             audioSinks.length = 0;
-            if (!opaque) root.querySelectorAll(':scope .music-stage-backdrop-layer').forEach(node => audioSinks.push(node));
+            if (!opaque) pushNodes(root.querySelectorAll(':scope .music-stage-backdrop-layer'));
             if (edgeActive && elements.edgeSpectrum) audioSinks.push(elements.edgeSpectrum);
             if (elements.cover) audioSinks.push(elements.cover);
-            for (const child of elements.modeRoot?.children || []) {
-                if (child.classList.contains('music-stage-mode-tunnel')) audioSinks.push(child);
-                else if (child.classList.contains('music-stage-mode-starborn')) {
-                    child.querySelectorAll(':scope > .starborn-star, :scope > .starborn-transition-burst')
-                        .forEach(node => audioSinks.push(node));
+            const kids = elements.modeRoot?.children;
+            for (let i = 0; kids && i < kids.length; i += 1) {
+                const c = kids[i];
+                if (c.classList.contains('music-stage-mode-tunnel')) audioSinks.push(c);
+                else if (c.classList.contains('music-stage-mode-starborn')) {
+                    pushNodes(c.querySelectorAll(':scope > .starborn-star, :scope > .starborn-transition-burst'));
                 }
             }
         };
         const audioSinkRefs = [];
         const audioSinkClasses = [];
-        let audioSinkInitialized = false;
-        let audioSinkOpaque = false;
-        let audioSinkEdge = true;
-        let lastAudioPower = NaN;
-        let lastAudioBass = NaN;
-        let lastAudioVocal = NaN;
+        let audioSinkInitialized = false, audioSinkOpaque = false, audioSinkEdge = true;
+        let lastAudioPQ = -1, lastAudioBQ = -1, lastAudioVQ = -1;
         const writeAudioLevels = (audio) => {
-            // Mode roots come and go with switches; the list follows them.
-            const children = elements.modeRoot?.children;
-            const len = children ? children.length : 0;
+            const kids = elements.modeRoot?.children;
+            const len = kids ? kids.length : 0;
             const opaque = root.classList.contains('stage-opaque');
             const edgeActive = state.config.edgeSpectrum !== false && !reducedMotion();
             let changed = !audioSinkInitialized || len !== audioSinkRefs.length || opaque !== audioSinkOpaque || edgeActive !== audioSinkEdge;
-            if (!changed) {
-                for (let i = 0; i < len; i += 1) {
-                    const child = children[i];
-                    if (child !== audioSinkRefs[i] || child.className !== audioSinkClasses[i]) {
-                        changed = true;
-                        break;
-                    }
-                }
+            for (let i = 0; !changed && i < len; i += 1) {
+                if (kids[i] !== audioSinkRefs[i] || kids[i].className !== audioSinkClasses[i]) changed = true;
             }
-            if (!changed && audio.power === lastAudioPower && audio.bass === lastAudioBass && audio.vocal === lastAudioVocal) {
-                return;
-            }
+            const pQ = Math.round((+audio.power || 0) * 10000);
+            const bQ = Math.round((+audio.bass || 0) * 10000);
+            const vQ = Math.round((+audio.vocal || 0) * 10000);
+            if (!changed && pQ === lastAudioPQ && bQ === lastAudioBQ && vQ === lastAudioVQ) return;
             if (changed) {
-                audioSinkInitialized = true;
-                audioSinkOpaque = opaque;
-                audioSinkEdge = edgeActive;
-                audioSinkRefs.length = len;
-                audioSinkClasses.length = len;
-                for (let i = 0; i < len; i += 1) {
-                    audioSinkRefs[i] = children[i];
-                    audioSinkClasses[i] = children[i].className;
-                }
+                audioSinkInitialized = true; audioSinkOpaque = opaque; audioSinkEdge = edgeActive;
+                audioSinkRefs.length = len; audioSinkClasses.length = len;
+                for (let i = 0; i < len; i += 1) { audioSinkRefs[i] = kids[i]; audioSinkClasses[i] = kids[i].className; }
                 collectAudioSinks(opaque, edgeActive);
             }
-            lastAudioPower = audio.power;
-            lastAudioBass = audio.bass;
-            lastAudioVocal = audio.vocal;
-            const power = audio.power.toFixed(4);
-            const bass = audio.bass.toFixed(4);
-            const vocal = audio.vocal.toFixed(4);
-            const key = `${power}|${bass}|${vocal}`;
+            lastAudioPQ = pQ; lastAudioBQ = bQ; lastAudioVQ = vQ;
+            let power = '', bass = '', vocal = '';
             for (let i = 0; i < audioSinks.length; i += 1) {
                 const node = audioSinks[i];
-                if (audioWritten.get(node) === key) continue;
-                audioWritten.set(node, key);
+                if (node.__stPQ === pQ && node.__stBQ === bQ && node.__stVQ === vQ) continue;
+                node.__stPQ = pQ; node.__stBQ = bQ; node.__stVQ = vQ;
+                if (!power) { power = (pQ / 10000).toFixed(4); bass = (bQ / 10000).toFixed(4); vocal = (vQ / 10000).toFixed(4); }
                 node.style.setProperty('--stage-audio-power', power);
                 node.style.setProperty('--stage-audio-bass', bass);
                 node.style.setProperty('--stage-audio-vocal', vocal);
@@ -1691,11 +1666,13 @@
 
             if (nextOpen) settingsReturnFocus = document.activeElement;
             state.settingsOpen = nextOpen;
+            const ret = settingsReturnFocus;
             const focusTarget = !state.settingsOpen && !state.destroyed
-                ? (settingsReturnFocus?.isConnected ? settingsReturnFocus : elements.settingsToggle)
+                ? (ret && ret !== document.body && ret.isConnected && !elements.settingsCard?.contains(ret) ? ret : elements.settingsToggle)
                 : null;
             if (!state.settingsOpen) {
-                focusTarget?.focus?.({ preventScroll: true });
+                if (focusTarget) focusTarget.focus?.({ preventScroll: true });
+                else if (elements.settingsCard?.contains(document.activeElement)) document.activeElement?.blur?.();
                 settingsReturnFocus = null;
             }
             if (elements.settingsCard) {

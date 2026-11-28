@@ -99,8 +99,15 @@
                 tpl.innerHTML = icon(name, size);
                 iconTplCache.set(k, tpl);
             }
+            const first = tpl.firstChild;
+            if (first && !first.nextSibling) {
+                const clone = first.cloneNode(true);
+                if (target.firstChild && !target.firstChild.nextSibling) target.replaceChild(clone, target.firstChild);
+                else { target.textContent = ''; target.appendChild(clone); }
+                return;
+            }
             target.textContent = '';
-            for (let n = tpl.firstChild; n; n = n.nextSibling) target.appendChild(n.cloneNode(true));
+            for (let n = first; n; n = n.nextSibling) target.appendChild(n.cloneNode(true));
         };
         let manualProto = null;
         let trackProto = null;
@@ -339,8 +346,8 @@
             }
             const last = lo;
             const key = `${first}:${last}:${app.currentTrackIndex}:${rows.length}`;
-            if (!force && scroller.dataset.window === key) return;
-            scroller.dataset.window = key;
+            if (!force && scroller._qWinKey === key) return;
+            scroller._qWinKey = key;
             const sizer = scroller.firstElementChild;
             if (!sizer) return;
             const current = currentTrack();
@@ -393,19 +400,27 @@
                 }
                 hydrateSlot(slot, row, k, current);
             }
-            let cursor = sizer.firstElementChild;
-            for (let i = 0; i < nextSlots.length; i += 1) {
-                const node = nextSlots[i].el;
-                if (cursor === node) {
-                    cursor = cursor.nextElementSibling;
-                } else {
-                    sizer.insertBefore(node, cursor);
+            if (!sizer.firstElementChild) {
+                if (nextSlots.length) {
+                    const frag = document.createDocumentFragment();
+                    for (let i = 0; i < nextSlots.length; i += 1) frag.appendChild(nextSlots[i].el);
+                    sizer.appendChild(frag);
                 }
-            }
-            while (cursor) {
-                const next = cursor.nextElementSibling;
-                cursor.remove();
-                cursor = next;
+            } else {
+                let cursor = sizer.firstElementChild;
+                for (let i = 0; i < nextSlots.length; i += 1) {
+                    const node = nextSlots[i].el;
+                    if (cursor === node) {
+                        cursor = cursor.nextElementSibling;
+                    } else {
+                        sizer.insertBefore(node, cursor);
+                    }
+                }
+                while (cursor) {
+                    const next = cursor.nextElementSibling;
+                    cursor.remove();
+                    cursor = next;
+                }
             }
             sizer._qMounted = nextSlots;
         }
@@ -499,8 +514,13 @@
             if (abortActiveDrag) abortActiveDrag();
             const scroller = event.currentTarget;
             const from = Number(rowEl.dataset.qi);
-            const manualEls = [...scroller.querySelectorAll('.md-man')];
-            const manualIndices = manualEls.map((node) => Number(node.dataset.qi));
+            const manualList = scroller.querySelectorAll('.md-man');
+            const manualEls = new Array(manualList.length);
+            const manualIndices = new Array(manualList.length);
+            for (let i = 0; i < manualList.length; i += 1) {
+                manualEls[i] = manualList[i];
+                manualIndices[i] = Number(manualList[i].dataset.qi);
+            }
             state.queueDrag = { from, to: from, lastTo: from, startY: event.clientY, startScroll: scroller.scrollTop, y: event.clientY, lastDy: NaN, active: false, rowEl, manualEls, manualIndices, scroller, raf: 0, moved: false, pointerId: event.pointerId ?? null, rect: null };
             const inScrollEdge = (d) => d.rect && (d.y < d.rect.top + 32 || d.y > d.rect.bottom - 32);
             const stepAutoScroll = () => {

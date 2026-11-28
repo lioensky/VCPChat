@@ -161,6 +161,18 @@
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
+            const back = previousFocus;
+            previousFocus = null;
+            if (!isImmediate) {
+                if (back && back !== doc.body && back.isConnected && !o.contains(back) && typeof back.focus === 'function') {
+                    try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
+                } else {
+                    const active = doc.activeElement;
+                    if (active && o.contains(active) && typeof active.blur === 'function') {
+                        try { active.blur(); } catch (e) { /* 没关系 */ }
+                    }
+                }
+            }
             o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) o.remove();
@@ -168,17 +180,12 @@
                 closingOverlay = o;
                 closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === o) closingOverlay = null; o.remove(); }, 320);
             }
-            const back = previousFocus;
-            previousFocus = null;
-            if (!isImmediate && back && back.isConnected && typeof back.focus === 'function') {
-                try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
-            }
         };
         const onKey = (e) => {
             if (doc.querySelector('.dialog-overlay.music-dialog:not([data-closing])')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
-                const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                const focusables = overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])');
                 if (focusables.length) {
                     const first = focusables[0], last = focusables[focusables.length - 1];
                     const active = doc.activeElement;

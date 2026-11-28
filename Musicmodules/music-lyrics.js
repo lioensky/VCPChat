@@ -889,8 +889,16 @@ function setupLyrics(app) {
     };
 
     // 歌词文件里有字、但一句带时间的都没有（纯文本歌词）：记下有几行，首页歌词栏据此说明「没有时间轴」而不是「没有歌词」
-    const plainLyricLines = (raw) => (typeof raw === 'string'
-        ? raw.split(LINE_SPLIT_RE).map((s) => s.replace(BRACKET_STRIP_RE, '').trim()).filter(Boolean).slice(0, 400) : []);
+    const plainLyricLines = (raw) => {
+        if (typeof raw !== 'string' || !raw) return [];
+        const parts = raw.split(LINE_SPLIT_RE);
+        const out = [];
+        for (let i = 0; i < parts.length && out.length < 400; i += 1) {
+            const line = parts[i].replace(BRACKET_STRIP_RE, '').trim();
+            if (line) out.push(line);
+        }
+        return out;
+    };
     // 纯文本行也留着（app.currentLyricsPlainLines），首页歌词栏照 RhinE 把它们静静摆出来、能用滚轮翻
     const plainLyricCount = (raw) => {
         app.currentLyricsPlainLines = plainLyricLines(raw);
@@ -911,7 +919,10 @@ function setupLyrics(app) {
         app.targetScrollY = 0;
         app.lyricUserScrolling = false;
         if (app.lyricUserScrollTimer) { clearTimeout(app.lyricUserScrollTimer); app.lyricUserScrollTimer = null; }
-        app.lyricsList.innerHTML = '<li class="no-lyrics">正在加载歌词…</li>';
+        const firstLi = app.lyricsList.firstElementChild;
+        if (!(app.lyricsList.childElementCount === 1 && firstLi?.className === 'no-lyrics' && firstLi.textContent === '正在加载歌词…')) {
+            app.lyricsList.innerHTML = '<li class="no-lyrics">正在加载歌词…</li>';
+        }
         if (app.lyricsList.style.transform !== 'translate3d(0, 0px, 0)') {
             app.lyricsList.style.transform = 'translate3d(0, 0px, 0)';
         }

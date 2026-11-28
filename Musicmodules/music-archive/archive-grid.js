@@ -51,7 +51,12 @@
         opts.host.insertBefore(el, opts.before || null);
         const reduced = () => Boolean(opts.reducedMotion && opts.reducedMotion());
 
-        const hueOf = (str) => { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
+        const hueOf = (str) => {
+            const s = String(str);
+            let h = 0;
+            for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+            return h % 360;
+        };
         const st = {
             on: false, key: '', secs: [], rows: [], total: 0,
             width: 0, height: 0, cols: 1, cell: 150,
@@ -253,10 +258,13 @@
                         }
                     }
                     const x = st.left + c * (st.cell + GAP_X);
-                    const pos = x + ',' + row.y + ',' + st.cell;
-                    if (n.pos !== pos) {
-                        n.pos = pos;
+                    if (n.px !== x || n.py !== row.y) {
+                        n.px = x;
+                        n.py = row.y;
                         n.el.style.transform = `translate3d(${x}px,${row.y}px,0)`;
+                    }
+                    if (n.pw !== st.cell) {
+                        n.pw = st.cell;
                         n.el.style.width = st.cell + 'px';
                     }
                     const i = sec.ids[k];

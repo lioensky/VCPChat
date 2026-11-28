@@ -94,6 +94,18 @@
             const o = overlay; overlay = null;
             cachedGroups = null; cachedPlaylist = null; cachedPlaylistLen = -1;
             global.removeEventListener('keydown', onKey, true);
+            const back = previousFocus;
+            previousFocus = null;
+            if (!isImmediate) {
+                if (back && back !== doc.body && back.isConnected && !o.contains(back) && typeof back.focus === 'function') {
+                    try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
+                } else {
+                    const active = doc.activeElement;
+                    if (active && o.contains(active) && typeof active.blur === 'function') {
+                        try { active.blur(); } catch (e) { /* 没关系 */ }
+                    }
+                }
+            }
             o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) o.remove();
@@ -101,15 +113,12 @@
                 closingOverlay = o;
                 closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === o) closingOverlay = null; o.remove(); }, 320);
             }
-            const back = previousFocus;
-            previousFocus = null;
-            if (!isImmediate && back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
         const onKey = (e) => {
             if (doc.querySelector('.dialog-overlay.music-dialog:not([data-closing])')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
-                const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                const focusables = overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])');
                 if (focusables.length) {
                     const first = focusables[0], last = focusables[focusables.length - 1];
                     const active = doc.activeElement;
@@ -222,23 +231,25 @@
 
         const render = () => {
             const body = overlay.querySelector('.mdupes-body');
-            body.innerHTML = '';
             const list = app.playlist || [];
             const groups = findDuplicates(list);
             cachedGroups = groups;
             cachedPlaylist = list;
             cachedPlaylistLen = list.length;
-            const extra = groups.reduce((n, g) => n + g.extra.length, 0);
+            let extra = 0;
+            for (let i = 0; i < groups.length; i += 1) extra += groups[i].extra.length;
             const action = overlay.querySelector('.mdupes-remove');
+            const bodyFrag = doc.createDocumentFragment();
             if (!groups.length) {
-                body.appendChild(el('p', 'mstats-empty', '曲库里没有重复的歌。'));
-                body.appendChild(el('p', 'mstats-note', '歌名和歌手相同（或歌名、时长、大小都一样）的几个文件算同一首。'));
+                bodyFrag.appendChild(el('p', 'mstats-empty', '曲库里没有重复的歌。'));
+                bodyFrag.appendChild(el('p', 'mstats-note', '歌名和歌手相同（或歌名、时长、大小都一样）的几个文件算同一首。'));
+                body.replaceChildren(bodyFrag);
                 action.hidden = true;
                 return;
             }
             action.hidden = false;
             action.textContent = `移除多余的 ${extra} 个文件`;
-            body.appendChild(el('p', 'mdupes-lead', `${groups.length} 首歌各有不止一个文件。每组留下标着「留下」的那份（本机文件、无损、规格高的优先），其余从曲库移除；磁盘上的文件不会删，歌单会改指向留下的那份。`));
+            bodyFrag.appendChild(el('p', 'mdupes-lead', `${groups.length} 首歌各有不止一个文件。每组留下标着「留下」的那份（本机文件、无损、规格高的优先），其余从曲库移除；磁盘上的文件不会删，歌单会改指向留下的那份。`));
             const ul = el('ul', 'mdupes-list');
             const frag = doc.createDocumentFragment();
             const MAX = 200;
@@ -264,8 +275,9 @@
                 frag.appendChild(li);
             }
             ul.appendChild(frag);
-            body.appendChild(ul);
-            if (groups.length > MAX) body.appendChild(el('p', 'mstats-note', `还有 ${groups.length - MAX} 组没列出来，移除时一起处理。`));
+            bodyFrag.appendChild(ul);
+            if (groups.length > MAX) bodyFrag.appendChild(el('p', 'mstats-note', `还有 ${groups.length - MAX} 组没列出来，移除时一起处理。`));
+            body.replaceChildren(bodyFrag);
         };
 
         app.openDupesView = () => {
