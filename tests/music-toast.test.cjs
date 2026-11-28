@@ -320,3 +320,32 @@ test('Batch 72: MusicToast deduplicates unchanged clamped progress bar transform
         window.close();
     }
 });
+
+test('Batch 98: MusicToast caches lastMessage to skip DOM textContent getter reads on same-message progress updates', () => {
+    const { window, doc, toast } = setup();
+    try {
+        toast.show({ id: 'scan', kind: 'progress', message: '正在扫描…', progress: 0.1 });
+        const msgEl = doc.querySelector('[data-key="scan"] .mtst-msg');
+        assert.ok(msgEl);
+        let msgReads = 0;
+        let msgWrites = 0;
+        const textDesc = Object.getOwnPropertyDescriptor(window.Node.prototype, 'textContent');
+        Object.defineProperty(msgEl, 'textContent', {
+            configurable: true,
+            get() { msgReads += 1; return textDesc.get.call(this); },
+            set(v) { msgWrites += 1; return textDesc.set.call(this, v); }
+        });
+
+        toast.show({ id: 'scan', kind: 'progress', message: '正在扫描…', progress: 0.4 });
+        toast.show({ id: 'scan', kind: 'progress', message: '正在扫描…', progress: 0.8 });
+        assert.equal(msgReads, 0, 'cached lastMessage avoids DOM textContent getter reads');
+        assert.equal(msgWrites, 0, 'identical message skips textContent writes');
+
+        toast.show({ id: 'scan', kind: 'progress', message: '扫描完成', progress: 1 });
+        assert.equal(msgReads, 0, 'changed message updates without reading DOM textContent');
+        assert.equal(msgWrites, 1, 'changed message writes textContent once');
+        assert.equal(textDesc.get.call(msgEl), '扫描完成');
+    } finally {
+        window.close();
+    }
+});

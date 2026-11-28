@@ -174,3 +174,36 @@ test('Batch 70: dismissed MusicDialog sets data-closing=1 and beforeunload clear
     window.dispatchEvent(new window.Event('beforeunload'));
     assert.equal(overlay.isConnected, false, 'beforeunload removes fading overlay immediately');
 });
+
+test('Batch 98: MusicDialog restores focus before class removal and avoids body.focus() reflow when opened from body', async () => {
+    const { window, doc } = setup();
+    const opener = doc.getElementById('opener');
+    opener.focus();
+    const order = [];
+    const origFocus = opener.focus.bind(opener);
+    opener.focus = (opts) => { order.push('focus'); return origFocus(opts); };
+
+    const p1 = window.MusicDialog.confirm({ title: '先归还焦点' });
+    const overlay1 = doc.querySelector('.dialog-overlay.music-dialog');
+    const origRemove = overlay1.classList.remove.bind(overlay1.classList);
+    overlay1.classList.remove = (...args) => {
+        if (args.includes('visible')) order.push('hide');
+        return origRemove(...args);
+    };
+    overlay1.querySelector('.dialog-btn.cancel').click();
+    assert.equal(await p1, false);
+    assert.deepEqual(order, ['focus', 'hide'], 'opener.focus runs before removing .visible class');
+
+    // Opening while activeElement is document.body must not call body.focus() on close
+    opener.blur();
+    assert.equal(doc.activeElement, doc.body);
+    let bodyFocusCalls = 0;
+    const origBodyFocus = doc.body.focus.bind(doc.body);
+    doc.body.focus = (opts) => { bodyFocusCalls += 1; return origBodyFocus(opts); };
+    const p2 = window.MusicDialog.confirm({ title: '无焦点来源' });
+    const overlay2 = [...doc.querySelectorAll('.dialog-overlay.music-dialog')].pop();
+    overlay2.querySelector('.dialog-btn.confirm').click();
+    assert.equal(await p2, true);
+    assert.equal(bodyFocusCalls, 0, 'closing dialog opened from body blurs active control without calling body.focus()');
+    window.dispatchEvent(new window.Event('beforeunload'));
+});

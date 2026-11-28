@@ -1287,6 +1287,19 @@ test('Batch 97: searchTracks narrows incremental queries safely, stripAudioExten
         assert.equal(durWrites, 1, 'changed duration updates duration.textContent once');
         assert.equal(durEl.textContent, '3:05');
 
+        // Batch 98: searchTracks preserves caller realm Array constructor; MusicTrackSpecs.summary formats cleanly
+        assert.equal(r1 instanceof tracks.constructor, true, 'searchTracks result inherits caller realm Array');
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+        assert.equal(
+            window.MusicTrackSpecs.summary({ path: '/x.flac', codec: 'FLAC', sampleRate: 96000, bitsPerSample: 24, bitrate: 2800000, lossless: true }),
+            'FLAC · 96 kHz · 24 bit · 2800 kbps'
+        );
+        assert.equal(
+            window.MusicTrackSpecs.summary({ path: '/y.mp3', sampleRate: 44100, bitrate: 320000 }),
+            'MP3 · 44.1 kHz · 320 kbps'
+        );
+        assert.equal(window.MusicTrackSpecs.summary(null), '');
+
         window.dispatchEvent(new window.Event('beforeunload'));
     } finally {
         dom.window.close();

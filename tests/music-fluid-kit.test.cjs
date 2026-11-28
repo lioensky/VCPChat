@@ -933,3 +933,58 @@ test('Batch 93: fluid-select clones chevron + batches open layout, and watchTrai
         dom.window.close();
     }
 });
+
+test('Batch 98: dock fluid and fluid marker quantize numeric SVG attrs to skip sub-precision setAttribute writes', () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="host"><div class="md-dock"><div id="bar"><button data-md="play"></button></div></div><button data-md="vol"></button><div id="ring"></div></div>
+        <div id="mbox"></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    try {
+        // 1. music-dock-fluid: quantized setAttr skips sub-0.01 numeric deltas
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-fluid.js'), 'utf8'));
+        const host = doc.getElementById('host');
+        const bar = doc.getElementById('bar');
+        const ring = doc.getElementById('ring');
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+        bar.getBoundingClientRect = () => ({ left: 200, top: 720, width: 600, height: 56, right: 800, bottom: 776 });
+        const fluid = window.createMusicDockFluid({ host, bar, ring, reduced: () => true });
+        assert.ok(fluid && fluid.layout());
+        const ringSolid = host.querySelector('mask circle');
+        assert.ok(ringSolid);
+        let cxWrites = 0;
+        const origFluidSet = ringSolid.setAttribute.bind(ringSolid);
+        ringSolid.setAttribute = (k, v) => { if (k === 'cx') cxWrites += 1; return origFluidSet(k, v); };
+        fluid.setRingMode('playhead');
+        fluid.setProgress(0.25);
+        const afterInit = cxWrites;
+        // Identical redraw via setSolid(true) when already solid=1 writes 0 cx updates
+        fluid.setSolid(true);
+        assert.equal(cxWrites, afterInit, 'unchanged quantized ring cx skips setAttribute');
+        fluid.destroy();
+
+        // 2. music-fluid-marker: quantized setRectNum skips sub-0.05 numeric deltas and updates across 0.1 threshold
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-marker.js'), 'utf8'));
+        const mbox = doc.getElementById('mbox');
+        Object.defineProperty(mbox, 'clientHeight', { configurable: true, value: 40 });
+        Object.defineProperty(mbox, 'scrollWidth', { configurable: true, value: 400 });
+        const marker = window.createMusicFluidMarker(mbox, { axis: 'x', thickness: 4 });
+        marker.moveTo({ start: 10.0, end: 50.0 }, { instant: true });
+        const headRect = mbox.querySelector('svg rect');
+        let xWrites = 0;
+        const origMarkerSet = headRect.setAttribute.bind(headRect);
+        headRect.setAttribute = (k, v) => { if (k === 'x') xWrites += 1; return origMarkerSet(k, v); };
+        marker.moveTo({ start: 10.04, end: 50.04 }, { instant: true });
+        assert.equal(xWrites, 0, 'sub-0.05 delta rounding to same tenth skips setAttribute("x")');
+        marker.moveTo({ start: 10.2, end: 50.2 }, { instant: true });
+        assert.equal(xWrites, 1, 'delta crossing 0.1 threshold writes setAttribute("x") once');
+        assert.equal(headRect.getAttribute('x'), '10.2');
+        marker.destroy();
+    } finally {
+        dom.window.close();
+    }
+});
