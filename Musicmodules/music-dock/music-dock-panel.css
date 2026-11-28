@@ -205,7 +205,7 @@
 .md-qh { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 4px; font-size: 13px; color: var(--md-t2); }
 .md-qh b { color: var(--md-t1); font-weight: 600; }
 .md-g { flex: 1; }
-.md-ql { position: relative; height: 300px; overflow: auto; scrollbar-width: none; contain: strict; }
+.md-ql { position: relative; height: 300px; overflow: auto; scrollbar-width: none; contain: strict; overflow-anchor: none; }
 .md-ql::-webkit-scrollbar { display: none; }
 .md-ql-sizer { position: relative; }
 #music-dock-root .md-qi {

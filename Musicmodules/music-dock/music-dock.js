@@ -2135,7 +2135,7 @@
             }
             if (!event.shiftKey && (key === 'ArrowLeft' || key === 'ArrowRight')) {
                 if (archiveShown()) return; // 档案页里留给选歌
-                if (t?.closest?.('[role="slider"], [role="tablist"], .md-seg, .md-ql')) return;
+                if (t?.closest?.('[role="slider"], [role="tablist"], .md-seg, .md-ql, .music-skin-segmented')) return;
                 take();
                 seekBy(key === 'ArrowLeft' ? -5 : 5);
                 return;

@@ -293,6 +293,7 @@ body.music-stage-active #custom-title-bar {
     counter-reset: track;
     padding: 4px 0 16px;
     contain: layout paint style;
+    overflow-anchor: none;
 }
 
 .playlist li,

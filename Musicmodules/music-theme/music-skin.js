@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    const pad = (n, width) => String(n).padStart(width, '0');
+    const pad4 = (n) => (n < 10 ? `000${n}` : n < 100 ? `00${n}` : n < 1000 ? `0${n}` : String(n));
 
     // 同一路径永远得到同一个档案号，歌单重排或筛选后编号不跳。
     const fileNumber = (track) => {
@@ -14,7 +14,7 @@
             h ^= key.charCodeAt(i);
             h = Math.imul(h, 16777619);
         }
-        return `TRK-${pad((h >>> 0) % 10000, 4)}`;
+        return `TRK-${pad4((h >>> 0) % 10000)}`;
     };
 
     const EXT_RE = /\.([a-z0-9]{2,5})(?:[?#].*)?$/i;
@@ -29,6 +29,7 @@
     };
 
     // 解析库给的编码名比较啰嗦（如 "MPEG 1 Layer 3"、"Vorbis I"），收成常见叫法。
+    const FAST_CODECS = new Set(['FLAC', 'MP3', 'AAC', 'OPUS', 'ALAC', 'VORBIS', 'PCM', 'WAV', 'APE', 'WMA', 'OGG', 'DSF', 'DFF', 'AIFF']);
     const CODEC_RULES = [
         [/^MPEG[ -]?[12](\.5)?[ -]LAYER[ -]?3/, 'MP3'],
         [/AAC/, 'AAC'],
@@ -40,6 +41,7 @@
     const format = (track) => {
         const raw = String(track?.codec || '').trim().toUpperCase();
         if (raw) {
+            if (FAST_CODECS.has(raw)) return raw;
             for (let i = 0; i < CODEC_RULES.length; i += 1) {
                 if (CODEC_RULES[i][0].test(raw)) return CODEC_RULES[i][1];
             }
@@ -363,6 +365,7 @@
                 : enabled[(Math.max(0, cur) + dir + enabled.length) % enabled.length];
             if (!next) return;
             event.preventDefault();
+            event.stopPropagation();
             next.focus({ preventScroll: true });
             next.click();
         });

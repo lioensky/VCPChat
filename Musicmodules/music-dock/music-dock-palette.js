@@ -62,7 +62,7 @@
             else free.push(token);
         }
         out.text = free.join(' ');
-        if (TRAIL_WS_RE.test(raw || '') === false && last.startsWith('--') && !FLAG_LOOKUP.has(last.slice(2))) {
+        if (TRAIL_WS_RE.test(raw || '') === false && last.startsWith('--') && !FLAG_LOOKUP.has(lower(last.slice(2)))) {
             out.pendingFlag = last.slice(2);
         }
         return out;
@@ -679,7 +679,7 @@
         };
         const renderHints = (raw, q) => {
             const last = tailToken(raw);
-            const show = last.startsWith('--') && !FLAG_LOOKUP.has(last.slice(2));
+            const show = last.startsWith('--') && !FLAG_LOOKUP.has(lower(last.slice(2)));
             if (!show) {
                 if (lastHintsKey !== '') {
                     lastHintsKey = '';
@@ -1088,18 +1088,18 @@
         };
         hints.addEventListener('mousedown', (event) => event.preventDefault());
         hints.addEventListener('click', (event) => {
-            const button = event.target.closest('[data-flag]');
+            const button = event.target?.closest?.('[data-flag]');
             if (button) acceptFlag(button.dataset.flag);
         });
         list.addEventListener('mousedown', (event) => event.preventDefault());
         list.addEventListener('pointermove', (event) => {
-            const row = event.target.closest('.md-cmd-row');
+            const row = event.target?.closest?.('.md-cmd-row');
             if (!row) return;
             const i = Number(row.dataset.i);
             if (i !== state.active) { state.active = i; syncActive(false); }
         });
         list.addEventListener('click', (event) => {
-            const row = event.target.closest('.md-cmd-row');
+            const row = event.target?.closest?.('.md-cmd-row');
             if (row) execute(Number(row.dataset.i), event.shiftKey ? 'next' : (event.ctrlKey || event.metaKey) ? 'queue' : 'run');
         });
         root.querySelector('[data-cmd="scrim"]').addEventListener('pointerdown', () => close());

@@ -2100,18 +2100,23 @@
             kick();
         });
         bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
-        // 设置抽屉开合：抽屉的 class 一变就看让位宽度变没变，变了才重排
+        // 抽屉开合：只盯 .md-pnl 自身 class，避免命令面板等子树改类空转
         const dockRoot = document.getElementById('music-dock-root');
-        let drawerFrame = 0;
-        const drawerObserver = dockRoot ? new MutationObserver((records) => {
-            if (!records.some((r) => r.target.classList?.contains('md-pnl')) || drawerFrame) return;
+        let drawerFrame = 0, drawerEl = dockRoot?.querySelector('.md-pnl') || null;
+        const watchPnl = { attributes: true, attributeFilter: ['class'] };
+        const drawerObserver = dockRoot ? new MutationObserver(() => {
+            if (!drawerEl) {
+                if (!(drawerEl = dockRoot.querySelector('.md-pnl'))) return;
+                drawerObserver.disconnect();
+                drawerObserver.observe(drawerEl, watchPnl);
+            }
+            if (drawerFrame) return;
             drawerFrame = requestAnimationFrame(() => {
                 drawerFrame = 0;
-                if (state.destroyed || !isShown()) return;
-                if (drawerInset(root.clientWidth || global.innerWidth) !== lastInset) resize();
+                if (!state.destroyed && isShown() && drawerInset(root.clientWidth || global.innerWidth) !== lastInset) resize();
             });
         }) : null;
-        drawerObserver?.observe(dockRoot, { subtree: true, attributes: true, attributeFilter: ['class'] });
+        drawerObserver?.observe(drawerEl || dockRoot, drawerEl ? watchPnl : { childList: true });
         const unsubscribeQuality = stageConfig && stageConfig.subscribe ? stageConfig.subscribe(() => { if (isShown()) { ensureScene(); kick(); } }) : null;
         const onMotion = () => {
             syncMotionClass();

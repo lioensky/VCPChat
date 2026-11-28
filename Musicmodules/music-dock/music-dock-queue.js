@@ -35,7 +35,7 @@
             }
             if (!paths.length) return;
             const d = new Date();
-            const pad = (n) => String(n).padStart(2, '0');
+            const pad = (n) => (n < 10 ? `0${n}` : String(n));
             const pl = { id: 'q' + Date.now(), name: `队列 ${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`, tracks: paths };
             if (!Array.isArray(app.customPlaylists)) app.customPlaylists = [];
             app.customPlaylists.push(pl);
@@ -475,10 +475,28 @@
             }
             prebuildIdleId = 0;
         };
-        const queueSig = () => [currentTrack()?.path, app.currentFilteredTracks, app.currentFilteredTracks?.length,
-            app.filteredPlaylistSource, app.playbackSourceName?.(), app.radio?.list, app.isPlaying === true, document.body.classList.contains('light-theme')];
-        const prebuiltFresh = () => Boolean(prebuilt) && performance.now() - prebuilt.at < 8000
-            && queueSig().every((value, index) => value === prebuilt.sig[index]);
+        const queueSig = () => ({
+            path: currentTrack()?.path,
+            filtered: app.currentFilteredTracks,
+            filteredLen: app.currentFilteredTracks?.length,
+            source: app.filteredPlaylistSource,
+            sourceName: app.playbackSourceName?.(),
+            radio: app.radio?.list,
+            playing: app.isPlaying === true,
+            light: document.body.classList.contains('light-theme')
+        });
+        const prebuiltFresh = () => {
+            if (!prebuilt || performance.now() - prebuilt.at >= 8000) return false;
+            const s = prebuilt.sig;
+            return s.path === currentTrack()?.path
+                && s.filtered === app.currentFilteredTracks
+                && s.filteredLen === app.currentFilteredTracks?.length
+                && s.source === app.filteredPlaylistSource
+                && s.sourceName === app.playbackSourceName?.()
+                && s.radio === app.radio?.list
+                && s.playing === (app.isPlaying === true)
+                && s.light === document.body.classList.contains('light-theme');
+        };
         const schedulePrebuild = () => {
             cancelPrebuild();
             // 等「更多」那组按钮展开的动画走完再画，别把卡顿挪到展开动画里。
@@ -545,8 +563,8 @@
         };
         cleanups.push(() => { clearSuppressTimer(); if (abortActiveDrag) abortActiveDrag(); });
         function onQueuePointerDown(event) {
-            const rowEl = event.target.closest('.md-man');
-            if (!rowEl || event.button !== 0 || event.target.closest('.md-qx')) return;
+            const rowEl = event.target?.closest?.('.md-man');
+            if (!rowEl || event.button !== 0 || event.target?.closest?.('.md-qx')) return;
             event.preventDefault(); // 拖动时别选中文字
             if (abortActiveDrag) abortActiveDrag();
             const scroller = event.currentTarget;
@@ -674,13 +692,14 @@
             const rowEl = target.closest('[data-k]');
             const row = rowEl && state.queueRows?.[Number(rowEl.dataset.k)];
             if (!row) return;
-            const index = app.playlist.indexOf(row.track);
             if (act === 'remove' && row.type === 'manual') { app.queueRemove?.(row.i); return; }
             if (act === 'next') {
                 if (app.queuePlayNext?.(row.track)) global.MusicToast?.show({ id: 'queue', kind: 'success', message: `下一首播放：${trackTitle(row.track)}` });
                 return;
             }
-            if (act === 'play' && index !== -1) {
+            if (act === 'play') {
+                const index = app.playlist.indexOf(row.track);
+                if (index === -1) return;
                 // 点手动队列里的歌：现在就放它，并把它从队列里拿掉。
                 if (row.type === 'manual') app.queueRemove?.(row.i);
                 app.loadTrack?.(index);

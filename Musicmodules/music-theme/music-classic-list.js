@@ -542,8 +542,7 @@
         let wasShown = shown();
         let needsSync = !wasShown;
         const decorateSoon = () => {
-            if (queued || !shown()) return;
-            if (!hasUndecorated && !needsSync && !deferredSort) return;
+            if (queued || (!hasUndecorated && !needsSync && !deferredSort) || !shown()) return;
             queued = requestAnimationFrame(() => {
                 queued = 0;
                 if (!shown()) return;
