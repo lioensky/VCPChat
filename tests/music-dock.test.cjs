@@ -2379,3 +2379,23 @@ test('Batch 101: queue caches window key on scroller._qWinKey (not DOM dataset) 
         window.close();
     }
 });
+
+test('Batch 102: palette mirrors .md-has-drop on .md-cmd-list without CSS :has() and clears it when empty', () => {
+    const { window, doc, dock } = setup((_app, win) => {
+        win.MusicFluid = { slide() {}, bud() {} };
+    });
+    try {
+        dock.openPalette();
+        const list = doc.querySelector('.md-cmd-list');
+        const input = doc.querySelector('.md-cmd-in');
+        input.value = 'Alpha';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(list.classList.contains('md-has-drop'), true, 'non-empty results with fluid drop set .md-has-drop');
+        input.value = 'zzzz-no-match-102';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(list.classList.contains('md-has-drop'), false, 'empty results remove .md-has-drop');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

@@ -1041,3 +1041,60 @@ test('Batch 100: watchToasts defers solo toast measurement to rAF to avoid synch
         dom.window.close();
     }
 });
+
+test('Batch 102: watchTrails mirrors .mf-trail-on on host row, CSS eliminates hot :has() rules & contains .md-pnl, and M3U single-pass helpers work', async () => {
+    const kitCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.css'), 'utf8');
+    const drawerCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-drawer.css'), 'utf8');
+    assert.doesNotMatch(kitCss, /:has\(>\s*\.mf-trail\.mf-on\)/, 'hot :has(> .mf-trail.mf-on) selectors replaced with .mf-trail-on');
+    assert.doesNotMatch(kitCss, /\.md-ql:has\(\.md-qdrag\)/, ':has(.md-qdrag) replaced with .md-qdragging');
+    assert.doesNotMatch(kitCss, /\.md-cmd-list:has\(>\s*\.md-cmd-drop\)/, ':has(> .md-cmd-drop) replaced with .md-has-drop');
+    assert.doesNotMatch(drawerCss, /\.setting-item:has\(\.slider-with-value\)/, ':has(.slider-with-value) removed');
+    assert.match(drawerCss, /\.md-pnl\s*\{[^}]*contain:\s*layout style;/, '.md-pnl applies contain: layout style');
+
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="context-menu"><div class="context-menu-item" id="mi">项</div></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.requestAnimationFrame = () => 1;
+        window.cancelAnimationFrame = () => {};
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        const menu = doc.querySelector('.context-menu');
+        const item = doc.getElementById('mi');
+        menu.getBoundingClientRect = () => ({ left: 0, top: 0, width: 160, height: 40, right: 160, bottom: 40 });
+        item.getBoundingClientRect = () => ({ left: 0, top: 0, width: 160, height: 32, right: 160, bottom: 32 });
+
+        item.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        assert.equal(menu.classList.contains('mf-trail-on'), true, 'hovering menu item adds .mf-trail-on to host row');
+        doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+        assert.equal(menu.classList.contains('mf-trail-on'), false, 'clearing menu trail removes .mf-trail-on from host row');
+
+        // music-m3u: uniqueName, commands, exportPlaylist (skipping http/webdav), and noteUnsupported
+        const toasts = [];
+        window.MusicToast = { show: (o) => toasts.push(o) };
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-m3u.js'), 'utf8'));
+        assert.equal(window.MusicM3u.uniqueName('夜航', [{ name: '夜航' }, { name: '夜航 (2)' }]), '夜航 (3)');
+        let exportedPayload = null;
+        const m3uApp = {
+            playlist: [{ path: 'C:\\Music\\a.flac', title: 'A', artist: 'X', duration: 180 }],
+            customPlaylists: [{ id: '1', name: '合集', tracks: ['c:/music/a.flac', 'https://dav.example/b.mp3'] }, { id: '2', name: '空', tracks: [] }],
+            api: {
+                importMusicM3u: async () => ({ ok: false, canceled: true }),
+                exportMusicM3u: async (payload) => { exportedPayload = payload; return { ok: true, file: 'C:\\out.m3u8' }; },
+                getPathForFile: () => ''
+            }
+        };
+        window.MusicM3u.setupMusicM3u(m3uApp);
+        const cmds = m3uApp.m3u.commands();
+        assert.equal(cmds.length, 2, 'commands includes import + 1 non-empty playlist export');
+        await m3uApp.m3u.exportPlaylist(m3uApp.customPlaylists[0]);
+        assert.equal(exportedPayload.tracks.length, 1, 'exportPlaylist filters out remote URLs and resolves local track metadata');
+        assert.equal(exportedPayload.tracks[0].title, 'A');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
