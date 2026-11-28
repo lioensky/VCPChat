@@ -19,8 +19,9 @@ function getScrollingLyricWordTexts(line) {
 
 function setupLyrics(app) {
     app.disposeCurrentLyricsQuery = app.api?.onMusicCurrentLyricsRequest?.(({ requestId }) => {
+        const cur = app.playlist?.[app.currentTrackIndex];
         const track = app.pendingTrackPath
-            ? app.playlist.find(candidate => candidate.path === app.pendingTrackPath)
+            ? (cur && cur.path === app.pendingTrackPath ? cur : app.playlist.find(candidate => candidate.path === app.pendingTrackPath))
             : null;
         // 只选取正文，避免把逐字词元、音源路径或凭据带入工具结果。
         app.api?.sendMusicCurrentLyricsResponse?.({
@@ -304,12 +305,26 @@ function setupLyrics(app) {
     const LINE_SPLIT_RE = /\r?\n/;
     const OFFSET_TAG_RE = /^\[offset:\s*([+-]?\d+)\s*\]/im;
     const META_TAG_RE = /^\[[a-zA-Z]+:/;
-    const KANA_RE = /[\u3040-\u30ff\u31f0-\u31ff]/;
-    const HANGUL_RE = /[\uac00-\ud7af\u1100-\u11ff]/;
-    const HAN_RE = /[\u3400-\u9fff\uf900-\ufaff]/;
-    const LATIN_RE = /[a-z]/i;
     const BRACKET_STRIP_RE = /\[[^\]]*\]/g;
     const TIME_TAG_RE = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
+
+    const scriptOf = (text) => {
+        const t = String(text);
+        let hasHangul = false;
+        let hasHan = false;
+        let hasLatin = false;
+        for (let i = 0, len = t.length; i < len; i += 1) {
+            const c = t.charCodeAt(i);
+            if ((c >= 0x3040 && c <= 0x30ff) || (c >= 0x31f0 && c <= 0x31ff)) return 'kana';
+            if ((c >= 0xac00 && c <= 0xd7af) || (c >= 0x1100 && c <= 0x11ff)) hasHangul = true;
+            else if ((c >= 0x3400 && c <= 0x9fff) || (c >= 0xf900 && c <= 0xfaff)) hasHan = true;
+            else if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) hasLatin = true;
+        }
+        if (hasHangul) return 'hangul';
+        if (hasHan) return 'han';
+        if (hasLatin) return 'latin';
+        return 'other';
+    };
 
     /**
      * 增强型传统 LRC 解析器：完美兼容单语、同时间戳双语、微小时差双语以及前后分段式双语歌词
@@ -325,17 +340,25 @@ function setupLyrics(app) {
         let fileOffset = 0;
         const offsetTag = OFFSET_TAG_RE.exec(lrcContent);
         if (offsetTag) fileOffset = Math.max(-600, Math.min(600, Number(offsetTag[1]) / 1000)) || 0;
+        const speed = app.lyricSpeedFactor;
+        const offset = app.lyricOffset;
         const stamp = (match) => {
             const minutes = parseInt(match[1], 10);
             const seconds = parseInt(match[2], 10);
-            const milliseconds = parseInt(String(match[3] || '0').padEnd(3, '0'), 10);
+            const frac = match[3];
+            let milliseconds = 0;
+            if (frac) {
+                const n = parseInt(frac, 10);
+                const fl = frac.length;
+                milliseconds = fl === 1 ? n * 100 : fl === 2 ? n * 10 : n;
+            }
             const raw = Math.max(0, minutes * 60 + seconds + milliseconds / 1000 - fileOffset);
-            return Number((raw * app.lyricSpeedFactor + app.lyricOffset).toFixed(3));
+            return Math.round((raw * speed + offset) * 1000) / 1000;
         };
 
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) continue;
+        for (let li = 0; li < lines.length; li += 1) {
+            const trimmedLine = lines[li].trim();
+            if (!trimmedLine || trimmedLine.indexOf('[') === -1) continue;
             // 忽略头部元数据（如 [ti:...], [ar:...], [offset:...] 等）
             if (META_TAG_RE.test(trimmedLine)) continue;
 
@@ -372,14 +395,6 @@ function setupLyrics(app) {
         };
 
         const resultLines = [];
-        const scriptOf = (text) => {
-            const t = String(text);
-            if (KANA_RE.test(t)) return 'kana';
-            if (HANGUL_RE.test(t)) return 'hangul';
-            if (HAN_RE.test(t)) return 'han';
-            if (LATIN_RE.test(t)) return 'latin';
-            return 'other';
-        };
         const isTranslationOf = (a, b) => {
             const gap = Math.abs(b.time - a.time);
             if (gap <= 0.05) return true;
@@ -475,7 +490,7 @@ function setupLyrics(app) {
         }
 
         // 统一补全 endTime（方便后续计算）：到下一句开始为止；中间有空的时间戳行（间奏开始）就在那里结束。
-        breaks.sort((a, b) => a - b);
+        if (breaks.length > 1) breaks.sort((a, b) => a - b);
         let b = 0;
         for (let idx = 0; idx < resultLines.length; idx++) {
             const line = resultLines[idx];
@@ -754,7 +769,7 @@ function setupLyrics(app) {
                                 start: parseFloat(span.dataset.start),
                                 end: parseFloat(span.dataset.end),
                                 state: '',
-                                pct: ''
+                                pctQ: -1
                             };
                         }
                         layout.wordSpans = wordSpans;
@@ -804,21 +819,23 @@ function setupLyrics(app) {
                 if (estimatedTime >= word.end) {
                     if (word.state === 'finished') continue;
                     word.state = 'finished';
+                    word.pctQ = -1;
                     word.span.style.setProperty('--word-progress', '100%');
                     word.span.classList.remove('singing');
                     word.span.classList.add('finished');
                 } else if (estimatedTime <= word.start) {
                     if (word.state === 'pending') continue;
                     word.state = 'pending';
+                    word.pctQ = -1;
                     word.span.style.setProperty('--word-progress', '0%');
                     word.span.classList.remove('singing', 'finished');
                 } else {
                     const wordDuration = Math.max(0.001, word.end - word.start);
                     const progress = Math.min(1, Math.max(0, (estimatedTime - word.start) / wordDuration));
-                    const pct = `${(progress * 100).toFixed(1)}%`;
-                    if (pct !== word.pct) {
-                        word.pct = pct;
-                        word.span.style.setProperty('--word-progress', pct);
+                    const pctQ = Math.round(progress * 1000);
+                    if (pctQ !== word.pctQ) {
+                        word.pctQ = pctQ;
+                        word.span.style.setProperty('--word-progress', `${(pctQ / 10).toFixed(1)}%`);
                     }
                     if (word.state !== 'singing') {
                         word.state = 'singing';
@@ -847,13 +864,13 @@ function setupLyrics(app) {
             }
             layout.gapIndex = gapIndex;
             layout.gapHead = allLi[0];
-            layout.gapProg = '';
+            layout.gapProgQ = -1;
         }
         if (gap) {
-            const gapProg = gap.progress.toFixed(3);
-            if (gapProg !== layout.gapProg) {
-                layout.gapProg = gapProg;
-                allLi[gap.index]?.style.setProperty('--gap-progress', gapProg);
+            const gapProgQ = Math.round(gap.progress * 1000);
+            if (gapProgQ !== layout.gapProgQ) {
+                layout.gapProgQ = gapProgQ;
+                allLi[gap.index]?.style.setProperty('--gap-progress', (gapProgQ / 1000).toFixed(3));
             }
         }
 
@@ -931,7 +948,8 @@ function setupLyrics(app) {
         const parts = raw.split(LINE_SPLIT_RE);
         const out = [];
         for (let i = 0; i < parts.length && out.length < 400; i += 1) {
-            const line = parts[i].replace(BRACKET_STRIP_RE, '').trim();
+            const rawLine = parts[i];
+            const line = (rawLine.indexOf('[') !== -1 ? rawLine.replace(BRACKET_STRIP_RE, '') : rawLine).trim();
             if (line) out.push(line);
         }
         return out;

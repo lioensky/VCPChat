@@ -25,7 +25,15 @@ const MIME_EXT_MAP = {
     'svg+xml': 'svg'
 };
 
+const FAST_MIME_EXT = {
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp'
+};
+
 function safeCoverExtension(format) {
+    if (typeof format === 'string' && FAST_MIME_EXT[format]) return FAST_MIME_EXT[format];
     const raw = String(format || 'image/jpeg').split(';')[0].trim().toLowerCase();
     const sub = raw.includes('/') ? raw.split('/')[1] : raw;
     if (MIME_EXT_MAP[sub]) return MIME_EXT_MAP[sub];

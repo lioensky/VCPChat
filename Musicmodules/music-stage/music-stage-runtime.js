@@ -7,6 +7,7 @@
         return Number.isFinite(number) ? number : fallback;
     };
     const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, finiteNumber(value, min)));
+    const clamp01Num = (value) => (value > 0 && value < Infinity ? (value < 1 ? value : 1) : 0);
 
     const hashString = (input) => {
         let hash = 2166136261;
@@ -33,6 +34,18 @@
         ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
     const splitGraphemes = (text) => {
         const value = String(text ?? '');
+        const len = value.length;
+        if (!len) return [];
+        let allAsciiPrintable = true;
+        for (let i = 0; i < len; i += 1) {
+            const c = value.charCodeAt(i);
+            if (c < 0x20 || c > 0x7e) { allAsciiPrintable = false; break; }
+        }
+        if (allAsciiPrintable) {
+            const out = new Array(len);
+            for (let i = 0; i < len; i += 1) out[i] = value[i];
+            return out;
+        }
         return graphemeSegmenter
             ? Array.from(graphemeSegmenter.segment(value), (entry) => entry.segment)
             : Array.from(value);
@@ -521,12 +534,12 @@
         for (let i = p.r3a; i < p.r3b; i += 1) { const v = +values[i]; if (v === v) t3 += v; }
         for (let i = p.r4a; i < p.r4b; i += 1) { const v = +values[i]; if (v === v) t4 += v; }
 
-        const bass = clamp(t0 * p.inv0);
-        const lowMid = clamp(t1 * p.inv1);
-        const mid = clamp(t2 * p.inv2);
-        const vocal = clamp(t3 * p.inv3);
-        const treble = clamp(t4 * p.inv4);
-        const power = clamp(bass * 0.25 + lowMid * 0.2 + mid * 0.2 + vocal * 0.25 + treble * 0.1);
+        const bass = clamp01Num(t0 * p.inv0);
+        const lowMid = clamp01Num(t1 * p.inv1);
+        const mid = clamp01Num(t2 * p.inv2);
+        const vocal = clamp01Num(t3 * p.inv3);
+        const treble = clamp01Num(t4 * p.inv4);
+        const power = clamp01Num(bass * 0.25 + lowMid * 0.2 + mid * 0.2 + vocal * 0.25 + treble * 0.1);
         return { power, bass, lowMid, mid, vocal, treble, spectrum: values };
     };
 
@@ -557,8 +570,10 @@
                         binsDirty = true;
                         const scale = specLen / bins.length;
                         for (let i = 0; i < bins.length; i++) {
-                            const value = clamp(spectrum[Math.floor(i * scale)]);
-                            flux += Math.max(0, value - bins[i]);
+                            const raw = +spectrum[(i * scale) | 0];
+                            const value = raw > 0 && raw < Infinity ? (raw < 1 ? raw : 1) : 0;
+                            const diff = value - bins[i];
+                            if (diff > 0) flux += diff;
                             bins[i] = value;
                         }
                         flux /= bins.length;
@@ -629,6 +644,18 @@
         return lastNextLinesVal;
     };
 
+    let cachedViewport = null;
+    const resolveViewport = () => {
+        const width = global.innerWidth || 1;
+        const height = global.innerHeight || 1;
+        const dpr = Math.min(2, global.devicePixelRatio || 1);
+        if (cachedViewport && cachedViewport.width === width && cachedViewport.height === height && cachedViewport.dpr === dpr) {
+            return cachedViewport;
+        }
+        cachedViewport = Object.freeze({ width, height, dpr });
+        return cachedViewport;
+    };
+
     const createFrame = (app, now = performance.now()) => {
         const wallNow = Date.now();
         const lines = normalizeLines(app?.currentLyrics);
@@ -663,11 +690,7 @@
             // 要不要按时长铺开由舞台自己决定（MusicStageModeUtils.withPlainLyrics）
             plainLines: lines.length ? EMPTY_LINES : plainLinesOf(app?.currentLyricsPlainLines),
             audio: resolveAudioBands(spectrum),
-            viewport: {
-                width: global.innerWidth || 1,
-                height: global.innerHeight || 1,
-                dpr: Math.min(2, global.devicePixelRatio || 1)
-            },
+            viewport: resolveViewport(),
             track
         };
     };

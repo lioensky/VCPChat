@@ -437,23 +437,28 @@
         cameraShake: rng(0, 2)
     });
 
+    const HAS_OWN = Object.prototype.hasOwnProperty;
+    const ADDED_IN_KEYS = Object.freeze(Object.keys(ADDED_IN));
+    const QUALITY_VALUES = Object.freeze(['energy-saving', 'standard', 'ultimate']);
+    const THEME_MODE_VALUES = Object.freeze(['global', 'custom']);
+    const THEME_VARIANT_VALUES = Object.freeze(['dark', 'light']);
+
     const normalizeMode = (mode, fallback) => {
         const source = mode && typeof mode === 'object' ? mode : null;
         const out = {};
-        const hasOwn = Object.prototype.hasOwnProperty;
         for (const key in fallback) {
-            if (!hasOwn.call(fallback, key)) continue;
+            if (!HAS_OWN.call(fallback, key)) continue;
             const fb = fallback[key];
-            const sv = source && hasOwn.call(source, key) ? source[key] : undefined;
-            const validator = hasOwn.call(MODE_VALIDATORS, key) ? MODE_VALIDATORS[key] : null;
+            const sv = source && HAS_OWN.call(source, key) ? source[key] : undefined;
+            const validator = HAS_OWN.call(MODE_VALIDATORS, key) ? MODE_VALIDATORS[key] : null;
             const val = validator ? validator(sv, fb) : (sv !== undefined ? sv : fb);
             if (val !== undefined) out[key] = val;
         }
         if (source) {
             for (const key in source) {
-                if (!hasOwn.call(source, key) || hasOwn.call(fallback, key)) continue;
+                if (!HAS_OWN.call(source, key) || HAS_OWN.call(fallback, key)) continue;
                 const sv = source[key];
-                const validator = hasOwn.call(MODE_VALIDATORS, key) ? MODE_VALIDATORS[key] : null;
+                const validator = HAS_OWN.call(MODE_VALIDATORS, key) ? MODE_VALIDATORS[key] : null;
                 const val = validator ? validator(sv, undefined) : sv;
                 if (val !== undefined) out[key] = val;
             }
@@ -464,9 +469,14 @@
     const normalize = (candidate) => {
         const source = candidate && typeof candidate === 'object' ? candidate : {};
         const savedVersion = Number(source.version) || 0;
-        const requestedModes = Array.isArray(source.enabledModes)
-            ? source.enabledModes.concat(Object.keys(ADDED_IN).filter((id) => savedVersion < ADDED_IN[id]))
-            : DEFAULTS.enabledModes;
+        let requestedModes = DEFAULTS.enabledModes;
+        if (Array.isArray(source.enabledModes)) {
+            requestedModes = source.enabledModes.slice();
+            for (let i = 0; i < ADDED_IN_KEYS.length; i += 1) {
+                const id = ADDED_IN_KEYS[i];
+                if (savedVersion < ADDED_IN[id]) requestedModes.push(id);
+            }
+        }
         const requestedSet = new Set(requestedModes);
         const enabledModes = [];
         const modes = {};
@@ -480,12 +490,12 @@
         return {
             version: VERSION,
             enabledModes,
-            quality: enumValue(source.quality, ['energy-saving', 'standard', 'ultimate'], DEFAULTS.quality),
+            quality: enumValue(source.quality, QUALITY_VALUES, DEFAULTS.quality),
             animationIntensity: clamp(source.animationIntensity, 0, 2, DEFAULTS.animationIntensity),
             edgeSpectrum: bool(source.edgeSpectrum, DEFAULTS.edgeSpectrum),
-            themeMode: enumValue(source.themeMode, ['global', 'custom'], DEFAULTS.themeMode),
+            themeMode: enumValue(source.themeMode, THEME_MODE_VALUES, DEFAULTS.themeMode),
             themeFile: typeof source.themeFile === 'string' ? source.themeFile : DEFAULTS.themeFile,
-            themeVariant: enumValue(source.themeVariant, ['dark', 'light'], DEFAULTS.themeVariant),
+            themeVariant: enumValue(source.themeVariant, THEME_VARIANT_VALUES, DEFAULTS.themeVariant),
             modes
         };
     };

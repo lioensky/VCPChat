@@ -50,10 +50,15 @@ function createLyricData(lines, isWordByWord) {
     };
 }
 
+const round3 = (v) => Math.round(v * 1000) / 1000;
+
 function parseTimestamp(minute, second, fraction) {
     const min = parseInt(minute, 10);
     const sec = parseInt(second, 10);
-    const ms = parseFloat(`0.${fraction}`);
+    const fl = fraction.length;
+    const ms = fl === 2 ? parseInt(fraction, 10) / 100
+        : fl === 3 ? parseInt(fraction, 10) / 1000
+        : parseFloat(`0.${fraction}`);
     return min * 60 + sec + ms;
 }
 
@@ -100,8 +105,8 @@ function buildTimedWords(text, startTime, endTime) {
 
         words.push({
             text: token.text,
-            startTime: Number(currentWordStart.toFixed(3)),
-            endTime: Number((currentWordStart + finalDuration).toFixed(3))
+            startTime: round3(currentWordStart),
+            endTime: round3(currentWordStart + finalDuration)
         });
 
         currentWordStart += token.weight > 0 ? wordDuration : 0.04;
@@ -241,8 +246,8 @@ function parseYRC(yrcString, translationString = '', romanizationString = '') {
 
             words.push({
                 text,
-                startTime: Number((wordStartMs / 1000).toFixed(3)),
-                endTime: Number(((wordStartMs + wordDurationMs) / 1000).toFixed(3))
+                startTime: wordStartMs / 1000,
+                endTime: (wordStartMs + wordDurationMs) / 1000
             });
             fullText += text;
         }
@@ -250,8 +255,8 @@ function parseYRC(yrcString, translationString = '', romanizationString = '') {
         if (words.length > 0) {
             lines.push({
                 words,
-                startTime: Number(lineStartTime.toFixed(3)),
-                endTime: Number(lineEndTime.toFixed(3)),
+                startTime: lineStartTime,
+                endTime: lineEndTime,
                 fullText
             });
         }
@@ -320,8 +325,8 @@ function parseQRC(qrcString, translationString = '', romanizationString = '') {
 
             words.push({
                 text,
-                startTime: Number((tag.startMs / 1000).toFixed(3)),
-                endTime: Number(((tag.startMs + tag.durationMs) / 1000).toFixed(3))
+                startTime: tag.startMs / 1000,
+                endTime: (tag.startMs + tag.durationMs) / 1000
             });
             fullText += text;
         }
@@ -329,8 +334,8 @@ function parseQRC(qrcString, translationString = '', romanizationString = '') {
         if (words.length > 0) {
             lines.push({
                 words,
-                startTime: Number(lineStartTime.toFixed(3)),
-                endTime: Number(lineEndTime.toFixed(3)),
+                startTime: lineStartTime,
+                endTime: lineEndTime,
                 fullText
             });
         }
@@ -377,8 +382,8 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
 
             words.push({
                 text,
-                startTime: Number((wordStartMs / 1000).toFixed(3)),
-                endTime: Number(((wordStartMs + wordDurationMs) / 1000).toFixed(3))
+                startTime: wordStartMs / 1000,
+                endTime: (wordStartMs + wordDurationMs) / 1000
             });
             fullText += text;
         }
@@ -391,8 +396,8 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
         if (words.length > 0) {
             lines.push({
                 words,
-                startTime: Number(lineStartTime.toFixed(3)),
-                endTime: Number(lineEndTime.toFixed(3)),
+                startTime: lineStartTime,
+                endTime: lineEndTime,
                 fullText
             });
         }
@@ -518,17 +523,17 @@ function parseTTML(ttmlString) {
         let romanization = '';
         let plain = '';
         const stack = []; // 每层 span：{ role, word }
+        let bgDepth = 0;
         let tm;
         TTML_TOKEN_REGEX.lastIndex = 0;
         while ((tm = TTML_TOKEN_REGEX.exec(pMatch[2])) !== null) {
             if (tm[5] !== undefined) {
                 const text = decodeXmlText(tm[5]);
-                let isTrans = false, isRoman = false, isBg = false, wordFrame = null;
+                let isTrans = false, isRoman = false, isBg = bgDepth > 0, wordFrame = null;
                 for (let si = stack.length - 1; si >= 0; si--) {
                     const frame = stack[si];
                     if (frame.role === 'x-translation') isTrans = true;
                     else if (frame.role === 'x-roman') isRoman = true;
-                    else if (frame.role === 'x-bg') isBg = true;
                     if (!wordFrame && frame.word) wordFrame = frame;
                 }
                 if (isTrans) { translation += text; continue; }
@@ -543,10 +548,16 @@ function parseTTML(ttmlString) {
                 continue;
             }
             const closing = tm[1] === '/';
-            const tag = tm[2].toLowerCase().replace(TAG_NS_REGEX, '');
+            let tag = tm[2].toLowerCase();
+            const nsCut = tag.lastIndexOf(':');
+            if (nsCut !== -1) tag = tag.slice(nsCut + 1);
             if (tag === 'br' && !closing) { if (main.length) main[main.length - 1].text += ' '; continue; }
             if (tag !== 'span') continue;
-            if (closing) { stack.pop(); continue; }
+            if (closing) {
+                const popped = stack.pop();
+                if (popped && popped.role === 'x-bg') bgDepth -= 1;
+                continue;
+            }
             const attrs = tm[3];
             const role = ttmlAttr(attrs, 'role');
             const begin = parseTtmlTime(ttmlAttr(attrs, 'begin'));
@@ -554,9 +565,10 @@ function parseTTML(ttmlString) {
             let word = null;
             if (!role && Number.isFinite(begin)) {
                 word = { text: '', startTime: begin, endTime: Number.isFinite(end) && end >= begin ? end : begin };
-                (stack.some(f => f.role === 'x-bg') ? background : main).push(word);
+                (bgDepth > 0 ? background : main).push(word);
             }
             if (tm[4] === '/') continue; // <span/> 自闭合
+            if (role === 'x-bg') bgDepth += 1;
             stack.push({ role, word });
         }
 
@@ -584,8 +596,8 @@ function parseTTML(ttmlString) {
         let fullText = '';
         for (let i = 0; i < wLen; i += 1) {
             const w = words[i];
-            const st = Number(w.startTime.toFixed(3));
-            const et = Number(w.endTime.toFixed(3));
+            const st = round3(w.startTime);
+            const et = round3(w.endTime);
             if (et > maxWordEnd) maxWordEnd = et;
             fullText += w.text;
             outWords[i] = { text: w.text, startTime: st, endTime: et };
@@ -593,12 +605,12 @@ function parseTTML(ttmlString) {
         const lineEnd = Number.isFinite(lineEndRaw) ? lineEndRaw : maxWordEnd;
         const line = {
             words: outWords,
-            startTime: Number(lineStart.toFixed(3)),
-            endTime: Number(Math.max(lineStart, lineEnd).toFixed(3)),
+            startTime: round3(lineStart),
+            endTime: round3(Math.max(lineStart, lineEnd)),
             fullText
         };
-        const tr = (translation.replace(WS_GLOBAL_REGEX, ' ').trim()) || (key && headTranslations.get(key)) || '';
-        const ro = (romanization.replace(WS_GLOBAL_REGEX, ' ').trim()) || (key && headRomanizations.get(key)) || '';
+        const tr = (translation ? translation.replace(WS_GLOBAL_REGEX, ' ').trim() : '') || (key && headTranslations.get(key)) || '';
+        const ro = (romanization ? romanization.replace(WS_GLOBAL_REGEX, ' ').trim() : '') || (key && headRomanizations.get(key)) || '';
         if (tr) line.translation = tr;
         if (ro) line.romanization = ro;
         lines.push(line);
@@ -638,8 +650,8 @@ function parseLRC(lrcString, translationString = '', romanizationString = '') {
 
         lines.push({
             words: buildTimedWords(current.text, current.startTime, endTime),
-            startTime: Number(current.startTime.toFixed(3)),
-            endTime: Number(endTime.toFixed(3)),
+            startTime: round3(current.startTime),
+            endTime: round3(endTime),
             fullText: current.text
         });
     }
@@ -652,6 +664,7 @@ function parseLRC(lrcString, translationString = '', romanizationString = '') {
 /**
  * Converts structured LyricData back to standard LRC string format
  */
+const pad2 = (n) => (n < 10 ? `0${n}` : String(n));
 function convertToLrcString(lyricData) {
     if (!lyricData || !Array.isArray(lyricData.lines)) return '';
 
@@ -660,7 +673,7 @@ function convertToLrcString(lyricData) {
         const m = Math.floor(safe / 60);
         const s = Math.floor(safe % 60);
         const ms = Math.floor((safe % 1) * 100);
-        return `[${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}]`;
+        return `[${pad2(m)}:${pad2(s)}.${pad2(ms)}]`;
     };
 
     const out = [];

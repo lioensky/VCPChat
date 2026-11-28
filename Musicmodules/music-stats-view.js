@@ -18,8 +18,16 @@
     const COVER_CANDIDATES = ['cover.jpg', 'folder.jpg', 'cover.png'];
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const norm = (s) => String(s || '').trim().toLowerCase();
-    const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
-    const firstArtist = (t) => String((t && t.artist) || '').split(ARTIST_SPLIT_RE)[0].trim();
+    const normPath = (p) => {
+        const s = typeof p === 'string' ? p : String(p || '');
+        if (!s) return '';
+        return (s.indexOf('\\') !== -1 ? s.replace(BSLASH_RE, '/') : s).toLowerCase();
+    };
+    const firstArtist = (t) => {
+        const raw = t && t.artist;
+        if (!raw) return '';
+        return String(raw).split(ARTIST_SPLIT_RE)[0].trim();
+    };
 
     // 秒 → 「3 小时 12 分」「45 分」「不到 1 分」
     const formatDuration = (sec) => {
@@ -46,25 +54,28 @@
     };
     // 听歌日历：最近 weeks 周，一列一周（周一在上），今天所在那周是最后一列。
     // daily: { 'YYYY-MM-DD': 秒 } → [[{ key, seconds, level, future }...7] ...]；level 0–4 按当天听了多久（20 分 / 1 小时 / 2 小时分档）
-    const pad2 = (n) => String(n).padStart(2, '0');
+    const pad2 = (n) => (n < 10 ? `0${n}` : String(n));
     const keyOf = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
     const levelOf = (sec) => (sec <= 0 ? 0 : sec < 1200 ? 1 : sec < 3600 ? 2 : sec < 7200 ? 3 : 4);
     const calendarWeeks = (daily, today = new Date(), weeks = 53) => {
         const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const endTime = end.getTime();
         const monday = new Date(end);
         monday.setDate(end.getDate() - ((end.getDay() + 6) % 7));
         const start = new Date(monday);
         start.setDate(monday.getDate() - (weeks - 1) * 7);
-        const out = [];
+        const sy = start.getFullYear(), sm = start.getMonth(), sd = start.getDate();
+        const out = new Array(weeks);
         for (let w = 0; w < weeks; w++) {
-            const col = [];
+            const col = new Array(7);
+            const base = sd + w * 7;
             for (let d = 0; d < 7; d++) {
-                const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + d);
+                const day = new Date(sy, sm, base + d);
                 const key = keyOf(day);
                 const seconds = Number(daily?.[key]) || 0;
-                col.push({ key, seconds, level: levelOf(seconds), future: day > end, month: day.getMonth(), date: day.getDate() });
+                col[d] = { key, seconds, level: levelOf(seconds), future: day.getTime() > endTime, month: day.getMonth(), date: day.getDate() };
             }
-            out.push(col);
+            out[w] = col;
         }
         return out;
     };
@@ -79,8 +90,8 @@
         let best = 0, run = 0, prev = null;
         for (let i = 0; i < keys.length; i += 1) {
             const k = keys[i];
-            const t = new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10))).getTime();
-            run = prev !== null && Math.round((t - prev) / 86400000) === 1 ? run + 1 : 1;
+            const t = Date.UTC(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10)));
+            run = prev !== null && (t - prev) === 86400000 ? run + 1 : 1;
             if (run > best) best = run;
             prev = t;
         }
@@ -93,14 +104,28 @@
         return `${part} ${n} 点`;
     };
 
-    // 把 summary 里按次数排的歌合成歌手、专辑榜（纯函数，测试用）
-    function rank(summary, library) {
-        const lib = library || [];
+    const rankPathCache = new WeakMap();
+    const getRankPathMap = (lib) => {
+        const len = lib.length;
+        const first = len ? lib[0] : null;
+        const last = len ? lib[len - 1] : null;
+        const hit = rankPathCache.get(lib);
+        if (hit && hit.len === len && hit.first === first && hit.last === last) return hit.byPath;
         const byPath = new Map();
-        for (let i = 0; i < lib.length; i += 1) {
+        for (let i = 0; i < len; i += 1) {
             const p = lib[i]?.path;
             if (p) byPath.set(normPath(p), i);
         }
+        rankPathCache.set(lib, { len, first, last, byPath });
+        return byPath;
+    };
+
+    // 把 summary 里按次数排的歌合成歌手、专辑榜（纯函数，测试用）
+    function rank(summary, library) {
+        const rows = summary && summary.tracks;
+        const lib = library || [];
+        if (!rows || !rows.length || !lib.length) return { songs: [], artists: [], albums: [] };
+        const byPath = getRankPathMap(lib);
         const songs = [];
         const artists = new Map();
         const albums = new Map();

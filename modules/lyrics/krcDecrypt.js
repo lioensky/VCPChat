@@ -61,7 +61,7 @@ function krcDecrypt(content) {
  * which carries translations and romanization.
  */
 function decodeKrcLanguageTag(krcString) {
-  if (typeof krcString !== 'string' || !krcString) return { translations: [], romanizations: [] };
+  if (typeof krcString !== 'string' || !krcString || krcString.indexOf('[language:') === -1) return { translations: [], romanizations: [] };
   const match = KRC_LANG_TAG_RE.exec(krcString);
   if (!match) return { translations: [], romanizations: [] };
 
