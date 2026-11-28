@@ -220,3 +220,16 @@ test('populateDeviceList discards stale overlapping replies and upsampling/resam
     await app.configureResampling();
     assert.equal(saved, 0, 'status error does not save resampling settings');
 });
+
+test('Batch 96: syncOutputFallback formats multiple fallback reasons with single-pass loop and ignores unknown keys', () => {
+    const { app, note } = setup();
+    app.wasapiSwitch.checked = true;
+    app.syncOutputFallback({ output_fallback: ['exclusive', 'unknown_key', 'device'] });
+    assert.equal(note.hidden, false);
+    assert.match(note.textContent, /^独占模式没能打开.*共享模式播放。 选的音频设备不在了.*默认设备播放。$/);
+
+    app.wasapiSwitch.checked = false;
+    app.syncOutputFallback({ output_fallback: ['exclusive', 'device'] });
+    assert.equal(note.hidden, false);
+    assert.match(note.textContent, /^选的音频设备不在了.*默认设备播放。$/);
+});

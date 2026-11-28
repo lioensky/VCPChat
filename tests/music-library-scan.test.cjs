@@ -494,3 +494,35 @@ test('Batch 85: musicLibraryWatch collapseRoots and single-pass noteLibrarySaved
     await watcher.noteLibrarySaved(prev, next);
     assert.deepEqual(savedExcluded, ['/music/still-out.flac', '/music/removed-local.flac'], 'single-pass noteLibrarySaved drops re-added tracks, excludes existing removed locals, and skips deleted/remote paths');
 });
+
+test('Batch 96: musicLibraryWatch caches directory normalization across tracks in inferredDirs and changedSince', () => {
+    const { inferredDirs, changedSince } = require('../modules/musicLibraryWatch');
+    const dirA = path.join(process.cwd(), 'batch96-lib', 'album-a');
+    const dirB = path.join(process.cwd(), 'batch96-lib', 'album-b');
+    const tracks = [];
+    for (let i = 0; i < 60; i += 1) {
+        tracks.push({ path: path.join(dirA, `track-${i}.flac`), size: 1000 + i, mtimeMs: 5000 });
+    }
+    for (let i = 0; i < 40; i += 1) {
+        tracks.push({ path: path.join(dirB, `song-${i}.mp3`), size: 2000 + i, mtimeMs: 6000 });
+    }
+    const origResolve = path.resolve;
+    let resolveCalls = 0;
+    path.resolve = (...args) => { resolveCalls += 1; return origResolve(...args); };
+    try {
+        const dirs = inferredDirs(tracks);
+        assert.deepEqual(dirs, [dirA, dirB], 'inferredDirs sorts directories by descending track count');
+        assert.equal(resolveCalls, 2, '100 tracks across 2 directories call path.resolve only twice in inferredDirs');
+
+        resolveCalls = 0;
+        const changed = changedSince(tracks, tracks.slice(0, 60), dirA);
+        assert.equal(changed, false, 'changedSince matches unchanged directory tracks accurately');
+        assert.equal(resolveCalls, 3, 'changedSince calls path.resolve once for root + once per unique directory');
+
+        // Path containing '..' falls back to full path normalization safely
+        const dotTrack = { path: path.join(dirA, '..', 'album-a', 'escaped.flac'), size: 500, mtimeMs: 7000 };
+        assert.equal(changedSince([dotTrack], [dotTrack], dirA), false, 'paths with .. still match root accurately');
+    } finally {
+        path.resolve = origResolve;
+    }
+});

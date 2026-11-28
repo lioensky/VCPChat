@@ -68,3 +68,18 @@ test('O(1) liked cache stays accurate after external tracks mutations and array 
     assert.equal(app.isLiked(playlist[1]), false);
     assert.equal(app.isLiked(playlist[2]), false);
 });
+
+test('Batch 96: batch toggleLike prepends new tracks in newest-first order without duplicates and removes cleanly', () => {
+    const { app, playlist, events } = setup();
+    app.toggleLike(playlist[0]);
+    // Batch like [a, b, c, b]: b and c are new, appended in newest-first order [c, b, a]
+    const res = app.toggleLike([playlist[0], playlist[1], playlist[2], playlist[1], null], { quiet: true });
+    assert.equal(res, true);
+    assert.deepEqual(app.likedPlaylist().tracks, ['C:/m/c.flac', 'C:/m/b.flac', 'C:/m/a.flac']);
+    assert.deepEqual(events.at(-1).tracks.map((t) => t.path), ['C:/m/b.flac', 'C:/m/c.flac']);
+
+    // Batch unlike [a, c] keeps only b
+    const off = app.toggleLike([playlist[0], playlist[2]], { like: false, quiet: true });
+    assert.equal(off, false);
+    assert.deepEqual(app.likedPlaylist().tracks, ['C:/m/b.flac']);
+});
