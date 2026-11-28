@@ -49,9 +49,8 @@ async function collectAudioFiles(rootDir, { signal, unreadable } = {}) {
         const subdirs = [];
         for (let i = 0; i < entries.length; i += 1) {
             const entry = entries[i];
-            const fullPath = path.join(dir, entry.name);
-            if (entry.isDirectory()) subdirs.push(fullPath);
-            else if (SUPPORTED_FORMATS.has(path.extname(entry.name).toLowerCase())) found.push(fullPath);
+            if (entry.isDirectory()) subdirs.push(path.join(dir, entry.name));
+            else if (SUPPORTED_FORMATS.has(path.extname(entry.name).toLowerCase())) found.push(path.join(dir, entry.name));
         }
         for (let i = subdirs.length - 1; i >= 0; i--) pending.push(subdirs[i]);
     }

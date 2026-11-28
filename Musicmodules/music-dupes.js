@@ -14,7 +14,10 @@
     const TRAILING_ZERO_RE = /\.0$/;
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const norm = (s) => String(s || '').trim().toLowerCase();
-    const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
+    const normPath = (p) => {
+        const s = String(p || '');
+        return (s.indexOf('\\') >= 0 ? s.replace(BSLASH_RE, '/') : s).toLowerCase();
+    };
     const isRemote = (t) => Boolean(t && (t.isRemote || HTTP_URL_RE.test(String(t.path || ''))));
 
     function dupeKey(t, recKeyFn) {
@@ -66,8 +69,11 @@
     };
     const folderOf = (t) => {
         const p = String(t.path || '');
-        const i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/'));
-        return i > 0 ? p.slice(0, i) : p;
+        for (let i = p.length - 1; i >= 0; i -= 1) {
+            const c = p.charCodeAt(i);
+            if (c === 92 || c === 47) return i > 0 ? p.slice(0, i) : p;
+        }
+        return p;
     };
 
     function setupMusicDupes(app) {

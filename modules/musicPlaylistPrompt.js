@@ -4,10 +4,42 @@
 
 const fs = require('fs-extra');
 
-const AUDIO_EXT = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i;
+const AUDIO_EXTS = new Set(['mp3', 'flac', 'wav', 'm4a', 'ogg', 'aac', 'wma', 'ape', 'dsf', 'dff', 'alac', 'aif', 'aiff', 'opus', 'wv']);
 const WS_RE = /\s+/g;
 const DEFAULT_LIMIT = 1500;
 let cache = null; // { file, mtimeMs, size, limit, text }
+
+function stripAudioExt(s) {
+    const len = s.length;
+    const lo = len > 5 ? len - 5 : 0;
+    for (let i = len - 1; i >= lo; i -= 1) {
+        if (s.charCodeAt(i) === 46) {
+            return i < len - 1 && AUDIO_EXTS.has(s.slice(i + 1).toLowerCase()) ? s.slice(0, i) : s;
+        }
+    }
+    return s;
+}
+
+function normalizeTitleWs(s) {
+    const len = s.length;
+    if (!len) return '';
+    let needs = s.charCodeAt(0) <= 32 || s.charCodeAt(len - 1) <= 32;
+    if (!needs) {
+        let prevSpace = false;
+        for (let i = 0; i < len; i += 1) {
+            const c = s.charCodeAt(i);
+            if (c === 32) {
+                if (prevSpace) { needs = true; break; }
+                prevSpace = true;
+            } else if (c <= 32 || c === 0xa0 || c === 0x3000) {
+                needs = true; break;
+            } else {
+                prevSpace = false;
+            }
+        }
+    }
+    return needs ? s.replace(WS_RE, ' ').trim() : s;
+}
 
 function formatPlaylistPrompt(tracks, limit = DEFAULT_LIMIT) {
     if (!Array.isArray(tracks)) return '';
@@ -17,9 +49,8 @@ function formatPlaylistPrompt(tracks, limit = DEFAULT_LIMIT) {
     for (let i = 0, len = tracks.length; i < len; i += 1) {
         const raw = tracks[i]?.title;
         if (!raw) continue;
-        const s = String(raw);
-        const noExt = s.indexOf('.') >= 0 ? s.replace(AUDIO_EXT, '') : s;
-        const title = noExt.replace(WS_RE, ' ').trim();
+        const s = typeof raw === 'string' ? raw : String(raw);
+        const title = normalizeTitleWs(stripAudioExt(s));
         if (!title || seen.has(title)) continue;
         seen.add(title);
         if (shown.length < cap) shown.push(title);

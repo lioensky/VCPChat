@@ -1,16 +1,19 @@
 'use strict';
 
-const HTML_ESC_RE = /[&<>]/g;
-const HTML_ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
-const MD_ESC_RE = /([\\`*_{}\[\]()#+.!|~-])/g;
-const NEWLINE_RE = /\r\n?|\n/g;
+const ESC_ALL_RE = /[&<>\\`*_{}\[\]()#+.!|~-]|\r\n?|\n/g;
+const ESC_REPL = (token) => {
+    if (token === '&') return '&amp;';
+    if (token === '<') return '&lt;';
+    if (token === '>') return '&gt;';
+    const c0 = token.charCodeAt(0);
+    if (c0 === 13 || c0 === 10) return ' ';
+    return '\\' + token;
+};
 
 // 只输出可读正文，不向工具结果暴露逐字计时等内部 JSON。
 function escapeMarkdown(value) {
-    return (typeof value === 'string' ? value : '')
-        .replace(HTML_ESC_RE, (ch) => HTML_ESC_MAP[ch])
-        .replace(MD_ESC_RE, '\\$1')
-        .replace(NEWLINE_RE, ' ').trim();
+    if (typeof value !== 'string' || !value) return '';
+    return value.replace(ESC_ALL_RE, ESC_REPL).trim();
 }
 
 function formatCurrentLyrics(snapshot) {

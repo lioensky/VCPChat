@@ -11,7 +11,7 @@
 const path = require('path');
 const fs = require('fs');
 
-const AUDIO_EXT = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff|wv)$/i;
+const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.ape', '.wma', '.alac', '.aif', '.aiff', '.dsf', '.dff', '.wv']);
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
 const MAX_WATCHED = 32;
 const DEBOUNCE_MS = 5000;
@@ -264,7 +264,10 @@ function createLibraryWatch({
                         if (gen !== generation) return;
                         const f = String(file || '');
                         // 文件夹本身的变化（拷进来一整张专辑）也算；别的文件（封面、歌词）不管
-                        if (f && path.extname(f) && !AUDIO_EXT.test(f)) return;
+                        if (f) {
+                            const ext = path.extname(f);
+                            if (ext && !AUDIO_EXTS.has(ext.toLowerCase())) return;
+                        }
                         clearTimer(timers.get(root));
                         const dt = setTimer(() => { timers.delete(root); if (gen === generation) enqueue(root); }, DEBOUNCE_MS);
                         dt?.unref?.();

@@ -16,17 +16,27 @@ const sanitizeFilePart = (str) => String(str || '').replace(SANITIZE_RE, '_').tr
 function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
     const ensuredLyricDirs = new Set();
     // 和歌放在一起的歌词（同目录同名的 .ttml / .lrc，很多人整理曲库时就这么放）：比歌词目录里自动下载的优先
+    const statSidecar = async (file) => {
+        try {
+            const stat = await fs.stat(file);
+            return stat.isFile() && stat.size <= 2 * 1024 * 1024 ? file : null;
+        } catch (err) {
+            if (err && err.code !== 'ENOENT') console.warn(`[Music] Error reading lyrics next to the track ${file}:`, err.message);
+            return null;
+        }
+    };
     const readSidecarLyrics = async (trackPath) => {
         const p = typeof trackPath === 'string' ? trackPath : '';
         if (!p || URL_SCHEME_RE.test(p) || !path.isAbsolute(p)) return null;
         const base = p.slice(0, p.length - path.extname(p).length);
         if (!base || base === p) return null;
+        // 并行探测同目录 .ttml 与 .lrc，仍严格按 .ttml 优先的顺序读取与解析
+        const hits = await Promise.all(SIDECAR_EXTS.map((ext) => statSidecar(base + ext)));
         for (let i = 0; i < SIDECAR_EXTS.length; i += 1) {
+            const file = hits[i];
+            if (!file) continue;
             const ext = SIDECAR_EXTS[i];
-            const file = base + ext;
             try {
-                const stat = await fs.stat(file);
-                if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
                 const text = decodeLyricText(await fs.readFile(file));
                 if (ext === '.ttml') {
                     const parsed = parseTTML(text);

@@ -22,10 +22,11 @@ function findMatchingServer(fileUrl) {
     let bestLen = -1;
     for (let i = 0; i < servers.length; i += 1) {
         const s = servers[i];
-        const base = String(s.url || '').replace(TRAIL_SLASH_RE, '');
-        if (base && (fileUrl === base || fileUrl.startsWith(base + '/')) && s.url.length > bestLen) {
+        const rawUrl = typeof s.url === 'string' ? s.url : String(s.url || '');
+        const base = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
+        if (base && (fileUrl === base || fileUrl.startsWith(base + '/')) && rawUrl.length > bestLen) {
             best = s;
-            bestLen = s.url.length;
+            bestLen = rawUrl.length;
         }
     }
     return best;
@@ -360,7 +361,7 @@ async function scanAudioFiles(config, progressCallback) {
                             name: entryName,
                             path: entry.url,
                             href: entry.href,
-                            title: entryName.replace(EXT_STRIP_RE, ''),
+                            title: ext ? entryName.slice(0, entryName.length - ext.length) : entryName,
                             artist: '',
                             album: '',
                             isRemote: true

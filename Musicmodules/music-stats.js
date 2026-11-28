@@ -76,9 +76,11 @@
             if (t >= cachedHourStart && t < cachedHourEnd) return;
             const d = new Date(t);
             const h = d.getHours();
-            cachedHourDayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const m = d.getMonth() + 1;
+            const day = d.getDate();
+            cachedHourDayKey = `${d.getFullYear()}-${m < 10 ? '0' : ''}${m}-${day < 10 ? '0' : ''}${day}`;
             cachedHourNum = h;
-            cachedHourStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).getTime();
+            cachedHourStart = new Date(d.getFullYear(), m - 1, day, h, 0, 0, 0).getTime();
             cachedHourEnd = cachedHourStart + 3600000;
         };
         const dayKey = (t) => { syncHourCache(t); return cachedHourDayKey; };
@@ -127,20 +129,15 @@
         const announce = (path) => {
             try { global.document?.dispatchEvent?.(new CustomEvent('music-stats-change', { detail: { path } })); } catch (e) { /* 旧内核 */ }
         };
-        const entry = (path) => {
-            const k = normPath(path);
-            if (!k) return null;
-            if (!table[k]) { table[k] = [0, 0, 0, 0, String(path)]; tableCount++; }
-            return table[k];
-        };
         const bump = (path, kind) => {
-            const e = entry(path);
-            if (!e) return;
+            const k = normPath(path);
+            if (!k) return;
+            let e = table[k];
+            if (!e) { e = [0, 0, 0, 0, String(path)]; table[k] = e; tableCount++; }
             const t = now();
             if (kind === 'play') {
                 e[0]++; e[1] = t; if (!e[3]) e[3] = t;
                 const day = dayOf(t);
-                const k = normPath(path);
                 day.p[k] = (day.p[k] || 0) + 1;
             }
             else e[2]++;
@@ -229,9 +226,22 @@
 
         // ---- 查询 ----
         const hasOwn = Object.prototype.hasOwnProperty;
+        const trackKeyCache = new WeakMap();
+        const keyOfInput = (input) => {
+            if (input && typeof input === 'object') {
+                const raw = input.path;
+                if (!raw) return '';
+                const cached = trackKeyCache.get(input);
+                if (cached && cached.raw === raw) return cached.key;
+                const key = normPath(raw);
+                trackKeyCache.set(input, { raw, key });
+                return key;
+            }
+            return normPath(input);
+        };
         const lookupEntry = (input) => {
             if (!tableCount) return null;
-            return table[normPath(input && typeof input === 'object' ? input.path : input)] || null;
+            return table[keyOfInput(input)] || null;
         };
         const extractPaths = (list, limit) => {
             const cap = limit < list.length ? limit : list.length;
@@ -316,7 +326,8 @@
                 let count = 0;
                 let firstDay = '';
                 const daily = {}; // 每天听了几秒（听歌日历用）
-                const from = days > 0 ? dayKey(now() - (days - 1) * DAY) : '';
+                const useDailyPlays = days > 0;
+                const from = useDailyPlays ? dayKey(now() - (days - 1) * DAY) : '';
                 for (const k in log) {
                     if (!hasOwn.call(log, k)) continue;
                     if (!firstDay || k < firstDay) firstDay = k;
@@ -333,22 +344,29 @@
                     }
                     seconds += daySeconds;
                     if (daySeconds > 0) daily[k] = Math.round(daySeconds);
-                    let dayPlays = 0;
+                    let hasDayPlay = false;
                     const dayP = day && day.p;
                     if (dayP) {
-                        for (const p in dayP) {
-                            if (!hasOwn.call(dayP, p)) continue;
-                            const n = dayP[p];
-                            plays.set(p, (plays.get(p) || 0) + n);
-                            dayPlays += n;
+                        if (useDailyPlays) {
+                            let dayPlays = 0;
+                            for (const p in dayP) {
+                                if (!hasOwn.call(dayP, p)) continue;
+                                const n = dayP[p];
+                                plays.set(p, (plays.get(p) || 0) + n);
+                                dayPlays += n;
+                            }
+                            count += dayPlays;
+                            hasDayPlay = dayPlays > 0;
+                        } else if (daySeconds < 60) {
+                            for (const p in dayP) {
+                                if (hasOwn.call(dayP, p) && dayP[p] > 0) { hasDayPlay = true; break; }
+                            }
                         }
                     }
-                    count += dayPlays;
-                    if (daySeconds >= 60 || dayPlays > 0) activeDays++;
+                    if (daySeconds >= 60 || hasDayPlay) activeDays++;
                 }
                 // 「全部」时次数用总表（流水是这一版才开始记的，总表更全）
-                if (!(days > 0)) {
-                    plays.clear();
+                if (!useDailyPlays) {
                     count = 0;
                     for (const k in table) {
                         if (!hasOwn.call(table, k)) continue;

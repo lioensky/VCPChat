@@ -57,13 +57,30 @@
         let tuningDirty = true;
         let lastTuneSceneId = '';
         let lastTuneAll = null;
+        let lastRowCount = 0;
+        let lastRestCount = 0;
+        const syncTuneMoreUi = () => {
+            const showAll = Boolean(state.tuneAll || lastRestCount === 0);
+            if (el.tuneSlot.classList.contains('md-tune-all') !== showAll) el.tuneSlot.classList.toggle('md-tune-all', showAll);
+            const expStr = String(state.tuneAll);
+            if (el.tuneMore.getAttribute('aria-expanded') !== expStr) el.tuneMore.setAttribute('aria-expanded', expStr);
+            const moreKey = `${state.tuneAll ? 1 : 0}:${lastRowCount}`;
+            if (el.tuneMore.dataset.mdMoreKey !== moreKey) {
+                el.tuneMore.dataset.mdMoreKey = moreKey;
+                el.tuneMore.innerHTML = `<span>${state.tuneAll ? '只看常用项' : `全部 ${lastRowCount} 项`}</span>${icon(state.tuneAll ? 'chevron-up' : 'chevron-down', 14)}`;
+            }
+            lastTuneAll = state.tuneAll;
+        };
         // 宿主每次换舞台都会重建这些行。这里只做三件事：把「名字（说明）」拆成名字和一行小字说明、
         // 把常用项排到前面、给其余的行打上记号；控件本身和它上面的事件不动。
         const dressTuning = () => {
             if (!tuningNode || tuneBusy) return;
             const scene = currentStageMode();
             const sceneId = scene?.id || '';
-            if (!tuningDirty && sceneId === lastTuneSceneId && state.tuneAll === lastTuneAll) return;
+            if (!tuningDirty && sceneId === lastTuneSceneId) {
+                if (state.tuneAll !== lastTuneAll) syncTuneMoreUi();
+                return;
+            }
             tuneBusy = true;
             try {
                 const rows = Array.from(tuningNode.children);
@@ -115,26 +132,19 @@
                 for (let i = 0; i < first.length; i += 1) {
                     if (first[i].classList.contains('md-tune-rest')) first[i].classList.remove('md-tune-rest');
                 }
+                lastRowCount = rows.length;
+                lastRestCount = rest.length;
                 const hideSec = rows.length === 0;
                 if (el.tuneSec.hidden !== hideSec) el.tuneSec.hidden = hideSec;
                 const hideMore = rest.length === 0;
                 if (el.tuneMore.hidden !== hideMore) el.tuneMore.hidden = hideMore;
-                const showAll = Boolean(state.tuneAll || rest.length === 0);
-                if (el.tuneSlot.classList.contains('md-tune-all') !== showAll) el.tuneSlot.classList.toggle('md-tune-all', showAll);
-                const expStr = String(state.tuneAll);
-                if (el.tuneMore.getAttribute('aria-expanded') !== expStr) el.tuneMore.setAttribute('aria-expanded', expStr);
-                const moreKey = `${state.tuneAll ? 1 : 0}:${rows.length}`;
-                if (el.tuneMore.dataset.mdMoreKey !== moreKey) {
-                    el.tuneMore.dataset.mdMoreKey = moreKey;
-                    el.tuneMore.innerHTML = `<span>${state.tuneAll ? '只看常用项' : `全部 ${rows.length} 项`}</span>${icon(state.tuneAll ? 'chevron-up' : 'chevron-down', 14)}`;
-                }
+                syncTuneMoreUi();
                 const nextTitle = scene ? `${scene.label}设置` : '舞台设置';
                 if (el.tuneTitle.textContent !== nextTitle) el.tuneTitle.textContent = nextTitle;
                 const nextHint = scene?.description || '';
                 if (el.tuneHint.textContent !== nextHint) el.tuneHint.textContent = nextHint;
                 tuningDirty = false;
                 lastTuneSceneId = sceneId;
-                lastTuneAll = state.tuneAll;
             } finally {
                 tuneBusy = false;
             }
@@ -144,7 +154,7 @@
             tuneObserver.observe(tuningNode, { childList: true });
             cleanups.push(() => tuneObserver.disconnect());
         }
-        listen(el.tuneMore, 'click', () => { state.tuneAll = !state.tuneAll; tuningDirty = true; dressTuning(); });
+        listen(el.tuneMore, 'click', () => { state.tuneAll = !state.tuneAll; dressTuning(); });
         listen(el.advToggle, 'click', () => {
             const open = el.advBody.hidden;
             el.advBody.hidden = !open;
